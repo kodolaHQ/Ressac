@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace } from "../../src/espace/initialiser.js";
@@ -48,4 +48,24 @@ test("AGENTS.md mentionne les éléments imposés", async () => {
   for (const m of ["page_courante", "ouvrir_onglet", "5170", "5199", "0.0.0.0", "etat.json", "/workspace/projets"]) {
     expect(texte, m).toContain(m);
   }
+});
+
+test("un bloc de départ supprimé ne revient pas au lancement suivant", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  await rm(join(c.blocs, "veille-exemple"), { recursive: true });
+  await writeFile(c.disposition, '{"ordre":["daily-dev"]}');
+  await initialiserEspace(c);
+  expect(existsSync(join(c.blocs, "veille-exemple"))).toBe(false);
+  expect(await readFile(c.disposition, "utf8")).toBe('{"ordre":["daily-dev"]}');
+});
+
+test("AGENTS.md, CLAUDE.md et le profil sont recréés s'ils manquent", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  await rm(join(c.racine, "AGENTS.md"));
+  await rm(join(c.profils, "claude.json"));
+  await initialiserEspace(c);
+  expect(existsSync(join(c.racine, "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(c.profils, "claude.json"))).toBe(true);
 });

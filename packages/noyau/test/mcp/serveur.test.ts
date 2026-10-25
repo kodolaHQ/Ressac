@@ -147,3 +147,10 @@ test("sans onglet actif → Aucun onglet actif.", async () => {
   );
   expect(texte(await client.callTool({ name: "page_courante", arguments: {} }))).toBe("Aucun onglet actif.");
 });
+
+test("ouvrir_onglet sur un site extérieur puis lire_onglet → demande d'autorisation", async () => {
+  const id = texte(await client.callTool({ name: "ouvrir_onglet", arguments: { url: "https://mail.google.com" } })).trim();
+  const r = await client.callTool({ name: "lire_onglet", arguments: { id } });
+  expect(texte(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
+  expect(demandes()).toBe(1);
+});

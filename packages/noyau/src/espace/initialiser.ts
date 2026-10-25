@@ -5,14 +5,18 @@ import type { CheminsEspace } from "../chemins.js";
 
 const MODELES = join(import.meta.dirname, "..", "..", "modeles");
 
-/** Fichier modèle → destination dans l'espace. */
+/**
+ * Fichier modèle → destination dans l'espace. Le contenu de départ de la page d'accueil n'est posé
+ * qu'au premier lancement (dossier `accueil/` absent) : un bloc supprimé par l'utilisateur ne doit pas revenir.
+ */
 async function correspondances(c: CheminsEspace): Promise<[string, string][]> {
   const paires: [string, string][] = [
     ["AGENTS.md", join(c.racine, "AGENTS.md")],
     ["CLAUDE.md", join(c.racine, "CLAUDE.md")],
-    ["disposition.json", c.disposition],
     ["profil-claude.json", join(c.profils, "claude.json")],
   ];
+  if (existsSync(c.accueil)) return paires;
+  paires.push(["disposition.json", c.disposition]);
   for (const bloc of await readdir(join(MODELES, "blocs"))) {
     for (const f of await readdir(join(MODELES, "blocs", bloc))) {
       paires.push([join("blocs", bloc, f), join(c.blocs, bloc, f)]);

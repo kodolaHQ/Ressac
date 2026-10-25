@@ -67,3 +67,26 @@ test("URL invalide → jamais lisible", () => {
   p.accorder({ ...github, url: "pas une url" });
   expect(p.peutLire({ ...github, url: "pas une url" })).toBe(false);
 });
+
+test("l'agent ouvre lui-même Gmail → pas d'accès sans demande", () => {
+  p.ongletOuvertParAgent({ ...gmail, id: "9" });
+  expect(p.peutLire({ ...gmail, id: "9" })).toBe(false);
+});
+
+test("l'agent navigue sa démo vers un site extérieur → accès perdu", () => {
+  p.ongletOuvertParAgent(demo);
+  p.navigationParAgent(demo.id, "https://mail.google.com/");
+  expect(p.peutLire({ ...demo, url: "https://mail.google.com/" })).toBe(false);
+});
+
+test("démo sur 127.0.0.1 ouverte par l'agent → accès", () => {
+  const d = { ...demo, url: "http://127.0.0.1:5280/" };
+  p.ongletOuvertParAgent(d);
+  expect(p.peutLire(d)).toBe(true);
+});
+
+test("l'agent navigue sur le même site un onglet que l'utilisateur lui a donné → accès conservé", () => {
+  p.interactionUtilisateur(github);
+  p.navigationParAgent(github.id, "https://github.com/sveltejs/kit");
+  expect(p.peutLire({ ...github, url: "https://github.com/sveltejs/kit" })).toBe(true);
+});

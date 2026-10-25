@@ -9,9 +9,19 @@ function origine(url: string): string | null {
   }
 }
 
+/** Les démos de l'agent tournent dans le conteneur et s'ouvrent en local. */
+function estLocale(url: string): boolean {
+  try {
+    return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Ce que l'agent a le droit de lire (spec §8.2) : un onglet que l'utilisateur lui a donné, depuis lequel
- * il lui a parlé, ou que l'agent a ouvert lui-même. Une autorisation vaut pour un site (origine) :
+ * il lui a parlé, ou une démo locale que l'agent a ouverte lui-même. Un site extérieur ouvert par
+ * l'agent (Gmail, sa banque…) reste soumis à demande. Une autorisation vaut pour un site (origine) :
  * si l'utilisateur change de site, elle tombe.
  */
 export class PolitiqueAcces {
@@ -28,13 +38,15 @@ export class PolitiqueAcces {
   }
 
   ongletOuvertParAgent(o: OngletInfo): void {
-    this.accorder(o);
+    if (estLocale(o.url)) this.accorder(o);
   }
 
-  /** L'agent a navigué lui-même un onglet auquel il avait accès : l'accès suit. */
+  /** L'agent a navigué lui-même un onglet auquel il avait accès : l'accès suit sur le même site ou vers une démo locale. */
   navigationParAgent(id: string, url: string): void {
     const org = origine(url);
-    if (this.autorisations.has(id) && org) this.autorisations.set(id, org);
+    if (!this.autorisations.has(id)) return;
+    if (org && (org === this.autorisations.get(id) || estLocale(url))) this.autorisations.set(id, org);
+    else this.autorisations.delete(id);
   }
 
   /** Navigation faite par l'utilisateur : changer de site retire l'autorisation. */
