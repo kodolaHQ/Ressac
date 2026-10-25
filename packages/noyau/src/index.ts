@@ -7,3 +7,5 @@ export * from "./profils/profil.js";
 export * from "./profils/config-mcp.js";
 export * from "./conteneur/executeur.js";
 export * from "./conteneur/atelier.js";
+export * from "./pty/contexte.js";
+export * from "./pty/session.js";
