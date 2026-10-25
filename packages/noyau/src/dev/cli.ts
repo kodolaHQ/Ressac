@@ -1,5 +1,6 @@
 // Commande de développement : le vrai agent dans le conteneur, branché sur un navigateur factice.
 // Usage : corepack pnpm dev:noyau   (Ctrl-] pour quitter)
+import { execFile } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { creerNoyau, ErreurAtelier } from "../noyau.js";
@@ -20,6 +21,8 @@ const pont = new Proxy(factice, {
     if (typeof valeur !== "function") return valeur;
     return (...args: unknown[]) => {
       if (journal) appendFileSync(journal, `${new Date().toISOString()} ${String(cle)} ${JSON.stringify(args)}\n`);
+      // Pas encore de vrai navigateur : les onglets ouverts par l'agent s'ouvrent dans le navigateur par défaut.
+      if (cle === "ouvrirOnglet") execFile("open", [String(args[0])]);
       return valeur.apply(cible, args);
     };
   },
@@ -27,12 +30,13 @@ const pont = new Proxy(factice, {
 
 const noyau = await creerNoyau({ pont });
 journal = join(noyau.chemins.interne, "dev-pont.log");
-noyau.politique.interactionUtilisateur(github); // L'utilisateur « parle à l'agent » depuis l'onglet GitHub
 console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : tail -f ${journal}\nCtrl-] pour quitter.\n`);
 
 let session;
 try {
   session = await noyau.ouvrirSessionAgent({ cols: process.stdout.columns ?? 100, rows: process.stdout.rows ?? 30 });
+  // Après l'ouverture : une nouvelle session repart sans autorisation.
+  noyau.politique.interactionUtilisateur(github); // L'utilisateur « parle à l'agent » depuis l'onglet GitHub
 } catch (e) {
   console.error(e instanceof ErreurAtelier ? `Agent indisponible : ${e.message}` : e);
   await noyau.arreter();

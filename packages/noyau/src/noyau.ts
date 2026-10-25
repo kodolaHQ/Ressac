@@ -24,6 +24,7 @@ export interface Noyau {
   chemins: CheminsEspace;
   politique: PolitiqueAcces;
   etatAtelier(): Promise<EtatAtelier>;
+  /** Nouvelle conversation : efface les autorisations. Signaler l'onglet courant (interactionUtilisateur) après. */
   ouvrirSessionAgent(o: { cols: number; rows: number }): Promise<SessionAgent>;
   lireAccueil(): Promise<EtatAccueil>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
