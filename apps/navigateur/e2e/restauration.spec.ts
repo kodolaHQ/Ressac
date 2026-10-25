@@ -100,3 +100,16 @@ test("le moteur choisi est conservé et utilisé pour la recherche", async () =>
     .toContain("https://duckduckgo.com/?q=chats%20mignons");
   await second.fermer();
 });
+
+test("la taille et la position de la fenêtre sont restaurées", async () => {
+  const premier = await lancer();
+  const cadre = { x: 120, y: 90, width: 1000, height: 700 };
+  await premier.app.evaluate(({ BrowserWindow }, c) => BrowserWindow.getAllWindows()[0]!.setBounds(c), cadre);
+  await expect
+    .poll(() => premier.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getBounds()))
+    .toEqual(cadre);
+  await premier.fermer();
+  const second = await lancer({ profil: premier.profil });
+  expect(await second.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getBounds())).toEqual(cadre);
+  await second.fermer();
+});

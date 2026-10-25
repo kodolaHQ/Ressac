@@ -17,6 +17,7 @@ export function etatInitial(genId: () => string = randomUUID): EtatNavigateur {
         compact: false,
         panneauAgentOuvert: false,
         fermesRecemment: [],
+        cadre: null,
       },
     ],
     reglages: { moteur: "google" },

@@ -242,6 +242,14 @@ test("basculerCompact, basculerPanneauAgent, choisirMoteur", () => {
   expect(e.reglages.moteur).toBe("qwant");
 });
 
+test("cadrerFenetre retient la taille et la position ; fenêtre inconnue → même référence", () => {
+  expect(fen().cadre).toBeNull();
+  ag({ type: "cadrerFenetre", id: F, cadre: { x: 10, y: 20, largeur: 800, hauteur: 600 } });
+  expect(fen().cadre).toEqual({ x: 10, y: 20, largeur: 800, hauteur: 600 });
+  const avant = e;
+  expect(appliquer(e, { type: "cadrerFenetre", id: "inconnue", cadre: { x: 0, y: 0, largeur: 1, hauteur: 1 } }, genId)).toBe(avant);
+});
+
 test("majOnglet sans aucun changement → même référence (rien à rediffuser)", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "majOnglet", id: a, champs: { titre: "A", chargement: true } });

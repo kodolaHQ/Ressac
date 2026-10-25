@@ -1,7 +1,7 @@
-import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, screen, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
+import type { Cadre, Decision, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
 import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
@@ -31,10 +31,26 @@ const fenetres = new Map<IdFenetre, BrowserWindow>();
 let enSortie = false;
 const enFermeture = new WeakSet<BrowserWindow>();
 
+/** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
+function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
+  if (!c) return undefined;
+  const r = { x: Math.round(c.x), y: Math.round(c.y), width: Math.round(c.largeur), height: Math.round(c.hauteur) };
+  const visible = screen.getAllDisplays().some(({ workArea: z }) => r.x < z.x + z.width && r.x + r.width > z.x && r.y < z.y + z.height && r.y + r.height > z.y);
+  return visible ? r : undefined;
+}
+
+function noterCadre(id: IdFenetre, f: BrowserWindow, magasin: Magasin): void {
+  if (f.isDestroyed() || f.isFullScreen() || f.isMinimized()) return;
+  const { x, y, width, height } = f.getNormalBounds();
+  magasin.agir({ type: "cadrerFenetre", id, cadre: { x, y, largeur: width, hauteur: height } });
+}
+
 function creerFenetre(id: IdFenetre, magasin: Magasin): BrowserWindow {
+  const cadre = cadreVisible(magasin.etat.fenetres.find((f) => f.id === id)?.cadre);
   const fenetre = new BrowserWindow({
     width: 1400,
     height: 900,
+    ...cadre,
     titleBarStyle: "hiddenInset",
     backgroundColor: "#1e1e22",
     webPreferences: {
@@ -48,7 +64,19 @@ function creerFenetre(id: IdFenetre, magasin: Magasin): BrowserWindow {
   fenetres.set(id, fenetre);
   // Sortie du plein écran par la fenêtre (bouton vert) : la page doit sortir aussi.
   fenetre.on("leave-full-screen", () => fenetre.webContents.send(CANAUX.pleinEcran, false));
-  fenetre.on("close", () => enFermeture.add(fenetre));
+  // Taille et position retenues pour le prochain lancement (regroupées : un glissement émet des dizaines d'événements).
+  let minuterieCadre: NodeJS.Timeout | undefined;
+  const planifierCadre = () => {
+    clearTimeout(minuterieCadre);
+    minuterieCadre = setTimeout(() => noterCadre(id, fenetre, magasin), 300);
+  };
+  fenetre.on("resize", planifierCadre);
+  fenetre.on("move", planifierCadre);
+  fenetre.on("close", () => {
+    clearTimeout(minuterieCadre);
+    noterCadre(id, fenetre, magasin);
+    enFermeture.add(fenetre);
+  });
   // Fermer une fenêtre parmi d'autres la retire de la session (avec ses onglets) ; la dernière reste, pour la
   // restauration. Sur « closed » : un window.close() de la page détruit la fenêtre sans émettre « close ».
   fenetre.on("closed", () => {
@@ -60,8 +88,19 @@ function creerFenetre(id: IdFenetre, magasin: Magasin): BrowserWindow {
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
   fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  if (process.env.ELECTRON_RENDERER_URL) void fenetre.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void fenetre.loadFile(join(__dirname, "../renderer/index.html"));
+  const chargerInterface = () =>
+    process.env.ELECTRON_RENDERER_URL
+      ? fenetre.loadURL(process.env.ELECTRON_RENDERER_URL)
+      : fenetre.loadFile(join(__dirname, "../renderer/index.html"));
+  // Interface plantée : on la recharge (elle relit l'état au démarrage), sans boucler si elle replante aussitôt.
+  let plantages: number[] = [];
+  fenetre.webContents.on("render-process-gone", (_e, { reason }) => {
+    if (reason === "clean-exit" || fenetre.isDestroyed()) return;
+    plantages = [...plantages.filter((t) => Date.now() - t < 10_000), Date.now()];
+    if (plantages.length <= 3) void chargerInterface().catch(() => {});
+    else console.error("[webaios] l'interface plante en boucle, abandon du rechargement");
+  });
+  void chargerInterface();
   return fenetre;
 }
 
@@ -71,11 +110,13 @@ function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
 }
 
 let enregistreur: EnregistreurSession | undefined;
+let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
   const magasin = new Magasin(await chargerSession(dossier));
+  magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
   const sessionWeb = session.fromPartition("persist:webaios");
@@ -220,6 +261,8 @@ app.on("before-quit", (e) => {
   enSortie = true;
   if (sessionEcrite || !enregistreur) return;
   e.preventDefault();
+  // ⌘Q : les fenêtres se ferment après l'écriture de la session, leur cadre doit y être avant.
+  if (magasinGlobal) for (const [id, f] of fenetres) noterCadre(id, f, magasinGlobal);
   void enregistreur.vider().finally(() => {
     sessionEcrite = true;
     app.quit();

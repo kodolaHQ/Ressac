@@ -36,3 +36,25 @@ test("un second lancement sur le même profil s'arrête et laisse le premier int
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
   await fermer();
 });
+
+test("si l'interface plante, elle se recharge au lieu de laisser une fenêtre blanche", async () => {
+  const { app, fermer } = await lancer();
+  await app.evaluate(({ webContents }) =>
+    webContents
+      .getAllWebContents()
+      .find((w) => w.getURL().includes("/renderer/index.html"))!
+      .forcefullyCrashRenderer(),
+  );
+  await expect
+    .poll(
+      () =>
+        app.evaluate(async ({ webContents }) => {
+          const ui = webContents.getAllWebContents().find((w) => w.getURL().includes("/renderer/index.html"));
+          if (!ui || ui.isCrashed()) return false;
+          return ui.executeJavaScript("!!document.querySelector('[data-testid=barre-laterale]')").catch(() => false);
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+  await fermer();
+});

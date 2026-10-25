@@ -49,6 +49,11 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activerEspace"), fenetreId: id, id }),
   z.object({ type: z.literal("ouvrirFenetre"), id: id.optional(), espaceId: id.optional() }),
   z.object({ type: z.literal("fermerFenetre"), id }),
+  z.object({
+    type: z.literal("cadrerFenetre"),
+    id,
+    cadre: z.object({ x: z.number(), y: z.number(), largeur: z.number().positive(), hauteur: z.number().positive() }),
+  }),
   z.object({ type: z.literal("afficherPageVide"), fenetreId: id }),
   z.object({ type: z.literal("basculerCompact"), fenetreId: id }),
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),

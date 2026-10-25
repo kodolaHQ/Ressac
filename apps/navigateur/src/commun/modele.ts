@@ -44,6 +44,14 @@ export interface FermeRecemment {
   espaceId: IdEspace;
 }
 
+/** Taille et position d'une fenêtre à l'écran, en points. */
+export interface Cadre {
+  x: number;
+  y: number;
+  largeur: number;
+  hauteur: number;
+}
+
 export interface EtatFenetre {
   id: IdFenetre;
   espaceActif: IdEspace;
@@ -54,6 +62,8 @@ export interface EtatFenetre {
   panneauAgentOuvert: boolean;
   /** 20 au plus, le plus récent en tête. */
   fermesRecemment: FermeRecemment[];
+  /** Dernier cadre connu ; null tant que la fenêtre n'a pas été déplacée ni redimensionnée. */
+  cadre: Cadre | null;
 }
 
 export interface EtatNavigateur {

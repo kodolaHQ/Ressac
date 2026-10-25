@@ -37,6 +37,7 @@ const SchemaSession = z
           compact: z.boolean(),
           panneauAgentOuvert: z.boolean(),
           fermesRecemment: z.array(z.object({ url: z.string(), espaceId: z.string() })),
+          cadre: z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() }).nullable().default(null),
         }),
       )
       .min(1),

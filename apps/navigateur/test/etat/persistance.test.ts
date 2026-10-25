@@ -40,6 +40,16 @@ test("aller-retour : identique, hors champs volatils remis par défaut", async (
   expect(relu).toEqual(attendu);
 });
 
+test("une session enregistrée avant le cadre des fenêtres se charge (cadre = null)", async () => {
+  const d = dossier();
+  const ancienne = structuredClone(etatInitial()) as unknown as { fenetres: Record<string, unknown>[] };
+  for (const f of ancienne.fenetres) delete f.cadre;
+  writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
+  const e = await chargerSession(d);
+  expect(e.fenetres[0]!.cadre).toBeNull();
+  expect(mis_de_cote(d, ".corrompu")).toEqual([]);
+});
+
 test("fichier absent → état initial", async () => {
   const e = await chargerSession(dossier());
   expect(e.espaces).toHaveLength(1);

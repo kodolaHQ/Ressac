@@ -228,6 +228,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
         compact: false,
         panneauAgentOuvert: false,
         fermesRecemment: [],
+        cadre: null,
       });
       return true;
     }
@@ -245,6 +246,12 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
         .reverse();
       restante.fermesRecemment = [...recuperes, ...restante.fermesRecemment].slice(0, MAX_FERMES);
       for (const o of Object.values(d.onglets)) if (o.fenetreId === a.id) delete d.onglets[o.id];
+      return true;
+    }
+    case "cadrerFenetre": {
+      const f = fenetre(d, a.id);
+      if (!f) return false;
+      f.cadre = a.cadre;
       return true;
     }
     case "afficherPageVide": {
