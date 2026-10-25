@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { EtatNavigateur, IdFenetre, IdOnglet, Visite } from "./modele";
+import type { EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
 
@@ -65,7 +65,7 @@ export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
 export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 export type Bornes = z.infer<typeof SchemaBornes>;
 
-export type Panneau = "historique";
+export type Panneau = "historique" | "telechargements";
 
 /** API exposée à l'interface par le preload (`window.webaios`). */
 export interface ApiWebaios {
@@ -86,4 +86,13 @@ export interface ApiWebaios {
     /** `depuis` : date ISO ; absent, tout l'historique. */
     effacer(depuis?: string): Promise<void>;
   };
+  telechargements: {
+    liste(): Promise<Telechargement[]>;
+    ouvrir(id: string): void;
+    montrer(id: string): void;
+    annuler(id: string): void;
+  };
+  surTelechargements(rappel: (liste: Telechargement[]) => void): () => void;
 }
+
+export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });

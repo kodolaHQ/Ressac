@@ -4,6 +4,7 @@
   import type { Panneau } from "../../commun/api";
   import Historique from "./Historique.svelte";
   import PageVide from "./PageVide.svelte";
+  import Telechargements from "./Telechargements.svelte";
 
   let {
     fenetre,
@@ -34,6 +35,8 @@
 <main class="contenu" data-testid="zone-contenu" bind:this={zone}>
   {#if fenetre && panneau === "historique"}
     <Historique {fenetre} fermer={fermerPanneau} />
+  {:else if panneau === "telechargements"}
+    <Telechargements fermer={fermerPanneau} />
   {:else if fenetre && !onglet}
     <PageVide {fenetre} />
   {:else if onglet?.plante}

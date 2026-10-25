@@ -72,3 +72,12 @@ export interface Visite {
   derniereVisite: string; // ISO
   visites: number;
 }
+
+export interface Telechargement {
+  id: string;
+  nom: string;
+  chemin: string;
+  recus: number;
+  total: number; // 0 si inconnu
+  etat: "en-cours" | "termine" | "annule" | "interrompu";
+}

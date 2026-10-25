@@ -1,8 +1,9 @@
 import { ipcMain, type IpcMainEvent } from "electron";
-import { CANAUX, SchemaAction, SchemaBornes, SchemaCommande, type Action, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaBornes, SchemaCommande, type Action, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
+import type { Telechargements } from "./telechargements";
 
 type Abonne = (etat: EtatNavigateur, precedent: EtatNavigateur) => void;
 
@@ -34,6 +35,7 @@ export interface Gestionnaires {
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
   historique: Historique;
+  telechargements: Telechargements;
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -76,6 +78,8 @@ export function brancherIpc(g: Gestionnaires): void {
     if (date && Number.isNaN(date.getTime())) return;
     g.historique.effacer(date);
   });
+  repondre(CANAUX.telechargementsListe, () => g.telechargements.liste());
+  recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
   ipcMain.on(CANAUX.demanderEtat, (e) => {
     if (g.fenetreDe(e)) e.sender.send(CANAUX.etat, g.magasin.etat);
   });

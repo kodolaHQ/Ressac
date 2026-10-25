@@ -11,6 +11,9 @@ export const CANAUX = {
   historiqueRechercher: "webaios:historique-rechercher",
   historiqueRecents: "webaios:historique-recents",
   historiqueEffacer: "webaios:historique-effacer",
+  telechargements: "webaios:telechargements",
+  telechargementsListe: "webaios:telechargements-liste",
+  telechargementAction: "webaios:telechargement-action",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import type { Panneau } from "../../commun/api";
   import type { EtatFenetre } from "../../commun/modele";
-  import { api, etat } from "../etat.svelte";
+  import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
   import IconeSite from "./IconeSite.svelte";
@@ -13,7 +14,19 @@
     cachee = false,
     surEntree,
     surSortie,
-  }: { fenetre: EtatFenetre; cachee?: boolean; surEntree?: () => void; surSortie?: () => void } = $props();
+    basculerPanneau,
+  }: {
+    fenetre: EtatFenetre;
+    cachee?: boolean;
+    surEntree?: () => void;
+    surSortie?: () => void;
+    basculerPanneau?: (p: Panneau) => void;
+  } = $props();
+  const enCours = $derived(telechargements.liste.filter((t) => t.etat === "en-cours"));
+  const progression = $derived.by(() => {
+    const total = enCours.reduce((s, t) => s + t.total, 0);
+    return total ? enCours.reduce((s, t) => s + t.recus, 0) / total : 0;
+  });
   const espace = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif));
   const lienActif = $derived.by(() => {
     const id = fenetre.actif[fenetre.espaceActif];
@@ -53,7 +66,15 @@
     <ListeOnglets {fenetre} />
     <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.agir({ type: "afficherPageVide", fenetreId: fenetre.id })}>+ Nouvel onglet</button>
   </div>
-  <SelecteurEspaces {fenetre} />
+  <footer>
+    <SelecteurEspaces {fenetre} />
+    {#if telechargements.liste.length}
+      <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => basculerPanneau?.("telechargements")}>
+        ⬇
+        {#if enCours.length}<span class="pastille" style:--p={progression}></span>{/if}
+      </button>
+    {/if}
+  </footer>
 </aside>
 
 <style>
@@ -73,6 +94,11 @@
   .epingles button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .epingles button:hover { background: var(--fond-survol); }
   .epingles button.actif { background: var(--fond-actif); }
+  footer { display: flex; align-items: flex-end; gap: 4px; -webkit-app-region: no-drag; }
+  footer :global(nav) { flex: 1; }
+  .telechargements { all: unset; position: relative; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
+  .telechargements:hover { background: var(--fond-survol); }
+  .pastille { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
   hr { width: 100%; border: none; border-top: 1px solid var(--bord); margin: 2px 0; }
   .nouveau { all: unset; padding: 6px; border-radius: 6px; color: var(--texte-doux); }
   .nouveau:hover { background: var(--fond-survol); }

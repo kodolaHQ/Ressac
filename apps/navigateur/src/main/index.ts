@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import type { IdFenetre } from "../commun/modele";
@@ -9,6 +9,7 @@ import { Historique } from "./historique";
 import { installerMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
 import { cheminProfil } from "./profil";
+import { Telechargements } from "./telechargements";
 
 app.setPath("userData", cheminProfil());
 
@@ -59,15 +60,25 @@ app.whenReady().then(async () => {
   const magasin = new Magasin(await chargerSession(dossier));
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
+  const sessionWeb = session.fromPartition("persist:webaios");
+  const diffuser = (canal: string, valeur: unknown) => {
+    for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
+  };
+  const telechargements = new Telechargements({
+    dossier: process.env.WEBAIOS_TELECHARGEMENTS ?? app.getPath("downloads"),
+    diffuser: (liste) => diffuser(CANAUX.telechargements, liste),
+    shell,
+  });
+  sessionWeb.on("will-download", (_e, item) => telechargements.suivre(item));
   const vues = new GestionnaireVues({
-    session: session.fromPartition("persist:webaios"),
+    session: sessionWeb,
     fenetres,
     agir: (a) => magasin.agir(a),
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
     historique,
   });
   magasin.abonner((etat) => {
-    for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(CANAUX.etat, etat);
+    diffuser(CANAUX.etat, etat);
     vues.synchroniser(etat);
     enregistreur?.planifier(etat);
   });
@@ -83,6 +94,7 @@ app.whenReady().then(async () => {
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
     historique,
+    telechargements,
   });
   installerMenu({
     fenetreActive: () => {

@@ -32,6 +32,17 @@ const api: ApiWebaios = {
     recents: () => ipcRenderer.invoke(CANAUX.historiqueRecents),
     effacer: (depuis) => ipcRenderer.invoke(CANAUX.historiqueEffacer, depuis),
   },
+  telechargements: {
+    liste: () => ipcRenderer.invoke(CANAUX.telechargementsListe),
+    ouvrir: (id) => ipcRenderer.send(CANAUX.telechargementAction, { id, action: "ouvrir" }),
+    montrer: (id) => ipcRenderer.send(CANAUX.telechargementAction, { id, action: "montrer" }),
+    annuler: (id) => ipcRenderer.send(CANAUX.telechargementAction, { id, action: "annuler" }),
+  },
+  surTelechargements(rappel) {
+    const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
+    ipcRenderer.on(CANAUX.telechargements, ecouteur);
+    return () => ipcRenderer.removeListener(CANAUX.telechargements, ecouteur);
+  },
 };
 
 contextBridge.exposeInMainWorld("webaios", api);

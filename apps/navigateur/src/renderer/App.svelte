@@ -36,7 +36,8 @@
   }
 
   let panneau = $state<Panneau | null>(null);
-  $effect(() => api.surPanneau((p) => (panneau = panneau === p ? null : p)));
+  const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
+  $effect(() => api.surPanneau(basculerPanneau));
   // Activer un onglet referme le panneau.
   $effect(() => {
     void ongletActif?.id;
@@ -56,6 +57,7 @@
     <BarreLaterale
       {fenetre}
       cachee={!barreVisible}
+      {basculerPanneau}
       surEntree={() => {
         survolBarre = true;
         clearTimeout(minuterie);
