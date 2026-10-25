@@ -4,7 +4,7 @@ import type { OngletInfo } from "../../src/mcp/pont.js";
 
 const github: OngletInfo = { id: "1", titre: "svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
 const gmail: OngletInfo = { id: "2", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
-const demo: OngletInfo = { id: "3", titre: "Démo", url: "http://localhost:5170/", espace: "perso" };
+const demo: OngletInfo = { id: "3", titre: "Démo", url: "http://localhost:5280/", espace: "perso" };
 let p: PolitiqueAcces;
 beforeEach(() => (p = new PolitiqueAcces()));
 
@@ -49,8 +49,8 @@ test("l'URL actuelle compte même sans événement de navigation", () => {
 
 test("l'agent navigue son onglet de démo vers un autre port → accès conservé", () => {
   p.ongletOuvertParAgent(demo);
-  p.navigationParAgent(demo.id, "http://localhost:5171/");
-  expect(p.peutLire({ ...demo, url: "http://localhost:5171/" })).toBe(true);
+  p.navigationParAgent(demo.id, "http://localhost:5281/");
+  expect(p.peutLire({ ...demo, url: "http://localhost:5281/" })).toBe(true);
 });
 
 test("reinitialiser retire tout ; ongletFerme retire l'onglet", () => {

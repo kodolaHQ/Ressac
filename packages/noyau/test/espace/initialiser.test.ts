@@ -45,7 +45,7 @@ test("AGENTS.md mentionne les éléments imposés", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   const texte = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  for (const m of ["page_courante", "ouvrir_onglet", "5170", "5199", "0.0.0.0", "etat.json", "/workspace/projets"]) {
+  for (const m of ["page_courante", "ouvrir_onglet", "5280", "5299", "0.0.0.0", "etat.json", "/workspace/projets"]) {
     expect(texte, m).toContain(m);
   }
 });

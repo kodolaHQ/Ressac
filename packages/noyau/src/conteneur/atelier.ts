@@ -6,7 +6,10 @@ import { executeurParDefaut, type Executeur } from "./executeur.js";
 export const NOM_CONTENEUR = "webaios-atelier";
 export const IMAGE = "webaios-atelier:1";
 export const VOLUME_HOME = "webaios-home";
-export const PORTS = "5170-5199";
+/** Hors de la plage de Vite (5173, 5174…) pour ne pas entrer en conflit avec un serveur lancé sur le Mac. */
+export const PORTS = "5280-5299";
+/** Les sondes docker ne doivent pas bloquer si Docker Desktop est coincé au démarrage. */
+const DELAI_SONDE_MS = 30_000;
 
 const DOSSIER_DOCKER = join(import.meta.dirname, "..", "..", "docker");
 
@@ -38,13 +41,13 @@ export class Atelier {
     this.docker = o.docker === undefined ? trouverDocker() : o.docker;
   }
 
-  private lancer(args: string[]) {
-    return this.executer(this.docker!, args);
+  private lancer(args: string[], delaiMs?: number) {
+    return this.executer(this.docker!, args, delaiMs ? { delaiMs } : undefined);
   }
 
   async etat(): Promise<EtatAtelier> {
-    if (!this.docker || (await this.lancer(["info"])).code !== 0) return "docker-absent";
-    const r = await this.lancer(["inspect", "-f", "{{.State.Running}}", NOM_CONTENEUR]);
+    if (!this.docker || (await this.lancer(["info"], DELAI_SONDE_MS)).code !== 0) return "docker-absent";
+    const r = await this.lancer(["inspect", "-f", "{{.State.Running}}", NOM_CONTENEUR], DELAI_SONDE_MS);
     if (r.code !== 0) return "absent";
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
   }
@@ -53,10 +56,10 @@ export class Atelier {
     const etat = await this.etat();
     if (etat === "docker-absent" || etat === "demarre") return etat;
     if (etat === "arrete") {
-      await this.lancer(["start", NOM_CONTENEUR]);
+      await this.lancer(["start", NOM_CONTENEUR], DELAI_SONDE_MS);
       return this.etat();
     }
-    if ((await this.lancer(["image", "inspect", IMAGE])).code !== 0) {
+    if ((await this.lancer(["image", "inspect", IMAGE], DELAI_SONDE_MS)).code !== 0) {
       const build = await this.lancer(["build", "-t", IMAGE, "-f", join(DOSSIER_DOCKER, "atelier.Dockerfile"), DOSSIER_DOCKER]);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }

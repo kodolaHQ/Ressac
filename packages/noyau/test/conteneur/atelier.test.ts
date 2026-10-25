@@ -53,7 +53,7 @@ test("assurerDemarre sur absent : build si image manquante puis run avec les bon
   const run = appels.find((a) => a.args[0] === "run")!;
   expect(run.args).toEqual(expect.arrayContaining([
     "--name", "webaios-atelier",
-    "127.0.0.1:5170-5199:5170-5199",
+    "127.0.0.1:5280-5299:5280-5299",
     "webaios-home:/home/node",
     "/Users/t/WebAiOs:/workspace",
     "host.docker.internal:host-gateway",
@@ -81,4 +81,19 @@ test("commandeExec interactif et non interactif", () => {
   expect(a.commandeExec(["claude", "-p", "x"], { interactif: false })).toEqual([
     "/opt/homebrew/bin/docker", "exec", "-w", "/workspace", "webaios-atelier", "claude", "-p", "x",
   ]);
+});
+
+test("les sondes docker ont un délai (Docker Desktop bloqué au démarrage)", async () => {
+  const { executer, appels } = executeurFactice([[/ inspect /, { code: 0, stdout: "true\n" }]]);
+  await new Atelier({ chemins, docker: "docker", executer }).etat();
+  for (const a of appels) expect(a.opts?.delaiMs, a.args.join(" ")).toBeGreaterThan(0);
+});
+
+test("les ports publiés évitent ceux de Vite (5173…) : 5280-5299", async () => {
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 0 }],
+    [/ inspect -f/, { code: 1 }],
+  ]);
+  await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
+  expect(appels.find((a) => a.args[0] === "run")!.args).toContain("127.0.0.1:5280-5299:5280-5299");
 });

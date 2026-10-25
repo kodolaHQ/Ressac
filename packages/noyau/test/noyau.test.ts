@@ -55,3 +55,30 @@ test("profil inconnu → erreur claire", async () => {
     creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, profilId: "inconnu" }),
   ).rejects.toThrow(/inconnu/);
 });
+
+test("creerNoyau n'attend pas une construction d'image lente", async () => {
+  const racine = await dossierTemporaire();
+  const { executer } = executeurFactice([
+    [/ info$/, { code: 0 }],
+    [/ inspect -f/, { code: 1 }],
+    [/ image inspect /, { code: 1 }],
+    [/ build /, () => new Promise(() => {})], // ne se termine jamais
+  ]);
+  const debut = Date.now();
+  noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  expect(Date.now() - debut).toBeLessThan(2000);
+});
+
+test("échec de démarrage du conteneur : creerNoyau réussit, la session lève ErreurAtelier avec le message", async () => {
+  const racine = await dossierTemporaire();
+  const { executer } = executeurFactice([
+    [/ info$/, { code: 0 }],
+    [/ inspect -f/, { code: 1 }],
+    [/ image inspect /, { code: 0 }],
+    [/ run /, { code: 125, stderr: "Bind for 127.0.0.1:5280 failed: port is already allocated" }],
+  ]);
+  noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  const erreur = await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
+  expect(erreur).toBeInstanceOf(ErreurAtelier);
+  expect(erreur.message).toContain("port is already allocated");
+});

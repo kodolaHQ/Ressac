@@ -14,8 +14,8 @@ import { demarrerServeurMcp, genererJeton } from "./mcp/serveur.js";
 import { PlanificateurVeille } from "./veille/planificateur.js";
 
 export class ErreurAtelier extends Error {
-  constructor(readonly etat: EtatAtelier) {
-    super(etat === "docker-absent" ? "Docker n'est pas lancé" : `Conteneur indisponible (${etat})`);
+  constructor(readonly etat: EtatAtelier, detail?: string) {
+    super(detail ?? (etat === "docker-absent" ? "Docker n'est pas lancé" : `Conteneur indisponible (${etat})`));
     this.name = "ErreurAtelier";
   }
 }
@@ -49,10 +49,17 @@ export async function creerNoyau(o: {
   const politique = new PolitiqueAcces();
   const jeton = genererJeton();
   const serveur = await demarrerServeurMcp({ pont: o.pont, politique, jeton });
-  await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
+  try {
+    await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
+  } catch (e) {
+    await serveur.arreter();
+    throw e;
+  }
 
+  // La navigation ne doit jamais attendre Docker (spec §9) : la première construction d'image prend
+  // des minutes, et un échec (port occupé…) ne concerne que l'agent.
   const atelier = new Atelier({ chemins, executer });
-  await atelier.assurerDemarre();
+  const demarrage = atelier.assurerDemarre().catch(() => undefined);
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();
 
@@ -61,7 +68,13 @@ export async function creerNoyau(o: {
     politique,
     etatAtelier: () => atelier.etat(),
     async ouvrirSessionAgent({ cols, rows }) {
-      const etat = await atelier.assurerDemarre();
+      await demarrage;
+      let etat: EtatAtelier;
+      try {
+        etat = await atelier.assurerDemarre();
+      } catch (e) {
+        throw new ErreurAtelier("absent", (e as Error).message);
+      }
       if (etat !== "demarre") throw new ErreurAtelier(etat);
       politique.reinitialiser(); // nouvelle conversation
       const commande = construireCommande(profil, "interactif", { mcpConfig: cheminDansConteneur(chemins.configMcp, chemins) });

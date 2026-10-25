@@ -38,9 +38,9 @@ l'URL par un autre moyen).
 ## Projets et démos
 
 - Les projets, dépôts clonés et apps de démo vont dans `/workspace/projets/<nom>/`.
-- Un serveur de démo doit écouter sur `0.0.0.0` avec un port **entre 5170 et 5199**
+- Un serveur de démo doit écouter sur `0.0.0.0` avec un port **entre 5280 et 5299**
   (seuls ces ports sont visibles depuis le navigateur). Exemple Vite :
-  `npx vite --host 0.0.0.0 --port 5170`.
+  `npx vite --host 0.0.0.0 --port 5280`.
 - Une fois le serveur lancé, ouvre la démo avec `ouvrir_onglet("http://localhost:<port>")`.
 
 ## Outils du navigateur (serveur MCP `webaios`)
@@ -50,7 +50,7 @@ l'URL par un autre moyen).
 | `page_courante` | URL, titre, texte principal et sélection de l'onglet actif |
 | `lister_onglets` | Onglets ouverts (id, titre, URL, espace) ; un onglet non partagé apparaît comme « onglet privé » |
 | `lire_onglet(id)` | Texte principal d'un onglet donné |
-| `ouvrir_onglet(url, espace?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:51xx` |
+| `ouvrir_onglet(url, espace?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:5280` |
 | `naviguer(id, url)` | Change l'URL d'un onglet (y compris recharger une démo) |
 | `capture_ecran(id)` | Capture d'écran d'un onglet, pour vérifier visuellement une démo |
 

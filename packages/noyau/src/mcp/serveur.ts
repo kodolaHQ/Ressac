@@ -90,7 +90,7 @@ function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces): Mc
   serveur.registerTool(
     "ouvrir_onglet",
     {
-      description: "Ouvre un onglet (par exemple une démo http://localhost:5170) et renvoie son id.",
+      description: "Ouvre un onglet (par exemple une démo http://localhost:5280) et renvoie son id.",
       inputSchema: { url: z.string(), espace: z.string().optional() },
     },
     proteger(async ({ url, espace }) => {

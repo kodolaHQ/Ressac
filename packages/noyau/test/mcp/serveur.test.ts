@@ -102,10 +102,10 @@ test("lister_onglets masque les onglets inaccessibles", async () => {
 });
 
 test("ouvrir_onglet puis lire_onglet sur cet onglet → pas de demande", async () => {
-  const id = texte(await client.callTool({ name: "ouvrir_onglet", arguments: { url: "http://localhost:5170" } }));
-  expect(pont.appels.at(-1)).toEqual({ methode: "ouvrirOnglet", args: ["http://localhost:5170", undefined] });
+  const id = texte(await client.callTool({ name: "ouvrir_onglet", arguments: { url: "http://localhost:5280" } }));
+  expect(pont.appels.at(-1)).toEqual({ methode: "ouvrirOnglet", args: ["http://localhost:5280", undefined] });
   const r = await client.callTool({ name: "lire_onglet", arguments: { id: id.trim() } });
-  expect(texte(r)).toContain("localhost:5170");
+  expect(texte(r)).toContain("localhost:5280");
   expect(demandes()).toBe(0);
 });
 
