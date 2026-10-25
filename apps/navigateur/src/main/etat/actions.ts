@@ -124,7 +124,8 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
     }
     case "majOnglet": {
       const o = d.onglets[a.id];
-      if (!o) return false;
+      // Les pages émettent souvent les mêmes valeurs : rien de changé, rien à rediffuser.
+      if (!o || Object.entries(a.champs).every(([k, v]) => o[k as keyof Onglet] === v)) return false;
       Object.assign(o, a.champs);
       return true;
     }

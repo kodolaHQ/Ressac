@@ -242,6 +242,13 @@ test("basculerCompact, basculerPanneauAgent, choisirMoteur", () => {
   expect(e.reglages.moteur).toBe("qwant");
 });
 
+test("majOnglet sans aucun changement → même référence (rien à rediffuser)", () => {
+  const a = ouvrir("https://a.test/");
+  ag({ type: "majOnglet", id: a, champs: { titre: "A", chargement: true } });
+  const avant = e;
+  expect(appliquer(e, { type: "majOnglet", id: a, champs: { titre: "A", chargement: true } }, genId)).toBe(avant);
+});
+
 test("majOnglet ne touche que les champs donnés ; id inconnu → même référence", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "majOnglet", id: a, champs: { titre: "A", chargement: true } });
