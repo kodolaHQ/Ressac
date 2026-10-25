@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaBornes, SchemaCommande, type Action, type Bornes, type CommandeOnglet } from "../commun/api";
-import type { EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, type Action, type Bornes, type CommandeOnglet } from "../commun/api";
+import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
@@ -36,6 +36,7 @@ export interface Gestionnaires {
   bornes(fenetreId: IdFenetre, b: Bornes): void;
   historique: Historique;
   telechargements: Telechargements;
+  permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision): void };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -80,6 +81,8 @@ export function brancherIpc(g: Gestionnaires): void {
   });
   repondre(CANAUX.telechargementsListe, () => g.telechargements.liste());
   recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
+  repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());
+  recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision }) => g.permissions.repondre(id, decision));
   ipcMain.on(CANAUX.demanderEtat, (e) => {
     if (g.fenetreDe(e)) e.sender.send(CANAUX.etat, g.magasin.etat);
   });

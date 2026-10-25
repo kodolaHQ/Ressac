@@ -81,3 +81,15 @@ export interface Telechargement {
   total: number; // 0 si inconnu
   etat: "en-cours" | "termine" | "annule" | "interrompu";
 }
+
+export type Permission = "media-camera" | "media-micro" | "notifications" | "geolocation" | "fullscreen" | "clipboard-sanitized-write" | "autre";
+export type Decision = "autoriser" | "refuser";
+/** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
+export interface Demande {
+  ongletId: IdOnglet | null;
+  origine: string;
+  permissions: Permission[];
+}
+export interface DemandeEnAttente extends Demande {
+  id: string;
+}

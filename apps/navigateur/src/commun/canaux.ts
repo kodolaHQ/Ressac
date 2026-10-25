@@ -14,6 +14,9 @@ export const CANAUX = {
   telechargements: "webaios:telechargements",
   telechargementsListe: "webaios:telechargements-liste",
   telechargementAction: "webaios:telechargement-action",
+  permissions: "webaios:permissions",
+  permissionsListe: "webaios:permissions-liste",
+  repondrePermission: "webaios:repondre-permission",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

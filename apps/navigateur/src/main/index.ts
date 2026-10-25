@@ -1,13 +1,15 @@
 import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { IdFenetre } from "../commun/modele";
+import type { Decision, DemandeEnAttente, IdFenetre } from "../commun/modele";
+import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
 import { versUrl } from "./adresse";
 import { Historique } from "./historique";
 import { installerMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
+import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 
@@ -77,6 +79,30 @@ app.whenReady().then(async () => {
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
     historique,
   });
+  // Questions d'autorisation en attente d'une réponse de l'utilisateur (bandeau de l'onglet concerné).
+  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision) => void }>();
+  const enAttente = () => [...questions.values()].map((q) => q.demande);
+  const permissions = new Permissions({
+    fichier: join(dossier, "permissions.json"),
+    demander: (d) =>
+      new Promise<Decision>((repondre) => {
+        const id = randomUUID();
+        questions.set(id, { demande: { ...d, id }, repondre });
+        diffuser(CANAUX.permissions, enAttente());
+      }),
+  });
+  permissions.brancher(sessionWeb, (wc) => vues.ongletDe(wc));
+  // Un onglet fermé ne répondra jamais : ses questions sont refusées.
+  magasin.abonner((etat) => {
+    let change = false;
+    for (const [id, q] of questions)
+      if (q.demande.ongletId && !etat.onglets[q.demande.ongletId]) {
+        questions.delete(id);
+        q.repondre("refuser");
+        change = true;
+      }
+    if (change) diffuser(CANAUX.permissions, enAttente());
+  });
   magasin.abonner((etat) => {
     diffuser(CANAUX.etat, etat);
     vues.synchroniser(etat);
@@ -95,6 +121,16 @@ app.whenReady().then(async () => {
     bornes: (f, b) => vues.bornes(f, b),
     historique,
     telechargements,
+    permissions: {
+      enAttente,
+      repondre: (id, d) => {
+        const q = questions.get(id);
+        if (!q) return;
+        questions.delete(id);
+        q.repondre(d);
+        diffuser(CANAUX.permissions, enAttente());
+      },
+    },
   });
   installerMenu({
     fenetreActive: () => {

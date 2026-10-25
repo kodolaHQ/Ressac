@@ -82,6 +82,13 @@ export class GestionnaireVues {
     else this.o.agir({ type: "majOnglet", id, champs: { url } });
   }
 
+  /** Onglet affiché par ce webContents, s'il s'agit d'une vue d'onglet. */
+  ongletDe(wc: WebContents | null): IdOnglet | null {
+    if (!wc) return null;
+    for (const [id, v] of this.vues) if (v.webContents === wc) return id;
+    return null;
+  }
+
   commande(id: IdOnglet, c: CommandeOnglet): void {
     const wc = this.vue(id);
     if (!wc) return;

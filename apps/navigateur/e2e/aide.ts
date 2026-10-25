@@ -23,9 +23,20 @@ export async function lancer(o: { profil?: string; env?: Record<string, string> 
     args: [join(RACINE, "out/main/index.js")],
     env: { ...process.env, WEBAIOS_PROFIL: profil, ...o.env } as Record<string, string>,
   });
-  const fenetre = await app.firstWindow();
+  const fenetre = await fenetreInterface(app);
   await fenetre.waitForLoadState("domcontentloaded");
   return { app, fenetre, profil, fermer: () => app.close() };
+}
+
+/** La page de l'interface : les vues des onglets restaurés sont aussi des pages pour Playwright. */
+async function fenetreInterface(app: ElectronApplication): Promise<Page> {
+  const estInterface = (p: Page) => p.url().includes("/renderer/index.html");
+  for (const fin = Date.now() + 10_000; Date.now() < fin; ) {
+    const trouvee = app.windows().find(estInterface);
+    if (trouvee) return trouvee;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("la fenêtre de l'interface n'est pas apparue");
 }
 
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".pdf": "application/pdf", ".txt": "text/plain" };

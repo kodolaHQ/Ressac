@@ -1,5 +1,5 @@
 import type { ApiWebaios } from "../commun/api";
-import type { EtatFenetre, EtatNavigateur, Telechargement } from "../commun/modele";
+import type { DemandeEnAttente, EtatFenetre, EtatNavigateur, Telechargement } from "../commun/modele";
 
 declare global {
   interface Window {
@@ -29,4 +29,14 @@ api.surTelechargements((liste) => {
 });
 void api.telechargements.liste().then((liste) => {
   telechargements.liste = liste;
+});
+
+/** Questions d'autorisation des sites, en attente d'une réponse. */
+export const demandes = $state<{ liste: DemandeEnAttente[] }>({ liste: [] });
+
+api.surPermissions((liste) => {
+  demandes.liste = liste;
+});
+void api.permissions.enAttente().then((liste) => {
+  demandes.liste = liste;
 });

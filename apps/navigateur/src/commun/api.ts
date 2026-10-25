@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
+import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
 
@@ -93,6 +93,12 @@ export interface ApiWebaios {
     annuler(id: string): void;
   };
   surTelechargements(rappel: (liste: Telechargement[]) => void): () => void;
+  permissions: {
+    enAttente(): Promise<DemandeEnAttente[]>;
+    repondre(id: string, decision: Decision): void;
+  };
+  surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
 }
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
+export const SchemaReponsePermission = z.object({ id, decision: z.enum(["autoriser", "refuser"]) });
