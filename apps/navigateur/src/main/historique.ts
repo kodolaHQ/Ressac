@@ -7,6 +7,9 @@ export type { Visite };
 
 const COLONNES = "url, titre, derniere_visite AS derniereVisite, visites";
 
+/** Minuscules sans accents : « Été » et « ete » se retrouvent (LIKE de SQLite ne plie que l'ASCII). */
+const plier = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
 /** Historique de navigation : une ligne par URL, dans `<profil>/historique.sqlite`. */
 export class Historique {
   private db: DatabaseSync;
@@ -25,6 +28,7 @@ export class Historique {
       );
       CREATE INDEX IF NOT EXISTS visites_date ON visites (derniere_visite);
     `);
+    this.db.function("plier", { deterministic: true }, (s) => plier(String(s)));
     this.req = {
       noter: this.db.prepare(`
         INSERT INTO visites (url, titre, derniere_visite) VALUES (?, ?, ?)
@@ -32,7 +36,7 @@ export class Historique {
       majTitre: this.db.prepare("UPDATE visites SET titre = ? WHERE url = ?"),
       rechercher: this.db.prepare(`
         SELECT ${COLONNES} FROM visites
-        WHERE url LIKE ? ESCAPE '\\' OR titre LIKE ? ESCAPE '\\'
+        WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
         ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
       recents: this.db.prepare(`SELECT ${COLONNES} FROM visites ORDER BY derniere_visite DESC LIMIT ?`),
       effacerDepuis: this.db.prepare("DELETE FROM visites WHERE derniere_visite >= ?"),
@@ -51,10 +55,10 @@ export class Historique {
     this.req.majTitre.run(titre, url);
   }
 
-  /** Sous-chaîne insensible à la casse (ASCII) sur l'URL et le titre ; `%`, `_` et `\` sont littéraux. */
+  /** Sous-chaîne insensible à la casse et aux accents sur l'URL et le titre ; `%`, `_` et `\` sont littéraux. */
   rechercher(texte: string, limite = 50): Visite[] {
     if (!this.db.isOpen) return [];
-    const motif = `%${texte.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const motif = `%${plier(texte).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     return this.req.rechercher.all(motif, motif, limite) as unknown as Visite[];
   }
 

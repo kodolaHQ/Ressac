@@ -25,3 +25,8 @@ test("javascript: refusé, quelle que soit la casse", () => {
 });
 
 test("saisie vide → null", () => expect(versUrl("   ", "google")).toBeNull());
+
+test("une URL invalide (« http:// » seul) → recherche au lieu d'une exception", () => {
+  expect(versUrl("http://", "google")).toBe("https://www.google.com/search?q=http%3A%2F%2F");
+  expect(versUrl("https://exa mple.com", "google")).toBe("https://www.google.com/search?q=https%3A%2F%2Fexa%20mple.com");
+});

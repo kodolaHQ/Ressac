@@ -27,6 +27,12 @@ test("rechercher trouve par titre et par URL, sans tenir compte de la casse", ()
   expect(h.rechercher("GitHub").map((v) => v.titre)).toEqual(["Svelte"]);
 });
 
+test("rechercher ignore la casse et les accents hors ASCII (É, é, e)", () => {
+  h.noter({ url: "https://meteo.fr/", titre: "Été à Paris" });
+  expect(h.rechercher("été").map((v) => v.url)).toEqual(["https://meteo.fr/"]);
+  expect(h.rechercher("ETE").map((v) => v.url)).toEqual(["https://meteo.fr/"]);
+});
+
 test("tri : les plus visitées d'abord", () => {
   h.noter({ url: "https://rare.fr/", titre: "page rare", date: date("2026-10-03T00:00:00Z") });
   for (let i = 0; i < 3; i++) h.noter({ url: "https://souvent.fr/", titre: "page souvent", date: date("2026-10-01T00:00:00Z") });

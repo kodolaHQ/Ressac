@@ -10,6 +10,9 @@ const SCHEMAS_ACCEPTES = ["http:", "https:", "file:", "about:"];
 const LOCAL = /^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/.*)?$/i;
 const DOMAINE = /^[^\s]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i;
 
+/** L'URL normalisée, ou `null` si elle ne s'analyse pas (« http:// » seul, port hors limites…). */
+const analyser = (texte: string) => (URL.canParse(texte) ? new URL(texte).href : null);
+
 /** Transforme ce que l'utilisateur tape dans la barre d'adresse en URL ; `null` si la saisie est refusée. */
 export function versUrl(saisie: string, moteur: MoteurRecherche): string | null {
   const texte = saisie.trim();
@@ -17,9 +20,12 @@ export function versUrl(saisie: string, moteur: MoteurRecherche): string | null 
   if (/^javascript:/i.test(texte)) return null;
   const schema = /^([a-z][a-z0-9+.-]*):/i.exec(texte)?.[1]?.toLowerCase();
   if (schema && SCHEMAS_ACCEPTES.includes(`${schema}:`) && (schema === "about" || texte.includes("//"))) {
-    return schema === "about" ? texte : new URL(texte).href;
+    const url = schema === "about" ? texte : analyser(texte);
+    if (url) return url;
+  } else if (LOCAL.test(texte) || DOMAINE.test(texte)) {
+    const url = analyser(`${LOCAL.test(texte) ? "http" : "https"}://${texte}`);
+    if (url) return url;
   }
-  if (LOCAL.test(texte)) return new URL(`http://${texte}`).href;
-  if (DOMAINE.test(texte)) return new URL(`https://${texte}`).href;
+  // Ni URL ni domaine valide : on cherche le texte tel quel.
   return MOTEURS[moteur].replace("%s", encodeURIComponent(texte));
 }
