@@ -7,6 +7,10 @@ export const CANAUX = {
   commande: "webaios:commande",
   bornes: "webaios:bornes",
   bordGauche: "webaios:bord-gauche",
+  panneau: "webaios:panneau",
+  historiqueRechercher: "webaios:historique-rechercher",
+  historiqueRecents: "webaios:historique-recents",
+  historiqueEffacer: "webaios:historique-effacer",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

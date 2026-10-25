@@ -64,3 +64,11 @@ export interface EtatNavigateur {
   fenetres: EtatFenetre[];
   reglages: { moteur: MoteurRecherche };
 }
+
+/** Une URL de l'historique (une ligne par URL). */
+export interface Visite {
+  url: string;
+  titre: string;
+  derniereVisite: string; // ISO
+  visites: number;
+}

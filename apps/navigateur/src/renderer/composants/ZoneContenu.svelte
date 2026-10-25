@@ -1,16 +1,26 @@
 <script lang="ts">
   import type { EtatFenetre, Onglet } from "../../commun/modele";
   import { api } from "../etat.svelte";
+  import type { Panneau } from "../../commun/api";
+  import Historique from "./Historique.svelte";
   import PageVide from "./PageVide.svelte";
 
-  let { fenetre, onglet }: { fenetre: EtatFenetre | undefined; onglet: Onglet | undefined } = $props();
+  let {
+    fenetre,
+    onglet,
+    panneau = null,
+    fermerPanneau = () => {},
+  }: { fenetre: EtatFenetre | undefined; onglet: Onglet | undefined; panneau?: Panneau | null; fermerPanneau?: () => void } = $props();
   let zone: HTMLElement;
 
   $effect(() => {
+    // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
+    const masquer = panneau !== null;
     const envoyer = () => {
       const r = zone.getBoundingClientRect();
-      api.bornesContenu({ x: r.x, y: r.y, largeur: r.width, hauteur: r.height });
+      api.bornesContenu({ x: r.x, y: r.y, largeur: masquer ? 0 : r.width, hauteur: masquer ? 0 : r.height });
     };
+    envoyer();
     const obs = new ResizeObserver(envoyer);
     obs.observe(zone);
     window.addEventListener("resize", envoyer);
@@ -22,7 +32,9 @@
 </script>
 
 <main class="contenu" data-testid="zone-contenu" bind:this={zone}>
-  {#if fenetre && !onglet}
+  {#if fenetre && panneau === "historique"}
+    <Historique {fenetre} fermer={fermerPanneau} />
+  {:else if fenetre && !onglet}
     <PageVide {fenetre} />
   {:else if onglet?.plante}
     <div class="plante">

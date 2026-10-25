@@ -1,5 +1,5 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
-import type { CommandeOnglet } from "../commun/api";
+import type { CommandeOnglet, Panneau } from "../commun/api";
 import type { IdFenetre, IdOnglet } from "../commun/modele";
 
 export interface CiblesMenu {
@@ -8,6 +8,7 @@ export interface CiblesMenu {
   ongletActif(fenetreId: IdFenetre): IdOnglet | undefined;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   basculerCompact(fenetreId: IdFenetre): void;
+  ouvrirPanneau(fenetreId: IdFenetre, p: Panneau): void;
 }
 
 /** Menu de l'application ; ses raccourcis marchent aussi quand une page web a le focus. */
@@ -38,6 +39,20 @@ export function installerMenu(c: CiblesMenu): void {
           },
         },
         ...(app.isPackaged ? [] : [{ type: "separator" } as const, { role: "toggleDevTools" } as const]),
+      ],
+    },
+    {
+      label: "Historique",
+      submenu: [
+        {
+          id: "historique",
+          label: "Afficher l'historique",
+          accelerator: "CmdOrCtrl+Y",
+          click: () => {
+            const f = c.fenetreActive();
+            if (f) c.ouvrirPanneau(f, "historique");
+          },
+        },
       ],
     },
     { role: "windowMenu" },

@@ -2,6 +2,7 @@
   import BarreLaterale from "./composants/BarreLaterale.svelte";
   import MenuContextuel from "./composants/MenuContextuel.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
+  import type { Panneau } from "../commun/api";
   import { api, etat, fenetreCourante } from "./etat.svelte";
 
   const MASQUAGE_MS = 300;
@@ -34,6 +35,14 @@
     }, MASQUAGE_MS);
   }
 
+  let panneau = $state<Panneau | null>(null);
+  $effect(() => api.surPanneau((p) => (panneau = panneau === p ? null : p)));
+  // Activer un onglet referme le panneau.
+  $effect(() => {
+    void ongletActif?.id;
+    panneau = null;
+  });
+
   $effect(() => api.surBordGauche((dedans) => (dedans ? reveler() : planifierMasquage())));
   $effect(() => {
     if (!compact) revelee = false;
@@ -59,7 +68,7 @@
   {:else}
     <aside data-testid="barre-laterale"></aside>
   {/if}
-  <ZoneContenu {fenetre} onglet={ongletActif} />
+  <ZoneContenu {fenetre} onglet={ongletActif} {panneau} fermerPanneau={() => (panneau = null)} />
   <section class="agent" data-testid="panneau-agent" hidden={!panneauAgentOuvert}></section>
 </div>
 <MenuContextuel />

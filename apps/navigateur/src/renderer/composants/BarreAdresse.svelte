@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { EtatFenetre } from "../../commun/modele";
+  import type { EtatFenetre, Visite } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
 
   let { fenetre }: { fenetre: EtatFenetre } = $props();
@@ -9,6 +9,42 @@
   });
   let saisie = $state<string | null>(null); // non nul pendant l'édition
   let champ: HTMLInputElement;
+  let suggestions = $state<Visite[]>([]);
+  let choisie = $state(-1);
+  let requete = 0;
+
+  async function suggerer(texte: string) {
+    const n = ++requete;
+    const r = texte.trim() ? await api.historique.rechercher(texte.trim(), 6) : [];
+    if (n === requete && saisie !== null) {
+      suggestions = r;
+      choisie = -1;
+    }
+  }
+
+  function fermerSuggestions() {
+    requete++;
+    suggestions = [];
+    choisie = -1;
+  }
+
+  function aller(texte: string) {
+    api.naviguer(onglet?.id ?? null, texte);
+    saisie = null;
+    fermerSuggestions();
+    champ.blur();
+  }
+
+  function clavier(e: KeyboardEvent) {
+    if (e.key === "Escape") champ.blur();
+    else if (e.key === "ArrowDown" && suggestions.length) {
+      e.preventDefault();
+      choisie = (choisie + 1) % suggestions.length;
+    } else if (e.key === "ArrowUp" && suggestions.length) {
+      e.preventDefault();
+      choisie = choisie <= 0 ? suggestions.length - 1 : choisie - 1;
+    }
+  }
 
   function hote(url: string): string {
     try {
@@ -21,10 +57,10 @@
 
   function valider(e: SubmitEvent) {
     e.preventDefault();
-    const texte = saisie?.trim();
-    if (texte) api.naviguer(onglet?.id ?? null, texte);
-    saisie = null;
-    champ.blur();
+    const suggestion = suggestions[choisie];
+    const texte = suggestion?.url ?? saisie?.trim();
+    if (texte) aller(texte);
+    else champ.blur();
   }
 </script>
 
@@ -45,15 +81,43 @@
     value={saisie ?? (onglet ? hote(onglet.url) : "")}
     placeholder="Rechercher ou saisir une adresse"
     spellcheck="false"
-    oninput={(e) => (saisie = e.currentTarget.value)}
+    oninput={(e) => {
+      saisie = e.currentTarget.value;
+      void suggerer(saisie);
+    }}
     onfocus={(e) => {
       saisie = onglet?.url ?? "";
       const el = e.currentTarget;
       requestAnimationFrame(() => el.select());
     }}
-    onblur={() => (saisie = null)}
-    onkeydown={(e) => e.key === "Escape" && champ.blur()}
+    onblur={() => {
+      saisie = null;
+      fermerSuggestions();
+    }}
+    onkeydown={clavier}
+    role="combobox"
+    aria-expanded={suggestions.length > 0}
+    aria-controls="suggestions"
+    aria-autocomplete="list"
   />
+  {#if suggestions.length}
+    <ul class="suggestions" id="suggestions" role="listbox">
+      {#each suggestions as v, i (v.url)}
+        <li
+          data-testid="suggestion"
+          role="option"
+          aria-selected={i === choisie}
+          onmousedown={(e) => {
+            e.preventDefault();
+            aller(v.url);
+          }}
+        >
+          <span class="titre">{v.titre}</span>
+          <span class="url">{v.url}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </form>
 
 <style>
@@ -62,6 +126,12 @@
   .navigation button:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
+  form { position: relative; }
+  .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
+  .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--texte); }
+  .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--fond-survol); }
+  .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .suggestions .url { font-size: 11px; color: var(--texte-doux); }
   input { width: 100%; box-sizing: border-box; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; background: var(--fond-survol); color: var(--texte); outline: none; -webkit-app-region: no-drag; }
   input:focus { border-color: var(--accent); background: var(--fond); }
 </style>

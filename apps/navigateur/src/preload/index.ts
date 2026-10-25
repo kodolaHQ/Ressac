@@ -22,6 +22,16 @@ const api: ApiWebaios = {
     ipcRenderer.on(CANAUX.bordGauche, ecouteur);
     return () => ipcRenderer.removeListener(CANAUX.bordGauche, ecouteur);
   },
+  surPanneau(rappel) {
+    const ecouteur = (_: unknown, p: Parameters<typeof rappel>[0]) => rappel(p);
+    ipcRenderer.on(CANAUX.panneau, ecouteur);
+    return () => ipcRenderer.removeListener(CANAUX.panneau, ecouteur);
+  },
+  historique: {
+    rechercher: (texte, limite) => ipcRenderer.invoke(CANAUX.historiqueRechercher, texte, limite),
+    recents: () => ipcRenderer.invoke(CANAUX.historiqueRecents),
+    effacer: (depuis) => ipcRenderer.invoke(CANAUX.historiqueEffacer, depuis),
+  },
 };
 
 contextBridge.exposeInMainWorld("webaios", api);

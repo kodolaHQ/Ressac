@@ -5,11 +5,15 @@ import type { IdFenetre } from "../commun/modele";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
 import { versUrl } from "./adresse";
+import { Historique } from "./historique";
 import { installerMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
 import { cheminProfil } from "./profil";
 
 app.setPath("userData", cheminProfil());
+
+// Une exception oubliée ne doit ni figer l'app derrière une boîte de dialogue, ni la quitter.
+process.on("uncaughtException", (e) => console.error("[webaios] exception non rattrapée :", e));
 
 /** Fenêtres principales (avec l'interface WebAiOs), par id d'état. */
 const fenetres = new Map<IdFenetre, BrowserWindow>();
@@ -48,16 +52,19 @@ function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
 }
 
 let enregistreur: EnregistreurSession | undefined;
+let historique: Historique | undefined;
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
   const magasin = new Magasin(await chargerSession(dossier));
   enregistreur = new EnregistreurSession(dossier);
+  historique = new Historique(join(dossier, "historique.sqlite"));
   const vues = new GestionnaireVues({
     session: session.fromPartition("persist:webaios"),
     fenetres,
     agir: (a) => magasin.agir(a),
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
+    historique,
   });
   magasin.abonner((etat) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(CANAUX.etat, etat);
@@ -75,6 +82,7 @@ app.whenReady().then(async () => {
     },
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
+    historique,
   });
   installerMenu({
     fenetreActive: () => {
@@ -88,10 +96,13 @@ app.whenReady().then(async () => {
     },
     commande: (id, c) => vues.commande(id, c),
     basculerCompact: (fenetreId) => magasin.agir({ type: "basculerCompact", fenetreId }),
+    ouvrirPanneau: (id, p) => fenetres.get(id)?.webContents.send(CANAUX.panneau, p),
   });
   for (const f of magasin.etat.fenetres) creerFenetre(f.id);
   vues.synchroniser(magasin.etat);
 });
+
+app.on("will-quit", () => historique?.fermer());
 
 // Les fenêtres principales décident seules de quitter (voir creerFenetre).
 app.on("window-all-closed", () => {});

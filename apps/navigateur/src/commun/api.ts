@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { EtatNavigateur, IdFenetre, IdOnglet } from "./modele";
+import type { EtatNavigateur, IdFenetre, IdOnglet, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
 
@@ -65,6 +65,8 @@ export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
 export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 export type Bornes = z.infer<typeof SchemaBornes>;
 
+export type Panneau = "historique";
+
 /** API exposée à l'interface par le preload (`window.webaios`). */
 export interface ApiWebaios {
   fenetreId: IdFenetre;
@@ -76,4 +78,12 @@ export interface ApiWebaios {
   bornesContenu(b: Bornes): void;
   /** Mode compact : la souris entre (true) ou sort (false) de la bande de 8 px du bord gauche, au-dessus d'une page web. */
   surBordGauche(rappel: (dedans: boolean) => void): () => void;
+  /** Le menu demande d'ouvrir un panneau de l'interface (⌘Y…). */
+  surPanneau(rappel: (p: Panneau) => void): () => void;
+  historique: {
+    rechercher(texte: string, limite?: number): Promise<Visite[]>;
+    recents(): Promise<Visite[]>;
+    /** `depuis` : date ISO ; absent, tout l'historique. */
+    effacer(depuis?: string): Promise<void>;
+  };
 }

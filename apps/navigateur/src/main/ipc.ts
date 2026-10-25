@@ -2,6 +2,7 @@ import { ipcMain, type IpcMainEvent } from "electron";
 import { CANAUX, SchemaAction, SchemaBornes, SchemaCommande, type Action, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import { appliquer } from "./etat/actions";
+import type { Historique } from "./historique";
 
 type Abonne = (etat: EtatNavigateur, precedent: EtatNavigateur) => void;
 
@@ -28,10 +29,11 @@ export class Magasin {
 export interface Gestionnaires {
   magasin: Magasin;
   /** Fenêtre principale émettrice d'un message ; undefined pour une popup ou une page web. */
-  fenetreDe(e: IpcMainEvent): IdFenetre | undefined;
+  fenetreDe(e: Pick<IpcMainEvent, "sender">): IdFenetre | undefined;
   naviguer(fenetreId: IdFenetre, ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
+  historique: Historique;
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -61,6 +63,19 @@ export function brancherIpc(g: Gestionnaires): void {
   }, (v, f) => g.naviguer(f, v.ongletId, v.saisie));
   recevoir(CANAUX.commande, zod(SchemaCommande), (v) => g.commande(v.ongletId, v.c));
   recevoir(CANAUX.bornes, zod(SchemaBornes), (b, f) => g.bornes(f, b));
+  const repondre = (canal: string, traiter: (...args: unknown[]) => unknown) =>
+    ipcMain.handle(canal, (e, ...args: unknown[]) => {
+      if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+      return traiter(...args);
+    });
+  const limite = (v: unknown, defaut: number) => (Number.isInteger(v) && (v as number) > 0 ? Math.min(v as number, 500) : defaut);
+  repondre(CANAUX.historiqueRechercher, (texte, n) => (typeof texte === "string" ? g.historique.rechercher(texte, limite(n, 50)) : []));
+  repondre(CANAUX.historiqueRecents, () => g.historique.recents());
+  repondre(CANAUX.historiqueEffacer, (depuis) => {
+    const date = typeof depuis === "string" ? new Date(depuis) : undefined;
+    if (date && Number.isNaN(date.getTime())) return;
+    g.historique.effacer(date);
+  });
   ipcMain.on(CANAUX.demanderEtat, (e) => {
     if (g.fenetreDe(e)) e.sender.send(CANAUX.etat, g.magasin.etat);
   });

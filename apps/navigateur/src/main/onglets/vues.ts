@@ -1,7 +1,7 @@
 import { BrowserWindow, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../commun/modele";
-import { brancherEvenements } from "./evenements";
+import { brancherEvenements, type NotesHistorique } from "./evenements";
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
@@ -30,6 +30,7 @@ export class GestionnaireVues {
       agir: (a: Action) => void;
       /** La souris entre ou sort de la bande du bord gauche de la fenêtre, au-dessus d'une page. */
       bordGauche?: (fenetreId: IdFenetre, dedans: boolean) => void;
+      historique?: NotesHistorique;
     },
   ) {}
 
@@ -106,7 +107,7 @@ export class GestionnaireVues {
     const vue = new WebContentsView({ webPreferences: preferencesWeb(this.o.session) });
     const wc = vue.webContents;
     this.vues.set(onglet.id, vue);
-    brancherEvenements(wc, onglet.id, this.o.agir);
+    brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique);
     wc.setWindowOpenHandler(({ url, disposition }) => {
       if (disposition === "new-window") {
         // Popup (OAuth…) : vraie fenêtre, même session, sans l'interface WebAiOs.
