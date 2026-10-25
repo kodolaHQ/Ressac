@@ -57,6 +57,13 @@ export class GestionnaireVues {
     return this.vues.get(id)?.webContents ?? null;
   }
 
+  /** Charge `url` dans l'onglet ; un onglet sans vue la chargera à sa création. */
+  naviguer(id: IdOnglet, url: string): void {
+    const wc = this.vue(id);
+    if (wc) void wc.loadURL(url).catch(() => {});
+    else this.o.agir({ type: "majOnglet", id, champs: { url } });
+  }
+
   commande(id: IdOnglet, c: CommandeOnglet): void {
     const wc = this.vue(id);
     if (!wc) return;

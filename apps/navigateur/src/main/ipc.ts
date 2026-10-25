@@ -29,7 +29,7 @@ export interface Gestionnaires {
   magasin: Magasin;
   /** Fenêtre principale émettrice d'un message ; undefined pour une popup ou une page web. */
   fenetreDe(e: IpcMainEvent): IdFenetre | undefined;
-  naviguer(ongletId: IdOnglet, saisie: string): void;
+  naviguer(fenetreId: IdFenetre, ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
 }
@@ -56,8 +56,9 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.action, zod<Action>(SchemaAction), (a) => g.magasin.agir(a));
   recevoir(CANAUX.naviguer, (v) => {
     const o = v as { ongletId?: unknown; saisie?: unknown } | null;
-    return typeof o?.ongletId === "string" && typeof o.saisie === "string" ? { ongletId: o.ongletId, saisie: o.saisie } : null;
-  }, (v) => g.naviguer(v.ongletId, v.saisie));
+    const ongletId = o?.ongletId === null || typeof o?.ongletId === "string" ? o.ongletId : undefined;
+    return ongletId !== undefined && typeof o?.saisie === "string" ? { ongletId, saisie: o.saisie } : null;
+  }, (v, f) => g.naviguer(f, v.ongletId, v.saisie));
   recevoir(CANAUX.commande, zod(SchemaCommande), (v) => g.commande(v.ongletId, v.c));
   recevoir(CANAUX.bornes, zod(SchemaBornes), (b, f) => g.bornes(f, b));
   ipcMain.on(CANAUX.demanderEtat, (e) => {

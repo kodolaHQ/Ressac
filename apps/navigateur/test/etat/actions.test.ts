@@ -270,3 +270,10 @@ test("appliquer ne mute jamais l'état d'entrée", () => {
     ag({ type: "fermerOnglet", id: a });
   }).not.toThrow();
 });
+
+test("afficherPageVide : l'espace n'a plus d'onglet actif, ses onglets restent", () => {
+  const a = ouvrir("https://a.fr");
+  ag({ type: "afficherPageVide", fenetreId: F });
+  expect(actif()).toBeNull();
+  expect(ordre()).toEqual([a]);
+});

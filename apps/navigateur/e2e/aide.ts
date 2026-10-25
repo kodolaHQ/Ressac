@@ -83,3 +83,14 @@ export function dansLaVue(app: ElectronApplication, morceau: string, code: strin
     [morceau, code] as const,
   );
 }
+
+/** Crée un espace et l'active dans la fenêtre. */
+export async function creerEspace(fenetre: Page, nom: string, icone: string): Promise<void> {
+  await fenetre.evaluate(
+    ([nom, icone]) => {
+      const w = window as unknown as AvecApi;
+      w.webaios.agir({ type: "creerEspace", nom, icone, fenetreId: w.webaios.fenetreId });
+    },
+    [nom, icone] as const,
+  );
+}

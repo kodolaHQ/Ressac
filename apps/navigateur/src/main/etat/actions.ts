@@ -235,6 +235,12 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       for (const o of Object.values(d.onglets)) if (o.fenetreId === a.id) delete d.onglets[o.id];
       return true;
     }
+    case "afficherPageVide": {
+      const f = fenetre(d, a.fenetreId);
+      if (!f || f.actif[f.espaceActif] == null) return false;
+      f.actif[f.espaceActif] = null;
+      return true;
+    }
     case "basculerCompact": {
       const f = fenetre(d, a.fenetreId);
       if (!f) return false;

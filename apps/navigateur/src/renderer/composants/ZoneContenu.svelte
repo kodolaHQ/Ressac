@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { Onglet } from "../../commun/modele";
+  import type { EtatFenetre, Onglet } from "../../commun/modele";
   import { api } from "../etat.svelte";
+  import PageVide from "./PageVide.svelte";
 
-  let { onglet }: { onglet: Onglet | undefined } = $props();
+  let { fenetre, onglet }: { fenetre: EtatFenetre | undefined; onglet: Onglet | undefined } = $props();
   let zone: HTMLElement;
 
   $effect(() => {
@@ -21,7 +22,9 @@
 </script>
 
 <main class="contenu" data-testid="zone-contenu" bind:this={zone}>
-  {#if onglet?.plante}
+  {#if fenetre && !onglet}
+    <PageVide {fenetre} />
+  {:else if onglet?.plante}
     <div class="plante">
       <p>Cette page a planté.</p>
       <button onclick={() => api.commande(onglet.id, "recharger")}>Recharger</button>

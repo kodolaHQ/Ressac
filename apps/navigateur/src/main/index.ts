@@ -4,6 +4,7 @@ import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import type { IdFenetre } from "../commun/modele";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
+import { versUrl } from "./adresse";
 import { GestionnaireVues } from "./onglets/vues";
 import { cheminProfil } from "./profil";
 
@@ -60,7 +61,12 @@ app.whenReady().then(async () => {
   brancherIpc({
     magasin,
     fenetreDe,
-    naviguer: () => {},
+    naviguer: (fenetreId, ongletId, saisie) => {
+      const url = versUrl(saisie, magasin.etat.reglages.moteur);
+      if (!url) return;
+      if (ongletId) vues.naviguer(ongletId, url);
+      else magasin.agir({ type: "ouvrirOnglet", fenetreId, url });
+    },
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
   });

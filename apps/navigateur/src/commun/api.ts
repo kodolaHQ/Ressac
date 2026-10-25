@@ -48,6 +48,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activerEspace"), fenetreId: id, id }),
   z.object({ type: z.literal("ouvrirFenetre"), id: id.optional(), espaceId: id.optional() }),
   z.object({ type: z.literal("fermerFenetre"), id }),
+  z.object({ type: z.literal("afficherPageVide"), fenetreId: id }),
   z.object({ type: z.literal("basculerCompact"), fenetreId: id }),
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
@@ -69,7 +70,8 @@ export interface ApiWebaios {
   fenetreId: IdFenetre;
   agir(action: Action): void;
   surEtat(rappel: (e: EtatNavigateur) => void): () => void;
-  naviguer(ongletId: IdOnglet, saisie: string): void;
+  /** `ongletId` null : la saisie ouvre un nouvel onglet (page vide). */
+  naviguer(ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornesContenu(b: Bornes): void;
 }
