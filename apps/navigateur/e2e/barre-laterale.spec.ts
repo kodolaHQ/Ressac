@@ -44,6 +44,19 @@ test("glisser-déposer réordonne la liste et l'ordre survit à un redémarrage"
   await second.fermer();
 });
 
+test("glisser vers le bas : la moitié haute dépose avant la cible, la moitié basse après", async () => {
+  const { fenetre, fermer } = await lancer();
+  for (const p of ["a.html", "b.html", "plante.html"]) await ouvrirOnglet(fenetre, `${serveur.url}/${p}`, { activer: false });
+  const liste = fenetre.locator(onglets);
+  await expect(liste).toHaveCount(3);
+  await glisser(fenetre, liste.nth(0), liste.nth(2), "haut");
+  await expect(liste.nth(0)).toContainText("b.html");
+  await expect(liste.nth(1)).toContainText("a.html");
+  await glisser(fenetre, liste.nth(1), liste.nth(2), "bas");
+  await expect(liste.nth(2)).toContainText("a.html");
+  await fermer();
+});
+
 test("épingler par clic droit : l'onglet passe dans les épinglés de l'espace seulement", async () => {
   const { fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
