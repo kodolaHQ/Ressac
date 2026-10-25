@@ -104,3 +104,37 @@ test("demarrer lance la vérification de lancement sans bloquer, arreter coupe l
   p.arreter();
   expect((await etat("veille-exemple")).statut).toBe("ok");
 });
+
+test("options explicitement undefined → valeurs par défaut (horloge, délais)", async () => {
+  const { c } = await preparer({ code: 0 });
+  const { executer, appels } = executeurFactice([[/ info$/, { code: 0 }], [/ inspect -f/, { code: 0, stdout: "true\n" }]]);
+  const atelier = new Atelier({ chemins: c, docker: "docker", executer });
+  const profil = (await chargerProfils(c)).profils[0]!;
+  const p = new PlanificateurVeille({ chemins: c, atelier, profil, executer, horloge: undefined, delaiMs: undefined });
+  expect(await p.verifier({ auLancement: true })).toEqual(["veille-exemple"]);
+  expect(appels.find((a) => a.args.includes("claude"))!.opts?.delaiMs).toBe(10 * 60_000);
+});
+
+test("une erreur pendant la vérification de fond ne devient pas un rejet non géré", async () => {
+  const { c } = await preparer({ code: 0 });
+  const executer = async () => {
+    throw new Error("boum");
+  };
+  const atelier = new Atelier({ chemins: c, docker: "docker", executer });
+  const profil = (await chargerProfils(c)).profils[0]!;
+  const rejets: unknown[] = [];
+  const surRejet = (e: unknown) => rejets.push(e);
+  process.on("unhandledRejection", surRejet);
+  const p = new PlanificateurVeille({ chemins: c, atelier, profil, executer, horloge: () => maintenant });
+  await p.demarrer();
+  await new Promise((r) => setTimeout(r, 100));
+  p.arreter();
+  process.off("unhandledRejection", surRejet);
+  expect(rejets).toEqual([]);
+});
+
+test("échec sans stderr → le message de stdout est gardé (ex. agent non connecté)", async () => {
+  const { p, etat } = await preparer({ code: 1, stdout: "Not logged in · Please run /login\n" });
+  await p.verifier({ auLancement: true });
+  expect((await etat("veille-exemple")).erreur).toBe("Not logged in · Please run /login");
+});

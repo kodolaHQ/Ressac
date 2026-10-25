@@ -29,7 +29,7 @@ export const executeurParDefaut: Executeur = (commande, args, opts = {}) =>
         const e = erreur as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
         if (e.code === "ENOENT") return resoudre({ code: 127, stdout, stderr: `${commande} introuvable` });
         if (e.killed && opts.delaiMs) return resoudre({ code: CODE_DELAI_DEPASSE, stdout, stderr: "Délai dépassé" });
-        resoudre({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr: stderr || e.message });
+        resoudre({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );
   });

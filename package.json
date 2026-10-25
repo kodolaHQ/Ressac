@@ -6,6 +6,7 @@
   "scripts": {
     "test": "corepack pnpm -r --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck",
-    "postinstall": "node scripts/reparer-node-pty.mjs"
+    "postinstall": "node scripts/reparer-node-pty.mjs",
+    "dev:noyau": "corepack pnpm --filter @webaios/noyau dev"
   }
 }

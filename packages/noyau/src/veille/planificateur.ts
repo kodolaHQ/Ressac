@@ -31,13 +31,24 @@ export class PlanificateurVeille {
     intervalleMs?: number;
     delaiMs?: number;
   }) {
-    this.o = { horloge: () => new Date(), intervalleMs: 15 * 60_000, delaiMs: 10 * 60_000, ...o };
+    // `??` plutôt qu'un spread : une option passée explicitement à undefined garde sa valeur par défaut.
+    this.o = {
+      ...o,
+      horloge: o.horloge ?? (() => new Date()),
+      intervalleMs: o.intervalleMs ?? 15 * 60_000,
+      delaiMs: o.delaiMs ?? 10 * 60_000,
+    };
   }
 
   /** Vérifie au lancement en arrière-plan (une veille prend des minutes), puis à intervalle régulier. */
   async demarrer(): Promise<void> {
-    void this.verifier({ auLancement: true });
-    this.minuterie = setInterval(() => void this.verifier({ auLancement: false }), this.o.intervalleMs);
+    this.enFond({ auLancement: true });
+    this.minuterie = setInterval(() => this.enFond({ auLancement: false }), this.o.intervalleMs);
+  }
+
+  /** Une erreur de fond ne doit jamais faire tomber le navigateur. */
+  private enFond(o: { auLancement: boolean }): void {
+    this.verifier(o).catch((e) => console.error("[webaios] veille :", e));
   }
 
   async verifier(o: { auLancement: boolean }): Promise<string[]> {
@@ -72,7 +83,10 @@ export class PlanificateurVeille {
             derniereMaj: ancien.derniereMaj,
             derniereTentative: debut,
             statut: "erreur",
-            erreur: r.code === CODE_DELAI_DEPASSE ? "Délai dépassé" : (r.stderr || `Code de sortie ${r.code}`).slice(0, LONGUEUR_ERREUR),
+            erreur:
+              r.code === CODE_DELAI_DEPASSE
+                ? "Délai dépassé"
+                : (r.stderr.trim() || r.stdout.trim() || `Code de sortie ${r.code}`).slice(0, LONGUEUR_ERREUR),
           };
     await ecrireEtatBloc(this.o.chemins, id, etat);
   }

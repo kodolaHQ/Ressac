@@ -15,3 +15,4 @@ export * from "./mcp/pont-factice.js";
 export * from "./mcp/serveur.js";
 export * from "./veille/echeances.js";
 export * from "./veille/planificateur.js";
+export * from "./noyau.js";
