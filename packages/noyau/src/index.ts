@@ -11,3 +11,5 @@ export * from "./pty/contexte.js";
 export * from "./pty/session.js";
 export * from "./mcp/pont.js";
 export * from "./acces/politique.js";
+export * from "./mcp/pont-factice.js";
+export * from "./mcp/serveur.js";
