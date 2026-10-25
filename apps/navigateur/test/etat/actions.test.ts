@@ -166,9 +166,36 @@ test("essentiels communs à tous les espaces ; retirer un essentiel", () => {
   const B = e.espaces[1]!.id;
   expect(fen().espaceActif).toBe(B);
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
-  expect(e.onglets[actif(B)!]).toMatchObject({ espaceId: B, url: "https://mail.google.com/" });
+  // Un seul onglet par fenêtre pour un essentiel : le même Gmail, sans rechargement, dans chaque espace.
+  expect(actif(B)).toBe(a);
+  expect(Object.keys(e.onglets)).toEqual([a]);
   ag({ type: "retirerEssentiel", favoriId: e.essentiels[0]!.id });
   expect(e.essentiels).toEqual([]);
+  // Redevenu un onglet normal de « Perso », il n'est plus affiché dans « Boulot ».
+  expect(ordre(P)).toEqual([a]);
+  expect(actif(B)).toBeNull();
+});
+
+test("fermer un essentiel affiché dans deux espaces : aucun espace ne garde un onglet actif disparu", () => {
+  const a = ouvrir("https://mail.google.com/");
+  ag({ type: "ajouterEssentiel", id: a });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
+  ag({ type: "fermerOnglet", id: a });
+  expect(actif(P)).toBeNull();
+  expect(actif(B)).toBeNull();
+});
+
+test("supprimer l'espace d'origine d'un essentiel ouvert ailleurs : l'autre espace ne pointe plus vers lui", () => {
+  const a = ouvrir("https://mail.google.com/");
+  ag({ type: "ajouterEssentiel", id: a });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
+  ag({ type: "supprimerEspace", id: P });
+  const restant = actif(B);
+  expect(restant === null || !!e.onglets[restant]).toBe(true);
 });
 
 test("activerEspace garde l'onglet actif propre à chaque espace", () => {

@@ -50,13 +50,20 @@ function ouvrir(
   return o;
 }
 
-/** Un favori retiré : ses onglets liés redeviennent des onglets normaux, en fin de liste. */
+/** Un onglet d'essentiel peut être affiché dans plusieurs espaces : les autres espaces le lâchent. */
+function lacherAilleurs(f: EtatFenetre, o: Onglet) {
+  for (const [esp, id] of Object.entries(f.actif)) if (id === o.id && esp !== o.espaceId) f.actif[esp] = null;
+}
+
+/** Un favori retiré : ses onglets liés redeviennent des onglets normaux, en fin de liste de leur espace. */
 function delier(d: Brouillon, favoriId: string) {
   for (const o of Object.values(d.onglets)) {
     if (o.lien?.id !== favoriId) continue;
     o.lien = null;
     const f = fenetre(d, o.fenetreId);
-    if (f) liste(f, o.espaceId).push(o.id);
+    if (!f) continue;
+    liste(f, o.espaceId).push(o.id);
+    lacherAilleurs(f, o);
   }
 }
 
@@ -76,6 +83,7 @@ function supprimerOnglet(d: Brouillon, o: Onglet) {
     const i = l.indexOf(o.id);
     if (i >= 0) l.splice(i, 1);
     if (f.actif[o.espaceId] === o.id) f.actif[o.espaceId] = (i >= 0 ? (l[i] ?? l[i - 1]) : l[0]) ?? null;
+    lacherAilleurs(f, o);
   }
   delete d.onglets[o.id];
 }
@@ -139,8 +147,9 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
           ? d.essentiels.find((x) => x.id === a.id)
           : d.espaces.flatMap((e) => e.epingles).find((x) => x.id === a.id);
       if (!favori || !espaceDuFavori) return false;
+      // Un essentiel a un seul onglet par fenêtre, partagé par tous les espaces ; un épinglé appartient à son espace.
       const existant = Object.values(d.onglets).find(
-        (o) => o.fenetreId === f.id && o.espaceId === espaceDuFavori && o.lien?.id === favori.id,
+        (o) => o.fenetreId === f.id && o.lien?.id === favori.id && (a.genre === "essentiel" || o.espaceId === espaceDuFavori),
       );
       const o =
         existant ??
@@ -207,6 +216,8 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       for (const f of d.fenetres) {
         delete f.ordre[a.id];
         delete f.actif[a.id];
+        // Un essentiel venu de l'espace supprimé a disparu avec lui.
+        for (const [esp, id] of Object.entries(f.actif)) if (id && !d.onglets[id]) f.actif[esp] = null;
         f.fermesRecemment = f.fermesRecemment.filter((x) => x.espaceId !== a.id);
         if (f.espaceActif === a.id) f.espaceActif = d.espaces[0]!.id;
       }
