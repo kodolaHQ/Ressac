@@ -25,7 +25,10 @@ function urlWeb(url: string): boolean {
   }
 }
 
-function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces): McpServer {
+/** Demandes d'autorisation en attente, par onglet : partagées entre requêtes pour ne poser la question qu'une fois. */
+type DemandesEnCours = Map<string, Promise<boolean>>;
+
+function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces, demandes: DemandesEnCours): McpServer {
   const serveur = new McpServer({ name: "webaios", version: "0.1.0" });
 
   async function onglet(id: string): Promise<OngletInfo> {
@@ -37,9 +40,18 @@ function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces): Mc
   /** Vérifie l'accès ; à défaut, demande à l'utilisateur et mémorise un oui. */
   async function acces(o: OngletInfo): Promise<boolean> {
     if (politique.peutLire(o)) return true;
-    if (!(await pont.demanderAutorisation(o))) return false;
-    politique.accorder(o);
-    return true;
+    let demande = demandes.get(o.id);
+    if (!demande) {
+      demande = pont
+        .demanderAutorisation(o)
+        .then((oui) => {
+          if (oui) politique.accorder(o);
+          return oui;
+        })
+        .finally(() => demandes.delete(o.id));
+      demandes.set(o.id, demande);
+    }
+    return demande;
   }
 
   async function contenu(o: OngletInfo): Promise<Resultat> {
@@ -107,8 +119,10 @@ function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces): Mc
     proteger(async ({ id, url }) => {
       if (!urlWeb(url)) return texte(`URL refusée (http ou https uniquement) : ${url}`, true);
       if (!(await acces(await onglet(id)))) return texte(TEXTE_REFUS);
-      await pont.naviguer(id, url);
+      // Avant pont.naviguer : le navigateur peut signaler la navigation (ongletNavigue) avant qu'elle
+      // ne se termine, et l'agent ne doit pas perdre l'accès à sa propre démo.
       politique.navigationParAgent(id, url);
+      await pont.naviguer(id, url);
       return texte(`Onglet ${id} → ${url}`);
     }),
   );
@@ -139,12 +153,13 @@ export async function demarrerServeurMcp(o: {
   port?: number;
 }): Promise<{ port: number; urlConteneur: string; arreter(): Promise<void> }> {
   const attendu = Buffer.from(o.jeton);
+  const demandes: DemandesEnCours = new Map();
 
   const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (!jetonValide(req, attendu)) return res.writeHead(401).end();
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Mode sans état : un serveur et un transport neufs par requête.
-    const serveur = creerServeurOutils(o.pont, o.politique);
+    const serveur = creerServeurOutils(o.pont, o.politique, demandes);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

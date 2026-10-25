@@ -69,3 +69,11 @@ test("AGENTS.md, CLAUDE.md et le profil sont recréés s'ils manquent", async ()
   expect(existsSync(join(c.racine, "AGENTS.md"))).toBe(true);
   expect(existsSync(join(c.profils, "claude.json"))).toBe(true);
 });
+
+test("deux initialisations simultanées ne créent chaque fichier qu'une fois", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const [a, b] = await Promise.all([initialiserEspace(c), initialiserEspace(c)]);
+  const tous = [...a.crees, ...b.crees];
+  expect(new Set(tous).size).toBe(tous.length);
+  expect(tous.length).toBe(attendus.length);
+});

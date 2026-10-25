@@ -1,3 +1,4 @@
+import { constants } from "node:fs";
 import { copyFile, mkdir, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -31,8 +32,13 @@ export async function initialiserEspace(c: CheminsEspace): Promise<{ crees: stri
   for (const [modele, destination] of await correspondances(c)) {
     if (existsSync(destination)) continue;
     await mkdir(dirname(destination), { recursive: true });
-    await copyFile(join(MODELES, modele), destination);
-    crees.push(destination);
+    try {
+      // COPYFILE_EXCL : si le fichier apparaît entre-temps, on ne l'écrase pas.
+      await copyFile(join(MODELES, modele), destination, constants.COPYFILE_EXCL);
+      crees.push(destination);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
   }
   await mkdir(c.projets, { recursive: true });
   return { crees };

@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
-import { Atelier, trouverDocker } from "../../src/conteneur/atelier.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { Atelier, empreinteDockerfile, trouverDocker } from "../../src/conteneur/atelier.js";
+import { DOSSIERS_OUTILS } from "../../src/conteneur/executeur.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 
 const chemins = cheminsEspace("/Users/t/WebAiOs");
@@ -65,6 +68,7 @@ test("assurerDemarre sur absent : build si image manquante puis run avec les bon
 test("assurerDemarre sur arrete → docker start", async () => {
   let demarre = false;
   const { executer, appels } = executeurFactice([
+    [/ inspect -f .*Mounts/, { code: 0, stdout: `${chemins.racine}|${empreinteDockerfile()}\n` }],
     [/ inspect -f/, () => ({ code: 0, stdout: demarre ? "true\n" : "false\n" })],
     [/ start /, () => ((demarre = true), { code: 0 })],
   ]);
@@ -96,4 +100,50 @@ test("les ports publiés évitent ceux de Vite (5173…) : 5280-5299", async () 
   ]);
   await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
   expect(appels.find((a) => a.args[0] === "run")!.args).toContain("127.0.0.1:5280-5299:5280-5299");
+});
+
+test("trouverDocker trouve Docker Desktop installé par utilisateur (~/.docker/bin)", () => {
+  expect(trouverDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.docker/bin/docker")).toBe(
+    "/Users/t/.docker/bin/docker",
+  );
+});
+
+test("executeurParDefaut ajoute ~/.docker/bin au PATH (assistants d'identifiants)", () => {
+  expect(DOSSIERS_OUTILS).toContain(join(homedir(), ".docker", "bin"));
+});
+
+// Conteneur existant créé sur un autre dossier ou avec un ancien Dockerfile → recréé.
+function fauxDocker(o: { source: string; empreinteConteneur: string; empreinteImage: string; running?: string }) {
+  let recree = false;
+  const f = executeurFactice([
+    [/ info$/, { code: 0 }],
+    [/ image inspect /, { code: 0, stdout: `${o.empreinteImage}\n` }],
+    [/ inspect -f \{\{\.State\.Running\}\}/, () => ({ code: 0, stdout: recree ? "true\n" : (o.running ?? "true\n") })],
+    [/ inspect -f .*Mounts/, () => ({ code: 0, stdout: recree ? "" : `${o.source}|${o.empreinteConteneur}\n` })],
+    [/ rm -f webaios-atelier/, () => ((recree = true), { code: 0 })],
+  ]);
+  return f;
+}
+
+test("conteneur existant sur le bon dossier et la bonne image → gardé", async () => {
+  const e = empreinteDockerfile();
+  const { executer, appels } = fauxDocker({ source: chemins.racine, empreinteConteneur: e, empreinteImage: e });
+  expect(await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre()).toBe("demarre");
+  expect(appels.some((a) => a.args[0] === "rm")).toBe(false);
+});
+
+test("conteneur existant monté sur un autre dossier → supprimé puis recréé", async () => {
+  const e = empreinteDockerfile();
+  const { executer, appels } = fauxDocker({ source: "/tmp/ailleurs", empreinteConteneur: e, empreinteImage: e });
+  await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
+  expect(appels.some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
+  expect(appels.some((a) => a.args[0] === "run")).toBe(true);
+});
+
+test("Dockerfile modifié → image reconstruite et conteneur recréé", async () => {
+  const { executer, appels } = fauxDocker({ source: chemins.racine, empreinteConteneur: "ancienne", empreinteImage: "ancienne" });
+  await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
+  const build = appels.find((a) => a.args[0] === "build")!;
+  expect(build.args).toContain(`webaios.dockerfile=${empreinteDockerfile()}`);
+  expect(appels.some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
 });

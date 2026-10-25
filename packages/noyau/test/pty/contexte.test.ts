@@ -25,3 +25,12 @@ test("titre long tronqué à 120 + …", () => {
 test("titre vide → url seule", () => {
   expect(prefixeContexte(" \n ", "https://x.test")).toBe("[contexte : https://x.test] ");
 });
+
+test("caractères de contrôle C1 et séparateurs Unicode retirés aussi", () => {
+  expect(prefixeContexte("a\x9b2Jb c d\x85e", "https://x.test")).toBe("[contexte : a 2Jb c d e — https://x.test] ");
+});
+
+test("URL très longue tronquée à 300 + …", () => {
+  const url = `https://x.test/${"q".repeat(1000)}`;
+  expect(prefixeContexte("t", url)).toBe(`[contexte : t — ${url.slice(0, 300)}…] `);
+});

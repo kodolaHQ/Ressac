@@ -20,6 +20,15 @@ test.skipIf(!actif)("le vrai conteneur démarre, exécute claude et partage /wor
   const [cmd2, ...args2] = atelier.commandeExec(["sh", "-c", "echo ok > /workspace/sonde"], { interactif: false });
   expect((await executeurParDefaut(cmd2!, args2)).code).toBe(0);
   expect(existsSync(join(c.racine, "sonde"))).toBe(true);
+  // Un second démarrage ne recrée pas un conteneur à jour (même racine, même Dockerfile).
+  const id = async () => (await executeurParDefaut("docker", ["inspect", "-f", "{{.Id}}", NOM_CONTENEUR])).stdout.trim();
+  const avant = await id();
+  expect(await atelier.assurerDemarre()).toBe("demarre");
+  expect(await id()).toBe(avant);
+  // Le même conteneur vu depuis une autre racine est recréé.
+  const autre = new Atelier({ chemins: cheminsEspace(await dossierTemporaire()) });
+  expect(await autre.assurerDemarre()).toBe("demarre");
+  expect(await id()).not.toBe(avant);
 }, 600_000);
 
 afterAll(async () => {

@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { CHEMIN_CONTENEUR, type CheminsEspace } from "../chemins.js";
 import { executeurParDefaut, type Executeur } from "./executeur.js";
@@ -12,6 +13,21 @@ export const PORTS = "5280-5299";
 const DELAI_SONDE_MS = 30_000;
 
 const DOSSIER_DOCKER = join(import.meta.dirname, "..", "..", "docker");
+const DOCKERFILE = join(DOSSIER_DOCKER, "atelier.Dockerfile");
+const LABEL_EMPREINTE = "webaios.dockerfile";
+
+/** Empreinte du Dockerfile : l'image et le conteneur la portent en label, pour savoir s'ils sont à jour. */
+export function empreinteDockerfile(): string {
+  return createHash("sha256").update(readFileSync(DOCKERFILE)).digest("hex").slice(0, 12);
+}
+
+function normaliser(chemin: string): string {
+  try {
+    return realpathSync(chemin);
+  } catch {
+    return chemin;
+  }
+}
 
 const nomVeille = (id: string) => `webaios-veille-${id}`;
 
@@ -26,7 +42,7 @@ export function trouverDocker(
     ...(env.PATH ?? "").split(":").filter(Boolean).map((d) => join(d, "docker")),
     "/usr/local/bin/docker",
     "/opt/homebrew/bin/docker",
-    ...(env.HOME ? [join(env.HOME, ".orbstack", "bin", "docker")] : []),
+    ...(env.HOME ? [join(env.HOME, ".orbstack", "bin", "docker"), join(env.HOME, ".docker", "bin", "docker")] : []),
     "/Applications/Docker.app/Contents/Resources/bin/docker",
   ];
   return candidats.find((c) => existe(c)) ?? null;
@@ -54,15 +70,32 @@ export class Atelier {
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
   }
 
+  /** Le conteneur existant est-il monté sur la bonne racine et construit depuis le Dockerfile actuel ? */
+  private async conteneurAJour(empreinte: string): Promise<boolean> {
+    const format = `{{range .Mounts}}{{if eq .Destination "${CHEMIN_CONTENEUR}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${LABEL_EMPREINTE}"}}`;
+    const r = await this.lancer(["inspect", "-f", format, NOM_CONTENEUR], DELAI_SONDE_MS);
+    const [source = "", label = ""] = r.stdout.trim().split("|");
+    return r.code === 0 && normaliser(source) === normaliser(this.chemins.racine) && label === empreinte;
+  }
+
   async assurerDemarre(): Promise<EtatAtelier> {
-    const etat = await this.etat();
-    if (etat === "docker-absent" || etat === "demarre") return etat;
+    let etat = await this.etat();
+    if (etat === "docker-absent") return etat;
+    const empreinte = empreinteDockerfile();
+    // Un conteneur créé sur un autre dossier ou avec un ancien Dockerfile est recréé ; /workspace et
+    // le volume des identifiants sont conservés, seule la couche du conteneur est perdue.
+    if (etat !== "absent" && !(await this.conteneurAJour(empreinte))) {
+      await this.lancer(["rm", "-f", NOM_CONTENEUR], DELAI_SONDE_MS);
+      etat = "absent";
+    }
+    if (etat === "demarre") return etat;
     if (etat === "arrete") {
       await this.lancer(["start", NOM_CONTENEUR], DELAI_SONDE_MS);
       return this.etat();
     }
-    if ((await this.lancer(["image", "inspect", IMAGE], DELAI_SONDE_MS)).code !== 0) {
-      const build = await this.lancer(["build", "-t", IMAGE, "-f", join(DOSSIER_DOCKER, "atelier.Dockerfile"), DOSSIER_DOCKER]);
+    const image = await this.lancer(["image", "inspect", "-f", `{{index .Config.Labels "${LABEL_EMPREINTE}"}}`, IMAGE], DELAI_SONDE_MS);
+    if (image.code !== 0 || image.stdout.trim() !== empreinte) {
+      const build = await this.lancer(["build", "-t", IMAGE, "--label", `${LABEL_EMPREINTE}=${empreinte}`, "-f", DOCKERFILE, DOSSIER_DOCKER]);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }
     const run = await this.lancer([

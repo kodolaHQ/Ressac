@@ -154,3 +154,32 @@ test("ouvrir_onglet sur un site extérieur puis lire_onglet → demande d'autori
   expect(texte(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
   expect(demandes()).toBe(1);
 });
+
+test("deux lectures simultanées d'un onglet privé → une seule demande", async () => {
+  let liberer!: (v: boolean) => void;
+  pont.demanderAutorisation = async (o) => {
+    pont.appels.push({ methode: "demanderAutorisation", args: [o.id] });
+    return new Promise<boolean>((ok) => (liberer = ok));
+  };
+  const a = client.callTool({ name: "lire_onglet", arguments: { id: "gmail" } });
+  const b = client.callTool({ name: "lire_onglet", arguments: { id: "gmail" } });
+  await new Promise((r) => setTimeout(r, 100));
+  liberer(true);
+  const [ra, rb] = await Promise.all([a, b]);
+  expect(texte(ra)).toContain("Texte de Gmail");
+  expect(texte(rb)).toContain("Texte de Gmail");
+  expect(demandes()).toBe(1);
+});
+
+test("la navigation du navigateur pendant naviguer (did-navigate) ne retire pas l'accès à la démo", async () => {
+  const id = texte(await client.callTool({ name: "ouvrir_onglet", arguments: { url: "http://localhost:5280" } })).trim();
+  const naviguerOrigine = pont.naviguer.bind(pont);
+  pont.naviguer = async (i, url) => {
+    politique.ongletNavigue(i, url); // Electron signale la navigation avant que naviguer() ne se termine
+    await naviguerOrigine(i, url);
+  };
+  await client.callTool({ name: "naviguer", arguments: { id, url: "http://localhost:5281" } });
+  const r = await client.callTool({ name: "lire_onglet", arguments: { id } });
+  expect(texte(r)).toContain("localhost:5281");
+  expect(demandes()).toBe(0);
+});

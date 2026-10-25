@@ -14,7 +14,12 @@ export type Executeur = (commande: string, args: string[], opts?: { delaiMs?: nu
 export const CODE_DELAI_DEPASSE = 124;
 
 /** Dossiers où vivent docker et ses assistants (identifiants) quand l'app est lancée depuis le Finder. */
-export const DOSSIERS_OUTILS = ["/usr/local/bin", "/opt/homebrew/bin", join(homedir(), ".orbstack", "bin")];
+export const DOSSIERS_OUTILS = [
+  "/usr/local/bin",
+  "/opt/homebrew/bin",
+  join(homedir(), ".orbstack", "bin"),
+  join(homedir(), ".docker", "bin"), // Docker Desktop installé par utilisateur
+];
 
 /** Lance une commande sans jamais lever d'exception : un échec se lit dans `code`. */
 export const executeurParDefaut: Executeur = (commande, args, opts = {}) =>
