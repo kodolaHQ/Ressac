@@ -16,6 +16,8 @@ export interface CiblesMenu {
   /** Raccourci destiné à l'interface de la fenêtre (qui reçoit le focus). */
   raccourci(fenetreId: IdFenetre, r: Raccourci): void;
   fermerFenetre(fenetreId: IdFenetre): void;
+  /** Plus aucune fenêtre ouverte (macOS) : rouvre celle(s) de l'état ; vrai si c'est le cas. */
+  rouvrirFenetres(): boolean;
   /** Outils de développement de l'interface elle-même (développement seulement). */
   outilsInterface(fenetreId: IdFenetre): void;
 }
@@ -79,6 +81,7 @@ export function installerMenu(c: CiblesMenu): void {
           c.raccourci(f, "adresse");
         })),
         entree("nouvelle-fenetre", "Nouvelle fenêtre", "CmdOrCtrl+N", () => {
+          if (c.rouvrirFenetres()) return;
           const f = c.fenetreActive();
           const espaceId = c.etat().fenetres.find((x) => x.id === f)?.espaceActif;
           c.agir({ type: "ouvrirFenetre", ...(espaceId ? { espaceId } : {}) });

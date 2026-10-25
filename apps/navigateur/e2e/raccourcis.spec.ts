@@ -34,7 +34,7 @@ test("⌘T puis ⌘W : l'onglet s'ouvre puis se ferme ; ⇧⌘T le rouvre avec s
   await fermer();
 });
 
-test("⌘N ouvre une seconde fenêtre avec ses propres onglets ; les fermer une à une quitte l'app à la dernière", async () => {
+test("⌘N ouvre une seconde fenêtre avec ses propres onglets ; les fermer une à une laisse l'app ouverte (macOS)", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
   await expect(fenetre.locator(onglets)).toHaveCount(1);
@@ -54,10 +54,11 @@ test("⌘N ouvre une seconde fenêtre avec ses propres onglets ; les fermer une 
   await seconde.evaluate(() => window.close());
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
   expect(await fenetre.evaluate(() => 1 + 1)).toBe(2);
-  const fin = app.waitForEvent("close");
   await menu(app, "fermer-fenetre");
-  await fin;
-  void fermer;
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await app.evaluate(() => 1 + 1)).toBe(2); // toujours vivante
+  await fermer();
 });
 
 test("⌘2 active le deuxième onglet ; ⌃Tab passe au suivant", async () => {

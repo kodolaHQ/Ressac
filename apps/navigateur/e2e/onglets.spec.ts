@@ -68,11 +68,39 @@ test("une page qui plante affiche le message et Recharger fonctionne ; le reste 
   await fermer();
 });
 
-test("fermer la dernière fenêtre principale quitte l'app", async () => {
-  const { app } = await lancer();
-  const fin = app.waitForEvent("close");
+test("macOS : fermer la dernière fenêtre garde l'app ; le Dock la rouvre avec ses onglets", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
-  await fin;
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await app.evaluate(() => 1 + 1)).toBe(2); // toujours vivante
+  // Fenêtre fermée : ses pages aussi (une vidéo ne continue pas de jouer sans fenêtre).
+  expect(await nombreWebContents(app)).toBe(0);
+  // Un changement d'état ensuite (ici le moteur de recherche) ne doit pas la faire réapparaître.
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("moteur-qwant")?.click());
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+  await app.evaluate(({ app }) => app.emit("activate"));
+  await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(1);
+  const rouverte = app.windows().find((p) => p.url().includes("/renderer/index.html"))!;
+  await expect(rouverte.locator(onglets)).toHaveCount(1);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await fermer();
+});
+
+test("macOS : ⌘N sans fenêtre ouverte rouvre la fenêtre fermée, sans en créer une seconde", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await fermer();
 });
 
 test("une page injoignable affiche un message d'erreur et Recharger, au lieu d'une page blanche", async () => {

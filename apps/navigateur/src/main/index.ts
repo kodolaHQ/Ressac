@@ -30,6 +30,8 @@ const fenetres = new Map<IdFenetre, BrowserWindow>();
 /** Vrai dès que l'app quitte : les fenêtres qui se ferment alors restent dans la session, pour la restauration. */
 let enSortie = false;
 const enFermeture = new WeakSet<BrowserWindow>();
+/** Fenêtres fermées mais gardées dans l'état (macOS) : à ne pas recréer avant que l'utilisateur les rouvre. */
+const gardees = new Set<IdFenetre>();
 
 /** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
 function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
@@ -45,7 +47,7 @@ function noterCadre(id: IdFenetre, f: BrowserWindow, magasin: Magasin): void {
   magasin.agir({ type: "cadrerFenetre", id, cadre: { x, y, largeur: width, hauteur: height } });
 }
 
-function creerFenetre(id: IdFenetre, magasin: Magasin): BrowserWindow {
+function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): BrowserWindow {
   const cadre = cadreVisible(magasin.etat.fenetres.find((f) => f.id === id)?.cadre);
   const fenetre = new BrowserWindow({
     width: 1400,
@@ -82,8 +84,14 @@ function creerFenetre(id: IdFenetre, magasin: Magasin): BrowserWindow {
   fenetre.on("closed", () => {
     fenetres.delete(id);
     if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
+    // Dernière fenêtre (gardée dans l'état) : ses pages se ferment, elles reviendront avec elle.
+    else if (!enSortie) {
+      gardees.add(id);
+      vues.oublierFenetre(magasin.etat, id);
+    }
     // Seule la fermeture de la dernière fenêtre principale quitte l'app, jamais celle d'une popup.
-    if (fenetres.size === 0) app.quit();
+    // Sur macOS, l'app reste ouverte (comme Safari ou Chrome) : le Dock ou ⌘N rouvrent la fenêtre.
+    if (fenetres.size === 0 && process.platform !== "darwin") app.quit();
   });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -110,6 +118,7 @@ function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
 }
 
 let enregistreur: EnregistreurSession | undefined;
+let rouvrirFenetres = (): boolean => false;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 
@@ -226,6 +235,7 @@ app.whenReady().then(async () => {
       f.webContents.send(CANAUX.raccourci, r);
     },
     fermerFenetre: (id) => fenetres.get(id)?.close(),
+    rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
   };
   installerMenu(cibles);
@@ -235,12 +245,20 @@ app.whenReady().then(async () => {
   });
   // Une fenêtre principale par EtatFenetre : ⌘N en ajoute une, sa fermeture la retire.
   const synchroniserFenetres = (etat: EtatNavigateur) => {
-    for (const f of etat.fenetres) if (!fenetres.has(f.id)) creerFenetre(f.id, magasin);
+    for (const f of etat.fenetres) if (!fenetres.has(f.id) && !gardees.has(f.id)) creerFenetre(f.id, magasin, vues);
     for (const [id, f] of fenetres) if (!etat.fenetres.some((x) => x.id === id) && !f.isDestroyed() && !enFermeture.has(f)) f.close();
   };
   magasin.abonner(synchroniserFenetres);
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
+  // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
+  rouvrirFenetres = () => {
+    if (fenetres.size > 0) return false;
+    gardees.clear();
+    synchroniserFenetres(magasin.etat);
+    vues.synchroniser(magasin.etat);
+    return true;
+  };
 });
 
 // Relancer l'app (Dock, Finder, terminal) ramène la fenêtre existante au premier plan.
@@ -250,6 +268,9 @@ app.on("second-instance", () => {
   if (f.isMinimized()) f.restore();
   f.focus();
 });
+
+// Clic sur l'icône du Dock sans fenêtre ouverte.
+app.on("activate", () => rouvrirFenetres());
 
 app.on("will-quit", () => historique?.fermer());
 

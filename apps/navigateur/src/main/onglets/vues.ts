@@ -66,6 +66,16 @@ export class GestionnaireVues {
     }
   }
 
+  /** Fenêtre fermée dont l'état est gardé (macOS) : ses pages se ferment et se recréeront à sa réouverture. */
+  oublierFenetre(etat: EtatNavigateur, fenetreId: IdFenetre): void {
+    for (const o of Object.values(etat.onglets)) {
+      const vue = o.fenetreId === fenetreId ? this.vues.get(o.id) : undefined;
+      if (vue) this.detruireVue(o.id, vue);
+    }
+    this.attachees.delete(fenetreId);
+    this.zones.delete(fenetreId);
+  }
+
   bornes(fenetreId: IdFenetre, b: Bornes): void {
     this.zones.set(fenetreId, b);
     const id = this.attachees.get(fenetreId);
