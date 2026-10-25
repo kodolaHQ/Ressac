@@ -57,3 +57,29 @@ export async function serveurTest(): Promise<{ url: string; fermer(): Promise<vo
     fermer: () => new Promise((ok) => serveur.close(() => ok())),
   };
 }
+
+type AvecApi = Window & { webaios: { agir(a: unknown): void; fenetreId: string } };
+
+/** Ouvre un onglet via l'API de l'interface. */
+export async function ouvrirOnglet(fenetre: Page, url: string, o: { activer?: boolean; ouvertParAgent?: boolean } = {}): Promise<void> {
+  await fenetre.evaluate(
+    ([url, o]) => {
+      const w = window as unknown as AvecApi;
+      w.webaios.agir({ type: "ouvrirOnglet", fenetreId: w.webaios.fenetreId, url, ...o });
+    },
+    [url, o] as const,
+  );
+}
+
+/** Nombre de webContents vivants (interface comprise). */
+export function nombreWebContents(app: ElectronApplication): Promise<number> {
+  return app.evaluate(({ webContents }) => webContents.getAllWebContents().filter((w) => !w.isDestroyed()).length);
+}
+
+/** Exécute du JS dans la vue web dont l'URL contient `morceau` (avec geste utilisateur). */
+export function dansLaVue(app: ElectronApplication, morceau: string, code: string): Promise<unknown> {
+  return app.evaluate(
+    ({ webContents }, [morceau, code]) => webContents.getAllWebContents().find((w) => w.getURL().includes(morceau))?.executeJavaScript(code, true),
+    [morceau, code] as const,
+  );
+}

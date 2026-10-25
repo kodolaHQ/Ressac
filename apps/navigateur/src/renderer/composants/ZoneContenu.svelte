@@ -1,0 +1,35 @@
+<script lang="ts">
+  import type { Onglet } from "../../commun/modele";
+  import { api } from "../etat.svelte";
+
+  let { onglet }: { onglet: Onglet | undefined } = $props();
+  let zone: HTMLElement;
+
+  $effect(() => {
+    const envoyer = () => {
+      const r = zone.getBoundingClientRect();
+      api.bornesContenu({ x: r.x, y: r.y, largeur: r.width, hauteur: r.height });
+    };
+    const obs = new ResizeObserver(envoyer);
+    obs.observe(zone);
+    window.addEventListener("resize", envoyer);
+    return () => {
+      obs.disconnect();
+      window.removeEventListener("resize", envoyer);
+    };
+  });
+</script>
+
+<main class="contenu" data-testid="zone-contenu" bind:this={zone}>
+  {#if onglet?.plante}
+    <div class="plante">
+      <p>Cette page a planté.</p>
+      <button onclick={() => api.commande(onglet.id, "recharger")}>Recharger</button>
+    </div>
+  {/if}
+</main>
+
+<style>
+  .contenu { background: var(--fond); position: relative; }
+  .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
+</style>

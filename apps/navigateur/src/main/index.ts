@@ -1,9 +1,10 @@
-import { app, BrowserWindow, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, session, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import type { IdFenetre } from "../commun/modele";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
+import { GestionnaireVues } from "./onglets/vues";
 import { cheminProfil } from "./profil";
 
 app.setPath("userData", cheminProfil());
@@ -26,7 +27,11 @@ function creerFenetre(id: IdFenetre): BrowserWindow {
     },
   });
   fenetres.set(id, fenetre);
-  fenetre.on("closed", () => fenetres.delete(id));
+  fenetre.on("closed", () => {
+    fenetres.delete(id);
+    // Seule la fermeture de la dernière fenêtre principale quitte l'app, jamais celle d'une popup.
+    if (fenetres.size === 0) app.quit();
+  });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
   fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -40,22 +45,38 @@ function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
   return undefined;
 }
 
+let enregistreur: EnregistreurSession | undefined;
+
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
   const magasin = new Magasin(await chargerSession(dossier));
-  const enregistreur = new EnregistreurSession(dossier);
+  enregistreur = new EnregistreurSession(dossier);
+  const vues = new GestionnaireVues({ session: session.fromPartition("persist:webaios"), fenetres, agir: (a) => magasin.agir(a) });
   magasin.abonner((etat) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(CANAUX.etat, etat);
-    enregistreur.planifier(etat);
+    vues.synchroniser(etat);
+    enregistreur?.planifier(etat);
   });
   brancherIpc({
     magasin,
     fenetreDe,
     naviguer: () => {},
-    commande: () => {},
-    bornes: () => {},
+    commande: (id, c) => vues.commande(id, c),
+    bornes: (f, b) => vues.bornes(f, b),
   });
   for (const f of magasin.etat.fenetres) creerFenetre(f.id);
+  vues.synchroniser(magasin.etat);
 });
 
-app.on("window-all-closed", () => app.quit());
+// Les fenêtres principales décident seules de quitter (voir creerFenetre).
+app.on("window-all-closed", () => {});
+
+let sessionEcrite = false;
+app.on("before-quit", (e) => {
+  if (sessionEcrite || !enregistreur) return;
+  e.preventDefault();
+  void enregistreur.vider().finally(() => {
+    sessionEcrite = true;
+    app.quit();
+  });
+});
