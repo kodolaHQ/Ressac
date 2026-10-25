@@ -58,6 +58,6 @@ test("consigneVeille : texte exact", () => {
   expect(consigneVeille("veille-svelte", { titre: "Veille Svelte", type: "agent", consigne: "Résume Svelte." })).toBe(
     "Tu mets à jour le bloc « Veille Svelte » de la page d'accueil WebAiOs.\n" +
       "Consigne : Résume Svelte.\n" +
-      "Écris le résultat complet dans /workspace/accueil/blocs/veille-svelte/index.html en suivant le format décrit dans /workspace/AGENTS.md. Ne modifie aucun autre fichier.",
+      "Écris le résultat complet dans /workspace/accueil/blocs/veille-svelte/index.html.nouveau en suivant le format décrit dans /workspace/AGENTS.md. Ne modifie aucun autre fichier.",
   );
 });

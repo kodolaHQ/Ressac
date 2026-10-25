@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { rename, rm } from "node:fs/promises";
+import { join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
 import { ecrireEtatBloc, lireAccueil } from "../accueil/lire.js";
 import type { EtatBloc } from "../accueil/schemas.js";
@@ -7,6 +10,8 @@ import { construireCommande, type Profil } from "../profils/profil.js";
 import { blocsAEchoir, consigneVeille } from "./echeances.js";
 
 const LONGUEUR_ERREUR = 500;
+/** Marge du délai local au-delà du `timeout` lancé dans le conteneur. */
+const MARGE_MS = 30_000;
 
 /** Rafraîchit les blocs d'agent en lançant l'agent en mode non interactif, sans accès au navigateur. */
 export class PlanificateurVeille {
@@ -71,23 +76,35 @@ export class PlanificateurVeille {
   private async rafraichir(id: string, ancien: EtatBloc, config: Parameters<typeof consigneVeille>[1]): Promise<void> {
     const debut = this.o.horloge().toISOString();
     await ecrireEtatBloc(this.o.chemins, id, { derniereMaj: ancien.derniereMaj, derniereTentative: debut, statut: "en-cours" });
+    // L'agent écrit un brouillon ; il ne remplace index.html qu'en cas de succès.
+    const brouillon = join(this.o.chemins.blocs, id, "index.html.nouveau");
+    await rm(brouillon, { force: true });
     const consigne = consigneVeille(id, config);
-    const [cmd, ...args] = this.o.atelier.commandeExec(construireCommande(this.o.profil, "nonInteractif", { consigne }), {
-      interactif: false,
+    const [cmd, ...args] = this.o.atelier.commandeVeille(
+      id,
+      construireCommande(this.o.profil, "nonInteractif", { consigne }),
+      Math.round(this.o.delaiMs / 1000),
+    );
+    const r = await this.o.executer(cmd!, args, { delaiMs: this.o.delaiMs + MARGE_MS });
+    const echec = (erreur: string): EtatBloc => ({
+      derniereMaj: ancien.derniereMaj,
+      derniereTentative: debut,
+      statut: "erreur",
+      erreur: erreur.slice(0, LONGUEUR_ERREUR),
     });
-    const r = await this.o.executer(cmd!, args, { delaiMs: this.o.delaiMs });
-    const etat: EtatBloc =
-      r.code === 0
-        ? { derniereMaj: this.o.horloge().toISOString(), derniereTentative: debut, statut: "ok" }
-        : {
-            derniereMaj: ancien.derniereMaj,
-            derniereTentative: debut,
-            statut: "erreur",
-            erreur:
-              r.code === CODE_DELAI_DEPASSE
-                ? "Délai dépassé"
-                : (r.stderr.trim() || r.stdout.trim() || `Code de sortie ${r.code}`).slice(0, LONGUEUR_ERREUR),
-          };
+    let etat: EtatBloc;
+    if (r.code === CODE_DELAI_DEPASSE) {
+      await this.o.atelier.supprimerVeille(id);
+      etat = echec("Délai dépassé");
+    } else if (r.code !== 0) {
+      etat = echec(r.stderr.trim() || r.stdout.trim() || `Code de sortie ${r.code}`);
+    } else if (!existsSync(brouillon)) {
+      etat = echec("Aucun résultat écrit par l'agent");
+    } else {
+      await rename(brouillon, join(this.o.chemins.blocs, id, "index.html"));
+      etat = { derniereMaj: this.o.horloge().toISOString(), derniereTentative: debut, statut: "ok" };
+    }
+    await rm(brouillon, { force: true });
     await ecrireEtatBloc(this.o.chemins, id, etat);
   }
 

@@ -31,6 +31,6 @@ export function consigneVeille(id: string, config: ConfigBlocAgent): string {
   return [
     `Tu mets à jour le bloc « ${config.titre} » de la page d'accueil WebAiOs.`,
     `Consigne : ${config.consigne}`,
-    `Écris le résultat complet dans ${CHEMIN_CONTENEUR}/accueil/blocs/${id}/index.html en suivant le format décrit dans ${CHEMIN_CONTENEUR}/AGENTS.md. Ne modifie aucun autre fichier.`,
+    `Écris le résultat complet dans ${CHEMIN_CONTENEUR}/accueil/blocs/${id}/index.html.nouveau en suivant le format décrit dans ${CHEMIN_CONTENEUR}/AGENTS.md. Ne modifie aucun autre fichier.`,
   ].join("\n");
 }

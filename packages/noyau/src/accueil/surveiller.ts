@@ -8,7 +8,7 @@ const REGROUPEMENT_MS = 150;
 export function surveillerAccueil(c: CheminsEspace, rappel: () => void): () => Promise<void> {
   mkdirSync(c.accueil, { recursive: true });
   let minuterie: NodeJS.Timeout | undefined;
-  const observateur = watch(c.accueil, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") });
+  const observateur = watch(c.accueil, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
   observateur.on("all", () => {
     clearTimeout(minuterie);
     minuterie = setTimeout(rappel, REGROUPEMENT_MS);
