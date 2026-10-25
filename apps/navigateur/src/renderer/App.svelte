@@ -1,6 +1,7 @@
 <script lang="ts">
   import BarreLaterale from "./composants/BarreLaterale.svelte";
   import MenuContextuel from "./composants/MenuContextuel.svelte";
+  import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
   import type { Panneau } from "../commun/api";
   import { api, etat, fenetreCourante } from "./etat.svelte";
@@ -21,7 +22,7 @@
   let revelee = $state(false);
   let survolBarre = false;
   let minuterie: ReturnType<typeof setTimeout> | undefined;
-  const barreVisible = $derived(!compact || revelee);
+  const barreVisible = $derived(!pleinEcran && (!compact || revelee));
 
   function reveler() {
     clearTimeout(minuterie);
@@ -38,11 +39,27 @@
   let panneau = $state<Panneau | null>(null);
   const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
   $effect(() => api.surPanneau(basculerPanneau));
-  // Activer un onglet referme le panneau.
+  // Activer un onglet referme le panneau et la recherche.
   $effect(() => {
     void ongletActif?.id;
     panneau = null;
+    recherche.ouverte = false;
+    recherche.resultat = null;
   });
+
+  $effect(() =>
+    api.surRaccourci((r) => {
+      if (r === "rechercher") {
+        recherche.ouverte = true;
+        recherche.focus++;
+      } else if (recherche.ouverte) recherche.pas = { n: recherche.pas.n + 1, precedent: r === "chercherPrecedent" };
+    }),
+  );
+  $effect(() => api.surResultatRecherche((r) => (recherche.resultat = r)));
+
+  // Plein écran HTML (vidéo) : seule la page reste.
+  let pleinEcran = $state(false);
+  $effect(() => api.surPleinEcran((actif) => (pleinEcran = actif)));
 
   $effect(() => api.surBordGauche((dedans) => (dedans ? reveler() : planifierMasquage())));
   $effect(() => {
@@ -52,7 +69,7 @@
 
 <svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_GAUCHE && reveler()} />
 
-<div class="fenetre" class:compact={!barreVisible} class:agent={panneauAgentOuvert}>
+<div class="fenetre" class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran}>
   {#if fenetre}
     <BarreLaterale
       {fenetre}
@@ -71,7 +88,7 @@
     <aside data-testid="barre-laterale"></aside>
   {/if}
   <ZoneContenu {fenetre} onglet={ongletActif} {panneau} fermerPanneau={() => (panneau = null)} />
-  <section class="agent" data-testid="panneau-agent" hidden={!panneauAgentOuvert}></section>
+  <section class="agent" data-testid="panneau-agent" hidden={!panneauAgentOuvert || pleinEcran}></section>
 </div>
 <MenuContextuel />
 

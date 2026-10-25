@@ -58,7 +58,7 @@ export type Action = z.infer<typeof SchemaAction>;
 export const SchemaCommande = z.union([
   z.object({ ongletId: id, c: z.enum(["reculer", "avancer", "recharger", "arreter", "finRecherche"]) }),
   z.object({ ongletId: id, c: z.object({ zoom: z.enum(["plus", "moins", "zero"]) }) }),
-  z.object({ ongletId: id, c: z.object({ chercher: z.string(), suivant: z.boolean().optional() }) }),
+  z.object({ ongletId: id, c: z.object({ chercher: z.string(), suivant: z.boolean().optional(), precedent: z.boolean().optional() }) }),
 ]);
 export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
 
@@ -66,6 +66,13 @@ export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.
 export type Bornes = z.infer<typeof SchemaBornes>;
 
 export type Panneau = "historique" | "telechargements";
+/** Raccourcis du menu destinés à l'interface (la page web a souvent le focus). */
+export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent";
+export interface ResultatRecherche {
+  ongletId: IdOnglet;
+  actif: number;
+  total: number;
+}
 
 /** API exposée à l'interface par le preload (`window.webaios`). */
 export interface ApiWebaios {
@@ -80,6 +87,10 @@ export interface ApiWebaios {
   surBordGauche(rappel: (dedans: boolean) => void): () => void;
   /** Le menu demande d'ouvrir un panneau de l'interface (⌘Y…). */
   surPanneau(rappel: (p: Panneau) => void): () => void;
+  surRaccourci(rappel: (r: Raccourci) => void): () => void;
+  surResultatRecherche(rappel: (r: ResultatRecherche) => void): () => void;
+  /** Plein écran HTML (vidéo…) : l'interface s'efface. */
+  surPleinEcran(rappel: (actif: boolean) => void): () => void;
   historique: {
     rechercher(texte: string, limite?: number): Promise<Visite[]>;
     recents(): Promise<Visite[]>;

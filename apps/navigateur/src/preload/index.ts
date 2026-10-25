@@ -5,6 +5,13 @@ import type { EtatNavigateur } from "../commun/modele";
 
 const fenetreId = process.argv.find((a) => a.startsWith(ARG_FENETRE))?.slice(ARG_FENETRE.length) ?? "";
 
+/** Abonnement à un canal diffusé par le process principal ; renvoie le désabonnement. */
+function ecouter<T>(canal: string, rappel: (v: T) => void): () => void {
+  const ecouteur = (_: unknown, v: T) => rappel(v);
+  ipcRenderer.on(canal, ecouteur);
+  return () => ipcRenderer.removeListener(canal, ecouteur);
+}
+
 const api: ApiWebaios = {
   fenetreId,
   agir: (action) => ipcRenderer.send(CANAUX.action, action),
@@ -22,11 +29,10 @@ const api: ApiWebaios = {
     ipcRenderer.on(CANAUX.bordGauche, ecouteur);
     return () => ipcRenderer.removeListener(CANAUX.bordGauche, ecouteur);
   },
-  surPanneau(rappel) {
-    const ecouteur = (_: unknown, p: Parameters<typeof rappel>[0]) => rappel(p);
-    ipcRenderer.on(CANAUX.panneau, ecouteur);
-    return () => ipcRenderer.removeListener(CANAUX.panneau, ecouteur);
-  },
+  surPanneau: (rappel) => ecouter(CANAUX.panneau, rappel),
+  surRaccourci: (rappel) => ecouter(CANAUX.raccourci, rappel),
+  surResultatRecherche: (rappel) => ecouter(CANAUX.resultatRecherche, rappel),
+  surPleinEcran: (rappel) => ecouter(CANAUX.pleinEcran, rappel),
   historique: {
     rechercher: (texte, limite) => ipcRenderer.invoke(CANAUX.historiqueRechercher, texte, limite),
     recents: () => ipcRenderer.invoke(CANAUX.historiqueRecents),

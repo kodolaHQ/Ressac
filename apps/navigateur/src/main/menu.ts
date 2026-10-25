@@ -1,5 +1,5 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
-import type { CommandeOnglet, Panneau } from "../commun/api";
+import type { CommandeOnglet, Panneau, Raccourci } from "../commun/api";
 import type { IdFenetre, IdOnglet } from "../commun/modele";
 
 export interface CiblesMenu {
@@ -9,6 +9,7 @@ export interface CiblesMenu {
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   basculerCompact(fenetreId: IdFenetre): void;
   ouvrirPanneau(fenetreId: IdFenetre, p: Panneau): void;
+  raccourci(fenetreId: IdFenetre, r: Raccourci): void;
 }
 
 /** Menu de l'application ; ses raccourcis marchent aussi quand une page web a le focus. */
@@ -18,9 +19,28 @@ export function installerMenu(c: CiblesMenu): void {
     const o = f && c.ongletActif(f);
     if (o) c.commande(o, cmd);
   };
+  const versInterface = (r: Raccourci) => () => {
+    const f = c.fenetreActive();
+    if (f) c.raccourci(f, r);
+  };
   const modele: MenuItemConstructorOptions[] = [
     { role: "appMenu" },
-    { role: "editMenu" },
+    {
+      label: "Édition",
+      submenu: [
+        { role: "undo", label: "Annuler" },
+        { role: "redo", label: "Rétablir" },
+        { type: "separator" },
+        { role: "cut", label: "Couper" },
+        { role: "copy", label: "Copier" },
+        { role: "paste", label: "Coller" },
+        { role: "selectAll", label: "Tout sélectionner" },
+        { type: "separator" },
+        { id: "rechercher", label: "Rechercher dans la page", accelerator: "CmdOrCtrl+F", click: versInterface("rechercher") },
+        { id: "chercher-suivant", label: "Occurrence suivante", accelerator: "CmdOrCtrl+G", click: versInterface("chercherSuivant") },
+        { id: "chercher-precedent", label: "Occurrence précédente", accelerator: "CmdOrCtrl+Shift+G", click: versInterface("chercherPrecedent") },
+      ],
+    },
     {
       label: "Affichage",
       submenu: [

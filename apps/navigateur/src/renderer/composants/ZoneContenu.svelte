@@ -2,6 +2,8 @@
   import type { EtatFenetre, Onglet } from "../../commun/modele";
   import { api, demandes } from "../etat.svelte";
   import DemandePermission from "./DemandePermission.svelte";
+  import { recherche } from "./recherche.svelte";
+  import RechercheDansPage from "./RechercheDansPage.svelte";
   import type { Panneau } from "../../commun/api";
   import Historique from "./Historique.svelte";
   import PageVide from "./PageVide.svelte";
@@ -37,6 +39,7 @@
 
 <main class="contenu" data-testid="zone-contenu">
   {#if demande && !panneau}<DemandePermission {demande} />{/if}
+  {#if recherche.ouverte && onglet && !panneau}<RechercheDansPage {onglet} />{/if}
   <div class="surface" bind:this={zone}>
   {#if fenetre && panneau === "historique"}
     <Historique {fenetre} fermer={fermerPanneau} />

@@ -31,6 +31,8 @@ export class GestionnaireVues {
       /** La souris entre ou sort de la bande du bord gauche de la fenêtre, au-dessus d'une page. */
       bordGauche?: (fenetreId: IdFenetre, dedans: boolean) => void;
       historique?: NotesHistorique;
+      resultatRecherche?: (fenetreId: IdFenetre, r: { ongletId: IdOnglet; actif: number; total: number }) => void;
+      pleinEcran?: (fenetreId: IdFenetre, actif: boolean) => void;
     },
   ) {}
 
@@ -96,7 +98,14 @@ export class GestionnaireVues {
     else if (c === "avancer") wc.navigationHistory.goForward();
     else if (c === "recharger") wc.reload();
     else if (c === "arreter") wc.stop();
-    else if (typeof c === "object" && "zoom" in c) {
+    else if (c === "finRecherche") wc.stopFindInPage("clearSelection");
+    else if (typeof c === "object" && "chercher" in c) {
+      if (!c.chercher) {
+        wc.stopFindInPage("clearSelection");
+        const fenetreId = this.fenetreDe(id);
+        if (fenetreId) this.o.resultatRecherche?.(fenetreId, { ongletId: id, actif: 0, total: 0 });
+      } else wc.findInPage(c.chercher, { findNext: !c.suivant && !c.precedent, forward: !c.precedent });
+    } else if (typeof c === "object" && "zoom" in c) {
       const actuel = wc.getZoomFactor();
       const cible = c.zoom === "zero" ? 1 : Math.round((actuel + (c.zoom === "plus" ? 0.1 : -0.1)) * 10) / 10;
       const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, cible));
@@ -130,6 +139,11 @@ export class GestionnaireVues {
     wc.setZoomMode("isolated");
     this.zooms.set(onglet.id, onglet.zoom);
     wc.on("did-navigate", () => wc.setZoomFactor(this.zooms.get(onglet.id) ?? 1));
+    wc.on("found-in-page", (_e, r) => {
+      this.o.resultatRecherche?.(onglet.fenetreId, { ongletId: onglet.id, actif: r.activeMatchOrdinal, total: r.matches });
+    });
+    wc.on("enter-html-full-screen", () => this.o.pleinEcran?.(onglet.fenetreId, true));
+    wc.on("leave-html-full-screen", () => this.o.pleinEcran?.(onglet.fenetreId, false));
     let auBord = false;
     wc.on("before-mouse-event", (_e, souris) => {
       if (souris.type !== "mouseMove" && souris.type !== "mouseLeave") return;
@@ -139,6 +153,11 @@ export class GestionnaireVues {
       this.o.bordGauche?.(onglet.fenetreId, dedans);
     });
     void wc.loadURL(onglet.url).catch(() => {});
+  }
+
+  private fenetreDe(id: IdOnglet): IdFenetre | undefined {
+    for (const [f, o] of this.attachees) if (o === id) return f;
+    return undefined;
   }
 
   private placer(fenetreId: IdFenetre, vue: WebContentsView): void {

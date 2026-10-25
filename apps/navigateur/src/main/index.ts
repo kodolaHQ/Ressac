@@ -36,6 +36,8 @@ function creerFenetre(id: IdFenetre): BrowserWindow {
     },
   });
   fenetres.set(id, fenetre);
+  // Sortie du plein écran par la fenêtre (bouton vert) : la page doit sortir aussi.
+  fenetre.on("leave-full-screen", () => fenetre.webContents.send(CANAUX.pleinEcran, false));
   fenetre.on("closed", () => {
     fenetres.delete(id);
     // Seule la fermeture de la dernière fenêtre principale quitte l'app, jamais celle d'une popup.
@@ -78,6 +80,9 @@ app.whenReady().then(async () => {
     agir: (a) => magasin.agir(a),
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
     historique,
+    resultatRecherche: (id, r) => fenetres.get(id)?.webContents.send(CANAUX.resultatRecherche, r),
+    // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
+    pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),
   });
   // Questions d'autorisation en attente d'une réponse de l'utilisateur (bandeau de l'onglet concerné).
   const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision) => void }>();
@@ -145,6 +150,12 @@ app.whenReady().then(async () => {
     commande: (id, c) => vues.commande(id, c),
     basculerCompact: (fenetreId) => magasin.agir({ type: "basculerCompact", fenetreId }),
     ouvrirPanneau: (id, p) => fenetres.get(id)?.webContents.send(CANAUX.panneau, p),
+    raccourci: (id, r) => {
+      const f = fenetres.get(id);
+      if (!f) return;
+      f.webContents.focus(); // ⌘F depuis une page : le champ de l'interface doit recevoir la frappe
+      f.webContents.send(CANAUX.raccourci, r);
+    },
   });
   for (const f of magasin.etat.fenetres) creerFenetre(f.id);
   vues.synchroniser(magasin.etat);
