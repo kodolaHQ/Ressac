@@ -17,6 +17,10 @@ import { Telechargements } from "./telechargements";
 app.setName("WebAiOs");
 app.setPath("userData", cheminProfil());
 
+// Une seule instance par profil : deux processus écriraient la même session et le même historique.
+// (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
+if (!app.requestSingleInstanceLock()) app.exit(0);
+
 // Une exception oubliée ne doit ni figer l'app derrière une boîte de dialogue, ni la quitter.
 process.on("uncaughtException", (e) => console.error("[webaios] exception non rattrapée :", e));
 
@@ -196,6 +200,14 @@ app.whenReady().then(async () => {
   magasin.abonner(synchroniserFenetres);
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
+});
+
+// Relancer l'app (Dock, Finder, terminal) ramène la fenêtre existante au premier plan.
+app.on("second-instance", () => {
+  const f = BrowserWindow.getFocusedWindow() ?? fenetres.values().next().value;
+  if (!f) return;
+  if (f.isMinimized()) f.restore();
+  f.focus();
 });
 
 app.on("will-quit", () => historique?.fermer());
