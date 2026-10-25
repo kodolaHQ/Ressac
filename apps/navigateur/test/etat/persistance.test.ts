@@ -35,7 +35,7 @@ test("aller-retour : identique, hors champs volatils remis par défaut", async (
   const a = Object.values(relu.onglets).find((o) => o.url === "https://a.test/")!;
   expect(a).toMatchObject({ titre: "A", zoom: 1.2, chargement: false, peutReculer: false, peutAvancer: false, plante: false });
   const attendu = structuredClone(etat);
-  for (const o of Object.values(attendu.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false });
+  for (const o of Object.values(attendu.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
   expect(relu).toEqual(attendu);
 });
 
@@ -99,4 +99,32 @@ test("vider() écrit immédiatement l'état en attente ; sans attente, ne fait r
   enr.planifier(etatRiche());
   await enr.vider();
   expect(existsSync(join(d, "session.json"))).toBe(true);
+});
+
+test("vider() attend l'écriture en cours : rien n'est perdu à la sortie, aucun fichier temporaire ne reste", async () => {
+  const d = dossier();
+  const enr = new EnregistreurSession(d, 10_000);
+  const a = etatRiche();
+  const b = appliquer(a, { type: "choisirMoteur", moteur: "qwant" });
+  enr.planifier(a);
+  const premiere = enr.vider(); // écriture en cours…
+  const sortie = enr.vider(); // …la sortie n'a plus rien en attente, mais doit attendre
+  await sortie;
+  expect(existsSync(join(d, "session.json"))).toBe(true);
+  enr.planifier(b);
+  await Promise.all([enr.vider(), enr.vider(), premiere]);
+  expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).reglages.moteur).toBe("qwant");
+  const { readdirSync } = await import("node:fs");
+  expect(readdirSync(d).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+});
+
+test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {
+  const d = dossier();
+  let e = etatRiche();
+  const id = Object.keys(e.onglets)[0]!;
+  e = appliquer(e, { type: "majOnglet", id, champs: { erreur: "ERR_NAME_NOT_RESOLVED" } });
+  const enr = new EnregistreurSession(d);
+  enr.planifier(e);
+  await enr.vider();
+  expect((await chargerSession(d)).onglets[id]?.erreur).toBeNull();
 });

@@ -34,8 +34,9 @@ export class Permissions {
     session.setPermissionRequestHandler((wc, permission, rappel, details) => {
       const origine = origineDe(details.requestingUrl);
       const mediaTypes = "mediaTypes" in details ? details.mediaTypes : undefined;
+      const lienExterne = "externalURL" in details ? details.externalURL : undefined;
       if (!origine) return rappel(false);
-      void this.traiter({ ongletId: ongletDe(wc), origine, permission, mediaTypes }).then(rappel, () => rappel(false));
+      void this.traiter({ ongletId: ongletDe(wc), origine, permission, mediaTypes, lienExterne }).then(rappel, () => rappel(false));
     });
     session.setPermissionCheckHandler((_wc, permission, origine, details) =>
       this.verifier(origineDe(origine) ?? "", permission, "mediaType" in details ? details.mediaType : undefined),
@@ -43,8 +44,20 @@ export class Permissions {
   }
 
   /** Répond à une demande de permission d'une page, en interrogeant l'utilisateur si besoin. */
-  async traiter(r: { ongletId: IdOnglet | null; origine: string; permission: string; mediaTypes?: readonly string[] }): Promise<boolean> {
+  async traiter(r: {
+    ongletId: IdOnglet | null;
+    origine: string;
+    permission: string;
+    mediaTypes?: readonly string[];
+    lienExterne?: string;
+  }): Promise<boolean> {
     if (SANS_DEMANDE.has(r.permission)) return true;
+    // Confier un lien à une autre application : demandé à chaque fois, avec le lien sous les yeux.
+    if (r.permission === "openExternal") {
+      if (!r.lienExterne) return false;
+      const d = await this.o.demander({ ongletId: r.ongletId, origine: r.origine, permissions: ["ouvrir-application"], lien: r.lienExterne });
+      return d === "autoriser";
+    }
     const permissions = traduire(r.permission, r.mediaTypes);
     if (permissions.length === 0) return false;
     const inconnues = permissions.filter((p) => !this.memo[cle(r.origine, p)]);

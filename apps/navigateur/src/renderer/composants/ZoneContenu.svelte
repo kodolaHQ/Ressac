@@ -47,6 +47,12 @@
     <Telechargements fermer={fermerPanneau} />
   {:else if fenetre && !onglet}
     <PageVide {fenetre} />
+  {:else if onglet?.erreur}
+    <div class="plante">
+      <p>Impossible d'ouvrir cette page.</p>
+      <p class="detail">{onglet.url} — {onglet.erreur}</p>
+      <button onclick={() => api.naviguer(onglet.id, onglet.url)}>Recharger</button>
+    </div>
   {:else if onglet?.plante}
     <div class="plante">
       <p>Cette page a planté.</p>
@@ -59,5 +65,6 @@
 <style>
   .contenu { background: var(--fond); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .surface { flex: 1; position: relative; min-height: 0; }
+  .detail { color: var(--texte-doux); font-size: 12px; word-break: break-all; }
   .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
 </style>

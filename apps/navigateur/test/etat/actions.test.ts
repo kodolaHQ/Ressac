@@ -81,7 +81,7 @@ test("ouvrirOnglet avec apres insère juste après ; un nouvel onglet a des vale
   expect(ordre()).toEqual([a, c, b]);
   expect(e.onglets[c]).toEqual({
     id: c, fenetreId: F, espaceId: P, url: "https://c.test/", titre: "https://c.test/", favicon: null, lien: null,
-    ouvertParAgent: false, chargement: false, peutReculer: false, peutAvancer: false, zoom: 1, plante: false,
+    ouvertParAgent: false, chargement: false, peutReculer: false, peutAvancer: false, zoom: 1, plante: false, erreur: null,
   });
 });
 
@@ -276,4 +276,15 @@ test("afficherPageVide : l'espace n'a plus d'onglet actif, ses onglets restent",
   ag({ type: "afficherPageVide", fenetreId: F });
   expect(actif()).toBeNull();
   expect(ordre()).toEqual([a]);
+});
+
+test("fermerFenetre : ses onglets (tous espaces) vont dans les fermés récemment de la fenêtre restante, ⇧⌘T les rouvre", () => {
+  ag({ type: "ouvrirFenetre", id: "F2" });
+  ag({ type: "ouvrirOnglet", fenetreId: "F2", url: "https://x.fr" });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: "F2" });
+  ag({ type: "ouvrirOnglet", fenetreId: "F2", url: "https://y.fr" });
+  ag({ type: "fermerFenetre", id: "F2" });
+  expect(fen().fermesRecemment.map((x) => x.url)).toEqual(["https://y.fr", "https://x.fr"]);
+  ag({ type: "rouvrirOngletFerme", fenetreId: F });
+  expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["https://y.fr"]);
 });

@@ -74,3 +74,13 @@ test("fermer la dernière fenêtre principale quitte l'app", async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
   await fin;
 });
+
+test("une page injoignable affiche un message d'erreur et Recharger, au lieu d'une page blanche", async () => {
+  const { fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, "http://127.0.0.1:1/");
+  const zone = fenetre.getByTestId("zone-contenu");
+  await expect(zone.getByText("Impossible d'ouvrir cette page.")).toBeVisible();
+  await expect(zone.getByText(/ERR_[A-Z_]+/)).toBeVisible();
+  await expect(zone.getByRole("button", { name: "Recharger" })).toBeVisible();
+  await fermer();
+});

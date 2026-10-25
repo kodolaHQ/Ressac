@@ -1,7 +1,8 @@
-import { BrowserWindow, WebContentsView, type Session, type WebContents } from "electron";
+import { BrowserWindow, clipboard, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../commun/modele";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
+import { entreesMenuPage } from "./menu-page";
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
@@ -45,14 +46,16 @@ export class GestionnaireVues {
       const actif = f.actif[f.espaceActif];
       const onglet = actif ? etat.onglets[actif] : undefined;
       if (onglet && !this.vues.has(onglet.id)) this.creerVue(onglet);
-      // Une page plantée est remplacée par le message de l'interface.
-      const cible = onglet && !onglet.plante ? onglet.id : undefined;
+      // Une page plantée ou en erreur est remplacée par le message de l'interface.
+      const cible = onglet && !onglet.plante && !onglet.erreur ? onglet.id : undefined;
       const courante = this.attachees.get(f.id);
       if (courante === cible) continue;
       if (courante) {
         const v = this.vues.get(courante);
         if (v) fenetre.contentView.removeChildView(v);
         this.attachees.delete(f.id);
+        // Plus de page affichée (page vide, message d'erreur…) : le clavier revient à l'interface.
+        if (!cible) fenetre.webContents.focus();
       }
       if (cible) {
         const v = this.vues.get(cible)!;
@@ -141,6 +144,17 @@ export class GestionnaireVues {
     wc.setZoomMode("isolated");
     this.zooms.set(onglet.id, onglet.zoom);
     wc.on("did-navigate", () => wc.setZoomFactor(this.zooms.get(onglet.id) ?? 1));
+    wc.on("context-menu", (_e, params) => {
+      const entrees = entreesMenuPage(params, {
+        ouvrirOnglet: (url) => this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer: false }),
+        copier: (texte) => clipboard.writeText(texte),
+        copierImage: (x, y) => wc.copyImageAt(x, y),
+        remplacerMot: (mot) => wc.replaceMisspelling(mot),
+        inspecter: (x, y) => wc.inspectElement(x, y),
+      });
+      const fenetre = this.o.fenetres.get(onglet.fenetreId);
+      Menu.buildFromTemplate(entrees).popup(fenetre && !fenetre.isDestroyed() ? { window: fenetre } : {});
+    });
     wc.on("found-in-page", (_e, r) => {
       this.o.resultatRecherche?.(onglet.fenetreId, { ongletId: onglet.id, actif: r.activeMatchOrdinal, total: r.matches });
     });

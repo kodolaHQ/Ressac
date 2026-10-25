@@ -4,8 +4,11 @@ import type { EtatNavigateur, IdFenetre, IdOnglet, MoteurRecherche } from "../co
 import { versNieme, versVoisin } from "./raccourcis";
 
 export interface CiblesMenu {
-  /** Fenêtre principale au premier plan (ou la seule). */
+  /** Fenêtre principale au premier plan (ou la première si aucune n'a le focus) ; undefined si une popup a le focus. */
   fenetreActive(): IdFenetre | undefined;
+  /** Ferme la popup au premier plan, s'il y en a une ; vrai si c'est le cas. */
+  fermerPopup(): boolean;
+  oublierAutorisations(fenetreId: IdFenetre): void;
   etat(): EtatNavigateur;
   agir(a: Action): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
@@ -82,12 +85,18 @@ export function installerMenu(c: CiblesMenu): void {
         }),
         entree("rouvrir-onglet", "Rouvrir l'onglet fermé", "CmdOrCtrl+Shift+T", dansFenetre((f) => c.agir({ type: "rouvrirOngletFerme", fenetreId: f }))),
         { type: "separator" },
-        entree("fermer-onglet", "Fermer l'onglet", "CmdOrCtrl+W", dansFenetre((f) => {
+        entree("fermer-onglet", "Fermer l'onglet", "CmdOrCtrl+W", () => {
+          if (c.fermerPopup()) return;
+          const f = c.fenetreActive();
+          if (!f) return;
           const o = ongletActif(f);
           if (o) c.agir({ type: "fermerOnglet", id: o });
-          else c.fermerFenetre(f); // page vide : ⌘W ferme la fenêtre
-        })),
-        entree("fermer-fenetre", "Fermer la fenêtre", "CmdOrCtrl+Shift+W", dansFenetre((f) => c.fermerFenetre(f))),
+          // Page vide : ⌘W ferme la fenêtre, seulement si aucun de ses espaces n'a d'onglet.
+          else if (!Object.values(c.etat().onglets).some((x) => x.fenetreId === f)) c.fermerFenetre(f);
+        }),
+        entree("fermer-fenetre", "Fermer la fenêtre", "CmdOrCtrl+Shift+W", () => {
+          if (!c.fermerPopup()) dansFenetre((f) => c.fermerFenetre(f))();
+        }),
       ],
     },
     {
@@ -128,6 +137,8 @@ export function installerMenu(c: CiblesMenu): void {
     {
       label: "Navigation",
       submenu: [
+        entree("oublier-autorisations", "Oublier les autorisations de ce site", undefined, dansFenetre((f) => c.oublierAutorisations(f))),
+        { type: "separator" },
         entree("reculer", "Reculer", "CmdOrCtrl+[", surOnglet("reculer")),
         entree("avancer", "Avancer", "CmdOrCtrl+]", surOnglet("avancer")),
         { type: "separator" },

@@ -27,6 +27,7 @@ function creerOnglet(d: Brouillon, genId: () => string, o: Partial<Onglet> & Pic
     peutAvancer: false,
     zoom: 1,
     plante: false,
+    erreur: null,
     ...o,
   };
   d.onglets[onglet.id] = onglet;
@@ -230,8 +231,18 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       return true;
     }
     case "fermerFenetre": {
-      if (d.fenetres.length <= 1 || !fenetre(d, a.id)) return false;
+      const fermee = fenetre(d, a.id);
+      if (d.fenetres.length <= 1 || !fermee) return false;
       d.fenetres = d.fenetres.filter((f) => f.id !== a.id);
+      // Ses onglets normaux restent récupérables (⇧⌘T) depuis la fenêtre restante, le plus récent en tête.
+      const restante = d.fenetres[0]!;
+      const recuperes = Object.values(fermee.ordre)
+        .flat()
+        .map((id) => d.onglets[id])
+        .filter((o) => !!o)
+        .map((o) => ({ url: o.url, espaceId: o.espaceId }))
+        .reverse();
+      restante.fermesRecemment = [...recuperes, ...restante.fermesRecemment].slice(0, MAX_FERMES);
       for (const o of Object.values(d.onglets)) if (o.fenetreId === a.id) delete d.onglets[o.id];
       return true;
     }

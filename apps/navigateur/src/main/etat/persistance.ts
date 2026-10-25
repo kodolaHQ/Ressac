@@ -44,7 +44,7 @@ const SchemaSession = z
   });
 
 /** Les champs volatils d'un onglet ne sont pas enregistrés : ils repartent de leur valeur par défaut. */
-const VOLATILS = { chargement: false, peutReculer: false, peutAvancer: false, plante: false };
+const VOLATILS = { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null };
 
 export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
   const chemin = join(dossier, FICHIER);
@@ -71,6 +71,9 @@ export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
 export class EnregistreurSession {
   private enAttente: EtatNavigateur | null = null;
   private minuterie: NodeJS.Timeout | undefined;
+  /** Écritures enchaînées, jamais simultanées. */
+  private ecriture: Promise<void> = Promise.resolve();
+  private numero = 0;
 
   constructor(
     private readonly dossier: string,
@@ -82,17 +85,22 @@ export class EnregistreurSession {
     this.minuterie ??= setTimeout(() => void this.vider(), this.delaiMs);
   }
 
-  async vider(): Promise<void> {
+  /** Écrit l'état en attente ; attend toujours la fin des écritures en cours (la sortie de l'app en dépend). */
+  vider(): Promise<void> {
     clearTimeout(this.minuterie);
     this.minuterie = undefined;
     const etat = this.enAttente;
-    if (!etat) return;
     this.enAttente = null;
+    if (etat) this.ecriture = this.ecriture.then(() => this.ecrire(etat)).catch((e) => console.error("[session] écriture impossible :", e));
+    return this.ecriture;
+  }
+
+  private async ecrire(etat: EtatNavigateur): Promise<void> {
     const onglets = Object.fromEntries(
-      Object.entries(etat.onglets).map(([id, { chargement, peutReculer, peutAvancer, plante, ...reste }]) => [id, reste]),
+      Object.entries(etat.onglets).map(([id, { chargement, peutReculer, peutAvancer, plante, erreur, ...reste }]) => [id, reste]),
     );
     const cible = join(this.dossier, FICHIER);
-    const temporaire = `${cible}.${process.pid}.tmp`;
+    const temporaire = `${cible}.${process.pid}.${++this.numero}.tmp`;
     await fs.mkdir(this.dossier, { recursive: true });
     await fs.writeFile(temporaire, JSON.stringify({ ...etat, onglets }, null, 2));
     await fs.rename(temporaire, cible);

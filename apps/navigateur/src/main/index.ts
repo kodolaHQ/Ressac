@@ -151,7 +151,24 @@ app.whenReady().then(async () => {
     fenetreActive: () => {
       const focus = BrowserWindow.getFocusedWindow();
       for (const [id, f] of fenetres) if (f === focus) return id;
-      return fenetres.keys().next().value;
+      // Une popup a le focus : les raccourcis de fenêtre ne doivent pas viser la fenêtre principale derrière.
+      return focus ? undefined : fenetres.keys().next().value;
+    },
+    fermerPopup: () => {
+      const focus = BrowserWindow.getFocusedWindow();
+      if (!focus || [...fenetres.values()].includes(focus)) return false;
+      focus.close();
+      return true;
+    },
+    oublierAutorisations: (id) => {
+      const f = magasin.etat.fenetres.find((x) => x.id === id);
+      const onglet = f && magasin.etat.onglets[f.actif[f.espaceActif] ?? ""];
+      if (!onglet) return;
+      try {
+        permissions.oublier(new URL(onglet.url).origin);
+      } catch {
+        // URL sans origine : rien à oublier.
+      }
     },
     etat: () => magasin.etat,
     agir: (a) => magasin.agir(a),

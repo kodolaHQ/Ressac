@@ -91,3 +91,14 @@ test("permissions.json corrompu → aucune décision, pas de plantage", () => {
   expect(creer().decisions()).toEqual({});
   erreur.mockRestore();
 });
+
+test("ouvrir une application externe (mailto:…) : demandé à chaque fois avec le lien, jamais mémorisé", async () => {
+  const p = creer();
+  expect(await p.traiter({ ongletId: "o1", origine: meet, permission: "openExternal", lienExterne: "mailto:a@b.fr" })).toBe(true);
+  expect(demandes.at(-1)).toEqual({ ongletId: "o1", origine: meet, permissions: ["ouvrir-application"], lien: "mailto:a@b.fr" });
+  reponse = "refuser";
+  expect(await p.traiter({ ongletId: "o1", origine: meet, permission: "openExternal", lienExterne: "zoommtg://x" })).toBe(false);
+  expect(demandes).toHaveLength(2);
+  expect(p.decisions()).toEqual({});
+  expect(p.verifier(meet, "openExternal")).toBe(false);
+});

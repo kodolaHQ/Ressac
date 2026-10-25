@@ -40,9 +40,10 @@
   let panneau = $state<Panneau | null>(null);
   const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
   $effect(() => api.surPanneau(basculerPanneau));
-  // Activer un onglet referme le panneau et la recherche.
+  // Activer un autre onglet referme le panneau et la recherche (pas un simple changement d'état ailleurs).
+  const idActif = $derived(ongletActif?.id);
   $effect(() => {
-    void ongletActif?.id;
+    void idActif;
     panneau = null;
     recherche.ouverte = false;
     recherche.resultat = null;

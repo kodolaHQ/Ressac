@@ -2,7 +2,7 @@ import type { WebContents } from "electron";
 import type { Action } from "../../commun/api";
 import type { IdOnglet, Onglet } from "../../commun/modele";
 
-type Champs = Partial<Pick<Onglet, "url" | "titre" | "favicon" | "chargement" | "peutReculer" | "peutAvancer" | "zoom" | "plante">>;
+type Champs = Partial<Pick<Onglet, "url" | "titre" | "favicon" | "chargement" | "peutReculer" | "peutAvancer" | "zoom" | "plante" | "erreur">>;
 
 /** Ce que l'historique reçoit d'une page web. */
 export interface NotesHistorique {
@@ -36,7 +36,11 @@ export function brancherEvenements(wc: WebContents, id: IdOnglet, agir: (a: Acti
     maj({ url, ...navigation() });
     noter(url);
   });
-  wc.on("did-start-loading", () => maj({ chargement: true, plante: false }));
+  wc.on("did-start-loading", () => maj({ chargement: true, plante: false, erreur: null }));
+  // -3 (ERR_ABORTED) : navigation interrompue ou remplacée, pas une erreur à montrer.
+  wc.on("did-fail-load", (_e, code, description, url, principal) => {
+    if (principal && code !== -3) maj({ erreur: description || `Erreur ${code}`, chargement: false, url });
+  });
   wc.on("did-stop-loading", () => maj({ chargement: false, ...navigation() }));
   wc.on("render-process-gone", (_e, d) => {
     if (d.reason !== "clean-exit") maj({ plante: true, chargement: false });

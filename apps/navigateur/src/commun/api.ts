@@ -34,6 +34,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
         peutAvancer: z.boolean(),
         zoom: z.number(),
         plante: z.boolean(),
+        erreur: z.string().nullable(),
       })
       .partial(),
   }),

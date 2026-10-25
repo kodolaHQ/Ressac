@@ -11,6 +11,7 @@
     geolocation: "connaître votre position",
     fullscreen: "passer en plein écran",
     "clipboard-sanitized-write": "écrire dans le presse-papiers",
+    "ouvrir-application": "ouvrir un lien dans une autre application",
     autre: "une permission inconnue",
   };
 
@@ -19,7 +20,8 @@
     const media = demande.permissions.filter((p) => p.startsWith("media-")).map((p) => NOMS[p]);
     const autres = demande.permissions.filter((p) => !p.startsWith("media-")).map((p) => NOMS[p]);
     const parties = [...(media.length ? [`utiliser ${media.join(" et ")}`] : []), ...autres];
-    return `${site} veut ${parties.join(" et ")}`;
+    const texte = `${site} veut ${parties.join(" et ")}`;
+    return demande.lien ? `${texte} : ${demande.lien.slice(0, 120)}` : texte;
   });
 </script>
 

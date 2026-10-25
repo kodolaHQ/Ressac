@@ -20,6 +20,8 @@ export interface Onglet {
   zoom: number;
   /** Le processus de rendu de la page a planté. */
   plante: boolean;
+  /** Échec du chargement de la page (code Chromium, ex. ERR_NAME_NOT_RESOLVED) ; volatil. */
+  erreur: string | null;
 }
 
 /** Favori persistant affiché dans la barre latérale même sans onglet ouvert (modèle Arc/Zen). */
@@ -82,13 +84,23 @@ export interface Telechargement {
   etat: "en-cours" | "termine" | "annule" | "interrompu";
 }
 
-export type Permission = "media-camera" | "media-micro" | "notifications" | "geolocation" | "fullscreen" | "clipboard-sanitized-write" | "autre";
+export type Permission =
+  | "media-camera"
+  | "media-micro"
+  | "notifications"
+  | "geolocation"
+  | "fullscreen"
+  | "clipboard-sanitized-write"
+  | "ouvrir-application"
+  | "autre";
 export type Decision = "autoriser" | "refuser";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
 export interface Demande {
   ongletId: IdOnglet | null;
   origine: string;
   permissions: Permission[];
+  /** « ouvrir-application » : le lien à confier à une autre application (mailto:, zoommtg:…). */
+  lien?: string;
 }
 export interface DemandeEnAttente extends Demande {
   id: string;
