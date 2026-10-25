@@ -1,6 +1,6 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 import type { Action, CommandeOnglet, Panneau, Raccourci } from "../commun/api";
-import type { EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
+import type { EtatNavigateur, IdFenetre, IdOnglet, MoteurRecherche } from "../commun/modele";
 import { versNieme, versVoisin } from "./raccourcis";
 
 export interface CiblesMenu {
@@ -40,8 +40,34 @@ export function installerMenu(c: CiblesMenu): void {
   const entree = (id: string, label: string, accelerator: string | undefined, click: () => void, extra: Partial<MenuItemConstructorOptions> = {}) =>
     ({ id, label, accelerator, click, ...extra }) satisfies MenuItemConstructorOptions;
 
+  const moteurs: [MoteurRecherche, string][] = [
+    ["google", "Google"],
+    ["duckduckgo", "DuckDuckGo"],
+    ["qwant", "Qwant"],
+  ];
+  const moteurActuel = c.etat().reglages.moteur;
   const modele: MenuItemConstructorOptions[] = [
-    { role: "appMenu" },
+    {
+      label: app.name,
+      submenu: [
+        { role: "about", label: `À propos de ${app.name}` },
+        { type: "separator" },
+        {
+          label: "Moteur de recherche",
+          submenu: moteurs.map(([id, label]) =>
+            entree(`moteur-${id}`, label, undefined, () => c.agir({ type: "choisirMoteur", moteur: id }), { type: "radio", checked: id === moteurActuel }),
+          ),
+        },
+        { type: "separator" },
+        { role: "services", label: "Services" },
+        { type: "separator" },
+        { role: "hide", label: `Masquer ${app.name}` },
+        { role: "hideOthers", label: "Masquer les autres" },
+        { role: "unhide", label: "Tout afficher" },
+        { type: "separator" },
+        { role: "quit", label: `Quitter ${app.name}` },
+      ],
+    },
     {
       label: "Fichier",
       submenu: [

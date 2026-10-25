@@ -7,12 +7,14 @@ import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
 import { versUrl } from "./adresse";
 import { Historique } from "./historique";
-import { installerMenu } from "./menu";
+import { installerMenu, type CiblesMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
 import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 
+// Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
+app.setName("WebAiOs");
 app.setPath("userData", cheminProfil());
 
 // Une exception oubliée ne doit ni figer l'app derrière une boîte de dialogue, ni la quitter.
@@ -145,7 +147,7 @@ app.whenReady().then(async () => {
       },
     },
   });
-  installerMenu({
+  const cibles: CiblesMenu = {
     fenetreActive: () => {
       const focus = BrowserWindow.getFocusedWindow();
       for (const [id, f] of fenetres) if (f === focus) return id;
@@ -163,6 +165,11 @@ app.whenReady().then(async () => {
     },
     fermerFenetre: (id) => fenetres.get(id)?.close(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
+  };
+  installerMenu(cibles);
+  // La coche du moteur de recherche suit l'état.
+  magasin.abonner((etat, avant) => {
+    if (etat.reglages.moteur !== avant.reglages.moteur) installerMenu(cibles);
   });
   // Une fenêtre principale par EtatFenetre : ⌘N en ajoute une, sa fermeture la retire.
   const synchroniserFenetres = (etat: EtatNavigateur) => {
