@@ -16,6 +16,8 @@ export interface CiblesMenu {
   /** Raccourci destiné à l'interface de la fenêtre (qui reçoit le focus). */
   raccourci(fenetreId: IdFenetre, r: Raccourci): void;
   fermerFenetre(fenetreId: IdFenetre): void;
+  /** Ferme un onglet en laissant la page demander confirmation. */
+  fermerOnglet(ongletId: IdOnglet): void;
   /** Plus aucune fenêtre ouverte (macOS) : rouvre celle(s) de l'état ; vrai si c'est le cas. */
   rouvrirFenetres(): boolean;
   /** Outils de développement de l'interface elle-même (développement seulement). */
@@ -93,7 +95,7 @@ export function installerMenu(c: CiblesMenu): void {
           const f = c.fenetreActive();
           if (!f) return;
           const o = ongletActif(f);
-          if (o) c.agir({ type: "fermerOnglet", id: o });
+          if (o) c.fermerOnglet(o);
           // Page vide : ⌘W ferme la fenêtre, seulement si aucun de ses espaces n'a d'onglet.
           else if (!Object.values(c.etat().onglets).some((x) => x.fenetreId === f)) c.fermerFenetre(f);
         }),

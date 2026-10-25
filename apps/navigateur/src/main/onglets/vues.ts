@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard, Menu, WebContentsView, type Session, type WebContents } from "electron";
+import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../commun/modele";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
@@ -58,6 +58,8 @@ export class GestionnaireVues {
   private zones = new Map<IdFenetre, Bornes>();
   /** Popups ouvertes depuis un onglet (directement ou par une autre popup) : leurs questions vont à cet onglet. */
   private popups = new Map<WebContents, IdOnglet>();
+  /** Fermetures en cours (voir `fermer`), à abandonner si l'utilisateur reste sur la page. */
+  private abandons = new Map<WebContents, () => void>();
   /** Zoom voulu par onglet, réappliqué à chaque navigation. */
   private zooms = new Map<IdOnglet, number>();
 
@@ -135,6 +137,28 @@ export class GestionnaireVues {
   }
 
   /** Onglet affiché par ce webContents, s'il s'agit d'une vue d'onglet. */
+  /**
+   * Fermeture voulue par l'utilisateur : la page peut d'abord demander confirmation (formulaire non enregistré). L'onglet
+   * quitte l'état une fois la page fermée ; une page figée est fermée d'office au bout de 5 s.
+   */
+  fermer(id: IdOnglet): void {
+    const wc = this.vues.get(id)?.webContents;
+    const retirer = () => this.o.agir({ type: "fermerOnglet", id });
+    if (!wc || wc.isDestroyed() || wc.isCrashed()) return retirer();
+    const minuterie = setTimeout(retirer, 5000);
+    const fini = () => {
+      clearTimeout(minuterie);
+      retirer();
+    };
+    wc.once("destroyed", fini);
+    // « Rester sur la page » : la fermeture est abandonnée.
+    this.abandons.set(wc, () => {
+      clearTimeout(minuterie);
+      wc.off("destroyed", fini);
+    });
+    wc.close({ waitForBeforeUnload: true });
+  }
+
   ongletDe(wc: WebContents | null): IdOnglet | null {
     if (!wc) return null;
     for (const [id, v] of this.vues) if (v.webContents === wc) return id;
@@ -185,6 +209,22 @@ export class GestionnaireVues {
         popup.once("destroyed", () => this.popups.delete(popup));
       },
     );
+    wc.on("will-prevent-unload", (e) => {
+      const fenetre = this.o.fenetres.get(onglet.fenetreId);
+      const options = {
+        type: "question" as const,
+        buttons: ["Quitter", "Rester"],
+        defaultId: 1,
+        cancelId: 1,
+        message: "Quitter ce site ?",
+        detail: "Les modifications que vous avez faites ne seront peut-être pas enregistrées.",
+      };
+      // Synchrone : la décision doit être prise pendant l'événement.
+      const choix = fenetre && !fenetre.isDestroyed() ? dialog.showMessageBoxSync(fenetre, options) : dialog.showMessageBoxSync(options);
+      if (choix === 0) e.preventDefault();
+      else this.abandons.get(wc)?.();
+      this.abandons.delete(wc);
+    });
     // Zoom propre à l'onglet (Chromium le partage sinon entre tous les onglets d'un même site).
     wc.setZoomMode("isolated");
     this.zooms.set(onglet.id, onglet.zoom);

@@ -188,6 +188,7 @@ app.whenReady().then(async () => {
     },
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
+    fermerOnglet: (id) => vues.fermer(id),
     historique,
     telechargements,
     permissions: {
@@ -235,6 +236,7 @@ app.whenReady().then(async () => {
       f.webContents.send(CANAUX.raccourci, r);
     },
     fermerFenetre: (id) => fenetres.get(id)?.close(),
+    fermerOnglet: (id) => vues.fermer(id),
     rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
   };

@@ -142,3 +142,25 @@ test("popup : son titre montre le site ; un lien target=_blank y ouvre un onglet
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(3);
   await fermer();
 });
+
+for (const [choix, reste] of [[1, true], [0, false]] as const) {
+  test(`fermer un onglet au formulaire non enregistré demande confirmation (${reste ? "Rester" : "Quitter"})`, async () => {
+    const { app, fenetre, fermer } = await lancer();
+    await ouvrirOnglet(fenetre, `${serveur.url}/formulaire.html`);
+    await expect.poll(() => dansLaVue(app, "formulaire.html", "document.title")).toBe("Formulaire");
+    await dansLaVue(app, "formulaire.html", "document.getElementById('texte').focus(); armer(); true");
+    // La boîte native bloquerait le processus principal : on la remplace par la réponse de l'utilisateur.
+    await app.evaluate(({ dialog }, choix) => {
+      (globalThis as { questions?: number }).questions = 0;
+      dialog.showMessageBoxSync = (() => {
+        (globalThis as { questions?: number }).questions! += 1;
+        return choix;
+      }) as typeof dialog.showMessageBoxSync;
+    }, choix);
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("fermer-onglet")?.click());
+    await expect.poll(() => app.evaluate(() => (globalThis as { questions?: number }).questions)).toBe(1);
+    await new Promise((r) => setTimeout(r, 500));
+    await expect(fenetre.locator(onglets)).toHaveCount(reste ? 1 : 0);
+    await fermer();
+  });
+}

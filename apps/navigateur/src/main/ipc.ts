@@ -34,6 +34,8 @@ export interface Gestionnaires {
   naviguer(fenetreId: IdFenetre, ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
+  /** Fermer un onglet en laissant la page demander confirmation (voir GestionnaireVues.fermer). */
+  fermerOnglet(ongletId: IdOnglet): void;
   historique: Historique;
   telechargements: Telechargements;
   permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision): void };
@@ -58,7 +60,7 @@ export function brancherIpc(g: Gestionnaires): void {
     return r.success ? r.data : null;
   };
 
-  recevoir(CANAUX.action, zod<Action>(SchemaAction), (a) => g.magasin.agir(a));
+  recevoir(CANAUX.action, zod<Action>(SchemaAction), (a) => (a.type === "fermerOnglet" ? g.fermerOnglet(a.id) : g.magasin.agir(a)));
   recevoir(CANAUX.naviguer, (v) => {
     const o = v as { ongletId?: unknown; saisie?: unknown } | null;
     const ongletId = o?.ongletId === null || typeof o?.ongletId === "string" ? o.ongletId : undefined;
