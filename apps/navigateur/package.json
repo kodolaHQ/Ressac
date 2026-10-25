@@ -9,7 +9,8 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "e2e": "electron-vite build && playwright test"
+    "e2e": "electron-vite build && playwright test --grep-invert @visible",
+    "e2e:visible": "electron-vite build && playwright test --grep @visible --workers 1"
   },
   "dependencies": {
     "zod": "^4.6.7"

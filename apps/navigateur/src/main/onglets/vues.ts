@@ -26,7 +26,15 @@ function gererOuvertures(
 ): void {
   wc.setWindowOpenHandler(({ url, disposition, features }) => {
     if (disposition === "new-window" && features) {
-      return { action: "allow", overrideBrowserWindowOptions: { width: 500, height: 650, webPreferences: preferencesWeb(session) } };
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          width: 500,
+          height: 650,
+          show: process.env.WEBAIOS_INVISIBLE !== "1", // tests automatiques : rien à l'écran
+          webPreferences: preferencesWeb(session),
+        },
+      };
     }
     ouvrirOnglet(url, disposition !== "background-tab");
     return { action: "deny" };

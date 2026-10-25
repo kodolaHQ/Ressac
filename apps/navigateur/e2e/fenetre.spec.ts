@@ -21,7 +21,7 @@ test("l'interface n'expose pas Node", async () => {
 test("un second lancement sur le même profil s'arrête et laisse le premier intact", async () => {
   const { app, profil, fermer } = await lancer();
   const electronBin = require("electron") as unknown as string;
-  const second = spawn(electronBin, [join(__dirname, "../out/main/index.js")], { env: { ...process.env, WEBAIOS_PROFIL: profil } });
+  const second = spawn(electronBin, [join(__dirname, "../out/main/index.js")], { env: { ...process.env, WEBAIOS_PROFIL: profil, WEBAIOS_INVISIBLE: "1" } });
   const code = await new Promise<number | null>((ok) => {
     const minuterie = setTimeout(() => {
       second.kill();

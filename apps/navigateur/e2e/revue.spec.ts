@@ -6,6 +6,9 @@ test.beforeAll(async () => (serveur = await serveurTest()));
 test.afterAll(() => serveur.fermer());
 
 const onglets = '[data-testid^="onglet-"]';
+// Les tests « @visible » ont besoin du focus clavier de macOS, qu'une fenêtre cachée n'a jamais : ils montrent leurs
+// fenêtres et ne tournent qu'avec `pnpm e2e:visible`. Ne pas utiliser le Mac pendant : macOS refuse le focus à une
+// app lancée en arrière-plan quand on travaille dans une autre.
 const menu = (app: ElectronApplication, id: string) =>
   app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
 const interfaces = (app: ElectronApplication) => app.windows().filter((p) => p.url().includes("/renderer/index.html"));
@@ -26,8 +29,8 @@ async function ouvrirPopupDurable(app: ElectronApplication, fenetre: import("@pl
   await expect.poll(() => focaliser(app, "popup-reste.html")).toBe(true);
 }
 
-test("⌘W dans une popup ferme la popup, pas l'onglet de la fenêtre principale", async () => {
-  const { app, fenetre, fermer } = await lancer();
+test("⌘W dans une popup ferme la popup, pas l'onglet de la fenêtre principale", { tag: "@visible" }, async () => {
+  const { app, fenetre, fermer } = await lancer({ visible: true });
   await ouvrirPopupDurable(app, fenetre);
   await menu(app, "fermer-onglet");
   await expect.poll(() => nbFenetres(app)).toBe(1);
@@ -35,8 +38,8 @@ test("⌘W dans une popup ferme la popup, pas l'onglet de la fenêtre principale
   await fermer();
 });
 
-test("⌘W dans une popup quand la fenêtre principale est sur une page vide ne quitte pas l'app", async () => {
-  const { app, fenetre, fermer } = await lancer();
+test("⌘W dans une popup quand la fenêtre principale est sur une page vide ne quitte pas l'app", { tag: "@visible" }, async () => {
+  const { app, fenetre, fermer } = await lancer({ visible: true });
   await ouvrirPopupDurable(app, fenetre);
   await fenetre.evaluate(() => {
     const w = window as unknown as { webaios: { agir(a: unknown): void; fenetreId: string } };
@@ -62,8 +65,8 @@ test("la recherche ⌘F reste ouverte quand l'état change ailleurs (onglet en a
   await fermer();
 });
 
-test("⌘W sur le dernier onglet : la page vide a vraiment le focus clavier", async () => {
-  const { app, fenetre, fermer } = await lancer();
+test("⌘W sur le dernier onglet : la page vide a vraiment le focus clavier", { tag: "@visible" }, async () => {
+  const { app, fenetre, fermer } = await lancer({ visible: true });
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
   await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
   await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().includes("a.html"))?.focus());
@@ -75,8 +78,8 @@ test("⌘W sur le dernier onglet : la page vide a vraiment le focus clavier", as
   await fermer();
 });
 
-test("⌘W sur une page vide ne ferme pas une fenêtre qui a encore des onglets dans un autre espace", async () => {
-  const { app, fenetre, fermer } = await lancer();
+test("⌘W sur une page vide ne ferme pas une fenêtre qui a encore des onglets dans un autre espace", { tag: "@visible" }, async () => {
+  const { app, fenetre, fermer } = await lancer({ visible: true });
   await menu(app, "nouvelle-fenetre");
   await expect.poll(() => interfaces(app).length).toBe(2);
   const seconde = interfaces(app).find((p) => p !== fenetre)!;

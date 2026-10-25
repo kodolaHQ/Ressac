@@ -12,7 +12,7 @@ export function nouveauProfil(): string {
 }
 
 /** Lance le navigateur construit (out/) sur un profil isolé et renvoie la fenêtre de l'interface. */
-export async function lancer(o: { profil?: string; env?: Record<string, string> } = {}): Promise<{
+export async function lancer(o: { profil?: string; env?: Record<string, string>; visible?: boolean } = {}): Promise<{
   app: ElectronApplication;
   fenetre: Page;
   profil: string;
@@ -21,10 +21,13 @@ export async function lancer(o: { profil?: string; env?: Record<string, string> 
   const profil = o.profil ?? nouveauProfil();
   const app = await electron.launch({
     args: [join(RACINE, "out/main/index.js")],
-    env: { ...process.env, WEBAIOS_PROFIL: profil, ...o.env } as Record<string, string>,
+    // Invisible par défaut : seuls les tests qui ont besoin du focus ou du plein écran de macOS montrent leurs fenêtres.
+    env: { ...process.env, WEBAIOS_PROFIL: profil, ...(o.visible ? {} : { WEBAIOS_INVISIBLE: "1" }), ...o.env } as Record<string, string>,
   });
   const fenetre = await fenetreInterface(app);
   await fenetre.waitForLoadState("domcontentloaded");
+  // Le focus clavier n'existe que dans l'application active de macOS : un test visible l'active.
+  if (o.visible) await app.evaluate(({ app }) => app.focus({ steal: true }));
   return { app, fenetre, profil, fermer: () => app.close() };
 }
 

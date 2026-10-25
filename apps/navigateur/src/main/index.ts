@@ -21,6 +21,10 @@ app.setPath("userData", cheminProfil());
 // (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
 if (!app.requestSingleInstanceLock()) app.exit(0);
 
+/** Tests automatiques : aucune fenêtre à l'écran ni icône dans le Dock (elles gênent l'utilisateur pendant qu'il travaille). */
+export const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
+if (INVISIBLE) app.dock?.hide();
+
 // Une exception oubliée ne doit ni figer l'app derrière une boîte de dialogue, ni la quitter.
 process.on("uncaughtException", (e) => console.error("[webaios] exception non rattrapée :", e));
 
@@ -53,6 +57,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     width: 1400,
     height: 900,
     ...cadre,
+    show: !INVISIBLE,
     titleBarStyle: "hiddenInset",
     backgroundColor: "#1e1e22",
     webPreferences: {
