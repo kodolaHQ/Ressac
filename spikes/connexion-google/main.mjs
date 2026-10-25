@@ -41,6 +41,23 @@ app.whenReady().then(() => {
     overrideBrowserWindowOptions: { webPreferences: { session: ses, sandbox: true, contextIsolation: true } },
   }));
   console.log("UA :", fenetre.webContents.getUserAgent());
+  // Journal de diagnostic : pourquoi l'app se ferme-t-elle ?
+  app.on("browser-window-created", (_e, w) => {
+    console.log("[diag] fenêtre créée", w.id);
+    w.on("closed", () => console.log("[diag] fenêtre fermée", w.id));
+    w.webContents.on("render-process-gone", (_e, d) => console.log("[diag] rendu perdu", w.id, d.reason));
+    w.webContents.on("did-navigate", (_e, url) => console.log("[diag] navigation", w.id, url));
+  });
+  fenetre.on("closed", () => console.log("[diag] fenêtre principale fermée"));
+  fenetre.webContents.on("render-process-gone", (_e, d) => console.log("[diag] rendu principal perdu", d.reason));
+  fenetre.webContents.on("did-navigate", (_e, url) => console.log("[diag] navigation principale", url));
+  app.on("child-process-gone", (_e, d) => console.log("[diag] processus perdu", d.type, d.reason));
+  app.on("before-quit", () => console.log("[diag] fermeture de l'app"));
+  if (process.env.SPIKE_DIAG_POPUP) {
+    fenetre.webContents.once("did-finish-load", () =>
+      fenetre.webContents.executeJavaScript("window.open('https://accounts.google.com/', 'oauth', 'width=500,height=600')", true),
+    );
+  }
   aller(urlDepart);
 });
 
