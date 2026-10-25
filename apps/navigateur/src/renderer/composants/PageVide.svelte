@@ -1,13 +1,17 @@
 <script lang="ts">
   import type { EtatFenetre } from "../../commun/modele";
   import { api } from "../etat.svelte";
+  import { adresse } from "./adresse.svelte";
   import Essentiels from "./Essentiels.svelte";
 
   let { fenetre }: { fenetre: EtatFenetre } = $props();
   let saisie = $state("");
   let champ: HTMLInputElement;
 
-  $effect(() => champ.focus());
+  $effect(() => {
+    void adresse.focus;
+    champ.focus();
+  });
 </script>
 
 <div class="page-vide" data-testid="page-vide">

@@ -97,6 +97,8 @@ export class GestionnaireVues {
     if (c === "reculer") wc.navigationHistory.goBack();
     else if (c === "avancer") wc.navigationHistory.goForward();
     else if (c === "recharger") wc.reload();
+    else if (c === "rechargerSansCache") wc.reloadIgnoringCache();
+    else if (c === "outils") wc.toggleDevTools();
     else if (c === "arreter") wc.stop();
     else if (c === "finRecherche") wc.stopFindInPage("clearSelection");
     else if (typeof c === "object" && "chercher" in c) {

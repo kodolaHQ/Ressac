@@ -1,6 +1,7 @@
 <script lang="ts">
   import BarreLaterale from "./composants/BarreLaterale.svelte";
   import MenuContextuel from "./composants/MenuContextuel.svelte";
+  import { adresse } from "./composants/adresse.svelte";
   import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
   import type { Panneau } from "../commun/api";
@@ -49,7 +50,8 @@
 
   $effect(() =>
     api.surRaccourci((r) => {
-      if (r === "rechercher") {
+      if (r === "adresse") adresse.focus++;
+      else if (r === "rechercher") {
         recherche.ouverte = true;
         recherche.focus++;
       } else if (recherche.ouverte) recherche.pas = { n: recherche.pas.n + 1, precedent: r === "chercherPrecedent" };

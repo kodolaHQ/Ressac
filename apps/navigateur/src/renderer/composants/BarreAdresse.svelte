@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EtatFenetre, Visite } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
+  import { adresse } from "./adresse.svelte";
 
   let { fenetre }: { fenetre: EtatFenetre } = $props();
   const onglet = $derived.by(() => {
@@ -45,6 +46,11 @@
       choisie = choisie <= 0 ? suggestions.length - 1 : choisie - 1;
     }
   }
+
+  // Sur une page vide, c'est le champ de la page qui prend le focus.
+  $effect(() => {
+    if (adresse.focus && onglet) champ.focus();
+  });
 
   function hote(url: string): string {
     try {

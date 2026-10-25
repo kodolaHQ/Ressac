@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { Decision, DemandeEnAttente, IdFenetre } from "../commun/modele";
+import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
 import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
@@ -21,7 +21,11 @@ process.on("uncaughtException", (e) => console.error("[webaios] exception non ra
 /** Fenêtres principales (avec l'interface WebAiOs), par id d'état. */
 const fenetres = new Map<IdFenetre, BrowserWindow>();
 
-function creerFenetre(id: IdFenetre): BrowserWindow {
+/** Vrai dès que l'app quitte : les fenêtres qui se ferment alors restent dans la session, pour la restauration. */
+let enSortie = false;
+const enFermeture = new WeakSet<BrowserWindow>();
+
+function creerFenetre(id: IdFenetre, magasin: Magasin): BrowserWindow {
   const fenetre = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -38,8 +42,12 @@ function creerFenetre(id: IdFenetre): BrowserWindow {
   fenetres.set(id, fenetre);
   // Sortie du plein écran par la fenêtre (bouton vert) : la page doit sortir aussi.
   fenetre.on("leave-full-screen", () => fenetre.webContents.send(CANAUX.pleinEcran, false));
+  fenetre.on("close", () => enFermeture.add(fenetre));
+  // Fermer une fenêtre parmi d'autres la retire de la session (avec ses onglets) ; la dernière reste, pour la
+  // restauration. Sur « closed » : un window.close() de la page détruit la fenêtre sans émettre « close ».
   fenetre.on("closed", () => {
     fenetres.delete(id);
+    if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
     // Seule la fermeture de la dernière fenêtre principale quitte l'app, jamais celle d'une popup.
     if (fenetres.size === 0) app.quit();
   });
@@ -143,12 +151,9 @@ app.whenReady().then(async () => {
       for (const [id, f] of fenetres) if (f === focus) return id;
       return fenetres.keys().next().value;
     },
-    ongletActif: (id) => {
-      const f = magasin.etat.fenetres.find((x) => x.id === id);
-      return f?.actif[f.espaceActif] ?? undefined;
-    },
+    etat: () => magasin.etat,
+    agir: (a) => magasin.agir(a),
     commande: (id, c) => vues.commande(id, c),
-    basculerCompact: (fenetreId) => magasin.agir({ type: "basculerCompact", fenetreId }),
     ouvrirPanneau: (id, p) => fenetres.get(id)?.webContents.send(CANAUX.panneau, p),
     raccourci: (id, r) => {
       const f = fenetres.get(id);
@@ -156,8 +161,16 @@ app.whenReady().then(async () => {
       f.webContents.focus(); // ⌘F depuis une page : le champ de l'interface doit recevoir la frappe
       f.webContents.send(CANAUX.raccourci, r);
     },
+    fermerFenetre: (id) => fenetres.get(id)?.close(),
+    outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
   });
-  for (const f of magasin.etat.fenetres) creerFenetre(f.id);
+  // Une fenêtre principale par EtatFenetre : ⌘N en ajoute une, sa fermeture la retire.
+  const synchroniserFenetres = (etat: EtatNavigateur) => {
+    for (const f of etat.fenetres) if (!fenetres.has(f.id)) creerFenetre(f.id, magasin);
+    for (const [id, f] of fenetres) if (!etat.fenetres.some((x) => x.id === id) && !f.isDestroyed() && !enFermeture.has(f)) f.close();
+  };
+  magasin.abonner(synchroniserFenetres);
+  synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
 });
 
@@ -168,6 +181,7 @@ app.on("window-all-closed", () => {});
 
 let sessionEcrite = false;
 app.on("before-quit", (e) => {
+  enSortie = true;
   if (sessionEcrite || !enregistreur) return;
   e.preventDefault();
   void enregistreur.vider().finally(() => {

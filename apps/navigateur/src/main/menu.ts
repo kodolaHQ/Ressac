@@ -1,30 +1,69 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
-import type { CommandeOnglet, Panneau, Raccourci } from "../commun/api";
-import type { IdFenetre, IdOnglet } from "../commun/modele";
+import type { Action, CommandeOnglet, Panneau, Raccourci } from "../commun/api";
+import type { EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
+import { versNieme, versVoisin } from "./raccourcis";
 
 export interface CiblesMenu {
   /** Fenêtre principale au premier plan (ou la seule). */
   fenetreActive(): IdFenetre | undefined;
-  ongletActif(fenetreId: IdFenetre): IdOnglet | undefined;
+  etat(): EtatNavigateur;
+  agir(a: Action): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
-  basculerCompact(fenetreId: IdFenetre): void;
   ouvrirPanneau(fenetreId: IdFenetre, p: Panneau): void;
+  /** Raccourci destiné à l'interface de la fenêtre (qui reçoit le focus). */
   raccourci(fenetreId: IdFenetre, r: Raccourci): void;
+  fermerFenetre(fenetreId: IdFenetre): void;
+  /** Outils de développement de l'interface elle-même (développement seulement). */
+  outilsInterface(fenetreId: IdFenetre): void;
 }
 
-/** Menu de l'application ; ses raccourcis marchent aussi quand une page web a le focus. */
+/** Menu de l'application ; ses raccourcis marchent aussi quand une page web a le focus. Chaque entrée a un id (tests). */
 export function installerMenu(c: CiblesMenu): void {
-  const surOnglet = (cmd: CommandeOnglet) => () => {
+  const dansFenetre = (faire: (f: IdFenetre) => void) => () => {
     const f = c.fenetreActive();
-    const o = f && c.ongletActif(f);
-    if (o) c.commande(o, cmd);
+    if (f) faire(f);
   };
-  const versInterface = (r: Raccourci) => () => {
-    const f = c.fenetreActive();
-    if (f) c.raccourci(f, r);
+  const ongletActif = (f: IdFenetre) => {
+    const fen = c.etat().fenetres.find((x) => x.id === f);
+    return fen?.actif[fen.espaceActif] ?? undefined;
   };
+  const surOnglet = (cmd: CommandeOnglet) =>
+    dansFenetre((f) => {
+      const o = ongletActif(f);
+      if (o) c.commande(o, cmd);
+    });
+  const agirSi = (calcul: (f: IdFenetre) => Action | null) =>
+    dansFenetre((f) => {
+      const a = calcul(f);
+      if (a) c.agir(a);
+    });
+  const entree = (id: string, label: string, accelerator: string | undefined, click: () => void, extra: Partial<MenuItemConstructorOptions> = {}) =>
+    ({ id, label, accelerator, click, ...extra }) satisfies MenuItemConstructorOptions;
+
   const modele: MenuItemConstructorOptions[] = [
     { role: "appMenu" },
+    {
+      label: "Fichier",
+      submenu: [
+        entree("nouvel-onglet", "Nouvel onglet", "CmdOrCtrl+T", dansFenetre((f) => {
+          c.agir({ type: "afficherPageVide", fenetreId: f });
+          c.raccourci(f, "adresse");
+        })),
+        entree("nouvelle-fenetre", "Nouvelle fenêtre", "CmdOrCtrl+N", () => {
+          const f = c.fenetreActive();
+          const espaceId = c.etat().fenetres.find((x) => x.id === f)?.espaceActif;
+          c.agir({ type: "ouvrirFenetre", ...(espaceId ? { espaceId } : {}) });
+        }),
+        entree("rouvrir-onglet", "Rouvrir l'onglet fermé", "CmdOrCtrl+Shift+T", dansFenetre((f) => c.agir({ type: "rouvrirOngletFerme", fenetreId: f }))),
+        { type: "separator" },
+        entree("fermer-onglet", "Fermer l'onglet", "CmdOrCtrl+W", dansFenetre((f) => {
+          const o = ongletActif(f);
+          if (o) c.agir({ type: "fermerOnglet", id: o });
+          else c.fermerFenetre(f); // page vide : ⌘W ferme la fenêtre
+        })),
+        entree("fermer-fenetre", "Fermer la fenêtre", "CmdOrCtrl+Shift+W", dansFenetre((f) => c.fermerFenetre(f))),
+      ],
+    },
     {
       label: "Édition",
       submenu: [
@@ -36,43 +75,55 @@ export function installerMenu(c: CiblesMenu): void {
         { role: "paste", label: "Coller" },
         { role: "selectAll", label: "Tout sélectionner" },
         { type: "separator" },
-        { id: "rechercher", label: "Rechercher dans la page", accelerator: "CmdOrCtrl+F", click: versInterface("rechercher") },
-        { id: "chercher-suivant", label: "Occurrence suivante", accelerator: "CmdOrCtrl+G", click: versInterface("chercherSuivant") },
-        { id: "chercher-precedent", label: "Occurrence précédente", accelerator: "CmdOrCtrl+Shift+G", click: versInterface("chercherPrecedent") },
+        entree("rechercher", "Rechercher dans la page", "CmdOrCtrl+F", dansFenetre((f) => c.raccourci(f, "rechercher"))),
+        entree("chercher-suivant", "Occurrence suivante", "CmdOrCtrl+G", dansFenetre((f) => c.raccourci(f, "chercherSuivant"))),
+        entree("chercher-precedent", "Occurrence précédente", "CmdOrCtrl+Shift+G", dansFenetre((f) => c.raccourci(f, "chercherPrecedent"))),
       ],
     },
     {
       label: "Affichage",
       submenu: [
-        { id: "zoom-plus", label: "Zoom avant", accelerator: "CmdOrCtrl+Plus", click: surOnglet({ zoom: "plus" }) },
-        { label: "Zoom avant", accelerator: "CmdOrCtrl+=", visible: false, acceleratorWorksWhenHidden: true, click: surOnglet({ zoom: "plus" }) },
-        { id: "zoom-moins", label: "Zoom arrière", accelerator: "CmdOrCtrl+-", click: surOnglet({ zoom: "moins" }) },
-        { id: "zoom-zero", label: "Taille réelle", accelerator: "CmdOrCtrl+0", click: surOnglet({ zoom: "zero" }) },
+        entree("adresse", "Barre d'adresse", "CmdOrCtrl+L", dansFenetre((f) => c.raccourci(f, "adresse"))),
+        entree("recharger", "Recharger", "CmdOrCtrl+R", surOnglet("recharger")),
+        entree("recharger-sans-cache", "Recharger sans le cache", "CmdOrCtrl+Shift+R", surOnglet("rechargerSansCache")),
         { type: "separator" },
-        {
-          id: "compact",
-          label: "Mode compact",
-          accelerator: "CmdOrCtrl+Shift+S",
-          click: () => {
-            const f = c.fenetreActive();
-            if (f) c.basculerCompact(f);
-          },
-        },
-        ...(app.isPackaged ? [] : [{ type: "separator" } as const, { role: "toggleDevTools" } as const]),
+        entree("zoom-plus", "Zoom avant", "CmdOrCtrl+Plus", surOnglet({ zoom: "plus" })),
+        entree("zoom-plus-egal", "Zoom avant", "CmdOrCtrl+=", surOnglet({ zoom: "plus" }), { visible: false, acceleratorWorksWhenHidden: true }),
+        entree("zoom-moins", "Zoom arrière", "CmdOrCtrl+-", surOnglet({ zoom: "moins" })),
+        entree("zoom-zero", "Taille réelle", "CmdOrCtrl+0", surOnglet({ zoom: "zero" })),
+        { type: "separator" },
+        entree("compact", "Mode compact", "CmdOrCtrl+Shift+S", dansFenetre((f) => c.agir({ type: "basculerCompact", fenetreId: f }))),
+        entree("panneau-agent", "Panneau agent", "CmdOrCtrl+J", dansFenetre((f) => c.agir({ type: "basculerPanneauAgent", fenetreId: f }))),
+        { type: "separator" },
+        entree("outils-page", "Outils de développement de la page", "Alt+CmdOrCtrl+I", surOnglet("outils")),
+        ...(app.isPackaged ? [] : [entree("outils-interface", "Outils de développement de l'interface", undefined, dansFenetre((f) => c.outilsInterface(f)))]),
+      ],
+    },
+    {
+      label: "Navigation",
+      submenu: [
+        entree("reculer", "Reculer", "CmdOrCtrl+[", surOnglet("reculer")),
+        entree("avancer", "Avancer", "CmdOrCtrl+]", surOnglet("avancer")),
+        { type: "separator" },
+        entree("onglet-suivant", "Onglet suivant", "Ctrl+Tab", agirSi((f) => versVoisin(c.etat(), f, 1))),
+        entree("onglet-precedent", "Onglet précédent", "Ctrl+Shift+Tab", agirSi((f) => versVoisin(c.etat(), f, -1))),
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
+          entree(`onglet-${n}`, n === 9 ? "Dernier onglet" : `Onglet ${n}`, `CmdOrCtrl+${n}`, agirSi((f) => versNieme(c.etat(), f, n))),
+        ),
+        { type: "separator" },
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
+          entree(`espace-${n}`, `Espace ${n}`, `Ctrl+${n}`, agirSi((f) => {
+            const espace = c.etat().espaces[n - 1];
+            return espace ? { type: "activerEspace", fenetreId: f, id: espace.id } : null;
+          })),
+        ),
       ],
     },
     {
       label: "Historique",
       submenu: [
-        {
-          id: "historique",
-          label: "Afficher l'historique",
-          accelerator: "CmdOrCtrl+Y",
-          click: () => {
-            const f = c.fenetreActive();
-            if (f) c.ouvrirPanneau(f, "historique");
-          },
-        },
+        entree("historique", "Afficher l'historique", "CmdOrCtrl+Y", dansFenetre((f) => c.ouvrirPanneau(f, "historique"))),
+        entree("telechargements", "Téléchargements", "CmdOrCtrl+Shift+J", dansFenetre((f) => c.ouvrirPanneau(f, "telechargements"))),
       ],
     },
     { role: "windowMenu" },

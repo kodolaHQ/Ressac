@@ -56,7 +56,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
 export type Action = z.infer<typeof SchemaAction>;
 
 export const SchemaCommande = z.union([
-  z.object({ ongletId: id, c: z.enum(["reculer", "avancer", "recharger", "arreter", "finRecherche"]) }),
+  z.object({ ongletId: id, c: z.enum(["reculer", "avancer", "recharger", "rechargerSansCache", "arreter", "finRecherche", "outils"]) }),
   z.object({ ongletId: id, c: z.object({ zoom: z.enum(["plus", "moins", "zero"]) }) }),
   z.object({ ongletId: id, c: z.object({ chercher: z.string(), suivant: z.boolean().optional(), precedent: z.boolean().optional() }) }),
 ]);
@@ -67,7 +67,7 @@ export type Bornes = z.infer<typeof SchemaBornes>;
 
 export type Panneau = "historique" | "telechargements";
 /** Raccourcis du menu destinés à l'interface (la page web a souvent le focus). */
-export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent";
+export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse";
 export interface ResultatRecherche {
   ongletId: IdOnglet;
   actif: number;
