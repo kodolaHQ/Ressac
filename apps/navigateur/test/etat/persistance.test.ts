@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import { chargerSession, EnregistreurSession } from "../../src/main/etat/persist
 import type { EtatNavigateur } from "../../src/commun/modele";
 
 const dossier = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
+const mis_de_cote = (d: string, suffixe: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffixe));
 const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function etatRiche(): EtatNavigateur {
@@ -45,20 +46,46 @@ test("fichier absent → état initial", async () => {
   expect(e.fenetres).toHaveLength(1);
 });
 
-test("JSON invalide → état initial et ancien fichier gardé en session.json.corrompu", async () => {
+test("JSON invalide → état initial et ancien fichier gardé de côté (….corrompu)", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), "{ pas du json");
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
-  expect(readFileSync(join(d, "session.json.corrompu"), "utf8")).toBe("{ pas du json");
+  const [garde] = mis_de_cote(d, ".corrompu");
+  expect(readFileSync(join(d, garde!), "utf8")).toBe("{ pas du json");
 });
 
-test("version inconnue → état initial et session.json.corrompu", async () => {
+test("version inconnue → état initial et fichier gardé de côté", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 2 }));
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
-  expect(existsSync(join(d, "session.json.corrompu"))).toBe(true);
+  expect(mis_de_cote(d, ".corrompu")).toHaveLength(1);
+});
+
+test("deux sessions corrompues de suite : la seconde n'écrase pas la première", async () => {
+  const d = dossier();
+  writeFileSync(join(d, "session.json"), "premier");
+  await chargerSession(d);
+  writeFileSync(join(d, "session.json"), "second");
+  await chargerSession(d);
+  const gardes = mis_de_cote(d, ".corrompu").map((f) => readFileSync(join(d, f), "utf8"));
+  expect(gardes.sort()).toEqual(["premier", "second"]);
+});
+
+test("session illisible (droits) → état initial, et le prochain enregistrement ne l'écrase pas", async () => {
+  const d = dossier();
+  const chemin = join(d, "session.json");
+  writeFileSync(chemin, JSON.stringify(etatRiche()));
+  chmodSync(chemin, 0o000);
+  const e = await chargerSession(d);
+  expect(e.onglets).toEqual({});
+  const enr = new EnregistreurSession(d, 0);
+  enr.planifier(e);
+  await enr.vider();
+  const [garde] = mis_de_cote(d, ".illisible");
+  chmodSync(join(d, garde!), 0o600);
+  expect(Object.keys(JSON.parse(readFileSync(join(d, garde!), "utf8")).onglets)).toHaveLength(2);
 });
 
 test("état incohérent (aucun espace) → état initial", async () => {
