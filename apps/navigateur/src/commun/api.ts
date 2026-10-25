@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { EtatNavigateur, IdFenetre, IdOnglet } from "./modele";
+
+export { ARG_FENETRE, CANAUX } from "./canaux";
 
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
@@ -50,3 +53,23 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choisirMoteur"), moteur }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
+
+export const SchemaCommande = z.union([
+  z.object({ ongletId: id, c: z.enum(["reculer", "avancer", "recharger", "arreter", "finRecherche"]) }),
+  z.object({ ongletId: id, c: z.object({ zoom: z.enum(["plus", "moins", "zero"]) }) }),
+  z.object({ ongletId: id, c: z.object({ chercher: z.string(), suivant: z.boolean().optional() }) }),
+]);
+export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
+
+export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
+export type Bornes = z.infer<typeof SchemaBornes>;
+
+/** API exposée à l'interface par le preload (`window.webaios`). */
+export interface ApiWebaios {
+  fenetreId: IdFenetre;
+  agir(action: Action): void;
+  surEtat(rappel: (e: EtatNavigateur) => void): () => void;
+  naviguer(ongletId: IdOnglet, saisie: string): void;
+  commande(ongletId: IdOnglet, c: CommandeOnglet): void;
+  bornesContenu(b: Bornes): void;
+}
