@@ -5,12 +5,7 @@
   "packageManager": "pnpm@12.15.0",
   "scripts": {
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "node-pty"
-    ]
+    "typecheck": "pnpm -r --if-present typecheck",
+    "postinstall": "node scripts/reparer-node-pty.mjs"
   }
 }

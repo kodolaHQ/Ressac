@@ -1,0 +1,41 @@
+import { homedir } from "node:os";
+import { join, relative, isAbsolute } from "node:path";
+
+export const CHEMIN_CONTENEUR = "/workspace";
+
+export interface CheminsEspace {
+  racine: string;
+  accueil: string;
+  blocs: string;
+  disposition: string;
+  projets: string;
+  /** Dossier interne `.webaios` (profils, config MCP). */
+  interne: string;
+  profils: string;
+  configMcp: string;
+}
+
+export function cheminsEspace(racine?: string): CheminsEspace {
+  const r = racine ?? process.env.WEBAIOS_RACINE ?? join(homedir(), "WebAiOs");
+  const accueil = join(r, "accueil");
+  const interne = join(r, ".webaios");
+  return {
+    racine: r,
+    accueil,
+    blocs: join(accueil, "blocs"),
+    disposition: join(accueil, "disposition.json"),
+    projets: join(r, "projets"),
+    interne,
+    profils: join(interne, "profils"),
+    configMcp: join(interne, "mcp.json"),
+  };
+}
+
+/** Traduit un chemin de l'espace sur le Mac en chemin dans le conteneur. */
+export function cheminDansConteneur(cheminHote: string, c: CheminsEspace): string {
+  const rel = relative(c.racine, cheminHote);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`Chemin hors de l'espace : ${cheminHote}`);
+  }
+  return rel === "" ? CHEMIN_CONTENEUR : `${CHEMIN_CONTENEUR}/${rel.split("\\").join("/")}`;
+}
