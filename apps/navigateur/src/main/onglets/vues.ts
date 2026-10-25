@@ -14,6 +14,41 @@ export function preferencesWeb(session: Session) {
 }
 
 /**
+ * Ouvertures demandées par une page (onglet ou popup). Seul un window.open avec des dimensions (OAuth…) donne une
+ * popup : vraie fenêtre, même session, sans l'interface WebAiOs, dont le titre montre le site (pas de barre
+ * d'adresse pour repérer un hameçonnage). Le reste (⇧clic, target=_blank…) devient un onglet.
+ */
+function gererOuvertures(
+  wc: WebContents,
+  session: Session,
+  ouvrirOnglet: (url: string, activer: boolean) => void,
+  quandPopup: (popup: WebContents) => void,
+): void {
+  wc.setWindowOpenHandler(({ url, disposition, features }) => {
+    if (disposition === "new-window" && features) {
+      return { action: "allow", overrideBrowserWindowOptions: { width: 500, height: 650, webPreferences: preferencesWeb(session) } };
+    }
+    ouvrirOnglet(url, disposition !== "background-tab");
+    return { action: "deny" };
+  });
+  wc.on("did-create-window", (popup) => {
+    popup.on("page-title-updated", (e, titre) => {
+      e.preventDefault();
+      let site = "";
+      try {
+        site = new URL(popup.webContents.getURL()).host;
+      } catch {
+        // URL sans hôte : le titre seul
+      }
+      popup.setTitle(site ? `${site} — ${titre}` : titre);
+    });
+    quandPopup(popup.webContents);
+    // Une popup peut en ouvrir une autre (étapes d'une connexion) ; ses liens vont dans des onglets.
+    gererOuvertures(popup.webContents, session, ouvrirOnglet, quandPopup);
+  });
+}
+
+/**
  * Synchronise les WebContentsView avec l'état : une vue par onglet chargé, créée à sa première activation,
  * attachée seulement quand l'onglet est actif dans sa fenêtre.
  */
@@ -21,6 +56,8 @@ export class GestionnaireVues {
   private vues = new Map<IdOnglet, WebContentsView>();
   private attachees = new Map<IdFenetre, IdOnglet>();
   private zones = new Map<IdFenetre, Bornes>();
+  /** Popups ouvertes depuis un onglet (directement ou par une autre popup) : leurs questions vont à cet onglet. */
+  private popups = new Map<WebContents, IdOnglet>();
   /** Zoom voulu par onglet, réappliqué à chaque navigation. */
   private zooms = new Map<IdOnglet, number>();
 
@@ -101,7 +138,7 @@ export class GestionnaireVues {
   ongletDe(wc: WebContents | null): IdOnglet | null {
     if (!wc) return null;
     for (const [id, v] of this.vues) if (v.webContents === wc) return id;
-    return null;
+    return this.popups.get(wc) ?? null;
   }
 
   commande(id: IdOnglet, c: CommandeOnglet): void {
@@ -139,17 +176,15 @@ export class GestionnaireVues {
     const wc = vue.webContents;
     this.vues.set(onglet.id, vue);
     brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique);
-    wc.setWindowOpenHandler(({ url, disposition }) => {
-      if (disposition === "new-window") {
-        // Popup (OAuth…) : vraie fenêtre, même session, sans l'interface WebAiOs.
-        return {
-          action: "allow",
-          overrideBrowserWindowOptions: { width: 500, height: 650, webPreferences: preferencesWeb(this.o.session) },
-        };
-      }
-      this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer: disposition !== "background-tab" });
-      return { action: "deny" };
-    });
+    gererOuvertures(
+      wc,
+      this.o.session,
+      (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer }),
+      (popup) => {
+        this.popups.set(popup, onglet.id);
+        popup.once("destroyed", () => this.popups.delete(popup));
+      },
+    );
     // Zoom propre à l'onglet (Chromium le partage sinon entre tous les onglets d'un même site).
     wc.setZoomMode("isolated");
     this.zooms.set(onglet.id, onglet.zoom);

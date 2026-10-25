@@ -112,3 +112,33 @@ test("une page injoignable affiche un message d'erreur et Recharger, au lieu d'u
   await expect(zone.getByRole("button", { name: "Recharger" })).toBeVisible();
   await fermer();
 });
+
+test("⇧clic sur un lien ouvre un onglet, pas une petite popup", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/lien.html`);
+  await expect.poll(() => dansLaVue(app, "lien.html", "document.title")).toBe("Lien");
+  await app.evaluate(({ webContents }) => {
+    const wc = webContents.getAllWebContents().find((w) => w.getURL().includes("lien.html"))!;
+    for (const type of ["mouseDown", "mouseUp"] as const) wc.sendInputEvent({ type, x: 30, y: 30, button: "left", clickCount: 1, modifiers: ["shift"] });
+  });
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await fermer();
+});
+
+test("popup : son titre montre le site ; un lien target=_blank y ouvre un onglet ; une étape suivante reste une popup", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/popup.html`);
+  await expect.poll(() => dansLaVue(app, "popup.html", "document.title")).toBe("Popup source");
+  await dansLaVue(app, "popup.html", "document.getElementById('ouvrir-reste').click()");
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
+  const titrePopup = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes("popup-reste"))?.getTitle());
+  await expect.poll(titrePopup).toBe(`${new URL(serveur.url).host} — Connexion`);
+  await dansLaVue(app, "popup-reste.html", "document.getElementById('lien-blank').click()");
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
+  await dansLaVue(app, "popup-reste.html", "document.getElementById('sous-popup').click()");
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(3);
+  await fermer();
+});

@@ -34,3 +34,19 @@ test("Refuser → la page reçoit 'denied'", async () => {
   await expect.poll(() => dansLaVue(app, "notif.html", "document.title")).toBe("reponse:denied");
   await fermer();
 });
+
+test("la question d'une popup s'affiche sur l'onglet qui l'a ouverte, pas dans les autres fenêtres", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/popup.html`);
+  await expect.poll(() => dansLaVue(app, "popup.html", "document.title")).toBe("Popup source");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
+  await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
+  const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
+  await dansLaVue(app, "popup.html", "document.getElementById('ouvrir-notif').click()");
+  await expect.poll(() => dansLaVue(app, "popup-notif.html", "document.title")).toBe("Popup notif");
+  await dansLaVue(app, "popup-notif.html", "document.getElementById('demander').click()");
+  await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
+  await new Promise((r) => setTimeout(r, 300));
+  await expect(seconde.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});

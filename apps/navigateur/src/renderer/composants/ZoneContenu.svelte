@@ -16,7 +16,7 @@
     fermerPanneau = () => {},
   }: { fenetre: EtatFenetre | undefined; onglet: Onglet | undefined; panneau?: Panneau | null; fermerPanneau?: () => void } = $props();
   let zone: HTMLElement;
-  // Une question d'une popup (sans onglet) s'affiche sur l'onglet actif.
+  // Une popup pose ses questions sur l'onglet qui l'a ouverte (ongletId) ; sans onglet connu, sur l'onglet actif.
   const demande = $derived(demandes.liste.find((d) => d.ongletId === null || d.ongletId === onglet?.id));
 
   $effect(() => {
