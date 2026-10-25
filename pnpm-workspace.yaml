@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "spikes/*"
+  - "apps/*"
 allowBuilds:
   electron: true
   esbuild: true

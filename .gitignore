@@ -1,3 +1,6 @@
 .superpowers/
 node_modules/
 .DS_Store
+out/
+test-results/
+playwright-report/

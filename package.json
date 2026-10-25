@@ -7,6 +7,8 @@
     "test": "corepack pnpm -r --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck",
     "postinstall": "node scripts/reparer-node-pty.mjs",
-    "dev:noyau": "corepack pnpm --filter @webaios/noyau dev"
+    "dev:noyau": "corepack pnpm --filter @webaios/noyau dev",
+    "dev:navigateur": "corepack pnpm --filter navigateur dev",
+    "e2e": "corepack pnpm --filter navigateur e2e"
   }
 }
