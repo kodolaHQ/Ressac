@@ -9,3 +9,5 @@ export * from "./conteneur/executeur.js";
 export * from "./conteneur/atelier.js";
 export * from "./pty/contexte.js";
 export * from "./pty/session.js";
+export * from "./mcp/pont.js";
+export * from "./acces/politique.js";
