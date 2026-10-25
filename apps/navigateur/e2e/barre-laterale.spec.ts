@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { creerEspace, lancer, ouvrirOnglet, serveurTest } from "./aide";
+import { creerEspace, glisser, lancer, ouvrirOnglet, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -33,7 +33,7 @@ test("glisser-déposer réordonne la liste et l'ordre survit à un redémarrage"
   for (const p of ["a.html", "b.html", "plante.html"]) await ouvrirOnglet(premier.fenetre, `${serveur.url}/${p}`, { activer: false });
   const liste = premier.fenetre.locator(onglets);
   await expect(liste).toHaveCount(3);
-  await liste.nth(2).dragTo(liste.nth(0));
+  await glisser(premier.fenetre, liste.nth(2), liste.nth(0));
   await expect(liste.nth(0)).toContainText("plante.html");
   await premier.fermer();
   const second = await lancer({ profil: premier.profil });
