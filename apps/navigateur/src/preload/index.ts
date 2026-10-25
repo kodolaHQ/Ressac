@@ -17,6 +17,11 @@ const api: ApiWebaios = {
   naviguer: (ongletId, saisie) => ipcRenderer.send(CANAUX.naviguer, { ongletId, saisie }),
   commande: (ongletId, c) => ipcRenderer.send(CANAUX.commande, { ongletId, c }),
   bornesContenu: (b) => ipcRenderer.send(CANAUX.bornes, b),
+  surBordGauche(rappel) {
+    const ecouteur = (_: unknown, dedans: boolean) => rappel(dedans);
+    ipcRenderer.on(CANAUX.bordGauche, ecouteur);
+    return () => ipcRenderer.removeListener(CANAUX.bordGauche, ecouteur);
+  },
 };
 
 contextBridge.exposeInMainWorld("webaios", api);

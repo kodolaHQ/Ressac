@@ -1,13 +1,19 @@
 <script lang="ts">
   import type { EtatFenetre } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
+  import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
   import IconeSite from "./IconeSite.svelte";
   import ListeOnglets from "./ListeOnglets.svelte";
   import { ouvrirMenu } from "./menu.svelte";
   import SelecteurEspaces from "./SelecteurEspaces.svelte";
 
-  let { fenetre }: { fenetre: EtatFenetre } = $props();
+  let {
+    fenetre,
+    cachee = false,
+    surEntree,
+    surSortie,
+  }: { fenetre: EtatFenetre; cachee?: boolean; surEntree?: () => void; surSortie?: () => void } = $props();
   const espace = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif));
   const lienActif = $derived.by(() => {
     const id = fenetre.actif[fenetre.espaceActif];
@@ -15,7 +21,8 @@
   });
 </script>
 
-<aside class="barre" data-testid="barre-laterale">
+<aside class="barre" data-testid="barre-laterale" hidden={cachee} onmouseenter={surEntree} onmouseleave={surSortie}>
+  <BarreAdresse {fenetre} />
   <div class="defilant">
     <Essentiels {fenetre} />
     <ul
@@ -54,10 +61,11 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 38px 8px 0; /* boutons de fenêtre macOS */
+    padding: 10px 8px 0;
     background: var(--fond-barre);
     -webkit-app-region: drag;
   }
+  .barre[hidden] { display: none; }
   .defilant { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; -webkit-app-region: no-drag; }
   .barre :global(nav) { -webkit-app-region: no-drag; }
   .epingles { list-style: none; margin: 0; padding: 0; min-height: 8px; }

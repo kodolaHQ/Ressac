@@ -5,6 +5,7 @@ import type { IdFenetre } from "../commun/modele";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
 import { versUrl } from "./adresse";
+import { installerMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
 import { cheminProfil } from "./profil";
 
@@ -52,7 +53,12 @@ app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
   const magasin = new Magasin(await chargerSession(dossier));
   enregistreur = new EnregistreurSession(dossier);
-  const vues = new GestionnaireVues({ session: session.fromPartition("persist:webaios"), fenetres, agir: (a) => magasin.agir(a) });
+  const vues = new GestionnaireVues({
+    session: session.fromPartition("persist:webaios"),
+    fenetres,
+    agir: (a) => magasin.agir(a),
+    bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
+  });
   magasin.abonner((etat) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(CANAUX.etat, etat);
     vues.synchroniser(etat);
@@ -69,6 +75,19 @@ app.whenReady().then(async () => {
     },
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
+  });
+  installerMenu({
+    fenetreActive: () => {
+      const focus = BrowserWindow.getFocusedWindow();
+      for (const [id, f] of fenetres) if (f === focus) return id;
+      return fenetres.keys().next().value;
+    },
+    ongletActif: (id) => {
+      const f = magasin.etat.fenetres.find((x) => x.id === id);
+      return f?.actif[f.espaceActif] ?? undefined;
+    },
+    commande: (id, c) => vues.commande(id, c),
+    basculerCompact: (fenetreId) => magasin.agir({ type: "basculerCompact", fenetreId }),
   });
   for (const f of magasin.etat.fenetres) creerFenetre(f.id);
   vues.synchroniser(magasin.etat);

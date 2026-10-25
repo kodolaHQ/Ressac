@@ -62,7 +62,7 @@ test("une page qui plante affiche le message et Recharger fonctionne ; le reste 
   await expect(fenetre.getByText("Cette page a planté.")).toBeVisible();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`, { activer: false });
   await expect(fenetre.locator(onglets, { hasText: "a.html" })).toBeVisible();
-  await fenetre.getByRole("button", { name: "Recharger" }).click();
+  await fenetre.getByTestId("zone-contenu").getByRole("button", { name: "Recharger" }).click();
   await expect(fenetre.getByText("Cette page a planté.")).toBeHidden();
   await expect.poll(() => dansLaVue(app, "plante.html", "document.title")).toBe("Plante");
   await fermer();

@@ -6,6 +6,7 @@ export const CANAUX = {
   naviguer: "webaios:naviguer",
   commande: "webaios:commande",
   bornes: "webaios:bornes",
+  bordGauche: "webaios:bord-gauche",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

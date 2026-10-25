@@ -3,6 +3,10 @@ import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../commun/modele";
 import { brancherEvenements } from "./evenements";
 
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3;
+const BORD_GAUCHE = 8;
+
 /** Préférences de toute page web : bac à sable, aucun preload. */
 export function preferencesWeb(session: Session) {
   return { session, sandbox: true, contextIsolation: true, nodeIntegration: false };
@@ -16,8 +20,18 @@ export class GestionnaireVues {
   private vues = new Map<IdOnglet, WebContentsView>();
   private attachees = new Map<IdFenetre, IdOnglet>();
   private zones = new Map<IdFenetre, Bornes>();
+  /** Zoom voulu par onglet, réappliqué à chaque navigation. */
+  private zooms = new Map<IdOnglet, number>();
 
-  constructor(private readonly o: { session: Session; fenetres: Map<IdFenetre, BrowserWindow>; agir: (a: Action) => void }) {}
+  constructor(
+    private readonly o: {
+      session: Session;
+      fenetres: Map<IdFenetre, BrowserWindow>;
+      agir: (a: Action) => void;
+      /** La souris entre ou sort de la bande du bord gauche de la fenêtre, au-dessus d'une page. */
+      bordGauche?: (fenetreId: IdFenetre, dedans: boolean) => void;
+    },
+  ) {}
 
   synchroniser(etat: EtatNavigateur): void {
     for (const [id, vue] of this.vues) if (!etat.onglets[id]) this.detruireVue(id, vue);
@@ -60,7 +74,10 @@ export class GestionnaireVues {
   /** Charge `url` dans l'onglet ; un onglet sans vue la chargera à sa création. */
   naviguer(id: IdOnglet, url: string): void {
     const wc = this.vue(id);
-    if (wc) void wc.loadURL(url).catch(() => {});
+    if (wc) {
+      void wc.loadURL(url).catch(() => {});
+      wc.focus();
+    }
     else this.o.agir({ type: "majOnglet", id, champs: { url } });
   }
 
@@ -71,6 +88,14 @@ export class GestionnaireVues {
     else if (c === "avancer") wc.navigationHistory.goForward();
     else if (c === "recharger") wc.reload();
     else if (c === "arreter") wc.stop();
+    else if (typeof c === "object" && "zoom" in c) {
+      const actuel = wc.getZoomFactor();
+      const cible = c.zoom === "zero" ? 1 : Math.round((actuel + (c.zoom === "plus" ? 0.1 : -0.1)) * 10) / 10;
+      const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, cible));
+      wc.setZoomFactor(zoom);
+      this.zooms.set(id, zoom);
+      this.o.agir({ type: "majOnglet", id, champs: { zoom } });
+    }
   }
 
   detruire(): void {
@@ -93,7 +118,18 @@ export class GestionnaireVues {
       this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer: disposition !== "background-tab" });
       return { action: "deny" };
     });
-    if (onglet.zoom !== 1) wc.setZoomFactor(onglet.zoom);
+    // Zoom propre à l'onglet (Chromium le partage sinon entre tous les onglets d'un même site).
+    wc.setZoomMode("isolated");
+    this.zooms.set(onglet.id, onglet.zoom);
+    wc.on("did-navigate", () => wc.setZoomFactor(this.zooms.get(onglet.id) ?? 1));
+    let auBord = false;
+    wc.on("before-mouse-event", (_e, souris) => {
+      if (souris.type !== "mouseMove" && souris.type !== "mouseLeave") return;
+      const dedans = souris.type === "mouseMove" && souris.x + vue.getBounds().x < BORD_GAUCHE;
+      if (dedans === auBord) return;
+      auBord = dedans;
+      this.o.bordGauche?.(onglet.fenetreId, dedans);
+    });
     void wc.loadURL(onglet.url).catch(() => {});
   }
 
@@ -110,6 +146,7 @@ export class GestionnaireVues {
       this.attachees.delete(f);
     }
     this.vues.delete(id);
+    this.zooms.delete(id);
     if (!vue.webContents.isDestroyed()) vue.webContents.close();
   }
 }

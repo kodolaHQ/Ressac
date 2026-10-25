@@ -74,4 +74,6 @@ export interface ApiWebaios {
   naviguer(ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornesContenu(b: Bornes): void;
+  /** Mode compact : la souris entre (true) ou sort (false) de la bande de 8 px du bord gauche, au-dessus d'une page web. */
+  surBordGauche(rappel: (dedans: boolean) => void): () => void;
 }
