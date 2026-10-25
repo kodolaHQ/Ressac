@@ -1,0 +1,84 @@
+import { expect, test } from "vitest";
+import { cheminsEspace } from "../../src/chemins.js";
+import { Atelier, trouverDocker } from "../../src/conteneur/atelier.js";
+import { executeurFactice } from "../aide/executeur-factice.js";
+
+const chemins = cheminsEspace("/Users/t/WebAiOs");
+
+test("docker introuvable → docker-absent, sans exception", async () => {
+  expect(await new Atelier({ chemins, docker: null }).etat()).toBe("docker-absent");
+  expect(await new Atelier({ chemins, docker: null }).assurerDemarre()).toBe("docker-absent");
+});
+
+test("docker info en échec → docker-absent", async () => {
+  const { executer } = executeurFactice([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
+  expect(await new Atelier({ chemins, docker: "docker", executer }).etat()).toBe("docker-absent");
+});
+
+test("trouverDocker trouve OrbStack hors du PATH", () => {
+  expect(trouverDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.orbstack/bin/docker")).toBe(
+    "/Users/t/.orbstack/bin/docker",
+  );
+});
+
+test("trouverDocker préfère le PATH, et renvoie null si rien", () => {
+  expect(trouverDocker({ PATH: "/a:/b", HOME: "/h" }, (p) => p === "/b/docker" || p === "/usr/local/bin/docker")).toBe(
+    "/b/docker",
+  );
+  expect(trouverDocker({ PATH: "/a", HOME: "/h" }, () => false)).toBeNull();
+});
+
+test("etat selon docker inspect", async () => {
+  const cas: [ReturnType<typeof executeurFactice>, string][] = [
+    [executeurFactice([[/ inspect /, { code: 0, stdout: "true\n" }]]), "demarre"],
+    [executeurFactice([[/ inspect /, { code: 0, stdout: "false\n" }]]), "arrete"],
+    [executeurFactice([[/ inspect /, { code: 1, stderr: "No such object" }]]), "absent"],
+  ];
+  for (const [{ executer }, attendu] of cas) {
+    expect(await new Atelier({ chemins, docker: "docker", executer }).etat()).toBe(attendu);
+  }
+});
+
+test("assurerDemarre sur absent : build si image manquante puis run avec les bons arguments", async () => {
+  let lance = false;
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 1 }],
+    [/ inspect /, () => ({ code: lance ? 0 : 1, stdout: "true\n" })],
+    [/ run /, () => ((lance = true), { code: 0 })],
+  ]);
+  expect(await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre()).toBe("demarre");
+  const build = appels.find((a) => a.args[0] === "build")!;
+  expect(build.args.slice(0, 3)).toEqual(["build", "-t", "webaios-atelier:1"]);
+  expect(build.args).toContain("-f");
+  const run = appels.find((a) => a.args[0] === "run")!;
+  expect(run.args).toEqual(expect.arrayContaining([
+    "--name", "webaios-atelier",
+    "127.0.0.1:5170-5199:5170-5199",
+    "webaios-home:/home/node",
+    "/Users/t/WebAiOs:/workspace",
+    "host.docker.internal:host-gateway",
+    "webaios-atelier:1",
+  ]));
+  expect(run.args.slice(-2)).toEqual(["sleep", "infinity"]);
+});
+
+test("assurerDemarre sur arrete → docker start", async () => {
+  let demarre = false;
+  const { executer, appels } = executeurFactice([
+    [/ inspect -f/, () => ({ code: 0, stdout: demarre ? "true\n" : "false\n" })],
+    [/ start /, () => ((demarre = true), { code: 0 })],
+  ]);
+  expect(await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre()).toBe("demarre");
+  expect(appels.some((a) => a.args.join(" ") === "start webaios-atelier")).toBe(true);
+  expect(appels.some((a) => a.args[0] === "run")).toBe(false);
+});
+
+test("commandeExec interactif et non interactif", () => {
+  const a = new Atelier({ chemins, docker: "/opt/homebrew/bin/docker" });
+  expect(a.commandeExec(["claude"], { interactif: true })).toEqual([
+    "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "webaios-atelier", "claude",
+  ]);
+  expect(a.commandeExec(["claude", "-p", "x"], { interactif: false })).toEqual([
+    "/opt/homebrew/bin/docker", "exec", "-w", "/workspace", "webaios-atelier", "claude", "-p", "x",
+  ]);
+});
