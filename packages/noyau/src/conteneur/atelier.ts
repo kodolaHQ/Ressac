@@ -56,6 +56,22 @@ function fichierSession(id: string): string {
   return `/tmp/webaios-session-${id}.pid`;
 }
 
+/**
+ * Arrête la session notée dans `f` : tout son groupe (l'agent et ce qu'il a lancé), sinon le processus seul.
+ * claude intercepte HUP et TERM sans forcément quitter : chaque signal a 2 s pour agir, puis KILL.
+ */
+export function scriptArretSession(f: string): string {
+  return [
+    `p=$(cat ${f} 2>/dev/null) || exit 0`,
+    `rm -f ${f}`,
+    // Pas de « -- » : le kill de dash (sh du conteneur) le refuse, et le groupe ne serait jamais visé.
+    `signaler() { kill -$1 -"$p" 2>/dev/null || kill -$1 "$p" 2>/dev/null; }`,
+    `vivant() { kill -0 -"$p" 2>/dev/null || kill -0 "$p" 2>/dev/null; }`,
+    `for s in HUP TERM; do signaler $s; i=0; while [ $i -lt 20 ] && vivant; do sleep 0.1; i=$((i + 1)); done; vivant || exit 0; done`,
+    `signaler KILL`,
+  ].join("\n");
+}
+
 export class Atelier {
   private readonly chemins: CheminsEspace;
   private readonly executer: Executeur;
@@ -164,10 +180,7 @@ export class Atelier {
 
   async arreterSession(id: string): Promise<void> {
     if (!this.docker) return;
-    const f = fichierSession(id);
-    // Tout le groupe (l'agent et ce qu'il a lancé), sinon le processus seul.
-    const script = `p=$(cat ${f} 2>/dev/null) && { kill -HUP -- -"$p" 2>/dev/null || kill -HUP "$p"; }; rm -f ${f}`;
-    await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", script], DELAI_SONDE_MS);
+    await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", scriptArretSession(fichierSession(id))], DELAI_SONDE_MS);
   }
 
   commandeExec(argv: string[], o: { interactif: boolean }): string[] {

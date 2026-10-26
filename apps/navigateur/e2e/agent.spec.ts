@@ -252,8 +252,9 @@ test("fermer la fenêtre arrête son agent", async () => {
     }
   };
   await expect.poll(vivant, { timeout: 10_000 }).toBe(false);
-  // Avec un vrai Docker, tuer le client local laisserait l'agent tourner : il est aussi tué dans le conteneur.
-  await expect.poll(() => lireFichier(join(racine, "faux-docker-arrets.log"))).toContain("kill -HUP");
+  // Avec un vrai Docker, tuer le client local laisserait l'agent tourner : il est aussi tué dans le conteneur
+  // (script vérifié contre le vrai conteneur par session.integration.test.ts du noyau).
+  await expect.poll(() => lireFichier(join(racine, "faux-docker-arrets.log"))).toMatch(/webaios-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/);
   await fermer();
 });
 

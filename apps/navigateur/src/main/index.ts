@@ -97,7 +97,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   // restauration. Sur « closed » : un window.close() de la page détruit la fenêtre sans émettre « close ».
   fenetre.on("closed", () => {
     fenetres.delete(id);
-    agent?.sessions.fermerFenetre(id);
+    void agent?.sessions.fermerFenetre(id);
     if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
     // Dernière fenêtre (gardée dans l'état) : ses pages se ferment, elles reviendront avec elle.
     else if (!enSortie) {

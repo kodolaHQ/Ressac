@@ -53,9 +53,11 @@ export class SessionAgent {
     return () => abonnement.dispose();
   }
 
-  arreter(): void {
+  /** Rend la main une fois l'agent arrêté là où il tourne (le conteneur), pas seulement le terminal local. */
+  async arreter(): Promise<void> {
     if (!this.actif) return;
-    void Promise.resolve(this.arreterDistant?.()).catch(() => {});
+    const distant = Promise.resolve(this.arreterDistant?.()).catch(() => {});
     this.pty.kill();
+    await distant;
   }
 }

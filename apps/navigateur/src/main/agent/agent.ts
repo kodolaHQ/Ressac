@@ -121,7 +121,8 @@ export function demarrerAgent(o: {
     },
     sessions,
     async arreter() {
-      sessions.toutArreter();
+      // Les agents d'abord : leur arrêt passe par le conteneur, avant que l'app ne quitte.
+      await sessions.toutArreter();
       await Promise.all([arreterAccueil?.(), arreterNoyau(await pret)]);
     },
   };

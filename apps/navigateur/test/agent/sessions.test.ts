@@ -196,3 +196,17 @@ test("relancerTout pendant un démarrage : l'échec de l'ancien démarrage n'éc
   expect(envois.filter((e) => e.canal === "etat").at(-1)?.v).toEqual({ etat: "actif" });
   expect(gestion.active("F")).toBe(true);
 });
+
+test("toutArreter attend l'arrêt de chaque session", async () => {
+  let finir!: () => void;
+  const s = new FausseSession();
+  s.arreter = () => new Promise<void>((ok) => (finir = ok));
+  const gestion = new SessionsAgent({ ouvrir: async () => s, envoyer: () => {} });
+  await gestion.demarrer("F", taille);
+  let rendu = false;
+  const arret = gestion.toutArreter().then(() => (rendu = true));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(rendu).toBe(false);
+  finir();
+  await arret;
+});

@@ -34,3 +34,15 @@ test("arreter prévient aussi le conteneur (arreterDistant), une seule fois", as
   s.arreter();
   expect(distants).toBe(1);
 });
+
+test("arreter rend la main une fois l'agent arrêté dans le conteneur (⌘Q n'en laisse pas tourner)", async () => {
+  let finir!: () => void;
+  const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24, arreterDistant: () => new Promise<void>((ok) => (finir = ok)) });
+  let rendu = false;
+  const arret = Promise.resolve(s.arreter()).then(() => (rendu = true));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(rendu).toBe(false);
+  finir();
+  await arret;
+  expect(rendu).toBe(true);
+});

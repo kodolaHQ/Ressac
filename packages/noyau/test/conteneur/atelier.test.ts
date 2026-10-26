@@ -2,7 +2,10 @@ import { expect, test } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Atelier, DELAI_CONSTRUCTION_MS, empreinteDockerfile, trouverDocker } from "../../src/conteneur/atelier.js";
+import { Atelier, DELAI_CONSTRUCTION_MS, empreinteDockerfile, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
+import { execFile, spawn } from "node:child_process";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { DOSSIERS_OUTILS } from "../../src/conteneur/executeur.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 
@@ -160,7 +163,7 @@ test("session interactive : son PID est noté dans le conteneur, et l'arrêter l
   const appel = appels.find((x) => x.args[0] === "exec")!;
   expect(appel.args.slice(0, 4)).toEqual(["exec", "webaios-atelier", "sh", "-c"]);
   expect(appel.args[4]).toContain(`cat ${pid}`);
-  expect(appel.args[4]).toContain("kill -HUP");
+  expect(appel.args[4]).toBe(scriptArretSession(pid));
   expect(() => a.commandeSession("../x", ["claude"])).toThrow();
 });
 
@@ -207,3 +210,31 @@ test("construction et lancement du conteneur ont un délai maximal", async () =>
   for (const a of appels) expect(a.opts?.delaiMs, a.args.join(" ")).toBeGreaterThan(0);
   expect(appels.find((a) => a.args[0] === "build")!.opts?.delaiMs).toBe(DELAI_CONSTRUCTION_MS);
 });
+
+const vivant = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test("le script d'arrêt tue un agent qui ignore HUP et TERM (claude les intercepte), et tout son groupe", async () => {
+  const f = join(mkdtempSync(join(tmpdir(), "webaios-arret-")), "session.pid");
+  // Comme commandeSession : le shell note son PID puis devient l'agent ; ici un agent sourd à HUP et TERM, avec un enfant.
+  const agent = spawn("sh", ["-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", "sh", "-c", "trap '' HUP TERM; sleep 60 & wait"], {
+    detached: true,
+    stdio: "ignore",
+  });
+  const fini = new Promise((ok) => agent.on("exit", ok));
+  await expect.poll(() => existsSync(f)).toBe(true);
+  const debut = Date.now();
+  await new Promise<void>((ok, ko) => execFile("sh", ["-c", scriptArretSession(f)], (e) => (e ? ko(e) : ok())));
+  await fini;
+  expect(Date.now() - debut).toBeLessThan(8000);
+  expect(vivant(agent.pid!)).toBe(false);
+  expect(existsSync(f)).toBe(false);
+  // Plus aucun processus du groupe (le sleep lancé par l'agent).
+  expect(() => process.kill(-agent.pid!, 0)).toThrow();
+}, 15_000);

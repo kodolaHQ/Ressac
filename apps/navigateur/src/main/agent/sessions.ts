@@ -53,7 +53,7 @@ export interface SessionLike {
   redimensionner(cols: number, rows: number): void;
   surDonnees(r: (d: string) => void): () => void;
   surFin(r: (code: number) => void): () => void;
-  arreter(): void;
+  arreter(): void | Promise<void>;
 }
 
 interface Entree {
@@ -104,7 +104,7 @@ export class SessionsAgent {
       .then(
         (s) => {
           // Fenêtre fermée pendant le démarrage : personne n'affichera cet agent.
-          if (this.entrees.get(f) !== entree) return s.arreter();
+          if (this.entrees.get(f) !== entree) return void s.arreter();
           entree.session = s;
           s.surDonnees((d) => {
             entree.tampon.ajouter(d);
@@ -172,19 +172,20 @@ export class SessionsAgent {
       this.annulerEnvoi(e);
       const s = e.session;
       e.session = undefined;
-      s?.arreter();
+      void s?.arreter();
     }
     await Promise.all(anciennes.map(([f, e]) => this.demarrer(f, e.taille)));
   }
 
-  fermerFenetre(f: IdFenetre): void {
+  /** Rend la main une fois l'agent arrêté dans le conteneur. */
+  async fermerFenetre(f: IdFenetre): Promise<void> {
     const e = this.entrees.get(f);
     if (e) this.annulerEnvoi(e);
-    e?.session?.arreter();
     this.entrees.delete(f);
+    await e?.session?.arreter();
   }
 
-  toutArreter(): void {
-    for (const f of [...this.entrees.keys()]) this.fermerFenetre(f);
+  async toutArreter(): Promise<void> {
+    await Promise.all([...this.entrees.keys()].map((f) => this.fermerFenetre(f)));
   }
 }
