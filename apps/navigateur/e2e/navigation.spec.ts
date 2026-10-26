@@ -99,6 +99,27 @@ test("le zoom est propre à l'onglet, pas au site", async () => {
   await fermer();
 });
 
+test("mode compact : la barre réapparaît à 14 px du bord, ou quand la souris sort vite par la gauche ; son bouton dit comment quitter le compact", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => titreVue(app, "a.html")).toBe("Page A");
+  await fenetre.getByRole("button", { name: "Mode compact" }).click();
+  await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
+  await expect.poll(async () => (await bornesVues(app))[0]?.x).toBe(0);
+  const souris = (type: "mouseMove" | "mouseLeave", x: number) =>
+    app.evaluate(({ webContents }, [type, x]) => webContents.getAllWebContents().find((w) => w.getURL().includes("a.html"))?.sendInputEvent({ type, x, y: 300 } as Electron.MouseInputEvent), [type, x] as const);
+  await souris("mouseMove", 14);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await expect(fenetre.getByRole("button", { name: "Quitter le mode compact" })).toHaveAttribute("aria-pressed", "true");
+  await fenetre.mouse.move(700, 300);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
+  // Geste rapide : le dernier mouvement vu est à 40 px, puis la souris quitte la page par la gauche.
+  await souris("mouseMove", 40);
+  await souris("mouseLeave", 40);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await fermer();
+});
+
 test("mode compact : barre cachée, réapparaît au bord gauche, le contenu prend toute la largeur", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);

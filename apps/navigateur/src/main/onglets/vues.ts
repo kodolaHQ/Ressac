@@ -1,13 +1,12 @@
 import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
-import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../commun/modele";
+import { BORD_REVELATION, SORTIE_GAUCHE, type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
 import { attendreChargement } from "./chargement";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
 import { entreesMenuPage } from "./menu-page";
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
-const BORD_GAUCHE = 8;
 /** Texte d'une page transmis à l'agent, au plus. */
 const LONGUEUR_TEXTE = 100_000;
 
@@ -292,9 +291,12 @@ export class GestionnaireVues {
     wc.on("enter-html-full-screen", () => this.o.pleinEcran?.(onglet.fenetreId, true));
     wc.on("leave-html-full-screen", () => this.o.pleinEcran?.(onglet.fenetreId, false));
     let auBord = false;
+    let dernierX = Infinity;
     wc.on("before-mouse-event", (_e, souris) => {
       if (souris.type !== "mouseMove" && souris.type !== "mouseLeave") return;
-      const dedans = souris.type === "mouseMove" && souris.x + vue.getBounds().x < BORD_GAUCHE;
+      const x = (souris.type === "mouseMove" ? souris.x : dernierX) + vue.getBounds().x;
+      if (souris.type === "mouseMove") dernierX = souris.x;
+      const dedans = souris.type === "mouseMove" ? x < BORD_REVELATION : x < SORTIE_GAUCHE;
       if (dedans === auBord) return;
       auBord = dedans;
       this.o.bordGauche?.(onglet.fenetreId, dedans);

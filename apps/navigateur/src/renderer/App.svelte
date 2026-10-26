@@ -8,10 +8,9 @@
   import PanneauAgent from "./composants/PanneauAgent.svelte";
   import type { Panneau } from "../commun/api";
   import { api, etat, fenetreCourante } from "./etat.svelte";
-  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
+  import { BORD_REVELATION, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
 
   const MASQUAGE_MS = 300;
-  const BORD_GAUCHE = 8;
 
   const fenetre = $derived(fenetreCourante());
   const panneauAgentOuvert = $derived(fenetre?.panneauAgentOuvert ?? false);
@@ -129,7 +128,7 @@
   });
 </script>
 
-<svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_GAUCHE && reveler()} />
+<svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_REVELATION && reveler()} />
 
 <div class="fenetre" class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
   {#if fenetre}

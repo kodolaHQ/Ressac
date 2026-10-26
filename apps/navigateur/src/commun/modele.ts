@@ -130,3 +130,8 @@ export interface DemandeEnAttente extends Demande {
 /** Bornes de la largeur du panneau agent : assez pour un terminal lisible, jamais toute la fenêtre. */
 export const LARGEUR_AGENT_MIN = 280;
 export const LARGEUR_AGENT_MAX = 1000;
+
+/** Mode compact : la barre latérale réapparaît quand la souris entre dans cette bande du bord gauche (px). */
+export const BORD_REVELATION = 16;
+/** …ou quand elle quitte la page par la gauche depuis cette distance : un geste rapide saute la bande. */
+export const SORTIE_GAUCHE = 60;

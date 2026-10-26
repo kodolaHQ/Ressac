@@ -79,7 +79,12 @@
   {:else}
     <button aria-label="Recharger" disabled={!onglet} onclick={() => onglet && api.commande(onglet.id, "recharger")}><Icone nom="recharger" /></button>
   {/if}
-  <button class="compact" aria-label="Mode compact" title="Mode compact (⌘⇧S)" onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}><Icone nom="barre" /></button>
+  <button
+    class="compact"
+    aria-label={fenetre.compact ? "Quitter le mode compact" : "Mode compact"}
+    title={fenetre.compact ? "Quitter le mode compact (⌘⇧S)" : "Mode compact (⌘⇧S)"}
+    aria-pressed={fenetre.compact}
+    onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}><Icone nom="barre" /></button>
 </div>
 <form onsubmit={valider}>
   <input
@@ -133,6 +138,7 @@
   .navigation button:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
+  .navigation .compact[aria-pressed="true"] { color: var(--accent); }
   form { position: relative; }
   .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
   .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--texte); }
