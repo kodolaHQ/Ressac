@@ -278,6 +278,9 @@ test("⇧⌘W sur la dernière fenêtre avec un onglet arrête son agent ; la ro
 
 test("fermer la fenêtre arrête son agent", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
+  // L'agent de la première fenêtre d'abord : faux-agent-pid sera ensuite celui de la seconde.
+  await panneauAccueil(fenetre);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
   await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
   const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
