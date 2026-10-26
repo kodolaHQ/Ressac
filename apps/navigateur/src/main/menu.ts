@@ -133,7 +133,16 @@ export function installerMenu(c: CiblesMenu): void {
         entree("zoom-zero", "Taille réelle", "CmdOrCtrl+0", surOnglet({ zoom: "zero" })),
         { type: "separator" },
         entree("compact", "Mode compact", "CmdOrCtrl+Shift+S", dansFenetre((f) => c.agir({ type: "basculerCompact", fenetreId: f }))),
-        entree("panneau-agent", "Panneau agent", "CmdOrCtrl+J", dansFenetre((f) => c.agir({ type: "basculerPanneauAgent", fenetreId: f }))),
+        entree(
+          "panneau-agent",
+          "Panneau agent",
+          "CmdOrCtrl+J",
+          dansFenetre((f) => {
+            c.agir({ type: "basculerPanneauAgent", fenetreId: f });
+            // Ouvert depuis une page web : le clavier doit quitter la page pour le terminal.
+            if (c.etat().fenetres.find((x) => x.id === f)?.panneauAgentOuvert) c.raccourci(f, "agent");
+          }),
+        ),
         { type: "separator" },
         entree("outils-page", "Outils de développement de la page", "Alt+CmdOrCtrl+I", surOnglet("outils")),
         ...(app.isPackaged ? [] : [entree("outils-interface", "Outils de développement de l'interface", undefined, dansFenetre((f) => c.outilsInterface(f)))]),

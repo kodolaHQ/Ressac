@@ -4,6 +4,7 @@
   import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
+  import Icone from "./Icone.svelte";
   import IconeSite from "./IconeSite.svelte";
   import ListeOnglets from "./ListeOnglets.svelte";
   import { ouvrirMenu } from "./menu.svelte";
@@ -64,7 +65,7 @@
     </ul>
     <hr />
     <ListeOnglets {fenetre} />
-    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.agir({ type: "afficherPageVide", fenetreId: fenetre.id })}>+ Nouvel onglet</button>
+    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.agir({ type: "afficherPageVide", fenetreId: fenetre.id })}><Icone nom="plus" taille={14} /> Nouvel onglet</button>
   </div>
   <footer>
     <SelecteurEspaces {fenetre} />
@@ -74,11 +75,11 @@
       aria-label="Agent (⌘J)"
       title="Agent (⌘J)"
       aria-pressed={fenetre.panneauAgentOuvert}
-      onclick={() => api.agir({ type: "basculerPanneauAgent", fenetreId: fenetre.id })}>✦</button
+      onclick={() => api.agir({ type: "basculerPanneauAgent", fenetreId: fenetre.id })}><Icone nom="agent" /></button
     >
     {#if telechargements.liste.length}
       <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => basculerPanneau?.("telechargements")}>
-        ⬇
+        <Icone nom="telecharger" />
         {#if enCours.length}<span class="pastille" style:--p={progression}></span>{/if}
       </button>
     {/if}
@@ -111,6 +112,6 @@
   .outil[aria-pressed="true"] { color: var(--accent); }
   .pastille { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
   hr { width: 100%; border: none; border-top: 1px solid var(--bord); margin: 2px 0; }
-  .nouveau { all: unset; padding: 6px; border-radius: 6px; color: var(--texte-doux); }
+  .nouveau { all: unset; display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; color: var(--texte-doux); }
   .nouveau:hover { background: var(--fond-survol); }
 </style>

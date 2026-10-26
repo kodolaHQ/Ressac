@@ -230,3 +230,24 @@ test("✕ puis Retirer : le bloc part à la corbeille ; Annuler le garde", async
   expect(disposition(racine)).toEqual(["un", "trois"]);
   await fermer();
 });
+
+test("tirer le bord gauche du panneau agent change sa largeur, retenue au prochain lancement", async () => {
+  const premier = await lancer();
+  const panneau = () => premier.fenetre.getByTestId("panneau-agent");
+  await expect(panneau()).toBeVisible();
+  expect((await panneau().boundingBox())!.width).toBe(420);
+  const p = (await premier.fenetre.getByTestId("poignee-agent").boundingBox())!;
+  const x = p.x + p.width / 2;
+  const y = p.y + p.height / 2;
+  await premier.fenetre.mouse.move(x, y);
+  await premier.fenetre.mouse.down();
+  await premier.fenetre.mouse.move(x - 100, y, { steps: 5 });
+  await premier.fenetre.mouse.move(x - 200, y, { steps: 5 });
+  await premier.fenetre.mouse.up();
+  await expect.poll(async () => Math.round((await panneau().boundingBox())!.width)).toBe(620);
+  await premier.fermer();
+  const second = await lancer({ profil: premier.profil, racine: premier.racine });
+  await expect(second.fenetre.getByTestId("panneau-agent")).toBeVisible();
+  await expect.poll(async () => Math.round((await second.fenetre.getByTestId("panneau-agent").boundingBox())!.width)).toBe(620);
+  await second.fermer();
+});

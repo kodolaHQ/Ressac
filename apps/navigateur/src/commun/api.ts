@@ -61,6 +61,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
+  z.object({ type: z.literal("largeurPanneauAgent"), largeur: z.number().finite() }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
@@ -76,7 +77,7 @@ export type Bornes = z.infer<typeof SchemaBornes>;
 
 export type Panneau = "historique" | "telechargements";
 /** Raccourcis du menu destinés à l'interface (la page web a souvent le focus). */
-export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse";
+export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "agent";
 export interface ResultatRecherche {
   ongletId: IdOnglet;
   actif: number;

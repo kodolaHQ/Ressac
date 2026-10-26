@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { Espace, EtatFenetre } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import { ouvrirMenu } from "./menu.svelte";
@@ -62,7 +63,7 @@
         ])}>{espace.icone}</button
     >
   {/each}
-  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={() => (edition = { id: null, nom: "", icone: "📁" })}>+</button>
+  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={() => (edition = { id: null, nom: "", icone: "📁" })}><Icone nom="plus" /></button>
 </nav>
 
 <style>

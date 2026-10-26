@@ -351,3 +351,13 @@ test("panneauAgentAccueil : ouvre seulement sur la page d'accueil (sinon l'ongle
   ag({ type: "panneauAgentAccueil", fenetreId: F, ouvert: false });
   expect(fen().panneauAgentOuvert).toBe(false);
 });
+
+test("largeurPanneauAgent : 420 par défaut, retenue, bornée entre 280 et 1000", () => {
+  expect(e.reglages.largeurPanneauAgent).toBe(420);
+  ag({ type: "largeurPanneauAgent", largeur: 612.4 });
+  expect(e.reglages.largeurPanneauAgent).toBe(612);
+  ag({ type: "largeurPanneauAgent", largeur: 50 });
+  expect(e.reglages.largeurPanneauAgent).toBe(280);
+  ag({ type: "largeurPanneauAgent", largeur: 5000 });
+  expect(e.reglages.largeurPanneauAgent).toBe(1000);
+});

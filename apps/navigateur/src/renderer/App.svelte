@@ -2,11 +2,13 @@
   import BarreLaterale from "./composants/BarreLaterale.svelte";
   import MenuContextuel from "./composants/MenuContextuel.svelte";
   import { adresse } from "./composants/adresse.svelte";
+  import { focusAgent } from "./composants/agent.svelte";
   import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
   import PanneauAgent from "./composants/PanneauAgent.svelte";
   import type { Panneau } from "../commun/api";
   import { api, etat, fenetreCourante } from "./etat.svelte";
+  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
 
   const MASQUAGE_MS = 300;
   const BORD_GAUCHE = 8;
@@ -21,6 +23,8 @@
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant
   // toujours l'interface, la barre « révélée » reprend sa colonne le temps du survol.
   const compact = $derived(fenetre?.compact ?? false);
+  // Plein écran HTML (vidéo) : seule la page reste.
+  let pleinEcran = $state(false);
   let revelee = $state(false);
   let survolBarre = false;
   let minuterie: ReturnType<typeof setTimeout> | undefined;
@@ -53,6 +57,7 @@
   $effect(() =>
     api.surRaccourci((r) => {
       if (r === "adresse") adresse.focus++;
+      else if (r === "agent") focusAgent.n++;
       else if (r === "rechercher") {
         recherche.ouverte = true;
         recherche.focus++;
@@ -100,8 +105,22 @@
     }
   });
 
-  // Plein écran HTML (vidéo) : seule la page reste.
-  let pleinEcran = $state(false);
+  // Largeur du panneau agent : celle des réglages, ou celle que l'utilisateur est en train de tirer (enregistrée au lâcher).
+  const largeurReglee = $derived(etat.valeur?.reglages.largeurPanneauAgent ?? 420);
+  let largeurTiree = $state<number | null>(null);
+  const largeurAgent = $derived(largeurTiree ?? largeurReglee);
+  $effect(() => {
+    void largeurReglee;
+    largeurTiree = null; // la largeur enregistrée est revenue dans l'état
+  });
+  function redimensionnerAgent(voulue: number, fin: boolean) {
+    // Toujours de la place pour la page : 300 px au moins à côté de la barre latérale.
+    const max = Math.min(LARGEUR_AGENT_MAX, window.innerWidth - (barreVisible ? 240 : 0) - 300);
+    const largeur = Math.round(Math.max(LARGEUR_AGENT_MIN, Math.min(max, voulue)));
+    if (fin) api.agir({ type: "largeurPanneauAgent", largeur });
+    largeurTiree = largeur;
+  }
+
   $effect(() => api.surPleinEcran((actif) => (pleinEcran = actif)));
 
   $effect(() => api.surBordGauche((dedans) => (dedans ? reveler() : planifierMasquage())));
@@ -112,7 +131,7 @@
 
 <svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_GAUCHE && reveler()} />
 
-<div class="fenetre" class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran}>
+<div class="fenetre" class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
   {#if fenetre}
     <BarreLaterale
       {fenetre}
@@ -131,7 +150,7 @@
     <aside data-testid="barre-laterale"></aside>
   {/if}
   <ZoneContenu {fenetre} onglet={ongletActif} {panneau} fermerPanneau={() => (panneau = null)} />
-  <PanneauAgent visible={panneauAgentOuvert && !pleinEcran} />
+  <PanneauAgent visible={panneauAgentOuvert && !pleinEcran} redimensionner={redimensionnerAgent} />
 </div>
 <MenuContextuel />
 
@@ -141,7 +160,7 @@
     grid-template-columns: 240px 1fr;
     height: 100%;
   }
-  .fenetre.agent { grid-template-columns: 240px 1fr 420px; }
+  .fenetre.agent { grid-template-columns: 240px 1fr var(--agent); }
   .fenetre.compact { grid-template-columns: 1fr; }
-  .fenetre.compact.agent { grid-template-columns: 1fr 420px; }
+  .fenetre.compact.agent { grid-template-columns: 1fr var(--agent); }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { Telechargement } from "../../commun/modele";
   import { api, telechargements } from "../etat.svelte";
 
@@ -24,7 +25,7 @@
 <section class="telechargements" data-testid="telechargements" aria-label="Téléchargements">
   <header>
     <h1>Téléchargements</h1>
-    <button class="fermer" aria-label="Fermer les téléchargements" onclick={fermer}>✕</button>
+    <button class="fermer" aria-label="Fermer les téléchargements" onclick={fermer}><Icone nom="fermer" taille={12} /></button>
   </header>
   <ul>
     {#each telechargements.liste as t (t.id)}

@@ -20,6 +20,6 @@ export function etatInitial(genId: () => string = randomUUID): EtatNavigateur {
         cadre: null,
       },
     ],
-    reglages: { moteur: "google", profilAgent: "claude" },
+    reglages: { moteur: "google", profilAgent: "claude", largeurPanneauAgent: 420 },
   };
 }

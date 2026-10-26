@@ -175,3 +175,13 @@ test("une session enregistrée sans profilAgent se charge avec claude", async ()
   expect(e.reglages.profilAgent).toBe("claude");
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
+
+test("une session enregistrée sans largeur de panneau agent se charge avec 420", async () => {
+  const d = dossier();
+  const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
+  delete ancienne.reglages.largeurPanneauAgent;
+  writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
+  const e = await chargerSession(d);
+  expect(e.reglages.largeurPanneauAgent).toBe(420);
+  expect(mis_de_cote(d, ".corrompu")).toEqual([]);
+});

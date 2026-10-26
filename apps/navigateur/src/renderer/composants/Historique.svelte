@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { EtatFenetre, Visite } from "../../commun/modele";
   import { api } from "../etat.svelte";
 
@@ -74,7 +75,7 @@
         </div>
       {/if}
     </div>
-    <button class="fermer" aria-label="Fermer l'historique" onclick={fermer}>✕</button>
+    <button class="fermer" aria-label="Fermer l'historique" onclick={fermer}><Icone nom="fermer" taille={12} /></button>
   </header>
   {#each groupes as g (g.jour)}
     <h2>{g.jour}</h2>

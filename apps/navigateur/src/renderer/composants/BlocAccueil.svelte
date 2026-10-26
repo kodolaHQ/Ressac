@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { BlocAffiche } from "../../commun/api";
 
   let {
@@ -18,7 +19,7 @@
     {:else}
       <p class="illisible">Bloc « {bloc.id} » illisible : {bloc.erreur}</p>
     {/if}
-    <button class="retirer" aria-label="Retirer le bloc" title="Retirer le bloc" onclick={retirer}>✕</button>
+    <button class="retirer" aria-label="Retirer le bloc" title="Retirer le bloc" onclick={retirer}><Icone nom="fermer" taille={12} /></button>
   </header>
   {#if "type" in bloc}
     {#if bloc.type === "agent"}

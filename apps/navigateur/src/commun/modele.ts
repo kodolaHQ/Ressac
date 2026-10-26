@@ -74,7 +74,10 @@ export interface EtatNavigateur {
   essentiels: Favori[];
   onglets: Record<IdOnglet, Onglet>;
   fenetres: EtatFenetre[];
-  reglages: { moteur: MoteurRecherche; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ profilAgent: string };
+  reglages: { moteur: MoteurRecherche; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ profilAgent: string;
+    /** Largeur du panneau agent, en pixels (L'utilisateur la règle en tirant son bord gauche). */
+    largeurPanneauAgent: number;
+  };
 }
 
 /** Une URL de l'historique (une ligne par URL). */
@@ -123,3 +126,7 @@ export interface Demande {
 export interface DemandeEnAttente extends Demande {
   id: string;
 }
+
+/** Bornes de la largeur du panneau agent : assez pour un terminal lisible, jamais toute la fenêtre. */
+export const LARGEUR_AGENT_MIN = 280;
+export const LARGEUR_AGENT_MAX = 1000;

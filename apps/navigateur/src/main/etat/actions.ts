@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../commun/api";
-import type { EtatFenetre, EtatNavigateur, Favori, IdEspace, IdOnglet, Onglet } from "../../commun/modele";
+import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type EtatFenetre, type EtatNavigateur, type Favori, type IdEspace, type IdOnglet, type Onglet } from "../../commun/modele";
 
 const MAX_FERMES = 20;
 
@@ -297,6 +297,12 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
     case "choisirProfilAgent": {
       if (d.reglages.profilAgent === a.profil) return false;
       d.reglages.profilAgent = a.profil;
+      return true;
+    }
+    case "largeurPanneauAgent": {
+      const largeur = Math.round(Math.min(LARGEUR_AGENT_MAX, Math.max(LARGEUR_AGENT_MIN, a.largeur)));
+      if (d.reglages.largeurPanneauAgent === largeur) return false;
+      d.reglages.largeurPanneauAgent = largeur;
       return true;
     }
   }

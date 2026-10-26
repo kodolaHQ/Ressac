@@ -78,6 +78,22 @@ test("⌘W sur le dernier onglet : la page vide a vraiment le focus clavier", { 
   await fermer();
 });
 
+test("⌘J sur un onglet : le terminal de l'agent reçoit vraiment le clavier", { tag: "@visible" }, async () => {
+  const { app, fenetre, fermer } = await lancer({ visible: true });
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().includes("a.html"))?.focus());
+  await menu(app, "panneau-agent");
+  await expect(fenetre.getByTestId("panneau-agent").locator(".xterm-rows")).toContainText("faux agent prêt>");
+  await expect
+    .poll(() => fenetre.evaluate(() => (document.activeElement as HTMLElement | null)?.className))
+    .toContain("xterm-helper-textarea");
+  await expect
+    .poll(() => app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().includes("/renderer/index.html"))?.isFocused()))
+    .toBe(true);
+  await fermer();
+});
+
 test("⌘W sur une page vide ne ferme pas une fenêtre qui a encore des onglets dans un autre espace", { tag: "@visible" }, async () => {
   const { app, fenetre, fermer } = await lancer({ visible: true });
   await menu(app, "nouvelle-fenetre");

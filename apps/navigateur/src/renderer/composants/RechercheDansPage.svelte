@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { Onglet } from "../../commun/modele";
   import { api } from "../etat.svelte";
   import { recherche } from "./recherche.svelte";
@@ -40,7 +41,7 @@
     }}
   />
   <span class="compteur" data-testid="compteur-recherche">{texte && resultat ? `${resultat.actif}/${resultat.total}` : ""}</span>
-  <button aria-label="Fermer la recherche" onclick={fermer}>✕</button>
+  <button aria-label="Fermer la recherche" onclick={fermer}><Icone nom="fermer" taille={12} /></button>
 </div>
 
 <style>

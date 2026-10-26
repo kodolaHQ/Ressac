@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { EtatFenetre, Visite } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import { adresse } from "./adresse.svelte";
@@ -71,14 +72,14 @@
 </script>
 
 <div class="navigation">
-  <button aria-label="Reculer" disabled={!onglet?.peutReculer} onclick={() => onglet && api.commande(onglet.id, "reculer")}>←</button>
-  <button aria-label="Avancer" disabled={!onglet?.peutAvancer} onclick={() => onglet && api.commande(onglet.id, "avancer")}>→</button>
+  <button aria-label="Reculer" disabled={!onglet?.peutReculer} onclick={() => onglet && api.commande(onglet.id, "reculer")}><Icone nom="reculer" /></button>
+  <button aria-label="Avancer" disabled={!onglet?.peutAvancer} onclick={() => onglet && api.commande(onglet.id, "avancer")}><Icone nom="avancer" /></button>
   {#if onglet?.chargement}
-    <button aria-label="Arrêter" onclick={() => api.commande(onglet.id, "arreter")}>✕</button>
+    <button aria-label="Arrêter" onclick={() => api.commande(onglet.id, "arreter")}><Icone nom="fermer" /></button>
   {:else}
-    <button aria-label="Recharger" disabled={!onglet} onclick={() => onglet && api.commande(onglet.id, "recharger")}>⟳</button>
+    <button aria-label="Recharger" disabled={!onglet} onclick={() => onglet && api.commande(onglet.id, "recharger")}><Icone nom="recharger" /></button>
   {/if}
-  <button class="compact" aria-label="Mode compact" title="Mode compact (⌘⇧S)" onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}>◧</button>
+  <button class="compact" aria-label="Mode compact" title="Mode compact (⌘⇧S)" onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}><Icone nom="barre" /></button>
 </div>
 <form onsubmit={valider}>
   <input

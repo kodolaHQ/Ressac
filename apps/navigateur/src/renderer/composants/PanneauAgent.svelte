@@ -3,9 +3,38 @@
   import { FitAddon } from "@xterm/addon-fit";
   import "@xterm/xterm/css/xterm.css";
   import type { EtatPanneauAgent } from "../../commun/api";
+  import { tick } from "svelte";
   import { api, etat as etatNavigateur } from "../etat.svelte";
+  import { focusAgent } from "./agent.svelte";
 
-  let { visible }: { visible: boolean } = $props();
+  let {
+    visible,
+    redimensionner,
+  }: {
+    visible: boolean;
+    /** L'utilisateur tire le bord gauche : largeur voulue en pixels ; `fin` au lâcher. */
+    redimensionner?: (largeur: number, fin: boolean) => void;
+  } = $props();
+  let section: HTMLElement;
+
+  /** Tirer le bord gauche : la capture garde le pointeur même au-dessus de la page web voisine. */
+  function tirer(e: PointerEvent) {
+    const poignee = e.currentTarget as HTMLElement;
+    poignee.setPointerCapture(e.pointerId);
+    const depart = e.clientX;
+    const largeur = section.getBoundingClientRect().width;
+    const voulue = (ev: PointerEvent) => largeur + depart - ev.clientX;
+    const bouger = (ev: PointerEvent) => redimensionner?.(voulue(ev), false);
+    const lacher = (ev: PointerEvent) => {
+      poignee.removeEventListener("pointermove", bouger);
+      poignee.removeEventListener("pointerup", lacher);
+      poignee.removeEventListener("pointercancel", lacher);
+      redimensionner?.(voulue(ev), true);
+    };
+    poignee.addEventListener("pointermove", bouger);
+    poignee.addEventListener("pointerup", lacher);
+    poignee.addEventListener("pointercancel", lacher);
+  }
   let hote: HTMLDivElement;
   let etat = $state<EtatPanneauAgent>({ etat: "preparation" });
   let terminal: Terminal | undefined;
@@ -62,9 +91,20 @@
     obs.observe(hote);
     return () => obs.disconnect();
   });
+
+  // ⌘J depuis une page web : le clavier passe de la page à l'interface. Pendant ce passage, Chromium ignore un
+  // focus demandé trop tôt : on le redemande peu après si le terminal ne l'a pas.
+  $effect(() => {
+    if (!focusAgent.n) return;
+    const viser = () => visible && terminal?.focus();
+    void tick().then(viser);
+    const relance = setTimeout(() => terminal?.textarea !== document.activeElement && viser(), 100);
+    return () => clearTimeout(relance);
+  });
 </script>
 
-<section class="agent" data-testid="panneau-agent" hidden={!visible}>
+<section class="agent" data-testid="panneau-agent" hidden={!visible} bind:this={section}>
+  <div class="poignee" data-testid="poignee-agent" role="separator" aria-orientation="vertical" aria-label="Largeur du panneau agent" onpointerdown={tirer}></div>
   {#if choixProfil}
     <header>
       <select
@@ -93,8 +133,10 @@
 </section>
 
 <style>
-  .agent { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fond-barre); border-left: 1px solid var(--bord); }
+  .agent { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fond-barre); border-left: 1px solid var(--bord); }
   .agent[hidden] { display: none; }
+  .poignee { position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; cursor: col-resize; z-index: 1; }
+  .poignee:hover, .poignee:active { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   .message { margin: 12px; color: var(--texte-doux); }
   header { padding: 6px 8px; border-bottom: 1px solid var(--bord); }
   select { padding: 2px 6px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); font-size: 12px; }

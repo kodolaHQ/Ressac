@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icone from "./Icone.svelte";
   import type { EtatFenetre } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import IconeSite from "./IconeSite.svelte";
@@ -61,7 +62,7 @@
           onclick={(e) => {
             e.stopPropagation();
             api.agir({ type: "fermerOnglet", id });
-          }}>✕</button
+          }}><Icone nom="fermer" taille={12} /></button
         >
       </li>
     {/if}
