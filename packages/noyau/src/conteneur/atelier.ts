@@ -11,6 +11,8 @@ export const VOLUME_HOME = "webaios-home";
 export const PORTS = "5280-5299";
 /** Les sondes docker ne doivent pas bloquer si Docker Desktop est coincé au démarrage. */
 const DELAI_SONDE_MS = 30_000;
+/** Première construction : téléchargement de l'image de base et installation de l'agent. Au-delà, c'est bloqué. */
+export const DELAI_CONSTRUCTION_MS = 20 * 60_000;
 
 /** Dossier du Dockerfile dans le paquet ; un navigateur qui embarque le noyau peut en fournir un autre. */
 export const DOSSIER_DOCKER_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "docker");
@@ -59,6 +61,8 @@ export class Atelier {
   private readonly executer: Executeur;
   private readonly docker: string | null;
   private readonly dossierDocker: string;
+  /** Démarrage en cours, partagé : deux fenêtres qui ouvrent un agent ne construisent pas deux fois l'image. */
+  private demarrage: Promise<EtatAtelier> | null = null;
 
   constructor(o: { chemins: CheminsEspace; executer?: Executeur; docker?: string | null; dossierDocker?: string }) {
     this.dossierDocker = o.dossierDocker ?? DOSSIER_DOCKER_PAR_DEFAUT;
@@ -86,7 +90,12 @@ export class Atelier {
     return r.code === 0 && normaliser(source) === normaliser(this.chemins.racine) && label === empreinte;
   }
 
-  async assurerDemarre(): Promise<EtatAtelier> {
+  assurerDemarre(): Promise<EtatAtelier> {
+    this.demarrage ??= this.demarrer().finally(() => (this.demarrage = null));
+    return this.demarrage;
+  }
+
+  private async demarrer(): Promise<EtatAtelier> {
     let etat = await this.etat();
     if (etat === "docker-absent") return etat;
     const empreinte = empreinteDockerfile(this.dossierDocker);
@@ -103,7 +112,7 @@ export class Atelier {
     }
     const image = await this.lancer(["image", "inspect", "-f", `{{index .Config.Labels "${LABEL_EMPREINTE}"}}`, IMAGE], DELAI_SONDE_MS);
     if (image.code !== 0 || image.stdout.trim() !== empreinte) {
-      const build = await this.lancer(["build", "-t", IMAGE, "--label", `${LABEL_EMPREINTE}=${empreinte}`, "-f", dockerfile(this.dossierDocker), this.dossierDocker]);
+      const build = await this.lancer(["build", "-t", IMAGE, "--label", `${LABEL_EMPREINTE}=${empreinte}`, "-f", dockerfile(this.dossierDocker), this.dossierDocker], DELAI_CONSTRUCTION_MS);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }
     const run = await this.lancer([
@@ -116,7 +125,7 @@ export class Atelier {
       "-w", CHEMIN_CONTENEUR,
       IMAGE,
       "sleep", "infinity",
-    ]);
+    ], DELAI_SONDE_MS);
     if (run.code !== 0) throw new Error(`Démarrage du conteneur ${NOM_CONTENEUR} impossible : ${run.stderr}`);
     return this.etat();
   }

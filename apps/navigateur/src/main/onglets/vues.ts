@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../commun/modele";
+import { attendreChargement } from "./chargement";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
 import { entreesMenuPage } from "./menu-page";
 
@@ -127,15 +128,7 @@ export class GestionnaireVues {
       vue.setBounds({ x: 0, y: 0, width: Math.round(z?.largeur || 1024), height: Math.round(z?.hauteur || 768) });
     }
     const wc = vue.webContents;
-    if (wc.isLoading()) {
-      await new Promise<void>((ok) => {
-        const minuterie = setTimeout(ok, 15_000);
-        wc.once("did-stop-loading", () => {
-          clearTimeout(minuterie);
-          ok();
-        });
-      });
-    }
+    await attendreChargement(wc, 15_000);
     return wc;
   }
 

@@ -57,6 +57,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("afficherPageVide"), fenetreId: id }),
   z.object({ type: z.literal("basculerCompact"), fenetreId: id }),
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
+  /** Ouverture et fermeture automatiques du panneau par la page d'accueil (pas une action de l'utilisateur). */
+  z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
 ]);

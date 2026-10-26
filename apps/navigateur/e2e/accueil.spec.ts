@@ -171,6 +171,22 @@ test("sans dossier accueil lisible, la page vide reste utilisable", async () => 
   }
 });
 
+test("l'agent ne démarre pas : la page d'accueil affiche quand même ses blocs, et les nouveaux", async () => {
+  const racine = nouvelleRacine();
+  mkdirSync(join(racine, ".webaios", "profils"), { recursive: true });
+  writeFileSync(join(racine, ".webaios", "profils", "claude.json"), "{ illisible");
+  ecrireBloc(racine, "veille", { titre: "Veille", type: "agent", html: "<p>Article du jour</p>" });
+  ecrireDisposition(racine, ["veille"]);
+  const { fenetre, fermer } = await lancer({ racine });
+  await expect(fenetre.getByTestId("panneau-agent")).toContainText("L'agent n'a pas pu démarrer", { timeout: 10_000 });
+  await expect(fenetre.locator(titres)).toHaveText(["Veille"]);
+  await expect(fenetre.frameLocator(iframe("veille")).locator("p")).toHaveText("Article du jour");
+  ecrireBloc(racine, "autre", { titre: "Autre", type: "agent", html: "<p>Nouveau</p>" });
+  ecrireDisposition(racine, ["veille", "autre"]);
+  await expect(fenetre.locator(titres)).toHaveText(["Veille", "Autre"]);
+  await fermer();
+});
+
 function troisBlocs(): string {
   const racine = nouvelleRacine();
   for (const [id, titre] of [["un", "Un"], ["deux", "Deux"], ["trois", "Trois"]] as const)

@@ -64,7 +64,10 @@ export async function creerNoyau(o: {
   // La navigation ne doit jamais attendre Docker (spec §9) : la première construction d'image prend
   // des minutes, et un échec (port occupé…) ne concerne que l'agent.
   const atelier = new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
-  const demarrage = atelier.assurerDemarre().catch(() => undefined);
+  // Le conteneur se prépare dès le lancement. S'il échoue, la première session rend cet échec plutôt que de tout
+  // reconstruire aussitôt ; les suivantes (Réessayer) tentent à nouveau. Réussi, il est revérifié (sonde rapide).
+  let demarrage: Promise<EtatAtelier> | null = atelier.assurerDemarre();
+  demarrage.catch(() => {});
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();
 
@@ -73,10 +76,12 @@ export async function creerNoyau(o: {
     politique,
     etatAtelier: () => atelier.etat(),
     async ouvrirSessionAgent({ cols, rows }) {
-      await demarrage;
+      const premier = demarrage;
+      demarrage = null;
+      const tentative = premier ? premier.then(() => atelier.assurerDemarre()) : atelier.assurerDemarre();
       let etat: EtatAtelier;
       try {
-        etat = await atelier.assurerDemarre();
+        etat = await tentative;
       } catch (e) {
         throw new ErreurAtelier("absent", (e as Error).message);
       }

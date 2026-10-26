@@ -1,8 +1,9 @@
 import { protocol, type WebContents } from "electron";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { CheminsEspace, EtatAccueil, Noyau } from "@webaios/noyau";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { join, sep } from "node:path";
+import { lireAccueil, type CheminsEspace, type EtatAccueil } from "@webaios/noyau";
 import type { BlocAffiche } from "../../commun/api";
 
 export const SCHEMA_BLOC = "webaios-bloc";
@@ -45,6 +46,22 @@ export function cheminBloc(blocs: string, url: string): string | null {
   return join(blocs, u.hostname, "index.html");
 }
 
+/**
+ * Le HTML servi pour une URL `webaios-bloc:`, avec sa base ; null s'il n'existe pas, ou si un lien symbolique
+ * le fait sortir du dossier des blocs (l'agent écrit dans ce dossier : il ne doit pas y montrer un fichier du Mac).
+ */
+export async function lireHtmlBloc(blocs: string, url: string): Promise<string | null> {
+  const chemin = cheminBloc(blocs, url);
+  if (!chemin) return null;
+  try {
+    const [racine, reel] = await Promise.all([realpath(blocs), realpath(chemin)]);
+    if (!reel.startsWith(racine + sep)) return null;
+    return avecBase(await readFile(reel, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 /** Les liens d'un bloc s'ouvrent hors de l'iframe (dans un onglet, voir index.ts). */
 export function avecBase(html: string): string {
   const base = '<base target="_blank">';
@@ -54,8 +71,8 @@ export function avecBase(html: string): string {
   return html.slice(0, fin) + base + html.slice(fin);
 }
 
-export async function lireBlocsAffiches(n: Pick<Noyau, "lireAccueil">): Promise<BlocAffiche[]> {
-  const etat = await n.lireAccueil();
+export async function lireBlocsAffiches(c: CheminsEspace): Promise<BlocAffiche[]> {
+  const etat = await lireAccueil(c);
   const mtimes: Record<string, number> = {};
   for (const b of etat.blocs) {
     if (!("cheminHtml" in b) || !b.cheminHtml) continue;
@@ -68,28 +85,44 @@ export async function lireBlocsAffiches(n: Pick<Noyau, "lireAccueil">): Promise<
   return versBlocsAffiches(etat, mtimes);
 }
 
-/** L'utilisateur a déplacé un bloc : nouvel ordre dans disposition.json (écriture atomique). Les ids inconnus sont ignorés. */
-export async function ordonnerBlocs(c: CheminsEspace, ordre: string[]): Promise<void> {
+/** Écritures de disposition.json une par une, dans l'ordre des demandes : aucune ne lit l'état qu'une autre va changer. */
+const fileDisposition = new Map<string, Promise<void>>();
+function enSerie(c: CheminsEspace, ecrire: () => Promise<void>): Promise<void> {
+  const suite = (fileDisposition.get(c.disposition) ?? Promise.resolve()).then(ecrire);
+  const fin = suite.catch(() => {});
+  fileDisposition.set(c.disposition, fin);
+  void fin.then(() => fileDisposition.get(c.disposition) === fin && fileDisposition.delete(c.disposition));
+  return suite;
+}
+
+async function ecrireOrdre(c: CheminsEspace, ordre: string[]): Promise<void> {
   const connus = [...new Set(ordre)].filter((id) => ID_BLOC.test(id) && existsSync(join(c.blocs, id)));
-  const temporaire = `${c.disposition}.${process.pid}.tmp`;
+  const temporaire = `${c.disposition}.${randomUUID()}.tmp`;
   await writeFile(temporaire, JSON.stringify({ ordre: connus }, null, 2));
   await rename(temporaire, c.disposition);
+}
+
+/** L'utilisateur a déplacé un bloc : nouvel ordre dans disposition.json (écriture atomique). Les ids inconnus sont ignorés. */
+export function ordonnerBlocs(c: CheminsEspace, ordre: string[]): Promise<void> {
+  return enSerie(c, () => ecrireOrdre(c, ordre));
 }
 
 /** L'utilisateur retire un bloc : son dossier part dans accueil/.corbeille (rien n'est détruit). */
 export async function retirerBloc(c: CheminsEspace, id: string): Promise<void> {
   if (!ID_BLOC.test(id)) throw new Error(`id de bloc invalide : ${id}`);
-  let ordre: string[] = [];
-  try {
-    const lu = JSON.parse(await readFile(c.disposition, "utf8")) as { ordre?: unknown };
-    if (Array.isArray(lu.ordre)) ordre = lu.ordre.filter((x): x is string => typeof x === "string");
-  } catch {
-    // pas encore de disposition : rien à retirer de l'ordre
-  }
-  const corbeille = join(c.accueil, ".corbeille");
-  await mkdir(corbeille, { recursive: true });
-  await rename(join(c.blocs, id), join(corbeille, `${id}-${Date.now()}`));
-  await ordonnerBlocs(c, ordre.filter((x) => x !== id));
+  return enSerie(c, async () => {
+    let ordre: string[] = [];
+    try {
+      const lu = JSON.parse(await readFile(c.disposition, "utf8")) as { ordre?: unknown };
+      if (Array.isArray(lu.ordre)) ordre = lu.ordre.filter((x): x is string => typeof x === "string");
+    } catch {
+      // pas encore de disposition : rien à retirer de l'ordre
+    }
+    const corbeille = join(c.accueil, ".corbeille");
+    await mkdir(corbeille, { recursive: true });
+    await rename(join(c.blocs, id), join(corbeille, `${id}-${Date.now()}`));
+    await ecrireOrdre(c, ordre.filter((x) => x !== id));
+  });
 }
 
 /** Avant `app.whenReady` : le schéma doit être standard pour que les URL aient un hôte (l'id du bloc). */
@@ -102,16 +135,11 @@ export function servirBlocs(blocs: () => string | null): void {
   const introuvable = () => new Response("", { status: 404 });
   protocol.handle(SCHEMA_BLOC, async (requete) => {
     const dossier = blocs();
-    const chemin = dossier && cheminBloc(dossier, requete.url);
-    if (!chemin) return introuvable();
-    try {
-      const html = await readFile(chemin, "utf8");
-      return new Response(avecBase(html), {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP_BLOC },
-      });
-    } catch {
-      return introuvable();
-    }
+    const html = dossier ? await lireHtmlBloc(dossier, requete.url) : null;
+    if (html === null) return introuvable();
+    return new Response(html, {
+      headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP_BLOC },
+    });
   });
 }
 
@@ -125,6 +153,8 @@ export function protegerWebviews(ui: WebContents, brancher: (vue: WebContents) =
     prefs.nodeIntegration = false;
     prefs.contextIsolation = true;
     prefs.sandbox = true;
+    prefs.webSecurity = true;
+    prefs.allowRunningInsecureContent = false;
     if (!/^https?:\/\//.test(params.src ?? "") || params.partition !== PARTITION_WEB) e.preventDefault();
   });
   ui.on("did-attach-webview", (_e, vue) => brancher(vue));

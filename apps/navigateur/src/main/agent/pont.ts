@@ -1,5 +1,5 @@
 import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "@webaios/noyau";
-import type { Decision, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
+import type { Decision, DemandeEnAttente, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 
 const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
@@ -38,6 +38,15 @@ export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateu
     else if (n.url !== o.url) navigues.push({ id, url: n.url });
   }
   return { navigues, fermes };
+}
+
+/**
+ * Une question qui ne recevra plus de réponse utile : son onglet visé est fermé. Une demande de l'agent s'affiche
+ * dans sa fenêtre, quel que soit l'onglet affiché : fermer celui-ci ne la concerne pas.
+ */
+export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): boolean {
+  if (d.cible && !etat.onglets[d.cible]) return true;
+  return !d.fenetreId && d.ongletId !== null && !etat.onglets[d.ongletId];
 }
 
 /** Une demande de lecture sans réponse au bout de ce délai est refusée : l'agent ne reste pas bloqué. */

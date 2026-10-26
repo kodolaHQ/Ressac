@@ -3,7 +3,7 @@ import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import type { EtatNavigateur } from "../../src/commun/modele";
-import { attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 function preparer() {
   let n = 0;
@@ -75,4 +75,16 @@ test("attendreReponse : sans réponse au bout du délai, la question est retiré
 test("attendreReponse : autoriser → oui, refuser → non", async () => {
   await expect(attendreReponse((repondre) => (repondre("autoriser"), () => {}), 1000)).resolves.toBe(true);
   await expect(attendreReponse((repondre) => (repondre("refuser"), () => {}), 1000)).resolves.toBe(false);
+});
+
+test("questionCaduque : une demande de l'agent ne tombe qu'avec son onglet visé ; une permission de site, avec son onglet", () => {
+  const { e, ag, F } = preparer();
+  const [a, b] = Object.keys(e().onglets);
+  const lecture = { id: "q", ongletId: a!, fenetreId: F, cible: b!, origine: "https://b.test", permissions: ["lire-onglet" as const] };
+  const site = { id: "s", ongletId: a!, origine: "https://a.test", permissions: ["notifications" as const] };
+  ag({ type: "fermerOnglet", id: a! });
+  expect(questionCaduque(lecture, e())).toBe(false);
+  expect(questionCaduque(site, e())).toBe(true);
+  ag({ type: "fermerOnglet", id: b! });
+  expect(questionCaduque(lecture, e())).toBe(true);
 });

@@ -1,6 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { ErreurAtelier } from "@webaios/noyau";
-import { SessionsAgent, TAMPON_MAX, type SessionLike } from "../../src/main/agent/sessions";
+import { REGROUPEMENT_MS, SessionsAgent, TAMPON_MAX, Tampon, type SessionLike } from "../../src/main/agent/sessions";
 
 class FausseSession implements SessionLike {
   active = true;
@@ -61,17 +61,40 @@ test("demarrer deux fois n'ouvre qu'une session ; le second appel renvoie le tam
   expect(sessions).toHaveLength(1);
   expect(etats()).toEqual([{ etat: "actif" }]);
   expect(envois.filter((e) => e.canal === "donnees").map((e) => e.v)).toEqual(["bonjour"]);
+  // La sortie en attente d'envoi est déjà dans le tampon renvoyé : pas de doublon ensuite.
+  await new Promise((r) => setTimeout(r, REGROUPEMENT_MS * 3));
+  expect(envois.filter((e) => e.canal === "donnees")).toHaveLength(1);
 });
 
-test("le tampon garde les derniers caractères après une sortie énorme", async () => {
-  const { gestion, sessions, envois } = preparer();
-  await gestion.demarrer("F", taille);
-  for (let i = 0; i < 1000; i++) sessions[0]!.emettre(`${String(i).padStart(4, "0")}${"x".repeat(996)}`);
-  envois.length = 0;
-  await gestion.demarrer("F", taille);
-  const tampon = envois.find((e) => e.canal === "donnees")!.v as string;
-  expect(tampon.length).toBe(TAMPON_MAX);
-  expect(tampon.endsWith(`0999${"x".repeat(996)}`)).toBe(true);
+test("la sortie de l'agent part par paquets : plusieurs morceaux rapprochés, un seul envoi", async () => {
+  vi.useFakeTimers();
+  try {
+    const { gestion, sessions, envois } = preparer();
+    await gestion.demarrer("F", taille);
+    for (const d of ["a", "b", "c"]) sessions[0]!.emettre(d);
+    expect(envois.filter((e) => e.canal === "donnees")).toEqual([]);
+    vi.advanceTimersByTime(REGROUPEMENT_MS);
+    expect(envois.filter((e) => e.canal === "donnees").map((e) => e.v)).toEqual(["abc"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("le tampon garde la fin d'une sortie énorme, à partir d'un début de ligne", () => {
+  const t = new Tampon(1000);
+  for (let i = 0; i < 100; i++) t.ajouter(`${String(i).padStart(3, "0")}\x1b[31mrouge\x1b[0m\r\n`);
+  const s = t.texte();
+  expect(s.length).toBeLessThanOrEqual(1000);
+  expect(s.length).toBeGreaterThan(900);
+  expect(s.endsWith("099\x1b[31mrouge\x1b[0m\r\n")).toBe(true);
+  expect(s).toMatch(/^\d{3}\x1b\[31m/);
+});
+
+test("le tampon coupe au caractère près une sortie sans retour à la ligne", () => {
+  const t = new Tampon(TAMPON_MAX);
+  for (let i = 0; i < 1000; i++) t.ajouter(`${String(i).padStart(4, "0")}${"x".repeat(996)}`);
+  expect(t.texte().length).toBe(TAMPON_MAX);
+  expect(t.texte().endsWith(`0999${"x".repeat(996)}`)).toBe(true);
 });
 
 test("Docker absent → docker-absent ; autre erreur → erreur avec message", async () => {
@@ -149,5 +172,27 @@ test("relancerTout arrête chaque session et en rouvre une à la même taille, s
   expect(sessions).toHaveLength(2);
   expect(tailles[1]).toEqual({ cols: 100, rows: 30 });
   expect(envois.filter((e) => e.canal === "etat").map((e) => e.v)).toEqual([{ etat: "preparation" }, { etat: "actif" }]);
+  expect(gestion.active("F")).toBe(true);
+});
+
+test("relancerTout pendant un démarrage : l'échec de l'ancien démarrage n'écrase pas la nouvelle session", async () => {
+  const sessions: FausseSession[] = [];
+  const envois: { f: string; canal: string; v: unknown }[] = [];
+  let echouer!: (e: Error) => void;
+  let appels = 0;
+  const gestion = new SessionsAgent({
+    ouvrir: () => {
+      if (appels++ === 0) return new Promise((_ok, ko) => (echouer = ko));
+      const s = new FausseSession();
+      sessions.push(s);
+      return Promise.resolve(s);
+    },
+    envoyer: (f, canal, v) => envois.push({ f, canal, v }),
+  });
+  const ancien = gestion.demarrer("F", taille);
+  await gestion.relancerTout();
+  echouer(new Error("noyau arrêté"));
+  await ancien;
+  expect(envois.filter((e) => e.canal === "etat").at(-1)?.v).toEqual({ etat: "actif" });
   expect(gestion.active("F")).toBe(true);
 });

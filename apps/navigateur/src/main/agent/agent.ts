@@ -1,5 +1,5 @@
 import type { BrowserWindow } from "electron";
-import { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte, type Noyau, type OngletInfo } from "@webaios/noyau";
+import { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte, surveillerAccueil, type CheminsEspace, type Noyau, type OngletInfo } from "@webaios/noyau";
 import type { IdFenetre } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
@@ -13,6 +13,8 @@ export interface ServiceAgent {
   /** null tant que le noyau n'est pas prêt, ou s'il n'a pas pu démarrer (voir `erreur`). */
   noyau(): Noyau | null;
   erreur(): string | null;
+  /** Dossiers de l'espace : la page d'accueil s'y lit même si le noyau n'a pas pu démarrer. */
+  chemins: CheminsEspace;
   /** Profils d'agent de l'espace (.webaios/profils), lus même si le noyau n'a pas pu démarrer. */
   profils(): Promise<{ id: string; nom: string }[]>;
   /** Terminaux de l'agent, un par fenêtre. */
@@ -36,7 +38,6 @@ export function demarrerAgent(o: {
   surAccueil: () => void;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
-  let arreterAccueil: (() => Promise<void>) | undefined;
   let erreur: string | null = null;
   const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).
@@ -46,17 +47,19 @@ export function demarrerAgent(o: {
     for (const n of navigues) noyau.politique.ongletNavigue(n.id, n.url);
     for (const id of fermes) noyau.politique.ongletFerme(id);
   });
+  const chemins = cheminsEspace();
+  let arreterAccueil: (() => Promise<void>) | undefined;
+  try {
+    arreterAccueil = surveillerAccueil(chemins, o.surAccueil);
+  } catch (e) {
+    console.error("[webaios] surveillance de la page d'accueil impossible :", e);
+  }
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine }).then(
       (n) => {
         noyau = n;
-        try {
-          arreterAccueil = n.surveillerAccueil(o.surAccueil);
-        } catch (e) {
-          console.error("[webaios] surveillance de la page d'accueil impossible :", e);
-        }
-        o.surAccueil();
+        o.surAccueil(); // l'espace vient peut-être d'être créé
         return n;
       },
       (e: Error) => {
@@ -68,8 +71,6 @@ export function demarrerAgent(o: {
   };
   const arreterNoyau = async (n: Noyau | null) => {
     noyau = null;
-    await arreterAccueil?.();
-    arreterAccueil = undefined;
     await n?.arreter();
   };
   let pret = lancerNoyau(o.magasin.etat.reglages.profilAgent);
@@ -110,9 +111,10 @@ export function demarrerAgent(o: {
   return {
     noyau: () => noyau,
     erreur: () => erreur,
+    chemins,
     async profils() {
       try {
-        return (await chargerProfils(cheminsEspace())).profils.map((p) => ({ id: p.id, nom: p.nom }));
+        return (await chargerProfils(chemins)).profils.map((p) => ({ id: p.id, nom: p.nom }));
       } catch {
         return [];
       }
@@ -120,7 +122,7 @@ export function demarrerAgent(o: {
     sessions,
     async arreter() {
       sessions.toutArreter();
-      await arreterNoyau(await pret);
+      await Promise.all([arreterAccueil?.(), arreterNoyau(await pret)]);
     },
   };
 }

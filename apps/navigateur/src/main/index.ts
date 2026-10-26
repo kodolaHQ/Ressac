@@ -13,7 +13,7 @@ import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
-import { attendreReponse, ongletActifDe } from "./agent/pont";
+import { attendreReponse, ongletActifDe, questionCaduque } from "./agent/pont";
 import { enregistrerSchemaBloc, lireBlocsAffiches, ordonnerBlocs, protegerWebviews, retirerBloc, servirBlocs } from "./agent/accueil";
 
 // Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
@@ -186,7 +186,7 @@ app.whenReady().then(async () => {
   magasin.abonner((etat) => {
     let change = false;
     for (const [id, q] of questions)
-      if ((q.demande.ongletId && !etat.onglets[q.demande.ongletId]) || (q.demande.cible && !etat.onglets[q.demande.cible])) {
+      if (questionCaduque(q.demande, etat)) {
         questions.delete(id);
         q.repondre("refuser");
         change = true;
@@ -214,10 +214,9 @@ app.whenReady().then(async () => {
     telechargements,
     accueil: {
       async lire() {
-        const n = agent?.noyau();
-        if (!n) return [];
+        if (!agent) return [];
         try {
-          return await lireBlocsAffiches(n);
+          return await lireBlocsAffiches(agent.chemins);
         } catch (e) {
           console.error("[webaios] page d'accueil illisible :", e);
           return [];
@@ -225,12 +224,10 @@ app.whenReady().then(async () => {
       },
       // La surveillance du dossier renvoie la page à jour aux fenêtres.
       ordonner: (ordre) => {
-        const n = agent?.noyau();
-        if (n) ordonnerBlocs(n.chemins, ordre).catch((e) => console.error("[webaios] disposition non écrite :", e));
+        if (agent) ordonnerBlocs(agent.chemins, ordre).catch((e) => console.error("[webaios] disposition non écrite :", e));
       },
       retirer: (id) => {
-        const n = agent?.noyau();
-        if (n) retirerBloc(n.chemins, id).catch((e) => console.error(`[webaios] bloc ${id} non retiré :`, e));
+        if (agent) retirerBloc(agent.chemins, id).catch((e) => console.error(`[webaios] bloc ${id} non retiré :`, e));
       },
     },
     agent: {
@@ -307,7 +304,7 @@ app.whenReady().then(async () => {
     for (const [id, f] of fenetres) if (f === focus) return id;
     return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
   };
-  servirBlocs(() => agent?.noyau()?.chemins.blocs ?? null);
+  servirBlocs(() => agent?.chemins.blocs ?? null);
   agent = demarrerAgent({
     magasin,
     vues,

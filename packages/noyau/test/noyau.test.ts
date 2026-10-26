@@ -83,6 +83,23 @@ test("échec de démarrage du conteneur : creerNoyau réussit, la session lève 
   expect(erreur.message).toContain("port is already allocated");
 });
 
+test("construction échouée au lancement : la première session rend cet échec sans reconstruire aussitôt", async () => {
+  const racine = await dossierTemporaire();
+  const { executer, appels } = executeurFactice([
+    [/ info$/, { code: 0 }],
+    [/ image inspect /, { code: 1 }],
+    [/ inspect -f/, { code: 1 }],
+    [/ build /, { code: 1, stderr: "réseau coupé" }],
+  ]);
+  noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  const erreur = await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
+  expect(erreur.message).toContain("réseau coupé");
+  expect(appels.filter((a) => a.args[0] === "build")).toHaveLength(1);
+  // Réessayer : une nouvelle tentative.
+  await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch(() => {});
+  expect(appels.filter((a) => a.args[0] === "build")).toHaveLength(2);
+});
+
 test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
   const racine = await dossierTemporaire();
   const copie = await dossierTemporaire();

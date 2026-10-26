@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Atelier, empreinteDockerfile, trouverDocker } from "../../src/conteneur/atelier.js";
+import { Atelier, DELAI_CONSTRUCTION_MS, empreinteDockerfile, trouverDocker } from "../../src/conteneur/atelier.js";
 import { DOSSIERS_OUTILS } from "../../src/conteneur/executeur.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 
@@ -162,4 +162,48 @@ test("session interactive : son PID est noté dans le conteneur, et l'arrêter l
   expect(appel.args[4]).toContain(`cat ${pid}`);
   expect(appel.args[4]).toContain("kill -HUP");
   expect(() => a.commandeSession("../x", ["claude"])).toThrow();
+});
+
+test("deux démarrages en même temps : une seule construction d'image et un seul conteneur", async () => {
+  let finirBuild!: () => void;
+  let lance = false;
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 1 }],
+    [/ inspect /, () => ({ code: lance ? 0 : 1, stdout: "true\n" })],
+    [/ build /, () => new Promise((ok) => (finirBuild = () => ok({ code: 0 })))],
+    [/ run /, () => ((lance = true), { code: 0 })],
+  ]);
+  const atelier = new Atelier({ chemins, docker: "docker", executer });
+  const a = atelier.assurerDemarre();
+  const b = atelier.assurerDemarre();
+  await new Promise((r) => setTimeout(r, 10));
+  finirBuild();
+  expect(await Promise.all([a, b])).toEqual(["demarre", "demarre"]);
+  expect(appels.filter((x) => x.args[0] === "build")).toHaveLength(1);
+  expect(appels.filter((x) => x.args[0] === "run")).toHaveLength(1);
+});
+
+test("après un échec, un nouveau démarrage réessaie", async () => {
+  let echecs = 0;
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 1 }],
+    [/ inspect /, { code: 1 }],
+    [/ build /, () => (echecs++, { code: 1, stderr: "réseau" })],
+  ]);
+  const atelier = new Atelier({ chemins, docker: "docker", executer });
+  await expect(atelier.assurerDemarre()).rejects.toThrow("réseau");
+  await expect(atelier.assurerDemarre()).rejects.toThrow("réseau");
+  expect(appels.filter((x) => x.args[0] === "build")).toHaveLength(2);
+});
+
+test("construction et lancement du conteneur ont un délai maximal", async () => {
+  let lance = false;
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 1 }],
+    [/ inspect /, () => ({ code: lance ? 0 : 1, stdout: "true\n" })],
+    [/ run /, () => ((lance = true), { code: 0 })],
+  ]);
+  await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
+  for (const a of appels) expect(a.opts?.delaiMs, a.args.join(" ")).toBeGreaterThan(0);
+  expect(appels.find((a) => a.args[0] === "build")!.opts?.delaiMs).toBe(DELAI_CONSTRUCTION_MS);
 });

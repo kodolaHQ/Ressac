@@ -64,8 +64,8 @@
   // Page d'accueil : le panneau agent y est ouvert par défaut (spec §7), et se referme en la quittant s'il ne
   // s'était ouvert que pour elle. Si l'utilisateur le ferme sur la page d'accueil, il y reste fermé jusqu'au prochain lancement.
   let panneauFermeSurAccueil = false;
-  /** Bascule envoyée, pas encore revenue dans l'état : ne pas la renvoyer. */
-  let basculeEnvoyee = false;
+  /** Ouverture demandée par la page d'accueil, pas encore revenue dans l'état (null : aucune). */
+  let attendu: boolean | null = null;
   let ouvertParAccueil = false;
   let ouvertAvant = false;
   $effect(() => {
@@ -75,22 +75,28 @@
     const surAccueil = !ongletActif;
     if (ouvert !== ouvertAvant) {
       // Changement venu d'ailleurs (⌘J, bouton ✦) : le panneau appartient désormais à l'utilisateur.
-      if (!basculeEnvoyee) ouvertParAccueil = false;
-      basculeEnvoyee = false;
-      if (surAccueil && !ouvert) panneauFermeSurAccueil = true;
+      const deUtilisateur = ouvert !== attendu;
+      if (deUtilisateur) ouvertParAccueil = false;
+      if (deUtilisateur && surAccueil && !ouvert) panneauFermeSurAccueil = true;
+      attendu = null;
     }
     ouvertAvant = ouvert;
-    if (basculeEnvoyee) return;
-    const basculer = () => {
-      basculeEnvoyee = true;
-      api.agir({ type: "basculerPanneauAgent", fenetreId: f.id });
+    // Un onglet s'est affiché avant que l'ouverture n'aboutisse : elle a été refusée (voir panneauAgentAccueil).
+    if (!surAccueil && !ouvert) {
+      attendu = null;
+      ouvertParAccueil = false;
+    }
+    // L'action est idempotente : la renvoyer tant que l'état ne l'a pas reflétée ne bascule rien.
+    const demander = (v: boolean) => {
+      attendu = v;
+      api.agir({ type: "panneauAgentAccueil", fenetreId: f.id, ouvert: v });
     };
     if (surAccueil && !ouvert && !panneauFermeSurAccueil) {
       ouvertParAccueil = true;
-      basculer();
+      demander(true);
     } else if (!surAccueil && ouvert && ouvertParAccueil) {
       ouvertParAccueil = false;
-      basculer();
+      demander(false);
     }
   });
 

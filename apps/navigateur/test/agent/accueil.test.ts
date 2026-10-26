@@ -1,9 +1,11 @@
+import { EventEmitter } from "node:events";
+import type { WebContents } from "electron";
 import { expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cheminsEspace, type EtatAccueil } from "@webaios/noyau";
-import { avecBase, cheminBloc, ordonnerBlocs, retirerBloc, versBlocsAffiches } from "../../src/main/agent/accueil";
+import { avecBase, cheminBloc, lireHtmlBloc, ordonnerBlocs, protegerWebviews, retirerBloc, versBlocsAffiches } from "../../src/main/agent/accueil";
 
 function espace(ids: string[]) {
   const c = cheminsEspace(mkdtempSync(join(tmpdir(), "webaios-accueil-")));
@@ -71,4 +73,35 @@ test("retirerBloc refuse un id invalide", async () => {
   const c = espace(["a"]);
   await expect(retirerBloc(c, "../x")).rejects.toThrow();
   expect(existsSync(join(c.blocs, "a"))).toBe(true);
+});
+
+test("lireHtmlBloc : le HTML du bloc avec sa base ; rien pour un lien symbolique qui sort du dossier des blocs", async () => {
+  const c = espace(["a", "b", "c"]);
+  writeFileSync(join(c.blocs, "a", "index.html"), "<p>a</p>");
+  expect(await lireHtmlBloc(c.blocs, "webaios-bloc://a/index.html?v=1")).toBe('<base target="_blank"><p>a</p>');
+  const dehors = join(mkdtempSync(join(tmpdir(), "webaios-secret-")), "secret.txt");
+  writeFileSync(dehors, "secret");
+  symlinkSync(dehors, join(c.blocs, "b", "index.html"));
+  expect(await lireHtmlBloc(c.blocs, "webaios-bloc://b/index.html")).toBeNull();
+  symlinkSync(join(dehors, ".."), join(c.blocs, "d"));
+  writeFileSync(join(dehors, "..", "index.html"), "secret");
+  expect(await lireHtmlBloc(c.blocs, "webaios-bloc://d/index.html")).toBeNull();
+  expect(await lireHtmlBloc(c.blocs, "webaios-bloc://c/index.html")).toBeNull(); // pas encore de HTML
+});
+
+test("ordonner et retirer en même temps : chaque écriture aboutit, dans l'ordre des demandes", async () => {
+  const c = espace(["a", "b", "c"]);
+  await Promise.all([ordonnerBlocs(c, ["a", "b", "c"]), ordonnerBlocs(c, ["c", "b", "a"]), retirerBloc(c, "b")]);
+  expect(ordreLu(c)).toEqual(["c", "a"]);
+  expect(readdirSync(c.accueil).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+});
+
+test("protegerWebviews : une vue d'app n'a ni preload, ni Node, ni sécurité web désactivée", () => {
+  const ui = new EventEmitter();
+  protegerWebviews(ui as unknown as WebContents, () => {});
+  const prefs: Record<string, unknown> = { preload: "/x.js", nodeIntegration: true, contextIsolation: false, sandbox: false, webSecurity: false, allowRunningInsecureContent: true };
+  let refusee = false;
+  ui.emit("will-attach-webview", { preventDefault: () => (refusee = true) }, prefs, { src: "https://app.daily.dev", partition: "persist:webaios" });
+  expect(refusee).toBe(false);
+  expect(prefs).toEqual({ nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false });
 });

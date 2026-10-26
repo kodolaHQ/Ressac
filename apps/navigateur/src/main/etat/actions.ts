@@ -283,6 +283,13 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       f.panneauAgentOuvert = !f.panneauAgentOuvert;
       return true;
     }
+    // Ouvrir le panneau sur un onglet le donne à l'agent : la page d'accueil ne l'ouvre que si elle est encore affichée.
+    case "panneauAgentAccueil": {
+      const f = fenetre(d, a.fenetreId);
+      if (!f || f.panneauAgentOuvert === a.ouvert || (a.ouvert && f.actif[f.espaceActif])) return false;
+      f.panneauAgentOuvert = a.ouvert;
+      return true;
+    }
     case "choisirMoteur": {
       d.reglages.moteur = a.moteur;
       return true;

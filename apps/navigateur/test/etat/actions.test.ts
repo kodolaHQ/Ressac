@@ -336,3 +336,18 @@ test("choisirProfilAgent change le réglage (claude par défaut)", () => {
   ag({ type: "choisirProfilAgent", profil: "autre" });
   expect(e.reglages.profilAgent).toBe("autre");
 });
+
+test("panneauAgentAccueil : ouvre seulement sur la page d'accueil (sinon l'onglet serait donné à l'agent) ; ferme toujours", () => {
+  ouvrir("https://a.test/");
+  const avant = e;
+  ag({ type: "panneauAgentAccueil", fenetreId: F, ouvert: true });
+  expect(e).toBe(avant);
+  ag({ type: "afficherPageVide", fenetreId: F });
+  ag({ type: "panneauAgentAccueil", fenetreId: F, ouvert: true });
+  expect(fen().panneauAgentOuvert).toBe(true);
+  ag({ type: "panneauAgentAccueil", fenetreId: F, ouvert: true });
+  expect(fen().panneauAgentOuvert).toBe(true);
+  ouvrir("https://b.test/");
+  ag({ type: "panneauAgentAccueil", fenetreId: F, ouvert: false });
+  expect(fen().panneauAgentOuvert).toBe(false);
+});
