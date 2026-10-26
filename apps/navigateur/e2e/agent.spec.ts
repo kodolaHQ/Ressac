@@ -234,6 +234,26 @@ test("conteneur impossible à démarrer → erreur et Réessayer", async () => {
   await fermer();
 });
 
+test("⌘W sur la page vide de la dernière fenêtre la ferme et arrête son agent (l'app reste ouverte)", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await panneauAccueil(fenetre);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  const pid = Number(lireFichier(join(racine, "faux-agent-pid")));
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("fermer-onglet")?.click());
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+  const vivant = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  await expect.poll(vivant, { timeout: 10_000 }).toBe(false);
+  await expect.poll(() => lireFichier(join(racine, "faux-docker-arrets.log"))).toMatch(/signaler KILL/);
+  await fermer();
+});
+
 test("fermer la fenêtre arrête son agent", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
