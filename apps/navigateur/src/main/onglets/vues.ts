@@ -316,7 +316,11 @@ export class GestionnaireVues {
     for (const [f, o] of this.attachees) {
       if (o !== id) continue;
       const fenetre = this.o.fenetres.get(f);
-      if (fenetre && !fenetre.isDestroyed()) fenetre.contentView.removeChildView(vue);
+      if (fenetre && !fenetre.isDestroyed()) {
+        fenetre.contentView.removeChildView(vue);
+        // La page affichée se ferme (⌘W) : le clavier revient à l'interface, sinon la frappe n'irait nulle part.
+        fenetre.webContents.focus();
+      }
       this.attachees.delete(f);
     }
     this.vues.delete(id);
