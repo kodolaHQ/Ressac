@@ -1,0 +1,105 @@
+import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "@webaios/noyau";
+import type { EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
+import type { Magasin } from "../ipc";
+
+const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
+  id: o.id,
+  titre: o.titre,
+  url: o.url,
+  espace: etat.espaces.find((e) => e.id === o.espaceId)?.nom ?? "",
+});
+
+/** Tous les onglets, toutes fenêtres confondues, tels que l'agent les voit. */
+export function infosOnglets(etat: EtatNavigateur): OngletInfo[] {
+  return Object.values(etat.onglets).map((o) => info(etat, o));
+}
+
+export function ongletActifDe(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): OngletInfo | null {
+  const f = etat.fenetres.find((x) => x.id === fenetreId);
+  const id = f?.actif[f.espaceActif];
+  const o = id ? etat.onglets[id] : undefined;
+  return o ? info(etat, o) : null;
+}
+
+/** L'espace demandé par l'agent : par id, puis par nom (sans casse), sinon l'espace actif. */
+export function resoudreEspace(etat: EtatNavigateur, f: EtatFenetre, espace?: string): IdEspace {
+  if (!espace) return f.espaceActif;
+  const e = etat.espaces.find((x) => x.id === espace) ?? etat.espaces.find((x) => x.nom.toLowerCase() === espace.toLowerCase());
+  return e?.id ?? f.espaceActif;
+}
+
+/** Ce que la politique d'accès doit apprendre d'un changement d'état : navigations et fermetures. */
+export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateur): { navigues: { id: string; url: string }[]; fermes: string[] } {
+  const navigues: { id: string; url: string }[] = [];
+  const fermes: string[] = [];
+  for (const [id, o] of Object.entries(avant.onglets)) {
+    const n = apres.onglets[id];
+    if (!n) fermes.push(id);
+    else if (n.url !== o.url) navigues.push({ id, url: n.url });
+  }
+  return { navigues, fermes };
+}
+
+/** Ce que le pont demande aux vues (GestionnaireVues). */
+export interface VuesPourAgent {
+  naviguer(id: string, url: string): void;
+  lireTexte(o: Onglet): Promise<{ texte: string; selection?: string }>;
+  capturer(o: Onglet): Promise<Buffer>;
+}
+
+/** Le navigateur Electron vu par le noyau (spec §5) : lire, ouvrir, capturer les onglets ; demander à l'utilisateur. */
+export class PontElectron implements PontNavigateur {
+  constructor(
+    private readonly o: {
+      magasin: Magasin;
+      vues: VuesPourAgent;
+      /** Fenêtre principale au premier plan, sinon la dernière qui l'a été. */
+      fenetreActive: () => IdFenetre | undefined;
+      demander: (o: OngletInfo) => Promise<boolean>;
+    },
+  ) {}
+
+  private onglet(id: string): Onglet {
+    const o = this.o.magasin.etat.onglets[id];
+    if (!o) throw new OngletIntrouvable(id);
+    return o;
+  }
+
+  async ongletActif(): Promise<OngletInfo | null> {
+    return ongletActifDe(this.o.magasin.etat, this.o.fenetreActive());
+  }
+
+  async listerOnglets(): Promise<OngletInfo[]> {
+    return infosOnglets(this.o.magasin.etat);
+  }
+
+  lireTexte(id: string): Promise<{ texte: string; selection?: string }> {
+    return this.o.vues.lireTexte(this.onglet(id));
+  }
+
+  /** Les démos de l'agent s'ouvrent au premier plan, marquées ✦ (spec §6). */
+  async ouvrirOnglet(url: string, espace?: string): Promise<OngletInfo> {
+    const etat = this.o.magasin.etat;
+    const f = etat.fenetres.find((x) => x.id === this.o.fenetreActive()) ?? etat.fenetres[0];
+    if (!f) throw new Error("Aucune fenêtre ouverte");
+    const avant = new Set(Object.keys(etat.onglets));
+    this.o.magasin.agir({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId: resoudreEspace(etat, f, espace), activer: true, ouvertParAgent: true });
+    const nouveau = Object.values(this.o.magasin.etat.onglets).find((o) => !avant.has(o.id));
+    if (!nouveau) throw new Error(`Impossible d'ouvrir ${url}`);
+    this.o.magasin.agir({ type: "activerOnglet", id: nouveau.id }); // passe aussi dans son espace
+    return info(this.o.magasin.etat, nouveau);
+  }
+
+  async naviguer(id: string, url: string): Promise<void> {
+    this.onglet(id);
+    this.o.vues.naviguer(id, url);
+  }
+
+  capturer(id: string): Promise<Buffer> {
+    return this.o.vues.capturer(this.onglet(id));
+  }
+
+  demanderAutorisation(o: OngletInfo): Promise<boolean> {
+    return this.o.demander(o);
+  }
+}

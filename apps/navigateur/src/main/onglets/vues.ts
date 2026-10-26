@@ -7,6 +7,8 @@ import { entreesMenuPage } from "./menu-page";
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const BORD_GAUCHE = 8;
+/** Texte d'une page transmis à l'agent, au plus. */
+const LONGUEUR_TEXTE = 100_000;
 
 /** Préférences de toute page web : bac à sable, aucun preload. */
 export function preferencesWeb(session: Session) {
@@ -111,6 +113,44 @@ export class GestionnaireVues {
         this.attachees.set(f.id, cible);
       }
     }
+  }
+
+  /**
+   * Vue d'un onglet pour l'agent, même s'il n'a jamais été affiché : créée sans être attachée, à la taille de la
+   * zone de contenu de sa fenêtre, et chargée (15 s au plus).
+   */
+  async assurerVue(onglet: Onglet): Promise<WebContents> {
+    if (!this.vues.has(onglet.id)) this.creerVue(onglet);
+    const vue = this.vues.get(onglet.id)!;
+    if (this.fenetreDe(onglet.id) === undefined) {
+      const z = this.zones.get(onglet.fenetreId);
+      vue.setBounds({ x: 0, y: 0, width: Math.round(z?.largeur || 1024), height: Math.round(z?.hauteur || 768) });
+    }
+    const wc = vue.webContents;
+    if (wc.isLoading()) {
+      await new Promise<void>((ok) => {
+        const minuterie = setTimeout(ok, 15_000);
+        wc.once("did-stop-loading", () => {
+          clearTimeout(minuterie);
+          ok();
+        });
+      });
+    }
+    return wc;
+  }
+
+  /** Texte et sélection, lus dans un monde isolé : la page ne peut pas falsifier ce que l'agent reçoit. */
+  async lireTexte(onglet: Onglet): Promise<{ texte: string; selection?: string }> {
+    const wc = await this.assurerVue(onglet);
+    const r = (await wc.executeJavaScriptInIsolatedWorld(999, [
+      { code: `({ texte: (document.body?.innerText ?? "").slice(0, ${LONGUEUR_TEXTE}), selection: String(getSelection() ?? "") })` },
+    ])) as { texte: string; selection: string };
+    return r.selection ? { texte: r.texte, selection: r.selection } : { texte: r.texte };
+  }
+
+  async capturer(onglet: Onglet): Promise<Buffer> {
+    const wc = await this.assurerVue(onglet);
+    return (await wc.capturePage(undefined, { stayHidden: true })).toPNG();
   }
 
   /** Fenêtre fermée dont l'état est gardé (macOS) : ses pages se ferment et se recréeront à sa réouverture. */

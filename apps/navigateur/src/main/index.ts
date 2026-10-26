@@ -37,6 +37,8 @@ let enSortie = false;
 const enFermeture = new WeakSet<BrowserWindow>();
 /** Fenêtres fermées mais gardées dans l'état (macOS) : à ne pas recréer avant que l'utilisateur les rouvre. */
 const gardees = new Set<IdFenetre>();
+/** Dernière fenêtre principale passée au premier plan : celle que l'agent considère comme « active ». */
+let derniereFocalisee: IdFenetre | undefined;
 
 /** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
 function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
@@ -70,6 +72,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     },
   });
   fenetres.set(id, fenetre);
+  fenetre.on("focus", () => (derniereFocalisee = id));
   // Sortie du plein écran par la fenêtre (bouton vert) : la page doit sortir aussi.
   fenetre.on("leave-full-screen", () => fenetre.webContents.send(CANAUX.pleinEcran, false));
   // Taille et position retenues pour le prochain lancement (regroupées : un glissement émet des dizaines d'événements).
@@ -261,7 +264,16 @@ app.whenReady().then(async () => {
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
   // Après les fenêtres : l'agent ne retarde jamais la navigation.
-  agent = demarrerAgent({ magasin, vues, fenetres });
+  agent = demarrerAgent({
+    magasin,
+    vues,
+    fenetres,
+    fenetreActive: () => {
+      const focus = BrowserWindow.getFocusedWindow();
+      for (const [id, f] of fenetres) if (f === focus) return id;
+      return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
+    },
+  });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
   rouvrirFenetres = () => {
     if (fenetres.size > 0) return false;
