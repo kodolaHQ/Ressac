@@ -50,6 +50,19 @@ test("quitter la page d'accueil referme le panneau qui ne s'était ouvert que po
   await fermer();
 });
 
+test("le panneau ouvert par la page d'accueil laisse la saisie d'adresse active ; ⌘J y met le terminal", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await expect(fenetre.getByTestId("panneau-agent").locator(".xterm-rows")).toContainText("faux agent prêt>");
+  const actif = () => fenetre.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid ?? document.activeElement?.className);
+  expect(await actif()).toBe("saisie-page-vide");
+  const menuAgent = () => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("panneau-agent")?.click());
+  await menuAgent();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await menuAgent();
+  await expect.poll(actif).toContain("xterm-helper-textarea");
+  await fermer();
+});
+
 test("l'agent écrit un nouveau bloc : il apparaît sans recharger", async () => {
   const { fenetre, racine, fermer } = await lancer();
   await expect(fenetre.getByTestId("page-vide")).toBeVisible();
