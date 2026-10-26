@@ -21,3 +21,15 @@ test.skipIf(!actif)("arrêter une session tue dans le conteneur un agent sourd �
   expect(dansAtelier("sleep 302")).toBe("");
   expect(dansAtelier("trap '' HUP")).toBe("");
 }, 30_000);
+
+test.skipIf(!actif)("arrêter une session tue aussi les serveurs que l'agent a détachés de son groupe (nohup, setsid)", async () => {
+  const a = new Atelier({ chemins: cheminsEspace() });
+  expect(await a.etat()).toBe("demarre");
+  const s = SessionAgent.demarrer(a.commandeSession("integration2", ["sh", "-c", "setsid nohup sleep 303 >/dev/null 2>&1 & sleep 304"]), {
+    cols: 80, rows: 24, arreterDistant: () => a.arreterSession("integration2"),
+  });
+  await expect.poll(() => dansAtelier("sleep 303"), { timeout: 10_000 }).not.toBe("");
+  await s.arreter();
+  expect(dansAtelier("sleep 303")).toBe("");
+  expect(dansAtelier("sleep 304")).toBe("");
+}, 30_000);

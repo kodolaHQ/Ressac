@@ -156,14 +156,14 @@ test("session interactive : son PID est noté dans le conteneur, et l'arrêter l
   const a = new Atelier({ chemins, docker: "/opt/homebrew/bin/docker", executer });
   const pid = "/tmp/webaios-session-ab12.pid";
   expect(a.commandeSession("ab12", ["claude", "--x"])).toEqual([
-    "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "webaios-atelier",
+    "/opt/homebrew/bin/docker", "exec", "-it", "-e", "WEBAIOS_SESSION=ab12", "-w", "/workspace", "webaios-atelier",
     "sh", "-c", `echo $$ > ${pid}; exec "$@"`, "webaios-session", "claude", "--x",
   ]);
   await a.arreterSession("ab12");
   const appel = appels.find((x) => x.args[0] === "exec")!;
   expect(appel.args.slice(0, 4)).toEqual(["exec", "webaios-atelier", "sh", "-c"]);
   expect(appel.args[4]).toContain(`cat ${pid}`);
-  expect(appel.args[4]).toBe(scriptArretSession(pid));
+  expect(appel.args[4]).toBe(scriptArretSession(pid, "ab12"));
   expect(() => a.commandeSession("../x", ["claude"])).toThrow();
 });
 
@@ -230,7 +230,7 @@ test("le script d'arrêt tue un agent qui ignore HUP et TERM (claude les interce
   const fini = new Promise((ok) => agent.on("exit", ok));
   await expect.poll(() => existsSync(f)).toBe(true);
   const debut = Date.now();
-  await new Promise<void>((ok, ko) => execFile("sh", ["-c", scriptArretSession(f)], (e) => (e ? ko(e) : ok())));
+  await new Promise<void>((ok, ko) => execFile("sh", ["-c", scriptArretSession(f, "local")], (e) => (e ? ko(e) : ok())));
   await fini;
   expect(Date.now() - debut).toBeLessThan(8000);
   expect(vivant(agent.pid!)).toBe(false);
