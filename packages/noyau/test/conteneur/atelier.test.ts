@@ -147,3 +147,19 @@ test("Dockerfile modifié → image reconstruite et conteneur recréé", async (
   expect(build.args).toContain(`webaios.dockerfile=${empreinteDockerfile()}`);
   expect(appels.some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
 });
+
+test("session interactive : son PID est noté dans le conteneur, et l'arrêter l'y tue (tuer le client docker ne suffit pas)", async () => {
+  const { executer, appels } = executeurFactice([]);
+  const a = new Atelier({ chemins, docker: "/opt/homebrew/bin/docker", executer });
+  const pid = "/tmp/webaios-session-ab12.pid";
+  expect(a.commandeSession("ab12", ["claude", "--x"])).toEqual([
+    "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "webaios-atelier",
+    "sh", "-c", `echo $$ > ${pid}; exec "$@"`, "webaios-session", "claude", "--x",
+  ]);
+  await a.arreterSession("ab12");
+  const appel = appels.find((x) => x.args[0] === "exec")!;
+  expect(appel.args.slice(0, 4)).toEqual(["exec", "webaios-atelier", "sh", "-c"]);
+  expect(appel.args[4]).toContain(`cat ${pid}`);
+  expect(appel.args[4]).toContain("kill -HUP");
+  expect(() => a.commandeSession("../x", ["claude"])).toThrow();
+});

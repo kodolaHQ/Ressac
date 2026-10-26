@@ -4,13 +4,20 @@ import { spawn, type IPty } from "node-pty";
 export class SessionAgent {
   private actif = true;
 
-  private constructor(private readonly pty: IPty) {
+  private constructor(
+    private readonly pty: IPty,
+    /** Arrêt de l'agent là où il tourne vraiment (le conteneur), en plus du terminal local. */
+    private readonly arreterDistant?: () => void | Promise<void>,
+  ) {
     pty.onExit(() => {
       this.actif = false;
     });
   }
 
-  static demarrer(commande: string[], o: { cols: number; rows: number; env?: Record<string, string> }): SessionAgent {
+  static demarrer(
+    commande: string[],
+    o: { cols: number; rows: number; env?: Record<string, string>; arreterDistant?: () => void | Promise<void> },
+  ): SessionAgent {
     const [fichier, ...args] = commande;
     if (!fichier) throw new Error("Commande vide");
     return new SessionAgent(
@@ -20,6 +27,7 @@ export class SessionAgent {
         rows: o.rows,
         env: { ...(process.env as Record<string, string>), ...o.env },
       }),
+      o.arreterDistant,
     );
   }
 
@@ -46,6 +54,8 @@ export class SessionAgent {
   }
 
   arreter(): void {
-    if (this.actif) this.pty.kill();
+    if (!this.actif) return;
+    void Promise.resolve(this.arreterDistant?.()).catch(() => {});
+    this.pty.kill();
   }
 }

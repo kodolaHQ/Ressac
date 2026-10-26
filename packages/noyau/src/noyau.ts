@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
@@ -67,8 +68,6 @@ export async function creerNoyau(o: {
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();
 
-  let sessionsVivantes = 0;
-
   return {
     chemins,
     politique,
@@ -82,19 +81,17 @@ export async function creerNoyau(o: {
         throw new ErreurAtelier("absent", (e as Error).message);
       }
       if (etat !== "demarre") throw new ErreurAtelier(etat);
-      // Nouvelle conversation : plus aucune autorisation. Les sessions partagent le serveur MCP (et donc la politique) :
-      // tant qu'une autre session tourne (autre fenêtre), ses accès restent.
-      if (sessionsVivantes === 0) politique.reinitialiser();
+      // Nouvelle conversation : plus aucune autorisation. Les sessions partagent le serveur MCP et donc la politique :
+      // une session d'une autre fenêtre perd aussi ses accès (elle redemandera), plutôt que d'en hériter.
+      politique.reinitialiser();
       const commande = construireCommande(profil, "interactif", { mcpConfig: cheminDansConteneur(chemins.configMcp, chemins) });
-      const session = SessionAgent.demarrer(atelier.commandeExec(commande, { interactif: true }), { cols, rows });
-      sessionsVivantes++;
-      session.surFin(() => sessionsVivantes--);
-      return session;
+      const id = randomBytes(8).toString("hex");
+      return SessionAgent.demarrer(atelier.commandeSession(id, commande), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
     },
     lireAccueil: () => lireAccueil(chemins),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
     async arreter() {
-      planificateur.arreter();
+      await planificateur.arreter();
       await serveur.arreter();
     },
   };

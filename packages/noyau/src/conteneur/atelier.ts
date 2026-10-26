@@ -49,6 +49,11 @@ export function trouverDocker(
   return candidats.find((c) => existe(c)) ?? null;
 }
 
+function fichierSession(id: string): string {
+  if (!/^[a-z0-9]+$/.test(id)) throw new Error(`id de session invalide : ${id}`);
+  return `/tmp/webaios-session-${id}.pid`;
+}
+
 export class Atelier {
   private readonly chemins: CheminsEspace;
   private readonly executer: Executeur;
@@ -138,6 +143,22 @@ export class Atelier {
 
   async supprimerVeille(id: string): Promise<void> {
     if (this.docker) await this.lancer(["rm", "-f", nomVeille(id)], DELAI_SONDE_MS);
+  }
+
+  /**
+   * Session interactive de l'agent : le shell note son PID dans le conteneur avant de devenir l'agent (exec), pour
+   * que `arreterSession` puisse l'y tuer. Tuer le client `docker exec` local laisserait l'agent tourner.
+   */
+  commandeSession(id: string, argv: string[]): string[] {
+    return this.commandeExec(["sh", "-c", `echo $$ > ${fichierSession(id)}; exec "$@"`, "webaios-session", ...argv], { interactif: true });
+  }
+
+  async arreterSession(id: string): Promise<void> {
+    if (!this.docker) return;
+    const f = fichierSession(id);
+    // Tout le groupe (l'agent et ce qu'il a lancé), sinon le processus seul.
+    const script = `p=$(cat ${f} 2>/dev/null) && { kill -HUP -- -"$p" 2>/dev/null || kill -HUP "$p"; }; rm -f ${f}`;
+    await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", script], DELAI_SONDE_MS);
   }
 
   commandeExec(argv: string[], o: { interactif: boolean }): string[] {

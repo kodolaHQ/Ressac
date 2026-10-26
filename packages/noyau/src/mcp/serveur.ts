@@ -51,7 +51,9 @@ function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces, dem
         .finally(() => demandes.delete(o.id));
       demandes.set(o.id, demande);
     }
-    return demande;
+    if (!(await demande)) return false;
+    // L'utilisateur a pu changer de site pendant la question : son accord porte sur le site qu'il a vu.
+    return politique.peutLire(await onglet(o.id));
   }
 
   async function contenu(o: OngletInfo): Promise<Resultat> {

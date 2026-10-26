@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Faux docker des tests de bout en bout : aucun vrai conteneur, aucun réseau. Voir le plan 3.
 const { createHash } = require("node:crypto");
-const { readFileSync } = require("node:fs");
+const { appendFileSync, readFileSync } = require("node:fs");
 const { join } = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -26,8 +26,15 @@ if (args[0] === "inspect") {
 if (args[0] === "run" && args[1] === "--rm") sortir(1);
 if (["image", "build", "run"].includes(args[0])) sortir(echec ? 1 : 0, "", echec ? "échec simulé" : "");
 if (args[0] === "exec") {
-  const i = args.indexOf("webaios-atelier");
-  const r = spawnSync(process.execPath, [join(__dirname, "faux-agent.mjs"), ...args.slice(i + 1)], { stdio: "inherit" });
+  let commande = args.slice(args.indexOf("webaios-atelier") + 1);
+  // Arrêt d'une session dans le conteneur (Atelier.arreterSession) : noté pour les tests.
+  if (commande[0] === "sh" && !commande[2].includes('exec "$@"')) {
+    appendFileSync(join(env.WEBAIOS_RACINE, "faux-docker-arrets.log"), `${commande[2]}\n`);
+    sortir(0);
+  }
+  // Session interactive (Atelier.commandeSession) : sh -c '<note le PID>; exec "$@"' webaios-session <agent…>
+  if (commande[0] === "sh") commande = commande.slice(4);
+  const r = spawnSync(process.execPath, [join(__dirname, "faux-agent.mjs"), ...commande], { stdio: "inherit" });
   process.exit(r.status ?? 1);
 }
 sortir(0);

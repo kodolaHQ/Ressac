@@ -12,6 +12,7 @@ import { blocsAEchoir, consigneVeille } from "./echeances.js";
 const LONGUEUR_ERREUR = 500;
 /** Marge du délai local au-delà du `timeout` lancé dans le conteneur. */
 const MARGE_MS = 30_000;
+const ATTENTE_ARRET_MS = 15_000;
 
 /** Rafraîchit les blocs d'agent en lançant l'agent en mode non interactif, sans accès au navigateur. */
 export class PlanificateurVeille {
@@ -25,7 +26,10 @@ export class PlanificateurVeille {
     delaiMs: number;
   };
   private minuterie: NodeJS.Timeout | undefined;
-  private enCours = false;
+  private enCours: Promise<string[]> | null = null;
+  /** Bloc dont la veille tourne en ce moment. */
+  private veille: string | null = null;
+  private arrete = false;
 
   constructor(o: {
     chemins: CheminsEspace;
@@ -57,20 +61,27 @@ export class PlanificateurVeille {
   }
 
   async verifier(o: { auLancement: boolean }): Promise<string[]> {
-    if (this.enCours) return [];
-    this.enCours = true;
-    try {
-      if ((await this.o.atelier.etat()) !== "demarre") return [];
-      const { blocs } = await lireAccueil(this.o.chemins);
-      const ids = blocsAEchoir(blocs, this.o.horloge(), o);
-      for (const id of ids) {
-        const bloc = blocs.find((b) => b.id === id);
-        if (bloc && "config" in bloc && bloc.config.type === "agent") await this.rafraichir(id, bloc.etat, bloc.config);
+    if (this.enCours || this.arrete) return [];
+    this.enCours = this.verifierMaintenant(o).finally(() => (this.enCours = null));
+    return this.enCours;
+  }
+
+  private async verifierMaintenant(o: { auLancement: boolean }): Promise<string[]> {
+    if ((await this.o.atelier.etat()) !== "demarre") return [];
+    const { blocs } = await lireAccueil(this.o.chemins);
+    const ids = blocsAEchoir(blocs, this.o.horloge(), o);
+    for (const id of ids) {
+      if (this.arrete) break;
+      const bloc = blocs.find((b) => b.id === id);
+      if (!bloc || !("config" in bloc) || bloc.config.type !== "agent") continue;
+      this.veille = id;
+      try {
+        await this.rafraichir(id, bloc.etat, bloc.config);
+      } finally {
+        this.veille = null;
       }
-      return ids;
-    } finally {
-      this.enCours = false;
     }
+    return ids;
   }
 
   private async rafraichir(id: string, ancien: EtatBloc, config: Parameters<typeof consigneVeille>[1]): Promise<void> {
@@ -86,6 +97,12 @@ export class PlanificateurVeille {
       Math.round(this.o.delaiMs / 1000),
     );
     const r = await this.o.executer(cmd!, args, { delaiMs: this.o.delaiMs + MARGE_MS });
+    // Arrêt du noyau (sortie, changement de profil) : la veille n'a pas échoué, elle reprendra plus tard.
+    if (this.arrete) {
+      await rm(brouillon, { force: true });
+      await ecrireEtatBloc(this.o.chemins, id, ancien);
+      return;
+    }
     const echec = (erreur: string): EtatBloc => ({
       derniereMaj: ancien.derniereMaj,
       derniereTentative: debut,
@@ -108,7 +125,14 @@ export class PlanificateurVeille {
     await ecrireEtatBloc(this.o.chemins, id, etat);
   }
 
-  arreter(): void {
+  /** Coupe la minuterie ; une veille en cours est tuée dans son conteneur et attendue (le prochain noyau ne la croisera pas). */
+  async arreter(): Promise<void> {
     clearInterval(this.minuterie);
+    this.arrete = true;
+    if (this.veille) await this.o.atelier.supprimerVeille(this.veille).catch(() => {});
+    // Borné : quitter le navigateur ne doit pas attendre une veille qui aurait échappé à l'arrêt.
+    let minuterie: NodeJS.Timeout | undefined;
+    await Promise.race([this.enCours?.catch(() => {}), new Promise((ok) => (minuterie = setTimeout(ok, ATTENTE_ARRET_MS)))]);
+    clearTimeout(minuterie);
   }
 }

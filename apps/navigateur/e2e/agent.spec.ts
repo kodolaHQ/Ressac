@@ -252,6 +252,8 @@ test("fermer la fenêtre arrête son agent", async () => {
     }
   };
   await expect.poll(vivant, { timeout: 10_000 }).toBe(false);
+  // Avec un vrai Docker, tuer le client local laisserait l'agent tourner : il est aussi tué dans le conteneur.
+  await expect.poll(() => lireFichier(join(racine, "faux-docker-arrets.log"))).toContain("kill -HUP");
   await fermer();
 });
 
@@ -329,21 +331,26 @@ test("envoyer un message depuis un onglet le partage", async () => {
   await fermer();
 });
 
-test("une nouvelle fenêtre (et sa session d'agent) ne retire pas l'accès donné dans la première", async () => {
+test("une nouvelle session d'agent (autre fenêtre) remet les accès à zéro : l'agent redemande", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
   await agentPret(app, fenetre);
   await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
   await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
   await menuAgent(app); // donne l'onglet à l'agent
   const id = (await fenetre.locator('[data-testid^="onglet-"]').getAttribute("data-testid"))!.replace("onglet-", "");
+  expect((await appelerOutil(racine, "lire_onglet", { id })).texte).toContain("Le chat dort");
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
   await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
   const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
   await panneauAccueil(seconde);
   await expect(terminal(seconde)).toContainText("faux agent prêt>");
-  let lu: { texte: string } | undefined;
-  void appelerOutil(racine, "lire_onglet", { id }).then((r) => (lu = r));
-  await expect.poll(() => lu?.texte, { timeout: 5000 }).toContain("Le chat dort");
+  // La politique est commune aux sessions : mieux vaut redemander qu'hériter des accès d'une autre conversation.
+  const lecture = appelerOutil(racine, "lire_onglet", { id });
+  const bandeaux = () => Promise.all([fenetre, seconde].map((p) => p.getByTestId("demande-permission").count()));
+  await expect.poll(async () => (await bandeaux()).reduce((a, b) => a + b, 0)).toBe(1);
+  const avecBandeau = (await bandeaux())[0] ? fenetre : seconde;
+  await avecBandeau.getByTestId("demande-permission").getByRole("button", { name: "Refuser" }).click();
+  expect((await lecture).texte).toBe("Accès refusé par l'utilisateur à cet onglet.");
   await fermer();
 });
 

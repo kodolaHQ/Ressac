@@ -176,3 +176,29 @@ test("échec sans stderr → le message de stdout est gardé (ex. agent non conn
   await p.verifier({ auLancement: true });
   expect((await etat("veille-exemple")).erreur).toBe("Not logged in · Please run /login");
 });
+
+test("arreter pendant une veille : son conteneur est supprimé, on l'attend, et le bloc retrouve son état d'avant", async () => {
+  let lance!: () => void;
+  const enRoute = new Promise<void>((ok) => (lance = ok));
+  let tuer!: () => void;
+  const tue = new Promise<Reponse>((ok) => (tuer = () => ok({ code: 137 })));
+  const { c, p, etat, appels } = await preparer(async () => {
+    await writeFile(join(blocsCourants, "veille-exemple", "index.html.nouveau"), "<p>à moitié</p>");
+    lance();
+    return tue;
+  });
+  const avant = { statut: "ok", derniereMaj: "2026-10-24T08:00:00.000Z", derniereTentative: null };
+  await ecrireBloc(c, "veille-exemple", blocAgent("Veille — exemple"), { "etat.json": JSON.stringify(avant) });
+  const verification = p.verifier({ auLancement: true });
+  await enRoute;
+  // Le faux « docker rm -f » tue la veille, comme le vrai.
+  const rm = appels.length;
+  const arret = p.arreter();
+  await expect.poll(() => appels.slice(rm).some((a) => a.args.join(" ") === "rm -f webaios-veille-veille-exemple")).toBe(true);
+  tuer();
+  await arret;
+  await verification;
+  expect(await etat("veille-exemple")).toEqual(avant);
+  expect(existsSync(join(c.blocs, "veille-exemple", "index.html.nouveau"))).toBe(false);
+  expect(await readFile(join(c.blocs, "veille-exemple", "index.html"), "utf8")).toBe("<p>ancien</p>");
+});

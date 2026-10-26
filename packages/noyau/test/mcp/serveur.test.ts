@@ -183,3 +183,17 @@ test("la navigation du navigateur pendant naviguer (did-navigate) ne retire pas 
   expect(texte(r)).toContain("localhost:5281");
   expect(demandes()).toBe(0);
 });
+
+test("onglet passé à un autre site pendant la question : « Autoriser » ne livre pas le nouveau site", async () => {
+  await client.close();
+  await serveur.arreter();
+  await demarrer(true);
+  const demander = pont.demanderAutorisation.bind(pont);
+  pont.demanderAutorisation = async (o) => {
+    await pont.naviguer("gmail", "https://banque.example/comptes"); // L'utilisateur change de site avant de répondre
+    return demander(o);
+  };
+  const r = await client.callTool({ name: "lire_onglet", arguments: { id: "gmail" } });
+  expect(texte(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
+  expect(pont.appels.some((a) => a.methode === "lireTexte")).toBe(false);
+});

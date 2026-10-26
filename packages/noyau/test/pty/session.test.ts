@@ -24,3 +24,13 @@ test("se désabonner coupe les rappels", async () => {
   s.arreter();
   expect(appels).toBe(0);
 });
+
+test("arreter prévient aussi le conteneur (arreterDistant), une seule fois", async () => {
+  let distants = 0;
+  const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24, arreterDistant: () => void distants++ });
+  const fin = new Promise<number>((ok) => s.surFin(ok));
+  s.arreter();
+  await fin;
+  s.arreter();
+  expect(distants).toBe(1);
+});
