@@ -14,6 +14,7 @@ import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreReponse, ongletActifDe } from "./agent/pont";
+import { enregistrerSchemaBloc, lireBlocsAffiches, protegerWebviews, servirBlocs } from "./agent/accueil";
 
 // Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
 app.setName("WebAiOs");
@@ -22,6 +23,7 @@ app.setPath("userData", cheminProfil());
 // Une seule instance par profil : deux processus écriraient la même session et le même historique.
 // (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
 if (!app.requestSingleInstanceLock()) app.exit(0);
+enregistrerSchemaBloc();
 
 /** Tests automatiques : aucune fenêtre à l'écran ni icône dans le Dock (elles gênent l'utilisateur pendant qu'il travaille). */
 export const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
@@ -69,6 +71,8 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // Blocs d'app de la page d'accueil, filtrés par protegerWebviews.
+      webviewTag: true,
       additionalArguments: [`${ARG_FENETRE}${id}`],
     },
   });
@@ -106,7 +110,12 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
-  fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // Seul un lien d'un bloc de la page d'accueil demande une fenêtre : il devient un onglet.
+  fenetre.webContents.setWindowOpenHandler(({ url, disposition }) => {
+    if (/^https?:\/\//.test(url)) magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url, activer: disposition !== "background-tab" });
+    return { action: "deny" };
+  });
+  protegerWebviews(fenetre.webContents, (vue) => vues.brancherVueAccueil(vue, id));
   const chargerInterface = () =>
     process.env.ELECTRON_RENDERER_URL
       ? fenetre.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -203,6 +212,18 @@ app.whenReady().then(async () => {
     fermerOnglet: (id) => vues.fermer(id),
     historique,
     telechargements,
+    accueil: {
+      async lire() {
+        const n = agent?.noyau();
+        if (!n) return [];
+        try {
+          return await lireBlocsAffiches(n);
+        } catch (e) {
+          console.error("[webaios] page d'accueil illisible :", e);
+          return [];
+        }
+      },
+    },
     agent: {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
       ecrire: (f, d) => agent?.sessions.ecrire(f, d),
@@ -276,11 +297,13 @@ app.whenReady().then(async () => {
     for (const [id, f] of fenetres) if (f === focus) return id;
     return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
   };
+  servirBlocs(() => agent?.noyau()?.chemins.blocs ?? null);
   agent = demarrerAgent({
     magasin,
     vues,
     fenetres,
     fenetreActive: fenetreAgent,
+    surAccueil: () => diffuser(CANAUX.accueilChange, null),
     // « L'agent veut lire l'onglet … » dans la fenêtre active ; jamais mémorisé hors de la politique du noyau.
     demanderLecture: (o) =>
       attendreReponse((repondre) => {

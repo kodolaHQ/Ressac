@@ -30,8 +30,11 @@ export function demarrerAgent(o: {
   fenetreActive: () => IdFenetre | undefined;
   /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
+  /** La page d'accueil a changé (ou devient lisible : noyau prêt). */
+  surAccueil: () => void;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
+  let arreterAccueil: (() => Promise<void>) | undefined;
   let erreur: string | null = null;
   const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).
@@ -42,7 +45,16 @@ export function demarrerAgent(o: {
     for (const id of fermes) noyau.politique.ongletFerme(id);
   });
   const pret = creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__ }).then(
-    (n) => (noyau = n),
+    (n) => {
+      noyau = n;
+      try {
+        arreterAccueil = n.surveillerAccueil(o.surAccueil);
+      } catch (e) {
+        console.error("[webaios] surveillance de la page d'accueil impossible :", e);
+      }
+      o.surAccueil();
+      return n;
+    },
     (e: Error) => {
       erreur = e.message;
       console.error("[webaios] le noyau n'a pas pu démarrer :", e);
@@ -82,6 +94,7 @@ export function demarrerAgent(o: {
     sessions,
     async arreter() {
       sessions.toutArreter();
+      await arreterAccueil?.();
       await (await pret)?.arreter();
     },
   };

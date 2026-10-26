@@ -6,8 +6,9 @@
       img-src élargi à https: et http: : les favicons des sites sont chargés directement par l'interface.
       Décision assumée : une image ne peut pas exécuter de code ; le prix est que le site d'un favicon voit
       l'adresse IP de l'utilisateur, comme lors de la visite elle-même. Scripts et styles restent limités à 'self'.
+      frame-src : seuls les blocs d'agent de la page d'accueil (protocole webaios-bloc:, voir main/agent/accueil.ts).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; frame-src webaios-bloc:" />
     <title>WebAiOs</title>
   </head>
   <body>

@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, type TailleTerminal, type Action, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
@@ -44,6 +44,7 @@ export interface Gestionnaires {
     ecrire(f: IdFenetre, d: string): void;
     redimensionner(f: IdFenetre, t: TailleTerminal): void;
   };
+  accueil: { lire(): Promise<BlocAffiche[]> };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -90,6 +91,7 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
   repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());
   recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision }) => g.permissions.repondre(id, decision));
+  repondre(CANAUX.accueilLire, () => g.accueil.lire());
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));
   recevoir(CANAUX.agentRedimensionner, zod(SchemaTailleTerminal), (t, f) => g.agent.redimensionner(f, t));
   // Une frappe ou un collage : du texte, borné.

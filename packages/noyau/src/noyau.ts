@@ -67,6 +67,8 @@ export async function creerNoyau(o: {
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();
 
+  let sessionsVivantes = 0;
+
   return {
     chemins,
     politique,
@@ -80,9 +82,14 @@ export async function creerNoyau(o: {
         throw new ErreurAtelier("absent", (e as Error).message);
       }
       if (etat !== "demarre") throw new ErreurAtelier(etat);
-      politique.reinitialiser(); // nouvelle conversation
+      // Nouvelle conversation : plus aucune autorisation. Les sessions partagent le serveur MCP (et donc la politique) :
+      // tant qu'une autre session tourne (autre fenêtre), ses accès restent.
+      if (sessionsVivantes === 0) politique.reinitialiser();
       const commande = construireCommande(profil, "interactif", { mcpConfig: cheminDansConteneur(chemins.configMcp, chemins) });
-      return SessionAgent.demarrer(atelier.commandeExec(commande, { interactif: true }), { cols, rows });
+      const session = SessionAgent.demarrer(atelier.commandeExec(commande, { interactif: true }), { cols, rows });
+      sessionsVivantes++;
+      session.surFin(() => sessionsVivantes--);
+      return session;
     },
     lireAccueil: () => lireAccueil(chemins),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),

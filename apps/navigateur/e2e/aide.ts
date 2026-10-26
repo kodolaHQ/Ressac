@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdtempSync, realpathSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -7,9 +7,39 @@ import type { AddressInfo } from "node:net";
 
 const RACINE = join(__dirname, "..");
 
-/** Espace de l'agent (~/WebAiOs pour l'utilisateur) : un dossier temporaire par test, jamais le vrai. */
+/**
+ * Espace de l'agent (~/WebAiOs pour l'utilisateur) : un dossier temporaire par test, jamais le vrai. Son `accueil/` existe
+ * déjà : les blocs modèles ne sont pas copiés (daily.dev serait chargé depuis internet à chaque test).
+ */
 export function nouvelleRacine(): string {
-  return realpathSync(mkdtempSync(join(tmpdir(), "webaios-racine-")));
+  const racine = realpathSync(mkdtempSync(join(tmpdir(), "webaios-racine-")));
+  mkdirSync(join(racine, "accueil", "blocs"), { recursive: true });
+  return racine;
+}
+
+export type BlocTest =
+  | { titre: string; type: "agent"; html?: string; etat?: Record<string, unknown> }
+  | { titre: string; type: "app"; url: string };
+
+/**
+ * Écrit un bloc dans `accueil/blocs/<id>/`. Un bloc d'agent a par défaut un état « à jour maintenant » : le
+ * planificateur ne lance pas de veille.
+ */
+export function ecrireBloc(racine: string, id: string, b: BlocTest): void {
+  const dossier = join(racine, "accueil", "blocs", id);
+  mkdirSync(dossier, { recursive: true });
+  if (b.type === "app") {
+    writeFileSync(join(dossier, "bloc.json"), JSON.stringify({ titre: b.titre, type: "app", url: b.url }));
+    return;
+  }
+  const etat = b.etat ?? { derniereMaj: new Date().toISOString(), derniereTentative: new Date().toISOString(), statut: "ok" };
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify(etat));
+  if (b.html !== undefined) writeFileSync(join(dossier, "index.html"), b.html);
+  writeFileSync(join(dossier, "bloc.json"), JSON.stringify({ titre: b.titre, type: "agent", consigne: "test" }));
+}
+
+export function ecrireDisposition(racine: string, ordre: string[]): void {
+  writeFileSync(join(racine, "accueil", "disposition.json"), JSON.stringify({ ordre }));
 }
 
 export function nouveauProfil(): string {

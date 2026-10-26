@@ -3,11 +3,12 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { lancer } from "./aide";
 
-test("la fenêtre s'ouvre avec la barre latérale, le contenu et un panneau agent fermé", async () => {
+test("la fenêtre s'ouvre sur la page d'accueil, avec la barre latérale, le contenu et le panneau agent", async () => {
   const { fenetre, fermer } = await lancer();
   await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
   await expect(fenetre.getByTestId("zone-contenu")).toBeVisible();
-  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await expect(fenetre.getByTestId("page-vide")).toBeVisible();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
   await fermer();
 });
 

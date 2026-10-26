@@ -207,6 +207,11 @@ export class GestionnaireVues {
     wc.close({ waitForBeforeUnload: true });
   }
 
+  /** Vue web d'un bloc d'app de la page d'accueil : ses liens et popups se comportent comme ceux d'un onglet. */
+  brancherVueAccueil(wc: WebContents, fenetreId: IdFenetre): void {
+    gererOuvertures(wc, this.o.session, (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId, url, activer }), () => {});
+  }
+
   ongletDe(wc: WebContents | null): IdOnglet | null {
     if (!wc) return null;
     for (const [id, v] of this.vues) if (v.webContents === wc) return id;

@@ -32,9 +32,10 @@ test("lister_onglets : un onglet que l'utilisateur n'a pas partagé apparaît co
   await fermer();
 });
 
+// L'agent appelle ses outils depuis sa session : on l'attend (son démarrage remet les autorisations à zéro).
 test("ouvrir_onglet sur une démo locale : onglet actif marqué ✦, lisible et capturable par l'agent", async () => {
   const { fenetre, racine, fermer } = await lancer();
-  await expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   const { texte: id, erreur } = await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/texte.html` });
   expect(erreur).toBe(false);
   const onglet = fenetre.locator(`[data-testid="onglet-${id}"]`);
@@ -50,8 +51,8 @@ test("ouvrir_onglet sur une démo locale : onglet actif marqué ✦, lisible et 
 });
 
 test("un onglet de l'agent passé en arrière-plan reste lisible et capturable", async () => {
-  const { racine, fermer } = await lancer();
-  await expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
+  const { fenetre, racine, fermer } = await lancer();
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   const { texte: premier } = await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/texte.html` });
   await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/b.html` });
   const lu = await appelerOutil(racine, "lire_onglet", { id: premier });
@@ -137,18 +138,15 @@ test("une question de lecture ne s'affiche que dans la fenêtre active", async (
 });
 
 const terminal = (p: import("@playwright/test").Page) => p.getByTestId("panneau-agent").locator(".xterm-rows");
-const basculerPanneau = (p: import("@playwright/test").Page) =>
-  p.evaluate(() => {
-    const w = window as unknown as { webaios: { agir(a: unknown): void; fenetreId: string } };
-    w.webaios.agir({ type: "basculerPanneauAgent", fenetreId: w.webaios.fenetreId });
-  });
 const menuAgent = (app: import("@playwright/test").ElectronApplication) =>
   app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("panneau-agent")?.click());
 const lireFichier = (chemin: string) => (existsSync(chemin) ? readFileSync(chemin, "utf8") : "");
+/** Au lancement, la fenêtre montre la page d'accueil, où le panneau agent est ouvert par défaut. */
+const panneauAccueil = (p: import("@playwright/test").Page) => expect(p.getByTestId("panneau-agent")).toBeVisible();
 
-test("⌘J ouvre le terminal de l'agent : le vrai CLI y tourne avec la config MCP", async () => {
-  const { app, fenetre, racine, fermer } = await lancer();
-  await menuAgent(app);
+test("le panneau de la page d'accueil fait tourner le vrai CLI avec la config MCP", async () => {
+  const { fenetre, racine, fermer } = await lancer();
+  await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   expect(JSON.parse(lireFichier(join(racine, "faux-agent-args.json")))).toEqual([
     "claude",
@@ -161,7 +159,7 @@ test("⌘J ouvre le terminal de l'agent : le vrai CLI y tourne avec la config MC
 
 test("taper dans le terminal arrive à l'agent", async () => {
   const { app, fenetre, fermer } = await lancer();
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
   await fenetre.keyboard.type("bonjour");
@@ -172,7 +170,7 @@ test("taper dans le terminal arrive à l'agent", async () => {
 
 test("l'agent quitté → « Relancer » repart sur une nouvelle session", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   const premier = lireFichier(join(racine, "faux-agent-pid"));
   await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
@@ -188,7 +186,7 @@ test("l'agent quitté → « Relancer » repart sur une nouvelle session", async
 
 test("fermer puis rouvrir le panneau garde la conversation", async () => {
   const { app, fenetre, fermer } = await lancer();
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
   await fenetre.keyboard.type("souvenir");
@@ -203,7 +201,7 @@ test("fermer puis rouvrir le panneau garde la conversation", async () => {
 
 test("une sortie énorme ne fige pas l'interface", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
   await fenetre.keyboard.type("inonder");
@@ -219,7 +217,7 @@ test("une sortie énorme ne fige pas l'interface", async () => {
 
 test("Docker absent → message clair et Réessayer", async () => {
   const { app, fenetre, fermer } = await lancer({ env: { FAUX_DOCKER_ABSENT: "1" } });
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   const panneau = fenetre.getByTestId("panneau-agent");
   await expect(panneau).toContainText("Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.");
   await expect(panneau.getByRole("button", { name: "Réessayer" })).toBeVisible();
@@ -228,7 +226,7 @@ test("Docker absent → message clair et Réessayer", async () => {
 
 test("conteneur impossible à démarrer → erreur et Réessayer", async () => {
   const { app, fenetre, fermer } = await lancer({ env: { FAUX_DOCKER_ECHEC: "1" } });
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   const panneau = fenetre.getByTestId("panneau-agent");
   await expect(panneau).toContainText("L'agent n'a pas pu démarrer :", { timeout: 10_000 });
   await expect(panneau).toContainText("échec simulé");
@@ -241,7 +239,7 @@ test("fermer la fenêtre arrête son agent", async () => {
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
   await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
   const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
-  await basculerPanneau(seconde);
+  await panneauAccueil(seconde);
   await expect(terminal(seconde)).toContainText("faux agent prêt>");
   const pid = Number(lireFichier(join(racine, "faux-agent-pid")));
   await seconde.evaluate(() => window.close());
@@ -257,16 +255,19 @@ test("fermer la fenêtre arrête son agent", async () => {
   await fermer();
 });
 
-/** Démarre la session d'agent une première fois (sa saisie n'est prête qu'ensuite), puis referme le panneau. */
+/** Attend la session d'agent du panneau de la page d'accueil (sa saisie n'est prête qu'ensuite), puis referme le panneau. */
 async function agentPret(app: import("@playwright/test").ElectronApplication, fenetre: import("@playwright/test").Page) {
-  await menuAgent(app);
+  await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await menuAgent(app);
   await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
 }
 
 test("le bouton ✦ de la barre latérale ouvre et ferme le panneau agent", async () => {
-  const { fenetre, fermer } = await lancer();
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
   await fenetre.getByTestId("bouton-agent").click();
   await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
   await fenetre.getByTestId("bouton-agent").click();
@@ -313,8 +314,10 @@ test("onglet visité sans parler à l'agent : page_courante demande la permissio
 
 test("envoyer un message depuis un onglet le partage", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
+  await agentPret(app, fenetre);
+  // Ouvert par l'utilisateur sur la page d'accueil (sans onglet, donc sans contexte) : le panneau reste ouvert ensuite.
   await menuAgent(app);
-  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
   await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
   await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
   await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
@@ -323,5 +326,23 @@ test("envoyer un message depuis un onglet le partage", async () => {
   await expect(terminal(fenetre)).toContainText("reçu: salut");
   expect((await appelerOutil(racine, "page_courante")).texte).toContain("Le chat dort");
   await expect(fenetre.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});
+
+test("une nouvelle fenêtre (et sa session d'agent) ne retire pas l'accès donné dans la première", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await agentPret(app, fenetre);
+  await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
+  await menuAgent(app); // donne l'onglet à l'agent
+  const id = (await fenetre.locator('[data-testid^="onglet-"]').getAttribute("data-testid"))!.replace("onglet-", "");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
+  await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
+  const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
+  await panneauAccueil(seconde);
+  await expect(terminal(seconde)).toContainText("faux agent prêt>");
+  let lu: { texte: string } | undefined;
+  void appelerOutil(racine, "lire_onglet", { id }).then((r) => (lu = r));
+  await expect.poll(() => lu?.texte, { timeout: 5000 }).toContain("Le chat dort");
   await fermer();
 });

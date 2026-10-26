@@ -61,6 +61,39 @@
   );
   $effect(() => api.surResultatRecherche((r) => (recherche.resultat = r)));
 
+  // Page d'accueil : le panneau agent y est ouvert par défaut (spec §7), et se referme en la quittant s'il ne
+  // s'était ouvert que pour elle. Si l'utilisateur le ferme sur la page d'accueil, il y reste fermé jusqu'au prochain lancement.
+  let panneauFermeSurAccueil = false;
+  /** Bascule envoyée, pas encore revenue dans l'état : ne pas la renvoyer. */
+  let basculeEnvoyee = false;
+  let ouvertParAccueil = false;
+  let ouvertAvant = false;
+  $effect(() => {
+    const ouvert = panneauAgentOuvert;
+    const f = fenetre;
+    if (!f) return;
+    const surAccueil = !ongletActif;
+    if (ouvert !== ouvertAvant) {
+      // Changement venu d'ailleurs (⌘J, bouton ✦) : le panneau appartient désormais à l'utilisateur.
+      if (!basculeEnvoyee) ouvertParAccueil = false;
+      basculeEnvoyee = false;
+      if (surAccueil && !ouvert) panneauFermeSurAccueil = true;
+    }
+    ouvertAvant = ouvert;
+    if (basculeEnvoyee) return;
+    const basculer = () => {
+      basculeEnvoyee = true;
+      api.agir({ type: "basculerPanneauAgent", fenetreId: f.id });
+    };
+    if (surAccueil && !ouvert && !panneauFermeSurAccueil) {
+      ouvertParAccueil = true;
+      basculer();
+    } else if (!surAccueil && ouvert && ouvertParAccueil) {
+      ouvertParAccueil = false;
+      basculer();
+    }
+  });
+
   // Plein écran HTML (vidéo) : seule la page reste.
   let pleinEcran = $state(false);
   $effect(() => api.surPleinEcran((actif) => (pleinEcran = actif)));

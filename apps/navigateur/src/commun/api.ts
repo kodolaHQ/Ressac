@@ -124,6 +124,12 @@ export interface ApiWebaios {
     surDonnees(rappel: (d: string) => void): () => void;
     surEtat(rappel: (e: EtatPanneauAgent) => void): () => void;
   };
+  /** Page d'accueil (dossier accueil/ de l'espace de l'agent). */
+  accueil: {
+    lire(): Promise<BlocAffiche[]>;
+    /** Un fichier de accueil/ a changé : relire. */
+    surChange(rappel: () => void): () => void;
+  };
 }
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
@@ -139,3 +145,19 @@ export type EtatPanneauAgent =
 
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
+
+/** Un bloc de la page d'accueil, tel que l'interface l'affiche. */
+export type BlocAffiche =
+  | {
+      id: string;
+      titre: string;
+      type: "agent";
+      /** `webaios-bloc://<id>/index.html?v=<mtime>`, ou null tant que l'agent n'a rien écrit. */
+      src: string | null;
+      statut: "ok" | "en-cours" | "erreur";
+      derniereMaj: string | null;
+      derniereTentative: string | null;
+      erreur?: string;
+    }
+  | { id: string; titre: string; type: "app"; url: string }
+  | { id: string; erreur: string };

@@ -60,6 +60,10 @@ const api: ApiWebaios = {
     surDonnees: (rappel) => ecouter(CANAUX.agentDonnees, rappel),
     surEtat: (rappel) => ecouter(CANAUX.agentEtat, rappel),
   },
+  accueil: {
+    lire: () => ipcRenderer.invoke(CANAUX.accueilLire),
+    surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),
+  },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
     ipcRenderer.on(CANAUX.telechargements, ecouteur);
