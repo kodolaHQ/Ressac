@@ -7,28 +7,45 @@ import type { AddressInfo } from "node:net";
 
 const RACINE = join(__dirname, "..");
 
+/** Espace de l'agent (~/WebAiOs pour l'utilisateur) : un dossier temporaire par test, jamais le vrai. */
+export function nouvelleRacine(): string {
+  return realpathSync(mkdtempSync(join(tmpdir(), "webaios-racine-")));
+}
+
 export function nouveauProfil(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), "webaios-profil-")));
 }
 
 /** Lance le navigateur construit (out/) sur un profil isolé et renvoie la fenêtre de l'interface. */
-export async function lancer(o: { profil?: string; env?: Record<string, string>; visible?: boolean } = {}): Promise<{
+export async function lancer(
+  o: { profil?: string; racine?: string; env?: Record<string, string>; visible?: boolean } = {},
+): Promise<{
   app: ElectronApplication;
   fenetre: Page;
   profil: string;
+  racine: string;
   fermer(): Promise<void>;
 }> {
   const profil = o.profil ?? nouveauProfil();
+  const racine = o.racine ?? nouvelleRacine();
   const app = await electron.launch({
     args: [join(RACINE, "out/main/index.js")],
     // Invisible par défaut : seuls les tests qui ont besoin du focus ou du plein écran de macOS montrent leurs fenêtres.
-    env: { ...process.env, WEBAIOS_PROFIL: profil, ...(o.visible ? {} : { WEBAIOS_INVISIBLE: "1" }), ...o.env } as Record<string, string>,
+    // Le faux docker (e2e/outils) passe avant tout vrai docker : aucun test ne touche à un conteneur.
+    env: {
+      ...process.env,
+      PATH: `${join(__dirname, "outils")}:${process.env.PATH ?? ""}`,
+      WEBAIOS_PROFIL: profil,
+      WEBAIOS_RACINE: racine,
+      ...(o.visible ? {} : { WEBAIOS_INVISIBLE: "1" }),
+      ...o.env,
+    } as Record<string, string>,
   });
   const fenetre = await fenetreInterface(app);
   await fenetre.waitForLoadState("domcontentloaded");
   // Le focus clavier n'existe que dans l'application active de macOS : un test visible l'active.
   if (o.visible) await app.evaluate(({ app }) => app.focus({ steal: true }));
-  return { app, fenetre, profil, fermer: () => app.close() };
+  return { app, fenetre, profil, racine, fermer: () => app.close() };
 }
 
 /** La page de l'interface : les vues des onglets restaurés sont aussi des pages pour Playwright. */
@@ -123,4 +140,33 @@ export async function glisser(
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 5, { steps: 3 });
   await page.mouse.move(b.x + b.width / 2, b.y + b.height * (moitie === "haut" ? 0.25 : 0.75), { steps: 10 });
   await page.mouse.up();
+}
+
+/** Appelle un outil du serveur MCP du navigateur, comme le ferait l'agent du conteneur. */
+export async function appelerOutil(
+  racine: string,
+  nom: string,
+  args: Record<string, unknown> = {},
+): Promise<{ texte: string; image?: string; erreur: boolean }> {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+  const config = JSON.parse(readFileSync(join(racine, ".webaios", "mcp.json"), "utf8")).mcpServers.webaios;
+  const transport = new StreamableHTTPClientTransport(new URL(config.url.replace("host.docker.internal", "127.0.0.1")), {
+    requestInit: { headers: config.headers },
+  });
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(transport);
+  try {
+    const r = (await client.callTool({ name: nom, arguments: args })) as {
+      content: { type: string; text?: string; data?: string }[];
+      isError?: boolean;
+    };
+    return {
+      texte: r.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"),
+      ...(r.content.some((c) => c.type === "image") ? { image: r.content.find((c) => c.type === "image")!.data } : {}),
+      erreur: r.isError === true,
+    };
+  } finally {
+    await client.close();
+  }
 }

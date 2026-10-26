@@ -12,6 +12,7 @@ import { GestionnaireVues } from "./onglets/vues";
 import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
+import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 
 // Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
 app.setName("WebAiOs");
@@ -124,6 +125,7 @@ function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
 
 let enregistreur: EnregistreurSession | undefined;
 let rouvrirFenetres = (): boolean => false;
+let agent: ServiceAgent | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 
@@ -258,6 +260,8 @@ app.whenReady().then(async () => {
   magasin.abonner(synchroniserFenetres);
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
+  // Après les fenêtres : l'agent ne retarde jamais la navigation.
+  agent = demarrerAgent({ magasin, vues, fenetres });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
   rouvrirFenetres = () => {
     if (fenetres.size > 0) return false;
@@ -291,7 +295,7 @@ app.on("before-quit", (e) => {
   e.preventDefault();
   // ⌘Q : les fenêtres se ferment après l'écriture de la session, leur cadre doit y être avant.
   if (magasinGlobal) for (const [id, f] of fenetres) noterCadre(id, f, magasinGlobal);
-  void enregistreur.vider().finally(() => {
+  void Promise.allSettled([agent?.arreter(), enregistreur.vider()]).finally(() => {
     sessionEcrite = true;
     app.quit();
   });

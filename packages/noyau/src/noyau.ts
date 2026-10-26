@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
 import { lireAccueil } from "./accueil/lire.js";
@@ -38,10 +39,12 @@ export async function creerNoyau(o: {
   executer?: Executeur;
   horloge?: () => Date;
   profilId?: string;
+  /** Dossier contenant `modeles/` et `docker/` (par défaut, ceux du paquet). */
+  ressources?: string;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
-  await initialiserEspace(chemins);
+  await initialiserEspace(chemins, o.ressources ? join(o.ressources, "modeles") : undefined);
 
   const profilId = o.profilId ?? "claude";
   const profil = (await chargerProfils(chemins)).profils.find((p) => p.id === profilId);
@@ -59,7 +62,7 @@ export async function creerNoyau(o: {
 
   // La navigation ne doit jamais attendre Docker (spec §9) : la première construction d'image prend
   // des minutes, et un échec (port occupé…) ne concerne que l'agent.
-  const atelier = new Atelier({ chemins, executer });
+  const atelier = new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
   const demarrage = atelier.assurerDemarre().catch(() => undefined);
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();

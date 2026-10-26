@@ -12,13 +12,14 @@ export const PORTS = "5280-5299";
 /** Les sondes docker ne doivent pas bloquer si Docker Desktop est coincé au démarrage. */
 const DELAI_SONDE_MS = 30_000;
 
-const DOSSIER_DOCKER = join(import.meta.dirname, "..", "..", "docker");
-const DOCKERFILE = join(DOSSIER_DOCKER, "atelier.Dockerfile");
+/** Dossier du Dockerfile dans le paquet ; un navigateur qui embarque le noyau peut en fournir un autre. */
+export const DOSSIER_DOCKER_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "docker");
+const dockerfile = (dossier: string) => join(dossier, "atelier.Dockerfile");
 const LABEL_EMPREINTE = "webaios.dockerfile";
 
 /** Empreinte du Dockerfile : l'image et le conteneur la portent en label, pour savoir s'ils sont à jour. */
-export function empreinteDockerfile(): string {
-  return createHash("sha256").update(readFileSync(DOCKERFILE)).digest("hex").slice(0, 12);
+export function empreinteDockerfile(dossierDocker = DOSSIER_DOCKER_PAR_DEFAUT): string {
+  return createHash("sha256").update(readFileSync(dockerfile(dossierDocker))).digest("hex").slice(0, 12);
 }
 
 function normaliser(chemin: string): string {
@@ -52,8 +53,10 @@ export class Atelier {
   private readonly chemins: CheminsEspace;
   private readonly executer: Executeur;
   private readonly docker: string | null;
+  private readonly dossierDocker: string;
 
-  constructor(o: { chemins: CheminsEspace; executer?: Executeur; docker?: string | null }) {
+  constructor(o: { chemins: CheminsEspace; executer?: Executeur; docker?: string | null; dossierDocker?: string }) {
+    this.dossierDocker = o.dossierDocker ?? DOSSIER_DOCKER_PAR_DEFAUT;
     this.chemins = o.chemins;
     this.executer = o.executer ?? executeurParDefaut;
     this.docker = o.docker === undefined ? trouverDocker() : o.docker;
@@ -81,7 +84,7 @@ export class Atelier {
   async assurerDemarre(): Promise<EtatAtelier> {
     let etat = await this.etat();
     if (etat === "docker-absent") return etat;
-    const empreinte = empreinteDockerfile();
+    const empreinte = empreinteDockerfile(this.dossierDocker);
     // Un conteneur créé sur un autre dossier ou avec un ancien Dockerfile est recréé ; /workspace et
     // le volume des identifiants sont conservés, seule la couche du conteneur est perdue.
     if (etat !== "absent" && !(await this.conteneurAJour(empreinte))) {
@@ -95,7 +98,7 @@ export class Atelier {
     }
     const image = await this.lancer(["image", "inspect", "-f", `{{index .Config.Labels "${LABEL_EMPREINTE}"}}`, IMAGE], DELAI_SONDE_MS);
     if (image.code !== 0 || image.stdout.trim() !== empreinte) {
-      const build = await this.lancer(["build", "-t", IMAGE, "--label", `${LABEL_EMPREINTE}=${empreinte}`, "-f", DOCKERFILE, DOSSIER_DOCKER]);
+      const build = await this.lancer(["build", "-t", IMAGE, "--label", `${LABEL_EMPREINTE}=${empreinte}`, "-f", dockerfile(this.dossierDocker), this.dossierDocker]);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }
     const run = await this.lancer([

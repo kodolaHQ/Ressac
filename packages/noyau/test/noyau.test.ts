@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { cp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { creerNoyau, ErreurAtelier, type Noyau } from "../src/noyau.js";
 import { PontFactice } from "../src/mcp/pont-factice.js";
@@ -81,4 +81,15 @@ test("échec de démarrage du conteneur : creerNoyau réussit, la session lève 
   const erreur = await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
   expect(erreur).toBeInstanceOf(ErreurAtelier);
   expect(erreur.message).toContain("port is already allocated");
+});
+
+test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
+  const racine = await dossierTemporaire();
+  const copie = await dossierTemporaire();
+  await cp(join(import.meta.dirname, "..", "modeles"), join(copie, "modeles"), { recursive: true });
+  await cp(join(import.meta.dirname, "..", "docker"), join(copie, "docker"), { recursive: true });
+  await writeFile(join(copie, "modeles", "AGENTS.md"), "# copie");
+  const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "absent" }]]);
+  noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, ressources: copie, executer });
+  expect(await readFile(join(racine, "AGENTS.md"), "utf8")).toBe("# copie");
 });
