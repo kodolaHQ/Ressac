@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { appelerOutil, dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
 
@@ -133,5 +133,126 @@ test("une question de lecture ne s'affiche que dans la fenêtre active", async (
   await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
   await new Promise((r) => setTimeout(r, 300));
   await expect(seconde.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});
+
+const terminal = (p: import("@playwright/test").Page) => p.getByTestId("panneau-agent").locator(".xterm-rows");
+const basculerPanneau = (p: import("@playwright/test").Page) =>
+  p.evaluate(() => {
+    const w = window as unknown as { webaios: { agir(a: unknown): void; fenetreId: string } };
+    w.webaios.agir({ type: "basculerPanneauAgent", fenetreId: w.webaios.fenetreId });
+  });
+const menuAgent = (app: import("@playwright/test").ElectronApplication) =>
+  app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("panneau-agent")?.click());
+const lireFichier = (chemin: string) => (existsSync(chemin) ? readFileSync(chemin, "utf8") : "");
+
+test("⌘J ouvre le terminal de l'agent : le vrai CLI y tourne avec la config MCP", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  expect(JSON.parse(lireFichier(join(racine, "faux-agent-args.json")))).toEqual([
+    "claude",
+    "--dangerously-skip-permissions",
+    "--mcp-config",
+    "/workspace/.webaios/mcp.json",
+  ]);
+  await fermer();
+});
+
+test("taper dans le terminal arrive à l'agent", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("bonjour");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminal(fenetre)).toContainText("reçu: bonjour");
+  await fermer();
+});
+
+test("l'agent quitté → « Relancer » repart sur une nouvelle session", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  const premier = lireFichier(join(racine, "faux-agent-pid"));
+  await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("quitter");
+  await fenetre.keyboard.press("Enter");
+  const panneau = fenetre.getByTestId("panneau-agent");
+  await expect(panneau.getByText("L'agent s'est arrêté.")).toBeVisible();
+  await panneau.getByRole("button", { name: "Relancer" }).click();
+  await expect.poll(() => lireFichier(join(racine, "faux-agent-pid"))).not.toBe(premier);
+  await expect(panneau.getByText("L'agent s'est arrêté.")).toBeHidden();
+  await fermer();
+});
+
+test("fermer puis rouvrir le panneau garde la conversation", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("souvenir");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminal(fenetre)).toContainText("reçu: souvenir");
+  await menuAgent(app);
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("reçu: souvenir");
+  await fermer();
+});
+
+test("une sortie énorme ne fige pas l'interface", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("inonder");
+  await fenetre.keyboard.press("Enter");
+  // 1 Mo plus tard, la commande a défilé hors de l'écran et l'invite est revenue en bas.
+  await expect(terminal(fenetre)).not.toContainText("reçu: inonder", { timeout: 10_000 });
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  expect(lireFichier(join(racine, "faux-agent-entree.txt"))).toContain("inonder\r");
+  await fenetre.getByTestId("nouvel-onglet").click();
+  await expect(fenetre.getByTestId("page-vide")).toBeVisible();
+  await fermer();
+});
+
+test("Docker absent → message clair et Réessayer", async () => {
+  const { app, fenetre, fermer } = await lancer({ env: { FAUX_DOCKER_ABSENT: "1" } });
+  await menuAgent(app);
+  const panneau = fenetre.getByTestId("panneau-agent");
+  await expect(panneau).toContainText("Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.");
+  await expect(panneau.getByRole("button", { name: "Réessayer" })).toBeVisible();
+  await fermer();
+});
+
+test("conteneur impossible à démarrer → erreur et Réessayer", async () => {
+  const { app, fenetre, fermer } = await lancer({ env: { FAUX_DOCKER_ECHEC: "1" } });
+  await menuAgent(app);
+  const panneau = fenetre.getByTestId("panneau-agent");
+  await expect(panneau).toContainText("L'agent n'a pas pu démarrer :", { timeout: 10_000 });
+  await expect(panneau).toContainText("échec simulé");
+  await expect(panneau.getByRole("button", { name: "Réessayer" })).toBeVisible();
+  await fermer();
+});
+
+test("fermer la fenêtre arrête son agent", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
+  await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
+  const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
+  await basculerPanneau(seconde);
+  await expect(terminal(seconde)).toContainText("faux agent prêt>");
+  const pid = Number(lireFichier(join(racine, "faux-agent-pid")));
+  await seconde.evaluate(() => window.close());
+  const vivant = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  await expect.poll(vivant, { timeout: 10_000 }).toBe(false);
   await fermer();
 });

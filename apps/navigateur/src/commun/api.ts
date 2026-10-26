@@ -115,7 +115,27 @@ export interface ApiWebaios {
     repondre(id: string, decision: Decision): void;
   };
   surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
+  /** Terminal de l'agent de cette fenêtre. */
+  agent: {
+    /** Démarre la session (ou la retrouve : son état et sa sortie récente sont renvoyés). */
+    demarrer(t: TailleTerminal): void;
+    ecrire(d: string): void;
+    redimensionner(t: TailleTerminal): void;
+    surDonnees(rappel: (d: string) => void): () => void;
+    surEtat(rappel: (e: EtatPanneauAgent) => void): () => void;
+  };
 }
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
 export const SchemaReponsePermission = z.object({ id, decision: z.enum(["autoriser", "refuser"]) });
+
+/** Ce que montre le panneau agent d'une fenêtre. */
+export type EtatPanneauAgent =
+  | { etat: "preparation" }
+  | { etat: "docker-absent" }
+  | { etat: "erreur"; message: string }
+  | { etat: "actif" }
+  | { etat: "termine"; code: number };
+
+export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
+export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;

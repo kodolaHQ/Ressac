@@ -4,6 +4,8 @@ import type { IdFenetre } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import { changementsPolitique, PontElectron } from "./pont";
+import { SessionsAgent } from "./sessions";
+import { CANAUX } from "../../commun/canaux";
 
 declare const __RESSOURCES_NOYAU__: string;
 
@@ -11,6 +13,8 @@ export interface ServiceAgent {
   /** null tant que le noyau n'est pas prêt, ou s'il n'a pas pu démarrer (voir `erreur`). */
   noyau(): Noyau | null;
   erreur(): string | null;
+  /** Terminaux de l'agent, un par fenêtre. */
+  sessions: SessionsAgent;
   arreter(): Promise<void>;
 }
 
@@ -45,10 +49,23 @@ export function demarrerAgent(o: {
       return null;
     },
   );
+  const sessions = new SessionsAgent({
+    async ouvrir(t) {
+      const n = await pret;
+      if (!n) throw new Error(erreur ?? "le noyau de l'agent n'a pas démarré");
+      return n.ouvrirSessionAgent(t);
+    },
+    envoyer: (f, canal, v) => {
+      const w = o.fenetres.get(f);
+      if (w && !w.isDestroyed()) w.webContents.send(canal === "donnees" ? CANAUX.agentDonnees : CANAUX.agentEtat, v);
+    },
+  });
   return {
     noyau: () => noyau,
     erreur: () => erreur,
+    sessions,
     async arreter() {
+      sessions.toutArreter();
       await (await pret)?.arreter();
     },
   };

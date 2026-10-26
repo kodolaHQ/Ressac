@@ -4,6 +4,7 @@
   import { adresse } from "./composants/adresse.svelte";
   import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
+  import PanneauAgent from "./composants/PanneauAgent.svelte";
   import type { Panneau } from "../commun/api";
   import { api, etat, fenetreCourante } from "./etat.svelte";
 
@@ -91,7 +92,7 @@
     <aside data-testid="barre-laterale"></aside>
   {/if}
   <ZoneContenu {fenetre} onglet={ongletActif} {panneau} fermerPanneau={() => (panneau = null)} />
-  <section class="agent" data-testid="panneau-agent" hidden={!panneauAgentOuvert || pleinEcran}></section>
+  <PanneauAgent visible={panneauAgentOuvert && !pleinEcran} />
 </div>
 <MenuContextuel />
 
@@ -104,5 +105,4 @@
   .fenetre.agent { grid-template-columns: 240px 1fr 420px; }
   .fenetre.compact { grid-template-columns: 1fr; }
   .fenetre.compact.agent { grid-template-columns: 1fr 420px; }
-  .agent { background: var(--fond-barre); border-left: 1px solid var(--bord); }
 </style>

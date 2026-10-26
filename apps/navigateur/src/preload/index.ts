@@ -53,6 +53,13 @@ const api: ApiWebaios = {
     ipcRenderer.on(CANAUX.permissions, ecouteur);
     return () => ipcRenderer.removeListener(CANAUX.permissions, ecouteur);
   },
+  agent: {
+    demarrer: (t) => ipcRenderer.send(CANAUX.agentDemarrer, t),
+    ecrire: (d) => ipcRenderer.send(CANAUX.agentEcrire, d),
+    redimensionner: (t) => ipcRenderer.send(CANAUX.agentRedimensionner, t),
+    surDonnees: (rappel) => ecouter(CANAUX.agentDonnees, rappel),
+    surEtat: (rappel) => ecouter(CANAUX.agentEtat, rappel),
+  },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
     ipcRenderer.on(CANAUX.telechargements, ecouteur);

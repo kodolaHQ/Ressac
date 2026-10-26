@@ -20,6 +20,11 @@ export const CANAUX = {
   permissions: "webaios:permissions",
   permissionsListe: "webaios:permissions-liste",
   repondrePermission: "webaios:repondre-permission",
+  agentDemarrer: "webaios:agent-demarrer",
+  agentEcrire: "webaios:agent-ecrire",
+  agentRedimensionner: "webaios:agent-redimensionner",
+  agentDonnees: "webaios:agent-donnees",
+  agentEtat: "webaios:agent-etat",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";
