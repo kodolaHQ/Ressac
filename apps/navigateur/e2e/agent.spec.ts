@@ -254,6 +254,28 @@ test("⌘W sur la page vide de la dernière fenêtre la ferme et arrête son age
   await fermer();
 });
 
+test("⇧⌘W sur la dernière fenêtre avec un onglet arrête son agent ; la rouvrir (Dock) en démarre un nouveau", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await panneauAccueil(fenetre);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  const pid = Number(lireFichier(join(racine, "faux-agent-pid")));
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("fermer-fenetre")?.click());
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+  const vivant = (p: number) => {
+    try {
+      process.kill(p, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  await expect.poll(() => vivant(pid), { timeout: 10_000 }).toBe(false);
+  await app.evaluate(({ app }) => app.emit("activate"));
+  await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(1);
+  await fermer();
+});
+
 test("fermer la fenêtre arrête son agent", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
