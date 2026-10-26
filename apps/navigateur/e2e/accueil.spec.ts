@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication } from "@playwright/test";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ecrireBloc, ecrireDisposition, lancer, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
+import { ecrireBloc, ecrireDisposition, glisser, lancer, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -156,4 +156,48 @@ test("sans dossier accueil lisible, la page vide reste utilisable", async () => 
   } finally {
     chmodSync(join(racine, "accueil"), 0o755);
   }
+});
+
+function troisBlocs(): string {
+  const racine = nouvelleRacine();
+  for (const [id, titre] of [["un", "Un"], ["deux", "Deux"], ["trois", "Trois"]] as const)
+    ecrireBloc(racine, id, { titre, type: "agent", html: `<p>${titre}</p>` });
+  ecrireDisposition(racine, ["un", "deux", "trois"]);
+  return racine;
+}
+const disposition = (racine: string) => JSON.parse(readFileSync(join(racine, "accueil", "disposition.json"), "utf8")).ordre;
+
+test("glisser un bloc change disposition.json et l'ordre affiché", async () => {
+  const racine = troisBlocs();
+  const { app, fenetre, fermer } = await lancer({ racine });
+  // Les trois blocs à l'écran : le glisser-déposer ne fait pas défiler la page.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setBounds({ x: 0, y: 0, width: 1400, height: 1800 }));
+  await expect(fenetre.locator(titres)).toHaveText(["Un", "Deux", "Trois"]);
+  await expect.poll(() => fenetre.evaluate(() => innerHeight)).toBeGreaterThan(1500);
+  await glisser(fenetre, fenetre.getByTestId("bloc-trois").getByTestId("titre-bloc"), fenetre.getByTestId("bloc-un"), "haut");
+  await expect(fenetre.locator(titres)).toHaveText(["Trois", "Un", "Deux"]);
+  expect(disposition(racine)).toEqual(["trois", "un", "deux"]);
+  await glisser(fenetre, fenetre.getByTestId("bloc-trois").getByTestId("titre-bloc"), fenetre.getByTestId("bloc-un"), "bas");
+  await expect(fenetre.locator(titres)).toHaveText(["Un", "Trois", "Deux"]);
+  expect(disposition(racine)).toEqual(["un", "trois", "deux"]);
+  await fermer();
+});
+
+test("✕ puis Retirer : le bloc part à la corbeille ; Annuler le garde", async () => {
+  const racine = troisBlocs();
+  const { fenetre, fermer } = await lancer({ racine });
+  const deux = fenetre.getByTestId("bloc-deux");
+  await deux.getByRole("button", { name: "Retirer le bloc" }).click();
+  const confirmation = fenetre.getByTestId("confirmation-retrait");
+  await expect(confirmation).toContainText("Retirer « Deux » de la page d'accueil ?");
+  await confirmation.getByRole("button", { name: "Annuler" }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(fenetre.locator(titres)).toHaveText(["Un", "Deux", "Trois"]);
+  await deux.getByRole("button", { name: "Retirer le bloc" }).click();
+  await confirmation.getByRole("button", { name: "Retirer" }).click();
+  await expect(fenetre.locator(titres)).toHaveText(["Un", "Trois"]);
+  expect(existsSync(join(racine, "accueil", "blocs", "deux"))).toBe(false);
+  expect(readdirSync(join(racine, "accueil", ".corbeille"))[0]).toMatch(/^deux-/);
+  expect(disposition(racine)).toEqual(["un", "trois"]);
+  await fermer();
 });

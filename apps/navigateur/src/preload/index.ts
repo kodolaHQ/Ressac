@@ -63,6 +63,8 @@ const api: ApiWebaios = {
   accueil: {
     lire: () => ipcRenderer.invoke(CANAUX.accueilLire),
     surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),
+    ordonner: (ordre) => ipcRenderer.send(CANAUX.accueilOrdonner, ordre),
+    retirer: (id) => ipcRenderer.send(CANAUX.accueilRetirer, id),
   },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);

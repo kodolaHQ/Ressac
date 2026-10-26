@@ -129,6 +129,9 @@ export interface ApiWebaios {
     lire(): Promise<BlocAffiche[]>;
     /** Un fichier de accueil/ a changé : relire. */
     surChange(rappel: () => void): () => void;
+    ordonner(ordre: string[]): void;
+    /** Met le bloc à la corbeille (accueil/.corbeille). */
+    retirer(id: string): void;
   };
 }
 
@@ -143,6 +146,8 @@ export type EtatPanneauAgent =
   | { etat: "actif" }
   | { etat: "termine"; code: number };
 
+export const SchemaOrdreBlocs = z.array(z.string().max(100)).max(500);
+export const SchemaIdBloc = z.string().regex(/^[a-z0-9-]+$/).max(100);
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
 

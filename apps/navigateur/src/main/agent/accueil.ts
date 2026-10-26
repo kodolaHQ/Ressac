@@ -1,7 +1,8 @@
 import { protocol, type WebContents } from "electron";
-import { readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { EtatAccueil, Noyau } from "@webaios/noyau";
+import type { CheminsEspace, EtatAccueil, Noyau } from "@webaios/noyau";
 import type { BlocAffiche } from "../../commun/api";
 
 export const SCHEMA_BLOC = "webaios-bloc";
@@ -65,6 +66,30 @@ export async function lireBlocsAffiches(n: Pick<Noyau, "lireAccueil">): Promise<
     }
   }
   return versBlocsAffiches(etat, mtimes);
+}
+
+/** L'utilisateur a déplacé un bloc : nouvel ordre dans disposition.json (écriture atomique). Les ids inconnus sont ignorés. */
+export async function ordonnerBlocs(c: CheminsEspace, ordre: string[]): Promise<void> {
+  const connus = [...new Set(ordre)].filter((id) => ID_BLOC.test(id) && existsSync(join(c.blocs, id)));
+  const temporaire = `${c.disposition}.${process.pid}.tmp`;
+  await writeFile(temporaire, JSON.stringify({ ordre: connus }, null, 2));
+  await rename(temporaire, c.disposition);
+}
+
+/** L'utilisateur retire un bloc : son dossier part dans accueil/.corbeille (rien n'est détruit). */
+export async function retirerBloc(c: CheminsEspace, id: string): Promise<void> {
+  if (!ID_BLOC.test(id)) throw new Error(`id de bloc invalide : ${id}`);
+  let ordre: string[] = [];
+  try {
+    const lu = JSON.parse(await readFile(c.disposition, "utf8")) as { ordre?: unknown };
+    if (Array.isArray(lu.ordre)) ordre = lu.ordre.filter((x): x is string => typeof x === "string");
+  } catch {
+    // pas encore de disposition : rien à retirer de l'ordre
+  }
+  const corbeille = join(c.accueil, ".corbeille");
+  await mkdir(corbeille, { recursive: true });
+  await rename(join(c.blocs, id), join(corbeille, `${id}-${Date.now()}`));
+  await ordonnerBlocs(c, ordre.filter((x) => x !== id));
 }
 
 /** Avant `app.whenReady` : le schéma doit être standard pour que les URL aient un hôte (l'id du bloc). */

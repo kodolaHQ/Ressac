@@ -27,6 +27,8 @@ export const CANAUX = {
   agentEtat: "webaios:agent-etat",
   accueilLire: "webaios:accueil-lire",
   accueilChange: "webaios:accueil-change",
+  accueilOrdonner: "webaios:accueil-ordonner",
+  accueilRetirer: "webaios:accueil-retirer",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

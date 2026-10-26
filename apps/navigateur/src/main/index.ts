@@ -14,7 +14,7 @@ import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreReponse, ongletActifDe } from "./agent/pont";
-import { enregistrerSchemaBloc, lireBlocsAffiches, protegerWebviews, servirBlocs } from "./agent/accueil";
+import { enregistrerSchemaBloc, lireBlocsAffiches, ordonnerBlocs, protegerWebviews, retirerBloc, servirBlocs } from "./agent/accueil";
 
 // Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
 app.setName("WebAiOs");
@@ -222,6 +222,15 @@ app.whenReady().then(async () => {
           console.error("[webaios] page d'accueil illisible :", e);
           return [];
         }
+      },
+      // La surveillance du dossier renvoie la page à jour aux fenêtres.
+      ordonner: (ordre) => {
+        const n = agent?.noyau();
+        if (n) ordonnerBlocs(n.chemins, ordre).catch((e) => console.error("[webaios] disposition non écrite :", e));
+      },
+      retirer: (id) => {
+        const n = agent?.noyau();
+        if (n) retirerBloc(n.chemins, id).catch((e) => console.error(`[webaios] bloc ${id} non retiré :`, e));
       },
     },
     agent: {
