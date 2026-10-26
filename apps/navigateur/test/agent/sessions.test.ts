@@ -125,3 +125,29 @@ test("Entrée dans le terminal = l'utilisateur envoie un message (surEnvoi) ; un
   gestion.ecrire("F", "abc\r");
   expect(messages).toEqual(["F"]);
 });
+
+test("relancerTout arrête chaque session et en rouvre une à la même taille, sans annoncer « terminé »", async () => {
+  const tailles: { cols: number; rows: number }[] = [];
+  const sessions: FausseSession[] = [];
+  const envois: { f: string; canal: string; v: unknown }[] = [];
+  const gestion = new SessionsAgent({
+    ouvrir: async (t) => {
+      tailles.push(t);
+      const s = new FausseSession();
+      sessions.push(s);
+      return s;
+    },
+    envoyer: (f, canal, v) => envois.push({ f, canal, v }),
+  });
+  await gestion.demarrer("F", taille);
+  gestion.redimensionner("F", { cols: 100, rows: 30 });
+  const ancienne = sessions[0]!;
+  ancienne.arreter = () => ancienne.finir(143); // un vrai pty annonce sa fin quand on l'arrête
+  envois.length = 0;
+  await gestion.relancerTout();
+  expect(ancienne.active).toBe(false);
+  expect(sessions).toHaveLength(2);
+  expect(tailles[1]).toEqual({ cols: 100, rows: 30 });
+  expect(envois.filter((e) => e.canal === "etat").map((e) => e.v)).toEqual([{ etat: "preparation" }, { etat: "actif" }]);
+  expect(gestion.active("F")).toBe(true);
+});

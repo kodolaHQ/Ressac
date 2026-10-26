@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
+import { appelerOutil, dansLaVue, lancer, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -344,5 +344,34 @@ test("une nouvelle fenêtre (et sa session d'agent) ne retire pas l'accès donn�
   let lu: { texte: string } | undefined;
   void appelerOutil(racine, "lire_onglet", { id }).then((r) => (lu = r));
   await expect.poll(() => lu?.texte, { timeout: 5000 }).toContain("Le chat dort");
+  await fermer();
+});
+
+test("un second profil dans .webaios/profils apparaît dans le panneau ; le choisir relance l'agent avec sa commande", async () => {
+  const racine = nouvelleRacine();
+  mkdirSync(join(racine, ".webaios", "profils"), { recursive: true });
+  writeFileSync(
+    join(racine, ".webaios", "profils", "autre.json"),
+    JSON.stringify({ id: "autre", nom: "Autre", interactif: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractif: ["autre-agent", "-p", "{consigne}"], configMcp: "claude-json" }),
+  );
+  const { fenetre, fermer } = await lancer({ racine });
+  await panneauAccueil(fenetre);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  const premier = lireFichier(join(racine, "faux-agent-pid"));
+  const choix = fenetre.getByTestId("profil-agent");
+  await expect(choix.locator("option")).toHaveText(["Autre", "Claude Code"]);
+  await choix.selectOption("autre");
+  await expect.poll(() => lireFichier(join(racine, "faux-agent-pid"))).not.toBe(premier);
+  expect(JSON.parse(lireFichier(join(racine, "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", "/workspace/.webaios/mcp.json"]);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await expect(fenetre.getByTestId("panneau-agent")).not.toContainText("L'agent s'est arrêté.");
+  await fermer();
+});
+
+test("un seul profil : pas de menu de profils", async () => {
+  const { fenetre, fermer } = await lancer();
+  await panneauAccueil(fenetre);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await expect(fenetre.getByTestId("profil-agent")).toHaveCount(0);
   await fermer();
 });

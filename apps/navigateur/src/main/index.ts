@@ -237,6 +237,7 @@ app.whenReady().then(async () => {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
       ecrire: (f, d) => agent?.sessions.ecrire(f, d),
       redimensionner: (f, t) => agent?.sessions.redimensionner(f, t),
+      profils: async () => (await agent?.profils()) ?? [],
     },
     permissions: {
       enAttente,

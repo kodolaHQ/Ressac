@@ -58,6 +58,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("basculerCompact"), fenetreId: id }),
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
+  z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
@@ -123,6 +124,8 @@ export interface ApiWebaios {
     redimensionner(t: TailleTerminal): void;
     surDonnees(rappel: (d: string) => void): () => void;
     surEtat(rappel: (e: EtatPanneauAgent) => void): () => void;
+    /** Profils d'agent disponibles (le choix passe par l'action choisirProfilAgent). */
+    profils(): Promise<{ id: string; nom: string }[]>;
   };
   /** Page d'accueil (dossier accueil/ de l'espace de l'agent). */
   accueil: {

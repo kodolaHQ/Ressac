@@ -43,6 +43,7 @@ export interface Gestionnaires {
     demarrer(f: IdFenetre, t: TailleTerminal): void;
     ecrire(f: IdFenetre, d: string): void;
     redimensionner(f: IdFenetre, t: TailleTerminal): void;
+    profils(): Promise<{ id: string; nom: string }[]>;
   };
   accueil: { lire(): Promise<BlocAffiche[]>; ordonner(ordre: string[]): void; retirer(id: string): void };
 }
@@ -92,6 +93,7 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());
   recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision }) => g.permissions.repondre(id, decision));
   repondre(CANAUX.accueilLire, () => g.accueil.lire());
+  repondre(CANAUX.agentProfils, () => g.agent.profils());
   recevoir(CANAUX.accueilOrdonner, zod(SchemaOrdreBlocs), (o) => g.accueil.ordonner(o));
   recevoir(CANAUX.accueilRetirer, zod(SchemaIdBloc), (id) => g.accueil.retirer(id));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));

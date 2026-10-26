@@ -3,7 +3,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import "@xterm/xterm/css/xterm.css";
   import type { EtatPanneauAgent } from "../../commun/api";
-  import { api } from "../etat.svelte";
+  import { api, etat as etatNavigateur } from "../etat.svelte";
 
   let { visible }: { visible: boolean } = $props();
   let hote: HTMLDivElement;
@@ -26,7 +26,21 @@
     api.agent.demarrer(taille());
   }
 
-  $effect(() => api.agent.surEtat((e) => (etat = e)));
+  // Une session qui repart (Relancer, changement de profil) efface l'écran de la précédente.
+  $effect(() =>
+    api.agent.surEtat((e) => {
+      if (e.etat === "preparation" && etat.etat !== "preparation") terminal?.reset();
+      etat = e;
+    }),
+  );
+
+  let profils = $state<{ id: string; nom: string }[]>([]);
+  const profilAgent = $derived(etatNavigateur.valeur?.reglages.profilAgent ?? "claude");
+  $effect(() => {
+    if (visible) api.agent.profils().then((p) => (profils = p), () => {});
+  });
+  // Un seul profil : rien à choisir. Le menu reste si le profil choisi a disparu, pour pouvoir en changer.
+  const choixProfil = $derived(profils.length >= 2 || (profils.length > 0 && !profils.some((p) => p.id === profilAgent)));
 
   // Le terminal naît à la première ouverture du panneau (il faut une taille pour le mesurer), puis reste monté :
   // fermer le panneau ne fait que le cacher, la conversation continue.
@@ -51,6 +65,18 @@
 </script>
 
 <section class="agent" data-testid="panneau-agent" hidden={!visible}>
+  {#if choixProfil}
+    <header>
+      <select
+        data-testid="profil-agent"
+        aria-label="Profil d'agent"
+        value={profilAgent}
+        onchange={(e) => api.agir({ type: "choisirProfilAgent", profil: e.currentTarget.value })}
+      >
+        {#each profils as p (p.id)}<option value={p.id}>{p.nom}</option>{/each}
+      </select>
+    </header>
+  {/if}
   {#if etat.etat === "preparation"}
     <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
   {:else if etat.etat === "docker-absent"}
@@ -70,6 +96,8 @@
   .agent { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fond-barre); border-left: 1px solid var(--bord); }
   .agent[hidden] { display: none; }
   .message { margin: 12px; color: var(--texte-doux); }
+  header { padding: 6px 8px; border-bottom: 1px solid var(--bord); }
+  select { padding: 2px 6px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); font-size: 12px; }
   button { margin: 0 12px 12px; align-self: flex-start; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); }
   .terminal { flex: 1; min-height: 0; padding: 6px; background: #1e1e22; }
   .terminal.masque { visibility: hidden; }

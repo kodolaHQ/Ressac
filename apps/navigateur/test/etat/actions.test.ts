@@ -330,3 +330,9 @@ test("fermerFenetre : ses onglets (tous espaces) vont dans les fermés récemmen
   ag({ type: "rouvrirOngletFerme", fenetreId: F });
   expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["https://y.fr"]);
 });
+
+test("choisirProfilAgent change le réglage (claude par défaut)", () => {
+  expect(e.reglages.profilAgent).toBe("claude");
+  ag({ type: "choisirProfilAgent", profil: "autre" });
+  expect(e.reglages.profilAgent).toBe("autre");
+});

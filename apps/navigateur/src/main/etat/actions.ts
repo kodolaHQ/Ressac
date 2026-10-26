@@ -287,6 +287,11 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       d.reglages.moteur = a.moteur;
       return true;
     }
+    case "choisirProfilAgent": {
+      if (d.reglages.profilAgent === a.profil) return false;
+      d.reglages.profilAgent = a.profil;
+      return true;
+    }
   }
 }
 

@@ -25,6 +25,7 @@ export const CANAUX = {
   agentRedimensionner: "webaios:agent-redimensionner",
   agentDonnees: "webaios:agent-donnees",
   agentEtat: "webaios:agent-etat",
+  agentProfils: "webaios:agent-profils",
   accueilLire: "webaios:accueil-lire",
   accueilChange: "webaios:accueil-change",
   accueilOrdonner: "webaios:accueil-ordonner",

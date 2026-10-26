@@ -19,6 +19,8 @@ interface Entree {
   session?: SessionLike;
   tampon: string;
   demarrage?: Promise<void>;
+  /** Dernière taille du terminal, pour rouvrir la session à l'identique (relancerTout). */
+  taille: TailleTerminal;
 }
 
 /** Une session d'agent par fenêtre (spec §8) : elle survit aux changements d'onglet et à la fermeture du panneau. */
@@ -37,8 +39,9 @@ export class SessionsAgent {
   /** Idempotent : une session active renvoie son état et son tampon ; sinon une nouvelle session démarre. */
   demarrer(f: IdFenetre, taille: TailleTerminal): Promise<void> {
     let e = this.entrees.get(f);
-    if (!e) this.entrees.set(f, (e = { tampon: "" }));
+    if (!e) this.entrees.set(f, (e = { tampon: "", taille }));
     const entree = e;
+    entree.taille = taille;
     if (entree.session?.active) {
       entree.session.redimensionner(taille.cols, taille.rows);
       this.o.envoyer(f, "etat", { etat: "actif" });
@@ -60,7 +63,9 @@ export class SessionsAgent {
             this.o.envoyer(f, "donnees", d);
           });
           s.surFin((code) => {
-            if (entree.session === s) entree.session = undefined;
+            // Session remplacée (relancerTout) : sa fin n'est pas celle de la conversation affichée.
+            if (entree.session !== s) return;
+            entree.session = undefined;
             this.o.envoyer(f, "etat", { etat: "termine", code });
           });
           this.o.envoyer(f, "etat", { etat: "actif" });
@@ -88,7 +93,22 @@ export class SessionsAgent {
   }
 
   redimensionner(f: IdFenetre, t: TailleTerminal): void {
-    this.entrees.get(f)?.session?.redimensionner(t.cols, t.rows);
+    const e = this.entrees.get(f);
+    if (e) e.taille = t;
+    e?.session?.redimensionner(t.cols, t.rows);
+  }
+
+  /** Changement de profil : chaque fenêtre qui avait un agent en retrouve un nouveau, à la même taille. */
+  async relancerTout(): Promise<void> {
+    const anciennes = [...this.entrees];
+    // De nouvelles entrées : un démarrage encore en cours sur l'ancien noyau sera abandonné à son arrivée.
+    this.entrees.clear();
+    for (const [, e] of anciennes) {
+      const s = e.session;
+      e.session = undefined;
+      s?.arreter();
+    }
+    await Promise.all(anciennes.map(([f, e]) => this.demarrer(f, e.taille)));
   }
 
   fermerFenetre(f: IdFenetre): void {

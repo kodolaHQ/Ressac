@@ -165,3 +165,13 @@ test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {
   await enr.vider();
   expect((await chargerSession(d)).onglets[id]?.erreur).toBeNull();
 });
+
+test("une session enregistrée sans profilAgent se charge avec claude", async () => {
+  const d = dossier();
+  const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
+  delete ancienne.reglages.profilAgent;
+  writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
+  const e = await chargerSession(d);
+  expect(e.reglages.profilAgent).toBe("claude");
+  expect(mis_de_cote(d, ".corrompu")).toEqual([]);
+});

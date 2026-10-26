@@ -59,6 +59,7 @@ const api: ApiWebaios = {
     redimensionner: (t) => ipcRenderer.send(CANAUX.agentRedimensionner, t),
     surDonnees: (rappel) => ecouter(CANAUX.agentDonnees, rappel),
     surEtat: (rappel) => ecouter(CANAUX.agentEtat, rappel),
+    profils: () => ipcRenderer.invoke(CANAUX.agentProfils),
   },
   accueil: {
     lire: () => ipcRenderer.invoke(CANAUX.accueilLire),

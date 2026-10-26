@@ -41,7 +41,7 @@ const SchemaSession = z
         }),
       )
       .min(1),
-    reglages: z.object({ moteur: z.enum(["google", "duckduckgo", "qwant"]) }),
+    reglages: z.object({ moteur: z.enum(["google", "duckduckgo", "qwant"]), profilAgent: z.string().min(1).default("claude") }),
   });
 
 /** Les champs volatils d'un onglet ne sont pas enregistrés : ils repartent de leur valeur par défaut. */

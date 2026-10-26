@@ -74,7 +74,7 @@ export interface EtatNavigateur {
   essentiels: Favori[];
   onglets: Record<IdOnglet, Onglet>;
   fenetres: EtatFenetre[];
-  reglages: { moteur: MoteurRecherche };
+  reglages: { moteur: MoteurRecherche; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ profilAgent: string };
 }
 
 /** Une URL de l'historique (une ligne par URL). */
