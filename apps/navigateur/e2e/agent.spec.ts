@@ -256,3 +256,72 @@ test("fermer la fenêtre arrête son agent", async () => {
   await expect.poll(vivant, { timeout: 10_000 }).toBe(false);
   await fermer();
 });
+
+/** Démarre la session d'agent une première fois (sa saisie n'est prête qu'ensuite), puis referme le panneau. */
+async function agentPret(app: import("@playwright/test").ElectronApplication, fenetre: import("@playwright/test").Page) {
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await menuAgent(app);
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+}
+
+test("le bouton ✦ de la barre latérale ouvre et ferme le panneau agent", async () => {
+  const { fenetre, fermer } = await lancer();
+  await fenetre.getByTestId("bouton-agent").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+  await fenetre.getByTestId("bouton-agent").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await fermer();
+});
+
+test("⌘J sur un onglet : préfixe de contexte pré-rempli, jamais envoyé", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await agentPret(app, fenetre);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await menuAgent(app);
+  await expect.poll(() => lireFichier(join(racine, "faux-agent-entree.txt"))).toBe(`[contexte : Page A — ${serveur.url}/a.html] `);
+  await fermer();
+});
+
+test("après ⌘J, page_courante lit l'onglet sans demander", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await agentPret(app, fenetre);
+  await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
+  await menuAgent(app);
+  expect((await appelerOutil(racine, "page_courante")).texte).toContain("Le chat dort");
+  await expect(fenetre.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});
+
+test("onglet visité sans parler à l'agent : page_courante demande la permission", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await agentPret(app, fenetre);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await menuAgent(app);
+  await menuAgent(app);
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect.poll(() => dansLaVue(app, "b.html", "document.title")).toBe("Page B");
+  const lecture = appelerOutil(racine, "page_courante");
+  await expect(fenetre.getByTestId("demande-permission")).toContainText("L'agent veut lire l'onglet « Page B »");
+  await fenetre.getByTestId("demande-permission").getByRole("button", { name: "Refuser" }).click();
+  expect((await lecture).texte).toBe("Accès refusé par l'utilisateur à cet onglet.");
+  await fermer();
+});
+
+test("envoyer un message depuis un onglet le partage", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await menuAgent(app);
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
+  await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("salut");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminal(fenetre)).toContainText("reçu: salut");
+  expect((await appelerOutil(racine, "page_courante")).texte).toContain("Le chat dort");
+  await expect(fenetre.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});

@@ -1,9 +1,9 @@
 import type { BrowserWindow } from "electron";
-import { creerNoyau, type Noyau, type OngletInfo } from "@webaios/noyau";
+import { creerNoyau, prefixeContexte, type Noyau, type OngletInfo } from "@webaios/noyau";
 import type { IdFenetre } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
-import { changementsPolitique, PontElectron } from "./pont";
+import { changementsPolitique, ongletActifDe, PontElectron } from "./pont";
 import { SessionsAgent } from "./sessions";
 import { CANAUX } from "../../commun/canaux";
 
@@ -55,10 +55,26 @@ export function demarrerAgent(o: {
       if (!n) throw new Error(erreur ?? "le noyau de l'agent n'a pas démarré");
       return n.ouvrirSessionAgent(t);
     },
+    // L'utilisateur parle à l'agent depuis l'onglet affiché : il le lui donne (spec §8.2).
+    surEnvoi: (f) => {
+      const actif = ongletActifDe(o.magasin.etat, f);
+      if (actif) noyau?.politique.interactionUtilisateur(actif);
+    },
     envoyer: (f, canal, v) => {
       const w = o.fenetres.get(f);
       if (w && !w.isDestroyed()) w.webContents.send(canal === "donnees" ? CANAUX.agentDonnees : CANAUX.agentEtat, v);
     },
+  });
+  // Ouvrir le panneau (⌘J ou bouton ✦) sur un onglet le donne à l'agent et pré-remplit le contexte, sans
+  // l'envoyer (spec §8). À la toute première ouverture la session démarre : sa saisie n'est pas encore prête.
+  o.magasin.abonner((etat, avant) => {
+    for (const f of etat.fenetres) {
+      const ouvert = !avant.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert && f.panneauAgentOuvert;
+      const actif = ouvert ? ongletActifDe(etat, f.id) : null;
+      if (!actif) continue;
+      noyau?.politique.interactionUtilisateur(actif);
+      if (sessions.active(f.id)) sessions.ecrire(f.id, prefixeContexte(actif.titre, actif.url));
+    }
   });
   return {
     noyau: () => noyau,

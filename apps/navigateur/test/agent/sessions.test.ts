@@ -35,6 +35,7 @@ class FausseSession implements SessionLike {
 function preparer(ouvrir?: () => Promise<SessionLike>) {
   const sessions: FausseSession[] = [];
   const envois: { f: string; canal: string; v: unknown }[] = [];
+  const messages: string[] = [];
   const gestion = new SessionsAgent({
     ouvrir:
       ouvrir ??
@@ -44,9 +45,10 @@ function preparer(ouvrir?: () => Promise<SessionLike>) {
         return s;
       }),
     envoyer: (f, canal, v) => envois.push({ f, canal, v }),
+    surEnvoi: (f) => messages.push(f),
   });
   const etats = (f = "F") => envois.filter((e) => e.f === f && e.canal === "etat").map((e) => e.v);
-  return { gestion, sessions, envois, etats };
+  return { gestion, sessions, envois, etats, messages };
 }
 const taille = { cols: 80, rows: 24 };
 
@@ -113,4 +115,13 @@ test("ecrire va à la session de la fenêtre", async () => {
   gestion.ecrire("F", "ls\r");
   gestion.ecrire("G", "rien");
   expect(sessions[0]!.ecrit).toEqual(["ls\r"]);
+});
+
+test("Entrée dans le terminal = l'utilisateur envoie un message (surEnvoi) ; une frappe ordinaire, non", async () => {
+  const { gestion, messages } = preparer();
+  await gestion.demarrer("F", taille);
+  gestion.ecrire("F", "abc");
+  expect(messages).toEqual([]);
+  gestion.ecrire("F", "abc\r");
+  expect(messages).toEqual(["F"]);
 });

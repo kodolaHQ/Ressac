@@ -29,6 +29,8 @@ export class SessionsAgent {
     private readonly o: {
       ouvrir: (t: TailleTerminal) => Promise<SessionLike>;
       envoyer: (f: IdFenetre, canal: "donnees" | "etat", v: string | EtatPanneauAgent) => void;
+      /** L'utilisateur valide un message (Entrée) dans le terminal de cette fenêtre. */
+      surEnvoi?: (f: IdFenetre) => void;
     },
   ) {}
 
@@ -79,7 +81,10 @@ export class SessionsAgent {
   }
 
   ecrire(f: IdFenetre, d: string): void {
-    this.entrees.get(f)?.session?.ecrire(d);
+    const session = this.entrees.get(f)?.session;
+    if (!session) return;
+    session.ecrire(d);
+    if (d.includes("\r")) this.o.surEnvoi?.(f);
   }
 
   redimensionner(f: IdFenetre, t: TailleTerminal): void {

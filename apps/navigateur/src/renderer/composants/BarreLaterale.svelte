@@ -68,6 +68,14 @@
   </div>
   <footer>
     <SelecteurEspaces {fenetre} />
+    <button
+      class="outil"
+      data-testid="bouton-agent"
+      aria-label="Agent (⌘J)"
+      title="Agent (⌘J)"
+      aria-pressed={fenetre.panneauAgentOuvert}
+      onclick={() => api.agir({ type: "basculerPanneauAgent", fenetreId: fenetre.id })}>✦</button
+    >
     {#if telechargements.liste.length}
       <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => basculerPanneau?.("telechargements")}>
         ⬇
@@ -98,6 +106,9 @@
   footer :global(nav) { flex: 1; }
   .telechargements { all: unset; position: relative; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
   .telechargements:hover { background: var(--fond-survol); }
+  .outil { all: unset; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
+  .outil:hover { background: var(--fond-survol); }
+  .outil[aria-pressed="true"] { color: var(--accent); }
   .pastille { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
   hr { width: 100%; border: none; border-top: 1px solid var(--bord); margin: 2px 0; }
   .nouveau { all: unset; padding: 6px; border-radius: 6px; color: var(--texte-doux); }
