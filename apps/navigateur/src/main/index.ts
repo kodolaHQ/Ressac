@@ -13,6 +13,7 @@ import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
+import { attendreReponse, ongletActifDe } from "./agent/pont";
 
 // Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
 app.setName("WebAiOs");
@@ -175,7 +176,7 @@ app.whenReady().then(async () => {
   magasin.abonner((etat) => {
     let change = false;
     for (const [id, q] of questions)
-      if (q.demande.ongletId && !etat.onglets[q.demande.ongletId]) {
+      if ((q.demande.ongletId && !etat.onglets[q.demande.ongletId]) || (q.demande.cible && !etat.onglets[q.demande.cible])) {
         questions.delete(id);
         q.repondre("refuser");
         change = true;
@@ -264,15 +265,45 @@ app.whenReady().then(async () => {
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
   // Après les fenêtres : l'agent ne retarde jamais la navigation.
+  const fenetreAgent = (): IdFenetre | undefined => {
+    const focus = BrowserWindow.getFocusedWindow();
+    for (const [id, f] of fenetres) if (f === focus) return id;
+    return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
+  };
   agent = demarrerAgent({
     magasin,
     vues,
     fenetres,
-    fenetreActive: () => {
-      const focus = BrowserWindow.getFocusedWindow();
-      for (const [id, f] of fenetres) if (f === focus) return id;
-      return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
-    },
+    fenetreActive: fenetreAgent,
+    // « L'agent veut lire l'onglet … » dans la fenêtre active ; jamais mémorisé hors de la politique du noyau.
+    demanderLecture: (o) =>
+      attendreReponse((repondre) => {
+        const id = randomUUID();
+        const fenetreId = fenetreAgent();
+        let origine = o.url;
+        try {
+          origine = new URL(o.url).origin;
+        } catch {
+          // URL sans origine : affichée telle quelle
+        }
+        questions.set(id, {
+          demande: {
+            id,
+            ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null,
+            ...(fenetreId ? { fenetreId } : {}),
+            cible: o.id,
+            origine,
+            titre: o.titre,
+            permissions: ["lire-onglet"],
+          },
+          repondre,
+        });
+        diffuser(CANAUX.permissions, enAttente());
+        return () => {
+          questions.delete(id);
+          diffuser(CANAUX.permissions, enAttente());
+        };
+      }),
   });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
   rouvrirFenetres = () => {

@@ -17,7 +17,10 @@
   }: { fenetre: EtatFenetre | undefined; onglet: Onglet | undefined; panneau?: Panneau | null; fermerPanneau?: () => void } = $props();
   let zone: HTMLElement;
   // Une popup pose ses questions sur l'onglet qui l'a ouverte (ongletId) ; sans onglet connu, sur l'onglet actif.
-  const demande = $derived(demandes.liste.find((d) => d.ongletId === null || d.ongletId === onglet?.id));
+  // Une question de l'agent vise une fenêtre (la sienne), quel que soit l'onglet affiché.
+  const demande = $derived(
+    demandes.liste.find((d) => (d.fenetreId ? d.fenetreId === fenetre?.id : d.ongletId === null || d.ongletId === onglet?.id)),
+  );
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).

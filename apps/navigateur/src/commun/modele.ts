@@ -102,6 +102,8 @@ export type Permission =
   | "fullscreen"
   | "clipboard-sanitized-write"
   | "ouvrir-application"
+  /** L'agent veut lire un onglet que l'utilisateur ne lui a pas donné (spec §8.2). */
+  | "lire-onglet"
   | "autre";
 export type Decision = "autoriser" | "refuser";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
@@ -111,6 +113,12 @@ export interface Demande {
   permissions: Permission[];
   /** « ouvrir-application » : le lien à confier à une autre application (mailto:, zoommtg:…). */
   lien?: string;
+  /** « lire-onglet » : titre de l'onglet visé. */
+  titre?: string;
+  /** « lire-onglet » : la question ne s'affiche que dans cette fenêtre (sinon, selon `ongletId`). */
+  fenetreId?: IdFenetre;
+  /** « lire-onglet » : l'onglet visé ; s'il est fermé, la question est refusée. */
+  cible?: IdOnglet;
 }
 export interface DemandeEnAttente extends Demande {
   id: string;

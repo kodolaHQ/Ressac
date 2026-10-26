@@ -60,3 +60,78 @@ test("un onglet de l'agent passé en arrière-plan reste lisible et capturable",
   expect(capture.image!.length).toBeGreaterThan(1000);
   await fermer();
 });
+
+const pret = (racine: string) => expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
+const idOnglet = async (fenetre: import("@playwright/test").Page, texte: string) =>
+  (await fenetre.locator('[data-testid^="onglet-"]', { hasText: texte }).getAttribute("data-testid"))!.slice("onglet-".length);
+
+test("lire un onglet de l'utilisateur demande la permission ; Refuser → refus renvoyé à l'agent", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await pret(racine);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  const lecture = appelerOutil(racine, "lire_onglet", { id: await idOnglet(fenetre, "Page A") });
+  const bandeau = fenetre.getByTestId("demande-permission");
+  await expect(bandeau).toContainText("L'agent veut lire l'onglet « Page A »");
+  await bandeau.getByRole("button", { name: "Refuser" }).click();
+  expect((await lecture).texte).toBe("Accès refusé par l'utilisateur à cet onglet.");
+  await expect(bandeau).toBeHidden();
+  await fermer();
+});
+
+test("Autoriser une fois → l'agent lit la page ; la question ne revient pas pour le même site", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await pret(racine);
+  await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
+  const id = await idOnglet(fenetre, "Texte");
+  const lecture = appelerOutil(racine, "lire_onglet", { id });
+  await fenetre.getByTestId("demande-permission").getByRole("button", { name: "Autoriser une fois" }).click();
+  expect((await lecture).texte).toContain("Le chat dort");
+  expect((await appelerOutil(racine, "lire_onglet", { id })).texte).toContain("Le chat dort");
+  await expect(fenetre.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});
+
+test("onglet jamais affiché : une fois autorisé, il est chargé pour être lu", async () => {
+  const { fenetre, racine, fermer } = await lancer();
+  await pret(racine);
+  await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`, { activer: false });
+  await expect(fenetre.locator('[data-testid^="onglet-"]')).toHaveCount(1);
+  const id = (await fenetre.locator('[data-testid^="onglet-"]').getAttribute("data-testid"))!.slice("onglet-".length);
+  const lecture = appelerOutil(racine, "lire_onglet", { id });
+  await fenetre.getByTestId("demande-permission").getByRole("button", { name: "Autoriser une fois" }).click();
+  expect((await lecture).texte).toContain("Le chat dort");
+  await fermer();
+});
+
+test("onglet fermé pendant la question → refusée, bandeau retiré", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await pret(racine);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  const id = await idOnglet(fenetre, "Page A");
+  const lecture = appelerOutil(racine, "lire_onglet", { id });
+  await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
+  await fenetre.evaluate((id) => (window as unknown as { webaios: { agir(a: unknown): void } }).webaios.agir({ type: "fermerOnglet", id }), id);
+  expect((await lecture).texte).toBe("Accès refusé par l'utilisateur à cet onglet.");
+  await expect(fenetre.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});
+
+test("une question de lecture ne s'affiche que dans la fenêtre active", async () => {
+  const { app, fenetre, racine, fermer } = await lancer();
+  await pret(racine);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("nouvelle-fenetre")?.click());
+  await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
+  const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
+  // Fenêtres cachées : aucune n'a le focus, la fenêtre active est la première.
+  void appelerOutil(racine, "lire_onglet", { id: await idOnglet(fenetre, "Page A") });
+  await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
+  await new Promise((r) => setTimeout(r, 300));
+  await expect(seconde.getByTestId("demande-permission")).toBeHidden();
+  await fermer();
+});

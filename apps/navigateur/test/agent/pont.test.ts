@@ -1,9 +1,9 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import type { EtatNavigateur } from "../../src/commun/modele";
-import { changementsPolitique, infosOnglets, ongletActifDe, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, resoudreEspace } from "../../src/main/agent/pont";
 
 function preparer() {
   let n = 0;
@@ -55,4 +55,24 @@ test("changementsPolitique : URL changée et onglet fermé ; rien pour un titre"
   const milieu = e();
   ag({ type: "majOnglet", id: a!, champs: { titre: "Autre" } });
   expect(changementsPolitique(milieu, e())).toEqual({ navigues: [], fermes: [] });
+});
+
+test("attendreReponse : sans réponse au bout du délai, la question est retirée et la réponse est non", async () => {
+  vi.useFakeTimers();
+  try {
+    let retiree = false;
+    const reponse = attendreReponse(() => () => (retiree = true), 120_000);
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(retiree).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(retiree).toBe(true);
+    await expect(reponse).resolves.toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("attendreReponse : autoriser → oui, refuser → non", async () => {
+  await expect(attendreReponse((repondre) => (repondre("autoriser"), () => {}), 1000)).resolves.toBe(true);
+  await expect(attendreReponse((repondre) => (repondre("refuser"), () => {}), 1000)).resolves.toBe(false);
 });

@@ -12,11 +12,14 @@
     fullscreen: "passer en plein écran",
     "clipboard-sanitized-write": "écrire dans le presse-papiers",
     "ouvrir-application": "ouvrir un lien dans une autre application",
+    "lire-onglet": "lire un onglet",
     autre: "une permission inconnue",
   };
 
   const site = $derived(new URL(demande.origine).host);
+  const lecture = $derived(demande.permissions.includes("lire-onglet"));
   const texte = $derived.by(() => {
+    if (lecture) return `L'agent veut lire l'onglet « ${demande.titre ?? site} »`;
     const media = demande.permissions.filter((p) => p.startsWith("media-")).map((p) => NOMS[p]);
     const autres = demande.permissions.filter((p) => !p.startsWith("media-")).map((p) => NOMS[p]);
     const parties = [...(media.length ? [`utiliser ${media.join(" et ")}`] : []), ...autres];
@@ -28,7 +31,7 @@
 <div class="bandeau" data-testid="demande-permission" role="alertdialog" aria-label="Demande d'autorisation">
   <span>{texte}</span>
   <button onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
-  <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser</button>
+  <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>{lecture ? "Autoriser une fois" : "Autoriser"}</button>
 </div>
 
 <style>

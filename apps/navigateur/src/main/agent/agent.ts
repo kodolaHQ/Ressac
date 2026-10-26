@@ -1,5 +1,5 @@
 import type { BrowserWindow } from "electron";
-import { creerNoyau, type Noyau } from "@webaios/noyau";
+import { creerNoyau, type Noyau, type OngletInfo } from "@webaios/noyau";
 import type { IdFenetre } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
@@ -24,10 +24,12 @@ export function demarrerAgent(o: {
   vues: GestionnaireVues;
   fenetres: Map<IdFenetre, BrowserWindow>;
   fenetreActive: () => IdFenetre | undefined;
+  /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
+  demanderLecture: (o: OngletInfo) => Promise<boolean>;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
-  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: async () => false });
+  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).
   o.magasin.abonner((etat, avant) => {
     if (!noyau) return;
