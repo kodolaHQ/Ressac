@@ -66,7 +66,11 @@ export async function creerNoyau(o: {
   const atelier = new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
   // Le conteneur se prépare dès le lancement. S'il échoue, la première session rend cet échec plutôt que de tout
   // reconstruire aussitôt ; les suivantes (Réessayer) tentent à nouveau. Réussi, il est revérifié (sonde rapide).
-  let demarrage: Promise<EtatAtelier> | null = atelier.assurerDemarre();
+  // Avant toute session, les agents laissés par une app précédente sont arrêtés.
+  let demarrage: Promise<EtatAtelier> | null = atelier.assurerDemarre().then(async (etat) => {
+    if (etat === "demarre") await atelier.arreterSessionsOrphelines();
+    return etat;
+  });
   demarrage.catch(() => {});
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();

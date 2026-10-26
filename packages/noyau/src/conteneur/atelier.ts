@@ -60,21 +60,39 @@ function fichierSession(id: string): string {
 export const VARIABLE_SESSION = "WEBAIOS_SESSION";
 
 /**
+ * Envoie HUP, puis TERM, puis KILL aux processus que liste la fonction shell `cibles` (pid, ou -pgid pour un groupe).
+ * claude intercepte HUP et TERM sans forcément quitter : chaque signal a 2 s pour agir.
+ */
+function escalade(cibles: string): string[] {
+  return [
+    `cibles() { ${cibles}; }`,
+    // Pas de « -- » : le kill de dash (sh du conteneur) le refuse, et le groupe ne serait jamais visé.
+    `signaler() { for c in $(cibles); do kill -$1 "$c" 2>/dev/null; done; }`,
+    `vivant() { for c in $(cibles); do kill -0 "$c" 2>/dev/null && return 0; done; return 1; }`,
+    `for s in HUP TERM; do signaler $s; i=0; while [ $i -lt 20 ] && vivant; do sleep 0.1; i=$((i + 1)); done; vivant || exit 0; done`,
+    `signaler KILL`,
+  ];
+}
+
+/** Processus qui portent la marque `motif` (expression grep sur une variable d'environnement entière). */
+const marques = (motif: string) =>
+  `for d in /proc/[0-9]*; do grep -qzx '${motif}' "$d/environ" 2>/dev/null && echo "\${d#/proc/}"; done`;
+
+/**
  * Arrête la session `id` dont le PID est noté dans `f` : son groupe (l'agent et ce qu'il a lancé), et tout processus
- * qui porte sa marque (un serveur de démo détaché par l'agent). claude intercepte HUP et TERM sans forcément quitter :
- * chaque signal a 2 s pour agir, puis KILL.
+ * qui porte sa marque (un serveur de démo détaché par l'agent).
  */
 export function scriptArretSession(f: string, id: string): string {
   return [
     `p=$(cat ${f} 2>/dev/null) || p=`,
     `rm -f ${f}`,
-    // Pas de « -- » : le kill de dash (sh du conteneur) le refuse, et le groupe ne serait jamais visé.
-    `cibles() { [ -n "$p" ] && echo "-$p $p"; for d in /proc/[0-9]*; do grep -qzx '${VARIABLE_SESSION}=${id}' "$d/environ" 2>/dev/null && echo "\${d#/proc/}"; done; }`,
-    `signaler() { for c in $(cibles); do kill -$1 "$c" 2>/dev/null; done; }`,
-    `vivant() { for c in $(cibles); do kill -0 "$c" 2>/dev/null && return 0; done; return 1; }`,
-    `for s in HUP TERM; do signaler $s; i=0; while [ $i -lt 20 ] && vivant; do sleep 0.1; i=$((i + 1)); done; vivant || exit 0; done`,
-    `signaler KILL`,
+    ...escalade(`[ -n "$p" ] && echo "-$p $p"; ${marques(`${VARIABLE_SESSION}=${id}`)}`),
   ].join("\n");
+}
+
+/** Arrête toutes les sessions marquées, quelle que soit leur fenêtre (voir arreterSessionsOrphelines). */
+export function scriptArretOrphelins(): string {
+  return ["rm -f /tmp/webaios-session-*.pid", ...escalade(marques(`${VARIABLE_SESSION}=.*`))].join("\n");
 }
 
 export class Atelier {
@@ -187,6 +205,14 @@ export class Atelier {
   async arreterSession(id: string): Promise<void> {
     if (!this.docker) return;
     await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", scriptArretSession(fichierSession(id), id)], DELAI_SONDE_MS);
+  }
+
+  /**
+   * Au lancement de l'app : les agents (et leurs serveurs) d'une app précédente qui n'a pas pu les arrêter (tuée net,
+   * plantée) n'ont plus de fenêtre. Une seule app tourne à la fois sur l'atelier.
+   */
+  async arreterSessionsOrphelines(): Promise<void> {
+    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", scriptArretOrphelins()], DELAI_SONDE_MS);
   }
 
   commandeExec(argv: string[], o: { interactif: boolean; env?: Record<string, string> }): string[] {

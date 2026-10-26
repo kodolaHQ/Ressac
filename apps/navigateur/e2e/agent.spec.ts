@@ -250,7 +250,7 @@ test("⌘W sur la page vide de la dernière fenêtre la ferme et arrête son age
     }
   };
   await expect.poll(vivant, { timeout: 10_000 }).toBe(false);
-  await expect.poll(() => lireFichier(join(racine, "faux-docker-arrets.log"))).toMatch(/signaler KILL/);
+  await expect.poll(() => lireFichier(join(racine, "faux-docker-arrets.log"))).toMatch(/webaios-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/);
   await fermer();
 });
 

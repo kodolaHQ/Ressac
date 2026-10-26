@@ -100,6 +100,24 @@ test("construction échouée au lancement : la première session rend cet échec
   expect(appels.filter((a) => a.args[0] === "build")).toHaveLength(2);
 });
 
+test("au lancement, une fois le conteneur prêt, les agents d'une app précédente sont arrêtés avant toute session", async () => {
+  const racine = await dossierTemporaire();
+  const { executer, appels } = executeurFactice([
+    [/ info$/, { code: 0 }],
+    [/ inspect -f/, { code: 0, stdout: "true\n" }],
+  ]);
+  // Conteneur à jour : la sonde de montage renvoie la racine et l'empreinte attendues.
+  const { empreinteDockerfile } = await import("../src/conteneur/atelier.js");
+  const executerAJour: typeof executer = (c, args, o) =>
+    args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
+  noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour });
+  await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).then((s) => s.arreter(), () => {});
+  const execs = appels.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
+  // Le nettoyage (toutes les sessions marquées) passe avant l'arrêt de la session ouverte ici.
+  expect(execs[0]).toContain("/tmp/webaios-session-*.pid");
+  expect(execs[1]).toMatch(/webaios-session-[0-9a-f]+\.pid/);
+});
+
 test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
   const racine = await dossierTemporaire();
   const copie = await dossierTemporaire();
