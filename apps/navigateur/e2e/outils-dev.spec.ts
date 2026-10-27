@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, ecrireProjet, lancer, nouvelleRacine } from "./aide";
+import { appelerOutil, dansLaVue, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 
 /** Ports d'essai, jamais ceux des vraies applis de l'utilisateur ; délai court avant « En erreur ». */
 const ENV = { WEBAIOS_PORTS_APPS: "15285-15289", WEBAIOS_DELAI_APP_MS: "3000" };
@@ -121,5 +121,81 @@ test("L'utilisateur ouvre les DevTools (wc.openDevTools() via app.evaluate) : li
   // Refermés : l'agent se rattache au prochain appel.
   await devtools(app, "fermer");
   await expect.poll(() => outil(racine, "executer_js", { code: "1 + 1" })).toBe("2");
+  await fermer();
+});
+
+// Carte de consentement : un onglet de l'utilisateur, servi par le serveur d'essai (jamais « construit »).
+const CARTE = "demande-outils-dev";
+const REFUS = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
+
+async function avecOngletTiers() {
+  const serveur = await serveurTest();
+  const l = await lancer();
+  await expect.poll(() => existsSync(join(l.racine, ".webaios", "mcp.json"))).toBe(true);
+  await ouvrirOnglet(l.fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => dansLaVue(l.app, "texte.html", "document.title")).toBe("Texte");
+  const titre = l.fenetre.locator('[data-testid^="onglet-"]', { hasText: "Texte" });
+  await expect(titre).toHaveCount(1);
+  const id = (await titre.getAttribute("data-testid"))!.slice("onglet-".length);
+  return { ...l, id, serveur, fermer: async () => (await l.fermer(), await serveur.fermer()) };
+}
+
+test("onglet tiers : lire_console affiche la carte avec « Console et erreurs » coché et la raison ; Autoriser la sélection → messages renvoyés", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  const appel = outil(racine, "lire_console", { id });
+  const carte = fenetre.getByTestId(CARTE);
+  await expect(carte).toContainText("Claude Code veut accéder aux outils de développement");
+  await expect(carte).toContainText("Texte");
+  await expect(carte).toContainText("« L'agent veut utiliser lire_console. »");
+  await expect(carte).toContainText("Valable pour cette conversation · tombe si l'onglet change de site");
+  await expect(carte.locator('input[data-droit="console"]')).toBeChecked();
+  for (const d of ["reseau", "performances", "agir"]) await expect(carte.locator(`input[data-droit="${d}"]`)).not.toBeChecked();
+  await carte.getByRole("button", { name: "Autoriser la sélection" }).click();
+  expect(await appel).toBe("Aucun message.");
+  await expect(carte).toBeHidden();
+  await fermer();
+});
+
+test("décocher Réseau dans une demande console+reseau : seul console est accordé ; lire_reseau suivant répond refusé sans carte", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  const appel = outil(racine, "demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Le bouton ne réagit pas." });
+  const carte = fenetre.getByTestId(CARTE);
+  await expect(carte).toContainText("« Le bouton ne réagit pas. »");
+  await expect(carte).toContainText("peut contenir des données de connexion");
+  await expect(carte.locator('input[data-droit="console"]')).toBeChecked();
+  await carte.locator('input[data-droit="reseau"]').uncheck();
+  await carte.getByRole("button", { name: "Autoriser la sélection" }).click();
+  expect(await appel).toBe("Droits accordés : console\nRefusés : reseau");
+  expect(await outil(racine, "lire_reseau", { id })).toBe(REFUS);
+  await expect(carte).toHaveCount(0);
+  await fermer();
+});
+
+test("deux demandes : une seule carte à la fois, la seconde après réponse à la première", async () => {
+  const { app, fenetre, racine, id, serveur, fermer } = await avecOngletTiers();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  const autre = (await fenetre.locator('[data-testid^="onglet-"]', { hasText: "Page A" }).getAttribute("data-testid"))!.slice("onglet-".length);
+  const premiere = outil(racine, "demander_outils_dev", { id, droits: ["console"], raison: "Première." });
+  await expect(fenetre.getByTestId(CARTE)).toContainText("Première.");
+  const seconde = outil(racine, "demander_outils_dev", { id: autre, droits: ["console"], raison: "Seconde." });
+  await new Promise((r) => setTimeout(r, 500));
+  await expect(fenetre.getByTestId(CARTE)).toHaveCount(1);
+  await expect(fenetre.getByTestId(CARTE)).toContainText("Première.");
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Autoriser la sélection" }).click();
+  expect(await premiere).toBe("Droits accordés : console");
+  await expect(fenetre.getByTestId(CARTE)).toContainText("Seconde.");
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Refuser" }).click();
+  expect(await seconde).toBe(REFUS);
+  await expect(fenetre.getByTestId(CARTE)).toHaveCount(0);
+  await fermer();
+});
+
+test("Refuser : l'outil répond refusé", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  const appel = outil(racine, "lire_console", { id });
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Refuser" }).click();
+  expect(await appel).toBe(REFUS);
+  await expect(fenetre.getByTestId(CARTE)).toHaveCount(0);
   await fermer();
 });

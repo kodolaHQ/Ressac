@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dossierValide, type Application } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, type Application, type DroitDev } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
@@ -119,7 +119,7 @@ export interface ApiWebaios {
   surTelechargements(rappel: (liste: Telechargement[]) => void): () => void;
   permissions: {
     enAttente(): Promise<DemandeEnAttente[]>;
-    repondre(id: string, decision: Decision): void;
+    repondre(id: string, decision: Decision, droits?: DroitDev[]): void;
   };
   surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
   /** Terminal de l'agent de cette fenêtre. */
@@ -171,7 +171,12 @@ export const SchemaActionApplication = z
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
-export const SchemaReponsePermission = z.object({ id, decision: z.enum(["autoriser", "refuser"]) });
+/** `droits` : la sélection de l'utilisateur sur la carte des outils de développement (n'importe quel sous-ensemble des quatre droits). */
+export const SchemaReponsePermission = z.object({
+  id,
+  decision: z.enum(["autoriser", "refuser"]),
+  droits: z.array(z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]])).optional(),
+});
 
 /** Ce que montre le panneau agent d'une fenêtre. */
 export type EtatPanneauAgent =

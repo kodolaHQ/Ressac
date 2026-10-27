@@ -1,3 +1,5 @@
+import type { DroitDev } from "@webaios/noyau";
+
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
 export const URL_APPLICATIONS = "webaios://applications";
 
@@ -110,6 +112,8 @@ export type Permission =
   | "ouvrir-application"
   /** L'agent veut lire un onglet que l'utilisateur ne lui a pas donné (spec §8.2). */
   | "lire-onglet"
+  /** L'agent demande des droits d'outils de développement sur un onglet (carte de consentement). */
+  | "outils-dev"
   | "autre";
 export type Decision = "autoriser" | "refuser";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
@@ -123,8 +127,14 @@ export interface Demande {
   titre?: string;
   /** « lire-onglet » : la question ne s'affiche que dans cette fenêtre (sinon, selon `ongletId`). */
   fenetreId?: IdFenetre;
-  /** « lire-onglet » : l'onglet visé ; s'il est fermé, la question est refusée. */
+  /** « lire-onglet » et « outils-dev » : l'onglet visé ; s'il est fermé, la question est refusée. */
   cible?: IdOnglet;
+  /** « outils-dev » : les droits demandés par l'agent, pré-cochés. */
+  droits?: DroitDev[];
+  /** « outils-dev » : la raison donnée par l'agent. */
+  raison?: string;
+  /** « outils-dev » : le nom de l'agent, affiché tel quel. */
+  agent?: string;
 }
 export interface DemandeEnAttente extends Demande {
   id: string;

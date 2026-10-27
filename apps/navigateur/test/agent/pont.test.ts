@@ -3,7 +3,7 @@ import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import type { EtatNavigateur } from "../../src/commun/modele";
-import { attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreDroits, attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 function preparer() {
   let n = 0;
@@ -87,6 +87,33 @@ test("questionCaduque : une demande de l'agent ne tombe qu'avec son onglet visé
   expect(questionCaduque(site, e())).toBe(true);
   ag({ type: "fermerOnglet", id: b! });
   expect(questionCaduque(lecture, e())).toBe(true);
+});
+
+test("attendreDroits : autoriser → les droits cochés ; refuser, délai dépassé ou autoriser sans rien → []", async () => {
+  await expect(attendreDroits((repondre) => (repondre("autoriser", ["console", "agir"]), () => {}), 1000)).resolves.toEqual(["console", "agir"]);
+  await expect(attendreDroits((repondre) => (repondre("refuser", ["console"]), () => {}), 1000)).resolves.toEqual([]);
+  await expect(attendreDroits((repondre) => (repondre("autoriser"), () => {}), 1000)).resolves.toEqual([]);
+  vi.useFakeTimers();
+  try {
+    let retiree = false;
+    const reponse = attendreDroits(() => () => (retiree = true), 120_000);
+    await vi.advanceTimersByTimeAsync(120_000);
+    await expect(reponse).resolves.toEqual([]);
+    expect(retiree).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("questionCaduque : une demande d'outils de développement tombe si l'onglet change de site ; une fenêtre d'appli n'est pas un onglet fermé", () => {
+  const { e, ag, F } = preparer();
+  const [a, b] = Object.keys(e().onglets);
+  const origine = new URL(e().onglets[b!]!.url).origin;
+  const dev = { id: "d", ongletId: a!, fenetreId: F, cible: b!, origine, permissions: ["outils-dev" as const], droits: ["console" as const] };
+  expect(questionCaduque(dev, e())).toBe(false);
+  ag({ type: "majOnglet", id: b!, champs: { url: "https://ailleurs.test/" } });
+  expect(questionCaduque(dev, e())).toBe(true);
+  expect(questionCaduque({ ...dev, cible: "app:essai", origine: "http://localhost:15280" }, e())).toBe(false);
 });
 
 test("listerOnglets inclut les fenêtres d'application", async () => {

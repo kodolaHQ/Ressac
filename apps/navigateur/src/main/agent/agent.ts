@@ -8,6 +8,7 @@ import {
   surveillerAccueil,
   type Atelier,
   type CheminsEspace,
+  type DroitDev,
   type Noyau,
   type OngletInfo,
   type OutilsApplications,
@@ -61,6 +62,8 @@ export function demarrerAgent(o: {
   fenetreActive: () => IdFenetre | undefined;
   /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
+  /** Carte de consentement des outils de développement (voir index.ts). */
+  demanderOutilsDev: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }) => Promise<DroitDev[]>;
   /** La page d'accueil a changé (ou devient lisible : noyau prêt). */
   surAccueil: () => void;
   /** Atelier partagé avec les applications : un seul conteneur, quel que soit le profil. */
@@ -72,7 +75,7 @@ export function demarrerAgent(o: {
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
-  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture, applications: o.fenetresApplications });
+  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture, demanderOutilsDev: o.demanderOutilsDev, applications: o.fenetresApplications });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).
   o.magasin.abonner((etat, avant) => {
     if (!noyau) return;

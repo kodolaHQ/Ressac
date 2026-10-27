@@ -1,0 +1,60 @@
+<script lang="ts">
+  import { untrack } from "svelte";
+  import type { DroitDev } from "@webaios/noyau";
+  import type { DemandeEnAttente } from "../../commun/modele";
+  import { api } from "../etat.svelte";
+
+  let { demande }: { demande: DemandeEnAttente } = $props();
+
+  // Les quatre droits, dans l'ordre de la carte. `sensible` : l'avertissement affiché en dessous.
+  const DROITS: { droit: DroitDev; icone: string; nom: string; detail: string; sensible?: string }[] = [
+    { droit: "console", icone: "👁", nom: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
+    { droit: "reseau", icone: "👁", nom: "Réseau", detail: "Requêtes et réponses de la page", sensible: "peut contenir des données de connexion" },
+    { droit: "performances", icone: "👁", nom: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
+    { droit: "agir", icone: "⚡", nom: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensible: "l'agent peut agir en ton nom sur ce site" },
+  ];
+
+  // Pré-coché : ce que l'agent a demandé ; l'utilisateur peut en ajouter ou en retirer.
+  // Initialisé une fois : la liste des demandes est rediffusée à chaque nouvelle question, sans toucher à la sélection.
+  let coches = $state<DroitDev[]>(untrack(() => [...(demande.droits ?? [])]));
+
+  const site = $derived(new URL(demande.origine).host);
+  const cocher = (droit: DroitDev, actif: boolean) => (coches = actif ? [...coches, droit] : coches.filter((d) => d !== droit));
+</script>
+
+<div class="carte" data-testid="demande-outils-dev" role="alertdialog" aria-label="Demande d'accès aux outils de développement">
+  <h3>{demande.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
+  <div class="site">🔒 {site} · onglet « {demande.titre ?? site} »</div>
+  <div class="raison">« {demande.raison} »</div>
+  {#each DROITS as d (d.droit)}
+    <label class="droit">
+      <input type="checkbox" data-droit={d.droit} checked={coches.includes(d.droit)} onchange={(e) => cocher(d.droit, e.currentTarget.checked)} />
+      <div>
+        <b>{d.icone} {d.nom}</b>
+        <span>{d.detail}</span>
+        {#if d.sensible}<div class="sensible">⚠ {d.sensible}</div>{/if}
+      </div>
+    </label>
+  {/each}
+  <div class="actions">
+    <button onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
+    <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser", $state.snapshot(coches))}>Autoriser la sélection</button>
+  </div>
+  <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
+</div>
+
+<style>
+  .carte { align-self: center; box-sizing: border-box; width: min(440px, calc(100% - 24px)); margin: 8px 12px; padding: 14px 18px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 12px; font-size: 13px; line-height: 1.45; }
+  h3 { margin: 0 0 4px; font-size: 15px; }
+  .site { opacity: 0.7; font-size: 12px; margin-bottom: 10px; }
+  .raison { background: var(--fond-barre); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
+  .droit { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--bord); }
+  .droit input { margin-top: 3px; }
+  .droit b { display: block; font-size: 13px; }
+  .droit span { opacity: 0.7; font-size: 11.5px; }
+  .sensible { color: #fbbf24; font-size: 11px; font-weight: 600; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }
+  .autoriser { background: var(--accent); border-color: var(--accent); color: white; }
+  .note { opacity: 0.55; font-size: 11px; margin-top: 10px; }
+</style>

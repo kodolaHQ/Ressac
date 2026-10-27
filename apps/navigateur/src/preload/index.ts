@@ -46,7 +46,7 @@ const api: ApiWebaios = {
   },
   permissions: {
     enAttente: () => ipcRenderer.invoke(CANAUX.permissionsListe),
-    repondre: (id, decision) => ipcRenderer.send(CANAUX.repondrePermission, { id, decision }),
+    repondre: (id, decision, droits) => ipcRenderer.send(CANAUX.repondrePermission, { id, decision, ...(droits ? { droits } : {}) }),
   },
   surPermissions(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);

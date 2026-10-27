@@ -1,5 +1,5 @@
 import type { WebContents } from "electron";
-import { OngletIntrouvable, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
+import { OngletIntrouvable, type DroitDev, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
 import type { Magasin } from "../ipc";
@@ -51,8 +51,21 @@ export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateu
  * dans sa fenêtre, quel que soit l'onglet affiché : fermer celui-ci ne la concerne pas.
  */
 export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): boolean {
-  if (d.cible && !etat.onglets[d.cible]) return true;
+  // Une fenêtre d'appli (`app:<dossier>`) n'est pas un onglet : sa fermeture et ses navigations sont suivies à part.
+  const onglet = d.cible && !d.cible.startsWith(PREFIXE_APP) ? etat.onglets[d.cible] : undefined;
+  if (d.cible && !d.cible.startsWith(PREFIXE_APP) && !onglet) return true;
+  // Les droits portent sur le site que l'utilisateur a vu : l'onglet est parti ailleurs, la carte tombe.
+  if (onglet && d.permissions.includes("outils-dev") && origineDe(onglet.url) !== d.origine) return true;
   return !d.fenetreId && d.ongletId !== null && !etat.onglets[d.ongletId];
+}
+
+/** L'origine d'une URL, ou l'URL telle quelle si elle n'en a pas. */
+export function origineDe(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
 }
 
 /** Une demande de lecture sans réponse au bout de ce délai est refusée : l'agent ne reste pas bloqué. */
@@ -70,6 +83,30 @@ export function attendreReponse(poser: (repondre: (d: Decision) => void) => () =
       finie = true;
       clearTimeout(minuterie);
       ok(d === "autoriser");
+    };
+    const minuterie = setTimeout(() => {
+      retirer();
+      repondre("refuser");
+    }, delaiMs);
+    const retirer = poser(repondre);
+  });
+}
+
+/**
+ * Comme `attendreReponse`, pour la carte des outils de développement : renvoie les droits cochés si l'utilisateur autorise,
+ * `[]` s'il refuse ou si le délai expire.
+ */
+export function attendreDroits(
+  poser: (repondre: (d: Decision, droits?: DroitDev[]) => void) => () => void,
+  delaiMs = DELAI_QUESTION_MS,
+): Promise<DroitDev[]> {
+  return new Promise((ok) => {
+    let finie = false;
+    const repondre = (d: Decision, droits: DroitDev[] = []) => {
+      if (finie) return;
+      finie = true;
+      clearTimeout(minuterie);
+      ok(d === "autoriser" ? droits : []);
     };
     const minuterie = setTimeout(() => {
       retirer();
@@ -118,6 +155,8 @@ export class PontElectron implements PontNavigateur {
       /** Fenêtre principale au premier plan, sinon la dernière qui l'a été. */
       fenetreActive: () => IdFenetre | undefined;
       demander: (o: OngletInfo) => Promise<boolean>;
+      /** Carte de consentement des outils de développement ; absente, tout est refusé. */
+      demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }) => Promise<DroitDev[]>;
       applications: FenetresPourAgent;
     },
   ) {}
@@ -184,5 +223,9 @@ export class PontElectron implements PontNavigateur {
 
   demanderAutorisation(o: OngletInfo): Promise<boolean> {
     return this.o.demander(o);
+  }
+
+  async demanderOutilsDev(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }): Promise<DroitDev[]> {
+    return (await this.o.demanderOutilsDev?.(o, d)) ?? [];
   }
 }

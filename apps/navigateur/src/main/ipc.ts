@@ -1,6 +1,7 @@
 import { ipcMain, type IpcMainEvent } from "electron";
 import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
+import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
@@ -38,7 +39,7 @@ export interface Gestionnaires {
   fermerOnglet(ongletId: IdOnglet): void;
   historique: Historique;
   telechargements: Telechargements;
-  permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision): void };
+  permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision, droits?: DroitDev[]): void };
   agent: {
     demarrer(f: IdFenetre, t: TailleTerminal): void;
     ecrire(f: IdFenetre, d: string): void;
@@ -92,7 +93,7 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.telechargementsListe, () => g.telechargements.liste());
   recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
   repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());
-  recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision }) => g.permissions.repondre(id, decision));
+  recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision, droits }) => g.permissions.repondre(id, decision, droits));
   repondre(CANAUX.accueilLire, () => g.accueil.lire());
   repondre(CANAUX.agentProfils, () => g.agent.profils());
   recevoir(CANAUX.accueilOrdonner, zod(SchemaOrdreBlocs), (o) => g.accueil.ordonner(o));

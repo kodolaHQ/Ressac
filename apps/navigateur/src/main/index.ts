@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
+import type { Decision, Demande, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
 import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
@@ -13,8 +13,8 @@ import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
-import { attendreReponse, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
-import { Atelier, cheminsEspace } from "@webaios/noyau";
+import { attendreDroits, attendreReponse, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { Atelier, cheminsEspace, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { enregistrerSchemaBloc, lireBlocsAffiches, ordonnerBlocs, protegerWebviews, retirerBloc, servirBlocs } from "./agent/accueil";
@@ -168,7 +168,7 @@ app.whenReady().then(async () => {
     pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),
   });
   // Questions d'autorisation en attente d'une réponse de l'utilisateur (bandeau de l'onglet concerné).
-  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision) => void }>();
+  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision, droits?: DroitDev[]) => void }>();
   const enAttente = () => [...questions.values()].map((q) => q.demande);
   const permissions = new Permissions({
     fichier: join(dossier, "permissions.json"),
@@ -180,17 +180,23 @@ app.whenReady().then(async () => {
       }),
   });
   permissions.brancher(sessionWeb, (wc) => vues.ongletDe(wc));
-  // Un onglet fermé ne répondra jamais : ses questions sont refusées.
-  magasin.abonner((etat) => {
+  // Un onglet fermé (ou parti vers un autre site, pour les outils de développement) ne répondra jamais : ses questions
+  // sont refusées. Une fenêtre d'appli (`app:<dossier>`) n'est pas dans l'état : on regarde ses fenêtres ouvertes.
+  const ecarterQuestionsCaduques = () => {
     let change = false;
-    for (const [id, q] of questions)
-      if (questionCaduque(q.demande, etat)) {
+    for (const [id, q] of questions) {
+      const d = q.demande;
+      const appli = d.cible?.startsWith("app:") ? applications?.fenetres.ouvertes().find((a) => `app:${a.dossier}` === d.cible) : undefined;
+      const appliCaduque = d.cible?.startsWith("app:") && (!appli || origineDe(appli.url) !== d.origine);
+      if (appliCaduque || questionCaduque(d, magasin.etat)) {
         questions.delete(id);
         q.repondre("refuser");
         change = true;
       }
+    }
     if (change) diffuser(CANAUX.permissions, enAttente());
-  });
+  };
+  magasin.abonner(ecarterQuestionsCaduques);
   magasin.abonner((etat) => {
     diffuser(CANAUX.etat, etat);
     vues.synchroniser(etat);
@@ -240,11 +246,11 @@ app.whenReady().then(async () => {
     },
     permissions: {
       enAttente,
-      repondre: (id, d) => {
+      repondre: (id, d, droits) => {
         const q = questions.get(id);
         if (!q) return;
         questions.delete(id);
-        q.repondre(d);
+        q.repondre(d, droits);
         diffuser(CANAUX.permissions, enAttente());
       },
     },
@@ -329,7 +335,10 @@ app.whenReady().then(async () => {
     // La page Applications relit la liste.
     diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
-    surFenetreFermee: (dossier) => agent?.noyau()?.politique.ongletFerme(`app:${dossier}`),
+    surFenetreFermee: (dossier) => {
+      agent?.noyau()?.politique.ongletFerme(`app:${dossier}`);
+      ecarterQuestionsCaduques();
+    },
     // Une fenêtre d'appli montre toujours ce que l'agent a construit : de nouveau « construite » sur sa nouvelle origine.
     surNavigation: (dossier, url) => {
       const politique = agent?.noyau()?.politique;
@@ -337,6 +346,7 @@ app.whenReady().then(async () => {
       politique.ongletNavigue(`app:${dossier}`, url);
       const fenetre = applications?.fenetres.ouvertes().find((a) => a.dossier === dossier);
       politique.construite(ongletApplication({ dossier, titre: fenetre?.titre ?? "", url }));
+      ecarterQuestionsCaduques();
     },
     // Comme ⌘J : le panneau s'ouvre et le terminal prend le clavier.
     deboguer: (f, texte, acces) => {
@@ -344,6 +354,32 @@ app.whenReady().then(async () => {
       cibles.raccourci(f, "agent");
     },
   });
+  /** Où s'affiche une question de l'agent : sa fenêtre, sur l'onglet visé. */
+  const poserQuestionAgent = (
+    o: OngletInfo,
+    repondre: (d: Decision, droits?: DroitDev[]) => void,
+    plus: Pick<Demande, "permissions" | "droits" | "raison" | "agent">,
+  ): (() => void) => {
+    const id = randomUUID();
+    const fenetreId = fenetreAgent();
+    questions.set(id, {
+      demande: {
+        id,
+        ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null,
+        ...(fenetreId ? { fenetreId } : {}),
+        cible: o.id,
+        origine: origineDe(o.url),
+        titre: o.titre,
+        ...plus,
+      },
+      repondre,
+    });
+    diffuser(CANAUX.permissions, enAttente());
+    return () => {
+      questions.delete(id);
+      diffuser(CANAUX.permissions, enAttente());
+    };
+  };
   agent = demarrerAgent({
     atelier,
     applications: applications.gestionnaire,
@@ -354,34 +390,10 @@ app.whenReady().then(async () => {
     fenetreActive: fenetreAgent,
     surAccueil: () => diffuser(CANAUX.accueilChange, null),
     // « L'agent veut lire l'onglet … » dans la fenêtre active ; jamais mémorisé hors de la politique du noyau.
-    demanderLecture: (o) =>
-      attendreReponse((repondre) => {
-        const id = randomUUID();
-        const fenetreId = fenetreAgent();
-        let origine = o.url;
-        try {
-          origine = new URL(o.url).origin;
-        } catch {
-          // URL sans origine : affichée telle quelle
-        }
-        questions.set(id, {
-          demande: {
-            id,
-            ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null,
-            ...(fenetreId ? { fenetreId } : {}),
-            cible: o.id,
-            origine,
-            titre: o.titre,
-            permissions: ["lire-onglet"],
-          },
-          repondre,
-        });
-        diffuser(CANAUX.permissions, enAttente());
-        return () => {
-          questions.delete(id);
-          diffuser(CANAUX.permissions, enAttente());
-        };
-      }),
+    demanderLecture: (o) => attendreReponse((repondre) => poserQuestionAgent(o, repondre, { permissions: ["lire-onglet"] })),
+    // La carte des outils de développement : les droits cochés par l'utilisateur, `[]` s'il refuse ou ne répond pas.
+    demanderOutilsDev: (o, d) =>
+      attendreDroits((repondre) => poserQuestionAgent(o, repondre, { permissions: ["outils-dev"], droits: d.droits, raison: d.raison, agent: d.agent })),
   });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
   rouvrirFenetres = () => {
