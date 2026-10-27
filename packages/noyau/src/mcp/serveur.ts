@@ -168,11 +168,19 @@ function creerServeurOutils(
         const app = await applications.lancer(dossier);
         if (app.etat === "erreur") return texte(`Application ${dossier} en erreur : ${app.erreur ?? "inconnue"}`, true);
         const url = `http://localhost:${app.port}`;
-        // La fenêtre s'ouvre juste après le lancement : on l'attend un peu, sans bloquer si elle ne vient pas.
+        // La fenêtre s'ouvre juste après le lancement : on l'attend un peu, sans bloquer si elle ne vient pas. Relancée sur
+        // un autre port, elle montre encore l'ancien le temps de se recharger : l'accès ne vise que le nouveau.
+        const surLePort = (o: OngletInfo) => {
+          try {
+            return new URL(o.url).origin === url;
+          } catch {
+            return false;
+          }
+        };
         const fin = Date.now() + delaiOngletAppMs;
         let fenetre: OngletInfo | undefined;
         for (;;) {
-          fenetre = (await pont.listerOnglets()).find((x) => x.application === dossier);
+          fenetre = (await pont.listerOnglets()).find((x) => x.application === dossier && surLePort(x));
           if (fenetre || Date.now() >= fin) break;
           await new Promise((r) => setTimeout(r, 100));
         }

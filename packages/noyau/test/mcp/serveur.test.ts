@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { PolitiqueAcces } from "../../src/acces/politique.js";
@@ -239,6 +239,26 @@ test("lancer_application : sans onglet après le délai, texte sans onglet et au
   const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
   expect(texte(r)).toBe("Application todo en marche sur http://localhost:5280.");
   expect(r.isError).toBeFalsy();
+});
+
+test("lancer_application : relance sur un autre port, l'accès vise le nouveau port, pas l'ancien encore affiché", async () => {
+  await avecApplications(appFactice({ etat: "en-marche", port: 5281 }), [appTodo], 2000);
+  // La fenêtre existe déjà, sur l'ancien port (5280), et ne se recharge qu'au troisième coup d'œil.
+  let vues = 0;
+  const nouvelle = { ...appTodo, url: "http://localhost:5281/" };
+  vi.spyOn(pont, "listerOnglets").mockImplementation(async () => (++vues < 3 ? [appTodo] : [nouvelle]));
+  const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
+  expect(texte(r)).toBe("Application todo en marche sur http://localhost:5281 (onglet app:todo).");
+  vues = 10; // rechargée sur le nouveau port, quoi qu'il arrive
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "app:todo" } }))).toContain("Texte de Todo");
+  expect(demandes()).toBe(0);
+});
+
+test("lancer_application : fenêtre restée sur l'ancien port après le délai, aucun accès accordé", async () => {
+  await avecApplications(appFactice({ etat: "en-marche", port: 5281 }), [appTodo], 50);
+  const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
+  expect(texte(r)).toBe("Application todo en marche sur http://localhost:5281.");
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "app:todo" } }))).toBe("Accès refusé par l'utilisateur à cet onglet.");
 });
 
 test("lancer_application en erreur : texte d'erreur et journal, erreur: true", async () => {
