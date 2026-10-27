@@ -293,3 +293,36 @@ test("la bulle d'accès ne rencontre pas la vue de la page (une vue native couvr
   }
   await fermer();
 });
+
+test("mode compact : la vue de la page est à zéro tant que la bulle est ouverte, rétablie à la fermeture (deux fois), sans erreur Svelte", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecOngletTiers();
+  const erreurs: string[] = [];
+  fenetre.on("pageerror", (e) => erreurs.push(e.message));
+  fenetre.on("console", (m) => m.type() === "error" && erreurs.push(m.text()));
+  await accorder(fenetre, racine, id, ["console"]);
+  const largeurVue = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows())
+        for (const v of w.contentView.children as unknown as { getBounds(): { width: number }; webContents: { getURL(): string } }[])
+          if (v.webContents.getURL().includes("texte.html")) return v.getBounds().width;
+      return -1;
+    });
+  await fenetre.evaluate(() => {
+    const w = window as unknown as { webaios: { fenetreId: string; agir(a: unknown): void } };
+    w.webaios.agir({ type: "basculerCompact", fenetreId: w.webaios.fenetreId });
+  });
+  await expect.poll(largeurVue).toBeGreaterThan(0);
+  for (let i = 0; i < 2; i++) {
+    // La barre latérale se révèle au bord gauche de la fenêtre.
+    await fenetre.mouse.move(2, 300);
+    const pastille = fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE);
+    await pastille.click();
+    await expect(fenetre.getByTestId(BULLE)).toBeVisible();
+    await expect.poll(largeurVue).toBe(0);
+    await fenetre.keyboard.press("Escape");
+    await expect(fenetre.getByTestId(BULLE)).toHaveCount(0);
+    await expect.poll(largeurVue).toBeGreaterThan(0);
+  }
+  expect(erreurs).toEqual([]);
+  await fermer();
+});

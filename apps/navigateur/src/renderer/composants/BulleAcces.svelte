@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
   import { acces, api } from "../etat.svelte";
 
@@ -17,6 +18,7 @@
   /** Déplace la bulle sous <body> : un ancêtre transformé ou rogné ferait de lui son repère `fixed`. */
   function souscorps(noeud: HTMLElement) {
     document.body.append(noeud);
+    noeud.focus(); // le clavier (Échap) vise l'interface, pas la page
     return { destroy: () => noeud.remove() };
   }
   let hauteur = $state(0);
@@ -32,14 +34,15 @@
     return { left: gauche, width: largeur, top: Math.max(MARGE, Math.min(r.bottom + 6, fenetreH - hauteur - MARGE)) };
   });
   $effect(() => {
-    acces.bullesOuvertes++;
-    return () => acces.bullesOuvertes--;
+    // Lu puis écrit : sans untrack, l'effet se relancerait lui-même.
+    untrack(() => acces.bullesOuvertes++);
+    return () => untrack(() => acces.bullesOuvertes--);
   });
 </script>
 
 <svelte:window bind:innerWidth={fenetreW} bind:innerHeight={fenetreH} />
 
-<div class="bulle" use:souscorps bind:clientHeight={hauteur} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
+<div class="bulle" tabindex="-1" use:souscorps bind:clientHeight={hauteur} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
   <h4>{acces.agent} a accès à cet onglet</h4>
   <ul>
     {#if etat.lecture}
@@ -58,6 +61,7 @@
 
 <style>
   .bulle { position: fixed; z-index: 30; box-sizing: border-box; padding: 10px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); font-size: 12px; font-weight: 400; cursor: default; text-align: left; }
+  .bulle:focus { outline: none; }
   h4 { margin: 0 0 6px; font-size: 12px; }
   ul { list-style: none; margin: 0 0 6px; padding: 0; }
   li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }

@@ -7,7 +7,8 @@
   import ZoneContenu from "./composants/ZoneContenu.svelte";
   import PanneauAgent from "./composants/PanneauAgent.svelte";
   import type { Panneau } from "../commun/api";
-  import { api, etat, fenetreCourante } from "./etat.svelte";
+  import { untrack } from "svelte";
+  import { acces, api, etat, fenetreCourante } from "./etat.svelte";
   import { BORD_REVELATION, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
 
   const MASQUAGE_MS = 300;
@@ -35,11 +36,16 @@
   }
   function planifierMasquage() {
     clearTimeout(minuterie);
-    if (!revelee || survolBarre) return;
+    if (!revelee || survolBarre || acces.bullesOuvertes > 0) return;
     minuterie = setTimeout(() => {
-      if (!survolBarre) revelee = false;
+      if (!survolBarre && acces.bullesOuvertes === 0) revelee = false;
     }, MASQUAGE_MS);
   }
+
+  // La bulle d'accès est montée hors de la barre : la souris qui s'y trouve ne la fait pas quitter ; à sa fermeture, le masquage reprend.
+  $effect(() => {
+    if (acces.bullesOuvertes === 0) untrack(planifierMasquage);
+  });
 
   let panneau = $state<Panneau | null>(null);
   const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
