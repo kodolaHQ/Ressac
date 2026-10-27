@@ -255,7 +255,12 @@ export function demarrerApplications(o: {
             .catch(signaler(dossier, "promue"));
           return;
         case "dossier":
-          void shell.openPath(join(o.chemins.projets, dossier));
+          // Montré dans le Finder, jamais ouvert : un dossier « x.app » écrit depuis le conteneur serait lancé sur le Mac.
+          try {
+            shell.showItemInFolder(join(o.chemins.projets, dossier));
+          } catch (e) {
+            signaler(dossier, "affichée")(e);
+          }
           return;
         case "deboguer":
           void deboguer(dossier, fenetreId).catch(signaler(dossier, "déboguée"));

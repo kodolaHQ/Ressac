@@ -368,6 +368,27 @@ test("pas de Supprimer pour une appli en marche", async () => {
   await fermer();
 });
 
+test("Afficher le dossier le montre dans le Finder sans rien ouvrir (un dossier « x.app » serait lancé)", async () => {
+  const racine = nouvelleRacine();
+  racines.push(racine);
+  ecrireProjet(racine, "piege.app", { manifeste: { nom: "Piège" } });
+  const { app, fenetre, fermer } = await lancer({ racine, env: ENV });
+  await menu(app, "applications");
+  // Le Finder n'est pas dérangé : les deux appels sont notés au lieu d'être faits.
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { appelsShell: string[] };
+    g.appelsShell = [];
+    shell.openPath = async (p) => (g.appelsShell.push(`openPath ${p}`), "");
+    shell.showItemInFolder = (p) => void g.appelsShell.push(`showItemInFolder ${p}`);
+  });
+  await plusDActions(fenetre, "piege.app");
+  await fenetre.getByRole("menuitem", { name: "Afficher le dossier" }).click();
+  const appels = () => app.evaluate(() => (globalThis as unknown as { appelsShell: string[] }).appelsShell);
+  await expect.poll(appels).toHaveLength(1);
+  expect(await appels()).toEqual([`showItemInFolder ${join(racine, "projets", "piege.app")}`]);
+  await fermer();
+});
+
 test("Passer en application réécrit le manifeste et déplace la ligne", async () => {
   const { fenetre, racine, fermer } = await ouvrirPage();
   await expect(fenetre.getByTestId("filtre-application")).toHaveText("Applications 1");
