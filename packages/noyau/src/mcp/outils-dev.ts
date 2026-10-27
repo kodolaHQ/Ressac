@@ -14,6 +14,7 @@ import { OngletIntrouvable, OutilsDevOccupes, type OngletInfo, type OutilsDevNav
 
 export const TEXTE_REFUS_OUTIL = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 export const TEXTE_COUPE = "Accès coupé par l'utilisateur.";
+export const TEXTE_SITE_CHANGE = "L'onglet a changé de site : accès retiré.";
 
 /** Écriture et lecture des profils bruts, côté hôte ; les chemins échangés sont ceux du conteneur. */
 export interface FichiersProfils {
@@ -30,6 +31,21 @@ class Coupe extends Error {}
 
 /** Les résumés sont déjà bornés en lignes ; cette limite ne protège que des noms démesurés. */
 const LONGUEUR_RESUME = 20000;
+/** Taille maximale d'une réponse de lire_console ou lire_reseau ; les entrées les plus récentes sont gardées. */
+export const LONGUEUR_LISTE_MAX = 100_000;
+
+/** Garde les dernières lignes tant que la réponse tient dans LONGUEUR_LISTE_MAX, et signale celles omises. */
+function borner(lignes: string[], vide: string): string {
+  if (!lignes.length) return vide;
+  const budget = LONGUEUR_LISTE_MAX - 64; // place pour la ligne d'omission
+  let total = 0;
+  let debut = lignes.length;
+  while (debut > 0 && total + lignes[debut - 1]!.length + 1 <= budget) total += lignes[--debut]!.length + 1;
+  if (debut === 0) return lignes.join("\n");
+  return [`${debut} entrées plus anciennes omises.`, ...lignes.slice(debut)].join("\n");
+}
+
+const chronologique = <T extends { horodatage: number }>(l: T[]): T[] => [...l].sort((a, b) => a.horodatage - b.horodatage);
 
 function origineDe(url: string): string | null {
   try {
@@ -67,15 +83,15 @@ export function enregistrerOutilsDev(
 
   /**
    * Obtient les droits voulus : ceux qui manquent et ne sont pas bloqués sont demandés à l'utilisateur, une carte à la fois par
-   * onglet. Renvoie les droits voulus que l'agent tient ensuite.
+   * onglet. Renvoie les droits voulus que l'agent tient ensuite, et l'onglet tel qu'il était alors.
    */
-  async function obtenir(id: string, voulus: DroitDev[], raison: string): Promise<DroitDev[]> {
+  async function obtenir(id: string, voulus: DroitDev[], raison: string): Promise<{ tenus: DroitDev[]; onglet: OngletInfo }> {
     for (;;) {
       const o = await onglet(id);
       const tenus = politique.droitsDev(o);
       const manquants = voulus.filter((d) => !tenus.includes(d) && politique.peutDemander(id, d));
       const demander = pont.demanderOutilsDev?.bind(pont);
-      if (!manquants.length || !demander) return voulus.filter((d) => tenus.includes(d));
+      if (!manquants.length || !demander) return { tenus: voulus.filter((d) => tenus.includes(d)), onglet: o };
       const enCours = demandes.get(id);
       if (enCours) {
         // Une autre demande est affichée : on l'attend, puis on ne redemande que ce qui manque encore.
@@ -97,13 +113,14 @@ export function enregistrerOutilsDev(
       await demande;
       const apres = await onglet(id);
       const tenusApres = politique.droitsDev(apres);
-      return voulus.filter((d) => tenusApres.includes(d));
+      return { tenus: voulus.filter((d) => tenusApres.includes(d)), onglet: apres };
     }
   }
 
   /**
    * Exécute un appel qui a besoin de `droit` : le demande au besoin, signale l'activité sur l'onglet et interrompt
-   * l'appel si l'utilisateur coupe le droit (les fichiers écrits pour l'appel sont alors effacés).
+   * l'appel dès que le droit tombe (coupé par l'utilisateur ou changement de site). Les fichiers écrits pour un appel interrompu
+   * ou en erreur sont effacés.
    */
   async function avecDroit(
     id: string,
@@ -111,30 +128,49 @@ export function enregistrerOutilsDev(
     outil: string,
     f: (o: OngletInfo, signal: AbortSignal, ecrire: (nom: string, contenu: string) => Promise<string>) => Promise<Resultat>,
   ): Promise<Resultat> {
-    if (!(await obtenir(id, [droit], `L'agent veut utiliser ${outil}.`)).includes(droit)) return texte(TEXTE_REFUS_OUTIL);
+    const obtenu = await obtenir(id, [droit], `L'agent veut utiliser ${outil}.`);
+    if (!obtenu.tenus.includes(droit)) return texte(TEXTE_REFUS_OUTIL);
+    const origine = origineDe(obtenu.onglet.url);
     const o = await onglet(id);
     const controleur = new AbortController();
+    const { signal } = controleur;
     const verifier = () => {
-      if (!politique.droitsDev(o).includes(droit)) controleur.abort(new Coupe());
+      if (!signal.aborted && !politique.droitsDev(o).includes(droit)) controleur.abort(new Coupe());
     };
     const fichiers: string[] = [];
+    const effacer = (x: string) => c.supprimerProfil(x).catch(() => {});
     const ecrire = async (nom: string, contenu: string) => {
-      if (controleur.signal.aborted) throw new Coupe();
+      if (signal.aborted) throw new Coupe();
       const chemin = await c.ecrireProfil(o, nom, contenu);
+      // Interrompu pendant l'écriture : la réponse est déjà partie, le fichier ne doit pas rester.
+      if (signal.aborted) {
+        await effacer(chemin);
+        throw new Coupe();
+      }
       fichiers.push(chemin);
       return chemin;
+    };
+    /** Coupé par l'utilisateur, ou parti sur un autre site. */
+    const reponseInterruption = async (): Promise<Resultat> => {
+      const maintenant = await onglet(id).catch(() => null);
+      return texte(maintenant && origineDe(maintenant.url) !== origine ? TEXTE_SITE_CHANGE : TEXTE_COUPE);
     };
     const desabonner = politique.surChange(verifier);
     politique.utilisation(id, true);
     try {
       verifier();
-      const r = await f(o, controleur.signal, ecrire);
-      if (controleur.signal.aborted) throw new Coupe();
+      // Le site a pu changer depuis l'accord : le pont n'est pas appelé du tout.
+      if (signal.aborted) return await reponseInterruption();
+      const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Coupe()), { once: true }));
+      const appel = f(o, signal, ecrire);
+      appel.catch(() => {}); // un résultat tardif après l'abandon est ignoré
+      const r = await Promise.race([appel, abandon]);
+      if (signal.aborted) throw new Coupe();
       return r;
     } catch (e) {
-      if (!controleur.signal.aborted && !(e instanceof Coupe)) throw e;
-      await Promise.all(fichiers.map((x) => c.supprimerProfil(x).catch(() => {})));
-      return texte(TEXTE_COUPE);
+      await Promise.all(fichiers.map(effacer));
+      if (!signal.aborted && !(e instanceof Coupe)) throw e;
+      return await reponseInterruption();
     } finally {
       desabonner();
       politique.utilisation(id, false);
@@ -166,7 +202,7 @@ export function enregistrerOutilsDev(
     },
     proteger(async ({ id, droits, raison }) => {
       const voulus = DROITS_DEV.filter((d) => droits.includes(d));
-      const accordes = await obtenir(id, voulus, raison);
+      const accordes = (await obtenir(id, voulus, raison)).tenus;
       if (!accordes.length) return texte(TEXTE_REFUS_OUTIL);
       const refuses = voulus.filter((d) => !accordes.includes(d));
       return texte([`Droits accordés : ${accordes.join(", ")}`, ...(refuses.length ? [`Refusés : ${refuses.join(", ")}`] : [])].join("\n"));
@@ -183,14 +219,14 @@ export function enregistrerOutilsDev(
     },
     proteger(async ({ id, depuis, niveau }) =>
       avecDroit(id, "console", "lire_console", async () => {
-        const messages = (await outils.console(id)).filter(
+        const messages = chronologique(await outils.console(id)).filter(
           (m) => (depuis === undefined || m.horodatage >= depuis) && (niveau === undefined || m.niveau === niveau),
         );
         const lignes = messages.map((m) => {
           const ligne = `${new Date(m.horodatage).toISOString()} [${m.niveau}] ${tronquer(m.texte)}`;
           return m.pile ? `${ligne}\n${tronquer(m.pile)}` : ligne;
         });
-        return texte(lignes.join("\n") || "Aucun message.");
+        return texte(borner(lignes, "Aucun message."));
       }),
     ),
   );
@@ -207,7 +243,7 @@ export function enregistrerOutilsDev(
     },
     proteger(async ({ id, filtre }) =>
       avecDroit(id, "reseau", "lire_reseau", async (o) => {
-        const lignes = (await outils.reseau(id))
+        const lignes = chronologique(await outils.reseau(id))
           .map((r) => ({ r, url: urlVue(o, r) }))
           .filter(({ url }) => !filtre || url.includes(filtre))
           .map(({ r, url }) =>
@@ -222,7 +258,7 @@ export function enregistrerOutilsDev(
               ...(r.erreur ? [`erreur : ${tronquer(r.erreur)}`] : []),
             ].join(" · "),
           );
-        return texte(lignes.join("\n") || "Aucune requête.");
+        return texte(borner(lignes, "Aucune requête."));
       }),
     ),
   );
@@ -305,8 +341,20 @@ export function enregistrerOutilsDev(
     },
     proteger(async ({ id, a, b }) =>
       avecDroit(id, "performances", "comparer_memoire", async () => {
-        const [avant, apres] = await Promise.all([c.lireProfil(a), c.lireProfil(b)]);
-        return texte(tronquer(comparerMemoire(resumerInstantane(avant), resumerInstantane(apres)), LONGUEUR_RESUME));
+        // Une erreur de lecture ou d'analyse ne doit jamais renvoyer le contenu du fichier.
+        const lus = await Promise.all(
+          [a, b].map(async (chemin) => {
+            try {
+              return resumerInstantane(await c.lireProfil(chemin));
+            } catch {
+              return chemin;
+            }
+          }),
+        );
+        const [avant, apres] = lus;
+        if (typeof avant === "string") return texte(`Instantané illisible : ${tronquer(avant, 500)}.`, true);
+        if (typeof apres === "string") return texte(`Instantané illisible : ${tronquer(apres, 500)}.`, true);
+        return texte(tronquer(comparerMemoire(avant!, apres!), LONGUEUR_RESUME));
       }),
     ),
   );

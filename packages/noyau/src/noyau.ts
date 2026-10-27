@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, realpath, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
 import { CHEMIN_CONTENEUR, cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
@@ -28,41 +29,100 @@ export class ErreurAtelier extends Error {
 /** Un seul segment de chemin, sans remontée : un nom de fichier ou de dossier de projet. */
 const segmentSur = (s: string): boolean => s !== "" && s !== "." && s !== ".." && basename(s) === s && !s.includes("\\");
 
+/** Dossier des profils bruts des outils de développement (distinct de `.webaios/profils`, celui des profils d'agent). */
+export const DOSSIER_PROFILAGE = "profilage";
+
+/** `.webaios/profilage` ou `projets/<dossier>/.webaios/profilage`, en segments relatifs à la racine. */
+const dossierProfilage = (parties: string[]): boolean =>
+  parties.every(segmentSur) &&
+  ((parties.length === 2 && parties[0] === ".webaios" && parties[1] === DOSSIER_PROFILAGE) ||
+    (parties.length === 4 && parties[0] === "projets" && parties[2] === ".webaios" && parties[3] === DOSSIER_PROFILAGE));
+
+const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+
 /**
  * Profils bruts des outils de développement, écrits par le navigateur dans l'espace (spec §6) : dans le projet pour
- * une application (`projets/<dossier>/.webaios/profils`), dans `.webaios/profils` sinon. Seuls ces dossiers sont lus
- * ou effacés.
+ * une application (`projets/<dossier>/.webaios/profilage`), dans `.webaios/profilage` sinon. Seuls ces dossiers sont lus
+ * ou effacés. L'espace est monté en écriture dans le conteneur : l'agent peut y poser des liens symboliques, donc aucun
+ * lien n'est suivi, ni dans les dossiers ni pour le fichier.
  */
 export function fichiersProfils(chemins: CheminsEspace): FichiersProfils {
-  const dossier = (o: OngletInfo): string => {
-    if (o.application === undefined) return join(chemins.interne, "profils");
-    if (!segmentSur(o.application)) throw new Error(`Dossier d'application invalide : ${o.application}`);
-    return join(chemins.projets, o.application, ".webaios", "profils");
-  };
-  /** Chemin du conteneur → chemin sur le Mac, seulement s'il désigne un fichier d'un dossier de profils. */
-  const surHote = (cheminConteneur: string): string => {
-    const normal = posix.normalize(cheminConteneur);
+  const refus = (cheminConteneur: string) => new Error(`Chemin hors des profils : ${cheminConteneur}`);
+
+  /** Descend dans les segments sous la racine réelle sans suivre de lien ; crée les dossiers manquants si `creer`. */
+  async function descendre(parties: string[], creer: boolean, affiche: string): Promise<string> {
+    let courant = await realpath(chemins.racine);
+    for (const partie of parties) {
+      courant = join(courant, partie);
+      let info = await lstat(courant).catch((e) => {
+        if (code(e) === "ENOENT" && creer) return null;
+        throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${affiche}`) : refus(affiche);
+      });
+      if (!info) {
+        await mkdir(courant).catch((e) => {
+          if (code(e) !== "EEXIST") throw e;
+        });
+        info = await lstat(courant);
+      }
+      if (info.isSymbolicLink() || !info.isDirectory()) throw refus(affiche);
+    }
+    // Un lien posé entre deux vérifications serait vu ici.
+    if ((await realpath(courant)) !== courant) throw refus(affiche);
+    return courant;
+  }
+
+  /** Chemin du conteneur → segments sous la racine, seulement pour un fichier d'un dossier de profilage. */
+  const segments = (cheminConteneur: string): string[] => {
     const prefixe = `${CHEMIN_CONTENEUR}/`;
-    if (!posix.isAbsolute(cheminConteneur) || !normal.startsWith(prefixe)) throw new Error(`Chemin hors des profils : ${cheminConteneur}`);
+    const normal = posix.normalize(cheminConteneur);
+    if (!posix.isAbsolute(cheminConteneur) || !normal.startsWith(prefixe)) throw refus(cheminConteneur);
     const parties = normal.slice(prefixe.length).split("/");
-    const valide =
-      parties.every(segmentSur) &&
-      ((parties.length === 3 && parties[0] === ".webaios" && parties[1] === "profils") ||
-        (parties.length === 5 && parties[0] === "projets" && parties[2] === ".webaios" && parties[3] === "profils"));
-    if (!valide) throw new Error(`Chemin hors des profils : ${cheminConteneur}`);
-    return join(chemins.racine, ...parties);
+    if (parties.length < 3 || !segmentSur(parties.at(-1)!) || !dossierProfilage(parties.slice(0, -1))) throw refus(cheminConteneur);
+    return parties;
   };
+
+  /** Le fichier, s'il est un vrai fichier (pas un lien) dans un vrai dossier de profilage. */
+  async function fichierExistant(cheminConteneur: string): Promise<string> {
+    const parties = segments(cheminConteneur);
+    const dossier = await descendre(parties.slice(0, -1), false, cheminConteneur);
+    const fichier = join(dossier, parties.at(-1)!);
+    const info = await lstat(fichier).catch(() => {
+      throw new Error(`Profil introuvable : ${cheminConteneur}`);
+    });
+    if (!info.isFile()) throw refus(cheminConteneur);
+    return fichier;
+  }
+
   return {
     async ecrireProfil(o, nom, contenu) {
       if (!segmentSur(nom)) throw new Error(`Nom de profil invalide : ${nom}`);
-      const d = dossier(o);
-      await mkdir(d, { recursive: true });
-      const fichier = join(d, nom);
-      await writeFile(fichier, contenu);
-      return cheminDansConteneur(fichier, chemins);
+      if (o.application !== undefined && !segmentSur(o.application)) throw new Error(`Dossier d'application invalide : ${o.application}`);
+      const parties = o.application === undefined ? [".webaios", DOSSIER_PROFILAGE] : ["projets", o.application, ".webaios", DOSSIER_PROFILAGE];
+      const cheminConteneur = `${CHEMIN_CONTENEUR}/${[...parties, nom].join("/")}`;
+      const dossier = await descendre(parties, true, cheminConteneur);
+      // « wx » : jamais par-dessus un fichier ou un lien existant.
+      await writeFile(join(dossier, nom), contenu, { flag: "wx" });
+      return cheminConteneur;
     },
-    lireProfil: async (c) => readFile(surHote(c), "utf8"),
-    supprimerProfil: async (c) => rm(surHote(c), { force: true }),
+    async lireProfil(cheminConteneur) {
+      const fichier = await fichierExistant(cheminConteneur);
+      const f = await open(fichier, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => {
+        throw refus(cheminConteneur);
+      });
+      try {
+        if (!(await f.stat()).isFile()) throw refus(cheminConteneur);
+        return await f.readFile("utf8");
+      } finally {
+        await f.close();
+      }
+    },
+    async supprimerProfil(cheminConteneur) {
+      const fichier = await fichierExistant(cheminConteneur).catch((e: Error) => {
+        if (e.message.startsWith("Profil introuvable")) return null;
+        throw e;
+      });
+      if (fichier) await unlink(fichier).catch(() => {});
+    },
   };
 }
 

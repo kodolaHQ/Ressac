@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
-import { readdir, writeFile, mkdir } from "node:fs/promises";
+import { readdir, writeFile, mkdir, symlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -190,14 +190,14 @@ test("profiler_performances écrit un .cpuprofile sous .webaios/profils et renvo
   expect(pont.appels.find((a) => a.methode === "profiler")!.args[1]).toEqual({ dureeMs: 2000 });
   expect(r).toContain("calculer");
   expect(r).toContain("Nodes : 42");
-  const chemin = /Profil : (\/workspace\/\.webaios\/profils\/\S+\.cpuprofile)/.exec(r)?.[1];
-  expect(chemin).toMatch(/^\/workspace\/\.webaios\/profils\/[^:]+-profiler_performances\.cpuprofile$/);
+  const chemin = /Profil : (\/workspace\/\.webaios\/profilage\/\S+\.cpuprofile)/.exec(r)?.[1];
+  expect(chemin).toMatch(/^\/workspace\/\.webaios\/profilage\/[^:]+-profiler_performances\.cpuprofile$/);
   expect(existsSync(join(racine, chemin!.slice("/workspace/".length)))).toBe(true);
 
   // une construite écrit dans son projet
   politique.ongletOuvertParAgent(appTodo);
   const app = await appeler("profiler_performances", { id: "app:todo", recharger: true });
-  expect(app).toMatch(/Profil : \/workspace\/projets\/todo\/\.webaios\/profils\/\S+\.cpuprofile/);
+  expect(app).toMatch(/Profil : \/workspace\/projets\/todo\/\.webaios\/profilage\/\S+\.cpuprofile/);
 });
 
 test("instantane_memoire puis comparer_memoire", async () => {
@@ -206,7 +206,7 @@ test("instantane_memoire puis comparer_memoire", async () => {
   expect(a).toContain("Total :");
   expect(a).toContain("Fuite : 2 objets");
   const cheminA = /Instantané : (\S+\.heapsnapshot)/.exec(a)![1]!;
-  expect(cheminA.startsWith("/workspace/.webaios/profils/")).toBe(true);
+  expect(cheminA.startsWith("/workspace/.webaios/profilage/")).toBe(true);
   pont.agrandirTas();
   const b = await appeler("instantane_memoire", { id: "github" });
   const cheminB = /Instantané : (\S+\.heapsnapshot)/.exec(b)![1]!;
@@ -214,10 +214,16 @@ test("instantane_memoire puis comparer_memoire", async () => {
   const c = await appeler("comparer_memoire", { id: "github", a: cheminA, b: cheminB });
   expect(c).toContain("Fuite +1");
   // hors des dossiers de profils : refusé
-  expect(await appeler("comparer_memoire", { id: "github", a: "/workspace/AGENTS.md", b: cheminB })).toContain("Erreur");
-  expect(await appeler("comparer_memoire", { id: "github", a: "/workspace/.webaios/profils/../mcp.json", b: cheminB })).toContain(
-    "Erreur",
+  expect(await appeler("comparer_memoire", { id: "github", a: "/workspace/AGENTS.md", b: cheminB })).toBe(
+    "Instantané illisible : /workspace/AGENTS.md.",
   );
+  expect(await appeler("comparer_memoire", { id: "github", a: "/workspace/.webaios/profilage/../mcp.json", b: cheminB })).toBe(
+    "Instantané illisible : /workspace/.webaios/profilage/../mcp.json.",
+  );
+  // un fichier du dossier qui n'est pas un instantané : jamais son contenu dans la réponse
+  await writeFile(join(racine, ".webaios", "profilage", "faux.heapsnapshot"), "secret de l'utilisateur");
+  const faux = await appeler("comparer_memoire", { id: "github", a: "/workspace/.webaios/profilage/faux.heapsnapshot", b: cheminB });
+  expect(faux).toBe("Instantané illisible : /workspace/.webaios/profilage/faux.heapsnapshot.");
 });
 
 test("couper pendant instantane_memoire (bloquer: true) : réponse « Accès coupé par l'utilisateur. », aucun fichier laissé", async () => {
@@ -228,7 +234,8 @@ test("couper pendant instantane_memoire (bloquer: true) : réponse « Accès cou
   politique.couper("github", "performances");
   expect(await appel).toBe(COUPE);
   expect(politique.etat().github?.enCours ?? false).toBe(false);
-  expect(existsSync(join(racine, ".webaios", "profils")) ? (await readdir(join(racine, ".webaios", "profils"))).filter((n) => !n.endsWith(".json")) : []).toEqual([]);
+  const dossier = join(racine, ".webaios", "profilage");
+  expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
 });
 
 test("couper pendant l'écriture du profil : le fichier partiel est effacé", async () => {
@@ -237,18 +244,18 @@ test("couper pendant l'écriture du profil : le fichier partiel est effacé", as
     accorderDev: ["performances"],
     profils: {
       ecrireProfil: async (_o, nom, contenu) => {
-        const dossier = join(racine, ".webaios", "profils");
+        const dossier = join(racine, ".webaios", "profilage");
         await mkdir(dossier, { recursive: true });
         await writeFile(join(dossier, nom), contenu);
         ecrit = join(dossier, nom);
         politique.couper("github");
-        return `/workspace/.webaios/profils/${nom}`;
+        return `/workspace/.webaios/profilage/${nom}`;
       },
     },
   });
   expect(await appeler("profiler_performances", { id: "github" })).toBe(COUPE);
   expect(ecrit).not.toBe("");
-  expect(existsSync(ecrit)).toBe(false);
+  await vi.waitFor(() => expect(existsSync(ecrit)).toBe(false));
 });
 
 test("l'onglet change de site pendant la demande : rien n'est accordé", async () => {
@@ -314,14 +321,131 @@ test("fichiersProfils : refuse un chemin hors des dossiers de profils", async ()
   const r = await dossierTemporaire();
   const p = fichiersProfils(cheminsEspace(r));
   const chemin = await p.ecrireProfil(appTodo, "x.heapsnapshot", "{}");
-  expect(chemin).toBe("/workspace/projets/todo/.webaios/profils/x.heapsnapshot");
+  expect(chemin).toBe("/workspace/projets/todo/.webaios/profilage/x.heapsnapshot");
   expect(await p.lireProfil(chemin)).toBe("{}");
   await p.supprimerProfil(chemin);
-  expect(existsSync(join(r, "projets", "todo", ".webaios", "profils", "x.heapsnapshot"))).toBe(false);
+  expect(existsSync(join(r, "projets", "todo", ".webaios", "profilage", "x.heapsnapshot"))).toBe(false);
   for (const faux of ["/workspace/AGENTS.md", "/workspace/.webaios/mcp.json", "/workspace/projets/todo/../../.webaios/mcp.json", "/etc/passwd", "relatif.cpuprofile"]) {
     await expect(p.lireProfil(faux)).rejects.toThrow();
     await expect(p.supprimerProfil(faux)).rejects.toThrow();
   }
   await expect(p.ecrireProfil({ ...appTodo, application: "../x" }, "y.cpuprofile", "{}")).rejects.toThrow();
   await expect(p.ecrireProfil(github, "../y.cpuprofile", "{}")).rejects.toThrow();
+});
+
+test("fichiersProfils : un dossier de profilage en lien symbolique est refusé, à l'écriture comme à la lecture", async () => {
+  const r = await dossierTemporaire();
+  const dehors = await dossierTemporaire();
+  await writeFile(join(dehors, "x.heapsnapshot"), "secret");
+  await mkdir(join(r, ".webaios"), { recursive: true });
+  await symlink(dehors, join(r, ".webaios", "profilage"));
+  const p = fichiersProfils(cheminsEspace(r));
+  await expect(p.ecrireProfil(github, "y.cpuprofile", "{}")).rejects.toThrow(/hors des profils/);
+  expect(existsSync(join(dehors, "y.cpuprofile"))).toBe(false);
+  await expect(p.lireProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.supprimerProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  expect(existsSync(join(dehors, "x.heapsnapshot"))).toBe(true);
+  // un lien plus haut (le dossier du projet) aussi
+  await mkdir(join(r, "projets"), { recursive: true });
+  await symlink(dehors, join(r, "projets", "todo"));
+  await expect(p.ecrireProfil(appTodo, "z.cpuprofile", "{}")).rejects.toThrow(/hors des profils/);
+  expect(existsSync(join(dehors, ".webaios"))).toBe(false);
+});
+
+test("fichiersProfils : un fichier en lien symbolique n'est ni lu, ni effacé, ni écrasé", async () => {
+  const r = await dossierTemporaire();
+  const dehors = await dossierTemporaire();
+  const cible = join(dehors, "cible.txt");
+  await writeFile(cible, "secret");
+  const dossier = join(r, ".webaios", "profilage");
+  await mkdir(dossier, { recursive: true });
+  await symlink(cible, join(dossier, "lien.heapsnapshot"));
+  const p = fichiersProfils(cheminsEspace(r));
+  await expect(p.lireProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.supprimerProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.ecrireProfil(github, "lien.heapsnapshot", "écrasé")).rejects.toThrow();
+  expect(await readFile(cible, "utf8")).toBe("secret");
+  expect(existsSync(join(dossier, "lien.heapsnapshot"))).toBe(true);
+});
+
+test("lire_console et lire_reseau : au plus 100 000 caractères, les entrées les plus récentes gardées", async () => {
+  await demarrer();
+  politique.ongletOuvertParAgent(appTodo);
+  pont.fixerConsole(
+    "app:todo",
+    Array.from({ length: 100 }, (_, i) => ({ horodatage: i, niveau: "log" as const, texte: `m${i}-`.padEnd(1500, "x") })),
+  );
+  const r = await appeler("lire_console", { id: "app:todo" });
+  expect(r.length).toBeLessThanOrEqual(100_000);
+  const premiere = r.split("\n")[0]!;
+  expect(premiere).toMatch(/^\d+ entrées plus anciennes omises\.$/);
+  const omises = Number(premiere.split(" ")[0]);
+  expect(omises).toBeGreaterThan(0);
+  expect(r).toContain("m99-");
+  expect(r).not.toContain(`m${omises - 1}-`);
+  expect(r).toContain(`m${omises}-`);
+
+  pont.fixerReseau(
+    "app:todo",
+    Array.from({ length: 200 }, (_, i) => ({
+      id: `r${i}`, horodatage: i, methode: "GET", url: `http://localhost:5280/${i}-${"y".repeat(1000)}`,
+      enTetesRequete: {}, enTetesReponse: {},
+    })),
+  );
+  const reseau = await appeler("lire_reseau", { id: "app:todo" });
+  expect(reseau.length).toBeLessThanOrEqual(100_000);
+  expect(reseau).toMatch(/^\d+ entrées plus anciennes omises\.\n/);
+  expect(reseau).toContain("r199 ·");
+  // sous la limite : rien d'omis
+  pont.fixerConsole("app:todo", [{ horodatage: 0, niveau: "log", texte: "court" }]);
+  expect(await appeler("lire_console", { id: "app:todo" })).not.toContain("omises");
+});
+
+test("changement de site pendant instantane_memoire : « L'onglet a changé de site : accès retiré. »", async () => {
+  await demarrer({ accorderDev: ["performances"], bloquer: true });
+  const appel = appeler("instantane_memoire", { id: "github" });
+  await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
+  await pont.naviguer("github", "https://autre.example/");
+  politique.ongletNavigue("github", "https://autre.example/");
+  expect(await appel).toBe("L'onglet a changé de site : accès retiré.");
+});
+
+test("le site change entre l'accord et l'appel : le pont n'est pas appelé", async () => {
+  await demarrer();
+  politique.ongletOuvertParAgent(appTodo);
+  const lister = pont.listerOnglets.bind(pont);
+  let n = 0;
+  pont.listerOnglets = async () => {
+    // 1 : obtenir ; 2 : relecture avant l'appel
+    if (++n === 2) {
+      await pont.naviguer("app:todo", "https://autre.example/");
+      politique.ongletNavigue("app:todo", "https://autre.example/");
+    }
+    return lister();
+  };
+  expect(await appeler("executer_js", { id: "app:todo", code: "1" })).toBe("L'onglet a changé de site : accès retiré.");
+  expect(pont.appels.some((a) => a.methode === "executer")).toBe(false);
+});
+
+test("une erreur après l'écriture du profil efface aussi le fichier", async () => {
+  await demarrer({ accorderDev: ["performances"] });
+  const dossier = join(racine, ".webaios", "profilage");
+  pont.outilsDev!.instantaneMemoire = async () => "pas du json";
+  const r = await appeler("instantane_memoire", { id: "github" });
+  expect(r).toMatch(/^Erreur/);
+  expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
+});
+
+test("couper répond tout de suite même si le pont ignore le signal ; son résultat tardif n'écrit aucun fichier", async () => {
+  await demarrer({ accorderDev: ["performances"] });
+  const dossier = join(racine, ".webaios", "profilage");
+  let finir!: (s: string) => void;
+  pont.outilsDev!.instantaneMemoire = () => new Promise<string>((ok) => (finir = ok));
+  const appel = appeler("instantane_memoire", { id: "github" });
+  await vi.waitFor(() => expect(finir).toBeDefined());
+  politique.couper("github", "performances");
+  expect(await appel).toBe(COUPE);
+  finir(JSON.stringify({ snapshot: { meta: { node_fields: [], node_types: [] } }, nodes: [], strings: [] }));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
 });
