@@ -371,6 +371,17 @@ test("un manifeste qui apparaît met la page à jour en direct", async () => {
   await fermer();
 });
 
+test("Docker qui tarde à répondre : un nouveau projet apparaît quand même en direct", async () => {
+  // `docker info` répond en 8 s : le ménage des orphelins n'est pas fini quand le projet arrive.
+  const { fenetre, racine, fermer } = await ouvrirPage({ env: { FAUX_DOCKER_LENT: "1" } });
+  await expect(lignes(fenetre)).toHaveCount(3);
+  await new Promise((r) => setTimeout(r, 500));
+  ecrireProjet(racine, "nouveau", { manifeste: { nom: "Nouveau" } });
+  await expect(fenetre.getByTestId("appli-nouveau")).toBeVisible({ timeout: 4_000 });
+  expect(arrets(racine)).not.toContain("WEBAIOS_APP=.*");
+  await fermer();
+});
+
 test("sans Docker : bandeau et Lancer désactivé", async () => {
   const { fenetre, fermer } = await ouvrirPage({ env: { FAUX_DOCKER_ABSENT: "1" } });
   await expect(fenetre.getByTestId("page-applications")).toContainText("Docker n'est pas lancé");
