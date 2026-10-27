@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, session, type WebContents } from "electron";
+import { BrowserWindow, screen, session, type Session, type WebContents } from "electron";
 import type { Application } from "@webaios/noyau";
 import type { Cadre } from "../../commun/modele";
 import { preferencesWeb } from "../onglets/vues";
@@ -34,25 +34,32 @@ export class FenetresApplications {
       surFermeture: (dossier: string) => void;
       /** La fenêtre est fermée, par l'utilisateur ou par le programme. */
       surFermee: (dossier: string) => void;
+      /** L'appli a montré son favicon (adresse `data:`, qui reste lisible quand l'appli est arrêtée). */
+      surFavicon?: (dossier: string, favicon: string) => void;
     },
   ) {}
 
   /** Crée la fenêtre de l'appli ou la remet devant, et charge l'appli sur son port. */
   ouvrir(a: Application): void {
     const url = `http://localhost:${a.port}/`;
-    let f = this.fenetres.get(a.dossier);
-    if (f && !f.isDestroyed()) {
-      if (!INVISIBLE) {
-        if (f.isMinimized()) f.restore();
-        f.show();
-        f.focus();
-      }
-    } else f = this.creer(a);
+    const f = this.montrer(a.dossier) ? this.fenetres.get(a.dossier)! : this.creer(a);
     f.setTitle(a.nom);
     this.adresses.set(a.dossier, url);
     void f.loadURL(url).catch(() => {
       // Appli arrêtée entre-temps, ou rechargée aussitôt : rien à faire.
     });
+  }
+
+  /** Remet devant la fenêtre de l'appli, sans la recharger ; faux si elle n'en a pas. */
+  montrer(dossier: string): boolean {
+    const f = this.fenetres.get(dossier);
+    if (!f || f.isDestroyed()) return false;
+    if (!INVISIBLE) {
+      if (f.isMinimized()) f.restore();
+      f.show();
+      f.focus();
+    }
+    return true;
   }
 
   private creer(a: Application): BrowserWindow {
@@ -87,6 +94,10 @@ export class FenetresApplications {
       if (!this.fermeturesVoulues.has(f)) this.o.surFermeture(dossier);
     });
     const wc = f.webContents;
+    wc.on("page-favicon-updated", (_e, favicons) => {
+      const url = favicons[0];
+      if (url && this.o.surFavicon) void enDonnees(wc.session, url).then((d) => d && this.o.surFavicon?.(dossier, d));
+    });
     // L'appli reste sur son origine : un lien vers ailleurs s'ouvre dans un onglet.
     wc.on("will-navigate", (e, url) => {
       if (memeOrigine(url, wc.getURL())) return;
@@ -129,6 +140,23 @@ export class FenetresApplications {
     else if (action === "outils") f.webContents.toggleDevTools();
     else f.close();
     return true;
+  }
+}
+
+/** Favicon au plus, en octets : il est gardé dans applications.json. */
+const TAILLE_FAVICON = 64 * 1024;
+
+/** Le favicon en adresse `data:` (son port ne servira plus rien une fois l'appli arrêtée) ; undefined en cas d'échec. */
+async function enDonnees(s: Session, url: string): Promise<string | undefined> {
+  if (url.startsWith("data:")) return url.length <= TAILLE_FAVICON ? url : undefined;
+  try {
+    const r = await s.fetch(url, { signal: AbortSignal.timeout(5000) });
+    const type = r.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+    if (!r.ok || !type.startsWith("image/")) return undefined;
+    const octets = Buffer.from(await r.arrayBuffer());
+    return octets.length <= TAILLE_FAVICON ? `data:${type};base64,${octets.toString("base64")}` : undefined;
+  } catch {
+    return undefined;
   }
 }
 

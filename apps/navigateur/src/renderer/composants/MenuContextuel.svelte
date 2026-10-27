@@ -5,12 +5,12 @@
 <svelte:window onkeydown={(e) => e.key === "Escape" && fermerMenu()} onclick={fermerMenu} onblur={fermerMenu} />
 
 {#if menu.ouvert}
-  <!-- Reste dans la barre latérale : la vue web couvrirait un menu qui déborde sur le contenu. -->
+  <!-- Reste dans la barre latérale (la vue web couvrirait un menu qui déborde sur le contenu), sauf sur une page interne. -->
   {@const enBas = menu.ouvert.y > window.innerHeight / 2}
   <div
     class="menu"
     role="menu"
-    style:left="{Math.min(menu.ouvert.x, 240 - 170)}px"
+    style:left="{Math.min(menu.ouvert.x, (menu.ouvert.libre ? window.innerWidth : 240) - 170)}px"
     style:top={enBas ? undefined : `${menu.ouvert.y}px`}
     style:bottom={enBas ? `${window.innerHeight - menu.ouvert.y}px` : undefined}
   >

@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, ecrireProjet, lancer, nouvelleRacine } from "./aide";
+import { appelerOutil, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet } from "./aide";
 
 /** Ports d'essai, jamais ceux des vraies applis de l'utilisateur ; délai court avant « En erreur ». */
 const ENV = { WEBAIOS_PORTS_APPS: "15280-15284", WEBAIOS_DELAI_APP_MS: "3000" };
@@ -179,5 +179,134 @@ test("taille de la fenêtre d'appli retenue", async () => {
   await lancerEssai(racine);
   await pageAppli(app);
   expect(await fenetreAppli(app, "taille")).toEqual([640, 480]);
+  await fermer();
+});
+
+// --- La page Applications ---
+
+const menu = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
+
+/**
+ * Trois projets (`essai` en application, `zod` en POC, `vieux` sans manifeste) et la page ouverte par le menu.
+ * `lent` : le serveur d'`essai` attend une seconde avant d'écouter, pour qu'on voie « En lancement ».
+ */
+async function ouvrirPage(o: { env?: Record<string, string>; projets?: boolean; lent?: boolean } = {}) {
+  const racine = nouvelleRacine();
+  racines.push(racine);
+  if (o.projets ?? true) {
+    ecrireProjet(racine, "essai", { manifeste: { nom: "Essai", ...(o.lent ? { lancement: "sleep 1 && node serveur.mjs" } : {}) } });
+    ecrireProjet(racine, "zod", { manifeste: { type: "poc", origine: "https://github.com/colinhacks/zod" } });
+    ecrireProjet(racine, "vieux");
+  }
+  const l = await lancer({ racine, env: { ...ENV, ...o.env } });
+  await menu(l.app, "applications");
+  await expect(l.fenetre.getByTestId("page-applications")).toBeVisible();
+  return l;
+}
+
+const lignes = (fenetre: Page) => fenetre.locator('[data-testid^="appli-"]');
+
+test("⇧⌘A et l'entrée de la barre latérale ouvrent une seule page Applications", async () => {
+  const { app, fenetre, fermer } = await ouvrirPage();
+  await menu(app, "applications");
+  await ouvrirOnglet(fenetre, "about:blank");
+  await expect(fenetre.getByTestId("page-applications")).toBeHidden();
+  await fenetre.getByTestId("bouton-applications").click();
+  await expect(fenetre.getByTestId("page-applications")).toBeVisible();
+  expect((await urlsOnglets(fenetre)).filter((u) => u === "webaios://applications")).toHaveLength(1);
+  await fermer();
+});
+
+test("la liste montre type, origine et état ; les compteurs du volet sont justes", async () => {
+  const { fenetre, fermer } = await ouvrirPage();
+  await expect(lignes(fenetre)).toHaveCount(3);
+  for (const [filtre, texte] of [
+    ["tout", "Tout 3"],
+    ["application", "Applications 1"],
+    ["poc", "POC et tests 1"],
+    ["sans-fiche", "Sans fiche 1"],
+    ["arretee", "Arrêtées 3"],
+  ] as const)
+    await expect(fenetre.getByTestId(`filtre-${filtre}`)).toHaveText(texte);
+  await expect(fenetre.getByTestId("filtre-erreur")).toHaveCount(0);
+  await expect(fenetre.getByTestId("appli-zod")).toContainText("github.com/colinhacks/zod");
+  await expect(fenetre.getByTestId("appli-zod")).toContainText("POC");
+  await expect(fenetre.getByTestId("appli-essai")).toContainText("Application");
+  await expect(fenetre.getByTestId("appli-vieux")).toContainText("Sans fiche");
+  await expect(fenetre.getByTestId("appli-essai")).toHaveAttribute("data-etat", "arretee");
+  await fermer();
+});
+
+test("filtrer par type et chercher", async () => {
+  const { fenetre, fermer } = await ouvrirPage();
+  await fenetre.getByTestId("filtre-poc").click();
+  await expect(lignes(fenetre)).toHaveCount(1);
+  await expect(fenetre.getByTestId("appli-zod")).toBeVisible();
+  await fenetre.getByTestId("filtre-tout").click();
+  const recherche = fenetre.getByTestId("recherche-applications");
+  await recherche.fill("colin");
+  await expect(lignes(fenetre)).toHaveCount(1);
+  await expect(fenetre.getByTestId("appli-zod")).toBeVisible();
+  await recherche.fill("ess");
+  await expect(lignes(fenetre)).toHaveCount(1);
+  await expect(fenetre.getByTestId("appli-essai")).toBeVisible();
+  await fermer();
+});
+
+test("Lancer depuis la page : En marche, port affiché, fenêtre ouverte ; Arrêter la ferme", async () => {
+  const { app, fenetre, fermer } = await ouvrirPage({ lent: true });
+  const ligne = fenetre.getByTestId("appli-essai");
+  await ligne.getByRole("button", { name: "Lancer" }).click();
+  await expect(ligne).toHaveAttribute("data-etat", "lancement");
+  await expect(ligne).toHaveAttribute("data-etat", "en-marche", { timeout: 10_000 });
+  await expect(ligne).toContainText(/port 1528\d/);
+  await expect(fenetre.getByTestId("filtre-en-marche")).toHaveText("En marche 1");
+  const page = await pageAppli(app);
+  // « Ouvrir » remet la fenêtre devant sans la recharger.
+  await page.evaluate(() => ((window as unknown as { marque: number }).marque = 1));
+  await ligne.getByRole("button", { name: "Ouvrir" }).click();
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await page.evaluate(() => (window as unknown as { marque?: number }).marque)).toBe(1);
+  await ligne.getByRole("button", { name: "Arrêter" }).click();
+  await expect(ligne).toHaveAttribute("data-etat", "arretee");
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await fermer();
+});
+
+test("un manifeste qui apparaît met la page à jour en direct", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  await expect(lignes(fenetre)).toHaveCount(3);
+  // La surveillance des projets commence après le ménage des orphelins.
+  await expect.poll(() => arrets(racine), { timeout: 10_000 }).toContain("WEBAIOS_APP=.*");
+  await new Promise((r) => setTimeout(r, 500));
+  ecrireProjet(racine, "nouveau", { manifeste: { nom: "Nouveau" } });
+  await expect(fenetre.getByTestId("appli-nouveau")).toBeVisible({ timeout: 10_000 });
+  await expect(fenetre.getByTestId("filtre-tout")).toHaveText("Tout 4");
+  await fermer();
+});
+
+test("sans Docker : bandeau et Lancer désactivé", async () => {
+  const { fenetre, fermer } = await ouvrirPage({ env: { FAUX_DOCKER_ABSENT: "1" } });
+  await expect(fenetre.getByTestId("page-applications")).toContainText("Docker n'est pas lancé");
+  await expect(fenetre.getByTestId("appli-essai").getByRole("button", { name: "Lancer" })).toBeDisabled();
+  await expect(lignes(fenetre)).toHaveCount(3);
+  await fermer();
+});
+
+test("liste vide : texte d'aide", async () => {
+  const { fenetre, fermer } = await ouvrirPage({ projets: false });
+  await expect(fenetre.getByTestId("page-applications")).toContainText("Demande à l'agent de tester un package ou de construire une app");
+  await fermer();
+});
+
+test("la page Applications revient après un redémarrage, sans page web ni historique", async () => {
+  const premier = await ouvrirPage();
+  await premier.fermer();
+  const { app, fenetre, fermer } = await lancer({ profil: premier.profil, racine: premier.racine, env: ENV });
+  await expect(fenetre.getByTestId("page-applications")).toBeVisible();
+  await expect(lignes(fenetre)).toHaveCount(3);
+  expect(await app.evaluate(({ webContents }) => webContents.getAllWebContents().some((w) => w.getURL().startsWith("webaios:")))).toBe(false);
+  const recents = await fenetre.evaluate(() => (window as unknown as { webaios: { historique: { recents(): Promise<{ url: string }[]> } } }).webaios.historique.recents());
+  expect(recents.some((v) => v.url.startsWith("webaios:"))).toBe(false);
   await fermer();
 });

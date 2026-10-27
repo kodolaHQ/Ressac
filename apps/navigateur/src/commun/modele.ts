@@ -1,3 +1,6 @@
+/** Page interne des applications : un onglet sans page web, affiché par l'interface. */
+export const URL_APPLICATIONS = "webaios://applications";
+
 export type IdOnglet = string;
 export type IdEspace = string;
 export type IdFenetre = string;

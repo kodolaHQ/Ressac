@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Panneau } from "../../commun/api";
-  import type { EtatFenetre } from "../../commun/modele";
+  import { URL_APPLICATIONS, type EtatFenetre } from "../../commun/modele";
   import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
@@ -29,10 +29,11 @@
     return total ? enCours.reduce((s, t) => s + t.recus, 0) / total : 0;
   });
   const espace = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif));
-  const lienActif = $derived.by(() => {
+  const ongletActif = $derived.by(() => {
     const id = fenetre.actif[fenetre.espaceActif];
-    return id ? etat.valeur?.onglets[id]?.lien?.id : undefined;
+    return id ? etat.valeur?.onglets[id] : undefined;
   });
+  const lienActif = $derived(ongletActif?.lien?.id);
 </script>
 
 <aside class="barre" data-testid="barre-laterale" hidden={cachee} onmouseenter={surEntree} onmouseleave={surSortie}>
@@ -76,6 +77,14 @@
       title="Agent (⌘J)"
       aria-pressed={fenetre.panneauAgentOuvert}
       onclick={() => api.agir({ type: "basculerPanneauAgent", fenetreId: fenetre.id })}><Icone nom="agent" /></button
+    >
+    <button
+      class="outil"
+      data-testid="bouton-applications"
+      aria-label="Applications (⇧⌘A)"
+      title="Applications (⇧⌘A)"
+      aria-pressed={ongletActif?.url === URL_APPLICATIONS}
+      onclick={() => api.agir({ type: "ouvrirApplications", fenetreId: fenetre.id })}><Icone nom="applications" /></button
     >
     {#if telechargements.liste.length}
       <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => basculerPanneau?.("telechargements")}>

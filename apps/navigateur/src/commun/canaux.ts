@@ -30,6 +30,9 @@ export const CANAUX = {
   accueilChange: "webaios:accueil-change",
   accueilOrdonner: "webaios:accueil-ordonner",
   accueilRetirer: "webaios:accueil-retirer",
+  applicationsListe: "webaios:applications-liste",
+  applicationsChange: "webaios:applications-change",
+  applicationAction: "webaios:application-action",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

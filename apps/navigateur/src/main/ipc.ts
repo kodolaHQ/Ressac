@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
@@ -46,6 +46,7 @@ export interface Gestionnaires {
     profils(): Promise<{ id: string; nom: string }[]>;
   };
   accueil: { lire(): Promise<BlocAffiche[]>; ordonner(ordre: string[]): void; retirer(id: string): void };
+  applications: { liste(): Promise<ListeApplications>; agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -96,6 +97,8 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.agentProfils, () => g.agent.profils());
   recevoir(CANAUX.accueilOrdonner, zod(SchemaOrdreBlocs), (o) => g.accueil.ordonner(o));
   recevoir(CANAUX.accueilRetirer, zod(SchemaIdBloc), (id) => g.accueil.retirer(id));
+  repondre(CANAUX.applicationsListe, () => g.applications.liste());
+  recevoir(CANAUX.applicationAction, zod(SchemaActionApplication), ({ dossier, action }, f) => g.applications.agir(dossier, action, f));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));
   recevoir(CANAUX.agentRedimensionner, zod(SchemaTailleTerminal), (t, f) => g.agent.redimensionner(f, t));
   // Une frappe ou un collage : du texte, borné.

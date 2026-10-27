@@ -67,6 +67,11 @@ const api: ApiWebaios = {
     ordonner: (ordre) => ipcRenderer.send(CANAUX.accueilOrdonner, ordre),
     retirer: (id) => ipcRenderer.send(CANAUX.accueilRetirer, id),
   },
+  applications: {
+    liste: () => ipcRenderer.invoke(CANAUX.applicationsListe),
+    surChange: (rappel) => ecouter(CANAUX.applicationsChange, () => rappel()),
+    agir: (dossier, action) => ipcRenderer.send(CANAUX.applicationAction, { dossier, action }),
+  },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
     ipcRenderer.on(CANAUX.telechargements, ecouteur);

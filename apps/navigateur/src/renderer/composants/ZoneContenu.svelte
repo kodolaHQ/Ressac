@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { EtatFenetre, Onglet } from "../../commun/modele";
+  import { URL_APPLICATIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import Applications from "./Applications.svelte";
   import { api, demandes } from "../etat.svelte";
   import DemandePermission from "./DemandePermission.svelte";
   import { recherche } from "./recherche.svelte";
@@ -50,6 +51,8 @@
     <Telechargements fermer={fermerPanneau} />
   {:else if fenetre && !onglet}
     <PageVide {fenetre} />
+  {:else if onglet?.url === URL_APPLICATIONS}
+    <Applications />
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>

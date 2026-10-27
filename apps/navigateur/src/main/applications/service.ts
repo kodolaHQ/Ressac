@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { GestionnaireApplications, type Application, type Atelier, type CheminsEspace } from "@webaios/noyau";
+import type { ActionApplication, ListeApplications } from "../../commun/api";
 import type { Cadre } from "../../commun/modele";
 import { FenetresApplications } from "./fenetres";
 
@@ -72,6 +73,10 @@ export interface ServiceApplications {
   gestionnaire: GestionnaireApplications;
   fenetres: FenetresApplications;
   memoire: MemoireApplications;
+  /** Ce que montre la page Applications. */
+  liste(): Promise<ListeApplications>;
+  /** Une action de la page Applications ; rejetée en silence si elle ne s'applique pas. */
+  agir(dossier: string, action: ActionApplication): void;
   /** À la sortie : arrête les applis en marche, puis écrit la mémoire. */
   arreter(): Promise<void>;
 }
@@ -149,15 +154,49 @@ export function demarrerApplications(o: {
     memoire,
     ouvrirOnglet: o.ouvrirOnglet,
     surFermee: o.surFenetreFermee,
+    surFavicon: (dossier, favicon) => {
+      if (memoire.lire(dossier).favicon === favicon) return;
+      memoire.noter(dossier, { favicon });
+      o.diffuser();
+    },
     surFermeture: (dossier) => void gestionnaire.arreter(dossier).catch((e) => console.error(`[applications] ${dossier} non arrêtée :`, e)),
   });
   // Une fois par vie du navigateur, en tâche de fond : les fenêtres n'attendent jamais Docker.
   gestionnaire.demarrer().catch((e) => console.error("[applications] démarrage impossible :", e));
 
+  const signaler = (dossier: string, quoi: string) => (e: unknown) => console.error(`[applications] ${dossier} non ${quoi} :`, e);
+
   return {
     gestionnaire,
     fenetres,
     memoire,
+    async liste() {
+      const [etat, applications] = await Promise.all([o.atelier.etat(), gestionnaire.liste()]);
+      return {
+        atelier: etat === "docker-absent" ? "docker-absent" : "ok",
+        applications: applications.map((a) => {
+          const { favicon, dernierLancement } = memoire.lire(a.dossier);
+          return { ...a, ...(favicon ? { favicon } : {}), ...(dernierLancement ? { dernierLancement } : {}) };
+        }),
+      };
+    },
+    agir(dossier, action) {
+      switch (action) {
+        // Relancer = lancer une appli en marche ou en erreur : le gestionnaire arrête d'abord l'instance en cours.
+        case "lancer":
+        case "relancer":
+          void gestionnaire.lancer(dossier).catch(signaler(dossier, "lancée"));
+          return;
+        case "arreter":
+          void gestionnaire.arreter(dossier).catch(signaler(dossier, "arrêtée"));
+          return;
+        case "ouvrir":
+          fenetres.montrer(dossier);
+          return;
+        default:
+        // Déboguer, supprimer, promouvoir, afficher le dossier : à venir.
+      }
+    },
     async arreter() {
       try {
         await gestionnaire.toutArreter();

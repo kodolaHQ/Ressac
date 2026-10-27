@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
-import type { EtatNavigateur } from "../../src/commun/modele";
+import { URL_APPLICATIONS, type EtatNavigateur } from "../../src/commun/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -360,4 +360,28 @@ test("largeurPanneauAgent : 420 par défaut, retenue, bornée entre 280 et 1000"
   expect(e.reglages.largeurPanneauAgent).toBe(280);
   ag({ type: "largeurPanneauAgent", largeur: 5000 });
   expect(e.reglages.largeurPanneauAgent).toBe(1000);
+});
+
+test("ouvrirApplications réutilise l'onglet existant de l'espace", () => {
+  ouvrir("https://a.test/");
+  ag({ type: "ouvrirApplications", fenetreId: F });
+  const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_APPLICATIONS);
+  expect(pages()).toHaveLength(1);
+  const page = pages()[0]!;
+  expect(page).toMatchObject({ titre: "Applications", espaceId: P });
+  expect(actif()).toBe(page.id);
+  // Déjà affichée : rien ne change.
+  const avant = e;
+  ag({ type: "ouvrirApplications", fenetreId: F });
+  expect(e).toBe(avant);
+  // Un autre onglet devant : on revient à la page au lieu d'en ouvrir une deuxième.
+  ouvrir("https://b.test/");
+  ag({ type: "ouvrirApplications", fenetreId: F });
+  expect(pages()).toHaveLength(1);
+  expect(actif()).toBe(page.id);
+  // Un autre espace a sa propre page.
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "ouvrirApplications", fenetreId: F });
+  expect(pages()).toHaveLength(2);
+  expect(actif(fen().espaceActif)).not.toBe(page.id);
 });

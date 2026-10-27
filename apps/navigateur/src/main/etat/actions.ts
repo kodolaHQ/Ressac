@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../commun/api";
-import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type EtatFenetre, type EtatNavigateur, type Favori, type IdEspace, type IdOnglet, type Onglet } from "../../commun/modele";
+import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, URL_APPLICATIONS, type EtatFenetre, type EtatNavigateur, type Favori, type IdEspace, type IdOnglet, type Onglet } from "../../commun/modele";
 
 const MAX_FERMES = 20;
 
@@ -282,6 +282,21 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       if (!f) return false;
       f.panneauAgentOuvert = !f.panneauAgentOuvert;
       return true;
+    }
+    // Une seule page Applications par espace : on y revient plutôt que d'en ouvrir une deuxième.
+    case "ouvrirApplications": {
+      const f = fenetre(d, a.fenetreId);
+      if (!f) return false;
+      const esp = f.espaceActif;
+      const existant = liste(f, esp).find((id) => d.onglets[id]?.url === URL_APPLICATIONS);
+      if (existant) {
+        if (f.actif[esp] === existant) return false;
+        f.actif[esp] = existant;
+        return true;
+      }
+      const o = ouvrir(d, genId, f, { url: URL_APPLICATIONS });
+      if (o) o.titre = "Applications";
+      return !!o;
     }
     // Ouvrir le panneau sur un onglet le donne à l'agent : la page d'accueil ne l'ouvre que si elle est encore affichée.
     case "panneauAgentAccueil": {

@@ -94,9 +94,11 @@ export class GestionnaireVues {
       if (!fenetre || fenetre.isDestroyed()) continue;
       const actif = f.actif[f.espaceActif];
       const onglet = actif ? etat.onglets[actif] : undefined;
-      if (onglet && !this.vues.has(onglet.id)) this.creerVue(onglet);
+      // Une page interne (`webaios:`) n'a pas de vue : c'est l'interface qui l'affiche, comme la page vide.
+      const web = onglet && !onglet.url.startsWith("webaios:") ? onglet : undefined;
+      if (web && !this.vues.has(web.id)) this.creerVue(web);
       // Une page plantée ou en erreur est remplacée par le message de l'interface.
-      const cible = onglet && !onglet.plante && !onglet.erreur ? onglet.id : undefined;
+      const cible = web && !web.plante && !web.erreur ? web.id : undefined;
       const courante = this.attachees.get(f.id);
       if (courante === cible) continue;
       if (courante) {

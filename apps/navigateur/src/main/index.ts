@@ -228,6 +228,10 @@ app.whenReady().then(async () => {
         if (agent) retirerBloc(agent.chemins, id).catch((e) => console.error(`[webaios] bloc ${id} non retiré :`, e));
       },
     },
+    applications: {
+      liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
+      agir: (dossier, action) => applications?.agir(dossier, action),
+    },
     agent: {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
       ecrire: (f, d) => agent?.sessions.ecrire(f, d),
@@ -322,8 +326,8 @@ app.whenReady().then(async () => {
       if (f.isMinimized()) f.restore();
       f.focus();
     },
-    // La page des applications viendra s'y abonner.
-    diffuser: () => {},
+    // La page Applications relit la liste.
+    diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
     surFenetreFermee: (dossier) => agent?.noyau()?.politique.ongletFerme(`app:${dossier}`),
   });

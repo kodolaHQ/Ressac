@@ -4,11 +4,12 @@ export interface EntreeMenu {
   agir: () => void;
 }
 
-export const menu = $state<{ ouvert: { x: number; y: number; entrees: EntreeMenu[] } | null }>({ ouvert: null });
+export const menu = $state<{ ouvert: { x: number; y: number; entrees: EntreeMenu[]; libre: boolean } | null }>({ ouvert: null });
 
-export function ouvrirMenu(e: MouseEvent, entrees: EntreeMenu[]): void {
+/** `libre` : le menu peut s'ouvrir sur la zone de contenu (page interne, qu'aucune vue web ne couvre). */
+export function ouvrirMenu(e: MouseEvent, entrees: EntreeMenu[], o: { libre?: boolean } = {}): void {
   e.preventDefault();
-  menu.ouvert = { x: e.clientX, y: e.clientY, entrees };
+  menu.ouvert = { x: e.clientX, y: e.clientY, entrees, libre: o.libre ?? false };
 }
 
 export function fermerMenu(): void {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dossierValide, type Application } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
@@ -57,6 +58,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("afficherPageVide"), fenetreId: id }),
   z.object({ type: z.literal("basculerCompact"), fenetreId: id }),
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
+  /** Active la page Applications de l'espace actif, ou l'ouvre. */
+  z.object({ type: z.literal("ouvrirApplications"), fenetreId: id }),
   /** Ouverture et fermeture automatiques du panneau par la page d'accueil (pas une action de l'utilisateur). */
   z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
@@ -139,7 +142,26 @@ export interface ApiWebaios {
     /** Met le bloc à la corbeille (accueil/.corbeille). */
     retirer(id: string): void;
   };
+  /** Page Applications (projets de l'espace de l'agent). */
+  applications: {
+    liste(): Promise<ListeApplications>;
+    /** Un projet ou l'état d'une appli a changé : relire. */
+    surChange(rappel: () => void): () => void;
+    agir(dossier: string, action: ActionApplication): void;
+  };
 }
+
+/** Une appli telle que la page l'affiche : ce que dit le gestionnaire, et ce que le navigateur en a retenu. */
+export type ApplicationAffichee = Application & { favicon?: string; dernierLancement?: string };
+export interface ListeApplications {
+  atelier: "ok" | "docker-absent";
+  applications: ApplicationAffichee[];
+}
+export const SchemaActionApplication = z.object({
+  dossier: z.string().refine(dossierValide),
+  action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier"]),
+});
+export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
 export const SchemaReponsePermission = z.object({ id, decision: z.enum(["autoriser", "refuser"]) });
