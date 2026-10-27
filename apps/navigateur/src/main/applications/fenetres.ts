@@ -8,6 +8,9 @@ import type { MemoireApplications } from "./service";
 /** Tests automatiques : aucune fenêtre à l'écran. */
 const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
 
+/** Partition de session d'une appli : jamais celle de la navigation. */
+export const partitionApplication = (dossier: string) => `persist:app-${dossier}`;
+
 /** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
 export function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
   if (!c) return undefined;
@@ -72,7 +75,7 @@ export class FenetresApplications {
       show: !INVISIBLE,
       title: a.nom,
       backgroundColor: "#ffffff",
-      webPreferences: preferencesWeb(session.fromPartition(`persist:app-${dossier}`)),
+      webPreferences: preferencesWeb(session.fromPartition(partitionApplication(dossier))),
     });
     this.fenetres.set(dossier, f);
     // Le titre reste le nom de l'appli : c'est lui qui la distingue des fenêtres principales.

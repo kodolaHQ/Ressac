@@ -230,7 +230,7 @@ app.whenReady().then(async () => {
     },
     applications: {
       liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
-      agir: (dossier, action) => applications?.agir(dossier, action),
+      agir: (dossier, action, f) => applications?.agir(dossier, action, f),
     },
     agent: {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
@@ -330,6 +330,11 @@ app.whenReady().then(async () => {
     diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
     surFenetreFermee: (dossier) => agent?.noyau()?.politique.ongletFerme(`app:${dossier}`),
+    // Comme ⌘J : le panneau s'ouvre et le terminal prend le clavier.
+    deboguer: (f, texte, acces) => {
+      agent?.preRemplir(f, texte, acces);
+      cibles.raccourci(f, "agent");
+    },
   });
   agent = demarrerAgent({
     atelier,

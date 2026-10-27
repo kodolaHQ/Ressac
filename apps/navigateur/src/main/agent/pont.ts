@@ -94,6 +94,11 @@ export interface FenetresPourAgent {
 
 const PREFIXE_APP = "app:";
 
+/** La fenêtre d'une appli vue comme un onglet `app:<dossier>` par l'agent. */
+export function ongletApplication(a: { dossier: string; titre: string; url: string }): OngletInfo {
+  return { id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier };
+}
+
 /** Le navigateur Electron vu par le noyau (spec §5) : lire, ouvrir, capturer les onglets ; demander à l'utilisateur. */
 export class PontElectron implements PontNavigateur {
   constructor(
@@ -126,7 +131,7 @@ export class PontElectron implements PontNavigateur {
   }
 
   async listerOnglets(): Promise<OngletInfo[]> {
-    const apps = this.o.applications.ouvertes().map((a) => ({ id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier }));
+    const apps = this.o.applications.ouvertes().map(ongletApplication);
     return [...infosOnglets(this.o.magasin.etat), ...apps];
   }
 

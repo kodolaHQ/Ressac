@@ -65,6 +65,8 @@ interface Entree {
   demarrage?: Promise<void>;
   /** Dernière taille du terminal, pour rouvrir la session à l'identique (relancerTout). */
   taille: TailleTerminal;
+  /** Texte à mettre dans la saisie dès que la session sera active (voir preRemplir). */
+  preRemplissage?: { texte: string; ecrit?: () => void };
 }
 
 /** Une session d'agent par fenêtre (spec §8) : elle survit aux changements d'onglet et à la fermeture du panneau. */
@@ -119,6 +121,9 @@ export class SessionsAgent {
             this.o.envoyer(f, "etat", { etat: "termine", code });
           });
           this.o.envoyer(f, "etat", { etat: "actif" });
+          const p = entree.preRemplissage;
+          entree.preRemplissage = undefined;
+          if (p) this.ecrirePreRemplissage(s, p.texte, p.ecrit);
         },
         (err: Error) => {
           // Démarrage abandonné (fenêtre fermée, relancerTout) : son échec ne concerne plus le panneau.
@@ -155,6 +160,23 @@ export class SessionsAgent {
     if (!session) return;
     session.ecrire(d);
     if (d.includes("\r")) this.o.surEnvoi?.(f);
+  }
+
+  /**
+   * Met un texte dans la saisie de l'agent, sans l'envoyer : tout de suite si la session est active, sinon dès qu'elle
+   * le devient (un seul texte en attente par fenêtre, le dernier gagne). `ecrit` est appelé juste avant l'écriture,
+   * session ouverte : un accès accordé là survit à la remise à zéro de la politique par l'ouverture de la session.
+   */
+  preRemplir(f: IdFenetre, texte: string, ecrit?: () => void): void {
+    let e = this.entrees.get(f);
+    if (e?.session?.active) return this.ecrirePreRemplissage(e.session, texte, ecrit);
+    if (!e) this.entrees.set(f, (e = { tampon: new Tampon(TAMPON_MAX), aEnvoyer: "", taille: { cols: 80, rows: 24 } }));
+    e.preRemplissage = { texte, ...(ecrit ? { ecrit } : {}) };
+  }
+
+  private ecrirePreRemplissage(s: SessionLike, texte: string, ecrit?: () => void): void {
+    ecrit?.();
+    s.ecrire(texte);
   }
 
   redimensionner(f: IdFenetre, t: TailleTerminal): void {

@@ -316,3 +316,101 @@ test("la page Applications revient après un redémarrage, sans page web ni hist
   expect(recents.some((v) => v.url.startsWith("webaios:"))).toBe(false);
   await fermer();
 });
+
+// --- Supprimer, passer en application, déboguer ---
+
+/** Ouvre le menu ⋯ d'une ligne. */
+const plusDActions = (fenetre: Page, dossier: string) => fenetre.getByTestId(`appli-${dossier}`).getByRole("button", { name: "Plus d'actions" }).click();
+const terminal = (fenetre: Page) => fenetre.getByTestId("panneau-agent").locator(".xterm-rows");
+const entreeAgent = (racine: string) => {
+  const f = join(racine, "faux-agent-entree.txt");
+  return existsSync(f) ? readFileSync(f, "utf8") : "";
+};
+
+async function lancerDepuisLaPage(fenetre: Page) {
+  const ligne = fenetre.getByTestId("appli-essai");
+  await ligne.getByRole("button", { name: "Lancer" }).click();
+  await expect(ligne).toHaveAttribute("data-etat", "en-marche", { timeout: 10_000 });
+}
+
+test("Supprimer demande confirmation, efface le dossier et la ligne", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  const dossier = join(racine, "projets", "essai");
+  await plusDActions(fenetre, "essai");
+  await fenetre.getByRole("menuitem", { name: "Supprimer" }).click();
+  const confirmation = fenetre.getByTestId("confirmation-suppression");
+  await expect(confirmation).toHaveText(/Supprimer « Essai » \? Son dossier sera effacé\./);
+  await confirmation.getByRole("button", { name: "Annuler" }).click();
+  await expect(confirmation).toBeHidden();
+  await new Promise((r) => setTimeout(r, 300));
+  expect(existsSync(dossier)).toBe(true);
+  await plusDActions(fenetre, "essai");
+  await fenetre.getByRole("menuitem", { name: "Supprimer" }).click();
+  await confirmation.getByRole("button", { name: "Supprimer" }).click();
+  await expect.poll(() => existsSync(dossier)).toBe(false);
+  await expect(fenetre.getByTestId("appli-essai")).toHaveCount(0);
+  await expect(lignes(fenetre)).toHaveCount(2);
+  await fermer();
+});
+
+test("pas de Supprimer pour une appli en marche", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  await lancerDepuisLaPage(fenetre);
+  await plusDActions(fenetre, "essai");
+  await expect(fenetre.getByRole("menuitem", { name: "Relancer" })).toBeVisible();
+  await expect(fenetre.getByRole("menuitem", { name: "Supprimer" })).toHaveCount(0);
+  await fenetre.keyboard.press("Escape");
+  // Refusée aussi par le process principal, pas seulement absente du menu.
+  await fenetre.evaluate(() => (window as unknown as { webaios: { applications: { agir(d: string, a: string): void } } }).webaios.applications.agir("essai", "supprimer"));
+  await new Promise((r) => setTimeout(r, 500));
+  expect(existsSync(join(racine, "projets", "essai", "webaios.json"))).toBe(true);
+  await expect(fenetre.getByTestId("appli-essai")).toHaveAttribute("data-etat", "en-marche");
+  await fermer();
+});
+
+test("Passer en application réécrit le manifeste et déplace la ligne", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  await expect(fenetre.getByTestId("filtre-application")).toHaveText("Applications 1");
+  await plusDActions(fenetre, "zod");
+  await fenetre.getByRole("menuitem", { name: "Passer en application" }).click();
+  const manifeste = () => JSON.parse(readFileSync(join(racine, "projets", "zod", "webaios.json"), "utf8")) as { type: string; origine?: string };
+  await expect.poll(() => manifeste().type).toBe("application");
+  expect(manifeste().origine).toBe("https://github.com/colinhacks/zod");
+  await expect(fenetre.getByTestId("filtre-application")).toHaveText("Applications 2");
+  await expect(fenetre.getByTestId("appli-zod")).toContainText("Application");
+  await fermer();
+});
+
+test("Déboguer pré-remplit le terminal sans envoyer, avec le journal", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  // Panneau fermé, agent pas encore démarré : Déboguer ouvre le panneau, et le texte attend la session.
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await fenetre.getByTestId("appli-essai").getByRole("button", { name: "Déboguer" }).click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  await expect.poll(() => entreeAgent(racine)).toBe("[application : Essai — /workspace/projets/essai — journal : /workspace/.webaios/journaux/essai.log] ");
+  await new Promise((r) => setTimeout(r, 300));
+  expect(entreeAgent(racine)).not.toContain("\r");
+  await fermer();
+});
+
+test("Déboguer un projet sans fiche", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  await fenetre.getByTestId("appli-vieux").getByRole("button", { name: "Déboguer" }).click();
+  await expect.poll(() => entreeAgent(racine)).toBe("[projet sans fiche webaios.json : /workspace/projets/vieux] ");
+  await fermer();
+});
+
+test("Déboguer une appli en marche lui donne l'accès à sa fenêtre", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage();
+  await lancerDepuisLaPage(fenetre);
+  // L'agent n'a pas encore démarré : Déboguer ouvre sa session, dont l'ouverture remet la politique à zéro.
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await plusDActions(fenetre, "essai");
+  await fenetre.getByRole("menuitem", { name: "Déboguer" }).click();
+  await expect.poll(() => entreeAgent(racine)).toContain("[application : Essai");
+  const lu = await appelerOutil(racine, "lire_onglet", { id: "app:essai" });
+  expect(lu.texte).toContain("lien");
+  await expect(fenetre.getByTestId("demande-permission")).toHaveCount(0);
+  await fermer();
+});

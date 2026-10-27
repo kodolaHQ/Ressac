@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
-import { join } from "node:path";
-import { GestionnaireApplications, type Application, type Atelier, type CheminsEspace } from "@webaios/noyau";
+import { join, resolve, sep } from "node:path";
+import { session, shell } from "electron";
+import { ecrireType, GestionnaireApplications, prefixeApplication, type Application, type Atelier, type CheminsEspace, type OngletInfo } from "@webaios/noyau";
 import type { ActionApplication, ListeApplications } from "../../commun/api";
-import type { Cadre } from "../../commun/modele";
-import { FenetresApplications } from "./fenetres";
+import type { Cadre, IdFenetre } from "../../commun/modele";
+import { ongletApplication } from "../agent/pont";
+import { FenetresApplications, partitionApplication } from "./fenetres";
 import { SondeDocker } from "./sonde";
 
 const FICHIER = "applications.json";
@@ -43,6 +45,14 @@ export class MemoireApplications {
     return this.donnees[dossier] ?? {};
   }
 
+  /** Appli supprimée : plus rien n'en est gardé. */
+  oublier(dossier: string): void {
+    if (!(dossier in this.donnees)) return;
+    delete this.donnees[dossier];
+    this.modifiee = true;
+    this.minuterie ??= setTimeout(() => void this.vider(), this.delaiMs);
+  }
+
   noter(dossier: string, s: SouvenirApplication): void {
     this.donnees[dossier] = { ...this.donnees[dossier], ...s };
     this.modifiee = true;
@@ -76,8 +86,8 @@ export interface ServiceApplications {
   memoire: MemoireApplications;
   /** Ce que montre la page Applications. */
   liste(): Promise<ListeApplications>;
-  /** Une action de la page Applications ; rejetée en silence si elle ne s'applique pas. */
-  agir(dossier: string, action: ActionApplication): void;
+  /** Une action de la page Applications, venue de la fenêtre `fenetreId` ; rejetée en silence si elle ne s'applique pas. */
+  agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void;
   /** À la sortie : arrête les applis en marche, puis écrit la mémoire. */
   arreter(): Promise<void>;
 }
@@ -102,6 +112,8 @@ export function demarrerApplications(o: {
   diffuser(): void;
   /** Une fenêtre d'appli s'est fermée (par l'utilisateur ou par le programme). */
   surFenetreFermee(dossier: string): void;
+  /** Déboguer : pré-remplit le terminal de l'agent de la fenêtre ; `acces` (la fenêtre de l'appli en marche) lui est donné. */
+  deboguer(fenetreId: IdFenetre, texte: string, acces?: OngletInfo): void;
 }): ServiceApplications {
   const memoire = new MemoireApplications(o.dossierProfil);
   /** Lancements en cours par dossier : une appli relancée passe par « arretee » sans que sa fenêtre doive se fermer. */
@@ -169,6 +181,28 @@ export function demarrerApplications(o: {
   const docker = new SondeDocker({ sonder: () => o.atelier.etat(), surChange: o.diffuser });
   const signaler = (dossier: string, quoi: string) => (e: unknown) => console.error(`[applications] ${dossier} non ${quoi} :`, e);
 
+  /** Efface le dossier, les données de sa partition et son souvenir ; refusé tant que l'appli tourne ou démarre. */
+  async function supprimer(dossier: string): Promise<void> {
+    const etat = gestionnaire.etatDe(dossier);
+    if (etat !== "arretee" && etat !== "erreur") throw new Error(`appli ${etat}`);
+    const projets = resolve(o.chemins.projets);
+    const cible = resolve(projets, dossier);
+    if (!cible.startsWith(projets + sep)) throw new Error(`${cible} hors de ${projets}`);
+    await fs.rm(cible, { recursive: true, force: true });
+    await session.fromPartition(partitionApplication(dossier)).clearStorageData();
+    memoire.oublier(dossier);
+    o.diffuser();
+  }
+
+  async function deboguer(dossier: string, fenetreId: IdFenetre): Promise<void> {
+    const a = (await gestionnaire.liste()).find((x) => x.dossier === dossier);
+    if (!a) return;
+    const texte = prefixeApplication({ nom: a.nom, dossier, sansFiche: a.type === "sans-fiche" });
+    // Fenêtre ouverte = appli en marche : l'agent peut la lire sans demander.
+    const fenetre = fenetres.ouvertes().find((x) => x.dossier === dossier);
+    o.deboguer(fenetreId, texte, fenetre && ongletApplication(fenetre));
+  }
+
   return {
     gestionnaire,
     fenetres,
@@ -183,7 +217,7 @@ export function demarrerApplications(o: {
         }),
       };
     },
-    agir(dossier, action) {
+    agir(dossier, action, fenetreId) {
       switch (action) {
         // Relancer = lancer une appli en marche ou en erreur : le gestionnaire arrête d'abord l'instance en cours.
         case "lancer":
@@ -196,8 +230,20 @@ export function demarrerApplications(o: {
         case "ouvrir":
           fenetres.montrer(dossier);
           return;
-        default:
-        // Déboguer, supprimer, promouvoir, afficher le dossier : à venir.
+        case "supprimer":
+          void supprimer(dossier).catch(signaler(dossier, "supprimée"));
+          return;
+        case "promouvoir":
+          void ecrireType(o.chemins, dossier, "application")
+            .then(o.diffuser)
+            .catch(signaler(dossier, "promue"));
+          return;
+        case "dossier":
+          void shell.openPath(join(o.chemins.projets, dossier));
+          return;
+        case "deboguer":
+          void deboguer(dossier, fenetreId).catch(signaler(dossier, "déboguée"));
+          return;
       }
     },
     async arreter() {

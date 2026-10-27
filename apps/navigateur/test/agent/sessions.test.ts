@@ -210,3 +210,30 @@ test("toutArreter attend l'arrêt de chaque session", async () => {
   finir();
   await arret;
 });
+
+test("preRemplir avant le démarrage écrit dès que la session est active", async () => {
+  let ouvrir!: (s: SessionLike) => void;
+  const session = new FausseSession();
+  const { gestion, messages } = preparer(() => new Promise((r) => (ouvrir = r)));
+  const ecrits: string[] = [];
+  gestion.preRemplir("F", "[premier] ");
+  gestion.preRemplir("F", "[contexte] ", () => ecrits.push(`accès avant : ${session.ecrit.length}`));
+  const demarrage = gestion.demarrer("F", taille);
+  expect(session.ecrit).toEqual([]);
+  ouvrir(session);
+  await demarrage;
+  // Le dernier texte gagne ; l'accès est donné au moment de l'écriture, session ouverte ; rien n'est envoyé.
+  expect(session.ecrit).toEqual(["[contexte] "]);
+  expect(ecrits).toEqual(["accès avant : 0"]);
+  expect(messages).toEqual([]);
+});
+
+test("preRemplir sur une session active écrit tout de suite", async () => {
+  const { gestion, sessions, messages } = preparer();
+  await gestion.demarrer("F", taille);
+  let appele = 0;
+  gestion.preRemplir("F", "[application : Essai] ", () => appele++);
+  expect(sessions[0]!.ecrit).toEqual(["[application : Essai] "]);
+  expect(appele).toBe(1);
+  expect(messages).toEqual([]);
+});

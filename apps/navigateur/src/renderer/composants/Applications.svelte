@@ -44,6 +44,8 @@
   let texte = $state("");
   let champ: HTMLInputElement;
   let requete = 0;
+  /** Projet dont la suppression attend la confirmation de l'utilisateur. */
+  let aSupprimer = $state<ApplicationAffichee | null>(null);
 
   async function charger() {
     const n = ++requete;
@@ -128,7 +130,10 @@
 
   /** Boutons visibles et entrées du menu ⋯ selon l'état (spec §5). */
   function actions(a: ApplicationAffichee): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: EntreeMenu[] } {
-    const entree = (libelle: string, action: ActionApplication): EntreeMenu => ({ libelle, agir: () => agir(a, action) });
+    const entree = (libelle: string, action: ActionApplication): EntreeMenu => ({
+      libelle,
+      agir: () => (action === "supprimer" ? (aSupprimer = a) : agir(a, action)),
+    });
     const promouvoir = a.type === "poc" ? [entree("Passer en application", "promouvoir")] : [];
     if (a.type === "sans-fiche") return { boutons: [{ libelle: "Déboguer", action: "deboguer" }], menu: [entree("Supprimer", "supprimer")] };
     switch (a.etat) {
@@ -224,6 +229,26 @@
   </div>
 </section>
 
+{#if aSupprimer}
+  {@const cible = aSupprimer}
+  <div class="voile">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression">
+      <p>Supprimer « {cible.nom} » ? Son dossier sera effacé.</p>
+      <div class="boutons">
+        <button onclick={() => (aSupprimer = null)}>Annuler</button>
+        <button
+          class="confirmer"
+          onclick={() => {
+            const a = cible; // {@const} se relit : après aSupprimer = null, cible vaut null
+            aSupprimer = null;
+            agir(a, "supprimer");
+          }}>Supprimer</button
+        >
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .applications { display: grid; grid-template-columns: 190px 1fr; height: 100%; color: var(--texte); }
   .volet { display: flex; flex-direction: column; gap: 2px; padding: 20px 10px; background: var(--fond-barre); border-right: 1px solid var(--bord); overflow-y: auto; }
@@ -255,5 +280,11 @@
   .actions button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
   .actions button:hover:not(:disabled) { background: var(--fond-survol); }
   .actions button:disabled { opacity: 0.5; }
+  .voile { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
+  .confirmation { padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); }
+  .confirmation p { margin: 0 0 14px; }
+  .boutons { display: flex; justify-content: flex-end; gap: 8px; }
+  .boutons button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); }
+  .boutons .confirmer { background: var(--accent); border-color: var(--accent); color: white; }
   .actions .options { display: grid; place-content: center; padding: 4px 6px; border-color: transparent; background: none; color: var(--texte-doux); }
 </style>
