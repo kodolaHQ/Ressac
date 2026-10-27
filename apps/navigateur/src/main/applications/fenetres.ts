@@ -2,6 +2,7 @@ import { BrowserWindow, screen, session, type WebContents } from "electron";
 import type { Application } from "@webaios/noyau";
 import type { Cadre } from "../../commun/modele";
 import { preferencesWeb } from "../onglets/vues";
+import { refuserPermissions } from "../permissions";
 import { faviconEnDonnees, memeOrigine } from "./favicon";
 import type { MemoireApplications } from "./service";
 
@@ -10,6 +11,19 @@ const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
 
 /** Partition de session d'une appli : jamais celle de la navigation. */
 export const partitionApplication = (dossier: string) => `persist:app-${dossier}`;
+
+/** Sessions d'applis déjà fermées aux permissions (une par dossier, gardée par Electron toute la vie du navigateur). */
+const sessionsFermees = new WeakSet<Electron.Session>();
+
+/** La session d'une appli, sans aucune permission : son code n'a pas été relu. */
+function sessionApplication(dossier: string): Electron.Session {
+  const s = session.fromPartition(partitionApplication(dossier));
+  if (!sessionsFermees.has(s)) {
+    refuserPermissions(s);
+    sessionsFermees.add(s);
+  }
+  return s;
+}
 
 /** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
 export function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
@@ -75,7 +89,7 @@ export class FenetresApplications {
       show: !INVISIBLE,
       title: a.nom,
       backgroundColor: "#ffffff",
-      webPreferences: preferencesWeb(session.fromPartition(partitionApplication(dossier))),
+      webPreferences: preferencesWeb(sessionApplication(dossier)),
     });
     this.fenetres.set(dossier, f);
     // Le titre reste le nom de l'appli : c'est lui qui la distingue des fenêtres principales.

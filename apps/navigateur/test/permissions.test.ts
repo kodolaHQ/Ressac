@@ -102,3 +102,30 @@ test("ouvrir une application externe (mailto:…) : demandé à chaque fois avec
   expect(p.decisions()).toEqual({});
   expect(p.verifier(meet, "openExternal")).toBe(false);
 });
+
+test("refuserPermissions (session d'une appli) : plein écran et copie seulement, aucun périphérique", async () => {
+  const { refuserPermissions } = await import("../src/main/permissions");
+  const g: Record<string, (...a: never[]) => unknown> = {};
+  const choix: Record<string, (...a: unknown[]) => void> = {};
+  const session = {
+    setPermissionRequestHandler: (h: never) => (g.demande = h),
+    setPermissionCheckHandler: (h: never) => (g.verification = h),
+    setDevicePermissionHandler: (h: never) => (g.peripherique = h),
+    on: (evenement: string, h: (...a: unknown[]) => void) => (choix[evenement] = h),
+  };
+  refuserPermissions(session as unknown as Parameters<typeof refuserPermissions>[0]);
+  const demander = (permission: string) => new Promise((ok) => (g.demande as (...a: unknown[]) => void)(null, permission, ok, { requestingUrl: "http://localhost:5280/" }));
+  for (const p of ["media", "geolocation", "notifications", "openExternal", "clipboard-read", "hid", "serial", "midiSysex"]) {
+    expect(await demander(p)).toBe(false);
+    expect((g.verification as (...a: unknown[]) => boolean)(null, p, "http://localhost:5280", {})).toBe(false);
+  }
+  for (const p of ["fullscreen", "clipboard-sanitized-write"]) expect(await demander(p)).toBe(true);
+  expect((g.peripherique as () => boolean)()).toBe(false);
+  const empeche = vi.fn();
+  const rappel = vi.fn();
+  choix["select-hid-device"]!({ preventDefault: empeche }, {}, rappel);
+  choix["select-serial-port"]!({ preventDefault: empeche }, [], null, rappel);
+  choix["select-usb-device"]!({ preventDefault: empeche }, {}, rappel);
+  expect(empeche).toHaveBeenCalledTimes(3);
+  expect(rappel.mock.calls).toEqual([[], [""], []]);
+});

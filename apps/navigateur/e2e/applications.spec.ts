@@ -144,6 +144,20 @@ test("un lien externe de l'appli s'ouvre dans un onglet de la fenêtre principal
   await fermer();
 });
 
+test("la fenêtre d'appli n'a aucune permission : notifications, position, caméra refusées", async () => {
+  const { app, racine, fermer } = await demarrer();
+  await lancerEssai(racine);
+  const page = await pageAppli(app);
+  // Rien qui touche au matériel (getUserMedia ferait demander macOS) : la demande et la vérification suffisent.
+  const r = await page.evaluate(async () => ({
+    notifications: await Notification.requestPermission(),
+    position: (await navigator.permissions.query({ name: "geolocation" })).state,
+    camera: (await navigator.permissions.query({ name: "camera" as PermissionName })).state,
+  }));
+  expect(r).toEqual({ notifications: "denied", position: "denied", camera: "denied" });
+  await fermer();
+});
+
 test("une appli qui plante n'ouvre pas de fenêtre", async () => {
   const { app, racine, fermer } = await demarrer({ serveur: "plante" });
   const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
