@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { dossierValide } from "../applications/manifeste.js";
 import { CHEMIN_CONTENEUR, type CheminsEspace } from "../chemins.js";
 import { executeurParDefaut, type Executeur } from "./executeur.js";
 
@@ -33,6 +34,12 @@ function normaliser(chemin: string): string {
 }
 
 const nomVeille = (id: string) => `webaios-veille-${id}`;
+
+/** Le dossier d'une appli entre dans une expression grep entre apostrophes : on refuse tout nom douteux. */
+function dossierApplication(dossier: string): string {
+  if (!dossierValide(dossier)) throw new Error(`dossier d'application invalide : ${dossier}`);
+  return dossier;
+}
 
 export type EtatAtelier = "docker-absent" | "absent" | "arrete" | "demarre";
 
@@ -94,6 +101,9 @@ export function scriptArretSession(f: string, id: string): string {
 export function scriptArretOrphelins(): string {
   return ["rm -f /tmp/webaios-session-*.pid", ...escalade(marques(`${VARIABLE_SESSION}=.*`))].join("\n");
 }
+
+/** Marque des processus d'une appli lancée : jamais confondue avec celle des sessions (`WEBAIOS_SESSION`). */
+export const VARIABLE_APPLICATION = "WEBAIOS_APP";
 
 export class Atelier {
   private readonly chemins: CheminsEspace;
@@ -215,9 +225,33 @@ export class Atelier {
     if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", scriptArretOrphelins()], DELAI_SONDE_MS);
   }
 
-  commandeExec(argv: string[], o: { interactif: boolean; env?: Record<string, string> }): string[] {
+  /**
+   * Application d'un projet, lancée dans son dossier avec sa marque et son port. Le shell redirige tout vers le
+   * journal (réécrit à chaque lancement) puis évalue la commande du manifeste : le dossier et la commande passent en
+   * arguments ($1, $2), jamais collés dans le script.
+   */
+  commandeApplication(dossier: string, commande: string, port: number): string[] {
+    dossierApplication(dossier);
+    const journaux = `${CHEMIN_CONTENEUR}/.webaios/journaux`;
+    return this.commandeExec(
+      ["sh", "-c", `mkdir -p ${journaux}; exec >"${journaux}/$1.log" 2>&1; eval "$2"`, "webaios-app", dossier, commande.replaceAll("{port}", String(port))],
+      { interactif: false, env: { [VARIABLE_APPLICATION]: dossier, PORT: String(port) }, dossier: `${CHEMIN_CONTENEUR}/projets/${dossier}` },
+    );
+  }
+
+  /** Arrête l'appli `dossier` : tout processus qui porte sa marque, même détaché du shell qui l'a lancée. */
+  async arreterApplication(dossier: string): Promise<void> {
+    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${dossierApplication(dossier)}`)).join("\n")], DELAI_SONDE_MS);
+  }
+
+  /** Au lancement du navigateur : les applis d'une vie précédente n'ont plus personne pour les suivre. */
+  async arreterApplicationsOrphelines(): Promise<void> {
+    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=.*`)).join("\n")], DELAI_SONDE_MS);
+  }
+
+  commandeExec(argv: string[], o: { interactif: boolean; env?: Record<string, string>; dossier?: string }): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-    return [this.docker, "exec", ...(o.interactif ? ["-it"] : []), ...env, "-w", CHEMIN_CONTENEUR, NOM_CONTENEUR, ...argv];
+    return [this.docker, "exec", ...(o.interactif ? ["-it"] : []), ...env, "-w", o.dossier ?? CHEMIN_CONTENEUR, NOM_CONTENEUR, ...argv];
   }
 }

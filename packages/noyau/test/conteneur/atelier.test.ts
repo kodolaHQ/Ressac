@@ -238,3 +238,31 @@ test("le script d'arrêt tue un agent qui ignore HUP et TERM (claude les interce
   // Plus aucun processus du groupe (le sleep lancé par l'agent).
   expect(() => process.kill(-agent.pid!, 0)).toThrow();
 }, 15_000);
+
+test("commandeApplication", () => {
+  const a = new Atelier({ chemins, docker: "/opt/homebrew/bin/docker" });
+  expect(a.commandeApplication("todo", "npx vite --port {port}", 5281)).toEqual([
+    "/opt/homebrew/bin/docker", "exec", "-e", "WEBAIOS_APP=todo", "-e", "PORT=5281", "-w", "/workspace/projets/todo", "webaios-atelier",
+    "sh", "-c", `mkdir -p /workspace/.webaios/journaux; exec >"/workspace/.webaios/journaux/$1.log" 2>&1; eval "$2"`,
+    "webaios-app", "todo", "npx vite --port 5281",
+  ]);
+});
+
+test("arreterApplication ne vise que sa marque", async () => {
+  const { executer, appels } = executeurFactice([]);
+  await new Atelier({ chemins, docker: "docker", executer }).arreterApplication("todo");
+  const appel = appels.find((x) => x.args[0] === "exec")!;
+  expect(appel.args.slice(0, 4)).toEqual(["exec", "webaios-atelier", "sh", "-c"]);
+  expect(appel.args[4]).toContain("WEBAIOS_APP=todo");
+  expect(appel.args[4]).not.toContain("WEBAIOS_SESSION");
+  expect(appel.args[4]).toContain("signaler KILL");
+  await expect(new Atelier({ chemins, docker: "docker", executer }).arreterApplication("x'y")).rejects.toThrow();
+});
+
+test("arreterApplicationsOrphelines vise WEBAIOS_APP=.*", async () => {
+  const { executer, appels } = executeurFactice([]);
+  await new Atelier({ chemins, docker: "docker", executer }).arreterApplicationsOrphelines();
+  const script = appels.find((x) => x.args[0] === "exec")!.args[4]!;
+  expect(script).toContain("WEBAIOS_APP=.*");
+  expect(script).not.toContain("WEBAIOS_SESSION");
+});
