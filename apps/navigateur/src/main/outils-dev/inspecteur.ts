@@ -10,18 +10,34 @@ const DELAI_CHARGEMENT_MS = 30_000;
 
 type Ecouteur = (methode: string, params: any) => void; // forme libre du protocole
 
+/** Attente de la nouvelle page après un rechargement demandé par l'agent. */
+const DELAI_NAVIGATION_MS = 10_000;
+
+const TEXTE_SITE_CHANGE = "L'onglet a changé de site.";
+
 /** Un onglet inspecté : son débogueur est attaché, ses tampons courent depuis l'attachement. */
 interface Inspection {
   wc: WebContents;
   tampon: TamponOnglet;
   /** Origine de la page à l'attachement (null tant qu'elle n'en a pas) : les tampons ne valent que pour elle. */
   origine: string | null;
+  /**
+   * Le cadre principal a quitté `origine` : plus aucun événement n'est retenu (ni d'un autre site, ni d'un retour sur
+   * le premier) jusqu'à ce qu'un appel signale le changement de site et reparte de la page affichée.
+   */
+  souillee: boolean;
   /** Activation des domaines du protocole. */
   pret: Promise<void>;
   /** Abonnés aux événements du protocole (attente d'un chargement, morceaux d'un instantané). */
   ecouteurs: Set<Ecouteur>;
-  /** Profils et instantanés, un à la fois : ils se partagent le profileur de la page. */
+  /**
+   * Profils et instantanés, un à la fois : ils se partagent le profileur de la page. La file suit le travail réel dans
+   * la page, pas la réponse à l'appel : un appel abandonné libère la file quand la page a fini.
+   */
   lourd: Promise<unknown>;
+  /** Rejetée quand l'inspection prend fin (détachement, outils de l'utilisateur) : les commandes en cours échouent avec elle. */
+  fin: Promise<never>;
+  terminer: (raison: Error) => void;
   debrancher: () => void;
 }
 
@@ -40,7 +56,7 @@ function verifierSignal(signal: AbortSignal): void {
   if (signal.aborted) throw erreurAbandon();
 }
 
-/** `p`, ou un rejet AbortError dès que `signal` est levé ; `aLAbandon` est alors appelé (arrêt du profileur…). */
+/** `p`, ou un rejet AbortError dès que `signal` est levé ; `aLAbandon` est alors appelé. */
 function sousSignal<T>(p: Promise<T>, signal: AbortSignal, aLAbandon?: () => void): Promise<T> {
   verifierSignal(signal);
   return new Promise<T>((ok, ko) => {
@@ -52,6 +68,24 @@ function sousSignal<T>(p: Promise<T>, signal: AbortSignal, aLAbandon?: () => voi
     p.then(ok, ko).finally(() => signal.removeEventListener("abort", abandon));
   });
 }
+
+/** Résolue quand `signal` est levé ou que l'inspection prend fin. */
+function interruption(i: Inspection, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((ok) => {
+    if (signal.aborted) return ok();
+    signal.addEventListener("abort", () => ok(), { once: true });
+    i.fin.catch(() => ok());
+  });
+}
+
+/** Attend `ms`, ou moins si `avant` se résout d'abord. */
+async function pause(ms: number, avant: Promise<void>): Promise<void> {
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([new Promise<void>((ok) => (minuterie = setTimeout(ok, ms))), avant]);
+  clearTimeout(minuterie);
+}
+
+const cadrePrincipal = (m: string, p: any) => m === "Page.frameNavigated" && !p?.frame?.parentId;
 
 /**
  * Les outils de développement de l'agent, par le débogueur d'Electron (Chrome DevTools Protocol) sur le webContents
@@ -67,7 +101,7 @@ export class InspecteurCdp implements OutilsDevNavigateur {
   constructor(private readonly webContentsDe: (id: string) => WebContents | undefined) {}
 
   private occupe(wc: WebContents): boolean {
-    return this.occupes.has(wc) || wc.isDevToolsOpened();
+    return !wc.isDestroyed() && (this.occupes.has(wc) || wc.isDevToolsOpened());
   }
 
   /** Suit l'ouverture des outils de l'utilisateur sur ce webContents, une seule fois par webContents. */
@@ -76,18 +110,19 @@ export class InspecteurCdp implements OutilsDevNavigateur {
     this.suivis.add(wc);
     wc.on("devtools-opened", () => {
       this.occupes.add(wc);
-      for (const [id, i] of this.inspections) if (i.wc === wc) this.lacher(id);
+      for (const [id, i] of this.inspections) if (i.wc === wc) this.lacher(id, new OutilsDevOccupes());
     });
     // Le prochain appel attachera de nouveau.
     wc.on("devtools-closed", () => this.occupes.delete(wc));
   }
 
-  /** Détache le débogueur et vide les tampons. */
-  private lacher(id: string): void {
+  /** Détache le débogueur et vide les tampons ; les commandes en cours échouent avec `raison`. */
+  private lacher(id: string, raison: Error = new Error("Les outils de développement de l'agent ont été détachés de l'onglet.")): void {
     const i = this.inspections.get(id);
     if (!i) return;
     this.inspections.delete(id);
     i.debrancher();
+    i.terminer(raison);
     i.tampon.vider();
     i.ecouteurs.clear();
     if (!i.wc.isDestroyed() && i.wc.debugger.isAttached()) {
@@ -100,28 +135,34 @@ export class InspecteurCdp implements OutilsDevNavigateur {
   }
 
   private brancher(id: string, wc: WebContents): Inspection {
+    // Avant l'attachement : Runtime.enable et Log.enable rejouent les messages plus anciens, écartés par le tampon.
+    const depuis = Date.now();
     try {
       wc.debugger.attach("1.3");
     } catch (e) {
       if (this.occupe(wc)) throw new OutilsDevOccupes();
       throw e;
     }
-    const tampon = new TamponOnglet();
+    const tampon = new TamponOnglet({ depuis });
     const ecouteurs = new Set<Ecouteur>();
-    // Même site : les messages restent, marqués ; autre site : ils ne valent plus rien. L'origine retenue reste
-    // l'ancienne, pour que l'appel suivant signale le changement de site.
+    // Même site : les messages restent, marqués. Autre site : ils ne valent plus rien, et rien n'est plus retenu jusqu'au
+    // prochain appel, qui signale le changement de site.
     const navigue = (url: string) => {
+      if (inspection.souillee) return;
       const org = origineDe(url);
       if (inspection.origine === null) inspection.origine = org;
       else if (org === inspection.origine) tampon.rechargement();
-      else tampon.vider();
+      else {
+        tampon.vider();
+        inspection.souillee = true;
+      }
     };
     const message = (_e: unknown, methode: string, params: any, sessionId?: string) => {
       if (sessionId) return; // cibles filles (workers…) : seul le cadre principal compte
       // Dans le flux du protocole (et non à « did-navigate », qui arrive après les premiers messages de la nouvelle
       // page) : la marque du rechargement précède ce que la page rechargée écrit.
-      if (methode === "Page.frameNavigated" && !params?.frame?.parentId) navigue(String(params.frame.url ?? ""));
-      tampon.evenement(methode, params);
+      if (cadrePrincipal(methode, params)) navigue(String(params.frame.url ?? ""));
+      if (!inspection.souillee) tampon.evenement(methode, params);
       for (const f of [...ecouteurs]) f(methode, params);
     };
     const detache = () => {
@@ -134,13 +175,19 @@ export class InspecteurCdp implements OutilsDevNavigateur {
     const envoyer = (m: string) => wc.debugger.sendCommand(m);
     const pret = Promise.all([envoyer("Runtime.enable"), envoyer("Log.enable"), envoyer("Network.enable"), envoyer("Page.enable")]).then(() => {});
     pret.catch(() => {});
+    let terminer: (raison: Error) => void = () => {};
+    const fin = new Promise<never>((_, ko) => (terminer = ko));
+    fin.catch(() => {});
     const inspection: Inspection = {
       wc,
       tampon,
       origine: origineDe(wc.getURL()),
+      souillee: false,
       pret,
       ecouteurs,
       lourd: Promise.resolve(),
+      fin,
+      terminer,
       debrancher: () => {
         wc.debugger.removeListener("message", message);
         wc.debugger.removeListener("detach", detache);
@@ -149,6 +196,21 @@ export class InspecteurCdp implements OutilsDevNavigateur {
     };
     this.inspections.set(id, inspection);
     return inspection;
+  }
+
+  /**
+   * L'inspection doit valoir pour la page affichée : si le cadre principal a changé de site depuis l'attachement (ou
+   * pendant l'appel), les tampons repartent de zéro sur le nouveau site et l'appel échoue.
+   */
+  private verifierSite(i: Inspection): void {
+    const org = origineDe(i.wc.getURL());
+    if (!i.souillee && i.origine === null) i.origine = org;
+    else if (i.souillee || org !== i.origine) {
+      i.tampon.vider();
+      i.origine = org;
+      i.souillee = false;
+      throw new Error(TEXTE_SITE_CHANGE);
+    }
   }
 
   /** L'inspection de l'onglet, attachée au besoin, sur le site où elle a commencé. */
@@ -160,7 +222,7 @@ export class InspecteurCdp implements OutilsDevNavigateur {
     }
     this.suivreOccupation(wc);
     if (this.occupe(wc)) {
-      this.lacher(id);
+      this.lacher(id, new OutilsDevOccupes());
       throw new OutilsDevOccupes();
     }
     let i = this.inspections.get(id);
@@ -168,31 +230,34 @@ export class InspecteurCdp implements OutilsDevNavigateur {
     if (i && i.wc !== wc) this.lacher(id);
     i = this.inspections.get(id) ?? this.brancher(id, wc);
     try {
-      await i.pret;
+      await Promise.race([i.pret, i.fin]);
     } catch (e) {
       this.lacher(id);
+      if (this.occupe(wc)) throw new OutilsDevOccupes();
       throw e;
     }
-    const org = origineDe(wc.getURL());
-    if (i.origine === null) i.origine = org;
-    else if (org !== i.origine) {
-      i.tampon.vider();
-      i.origine = org;
-      throw new Error("L'onglet a changé de site.");
-    }
+    this.verifierSite(i);
     return i;
   }
 
-  private envoyer<T = any>(i: Inspection, methode: string, params?: object): Promise<T> {
-    return i.wc.debugger.sendCommand(methode, params) as Promise<T>;
+  /** Une commande du protocole ; elle échoue dès la fin de l'inspection (OutilsDevOccupes si l'utilisateur a ouvert ses outils). */
+  private async envoyer<T = any>(i: Inspection, methode: string, params?: object): Promise<T> {
+    try {
+      return await Promise.race([i.wc.debugger.sendCommand(methode, params) as Promise<T>, i.fin]);
+    } catch (e) {
+      if (this.occupe(i.wc)) throw new OutilsDevOccupes();
+      throw e;
+    }
   }
 
-  /** Le premier événement `methode` (ou rien au bout de `delaiMs`). */
-  private attendreEvenement(i: Inspection, methode: string, delaiMs: number): { promesse: Promise<void>; annuler: () => void } {
+  /** Le premier événement qui passe `filtre` (ou rien au bout de `delaiMs`). */
+  private attendreEvenement(i: Inspection, filtre: (methode: string, params: any) => boolean, delaiMs: number): { promesse: Promise<void>; annuler: () => void } {
     let annuler = () => {};
     const promesse = new Promise<void>((ok) => {
       const minuterie = setTimeout(fin, delaiMs);
-      const ecouteur: Ecouteur = (m) => m === methode && fin();
+      const ecouteur: Ecouteur = (m, p) => {
+        if (filtre(m, p)) fin();
+      };
       function fin() {
         clearTimeout(minuterie);
         i.ecouteurs.delete(ecouteur);
@@ -204,7 +269,7 @@ export class InspecteurCdp implements OutilsDevNavigateur {
     return { promesse, annuler };
   }
 
-  /** Enchaîne les travaux lourds d'un onglet (profils, instantanés). */
+  /** Enchaîne les travaux lourds d'un onglet (profils, instantanés) ; `f` est le travail dans la page, sans abandon. */
   private enFile<T>(i: Inspection, f: () => Promise<T>): Promise<T> {
     const suite = i.lourd.then(f, f);
     i.lourd = suite.catch(() => {});
@@ -240,75 +305,57 @@ export class InspecteurCdp implements OutilsDevNavigateur {
   ): Promise<{ profil: ProfilCpu; metriques: Record<string, number> }> {
     verifierSignal(signal);
     const i = await this.assurer(id);
-    return this.enFile(i, async () => {
-      verifierSignal(signal);
-      let demarre = false;
+    const travail = this.enFile(i, async () => {
+      verifierSignal(signal); // abandonné dans la file : rien n'a commencé
+      await this.envoyer(i, "Profiler.enable");
+      await this.envoyer(i, "Performance.enable");
+      await this.envoyer(i, "Profiler.start");
       let arrete = false;
-      /** Arrête le profileur une seule fois, s'il tourne (abandon). */
-      const arreter = () => {
-        if (!demarre || arrete) return;
-        arrete = true;
-        void this.envoyer(i, "Profiler.stop").catch(() => {});
-      };
-      const travail = async () => {
-        await this.envoyer(i, "Profiler.enable");
-        await this.envoyer(i, "Performance.enable");
-        await this.envoyer(i, "Profiler.start");
-        demarre = true;
-        try {
-          // Levé pendant le démarrage : ses écouteurs ne seraient jamais appelés.
-          verifierSignal(signal);
-          if (o.recharger) {
-            const charge = this.attendreEvenement(i, "Page.loadEventFired", DELAI_CHARGEMENT_MS);
-            signal.addEventListener("abort", charge.annuler, { once: true });
-            await this.envoyer(i, "Page.reload");
-            await charge.promesse;
-          } else {
-            const duree = Math.min(Math.max(0, o.dureeMs ?? DUREE_PROFIL_MS), DUREE_PROFIL_MAX_MS);
-            await new Promise<void>((ok) => {
-              const minuterie = setTimeout(ok, duree);
-              signal.addEventListener("abort", () => (clearTimeout(minuterie), ok()), { once: true });
-            });
-          }
-          verifierSignal(signal);
-          arrete = true;
-          const { profile } = await this.envoyer<{ profile: ProfilCpu }>(i, "Profiler.stop");
-          const { metrics } = await this.envoyer<{ metrics: { name: string; value: number }[] }>(i, "Performance.getMetrics");
-          return { profil: profile, metriques: Object.fromEntries(metrics.map((m) => [m.name, m.value])) };
-        } finally {
-          if (signal.aborted) arreter();
+      try {
+        verifierSignal(signal);
+        const stop = interruption(i, signal);
+        if (o.recharger) {
+          const charge = this.attendreEvenement(i, (m) => m === "Page.loadEventFired", DELAI_CHARGEMENT_MS);
+          await this.envoyer(i, "Page.reload");
+          await Promise.race([charge.promesse, stop]);
+          charge.annuler();
+        } else {
+          await pause(Math.min(Math.max(0, o.dureeMs ?? DUREE_PROFIL_MS), DUREE_PROFIL_MAX_MS), stop);
         }
-      };
-      return sousSignal(travail(), signal, arreter);
+        verifierSignal(signal);
+        arrete = true;
+        const { profile } = await this.envoyer<{ profile: ProfilCpu }>(i, "Profiler.stop");
+        const { metrics } = await this.envoyer<{ metrics: { name: string; value: number }[] }>(i, "Performance.getMetrics");
+        return { profil: profile, metriques: Object.fromEntries(metrics.map((m) => [m.name, m.value])) };
+      } finally {
+        // Abandon ou erreur : le profileur est arrêté avant que la file passe au suivant.
+        if (!arrete) await this.envoyer(i, "Profiler.stop").catch(() => {});
+      }
     });
+    return sousSignal(travail, signal);
   }
 
   async instantaneMemoire(id: string, signal: AbortSignal): Promise<string> {
     verifierSignal(signal);
     const i = await this.assurer(id);
-    return this.enFile(i, async () => {
+    // Le protocole ne sait pas interrompre un instantané : abandonné, il va à son terme dans la file, et ses morceaux
+    // (reçus par son propre écouteur) sont jetés.
+    const travail = this.enFile(i, async () => {
       verifierSignal(signal);
       const morceaux: string[] = [];
       const ecouteur: Ecouteur = (m, p) => {
         if (m === "HeapProfiler.addHeapSnapshotChunk") morceaux.push(p.chunk);
       };
       i.ecouteurs.add(ecouteur);
-      // Le protocole ne sait pas interrompre un instantané : à l'abandon, ses morceaux sont ignorés.
-      const arreter = () => i.ecouteurs.delete(ecouteur);
       try {
-        await sousSignal(
-          (async () => {
-            await this.envoyer(i, "HeapProfiler.enable");
-            await this.envoyer(i, "HeapProfiler.takeHeapSnapshot", { reportProgress: false });
-          })(),
-          signal,
-          arreter,
-        );
+        await this.envoyer(i, "HeapProfiler.enable");
+        await this.envoyer(i, "HeapProfiler.takeHeapSnapshot", { reportProgress: false });
         return morceaux.join("");
       } finally {
-        arreter();
+        i.ecouteurs.delete(ecouteur);
       }
     });
+    return sousSignal(travail, signal);
   }
 
   async executer(id: string, code: string, signal: AbortSignal): Promise<ResultatJs> {
@@ -336,7 +383,8 @@ export class InspecteurCdp implements OutilsDevNavigateur {
             returnByValue: true,
           });
           if (!parValeur.exceptionDetails && "value" in parValeur.result) return { valeur: valeurJson(parValeur.result) };
-        } catch {
+        } catch (e) {
+          if (e instanceof OutilsDevOccupes) throw e;
           // non sérialisable (cycle, nœud du DOM…) : aperçu textuel
         }
         return { valeur: resultat.description ?? String(resultat.type) };
@@ -344,13 +392,26 @@ export class InspecteurCdp implements OutilsDevNavigateur {
         void this.envoyer(i, "Runtime.releaseObjectGroup", { objectGroup: groupe }).catch(() => {});
       }
     })();
-    return sousSignal(evaluation, signal);
+    // Abandon : une boucle sans fin dans la page est interrompue (au mieux).
+    const r = await sousSignal(evaluation, signal, () => void this.envoyer(i, "Runtime.terminateExecution").catch(() => {}));
+    // Le code a pu faire naviguer la page vers un autre site : sa réponse ne vaut plus.
+    this.verifierSite(i);
+    return r;
   }
 
   async recharger(id: string, sansCache: boolean): Promise<void> {
-    const { wc } = await this.assurer(id);
-    if (sansCache) wc.reloadIgnoringCache();
-    else wc.reload();
+    const i = await this.assurer(id);
+    const navigation = this.attendreEvenement(i, cadrePrincipal, DELAI_NAVIGATION_MS);
+    if (sansCache) i.wc.reloadIgnoringCache();
+    else i.wc.reload();
+    await Promise.race([navigation.promesse, i.fin.catch(() => {})]);
+    navigation.annuler();
+    if (this.inspections.get(id) !== i) {
+      if (this.occupe(i.wc)) throw new OutilsDevOccupes();
+      return;
+    }
+    // Une redirection du serveur a pu mener ailleurs.
+    this.verifierSite(i);
   }
 }
 

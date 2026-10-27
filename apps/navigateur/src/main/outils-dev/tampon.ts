@@ -61,13 +61,17 @@ export class TamponOnglet {
   private readonly debuts = new Map<string, number>();
   private readonly maxConsole: number;
   private readonly maxReseau: number;
+  private readonly depuis: number;
 
-  constructor(o: { maxConsole?: number; maxReseau?: number } = {}) {
+  /** `depuis` : heure de l'attachement (ms) ; les messages plus anciens, rejoués par le protocole, sont écartés. */
+  constructor(o: { maxConsole?: number; maxReseau?: number; depuis?: number } = {}) {
     this.maxConsole = o.maxConsole ?? 1000;
     this.maxReseau = o.maxReseau ?? 500;
+    this.depuis = o.depuis ?? -Infinity;
   }
 
   private ajouter(m: MessageConsole): void {
+    if (m.horodatage < this.depuis) return;
     this.messages.push({ ...m, texte: tronquer(m.texte), ...(m.pile !== undefined ? { pile: tronquer(m.pile) } : {}) });
     if (this.messages.length > this.maxConsole) this.messages.splice(0, this.messages.length - this.maxConsole);
   }

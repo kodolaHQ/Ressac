@@ -66,6 +66,9 @@ const devtools = (app: ElectronApplication, action: "ouvrir" | "fermer" | "ouver
 
 test("appli construite : lire_console renvoie le console.log et l'erreur de la page, sans demande", async () => {
   const { fenetre, racine, page, fermer } = await demarrer();
+  // Le premier appel attache : seuls les messages écrits ensuite comptent (ceux d'avant, rejoués par le protocole, non).
+  expect(await outil(racine, "lire_console")).not.toContain("bonjour de la page");
+  await page.evaluate(() => document.getElementById("parler")!.click());
   await expect.poll(() => outil(racine, "lire_console")).toContain("[log] bonjour de la page");
   await page.evaluate(() => document.getElementById("boum")!.click());
   await expect.poll(() => outil(racine, "lire_console")).toContain("[error] Uncaught Error: boum");
@@ -83,9 +86,10 @@ test("appli construite : executer_js renvoie document.title ; recharger garde le
   // Une valeur non sérialisable revient en aperçu ; une exception avec sa pile.
   expect(await outil(racine, "executer_js", { code: "window" })).toBe("Window");
   expect(await outil(racine, "executer_js", { code: "(function f() { throw new Error('raté') })()" })).toMatch(/^Exception : Error: raté\n\s+at f/);
+  await outil(racine, "executer_js", { code: "document.getElementById('parler').click()" });
   await expect.poll(() => outil(racine, "lire_console")).toContain("bonjour de la page");
   expect(await outil(racine, "recharger")).toBe("Onglet app:essai rechargé.");
-  await expect.poll(() => outil(racine, "lire_console")).toMatch(/bonjour de la page[\s\S]*— page rechargée —[\s\S]*bonjour de la page/);
+  await expect.poll(() => outil(racine, "lire_console")).toMatch(/bonjour de la page[\s\S]*— page rechargée —[\s\S]*page chargée/);
   // La requête de la page rechargée, avec sa réponse.
   await expect.poll(() => outil(racine, "lire_reseau", { filtre: "texte.html" })).toMatch(/GET · 200 · http:\/\/localhost:1528\d\/texte\.html/);
   await fermer();
@@ -93,7 +97,6 @@ test("appli construite : executer_js renvoie document.title ; recharger garde le
 
 test("appli construite : profiler_performances écrit un fichier sous projets/<dossier>/.webaios/profilage", async () => {
   const { racine, fermer } = await demarrer();
-  await expect.poll(() => outil(racine, "lire_console")).toContain("bonjour de la page");
   const r = await outil(racine, "profiler_performances", { duree_s: 0.5 });
   const chemin = /Profil : (\/workspace\/projets\/essai\/\.webaios\/profilage\/\S+\.cpuprofile)/.exec(r)?.[1];
   expect(chemin, r).toBeDefined();
@@ -107,7 +110,7 @@ test("appli construite : profiler_performances écrit un fichier sous projets/<d
 
 test("L'utilisateur ouvre les DevTools (wc.openDevTools() via app.evaluate) : lire_console renvoie « Les outils de développement de l'utilisateur sont ouverts sur cet onglet. » et les DevTools restent ouverts", async () => {
   const { app, racine, fermer } = await demarrer();
-  await expect.poll(() => outil(racine, "lire_console")).toContain("bonjour de la page");
+  expect(await outil(racine, "executer_js", { code: "1 + 1" })).toBe("2"); // l'agent est attaché
   await devtools(app, "ouvrir");
   await expect.poll(() => devtools(app, "ouverts")).toBe(true);
   await expect.poll(() => outil(racine, "lire_console")).toBe("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");

@@ -1,8 +1,12 @@
 <!doctype html><title>Console</title>
+<button id="parler" onclick="parler()">Parler</button>
 <button id="boum" onclick="boum()">Boum</button>
 <script>
-  console.log("bonjour de la page");
-  console.warn("attention");
+  console.log("page chargée");
+  function parler() {
+    console.log("bonjour de la page");
+    console.warn("attention");
+  }
   function boum() {
     throw new Error("boum");
   }

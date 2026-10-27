@@ -67,6 +67,16 @@ describe("console", () => {
     expect(t.console()[0]!.texte).toBe(`${"x".repeat(2000)}… [tronqué]`);
   });
 
+  test("les messages antérieurs à l'attachement, rejoués par le protocole, sont écartés", () => {
+    const t = new TamponOnglet({ depuis: 1000 });
+    log(t, "log", "rejoué", 999);
+    t.evenement("Runtime.exceptionThrown", { timestamp: 500, exceptionDetails: { text: "Uncaught", exception: { description: "Error: vieille" } } });
+    t.evenement("Log.entryAdded", { entry: { level: "error", text: "vieux", timestamp: 10 } });
+    log(t, "log", "nouveau", 1000);
+    t.evenement("Log.entryAdded", { entry: { level: "warning", text: "récent", timestamp: 1001 } });
+    expect(t.console().map((m) => m.texte)).toEqual(["nouveau", "récent"]);
+  });
+
   test("rechargement() insère « — page rechargée — »", () => {
     const t = new TamponOnglet();
     log(t, "log", "avant");
