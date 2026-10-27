@@ -85,6 +85,9 @@ function escalade(cibles: string): string[] {
 const marques = (motif: string) =>
   `for d in /proc/[0-9]*; do grep -qzx '${motif}' "$d/environ" 2>/dev/null && echo "\${d#/proc/}"; done`;
 
+/** Un texte lu tel quel par grep (expression de base) : « my.app » ne vise pas « myxapp ». */
+const litteral = (texte: string) => texte.replace(/[\\.*[\]^$]/g, "\\$&");
+
 /**
  * Arrête la session `id` dont le PID est noté dans `f` : son groupe (l'agent et ce qu'il a lancé), et tout processus
  * qui porte sa marque (un serveur de démo détaché par l'agent).
@@ -241,7 +244,7 @@ export class Atelier {
 
   /** Arrête l'appli `dossier` : tout processus qui porte sa marque, même détaché du shell qui l'a lancée. */
   async arreterApplication(dossier: string): Promise<void> {
-    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${dossierApplication(dossier)}`)).join("\n")], DELAI_SONDE_MS);
+    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${litteral(dossierApplication(dossier))}`)).join("\n")], DELAI_SONDE_MS);
   }
 
   /** Au lancement du navigateur : les applis d'une vie précédente n'ont plus personne pour les suivre. */

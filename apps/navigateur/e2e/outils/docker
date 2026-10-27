@@ -32,7 +32,8 @@ const fichierApp = (dossier) => join(env.WEBAIOS_RACINE, `faux-docker-app-${doss
 
 /** Tue le groupe de chaque appli visée par un script d'arrêt (`WEBAIOS_APP=<dossier>` ou `WEBAIOS_APP=.*`). */
 function arreterApplications(script) {
-  const motif = /WEBAIOS_APP=(\.\*|[A-Za-z0-9._-]+)/.exec(script)?.[1];
+  // Le point d'un nom de dossier est échappé pour grep (`my\.app`).
+  const motif = /WEBAIOS_APP=(\.\*|(?:[A-Za-z0-9_-]|\\\.)+)/.exec(script)?.[1]?.replaceAll("\\.", ".");
   if (!motif) return;
   const fichiers =
     motif === ".*"

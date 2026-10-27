@@ -266,3 +266,16 @@ test("arreterApplicationsOrphelines vise WEBAIOS_APP=.*", async () => {
   expect(script).toContain("WEBAIOS_APP=.*");
   expect(script).not.toContain("WEBAIOS_SESSION");
 });
+
+test("arreterApplication : le point d'un nom de dossier n'est pas un joker de grep", async () => {
+  const { executer, appels } = executeurFactice([]);
+  await new Atelier({ chemins, docker: "docker", executer }).arreterApplication("my.app");
+  const script = appels.find((x) => x.args[0] === "exec")!.args[4]!;
+  const motif = /grep -qzx '([^']*)'/.exec(script)![1]!;
+  expect(motif).toBe("WEBAIOS_APP=my\\.app");
+  // Le motif tel que grep le lit : « my.app » est visé, « myxapp » ne l'est pas.
+  const vise = (valeur: string) =>
+    new Promise<boolean>((ok) => execFile("sh", ["-c", `printf '%s' "$1" | grep -qx "$2"`, "sh", valeur, motif], (e) => ok(!e)));
+  expect(await vise("WEBAIOS_APP=my.app")).toBe(true);
+  expect(await vise("WEBAIOS_APP=myxapp")).toBe(false);
+});
