@@ -203,6 +203,7 @@ export function demarrerApplications(o: {
     await fs.rm(cible, { recursive: true, force: true });
     await session.fromPartition(partitionApplication(dossier)).clearStorageData();
     memoire.oublier(dossier);
+    gestionnaire.oublier(dossier);
     o.diffuser();
   }
 

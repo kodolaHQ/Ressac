@@ -305,6 +305,15 @@ export class GestionnaireApplications {
     l.processus?.tuer();
   }
 
+  /** Projet supprimé : son état (une erreur, un port) ne doit pas réapparaître sur un projet recréé sous ce nom. */
+  oublier(dossier: string): void {
+    const s = this.suivis.get(dossier);
+    // Un lancement en cours garde son état : c'est à l'arrêt de le finir.
+    if (!s || s.lancement) return;
+    this.suivis.delete(dossier);
+    this.surChange();
+  }
+
   async toutArreter(): Promise<void> {
     const dossiers = new Set([...this.suivis.keys(), ...this.files.keys()]);
     await Promise.all([...dossiers].map((d) => this.arreter(d)));

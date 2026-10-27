@@ -289,6 +289,17 @@ test("sans fiche ou dossier inconnu : lancer refuse", async () => {
   expect(await g.liste()).toMatchObject([{ dossier: "brut", type: "sans-fiche", sansFiche: "pas de webaios.json", etat: "arretee" }]);
 });
 
+test("oublier : un projet recréé sous le même nom ne montre plus l'ancienne erreur", async () => {
+  const c = await espace();
+  const { g } = preparer({ chemins: c, info: { code: 1 } });
+  expect(await g.lancer("todo")).toMatchObject({ etat: "erreur" });
+  g.oublier("todo");
+  expect(g.etatDe("todo")).toBe("arretee");
+  const [todo] = await g.liste();
+  expect(todo).toMatchObject({ etat: "arretee" });
+  expect(todo!.erreur).toBeUndefined();
+});
+
 test("docker absent : erreur Docker n'est pas lancé", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, info: { code: 1 } });

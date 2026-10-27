@@ -428,6 +428,25 @@ test("un dossier au nom non pris en charge se débogue et se supprime", async ()
   await fermer();
 });
 
+test("un projet recréé après Supprimer ne garde pas l'erreur de l'ancien", async () => {
+  const racine = nouvelleRacine();
+  racines.push(racine);
+  ecrireProjet(racine, "essai", { manifeste: { nom: "Essai" }, serveur: "plante" });
+  const { app, fenetre, fermer } = await lancer({ racine, env: ENV });
+  await menu(app, "applications");
+  const ligne = fenetre.getByTestId("appli-essai");
+  await ligne.getByRole("button", { name: "Lancer" }).click();
+  await expect(ligne).toHaveAttribute("data-etat", "erreur", { timeout: 10_000 });
+  await plusDActions(fenetre, "essai");
+  await fenetre.getByRole("menuitem", { name: "Supprimer" }).click();
+  await fenetre.getByTestId("confirmation-suppression").getByRole("button", { name: "Supprimer" }).click();
+  await expect(ligne).toHaveCount(0);
+  ecrireProjet(racine, "essai", { manifeste: { nom: "Essai" } });
+  await expect(ligne).toBeVisible({ timeout: 10_000 });
+  await expect(ligne).toHaveAttribute("data-etat", "arretee");
+  await fermer();
+});
+
 test("Supprimer annule un lancement qui attend encore Docker", async () => {
   test.setTimeout(45_000);
   // `docker info` répond en 8 s : le lancement demandé reste « arretee » pendant ce temps.
