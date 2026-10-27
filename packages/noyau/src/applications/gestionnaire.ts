@@ -124,12 +124,13 @@ export class GestionnaireApplications {
 
   /** À appeler une fois par vie du navigateur : les applis d'une vie précédente sont arrêtées. */
   async demarrer(): Promise<void> {
+    // D'abord la surveillance : le ménage attend Docker, parfois longtemps, et la page doit suivre les projets d'ici là.
+    this.finSurveillance ??= surveillerProjets(this.chemins, () => this.surChange());
     // Noté tout de suite : un lancement demandé pendant ce ménage l'attend.
     this.menage = (async () => {
       if ((await this.atelier.etat()) === "demarre") await this.atelier.arreterApplicationsOrphelines();
     })();
     await this.menage;
-    this.finSurveillance ??= surveillerProjets(this.chemins, () => this.surChange());
   }
 
   async arreterSurveillance(): Promise<void> {

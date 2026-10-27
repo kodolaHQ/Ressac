@@ -230,6 +230,20 @@ test("un lancement pendant le ménage des orphelins attend sa fin", async () => 
   expect(processus).toHaveLength(1);
 });
 
+test("la surveillance des projets n'attend pas le ménage des orphelins (Docker qui démarre)", async () => {
+  const c = await espace();
+  const { g, atelier, etats } = preparer({ chemins: c });
+  const menage = differe();
+  vi.spyOn(atelier, "arreterApplicationsOrphelines").mockReturnValue(menage.promesse);
+  const demarrage = g.demarrer();
+  await attendre(400);
+  await mkdir(join(c.projets, "nouveau"), { recursive: true });
+  await writeFile(join(c.projets, "nouveau", "webaios.json"), '{"type":"poc","lancement":"x"}');
+  await jusqua(() => etats.length > 0);
+  menage.resoudre();
+  await demarrage;
+});
+
 test("toutArreter annule aussi un lancement en file : rien n'est lancé après", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });

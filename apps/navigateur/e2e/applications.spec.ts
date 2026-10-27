@@ -277,8 +277,7 @@ test("Lancer depuis la page : En marche, port affiché, fenêtre ouverte ; Arrê
 test("un manifeste qui apparaît met la page à jour en direct", async () => {
   const { fenetre, racine, fermer } = await ouvrirPage();
   await expect(lignes(fenetre)).toHaveCount(3);
-  // La surveillance des projets commence après le ménage des orphelins.
-  await expect.poll(() => arrets(racine), { timeout: 10_000 }).toContain("WEBAIOS_APP=.*");
+  // Le temps que la surveillance des projets soit prête.
   await new Promise((r) => setTimeout(r, 500));
   ecrireProjet(racine, "nouveau", { manifeste: { nom: "Nouveau" } });
   await expect(fenetre.getByTestId("appli-nouveau")).toBeVisible({ timeout: 10_000 });
