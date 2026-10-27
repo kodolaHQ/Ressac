@@ -1,7 +1,7 @@
 <script lang="ts">
   import { URL_APPLICATIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
   import Applications from "./Applications.svelte";
-  import { api, demandes } from "../etat.svelte";
+  import { acces, api, demandes } from "../etat.svelte";
   import DemandePermission from "./DemandePermission.svelte";
   import { recherche } from "./recherche.svelte";
   import RechercheDansPage from "./RechercheDansPage.svelte";
@@ -25,7 +25,8 @@
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
-    const masquer = panneau !== null;
+    // Idem pour la bulle d'accès en mode compact, où la barre latérale s'affiche par-dessus la page.
+    const masquer = panneau !== null || (acces.bullesOuvertes > 0 && fenetre?.compact === true);
     const envoyer = () => {
       const r = zone.getBoundingClientRect();
       api.bornesContenu({ x: r.x, y: r.y, largeur: masquer ? 0 : r.width, hauteur: masquer ? 0 : r.height });

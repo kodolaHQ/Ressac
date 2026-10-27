@@ -1,6 +1,6 @@
 import type { EtatAccesOnglet } from "@webaios/noyau";
 import type { ApiWebaios } from "../commun/api";
-import type { DemandeEnAttente, EtatFenetre, EtatNavigateur, Telechargement } from "../commun/modele";
+import type { DemandeEnAttente, EtatAcces, EtatFenetre, EtatNavigateur, Telechargement } from "../commun/modele";
 
 declare global {
   interface Window {
@@ -42,24 +42,20 @@ void api.permissions.enAttente().then((liste) => {
   demandes.liste = liste;
 });
 
-/** Accès de l'agent aux onglets (id d'onglet → ce qu'il peut lire ou faire). */
-export const acces = $state<{ liste: Record<string, EtatAccesOnglet>; agent: string }>({ liste: {}, agent: "L'agent" });
+/** Accès de l'agent aux onglets (id d'onglet → ce qu'il peut lire ou faire), et nom de l'agent qui les détient. */
+export const acces = $state<{ liste: Record<string, EtatAccesOnglet>; agent: string; bullesOuvertes: number }>({ liste: {}, agent: "L'agent", bullesOuvertes: 0 });
 
+let diffuse = false; // une diffusion est plus récente que la réponse initiale : celle-ci est ignorée
+const appliquerAcces = (e: EtatAcces) => {
+  acces.liste = e.onglets;
+  acces.agent = e.agent;
+};
 api.surAcces((e) => {
-  acces.liste = e;
+  diffuse = true;
+  appliquerAcces(e);
 });
 void api.acces.etat().then((e) => {
-  acces.liste = e;
-});
-
-/** Nom de l'agent du profil choisi, pour la bulle d'accès. */
-$effect.root(() => {
-  $effect(() => {
-    const profil = etat.valeur?.reglages.profilAgent;
-    void api.agent.profils().then((l) => {
-      acces.agent = l.find((p) => p.id === profil)?.nom ?? "L'agent";
-    });
-  });
+  if (!diffuse) appliquerAcces(e);
 });
 
 /** L'accès de l'agent à cet onglet, s'il lit la page ou détient un droit (un outil en cours seul ne montre rien). */

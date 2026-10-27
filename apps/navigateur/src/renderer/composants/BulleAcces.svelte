@@ -4,7 +4,7 @@
 
   let { id, etat, ancre }: { id: string; etat: EtatAccesOnglet; ancre: HTMLElement } = $props();
 
-  const LARGEUR = 260;
+  const MARGE = 8;
   const DROITS: Record<DroitDev, { icone: string; nom: string }> = {
     console: { icone: "👁", nom: "Console et erreurs" },
     reseau: { icone: "👁", nom: "Réseau" },
@@ -12,14 +12,34 @@
     agir: { icone: "⚡", nom: "Agir sur la page" },
   };
 
-  // Posée sous la pastille, sans sortir de la fenêtre ; fixe pour ne pas être rognée par la liste d'onglets.
+  // La page web (une vue native) couvre toujours l'interface : la bulle reste dans la colonne de la barre latérale,
+  // sous la pastille, et ne dépasse pas le bas de la fenêtre. Elle se replace si la fenêtre change de taille.
+  /** Déplace la bulle sous <body> : un ancêtre transformé ou rogné ferait de lui son repère `fixed`. */
+  function souscorps(noeud: HTMLElement) {
+    document.body.append(noeud);
+    return { destroy: () => noeud.remove() };
+  }
+  let hauteur = $state(0);
+  let fenetreW = $state(window.innerWidth);
+  let fenetreH = $state(window.innerHeight);
   const place = $derived.by(() => {
+    void fenetreW;
+    void fenetreH;
+    const colonne = ancre.closest("aside")?.getBoundingClientRect();
     const r = ancre.getBoundingClientRect();
-    return { left: Math.max(8, Math.min(r.right - LARGEUR, window.innerWidth - LARGEUR - 8)), top: r.bottom + 6 };
+    const gauche = (colonne?.left ?? 0) + MARGE;
+    const largeur = Math.max(120, (colonne?.width ?? 240) - 2 * MARGE);
+    return { left: gauche, width: largeur, top: Math.max(MARGE, Math.min(r.bottom + 6, fenetreH - hauteur - MARGE)) };
+  });
+  $effect(() => {
+    acces.bullesOuvertes++;
+    return () => acces.bullesOuvertes--;
   });
 </script>
 
-<div class="bulle" data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{LARGEUR}px">
+<svelte:window bind:innerWidth={fenetreW} bind:innerHeight={fenetreH} />
+
+<div class="bulle" use:souscorps bind:clientHeight={hauteur} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
   <h4>{acces.agent} a accès à cet onglet</h4>
   <ul>
     {#if etat.lecture}
@@ -44,6 +64,6 @@
   p { margin: 0 0 8px; color: var(--texte-doux); font-size: 11.5px; }
   button { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 11.5px; font-weight: 600; }
   button:hover { background: var(--fond-survol); }
-  .couper { display: block; width: 100%; padding: 5px; background: #c2410c; border-color: #c2410c; color: white; font-size: 12px; }
-  .couper:hover { background: #ea580c; }
+  .couper { display: block; width: 100%; padding: 5px; background: var(--acces-couper); border-color: var(--acces-couper); color: white; font-size: 12px; }
+  .couper:hover { background: var(--acces-couper-survol); }
 </style>

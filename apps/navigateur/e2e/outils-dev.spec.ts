@@ -265,3 +265,31 @@ test("Couper l'accès : la pastille disparaît, lire_onglet redemande", async ()
   await appel;
   await fermer();
 });
+
+test("la bulle d'accès ne rencontre pas la vue de la page (une vue native couvre l'interface) et reste dans la barre latérale", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecOngletTiers();
+  await accorder(fenetre, racine, id, ["console", "reseau", "performances", "agir"]);
+  const vue = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows())
+        for (const v of w.contentView.children as unknown as { getBounds(): { x: number; y: number; width: number; height: number }; webContents: { getURL(): string } }[])
+          if (v.webContents.getURL().includes("texte.html")) return v.getBounds();
+      return null;
+    });
+  for (const pastille of [fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE), fenetre.locator("form").getByTestId(PASTILLE)]) {
+    await pastille.click();
+    const bulle = fenetre.getByTestId(BULLE);
+    await expect(bulle).toBeVisible();
+    const b = (await bulle.boundingBox())!;
+    const v = (await vue())!;
+    const barre = (await fenetre.getByTestId("barre-laterale").boundingBox())!;
+    expect(v.width).toBeGreaterThan(0);
+    const croise = b.x < v.x + v.width && b.x + b.width > v.x && b.y < v.y + v.height && b.y + b.height > v.y;
+    expect(croise, JSON.stringify({ b, v, barre })).toBe(false);
+    expect(b.x).toBeGreaterThanOrEqual(barre.x);
+    expect(b.x + b.width).toBeLessThanOrEqual(barre.x + barre.width);
+    await pastille.click();
+    await expect(bulle).toHaveCount(0);
+  }
+  await fermer();
+});

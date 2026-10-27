@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { Decision, Demande, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
+import type { Decision, Demande, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre } from "../commun/modele";
 import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
@@ -152,7 +152,10 @@ app.whenReady().then(async () => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
   };
   let diffusionAcces: NodeJS.Timeout | undefined;
-  const etatAcces = () => agent?.noyau()?.politique.etat() ?? {};
+  const etatAcces = (): EtatAcces => {
+    const noyau = agent?.noyau();
+    return { agent: noyau?.agent ?? "L'agent", onglets: noyau?.politique.etat() ?? {} };
+  };
   const telechargements = new Telechargements({
     dossier: process.env.WEBAIOS_TELECHARGEMENTS ?? app.getPath("downloads"),
     diffuser: (liste) => diffuser(CANAUX.telechargements, liste),

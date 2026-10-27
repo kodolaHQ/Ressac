@@ -1,7 +1,7 @@
 import { ipcMain, type IpcMainEvent } from "electron";
 import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, SchemaCouperAcces, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
-import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
-import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
+import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
+import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
@@ -48,7 +48,7 @@ export interface Gestionnaires {
   };
   accueil: { lire(): Promise<BlocAffiche[]>; ordonner(ordre: string[]): void; retirer(id: string): void };
   applications: { liste(): Promise<ListeApplications>; agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void };
-  acces: { etat(): Record<string, EtatAccesOnglet>; couper(id: IdOnglet, droit?: DroitDev): void };
+  acces: { etat(): EtatAcces; couper(id: IdOnglet, droit?: DroitDev): void };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */

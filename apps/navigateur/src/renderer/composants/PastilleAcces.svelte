@@ -9,7 +9,7 @@
 
   /** Un clic ailleurs (hors de la pastille et de sa bulle) ou Échap referme la bulle. */
   function dehors(e: PointerEvent) {
-    if (ouverte && !racine?.contains(e.target as Node)) ouverte = false;
+    if (ouverte && !racine?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="bulle-acces"]')) ouverte = false;
   }
 </script>
 
@@ -40,5 +40,8 @@
   .pastille[data-niveau="lecture"] { background: var(--acces-lecture-fond); color: var(--acces-lecture); }
   .pastille[data-niveau="agir"] { background: var(--acces-agir-fond); color: var(--acces-agir); }
   .pastille.pulse { animation: bat 1s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .pastille.pulse { animation: none; outline: 2px solid currentColor; outline-offset: 1px; }
+  }
   @keyframes bat { 50% { opacity: 0.35; } }
 </style>

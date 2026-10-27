@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, type Application, type DroitDev, type EtatAccesOnglet } from "@webaios/noyau";
-import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
+import { dossierValide, DROITS_DEV, type Application, type DroitDev } from "@webaios/noyau";
+import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
 
@@ -135,11 +135,11 @@ export interface ApiWebaios {
   };
   /** Accès de l'agent aux onglets (pastilles et bulle pour le couper). */
   acces: {
-    etat(): Promise<Record<IdOnglet, EtatAccesOnglet>>;
+    etat(): Promise<EtatAcces>;
     couper(id: IdOnglet, droit?: DroitDev): void;
   };
   /** L'accès de l'agent à un onglet a changé : l'état complet est rediffusé. */
-  surAcces(rappel: (e: Record<IdOnglet, EtatAccesOnglet>) => void): () => void;
+  surAcces(rappel: (e: EtatAcces) => void): () => void;
   /** Page d'accueil (dossier accueil/ de l'espace de l'agent). */
   accueil: {
     lire(): Promise<BlocAffiche[]>;

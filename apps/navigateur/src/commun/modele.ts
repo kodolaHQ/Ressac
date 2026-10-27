@@ -1,9 +1,15 @@
-import type { DroitDev } from "@webaios/noyau";
+import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
 
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
 export const URL_APPLICATIONS = "webaios://applications";
 
 export type IdOnglet = string;
+
+/** L'accès de l'agent aux onglets, avec le nom de l'agent qui le détient. */
+export interface EtatAcces {
+  agent: string;
+  onglets: Record<IdOnglet, EtatAccesOnglet>;
+}
 export type IdEspace = string;
 export type IdFenetre = string;
 export type MoteurRecherche = "google" | "duckduckgo" | "qwant";

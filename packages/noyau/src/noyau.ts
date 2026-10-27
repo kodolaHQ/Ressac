@@ -129,6 +129,8 @@ export function fichiersProfils(chemins: CheminsEspace): FichiersProfils {
 export interface Noyau {
   chemins: CheminsEspace;
   politique: PolitiqueAcces;
+  /** Nom de l'agent du profil de ce noyau (celui qui détient les accès). */
+  agent: string;
   etatAtelier(): Promise<EtatAtelier>;
   /** Nouvelle conversation : efface les autorisations. Signaler l'onglet courant (interactionUtilisateur) après. */
   ouvrirSessionAgent(o: { cols: number; rows: number }): Promise<SessionAgent>;
@@ -197,6 +199,7 @@ export async function creerNoyau(o: {
   return {
     chemins,
     politique,
+    agent: profil.nom,
     etatAtelier: () => atelier.etat(),
     async ouvrirSessionAgent({ cols, rows }) {
       const premier = demarrage;

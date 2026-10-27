@@ -17,6 +17,8 @@
   --acces-lecture-fond: #2d6cdf33;
   --acces-agir: #fbbf24;
   --acces-agir-fond: #f59e0b33;
+  --acces-couper: #c2410c;
+  --acces-couper-survol: #ea580c;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -36,6 +38,8 @@
     --acces-lecture-fond: #2d6cdf26;
     --acces-agir: #b45309;
     --acces-agir-fond: #f59e0b30;
+  --acces-couper: #c2410c;
+  --acces-couper-survol: #9a3412;
     color-scheme: light;
   }
 }
