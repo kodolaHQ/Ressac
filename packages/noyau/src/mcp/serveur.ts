@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { Application } from "../applications/gestionnaire.js";
 import type { PolitiqueAcces } from "../acces/politique.js";
 import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "./pont.js";
 
@@ -25,10 +26,26 @@ function urlWeb(url: string): boolean {
   }
 }
 
+/** Ce que le noyau fournit pour piloter les applications (le gestionnaire, côté navigateur). */
+export interface OutilsApplications {
+  lancer(dossier: string): Promise<Application>;
+  arreter(dossier: string): Promise<void>;
+  journal(dossier: string): Promise<string>;
+}
+
+/** Temps laissé à la fenêtre d'une application pour apparaître après le lancement. */
+const DELAI_ONGLET_APP_MS = 5000;
+
 /** Demandes d'autorisation en attente, par onglet : partagées entre requêtes pour ne poser la question qu'une fois. */
 type DemandesEnCours = Map<string, Promise<boolean>>;
 
-function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces, demandes: DemandesEnCours): McpServer {
+function creerServeurOutils(
+  pont: PontNavigateur,
+  politique: PolitiqueAcces,
+  demandes: DemandesEnCours,
+  applications?: OutilsApplications,
+  delaiOngletAppMs = DELAI_ONGLET_APP_MS,
+): McpServer {
   const serveur = new McpServer({ name: "webaios", version: "0.1.0" });
 
   async function onglet(id: string): Promise<OngletInfo> {
@@ -139,6 +156,48 @@ function creerServeurOutils(pont: PontNavigateur, politique: PolitiqueAcces, dem
     }),
   );
 
+  if (applications) {
+    const dossier = z.string();
+    serveur.registerTool(
+      "lancer_application",
+      {
+        description: "Lance le projet /workspace/projets/<dossier> d'après son webaios.json et ouvre sa fenêtre pour l'utilisateur.",
+        inputSchema: { dossier },
+      },
+      proteger(async ({ dossier }) => {
+        const app = await applications.lancer(dossier);
+        if (app.etat === "erreur") return texte(`Application ${dossier} en erreur : ${app.erreur ?? "inconnue"}`, true);
+        const url = `http://localhost:${app.port}`;
+        // La fenêtre s'ouvre juste après le lancement : on l'attend un peu, sans bloquer si elle ne vient pas.
+        const fin = Date.now() + delaiOngletAppMs;
+        let fenetre: OngletInfo | undefined;
+        for (;;) {
+          fenetre = (await pont.listerOnglets()).find((x) => x.application === dossier);
+          if (fenetre || Date.now() >= fin) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        if (!fenetre) return texte(`Application ${dossier} en marche sur ${url}.`);
+        politique.ongletOuvertParAgent(fenetre);
+        return texte(`Application ${dossier} en marche sur ${url} (onglet ${fenetre.id}).`);
+      }),
+    );
+
+    serveur.registerTool(
+      "arreter_application",
+      { description: "Arrête une application lancée par lancer_application.", inputSchema: { dossier } },
+      proteger(async ({ dossier }) => {
+        await applications.arreter(dossier);
+        return texte(`Application ${dossier} arrêtée.`);
+      }),
+    );
+
+    serveur.registerTool(
+      "journal_application",
+      { description: "Journal d'une application : à lire quand elle est en erreur.", inputSchema: { dossier } },
+      proteger(async ({ dossier }) => texte((await applications.journal(dossier)) || "Journal vide.")),
+    );
+  }
+
   return serveur;
 }
 
@@ -153,6 +212,9 @@ export async function demarrerServeurMcp(o: {
   jeton: string;
   hote?: string;
   port?: number;
+  applications?: OutilsApplications;
+  /** Attente de la fenêtre d'une application après son lancement (réglable pour les tests). */
+  delaiOngletAppMs?: number;
 }): Promise<{ port: number; urlConteneur: string; arreter(): Promise<void> }> {
   const attendu = Buffer.from(o.jeton);
   const demandes: DemandesEnCours = new Map();
@@ -161,7 +223,7 @@ export async function demarrerServeurMcp(o: {
     if (!jetonValide(req, attendu)) return res.writeHead(401).end();
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Mode sans état : un serveur et un transport neufs par requête.
-    const serveur = creerServeurOutils(o.pont, o.politique, demandes);
+    const serveur = creerServeurOutils(o.pont, o.politique, demandes, o.applications, o.delaiOngletAppMs);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

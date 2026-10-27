@@ -1,4 +1,6 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { Atelier } from "../src/conteneur/atelier.js";
+import { cheminsEspace } from "../src/chemins.js";
 import { existsSync } from "node:fs";
 import { cp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -127,4 +129,14 @@ test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
   const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "absent" }]]);
   noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, ressources: copie, executer });
   expect(await readFile(join(racine, "AGENTS.md"), "utf8")).toBe("# copie");
+});
+
+test("creerNoyau réutilise l'atelier fourni", async () => {
+  const racine = await dossierTemporaire();
+  const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "absent" }]]);
+  const atelier = new Atelier({ chemins: cheminsEspace(racine), executer });
+  const etat = vi.spyOn(atelier, "etat").mockResolvedValue("docker-absent");
+  noyau = await creerNoyau({ pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, atelier });
+  await noyau.etatAtelier();
+  expect(etat).toHaveBeenCalled();
 });

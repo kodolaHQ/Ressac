@@ -1,11 +1,29 @@
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, mkdir, readdir } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
 
 /** Dossier des modèles du paquet ; un navigateur qui embarque le noyau peut en fournir un autre. */
 export const MODELES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "modeles");
+
+/**
+ * Empreintes sha256 des anciennes versions du modèle AGENTS.md. Un AGENTS.md qui en a une est resté tel
+ * quel : il est remplacé par le modèle courant. À compléter à chaque nouvelle version du modèle.
+ */
+const ANCIENS_AGENTS = new Set([
+  "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
+  "fc35b4b096def3e0850796b6bf784947adb2092aad8f71da879865891fbb7a27",
+]);
+
+async function agentsRestePourAncien(chemin: string): Promise<boolean> {
+  try {
+    return ANCIENS_AGENTS.has(createHash("sha256").update(await readFile(chemin)).digest("hex"));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Fichier modèle → destination dans l'espace. Le contenu de départ de la page d'accueil n'est posé
@@ -27,15 +45,16 @@ async function correspondances(c: CheminsEspace, modeles: string): Promise<[stri
   return paires;
 }
 
-/** Crée l'espace de travail à partir des modèles, sans jamais écraser un fichier existant. */
+/** Crée l'espace de travail à partir des modèles, sans écraser un fichier existant (sauf un AGENTS.md d'un ancien modèle). */
 export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_DEFAUT): Promise<{ crees: string[] }> {
   const crees: string[] = [];
   for (const [modele, destination] of await correspondances(c, modeles)) {
-    if (existsSync(destination)) continue;
+    const miseAJour = modele === "AGENTS.md" && (await agentsRestePourAncien(destination));
+    if (existsSync(destination) && !miseAJour) continue;
     await mkdir(dirname(destination), { recursive: true });
     try {
       // COPYFILE_EXCL : si le fichier apparaît entre-temps, on ne l'écrase pas.
-      await copyFile(join(modeles, modele), destination, constants.COPYFILE_EXCL);
+      await copyFile(join(modeles, modele), destination, miseAJour ? 0 : constants.COPYFILE_EXCL);
       crees.push(destination);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;

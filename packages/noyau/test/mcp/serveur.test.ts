@@ -4,7 +4,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import type { OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { demarrerServeurMcp, genererJeton } from "../../src/mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsApplications } from "../../src/mcp/serveur.js";
+import type { Application } from "../../src/applications/gestionnaire.js";
 
 const github: OngletInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
 const gmail: OngletInfo = { id: "gmail", titre: "Gmail — Boîte de réception", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
@@ -196,4 +197,74 @@ test("onglet passé à un autre site pendant la question : « Autoriser » ne li
   const r = await client.callTool({ name: "lire_onglet", arguments: { id: "gmail" } });
   expect(texte(r)).toBe("Accès refusé par l'utilisateur à cet onglet.");
   expect(pont.appels.some((a) => a.methode === "lireTexte")).toBe(false);
+});
+
+// --- Outils des applications ---
+
+const appTodo: OngletInfo = { id: "app:todo", titre: "Todo", url: "http://localhost:5280/", espace: "perso", application: "todo" };
+
+function appFactice(r: Partial<Application>, appels: string[] = []): OutilsApplications {
+  return {
+    lancer: async (d) => (appels.push(`lancer ${d}`), { dossier: d, nom: d, type: "application", creeLe: "", etat: "en-marche", ...r }),
+    arreter: async (d) => void appels.push(`arreter ${d}`),
+    journal: async (d) => (appels.push(`journal ${d}`), "ligne 1\nligne 2"),
+  };
+}
+
+/** Relance le serveur avec des outils d'applications et un pont donné. */
+async function avecApplications(applications: OutilsApplications, onglets: OngletInfo[], delaiOngletAppMs = 100) {
+  await client.close();
+  await serveur.arreter();
+  pont = new PontFactice(onglets, { actif: null, autoriser: false });
+  politique = new PolitiqueAcces();
+  serveur = await demarrerServeurMcp({ pont, politique, jeton, applications, delaiOngletAppMs });
+  client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${jeton}` } },
+    }),
+  );
+}
+
+test("lancer_application : port et onglet, accès accordé", async () => {
+  await avecApplications(appFactice({ etat: "en-marche", port: 5280 }), [appTodo]);
+  const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
+  expect(texte(r)).toBe("Application todo en marche sur http://localhost:5280 (onglet app:todo).");
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "app:todo" } }))).toContain("Texte de Todo");
+  expect(demandes()).toBe(0);
+});
+
+test("lancer_application : sans onglet après le délai, texte sans onglet et aucun accès accordé", async () => {
+  await avecApplications(appFactice({ etat: "en-marche", port: 5280 }), [], 50);
+  const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
+  expect(texte(r)).toBe("Application todo en marche sur http://localhost:5280.");
+  expect(r.isError).toBeFalsy();
+});
+
+test("lancer_application en erreur : texte d'erreur et journal, erreur: true", async () => {
+  await avecApplications(appFactice({ etat: "erreur", erreur: "port occupé" }), []);
+  const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
+  expect(r.isError).toBe(true);
+  expect(texte(r)).toBe("Application todo en erreur : port occupé");
+});
+
+test("arreter_application", async () => {
+  const appels: string[] = [];
+  await avecApplications(appFactice({}, appels), []);
+  expect(texte(await client.callTool({ name: "arreter_application", arguments: { dossier: "todo" } }))).toBe("Application todo arrêtée.");
+  expect(appels).toEqual(["arreter todo"]);
+});
+
+test("journal_application", async () => {
+  await avecApplications(appFactice({}), []);
+  expect(texte(await client.callTool({ name: "journal_application", arguments: { dossier: "todo" } }))).toBe("ligne 1\nligne 2");
+  await avecApplications({ ...appFactice({}), journal: async () => "" }, []);
+  expect(texte(await client.callTool({ name: "journal_application", arguments: { dossier: "todo" } }))).toBe("Journal vide.");
+});
+
+test("sans applications : les outils n'existent pas", async () => {
+  const noms = (await client.listTools()).tools.map((t) => t.name);
+  expect(noms).not.toContain("lancer_application");
+  expect(noms).not.toContain("arreter_application");
+  expect(noms).not.toContain("journal_application");
 });

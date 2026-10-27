@@ -12,7 +12,7 @@ import { executeurParDefaut, type Executeur } from "./conteneur/executeur.js";
 import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { PontNavigateur } from "./mcp/pont.js";
-import { demarrerServeurMcp, genererJeton } from "./mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsApplications } from "./mcp/serveur.js";
 import { PlanificateurVeille } from "./veille/planificateur.js";
 
 export class ErreurAtelier extends Error {
@@ -42,6 +42,10 @@ export async function creerNoyau(o: {
   profilId?: string;
   /** Dossier contenant `modeles/` et `docker/` (par défaut, ceux du paquet). */
   ressources?: string;
+  /** Atelier partagé avec le navigateur (qui lance aussi les applications) ; à défaut, le noyau crée le sien. */
+  atelier?: Atelier;
+  /** Outils MCP des applications (lancer, arrêter, journal). */
+  applications?: OutilsApplications;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -53,7 +57,7 @@ export async function creerNoyau(o: {
 
   const politique = new PolitiqueAcces();
   const jeton = genererJeton();
-  const serveur = await demarrerServeurMcp({ pont: o.pont, politique, jeton });
+  const serveur = await demarrerServeurMcp({ pont: o.pont, politique, jeton, ...(o.applications ? { applications: o.applications } : {}) });
   try {
     await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
   } catch (e) {
@@ -63,7 +67,7 @@ export async function creerNoyau(o: {
 
   // La navigation ne doit jamais attendre Docker (spec §9) : la première construction d'image prend
   // des minutes, et un échec (port occupé…) ne concerne que l'agent.
-  const atelier = new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
+  const atelier = o.atelier ?? new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
   // Le conteneur se prépare dès le lancement. S'il échoue, la première session rend cet échec plutôt que de tout
   // reconstruire aussitôt ; les suivantes (Réessayer) tentent à nouveau. Réussi, il est revérifié (sonde rapide).
   // Avant toute session, les agents laissés par une app précédente sont arrêtés.

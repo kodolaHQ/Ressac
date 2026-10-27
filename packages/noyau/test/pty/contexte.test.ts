@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { prefixeContexte } from "../../src/pty/contexte.js";
+import { prefixeApplication, prefixeContexte } from "../../src/pty/contexte.js";
 
 test("préfixe exact", () => {
   expect(prefixeContexte("sveltejs/svelte", "https://github.com/sveltejs/svelte")).toBe(
@@ -33,4 +33,13 @@ test("caractères de contrôle C1 et séparateurs Unicode retirés aussi", () =>
 test("URL très longue tronquée à 300 + …", () => {
   const url = `https://x.test/${"q".repeat(1000)}`;
   expect(prefixeContexte("t", url)).toBe(`[contexte : t — ${url.slice(0, 300)}…] `);
+});
+
+test("prefixeApplication", () => {
+  expect(prefixeApplication({ nom: "Todo\r", dossier: "todo", sansFiche: false })).toBe(
+    "[application : Todo — /workspace/projets/todo — journal : /workspace/.webaios/journaux/todo.log] ",
+  );
+  expect(prefixeApplication({ nom: "x", dossier: "vieux", sansFiche: true })).toBe(
+    "[projet sans fiche webaios.json : /workspace/projets/vieux] ",
+  );
 });

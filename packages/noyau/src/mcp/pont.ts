@@ -3,6 +3,8 @@ export interface OngletInfo {
   titre: string;
   url: string;
   espace: string;
+  /** Dossier du projet, pour la fenêtre d'une application. */
+  application?: string;
 }
 
 /** Ce que le navigateur (Electron, extension…) fournit au noyau. */

@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
-import { initialiserEspace } from "../../src/espace/initialiser.js";
+import { initialiserEspace, MODELES_PAR_DEFAUT } from "../../src/espace/initialiser.js";
+import { createHash } from "node:crypto";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 const attendus = [
@@ -76,4 +77,21 @@ test("deux initialisations simultanées ne créent chaque fichier qu'une fois", 
   const tous = [...a.crees, ...b.crees];
   expect(new Set(tous).size).toBe(tous.length);
   expect(tous.length).toBe(attendus.length);
+});
+
+test("un AGENTS.md resté au modèle d'origine est mis à jour, un AGENTS.md modifié par l'utilisateur est gardé", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Version d'origine connue (HEAD avant le plan 4) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-ancien.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(modele);
+
+  await writeFile(join(c.racine, "AGENTS.md"), `${ancien}\nmes règles`);
+  await initialiserEspace(c);
+  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(`${ancien}\nmes règles`);
 });

@@ -17,3 +17,10 @@ export function prefixeContexte(titre: string, url: string): string {
   const u = tronquer(nettoyer(url), LONGUEUR_URL);
   return t ? `[contexte : ${t} — ${u}] ` : `[contexte : ${u}] `;
 }
+
+/** Texte pré-rempli pour l'agent d'une application, jamais envoyé. */
+export function prefixeApplication(a: { nom: string; dossier: string; sansFiche: boolean }): string {
+  if (a.sansFiche) return `[projet sans fiche webaios.json : /workspace/projets/${a.dossier}] `;
+  const nom = tronquer(nettoyer(a.nom), LONGUEUR_TITRE);
+  return `[application : ${nom} — /workspace/projets/${a.dossier} — journal : /workspace/.webaios/journaux/${a.dossier}.log] `;
+}

@@ -35,13 +35,22 @@ L'accès à un onglet peut être **refusé par l'utilisateur**. C'est une répon
 simplement et ne cherche pas à contourner ce refus (pas d'autre outil, pas de récupération de
 l'URL par un autre moyen).
 
-## Projets et démos
+## Projets et applications
 
-- Les projets, dépôts clonés et apps de démo vont dans `/workspace/projets/<nom>/`.
-- Un serveur de démo doit écouter sur `0.0.0.0` avec un port **entre 5280 et 5299**
-  (seuls ces ports sont visibles depuis le navigateur). Exemple Vite :
-  `npx vite --host 0.0.0.0 --port 5280`.
-- Une fois le serveur lancé, ouvre la démo avec `ouvrir_onglet("http://localhost:<port>")`.
+- Un projet va dans `/workspace/projets/<dossier>/`, avec un nom de dossier en minuscules,
+  chiffres et tirets (`mon-essai`).
+- Tout projet lançable reçoit dès sa création un `webaios.json`, par exemple :
+  `{ "nom": "Mon essai", "type": "poc", "lancement": "npx vite --host 0.0.0.0 --port {port} --strictPort", "origine": "https://github.com/sveltejs/svelte" }`.
+  Son `type` vaut `"poc"` pour l'essai d'un package ou une démo jetable, et `"application"` pour
+  ce que l'utilisateur veut garder. Mets dans `origine` l'URL de la page d'où vient l'essai.
+- `lancement` écoute sur `0.0.0.0` et sur `{port}`, par exemple
+  `npx vite --host 0.0.0.0 --port {port} --strictPort`. Une appli qui a un front et une API sert
+  tout par ce port (proxy de Vite).
+- Pour montrer une appli, appelle `lancer_application("<dossier>")` au lieu de lancer le serveur
+  toi-même. En cas d'erreur, lis `journal_application("<dossier>")` ou
+  `/workspace/.webaios/journaux/<dossier>.log`.
+- Un serveur lancé à la main pour un essai rapide garde un port **entre 5280 et 5299** (seuls ces
+  ports sont visibles depuis le navigateur), et s'arrête avec la fenêtre de l'agent.
 
 ## Outils du navigateur (serveur MCP `webaios`)
 
@@ -53,5 +62,8 @@ l'URL par un autre moyen).
 | `ouvrir_onglet(url, espace?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:5280` |
 | `naviguer(id, url)` | Change l'URL d'un onglet (y compris recharger une démo) |
 | `capture_ecran(id)` | Capture d'écran d'un onglet, pour vérifier visuellement une démo |
+| `lancer_application(dossier)` | Lance le projet `/workspace/projets/<dossier>` d'après son `webaios.json` et ouvre sa fenêtre |
+| `arreter_application(dossier)` | Arrête l'application |
+| `journal_application(dossier)` | Journal de l'application (pour comprendre une erreur) |
 
 Tu ne peux ni cliquer ni taper dans les pages.
