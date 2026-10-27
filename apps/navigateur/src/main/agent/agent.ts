@@ -74,6 +74,8 @@ export function demarrerAgent(o: {
   applications: OutilsApplications;
   /** Fenêtres des applications lancées : l'agent les voit comme des onglets `app:<dossier>`. */
   fenetresApplications: FenetresPourAgent;
+  /** Dossier du profil du navigateur, hors de l'espace monté, où restent les profils bruts des sites tiers. */
+  dossierProfilage: string;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
@@ -95,7 +97,7 @@ export function demarrerAgent(o: {
   let desabonnerAcces: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit() }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);

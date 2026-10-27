@@ -16,12 +16,15 @@ export const TEXTE_REFUS_OUTIL = "Accès refusé par l'utilisateur à cet outil 
 export const TEXTE_COUPE = "Accès coupé par l'utilisateur.";
 export const TEXTE_SITE_CHANGE = "L'onglet a changé de site : accès retiré.";
 
-/** Écriture et lecture des profils bruts, côté hôte ; les chemins échangés sont ceux du conteneur. */
+/**
+ * Écriture et lecture des profils bruts, côté hôte. Ce que l'agent a construit est échangé par son chemin dans le
+ * conteneur (`/workspace/…`) ; un autre site, par une référence opaque `profil:<nom>` (le fichier reste hors de l'espace).
+ */
 export interface FichiersProfils {
-  /** Écrit le fichier et renvoie son chemin dans le conteneur (`/workspace/…`). */
-  ecrireProfil(o: OngletInfo, nom: string, contenu: string): Promise<string>;
-  lireProfil(cheminConteneur: string): Promise<string>;
-  supprimerProfil(cheminConteneur: string): Promise<void>;
+  /** Écrit le fichier et renvoie son chemin dans le conteneur, ou sa référence si `construite` est faux. */
+  ecrireProfil(o: OngletInfo, nom: string, contenu: string, construite: boolean): Promise<string>;
+  lireProfil(cheminOuReference: string): Promise<string>;
+  supprimerProfil(cheminOuReference: string): Promise<void>;
 }
 
 type Resultat = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -141,7 +144,7 @@ export function enregistrerOutilsDev(
     const effacer = (x: string) => c.supprimerProfil(x).catch(() => {});
     const ecrire = async (nom: string, contenu: string) => {
       if (signal.aborted) throw new Coupe();
-      const chemin = await c.ecrireProfil(o, nom, contenu);
+      const chemin = await c.ecrireProfil(o, nom, contenu, politique.estConstruite(o));
       // Interrompu pendant l'écriture : la réponse est déjà partie, le fichier ne doit pas rester.
       if (signal.aborted) {
         await effacer(chemin);
@@ -305,7 +308,8 @@ export function enregistrerOutilsDev(
     {
       description:
         "Enregistre un profil de performance pendant `duree_s` secondes, ou pendant un rechargement (`recharger`). " +
-        "Renvoie les fonctions les plus coûteuses, les métriques et le chemin du .cpuprofile.",
+        "Renvoie les fonctions les plus coûteuses, les métriques et le chemin du .cpuprofile " +
+          "(une référence profil:… sur un site que l'agent n'a pas construit : le fichier reste hors de /workspace).",
       inputSchema: { id, duree_s: z.number().positive().max(60).optional(), recharger: z.boolean().optional() },
     },
     proteger(async ({ id, duree_s, recharger }) =>
@@ -321,7 +325,9 @@ export function enregistrerOutilsDev(
   serveur.registerTool(
     "instantane_memoire",
     {
-      description: "Instantané du tas : types d'objets les plus lourds et chemin du .heapsnapshot (à passer à comparer_memoire).",
+      description:
+        "Instantané du tas : types d'objets les plus lourds et chemin du .heapsnapshot, ou sa référence profil:… sur un " +
+        "site que l'agent n'a pas construit (à passer telle quelle à comparer_memoire).",
       inputSchema: { id },
     },
     proteger(async ({ id }) =>
@@ -336,7 +342,7 @@ export function enregistrerOutilsDev(
   serveur.registerTool(
     "comparer_memoire",
     {
-      description: "Compare deux instantanés de instantane_memoire (chemins /workspace/…) : ce qui a le plus grossi de a à b.",
+      description: "Compare deux instantanés de instantane_memoire (chemins /workspace/… ou références profil:…) : ce qui a le plus grossi de a à b.",
       inputSchema: { id, a: z.string(), b: z.string() },
     },
     proteger(async ({ id, a, b }) =>

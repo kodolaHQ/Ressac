@@ -396,6 +396,8 @@ app.whenReady().then(async () => {
   };
   agent = demarrerAgent({
     atelier,
+    // Profils bruts des sites tiers : dans le profil du navigateur, jamais dans l'espace que l'agent lit.
+    dossierProfilage: join(dossier, "profilage"),
     applications: applications.gestionnaire,
     fenetresApplications: applications.fenetres,
     magasin,

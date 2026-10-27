@@ -40,13 +40,18 @@ const dossierProfilage = (parties: string[]): boolean =>
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
+/** Référence d'un profil gardé hors de l'espace : `profil:<nom de fichier>`. */
+export const PREFIXE_PROFIL_PRIVE = "profil:";
+
 /**
- * Profils bruts des outils de développement, écrits par le navigateur dans l'espace (spec §6) : dans le projet pour
- * une application (`projets/<dossier>/.webaios/profilage`), dans `.webaios/profilage` sinon. Seuls ces dossiers sont lus
- * ou effacés. L'espace est monté en écriture dans le conteneur : l'agent peut y poser des liens symboliques, donc aucun
- * lien n'est suivi, ni dans les dossiers ni pour le fichier.
+ * Profils bruts des outils de développement, écrits par le navigateur (spec §6). Ce que l'agent a construit va dans
+ * l'espace : dans le projet pour une application (`projets/<dossier>/.webaios/profilage`), dans `.webaios/profilage`
+ * sinon. Le profil d'un autre site (son tas contient jetons et données personnelles) reste hors du montage, dans
+ * `dossierPrive` (le profil du navigateur), et l'agent n'en reçoit qu'une référence `profil:<nom>`. Seuls ces dossiers
+ * sont lus ou effacés. L'espace est monté en écriture dans le conteneur : l'agent peut y poser des liens symboliques,
+ * donc aucun lien n'est suivi, ni dans les dossiers ni pour le fichier.
  */
-export function fichiersProfils(chemins: CheminsEspace): FichiersProfils {
+export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): FichiersProfils {
   const refus = (cheminConteneur: string) => new Error(`Chemin hors des profils : ${cheminConteneur}`);
 
   /** Descend dans les segments sous la racine réelle sans suivre de lien ; crée les dossiers manquants si `creer`. */
@@ -81,11 +86,28 @@ export function fichiersProfils(chemins: CheminsEspace): FichiersProfils {
     return parties;
   };
 
-  /** Le fichier, s'il est un vrai fichier (pas un lien) dans un vrai dossier de profilage. */
+  /** Le dossier privé (créé au besoin), sans lien symbolique. */
+  async function dossierPriveReel(creer: boolean): Promise<string> {
+    if (!dossierPrive) throw new Error("Enregistrement des profils indisponible.");
+    if (creer) await mkdir(dossierPrive, { recursive: true, mode: 0o700 });
+    return realpath(dossierPrive);
+  }
+
+  /** Le fichier, s'il est un vrai fichier (pas un lien) dans un vrai dossier de profilage, ou le dossier privé. */
   async function fichierExistant(cheminConteneur: string): Promise<string> {
-    const parties = segments(cheminConteneur);
-    const dossier = await descendre(parties.slice(0, -1), false, cheminConteneur);
-    const fichier = join(dossier, parties.at(-1)!);
+    let fichier: string;
+    if (cheminConteneur.startsWith(PREFIXE_PROFIL_PRIVE)) {
+      const nom = cheminConteneur.slice(PREFIXE_PROFIL_PRIVE.length);
+      if (!segmentSur(nom)) throw refus(cheminConteneur);
+      const dossier = await dossierPriveReel(false).catch((e: unknown) => {
+        throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${cheminConteneur}`) : e;
+      });
+      fichier = join(dossier, nom);
+    } else {
+      const parties = segments(cheminConteneur);
+      const dossier = await descendre(parties.slice(0, -1), false, cheminConteneur);
+      fichier = join(dossier, parties.at(-1)!);
+    }
     const info = await lstat(fichier).catch(() => {
       throw new Error(`Profil introuvable : ${cheminConteneur}`);
     });
@@ -94,8 +116,13 @@ export function fichiersProfils(chemins: CheminsEspace): FichiersProfils {
   }
 
   return {
-    async ecrireProfil(o, nom, contenu) {
+    async ecrireProfil(o, nom, contenu, construite) {
       if (!segmentSur(nom)) throw new Error(`Nom de profil invalide : ${nom}`);
+      if (!construite) {
+        // « wx » : jamais par-dessus un fichier ou un lien existant.
+        await writeFile(join(await dossierPriveReel(true), nom), contenu, { flag: "wx", mode: 0o600 });
+        return PREFIXE_PROFIL_PRIVE + nom;
+      }
       if (o.application !== undefined && !segmentSur(o.application)) throw new Error(`Dossier d'application invalide : ${o.application}`);
       const parties = o.application === undefined ? [".webaios", DOSSIER_PROFILAGE] : ["projets", o.application, ".webaios", DOSSIER_PROFILAGE];
       const cheminConteneur = `${CHEMIN_CONTENEUR}/${[...parties, nom].join("/")}`;
@@ -154,6 +181,11 @@ export async function creerNoyau(o: {
   applications?: OutilsApplications;
   /** Ports sur lesquels une démo locale ouverte par l'agent est « construite » (par défaut 5280–5299). */
   portConstruit?: (port: number) => boolean;
+  /**
+   * Dossier de l'hôte, hors de l'espace monté, pour les profils bruts des sites que l'agent n'a pas construits (le
+   * navigateur donne `<profil>/profilage`). Absent, ces profils ne sont pas enregistrés.
+   */
+  dossierProfilage?: string;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -170,7 +202,7 @@ export async function creerNoyau(o: {
     politique,
     jeton,
     agent: profil.nom,
-    profils: fichiersProfils(chemins),
+    profils: fichiersProfils(chemins, o.dossierProfilage),
     ...(o.applications ? { applications: o.applications } : {}),
   });
   try {
