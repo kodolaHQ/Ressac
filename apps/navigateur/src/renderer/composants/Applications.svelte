@@ -251,7 +251,7 @@
 
 <style>
   .applications { display: grid; grid-template-columns: 190px 1fr; height: 100%; color: var(--texte); }
-  .volet { display: flex; flex-direction: column; gap: 2px; padding: 20px 10px; background: var(--fond-barre); border-right: 1px solid var(--bord); overflow-y: auto; }
+  .volet { display: flex; flex-direction: column; gap: 2px; padding: calc(20px + var(--retrait-feux, 0px)) 10px 20px; background: var(--fond-barre); border-right: 1px solid var(--bord); overflow-y: auto; }
   h2 { margin: 12px 8px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texte-doux); }
   h2:first-child { margin-top: 0; }
   .volet button { all: unset; display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; }

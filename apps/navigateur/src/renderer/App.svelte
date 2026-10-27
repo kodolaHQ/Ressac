@@ -161,5 +161,7 @@
   }
   .fenetre.agent { grid-template-columns: 240px 1fr var(--agent); }
   .fenetre.compact { grid-template-columns: 1fr; }
+  /* Sans barre latérale, les boutons de fenêtre de macOS tombent sur le contenu : les pages de l'interface les évitent. */
+  .fenetre.compact { --retrait-feux: 28px; }
   .fenetre.compact.agent { grid-template-columns: 1fr var(--agent); }
 </style>
