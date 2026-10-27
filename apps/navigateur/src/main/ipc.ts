@@ -1,5 +1,5 @@
-import { ipcMain, type IpcMainEvent } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, SchemaCouperAcces, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -49,6 +49,8 @@ export interface Gestionnaires {
   accueil: { lire(): Promise<BlocAffiche[]>; ordonner(ordre: string[]): void; retirer(id: string): void };
   applications: { liste(): Promise<ListeApplications>; agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void };
   acces: { etat(): EtatAcces; couper(id: IdOnglet, droit?: DroitDev): void };
+  /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
+  pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -99,8 +101,28 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.agentProfils, () => g.agent.profils());
   recevoir(CANAUX.accueilOrdonner, zod(SchemaOrdreBlocs), (o) => g.accueil.ordonner(o));
   recevoir(CANAUX.accueilRetirer, zod(SchemaIdBloc), (id) => g.accueil.retirer(id));
-  repondre(CANAUX.accesEtat, () => g.acces.etat());
-  recevoir(CANAUX.accesCouper, zod(SchemaCouperAcces), ({ id, droit }) => g.acces.couper(id, droit));
+  // Une pastille d'appli ne voit que l'accès de son appli et ne coupe que celui-là ; la fenêtre principale voit tout.
+  ipcMain.handle(CANAUX.accesEtat, (e) => {
+    const dossier = g.pastille.dossierDe(e.sender);
+    if (dossier) return g.pastille.etat(dossier);
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+    return g.acces.etat();
+  });
+  ipcMain.on(CANAUX.accesCouper, (e, brut: unknown) => {
+    const dossier = g.pastille.dossierDe(e.sender);
+    if (!dossier && !g.fenetreDe(e)) return;
+    const r = SchemaCouperAcces.safeParse(brut);
+    if (!r.success || (dossier && r.data.id !== `app:${dossier}`)) {
+      console.warn(`[ipc] message invalide ignoré sur ${CANAUX.accesCouper}:`, brut);
+      return;
+    }
+    g.acces.couper(r.data.id, r.data.droit);
+  });
+  ipcMain.on(CANAUX.pastilleTaille, (e, brut: unknown) => {
+    const dossier = g.pastille.dossierDe(e.sender);
+    const r = SchemaTaillePastille.safeParse(brut);
+    if (dossier && r.success) g.pastille.redimensionner(dossier, r.data.ouverte);
+  });
   repondre(CANAUX.applicationsListe, () => g.applications.liste());
   recevoir(CANAUX.applicationAction, zod(SchemaActionApplication), ({ dossier, action }, f) => g.applications.agir(dossier, action, f));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));

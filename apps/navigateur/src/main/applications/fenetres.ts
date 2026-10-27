@@ -1,6 +1,8 @@
-import { BrowserWindow, screen, session, type WebContents } from "electron";
+import { BrowserWindow, screen, session, WebContentsView, type WebContents } from "electron";
+import { join } from "node:path";
 import type { Application } from "@webaios/noyau";
-import type { Cadre } from "../../commun/modele";
+import { ARG_PASTILLE, CANAUX } from "../../commun/canaux";
+import type { Cadre, EtatAcces } from "../../commun/modele";
 import { preferencesWeb } from "../onglets/vues";
 import { refuserPermissions } from "../permissions";
 import { faviconEnDonnees, memeOrigine } from "./favicon";
@@ -25,6 +27,20 @@ function sessionApplication(dossier: string): Electron.Session {
   return s;
 }
 
+/** Pastille d'accès : 12 px des bords, 48×28 fermée, 300×320 bulle ouverte (cinq lignes au plus : la lecture et les quatre droits, sous la pastille). */
+const MARGE_PASTILLE = 12;
+const PASTILLE_FERMEE = { largeur: 48, hauteur: 28 };
+const PASTILLE_OUVERTE = { largeur: 300, hauteur: 320 };
+
+/** La vue de la pastille d'une fenêtre d'appli. */
+interface Pastille {
+  vue: WebContentsView;
+  fenetre: BrowserWindow;
+  ouverte: boolean;
+  /** L'agent a-t-il un accès à l'appli ? Sinon la vue est cachée. */
+  active: boolean;
+}
+
 /** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
 export function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
   if (!c) return undefined;
@@ -43,6 +59,10 @@ export class FenetresApplications {
   private readonly adresses = new Map<string, string>();
   /** Nom de chaque appli (son manifeste) : le titre de sa fenêtre tant que la page n'en a pas. */
   private readonly noms = new Map<string, string>();
+  /** Pastille d'accès de chaque fenêtre (vue transparente dans son angle supérieur droit). */
+  private readonly pastilles = new Map<string, Pastille>();
+  /** Dernier accès diffusé : une fenêtre créée ensuite y lit le sien. */
+  private acces: EtatAcces | undefined;
   /** Fermetures décidées par le programme (appli arrêtée) : elles n'arrêtent rien. */
   private readonly fermeturesVoulues = new WeakSet<BrowserWindow>();
 
@@ -97,6 +117,7 @@ export class FenetresApplications {
       webPreferences: preferencesWeb(sessionApplication(dossier)),
     });
     this.fenetres.set(dossier, f);
+    this.creerPastille(dossier, f);
     // Le titre de la page, comme un onglet ; le nom de l'appli tant qu'elle n'en a pas (sinon l'adresse s'afficherait).
     const nom = () => this.noms.get(dossier) ?? a.nom;
     f.on("page-title-updated", (e, titre, explicite) => {
@@ -108,6 +129,7 @@ export class FenetresApplications {
     f.on("move", noterCadre);
     f.on("close", noterCadre);
     f.on("closed", () => {
+      this.retirerPastille(dossier, f);
       if (this.fenetres.get(dossier) === f) {
         this.fenetres.delete(dossier);
         this.adresses.delete(dossier);
@@ -145,6 +167,84 @@ export class FenetresApplications {
       return { action: "deny" };
     });
     return f;
+  }
+
+  /** La vue de la pastille : l'interface de WebAiOs (session par défaut, jamais la partition de l'appli), tout en haut de la fenêtre. */
+  private creerPastille(dossier: string, f: BrowserWindow): void {
+    const vue = new WebContentsView({
+      webPreferences: {
+        preload: join(__dirname, "../preload/index.js"),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        additionalArguments: [`${ARG_PASTILLE}app:${dossier}`],
+      },
+    });
+    vue.setBackgroundColor("#00000000");
+    const p: Pastille = { vue, fenetre: f, ouverte: false, active: false };
+    this.pastilles.set(dossier, p);
+    vue.setVisible(false);
+    f.contentView.addChildView(vue);
+    this.placerPastille(p);
+    const id = `app:${dossier}`;
+    if (process.env.ELECTRON_RENDERER_URL) void vue.webContents.loadURL(`${process.env.ELECTRON_RENDERER_URL}/pastille.html?id=${encodeURIComponent(id)}`).catch(() => {});
+    else void vue.webContents.loadFile(join(__dirname, "../renderer/pastille.html"), { query: { id } }).catch(() => {});
+    f.on("resize", () => this.placerPastille(p));
+    this.appliquerAcces(dossier, p);
+  }
+
+  private retirerPastille(dossier: string, f: BrowserWindow): void {
+    const p = this.pastilles.get(dossier);
+    if (!p || p.fenetre !== f) return;
+    this.pastilles.delete(dossier);
+    if (!p.vue.webContents.isDestroyed()) p.vue.webContents.close();
+  }
+
+  /** Dans l'angle supérieur droit de la fenêtre, à la taille de la pastille ou de sa bulle. */
+  private placerPastille(p: Pastille): void {
+    if (p.fenetre.isDestroyed()) return;
+    const largeurFenetre = p.fenetre.getContentSize()[0] ?? 0;
+    const t = p.ouverte ? PASTILLE_OUVERTE : PASTILLE_FERMEE;
+    p.vue.setBounds({ x: Math.max(0, largeurFenetre - MARGE_PASTILLE - t.largeur), y: MARGE_PASTILLE, width: t.largeur, height: t.hauteur });
+  }
+
+  /** Cachée sans accès de l'agent : une vue cachée ne reçoit aucun clic. */
+  private appliquerAcces(dossier: string, p: Pastille): void {
+    const e = this.acces?.onglets[`app:${dossier}`];
+    p.active = !!e && (e.lecture || e.droits.length > 0);
+    if (!p.active) p.ouverte = false;
+    this.placerPastille(p);
+    p.vue.setVisible(p.active);
+  }
+
+  /** L'accès de l'agent a changé : chaque pastille se montre ou se cache, et reçoit l'état de sa seule appli. */
+  diffuserAcces(e: EtatAcces): void {
+    this.acces = e;
+    for (const [dossier, p] of this.pastilles) {
+      this.appliquerAcces(dossier, p);
+      if (!p.vue.webContents.isDestroyed()) p.vue.webContents.send(CANAUX.acces, this.accesDe(dossier));
+    }
+  }
+
+  /** Ce que la pastille d'une appli a le droit de savoir : son seul accès (pas celui des autres onglets). */
+  accesDe(dossier: string): EtatAcces {
+    const id = `app:${dossier}`;
+    const e = this.acces?.onglets[id];
+    return { agent: this.acces?.agent ?? "L'agent", onglets: e ? { [id]: e } : {} };
+  }
+
+  /** Le dossier de l'appli dont `sender` est la pastille ; undefined pour tout autre expéditeur. */
+  dossierDePastille(sender: WebContents): string | undefined {
+    for (const [dossier, p] of this.pastilles) if (!p.vue.webContents.isDestroyed() && p.vue.webContents === sender) return dossier;
+    return undefined;
+  }
+
+  /** La bulle de la pastille s'ouvre ou se ferme : la vue grandit ou rétrécit. */
+  redimensionnerPastille(dossier: string, ouverte: boolean): void {
+    const p = this.pastilles.get(dossier);
+    if (!p) return;
+    p.ouverte = ouverte && p.active;
+    this.placerPastille(p);
   }
 
   /** Taille et position retenues aussitôt (la mémoire écrit en différé) : une fenêtre détruite n'a plus de cadre à lire. */

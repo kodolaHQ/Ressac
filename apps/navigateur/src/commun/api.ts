@@ -2,7 +2,7 @@ import { z } from "zod";
 import { dossierValide, DROITS_DEV, type Application, type DroitDev } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
-export { ARG_FENETRE, CANAUX } from "./canaux";
+export { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "./canaux";
 
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
@@ -188,6 +188,9 @@ export const SchemaReponsePermission = z.object({
 /** Couper un droit de l'agent sur un onglet, ou tout son accès si `droit` est absent. */
 export const SchemaCouperAcces = z.object({ id, droit: z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]]).optional() });
 
+/** La pastille d'une fenêtre d'appli s'agrandit (bulle ouverte) ou se referme. */
+export const SchemaTaillePastille = z.object({ ouverte: z.boolean() });
+
 /** Ce que montre le panneau agent d'une fenêtre. */
 export type EtatPanneauAgent =
   | { etat: "preparation" }
@@ -216,3 +219,9 @@ export type BlocAffiche =
     }
   | { id: string; titre: string; type: "app"; url: string }
   | { id: string; erreur: string };
+
+/** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent, rien d'autre. */
+export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
+  /** Demande au process principal d'agrandir (bulle ouverte) ou de rétrécir la vue de la pastille. */
+  pastilleTaille(ouverte: boolean): void;
+};

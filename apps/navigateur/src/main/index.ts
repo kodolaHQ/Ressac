@@ -247,6 +247,11 @@ app.whenReady().then(async () => {
       etat: etatAcces,
       couper: (id, droit) => agent?.noyau()?.politique.couper(id, droit),
     },
+    pastille: {
+      dossierDe: (sender) => applications?.fenetres.dossierDePastille(sender),
+      etat: (dossier) => applications?.fenetres.accesDe(dossier) ?? { agent: "L'agent", onglets: {} },
+      redimensionner: (dossier, ouverte) => applications?.fenetres.redimensionnerPastille(dossier, ouverte),
+    },
     agent: {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
       ecrire: (f, d) => agent?.sessions.ecrire(f, d),
@@ -403,7 +408,9 @@ app.whenReady().then(async () => {
       if (diffusionAcces) return;
       diffusionAcces = setTimeout(() => {
         diffusionAcces = undefined;
-        diffuser(CANAUX.acces, etatAcces());
+        const acces = etatAcces();
+        diffuser(CANAUX.acces, acces);
+        applications?.fenetres.diffuserAcces(acces);
       }, 50);
     },
     // « L'agent veut lire l'onglet … » dans la fenêtre active ; jamais mémorisé hors de la politique du noyau.

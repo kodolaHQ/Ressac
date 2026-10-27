@@ -11,5 +11,9 @@ export default defineConfig({
     define: { __RESSOURCES_NOYAU__: JSON.stringify(resolve(__dirname, "../../packages/noyau")) },
   },
   preload: {},
-  renderer: { plugins: [svelte()] },
+  // Deux pages : l'interface d'une fenêtre, et la pastille d'accès posée sur les fenêtres d'appli.
+  renderer: {
+    plugins: [svelte()],
+    build: { rollupOptions: { input: { index: resolve(__dirname, "src/renderer/index.html"), pastille: resolve(__dirname, "src/renderer/pastille.html") } } },
+  },
 });

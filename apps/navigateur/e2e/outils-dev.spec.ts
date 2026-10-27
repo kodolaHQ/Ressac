@@ -326,3 +326,36 @@ test("mode compact : la vue de la page est à zéro tant que la bulle est ouvert
   expect(erreurs).toEqual([]);
   await fermer();
 });
+
+// Pastille d'accès dans la fenêtre d'une appli construite (vue transparente, sans interface WebAiOs).
+async function pagePastille(app: ElectronApplication): Promise<Page> {
+  for (const fin = Date.now() + 10_000; Date.now() < fin; ) {
+    const p = app.windows().find((x) => x.url().includes("pastille.html"));
+    if (p) return p;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("la vue de la pastille n'est pas apparue");
+}
+
+test("fenêtre d'appli : la pastille ⚡ est affichée ; Couper l'accès la retire et lire_console sur app:<dossier> demande alors la carte", async () => {
+  const { app, fenetre, racine, fermer } = await demarrer();
+  const pastille = await pagePastille(app);
+  await expect(pastille.getByTestId(PASTILLE)).toHaveAttribute("data-niveau", "agir");
+  await expect(pastille.getByTestId(PASTILLE)).toContainText("⚡");
+  // Fermée : 48×28, et l'état reçu ne parle que de sa propre appli.
+  expect(await pastille.evaluate(() => [innerWidth, innerHeight])).toEqual([48, 28]);
+  expect(await pastille.evaluate(async () => Object.keys((await window.webaios.acces.etat()).onglets))).toEqual(["app:essai"]);
+  await pastille.getByTestId(PASTILLE).click();
+  await expect(pastille.getByTestId(BULLE)).toContainText("Agir sur la page");
+  // Bulle ouverte : la vue grandit pour la contenir, en entier et sous la pastille.
+  const [vue, bulle] = await pastille.evaluate(() => [innerHeight, document.querySelector("[data-testid=bulle-acces]")!.getBoundingClientRect().bottom]);
+  expect(bulle).toBeLessThanOrEqual(vue!);
+  await pastille.getByTestId(BULLE).getByRole("button", { name: "Couper l'accès" }).click();
+  await expect(pastille.getByTestId(PASTILLE)).toHaveCount(0);
+  // Une construite coupée le reste jusqu'à la prochaine conversation : l'outil redemande.
+  const appel = outil(racine, "lire_console");
+  await expect(fenetre.getByTestId(CARTE)).toBeVisible();
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Refuser" }).click();
+  expect(await appel).toBe(REFUS);
+  await fermer();
+});

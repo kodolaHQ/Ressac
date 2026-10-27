@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
-  import { acces, api } from "../etat.svelte";
+  import { acces, apiAcces } from "../acces.svelte";
 
   let { id, etat, ancre }: { id: string; etat: EtatAccesOnglet; ancre: HTMLElement } = $props();
 
@@ -29,8 +29,9 @@
     void fenetreH;
     const colonne = ancre.closest("aside")?.getBoundingClientRect();
     const r = ancre.getBoundingClientRect();
-    const gauche = (colonne?.left ?? 0) + MARGE;
-    const largeur = Math.max(120, (colonne?.width ?? 240) - 2 * MARGE);
+    // Sans barre latérale (pastille d'une fenêtre d'appli), la bulle s'aligne sur le bord droit de la pastille.
+    const largeur = colonne ? Math.max(120, colonne.width - 2 * MARGE) : Math.max(120, Math.min(280, fenetreW - 2 * MARGE));
+    const gauche = colonne ? colonne.left + MARGE : Math.max(MARGE, r.right - largeur);
     return { left: gauche, width: largeur, top: Math.max(MARGE, Math.min(r.bottom + 6, fenetreH - hauteur - MARGE)) };
   });
   $effect(() => {
@@ -51,12 +52,12 @@
     {#each etat.droits as d (d)}
       <li data-ligne={d}>
         <span>{DROITS[d].icone} {DROITS[d].nom}</span>
-        <button class="couper-droit" data-droit={d} onclick={() => api.acces.couper(id, d)}>Couper</button>
+        <button class="couper-droit" data-droit={d} onclick={() => apiAcces.acces.couper(id, d)}>Couper</button>
       </li>
     {/each}
   </ul>
   <p>Cette conversation · tombe si l'onglet change de site</p>
-  <button class="couper" onclick={() => api.acces.couper(id)}>Couper l'accès</button>
+  <button class="couper" onclick={() => apiAcces.acces.couper(id)}>Couper l'accès</button>
 </div>
 
 <style>

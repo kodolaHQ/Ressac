@@ -36,6 +36,9 @@ export const CANAUX = {
   acces: "webaios:acces",
   accesEtat: "webaios:acces-etat",
   accesCouper: "webaios:acces-couper",
+  pastilleTaille: "webaios:pastille-taille",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";
+/** Argument de la pastille d'une fenêtre d'appli : `app:<dossier>`, l'unique id dont elle montre l'accès. */
+export const ARG_PASTILLE = "--webaios-pastille=";

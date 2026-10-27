@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ApiWebaios } from "../commun/api";
-import { ARG_FENETRE, CANAUX } from "../commun/canaux";
+import type { ApiPastille, ApiWebaios } from "../commun/api";
+import { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "../commun/canaux";
 import type { EtatNavigateur } from "../commun/modele";
 
 const fenetreId = process.argv.find((a) => a.startsWith(ARG_FENETRE))?.slice(ARG_FENETRE.length) ?? "";
@@ -84,4 +84,14 @@ const api: ApiWebaios = {
   },
 };
 
-contextBridge.exposeInMainWorld("webaios", api);
+/** Pastille d'une fenêtre d'appli : l'accès de l'agent et la taille de sa vue, pas le reste de l'API de la fenêtre. */
+const pastille: ApiPastille = {
+  acces: {
+    etat: () => ipcRenderer.invoke(CANAUX.accesEtat),
+    couper: (id, droit) => ipcRenderer.send(CANAUX.accesCouper, { id, ...(droit ? { droit } : {}) }),
+  },
+  surAcces: (rappel) => ecouter(CANAUX.acces, rappel),
+  pastilleTaille: (ouverte) => ipcRenderer.send(CANAUX.pastilleTaille, { ouverte }),
+};
+
+contextBridge.exposeInMainWorld("webaios", process.argv.some((a) => a.startsWith(ARG_PASTILLE)) ? pastille : api);
