@@ -190,7 +190,7 @@ const menu = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, i
  * Trois projets (`essai` en application, `zod` en POC, `vieux` sans manifeste) et la page ouverte par le menu.
  * `lent` : le serveur d'`essai` attend une seconde avant d'écouter, pour qu'on voie « En lancement ».
  */
-async function ouvrirPage(o: { env?: Record<string, string>; projets?: boolean; lent?: boolean } = {}) {
+async function ouvrirPage(o: { env?: Record<string, string>; projets?: boolean; lent?: boolean; sansFiche?: string[] } = {}) {
   const racine = nouvelleRacine();
   racines.push(racine);
   if (o.projets ?? true) {
@@ -198,6 +198,7 @@ async function ouvrirPage(o: { env?: Record<string, string>; projets?: boolean; 
     ecrireProjet(racine, "zod", { manifeste: { type: "poc", origine: "https://github.com/colinhacks/zod" } });
     ecrireProjet(racine, "vieux");
   }
+  for (const d of o.sansFiche ?? []) ecrireProjet(racine, d);
   const l = await lancer({ racine, env: { ...ENV, ...o.env } });
   await menu(l.app, "applications");
   await expect(l.fenetre.getByTestId("page-applications")).toBeVisible();
@@ -412,5 +413,37 @@ test("Déboguer une appli en marche lui donne l'accès à sa fenêtre", async ()
   const lu = await appelerOutil(racine, "lire_onglet", { id: "app:essai" });
   expect(lu.texte).toContain("lien");
   await expect(fenetre.getByTestId("demande-permission")).toHaveCount(0);
+  await fermer();
+});
+
+test("un dossier au nom non pris en charge se débogue et se supprime", async () => {
+  const { fenetre, racine, fermer } = await ouvrirPage({ sansFiche: ["Mon Projet"] });
+  const ligne = fenetre.getByTestId("appli-Mon Projet");
+  await ligne.getByRole("button", { name: "Déboguer" }).click();
+  await expect.poll(() => entreeAgent(racine)).toBe("[projet sans fiche webaios.json : /workspace/projets/Mon Projet] ");
+  await plusDActions(fenetre, "Mon Projet");
+  await fenetre.getByRole("menuitem", { name: "Supprimer" }).click();
+  await fenetre.getByTestId("confirmation-suppression").getByRole("button", { name: "Supprimer" }).click();
+  await expect.poll(() => existsSync(join(racine, "projets", "Mon Projet"))).toBe(false);
+  await expect(ligne).toHaveCount(0);
+  await fermer();
+});
+
+test("Supprimer annule un lancement qui attend encore Docker", async () => {
+  test.setTimeout(45_000);
+  // `docker info` répond en 8 s : le lancement demandé reste « arretee » pendant ce temps.
+  const { fenetre, racine, fermer } = await ouvrirPage({ env: { FAUX_DOCKER_LENT: "1" } });
+  const ligne = fenetre.getByTestId("appli-essai");
+  await ligne.getByRole("button", { name: "Lancer" }).click();
+  const clic = Date.now();
+  await expect(ligne).toHaveAttribute("data-etat", "arretee");
+  await plusDActions(fenetre, "essai");
+  await fenetre.getByRole("menuitem", { name: "Supprimer" }).click();
+  await fenetre.getByTestId("confirmation-suppression").getByRole("button", { name: "Supprimer" }).click();
+  await expect.poll(() => existsSync(join(racine, "projets", "essai")), { timeout: 15_000 }).toBe(false);
+  // Bien après la réponse de Docker (8 s après le clic) : aucun processus n'a été lancé pour l'appli supprimée.
+  await new Promise((r) => setTimeout(r, Math.max(0, clic + 14_000 - Date.now())));
+  expect(existsSync(join(racine, "faux-docker-app-essai.pid"))).toBe(false);
+  expect(existsSync(join(racine, "projets", "essai"))).toBe(false);
   await fermer();
 });

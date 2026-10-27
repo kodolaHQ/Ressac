@@ -157,10 +157,17 @@ export interface ListeApplications {
   atelier: "ok" | "docker-absent";
   applications: ApplicationAffichee[];
 }
-export const SchemaActionApplication = z.object({
-  dossier: z.string().refine(dossierValide),
-  action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier"]),
-});
+/** Un seul segment de chemin : ni séparateur, ni `.`/`..`, ni NUL. */
+const segmentValide = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
+/** Actions possibles sur un projet « Sans fiche » dont le nom de dossier n'est pas lançable (`My Project`, `_tmp`…). */
+const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
+
+export const SchemaActionApplication = z
+  .object({
+    dossier: z.string(),
+    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier"]),
+  })
+  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });

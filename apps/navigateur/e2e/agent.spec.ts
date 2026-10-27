@@ -130,7 +130,8 @@ test("une question de lecture ne s'affiche que dans la fenêtre active", async (
   await expect.poll(() => app.windows().filter((p) => p.url().includes("/renderer/index.html")).length).toBe(2);
   const seconde = app.windows().find((p) => p.url().includes("/renderer/index.html") && p !== fenetre)!;
   // Fenêtres cachées : aucune n'a le focus, la fenêtre active est la première.
-  void appelerOutil(racine, "lire_onglet", { id: await idOnglet(fenetre, "Page A") });
+  // Jamais répondue : son expiration (60 s) ne doit pas tomber sur un test suivant du même worker.
+  appelerOutil(racine, "lire_onglet", { id: await idOnglet(fenetre, "Page A") }).catch(() => {});
   await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
   await new Promise((r) => setTimeout(r, 300));
   await expect(seconde.getByTestId("demande-permission")).toBeHidden();

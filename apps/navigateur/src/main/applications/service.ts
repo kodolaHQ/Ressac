@@ -112,12 +112,17 @@ export function demarrerApplications(o: {
   diffuser(): void;
   /** Une fenêtre d'appli s'est fermée (par l'utilisateur ou par le programme). */
   surFenetreFermee(dossier: string): void;
-  /** Déboguer : pré-remplit le terminal de l'agent de la fenêtre ; `acces` (la fenêtre de l'appli en marche) lui est donné. */
-  deboguer(fenetreId: IdFenetre, texte: string, acces?: OngletInfo): void;
+  /**
+   * Déboguer : pré-remplit le terminal de l'agent de la fenêtre. `acces`, relu au moment de l'écriture, donne à l'agent
+   * la fenêtre de l'appli en marche si elle est encore ouverte.
+   */
+  deboguer(fenetreId: IdFenetre, texte: string, acces?: () => OngletInfo | undefined): void;
 }): ServiceApplications {
   const memoire = new MemoireApplications(o.dossierProfil);
   /** Lancements en cours par dossier : une appli relancée passe par « arretee » sans que sa fenêtre doive se fermer. */
   const enCours = new Map<string, number>();
+  /** Dernier lancement demandé par dossier : il ne se résout qu'après ceux d'avant (le gestionnaire les enchaîne). */
+  const derniers = new Map<string, Promise<unknown>>();
   const delai = Number(process.env.WEBAIOS_DELAI_APP_MS);
   const ports = plageDePorts(process.env.WEBAIOS_PORTS_APPS);
 
@@ -132,6 +137,7 @@ export function demarrerApplications(o: {
     override lancer(dossier: string): Promise<Application> {
       enCours.set(dossier, (enCours.get(dossier) ?? 0) + 1);
       const fin = super.lancer(dossier);
+      derniers.set(dossier, fin);
       void fin
         .then(
           (a) => {
@@ -144,6 +150,7 @@ export function demarrerApplications(o: {
           () => {},
         )
         .finally(() => {
+          if (derniers.get(dossier) === fin) derniers.delete(dossier);
           const n = (enCours.get(dossier) ?? 1) - 1;
           if (n > 0) enCours.set(dossier, n);
           else enCours.delete(dossier);
@@ -185,9 +192,14 @@ export function demarrerApplications(o: {
   async function supprimer(dossier: string): Promise<void> {
     const etat = gestionnaire.etatDe(dossier);
     if (etat !== "arretee" && etat !== "erreur") throw new Error(`appli ${etat}`);
+    // Le nom vient d'un projet « Sans fiche » quelconque : seul un dossier direct de projets/ est effacé.
     const projets = resolve(o.chemins.projets);
     const cible = resolve(projets, dossier);
     if (!cible.startsWith(projets + sep)) throw new Error(`${cible} hors de ${projets}`);
+    // « arretee » ne dit rien d'un lancement en file ou qui attend encore Docker, ni d'un arrêt « en erreur » pas fini :
+    // l'arrêt annule ceux qui n'ont pas commencé, et on attend que le dernier ait rendu la main.
+    await gestionnaire.arreter(dossier);
+    await derniers.get(dossier)?.catch(() => {});
     await fs.rm(cible, { recursive: true, force: true });
     await session.fromPartition(partitionApplication(dossier)).clearStorageData();
     memoire.oublier(dossier);
@@ -198,9 +210,12 @@ export function demarrerApplications(o: {
     const a = (await gestionnaire.liste()).find((x) => x.dossier === dossier);
     if (!a) return;
     const texte = prefixeApplication({ nom: a.nom, dossier, sansFiche: a.type === "sans-fiche" });
-    // Fenêtre ouverte = appli en marche : l'agent peut la lire sans demander.
-    const fenetre = fenetres.ouvertes().find((x) => x.dossier === dossier);
-    o.deboguer(fenetreId, texte, fenetre && ongletApplication(fenetre));
+    // Fenêtre ouverte = appli en marche : l'agent peut la lire sans demander, si elle l'est toujours quand le texte s'écrit.
+    const fenetre = () => {
+      const f = fenetres.ouvertes().find((x) => x.dossier === dossier);
+      return f && ongletApplication(f);
+    };
+    o.deboguer(fenetreId, texte, fenetre() ? fenetre : undefined);
   }
 
   return {

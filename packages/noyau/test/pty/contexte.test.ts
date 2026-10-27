@@ -43,3 +43,10 @@ test("prefixeApplication", () => {
     "[projet sans fiche webaios.json : /workspace/projets/vieux] ",
   );
 });
+
+test("prefixeApplication nettoie aussi le dossier : un \\r n'y tape jamais Entrée", () => {
+  expect(prefixeApplication({ nom: "x", dossier: "a\rb", sansFiche: true })).toBe("[projet sans fiche webaios.json : /workspace/projets/a b] ");
+  const p = prefixeApplication({ nom: "x", dossier: "a\rb", sansFiche: false });
+  expect(p).not.toMatch(/[\x00-\x1f\x7f]/);
+  expect(p).toBe("[application : x — /workspace/projets/a b — journal : /workspace/.webaios/journaux/a b.log] ");
+});

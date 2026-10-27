@@ -31,10 +31,10 @@ export interface ServiceAgent {
   /** Terminaux de l'agent, un par fenêtre. */
   sessions: SessionsAgent;
   /**
-   * Ouvre le panneau agent de la fenêtre s'il est fermé et pré-remplit sa saisie, sans l'envoyer. `acces` est donné à
-   * l'agent au moment où le texte est écrit, donc après la remise à zéro de la politique par une session qui démarre.
+   * Ouvre le panneau agent de la fenêtre s'il est fermé et pré-remplit sa saisie, sans l'envoyer. `acces` est lu et
+   * donné à l'agent au moment où le texte est écrit, donc après la remise à zéro de la politique par une session qui démarre.
    */
-  preRemplir(f: IdFenetre, texte: string, acces?: OngletInfo): void;
+  preRemplir(f: IdFenetre, texte: string, acces?: () => OngletInfo | undefined): void;
   arreter(): Promise<void>;
 }
 
@@ -144,7 +144,15 @@ export function demarrerAgent(o: {
     sessions,
     preRemplir(f, texte, acces) {
       if (o.magasin.etat.fenetres.find((x) => x.id === f)?.panneauAgentOuvert === false) o.magasin.agir({ type: "basculerPanneauAgent", fenetreId: f });
-      sessions.preRemplir(f, texte, acces && (() => noyau?.politique.interactionUtilisateur(acces)));
+      sessions.preRemplir(
+        f,
+        texte,
+        acces &&
+          (() => {
+            const onglet = acces();
+            if (onglet) noyau?.politique.interactionUtilisateur(onglet);
+          }),
+      );
     },
     async arreter() {
       // Les agents d'abord : leur arrêt passe par le conteneur, avant que l'app ne quitte.
