@@ -1,7 +1,8 @@
-import { BrowserWindow, screen, session, type Session, type WebContents } from "electron";
+import { BrowserWindow, screen, session, type WebContents } from "electron";
 import type { Application } from "@webaios/noyau";
 import type { Cadre } from "../../commun/modele";
 import { preferencesWeb } from "../onglets/vues";
+import { faviconEnDonnees, memeOrigine } from "./favicon";
 import type { MemoireApplications } from "./service";
 
 /** Tests automatiques : aucune fenêtre à l'écran. */
@@ -96,7 +97,7 @@ export class FenetresApplications {
     const wc = f.webContents;
     wc.on("page-favicon-updated", (_e, favicons) => {
       const url = favicons[0];
-      if (url && this.o.surFavicon) void enDonnees(wc.session, url).then((d) => d && this.o.surFavicon?.(dossier, d));
+      if (url && this.o.surFavicon) void faviconEnDonnees((u, init) => wc.session.fetch(u, init), url, wc.getURL()).then((d) => d && this.o.surFavicon?.(dossier, d));
     });
     // L'appli reste sur son origine : un lien vers ailleurs s'ouvre dans un onglet.
     wc.on("will-navigate", (e, url) => {
@@ -140,30 +141,5 @@ export class FenetresApplications {
     else if (action === "outils") f.webContents.toggleDevTools();
     else f.close();
     return true;
-  }
-}
-
-/** Favicon au plus, en octets : il est gardé dans applications.json. */
-const TAILLE_FAVICON = 64 * 1024;
-
-/** Le favicon en adresse `data:` (son port ne servira plus rien une fois l'appli arrêtée) ; undefined en cas d'échec. */
-async function enDonnees(s: Session, url: string): Promise<string | undefined> {
-  if (url.startsWith("data:")) return url.length <= TAILLE_FAVICON ? url : undefined;
-  try {
-    const r = await s.fetch(url, { signal: AbortSignal.timeout(5000) });
-    const type = r.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
-    if (!r.ok || !type.startsWith("image/")) return undefined;
-    const octets = Buffer.from(await r.arrayBuffer());
-    return octets.length <= TAILLE_FAVICON ? `data:${type};base64,${octets.toString("base64")}` : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function memeOrigine(a: string, b: string): boolean {
-  try {
-    return new URL(a).origin === new URL(b).origin;
-  } catch {
-    return false;
   }
 }

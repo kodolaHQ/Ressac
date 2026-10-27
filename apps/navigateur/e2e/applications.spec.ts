@@ -293,6 +293,12 @@ test("sans Docker : bandeau et Lancer désactivé", async () => {
   await fermer();
 });
 
+test("Docker qui tarde à répondre : la liste s'affiche sans l'attendre", async () => {
+  const { fenetre, fermer } = await ouvrirPage({ env: { FAUX_DOCKER_LENT: "1" } });
+  await expect(lignes(fenetre)).toHaveCount(3, { timeout: 3_000 });
+  await fermer();
+});
+
 test("liste vide : texte d'aide", async () => {
   const { fenetre, fermer } = await ouvrirPage({ projets: false });
   await expect(fenetre.getByTestId("page-applications")).toContainText("Demande à l'agent de tester un package ou de construire une app");

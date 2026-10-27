@@ -5,6 +5,7 @@ import { GestionnaireApplications, type Application, type Atelier, type CheminsE
 import type { ActionApplication, ListeApplications } from "../../commun/api";
 import type { Cadre } from "../../commun/modele";
 import { FenetresApplications } from "./fenetres";
+import { SondeDocker } from "./sonde";
 
 const FICHIER = "applications.json";
 
@@ -164,6 +165,8 @@ export function demarrerApplications(o: {
   // Une fois par vie du navigateur, en tâche de fond : les fenêtres n'attendent jamais Docker.
   gestionnaire.demarrer().catch((e) => console.error("[applications] démarrage impossible :", e));
 
+  // La liste ne l'attend jamais : la page est relue quand l'état de Docker change.
+  const docker = new SondeDocker({ sonder: () => o.atelier.etat(), surChange: o.diffuser });
   const signaler = (dossier: string, quoi: string) => (e: unknown) => console.error(`[applications] ${dossier} non ${quoi} :`, e);
 
   return {
@@ -171,9 +174,9 @@ export function demarrerApplications(o: {
     fenetres,
     memoire,
     async liste() {
-      const [etat, applications] = await Promise.all([o.atelier.etat(), gestionnaire.liste()]);
+      const applications = await gestionnaire.liste();
       return {
-        atelier: etat === "docker-absent" ? "docker-absent" : "ok",
+        atelier: docker.valeur(),
         applications: applications.map((a) => {
           const { favicon, dernierLancement } = memoire.lire(a.dossier);
           return { ...a, ...(favicon ? { favicon } : {}), ...(dernierLancement ? { dernierLancement } : {}) };
