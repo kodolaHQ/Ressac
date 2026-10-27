@@ -44,7 +44,10 @@ const lanceurParDefaut: Lanceur = (argv) => {
   return { surFin: (r) => rappels.push(r), tuer: () => p.kill() };
 };
 
-/** Une réponse HTTP quelconque : un serveur écoute. Connexion refusée : port libre. Le reste : port pris par autre chose. */
+/**
+ * Une réponse HTTP quelconque : un serveur écoute. Connexion refusée ou coupée : port libre (le proxy de Docker accepte
+ * la connexion sur un port publié puis la coupe si rien n'écoute dans le conteneur). Le reste : port pris par autre chose.
+ */
 export function sonderParDefaut(port: number): Promise<"http" | "occupe" | "libre"> {
   return new Promise((resoudre) => {
     const req = request({ host: "127.0.0.1", port, path: "/", method: "GET", timeout: 1000 }, (res) => {
@@ -52,7 +55,7 @@ export function sonderParDefaut(port: number): Promise<"http" | "occupe" | "libr
       resoudre("http");
     });
     req.on("timeout", () => req.destroy(new Error("délai")));
-    req.on("error", (e: NodeJS.ErrnoException) => resoudre(e.code === "ECONNREFUSED" ? "libre" : "occupe"));
+    req.on("error", (e: NodeJS.ErrnoException) => resoudre(e.code === "ECONNREFUSED" || e.code === "ECONNRESET" ? "libre" : "occupe"));
     req.end();
   });
 }

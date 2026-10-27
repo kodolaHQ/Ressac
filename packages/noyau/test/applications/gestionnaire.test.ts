@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
 import { cheminsEspace, type CheminsEspace } from "../../src/chemins.js";
 import { Atelier } from "../../src/conteneur/atelier.js";
-import { GestionnaireApplications, type EtatApplication, type Lanceur } from "../../src/applications/gestionnaire.js";
+import { createServer as serveurHttp } from "node:http";
+import { createServer as serveurTcp, type AddressInfo, type Server } from "node:net";
+import { GestionnaireApplications, sonderParDefaut, type EtatApplication, type Lanceur } from "../../src/applications/gestionnaire.js";
 import { executeurFactice, type Reponse } from "../aide/executeur-factice.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -96,6 +98,12 @@ test("lancer : port libre, en-marche quand le port répond", async () => {
 test("un port occupé est sauté", async () => {
   const c = await espace();
   const { g } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["occupe"], 5281: ["libre", "http"] }) });
+  expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche", port: 5281 });
+});
+
+test("un port qui répond en HTTP (serveur lancé à la main par l'agent) est sauté", async () => {
+  const c = await espace();
+  const { g } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["http"], 5281: ["libre", "http"] }) });
   expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche", port: 5281 });
 });
 
@@ -239,4 +247,46 @@ test("journal : les dernières lignes, vide si absent", async () => {
   await writeFile(join(c.journaux, "todo.log"), "a\nb\nc\n");
   expect(await g.journal("todo", 2)).toBe("b\nc");
   await expect(g.journal("../x")).rejects.toThrow();
+});
+
+async function ecouter(serveur: Server): Promise<number> {
+  await new Promise<void>((r) => serveur.listen(0, "127.0.0.1", r));
+  return (serveur.address() as AddressInfo).port;
+}
+
+test("sonde par défaut : port fermé → libre", async () => {
+  const serveur = serveurTcp();
+  const port = await ecouter(serveur);
+  await new Promise((r) => serveur.close(r));
+  expect(await sonderParDefaut(port)).toBe("libre");
+});
+
+test("sonde par défaut : connexion acceptée puis coupée (proxy Docker sans serveur) → libre", async () => {
+  const serveur = serveurTcp((s) => s.resetAndDestroy());
+  try {
+    expect(await sonderParDefaut(await ecouter(serveur))).toBe("libre");
+  } finally {
+    serveur.close();
+  }
+});
+
+test("sonde par défaut : serveur HTTP → http", async () => {
+  const serveur = serveurHttp((_, res) => res.writeHead(404).end());
+  try {
+    expect(await sonderParDefaut(await ecouter(serveur))).toBe("http");
+  } finally {
+    serveur.closeAllConnections();
+    serveur.close();
+  }
+});
+
+test("sonde par défaut : connexion acceptée sans réponse en 1 s → occupe", async () => {
+  const sockets: import("node:net").Socket[] = [];
+  const serveur = serveurTcp((s) => sockets.push(s));
+  try {
+    expect(await sonderParDefaut(await ecouter(serveur))).toBe("occupe");
+  } finally {
+    for (const s of sockets) s.destroy();
+    serveur.close();
+  }
 });
