@@ -41,6 +41,8 @@ export class FenetresApplications {
   private readonly fenetres = new Map<string, BrowserWindow>();
   /** Adresse demandée à chaque fenêtre : la page n'en a pas d'autre avant d'être chargée. */
   private readonly adresses = new Map<string, string>();
+  /** Nom de chaque appli (son manifeste) : le titre de sa fenêtre tant que la page n'en a pas. */
+  private readonly noms = new Map<string, string>();
   /** Fermetures décidées par le programme (appli arrêtée) : elles n'arrêtent rien. */
   private readonly fermeturesVoulues = new WeakSet<BrowserWindow>();
 
@@ -63,6 +65,7 @@ export class FenetresApplications {
   ouvrir(a: Application): void {
     const url = `http://localhost:${a.port}/`;
     const f = this.montrer(a.dossier) ? this.fenetres.get(a.dossier)! : this.creer(a);
+    this.noms.set(a.dossier, a.nom);
     f.setTitle(a.nom);
     this.adresses.set(a.dossier, url);
     void f.loadURL(url).catch(() => {
@@ -94,8 +97,12 @@ export class FenetresApplications {
       webPreferences: preferencesWeb(sessionApplication(dossier)),
     });
     this.fenetres.set(dossier, f);
-    // Le titre reste le nom de l'appli : c'est lui qui la distingue des fenêtres principales.
-    f.on("page-title-updated", (e) => e.preventDefault());
+    // Le titre de la page, comme un onglet ; le nom de l'appli tant qu'elle n'en a pas (sinon l'adresse s'afficherait).
+    const nom = () => this.noms.get(dossier) ?? a.nom;
+    f.on("page-title-updated", (e, titre, explicite) => {
+      e.preventDefault();
+      f.setTitle((explicite && titre.trim()) || nom());
+    });
     const noterCadre = () => this.noterCadre(dossier, f);
     f.on("resize", noterCadre);
     f.on("move", noterCadre);
@@ -104,6 +111,7 @@ export class FenetresApplications {
       if (this.fenetres.get(dossier) === f) {
         this.fenetres.delete(dossier);
         this.adresses.delete(dossier);
+        this.noms.delete(dossier);
       }
       this.o.surFermee(dossier);
       if (!this.fermeturesVoulues.has(f)) this.o.surFermeture(dossier);
@@ -127,7 +135,11 @@ export class FenetresApplications {
       if (cadrePrincipal) resterSurLAppli(e, url);
     });
     // L'accès de l'agent suit la page, comme pour un onglet (une relance sur un autre port change d'origine).
-    wc.on("did-navigate", (_e, url) => this.o.surNavigation?.(dossier, url));
+    wc.on("did-navigate", (_e, url) => {
+      // Une page sans <title> ne signale aucun titre : celui de la précédente ne doit pas rester.
+      f.setTitle(nom());
+      this.o.surNavigation?.(dossier, url);
+    });
     wc.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//.test(url)) this.o.ouvrirOnglet(url);
       return { action: "deny" };

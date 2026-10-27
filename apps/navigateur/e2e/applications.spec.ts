@@ -73,7 +73,7 @@ const urlsOnglets = (fenetre: Page) =>
 /** Agit sur la BrowserWindow de l'appli « Essai » depuis le process principal. */
 const fenetreAppli = (app: ElectronApplication, action: "redimensionner" | "taille" | "fermer") =>
   app.evaluate(({ BrowserWindow }, action) => {
-    const w = BrowserWindow.getAllWindows().find((x) => x.getTitle() === "Essai");
+    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://localhost:"));
     if (!w) return undefined;
     if (action === "redimensionner") w.setBounds({ x: 120, y: 90, width: 640, height: 480 });
     if (action === "fermer") w.close();
@@ -95,8 +95,8 @@ test("après lancer_application, l'agent lit et capture la fenêtre de l'appli s
   const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
   expect(texte).toContain("(onglet app:essai)");
   const lu = await appelerOutil(racine, "lire_onglet", { id: "app:essai" });
-  // Titre de la fenêtre (le nom de l'appli) puis texte de la page ; « Essai essai » est le <title> de la page, pas son texte.
-  expect(lu.texte).toContain("Titre : Essai");
+  // Titre de la fenêtre (celui de la page) puis texte de la page.
+  expect(lu.texte).toContain("Titre : Essai essai");
   expect(lu.texte).toContain("lien");
   const capture = await appelerOutil(racine, "capture_ecran", { id: "app:essai" });
   expect(capture.image!.length).toBeGreaterThan(1000);
@@ -209,6 +209,19 @@ test("une page qui refuse qu'on la quitte n'empêche pas ⌘Q", async () => {
   const fin = await Promise.race([app.close().then(() => "fermé"), new Promise((r) => setTimeout(() => r("bloqué"), 10_000))]);
   expect(fin).toBe("fermé");
   expect(await repond(port)).toBe(false);
+});
+
+test("le titre de la fenêtre d'appli est celui de la page, sinon le nom de l'appli", async () => {
+  const { app, racine, fermer } = await demarrer();
+  const port = await lancerEssai(racine);
+  const page = await pageAppli(app);
+  const titre = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://localhost:"))?.getTitle());
+  await expect.poll(titre).toBe("Essai essai");
+  await page.evaluate(() => (location.href = "/sans-titre"));
+  await expect.poll(() => page.url()).toBe(`http://localhost:${port}/sans-titre`);
+  await expect.poll(titre).toBe("Essai");
+  await fermer();
 });
 
 test("une appli qui plante n'ouvre pas de fenêtre", async () => {
