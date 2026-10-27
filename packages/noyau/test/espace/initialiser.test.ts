@@ -110,3 +110,19 @@ test("initialiser : un AGENTS.md identique à l'ancien modèle est remplacé par
   expect(apres).toBe(modele);
   expect(apres).toContain("Outils de développement");
 });
+
+test("initialiser : un AGENTS.md identique au modèle du plan 5 est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Premier modèle des outils de développement (f9462f5) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-plan5.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "00d106e8d934a49848c9e30f569127b2ccbdde91954a98e9fad1c0914b7d822b",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("sauf, pour déboguer, par `executer_js`");
+  expect(apres).toContain("sauf si l'utilisateur les a coupés");
+});
