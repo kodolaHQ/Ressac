@@ -202,3 +202,50 @@ test("surChange appelé à chaque mutation, désabonnement effectif", () => {
   p.interactionUtilisateur(github);
   expect(n).toBe(8);
 });
+
+test("construite coupée : relancer l'appli (fermeture puis réouverture de app:x) ne rend pas les droits ; reinitialiser les rend", () => {
+  const app: OngletInfo = { id: "app:x", titre: "X", url: "http://localhost:5281/", espace: "", application: "x" };
+  p.construite(app);
+  p.couper("app:x");
+  p.ongletFerme("app:x");
+  // relancée sur un autre port : même fenêtre d'appli
+  const relancee = { ...app, url: "http://localhost:5290/" };
+  p.construite(relancee);
+  expect(p.estConstruite(relancee)).toBe(true);
+  expect(p.droitsDev(relancee)).toEqual([]);
+  // l'agent ouvre l'ancienne origine de l'appli dans un onglet : coupée aussi
+  const onglet: OngletInfo = { id: "9", titre: "X", url: "http://localhost:5281/", espace: "" };
+  p.ongletOuvertParAgent(onglet);
+  expect(p.droitsDev(onglet)).toEqual([]);
+  p.reinitialiser();
+  expect(p.droitsDev(relancee)).toEqual(DROITS_DEV);
+  expect(p.droitsDev(onglet)).toEqual(DROITS_DEV);
+});
+
+test("démo coupée : un nouvel onglet de l'agent sur la même origine n'a aucun droit ; une autre origine si ; un seul droit coupé reste coupé", () => {
+  p.ongletOuvertParAgent(demo);
+  p.couper(demo.id, "agir");
+  p.ongletFerme(demo.id);
+  const nouveau: OngletInfo = { ...demo, id: "4" };
+  p.ongletOuvertParAgent(nouveau);
+  expect(p.droitsDev(nouveau)).toEqual(["console", "reseau", "performances"]);
+  p.couper(nouveau.id);
+  p.ongletFerme(nouveau.id);
+  const encore: OngletInfo = { ...demo, id: "5" };
+  p.ongletOuvertParAgent(encore);
+  expect(p.droitsDev(encore)).toEqual([]);
+  const autre: OngletInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
+  p.ongletOuvertParAgent(autre);
+  expect(p.droitsDev(autre)).toEqual(DROITS_DEV);
+  // L'utilisateur réaccorde lui-même : le droit revient
+  p.accorderDev(encore, ["console"], []);
+  expect(p.droitsDev(encore)).toEqual(["console"]);
+  p.reinitialiser();
+  expect(p.droitsDev(encore)).toEqual(DROITS_DEV);
+});
+
+test("conversation : change à chaque reinitialiser", () => {
+  const avant = p.conversation;
+  p.reinitialiser();
+  expect(p.conversation).toBe(avant + 1);
+});

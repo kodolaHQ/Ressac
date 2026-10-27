@@ -48,9 +48,15 @@ export class PolitiqueAcces {
   private readonly refus = new Map<string, Set<DroitDev>>();
   /** id d'onglet → droits coupés (une construite le reste jusqu'à la prochaine conversation) */
   private readonly coupes = new Map<string, Set<DroitDev>>();
+  /**
+   * Droits coupés sur ce que l'agent a construit, par fenêtre d'appli (`app:<dossier>`) et par origine : ils survivent
+   * à la fermeture de l'onglet, pour que l'agent ne retrouve pas ses droits en relançant l'appli ou en rouvrant sa démo.
+   */
+  private readonly coupesConstruites = new Map<string, Set<DroitDev>>();
   /** id d'onglet → nombre d'outils en cours */
   private readonly utilisations = new Map<string, number>();
   private readonly ecouteurs = new Set<() => void>();
+  private numeroConversation = 0;
   private readonly portConstruit: (port: number) => boolean;
 
   constructor(o: { portConstruit?: (port: number) => boolean } = {}) {
@@ -82,6 +88,11 @@ export class PolitiqueAcces {
     this.utilisations.delete(id);
   }
 
+  /** Numéro de la conversation en cours : change à chaque `reinitialiser()`. Une réponse d'une conversation passée ne vaut rien. */
+  get conversation(): number {
+    return this.numeroConversation;
+  }
+
   /** Abonnement aux changements ; renvoie le désabonnement. */
   surChange(rappel: () => void): () => void {
     this.ecouteurs.add(rappel);
@@ -102,12 +113,20 @@ export class PolitiqueAcces {
     return org !== null && this.construites.get(o.id) === org;
   }
 
+  /** Clés sous lesquelles une coupe d'une construite est retenue : la fenêtre d'appli, et l'origine. */
+  private clesConstruite(id: string, org: string): string[] {
+    return id.startsWith("app:") ? [id, org] : [org];
+  }
+
+  private coupeConstruite(id: string, org: string, d: DroitDev): boolean {
+    return this.coupes.get(id)?.has(d) === true || this.clesConstruite(id, org).some((c) => this.coupesConstruites.get(c)?.has(d));
+  }
+
   private droitsDe(id: string, org: string | null, construite: boolean): DroitDev[] {
     if (!org) return [];
     const accordes = this.droits.get(id);
-    const coupes = this.coupes.get(id);
     return DROITS_DEV.filter(
-      (d) => (accordes?.origine === org && accordes.liste.has(d)) || (construite && !coupes?.has(d)),
+      (d) => (accordes?.origine === org && accordes.liste.has(d)) || (construite && !this.coupeConstruite(id, org, d)),
     );
   }
 
@@ -125,6 +144,7 @@ export class PolitiqueAcces {
       for (const d of accordes) {
         liste.add(d);
         this.coupes.get(o.id)?.delete(d);
+        for (const c of this.clesConstruite(o.id, org)) this.coupesConstruites.get(c)?.delete(d);
       }
       this.droits.set(o.id, { origine: org, liste });
     }
@@ -139,9 +159,11 @@ export class PolitiqueAcces {
   /** Coupe un droit, ou tout (lecture comprise) si `d` est absent. */
   couper(id: string, d?: DroitDev): void {
     const cibles = d ? [d] : DROITS_DEV;
+    const construite = this.construites.get(id);
     for (const c of cibles) {
       this.droits.get(id)?.liste.delete(c);
       this.ajouter(this.coupes, id, c);
+      if (construite) for (const cle of this.clesConstruite(id, construite)) this.ajouter(this.coupesConstruites, cle, c);
     }
     if (!d) this.autorisations.delete(id);
     this.change();
@@ -222,12 +244,14 @@ export class PolitiqueAcces {
     return org !== null && this.autorisations.get(o.id) === org;
   }
 
-  /** Nouvelle conversation : plus aucune autorisation ni refus. Les « construites » restent : elles tiennent à l'onglet. */
+  /** Nouvelle conversation : plus aucune autorisation, refus ni coupe. Les « construites » restent : elles tiennent à l'onglet. */
   reinitialiser(): void {
     this.autorisations.clear();
     this.droits.clear();
     this.refus.clear();
     this.coupes.clear();
+    this.coupesConstruites.clear();
+    this.numeroConversation++;
     this.change();
   }
 }
