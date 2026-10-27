@@ -96,12 +96,7 @@ export class FenetresApplications {
     this.fenetres.set(dossier, f);
     // Le titre reste le nom de l'appli : c'est lui qui la distingue des fenêtres principales.
     f.on("page-title-updated", (e) => e.preventDefault());
-    // Taille et position retenues aussitôt (la mémoire écrit en différé) : une fenêtre détruite n'a plus de cadre à lire.
-    const noterCadre = () => {
-      if (f.isDestroyed() || f.isFullScreen() || f.isMinimized()) return;
-      const { x, y, width, height } = f.getNormalBounds();
-      this.o.memoire.noter(dossier, { cadre: { x, y, largeur: width, hauteur: height } });
-    };
+    const noterCadre = () => this.noterCadre(dossier, f);
     f.on("resize", noterCadre);
     f.on("move", noterCadre);
     f.on("close", noterCadre);
@@ -114,6 +109,8 @@ export class FenetresApplications {
       if (!this.fermeturesVoulues.has(f)) this.o.surFermeture(dossier);
     });
     const wc = f.webContents;
+    // Le code de l'appli n'a pas été relu : son « beforeunload » n'empêche ni de fermer sa fenêtre, ni de quitter.
+    wc.on("will-prevent-unload", (e) => e.preventDefault());
     wc.on("page-favicon-updated", (_e, favicons) => {
       const url = favicons[0];
       if (url && this.o.surFavicon) void faviconEnDonnees((u, init) => wc.session.fetch(u, init), url, wc.getURL()).then((d) => d && this.o.surFavicon?.(dossier, d));
@@ -138,13 +135,24 @@ export class FenetresApplications {
     return f;
   }
 
-  /** Fermeture voulue par le programme (appli arrêtée ou en erreur) : n'appelle pas `surFermeture`. */
+  /** Taille et position retenues aussitôt (la mémoire écrit en différé) : une fenêtre détruite n'a plus de cadre à lire. */
+  private noterCadre(dossier: string, f: BrowserWindow): void {
+    if (f.isDestroyed() || f.isFullScreen() || f.isMinimized()) return;
+    const { x, y, width, height } = f.getNormalBounds();
+    this.o.memoire.noter(dossier, { cadre: { x, y, largeur: width, hauteur: height } });
+  }
+
+  /**
+   * Fermeture voulue par le programme (appli arrêtée ou en erreur) : n'appelle pas `surFermeture`. Détruite, la fenêtre
+   * ne demande rien à la page (aucun « beforeunload ») ; elle n'émet pas « close » : son cadre est noté avant.
+   */
   fermer(dossier: string): void {
     const f = this.fenetres.get(dossier);
     this.fenetres.delete(dossier);
     if (!f || f.isDestroyed()) return;
     this.fermeturesVoulues.add(f);
-    f.close();
+    this.noterCadre(dossier, f);
+    f.destroy();
   }
 
   webContents(dossier: string): WebContents | undefined {

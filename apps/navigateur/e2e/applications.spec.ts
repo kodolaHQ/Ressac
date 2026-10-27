@@ -184,6 +184,33 @@ test("une redirection du serveur de l'appli vers un autre site s'ouvre dans un o
   await fermer();
 });
 
+/** La page de l'appli passe sur /retient (beforeunload qui refuse) ; un clic lui donne le geste qu'il faut à ce refus. */
+async function retenir(page: Page, port: number) {
+  await page.evaluate(() => (location.href = "/retient"));
+  await expect.poll(() => page.url()).toBe(`http://localhost:${port}/retient`);
+  await expect.poll(() => page.title()).toBe("Retient");
+  await page.mouse.click(5, 5);
+}
+
+test("une page qui refuse qu'on la quitte se ferme quand même à l'arrêt de l'appli", async () => {
+  const { app, racine, fermer } = await demarrer();
+  const port = await lancerEssai(racine);
+  const page = await pageAppli(app);
+  await retenir(page, port);
+  await appelerOutil(racine, "arreter_application", { dossier: "essai" });
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await fermer();
+});
+
+test("une page qui refuse qu'on la quitte n'empêche pas ⌘Q", async () => {
+  const { app, racine } = await demarrer();
+  const port = await lancerEssai(racine);
+  await retenir(await pageAppli(app), port);
+  const fin = await Promise.race([app.close().then(() => "fermé"), new Promise((r) => setTimeout(() => r("bloqué"), 10_000))]);
+  expect(fin).toBe("fermé");
+  expect(await repond(port)).toBe(false);
+});
+
 test("une appli qui plante n'ouvre pas de fenêtre", async () => {
   const { app, racine, fermer } = await demarrer({ serveur: "plante" });
   const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
