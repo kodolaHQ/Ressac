@@ -283,15 +283,17 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       f.panneauAgentOuvert = !f.panneauAgentOuvert;
       return true;
     }
-    // Une seule page Applications par espace : on y revient plutôt que d'en ouvrir une deuxième.
+    // Une seule page Applications par fenêtre : on y revient (dans son espace) plutôt que d'en ouvrir une deuxième.
     case "ouvrirApplications": {
       const f = fenetre(d, a.fenetreId);
       if (!f) return false;
-      const esp = f.espaceActif;
-      const existant = liste(f, esp).find((id) => d.onglets[id]?.url === URL_APPLICATIONS);
-      if (existant) {
-        if (f.actif[esp] === existant) return false;
+      const espaces = [f.espaceActif, ...Object.keys(f.ordre).filter((x) => x !== f.espaceActif)];
+      for (const esp of espaces) {
+        const existant = liste(f, esp).find((id) => d.onglets[id]?.url === URL_APPLICATIONS);
+        if (!existant) continue;
+        if (f.espaceActif === esp && f.actif[esp] === existant) return false;
         f.actif[esp] = existant;
+        f.espaceActif = esp;
         return true;
       }
       const o = ouvrir(d, genId, f, { url: URL_APPLICATIONS });

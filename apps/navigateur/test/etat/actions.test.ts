@@ -362,7 +362,7 @@ test("largeurPanneauAgent : 420 par défaut, retenue, bornée entre 280 et 1000"
   expect(e.reglages.largeurPanneauAgent).toBe(1000);
 });
 
-test("ouvrirApplications réutilise l'onglet existant de l'espace", () => {
+test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
   ouvrir("https://a.test/");
   ag({ type: "ouvrirApplications", fenetreId: F });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_APPLICATIONS);
@@ -379,9 +379,11 @@ test("ouvrirApplications réutilise l'onglet existant de l'espace", () => {
   ag({ type: "ouvrirApplications", fenetreId: F });
   expect(pages()).toHaveLength(1);
   expect(actif()).toBe(page.id);
-  // Un autre espace a sa propre page.
+  // Depuis un autre espace : on revient à la page de la fenêtre, dans son espace.
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  expect(fen().espaceActif).not.toBe(P);
   ag({ type: "ouvrirApplications", fenetreId: F });
-  expect(pages()).toHaveLength(2);
-  expect(actif(fen().espaceActif)).not.toBe(page.id);
+  expect(pages()).toHaveLength(1);
+  expect(fen().espaceActif).toBe(P);
+  expect(actif()).toBe(page.id);
 });
