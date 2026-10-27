@@ -163,6 +163,49 @@ test("arreter pendant le lancement : arretee, pas erreur", async () => {
   expect((await g.liste())[0]!.erreur).toBeUndefined();
 });
 
+test("arreter pendant qu'un second lancement attend dans la file : il est annulé aussi", async () => {
+  const c = await espace();
+  const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });
+  const premier = g.lancer("todo");
+  await jusqua(() => processus.length === 1);
+  const second = g.lancer("todo");
+  await g.arreter("todo");
+  expect(await premier).toMatchObject({ etat: "arretee" });
+  expect(await second).toMatchObject({ etat: "arretee" });
+  expect(processus).toHaveLength(1);
+  expect(g.etatDe("todo")).toBe("arretee");
+});
+
+test("arreter avant que le lancement ait commencé (lecture des projets) : arretee, rien de lancé", async () => {
+  const c = await espace();
+  const { g, processus } = preparer({ chemins: c });
+  const resultat = g.lancer("todo");
+  await g.arreter("todo");
+  expect(await resultat).toMatchObject({ etat: "arretee" });
+  expect(processus).toHaveLength(0);
+});
+
+test("un lancement demandé après un arrêt n'est pas annulé par lui", async () => {
+  const c = await espace();
+  const { g } = preparer({ chemins: c });
+  await g.arreter("todo");
+  expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche" });
+});
+
+test("toutArreter annule aussi un lancement en file : rien n'est lancé après", async () => {
+  const c = await espace();
+  const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });
+  const premier = g.lancer("todo");
+  await jusqua(() => processus.length === 1);
+  const second = g.lancer("todo");
+  await g.toutArreter();
+  expect(await premier).toMatchObject({ etat: "arretee" });
+  expect(await second).toMatchObject({ etat: "arretee" });
+  await attendre(50);
+  expect(processus).toHaveLength(1);
+  expect(processus[0]!.tue).toBe(true);
+});
+
 test("arrêt de l'appli en marche par sa fin de processus : erreur", async () => {
   const c = await espace();
   const { g, processus, etats } = preparer({ chemins: c });

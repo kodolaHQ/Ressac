@@ -88,6 +88,11 @@ export class GestionnaireApplications {
   private readonly suivis = new Map<string, Suivi>();
   /** Dernier lancement demandé par dossier : deux lancements d'une même appli se suivent. */
   private readonly files = new Map<string, Promise<unknown>>();
+  /**
+   * Nombre d'arrêts demandés par dossier. Un lancement note ce nombre quand il est demandé : s'il a changé quand le
+   * lancement commence vraiment (attente dans la file, lecture des projets), l'arrêt le visait aussi.
+   */
+  private readonly arrets = new Map<string, number>();
   private finSurveillance?: () => Promise<void>;
 
   constructor(o: {
@@ -153,16 +158,22 @@ export class GestionnaireApplications {
 
   /** Se résout à « en-marche », « erreur », ou « arretee » si l'appli est arrêtée entre-temps. Relance une appli en marche. */
   lancer(dossier: string): Promise<Application> {
-    const suite = (this.files.get(dossier) ?? Promise.resolve()).catch(() => {}).then(() => this.lancerMaintenant(dossier));
+    const jeton = this.arrets.get(dossier) ?? 0;
+    const suite = (this.files.get(dossier) ?? Promise.resolve()).catch(() => {}).then(() => this.lancerMaintenant(dossier, jeton));
     this.files.set(dossier, suite);
     return suite;
   }
 
-  private async lancerMaintenant(dossier: string): Promise<Application> {
+  private async lancerMaintenant(dossier: string, jeton: number): Promise<Application> {
     const projet = (await lireProjets(this.chemins)).find((p) => p.dossier === dossier);
     if (!projet) throw new Error(`Projet inconnu : ${dossier}`);
     if (!("manifeste" in projet)) throw new Error(`Projet sans fiche, impossible à lancer (${projet.sansFiche}) : ${dossier}`);
-    if (this.suivis.get(dossier)?.lancement) await this.arreter(dossier);
+    // Relance : arrêt interne de l'instance en cours, qui ne compte pas comme un arrêt demandé.
+    if (this.suivis.get(dossier)?.lancement) await this.arreterLancement(dossier);
+    if ((this.arrets.get(dossier) ?? 0) !== jeton) {
+      if (this.etatDe(dossier) !== "arretee") this.changer(dossier, { etat: "arretee" });
+      return this.vue(projet);
+    }
 
     const l: Lancement = { arret: false };
     /** État final du lancement, sauf si l'arrêt a été demandé entre-temps (l'appli est alors « arretee »). */
@@ -259,7 +270,13 @@ export class GestionnaireApplications {
     return null;
   }
 
+  /** Arrête l'appli, et annule ses lancements demandés mais pas encore commencés. */
   async arreter(dossier: string): Promise<void> {
+    this.arrets.set(dossier, (this.arrets.get(dossier) ?? 0) + 1);
+    await this.arreterLancement(dossier);
+  }
+
+  private async arreterLancement(dossier: string): Promise<void> {
     const l = this.suivis.get(dossier)?.lancement;
     if (!l) return;
     l.arret = true;
@@ -270,7 +287,8 @@ export class GestionnaireApplications {
   }
 
   async toutArreter(): Promise<void> {
-    await Promise.all([...this.suivis.keys()].map((d) => this.arreter(d)));
+    const dossiers = new Set([...this.suivis.keys(), ...this.files.keys()]);
+    await Promise.all([...dossiers].map((d) => this.arreter(d)));
   }
 
   /** Les `lignes` dernières lignes du journal de l'appli (lu sur le Mac), vide s'il n'existe pas. */
