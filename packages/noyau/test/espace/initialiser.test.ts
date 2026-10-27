@@ -95,3 +95,18 @@ test("un AGENTS.md resté au modèle d'origine est mis à jour, un AGENTS.md mod
   await initialiserEspace(c);
   expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(`${ancien}\nmes règles`);
 });
+
+test("initialiser : un AGENTS.md identique à l'ancien modèle est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle du plan 4 (avant les outils de développement) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-plan4.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "3117019dee9b14b0cc47dd8aa33edcfbf8f476a9ea521479c15e7a0c1004eca1",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("Outils de développement");
+});

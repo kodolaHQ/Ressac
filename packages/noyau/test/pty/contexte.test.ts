@@ -50,3 +50,12 @@ test("prefixeApplication nettoie aussi le dossier : un \\r n'y tape jamais Entr�
   expect(p).not.toMatch(/[\x00-\x1f\x7f]/);
   expect(p).toBe("[application : x — /workspace/projets/a b — journal : /workspace/.webaios/journaux/a b.log] ");
 });
+
+test("prefixeApplication avec enMarche mentionne app:<dossier>", () => {
+  expect(prefixeApplication({ nom: "Todo", dossier: "todo", sansFiche: false, enMarche: true })).toBe(
+    "[application : Todo — /workspace/projets/todo — journal : /workspace/.webaios/journaux/todo.log — fenêtre : onglet app:todo (outils de développement disponibles)] ",
+  );
+  expect(prefixeApplication({ nom: "x", dossier: "vieux", sansFiche: true, enMarche: true })).toBe(
+    "[projet sans fiche webaios.json : /workspace/projets/vieux — fenêtre : onglet app:vieux (outils de développement disponibles)] ",
+  );
+});

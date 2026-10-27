@@ -19,10 +19,12 @@ export function prefixeContexte(titre: string, url: string): string {
 }
 
 /** Texte pré-rempli pour l'agent d'une application, jamais envoyé. */
-export function prefixeApplication(a: { nom: string; dossier: string; sansFiche: boolean }): string {
+export function prefixeApplication(a: { nom: string; dossier: string; sansFiche: boolean; enMarche?: boolean }): string {
   // Un dossier « Sans fiche » peut porter n'importe quel nom, caractères de contrôle compris.
   const dossier = nettoyer(a.dossier);
-  if (a.sansFiche) return `[projet sans fiche webaios.json : /workspace/projets/${dossier}] `;
+  // Fenêtre ouverte : l'agent sait qu'il peut y brancher les outils de développement.
+  const fenetre = a.enMarche ? ` — fenêtre : onglet app:${dossier} (outils de développement disponibles)` : "";
+  if (a.sansFiche) return `[projet sans fiche webaios.json : /workspace/projets/${dossier}${fenetre}] `;
   const nom = tronquer(nettoyer(a.nom), LONGUEUR_TITRE);
-  return `[application : ${nom} — /workspace/projets/${dossier} — journal : /workspace/.webaios/journaux/${dossier}.log] `;
+  return `[application : ${nom} — /workspace/projets/${dossier} — journal : /workspace/.webaios/journaux/${dossier}.log${fenetre}] `;
 }

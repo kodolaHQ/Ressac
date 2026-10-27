@@ -213,12 +213,12 @@ export function demarrerApplications(o: {
   async function deboguer(dossier: string, fenetreId: IdFenetre): Promise<void> {
     const a = (await gestionnaire.liste()).find((x) => x.dossier === dossier);
     if (!a) return;
-    const texte = prefixeApplication({ nom: a.nom, dossier, sansFiche: a.type === "sans-fiche" });
     // Fenêtre ouverte = appli en marche : l'agent peut la lire sans demander, si elle l'est toujours quand le texte s'écrit.
     const fenetre = () => {
       const f = fenetres.ouvertes().find((x) => x.dossier === dossier);
       return f && ongletApplication(f);
     };
+    const texte = prefixeApplication({ nom: a.nom, dossier, sansFiche: a.type === "sans-fiche", enMarche: fenetre() !== undefined });
     o.deboguer(fenetreId, texte, fenetre() ? fenetre : undefined);
   }
 
