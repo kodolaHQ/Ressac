@@ -13,7 +13,7 @@ import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
-import { attendreReponse, ongletActifDe, questionCaduque } from "./agent/pont";
+import { attendreReponse, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, cheminsEspace } from "@webaios/noyau";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
@@ -330,7 +330,14 @@ app.whenReady().then(async () => {
     diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
     surFenetreFermee: (dossier) => agent?.noyau()?.politique.ongletFerme(`app:${dossier}`),
-    surNavigation: (dossier, url) => agent?.noyau()?.politique.ongletNavigue(`app:${dossier}`, url),
+    // Une fenêtre d'appli montre toujours ce que l'agent a construit : de nouveau « construite » sur sa nouvelle origine.
+    surNavigation: (dossier, url) => {
+      const politique = agent?.noyau()?.politique;
+      if (!politique) return;
+      politique.ongletNavigue(`app:${dossier}`, url);
+      const fenetre = applications?.fenetres.ouvertes().find((a) => a.dossier === dossier);
+      politique.construite(ongletApplication({ dossier, titre: fenetre?.titre ?? "", url }));
+    },
     // Comme ⌘J : le panneau s'ouvre et le terminal prend le clavier.
     deboguer: (f, texte, acces) => {
       agent?.preRemplir(f, texte, acces);

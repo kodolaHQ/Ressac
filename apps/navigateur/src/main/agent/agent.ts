@@ -3,6 +3,7 @@ import {
   chargerProfils,
   cheminsEspace,
   creerNoyau,
+  PORTS,
   prefixeContexte,
   surveillerAccueil,
   type Atelier,
@@ -17,8 +18,18 @@ import type { GestionnaireVues } from "../onglets/vues";
 import { changementsPolitique, ongletActifDe, PontElectron, type FenetresPourAgent } from "./pont";
 import { SessionsAgent } from "./sessions";
 import { CANAUX } from "../../commun/canaux";
+import { plageDePorts } from "../applications/service";
 
 declare const __RESSOURCES_NOYAU__: string;
+
+/**
+ * Ports où une page locale ouverte par l'agent est « construite » : ceux des démos (5280–5299, plage du conteneur) et
+ * ceux des applis (WEBAIOS_PORTS_APPS dans les tests, sinon la même plage).
+ */
+function portConstruit(): (port: number) => boolean {
+  const plages = [PORTS.split("-").map(Number) as [number, number], plageDePorts(process.env.WEBAIOS_PORTS_APPS)].filter((p) => p !== undefined);
+  return (port) => plages.some(([min, max]) => port >= min && port <= max);
+}
 
 export interface ServiceAgent {
   /** null tant que le noyau n'est pas prêt, ou s'il n'a pas pu démarrer (voir `erreur`). */
@@ -78,7 +89,7 @@ export function demarrerAgent(o: {
   }
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit() }).then(
       (n) => {
         noyau = n;
         o.surAccueil(); // l'espace vient peut-être d'être créé

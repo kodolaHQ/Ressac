@@ -1,8 +1,9 @@
 import type { WebContents } from "electron";
-import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "@webaios/noyau";
+import { OngletIntrouvable, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
 import type { Magasin } from "../ipc";
+import { InspecteurCdp } from "../outils-dev/inspecteur";
 
 const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
   id: o.id,
@@ -85,6 +86,8 @@ export interface VuesPourAgent {
   capturer(o: Onglet): Promise<Buffer>;
   lireTexteDe(wc: WebContents): Promise<{ texte: string; selection?: string }>;
   capturerDe(wc: WebContents): Promise<Buffer>;
+  /** La page de l'onglet, s'il en a une (un onglet jamais affiché n'en a pas). */
+  vue(id: string): WebContents | null;
 }
 
 /** Les fenêtres des applications lancées, vues comme des onglets `app:<dossier>`. */
@@ -102,6 +105,12 @@ export function ongletApplication(a: { dossier: string; titre: string; url: stri
 
 /** Le navigateur Electron vu par le noyau (spec §5) : lire, ouvrir, capturer les onglets ; demander à l'utilisateur. */
 export class PontElectron implements PontNavigateur {
+  /** Outils de développement de l'agent, par le débogueur de la page de l'onglet ou de la fenêtre d'appli. */
+  readonly outilsDev: OutilsDevNavigateur = new InspecteurCdp((id) => {
+    if (id.startsWith(PREFIXE_APP)) return this.o.applications.webContents(id.slice(PREFIXE_APP.length));
+    return this.o.magasin.etat.onglets[id] ? (this.o.vues.vue(id) ?? undefined) : undefined;
+  });
+
   constructor(
     private readonly o: {
       magasin: Magasin;

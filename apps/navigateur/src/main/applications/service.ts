@@ -93,7 +93,7 @@ export interface ServiceApplications {
 }
 
 /** Plage de ports `min-max` de WEBAIOS_PORTS_APPS (tests), sinon celle du noyau. */
-function plageDePorts(valeur: string | undefined): [number, number] | undefined {
+export function plageDePorts(valeur: string | undefined): [number, number] | undefined {
   const m = /^(\d+)-(\d+)$/.exec(valeur ?? "");
   return m ? [Number(m[1]), Number(m[2])] : undefined;
 }
