@@ -156,11 +156,12 @@ test("⌘Q arrête les applis en marche", async () => {
 
 test("taille de la fenêtre d'appli retenue", async () => {
   const { app, racine, fermer } = await demarrer();
-  const port = await lancerEssai(racine);
+  await lancerEssai(racine);
   await pageAppli(app);
   await fenetreAppli(app, "redimensionner");
   await fenetreAppli(app, "fermer");
-  await expect.poll(() => repond(port), { timeout: 5_000 }).toBe(false);
+  // Fenêtre fermée : son arrêt est demandé ; la relance attend la fin du script d'arrêt.
+  await expect.poll(() => fenetreAppli(app, "taille")).toBeUndefined();
   await lancerEssai(racine);
   await pageAppli(app);
   expect(await fenetreAppli(app, "taille")).toEqual([640, 480]);

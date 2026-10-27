@@ -94,6 +94,12 @@ export class GestionnaireApplications {
    */
   private readonly arrets = new Map<string, number>();
   private finSurveillance?: () => Promise<void>;
+  /**
+   * Scripts d'arrêt en cours par dossier, et ménage des orphelins au démarrage : ils visent les processus par leur
+   * marque, à chaque signal. Un lancement les attend avant de démarrer son processus, sinon il serait tué avec l'ancien.
+   */
+  private readonly arretsEnCours = new Map<string, Promise<void>>();
+  private menage: Promise<void> = Promise.resolve();
 
   constructor(o: {
     chemins: CheminsEspace;
@@ -118,7 +124,11 @@ export class GestionnaireApplications {
 
   /** À appeler une fois par vie du navigateur : les applis d'une vie précédente sont arrêtées. */
   async demarrer(): Promise<void> {
-    if ((await this.atelier.etat()) === "demarre") await this.atelier.arreterApplicationsOrphelines();
+    // Noté tout de suite : un lancement demandé pendant ce ménage l'attend.
+    this.menage = (async () => {
+      if ((await this.atelier.etat()) === "demarre") await this.atelier.arreterApplicationsOrphelines();
+    })();
+    await this.menage;
     this.finSurveillance ??= surveillerProjets(this.chemins, () => this.surChange());
   }
 
@@ -196,6 +206,8 @@ export class GestionnaireApplications {
       return fin({ etat: "erreur", erreur: (e as Error).message });
     }
 
+    await Promise.all([this.menage, this.arretsEnCours.get(dossier)].map((p) => p?.catch(() => {})));
+    if (l.arret) return this.vue(projet);
     const port = await this.choisirPort();
     if (l.arret) return this.vue(projet);
     if (port === null) return fin({ etat: "erreur", erreur: MESSAGE_PLUS_DE_PORT });
@@ -282,7 +294,13 @@ export class GestionnaireApplications {
     l.arret = true;
     this.changer(dossier, { etat: "arretee" });
     l.reveiller?.({ type: "arret" });
-    await this.atelier.arreterApplication(dossier);
+    const arret = this.atelier.arreterApplication(dossier);
+    this.arretsEnCours.set(dossier, arret);
+    try {
+      await arret;
+    } finally {
+      if (this.arretsEnCours.get(dossier) === arret) this.arretsEnCours.delete(dossier);
+    }
     l.processus?.tuer();
   }
 

@@ -192,6 +192,44 @@ test("un lancement demandé après un arrêt n'est pas annulé par lui", async (
   expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche" });
 });
 
+/** Promesse résolue par le test. */
+function differe() {
+  let resoudre!: () => void;
+  const promesse = new Promise<void>((r) => (resoudre = r));
+  return { promesse, resoudre };
+}
+
+test("un lancement juste après un arrêt attend la fin du script d'arrêt (qui le tuerait)", async () => {
+  const c = await espace();
+  const { g, atelier, processus } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["libre", "http", "libre", "http"] }) });
+  await g.lancer("todo");
+  const script = differe();
+  vi.spyOn(atelier, "arreterApplication").mockReturnValue(script.promesse);
+  const arret = g.arreter("todo");
+  const relance = g.lancer("todo");
+  await attendre(50);
+  expect(processus).toHaveLength(1);
+  script.resoudre();
+  await arret;
+  expect(await relance).toMatchObject({ etat: "en-marche" });
+  expect(processus).toHaveLength(2);
+});
+
+test("un lancement pendant le ménage des orphelins attend sa fin", async () => {
+  const c = await espace();
+  const { g, atelier, processus } = preparer({ chemins: c });
+  const menage = differe();
+  vi.spyOn(atelier, "arreterApplicationsOrphelines").mockReturnValue(menage.promesse);
+  const demarrage = g.demarrer();
+  const lancement = g.lancer("todo");
+  await attendre(50);
+  expect(processus).toHaveLength(0);
+  menage.resoudre();
+  await demarrage;
+  expect(await lancement).toMatchObject({ etat: "en-marche" });
+  expect(processus).toHaveLength(1);
+});
+
 test("toutArreter annule aussi un lancement en file : rien n'est lancé après", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });
