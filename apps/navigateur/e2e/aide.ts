@@ -200,3 +200,34 @@ export async function appelerOutil(
     await client.close();
   }
 }
+
+const SERVEURS = {
+  ok: (dossier: string) => `import { createServer } from "node:http";
+createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end('<title>Essai ${dossier}</title><a href="https://exemple.invalide/">lien</a>');
+}).listen(Number(process.env.PORT));
+`,
+  plante: () => `process.stderr.write("boum\\n");
+process.exit(3);
+`,
+  muet: () => `setInterval(() => {}, 1000);
+`,
+};
+
+/**
+ * Projet de l'espace (`projets/<dossier>/`) : `serveur.mjs` et, si `manifeste` est donné, `webaios.json` (une chaîne est
+ * écrite telle quelle ; un objet complète `{ type: "application", lancement: "node serveur.mjs" }`).
+ */
+export function ecrireProjet(
+  racine: string,
+  dossier: string,
+  o: { manifeste?: object | string; serveur?: keyof typeof SERVEURS } = {},
+): void {
+  const chemin = join(racine, "projets", dossier);
+  mkdirSync(chemin, { recursive: true });
+  writeFileSync(join(chemin, "serveur.mjs"), SERVEURS[o.serveur ?? "ok"](dossier));
+  if (o.manifeste === undefined) return;
+  const manifeste = typeof o.manifeste === "string" ? o.manifeste : JSON.stringify({ type: "application", lancement: "node serveur.mjs", ...o.manifeste });
+  writeFileSync(join(chemin, "webaios.json"), manifeste);
+}

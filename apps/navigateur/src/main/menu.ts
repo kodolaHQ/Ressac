@@ -22,6 +22,8 @@ export interface CiblesMenu {
   rouvrirFenetres(): boolean;
   /** Outils de développement de l'interface elle-même (développement seulement). */
   outilsInterface(fenetreId: IdFenetre): void;
+  /** Agit sur la fenêtre d'application au premier plan, s'il y en a une ; vrai si c'est le cas. */
+  surApplication(action: "recharger" | "outils" | "fermer"): boolean;
 }
 
 /** Menu de l'application ; ses raccourcis marchent aussi quand une page web a le focus. Chaque entrée a un id (tests). */
@@ -44,6 +46,10 @@ export function installerMenu(c: CiblesMenu): void {
       const a = calcul(f);
       if (a) c.agir(a);
     });
+  /** ⌘R, ⌥⌘I et ⌘W visent la fenêtre d'application au premier plan avant la fenêtre principale. */
+  const appliOu = (action: "recharger" | "outils" | "fermer", sinon: () => void) => () => {
+    if (!c.surApplication(action)) sinon();
+  };
   const entree = (id: string, label: string, accelerator: string | undefined, click: () => void, extra: Partial<MenuItemConstructorOptions> = {}) =>
     ({ id, label, accelerator, click, ...extra }) satisfies MenuItemConstructorOptions;
 
@@ -91,7 +97,7 @@ export function installerMenu(c: CiblesMenu): void {
         entree("rouvrir-onglet", "Rouvrir l'onglet fermé", "CmdOrCtrl+Shift+T", dansFenetre((f) => c.agir({ type: "rouvrirOngletFerme", fenetreId: f }))),
         { type: "separator" },
         entree("fermer-onglet", "Fermer l'onglet", "CmdOrCtrl+W", () => {
-          if (c.fermerPopup()) return;
+          if (c.surApplication("fermer") || c.fermerPopup()) return;
           const f = c.fenetreActive();
           if (!f) return;
           const o = ongletActif(f);
@@ -124,7 +130,7 @@ export function installerMenu(c: CiblesMenu): void {
       label: "Affichage",
       submenu: [
         entree("adresse", "Barre d'adresse", "CmdOrCtrl+L", dansFenetre((f) => c.raccourci(f, "adresse"))),
-        entree("recharger", "Recharger", "CmdOrCtrl+R", surOnglet("recharger")),
+        entree("recharger", "Recharger", "CmdOrCtrl+R", appliOu("recharger", surOnglet("recharger"))),
         entree("recharger-sans-cache", "Recharger sans le cache", "CmdOrCtrl+Shift+R", surOnglet("rechargerSansCache")),
         { type: "separator" },
         entree("zoom-plus", "Zoom avant", "CmdOrCtrl+Plus", surOnglet({ zoom: "plus" })),
@@ -144,7 +150,7 @@ export function installerMenu(c: CiblesMenu): void {
           }),
         ),
         { type: "separator" },
-        entree("outils-page", "Outils de développement de la page", "Alt+CmdOrCtrl+I", surOnglet("outils")),
+        entree("outils-page", "Outils de développement de la page", "Alt+CmdOrCtrl+I", appliOu("outils", surOnglet("outils"))),
         ...(app.isPackaged ? [] : [entree("outils-interface", "Outils de développement de l'interface", undefined, dansFenetre((f) => c.outilsInterface(f)))]),
       ],
     },

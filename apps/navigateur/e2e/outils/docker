@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Faux docker des tests de bout en bout : aucun vrai conteneur, aucun réseau. Voir le plan 3.
 const { createHash } = require("node:crypto");
-const { appendFileSync, readFileSync } = require("node:fs");
+const { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 
 const args = process.argv.slice(2);
 const env = process.env;
@@ -25,10 +25,67 @@ if (args[0] === "inspect") {
 }
 if (args[0] === "run" && args[1] === "--rm") sortir(1);
 if (["image", "build", "run"].includes(args[0])) sortir(echec ? 1 : 0, "", echec ? "échec simulé" : "");
+/** PID du groupe d'une appli lancée (son shell, chef de groupe). */
+const fichierApp = (dossier) => join(env.WEBAIOS_RACINE, `faux-docker-app-${dossier}.pid`);
+
+/** Tue le groupe de chaque appli visée par un script d'arrêt (`WEBAIOS_APP=<dossier>` ou `WEBAIOS_APP=.*`). */
+function arreterApplications(script) {
+  const motif = /WEBAIOS_APP=(\.\*|[A-Za-z0-9._-]+)/.exec(script)?.[1];
+  if (!motif) return;
+  const fichiers =
+    motif === ".*"
+      ? readdirSync(env.WEBAIOS_RACINE).filter((f) => /^faux-docker-app-.*\.pid$/.test(f)).map((f) => join(env.WEBAIOS_RACINE, f))
+      : [fichierApp(motif)];
+  for (const f of fichiers) {
+    if (!existsSync(f)) continue;
+    try {
+      process.kill(-Number(readFileSync(f, "utf8")), "SIGTERM");
+    } catch {
+      // déjà arrêtée
+    }
+    rmSync(f, { force: true });
+  }
+}
+
+/**
+ * Lancement d'une appli (Atelier.commandeApplication) : le shell tourne sur le Mac, /workspace devenant WEBAIOS_RACINE,
+ * dans son propre groupe (comme les processus du conteneur, que l'arrêt vise par leur marque).
+ */
+function lancerApplication(options, commande) {
+  const local = (s) => s.replaceAll("/workspace", env.WEBAIOS_RACINE);
+  const variables = {};
+  let dossier = "/workspace";
+  for (let i = 0; i < options.length; i++) {
+    if (options[i] === "-e") {
+      const [cle, ...valeur] = local(options[++i]).split("=");
+      variables[cle] = valeur.join("=");
+    } else if (options[i] === "-w") dossier = options[++i];
+  }
+  const [programme, ...reste] = commande.map(local);
+  const enfant = spawn(programme, reste, { cwd: local(dossier), env: { ...env, ...variables }, stdio: "inherit", detached: true });
+  writeFileSync(fichierApp(variables.WEBAIOS_APP), String(enfant.pid));
+  for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"])
+    process.on(signal, () => {
+      try {
+        process.kill(-enfant.pid, signal);
+      } catch {
+        // déjà arrêtée
+      }
+    });
+  enfant.on("exit", (code) => process.exit(code ?? 1));
+}
+
 if (args[0] === "exec") {
+  const options = args.slice(1, args.indexOf("webaios-atelier"));
   let commande = args.slice(args.indexOf("webaios-atelier") + 1);
-  // Arrêt d'une session dans le conteneur (Atelier.arreterSession) : noté pour les tests.
+  if (options.some((o) => o.startsWith("WEBAIOS_APP="))) {
+    lancerApplication(options, commande);
+    return;
+  }
+  // Arrêt d'une session ou d'une appli dans le conteneur (Atelier.arreterSession, arreterApplication…) : noté pour les
+  // tests ; les applis visées sont tuées avant, le journal fait foi de l'arrêt.
   if (commande[0] === "sh" && !commande[2].includes('exec "$@"')) {
+    arreterApplications(commande[2]);
     appendFileSync(join(env.WEBAIOS_RACINE, "faux-docker-arrets.log"), `${commande[2]}\n`);
     sortir(0);
   }

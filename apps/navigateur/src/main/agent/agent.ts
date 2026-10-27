@@ -1,5 +1,16 @@
 import type { BrowserWindow } from "electron";
-import { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte, surveillerAccueil, type CheminsEspace, type Noyau, type OngletInfo } from "@webaios/noyau";
+import {
+  chargerProfils,
+  cheminsEspace,
+  creerNoyau,
+  prefixeContexte,
+  surveillerAccueil,
+  type Atelier,
+  type CheminsEspace,
+  type Noyau,
+  type OngletInfo,
+  type OutilsApplications,
+} from "@webaios/noyau";
 import type { IdFenetre } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
@@ -36,6 +47,10 @@ export function demarrerAgent(o: {
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
   /** La page d'accueil a changé (ou devient lisible : noyau prêt). */
   surAccueil: () => void;
+  /** Atelier partagé avec les applications : un seul conteneur, quel que soit le profil. */
+  atelier: Atelier;
+  /** Applis de l'espace, lancées par l'agent via ses outils MCP. */
+  applications: OutilsApplications;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
@@ -56,7 +71,7 @@ export function demarrerAgent(o: {
   }
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications }).then(
       (n) => {
         noyau = n;
         o.surAccueil(); // l'espace vient peut-être d'être créé

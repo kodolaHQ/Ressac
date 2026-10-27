@@ -1,7 +1,7 @@
-import { app, BrowserWindow, screen, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { Cadre, Decision, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
+import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre } from "../commun/modele";
 import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
@@ -14,7 +14,12 @@ import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreReponse, ongletActifDe, questionCaduque } from "./agent/pont";
+import { Atelier, cheminsEspace } from "@webaios/noyau";
+import { cadreVisible } from "./applications/fenetres";
+import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { enregistrerSchemaBloc, lireBlocsAffiches, ordonnerBlocs, protegerWebviews, retirerBloc, servirBlocs } from "./agent/accueil";
+
+declare const __RESSOURCES_NOYAU__: string;
 
 // Avant tout getPath : le nom fixe aussi le dossier du profil (~/Library/Application Support/WebAiOs).
 app.setName("WebAiOs");
@@ -42,14 +47,6 @@ const enFermeture = new WeakSet<BrowserWindow>();
 const gardees = new Set<IdFenetre>();
 /** Dernière fenêtre principale passée au premier plan : celle que l'agent considère comme « active ». */
 let derniereFocalisee: IdFenetre | undefined;
-
-/** Le cadre enregistré, s'il tombe encore sur un écran branché (sinon la fenêtre s'ouvrirait hors de vue). */
-function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | undefined {
-  if (!c) return undefined;
-  const r = { x: Math.round(c.x), y: Math.round(c.y), width: Math.round(c.largeur), height: Math.round(c.hauteur) };
-  const visible = screen.getAllDisplays().some(({ workArea: z }) => r.x < z.x + z.width && r.x + r.width > z.x && r.y < z.y + z.height && r.y + r.height > z.y);
-  return visible ? r : undefined;
-}
 
 function noterCadre(id: IdFenetre, f: BrowserWindow, magasin: Magasin): void {
   if (f.isDestroyed() || f.isFullScreen() || f.isMinimized()) return;
@@ -140,6 +137,7 @@ function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
 let enregistreur: EnregistreurSession | undefined;
 let rouvrirFenetres = (): boolean => false;
 let agent: ServiceAgent | undefined;
+let applications: ServiceApplications | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 
@@ -284,6 +282,7 @@ app.whenReady().then(async () => {
     fermerOnglet: (id) => vues.fermer(id),
     rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
+    surApplication: (action) => applications?.fenetres.surPremierPlan(action) ?? false,
   };
   installerMenu(cibles);
   // La coche du moteur de recherche suit l'état.
@@ -305,7 +304,30 @@ app.whenReady().then(async () => {
     return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
   };
   servirBlocs(() => agent?.chemins.blocs ?? null);
+  // Un seul conteneur pour l'agent (quel que soit son profil) et les applis qu'il lance.
+  const chemins = cheminsEspace();
+  const atelier = new Atelier({ chemins, dossierDocker: join(__RESSOURCES_NOYAU__, "docker") });
+  applications = demarrerApplications({
+    chemins,
+    atelier,
+    dossierProfil: dossier,
+    // Lien sortant d'une appli : un onglet dans la fenêtre principale active, mise au premier plan.
+    ouvrirOnglet: (url) => {
+      if (!fenetreAgent()) rouvrirFenetres();
+      const id = fenetreAgent();
+      if (!id) return;
+      magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url });
+      const f = fenetres.get(id);
+      if (!f || INVISIBLE) return;
+      if (f.isMinimized()) f.restore();
+      f.focus();
+    },
+    // La page des applications viendra s'y abonner.
+    diffuser: () => {},
+  });
   agent = demarrerAgent({
+    atelier,
+    applications: applications.gestionnaire,
     magasin,
     vues,
     fenetres,
@@ -374,7 +396,10 @@ app.on("before-quit", (e) => {
   e.preventDefault();
   // ⌘Q : les fenêtres se ferment après l'écriture de la session, leur cadre doit y être avant.
   if (magasinGlobal) for (const [id, f] of fenetres) noterCadre(id, f, magasinGlobal);
-  void Promise.allSettled([agent?.arreter(), enregistreur.vider()]).finally(() => {
+  // Les applis s'arrêtent (et leurs fenêtres se ferment) avant l'écriture de la session.
+  const enregistrement = enregistreur;
+  const ecriture = Promise.allSettled([applications?.arreter()]).then(() => enregistrement.vider());
+  void Promise.allSettled([agent?.arreter(), ecriture]).finally(() => {
     sessionEcrite = true;
     app.quit();
   });
