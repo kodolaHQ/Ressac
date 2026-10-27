@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet } from "./aide";
+import { appelerOutil, creerEspace, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet } from "./aide";
 
 /** Ports d'essai, jamais ceux des vraies applis de l'utilisateur ; délai court avant « En erreur ». */
 const ENV = { WEBAIOS_PORTS_APPS: "15280-15284", WEBAIOS_DELAI_APP_MS: "3000" };
@@ -293,6 +293,12 @@ test("⇧⌘A et l'entrée de la barre latérale ouvrent une seule page Applicat
   await ouvrirOnglet(fenetre, "about:blank");
   await expect(fenetre.getByTestId("page-applications")).toBeHidden();
   await fenetre.getByTestId("bouton-applications").click();
+  await expect(fenetre.getByTestId("page-applications")).toBeVisible();
+  expect((await urlsOnglets(fenetre)).filter((u) => u === "webaios://applications")).toHaveLength(1);
+  // Depuis un autre espace : la page de la fenêtre revient, dans son espace.
+  await creerEspace(fenetre, "Boulot", "💼");
+  await expect(fenetre.getByTestId("page-applications")).toBeHidden();
+  await menu(app, "applications");
   await expect(fenetre.getByTestId("page-applications")).toBeVisible();
   expect((await urlsOnglets(fenetre)).filter((u) => u === "webaios://applications")).toHaveLength(1);
   await fermer();
