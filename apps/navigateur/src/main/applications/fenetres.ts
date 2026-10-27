@@ -21,6 +21,8 @@ export function cadreVisible(c: Cadre | null | undefined): Electron.Rectangle | 
  */
 export class FenetresApplications {
   private readonly fenetres = new Map<string, BrowserWindow>();
+  /** Adresse demandée à chaque fenêtre : la page n'en a pas d'autre avant d'être chargée. */
+  private readonly adresses = new Map<string, string>();
   /** Fermetures décidées par le programme (appli arrêtée) : elles n'arrêtent rien. */
   private readonly fermeturesVoulues = new WeakSet<BrowserWindow>();
 
@@ -30,6 +32,8 @@ export class FenetresApplications {
       ouvrirOnglet: (url: string) => void;
       /** L'utilisateur a fermé la fenêtre : l'appli doit s'arrêter. */
       surFermeture: (dossier: string) => void;
+      /** La fenêtre est fermée, par l'utilisateur ou par le programme. */
+      surFermee: (dossier: string) => void;
     },
   ) {}
 
@@ -45,6 +49,7 @@ export class FenetresApplications {
       }
     } else f = this.creer(a);
     f.setTitle(a.nom);
+    this.adresses.set(a.dossier, url);
     void f.loadURL(url).catch(() => {
       // Appli arrêtée entre-temps, ou rechargée aussitôt : rien à faire.
     });
@@ -74,7 +79,11 @@ export class FenetresApplications {
     f.on("move", noterCadre);
     f.on("close", noterCadre);
     f.on("closed", () => {
-      if (this.fenetres.get(dossier) === f) this.fenetres.delete(dossier);
+      if (this.fenetres.get(dossier) === f) {
+        this.fenetres.delete(dossier);
+        this.adresses.delete(dossier);
+      }
+      this.o.surFermee(dossier);
       if (!this.fermeturesVoulues.has(f)) this.o.surFermeture(dossier);
     });
     const wc = f.webContents;
@@ -108,7 +117,7 @@ export class FenetresApplications {
   ouvertes(): { dossier: string; titre: string; url: string }[] {
     return [...this.fenetres]
       .filter(([, f]) => !f.isDestroyed())
-      .map(([dossier, f]) => ({ dossier, titre: f.getTitle(), url: f.webContents.getURL() }));
+      .map(([dossier, f]) => ({ dossier, titre: f.getTitle(), url: f.webContents.getURL() || this.adresses.get(dossier) || "" }));
   }
 
   /** Recharge, ouvre les outils de développement ou ferme (comme l'utilisateur) la fenêtre d'appli au premier plan ; vrai si c'est le cas. */

@@ -14,7 +14,7 @@ import {
 import type { IdFenetre } from "../../commun/modele";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
-import { changementsPolitique, ongletActifDe, PontElectron } from "./pont";
+import { changementsPolitique, ongletActifDe, PontElectron, type FenetresPourAgent } from "./pont";
 import { SessionsAgent } from "./sessions";
 import { CANAUX } from "../../commun/canaux";
 
@@ -51,10 +51,12 @@ export function demarrerAgent(o: {
   atelier: Atelier;
   /** Applis de l'espace, lancées par l'agent via ses outils MCP. */
   applications: OutilsApplications;
+  /** Fenêtres des applications lancées : l'agent les voit comme des onglets `app:<dossier>`. */
+  fenetresApplications: FenetresPourAgent;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
-  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture });
+  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture, applications: o.fenetresApplications });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).
   o.magasin.abonner((etat, avant) => {
     if (!noyau) return;

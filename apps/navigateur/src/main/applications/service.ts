@@ -94,6 +94,8 @@ export function demarrerApplications(o: {
   ouvrirOnglet(url: string): void;
   /** La liste ou l'état des applis a changé. */
   diffuser(): void;
+  /** Une fenêtre d'appli s'est fermée (par l'utilisateur ou par le programme). */
+  surFenetreFermee(dossier: string): void;
 }): ServiceApplications {
   const memoire = new MemoireApplications(o.dossierProfil);
   /** Lancements en cours par dossier : une appli relancée passe par « arretee » sans que sa fenêtre doive se fermer. */
@@ -146,6 +148,7 @@ export function demarrerApplications(o: {
   const fenetres = new FenetresApplications({
     memoire,
     ouvrirOnglet: o.ouvrirOnglet,
+    surFermee: o.surFenetreFermee,
     surFermeture: (dossier) => void gestionnaire.arreter(dossier).catch((e) => console.error(`[applications] ${dossier} non arrêtée :`, e)),
   });
   // Une fois par vie du navigateur, en tâche de fond : les fenêtres n'attendent jamais Docker.

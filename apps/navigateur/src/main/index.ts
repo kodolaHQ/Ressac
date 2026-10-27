@@ -324,10 +324,13 @@ app.whenReady().then(async () => {
     },
     // La page des applications viendra s'y abonner.
     diffuser: () => {},
+    // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
+    surFenetreFermee: (dossier) => agent?.noyau()?.politique.ongletFerme(`app:${dossier}`),
   });
   agent = demarrerAgent({
     atelier,
     applications: applications.gestionnaire,
+    fenetresApplications: applications.fenetres,
     magasin,
     vues,
     fenetres,

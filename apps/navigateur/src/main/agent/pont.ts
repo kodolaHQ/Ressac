@@ -1,3 +1,4 @@
+import type { WebContents } from "electron";
 import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
 import type { Magasin } from "../ipc";
@@ -9,16 +10,19 @@ const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
   espace: etat.espaces.find((e) => e.id === o.espaceId)?.nom ?? "",
 });
 
+/** Pages internes de WebAiOs (`webaios:`) : l'agent ne les voit jamais. */
+const interne = (o: Onglet) => o.url.startsWith("webaios:");
+
 /** Tous les onglets, toutes fenêtres confondues, tels que l'agent les voit. */
 export function infosOnglets(etat: EtatNavigateur): OngletInfo[] {
-  return Object.values(etat.onglets).map((o) => info(etat, o));
+  return Object.values(etat.onglets).filter((o) => !interne(o)).map((o) => info(etat, o));
 }
 
 export function ongletActifDe(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): OngletInfo | null {
   const f = etat.fenetres.find((x) => x.id === fenetreId);
   const id = f?.actif[f.espaceActif];
   const o = id ? etat.onglets[id] : undefined;
-  return o ? info(etat, o) : null;
+  return o && !interne(o) ? info(etat, o) : null;
 }
 
 /** L'espace demandé par l'agent : par id, puis par nom (sans casse), sinon l'espace actif. */
@@ -78,7 +82,17 @@ export interface VuesPourAgent {
   naviguer(id: string, url: string): void;
   lireTexte(o: Onglet): Promise<{ texte: string; selection?: string }>;
   capturer(o: Onglet): Promise<Buffer>;
+  lireTexteDe(wc: WebContents): Promise<{ texte: string; selection?: string }>;
+  capturerDe(wc: WebContents): Promise<Buffer>;
 }
+
+/** Les fenêtres des applications lancées, vues comme des onglets `app:<dossier>`. */
+export interface FenetresPourAgent {
+  ouvertes(): { dossier: string; titre: string; url: string }[];
+  webContents(dossier: string): WebContents | undefined;
+}
+
+const PREFIXE_APP = "app:";
 
 /** Le navigateur Electron vu par le noyau (spec §5) : lire, ouvrir, capturer les onglets ; demander à l'utilisateur. */
 export class PontElectron implements PontNavigateur {
@@ -89,8 +103,17 @@ export class PontElectron implements PontNavigateur {
       /** Fenêtre principale au premier plan, sinon la dernière qui l'a été. */
       fenetreActive: () => IdFenetre | undefined;
       demander: (o: OngletInfo) => Promise<boolean>;
+      applications: FenetresPourAgent;
     },
   ) {}
+
+  /** La fenêtre d'une appli si `id` est `app:<dossier>` ; undefined pour un onglet ordinaire. */
+  private fenetreAppli(id: string): WebContents | undefined {
+    if (!id.startsWith(PREFIXE_APP)) return undefined;
+    const wc = this.o.applications.webContents(id.slice(PREFIXE_APP.length));
+    if (!wc) throw new OngletIntrouvable(id);
+    return wc;
+  }
 
   private onglet(id: string): Onglet {
     const o = this.o.magasin.etat.onglets[id];
@@ -103,11 +126,13 @@ export class PontElectron implements PontNavigateur {
   }
 
   async listerOnglets(): Promise<OngletInfo[]> {
-    return infosOnglets(this.o.magasin.etat);
+    const apps = this.o.applications.ouvertes().map((a) => ({ id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier }));
+    return [...infosOnglets(this.o.magasin.etat), ...apps];
   }
 
-  lireTexte(id: string): Promise<{ texte: string; selection?: string }> {
-    return this.o.vues.lireTexte(this.onglet(id));
+  async lireTexte(id: string): Promise<{ texte: string; selection?: string }> {
+    const wc = this.fenetreAppli(id);
+    return wc ? this.o.vues.lireTexteDe(wc) : this.o.vues.lireTexte(this.onglet(id));
   }
 
   /** Les démos de l'agent s'ouvrent au premier plan, marquées ✦ (spec §6). */
@@ -124,12 +149,18 @@ export class PontElectron implements PontNavigateur {
   }
 
   async naviguer(id: string, url: string): Promise<void> {
+    const wc = this.fenetreAppli(id);
+    if (wc) {
+      void wc.loadURL(url).catch(() => {});
+      return;
+    }
     this.onglet(id);
     this.o.vues.naviguer(id, url);
   }
 
-  capturer(id: string): Promise<Buffer> {
-    return this.o.vues.capturer(this.onglet(id));
+  async capturer(id: string): Promise<Buffer> {
+    const wc = this.fenetreAppli(id);
+    return wc ? this.o.vues.capturerDe(wc) : this.o.vues.capturer(this.onglet(id));
   }
 
   demanderAutorisation(o: OngletInfo): Promise<boolean> {

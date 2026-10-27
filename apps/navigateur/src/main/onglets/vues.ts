@@ -133,7 +133,10 @@ export class GestionnaireVues {
 
   /** Texte et sélection, lus dans un monde isolé : la page ne peut pas falsifier ce que l'agent reçoit. */
   async lireTexte(onglet: Onglet): Promise<{ texte: string; selection?: string }> {
-    const wc = await this.assurerVue(onglet);
+    return this.lireTexteDe(await this.assurerVue(onglet));
+  }
+
+  async lireTexteDe(wc: WebContents): Promise<{ texte: string; selection?: string }> {
     const r = (await wc.executeJavaScriptInIsolatedWorld(999, [
       { code: `({ texte: (document.body?.innerText ?? "").slice(0, ${LONGUEUR_TEXTE}), selection: String(getSelection() ?? "") })` },
     ])) as { texte: string; selection: string };
@@ -141,7 +144,10 @@ export class GestionnaireVues {
   }
 
   async capturer(onglet: Onglet): Promise<Buffer> {
-    const wc = await this.assurerVue(onglet);
+    return this.capturerDe(await this.assurerVue(onglet));
+  }
+
+  async capturerDe(wc: WebContents): Promise<Buffer> {
     return (await wc.capturePage(undefined, { stayHidden: true })).toPNG();
   }
 

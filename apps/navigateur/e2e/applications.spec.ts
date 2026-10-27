@@ -90,6 +90,20 @@ test("lancer_application ouvre une fenêtre sans barre sur l'appli", async () =>
   await fermer();
 });
 
+test("après lancer_application, l'agent lit et capture la fenêtre de l'appli sans demande", async () => {
+  const { fenetre, racine, fermer } = await demarrer();
+  const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
+  expect(texte).toContain("(onglet app:essai)");
+  const lu = await appelerOutil(racine, "lire_onglet", { id: "app:essai" });
+  // Titre de la fenêtre (le nom de l'appli) puis texte de la page ; « Essai essai » est le <title> de la page, pas son texte.
+  expect(lu.texte).toContain("Titre : Essai");
+  expect(lu.texte).toContain("lien");
+  const capture = await appelerOutil(racine, "capture_ecran", { id: "app:essai" });
+  expect(capture.image!.length).toBeGreaterThan(1000);
+  await expect(fenetre.getByTestId("demande-permission")).toHaveCount(0);
+  await fermer();
+});
+
 test("fermer la fenêtre de l'appli l'arrête", async () => {
   const { app, racine, fermer } = await demarrer();
   const port = await lancerEssai(racine);

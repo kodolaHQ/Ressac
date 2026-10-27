@@ -3,7 +3,7 @@ import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import type { EtatNavigateur } from "../../src/commun/modele";
-import { attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 function preparer() {
   let n = 0;
@@ -87,4 +87,34 @@ test("questionCaduque : une demande de l'agent ne tombe qu'avec son onglet visé
   expect(questionCaduque(site, e())).toBe(true);
   ag({ type: "fermerOnglet", id: b! });
   expect(questionCaduque(lecture, e())).toBe(true);
+});
+
+test("listerOnglets inclut les fenêtres d'application", async () => {
+  const { e } = preparer();
+  const wc = {} as never;
+  const vues = { naviguer: vi.fn(), lireTexte: vi.fn(), capturer: vi.fn(), lireTexteDe: vi.fn(async () => ({ texte: "Essai essai" })), capturerDe: vi.fn(async () => Buffer.from("png")) };
+  const pont = new PontElectron({
+    magasin: { etat: e() } as never,
+    vues: vues as never,
+    fenetreActive: () => undefined,
+    demander: async () => true,
+    applications: {
+      ouvertes: () => [{ dossier: "essai", titre: "Essai", url: "http://localhost:15280/" }],
+      webContents: (d) => (d === "essai" ? wc : undefined),
+    },
+  });
+  expect(await pont.listerOnglets()).toContainEqual({ id: "app:essai", titre: "Essai", url: "http://localhost:15280/", espace: "", application: "essai" });
+  expect((await pont.lireTexte("app:essai")).texte).toBe("Essai essai");
+  expect(vues.lireTexteDe).toHaveBeenCalledWith(wc);
+  expect((await pont.capturer("app:essai")).toString()).toBe("png");
+  await expect(pont.lireTexte("app:absente")).rejects.toThrow();
+  await expect(pont.naviguer("app:absente", "http://x.test/")).rejects.toThrow();
+});
+
+test("un onglet webaios: n'est ni listé ni actif pour l'agent", () => {
+  const { e, ag, F } = preparer();
+  const id = Object.values(e().onglets).find((o) => o.fenetreId === F)!.id;
+  ag({ type: "majOnglet", id, champs: { url: "webaios://applications" } });
+  expect(infosOnglets(e()).map((o) => o.url)).toEqual(["https://b.test/"]);
+  expect(ongletActifDe(e(), F)).toBeNull();
 });
