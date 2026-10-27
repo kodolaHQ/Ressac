@@ -12,6 +12,11 @@
   --en-cours: #e0a23a;
   --en-erreur: #e5736b;
   --arretee: #77777f;
+  /* Pastille d'accès de l'agent : lit / inspecte, agit. */
+  --acces-lecture: #7aa7ff;
+  --acces-lecture-fond: #2d6cdf33;
+  --acces-agir: #fbbf24;
+  --acces-agir-fond: #f59e0b33;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -27,6 +32,10 @@
     --en-cours: #c27f12;
     --en-erreur: #c9473e;
     --arretee: #8e8e99;
+    --acces-lecture: #1f56c4;
+    --acces-lecture-fond: #2d6cdf26;
+    --acces-agir: #b45309;
+    --acces-agir-fond: #f59e0b30;
     color-scheme: light;
   }
 }

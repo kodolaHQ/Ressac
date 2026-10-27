@@ -151,6 +151,8 @@ app.whenReady().then(async () => {
   const diffuser = (canal: string, valeur: unknown) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
   };
+  let diffusionAcces: NodeJS.Timeout | undefined;
+  const etatAcces = () => agent?.noyau()?.politique.etat() ?? {};
   const telechargements = new Telechargements({
     dossier: process.env.WEBAIOS_TELECHARGEMENTS ?? app.getPath("downloads"),
     diffuser: (liste) => diffuser(CANAUX.telechargements, liste),
@@ -237,6 +239,10 @@ app.whenReady().then(async () => {
     applications: {
       liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
       agir: (dossier, action, f) => applications?.agir(dossier, action, f),
+    },
+    acces: {
+      etat: etatAcces,
+      couper: (id, droit) => agent?.noyau()?.politique.couper(id, droit),
     },
     agent: {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
@@ -389,6 +395,14 @@ app.whenReady().then(async () => {
     fenetres,
     fenetreActive: fenetreAgent,
     surAccueil: () => diffuser(CANAUX.accueilChange, null),
+    // Les pastilles suivent la politique d'accès ; une rafale de changements ne donne qu'une diffusion par 50 ms.
+    surAcces: () => {
+      if (diffusionAcces) return;
+      diffusionAcces = setTimeout(() => {
+        diffusionAcces = undefined;
+        diffuser(CANAUX.acces, etatAcces());
+      }, 50);
+    },
     // « L'agent veut lire l'onglet … » dans la fenêtre active ; jamais mémorisé hors de la politique du noyau.
     demanderLecture: (o) => attendreReponse((repondre) => poserQuestionAgent(o, repondre, { permissions: ["lire-onglet"] })),
     // La carte des outils de développement : les droits cochés par l'utilisateur, `[]` s'il refuse ou ne répond pas.

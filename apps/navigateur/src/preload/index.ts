@@ -61,6 +61,11 @@ const api: ApiWebaios = {
     surEtat: (rappel) => ecouter(CANAUX.agentEtat, rappel),
     profils: () => ipcRenderer.invoke(CANAUX.agentProfils),
   },
+  acces: {
+    etat: () => ipcRenderer.invoke(CANAUX.accesEtat),
+    couper: (id, droit) => ipcRenderer.send(CANAUX.accesCouper, { id, ...(droit ? { droit } : {}) }),
+  },
+  surAcces: (rappel) => ecouter(CANAUX.acces, rappel),
   accueil: {
     lire: () => ipcRenderer.invoke(CANAUX.accueilLire),
     surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),

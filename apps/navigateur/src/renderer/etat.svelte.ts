@@ -1,3 +1,4 @@
+import type { EtatAccesOnglet } from "@webaios/noyau";
 import type { ApiWebaios } from "../commun/api";
 import type { DemandeEnAttente, EtatFenetre, EtatNavigateur, Telechargement } from "../commun/modele";
 
@@ -40,3 +41,29 @@ api.surPermissions((liste) => {
 void api.permissions.enAttente().then((liste) => {
   demandes.liste = liste;
 });
+
+/** Accès de l'agent aux onglets (id d'onglet → ce qu'il peut lire ou faire). */
+export const acces = $state<{ liste: Record<string, EtatAccesOnglet>; agent: string }>({ liste: {}, agent: "L'agent" });
+
+api.surAcces((e) => {
+  acces.liste = e;
+});
+void api.acces.etat().then((e) => {
+  acces.liste = e;
+});
+
+/** Nom de l'agent du profil choisi, pour la bulle d'accès. */
+$effect.root(() => {
+  $effect(() => {
+    const profil = etat.valeur?.reglages.profilAgent;
+    void api.agent.profils().then((l) => {
+      acces.agent = l.find((p) => p.id === profil)?.nom ?? "L'agent";
+    });
+  });
+});
+
+/** L'accès de l'agent à cet onglet, s'il lit la page ou détient un droit (un outil en cours seul ne montre rien). */
+export function accesDe(id: string): EtatAccesOnglet | undefined {
+  const e = acces.liste[id];
+  return e && (e.lecture || e.droits.length) ? e : undefined;
+}

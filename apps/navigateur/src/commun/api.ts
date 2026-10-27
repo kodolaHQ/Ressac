@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, type Application, type DroitDev } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, type Application, type DroitDev, type EtatAccesOnglet } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, CANAUX } from "./canaux";
@@ -133,6 +133,13 @@ export interface ApiWebaios {
     /** Profils d'agent disponibles (le choix passe par l'action choisirProfilAgent). */
     profils(): Promise<{ id: string; nom: string }[]>;
   };
+  /** Accès de l'agent aux onglets (pastilles et bulle pour le couper). */
+  acces: {
+    etat(): Promise<Record<IdOnglet, EtatAccesOnglet>>;
+    couper(id: IdOnglet, droit?: DroitDev): void;
+  };
+  /** L'accès de l'agent à un onglet a changé : l'état complet est rediffusé. */
+  surAcces(rappel: (e: Record<IdOnglet, EtatAccesOnglet>) => void): () => void;
   /** Page d'accueil (dossier accueil/ de l'espace de l'agent). */
   accueil: {
     lire(): Promise<BlocAffiche[]>;
@@ -177,6 +184,9 @@ export const SchemaReponsePermission = z.object({
   decision: z.enum(["autoriser", "refuser"]),
   droits: z.array(z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]])).optional(),
 });
+
+/** Couper un droit de l'agent sur un onglet, ou tout son accès si `droit` est absent. */
+export const SchemaCouperAcces = z.object({ id, droit: z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]]).optional() });
 
 /** Ce que montre le panneau agent d'une fenêtre. */
 export type EtatPanneauAgent =

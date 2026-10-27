@@ -33,6 +33,9 @@ export const CANAUX = {
   applicationsListe: "webaios:applications-liste",
   applicationsChange: "webaios:applications-change",
   applicationAction: "webaios:application-action",
+  acces: "webaios:acces",
+  accesEtat: "webaios:acces-etat",
+  accesCouper: "webaios:acces-couper",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

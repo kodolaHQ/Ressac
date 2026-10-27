@@ -199,3 +199,69 @@ test("Refuser : l'outil répond refusé", async () => {
   await expect(fenetre.getByTestId(CARTE)).toHaveCount(0);
   await fermer();
 });
+
+// Pastille d'accès : sur la ligne de l'onglet et dans la barre d'adresse (onglet actif).
+const PASTILLE = "pastille-acces";
+const BULLE = "bulle-acces";
+
+async function accorder(fenetre: Page, racine: string, id: string, droits: string[]) {
+  const appel = outil(racine, "demander_outils_dev", { id, droits, raison: "Essai de la pastille." });
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Autoriser la sélection" }).click();
+  await appel;
+}
+
+test("lecture accordée (Autoriser une fois) : pastille 👁 sur l'onglet et dans la barre d'adresse", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  await expect(fenetre.getByTestId(PASTILLE)).toHaveCount(0);
+  const lecture = outil(racine, "lire_onglet", { id });
+  await fenetre.getByTestId("demande-permission").getByRole("button", { name: "Autoriser une fois" }).click();
+  await lecture;
+  await expect(fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE)).toHaveAttribute("data-niveau", "lecture");
+  await expect(fenetre.locator("form").getByTestId(PASTILLE)).toHaveAttribute("data-niveau", "lecture");
+  await fermer();
+});
+
+test("agir accordé : pastille ⚡", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  await accorder(fenetre, racine, id, ["agir"]);
+  const p = fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE);
+  await expect(p).toHaveAttribute("data-niveau", "agir");
+  await expect(p).toContainText("⚡");
+  await fermer();
+});
+
+test("clic sur la pastille : la bulle liste les droits ; Couper sur « console » retire ce droit (lire_console redemande)", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  await accorder(fenetre, racine, id, ["console", "reseau"]);
+  await fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE).click();
+  const bulle = fenetre.getByTestId(BULLE);
+  await expect(bulle).toContainText("Claude Code");
+  await expect(bulle).toContainText("Console et erreurs");
+  await expect(bulle).toContainText("Réseau");
+  await expect(bulle).toContainText("Cette conversation · tombe si l'onglet change de site");
+  await expect(fenetre.getByTestId(`onglet-${id}`)).toHaveAttribute("aria-selected", "true");
+  await bulle.locator('button[data-droit="console"]').click();
+  await expect(bulle.locator('button[data-droit="console"]')).toHaveCount(0);
+  await expect(bulle.locator('button[data-droit="reseau"]')).toHaveCount(1);
+  await fenetre.keyboard.press("Escape");
+  await expect(bulle).toHaveCount(0);
+  const appel = outil(racine, "lire_console", { id });
+  await expect(fenetre.getByTestId(CARTE)).toBeVisible();
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Refuser" }).click();
+  expect(await appel).toBe(REFUS);
+  await fermer();
+});
+
+test("Couper l'accès : la pastille disparaît, lire_onglet redemande", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  await accorder(fenetre, racine, id, ["console"]);
+  await fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE).click();
+  await fenetre.getByTestId(BULLE).getByRole("button", { name: "Couper l'accès" }).click();
+  await expect(fenetre.getByTestId(PASTILLE)).toHaveCount(0);
+  await expect(fenetre.getByTestId(BULLE)).toHaveCount(0);
+  const appel = outil(racine, "lire_onglet", { id });
+  await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
+  await fenetre.getByTestId("demande-permission").getByRole("button", { name: "Refuser" }).click();
+  await appel;
+  await fermer();
+});

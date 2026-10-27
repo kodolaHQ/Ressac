@@ -64,6 +64,8 @@ export function demarrerAgent(o: {
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
   /** Carte de consentement des outils de développement (voir index.ts). */
   demanderOutilsDev: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }) => Promise<DroitDev[]>;
+  /** L'accès de l'agent à un onglet a changé (politique du noyau). */
+  surAcces: () => void;
   /** La page d'accueil a changé (ou devient lisible : noyau prêt). */
   surAccueil: () => void;
   /** Atelier partagé avec les applications : un seul conteneur, quel que soit le profil. */
@@ -90,11 +92,14 @@ export function demarrerAgent(o: {
   } catch (e) {
     console.error("[webaios] surveillance de la page d'accueil impossible :", e);
   }
+  let desabonnerAcces: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
     return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit() }).then(
       (n) => {
         noyau = n;
+        desabonnerAcces = n.politique.surChange(o.surAcces);
+        o.surAcces();
         o.surAccueil(); // l'espace vient peut-être d'être créé
         return n;
       },
@@ -107,6 +112,9 @@ export function demarrerAgent(o: {
   };
   const arreterNoyau = async (n: Noyau | null) => {
     noyau = null;
+    desabonnerAcces?.();
+    desabonnerAcces = undefined;
+    o.surAcces(); // plus de noyau : plus aucune pastille
     await n?.arreter();
   };
   let pret = lancerNoyau(o.magasin.etat.reglages.profilAgent);

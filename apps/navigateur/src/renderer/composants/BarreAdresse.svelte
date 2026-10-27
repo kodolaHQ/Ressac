@@ -1,7 +1,8 @@
 <script lang="ts">
+  import PastilleAcces from "./PastilleAcces.svelte";
   import Icone from "./Icone.svelte";
   import type { EtatFenetre, Visite } from "../../commun/modele";
-  import { api, etat } from "../etat.svelte";
+  import { accesDe, api, etat } from "../etat.svelte";
   import { adresse } from "./adresse.svelte";
 
   let { fenetre }: { fenetre: EtatFenetre } = $props();
@@ -9,6 +10,7 @@
     const id = fenetre.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;
   });
+  const droitsAgent = $derived(onglet ? accesDe(onglet.id) : undefined);
   let saisie = $state<string | null>(null); // non nul pendant l'édition
   let champ: HTMLInputElement;
   let suggestions = $state<Visite[]>([]);
@@ -90,6 +92,7 @@
   <input
     bind:this={champ}
     data-testid="barre-adresse"
+    class:avec-acces={droitsAgent}
     value={saisie ?? (onglet ? hote(onglet.url) : "")}
     placeholder="Rechercher ou saisir une adresse"
     spellcheck="false"
@@ -112,6 +115,7 @@
     aria-controls="suggestions"
     aria-autocomplete="list"
   />
+  {#if onglet && droitsAgent}<span class="acces"><PastilleAcces id={onglet.id} etat={droitsAgent} /></span>{/if}
   {#if suggestions.length}
     <ul class="suggestions" id="suggestions" role="listbox">
       {#each suggestions as v, i (v.url)}
@@ -140,11 +144,13 @@
   .navigation .compact { margin-left: auto; }
   .navigation .compact[aria-pressed="true"] { color: var(--accent); }
   form { position: relative; }
+  .acces { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
   .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
   .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--texte); }
   .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--fond-survol); }
   .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .suggestions .url { font-size: 11px; color: var(--texte-doux); }
   input { width: 100%; box-sizing: border-box; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; background: var(--fond-survol); color: var(--texte); outline: none; -webkit-app-region: no-drag; }
+  input.avec-acces { padding-right: 56px; }
   input:focus { border-color: var(--accent); background: var(--fond); }
 </style>

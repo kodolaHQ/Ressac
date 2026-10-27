@@ -1,7 +1,8 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
   import type { EtatFenetre } from "../../commun/modele";
-  import { api, etat } from "../etat.svelte";
+  import { accesDe, api, etat } from "../etat.svelte";
+  import PastilleAcces from "./PastilleAcces.svelte";
   import IconeSite from "./IconeSite.svelte";
   import { ouvrirMenu } from "./menu.svelte";
 
@@ -25,6 +26,7 @@
 <ul class="onglets" role="tablist" aria-orientation="vertical">
   {#each ordre as id, index (id)}
     {@const onglet = etat.valeur?.onglets[id]}
+    {@const droitsAgent = accesDe(id)}
     {#if onglet}
       <li
         data-testid="onglet-{id}"
@@ -55,6 +57,7 @@
       >
         {#if onglet.chargement}<span class="roue" aria-label="Chargement"></span>{:else}<IconeSite favicon={onglet.favicon} titre={onglet.titre} />{/if}
         <span class="titre">{onglet.titre}</span>
+        {#if droitsAgent}<PastilleAcces {id} etat={droitsAgent} />{/if}
         {#if onglet.ouvertParAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
         <button
           class="fermer"
