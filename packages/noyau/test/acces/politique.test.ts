@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from "vitest";
-import { PolitiqueAcces } from "../../src/acces/politique.js";
+import { DROITS_DEV, PolitiqueAcces } from "../../src/acces/politique.js";
 import type { OngletInfo } from "../../src/mcp/pont.js";
 
 const github: OngletInfo = { id: "1", titre: "svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
@@ -89,4 +89,116 @@ test("l'agent navigue sur le même site un onglet que l'utilisateur lui a donné
   p.interactionUtilisateur(github);
   p.navigationParAgent(github.id, "https://github.com/sveltejs/kit");
   expect(p.peutLire({ ...github, url: "https://github.com/sveltejs/kit" })).toBe(true);
+});
+
+// --- Droits des outils de développement ---
+
+const app: OngletInfo = { id: "4", titre: "Mon app", url: "http://localhost:8123/", espace: "perso", application: "mon-app" };
+const port3000: OngletInfo = { id: "5", titre: "Dev", url: "http://localhost:3000/", espace: "perso" };
+
+test("construite : app:<dossier> et localhost:5285 ouvert par l'agent ont les quatre droits ; localhost:3000 n'en a aucun", () => {
+  const demo5285 = { ...demo, url: "http://localhost:5285/" };
+  p.ongletOuvertParAgent(app);
+  p.ongletOuvertParAgent(demo5285);
+  p.ongletOuvertParAgent(port3000);
+  expect(p.droitsDev(app)).toEqual(["console", "reseau", "performances", "agir"]);
+  expect(p.droitsDev(demo5285)).toEqual(["console", "reseau", "performances", "agir"]);
+  expect(p.estConstruite(demo5285)).toBe(true);
+  expect(p.droitsDev(port3000)).toEqual([]);
+  expect(p.estConstruite(port3000)).toBe(false);
+});
+
+test("construite : le prédicat de port est configurable", () => {
+  const q = new PolitiqueAcces({ portConstruit: (port) => port === 3000 });
+  q.ongletOuvertParAgent(port3000);
+  expect(q.estConstruite(port3000)).toBe(true);
+});
+
+test("construite : quitter l'origine retire les droits ; y renaviguer (agent) les rend", () => {
+  p.ongletOuvertParAgent(demo);
+  p.navigationParAgent(demo.id, "https://github.com/");
+  expect(p.droitsDev({ ...demo, url: "https://github.com/" })).toEqual([]);
+  p.navigationParAgent(demo.id, demo.url);
+  expect(p.droitsDev(demo)).toHaveLength(4);
+  p.ongletNavigue(demo.id, "https://github.com/");
+  p.ongletNavigue(demo.id, demo.url);
+  expect(p.droitsDev(demo)).toEqual([]);
+});
+
+test("accorderDev : seuls les droits cochés ; tombent au changement de site, à la fermeture, à reinitialiser", () => {
+  p.accorderDev(github, ["console", "agir"], ["reseau"]);
+  expect(p.droitsDev(github)).toEqual(["console", "agir"]);
+  p.ongletNavigue(github.id, "https://mail.google.com/");
+  expect(p.droitsDev(github)).toEqual([]);
+  p.accorderDev(github, ["console"], []);
+  p.ongletFerme(github.id);
+  expect(p.droitsDev(github)).toEqual([]);
+  p.accorderDev(github, ["console"], []);
+  p.reinitialiser();
+  expect(p.droitsDev(github)).toEqual([]);
+});
+
+test("refus : peutDemander faux pour (onglet, droit) refusé jusqu'à interactionUtilisateur ; un autre droit reste demandable", () => {
+  p.accorderDev(github, [], ["reseau"]);
+  expect(p.peutDemander(github.id, "reseau")).toBe(false);
+  expect(p.peutDemander(github.id, "console")).toBe(true);
+  p.interactionUtilisateur(gmail);
+  expect(p.peutDemander(github.id, "reseau")).toBe(true);
+  p.accorderDev(github, [], ["reseau"]);
+  p.reinitialiser();
+  expect(p.peutDemander(github.id, "reseau")).toBe(true);
+});
+
+test("couper(id, \"agir\") retire ce seul droit ; couper(id) retire tout, lecture comprise ; une construite coupée le reste jusqu'à reinitialiser", () => {
+  p.interactionUtilisateur(github);
+  p.accorderDev(github, ["console", "agir"], []);
+  p.couper(github.id, "agir");
+  expect(p.droitsDev(github)).toEqual(["console"]);
+  p.couper(github.id);
+  expect(p.droitsDev(github)).toEqual([]);
+  expect(p.peutLire(github)).toBe(false);
+
+  p.ongletOuvertParAgent(demo);
+  p.couper(demo.id, "agir");
+  expect(p.droitsDev(demo)).toEqual(["console", "reseau", "performances"]);
+  p.couper(demo.id);
+  expect(p.droitsDev(demo)).toEqual([]);
+  p.navigationParAgent(demo.id, "http://localhost:5281/");
+  expect(p.droitsDev({ ...demo, url: "http://localhost:5281/" })).toEqual([]);
+  p.reinitialiser();
+  expect(p.droitsDev({ ...demo, url: "http://localhost:5281/" })).toHaveLength(4);
+});
+
+test("etat() : lecture, droits, construite, enCours (utilisation true/false équilibrés)", () => {
+  expect(p.etat()).toEqual({});
+  p.interactionUtilisateur(github);
+  p.accorderDev(gmail, ["reseau"], []);
+  p.ongletOuvertParAgent(demo);
+  p.utilisation(github.id, true);
+  p.utilisation(github.id, true);
+  p.utilisation(github.id, false);
+  expect(p.etat()[github.id]).toEqual({ lecture: true, droits: [], construite: false, enCours: true });
+  expect(p.etat()[gmail.id]).toEqual({ lecture: false, droits: ["reseau"], construite: false, enCours: false });
+  expect(p.etat()[demo.id]).toEqual({ lecture: true, droits: [...DROITS_DEV], construite: true, enCours: false });
+  p.utilisation(github.id, false);
+  expect(p.etat()[github.id]?.enCours).toBe(false);
+  p.ongletFerme(demo.id);
+  expect(p.etat()[demo.id]).toBeUndefined();
+});
+
+test("surChange appelé à chaque mutation, désabonnement effectif", () => {
+  let n = 0;
+  const stop = p.surChange(() => n++);
+  p.interactionUtilisateur(github);
+  p.accorderDev(github, ["console"], []);
+  p.couper(github.id, "console");
+  p.utilisation(github.id, true);
+  p.ongletNavigue(github.id, "https://x.test/");
+  p.navigationParAgent(github.id, "https://y.test/");
+  p.ongletFerme(github.id);
+  p.reinitialiser();
+  expect(n).toBe(8);
+  stop();
+  p.interactionUtilisateur(github);
+  expect(n).toBe(8);
 });
