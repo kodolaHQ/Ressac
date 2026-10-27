@@ -94,9 +94,9 @@ test("après lancer_application, l'agent lit et capture la fenêtre de l'appli s
   const { fenetre, racine, fermer } = await demarrer();
   const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
   expect(texte).toContain("(onglet app:essai)");
+  // Titre de la fenêtre (celui de la page, une fois chargée) puis texte de la page.
+  await expect.poll(async () => (await appelerOutil(racine, "lire_onglet", { id: "app:essai" })).texte).toContain("Titre : Essai essai");
   const lu = await appelerOutil(racine, "lire_onglet", { id: "app:essai" });
-  // Titre de la fenêtre (celui de la page) puis texte de la page.
-  expect(lu.texte).toContain("Titre : Essai essai");
   expect(lu.texte).toContain("lien");
   const capture = await appelerOutil(racine, "capture_ecran", { id: "app:essai" });
   expect(capture.image!.length).toBeGreaterThan(1000);
