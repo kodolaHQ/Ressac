@@ -5,7 +5,8 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Application } from "../applications/gestionnaire.js";
-import type { PolitiqueAcces } from "../acces/politique.js";
+import type { DroitDev, PolitiqueAcces } from "../acces/politique.js";
+import { enregistrerOutilsDev, type FichiersProfils } from "./outils-dev.js";
 import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "./pont.js";
 
 export const TEXTE_REFUS = "Accès refusé par l'utilisateur à cet onglet.";
@@ -47,12 +48,26 @@ const DELAI_ONGLET_APP_MS = 5000;
 /** Demandes d'autorisation en attente, par onglet : partagées entre requêtes pour ne poser la question qu'une fois. */
 type DemandesEnCours = Map<string, Promise<boolean>>;
 
+/** Agent affiché sur la carte de consentement, profils bruts et demandes en cours des outils de développement. */
+interface OptionsOutilsDev {
+  agent: string;
+  profils: FichiersProfils;
+  demandes: Map<string, Promise<DroitDev[]>>;
+}
+
+const PROFILS_ABSENTS: FichiersProfils = {
+  ecrireProfil: () => Promise.reject(new Error("Enregistrement des profils indisponible.")),
+  lireProfil: () => Promise.reject(new Error("Lecture des profils indisponible.")),
+  supprimerProfil: () => Promise.resolve(),
+};
+
 function creerServeurOutils(
   pont: PontNavigateur,
   politique: PolitiqueAcces,
   demandes: DemandesEnCours,
   applications?: OutilsApplications,
   delaiOngletAppMs = DELAI_ONGLET_APP_MS,
+  dev?: OptionsOutilsDev,
 ): McpServer {
   const serveur = new McpServer({ name: "webaios", version: "0.1.0" });
 
@@ -216,6 +231,10 @@ function creerServeurOutils(
     );
   }
 
+  if (pont.outilsDev && dev) {
+    enregistrerOutilsDev(serveur, { pont, politique, agent: dev.agent, demandes: dev.demandes, ...dev.profils });
+  }
+
   return serveur;
 }
 
@@ -233,15 +252,20 @@ export async function demarrerServeurMcp(o: {
   applications?: OutilsApplications;
   /** Attente de la fenêtre d'une application après son lancement (réglable pour les tests). */
   delaiOngletAppMs?: number;
+  /** Nom de l'agent, affiché sur la carte de consentement des outils de développement. */
+  agent?: string;
+  /** Écriture et lecture des profils bruts des outils de développement. */
+  profils?: FichiersProfils;
 }): Promise<{ port: number; urlConteneur: string; arreter(): Promise<void> }> {
   const attendu = Buffer.from(o.jeton);
   const demandes: DemandesEnCours = new Map();
+  const dev: OptionsOutilsDev = { agent: o.agent ?? "L'agent", profils: o.profils ?? PROFILS_ABSENTS, demandes: new Map() };
 
   const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (!jetonValide(req, attendu)) return res.writeHead(401).end();
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Mode sans état : un serveur et un transport neufs par requête.
-    const serveur = creerServeurOutils(o.pont, o.politique, demandes, o.applications, o.delaiOngletAppMs);
+    const serveur = creerServeurOutils(o.pont, o.politique, demandes, o.applications, o.delaiOngletAppMs, dev);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();
