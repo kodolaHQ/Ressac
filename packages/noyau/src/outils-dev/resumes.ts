@@ -20,14 +20,9 @@ export function masquerEnTetes(h: Record<string, string>): Record<string, string
   return r;
 }
 
-/** Masque la valeur des paramètres sensibles, sans reformater le reste de l'URL. */
-export function masquerUrl(url: string): string {
-  try {
-    new URL(url);
-  } catch {
-    return url;
-  }
-  return url.replace(/([?&])([^=&#]*)=([^&#]*)/g, (tout, sep: string, nom: string) => {
+/** Masque, dans une suite `nom=valeur&…`, les valeurs dont le nom est sensible. */
+function masquerPaires(texte: string): string {
+  return texte.replace(/(^|[?&])([^=&?]*)=([^&]*)/g, (tout, sep: string, nom: string) => {
     let lu = nom;
     try {
       lu = decodeURIComponent(nom);
@@ -36,6 +31,22 @@ export function masquerUrl(url: string): string {
     }
     return PARAMETRE_SECRET.test(lu) ? `${sep}${nom}=${MASQUE}` : tout;
   });
+}
+
+/** Masque la valeur des paramètres sensibles (requête et fragment), sans reformater le reste de l'URL. */
+export function masquerUrl(url: string): string {
+  try {
+    new URL(url);
+  } catch {
+    return url;
+  }
+  const iFragment = url.indexOf("#");
+  const avant = iFragment < 0 ? url : url.slice(0, iFragment);
+  const fragment = iFragment < 0 ? "" : url.slice(iFragment + 1);
+  const iRequete = avant.indexOf("?");
+  const base = iRequete < 0 ? avant : avant.slice(0, iRequete);
+  const requete = iRequete < 0 ? "" : masquerPaires(avant.slice(iRequete));
+  return base + requete + (iFragment < 0 ? "" : `#${masquerPaires(fragment)}`);
 }
 
 export interface ProfilCpu {
@@ -55,8 +66,12 @@ const arrondi = (x: number): string => String(Math.round(x * 10) / 10);
 /** Les n fonctions qui occupent le plus le processeur, puis les métriques de la page. */
 export function resumerProfil(p: ProfilCpu, metriques: Record<string, number>, n = 15): string {
   const parNoeud = new Map<number, number>();
+  // timeDeltas[i] est l'écart avant l'échantillon i : l'échantillon i occupe l'intervalle qui le suit.
+  let horodatage = p.startTime;
   p.samples.forEach((id, i) => {
-    parNoeud.set(id, (parNoeud.get(id) ?? 0) + (p.timeDeltas[i] ?? 0));
+    horodatage += p.timeDeltas[i] ?? 0;
+    const suivant = i + 1 < p.samples.length ? horodatage + (p.timeDeltas[i + 1] ?? 0) : p.endTime;
+    parNoeud.set(id, (parNoeud.get(id) ?? 0) + Math.max(0, suivant - horodatage));
   });
   const total = [...parNoeud.values()].reduce((a, b) => a + b, 0);
   const lignes = p.nodes
@@ -106,7 +121,11 @@ export function resumerInstantane(json: string): ResumeMemoire {
     const taille = brut.nodes[i + iTaille] ?? 0;
     total += taille;
     if (!TYPES_RETENUS.has(nomsTypes[brut.nodes[i + iType] ?? -1] ?? "")) continue;
-    const nom = brut.strings[brut.nodes[i + iNom] ?? -1] ?? "";
+    // le nom d'une chaîne est son contenu : on ne le transmet pas
+    const nom =
+      nomsTypes[brut.nodes[i + iType] ?? -1] === "string"
+        ? "(chaîne)"
+        : (brut.strings[brut.nodes[i + iNom] ?? -1] ?? "");
     const g = groupes.get(nom) ?? { nom, nombre: 0, taille: 0 };
     g.nombre += 1;
     g.taille += taille;

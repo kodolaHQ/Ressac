@@ -47,6 +47,11 @@ describe("masquerUrl", () => {
       "https://x.fr/p?access_token=«masqué»&q=chat",
     );
   });
+  it("masque aussi les paramètres du fragment", () => {
+    expect(masquerUrl("https://x/cb#access_token=abc&state=1")).toBe(
+      "https://x/cb#access_token=«masqué»&state=1",
+    );
+  });
   it("laisse une URL invalide telle quelle", () => {
     expect(masquerUrl("pas une url")).toBe("pas une url");
   });
@@ -78,8 +83,8 @@ describe("resumerProfil", () => {
     });
     const lignes = t.split("\n");
     expect(lignes[0]).toContain("calculer");
-    expect(lignes[0]).toContain("30 ms");
-    expect(lignes[0]).toContain("75");
+    expect(lignes[0]).toContain("25 ms");
+    expect(lignes[0]).toContain("83.3");
     expect(t).toContain("(anonyme)");
     expect(t).toContain("Nodes : 120");
     expect(t).toContain("JSHeapUsedSize : 5 Mo");
@@ -90,6 +95,13 @@ describe("resumerProfil", () => {
   it("limite à n fonctions", () => {
     const t = resumerProfil(profil, {}, 1);
     expect(t).not.toContain("(anonyme)");
+    expect(t.split("\n")).toHaveLength(1);
+  });
+  it("charge chaque échantillon de l'intervalle qui le suit", () => {
+    // écarts inégaux : l'ancien calcul (écart avant) donnerait 31 ms à l'anonyme et 2 ms à « calculer »
+    const t = resumerProfil({ ...profil, samples: [3, 2, 3], timeDeltas: [1000, 2000, 30000], endTime: 38000 }, {});
+    expect(t.split("\n")[0]).toContain("calculer (http://x/a.js:4) — 30 ms");
+    expect(t).toContain("(anonyme) (http://x/b.js:8) — 7 ms");
   });
 });
 
@@ -128,6 +140,15 @@ describe("résumé mémoire", () => {
     expect(a.total).toBe(1179);
     expect(a.parConstructeur[0]).toEqual({ nom: "Fuite", nombre: 2, taille: 150 });
     expect(a.parConstructeur.map((c) => c.nom)).not.toContain("Code");
+  });
+  it("ne transmet pas le contenu des chaînes", () => {
+    const r = resumerInstantane(
+      instantane([
+        ["string", "mot-de-passe-secret", 10],
+        ["string", "autre contenu", 20],
+      ]),
+    );
+    expect(r.parConstructeur).toEqual([{ nom: "(chaîne)", nombre: 2, taille: 30 }]);
   });
   it("texteMemoire liste les constructeurs", () => {
     expect(texteMemoire(a)).toContain("Fuite");
