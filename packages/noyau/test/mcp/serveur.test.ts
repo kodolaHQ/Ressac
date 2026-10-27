@@ -261,6 +261,21 @@ test("lancer_application : fenêtre restée sur l'ancien port après le délai, 
   expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "app:todo" } }))).toBe("Accès refusé par l'utilisateur à cet onglet.");
 });
 
+test("naviguer une fenêtre d'appli vers un autre site : onglet ouvert, la fenêtre et son accès restent", async () => {
+  await avecApplications(appFactice({ etat: "en-marche", port: 5280 }), [appTodo]);
+  await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });
+  const r = await client.callTool({ name: "naviguer", arguments: { id: "app:todo", url: "https://exemple.test/" } });
+  const ouvert = pont.appels.find((a) => a.methode === "ouvrirOnglet");
+  expect(ouvert?.args[0]).toBe("https://exemple.test/");
+  expect(pont.appels.some((a) => a.methode === "naviguer")).toBe(false);
+  expect(texte(r)).toMatch(/^L'application ne quitte pas son adresse : https:\/\/exemple\.test\/ ouvert dans l'onglet \S+\.$/);
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "app:todo" } }))).toContain("Texte de Todo");
+  // Sur sa propre origine, la fenêtre navigue.
+  await client.callTool({ name: "naviguer", arguments: { id: "app:todo", url: "http://localhost:5280/autre" } });
+  expect(pont.appels.find((a) => a.methode === "naviguer")?.args).toEqual(["app:todo", "http://localhost:5280/autre"]);
+  expect(demandes()).toBe(0);
+});
+
 test("lancer_application en erreur : texte d'erreur et journal, erreur: true", async () => {
   await avecApplications(appFactice({ etat: "erreur", erreur: "port occupé" }), []);
   const r = await client.callTool({ name: "lancer_application", arguments: { dossier: "todo" } });

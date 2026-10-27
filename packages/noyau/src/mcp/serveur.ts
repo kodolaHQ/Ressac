@@ -26,6 +26,14 @@ function urlWeb(url: string): boolean {
   }
 }
 
+function origineDe(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 /** Ce que le noyau fournit pour piloter les applications (le gestionnaire, côté navigateur). */
 export interface OutilsApplications {
   lancer(dossier: string): Promise<Application>;
@@ -137,7 +145,15 @@ function creerServeurOutils(
     { description: "Change l'URL d'un onglet, ou recharge une démo.", inputSchema: { id: z.string(), url: z.string() } },
     proteger(async ({ id, url }) => {
       if (!urlWeb(url)) return texte(`URL refusée (http ou https uniquement) : ${url}`, true);
-      if (!(await acces(await onglet(id)))) return texte(TEXTE_REFUS);
+      const o = await onglet(id);
+      if (!(await acces(o))) return texte(TEXTE_REFUS);
+      // La fenêtre d'une appli ne quitte jamais son origine (elle n'a pas de barre d'adresse) : un autre site s'ouvre
+      // dans un onglet, comme avec ouvrir_onglet, et l'agent garde l'accès à la fenêtre.
+      if (o.application && origineDe(url) !== origineDe(o.url)) {
+        const nouveau = await pont.ouvrirOnglet(url);
+        politique.ongletOuvertParAgent(nouveau);
+        return texte(`L'application ne quitte pas son adresse : ${url} ouvert dans l'onglet ${nouveau.id}.`);
+      }
       // Avant pont.naviguer : le navigateur peut signaler la navigation (ongletNavigue) avant qu'elle
       // ne se termine, et l'agent ne doit pas perdre l'accès à sa propre démo.
       politique.navigationParAgent(id, url);
@@ -170,13 +186,7 @@ function creerServeurOutils(
         const url = `http://localhost:${app.port}`;
         // La fenêtre s'ouvre juste après le lancement : on l'attend un peu, sans bloquer si elle ne vient pas. Relancée sur
         // un autre port, elle montre encore l'ancien le temps de se recharger : l'accès ne vise que le nouveau.
-        const surLePort = (o: OngletInfo) => {
-          try {
-            return new URL(o.url).origin === url;
-          } catch {
-            return false;
-          }
-        };
+        const surLePort = (o: OngletInfo) => origineDe(o.url) === url;
         const fin = Date.now() + delaiOngletAppMs;
         let fenetre: OngletInfo | undefined;
         for (;;) {

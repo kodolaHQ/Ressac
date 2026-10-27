@@ -52,6 +52,8 @@ export class FenetresApplications {
       surFermeture: (dossier: string) => void;
       /** La fenêtre est fermée, par l'utilisateur ou par le programme. */
       surFermee: (dossier: string) => void;
+      /** La page de l'appli a changé d'adresse. */
+      surNavigation?: (dossier: string, url: string) => void;
       /** L'appli a montré son favicon (adresse `data:`, qui reste lisible quand l'appli est arrêtée). */
       surFavicon?: (dossier: string, favicon: string) => void;
     },
@@ -116,12 +118,19 @@ export class FenetresApplications {
       const url = favicons[0];
       if (url && this.o.surFavicon) void faviconEnDonnees((u, init) => wc.session.fetch(u, init), url, wc.getURL()).then((d) => d && this.o.surFavicon?.(dossier, d));
     });
-    // L'appli reste sur son origine : un lien vers ailleurs s'ouvre dans un onglet.
-    wc.on("will-navigate", (e, url) => {
-      if (memeOrigine(url, wc.getURL())) return;
+    // L'appli reste sur son origine (celle de son port) : un lien ou une redirection du serveur vers ailleurs s'ouvre
+    // dans un onglet.
+    const resterSurLAppli = (e: Electron.Event, url: string) => {
+      if (memeOrigine(url, this.adresses.get(dossier) ?? wc.getURL())) return;
       e.preventDefault();
       if (/^https?:\/\//.test(url)) this.o.ouvrirOnglet(url);
+    };
+    wc.on("will-navigate", (e, url) => resterSurLAppli(e, url));
+    wc.on("will-redirect", (e, url, _surPlace, cadrePrincipal) => {
+      if (cadrePrincipal) resterSurLAppli(e, url);
     });
+    // L'accès de l'agent suit la page, comme pour un onglet (une relance sur un autre port change d'origine).
+    wc.on("did-navigate", (_e, url) => this.o.surNavigation?.(dossier, url));
     wc.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//.test(url)) this.o.ouvrirOnglet(url);
       return { action: "deny" };

@@ -111,6 +111,26 @@ test("listerOnglets inclut les fenêtres d'application", async () => {
   await expect(pont.naviguer("app:absente", "http://x.test/")).rejects.toThrow();
 });
 
+test("naviguer une fenêtre d'appli : sur son origine seulement, le reste s'ouvre dans un onglet", async () => {
+  const { e, ag, F } = preparer();
+  const wc = { loadURL: vi.fn(async () => {}) };
+  const pont = new PontElectron({
+    magasin: { get etat() { return e(); }, agir: ag } as never,
+    vues: {} as never,
+    fenetreActive: () => F,
+    demander: async () => true,
+    applications: {
+      ouvertes: () => [{ dossier: "essai", titre: "Essai", url: "http://localhost:15280/" }],
+      webContents: (d) => (d === "essai" ? (wc as never) : undefined),
+    },
+  });
+  await pont.naviguer("app:essai", "http://localhost:15280/autre");
+  expect(wc.loadURL).toHaveBeenCalledWith("http://localhost:15280/autre");
+  for (const url of ["https://exemple.test/", "http://localhost:15281/"]) await pont.naviguer("app:essai", url);
+  expect(wc.loadURL).toHaveBeenCalledTimes(1);
+  expect(Object.values(e().onglets).filter((o) => o.ouvertParAgent).map((o) => o.url)).toEqual(["https://exemple.test/", "http://localhost:15281/"]);
+});
+
 test("un onglet webaios: n'est ni listé ni actif pour l'agent", () => {
   const { e, ag, F } = preparer();
   const id = Object.values(e().onglets).find((o) => o.fenetreId === F)!.id;

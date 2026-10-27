@@ -202,9 +202,13 @@ export async function appelerOutil(
 }
 
 const SERVEURS = {
+  // /redirige renvoie ailleurs côté serveur ; /retient refuse qu'on quitte la page ; /sans-titre n'a pas de <title>.
   ok: (dossier: string) => `import { createServer } from "node:http";
 createServer((req, res) => {
+  if (req.url === "/redirige") return res.writeHead(302, { Location: "https://exemple.invalide/redirige" }).end();
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  if (req.url === "/retient") return res.end('<title>Retient</title><script>addEventListener("beforeunload", (e) => e.preventDefault())</script>');
+  if (req.url === "/sans-titre") return res.end("<p>sans titre</p>");
   res.end('<title>Essai ${dossier}</title><a href="https://exemple.invalide/">lien</a>');
 }).listen(Number(process.env.PORT));
 `,

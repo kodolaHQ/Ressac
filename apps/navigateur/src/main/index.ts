@@ -330,6 +330,7 @@ app.whenReady().then(async () => {
     diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
     surFenetreFermee: (dossier) => agent?.noyau()?.politique.ongletFerme(`app:${dossier}`),
+    surNavigation: (dossier, url) => agent?.noyau()?.politique.ongletNavigue(`app:${dossier}`, url),
     // Comme ⌘J : le panneau s'ouvre et le terminal prend le clavier.
     deboguer: (f, texte, acces) => {
       agent?.preRemplir(f, texte, acces);

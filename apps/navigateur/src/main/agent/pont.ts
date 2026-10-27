@@ -1,6 +1,7 @@
 import type { WebContents } from "electron";
 import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
+import { memeOrigine } from "../applications/favicon";
 import type { Magasin } from "../ipc";
 
 const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
@@ -156,7 +157,11 @@ export class PontElectron implements PontNavigateur {
   async naviguer(id: string, url: string): Promise<void> {
     const wc = this.fenetreAppli(id);
     if (wc) {
-      void wc.loadURL(url).catch(() => {});
+      // La fenêtre d'une appli n'a pas de barre d'adresse : elle ne quitte jamais son origine (loadURL passe outre
+      // will-navigate). Ailleurs, c'est un onglet de la fenêtre principale.
+      const appli = this.o.applications.ouvertes().find((a) => PREFIXE_APP + a.dossier === id);
+      if (appli && memeOrigine(url, appli.url)) void wc.loadURL(url).catch(() => {});
+      else await this.ouvrirOnglet(url);
       return;
     }
     this.onglet(id);

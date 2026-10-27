@@ -112,6 +112,8 @@ export function demarrerApplications(o: {
   diffuser(): void;
   /** Une fenêtre d'appli s'est fermée (par l'utilisateur ou par le programme). */
   surFenetreFermee(dossier: string): void;
+  /** La page d'une fenêtre d'appli a changé d'adresse. */
+  surNavigation(dossier: string, url: string): void;
   /**
    * Déboguer : pré-remplit le terminal de l'agent de la fenêtre. `acces`, relu au moment de l'écriture, donne à l'agent
    * la fenêtre de l'appli en marche si elle est encore ouverte.
@@ -174,6 +176,7 @@ export function demarrerApplications(o: {
     memoire,
     ouvrirOnglet: o.ouvrirOnglet,
     surFermee: o.surFenetreFermee,
+    surNavigation: o.surNavigation,
     surFavicon: (dossier, favicon) => {
       if (memoire.lire(dossier).favicon === favicon) return;
       memoire.noter(dossier, { favicon });

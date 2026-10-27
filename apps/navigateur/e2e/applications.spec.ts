@@ -158,6 +158,32 @@ test("la fenêtre d'appli n'a aucune permission : notifications, position, camé
   await fermer();
 });
 
+test("naviguer l'appli vers un autre site l'ouvre dans un onglet ; la fenêtre reste sur l'appli", async () => {
+  const { app, fenetre, racine, fermer } = await demarrer();
+  const port = await lancerEssai(racine);
+  const page = await pageAppli(app);
+  const r = await appelerOutil(racine, "naviguer", { id: "app:essai", url: "https://exemple.invalide/ailleurs" });
+  expect(r.erreur).toBe(false);
+  await expect.poll(() => urlsOnglets(fenetre)).toContain("https://exemple.invalide/ailleurs");
+  expect(page.url()).toBe(`http://localhost:${port}/`);
+  // L'agent garde l'accès à sa fenêtre d'appli.
+  expect((await appelerOutil(racine, "lire_onglet", { id: "app:essai" })).texte).toContain("lien");
+  // Sur l'appli elle-même, la navigation se fait dans la fenêtre.
+  await appelerOutil(racine, "naviguer", { id: "app:essai", url: `http://localhost:${port}/sans-titre` });
+  await expect.poll(() => page.url()).toBe(`http://localhost:${port}/sans-titre`);
+  await fermer();
+});
+
+test("une redirection du serveur de l'appli vers un autre site s'ouvre dans un onglet", async () => {
+  const { app, fenetre, racine, fermer } = await demarrer();
+  const port = await lancerEssai(racine);
+  const page = await pageAppli(app);
+  await page.evaluate(() => (location.href = "/redirige"));
+  await expect.poll(() => urlsOnglets(fenetre)).toContain("https://exemple.invalide/redirige");
+  expect(page.url()).toBe(`http://localhost:${port}/`);
+  await fermer();
+});
+
 test("une appli qui plante n'ouvre pas de fenêtre", async () => {
   const { app, racine, fermer } = await demarrer({ serveur: "plante" });
   const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
