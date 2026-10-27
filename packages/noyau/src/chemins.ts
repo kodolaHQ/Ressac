@@ -13,6 +13,8 @@ export interface CheminsEspace {
   interne: string;
   profils: string;
   configMcp: string;
+  /** Journaux des applications lancées (`<dossier>.log`). */
+  journaux: string;
 }
 
 export function cheminsEspace(racine?: string): CheminsEspace {
@@ -28,6 +30,7 @@ export function cheminsEspace(racine?: string): CheminsEspace {
     interne,
     profils: join(interne, "profils"),
     configMcp: join(interne, "mcp.json"),
+    journaux: join(interne, "journaux"),
   };
 }
 
