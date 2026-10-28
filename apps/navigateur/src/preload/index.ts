@@ -115,24 +115,14 @@ const cadrePrincipal = process.isMainFrame !== false && window.top === window;
 if (cadrePrincipal) {
   contextBridge.exposeInMainWorld("webaios", process.argv.some((a) => a.startsWith(ARG_PASTILLE)) ? pastille : api);
 } else if (location.protocol === "webaios-widget:") {
-  // Affichage d'un widget : un vrai appui de l'utilisateur (isTrusted, impossible à produire par le code du widget, qui ne voit
-  // pas ce monde isolé) est signalé au process principal, qui seul permet alors un lien à ce widget. Écouté en capture,
-  // avant tout écouteur du widget. Un clic sans appui (clavier) compte aussi ; celui qui suit un appui ne compte pas
-  // une seconde fois.
-  let dernierAppui = -Infinity;
+  // Affichage d'un widget : un vrai appui de la souris (isTrusted, impossible à produire par le code du widget, qui ne
+  // voit pas ce monde isolé) est signalé au process principal, qui seul permet alors un lien à ce widget. Écouté en
+  // capture, avant tout écouteur du widget. Jamais un `click` : le widget peut voler le focus et faire d'un Espace ou
+  // d'un Entrée tapé par l'utilisateur pour autre chose un clic « isTrusted ».
   addEventListener(
     "pointerdown",
     (e) => {
-      if (!e.isTrusted) return;
-      dernierAppui = e.timeStamp;
-      ipcRenderer.send(CANAUX.gesteWidget);
-    },
-    true,
-  );
-  addEventListener(
-    "click",
-    (e) => {
-      if (e.isTrusted && e.timeStamp - dernierAppui > 1500) ipcRenderer.send(CANAUX.gesteWidget);
+      if (e.isTrusted) ipcRenderer.send(CANAUX.gesteWidget);
     },
     true,
   );

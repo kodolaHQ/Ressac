@@ -13,6 +13,7 @@ import {
   retirerWidget,
   urlOuvrable,
   versWidgetsAffiches,
+  navigationCadrePermise,
   widgetDuCadre,
 } from "../../src/main/agent/accueil";
 
@@ -236,4 +237,16 @@ test("widgetDuCadre : seul l'affichage d'un widget donne son id", () => {
   expect(widgetDuCadre("https://meteo/affichage.html")).toBeNull();
   expect(widgetDuCadre("chrome-error://chromewebdata/")).toBeNull();
   expect(widgetDuCadre("pas une url")).toBeNull();
+});
+
+test("navigationCadrePermise : un cadre ne va que vers l'affichage de son propre widget", () => {
+  const meteo = "webaios-widget://meteo/affichage.html?v=1";
+  expect(navigationCadrePermise("", meteo)).toBe(true);
+  expect(navigationCadrePermise("about:blank", meteo)).toBe(true);
+  expect(navigationCadrePermise("webaios-widget://meteo/affichage.html?v=0", meteo)).toBe(true);
+  expect(navigationCadrePermise("chrome-error://chromewebdata/", meteo)).toBe(true);
+  expect(navigationCadrePermise("webaios-widget://actus/affichage.html?v=0", meteo)).toBe(false);
+  expect(navigationCadrePermise("webaios-widget://meteo/affichage.html", "https://exemple.test/")).toBe(false);
+  expect(navigationCadrePermise("", "data:text/html,x")).toBe(false);
+  expect(navigationCadrePermise("", "webaios-widget://meteo/autre.html")).toBe(false);
 });

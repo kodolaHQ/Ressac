@@ -88,6 +88,19 @@ export function widgetDuCadre(url: string): string | null {
 }
 
 /**
+ * Un cadre de l'interface peut aller vers `cible` : seulement l'affichage d'un widget et, s'il en montre déjà un, celui
+ * du même widget (rechargement quand l'agent le réécrit). Un cadre neuf (`""`, `about:blank`) ou resté sur la page
+ * d'erreur de Chromium (après une navigation bloquée, sans script) charge un affichage : seule l'interface, qui garde
+ * un cadre par widget, change sa source.
+ */
+export function navigationCadrePermise(actuelle: string, cible: string): boolean {
+  const vers = widgetDuCadre(cible);
+  if (!vers) return false;
+  if (actuelle === "" || actuelle === "about:blank" || actuelle.startsWith("chrome-error:")) return true;
+  return widgetDuCadre(actuelle) === vers;
+}
+
+/**
  * Le HTML de l'affichage, ou null s'il n'existe pas, ou si un lien symbolique le fait sortir de son widget : le dossier
  * des widgets ne doit pas être un lien, le dossier du widget doit rester dedans, et le fichier dans le dossier du widget
  * (l'agent écrit dans ces dossiers : il ne doit pas y montrer un fichier du Mac).

@@ -32,7 +32,7 @@ import type { EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
-import { enregistrerSchemaWidget, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { enregistrerSchemaWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { profilsLisibles } from "./agent/lecture-invisible";
 
 declare const __RESSOURCES_NOYAU__: string;
@@ -130,10 +130,11 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
-  // Un cadre de l'interface (l'affichage d'un widget) ne va jamais ailleurs que sur un affichage de widget : une
-  // navigation vers le web porterait des données dans son URL. Ses liens passent par api.accueil.ouvrir.
+  // Un cadre de l'interface (l'affichage d'un widget) ne va jamais ailleurs que sur son propre affichage (premier
+  // chargement, ou rechargement quand l'agent le réécrit) : une navigation vers le web porterait des données dans son
+  // URL, une autre vers l'affichage d'un autre widget en prendrait la place. Ses liens passent par api.accueil.ouvrir.
   fenetre.webContents.on("will-frame-navigate", (e) => {
-    if (!e.isMainFrame && !e.url.startsWith(`${SCHEMA_WIDGET}://`)) e.preventDefault();
+    if (!e.isMainFrame && !navigationCadrePermise(e.frame?.url ?? "", e.url)) e.preventDefault();
   });
   // L'interface n'ouvre aucune fenêtre (les widgets n'ont pas allow-popups).
   fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
