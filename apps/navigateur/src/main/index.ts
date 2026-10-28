@@ -308,7 +308,7 @@ app.whenReady().then(async () => {
     sessionDe: (o) => sessions.session(profilDOnglet(magasin.etat, o)),
     fenetres,
     agir: (a) => magasin.agir(a),
-    bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
+    zoneGauche: (id, zone) => fenetres.get(id)?.webContents.send(CANAUX.zoneGauche, zone),
     historique,
     contexteHistorique: (id) => contexteHistorique(magasin.etat, id),
     retenir: (r) => historique?.retenir(r),

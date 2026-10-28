@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, type Application, type DeclarationWidget, type DroitDev, type EtatIa, type EtatWidget } from "@webaios/noyau";
+import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "./canaux";
@@ -97,8 +98,8 @@ export interface ApiWebaios {
   naviguer(ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornesContenu(b: Bornes): void;
-  /** Mode compact : la souris entre (true) ou sort (false) de la bande de 8 px du bord gauche, au-dessus d'une page web. */
-  surBordGauche(rappel: (dedans: boolean) => void): () => void;
+  /** Mode compact : au-dessus d'une page web, la souris change de zone par rapport au bord gauche (voir revelation.ts). */
+  surZoneGauche(rappel: (zone: ZoneGauche) => void): () => void;
   /** Le menu demande d'ouvrir un panneau de l'interface (⌘Y…). */
   surPanneau(rappel: (p: Panneau) => void): () => void;
   surRaccourci(rappel: (r: Raccourci) => void): () => void;

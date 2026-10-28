@@ -26,11 +26,7 @@ const api: ApiWebaios = {
   naviguer: (ongletId, saisie) => ipcRenderer.send(CANAUX.naviguer, { ongletId, saisie }),
   commande: (ongletId, c) => ipcRenderer.send(CANAUX.commande, { ongletId, c }),
   bornesContenu: (b) => ipcRenderer.send(CANAUX.bornes, b),
-  surBordGauche(rappel) {
-    const ecouteur = (_: unknown, dedans: boolean) => rappel(dedans);
-    ipcRenderer.on(CANAUX.bordGauche, ecouteur);
-    return () => ipcRenderer.removeListener(CANAUX.bordGauche, ecouteur);
-  },
+  surZoneGauche: (rappel) => ecouter(CANAUX.zoneGauche, rappel),
   surPanneau: (rappel) => ecouter(CANAUX.panneau, rappel),
   surRaccourci: (rappel) => ecouter(CANAUX.raccourci, rappel),
   surResultatRecherche: (rappel) => ecouter(CANAUX.resultatRecherche, rappel),

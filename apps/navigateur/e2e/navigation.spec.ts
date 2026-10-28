@@ -163,6 +163,40 @@ test("mode compact : la barre réapparaît à 14 px du bord, ou quand la souris 
   await fermer();
 });
 
+test("mode compact : la souris immobile au bord garde la barre ouverte (la page qui glisse ne la referme pas) ; elle se ferme au-delà de la barre", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => titreVue(app, "a.html")).toBe("Page A");
+  await fenetre.getByRole("button", { name: "Mode compact" }).click();
+  await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
+  await expect.poll(async () => (await bornesVues(app))[0]?.x).toBe(0);
+  const souris = (type: "mouseMove" | "mouseLeave", x: number) =>
+    app.evaluate(({ webContents }, [type, x]) => webContents.getAllWebContents().find((w) => w.getURL().includes("a.html"))?.sendInputEvent({ type, x, y: 300 } as Electron.MouseInputEvent), [type, x] as const);
+  // La souris de l'interface quitte le bouton « Mode compact » : seule la page voit désormais la souris.
+  await fenetre.mouse.move(700, 300);
+  await souris("mouseMove", 3);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await expect.poll(async () => (await bornesVues(app))[0]?.x).toBe(240);
+  // Chaque apparition ou disparition de la barre est comptée : aucune tant que la souris reste au bord.
+  await fenetre.evaluate(() => {
+    const w = window as unknown as { bascules: number };
+    w.bascules = 0;
+    new MutationObserver(() => w.bascules++).observe(document.querySelector('[data-testid="barre-laterale"]')!, { attributeFilter: ["hidden"] });
+  });
+  // La page s'est décalée sous la souris restée à 3 px : elle la quitte, sans que la souris ait bougé.
+  await souris("mouseLeave", 3);
+  await new Promise((r) => setTimeout(r, 800));
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  expect(await fenetre.evaluate(() => (window as unknown as { bascules: number }).bascules)).toBe(0);
+  // Sur la page, juste à droite de la barre : elle reste ouverte ; plus loin, elle se ferme.
+  await souris("mouseMove", 20);
+  await new Promise((r) => setTimeout(r, 800));
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await souris("mouseMove", 200);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
+  await fermer();
+});
+
 test("mode compact : barre cachée, réapparaît au bord gauche, le contenu prend toute la largeur", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);

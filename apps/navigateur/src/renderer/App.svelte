@@ -13,7 +13,8 @@
   import type { Panneau } from "../commun/api";
   import { untrack } from "svelte";
   import { acces, api, demandeDe, etat, fenetreCourante } from "./etat.svelte";
-  import { BORD_REVELATION, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
+  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
+  import { masquer, REVELATION_INITIALE, surZone, zoneGauche, zoneSortie, type ZoneGauche } from "../commun/revelation";
 
   const MASQUAGE_MS = 300;
 
@@ -25,31 +26,43 @@
   });
 
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant
-  // toujours l'interface, la barre « révélée » reprend sa colonne le temps du survol.
+  // toujours l'interface, la barre « révélée » reprend sa colonne le temps du survol. La position de la souris vient
+  // de l'interface (mousemove) ou, au-dessus d'une page, du process principal ; la décision est dans revelation.ts.
   const compact = $derived(fenetre?.compact ?? false);
   // Plein écran HTML (vidéo) : seule la page reste.
   let pleinEcran = $state(false);
   let revelee = $state(false);
-  let survolBarre = false;
+  let armee = REVELATION_INITIALE.armee;
+  let zone: ZoneGauche = "loin";
   let minuterie: ReturnType<typeof setTimeout> | undefined;
   const barreVisible = $derived(!pleinEcran && (!compact || revelee));
 
-  function reveler() {
-    clearTimeout(minuterie);
-    if (compact) revelee = true;
+  function surZoneSouris(z: ZoneGauche) {
+    zone = z;
+    if (!compact) return;
+    const r = surZone({ revelee, armee }, z);
+    armee = r.armee;
+    revelee = r.revelee;
+    if (r.masquer) planifierMasquage();
+    else clearTimeout(minuterie);
   }
   function planifierMasquage() {
     clearTimeout(minuterie);
-    if (!revelee || survolBarre || acces.bullesOuvertes > 0) return;
+    // La bulle d'accès est montée hors de la barre : tant qu'elle est ouverte, la barre reste.
+    if (!revelee || acces.bullesOuvertes > 0) return;
     minuterie = setTimeout(() => {
-      if (!survolBarre && acces.bullesOuvertes === 0) revelee = false;
+      if (zone !== "loin" || acces.bullesOuvertes > 0) return;
+      const r = masquer(zone);
+      revelee = r.revelee;
+      armee = r.armee;
     }, MASQUAGE_MS);
   }
 
-  // La bulle d'accès est montée hors de la barre : la souris qui s'y trouve ne la fait pas quitter ; à sa fermeture, le masquage reprend.
+  // À la fermeture de la bulle, le masquage reprend si la souris est déjà loin de la barre.
   $effect(() => {
-    if (acces.bullesOuvertes === 0) untrack(planifierMasquage);
+    if (acces.bullesOuvertes === 0) untrack(() => zone === "loin" && planifierMasquage());
   });
+  let dernierX = Infinity;
 
   let panneau = $state<Panneau | null>(null);
 
@@ -137,13 +150,23 @@
 
   $effect(() => api.surPleinEcran((actif) => (pleinEcran = actif)));
 
-  $effect(() => api.surBordGauche((dedans) => (dedans ? reveler() : planifierMasquage())));
+  $effect(() => api.surZoneGauche(surZoneSouris));
   $effect(() => {
-    if (!compact) revelee = false;
+    if (!compact) {
+      clearTimeout(minuterie);
+      revelee = false;
+    }
   });
 </script>
 
-<svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_REVELATION && reveler()} />
+<svelte:window
+  onmousemove={(e) => {
+    dernierX = e.clientX;
+    const z = zoneGauche(e.clientX);
+    if (z !== zone) surZoneSouris(z);
+  }}
+  onmouseout={(e) => !e.relatedTarget && surZoneSouris(zoneSortie(dernierX))}
+/>
 
 <div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon} class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
   {#if fenetre}
@@ -151,14 +174,6 @@
       {fenetre}
       cachee={!barreVisible}
       {basculerPanneau}
-      surEntree={() => {
-        survolBarre = true;
-        clearTimeout(minuterie);
-      }}
-      surSortie={() => {
-        survolBarre = false;
-        planifierMasquage();
-      }}
     />
   {:else}
     <aside data-testid="barre-laterale"></aside>

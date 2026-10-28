@@ -13,14 +13,10 @@
   let {
     fenetre,
     cachee = false,
-    surEntree,
-    surSortie,
     basculerPanneau,
   }: {
     fenetre: EtatFenetre;
     cachee?: boolean;
-    surEntree?: () => void;
-    surSortie?: () => void;
     basculerPanneau?: (p: Panneau) => void;
   } = $props();
   const enCours = $derived(telechargements.liste.filter((t) => t.etat === "en-cours"));
@@ -36,7 +32,7 @@
   const lienActif = $derived(ongletActif?.lien?.id);
 </script>
 
-<aside class="barre" data-testid="barre-laterale" hidden={cachee} onmouseenter={surEntree} onmouseleave={surSortie}>
+<aside class="barre" data-testid="barre-laterale" hidden={cachee}>
   <BarreAdresse {fenetre} />
   <div class="defilant">
     <Essentiels {fenetre} />

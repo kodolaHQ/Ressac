@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
-import { BORD_REVELATION, SORTIE_GAUCHE, type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
+import { type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
+import { zoneGauche, zoneSortie, type ZoneGauche } from "../../commun/revelation";
 import { brancherCapture } from "./capture-texte";
 import { brancherBalayage } from "./balayage";
 import { attendreChargement } from "./chargement";
@@ -84,8 +85,8 @@ export class GestionnaireVues {
       sessionDe: (o: Onglet) => Session;
       fenetres: Map<IdFenetre, BrowserWindow>;
       agir: (a: Action) => void;
-      /** La souris entre ou sort de la bande du bord gauche de la fenêtre, au-dessus d'une page. */
-      bordGauche?: (fenetreId: IdFenetre, dedans: boolean) => void;
+      /** Au-dessus d'une page, la souris change de zone par rapport au bord gauche de la fenêtre (mode compact). */
+      zoneGauche?: (fenetreId: IdFenetre, zone: ZoneGauche) => void;
       historique?: NotesHistorique;
       /** Espace et caractère privé de l'onglet d'après l'état courant ; null : onglet disparu, rien à noter. */
       contexteHistorique?: (id: IdOnglet) => { espaceId: string; prive: boolean } | null;
@@ -332,16 +333,18 @@ export class GestionnaireVues {
     });
     wc.on("enter-html-full-screen", () => this.o.pleinEcran?.(onglet.fenetreId, true));
     wc.on("leave-html-full-screen", () => this.o.pleinEcran?.(onglet.fenetreId, false));
-    let auBord = false;
+    // Position de la souris en px de fenêtre, notée au mouvement : la vue peut se décaler ensuite sous une souris
+    // immobile (barre révélée), et c'est alors sa dernière vraie position qui compte quand elle quitte la page.
+    let zone: ZoneGauche | null = null;
     let dernierX = Infinity;
     wc.on("before-mouse-event", (_e, souris) => {
       if (souris.type !== "mouseMove" && souris.type !== "mouseLeave") return;
-      const x = (souris.type === "mouseMove" ? souris.x : dernierX) + vue.getBounds().x;
-      if (souris.type === "mouseMove") dernierX = souris.x;
-      const dedans = souris.type === "mouseMove" ? x < BORD_REVELATION : x < SORTIE_GAUCHE;
-      if (dedans === auBord) return;
-      auBord = dedans;
-      this.o.bordGauche?.(onglet.fenetreId, dedans);
+      const sortie = souris.type === "mouseLeave";
+      if (!sortie) dernierX = souris.x + vue.getBounds().x;
+      const z = sortie ? zoneSortie(dernierX) : zoneGauche(dernierX);
+      if (z !== zone) this.o.zoneGauche?.(onglet.fenetreId, z);
+      // Sortie : la prochaine entrée sera transmise même dans la même zone (l'interface a pu en voir une autre entre-temps).
+      zone = sortie ? null : z;
     });
     void wc.loadURL(onglet.url).catch(() => {});
   }

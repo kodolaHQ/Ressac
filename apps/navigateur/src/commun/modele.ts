@@ -229,3 +229,7 @@ export const LARGEUR_AGENT_MAX = 1000;
 export const BORD_REVELATION = 16;
 /** …ou quand elle quitte la page par la gauche depuis cette distance : un geste rapide saute la bande. */
 export const SORTIE_GAUCHE = 60;
+/** Largeur de la barre latérale (px), celle de sa colonne dans App.svelte. */
+export const LARGEUR_BARRE = 240;
+/** Révélée, la barre reste ouverte tant que la souris ne dépasse pas sa largeur de plus de cette marge (px). */
+export const MARGE_BARRE = 40;
