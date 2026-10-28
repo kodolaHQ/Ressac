@@ -14,6 +14,7 @@
     "ouvrir-application": "ouvrir un lien dans une autre application",
     "lire-onglet": "lire un onglet",
     "outils-dev": "utiliser les outils de développement",
+    "donnees-widget": "voir les données d'un widget",
     autre: "une permission inconnue",
   };
 

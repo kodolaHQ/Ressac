@@ -84,6 +84,20 @@ test("attendreReponse : autoriser → oui, refuser → non", async () => {
   await expect(attendreReponse((repondre) => (repondre("refuser"), () => {}), 1000)).resolves.toBe(false);
 });
 
+test("attendreReponse : signal levé (carte donnees-widget d'une conversation passée) → carte retirée, réponse non", async () => {
+  const retrait = new AbortController();
+  let retiree = false;
+  let repondreTard: ((d: "autoriser" | "refuser") => void) | undefined;
+  const reponse = attendreReponse((repondre) => ((repondreTard = repondre), () => (retiree = true)), 1000, retrait.signal);
+  retrait.abort();
+  expect(retiree).toBe(true);
+  repondreTard?.("autoriser"); // une réponse tardive n'accorde rien
+  await expect(reponse).resolves.toBe(false);
+  let posee = false;
+  await expect(attendreReponse(() => ((posee = true), () => {}), 1000, retrait.signal)).resolves.toBe(false);
+  expect(posee).toBe(false);
+});
+
 test("questionCaduque : une demande de l'agent ne tombe qu'avec son onglet visé ; une permission de site, avec son onglet", () => {
   const { e, ag, F } = preparer();
   const [a, b] = Object.keys(e().onglets);

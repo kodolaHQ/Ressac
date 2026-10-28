@@ -94,22 +94,31 @@ export const DELAI_QUESTION_MS = 120_000;
 
 /**
  * Pose une question à l'utilisateur et attend sa réponse. `poser` affiche la question, reçoit de quoi y répondre, et
- * renvoie de quoi la retirer (appelé si le délai expire).
+ * renvoie de quoi la retirer (appelé si le délai expire, ou si `signal` est levé : la réponse est alors un refus).
  */
-export function attendreReponse(poser: (repondre: (d: Decision) => void) => () => void, delaiMs = DELAI_QUESTION_MS): Promise<boolean> {
+export function attendreReponse(
+  poser: (repondre: (d: Decision) => void) => () => void,
+  delaiMs = DELAI_QUESTION_MS,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
   return new Promise((ok) => {
     let finie = false;
     const repondre = (d: Decision) => {
       if (finie) return;
       finie = true;
       clearTimeout(minuterie);
+      signal?.removeEventListener("abort", abandon);
       ok(d === "autoriser");
     };
-    const minuterie = setTimeout(() => {
+    const abandon = () => {
+      if (finie) return;
       retirer();
       repondre("refuser");
-    }, delaiMs);
+    };
+    const minuterie = setTimeout(abandon, delaiMs);
     const retirer = poser(repondre);
+    signal?.addEventListener("abort", abandon, { once: true });
   });
 }
 
@@ -189,6 +198,8 @@ export class PontElectron implements PontNavigateur {
       demander: (o: OngletInfo) => Promise<boolean>;
       /** Carte de consentement des outils de développement ; absente, tout est refusé. */
       demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
+      /** Carte « donnees-widget » ; absente, tout est refusé. */
+      demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
       applications: FenetresPourAgent;
       /** Historique de navigation ; absent, l'agent n'a pas d'outils d'historique. */
       historique?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">;
@@ -312,5 +323,10 @@ export class PontElectron implements PontNavigateur {
 
   async demanderOutilsDev(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]> {
     return (await this.o.demanderOutilsDev?.(o, d, signal)) ?? [];
+  }
+
+  /** L'agent veut voir les données d'un widget lu avec le compte de l'utilisateur ; le noyau retient l'accord pour la conversation. */
+  async demanderDonneesWidget(o: { id: string; nom: string; agent: string }, signal?: AbortSignal): Promise<boolean> {
+    return (await this.o.demanderDonneesWidget?.(o, signal)) ?? false;
   }
 }

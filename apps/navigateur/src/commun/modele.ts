@@ -191,6 +191,8 @@ export type Permission =
   | "lire-onglet"
   /** L'agent demande des droits d'outils de développement sur un onglet (carte de consentement). */
   | "outils-dev"
+  /** L'agent veut voir les données d'un widget lues avec le compte de l'utilisateur (pour la conversation en cours). */
+  | "donnees-widget"
   | "autre";
 export type Decision = "autoriser" | "refuser";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
@@ -200,8 +202,10 @@ export interface Demande {
   permissions: Permission[];
   /** « ouvrir-application » : le lien à confier à une autre application (mailto:, zoommtg:…). */
   lien?: string;
-  /** « lire-onglet » : titre de l'onglet visé. */
+  /** « lire-onglet » : titre de l'onglet visé ; « donnees-widget » : nom du widget, affiché tel quel. */
   titre?: string;
+  /** « donnees-widget » : l'id du widget dont l'agent veut voir les données. */
+  widget?: string;
   /** « lire-onglet » : la question ne s'affiche que dans cette fenêtre (sinon, selon `ongletId`). */
   fenetreId?: IdFenetre;
   /** « lire-onglet » et « outils-dev » : l'onglet visé ; s'il est fermé, la question est refusée. */
@@ -210,7 +214,7 @@ export interface Demande {
   droits?: DroitDev[];
   /** « outils-dev » : la raison donnée par l'agent. */
   raison?: string;
-  /** « outils-dev » : le nom de l'agent, affiché tel quel. */
+  /** « outils-dev » et « donnees-widget » : le nom de l'agent, affiché tel quel. */
   agent?: string;
 }
 export interface DemandeEnAttente extends Demande {

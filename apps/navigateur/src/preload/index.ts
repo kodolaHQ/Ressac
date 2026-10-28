@@ -71,8 +71,19 @@ const api: ApiWebaios = {
   accueil: {
     lire: () => ipcRenderer.invoke(CANAUX.accueilLire),
     surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),
-    ordonner: (ordre) => ipcRenderer.send(CANAUX.accueilOrdonner, ordre),
+    placer: (placements) => ipcRenderer.send(CANAUX.accueilPlacer, placements),
     retirer: (id) => ipcRenderer.send(CANAUX.accueilRetirer, id),
+    ouvrir: (url) => ipcRenderer.send(CANAUX.accueilOuvrir, url),
+    profilsPourAccord: () => ipcRenderer.invoke(CANAUX.accueilProfils),
+    accorder: (id, profil) => ipcRenderer.send(CANAUX.accueilAccorder, { id, profil }),
+    refuserAccord: (id) => ipcRenderer.send(CANAUX.accueilRefuserAccord, id),
+    recolter: (id) => ipcRenderer.send(CANAUX.accueilRecolter, id),
+  },
+  ia: {
+    etat: () => ipcRenderer.invoke(CANAUX.iaEtat),
+    installer: () => ipcRenderer.invoke(CANAUX.iaInstaller),
+    surEtat: (rappel) => ecouter(CANAUX.iaEtatChange, rappel),
+    surProgres: (rappel) => ecouter(CANAUX.iaProgres, rappel),
   },
   applications: {
     liste: () => ipcRenderer.invoke(CANAUX.applicationsListe),

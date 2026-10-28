@@ -2,7 +2,6 @@ import { app, BrowserWindow, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
-  PROFIL_DEFAUT,
   contexteHistorique,
   profilsChanges,
   profilDOnglet,
@@ -28,10 +27,12 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
-import { Atelier, cheminsEspace, type DroitDev, type OngletInfo } from "@webaios/noyau";
+import { Atelier, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
+import type { EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
-import { enregistrerSchemaBloc, lireBlocsAffiches, ordonnerBlocs, protegerWebviews, retirerBloc, servirBlocs } from "./agent/accueil";
+import { enregistrerSchemaWidget, lireWidgetsAffiches, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { profilsLisibles } from "./agent/lecture-invisible";
 
 declare const __RESSOURCES_NOYAU__: string;
 
@@ -42,7 +43,7 @@ app.setPath("userData", cheminProfil());
 // Une seule instance par profil : deux processus écriraient la même session et le même historique.
 // (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
 if (!app.requestSingleInstanceLock()) app.exit(0);
-enregistrerSchemaBloc();
+enregistrerSchemaWidget();
 
 /** Tests automatiques : aucune fenêtre à l'écran ni icône dans le Dock (elles gênent l'utilisateur pendant qu'il travaille). */
 export const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
@@ -82,8 +83,6 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      // Blocs d'app de la page d'accueil, filtrés par protegerWebviews.
-      webviewTag: true,
       additionalArguments: [`${ARG_FENETRE}${id}`],
     },
   });
@@ -121,12 +120,13 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
-  // Seul un lien d'un bloc de la page d'accueil demande une fenêtre : il devient un onglet.
-  fenetre.webContents.setWindowOpenHandler(({ url, disposition }) => {
-    if (/^https?:\/\//.test(url)) magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url, activer: disposition !== "background-tab" });
-    return { action: "deny" };
+  // Un cadre de l'interface (l'affichage d'un widget) ne va jamais ailleurs que sur un affichage de widget : une
+  // navigation vers le web porterait des données dans son URL. Ses liens passent par api.accueil.ouvrir.
+  fenetre.webContents.on("will-frame-navigate", (e) => {
+    if (!e.isMainFrame && !e.url.startsWith(`${SCHEMA_WIDGET}://`)) e.preventDefault();
   });
-  protegerWebviews(fenetre.webContents, (vue) => vues.brancherVueAccueil(vue, id));
+  // L'interface n'ouvre aucune fenêtre (les widgets n'ont pas allow-popups).
+  fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   const chargerInterface = () =>
     process.env.ELECTRON_RENDERER_URL
       ? fenetre.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -168,6 +168,37 @@ app.whenReady().then(async () => {
   const diffuser = (canal: string, valeur: unknown) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
   };
+  /**
+   * État de l'IA locale pour l'indicateur. Arrêtée, elle est vérifiée : sans Kev (et sans WEBAIOS_KEV_URL des tests),
+   * sans uv, ou sans le modèle Gemma dans un Ollama qui répond, elle est « non installée ».
+   */
+  const etatIa = async (): Promise<EtatIaAffiche> => {
+    const ia = agent?.ia;
+    if (!ia) return { etat: "arretee" };
+    const courant = ia.etat();
+    if (courant.etat !== "arretee" && courant.etat !== "non-installee") return courant;
+    const verification = await ia.verifier();
+    const kevPret = Boolean(process.env.WEBAIOS_KEV_URL) || (verification.kev && verification.uv);
+    const manque = !kevPret || (verification.ollama && !verification.gemma);
+    return { ...courant, etat: manque ? "non-installee" : "arretee", verification };
+  };
+  /** Installation en cours (une seule à la fois). Jamais lancée sans un clic de l'utilisateur (api.ia.installer). */
+  let installation: Promise<{ ok: boolean; erreur?: string }> | undefined;
+  const installerIa = () => {
+    const ia = agent?.ia;
+    if (!ia) return Promise.resolve({ ok: false, erreur: "IA locale indisponible" });
+    installation ??= ia
+      .installer((ligne) => diffuser(CANAUX.iaProgres, ligne))
+      .then(
+        () => ({ ok: true }),
+        (e: Error) => ({ ok: false, erreur: e.message }),
+      )
+      .finally(() => {
+        installation = undefined;
+        void etatIa().then((e) => diffuser(CANAUX.iaEtatChange, e));
+      });
+    return installation;
+  };
   let diffusionAcces: NodeJS.Timeout | undefined;
   const etatAcces = (): EtatAcces => {
     const noyau = agent?.noyau();
@@ -208,8 +239,6 @@ app.whenReady().then(async () => {
     },
     oublier: (id) => permissions.get(id)?.toutOublier(),
   });
-  // Les blocs d'accueil vivent dans la partition du profil par défaut : branchée même si aucun espace ne l'utilise.
-  sessions.session(PROFIL_DEFAUT);
   const vues = new GestionnaireVues({
     sessionDe: (o) => sessions.session(profilDOnglet(magasin.etat, o)),
     fenetres,
@@ -266,22 +295,56 @@ app.whenReady().then(async () => {
     historique,
     telechargements,
     accueil: {
+      // Lue sans le noyau : la page s'affiche même s'il n'a pas pu démarrer.
       async lire() {
         if (!agent) return [];
         try {
-          return await lireBlocsAffiches(agent.chemins);
+          return await lireWidgetsAffiches(await lireAccueil(agent.chemins, agent.dossierWidgets));
         } catch (e) {
           console.error("[webaios] page d'accueil illisible :", e);
           return [];
         }
       },
       // La surveillance du dossier renvoie la page à jour aux fenêtres.
-      ordonner: (ordre) => {
-        if (agent) ordonnerBlocs(agent.chemins, ordre).catch((e) => console.error("[webaios] disposition non écrite :", e));
+      placer: (placements) => {
+        if (agent) placerWidgets(agent.chemins, placements).catch((e) => console.error("[webaios] disposition non écrite :", e));
       },
       retirer: (id) => {
-        if (agent) retirerBloc(agent.chemins, id).catch((e) => console.error(`[webaios] bloc ${id} non retiré :`, e));
+        const a = agent;
+        if (!a) return;
+        // L'accord et les données lues avec le compte partent avec le widget (par le noyau, qui écrit aussi les accords).
+        const oublier = async (w: string) => {
+          const noyau = a.noyau();
+          if (noyau) return noyau.refuserAccord(w);
+          await retirerAccord(a.dossierWidgets, w);
+          await supprimerDonnees(a.dossierWidgets, w);
+        };
+        retirerWidget(a.chemins, id, oublier).catch((e) => console.error(`[webaios] widget ${id} non retiré :`, e));
       },
+      ouvrir: (url, fenetreId) => {
+        if (urlOuvrable(url)) magasin.agir({ type: "ouvrirOnglet", fenetreId, url, activer: true });
+        else console.warn("[webaios] lien de widget refusé :", url);
+      },
+      profilsPourAccord: (fenetreId) => profilsPourAccord(magasin.etat, fenetreId),
+      accorder: (id, profil) => {
+        const noyau = agent?.noyau();
+        // Jamais un profil utilisé par un espace privé : l'état est relu au moment de l'accord.
+        if (!noyau || !profilsLisibles(magasin.etat).includes(profil)) {
+          console.warn(`[webaios] accord refusé pour ${id} (profil ${profil}, noyau ${noyau ? "prêt" : "absent"})`);
+          return;
+        }
+        noyau.accorder(id, profil).catch((e) => console.error(`[webaios] accord du widget ${id} :`, e));
+      },
+      refuserAccord: (id) => {
+        agent?.noyau()?.refuserAccord(id).catch((e) => console.error(`[webaios] retrait de l'accord du widget ${id} :`, e));
+      },
+      recolter: (id) => {
+        agent?.noyau()?.recolterMaintenant(id).catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
+      },
+    },
+    ia: {
+      etat: () => etatIa(),
+      installer: () => installerIa(),
     },
     applications: {
       liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
@@ -375,7 +438,7 @@ app.whenReady().then(async () => {
     for (const [id, f] of fenetres) if (f === focus) return id;
     return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
   };
-  servirBlocs(() => agent?.chemins.blocs ?? null);
+  servirWidgets(() => agent?.chemins.widgets ?? null);
   // Un seul conteneur pour l'agent (quel que soit son profil) et les applis qu'il lance.
   const chemins = cheminsEspace();
   const atelier = new Atelier({ chemins, dossierDocker: join(__RESSOURCES_NOYAU__, "docker") });
@@ -416,24 +479,12 @@ app.whenReady().then(async () => {
       cibles.raccourci(f, "agent");
     },
   });
-  /** Où s'affiche une question de l'agent : sa fenêtre, sur l'onglet visé. */
-  const poserQuestionAgent = (
-    o: OngletInfo,
-    repondre: (d: Decision, droits?: DroitDev[]) => void,
-    plus: Pick<Demande, "permissions" | "droits" | "raison" | "agent">,
-  ): (() => void) => {
+  /** Où s'affiche une question de l'agent : sa fenêtre, quel que soit l'onglet affiché. */
+  const poserQuestion = (champs: Omit<Demande, "ongletId" | "fenetreId">, repondre: (d: Decision, droits?: DroitDev[]) => void): (() => void) => {
     const id = randomUUID();
     const fenetreId = fenetreAgent();
     questions.set(id, {
-      demande: {
-        id,
-        ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null,
-        ...(fenetreId ? { fenetreId } : {}),
-        cible: o.id,
-        origine: origineDe(o.url),
-        titre: o.titre,
-        ...plus,
-      },
+      demande: { id, ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null, ...(fenetreId ? { fenetreId } : {}), ...champs },
       repondre,
     });
     diffuser(CANAUX.permissions, enAttente());
@@ -442,6 +493,12 @@ app.whenReady().then(async () => {
       diffuser(CANAUX.permissions, enAttente());
     };
   };
+  /** Une question de l'agent sur un onglet (lecture, outils de développement) : elle tombe avec l'onglet. */
+  const poserQuestionAgent = (
+    o: OngletInfo,
+    repondre: (d: Decision, droits?: DroitDev[]) => void,
+    plus: Pick<Demande, "permissions" | "droits" | "raison" | "agent">,
+  ): (() => void) => poserQuestion({ cible: o.id, origine: origineDe(o.url), titre: o.titre, ...plus }, repondre);
   agent = demarrerAgent({
     atelier,
     historique,
@@ -458,6 +515,8 @@ app.whenReady().then(async () => {
     fenetres,
     fenetreActive: fenetreAgent,
     surAccueil: () => diffuser(CANAUX.accueilChange, null),
+    dossierIa: join(dossier, "ia-locale"),
+    surEtatIa: () => void etatIa().then((e) => diffuser(CANAUX.iaEtatChange, e)),
     // Les pastilles suivent la politique d'accès ; une rafale de changements ne donne qu'une diffusion par 50 ms.
     surAcces: () => {
       if (diffusionAcces) return;
@@ -475,6 +534,14 @@ app.whenReady().then(async () => {
     demanderOutilsDev: (o, d, signal) =>
       attendreDroits(
         (repondre) => poserQuestionAgent(o, repondre, { permissions: ["outils-dev"], droits: d.droits, raison: d.raison, agent: d.agent }),
+        DELAI_QUESTION_MS,
+        signal,
+      ),
+    // « L'agent veut voir les données du widget « <nom> » (lues avec ton compte). » Le noyau retient l'accord pour la
+    // conversation en cours et retire la carte (signal) quand une nouvelle commence.
+    demanderDonneesWidget: (w, signal) =>
+      attendreReponse(
+        (repondre) => poserQuestion({ origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent }, repondre),
         DELAI_QUESTION_MS,
         signal,
       ),

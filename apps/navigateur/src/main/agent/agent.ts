@@ -1,5 +1,7 @@
 import type { BrowserWindow, Session } from "electron";
 import {
+  executeurParDefaut,
+  IaLocale,
   chargerProfils,
   cheminsEspace,
   creerNoyau,
@@ -9,6 +11,7 @@ import {
   type Atelier,
   type CheminsEspace,
   type DroitDev,
+  type EtatIa,
   type Noyau,
   type OngletInfo,
   type OutilsApplications,
@@ -39,6 +42,10 @@ export interface ServiceAgent {
   erreur(): string | null;
   /** Dossiers de l'espace : la page d'accueil s'y lit même si le noyau n'a pas pu démarrer. */
   chemins: CheminsEspace;
+  /** IA locale (Kev, Gemma) des récoltes, une pour toute l'app : elle survit aux changements de profil d'agent. */
+  ia: IaLocale;
+  /** Dossier des données, états et accords des widgets (hors de l'espace). */
+  dossierWidgets: string;
   /** Profils d'agent de l'espace (.webaios/profils), lus même si le noyau n'a pas pu démarrer. */
   profils(): Promise<{ id: string; nom: string }[]>;
   /** Terminaux de l'agent, un par fenêtre. */
@@ -63,12 +70,18 @@ export function demarrerAgent(o: {
   fenetreActive: () => IdFenetre | undefined;
   /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
+  /** Carte « donnees-widget » : l'agent veut voir les données d'un widget lu avec le compte de l'utilisateur (voir index.ts). */
+  demanderDonneesWidget: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
   /** Carte de consentement des outils de développement (voir index.ts). */
   demanderOutilsDev: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
   /** L'accès de l'agent à un onglet a changé (politique du noyau). */
   surAcces: () => void;
-  /** La page d'accueil a changé (ou devient lisible : noyau prêt). */
+  /** La page d'accueil a changé (ou devient lisible : noyau prêt), y compris les données, états et accords des widgets. */
   surAccueil: () => void;
+  /** L'IA locale a changé d'état (arrêtée, démarre, active, erreur). */
+  surEtatIa: (e: EtatIa, erreur?: string) => void;
+  /** Dossier du profil du navigateur où l'IA locale est installée (`<profil>/ia-locale`). */
+  dossierIa: string;
   /** Atelier partagé avec les applications : un seul conteneur, quel que soit le profil. */
   atelier: Atelier;
   /** Applis de l'espace, lancées par l'agent via ses outils MCP. */
@@ -92,6 +105,7 @@ export function demarrerAgent(o: {
     fenetreActive: o.fenetreActive,
     demander: o.demanderLecture,
     demanderOutilsDev: o.demanderOutilsDev,
+    demanderDonneesWidget: o.demanderDonneesWidget,
     applications: o.fenetresApplications,
     sessionProfil: o.sessionProfil,
     ...(o.historique ? { historique: o.historique } : {}),
@@ -104,6 +118,8 @@ export function demarrerAgent(o: {
     for (const id of fermes) noyau.politique.ongletFerme(id);
   });
   const chemins = cheminsEspace();
+  // Démarrée à la demande par une récolte, arrêtée après 10 minutes sans usage ; installée seulement sur un clic de l'utilisateur.
+  const ia = new IaLocale({ dossier: o.dossierIa, executer: executeurParDefaut, surEtat: o.surEtatIa });
   let arreterAccueil: (() => Promise<void>) | undefined;
   try {
     arreterAccueil = surveillerAccueil(chemins, o.surAccueil);
@@ -113,7 +129,7 @@ export function demarrerAgent(o: {
   let desabonnerAcces: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);
@@ -174,6 +190,8 @@ export function demarrerAgent(o: {
     noyau: () => noyau,
     erreur: () => erreur,
     chemins,
+    ia,
+    dossierWidgets: o.dossierWidgets,
     async profils() {
       try {
         return (await chargerProfils(chemins)).profils.map((p) => ({ id: p.id, nom: p.nom }));
@@ -198,6 +216,8 @@ export function demarrerAgent(o: {
       // Les agents d'abord : leur arrêt passe par le conteneur, avant que l'app ne quitte.
       await sessions.toutArreter();
       await Promise.all([arreterAccueil?.(), arreterNoyau(await pret)]);
+      // Sans noyau (il n'a pas démarré), l'IA locale n'a pas été arrêtée avec lui.
+      await ia.arreter().catch(() => {});
     },
   };
 }

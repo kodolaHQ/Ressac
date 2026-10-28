@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaUrlOuvrir, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -48,7 +48,19 @@ export interface Gestionnaires {
     redimensionner(f: IdFenetre, t: TailleTerminal): void;
     profils(): Promise<{ id: string; nom: string }[]>;
   };
-  accueil: { lire(): Promise<BlocAffiche[]>; ordonner(ordre: string[]): void; retirer(id: string): void };
+  accueil: {
+    lire(): Promise<WidgetAffiche[]>;
+    placer(placements: Placement[]): void;
+    retirer(id: string): void;
+    /** `url` validée ici comme chaîne ; le gestionnaire n'ouvre que http(s). */
+    ouvrir(url: string, fenetreId: IdFenetre): void;
+    profilsPourAccord(fenetreId: IdFenetre): ProfilPourAccord[];
+    accorder(id: string, profil: string): void;
+    refuserAccord(id: string): void;
+    recolter(id: string): void;
+  };
+  /** IA locale : `installer` télécharge plusieurs gigaoctets, seulement sur un clic de l'utilisateur. */
+  ia: { etat(): Promise<EtatIaAffiche>; installer(): Promise<{ ok: boolean; erreur?: string }> };
   applications: { liste(): Promise<ListeApplications>; agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void };
   acces: { etat(): EtatAcces; couper(id: IdOnglet, droit?: DroitDev): void };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
@@ -116,8 +128,20 @@ export function brancherIpc(g: Gestionnaires): void {
   });
   repondre(CANAUX.accueilLire, () => g.accueil.lire());
   repondre(CANAUX.agentProfils, () => g.agent.profils());
-  recevoir(CANAUX.accueilOrdonner, zod(SchemaOrdreBlocs), (o) => g.accueil.ordonner(o));
-  recevoir(CANAUX.accueilRetirer, zod(SchemaIdBloc), (id) => g.accueil.retirer(id));
+  ipcMain.handle(CANAUX.accueilProfils, (e) => {
+    const fenetreId = g.fenetreDe(e);
+    if (!fenetreId) throw new Error("expéditeur inconnu");
+    return g.accueil.profilsPourAccord(fenetreId);
+  });
+  recevoir(CANAUX.accueilPlacer, zod(SchemaPlacements), (p) => g.accueil.placer(p));
+  recevoir(CANAUX.accueilRetirer, zod(SchemaIdWidget), (id) => g.accueil.retirer(id));
+  recevoir(CANAUX.accueilOuvrir, zod(SchemaUrlOuvrir), (url, f) => g.accueil.ouvrir(url, f));
+  recevoir(CANAUX.accueilAccorder, zod(SchemaAccord), ({ id, profil }) => g.accueil.accorder(id, profil));
+  recevoir(CANAUX.accueilRefuserAccord, zod(SchemaIdWidget), (id) => g.accueil.refuserAccord(id));
+  recevoir(CANAUX.accueilRecolter, zod(SchemaIdWidget), (id) => g.accueil.recolter(id));
+  repondre(CANAUX.iaEtat, () => g.ia.etat());
+  // Seule une fenêtre principale (un clic de l'utilisateur dans l'interface) lance l'installation.
+  repondre(CANAUX.iaInstaller, () => g.ia.installer());
   // Une pastille d'appli ne voit que l'accès de son appli et ne coupe que celui-là ; la fenêtre principale voit tout.
   ipcMain.handle(CANAUX.accesEtat, (e) => {
     const dossier = g.pastille.dossierDe(e.sender);

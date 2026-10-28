@@ -23,6 +23,7 @@
   }
 
   const outilsDev = $derived(demande.permissions.includes("outils-dev"));
+  const donneesWidget = $derived(demande.permissions.includes("donnees-widget"));
   const site = $derived(siteDe(demande.origine));
 
   // Une seule ouverture pour toute la file : les demandes suivantes remplacent le contenu, la page reste cachée.
@@ -94,11 +95,19 @@
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
-    aria-label={outilsDev ? "Demande d'accès aux outils de développement" : "Demande d'autorisation"}
+    aria-label={outilsDev ? "Demande d'accès aux outils de développement" : donneesWidget ? "Demande d'accès aux données d'un widget" : "Demande d'autorisation"}
   >
     {#key demande.id}
       {#if outilsDev}
         <DemandeOutilsDev {demande} />
+      {:else if donneesWidget}
+        <div class="lecture" data-testid="demande-donnees-widget">
+          <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
+          <div class="actions">
+            <button onclick={refuser}>Refuser</button>
+            <button class="autoriser" data-principal onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser pour cette conversation</button>
+          </div>
+        </div>
       {:else}
         <div class="lecture" data-testid="demande-permission">
           <p>L'agent veut lire l'onglet « {demande.titre ?? site} »</p>

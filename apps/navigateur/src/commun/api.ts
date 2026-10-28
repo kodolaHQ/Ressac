@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, type Application, type DroitDev } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, type Application, type DeclarationWidget, type DroitDev, type EtatIa, type EtatWidget } from "@webaios/noyau";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "./canaux";
@@ -149,14 +149,34 @@ export interface ApiWebaios {
   };
   /** L'accès de l'agent à un onglet a changé : l'état complet est rediffusé. */
   surAcces(rappel: (e: EtatAcces) => void): () => void;
-  /** Page d'accueil (dossier accueil/ de l'espace de l'agent). */
+  /** Page d'accueil : les widgets de accueil/widgets de l'espace de l'agent. */
   accueil: {
-    lire(): Promise<BlocAffiche[]>;
-    /** Un fichier de accueil/ a changé : relire. */
+    lire(): Promise<WidgetAffiche[]>;
+    /** Un widget, sa disposition, ses données ou son état ont changé : relire. */
     surChange(rappel: () => void): () => void;
-    ordonner(ordre: string[]): void;
-    /** Met le bloc à la corbeille (accueil/.corbeille). */
+    /** Nouvelle disposition (tous les widgets placés) ; refusée si un placement sort de la grille ou vise un id inconnu. */
+    placer(placements: Placement[]): void;
+    /** Met le widget à la corbeille (accueil/.corbeille) et retire son accord. */
     retirer(id: string): void;
+    /** Lien demandé par l'affichage d'un widget : http(s) seulement, dans un onglet de cette fenêtre. */
+    ouvrir(url: string): void;
+    /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
+    profilsPourAccord(): Promise<ProfilPourAccord[]>;
+    /** L'utilisateur autorise le widget à lire avec son compte, dans ce profil. */
+    accorder(id: string, profil: string): void;
+    /** L'utilisateur refuse ou retire l'accord : les données lues avec le compte sont effacées. */
+    refuserAccord(id: string): void;
+    /** « Mettre à jour maintenant ». */
+    recolter(id: string): void;
+  };
+  /** IA locale (Kev et Gemma) des récoltes. */
+  ia: {
+    etat(): Promise<EtatIaAffiche>;
+    /** Télécharge Kev et Gemma (plusieurs gigaoctets) : seulement sur un clic de l'utilisateur. */
+    installer(): Promise<{ ok: boolean; erreur?: string }>;
+    surEtat(rappel: (e: EtatIaAffiche) => void): () => void;
+    /** Une ligne de la sortie de l'installation. */
+    surProgres(rappel: (ligne: string) => void): () => void;
   };
   /** Page Applications (projets de l'espace de l'agent). */
   applications: {
@@ -211,26 +231,65 @@ export type EtatPanneauAgent =
   | { etat: "actif" }
   | { etat: "termine"; code: number };
 
-export const SchemaOrdreBlocs = z.array(z.string().max(100)).max(500);
-export const SchemaIdBloc = z.string().regex(/^[a-z0-9-]+$/).max(100);
+const COLONNES_GRILLE = 12;
+const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
+export const SchemaIdWidget = idWidget;
+const cote = z.number().int().min(1).max(COLONNES_GRILLE);
+/** Les placements de la grille de 12 colonnes : entiers, dans la grille, un seul par widget. */
+export const SchemaPlacements = z
+  .array(
+    z
+      .object({ id: idWidget, x: z.number().int().min(0).max(COLONNES_GRILLE - 1), y: z.number().int().min(0).max(10_000), l: cote, h: cote })
+      .strict()
+      .refine((p) => p.x + p.l <= COLONNES_GRILLE, "déborde de la grille"),
+  )
+  .max(500)
+  .refine((ps) => new Set(ps.map((p) => p.id)).size === ps.length, "widget placé deux fois");
+export const SchemaAccord = z.object({ id: idWidget, profil: z.string().min(1).max(200) });
+export const SchemaUrlOuvrir = z.string().min(1).max(8192);
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
 
-/** Un bloc de la page d'accueil, tel que l'interface l'affiche. */
-export type BlocAffiche =
+/** Place d'un widget dans la grille de 12 colonnes (rangées de 90 px). */
+export interface Placement {
+  id: string;
+  x: number;
+  y: number;
+  l: number;
+  h: number;
+}
+
+/** Un widget de la page d'accueil, tel que l'interface l'affiche. */
+export type WidgetAffiche =
   | {
       id: string;
-      titre: string;
-      type: "agent";
-      /** `webaios-bloc://<id>/index.html?v=<mtime>`, ou null tant que l'agent n'a rien écrit. */
+      nom: string;
+      placement: Placement;
+      tailles: DeclarationWidget["tailles"];
+      /** `webaios-widget://<id>/affichage.html?v=<mtime>`, ou null tant que l'agent n'a pas écrit l'affichage. */
       src: string | null;
-      statut: "ok" | "en-cours" | "erreur";
-      derniereMaj: string | null;
-      derniereTentative: string | null;
-      erreur?: string;
+      donnees: unknown | null;
+      exemple: unknown | null;
+      etat: EtatWidget;
+      /** Domaines lus avec le compte de l'utilisateur (vide : sources publiques seulement). */
+      compte: string[];
     }
-  | { id: string; titre: string; type: "app"; url: string }
-  | { id: string; erreur: string };
+  | { id: string; erreur: string; placement: Placement };
+
+export interface ProfilPourAccord {
+  id: string;
+  /** « Profil de « Perso, Travail » » : les espaces qui l'utilisent. */
+  libelle: string;
+  /** Le profil de l'espace actif de la fenêtre, s'il peut servir. */
+  parDefaut: boolean;
+}
+
+/** État de l'IA locale pour l'indicateur ; `verification` : ce qui est en place (absent si non vérifié). */
+export interface EtatIaAffiche {
+  etat: EtatIa;
+  erreur?: string;
+  verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
+}
 
 /** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent, rien d'autre. */
 export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {

@@ -88,7 +88,7 @@ export class GestionnaireVues {
       historique?: NotesHistorique;
       /** Espace et caractère privé de l'onglet d'après l'état courant ; null : onglet disparu, rien à noter. */
       contexteHistorique?: (id: IdOnglet) => { espaceId: string; prive: boolean } | null;
-      /** Mémoire de navigation : texte des pages vues dans les onglets (jamais les fenêtres d'apps ni les blocs d'accueil). */
+      /** Mémoire de navigation : texte des pages vues dans les onglets (jamais les fenêtres d'apps ni les widgets d'accueil). */
       retenir?: (r: { url: string; espaceId: string; titre: string; texte: string }) => void;
       resultatRecherche?: (fenetreId: IdFenetre, r: { ongletId: IdOnglet; actif: number; total: number }) => void;
       pleinEcran?: (fenetreId: IdFenetre, actif: boolean) => void;
@@ -239,11 +239,6 @@ export class GestionnaireVues {
       wc.off("destroyed", fini);
     });
     wc.close({ waitForBeforeUnload: true });
-  }
-
-  /** Vue web d'un bloc d'app de la page d'accueil : ses liens et popups se comportent comme ceux d'un onglet. */
-  brancherVueAccueil(wc: WebContents, fenetreId: IdFenetre): void {
-    gererOuvertures(wc, (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId, url, activer }), () => {});
   }
 
   ongletDe(wc: WebContents | null): IdOnglet | null {
