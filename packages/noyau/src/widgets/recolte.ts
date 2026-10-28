@@ -316,9 +316,11 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
       return verifierPage(page, declaration.sources.compte);
     } catch (e) {
       if (e instanceof ProfilRefuse || (e as Error)?.name === "ProfilRefuse") {
-        // L'accord est retiré avant l'arrêt : quand l'état est écrit, il n'existe plus.
+        // L'accord est retiré avant l'arrêt : quand l'état est écrit, il n'existe plus. Les données lues avec ce compte
+        // partent avec lui (le widget montre son exemple jusqu'au nouvel accord).
         try {
           await retirerAccord(dossierWidgets, id);
+          await supprimerDonnees(dossierWidgets, id);
         } finally {
           arreter({ statut: "accord-requis", erreur: PROFIL_REFUSE });
         }

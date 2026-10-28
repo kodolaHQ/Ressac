@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
+import { lireAccueil } from "../../src/accueil/lire.js";
 import { Atelier, IMAGE } from "../../src/conteneur/atelier.js";
 import { DeclarationWidget, type WidgetLu } from "../../src/accueil/schemas.js";
 import { ecrireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
@@ -148,6 +149,19 @@ async function recolter(ctx: Contexte, o: { ia?: IaLocale | Pick<IaLocale, "kev"
     adressesLocales: true,
   });
 }
+
+const optionsDe = (ctx: Contexte) => ({
+  id: ctx.widget.id,
+  widget: ctx.widget as WidgetLu,
+  dossierWidgets: ctx.dossierWidgets,
+  recolteur: SCRIPT,
+  atelier: ctx.atelier,
+  lancer: ctx.lancer,
+  ia: null,
+  pont: pontLecture(),
+  horloge,
+  adressesLocales: true,
+});
 
 const lireJson = async (chemin: string) => JSON.parse(await readFile(chemin, "utf8"));
 
@@ -535,7 +549,24 @@ describe("executerRecolte, widget avec compte", () => {
     expect(r.etat.statut).toBe("accord-requis");
     expect(r.etat.erreur).toBeTruthy();
     expect(await lireAccords(ctx.dossierWidgets)).toEqual({ autre: { domaines: ["a.fr"], publiques: [], profil: "perso" } });
-    expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ ancien: true });
+    // Les données lues avec ce compte partent avec l'accord.
+    expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
+  });
+
+  it("ProfilRefuse puis compte retiré : la récolte publique ne reçoit rien du compte, l'accueil non plus", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    expect((await recolter(ctx, { pont: pontLecture(["prive"]) })).etat.statut).toBe("accord-requis");
+    // L'agent retire compte : le widget redevient public (ni compte ni accord).
+    const brut = { nom: "Test", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, recolte: { minutes: 60 }, sources: { compte: [], publiques: [] } };
+    await writeFile(join(ctx.widget.dossier, "widget.json"), JSON.stringify(brut));
+    await writeFile(join(ctx.widget.dossier, "recolte.mjs"), "export default async (w) => ({ prec: w.precedent });");
+    const accueil = await lireAccueil(cheminsEspace(ctx.espace), ctx.dossierWidgets);
+    const lu = accueil.widgets.find((w) => w.id === "daily")!;
+    expect("donnees" in lu && lu.donnees).toBeNull(); // ce que donnees_widget rendrait
+    const r = await executerRecolte({ ...optionsDe(ctx), widget: lu });
+    expect(r.donnees).toEqual({ prec: null });
   });
 
   it("déclaration modifiée (domaines changés) : l'accord est retiré et les données précédentes effacées", async () => {
