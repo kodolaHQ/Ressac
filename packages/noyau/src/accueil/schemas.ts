@@ -41,6 +41,11 @@ export const EtatWidget = z.object({
   derniereMaj: z.string().nullable(),
   derniereTentative: z.string().nullable(),
   erreur: z.string().optional(),
+  /**
+   * L'erreur a été écrite par le noyau, sans texte venu du widget (son message d'échec, sa sortie…). Absente : elle a
+   * pu l'être par le widget, qui peut y mettre des données du compte de l'utilisateur.
+   */
+  erreurNoyau: z.literal(true).optional(),
   journal: z.string().optional(),
 });
 export type EtatWidget = z.infer<typeof EtatWidget>;

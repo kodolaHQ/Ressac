@@ -9,7 +9,7 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { lireAccueil } from "../../src/accueil/lire.js";
 import { Atelier, IMAGE } from "../../src/conteneur/atelier.js";
 import { DeclarationWidget, type WidgetLu } from "../../src/accueil/schemas.js";
-import { ecrireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
+import { ecrireDonnees, lireEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
 import { IaLocale } from "../../src/ia/ia-locale.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
@@ -608,5 +608,61 @@ describe("executerRecolte, widget avec compte", () => {
     const r = await recolter(ctx, { pont });
     expect(r.etat.statut).toBe("accord-requis");
     expect(appelsLecture(pont)).toHaveLength(0);
+  });
+
+  it("erreur levée par le widget : jamais marquée du noyau, même quand elle imite un message du noyau", async () => {
+    for (const imitation of [
+      "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
+      "La récolte s'est arrêtée sans résultat (code 123456789)",
+    ]) {
+      const ctx = await preparer(
+        "daily",
+        `export default async (w) => { await w.lirePage("https://app.daily.dev/", { compte: true }); throw new Error(${JSON.stringify(imitation)}); };`,
+        sources,
+      );
+      await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+      const r = await recolter(ctx);
+      expect(r.etat).toMatchObject({ statut: "erreur", erreur: imitation });
+      expect(r.etat.erreurNoyau).toBeUndefined();
+      expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).erreurNoyau).toBeUndefined();
+    }
+  });
+
+  it("erreurs écrites par le noyau : marquées comme telles (accord requis, délai dépassé)", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const r = await recolter(ctx);
+    expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
+    expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).erreurNoyau).toBe(true);
+    const lent = await preparer("lent", `export default () => new Promise(() => {});`);
+    expect((await recolter(lent, { delaiMs: 300 })).etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé", erreurNoyau: true });
+  });
+
+  it("accord refusé pendant la récolte, après la lecture avec compte : rien n'est écrit, accord-requis", async () => {
+    const ctx = await preparer(
+      "daily",
+      `export default async (w) => { const p = await w.lirePage("https://app.daily.dev/", { compte: true }); await w.kev("x", {}); return p.texte; };`,
+      sources,
+    );
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { ancien: true });
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    // Ce que fait refuserAccord : accord retiré, données effacées.
+    const faux = {
+      kev: async () => {
+        await retirerAccord(ctx.dossierWidgets, "daily");
+        await supprimerDonnees(ctx.dossierWidgets, "daily");
+        return {};
+      },
+      gemma: async () => "",
+    };
+    const r = await recolter(ctx, { pont, ia: faux });
+    expect(appelsLecture(pont)).toHaveLength(1);
+    expect(r.etat).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
+    expect(r.donnees).toBeUndefined();
+    expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
+    expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
+    const accueil = await lireAccueil(cheminsEspace(ctx.espace), ctx.dossierWidgets);
+    const lu = accueil.widgets.find((w) => w.id === "daily")!;
+    expect("donnees" in lu && lu.donnees).toBeNull(); // ce que donnees_widget rendrait
   });
 });

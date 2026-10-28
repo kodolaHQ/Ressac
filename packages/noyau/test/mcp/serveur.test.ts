@@ -483,15 +483,44 @@ test("sans widgets : les outils n'existent pas", async () => {
 test("recolter_widget sur un widget avec compte sans accord : une erreur écrite par le widget ne sort pas, celle du noyau oui", async () => {
   const { outils } = widgetsFactices();
   let erreur = "SECRET";
-  outils.recolter = async () => ({ statut: "erreur", derniereMaj: null, derniereTentative: null, erreur, journal: "SECRET" });
+  let erreurNoyau: true | undefined;
+  outils.recolter = async () => ({
+    statut: "erreur", derniereMaj: null, derniereTentative: null, erreur, journal: "SECRET", ...(erreurNoyau ? { erreurNoyau } : {}),
+  });
   await avecWidgets(outils);
   let t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
   expect(t).not.toContain("SECRET");
   expect(t).toContain(ERREUR_RESERVEE);
   erreur = "Délai dépassé";
+  erreurNoyau = true;
   t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
   expect(t).toContain("Délai dépassé");
+  erreurNoyau = undefined;
   // Widget public : l'erreur du widget sort telle quelle.
   erreur = "SECRET public";
   expect(texte(await client.callTool({ name: "recolter_widget", arguments: { id: "meteo" } }))).toContain("SECRET public");
+});
+
+test("recolter_widget, widget avec compte sans accord : un texte du widget qui imite le noyau ne sort pas, le vrai message du noyau oui", async () => {
+  const { outils } = widgetsFactices();
+  let etat: EtatWidget = { statut: "erreur", derniereMaj: null, derniereTentative: null };
+  outils.recolter = async () => etat;
+  await avecWidgets(outils);
+  const recolter = async () => texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
+  // Écrites par le widget (pas de marque du noyau) : elles portent des données du compte.
+  for (const imitation of [
+    "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
+    "La récolte s'est arrêtée sans résultat (code 123456789)",
+  ]) {
+    etat = { statut: "erreur", derniereMaj: null, derniereTentative: null, erreur: imitation };
+    const t = await recolter();
+    expect(t).not.toContain(imitation);
+    expect(t).toContain(ERREUR_RESERVEE);
+  }
+  // Écrite par le noyau : elle sort.
+  etat = { statut: "accord-requis", derniereMaj: null, derniereTentative: null, erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true };
+  expect(await recolter()).toContain("Accord requis pour lire avec ton compte : app.daily.dev");
+  // Marquée du noyau mais hors des messages fixes : réservée quand même.
+  etat = { statut: "erreur", derniereMaj: null, derniereTentative: null, erreur: "SECRET", erreurNoyau: true };
+  expect(await recolter()).not.toContain("SECRET");
 });

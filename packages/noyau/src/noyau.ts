@@ -342,6 +342,7 @@ export async function creerNoyau(o: {
           derniereMaj: avant.derniereMaj,
           derniereTentative: avant.derniereTentative,
           erreur: accordRequis(w.declaration),
+          erreurNoyau: true,
         });
       }
       signaler();

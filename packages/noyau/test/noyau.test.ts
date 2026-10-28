@@ -212,11 +212,13 @@ test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance
   expect(surChange).toHaveBeenCalled();
   // Docker absent : la récolte lancée aboutit à « atelier arrêté ».
   await vi.waitFor(async () => expect((await lireEtatWidget(dossierWidgets, "daily")).statut).toBe("atelier-arrete"));
+  // Messages écrits par le noyau : marqués comme tels (ils peuvent sortir vers l'agent sans accord).
+  expect((await lireEtatWidget(dossierWidgets, "daily")).erreurNoyau).toBe(true);
 
   surChange.mockClear();
   await noyau.refuserAccord("daily");
   expect((await lireAccords(dossierWidgets)).daily).toBeUndefined();
-  expect((await lireEtatWidget(dossierWidgets, "daily")).statut).toBe("accord-requis");
+  expect(await lireEtatWidget(dossierWidgets, "daily")).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
   expect(surChange).toHaveBeenCalled();
 });
 

@@ -217,20 +217,25 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut });
   o.surChange?.();
 
-  const conclure = async (r: { statut: EtatWidget["statut"]; erreur?: string; journal?: string; donnees?: unknown }) => {
+  /** `erreurWidget` : le texte de l'erreur vient du widget ou du conteneur (sinon, il est écrit par le noyau). */
+  const conclure = async (r: { statut: EtatWidget["statut"]; erreur?: string; erreurWidget?: boolean; journal?: string; donnees?: unknown }) => {
     const etat: EtatWidget = {
       statut: r.statut,
       derniereMaj: r.statut === "ok" ? horloge().toISOString() : precedent.derniereMaj,
       derniereTentative: debut,
     };
-    if (r.erreur) etat.erreur = tronquer(r.erreur, ERREUR_MAX);
+    if (r.erreur) {
+      etat.erreur = tronquer(r.erreur, ERREUR_MAX);
+      if (!r.erreurWidget) etat.erreurNoyau = true;
+    }
     if (r.journal) etat.journal = r.journal;
     await ecrireEtatWidget(dossierWidgets, id, etat);
     o.surChange?.();
     return r.statut === "ok" ? { etat, donnees: r.donnees } : { etat };
   };
 
-  if ("erreur" in widget) return conclure({ statut: "erreur", erreur: widget.erreur });
+  // L'erreur de lecture du widget peut citer ses fichiers : elle compte comme écrite par le widget.
+  if ("erreur" in widget) return conclure({ statut: "erreur", erreur: widget.erreur, erreurWidget: true });
   if (!widget.aRecolte) return conclure({ statut: "erreur", erreur: "Ce widget n'a pas de recolte.mjs" });
   const declaration = widget.declaration;
   const aCompte = declaration.sources.compte.length > 0;
@@ -247,6 +252,12 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   }
   // Pour un widget avec compte, les lectures publiques sont limitées aux domaines déclarés (vide : aucune).
   const domainesPublics = aCompte ? declaration.sources.publiques : null;
+
+  const accordToujoursValide = async () => accordValide(declaration, (await lireAccords(dossierWidgets))[id]);
+  const refuseeEnCours = async () => {
+    await supprimerDonnees(dossierWidgets, id);
+    return conclure({ statut: "accord-requis", erreur: accordRequis(declaration) });
+  };
 
   const donneesPrecedentes = await lireDonnees(dossierWidgets, id);
   let processus: ProcessusRecolte;
@@ -406,14 +417,19 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     return conclure({ ...arretFinal, journal });
   }
   if (fin?.t === "fin" && code === 0) {
+    // L'accord a pu être retiré pendant la récolte (refuserAccord efface les données) : ce qui a été lu avec ne s'écrit pas.
+    if (aCompte && !(await accordToujoursValide())) return refuseeEnCours();
     try {
       await ecrireDonnees(dossierWidgets, id, fin.donnees);
     } catch (e) {
       return conclure({ statut: "erreur", erreur: message(e), journal });
     }
+    // Retiré pendant l'écriture : refuserAccord a pu effacer avant elle. Relu après, les données écrites partent.
+    if (aCompte && !(await accordToujoursValide())) return refuseeEnCours();
     return conclure({ statut: "ok", donnees: fin.donnees, journal });
   }
-  if (fin?.t === "echec") return conclure({ statut: "erreur", erreur: fin.erreur, journal });
+  if (fin?.t === "echec") return conclure({ statut: "erreur", erreur: fin.erreur, erreurWidget: true, journal });
   if (code === 124) return conclure({ statut: "erreur", erreur: "Délai dépassé", journal });
-  return conclure({ statut: "erreur", erreur: `La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, journal });
+  // Le code de sortie est choisi par le widget : il pourrait y coder des données du compte.
+  return conclure({ statut: "erreur", erreur: `La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, erreurWidget: true, journal });
 }

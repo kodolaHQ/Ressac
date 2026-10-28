@@ -133,6 +133,7 @@ export class PlanificateurWidgets {
       derniereMaj: avant.derniereMaj,
       derniereTentative: avant.derniereTentative,
       erreur: ERREUR_ATELIER_ARRETE,
+      erreurNoyau: true,
     };
     await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
     this.o.surChange?.();

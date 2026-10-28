@@ -423,8 +423,11 @@ function enregistrerOutilsWidgets(
       const montrer = permises(id, widget);
       const r = {
         statut: etat.statut,
-        // Sans accord, seule une erreur fixe du noyau sort : un widget peut lever une erreur faite des données du compte.
-        ...(etat.erreur ? { erreur: montrer || erreurDuNoyau(etat.erreur) ? etat.erreur : ERREUR_RESERVEE } : {}),
+        // Sans accord, seule une erreur fixe écrite par le noyau sort : un widget peut lever une erreur faite des données
+        // du compte, au besoin à l'image d'un message du noyau (d'où la marque de provenance, en plus du texte).
+        ...(etat.erreur
+          ? { erreur: montrer || (etat.erreurNoyau === true && erreurDuNoyau(etat.erreur)) ? etat.erreur : ERREUR_RESERVEE }
+          : {}),
         ...(montrer && etat.journal ? { journal: etat.journal } : {}),
         ...(montrer ? { donnees: widget.donnees } : {}),
       };
