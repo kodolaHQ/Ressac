@@ -65,8 +65,8 @@ describe("recolteur", () => {
           : { ok: { q: { type: "noul", noul: 0.9 } } },
     );
     expect(r.appels.map((a) => [a.n, a.f])).toEqual([[1, "lirePage"], [2, "kev"]]);
-    expect(r.appels[0].a).toEqual({ url: "https://a.fr/", compte: true });
-    expect(r.appels[1].a).toEqual({ state: "etat", questions: { q: { type: "noul" } } });
+    expect(r.appels[0]!.a).toEqual({ url: "https://a.fr/", compte: true });
+    expect(r.appels[1]!.a).toEqual({ state: "etat", questions: { q: { type: "noul" } } });
     expect(r.terminal.donnees.k).toEqual({ q: { type: "noul", noul: 0.9 } });
     expect(r.terminal.donnees.p.titre).toBe("T");
   });

@@ -152,9 +152,6 @@ async function principal() {
   }
   if (json === undefined) throw new Error("la récolte doit rendre du JSON");
   envoyer({ t: "fin", donnees: JSON.parse(json) });
-  terminer_ok();
-}
-function terminer_ok() {
   sortie.write("", () => process.exit(0));
 }
 
