@@ -169,4 +169,34 @@ describe("widgets de départ", () => {
     const vide = await lancer("daily-dev", () => ({ ok: { url: "https://app.daily.dev/", titre: "d", texte: "", liens: [] } }));
     expect(vide.terminal).toEqual({ t: "echec", erreur: "Aucun article trouvé : es-tu connecté à daily.dev dans ce profil ?" });
   });
+
+  it("actus-tech échoue clairement quand le tri de l'IA locale ne note rien", async () => {
+    const r = await lancer("actus-tech", (a) => {
+      if (a.f === "recuperer") return { ok: flux[a.a.url]! };
+      if (a.f === "kev") return { ok: {} };
+      return { erreur: "?" };
+    });
+    expect(r.terminal).toEqual({ t: "echec", erreur: "Le tri par l'IA locale a échoué" });
+  });
+
+  it("daily-dev garde 12 articles, résume les 6 premiers et réutilise le précédent", async () => {
+    const liens = Array.from({ length: 20 }, (_, i) => ({ texte: `Article numéro ${String(i).padStart(2, "0")} assez long`, url: `https://app.daily.dev/posts/p${i}` }));
+    const r = await lancer(
+      "daily-dev",
+      (a) => {
+        if (a.f === "lirePage" && a.a.compte) return { ok: { url: "https://app.daily.dev/", titre: "d", texte: "", liens } };
+        if (a.f === "lirePage") return { ok: { url: a.a.url, titre: "x", texte: "contenu", liens: [] } };
+        if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.99 - Number(/numéro (\d\d)/.exec(a.a.state)![1]) * 0.01 } } };
+        if (a.f === "gemma") return { ok: "Résumé." };
+        return { erreur: "?" };
+      },
+      { articles: [{ titre: "x", url: "https://app.daily.dev/posts/p1", source: "app.daily.dev", p: 0.9, resume: "Ancien." }] },
+    );
+    const arts = r.terminal.donnees.articles;
+    expect(arts).toHaveLength(12);
+    expect(arts.filter((x: any) => x.resume)).toHaveLength(6);
+    expect(arts.slice(6).every((x: any) => x.resume === undefined)).toBe(true);
+    expect(arts[1].resume).toBe("Ancien.");
+    expect(r.appels.filter((a) => a.f === "gemma")).toHaveLength(5);
+  });
 });

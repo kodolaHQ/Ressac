@@ -70,6 +70,12 @@ export default async (webaios) => {
     texte: (i) => "Titre : " + i.titre + "\nSource : " + i.source,
     seuil: 0.6,
   });
+  if (!tries.length) {
+    webaios.journal("aucun article ne passe le seuil de 0.6 sur", items.length, "candidats");
+    // Sonde : si le tri rend 0 partout, l'IA locale n'a rien noté (échec), ce n'est pas un vrai « rien d'intéressant ».
+    const sonde = await webaios.trier(items.slice(0, 3), { question: "Cet article intéresse-t-il quelqu'un qui suit : " + interets + " ?", texte: (i) => "Titre : " + i.titre, seuil: 0 });
+    if (sonde.length && sonde.every((x) => x.p === 0)) throw new Error("Le tri par l'IA locale a échoué");
+  }
   const articles = tries.slice(0, GARDER).map((x) => ({ titre: x.element.titre, url: x.element.url, source: x.element.source, p: Math.round(x.p * 100) / 100 }));
 
   const anciens = new Map((webaios.precedent?.articles ?? []).filter((a) => a?.resume).map((a) => [a.url, a.resume]));

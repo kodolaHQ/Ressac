@@ -15,6 +15,7 @@
   li:last-child { border-bottom: 0; }
   button.titre { all: unset; cursor: pointer; font-weight: 600; color: var(--lien); display: block; }
   button.titre:hover, button.titre:focus-visible { text-decoration: underline; }
+  .inerte { font-weight: 600; }
   .source { color: var(--doux); font-size: 11px; }
   .resume { margin: 2px 0 0; color: var(--texte); font-size: 12px; }
   .vide { color: var(--doux); }
@@ -40,12 +41,22 @@
     }
     for (const a of articles) {
       const li = document.createElement("li");
-      const b = document.createElement("button");
-      b.className = "titre";
-      b.type = "button";
-      b.textContent = String(a.titre ?? "");
-      b.addEventListener("click", () => parent.postMessage({ type: "ouvrir", url: String(a.url ?? "") }, "*"));
-      li.append(b);
+      const url = String(a.url ?? "");
+      let ouvrable = false;
+      try { const pr = new URL(url).protocol; ouvrable = pr === "http:" || pr === "https:"; } catch {}
+      if (ouvrable) {
+        const b = document.createElement("button");
+        b.className = "titre";
+        b.type = "button";
+        b.textContent = String(a.titre ?? "");
+        b.addEventListener("click", () => parent.postMessage({ type: "ouvrir", url }, "*"));
+        li.append(b);
+      } else {
+        const t = document.createElement("div");
+        t.className = "titre inerte";
+        t.textContent = String(a.titre ?? "");
+        li.append(t);
+      }
       if (a.source) {
         const s = document.createElement("div");
         s.className = "source";
@@ -61,7 +72,7 @@
       liste.append(li);
     }
   }
-  addEventListener("message", (e) => { if (e.data && e.data.type === "widget") afficher(e.data); });
+  addEventListener("message", (e) => { if (e.source === parent && e.data && e.data.type === "widget") afficher(e.data); });
 </script>
 </body>
 </html>
