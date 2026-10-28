@@ -50,3 +50,24 @@ test("la question d'une popup s'affiche sur l'onglet qui l'a ouverte, pas dans l
   await expect(seconde.getByTestId("demande-permission")).toBeHidden();
   await fermer();
 });
+
+test("une demande de caméra d'un site reste un bandeau, pas une modale : la page reste affichée", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await dansLaVue(app, "a.html", "navigator.mediaDevices.getUserMedia({ video: true }).then(() => (document.title = 'camera:ok'), (e) => (document.title = 'camera:' + e.name)); 1");
+  const bandeau = fenetre.getByTestId("demande-permission");
+  await expect(bandeau).toContainText("votre caméra");
+  await expect(fenetre.getByTestId("zone-contenu").getByTestId("demande-permission")).toBeVisible();
+  await expect(fenetre.getByTestId("modale-demande")).toHaveCount(0);
+  const largeur = await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows())
+      for (const v of w.contentView.children as unknown as { getBounds(): { width: number }; webContents: { getURL(): string } }[])
+        if (v.webContents.getURL().includes("a.html")) return v.getBounds().width;
+    return -1;
+  });
+  expect(largeur).toBeGreaterThan(0);
+  await bandeau.getByRole("button", { name: "Refuser" }).click();
+  await expect(bandeau).toBeHidden();
+  await fermer();
+});

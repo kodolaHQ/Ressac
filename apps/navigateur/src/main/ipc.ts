@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaOrdreBlocs, SchemaIdBloc, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type ActionApplication, type ListeApplications, type TailleTerminal, type Action, type BlocAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -35,6 +35,8 @@ export interface Gestionnaires {
   naviguer(fenetreId: IdFenetre, ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
+  /** Capture de la page affichée dans la fenêtre si c'est bien `ongletId` (fond d'une modale) ; null sinon. */
+  apercu(fenetreId: IdFenetre, ongletId: IdOnglet): Promise<string | null>;
   /** Fermer un onglet en laissant la page demander confirmation (voir GestionnaireVues.fermer). */
   fermerOnglet(ongletId: IdOnglet): void;
   historique: Historique;
@@ -97,6 +99,18 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
   repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());
   recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision, droits }) => g.permissions.repondre(id, decision, droits));
+  // La modale prend le clavier (la page l'avait peut-être) ; la capture ne vise que la page affichée dans cette fenêtre.
+  ipcMain.handle(CANAUX.apercuPage, (e, brut: unknown) => {
+    const fenetreId = g.fenetreDe(e);
+    if (!fenetreId) throw new Error("expéditeur inconnu");
+    const r = SchemaApercuPage.safeParse(brut);
+    if (!r.success) {
+      console.warn(`[ipc] message invalide ignoré sur ${CANAUX.apercuPage}:`, brut);
+      return null;
+    }
+    e.sender.focus();
+    return r.data.ongletId ? g.apercu(fenetreId, r.data.ongletId) : null;
+  });
   repondre(CANAUX.accueilLire, () => g.accueil.lire());
   repondre(CANAUX.agentProfils, () => g.agent.profils());
   recevoir(CANAUX.accueilOrdonner, zod(SchemaOrdreBlocs), (o) => g.accueil.ordonner(o));

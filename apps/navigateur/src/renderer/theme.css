@@ -19,6 +19,9 @@
   --acces-agir-fond: #f59e0b33;
   --acces-couper: #c2410c;
   --acces-couper-survol: #ea580c;
+  /* Modales : le voile qui assombrit la fenêtre, l'ombre de la carte. */
+  --voile: rgb(0 0 0 / 0.45);
+  --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.5);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -40,6 +43,8 @@
     --acces-agir-fond: #f59e0b30;
   --acces-couper: #c2410c;
   --acces-couper-survol: #9a3412;
+    --voile: rgb(20 20 30 / 0.32);
+    --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.22);
     color-scheme: light;
   }
 }

@@ -1,5 +1,5 @@
 import type { ApiWebaios } from "../commun/api";
-import type { DemandeEnAttente, EtatFenetre, EtatNavigateur, Telechargement } from "../commun/modele";
+import type { DemandeEnAttente, EtatFenetre, EtatNavigateur, Onglet, Telechargement } from "../commun/modele";
 
 declare global {
   interface Window {
@@ -40,5 +40,14 @@ api.surPermissions((liste) => {
 void api.permissions.enAttente().then((liste) => {
   demandes.liste = liste;
 });
+
+/**
+ * La question à poser maintenant dans cette fenêtre, une à la fois dans l'ordre d'arrivée. Une popup pose ses questions
+ * sur l'onglet qui l'a ouverte (ongletId) ; sans onglet connu, sur l'onglet actif. Une question de l'agent vise une
+ * fenêtre (la sienne), quel que soit l'onglet affiché.
+ */
+export function demandeDe(fenetre: EtatFenetre | undefined, onglet: Onglet | undefined): DemandeEnAttente | undefined {
+  return demandes.liste.find((d) => (d.fenetreId ? d.fenetreId === fenetre?.id : d.ongletId === null || d.ongletId === onglet?.id));
+}
 
 export { acces, accesDe } from "./acces.svelte";

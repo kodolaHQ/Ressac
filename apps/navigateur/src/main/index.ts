@@ -218,6 +218,7 @@ app.whenReady().then(async () => {
     },
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
+    apercu: (f, id) => vues.apercu(f, id),
     fermerOnglet: (id) => vues.fermer(id),
     historique,
     telechargements,

@@ -37,6 +37,7 @@ export const CANAUX = {
   accesEtat: "webaios:acces-etat",
   accesCouper: "webaios:acces-couper",
   pastilleTaille: "webaios:pastille-taille",
+  apercuPage: "webaios:apercu-page",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

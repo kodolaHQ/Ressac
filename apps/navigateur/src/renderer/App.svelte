@@ -6,9 +6,11 @@
   import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
   import PanneauAgent from "./composants/PanneauAgent.svelte";
+  import ModaleDemande from "./composants/ModaleDemande.svelte";
+  import { estDemandeAgent } from "./composants/modale.svelte";
   import type { Panneau } from "../commun/api";
   import { untrack } from "svelte";
-  import { acces, api, etat, fenetreCourante } from "./etat.svelte";
+  import { acces, api, demandeDe, etat, fenetreCourante } from "./etat.svelte";
   import { BORD_REVELATION, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
 
   const MASQUAGE_MS = 300;
@@ -48,6 +50,11 @@
   });
 
   let panneau = $state<Panneau | null>(null);
+
+  // Une demande de l'agent couvre toute la fenêtre (barre latérale et panneau agent compris) ; sous un panneau de
+  // l'interface, la page n'est pas affichée : pas de capture à montrer derrière.
+  const demande = $derived(demandeDe(fenetre, ongletActif));
+  const demandeAgent = $derived(demande && estDemandeAgent(demande) ? demande : undefined);
   const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
   $effect(() => api.surPanneau(basculerPanneau));
   // Activer un autre onglet referme le panneau et la recherche (pas un simple changement d'état ailleurs).
@@ -158,6 +165,7 @@
   <PanneauAgent visible={panneauAgentOuvert && !pleinEcran} redimensionner={redimensionnerAgent} />
 </div>
 <MenuContextuel />
+{#if demandeAgent}<ModaleDemande demande={demandeAgent} ongletId={panneau ? null : (ongletActif?.id ?? null)} />{/if}
 
 <style>
   .fenetre {

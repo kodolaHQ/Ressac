@@ -122,6 +122,11 @@ export interface ApiWebaios {
     repondre(id: string, decision: Decision, droits?: DroitDev[]): void;
   };
   surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
+  /**
+   * Une modale s'ouvre : le clavier revient à l'interface, et la page affichée par `ongletId` est capturée (data URL
+   * JPEG réduite) pour rester visible, floutée, derrière la modale. null : pas de page à montrer, ou capture ratée.
+   */
+  apercuPage(ongletId: IdOnglet | null): Promise<string | null>;
   /** Terminal de l'agent de cette fenêtre. */
   agent: {
     /** Démarre la session (ou la retrouve : son état et sa sortie récente sont renvoyés). */
@@ -187,6 +192,9 @@ export const SchemaReponsePermission = z.object({
 
 /** Couper un droit de l'agent sur un onglet, ou tout son accès si `droit` est absent. */
 export const SchemaCouperAcces = z.object({ id, droit: z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]]).optional() });
+
+/** Capture de la page affichée, pour le fond d'une modale : l'onglet que l'interface voit actif, ou aucun. */
+export const SchemaApercuPage = z.object({ ongletId: id.nullable() });
 
 /** La pastille d'une fenêtre d'appli s'agrandit (bulle ouverte) ou se referme. */
 export const SchemaTaillePastille = z.object({ ouverte: z.boolean() });

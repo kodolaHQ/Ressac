@@ -1,7 +1,6 @@
 <script lang="ts">
   import { siteDe, type DemandeEnAttente, type Permission } from "../../commun/modele";
   import { api } from "../etat.svelte";
-  import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
 
   let { demande }: { demande: DemandeEnAttente } = $props();
 
@@ -20,9 +19,8 @@
 
   // Jamais d'exception ici : une origine illisible (about:blank, data:…) est affichée telle quelle.
   const site = $derived(siteDe(demande.origine));
-  const lecture = $derived(demande.permissions.includes("lire-onglet"));
+  // Les questions des sites ; celles de l'agent (lecture, outils de développement) passent par ModaleDemande.
   const texte = $derived.by(() => {
-    if (lecture) return `L'agent veut lire l'onglet « ${demande.titre ?? site} »`;
     const media = demande.permissions.filter((p) => p.startsWith("media-")).map((p) => NOMS[p]);
     const autres = demande.permissions.filter((p) => !p.startsWith("media-")).map((p) => NOMS[p]);
     const parties = [...(media.length ? [`utiliser ${media.join(" et ")}`] : []), ...autres];
@@ -31,15 +29,11 @@
   });
 </script>
 
-{#if demande.permissions.includes("outils-dev")}
-  {#key demande.id}<DemandeOutilsDev {demande} />{/key}
-{:else}
 <div class="bandeau" data-testid="demande-permission" role="alertdialog" aria-label="Demande d'autorisation">
   <span>{texte}</span>
   <button onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
-  <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>{lecture ? "Autoriser une fois" : "Autoriser"}</button>
+  <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser</button>
 </div>
-{/if}
 
 <style>
   .bandeau { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--fond-actif); border-bottom: 1px solid var(--bord); color: var(--texte); }

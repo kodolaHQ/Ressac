@@ -9,6 +9,8 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 /** Texte d'une page transmis à l'agent, au plus. */
 const LONGUEUR_TEXTE = 100_000;
+/** Largeur maximale de la capture qui sert de fond flouté aux modales (px) : légère, le flou efface le détail. */
+const LARGEUR_APERCU = 1024;
 
 /** Préférences de toute page web : bac à sable, aucun preload. */
 export function preferencesWeb(session: Session) {
@@ -151,6 +153,23 @@ export class GestionnaireVues {
 
   async capturerDe(wc: WebContents): Promise<Buffer> {
     return (await wc.capturePage(undefined, { stayHidden: true })).toPNG();
+  }
+
+  /**
+   * Fond d'une modale : la page affichée dans la fenêtre, si c'est bien `ongletId`, en JPEG réduit (elle sera floutée).
+   * null s'il n'y en a pas (page vide, page interne) ou si la capture échoue.
+   */
+  async apercu(fenetreId: IdFenetre, ongletId: IdOnglet): Promise<string | null> {
+    const wc = this.attachees.get(fenetreId) === ongletId ? this.vues.get(ongletId)?.webContents : undefined;
+    if (!wc || wc.isDestroyed() || wc.isCrashed()) return null;
+    try {
+      let image = await wc.capturePage(undefined, { stayHidden: true });
+      if (image.isEmpty()) return null;
+      if (image.getSize().width > LARGEUR_APERCU) image = image.resize({ width: LARGEUR_APERCU, quality: "good" });
+      return `data:image/jpeg;base64,${image.toJPEG(70).toString("base64")}`;
+    } catch {
+      return null;
+    }
   }
 
   /** Fenêtre fermée dont l'état est gardé (macOS) : ses pages se ferment et se recréeront à sa réouverture. */

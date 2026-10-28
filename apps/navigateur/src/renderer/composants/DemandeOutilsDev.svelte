@@ -23,7 +23,7 @@
   const cocher = (droit: DroitDev, actif: boolean) => (coches = actif ? [...coches, droit] : coches.filter((d) => d !== droit));
 </script>
 
-<div class="carte" data-testid="demande-outils-dev" role="alertdialog" aria-label="Demande d'accès aux outils de développement">
+<div data-testid="demande-outils-dev">
   <h3>{demande.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
   <div class="site">🔒 {site} · onglet « {demande.titre ?? site} »</div>
   <div class="raison">« {demande.raison} »</div>
@@ -39,13 +39,12 @@
   {/each}
   <div class="actions">
     <button onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
-    <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser", $state.snapshot(coches))}>Autoriser la sélection</button>
+    <button class="autoriser" data-principal onclick={() => api.permissions.repondre(demande.id, "autoriser", $state.snapshot(coches))}>Autoriser la sélection</button>
   </div>
   <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
 </div>
 
 <style>
-  .carte { align-self: center; box-sizing: border-box; width: min(440px, calc(100% - 24px)); margin: 8px 12px; padding: 14px 18px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 12px; font-size: 13px; line-height: 1.45; }
   h3 { margin: 0 0 4px; font-size: 15px; }
   .site { opacity: 0.7; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
   .raison { background: var(--fond-barre); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }

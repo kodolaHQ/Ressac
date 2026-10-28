@@ -1,7 +1,8 @@
 <script lang="ts">
   import { URL_APPLICATIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
   import Applications from "./Applications.svelte";
-  import { acces, api, demandes } from "../etat.svelte";
+  import { acces, api, demandeDe } from "../etat.svelte";
+  import { estDemandeAgent, modale } from "./modale.svelte";
   import DemandePermission from "./DemandePermission.svelte";
   import { recherche } from "./recherche.svelte";
   import RechercheDansPage from "./RechercheDansPage.svelte";
@@ -17,18 +18,17 @@
     fermerPanneau = () => {},
   }: { fenetre: EtatFenetre | undefined; onglet: Onglet | undefined; panneau?: Panneau | null; fermerPanneau?: () => void } = $props();
   let zone: HTMLElement;
-  // Une popup pose ses questions sur l'onglet qui l'a ouverte (ongletId) ; sans onglet connu, sur l'onglet actif.
-  // Une question de l'agent vise une fenêtre (la sienne), quel que soit l'onglet affiché.
-  const demande = $derived(
-    demandes.liste.find((d) => (d.fenetreId ? d.fenetreId === fenetre?.id : d.ongletId === null || d.ongletId === onglet?.id)),
-  );
+  // Les questions des sites ; celles de l'agent s'ouvrent en modale (App.svelte).
+  const demande = $derived(demandeDe(fenetre, onglet));
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
-    // Idem pour la bulle d'accès en mode compact, où la barre latérale s'affiche par-dessus la page.
-    const masquer = panneau !== null || (acces.bullesOuvertes > 0 && fenetre?.compact === true);
+    // Idem pour la bulle d'accès en mode compact, où la barre latérale s'affiche par-dessus la page, et pour la
+    // modale d'une demande de l'agent (une capture floutée de la page la remplace).
+    const masquer = panneau !== null || (acces.bullesOuvertes > 0 && fenetre?.compact === true) || modale.masquer;
     const envoyer = () => {
       const r = zone.getBoundingClientRect();
+      modale.zone = { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };
       api.bornesContenu({ x: r.x, y: r.y, largeur: masquer ? 0 : r.width, hauteur: masquer ? 0 : r.height });
     };
     envoyer();
@@ -43,7 +43,7 @@
 </script>
 
 <main class="contenu" data-testid="zone-contenu">
-  {#if demande && !panneau}<DemandePermission {demande} />{/if}
+  {#if demande && !estDemandeAgent(demande) && !panneau}<DemandePermission {demande} />{/if}
   {#if recherche.ouverte && onglet && !panneau}<RechercheDansPage {onglet} />{/if}
   <div class="surface" bind:this={zone}>
   {#if fenetre && panneau === "historique"}

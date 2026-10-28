@@ -331,6 +331,76 @@ test("mode compact : la vue de la page est à zéro tant que la bulle est ouvert
   await fermer();
 });
 
+// Les demandes d'accès de l'agent s'ouvrent en modale : la vue native de la page couvrirait l'interface, elle s'efface
+// tant que la modale est ouverte (une capture floutée la remplace).
+const MODALE = "modale-demande";
+const largeurVueTexte = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows())
+      for (const v of w.contentView.children as unknown as { getBounds(): { width: number }; webContents: { getURL(): string } }[])
+        if (v.webContents.getURL().includes("texte.html")) return v.getBounds().width;
+    return -1;
+  });
+
+test("la demande d'accès s'ouvre en modale : la vue de la page est masquée tant qu'elle est ouverte, puis revient", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecOngletTiers();
+  await expect.poll(() => largeurVueTexte(app)).toBeGreaterThan(0);
+  const appel = outil(racine, "lire_console", { id });
+  const modale = fenetre.getByTestId(MODALE);
+  await expect(modale.getByTestId(CARTE)).toBeVisible();
+  await expect.poll(() => largeurVueTexte(app)).toBe(0);
+  // La capture de la page affichée, derrière la modale.
+  await expect(modale.getByTestId("modale-apercu")).toHaveAttribute("src", /^data:image\/jpeg;base64,/);
+  await modale.getByRole("button", { name: "Refuser" }).click();
+  expect(await appel).toBe(REFUS);
+  await expect(modale).toHaveCount(0);
+  await expect.poll(() => largeurVueTexte(app)).toBeGreaterThan(0);
+  await fermer();
+});
+
+test("Échap refuse la carte des outils de développement ; Entrée autorise la sélection", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  const dansLaModale = () => fenetre.evaluate(() => !!document.activeElement?.closest('[data-testid="modale-demande"]'));
+  const appel = outil(racine, "demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Au clavier." });
+  await expect(fenetre.getByTestId(CARTE)).toContainText("Au clavier.");
+  await expect.poll(dansLaModale).toBe(true);
+  // Le focus reste piégé dans la modale.
+  for (let i = 0; i < 12; i++) {
+    await fenetre.keyboard.press("Tab");
+    expect(await dansLaModale()).toBe(true);
+  }
+  // Espace décoche « Réseau » sans valider ; Entrée, sur la case, autorise la sélection.
+  await fenetre.getByTestId(CARTE).locator('input[data-droit="reseau"]').focus();
+  await fenetre.keyboard.press("Space");
+  await expect(fenetre.getByTestId(CARTE).locator('input[data-droit="reseau"]')).not.toBeChecked();
+  await expect(fenetre.getByTestId(CARTE)).toBeVisible();
+  await fenetre.keyboard.press("Enter");
+  expect(await appel).toBe("Droits accordés : console\nRefusés : reseau");
+  await expect(fenetre.getByTestId(MODALE)).toHaveCount(0);
+
+  const refus = outil(racine, "demander_outils_dev", { id, droits: ["performances"], raison: "Échap." });
+  await expect(fenetre.getByTestId(CARTE)).toContainText("Échap.");
+  await expect.poll(dansLaModale).toBe(true);
+  await fenetre.keyboard.press("Escape");
+  expect(await refus).toBe(REFUS);
+  await expect(fenetre.getByTestId(MODALE)).toHaveCount(0);
+  await fermer();
+});
+
+test("la demande de lecture de l'agent est aussi une modale ; Entrée l'autorise une fois", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecOngletTiers();
+  const lecture = outil(racine, "lire_onglet", { id });
+  const modale = fenetre.getByTestId(MODALE);
+  await expect(modale.getByTestId("demande-permission")).toContainText("L'agent veut lire l'onglet « Texte »");
+  await expect.poll(() => largeurVueTexte(app)).toBe(0);
+  await expect.poll(() => fenetre.evaluate(() => !!document.activeElement?.closest('[data-testid="modale-demande"]'))).toBe(true);
+  await fenetre.keyboard.press("Enter");
+  expect(await lecture).toContain("Le chat dort");
+  await expect(modale).toHaveCount(0);
+  await expect.poll(() => largeurVueTexte(app)).toBeGreaterThan(0);
+  await fermer();
+});
+
 // Pastille d'accès dans la fenêtre d'une appli construite (vue transparente, sans interface WebAiOs).
 async function pagePastille(app: ElectronApplication): Promise<Page> {
   for (const fin = Date.now() + 10_000; Date.now() < fin; ) {
