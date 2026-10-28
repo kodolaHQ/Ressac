@@ -426,7 +426,10 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     }
     // Retiré pendant l'écriture : refuserAccord a pu effacer avant elle. Relu après, les données écrites partent.
     if (aCompte && !(await accordToujoursValide())) return refuseeEnCours();
-    return conclure({ statut: "ok", donnees: fin.donnees, journal });
+    const ok = await conclure({ statut: "ok", donnees: fin.donnees, journal });
+    // Retiré pendant l'écriture de l'état : « ok » ne doit pas recouvrir l'accord-requis écrit par refuserAccord.
+    if (aCompte && !(await accordToujoursValide())) return refuseeEnCours();
+    return ok;
   }
   if (fin?.t === "echec") return conclure({ statut: "erreur", erreur: fin.erreur, erreurWidget: true, journal });
   if (code === 124) return conclure({ statut: "erreur", erreur: "Délai dépassé", journal });
