@@ -1,32 +1,23 @@
-/** Délai entre l'appui réel de la souris dans un widget et la demande de lien qu'il permet (appui long compris). */
+/** Délai entre l'appui réel de l'utilisateur dans un widget et la demande de lien qu'il permet (appui long compris). */
 export const DELAI_GESTE_MS = 1500;
 
-/** Le cadre (iframe) du widget dans la page de l'interface, en pixels CSS. */
-export interface CadreWidget {
-  x: number;
-  y: number;
-  largeur: number;
-  hauteur: number;
-}
-
 /**
- * Un widget n'ouvre un lien que juste après un vrai clic de l'utilisateur dans son cadre. Le clic est vu par le process
- * principal (`input-event` de l'interface), que le code d'un widget ne peut pas produire : ni focus forcé, ni événement
- * synthétique. Un clic permet un seul lien ; une demande d'un autre cadre ne l'use pas.
+ * Un widget n'ouvre un lien que juste après un vrai clic de l'utilisateur dans son affichage. Le clic est vu dans le cadre du
+ * widget par le preload (monde isolé, `isTrusted`), que le code du widget ne peut ni lire ni imiter (ni focus forcé, ni
+ * événement synthétique), puis signalé au process principal, qui sait de quel cadre il vient (`senderFrame`). Seul le
+ * dernier geste de chaque fenêtre compte ; il permet un seul lien, au seul widget où il a eu lieu.
  */
 export function gardienGestes<F>(maintenant: () => number = () => Date.now()) {
-  const derniers = new Map<F, { t: number; x: number; y: number }>();
+  const derniers = new Map<F, { t: number; widget: string }>();
   return {
-    /** Appui réel de la souris dans l'interface de la fenêtre, en pixels CSS de la page. */
-    clic(fenetre: F, x: number, y: number) {
-      derniers.set(fenetre, { t: maintenant(), x, y });
+    /** Appui réel de la souris dans l'affichage du widget `widget` de cette fenêtre. */
+    geste(fenetre: F, widget: string) {
+      derniers.set(fenetre, { t: maintenant(), widget });
     },
-    /** Demande de lien du widget affiché dans `cadre` : acceptée (et le clic consommé) si un clic récent y est tombé. */
-    accepter(fenetre: F, cadre: CadreWidget): boolean {
-      const c = derniers.get(fenetre);
-      if (!c || maintenant() - c.t > DELAI_GESTE_MS) return false;
-      const dedans = c.x >= cadre.x && c.x < cadre.x + cadre.largeur && c.y >= cadre.y && c.y < cadre.y + cadre.hauteur;
-      if (!dedans) return false;
+    /** Demande de lien du widget `widget` : acceptée (et le geste consommé) si son dernier geste est récent et à lui. */
+    accepter(fenetre: F, widget: string): boolean {
+      const g = derniers.get(fenetre);
+      if (!g || g.widget !== widget || maintenant() - g.t > DELAI_GESTE_MS) return false;
       derniers.delete(fenetre);
       return true;
     },

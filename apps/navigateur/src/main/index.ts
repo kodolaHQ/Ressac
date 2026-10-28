@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
@@ -32,7 +32,7 @@ import type { EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
-import { enregistrerSchemaWidget, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { enregistrerSchemaWidget, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { profilsLisibles } from "./agent/lecture-invisible";
 
 declare const __RESSOURCES_NOYAU__: string;
@@ -90,6 +90,9 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // Le preload tourne aussi dans les affichages des widgets, sans rien y exposer : il y voit les vrais clics de
+      // L'utilisateur (voir preload/index.ts et CANAUX.gesteWidget).
+      nodeIntegrationInSubFrames: true,
       additionalArguments: [`${ARG_FENETRE}${id}`],
     },
   });
@@ -125,14 +128,6 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     // Sur macOS, l'app reste ouverte (comme Safari ou Chrome) : le Dock ou ⌘N rouvrent la fenêtre.
     if (fenetres.size === 0 && process.platform !== "darwin") app.quit();
   });
-  // Un appui réel de la souris (jamais produit par une page : ni focus forcé, ni événement synthétique). Vu ici même
-  // quand il tombe dans l'iframe d'un widget, hors process ; coordonnées de la fenêtre, ramenées en pixels CSS.
-  fenetre.webContents.on("input-event", (_e, ev) => {
-    if (ev.type !== "mouseDown" || !("x" in ev)) return;
-    const { x, y } = ev as Electron.MouseInputEvent;
-    const zoom = fenetre.webContents.getZoomFactor() || 1;
-    gestesWidgets.clic(id, x / zoom, y / zoom);
-  });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
   // Un cadre de l'interface (l'affichage d'un widget) ne va jamais ailleurs que sur un affichage de widget : une
@@ -160,6 +155,23 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   void chargerInterface();
   return fenetre;
 }
+
+/**
+ * Vrai appui de l'utilisateur dans l'affichage d'un widget, signalé par le preload de ce cadre. Retenu seulement s'il vient
+ * d'un cadre `webaios-widget://<id>/affichage.html` placé directement dans la page d'une fenêtre principale.
+ */
+ipcMain.on(CANAUX.gesteWidget, (e) => {
+  const cadre = e.senderFrame;
+  if (!cadre) return;
+  for (const [id, f] of fenetres) {
+    if (f.isDestroyed() || f.webContents !== e.sender) continue;
+    const principal = f.webContents.mainFrame;
+    if (cadre.frameTreeNodeId === principal.frameTreeNodeId || cadre.parent?.frameTreeNodeId !== principal.frameTreeNodeId) return;
+    const widget = widgetDuCadre(cadre.url);
+    if (widget) gestesWidgets.geste(id, widget);
+    return;
+  }
+});
 
 /** La fenêtre principale émettrice, seulement si le message vient de sa page (pas d'un cadre, comme un widget). */
 function fenetreDe(e: Pick<IpcMainEvent, "sender" | "senderFrame">): IdFenetre | undefined {
@@ -359,9 +371,9 @@ app.whenReady().then(async () => {
         };
         retirerWidget(a.chemins, id, oublier).catch((e) => console.error(`[webaios] widget ${id} non retiré :`, e));
       },
-      ouvrir: (url, cadre, fenetreId) => {
-        // Seulement juste après un vrai clic de l'utilisateur dans le cadre de ce widget (un lien par clic).
-        if (!gestesWidgets.accepter(fenetreId, cadre)) return console.warn("[webaios] lien de widget ignoré (pas de clic dans le widget) :", url);
+      ouvrir: (url, widget, fenetreId) => {
+        // Seulement juste après un vrai clic de l'utilisateur dans l'affichage de ce widget (un lien par clic).
+        if (!gestesWidgets.accepter(fenetreId, widget)) return console.warn("[webaios] lien de widget ignoré (pas de clic dans le widget) :", url);
         // Un affichage qui ouvrirait des liens en rafale (pour faire sortir des données) : un par seconde au plus.
         const maintenant = Date.now();
         if (maintenant - (dernierLienWidget.get(fenetreId) ?? 0) < 1000) return console.warn("[webaios] lien de widget ignoré (trop rapproché) :", url);

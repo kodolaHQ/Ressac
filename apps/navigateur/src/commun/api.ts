@@ -159,10 +159,10 @@ export interface ApiWebaios {
     /** Met le widget à la corbeille (accueil/.corbeille) et retire son accord. */
     retirer(id: string): void;
     /**
-     * Lien demandé par l'affichage d'un widget : http(s) seulement, dans un onglet de cette fenêtre. `cadre` : la place
-     * de son iframe dans la page (pixels CSS) ; le lien n'est ouvert que si un vrai clic vient d'y tomber.
+     * Lien demandé par l'affichage du widget `id` : http(s) seulement, dans un onglet de cette fenêtre. Ouvert seulement
+     * si un vrai clic de l'utilisateur vient de tomber dans l'affichage de ce widget (vu par le preload du cadre).
      */
-    ouvrir(url: string, cadre: CadreWidget): void;
+    ouvrir(url: string, id: string): void;
     /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
     profilsPourAccord(): Promise<ProfilPourAccord[]>;
     /** L'utilisateur autorise le widget à lire avec son compte, dans ce profil. */
@@ -249,13 +249,7 @@ export const SchemaPlacements = z
   .max(500)
   .refine((ps) => new Set(ps.map((p) => p.id)).size === ps.length, "widget placé deux fois");
 export const SchemaAccord = z.object({ id: idWidget, profil: z.string().min(1).max(200) });
-const pixels = z.number().finite();
-export const SchemaOuvrirWidget = z.object({
-  url: z.string().min(1).max(8192),
-  cadre: z.object({ x: pixels, y: pixels, largeur: pixels.nonnegative(), hauteur: pixels.nonnegative() }).strict(),
-});
-/** Place de l'iframe d'un widget dans la page de l'interface, en pixels CSS. */
-export type CadreWidget = z.infer<typeof SchemaOuvrirWidget>["cadre"];
+export const SchemaOuvrirWidget = z.object({ url: z.string().min(1).max(8192), id: idWidget }).strict();
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
 

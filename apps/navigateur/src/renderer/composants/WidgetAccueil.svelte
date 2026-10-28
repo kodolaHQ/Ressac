@@ -66,9 +66,8 @@
     if (typeof d !== "object" || d === null) return;
     const { type, url } = d as { type?: unknown; url?: unknown };
     if (type !== "ouvrir" || typeof url !== "string") return;
-    // Le process principal n'ouvre le lien que si un vrai clic de l'utilisateur vient de tomber dans ce cadre (un lien par clic).
-    const r = iframe.getBoundingClientRect();
-    api.accueil.ouvrir(url, { x: r.x, y: r.y, largeur: r.width, hauteur: r.height });
+    // Le process principal n'ouvre le lien que si un vrai clic de l'utilisateur vient de tomber dans ce widget (un lien par clic).
+    api.accueil.ouvrir(url, widget.id);
   }
 
   function poignee(e: PointerEvent) {

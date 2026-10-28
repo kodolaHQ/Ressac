@@ -76,6 +76,17 @@ export function cheminAffichage(widgets: string, url: string): string | null {
   return join(widgets, u.hostname, "affichage.html");
 }
 
+/** L'id du widget dont `url` est l'affichage (`webaios-widget://<id>/affichage.html`, paramètres permis), sinon null. */
+export function widgetDuCadre(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  return u.protocol === `${SCHEMA_WIDGET}:` && ID_WIDGET.test(u.hostname) && u.pathname === "/affichage.html" ? u.hostname : null;
+}
+
 /**
  * Le HTML de l'affichage, ou null s'il n'existe pas, ou si un lien symbolique le fait sortir de son widget : le dossier
  * des widgets ne doit pas être un lien, le dossier du widget doit rester dedans, et le fichier dans le dossier du widget

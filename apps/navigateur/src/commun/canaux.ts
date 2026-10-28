@@ -32,6 +32,8 @@ export const CANAUX = {
   accueilPlacer: "webaios:accueil-placer",
   accueilRetirer: "webaios:accueil-retirer",
   accueilOuvrir: "webaios:accueil-ouvrir",
+  /** Envoyé par le preload dans le cadre d'un widget, sur un vrai appui de l'utilisateur (sans contenu). */
+  gesteWidget: "webaios:geste-widget",
   accueilProfils: "webaios:accueil-profils",
   accueilAccorder: "webaios:accueil-accorder",
   accueilRefuserAccord: "webaios:accueil-refuser-accord",

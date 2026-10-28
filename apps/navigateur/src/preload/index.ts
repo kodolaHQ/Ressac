@@ -73,7 +73,7 @@ const api: ApiWebaios = {
     surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),
     placer: (placements) => ipcRenderer.send(CANAUX.accueilPlacer, placements),
     retirer: (id) => ipcRenderer.send(CANAUX.accueilRetirer, id),
-    ouvrir: (url, cadre) => ipcRenderer.send(CANAUX.accueilOuvrir, { url, cadre }),
+    ouvrir: (url, id) => ipcRenderer.send(CANAUX.accueilOuvrir, { url, id }),
     profilsPourAccord: () => ipcRenderer.invoke(CANAUX.accueilProfils),
     accorder: (id, profil) => ipcRenderer.send(CANAUX.accueilAccorder, { id, profil }),
     refuserAccord: (id) => ipcRenderer.send(CANAUX.accueilRefuserAccord, id),
@@ -107,4 +107,33 @@ const pastille: ApiPastille = {
   pastilleTaille: (ouverte) => ipcRenderer.send(CANAUX.pastilleTaille, { ouverte }),
 };
 
-contextBridge.exposeInMainWorld("webaios", process.argv.some((a) => a.startsWith(ARG_PASTILLE)) ? pastille : api);
+/**
+ * Ce preload tourne aussi dans les cadres de l'interface (nodeIntegrationInSubFrames, pour les affichages des widgets).
+ * Seul le cadre principal reçoit l'API ; un cadre n'en voit rien.
+ */
+const cadrePrincipal = process.isMainFrame !== false && window.top === window;
+if (cadrePrincipal) {
+  contextBridge.exposeInMainWorld("webaios", process.argv.some((a) => a.startsWith(ARG_PASTILLE)) ? pastille : api);
+} else if (location.protocol === "webaios-widget:") {
+  // Affichage d'un widget : un vrai appui de l'utilisateur (isTrusted, impossible à produire par le code du widget, qui ne voit
+  // pas ce monde isolé) est signalé au process principal, qui seul permet alors un lien à ce widget. Écouté en capture,
+  // avant tout écouteur du widget. Un clic sans appui (clavier) compte aussi ; celui qui suit un appui ne compte pas
+  // une seconde fois.
+  let dernierAppui = -Infinity;
+  addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!e.isTrusted) return;
+      dernierAppui = e.timeStamp;
+      ipcRenderer.send(CANAUX.gesteWidget);
+    },
+    true,
+  );
+  addEventListener(
+    "click",
+    (e) => {
+      if (e.isTrusted && e.timeStamp - dernierAppui > 1500) ipcRenderer.send(CANAUX.gesteWidget);
+    },
+    true,
+  );
+}
