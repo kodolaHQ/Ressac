@@ -97,6 +97,11 @@ export class Permissions {
     this.ecrire();
   }
 
+  /** Le profil de connexion est effacé (son fichier avec lui) : plus aucune décision en mémoire. */
+  toutOublier(): void {
+    this.memo = {};
+  }
+
   private lire(): Record<string, Decision> {
     let brut: string;
     try {

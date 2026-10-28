@@ -1,7 +1,17 @@
-import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
-import type { Decision, Demande, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre } from "../commun/modele";
+import {
+  PROFIL_DEFAUT,
+  profilDOnglet,
+  type Decision,
+  type Demande,
+  type DemandeEnAttente,
+  type EtatAcces,
+  type EtatNavigateur,
+  type IdFenetre,
+  type IdProfil,
+} from "../commun/modele";
 import { randomUUID } from "node:crypto";
 import { chargerSession, EnregistreurSession } from "./etat/persistance";
 import { brancherIpc, Magasin } from "./ipc";
@@ -11,6 +21,7 @@ import { installerMenu, type CiblesMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
 import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
+import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
@@ -147,7 +158,6 @@ app.whenReady().then(async () => {
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
-  const sessionWeb = session.fromPartition("persist:webaios");
   const diffuser = (canal: string, valeur: unknown) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
   };
@@ -161,9 +171,35 @@ app.whenReady().then(async () => {
     diffuser: (liste) => diffuser(CANAUX.telechargements, liste),
     shell,
   });
-  sessionWeb.on("will-download", (_e, item) => telechargements.suivre(item));
+  // Questions d'autorisation en attente d'une réponse de l'utilisateur (bandeau de l'onglet concerné).
+  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision, droits?: DroitDev[]) => void }>();
+  const enAttente = () => [...questions.values()].map((q) => q.demande);
+  const demander = (d: Demande) =>
+    new Promise<Decision>((repondre) => {
+      const id = randomUUID();
+      questions.set(id, { demande: { ...d, id }, repondre });
+      diffuser(CANAUX.permissions, enAttente());
+    });
+  /** Autorisations des sites, une instance par profil de connexion. */
+  const permissions = new Map<IdProfil, Permissions>();
+  const permissionsDe = (id: IdProfil) => {
+    let p = permissions.get(id);
+    if (!p) permissions.set(id, (p = new Permissions({ fichier: fichierPermissions(dossier, id), demander })));
+    return p;
+  };
+  // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.
+  const sessions = new SessionsProfils({
+    dossier,
+    brancher: (s, id) => {
+      s.on("will-download", (_e, item) => telechargements.suivre(item));
+      permissionsDe(id).brancher(s, (wc) => vues.ongletDe(wc));
+    },
+    oublier: (id) => permissions.get(id)?.toutOublier(),
+  });
+  // Les blocs d'accueil vivent dans la partition du profil par défaut : branchée même si aucun espace ne l'utilise.
+  sessions.session(PROFIL_DEFAUT);
   const vues = new GestionnaireVues({
-    session: sessionWeb,
+    sessionDe: (o) => sessions.session(profilDOnglet(magasin.etat, o)),
     fenetres,
     agir: (a) => magasin.agir(a),
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
@@ -172,19 +208,6 @@ app.whenReady().then(async () => {
     // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
     pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),
   });
-  // Questions d'autorisation en attente d'une réponse de l'utilisateur (bandeau de l'onglet concerné).
-  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision, droits?: DroitDev[]) => void }>();
-  const enAttente = () => [...questions.values()].map((q) => q.demande);
-  const permissions = new Permissions({
-    fichier: join(dossier, "permissions.json"),
-    demander: (d) =>
-      new Promise<Decision>((repondre) => {
-        const id = randomUUID();
-        questions.set(id, { demande: { ...d, id }, repondre });
-        diffuser(CANAUX.permissions, enAttente());
-      }),
-  });
-  permissions.brancher(sessionWeb, (wc) => vues.ongletDe(wc));
   // Un onglet fermé (ou parti vers un autre site, pour les outils de développement) ne répondra jamais : ses questions
   // sont refusées. Une fenêtre d'appli (`app:<dossier>`) n'est pas dans l'état : on regarde ses fenêtres ouvertes.
   const ecarterQuestionsCaduques = () => {
@@ -202,9 +225,11 @@ app.whenReady().then(async () => {
     if (change) diffuser(CANAUX.permissions, enAttente());
   };
   magasin.abonner(ecarterQuestionsCaduques);
-  magasin.abonner((etat) => {
+  magasin.abonner((etat, avant) => {
     diffuser(CANAUX.etat, etat);
     vues.synchroniser(etat);
+    // Après les vues : aucune page n'est plus dans la session d'un profil effacé.
+    if (etat.profils !== avant.profils) void sessions.synchroniser(etat);
     enregistreur?.planifier(etat);
   });
   brancherIpc({
@@ -288,7 +313,7 @@ app.whenReady().then(async () => {
       const onglet = f && magasin.etat.onglets[f.actif[f.espaceActif] ?? ""];
       if (!onglet) return;
       try {
-        permissions.oublier(new URL(onglet.url).origin);
+        permissionsDe(profilDOnglet(magasin.etat, onglet)).oublier(new URL(onglet.url).origin);
       } catch {
         // URL sans origine : rien à oublier.
       }
@@ -322,6 +347,9 @@ app.whenReady().then(async () => {
   magasin.abonner(synchroniserFenetres);
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
+  void sessions.synchroniser(magasin.etat);
+  // Une session d'une version précédente est réécrite à la version actuelle, même si rien ne change.
+  enregistreur.planifier(magasin.etat);
   // Après les fenêtres : l'agent ne retarde jamais la navigation.
   const fenetreAgent = (): IdFenetre | undefined => {
     const focus = BrowserWindow.getFocusedWindow();

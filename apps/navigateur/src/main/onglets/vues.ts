@@ -19,12 +19,11 @@ export function preferencesWeb(session: Session) {
 
 /**
  * Ouvertures demandées par une page (onglet ou popup). Seul un window.open avec des dimensions (OAuth…) donne une
- * popup : vraie fenêtre, même session, sans l'interface WebAiOs, dont le titre montre le site (pas de barre
- * d'adresse pour repérer un hameçonnage). Le reste (⇧clic, target=_blank…) devient un onglet.
+ * popup : vraie fenêtre, même session que la page qui l'ouvre, sans l'interface WebAiOs, dont le titre montre le site
+ * (pas de barre d'adresse pour repérer un hameçonnage). Le reste (⇧clic, target=_blank…) devient un onglet.
  */
 function gererOuvertures(
   wc: WebContents,
-  session: Session,
   ouvrirOnglet: (url: string, activer: boolean) => void,
   quandPopup: (popup: WebContents) => void,
 ): void {
@@ -36,7 +35,7 @@ function gererOuvertures(
           width: 500,
           height: 650,
           show: process.env.WEBAIOS_INVISIBLE !== "1", // tests automatiques : rien à l'écran
-          webPreferences: preferencesWeb(session),
+          webPreferences: preferencesWeb(wc.session),
         },
       };
     }
@@ -56,7 +55,7 @@ function gererOuvertures(
     });
     quandPopup(popup.webContents);
     // Une popup peut en ouvrir une autre (étapes d'une connexion) ; ses liens vont dans des onglets.
-    gererOuvertures(popup.webContents, session, ouvrirOnglet, quandPopup);
+    gererOuvertures(popup.webContents, ouvrirOnglet, quandPopup);
   });
 }
 
@@ -66,6 +65,8 @@ function gererOuvertures(
  */
 export class GestionnaireVues {
   private vues = new Map<IdOnglet, WebContentsView>();
+  /** Session (profil de connexion) de chaque vue, celle de son onglet à sa création. */
+  private sessions = new Map<IdOnglet, Session>();
   private attachees = new Map<IdFenetre, IdOnglet>();
   private zones = new Map<IdFenetre, Bornes>();
   /** Popups ouvertes depuis un onglet (directement ou par une autre popup) : leurs questions vont à cet onglet. */
@@ -77,7 +78,8 @@ export class GestionnaireVues {
 
   constructor(
     private readonly o: {
-      session: Session;
+      /** Session du profil de connexion de l'onglet. */
+      sessionDe: (o: Onglet) => Session;
       fenetres: Map<IdFenetre, BrowserWindow>;
       agir: (a: Action) => void;
       /** La souris entre ou sort de la bande du bord gauche de la fenêtre, au-dessus d'une page. */
@@ -89,7 +91,15 @@ export class GestionnaireVues {
   ) {}
 
   synchroniser(etat: EtatNavigateur): void {
-    for (const [id, vue] of this.vues) if (!etat.onglets[id]) this.detruireVue(id, vue);
+    for (const [id, vue] of this.vues) {
+      const onglet = etat.onglets[id];
+      if (!onglet) this.detruireVue(id, vue);
+      // Changement de profil de connexion : la page se rouvrira de zéro, à la même URL, dans la nouvelle session.
+      else if (this.o.sessionDe(onglet) !== this.sessions.get(id)) {
+        this.fermerPopups(id);
+        this.detruireVue(id, vue);
+      }
+    }
 
     for (const f of etat.fenetres) {
       const fenetre = this.o.fenetres.get(f.id);
@@ -228,7 +238,7 @@ export class GestionnaireVues {
 
   /** Vue web d'un bloc d'app de la page d'accueil : ses liens et popups se comportent comme ceux d'un onglet. */
   brancherVueAccueil(wc: WebContents, fenetreId: IdFenetre): void {
-    gererOuvertures(wc, this.o.session, (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId, url, activer }), () => {});
+    gererOuvertures(wc, (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId, url, activer }), () => {});
   }
 
   ongletDe(wc: WebContents | null): IdOnglet | null {
@@ -268,13 +278,14 @@ export class GestionnaireVues {
   }
 
   private creerVue(onglet: Onglet): void {
-    const vue = new WebContentsView({ webPreferences: preferencesWeb(this.o.session) });
+    const session = this.o.sessionDe(onglet);
+    const vue = new WebContentsView({ webPreferences: preferencesWeb(session) });
     const wc = vue.webContents;
     this.vues.set(onglet.id, vue);
+    this.sessions.set(onglet.id, session);
     brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique);
     gererOuvertures(
       wc,
-      this.o.session,
       (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer }),
       (popup) => {
         this.popups.set(popup, onglet.id);
@@ -331,6 +342,11 @@ export class GestionnaireVues {
     void wc.loadURL(onglet.url).catch(() => {});
   }
 
+  /** Popups ouvertes depuis l'onglet : elles sont dans son ancienne session. */
+  private fermerPopups(id: IdOnglet): void {
+    for (const [popup, o] of this.popups) if (o === id && !popup.isDestroyed()) BrowserWindow.fromWebContents(popup)?.close();
+  }
+
   private fenetreDe(id: IdOnglet): IdFenetre | undefined {
     for (const [f, o] of this.attachees) if (o === id) return f;
     return undefined;
@@ -353,6 +369,7 @@ export class GestionnaireVues {
       this.attachees.delete(f);
     }
     this.vues.delete(id);
+    this.sessions.delete(id);
     this.zooms.delete(id);
     if (!vue.webContents.isDestroyed()) vue.webContents.close();
   }
