@@ -17,42 +17,52 @@
   function charger() {
     const n = ++derniere;
     api.accueil.lire().then(
-      (w) => n === derniere && (widgets = w),
+      (w) => {
+        if (n !== derniere) return;
+        widgets = w;
+        verifierAttentes();
+      },
       () => {},
     );
   }
   $effect(() => {
     charger();
-    return api.accueil.surChange(() => {
-      // Le service a répondu : les actions en attente ont eu un effet.
-      for (const t of attentes.values()) clearTimeout(t);
-      attentes.clear();
-      avertissements = {};
-      charger();
-    });
+    return api.accueil.surChange(charger);
   });
 
-  /** Actions envoyées sans réponse possible (accorder, refuser, mettre à jour) : un avertissement si rien ne bouge. */
-  const attentes = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * Actions envoyées sans réponse possible (accorder, mettre à jour) : un avertissement si l'état de CE widget ne bouge
+   * pas. Seul un changement de ce widget (état, données, ou son retrait) lève l'attente et l'avertissement.
+   */
+  const attentes = new Map<string, { signature: string; minuterie: ReturnType<typeof setTimeout> }>();
   let avertissements = $state<Record<string, string>>({});
+  const signature = (id: string) => {
+    const w = widgets.find((x) => x.id === id);
+    return !w ? "absent" : "erreur" in w ? `illisible:${w.erreur}` : JSON.stringify([w.etat, w.donnees !== null]);
+  };
+  function sansAvertissement(id: string) {
+    if (!(id in avertissements)) return;
+    const { [id]: _, ...reste } = avertissements;
+    avertissements = reste;
+  }
   function agir(id: string, action: () => void) {
-    try {
-      action();
-    } catch {
-      avertissements = { ...avertissements, [id]: SANS_EFFET };
-      return;
+    clearTimeout(attentes.get(id)?.minuterie);
+    sansAvertissement(id);
+    action();
+    // L'attente reste après l'avertissement : c'est le changement du widget qui les lève tous deux.
+    const minuterie = setTimeout(() => (avertissements = { ...avertissements, [id]: SANS_EFFET }), DELAI_SANS_EFFET_MS);
+    attentes.set(id, { signature: signature(id), minuterie });
+  }
+  function verifierAttentes() {
+    for (const [id, a] of attentes) {
+      if (signature(id) === a.signature) continue;
+      clearTimeout(a.minuterie);
+      attentes.delete(id);
+      sansAvertissement(id);
     }
-    clearTimeout(attentes.get(id));
-    attentes.set(
-      id,
-      setTimeout(() => {
-        attentes.delete(id);
-        avertissements = { ...avertissements, [id]: SANS_EFFET };
-      }, DELAI_SANS_EFFET_MS),
-    );
   }
   $effect(() => () => {
-    for (const t of attentes.values()) clearTimeout(t);
+    for (const a of attentes.values()) clearTimeout(a.minuterie);
   });
 
   /** Widgets dont l'utilisateur a refusé la lecture avec son compte, pendant cette session de la page. */
@@ -123,8 +133,9 @@
           retirer={() => (aRetirer = widget)}
           autoriser={() => "compte" in widget && (accordPour = widget)}
           refuser={() => {
+            // Pas d'attente : après un refus, le noyau réécrit le même état « accord-requis », rien ne changerait à l'écran.
             refuses = { ...refuses, [widget.id]: true };
-            agir(widget.id, () => api.accueil.refuserAccord(widget.id));
+            api.accueil.refuserAccord(widget.id);
           }}
           recolter={() => agir(widget.id, () => api.accueil.recolter(widget.id))}
         />

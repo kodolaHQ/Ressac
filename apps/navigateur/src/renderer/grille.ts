@@ -13,7 +13,8 @@ export interface Tailles {
   max: Taille;
 }
 
-const borner = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+/** `v` entre `min` et `max` ; si les bornes se croisent, le minimum l'emporte. */
+const borner = (v: number, min: number, max: number) => Math.max(Math.min(v, max), min);
 const chevauchent = (a: Placement, b: Placement) =>
   a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
@@ -60,27 +61,4 @@ export function redimensionner(placements: Placement[], id: string, l: number, h
 /** Nombre de cases (colonnes ou rangées) le plus proche d'une distance en pixels ; `taille` : celle d'une case sans l'écart. */
 export function versCase(px: number, taille: number): number {
   return Math.round(px / (taille + ECART_PX)) || 0;
-}
-
-/** Délai entre le clic dans un widget et la demande d'ouverture de lien qu'il permet. */
-export const DELAI_GESTE_MS = 1000;
-
-/**
- * Un widget ne peut ouvrir un lien que juste après un vrai clic de l'utilisateur dans son cadre, et un seul lien par clic :
- * un widget qui demande un lien à son chargement ou sur une minuterie est ignoré.
- */
-export function porteOuvrir(maintenant: () => number = () => Date.now()) {
-  const gestes = new Map<string, number>();
-  return {
-    /** L'utilisateur vient de cliquer dans le cadre du widget `id`. */
-    geste(id: string) {
-      gestes.set(id, maintenant());
-    },
-    /** Le widget `id` demande un lien : accepté si un clic récent le permet (et ce clic est consommé). */
-    accepter(id: string): boolean {
-      const t = gestes.get(id);
-      gestes.delete(id);
-      return t !== undefined && maintenant() - t <= DELAI_GESTE_MS;
-    },
-  };
 }

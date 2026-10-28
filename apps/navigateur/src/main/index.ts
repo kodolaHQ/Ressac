@@ -31,6 +31,7 @@ import { Atelier, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, t
 import type { EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
+import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { profilsLisibles } from "./agent/lecture-invisible";
 
@@ -66,6 +67,8 @@ const enFermeture = new WeakSet<BrowserWindow>();
 const gardees = new Set<IdFenetre>();
 /** Dernière fenêtre principale passée au premier plan : celle que l'agent considère comme « active ». */
 let derniereFocalisee: IdFenetre | undefined;
+/** Vrais clics dans l'interface de chaque fenêtre : seuls eux permettent à un widget d'ouvrir un lien. */
+const gestesWidgets = gardienGestes<IdFenetre>();
 
 function noterCadre(id: IdFenetre, f: BrowserWindow, magasin: Magasin): void {
   if (f.isDestroyed() || f.isFullScreen() || f.isMinimized()) return;
@@ -121,6 +124,14 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     // Seule la fermeture de la dernière fenêtre principale quitte l'app, jamais celle d'une popup.
     // Sur macOS, l'app reste ouverte (comme Safari ou Chrome) : le Dock ou ⌘N rouvrent la fenêtre.
     if (fenetres.size === 0 && process.platform !== "darwin") app.quit();
+  });
+  // Un appui réel de la souris (jamais produit par une page : ni focus forcé, ni événement synthétique). Vu ici même
+  // quand il tombe dans l'iframe d'un widget, hors process ; coordonnées de la fenêtre, ramenées en pixels CSS.
+  fenetre.webContents.on("input-event", (_e, ev) => {
+    if (ev.type !== "mouseDown" || !("x" in ev)) return;
+    const { x, y } = ev as Electron.MouseInputEvent;
+    const zoom = fenetre.webContents.getZoomFactor() || 1;
+    gestesWidgets.clic(id, x / zoom, y / zoom);
   });
   // L'interface ne quitte jamais sa propre page.
   fenetre.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -348,7 +359,9 @@ app.whenReady().then(async () => {
         };
         retirerWidget(a.chemins, id, oublier).catch((e) => console.error(`[webaios] widget ${id} non retiré :`, e));
       },
-      ouvrir: (url, fenetreId) => {
+      ouvrir: (url, cadre, fenetreId) => {
+        // Seulement juste après un vrai clic de l'utilisateur dans le cadre de ce widget (un lien par clic).
+        if (!gestesWidgets.accepter(fenetreId, cadre)) return console.warn("[webaios] lien de widget ignoré (pas de clic dans le widget) :", url);
         // Un affichage qui ouvrirait des liens en rafale (pour faire sortir des données) : un par seconde au plus.
         const maintenant = Date.now();
         if (maintenant - (dernierLienWidget.get(fenetreId) ?? 0) < 1000) return console.warn("[webaios] lien de widget ignoré (trop rapproché) :", url);

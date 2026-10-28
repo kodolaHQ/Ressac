@@ -2,7 +2,6 @@
   import Icone from "./Icone.svelte";
   import type { Placement, WidgetAffiche } from "../../commun/api";
   import { api } from "../etat.svelte";
-  import { porteOuvrir } from "../grille";
 
   let {
     widget,
@@ -39,7 +38,6 @@
   let largeur = $state(0);
   let hauteur = $state(0);
   let menuOuvert = $state(false);
-  const porte = porteOuvrir();
 
   function envoyer() {
     if ("erreur" in widget) return;
@@ -62,28 +60,15 @@
     envoyer();
   });
 
-  /**
-   * Un clic dans le cadre fait perdre le focus à la fenêtre au profit de l'iframe : c'est le geste qui permet un lien.
-   * Le focus est rendu aussitôt, pour que le clic suivant soit vu lui aussi (le clic en cours atteint quand même le cadre).
-   */
-  function surFlou() {
-    setTimeout(() => {
-      if (!iframe || document.activeElement !== iframe) return;
-      porte.geste(widget.id);
-      iframe.blur();
-      window.focus();
-    }, 0);
-  }
-
   function surMessage(e: MessageEvent) {
     if (!iframe || e.source !== iframe.contentWindow) return;
     const d: unknown = e.data;
     if (typeof d !== "object" || d === null) return;
     const { type, url } = d as { type?: unknown; url?: unknown };
     if (type !== "ouvrir" || typeof url !== "string") return;
-    // Seulement juste après un vrai clic dans ce widget, et un lien par clic.
-    if (!porte.accepter(widget.id)) return console.warn(`[webaios] lien du widget ${widget.id} ignoré : pas de clic récent`);
-    api.accueil.ouvrir(url);
+    // Le process principal n'ouvre le lien que si un vrai clic de l'utilisateur vient de tomber dans ce cadre (un lien par clic).
+    const r = iframe.getBoundingClientRect();
+    api.accueil.ouvrir(url, { x: r.x, y: r.y, largeur: r.width, hauteur: r.height });
   }
 
   function poignee(e: PointerEvent) {
@@ -93,7 +78,7 @@
   }
 </script>
 
-<svelte:window onblur={surFlou} onmessage={surMessage} />
+<svelte:window onmessage={surMessage} />
 
 <article class="widget" class:geste data-testid="widget-{widget.id}">
   <!-- L'en-tête sert de poignée de déplacement : le cadre du widget avale les événements de la souris. -->

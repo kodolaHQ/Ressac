@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COLONNES, deplacer, ECART_PX, porteOuvrir, RANGEE_PX, redimensionner, versCase, type Placement } from "../src/renderer/grille";
+import { COLONNES, deplacer, ECART_PX, RANGEE_PX, redimensionner, versCase, type Placement } from "../src/renderer/grille";
 
 const p = (id: string, x: number, y: number, l: number, h: number): Placement => ({ id, x, y, l, h });
 const tailles = { min: { l: 2, h: 2 }, max: { l: 6, h: 4 } };
@@ -61,16 +61,11 @@ test("versCase arrondit à la case la plus proche", () => {
   expect(versCase(102, RANGEE_PX)).toBe(1);
 });
 
-test("porteOuvrir : un lien n'est accepté que juste après un clic dans ce widget, une fois", () => {
-  let t = 1000;
-  const porte = porteOuvrir(() => t);
-  expect(porte.accepter("a")).toBe(false); // au chargement, sans clic
-  porte.geste("a");
-  t += 300;
-  expect(porte.accepter("b")).toBe(false); // un autre widget
-  expect(porte.accepter("a")).toBe(true);
-  expect(porte.accepter("a")).toBe(false); // un lien par clic
-  porte.geste("a");
-  t += 1500;
-  expect(porte.accepter("a")).toBe(false); // trop tard (minuterie)
+test("un widget plus large que la grille reste dans les 12 colonnes", () => {
+  expect(deplacer([p("a", 0, 0, 14, 2)], "a", 3, 0)[0]).toMatchObject({ x: 0 });
+  const large = { min: { l: 14, h: 2 }, max: { l: 14, h: 2 } };
+  expect(redimensionner([p("a", 5, 0, 4, 2)], "a", 4, 2, large)[0]).toEqual(p("a", 0, 0, 12, 2));
+  // Bornes incohérentes (min > max) : le minimum l'emporte.
+  const incoherent = { min: { l: 2, h: 5 }, max: { l: 6, h: 3 } };
+  expect(redimensionner([p("a", 0, 0, 4, 2)], "a", 4, 2, incoherent)[0]).toEqual(p("a", 0, 0, 4, 5));
 });

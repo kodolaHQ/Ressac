@@ -73,7 +73,7 @@ const api: ApiWebaios = {
     surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),
     placer: (placements) => ipcRenderer.send(CANAUX.accueilPlacer, placements),
     retirer: (id) => ipcRenderer.send(CANAUX.accueilRetirer, id),
-    ouvrir: (url) => ipcRenderer.send(CANAUX.accueilOuvrir, url),
+    ouvrir: (url, cadre) => ipcRenderer.send(CANAUX.accueilOuvrir, { url, cadre }),
     profilsPourAccord: () => ipcRenderer.invoke(CANAUX.accueilProfils),
     accorder: (id, profil) => ipcRenderer.send(CANAUX.accueilAccorder, { id, profil }),
     refuserAccord: (id) => ipcRenderer.send(CANAUX.accueilRefuserAccord, id),

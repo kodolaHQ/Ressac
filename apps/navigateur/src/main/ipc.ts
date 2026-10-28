@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaUrlOuvrir, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type ActionApplication, type CadreWidget, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -53,7 +53,7 @@ export interface Gestionnaires {
     placer(placements: Placement[]): void;
     retirer(id: string): void;
     /** `url` validée ici comme chaîne ; le gestionnaire n'ouvre que http(s). */
-    ouvrir(url: string, fenetreId: IdFenetre): void;
+    ouvrir(url: string, cadre: CadreWidget, fenetreId: IdFenetre): void;
     profilsPourAccord(fenetreId: IdFenetre): ProfilPourAccord[];
     accorder(id: string, profil: string): void;
     refuserAccord(id: string): void;
@@ -135,7 +135,7 @@ export function brancherIpc(g: Gestionnaires): void {
   });
   recevoir(CANAUX.accueilPlacer, zod(SchemaPlacements), (p) => g.accueil.placer(p));
   recevoir(CANAUX.accueilRetirer, zod(SchemaIdWidget), (id) => g.accueil.retirer(id));
-  recevoir(CANAUX.accueilOuvrir, zod(SchemaUrlOuvrir), (url, f) => g.accueil.ouvrir(url, f));
+  recevoir(CANAUX.accueilOuvrir, zod(SchemaOuvrirWidget), ({ url, cadre }, f) => g.accueil.ouvrir(url, cadre, f));
   recevoir(CANAUX.accueilAccorder, zod(SchemaAccord), ({ id, profil }) => g.accueil.accorder(id, profil));
   recevoir(CANAUX.accueilRefuserAccord, zod(SchemaIdWidget), (id) => g.accueil.refuserAccord(id));
   recevoir(CANAUX.accueilRecolter, zod(SchemaIdWidget), (id) => g.accueil.recolter(id));
