@@ -132,13 +132,21 @@ describe("recolteur", () => {
     );
     expect(r.appels).toHaveLength(20);
     expect(r.appels.every((a) => a.f === "kev" && /^el\d+$/.test(a.a.state))).toBe(true);
-    expect(Object.values(r.appels[0]!.a.questions)[0]).toMatchObject({ type: "noul" });
+    expect(Object.values(r.appels[0]!.a.questions)[0]).toEqual({ type: "noul", instructions: "intéressant ?" });
     expect(JSON.stringify(r.appels[0]!.a.questions)).not.toContain("el0");
     expect(max).toBeLessThanOrEqual(8);
     expect(max).toBeGreaterThan(1);
     const res = r.terminal.donnees as { element: { id: number }; p: number }[];
     expect(res.map((x) => x.element.id)).toEqual([19, 18, 17, 16, 15, 14, 13, 12, 11, 10]);
     expect(res[0]!.p).toBeCloseTo(0.95);
+  });
+
+  it("une réponse de plus de 4 Mo rejette l'appel concerné avec une erreur claire", async () => {
+    const r = await lancer(
+      `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
+      () => ({ ok: "x".repeat(4 * 1024 * 1024 + 10) }),
+    );
+    expect(r.terminal.donnees.attrape).toContain("Réponse trop grande");
   });
 
   it("journal écrit sur stderr, jamais sur stdout", async () => {

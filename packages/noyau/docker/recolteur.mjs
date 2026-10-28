@@ -32,7 +32,17 @@ const debutRecu = new Promise((ok) => (signalerDebut = ok));
 
 rl.on("line", (ligne) => {
   if (!ligne.trim()) return;
-  if (Buffer.byteLength(ligne) > LIGNE_MAX) return;
+  if (Buffer.byteLength(ligne) > LIGNE_MAX) {
+    const n = /"n"\s*:\s*(\d+)/.exec(ligne.slice(0, 256));
+    const attente = n && enAttente.get(Number(n[1]));
+    if (attente) {
+      enAttente.delete(Number(n[1]));
+      attente.ko(new Error("Réponse trop grande (4 Mo maximum)"));
+    } else {
+      terminer({ t: "echec", erreur: "Réponse trop grande (4 Mo maximum)" }, 1);
+    }
+    return;
+  }
   let m;
   try {
     m = JSON.parse(ligne);
@@ -111,7 +121,7 @@ async function trier(elements, { question, texte, seuil = 0.5, parallele = 8 } =
   async function ouvrier() {
     while (suivant < liste.length) {
       const i = suivant++;
-      const r = await appeler("kev", { state: String(texte(liste[i])), questions: { q: { type: "noul", question } } });
+      const r = await appeler("kev", { state: String(texte(liste[i])), questions: { q: { type: "noul", instructions: question } } });
       const p = Number(r?.q?.noul);
       notes[i] = Number.isFinite(p) ? p : 0;
     }
