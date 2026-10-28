@@ -91,6 +91,9 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     ...cadre,
     show: !INVISIBLE,
     titleBarStyle: "hiddenInset",
+    // Boutons de la fenêtre centrés sur la rangée du haut de la barre latérale : ses boutons vont de 10 à 34 px
+    // (centre 22) et ceux de macOS font 14 px de haut ; ils s'arrêtent avant les 70 px laissés libres à gauche.
+    trafficLightPosition: { x: 16, y: 15 },
     backgroundColor: "#1e1e22",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
