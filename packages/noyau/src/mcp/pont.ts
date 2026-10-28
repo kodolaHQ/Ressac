@@ -24,8 +24,11 @@ export interface PontNavigateur {
   demanderAutorisation(o: OngletInfo): Promise<boolean>;
   /** Outils de développement (absent si le navigateur ne les fournit pas). */
   outilsDev?: OutilsDevNavigateur;
-  /** Affiche la carte de consentement ; renvoie les droits accordés (`[]` = refus). */
-  demanderOutilsDev?(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }): Promise<DroitDev[]>;
+  /**
+   * Affiche la carte de consentement ; renvoie les droits accordés (`[]` = refus). `signal` levé : la carte n'a plus
+   * d'objet (nouvelle conversation, noyau arrêté), elle est retirée et la demande répond `[]`.
+   */
+  demanderOutilsDev?(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]>;
 }
 
 export interface MessageConsole {
@@ -69,6 +72,17 @@ export interface OutilsDevNavigateur {
   instantaneMemoire(id: string, signal: AbortSignal): Promise<string>;
   executer(id: string, code: string, signal: AbortSignal): Promise<ResultatJs>;
   recharger(id: string, sansCache: boolean): Promise<void>;
+  /** Onglets où le débogueur de l'agent est attaché, y compris par un noyau précédent. */
+  attaches?(): string[];
+  /**
+   * Un accès réservé à un noyau (le navigateur garde ses outils d'un noyau à l'autre). En créer un révoque le précédent :
+   * ses appels sont refusés et ses attachements tombent. `liberer` révoque celui-ci (noyau arrêté).
+   */
+  proprietaire?(): OutilsDevProprietaire;
+}
+
+export interface OutilsDevProprietaire extends OutilsDevNavigateur {
+  liberer(): void;
 }
 
 export class OngletIntrouvable extends Error {

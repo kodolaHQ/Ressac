@@ -57,6 +57,8 @@ class OutilsDevFactice implements OutilsDevNavigateur {
   readonly consoles = new Map<string, MessageConsole[]>();
   readonly reseaux = new Map<string, RequeteReseau[]>();
   readonly occupes = new Set<string>();
+  /** Onglets attachés (comme le rapporte un vrai navigateur). */
+  readonly attachesIci = new Set<string>();
   objetsTas = 2;
 
   constructor(
@@ -73,10 +75,16 @@ class OutilsDevFactice implements OutilsDevNavigateur {
   async attacher(id: string) {
     this.noter("attacher", id);
     this.verifier(id);
+    this.attachesIci.add(id);
   }
 
   async detacher(id: string) {
     this.noter("detacher", id);
+    this.attachesIci.delete(id);
+  }
+
+  attaches(): string[] {
+    return [...this.attachesIci];
   }
 
   async console(id: string) {
@@ -132,7 +140,7 @@ export class PontFactice implements PontNavigateur {
   private readonly autoriser: boolean;
   private compteur = 0;
   readonly outilsDev?: OutilsDevFactice;
-  demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }) => Promise<DroitDev[]>;
+  demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
    * `outilsDev` fournit les outils de développement simulés ; `accorderDev` fournit aussi la carte de consentement,

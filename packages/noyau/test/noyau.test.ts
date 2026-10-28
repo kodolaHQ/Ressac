@@ -140,3 +140,23 @@ test("creerNoyau réutilise l'atelier fourni", async () => {
   await noyau.etatAtelier();
   expect(etat).toHaveBeenCalled();
 });
+
+test("arreter : nouvelle conversation pour la politique (les cartes en attente tombent) et outils de développement libérés", async () => {
+  const racine = await dossierTemporaire();
+  const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
+  const liberes: number[] = [];
+  let n = 0;
+  const pont = new PontFactice([], { actif: null, autoriser: false, outilsDev: true });
+  const outils = pont.outilsDev!;
+  (outils as { proprietaire?: () => unknown }).proprietaire = () => {
+    const numero = ++n;
+    return Object.assign(Object.create(outils), { liberer: () => liberes.push(numero) });
+  };
+  const premier = await creerNoyau({ pont, racine, executer });
+  const conversation = premier.politique.conversation;
+  await premier.arreter();
+  expect(premier.politique.conversation).toBe(conversation + 1);
+  expect(liberes).toEqual([1]);
+  noyau = await creerNoyau({ pont, racine, executer });
+  expect(n).toBe(2);
+});

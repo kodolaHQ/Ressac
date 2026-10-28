@@ -7,7 +7,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Application } from "../applications/gestionnaire.js";
 import type { DroitDev, PolitiqueAcces } from "../acces/politique.js";
 import { enregistrerOutilsDev, type FichiersProfils } from "./outils-dev.js";
-import { OngletIntrouvable, type OngletInfo, type PontNavigateur } from "./pont.js";
+import { OngletIntrouvable, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "./pont.js";
 
 export const TEXTE_REFUS = "Accès refusé par l'utilisateur à cet onglet.";
 const LIBELLE_PRIVE = "onglet privé";
@@ -51,6 +51,8 @@ type DemandesEnCours = Map<string, Promise<boolean>>;
 /** Agent affiché sur la carte de consentement, profils bruts et demandes en cours des outils de développement. */
 interface OptionsOutilsDev {
   agent: string;
+  /** Outils de développement réservés à ce noyau ; à défaut, ceux du pont. */
+  outils?: OutilsDevNavigateur;
   profils: FichiersProfils;
   demandes: Map<string, Promise<DroitDev[]>>;
 }
@@ -232,7 +234,14 @@ function creerServeurOutils(
   }
 
   if (pont.outilsDev && dev) {
-    enregistrerOutilsDev(serveur, { pont, politique, agent: dev.agent, demandes: dev.demandes, ...dev.profils });
+    enregistrerOutilsDev(serveur, {
+      pont,
+      politique,
+      agent: dev.agent,
+      demandes: dev.demandes,
+      ...(dev.outils ? { outils: dev.outils } : {}),
+      ...dev.profils,
+    });
   }
 
   return serveur;
@@ -256,10 +265,17 @@ export async function demarrerServeurMcp(o: {
   agent?: string;
   /** Écriture et lecture des profils bruts des outils de développement. */
   profils?: FichiersProfils;
+  /** Outils de développement réservés à ce noyau (voir OutilsDevNavigateur.proprietaire). */
+  outilsDev?: OutilsDevNavigateur;
 }): Promise<{ port: number; urlConteneur: string; arreter(): Promise<void> }> {
   const attendu = Buffer.from(o.jeton);
   const demandes: DemandesEnCours = new Map();
-  const dev: OptionsOutilsDev = { agent: o.agent ?? "L'agent", profils: o.profils ?? PROFILS_ABSENTS, demandes: new Map() };
+  const dev: OptionsOutilsDev = {
+    agent: o.agent ?? "L'agent",
+    profils: o.profils ?? PROFILS_ABSENTS,
+    demandes: new Map(),
+    ...(o.outilsDev ? { outils: o.outilsDev } : {}),
+  };
 
   const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (!jetonValide(req, attendu)) return res.writeHead(401).end();

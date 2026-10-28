@@ -1,5 +1,12 @@
 import type { WebContents } from "electron";
-import { OngletIntrouvable, OutilsDevOccupes, type OutilsDevNavigateur, type ProfilCpu, type ResultatJs } from "@webaios/noyau";
+import {
+  OngletIntrouvable,
+  OutilsDevOccupes,
+  type OutilsDevNavigateur,
+  type OutilsDevProprietaire,
+  type ProfilCpu,
+  type ResultatJs,
+} from "@webaios/noyau";
 import { TamponOnglet, textePile, texteObjet } from "./tampon";
 
 /** Durée d'un profil sans rechargement, par défaut et au plus. */
@@ -14,6 +21,7 @@ type Ecouteur = (methode: string, params: any) => void; // forme libre du protoc
 const DELAI_NAVIGATION_MS = 10_000;
 
 const TEXTE_SITE_CHANGE = "L'onglet a changé de site.";
+export const TEXTE_REVOQUE = "Ces outils de développement appartiennent à un agent arrêté.";
 
 /** Un onglet inspecté : son débogueur est attaché, ses tampons courent depuis l'attachement. */
 interface Inspection {
@@ -97,8 +105,65 @@ export class InspecteurCdp implements OutilsDevNavigateur {
   /** webContents dont l'utilisateur a ouvert les outils (signalés par « devtools-opened », retirés à « devtools-closed »). */
   private readonly occupes = new WeakSet<WebContents>();
   private readonly suivis = new WeakSet<WebContents>();
+  /** Génération du propriétaire courant (voir `proprietaire`). */
+  private generation = 0;
 
   constructor(private readonly webContentsDe: (id: string) => WebContents | undefined) {}
+
+  /** Onglets inspectés en ce moment. */
+  attaches(): string[] {
+    return [...this.inspections.keys()];
+  }
+
+  private lacherTout(): void {
+    for (const id of [...this.inspections.keys()]) this.lacher(id);
+  }
+
+  /**
+   * L'accès d'un noyau. Le navigateur garde son inspecteur quand le noyau change (autre profil d'agent) : un nouveau
+   * propriétaire révoque le précédent et détache tout ce qui était attaché. Les appels d'un propriétaire révoqué (noyau
+   * arrêté, dont un appel ou une réconciliation était en cours) sont refusés ; un attachement qui aboutit après la
+   * révocation est défait aussitôt.
+   */
+  proprietaire(): OutilsDevProprietaire {
+    const g = ++this.generation;
+    this.lacherTout();
+    const valide = () => {
+      if (this.generation !== g) throw new Error(TEXTE_REVOQUE);
+    };
+    const garde =
+      <A extends unknown[], R>(f: (...a: A) => Promise<R>) =>
+      async (...a: A): Promise<R> => {
+        valide();
+        return f(...a);
+      };
+    return {
+      attacher: async (id) => {
+        valide();
+        await this.attacher(id);
+        if (this.generation !== g) {
+          this.lacher(id);
+          valide();
+        }
+      },
+      detacher: async (id) => {
+        if (this.generation === g) await this.detacher(id);
+      },
+      console: garde((id) => this.console(id)),
+      reseau: garde((id) => this.reseau(id)),
+      corps: garde((id, requete) => this.corps(id, requete)),
+      profiler: garde((id, o, signal) => this.profiler(id, o, signal)),
+      instantaneMemoire: garde((id, signal) => this.instantaneMemoire(id, signal)),
+      executer: garde((id, code, signal) => this.executer(id, code, signal)),
+      recharger: garde((id, sansCache) => this.recharger(id, sansCache)),
+      attaches: () => (this.generation === g ? this.attaches() : []),
+      liberer: () => {
+        if (this.generation !== g) return;
+        this.generation++;
+        this.lacherTout();
+      },
+    };
+  }
 
   private occupe(wc: WebContents): boolean {
     return !wc.isDestroyed() && (this.occupes.has(wc) || wc.isDevToolsOpened());

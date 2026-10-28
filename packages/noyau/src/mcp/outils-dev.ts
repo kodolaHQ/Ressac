@@ -5,6 +5,7 @@ import {
   comparerMemoire,
   masquerEnTetes,
   masquerUrl,
+  masquerUrlsDansTexte,
   resumerInstantane,
   resumerProfil,
   texteMemoire,
@@ -31,6 +32,12 @@ type Resultat = { content: { type: "text"; text: string }[]; isError?: boolean }
 const texte = (text: string, isError = false): Resultat => ({ content: [{ type: "text", text }], ...(isError ? { isError } : {}) });
 
 class Coupe extends Error {}
+
+/** Longueur maximale de la raison affichée sur la carte de consentement ; au-delà, elle est coupée avec « … ». */
+export const LONGUEUR_RAISON = 300;
+
+const bornerRaison = (raison: string): string =>
+  raison.length > LONGUEUR_RAISON ? `${raison.slice(0, LONGUEUR_RAISON - 1)}…` : raison;
 
 /** Les résumés sont déjà bornés en lignes ; cette limite ne protège que des noms démesurés. */
 const LONGUEUR_RESUME = 20000;
@@ -73,10 +80,12 @@ export function enregistrerOutilsDev(
     politique: PolitiqueAcces;
     agent: string;
     demandes: Map<string, Promise<DroitDev[]>>;
+    /** Outils réservés au noyau ; à défaut, ceux du pont. */
+    outils?: OutilsDevNavigateur;
   } & FichiersProfils,
 ): void {
   const { pont, politique, demandes } = c;
-  const outils = pont.outilsDev as OutilsDevNavigateur;
+  const outils = c.outils ?? (pont.outilsDev as OutilsDevNavigateur);
 
   async function onglet(id: string): Promise<OngletInfo> {
     const o = (await pont.listerOnglets()).find((x) => x.id === id);
@@ -86,11 +95,15 @@ export function enregistrerOutilsDev(
 
   /**
    * Obtient les droits voulus : ceux qui manquent et ne sont pas bloqués sont demandés à l'utilisateur, une carte à la fois par
-   * onglet. Renvoie les droits voulus que l'agent tient ensuite, et l'onglet tel qu'il était alors.
+   * onglet. Renvoie les droits voulus que l'agent tient ensuite, et l'onglet tel qu'il était alors. Une page sans origine
+   * (about:blank, data:, file:) ne peut recevoir aucun droit : refus immédiat, sans carte. Une carte posée dans une
+   * conversation passée (nouvelle conversation, noyau arrêté) est retirée, et sa réponse ne vaut rien.
    */
   async function obtenir(id: string, voulus: DroitDev[], raison: string): Promise<{ tenus: DroitDev[]; onglet: OngletInfo }> {
+    raison = bornerRaison(raison);
     for (;;) {
       const o = await onglet(id);
+      if (!origineDe(o.url)) return { tenus: [], onglet: o };
       const tenus = politique.droitsDev(o);
       const manquants = voulus.filter((d) => !tenus.includes(d) && politique.peutDemander(id, d));
       const demander = pont.demanderOutilsDev?.bind(pont);
@@ -102,16 +115,25 @@ export function enregistrerOutilsDev(
         continue;
       }
       const origine = origineDe(o.url);
-      const demande = demander(o, { droits: manquants, raison, agent: c.agent })
+      const conversation = politique.conversation;
+      const retrait = new AbortController();
+      const desabonner = politique.surChange(() => {
+        if (politique.conversation !== conversation) retrait.abort();
+      });
+      const demande = demander(o, { droits: manquants, raison, agent: c.agent }, retrait.signal)
         .then(async (reponse) => {
+          if (politique.conversation !== conversation) return [];
           // L'utilisateur a pu changer de site pendant la question : son accord porte sur le site qu'il a vu.
           const apres = (await pont.listerOnglets()).find((x) => x.id === id);
-          if (!apres || origineDe(apres.url) !== origine) return [];
+          if (!apres || origineDe(apres.url) !== origine || politique.conversation !== conversation) return [];
           const accordes = DROITS_DEV.filter((d) => reponse.includes(d));
           politique.accorderDev(apres, accordes, manquants.filter((d) => !accordes.includes(d)));
           return accordes;
         })
-        .finally(() => demandes.delete(id));
+        .finally(() => {
+          desabonner();
+          demandes.delete(id);
+        });
       demandes.set(id, demande);
       await demande;
       const apres = await onglet(id);
@@ -175,6 +197,8 @@ export function enregistrerOutilsDev(
       if (!signal.aborted && !(e instanceof Coupe)) throw e;
       return await reponseInterruption();
     } finally {
+      // Une écriture encore en cours (f a échoué sans l'attendre) efface son fichier en voyant le signal levé.
+      if (!signal.aborted) controleur.abort(new Coupe());
       desabonner();
       politique.utilisation(id, false);
     }
@@ -221,13 +245,15 @@ export function enregistrerOutilsDev(
       inputSchema: { id, depuis: z.number().optional(), niveau: z.enum(["log", "info", "warn", "error", "debug"]).optional() },
     },
     proteger(async ({ id, depuis, niveau }) =>
-      avecDroit(id, "console", "lire_console", async () => {
+      avecDroit(id, "console", "lire_console", async (o) => {
+        // Sur un site tiers, les URL des messages et des piles sont masquées comme dans lire_reseau.
+        const vue = politique.estConstruite(o) ? (t: string) => t : masquerUrlsDansTexte;
         const messages = chronologique(await outils.console(id)).filter(
           (m) => (depuis === undefined || m.horodatage >= depuis) && (niveau === undefined || m.niveau === niveau),
         );
         const lignes = messages.map((m) => {
-          const ligne = `${new Date(m.horodatage).toISOString()} [${m.niveau}] ${tronquer(m.texte)}`;
-          return m.pile ? `${ligne}\n${tronquer(m.pile)}` : ligne;
+          const ligne = `${new Date(m.horodatage).toISOString()} [${m.niveau}] ${tronquer(vue(m.texte))}`;
+          return m.pile ? `${ligne}\n${tronquer(vue(m.pile))}` : ligne;
         });
         return texte(borner(lignes, "Aucun message."));
       }),

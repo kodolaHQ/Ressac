@@ -94,25 +94,31 @@ export function attendreReponse(poser: (repondre: (d: Decision) => void) => () =
 
 /**
  * Comme `attendreReponse`, pour la carte des outils de développement : renvoie les droits cochés si l'utilisateur autorise,
- * `[]` s'il refuse ou si le délai expire.
+ * `[]` s'il refuse, si le délai expire ou si `signal` est levé (la carte est alors retirée).
  */
 export function attendreDroits(
   poser: (repondre: (d: Decision, droits?: DroitDev[]) => void) => () => void,
   delaiMs = DELAI_QUESTION_MS,
+  signal?: AbortSignal,
 ): Promise<DroitDev[]> {
+  if (signal?.aborted) return Promise.resolve([]);
   return new Promise((ok) => {
     let finie = false;
     const repondre = (d: Decision, droits: DroitDev[] = []) => {
       if (finie) return;
       finie = true;
       clearTimeout(minuterie);
+      signal?.removeEventListener("abort", abandon);
       ok(d === "autoriser" ? droits : []);
     };
-    const minuterie = setTimeout(() => {
+    const abandon = () => {
+      if (finie) return;
       retirer();
       repondre("refuser");
-    }, delaiMs);
+    };
+    const minuterie = setTimeout(abandon, delaiMs);
     const retirer = poser(repondre);
+    signal?.addEventListener("abort", abandon, { once: true });
   });
 }
 
@@ -156,7 +162,7 @@ export class PontElectron implements PontNavigateur {
       fenetreActive: () => IdFenetre | undefined;
       demander: (o: OngletInfo) => Promise<boolean>;
       /** Carte de consentement des outils de développement ; absente, tout est refusé. */
-      demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }) => Promise<DroitDev[]>;
+      demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
       applications: FenetresPourAgent;
     },
   ) {}
@@ -225,7 +231,7 @@ export class PontElectron implements PontNavigateur {
     return this.o.demander(o);
   }
 
-  async demanderOutilsDev(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }): Promise<DroitDev[]> {
-    return (await this.o.demanderOutilsDev?.(o, d)) ?? [];
+  async demanderOutilsDev(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]> {
+    return (await this.o.demanderOutilsDev?.(o, d, signal)) ?? [];
   }
 }

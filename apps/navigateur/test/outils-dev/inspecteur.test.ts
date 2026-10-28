@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { describe, expect, test } from "vitest";
 import { OutilsDevOccupes } from "@webaios/noyau";
 import type { WebContents } from "electron";
-import { InspecteurCdp } from "../../src/main/outils-dev/inspecteur";
+import { InspecteurCdp, TEXTE_REVOQUE } from "../../src/main/outils-dev/inspecteur";
 
 const A = "http://localhost:15280/";
 const B = "http://localhost:15281/";
@@ -241,5 +241,42 @@ describe("abandon", () => {
     dbg.evenement("HeapProfiler.addHeapSnapshotChunk", { chunk: "second" });
     dbg.rendre("HeapProfiler.takeHeapSnapshot");
     await expect(second).resolves.toBe("second");
+  });
+});
+
+describe("propriétaire (un noyau à la fois)", () => {
+  test("un nouveau propriétaire révoque le précédent : ses appels sont refusés, ses attachements tombent", async () => {
+    const { wc, inspecteur, dbg } = preparer();
+    const ancien = inspecteur.proprietaire();
+    await ancien.attacher("t");
+    expect(ancien.attaches!()).toEqual(["t"]);
+    expect(dbg.isAttached()).toBe(true);
+    const nouveau = inspecteur.proprietaire();
+    expect(dbg.isAttached()).toBe(false);
+    expect(nouveau.attaches!()).toEqual([]);
+    await expect(ancien.console("t")).rejects.toThrow(TEXTE_REVOQUE);
+    await expect(ancien.attacher("t")).rejects.toThrow(TEXTE_REVOQUE);
+    expect(dbg.isAttached()).toBe(false);
+    // libérer un propriétaire révoqué ne touche pas au nouveau
+    await nouveau.attacher("t");
+    ancien.liberer();
+    await ancien.detacher("t");
+    expect(dbg.isAttached()).toBe(true);
+    wc.log("pour le nouveau");
+    expect((await nouveau.console("t")).map((m) => m.texte)).toEqual(["pour le nouveau"]);
+    expect(inspecteur.attaches()).toEqual(["t"]);
+  });
+
+  test("un attachement en cours quand le noyau s'arrête (liberer) échoue et ne laisse rien d'attaché", async () => {
+    const { inspecteur, dbg } = preparer();
+    dbg.retenues.add("Runtime.enable");
+    const p = inspecteur.proprietaire();
+    const attache = p.attacher("t");
+    await tick();
+    p.liberer();
+    await expect(attache).rejects.toThrow();
+    expect(dbg.isAttached()).toBe(false);
+    expect(inspecteur.attaches()).toEqual([]);
+    await expect(p.reseau("t")).rejects.toThrow(TEXTE_REVOQUE);
   });
 });

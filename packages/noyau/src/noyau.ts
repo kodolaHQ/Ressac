@@ -196,6 +196,10 @@ export async function creerNoyau(o: {
   if (!profil) throw new Error(`Profil d'agent inconnu : ${profilId}`);
 
   const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
+  // Le navigateur garde ses outils de développement d'un noyau à l'autre : celui-ci prend les siens, ce qui révoque ceux
+  // d'un noyau précédent (ses appels en retard sont refusés, ses attachements tombent).
+  const proprietaire = o.pont.outilsDev?.proprietaire?.();
+  const outilsDev = proprietaire ?? o.pont.outilsDev;
   const jeton = genererJeton();
   const serveur = await demarrerServeurMcp({
     pont: o.pont,
@@ -203,12 +207,14 @@ export async function creerNoyau(o: {
     jeton,
     agent: profil.nom,
     profils: fichiersProfils(chemins, o.dossierProfilage),
+    ...(outilsDev ? { outilsDev } : {}),
     ...(o.applications ? { applications: o.applications } : {}),
   });
   try {
     await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
   } catch (e) {
     await serveur.arreter();
+    proprietaire?.liberer();
     throw e;
   }
 
@@ -226,7 +232,7 @@ export async function creerNoyau(o: {
   const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
   await planificateur.demarrer();
   const pont = o.pont;
-  const suivi = pont.outilsDev ? new SuiviOutilsDev(politique, pont.outilsDev, () => pont.listerOnglets()) : null;
+  const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
 
   return {
     chemins,
@@ -255,8 +261,11 @@ export async function creerNoyau(o: {
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
     async arreter() {
       suivi?.arreter();
+      // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
+      politique.reinitialiser();
       await planificateur.arreter();
       await serveur.arreter();
+      proprietaire?.liberer();
     },
   };
 }

@@ -13,7 +13,7 @@ import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
-import { attendreDroits, attendreReponse, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, cheminsEspace, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
@@ -417,9 +417,14 @@ app.whenReady().then(async () => {
     },
     // « L'agent veut lire l'onglet … » dans la fenêtre active ; jamais mémorisé hors de la politique du noyau.
     demanderLecture: (o) => attendreReponse((repondre) => poserQuestionAgent(o, repondre, { permissions: ["lire-onglet"] })),
-    // La carte des outils de développement : les droits cochés par l'utilisateur, `[]` s'il refuse ou ne répond pas.
-    demanderOutilsDev: (o, d) =>
-      attendreDroits((repondre) => poserQuestionAgent(o, repondre, { permissions: ["outils-dev"], droits: d.droits, raison: d.raison, agent: d.agent })),
+    // La carte des outils de développement : les droits cochés par l'utilisateur, `[]` s'il refuse ou ne répond pas. Le noyau
+    // la retire (signal) quand une nouvelle conversation commence ou qu'il s'arrête.
+    demanderOutilsDev: (o, d, signal) =>
+      attendreDroits(
+        (repondre) => poserQuestionAgent(o, repondre, { permissions: ["outils-dev"], droits: d.droits, raison: d.raison, agent: d.agent }),
+        DELAI_QUESTION_MS,
+        signal,
+      ),
   });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
   rouvrirFenetres = () => {

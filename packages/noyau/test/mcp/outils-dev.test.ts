@@ -489,3 +489,92 @@ test("fichiersProfils : un site tiers écrit dans le dossier privé et reçoit u
   expect(existsSync(join(dossier, "x.heapsnapshot"))).toBe(false);
   await p.supprimerProfil(ref); // déjà effacé : sans erreur
 });
+
+test("page sans origine (about:blank, data:, file:) : refus immédiat, aucune carte", async () => {
+  await demarrer({ accorderDev: ["console"] });
+  for (const url of ["about:blank", "data:text/html,<p>x</p>", "file:///Users/user/a.html"]) {
+    const o = await pont.ouvrirOnglet(url);
+    expect(await appeler("lire_console", { id: o.id })).toBe(REFUS);
+    expect(await appeler("demander_outils_dev", { id: o.id, droits: ["console"], raison: "voir" })).toBe(REFUS);
+  }
+  expect(demandesDev()).toHaveLength(0);
+});
+
+test("la raison affichée sur la carte est bornée à 300 caractères (…)", async () => {
+  await demarrer({ accorderDev: ["console"] });
+  await appeler("demander_outils_dev", { id: "github", droits: ["console"], raison: "a".repeat(1000) });
+  const raison = (demandesDev()[0]!.args[1] as { raison: string }).raison;
+  expect(raison).toHaveLength(300);
+  expect(raison.endsWith("…")).toBe(true);
+  await appeler("demander_outils_dev", { id: "gmail", droits: ["console"], raison: "b".repeat(300) });
+  expect((demandesDev()[1]!.args[1] as { raison: string }).raison).toBe("b".repeat(300));
+});
+
+test("nouvelle conversation pendant la carte : la carte est retirée (signal) et une réponse tardive n'accorde rien", async () => {
+  await demarrer({ accorderDev: ["console"] });
+  let signal: AbortSignal | undefined;
+  let repondre!: (d: DroitDev[]) => void;
+  pont.demanderOutilsDev = (_o, _d, s) => {
+    signal = s;
+    return new Promise<DroitDev[]>((ok) => (repondre = ok));
+  };
+  const appel = appeler("lire_console", { id: "github" });
+  await vi.waitFor(() => expect(signal).toBeDefined());
+  expect(signal!.aborted).toBe(false);
+  politique.reinitialiser();
+  expect(signal!.aborted).toBe(true);
+  repondre(["console"]); // L'utilisateur clique quand même (ou le navigateur ignore le signal)
+  expect(await appel).toBe(REFUS);
+  expect(politique.droitsDev(github)).toEqual([]);
+  expect(politique.peutDemander("github", "console")).toBe(true);
+});
+
+test("lire_console masque les jetons des URL dans les messages et les piles d'un site tiers ; pas sur une construite", async () => {
+  await demarrer({ accorderDev: ["console"] });
+  const messages = [
+    {
+      horodatage: 0,
+      niveau: "error" as const,
+      texte: "GET https://api.github.com/user?access_token=abc123&page=2 401",
+      pile: "at f (https://github.com/app.js?sig=zzz999:1:2)",
+    },
+  ];
+  pont.fixerConsole("github", messages);
+  pont.fixerConsole("app:todo", messages);
+  const r = await appeler("lire_console", { id: "github" });
+  expect(r).toContain("https://api.github.com/user?access_token=«masqué»&page=2 401");
+  expect(r).toContain("at f (https://github.com/app.js?sig=«masqué»)");
+  expect(r).not.toContain("abc123");
+  expect(r).not.toContain("zzz999");
+  politique.ongletOuvertParAgent(appTodo);
+  const brut = await appeler("lire_console", { id: "app:todo" });
+  expect(brut).toContain("access_token=abc123");
+  expect(brut).toContain("sig=zzz999");
+});
+
+test("SuiviOutilsDev : un onglet qui garde ses droits sur une autre origine (appli relancée) est détaché puis rattaché", async () => {
+  await demarrer();
+  suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
+  const appels = () => pont.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
+  politique.construite(appTodo);
+  await vi.waitFor(() => expect(appels()).toEqual(["attacher"]));
+  // relancée sur un autre port : la fenêtre navigue, elle est de nouveau construite sur sa nouvelle origine
+  await pont.naviguer("app:todo", "http://localhost:5290/");
+  politique.ongletNavigue("app:todo", "http://localhost:5290/");
+  politique.construite({ ...appTodo, url: "http://localhost:5290/" });
+  await vi.waitFor(() => expect(appels()).toEqual(["attacher", "detacher", "attacher"]));
+  expect(suivi.attaches.has("app:todo")).toBe(true);
+  // même origine, autre page : rien ne bouge
+  await pont.naviguer("app:todo", "http://localhost:5290/autre");
+  politique.ongletNavigue("app:todo", "http://localhost:5290/autre");
+  await new Promise((r) => setTimeout(r, 20));
+  expect(appels()).toEqual(["attacher", "detacher", "attacher"]);
+});
+
+test("SuiviOutilsDev : un onglet attaché par un noyau précédent et sans droit est détaché", async () => {
+  await demarrer();
+  await pont.outilsDev!.attacher("gmail"); // laissé par l'ancien noyau
+  suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
+  await vi.waitFor(() => expect(pont.outilsDev!.attaches()).toEqual([]));
+  expect(pont.appels.some((a) => a.methode === "detacher" && a.args[0] === "gmail")).toBe(true);
+});

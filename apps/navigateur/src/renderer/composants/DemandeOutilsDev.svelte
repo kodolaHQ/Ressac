@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { DroitDev } from "@webaios/noyau";
-  import type { DemandeEnAttente } from "../../commun/modele";
+  import { siteDe, type DemandeEnAttente } from "../../commun/modele";
   import { api } from "../etat.svelte";
 
   let { demande }: { demande: DemandeEnAttente } = $props();
@@ -18,7 +18,8 @@
   // Initialisé une fois : la liste des demandes est rediffusée à chaque nouvelle question, sans toucher à la sélection.
   let coches = $state<DroitDev[]>(untrack(() => [...(demande.droits ?? [])]));
 
-  const site = $derived(new URL(demande.origine).host);
+  // Jamais d'exception ici : une origine illisible (about:blank, data:…) est affichée telle quelle.
+  const site = $derived(siteDe(demande.origine));
   const cocher = (droit: DroitDev, actif: boolean) => (coches = actif ? [...coches, droit] : coches.filter((d) => d !== droit));
 </script>
 
@@ -46,8 +47,8 @@
 <style>
   .carte { align-self: center; box-sizing: border-box; width: min(440px, calc(100% - 24px)); margin: 8px 12px; padding: 14px 18px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 12px; font-size: 13px; line-height: 1.45; }
   h3 { margin: 0 0 4px; font-size: 15px; }
-  .site { opacity: 0.7; font-size: 12px; margin-bottom: 10px; }
-  .raison { background: var(--fond-barre); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
+  .site { opacity: 0.7; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .raison { background: var(--fond-barre); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
   .droit { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--bord); }
   .droit input { margin-top: 3px; }
   .droit b { display: block; font-size: 13px; }

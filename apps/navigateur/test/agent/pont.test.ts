@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
-import type { EtatNavigateur } from "../../src/commun/modele";
+import { siteDe, type EtatNavigateur } from "../../src/commun/modele";
 import { attendreDroits, attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 function preparer() {
@@ -105,6 +105,21 @@ test("attendreDroits : autoriser → les droits cochés ; refuser, délai dépas
   }
 });
 
+test("attendreDroits : signal levé → carte retirée et [] ; une réponse tardive ne change rien ; déjà levé → [] sans carte", async () => {
+  const controleur = new AbortController();
+  let retiree = false;
+  let repondreTard!: (d: "autoriser", droits: ["console"]) => void;
+  const reponse = attendreDroits((repondre) => ((repondreTard = repondre), () => (retiree = true)), 120_000, controleur.signal);
+  controleur.abort();
+  await expect(reponse).resolves.toEqual([]);
+  expect(retiree).toBe(true);
+  repondreTard("autoriser", ["console"]);
+  await expect(reponse).resolves.toEqual([]);
+  let posee = false;
+  await expect(attendreDroits(() => ((posee = true), () => {}), 1000, AbortSignal.abort())).resolves.toEqual([]);
+  expect(posee).toBe(false);
+});
+
 test("questionCaduque : une demande d'outils de développement tombe si l'onglet change de site ; une fenêtre d'appli n'est pas un onglet fermé", () => {
   const { e, ag, F } = preparer();
   const [a, b] = Object.keys(e().onglets);
@@ -164,4 +179,10 @@ test("un onglet webaios: n'est ni listé ni actif pour l'agent", () => {
   ag({ type: "majOnglet", id, champs: { url: "webaios://applications" } });
   expect(infosOnglets(e()).map((o) => o.url)).toEqual(["https://b.test/"]);
   expect(ongletActifDe(e(), F)).toBeNull();
+});
+
+test("siteDe : l'hôte d'une origine ; une origine illisible (about:blank, data:, « null ») est rendue telle quelle, sans exception", () => {
+  expect(siteDe("https://mail.google.com")).toBe("mail.google.com");
+  expect(siteDe("http://localhost:5280")).toBe("localhost:5280");
+  for (const o of ["null", "about:blank", "data:text/html,x", ""]) expect(siteDe(o)).toBe(o);
 });

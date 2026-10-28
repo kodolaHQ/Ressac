@@ -3,6 +3,15 @@ import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
 export const URL_APPLICATIONS = "webaios://applications";
 
+/** Le site affiché sur une demande : l'hôte de l'origine, ou le texte tel quel s'il n'en est pas une (about:blank…). */
+export function siteDe(origine: string): string {
+  try {
+    return new URL(origine).host || origine;
+  } catch {
+    return origine;
+  }
+}
+
 export type IdOnglet = string;
 
 /** L'accès de l'agent aux onglets, avec le nom de l'agent qui le détient. */

@@ -49,6 +49,11 @@ export function masquerUrl(url: string): string {
   return base + requete + (iFragment < 0 ? "" : `#${masquerPaires(fragment)}`);
 }
 
+/** Les URL http(s) d'un texte libre (message de console, pile), masquées comme par `masquerUrl`. */
+export function masquerUrlsDansTexte(texte: string): string {
+  return texte.replace(/https?:\/\/[^\s"'`<>()[\]{}]+/gi, (url) => masquerUrl(url));
+}
+
 export interface ProfilCpu {
   nodes: {
     id: number;

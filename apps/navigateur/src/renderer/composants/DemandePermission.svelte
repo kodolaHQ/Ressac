@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { DemandeEnAttente, Permission } from "../../commun/modele";
+  import { siteDe, type DemandeEnAttente, type Permission } from "../../commun/modele";
   import { api } from "../etat.svelte";
   import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
 
@@ -18,7 +18,8 @@
     autre: "une permission inconnue",
   };
 
-  const site = $derived(new URL(demande.origine).host);
+  // Jamais d'exception ici : une origine illisible (about:blank, data:…) est affichée telle quelle.
+  const site = $derived(siteDe(demande.origine));
   const lecture = $derived(demande.permissions.includes("lire-onglet"));
   const texte = $derived.by(() => {
     if (lecture) return `L'agent veut lire l'onglet « ${demande.titre ?? site} »`;
