@@ -5,13 +5,14 @@ import type { EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import type { PontNavigateur } from "../mcp/pont.js";
-import { executerRecolte, type OptionsRecolte } from "./recolte.js";
+import { ERREUR_ATELIER_ARRETE, executerRecolte, type OptionsRecolte } from "./recolte.js";
+
+export { ERREUR_ATELIER_ARRETE };
 
 const MINUTE = 60_000;
 /** Une récolte en erreur est retentée au plus tôt 15 min après sa dernière tentative. */
 const REESSAI_ERREUR_MS = 15 * MINUTE;
 const ATTENTE_ARRET_MS = 15_000;
-export const ERREUR_ATELIER_ARRETE = "Mise à jour impossible : atelier arrêté";
 
 const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime() - Date.parse(iso) : Infinity);
 

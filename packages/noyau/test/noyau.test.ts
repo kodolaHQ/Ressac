@@ -8,7 +8,9 @@ import { creerNoyau, ErreurAtelier, type Noyau } from "../src/noyau.js";
 import type { IaLocale } from "../src/ia/ia-locale.js";
 import { PlanificateurWidgets } from "../src/widgets/planificateur.js";
 import { lireAccords } from "../src/widgets/accords.js";
-import { lireEtatWidget } from "../src/accueil/donnees.js";
+import { ecrireDonnees, lireDonnees, lireEtatWidget } from "../src/accueil/donnees.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { declarationWidget, ecrireWidget } from "./aide/accueil.js";
 import { PontFactice } from "../src/mcp/pont-factice.js";
 import { dossierTemporaire } from "./aide/temporaire.js";
@@ -224,4 +226,31 @@ test("noyau : accorder refuse un widget sans compte", async () => {
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   await ecrireWidget(noyau.chemins, "meteo", declarationWidget());
   await expect(noyau.accorder("meteo", "perso")).rejects.toThrow(/compte/);
+});
+
+test("noyau : refuserAccord efface les données ; compte retiré ensuite → donnees_widget ne rend rien du compte", async () => {
+  const racine = await dossierTemporaire();
+  const dossierWidgets = `${racine}-widgets`;
+  const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
+  noyau = await creerNoyau({ dossierWidgets, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  const decl = (compte: string[]) => declarationWidget(undefined, { recolte: { minutes: 60 }, sources: { compte, publiques: [] } });
+  await ecrireWidget(noyau.chemins, "daily", decl(["app.daily.dev"]), { "recolte.mjs": "export default () => 1" });
+  await noyau.accorder("daily", "perso");
+  await ecrireDonnees(dossierWidgets, "daily", { secret: "du compte" });
+  await noyau.refuserAccord("daily");
+  expect(await lireDonnees(dossierWidgets, "daily")).toBeNull();
+  // L'agent retire compte : le widget redevient public, sans rien du compte.
+  await ecrireWidget(noyau.chemins, "daily", decl([]), { "recolte.mjs": "export default () => 1" });
+  const mcp = await lireMcp(noyau);
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(mcp.url.replace("host.docker.internal", "127.0.0.1")), {
+      requestInit: { headers: { Authorization: mcp.headers.Authorization } },
+    }),
+  );
+  const r = await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } });
+  await client.close();
+  const t = (r.content as { text?: string }[]).map((c) => c.text ?? "").join("\n");
+  expect(t).not.toContain("du compte");
+  expect(t).toContain("Aucune donnée");
 });

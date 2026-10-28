@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { isIP } from "node:net";
 import type { Readable, Writable } from "node:stream";
-import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget } from "../accueil/donnees.js";
+import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "../accueil/donnees.js";
 import type { DeclarationWidget, EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import { cheminOutils } from "../conteneur/executeur.js";
@@ -70,9 +70,33 @@ const JOURNAL_MAX = 2000;
 const ERREUR_MAX = 500;
 const ID = /^[a-z0-9-]+$/;
 
-const PROFIL_REFUSE =
+export const PROFIL_REFUSE =
   "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
 export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
+export const ERREUR_ATELIER_ARRETE = "Mise à jour impossible : atelier arrêté";
+
+/** Messages d'erreur fixes écrits par le noyau ; tout autre texte d'erreur a pu être écrit par le widget. */
+const ERREURS_FIXES = new Set([
+  "Délai dépassé",
+  "Réponse trop grande",
+  PROFIL_REFUSE,
+  ERREUR_ATELIER_ARRETE,
+  "Ce widget n'a pas de recolte.mjs",
+  "Données trop grosses (2 Mo au plus)",
+]);
+const ERREURS_MOTIFS = [
+  /^La récolte s'est arrêtée sans résultat \(code (\d+|aucun)\)$/,
+  // Les domaines déclarés n'ont que [a-z0-9.-] ; le message a pu être tronqué (« … »).
+  /^Accord requis pour lire avec ton compte : [a-z0-9., -]*…?$/,
+];
+
+/**
+ * L'erreur vient-elle du noyau, sans rien que le widget ait pu écrire ? Pour un widget qui lit avec le compte de l'utilisateur,
+ * seule une telle erreur est montrée à l'agent sans accord (un widget peut lever une erreur faite de ses données).
+ */
+export function erreurDuNoyau(erreur: string): boolean {
+  return ERREURS_FIXES.has(erreur) || ERREURS_MOTIFS.some((m) => m.test(erreur));
+}
 
 const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -210,6 +234,13 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   if (!widget.aRecolte) return conclure({ statut: "erreur", erreur: "Ce widget n'a pas de recolte.mjs" });
   const declaration = widget.declaration;
   const aCompte = declaration.sources.compte.length > 0;
+  // Un accord qui ne vaut plus pour la déclaration actuelle (domaines changés, compte retiré) est retiré, et les données
+  // lues avec lui effacées : elles ne passent ni à la récolte suivante (precedent) ni, plus tard, à l'agent.
+  const accordEnregistre = (await lireAccords(dossierWidgets))[id];
+  if (accordEnregistre && !accordValide(declaration, accordEnregistre)) {
+    await retirerAccord(dossierWidgets, id);
+    await supprimerDonnees(dossierWidgets, id);
+  }
   // Un widget qui lit avec le compte de l'utilisateur ne tourne qu'avec son accord, qui couvre aussi ses domaines publics.
   if (aCompte && !accordValide(declaration, (await lireAccords(dossierWidgets))[id])) {
     return conclure({ statut: "accord-requis", erreur: accordRequis(declaration) });

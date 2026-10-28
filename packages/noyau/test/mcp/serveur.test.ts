@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets } from "../../src/mcp/serveur.js";
+import { demarrerServeurMcp, ERREUR_RESERVEE, genererJeton, type OutilsApplications, type OutilsWidgets } from "../../src/mcp/serveur.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
 
@@ -478,4 +478,20 @@ test("sans widgets : les outils n'existent pas", async () => {
   const noms = (await client.listTools()).tools.map((t) => t.name);
   expect(noms).not.toContain("recolter_widget");
   expect(noms).not.toContain("donnees_widget");
+});
+
+test("recolter_widget sur un widget avec compte sans accord : une erreur écrite par le widget ne sort pas, celle du noyau oui", async () => {
+  const { outils } = widgetsFactices();
+  let erreur = "SECRET";
+  outils.recolter = async () => ({ statut: "erreur", derniereMaj: null, derniereTentative: null, erreur, journal: "SECRET" });
+  await avecWidgets(outils);
+  let t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
+  expect(t).not.toContain("SECRET");
+  expect(t).toContain(ERREUR_RESERVEE);
+  erreur = "Délai dépassé";
+  t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
+  expect(t).toContain("Délai dépassé");
+  // Widget public : l'erreur du widget sort telle quelle.
+  erreur = "SECRET public";
+  expect(texte(await client.callTool({ name: "recolter_widget", arguments: { id: "meteo" } }))).toContain("SECRET public");
 });

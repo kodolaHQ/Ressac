@@ -6,7 +6,7 @@ import { CHEMIN_CONTENEUR, cheminDansConteneur, cheminsEspace, type CheminsEspac
 import { initialiserEspace } from "./espace/initialiser.js";
 import { lireAccueil } from "./accueil/lire.js";
 import type { EtatAccueil, EtatWidget, WidgetLu } from "./accueil/schemas.js";
-import { ecrireEtatWidget, lireDonnees, lireEtatWidget } from "./accueil/donnees.js";
+import { ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "./accueil/donnees.js";
 import { surveillerAccueil } from "./accueil/surveiller.js";
 import { chargerProfils, construireCommande } from "./profils/profil.js";
 import { ecrireConfigMcp } from "./profils/config-mcp.js";
@@ -177,7 +177,7 @@ export interface Noyau {
    * profil n'est pas celui d'un espace privé. L'accord porte sur les domaines actuels de la déclaration ; une récolte suit.
    */
   accorder(id: string, profil: string): Promise<void>;
-  /** Retire l'accord : le widget attend un nouvel accord (`accord-requis`). */
+  /** Retire l'accord et efface les données lues avec : le widget attend un nouvel accord (`accord-requis`). */
   refuserAccord(id: string): Promise<void>;
   arreter(): Promise<void>;
 }
@@ -332,6 +332,8 @@ export async function creerNoyau(o: {
     },
     async refuserAccord(id) {
       await retirerAccord(dossierWidgets, id);
+      // Les données lues avec ce compte partent avec l'accord : sans lui, plus rien ne les protège (compte retiré…).
+      await supprimerDonnees(dossierWidgets, id);
       const w = await widget(id);
       if (w && !("erreur" in w) && w.declaration.sources.compte.length) {
         const avant = await lireEtatWidget(dossierWidgets, id);

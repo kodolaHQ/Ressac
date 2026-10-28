@@ -12,7 +12,7 @@ import { ecrireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
 import { IaLocale } from "../../src/ia/ia-locale.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
-import { executerRecolte, type LanceurProcessus } from "../../src/widgets/recolte.js";
+import { erreurDuNoyau, executerRecolte, type LanceurProcessus } from "../../src/widgets/recolte.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 import { fauxKev, fauxOllama, type FauxServeur } from "../aide/faux-ia.js";
@@ -536,6 +536,38 @@ describe("executerRecolte, widget avec compte", () => {
     expect(r.etat.erreur).toBeTruthy();
     expect(await lireAccords(ctx.dossierWidgets)).toEqual({ autre: { domaines: ["a.fr"], publiques: [], profil: "perso" } });
     expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ ancien: true });
+  });
+
+  it("déclaration modifiée (domaines changés) : l'accord est retiré et les données précédentes effacées", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const r = await recolter(ctx);
+    expect(r.etat.statut).toBe("accord-requis");
+    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
+  });
+
+  it("compte retiré de la déclaration avec un accord enregistré : accord retiré, données effacées, precedent null", async () => {
+    const ctx = await preparer("daily", `export default async (w) => ({ prec: w.precedent });`, { compte: [], publiques: [] });
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const r = await recolter(ctx);
+    expect(r.etat.statut).toBe("ok");
+    expect(r.donnees).toEqual({ prec: null });
+    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ prec: null });
+  });
+
+  it("erreurDuNoyau : messages fixes du noyau reconnus, texte du widget non", () => {
+    expect(erreurDuNoyau("Délai dépassé")).toBe(true);
+    expect(erreurDuNoyau("Réponse trop grande")).toBe(true);
+    expect(erreurDuNoyau("Accord requis pour lire avec ton compte : app.daily.dev")).toBe(true);
+    expect(erreurDuNoyau("La récolte s'est arrêtée sans résultat (code 1)")).toBe(true);
+    expect(erreurDuNoyau("Mise à jour impossible : atelier arrêté")).toBe(true);
+    expect(erreurDuNoyau("SECRET")).toBe(false);
+    expect(erreurDuNoyau("Délai dépassé SECRET")).toBe(false);
+    expect(erreurDuNoyau("La récolte s'est arrêtée sans résultat (code 1) SECRET")).toBe(false);
   });
 
   it("un accord dont les domaines ne correspondent plus à la déclaration n'est plus valide", async () => {

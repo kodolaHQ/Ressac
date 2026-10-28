@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ETAT_WIDGET_PAR_DEFAUT, EtatWidget, TAILLE_MAX_DONNEES } from "./schemas.js";
 
@@ -24,6 +24,12 @@ export async function ecrireDonnees(dossierWidgets: string, id: string, donnees:
   const texte = JSON.stringify(donnees ?? null);
   if (Buffer.byteLength(texte) > TAILLE_MAX_DONNEES) throw new Error("Données trop grosses (2 Mo au plus)");
   await ecrireAtomique(join(dossierWidgets, id, "donnees.json"), texte);
+}
+
+/** Efface les données récoltées (par exemple celles lues avec un compte dont l'accord est retiré). */
+export async function supprimerDonnees(dossierWidgets: string, id: string): Promise<void> {
+  if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
+  await rm(join(dossierWidgets, id, "donnees.json"), { force: true });
 }
 
 export async function lireEtatWidget(dossierWidgets: string, id: string): Promise<EtatWidget> {
