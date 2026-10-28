@@ -3,7 +3,7 @@
   import type { IdFenetre, IdOnglet } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import FondFige from "./FondFige.svelte";
-  import { optionsProfil } from "./profilsEspace";
+  import { choixPerdConnexions, optionsProfil } from "./profilsEspace";
   import { reglagesEspace } from "./reglagesEspace.svelte";
 
   /**
@@ -22,6 +22,7 @@
   const options = $derived(optionsProfil(espaces, etat.valeur?.profils ?? [], brouillon.id));
   const nouveau = $derived(brouillon.id === null);
   const valide = $derived(brouillon.nom.trim() !== "");
+  const perdConnexions = $derived(choixPerdConnexions(espaces, brouillon.id, brouillon.profil));
 
   // Le choix ne désigne plus aucun profil (l'état a changé entre-temps) : on revient au premier proposé.
   $effect(() => {
@@ -111,6 +112,7 @@
         <p class="note" id="note-profil">
           Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, tu devras peut-être te reconnecter.
         </p>
+        {#if perdConnexions}<p class="note alerte" role="alert" data-testid="perte-connexions">Les connexions de cet espace seront perdues.</p>{/if}
       </div>
       <div class="actions">
         <button type="button" onclick={fermer}>Annuler</button>
@@ -162,6 +164,7 @@
   .case { display: flex; align-items: center; gap: 6px; }
   .libelle { font-size: 11.5px; color: var(--texte-doux); }
   .note { margin: 0; font-size: 11.5px; color: var(--texte-doux); }
+  .alerte { color: var(--texte); font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }
   button:disabled { opacity: 0.5; }

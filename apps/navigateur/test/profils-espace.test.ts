@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Espace } from "../src/commun/modele";
-import { optionsProfil, perdConnexions } from "../src/renderer/composants/profilsEspace";
+import { choixPerdConnexions, optionsProfil, perdConnexions } from "../src/renderer/composants/profilsEspace";
 
 const espace = (id: string, nom: string, profil: string): Espace => ({ id, nom, icone: "📁", epingles: [], prive: false, profil });
 const profils = [{ id: "defaut" }, { id: "p1" }, { id: "p2" }];
@@ -45,4 +45,16 @@ test("les connexions se perdent avec le dernier espace d'un profil autre que cel
   expect(perdConnexions(espaces, espaces[1]!)).toBe(false);
   expect(perdConnexions(espaces, espaces[3]!)).toBe(true);
   expect(perdConnexions([espace("a", "Perso", "defaut")], espace("a", "Perso", "defaut"))).toBe(false);
+});
+
+test("réglages : quitter le dernier usage d'un profil autre que celui par défaut perd les connexions, le garder non", () => {
+  const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "p1"), espace("c", "Clients", "p1"), espace("d", "Banque", "p2")];
+  expect(choixPerdConnexions(espaces, "d", "p2")).toBe(false);
+  expect(choixPerdConnexions(espaces, "d", "defaut")).toBe(true);
+  expect(choixPerdConnexions(espaces, "d", "nouveau")).toBe(true);
+  // Profil partagé : les autres espaces le gardent.
+  expect(choixPerdConnexions(espaces, "b", "defaut")).toBe(false);
+  // Le profil par défaut n'est jamais effacé ; un nouvel espace n'a rien à perdre.
+  expect(choixPerdConnexions(espaces, "a", "p1")).toBe(false);
+  expect(choixPerdConnexions(espaces, null, "defaut")).toBe(false);
 });

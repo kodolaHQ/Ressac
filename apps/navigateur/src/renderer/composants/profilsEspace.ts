@@ -28,3 +28,9 @@ export function optionsProfil(espaces: Espace[], profils: ProfilConnexion[], esp
 export function perdConnexions(espaces: Espace[], espace: Espace): boolean {
   return espace.profil !== PROFIL_DEFAUT && !espaces.some((e) => e.id !== espace.id && e.profil === espace.profil);
 }
+
+/** Régler l'espace `espaceId` sur le profil `choix` efface ses connexions : il quitte un profil dont il était le dernier. */
+export function choixPerdConnexions(espaces: Espace[], espaceId: IdEspace | null, choix: ChoixProfil): boolean {
+  const espace = espaces.find((e) => e.id === espaceId);
+  return !!espace && choix !== espace.profil && perdConnexions(espaces, espace);
+}
