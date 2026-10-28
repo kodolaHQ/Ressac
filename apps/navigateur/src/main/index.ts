@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
   PROFIL_DEFAUT,
+  ongletPrive,
   profilDOnglet,
   type Decision,
   type Demande,
@@ -24,7 +25,7 @@ import { cheminProfil } from "./profil";
 import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
-import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, cheminsEspace, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
@@ -204,6 +205,10 @@ app.whenReady().then(async () => {
     agir: (a) => magasin.agir(a),
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
     historique,
+    contexteHistorique: (id) => {
+      const o = magasin.etat.onglets[id];
+      return o ? { espaceId: o.espaceId, prive: ongletPrive(magasin.etat, o) } : null;
+    },
     resultatRecherche: (id, r) => fenetres.get(id)?.webContents.send(CANAUX.resultatRecherche, r),
     // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
     pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),
@@ -231,6 +236,10 @@ app.whenReady().then(async () => {
     // Après les vues : aucune page n'est plus dans la session d'un profil effacé.
     if (etat.profils !== avant.profils) void sessions.synchroniser(etat);
     enregistreur?.planifier(etat);
+  });
+  // L'historique se met à jour même sans agent : un espace devenu privé garde ses visites mais les marque.
+  magasin.abonner((etat, avant) => {
+    for (const id of espacesDevenusPrives(avant, etat)) historique?.rendrePrive(id);
   });
   brancherIpc({
     magasin,

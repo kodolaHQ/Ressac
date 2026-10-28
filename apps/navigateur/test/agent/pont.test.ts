@@ -4,7 +4,7 @@ import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import { siteDe, type EtatNavigateur } from "../../src/commun/modele";
-import { attendreDroits, attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreDroits, attendreReponse, changementsPolitique, espacesDevenusPrives, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 /** Règle le caractère privé d'un espace, sans toucher au reste. */
 function reglerPrive(e: EtatNavigateur, ag: (a: Action) => unknown, id: string, prive: boolean) {
@@ -307,4 +307,16 @@ test("PontElectron : un onglet devenu privé pendant sa lecture ou sa capture ne
   await expect(pont.lireTexte(a)).rejects.toBeInstanceOf(OngletPrive);
   reglerPrive(e(), ag, perso, false);
   await expect(pont.capturer(a)).rejects.toBeInstanceOf(OngletPrive);
+});
+
+test("espacesDevenusPrives : seulement le passage de non privé à privé", () => {
+  const { e, ag } = preparer();
+  const id = e().espaces[0]!.id;
+  const avant = e();
+  reglerPrive(e(), ag, id, true);
+  const prive = e();
+  expect(espacesDevenusPrives(avant, prive)).toEqual([id]);
+  expect(espacesDevenusPrives(prive, prive)).toEqual([]);
+  reglerPrive(e(), ag, id, false);
+  expect(espacesDevenusPrives(prive, e())).toEqual([]);
 });

@@ -85,6 +85,8 @@ export class GestionnaireVues {
       /** La souris entre ou sort de la bande du bord gauche de la fenêtre, au-dessus d'une page. */
       bordGauche?: (fenetreId: IdFenetre, dedans: boolean) => void;
       historique?: NotesHistorique;
+      /** Espace et caractère privé de l'onglet d'après l'état courant ; null : onglet disparu, rien à noter. */
+      contexteHistorique?: (id: IdOnglet) => { espaceId: string; prive: boolean } | null;
       resultatRecherche?: (fenetreId: IdFenetre, r: { ongletId: IdOnglet; actif: number; total: number }) => void;
       pleinEcran?: (fenetreId: IdFenetre, actif: boolean) => void;
     },
@@ -283,7 +285,7 @@ export class GestionnaireVues {
     const wc = vue.webContents;
     this.vues.set(onglet.id, vue);
     this.sessions.set(onglet.id, session);
-    brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique);
+    brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, () => this.o.contexteHistorique?.(onglet.id) ?? null);
     gererOuvertures(
       wc,
       (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer }),

@@ -6,24 +6,29 @@ type Champs = Partial<Pick<Onglet, "url" | "titre" | "favicon" | "chargement" | 
 
 /** Ce que l'historique reçoit d'une page web. */
 export interface NotesHistorique {
-  noter(v: { url: string; titre: string }): void;
-  majTitre(url: string, titre: string): void;
+  noter(v: { url: string; titre: string; espaceId: string; prive: boolean }): void;
+  majTitre(url: string, espaceId: string, titre: string): void;
 }
+
+/** L'espace de l'onglet et son caractère privé, lus dans l'état au moment de l'événement ; null : ne rien noter. */
+export type ContexteHistorique = () => { espaceId: string; prive: boolean } | null;
 
 const historisable = (url: string) => url.startsWith("http://") || url.startsWith("https://");
 
 /** Traduit les événements d'une page web en `majOnglet`, et note les visites dans l'historique. */
-export function brancherEvenements(wc: WebContents, id: IdOnglet, agir: (a: Action) => void, historique?: NotesHistorique): void {
+export function brancherEvenements(wc: WebContents, id: IdOnglet, agir: (a: Action) => void, historique?: NotesHistorique, contexte?: ContexteHistorique): void {
   const maj = (champs: Champs) => agir({ type: "majOnglet", id, champs });
   const navigation = () => ({ peutReculer: wc.navigationHistory.canGoBack(), peutAvancer: wc.navigationHistory.canGoForward() });
 
   const noter = (url: string) => {
-    if (historisable(url)) historique?.noter({ url, titre: wc.getTitle() || url });
+    const c = contexte?.();
+    if (c && historisable(url)) historique?.noter({ url, titre: wc.getTitle() || url, ...c });
   };
 
   wc.on("page-title-updated", (_e, titre) => {
     maj({ titre });
-    if (historisable(wc.getURL())) historique?.majTitre(wc.getURL(), titre);
+    const c = contexte?.();
+    if (c && historisable(wc.getURL())) historique?.majTitre(wc.getURL(), c.espaceId, titre);
   });
   wc.on("page-favicon-updated", (_e, favicons) => maj({ favicon: favicons[0] ?? null }));
   wc.on("did-navigate", (_e, url) => {

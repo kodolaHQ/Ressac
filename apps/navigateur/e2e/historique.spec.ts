@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
+import { dansLaVue, lancer, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -60,5 +60,20 @@ test("la barre d'adresse suggère une page visitée", async () => {
   await barre.press("Enter");
   await expect(fenetre.locator(onglets, { hasText: "Page B" })).toHaveCount(0);
   await expect(fenetre.locator(onglets).nth(1)).toContainText("Page A");
+  await fermer();
+});
+
+test("⌘Y : une visite faite dans un espace privé porte un cadenas, pas les autres", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await reglerEspaceActifPrive(fenetre, true);
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect.poll(() => dansLaVue(app, "b.html", "document.title")).toBe("Page B");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("historique")?.click());
+  const panneau = fenetre.getByTestId("historique");
+  // L'espace est devenu privé après la visite de A : ses lignes déjà notées le sont aussi.
+  await expect(panneau.locator('[data-prive="true"]', { hasText: "Page B" })).toContainText("🔒");
+  await expect(panneau.locator('[data-prive="true"]', { hasText: "Page A" })).toHaveCount(1);
   await fermer();
 });

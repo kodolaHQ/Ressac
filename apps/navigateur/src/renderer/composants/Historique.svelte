@@ -80,10 +80,11 @@
   {#each groupes as g (g.jour)}
     <h2>{g.jour}</h2>
     <ul>
-      {#each g.visites as v (v.url)}
-        <li>
+      {#each g.visites as v (`${v.espaceId}|${v.url}`)}
+        <li data-prive={v.prive ? "true" : undefined}>
           <a href={v.url} onclick={(e) => ouvrir(e, v.url)}>
             <span class="heure">{new Date(v.derniereVisite).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+            {#if v.prive}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
             <span class="titre">{v.titre}</span>
             <span class="url">{v.url}</span>
           </a>

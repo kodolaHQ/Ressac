@@ -132,12 +132,17 @@ export function profilDOnglet(etat: EtatNavigateur, onglet: Onglet): IdProfil {
   return etat.espaces.find((e) => e.id === onglet.espaceId)?.profil ?? PROFIL_DEFAUT;
 }
 
-/** Une URL de l'historique (une ligne par URL). */
+/** Une page de l'historique : une ligne par URL et par espace (`espaceId` vide : aucun espace, anciennes visites). */
 export interface Visite {
   url: string;
   titre: string;
   derniereVisite: string; // ISO
   visites: number;
+  espaceId: string;
+  /** Vue dans un espace privé (ou espace devenu privé depuis). */
+  prive: boolean;
+  /** Le texte de la page est retenu pour l'agent (calculé à partir de la tâche suivante : toujours faux ici). */
+  retenu: boolean;
 }
 
 export interface Telechargement {

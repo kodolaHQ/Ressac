@@ -58,6 +58,11 @@ export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateu
   return { navigues, fermes };
 }
 
+/** Les espaces qui viennent de passer de non privé à privé (le sens inverse ne change rien à l'historique). */
+export function espacesDevenusPrives(avant: EtatNavigateur, apres: EtatNavigateur): string[] {
+  return apres.espaces.filter((n) => n.prive && avant.espaces.some((o) => o.id === n.id && !o.prive)).map((n) => n.id);
+}
+
 /**
  * Une question qui ne recevra plus de réponse utile : son onglet visé est fermé. Une demande de l'agent s'affiche
  * dans sa fenêtre, quel que soit l'onglet affiché : fermer celui-ci ne la concerne pas.
