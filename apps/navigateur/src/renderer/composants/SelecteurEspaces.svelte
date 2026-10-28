@@ -1,9 +1,9 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
-  import { PROFIL_DEFAUT, type Espace, type EtatFenetre } from "../../commun/modele";
+  import type { Espace, EtatFenetre } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import { ouvrirMenu } from "./menu.svelte";
-  import { perdConnexions } from "./profilsEspace";
+  import { perdConnexions, PROFIL_A_CHOISIR } from "./profilsEspace";
   import { reglagesEspace } from "./reglagesEspace.svelte";
 
   let { fenetre }: { fenetre: EtatFenetre } = $props();
@@ -17,12 +17,11 @@
     else api.agir({ type: "supprimerEspace", id: espace.id });
   }
 
-  // Un réglage garde le profil actuel de l'espace (seul ou partagé) ; un nouvel espace prend celui de l'espace actif.
+  // Un réglage garde le profil actuel de l'espace (seul ou partagé) ; un nouvel espace n'en a aucun : L'utilisateur choisit.
   const regler = (espace: Espace) =>
     (reglagesEspace.brouillon = { id: espace.id, nom: espace.nom, icone: espace.icone, prive: espace.prive, profil: espace.profil });
   function creer() {
-    const profil = etat.valeur?.espaces.find((x) => x.id === fenetre.espaceActif)?.profil ?? PROFIL_DEFAUT;
-    reglagesEspace.brouillon = { id: null, nom: "", icone: "📁", prive: false, profil };
+    reglagesEspace.brouillon = { id: null, nom: "", icone: "📁", prive: false, profil: PROFIL_A_CHOISIR };
   }
 </script>
 

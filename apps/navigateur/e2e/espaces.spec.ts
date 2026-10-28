@@ -141,7 +141,7 @@ test("une session d'avant les espaces configurables (v1) retrouve ses onglets, s
 const boutonsEspace = '[data-testid^="espace-"]';
 const modaleEspace = (fenetre: Page, titre: string) => fenetre.getByRole("dialog", { name: titre });
 
-test("« + » ouvre la modale « Nouvel espace » : pas privé, profil de l'espace actif ; « Créer » ajoute l'espace", async () => {
+test("« + » ouvre la modale « Nouvel espace » : pas privé, aucun profil choisi ; « Créer » attend le choix puis ajoute l'espace", async () => {
   const { fenetre, fermer } = await lancer();
   await agir(fenetre, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "nouveau" });
   await expect(fenetre.locator(boutonsEspace, { hasText: "💼" })).toHaveAttribute("aria-current", "true");
@@ -153,17 +153,42 @@ test("« + » ouvre la modale « Nouvel espace » : pas privé, profil de l'espa
   await expect(modale.getByRole("heading")).toHaveText("Nouvel espace");
   await expect(modale.getByLabel("Espace privé")).not.toBeChecked();
   const select = modale.getByLabel("Profil de connexion");
-  await expect(select.locator("option")).toHaveText(["Son propre profil", "Partagé avec « Perso »", "Partagé avec « Travail »"]);
-  await expect(select.locator("option:checked")).toHaveText("Partagé avec « Travail »");
+  await expect(select.locator("option")).toHaveText([
+    "Choisir un profil…",
+    "Nouveau profil",
+    "Partagé avec « Perso »",
+    "Partagé avec « Travail »",
+  ]);
+  await expect(select.locator("option:checked")).toHaveText("Choisir un profil…");
+  await expect(select.locator("option").first()).toBeDisabled();
   await expect(modale.getByRole("button", { name: "Annuler" })).toBeVisible();
 
   await modale.getByLabel("Icône").fill("🎮");
   await modale.getByLabel("Nom de l'espace").fill("Jeux");
-  await modale.getByRole("button", { name: "Créer" }).click();
+  // Sans profil choisi : « Créer » inactif, Entrée ne fait rien.
+  const creer = modale.getByRole("button", { name: "Créer" });
+  await expect(creer).toBeDisabled();
+  await modale.getByLabel("Nom de l'espace").press("Enter");
+  await expect(modale).toBeVisible();
+  expect((await espaces(fenetre)).some((e) => e.nom === "Jeux")).toBe(false);
+
+  await select.selectOption({ label: "Partagé avec « Travail »" });
+  await expect(creer).toBeEnabled();
+  await creer.click();
   await expect(modale).toBeHidden();
   await expect(fenetre.locator(boutonsEspace, { hasText: "🎮" })).toHaveAttribute("aria-current", "true");
   const jeux = (await espaces(fenetre)).find((e) => e.nom === "Jeux")!;
   expect(jeux).toMatchObject({ icone: "🎮", prive: false, profil: travail.profil });
+
+  // « Nouveau profil » crée un profil à part.
+  await fenetre.getByTestId("nouvel-espace").click();
+  await modale.getByLabel("Nom de l'espace").fill("Neuf");
+  await select.selectOption({ label: "Nouveau profil" });
+  await modale.getByLabel("Nom de l'espace").press("Enter");
+  await expect(modale).toBeHidden();
+  await expect.poll(async () => (await espaces(fenetre)).find((e) => e.nom === "Neuf")?.profil).toBeTruthy();
+  const neuf = (await espaces(fenetre)).find((e) => e.nom === "Neuf")!;
+  expect([travail.profil, "defaut", "nouveau"]).not.toContain(neuf.profil);
   await fermer();
 });
 

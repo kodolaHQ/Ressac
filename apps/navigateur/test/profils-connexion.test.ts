@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -6,6 +6,8 @@ import type { EtatNavigateur } from "../src/commun/modele";
 
 /** Une fausse session par partition : on compte les effacements. */
 const effacees: string[] = [];
+/** Partitions dont l'effacement échoue. */
+const echecs = new Set<string>();
 const sessions = new Map<string, { partition: string; clearStorageData(): Promise<void>; clearCache(): Promise<void> }>();
 vi.mock("electron", () => ({
   session: {
@@ -14,7 +16,10 @@ vi.mock("electron", () => ({
       if (!s) {
         s = {
           partition,
-          clearStorageData: async () => void effacees.push(partition),
+          clearStorageData: async () => {
+            if (echecs.has(partition)) throw new Error("effacement impossible");
+            effacees.push(partition);
+          },
           clearCache: async () => {},
         };
         sessions.set(partition, s);
@@ -35,6 +40,7 @@ beforeEach(() => {
   dossier = mkdtempSync(join(tmpdir(), "webaios-profils-"));
   branchees = [];
   effacees.length = 0;
+  echecs.clear();
   sessions.clear();
 });
 
@@ -78,33 +84,57 @@ test("le profil par défaut n'est jamais effacé, même quand plus aucun espace 
   expect(existsSync(join(dossier, "permissions.json"))).toBe(true);
 });
 
-test("au démarrage, un profil resté sur le disque sans espace (effacement interrompu) est effacé", async () => {
-  mkdirSync(join(dossier, "Partitions", "webaios-vieux"), { recursive: true });
-  mkdirSync(join(dossier, "Partitions", "webaios-abc"), { recursive: true });
-  mkdirSync(join(dossier, "Partitions", "webaios"), { recursive: true });
-  mkdirSync(join(dossier, "Partitions", "autre"), { recursive: true });
+const liste = () => JSON.parse(readFileSync(join(dossier, "profils-a-effacer.json"), "utf8")) as string[];
+
+test("un profil retiré de l'état passe par la liste des profils à effacer et la quitte une fois effacé", async () => {
   const p = creer();
   await p.synchroniser(etat("defaut", "abc"));
-  expect(effacees).toEqual(["persist:webaios-vieux"]);
+  expect(liste()).toEqual([]);
+  await p.synchroniser(etat("defaut"));
+  expect(effacees).toEqual(["persist:webaios-abc"]);
+  expect(liste()).toEqual([]);
 });
 
-test("au démarrage sur un état de secours (session absente ou corrompue), aucun profil du disque n'est effacé", async () => {
-  mkdirSync(join(dossier, "Partitions", "webaios-banque"), { recursive: true });
-  mkdirSync(join(dossier, "Partitions", "webaios-boulot"), { recursive: true });
-  const p = creer();
-  await p.synchroniser(etat("defaut"), false);
-  await p.synchroniser(etat("defaut"));
+test("une partition qui n'est pas sur la liste n'est jamais effacée : session de secours puis lancement normal", async () => {
+  // Les partitions de profils d'une session perdue (corrompue, effacée) restent sur le disque.
+  for (const n of ["webaios-banque", "webaios-boulot", "webaios"]) mkdirSync(join(dossier, "Partitions", n), { recursive: true });
+  // Lancement sur l'état de secours, puis lancement suivant sur la session réécrite : aucun des deux n'efface rien.
+  await creer().synchroniser(etat("defaut"));
+  const suivant = creer();
+  await suivant.synchroniser(etat("defaut"));
+  await suivant.synchroniser(etat("defaut"));
   expect(effacees).toEqual([]);
-  // Les profils de l'état de secours restent suivis : un profil créé puis retiré s'efface.
-  await p.synchroniser(etat("defaut", "neuf"));
-  await p.synchroniser(etat("defaut"));
-  expect(effacees).toEqual(["persist:webaios-neuf"]);
+  expect(liste()).toEqual([]);
+});
+
+test("un effacement raté reste sur la liste et est repris au démarrage suivant ; un profil revenu dans l'état est gardé", async () => {
+  const p = creer();
+  await p.synchroniser(etat("defaut", "abc", "xyz"));
+  echecs.add("persist:webaios-abc");
+  await p.synchroniser(etat("defaut", "xyz"));
+  expect(effacees).toEqual([]);
+  expect(liste()).toEqual(["abc"]);
+  echecs.clear();
+  await creer().synchroniser(etat("defaut", "xyz"));
+  expect(effacees).toEqual(["persist:webaios-abc"]);
+  expect(liste()).toEqual([]);
+  // Sur la liste mais de nouveau utilisé (liste écrite à la main) : retiré de la liste, pas effacé.
+  writeFileSync(join(dossier, "profils-a-effacer.json"), JSON.stringify(["xyz", "defaut"]));
+  await creer().synchroniser(etat("defaut", "xyz"));
+  expect(effacees).toEqual(["persist:webaios-abc"]);
+  expect(liste()).toEqual([]);
+});
+
+test("une liste illisible vaut une liste vide : rien n'est effacé", async () => {
+  writeFileSync(join(dossier, "profils-a-effacer.json"), "{ pas du json");
+  await creer().synchroniser(etat("defaut"));
+  expect(effacees).toEqual([]);
 });
 
 test("un profil qu'un espace utilise n'est jamais effacé, même absent de la liste des profils", async () => {
-  mkdirSync(join(dossier, "Partitions", "webaios-abc"), { recursive: true });
   const p = creer();
   const avecEspace = { profils: [{ id: "defaut" }], espaces: [{ id: "e", profil: "abc" }] } as unknown as EtatNavigateur;
+  await p.synchroniser(avecEspace);
   await p.synchroniser(avecEspace);
   expect(effacees).toEqual([]);
   await p.synchroniser(etat("defaut"));

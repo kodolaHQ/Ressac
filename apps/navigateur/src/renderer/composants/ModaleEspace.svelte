@@ -3,7 +3,7 @@
   import type { IdFenetre, IdOnglet } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import FondFige from "./FondFige.svelte";
-  import { choixPerdConnexions, optionsProfil } from "./profilsEspace";
+  import { choixPerdConnexions, optionsProfil, PROFIL_A_CHOISIR } from "./profilsEspace";
   import { reglagesEspace } from "./reglagesEspace.svelte";
 
   /**
@@ -21,12 +21,14 @@
   const espaces = $derived(etat.valeur?.espaces ?? []);
   const options = $derived(optionsProfil(espaces, etat.valeur?.profils ?? [], brouillon.id));
   const nouveau = $derived(brouillon.id === null);
-  const valide = $derived(brouillon.nom.trim() !== "");
+  const valide = $derived(brouillon.nom.trim() !== "" && brouillon.profil !== PROFIL_A_CHOISIR);
   const perdConnexions = $derived(choixPerdConnexions(espaces, brouillon.id, brouillon.profil));
 
-  // Le choix ne désigne plus aucun profil (l'état a changé entre-temps) : on revient au premier proposé.
+  // Le choix ne désigne plus aucun profil (l'état a changé entre-temps) : un nouvel espace revient à « à choisir »,
+  // un espace existant au premier proposé.
   $effect(() => {
-    if (!options.some((o) => o.valeur === brouillon.profil)) brouillon.profil = options[0]!.valeur;
+    if (brouillon.profil === PROFIL_A_CHOISIR || options.some((o) => o.valeur === brouillon.profil)) return;
+    brouillon.profil = nouveau ? PROFIL_A_CHOISIR : options[0]!.valeur;
   });
   // L'espace réglé a été supprimé (depuis une autre fenêtre) : plus rien à régler.
   $effect(() => {
@@ -105,6 +107,7 @@
       <div class="bloc">
         <label class="libelle" for="profil-espace">Profil de connexion</label>
         <select id="profil-espace" bind:value={brouillon.profil} aria-describedby="note-profil">
+          {#if nouveau}<option value={PROFIL_A_CHOISIR} disabled>Choisir un profil…</option>{/if}
           {#each options as o (o.valeur)}
             <option value={o.valeur}>{o.libelle}</option>
           {/each}

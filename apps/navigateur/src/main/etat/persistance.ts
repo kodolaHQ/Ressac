@@ -84,11 +84,7 @@ async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): P
   }
 }
 
-/**
- * La session enregistrée, ou l'état initial. `charge` est faux quand le fichier n'a pas été lu (absent, illisible,
- * corrompu) : l'état ne dit alors rien des profils de connexion restés sur le disque, qu'il ne faut pas effacer.
- */
-export async function chargerSession(dossier: string): Promise<{ etat: EtatNavigateur; charge: boolean }> {
+export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
   const chemin = join(dossier, FICHIER);
   let texte: string;
   try {
@@ -96,18 +92,17 @@ export async function chargerSession(dossier: string): Promise<{ etat: EtatNavig
   } catch (e) {
     // Absent : premier lancement. Sinon (droits…), on le garde plutôt que de l'écraser au prochain enregistrement.
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") await mettreDeCote(chemin, "illisible");
-    return { etat: etatInitial(), charge: false };
+    return etatInitial();
   }
   try {
     const lu = enV2(SchemaSession.parse(JSON.parse(texte)));
-    const etat = {
+    return {
       ...lu,
       onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILS }])),
     };
-    return { etat, charge: true };
   } catch {
     await mettreDeCote(chemin, "corrompu");
-    return { etat: etatInitial(), charge: false };
+    return etatInitial();
   }
 }
 

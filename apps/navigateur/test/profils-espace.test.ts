@@ -1,14 +1,14 @@
 import { expect, test } from "vitest";
 import type { Espace } from "../src/commun/modele";
-import { choixPerdConnexions, optionsProfil, perdConnexions } from "../src/renderer/composants/profilsEspace";
+import { choixPerdConnexions, optionsProfil, perdConnexions, PROFIL_A_CHOISIR } from "../src/renderer/composants/profilsEspace";
 
 const espace = (id: string, nom: string, profil: string): Espace => ({ id, nom, icone: "📁", epingles: [], prive: false, profil });
 const profils = [{ id: "defaut" }, { id: "p1" }, { id: "p2" }];
 
-test("nouvel espace : son propre profil en crée un, puis chaque profil utilisé avec tous ses espaces", () => {
+test("nouvel espace : « Nouveau profil » en crée un, puis chaque profil utilisé avec tous ses espaces", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "p1"), espace("c", "Clients", "p1")];
   expect(optionsProfil(espaces, profils.slice(0, 2), null)).toEqual([
-    { valeur: "nouveau", libelle: "Son propre profil" },
+    { valeur: "nouveau", libelle: "Nouveau profil" },
     { valeur: "defaut", libelle: "Partagé avec « Perso »" },
     { valeur: "p1", libelle: "Partagé avec « Travail, Clients »" },
   ]);
@@ -34,7 +34,7 @@ test("réglages d'un espace qui partage son profil : son propre profil en crée 
 test("un profil qu'aucun espace n'utilise n'est pas proposé", () => {
   const espaces = [espace("a", "Perso", "p1")];
   expect(optionsProfil(espaces, [{ id: "defaut" }, { id: "p1" }], null)).toEqual([
-    { valeur: "nouveau", libelle: "Son propre profil" },
+    { valeur: "nouveau", libelle: "Nouveau profil" },
     { valeur: "p1", libelle: "Partagé avec « Perso »" },
   ]);
 });
@@ -57,4 +57,11 @@ test("réglages : quitter le dernier usage d'un profil autre que celui par défa
   // Le profil par défaut n'est jamais effacé ; un nouvel espace n'a rien à perdre.
   expect(choixPerdConnexions(espaces, "a", "p1")).toBe(false);
   expect(choixPerdConnexions(espaces, null, "defaut")).toBe(false);
+});
+
+test("nouvel espace : aucun profil présélectionné, et « à choisir » n'est jamais une option ni une perte", () => {
+  const espaces = [espace("a", "Perso", "defaut"), espace("d", "Banque", "p2")];
+  expect(PROFIL_A_CHOISIR).toBe("");
+  expect(optionsProfil(espaces, profils, null).map((o) => o.valeur)).not.toContain(PROFIL_A_CHOISIR);
+  expect(choixPerdConnexions(espaces, null, PROFIL_A_CHOISIR)).toBe(false);
 });

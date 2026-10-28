@@ -157,8 +157,7 @@ let minuteurPurge: NodeJS.Timeout | undefined;
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
-  const sessionLue = await chargerSession(dossier);
-  const magasin = new Magasin(sessionLue.etat);
+  const magasin = new Magasin(await chargerSession(dossier));
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
@@ -360,8 +359,8 @@ app.whenReady().then(async () => {
   magasin.abonner(synchroniserFenetres);
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
-  // Une session de secours (fichier absent ou corrompu) n'efface pas les profils restés sur le disque.
-  void sessions.synchroniser(magasin.etat, sessionLue.charge);
+  // Reprend les effacements de profils restés en suspens (liste profils-a-effacer.json).
+  void sessions.synchroniser(magasin.etat);
   // Une session d'une version précédente est réécrite à la version actuelle, même si rien ne change.
   enregistreur.planifier(magasin.etat);
   // Après les fenêtres : l'agent ne retarde jamais la navigation.
