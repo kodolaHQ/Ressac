@@ -134,3 +134,20 @@ test("ancien schéma (clé url seule) : lignes gardées, espace vide, non privé
   h = new Historique(vieux); // déjà migrée : rouvrir ne change rien
   expect(h.recents()).toHaveLength(2);
 });
+
+test("rechercher en mode distinct : une URL vue dans deux espaces sort une fois, et la limite compte des URL", () => {
+  h.noter({ url: "https://a.fr/", titre: "page", espaceId: "A", prive: false });
+  h.noter({ url: "https://a.fr/", titre: "page", espaceId: "B", prive: false });
+  h.noter({ url: "https://b.fr/", titre: "page", espaceId: "A", prive: false });
+  expect(h.rechercher("page")).toHaveLength(3);
+  expect(h.rechercher("page", 2, true).map((v) => v.url).sort()).toEqual(["https://a.fr/", "https://b.fr/"]);
+});
+
+test("une ligne privée qui redevient non privée repart à une visite, avec titre et date neufs", () => {
+  h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "A", prive: true, date: date("2026-10-01T00:00:00Z") });
+  h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "A", prive: true, date: date("2026-10-02T00:00:00Z") });
+  h.noter({ url: "https://a.fr/", titre: "Public", espaceId: "A", prive: false, date: date("2026-10-03T00:00:00Z") });
+  expect(h.recents()).toMatchObject([{ visites: 1, prive: false, titre: "Public", derniereVisite: "2026-10-03T00:00:00.000Z" }]);
+  h.noter({ url: "https://a.fr/", titre: "Public", espaceId: "A", prive: false });
+  expect(h.recents()[0]!.visites).toBe(2);
+});

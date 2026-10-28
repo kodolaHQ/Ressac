@@ -34,7 +34,7 @@ const api: ApiWebaios = {
   surResultatRecherche: (rappel) => ecouter(CANAUX.resultatRecherche, rappel),
   surPleinEcran: (rappel) => ecouter(CANAUX.pleinEcran, rappel),
   historique: {
-    rechercher: (texte, limite) => ipcRenderer.invoke(CANAUX.historiqueRechercher, texte, limite),
+    rechercher: (texte, limite, distinctes) => ipcRenderer.invoke(CANAUX.historiqueRechercher, texte, limite, distinctes),
     recents: () => ipcRenderer.invoke(CANAUX.historiqueRecents),
     effacer: (depuis) => ipcRenderer.invoke(CANAUX.historiqueEffacer, depuis),
   },

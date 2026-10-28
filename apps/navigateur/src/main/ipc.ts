@@ -88,7 +88,7 @@ export function brancherIpc(g: Gestionnaires): void {
       return traiter(...args);
     });
   const limite = (v: unknown, defaut: number) => (Number.isInteger(v) && (v as number) > 0 ? Math.min(v as number, 500) : defaut);
-  repondre(CANAUX.historiqueRechercher, (texte, n) => (typeof texte === "string" ? g.historique.rechercher(texte, limite(n, 50)) : []));
+  repondre(CANAUX.historiqueRechercher, (texte, n, distinctes) => (typeof texte === "string" ? g.historique.rechercher(texte, limite(n, 50), distinctes === true) : []));
   repondre(CANAUX.historiqueRecents, () => g.historique.recents());
   repondre(CANAUX.historiqueEffacer, (depuis) => {
     const date = typeof depuis === "string" ? new Date(depuis) : undefined;

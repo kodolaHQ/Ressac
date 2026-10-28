@@ -25,7 +25,7 @@ export class Historique {
       noter: this.db.prepare(`
         INSERT INTO visites (url, espace_id, titre, derniere_visite, prive) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT (url, espace_id) DO UPDATE SET titre = excluded.titre, derniere_visite = excluded.derniere_visite,
-          visites = visites + 1, prive = excluded.prive`),
+          visites = CASE WHEN prive = 1 AND excluded.prive = 0 THEN 1 ELSE visites + 1 END, prive = excluded.prive`),
       majTitre: this.db.prepare("UPDATE visites SET titre = ? WHERE url = ? AND espace_id = ?"),
       rechercher: this.db.prepare(`
         SELECT ${COLONNES} FROM visites
@@ -87,10 +87,15 @@ export class Historique {
   }
 
   /** Sous-chaîne insensible à la casse et aux accents sur l'URL et le titre ; `%`, `_` et `\` sont littéraux. */
-  rechercher(texte: string, limite = 50): Visite[] {
+  rechercher(texte: string, limite = 50, distinctes = false): Visite[] {
     if (!this.db.isOpen) return [];
     const motif = `%${plier(texte).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    return this.lignes(this.req.rechercher.all(motif, motif, limite));
+    if (!distinctes) return this.lignes(this.req.rechercher.all(motif, motif, limite));
+    // Une seule ligne par URL (la mieux classée) : le LIMIT SQL compterait les doublons d'espaces.
+    const vues = new Set<string>();
+    return this.lignes(this.req.rechercher.all(motif, motif, -1))
+      .filter((v) => !vues.has(v.url) && vues.add(v.url))
+      .slice(0, limite);
   }
 
   recents(limite = 100): Visite[] {

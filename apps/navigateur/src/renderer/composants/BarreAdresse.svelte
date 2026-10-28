@@ -19,7 +19,7 @@
 
   async function suggerer(texte: string) {
     const n = ++requete;
-    const r = texte.trim() ? await api.historique.rechercher(texte.trim(), 6) : [];
+    const r = texte.trim() ? await api.historique.rechercher(texte.trim(), 6, true) : [];
     if (n === requete && saisie !== null) {
       suggestions = r;
       choisie = -1;

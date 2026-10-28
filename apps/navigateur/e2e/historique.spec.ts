@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dansLaVue, lancer, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
+import { creerEspace, dansLaVue, lancer, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -75,5 +75,19 @@ test("⌘Y : une visite faite dans un espace privé porte un cadenas, pas les au
   // L'espace est devenu privé après la visite de A : ses lignes déjà notées le sont aussi.
   await expect(panneau.locator('[data-prive="true"]', { hasText: "Page B" })).toContainText("🔒");
   await expect(panneau.locator('[data-prive="true"]', { hasText: "Page A" })).toHaveCount(1);
+  await fermer();
+});
+
+test("la barre d'adresse ne suggère qu'une fois une URL visitée dans deux espaces", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await creerEspace(fenetre, "Travail", "💼");
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  const barre = fenetre.getByTestId("barre-adresse");
+  await barre.click();
+  await barre.fill("page a");
+  await expect(fenetre.getByTestId("suggestion")).toHaveCount(1);
   await fermer();
 });

@@ -106,7 +106,8 @@ export interface ApiWebaios {
   /** Plein écran HTML (vidéo…) : l'interface s'efface. */
   surPleinEcran(rappel: (actif: boolean) => void): () => void;
   historique: {
-    rechercher(texte: string, limite?: number): Promise<Visite[]>;
+    /** `distinctes` : une seule ligne par URL (barre d'adresse) ; sinon une par URL et par espace. */
+    rechercher(texte: string, limite?: number, distinctes?: boolean): Promise<Visite[]>;
     recents(): Promise<Visite[]>;
     /** `depuis` : date ISO ; absent, tout l'historique. */
     effacer(depuis?: string): Promise<void>;
