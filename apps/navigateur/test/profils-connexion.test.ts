@@ -67,13 +67,15 @@ test("un profil disparu de l'état est effacé, avec ses autorisations ; jamais 
   expect(effacees).toEqual(["persist:webaios-abc"]);
 });
 
-test("le profil par défaut est effacé quand plus aucun espace ne l'utilise", async () => {
+test("le profil par défaut n'est jamais effacé, même quand plus aucun espace ne l'utilise", async () => {
   writeFileSync(join(dossier, "permissions.json"), "{}");
-  const p = creer();
+  const oublies: string[] = [];
+  const p = new SessionsProfils({ dossier, brancher: () => {}, oublier: (id) => void oublies.push(id) });
   await p.synchroniser(etat("defaut"));
   await p.synchroniser(etat("abc"));
-  expect(effacees).toEqual(["persist:webaios"]);
-  expect(existsSync(join(dossier, "permissions.json"))).toBe(false);
+  expect(effacees).toEqual([]);
+  expect(oublies).toEqual([]);
+  expect(existsSync(join(dossier, "permissions.json"))).toBe(true);
 });
 
 test("au démarrage, un profil resté sur le disque sans espace (effacement interrompu) est effacé", async () => {

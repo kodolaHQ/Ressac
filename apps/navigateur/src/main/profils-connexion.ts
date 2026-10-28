@@ -18,7 +18,7 @@ export function fichierPermissions(dossier: string, id: IdProfil): string {
 
 /**
  * Une session Electron par profil de connexion (cookies, stockage, cache, autorisations), branchée une seule fois.
- * Un profil qui quitte l'état est effacé du disque.
+ * Un profil qui quitte l'état est effacé du disque, sauf le profil par défaut.
  */
 export class SessionsProfils {
   private branchees = new Map<IdProfil, Session>();
@@ -51,7 +51,8 @@ export class SessionsProfils {
     const ids = new Set(etat.profils.map((p) => p.id));
     const avant = this.connus ?? new Set(this.surLeDisque());
     this.connus = ids;
-    await Promise.all([...avant].filter((id) => !ids.has(id)).map((id) => this.effacer(id)));
+    // Le profil par défaut n'est jamais effacé : les connexions d'avant les espaces et les blocs d'accueil y vivent.
+    await Promise.all([...avant].filter((id) => !ids.has(id) && id !== PROFIL_DEFAUT).map((id) => this.effacer(id)));
   }
 
   private async effacer(id: IdProfil): Promise<void> {
@@ -66,10 +67,7 @@ export class SessionsProfils {
     }
   }
 
-  /**
-   * Les profils de connexion dont une partition existe dans `Partitions/`. Sauf le profil par défaut : les blocs
-   * d'accueil partagent sa partition et la recréent, elle serait sinon effacée à chaque lancement.
-   */
+  /** Les profils de connexion (autres que le profil par défaut) dont une partition existe dans `Partitions/`. */
   private surLeDisque(): IdProfil[] {
     let noms: string[];
     try {
