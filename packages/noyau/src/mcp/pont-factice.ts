@@ -149,7 +149,7 @@ export class PontFactice implements PontNavigateur {
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
-  lirePageInvisible?: (url: string, o: { profil: string | null }) => Promise<PageLue>;
+  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[] }) => Promise<PageLue>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
@@ -157,7 +157,8 @@ export class PontFactice implements PontNavigateur {
    * qui répond ces droits. `bloquer` : profils et instantanés ne finissent qu'à l'abandon. `historique` fournit
    * l'historique : `chercher` renvoie `resultats` (au plus `limite`), `lire` la page de `textes` à cette URL, et
    * `erreur`, si donnée, fait échouer les deux. `lecture` fournit `lirePageInvisible` : la page de `pages` à cette URL
-   * (sinon une page vide), et ProfilRefuse pour un profil de `refuser`.
+   * (sinon une page vide), et ProfilRefuse pour un profil de `refuser`. `redirections` simule une redirection :
+   * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue.
    */
   constructor(
     onglets: OngletInfo[],
@@ -168,7 +169,7 @@ export class PontFactice implements PontNavigateur {
       accorderDev?: DroitDev[];
       bloquer?: boolean;
       historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
-      lecture?: { pages: PageLue[]; refuser?: string[] };
+      lecture?: { pages: PageLue[]; refuser?: string[]; redirections?: Record<string, string> };
     },
   ) {
     this.onglets = onglets.map((x) => ({ ...x }));
@@ -201,8 +202,9 @@ export class PontFactice implements PontNavigateur {
       this.lirePageInvisible = async (url, l) => {
         this.noter("lirePageInvisible", url, { ...l });
         if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfilRefuse(l.profil);
-        const p = lecture.pages.find((x) => x.url === url);
-        return p ? structuredClone(p) : { url, titre: "", texte: "", liens: [] };
+        const finale = lecture.redirections?.[url] ?? url;
+        const p = lecture.pages.find((x) => x.url === finale);
+        return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
       };
     }
     const accorder = o.accorderDev;

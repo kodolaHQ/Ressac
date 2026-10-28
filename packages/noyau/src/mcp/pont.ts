@@ -40,8 +40,13 @@ export interface PontNavigateur {
    * Lit une page dans un onglet invisible, sans cliquer ni taper. `profil: null` : session vierge, sans aucun cookie ;
    * sinon le profil de connexion nommé. Lève ProfilRefuse si ce profil est inconnu ou utilisé par un espace privé.
    * Absent : pas de lecture de pages pour les widgets.
+   *
+   * `domaines` (donné pour toute lecture d'un widget qui lit avec le compte de l'utilisateur) : noms d'hôte permis. Le pont
+   * DOIT bloquer toute navigation du cadre principal (redirection, script, meta refresh) vers un hôte hors de cette
+   * liste, avant que la requête parte : sinon les cookies du profil, ou l'URL elle-même, sortiraient. Le noyau vérifie
+   * en plus `PageLue.url` au retour.
    */
-  lirePageInvisible?(url: string, o: { profil: string | null }): Promise<PageLue>;
+  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[] }): Promise<PageLue>;
 }
 
 export interface MessageConsole {

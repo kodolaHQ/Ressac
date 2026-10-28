@@ -120,13 +120,14 @@ async function ia(o: { kev?: FauxServeur; ollama?: FauxServeur } = {}) {
   return i;
 }
 
-const pontLecture = (refuser: string[] = []) =>
+const pontLecture = (refuser: string[] = [], redirections?: Record<string, string>) =>
   new PontFactice([], {
     actif: null,
     autoriser: false,
     lecture: {
       pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [{ texte: "a", url: "https://app.daily.dev/a" }] }],
       refuser,
+      redirections,
     },
   });
 
@@ -319,6 +320,25 @@ describe("executerRecolte", () => {
     expect(web.requetes).toHaveLength(0);
   });
 
+  it("recuperer : « localhost. » (point final) est une adresse locale, refusée", async () => {
+    const web = await serveurWeb({ "/": (res) => res.end("secret local") });
+    const ctx = await preparer(
+      "public",
+      `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
+      export default async (w) => [await essai(w.recuperer("http://localhost.:${web.port}/")), await essai(w.lirePage("http://localhost.:${web.port}/"))];`,
+    );
+    const pont = pontLecture();
+    const r = await executerRecolte({
+      id: "public", widget: ctx.widget, dossierWidgets: ctx.dossierWidgets, recolteur: SCRIPT, atelier: ctx.atelier,
+      lancer: ctx.lancer, ia: await ia(), pont, horloge,
+    });
+    const [rec, page] = r.donnees as string[];
+    expect(rec).toMatch(/^refus: .*locale/);
+    expect(page).toMatch(/^refus: .*locale/);
+    expect(web.requetes).toHaveLength(0);
+    expect(appelsLecture(pont)).toHaveLength(0);
+  });
+
   it("recuperer : réponse de plus de 5 Mo refusée", async () => {
     const web = await serveurWeb({ "/gros": (res) => res.end("x".repeat(5 * 1024 * 1024 + 10)) });
     const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/gros").then((t) => t.length, (e) => e.message);`);
@@ -379,7 +399,7 @@ describe("executerRecolte, widget avec compte", () => {
     const r = await recolter(ctx, { pont });
     expect(r.etat.statut).toBe("ok");
     expect(r.donnees).toBe("articles");
-    expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso" }]);
+    expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"] }]);
   });
 
   it("lirePage compte vers un domaine non déclaré en compte est refusé", async () => {
@@ -444,6 +464,66 @@ describe("executerRecolte, widget avec compte", () => {
     const r = await recolter(ctx);
     expect(r.donnees).toMatch(/^refus: .*non déclaré/);
     expect(web.requetes).toHaveLength(0);
+  });
+
+  it("un domaine déclaré écrit avec un point final est le même domaine", async () => {
+    const ctx = await preparer(
+      "daily",
+      `const essai = (p) => p.then((x) => x.titre ?? x, (e) => "refus: " + e.message);
+      export default async (w) => [
+        await essai(w.lirePage("https://app.daily.dev./", { compte: true })),
+        await essai(w.lirePage("https://evil.fr./", { compte: true })),
+      ];`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    const [declare, autre] = r.donnees as string[];
+    expect(declare).not.toMatch(/^refus/);
+    expect(autre).toMatch(/^refus: .*non déclaré/);
+    expect(appelsLecture(pont).map((a) => a.args[0])).toEqual(["https://app.daily.dev./"]);
+  });
+
+  it("lirePage compte redirigée hors des domaines compte : refusée, le texte ne sort pas", async () => {
+    const ctx = await preparer(
+      "daily",
+      `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).then((p) => p.texte, (e) => "refus: " + e.message);`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = new PontFactice([], {
+      actif: null,
+      autoriser: false,
+      lecture: {
+        pages: [{ url: "https://evil.fr/vole", titre: "Ailleurs", texte: "texte secret", liens: [] }],
+        redirections: { "https://app.daily.dev/": "https://evil.fr/vole" },
+      },
+    });
+    const r = await recolter(ctx, { pont });
+    expect(r.donnees).toMatch(/^refus: Page refusée.*evil\.fr/);
+    expect(JSON.stringify(r.donnees)).not.toContain("texte secret");
+    expect(appelsLecture(pont)[0]!.args[1]).toEqual({ profil: "perso", domaines: ["app.daily.dev"] });
+  });
+
+  it("lirePage publique d'un widget avec compte : domaines publics passés au pont, redirection hors liste refusée", async () => {
+    const ctx = await preparer(
+      "daily",
+      `export default async (w) => w.lirePage("http://127.0.0.1/?d=secret").then((p) => p.texte, (e) => "refus: " + e.message);`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = new PontFactice([], {
+      actif: null,
+      autoriser: false,
+      lecture: {
+        pages: [{ url: "https://evil.fr/?d=secret", titre: "", texte: "ailleurs", liens: [] }],
+        redirections: { "http://127.0.0.1/?d=secret": "https://evil.fr/?d=secret" },
+      },
+    });
+    const r = await recolter(ctx, { pont });
+    expect(r.donnees).toMatch(/^refus: Page refusée.*non déclaré/);
+    expect(appelsLecture(pont)[0]!.args[1]).toEqual({ profil: null, domaines: ["127.0.0.1"] });
   });
 
   it("ProfilRefuse du pont : accord retiré, état accord-requis", async () => {

@@ -18,6 +18,7 @@ import {
   ligneReponse,
   lireMessageRecolteur,
   type MessageRecolteur,
+  type PageLue,
 } from "./protocole.js";
 
 /** Le processus de la récolte (le client `docker run -i`) : son seul canal avec le noyau est stdin / stdout. */
@@ -76,7 +77,8 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Adresse de la machine ou du réseau local, écrite telle quelle dans l'URL (le nom n'est pas résolu). */
 export function adresseLocale(hote: string): boolean {
-  const h = hote.replace(/^\[|\]$/g, "").toLowerCase();
+  // « localhost. » (point final) désigne la même machine que « localhost ».
+  const h = hote.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
   if (isIP(h) === 4) {
     const [a = 0, b = 0] = h.split(".").map(Number);
@@ -102,7 +104,8 @@ function verifierUrl(brute: string, domaines: readonly string[] | null, adresses
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Seules les URL http(s) sont permises");
   if (u.username || u.password) throw new Error("URL avec identifiants refusée");
-  const hote = u.hostname.toLowerCase();
+  // Le point final (« app.daily.dev. ») ne change pas le nom : il est retiré avant toute comparaison.
+  const hote = u.hostname.toLowerCase().replace(/\.+$/, "");
   if (domaines && !domaines.includes(hote)) throw new Error(`Domaine non déclaré : ${hote}`);
   if (!adressesLocales && adresseLocale(hote)) throw new Error(`Adresse locale refusée : ${hote}`);
   return u;
@@ -244,11 +247,27 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     processus.stdin.write(ligne);
   };
 
+  /** Options de lecture : pour un widget avec compte, le pont reçoit la liste des domaines où il peut naviguer. */
+  const avecDomaines = (profil: string | null, domaines: readonly string[] | null) =>
+    aCompte && domaines ? { profil, domaines: [...domaines] } : { profil };
+  /** L'adresse finale de la page (après redirections) doit respecter la même règle ; sinon son texte ne sort pas. */
+  const verifierPage = (page: PageLue, domaines: readonly string[] | null): PageLue => {
+    try {
+      verifierUrl(String(page?.url), domaines, adressesLocales);
+    } catch (e) {
+      throw new Error(`Page refusée : elle a mené hors des domaines permis (${message(e)})`);
+    }
+    return page;
+  };
+
   const lirePage = async (a: unknown): Promise<unknown> => {
     const { url, compte } = args(ArgsLirePage, a, "lirePage");
     const lire = o.pont.lirePageInvisible?.bind(o.pont);
     if (!lire) throw new Error("Lecture de pages indisponible");
-    if (!compte) return lire(verifierUrl(url, domainesPublics, adressesLocales).href, { profil: null });
+    if (!compte) {
+      const page = await lire(verifierUrl(url, domainesPublics, adressesLocales).href, avecDomaines(null, domainesPublics));
+      return verifierPage(page, domainesPublics);
+    }
     // Le domaine doit être déclaré en `compte` ; l'accord est relu à chaque lecture (il a pu être retiré).
     const u = verifierUrl(url, declaration.sources.compte, adressesLocales);
     const accord = (await lireAccords(dossierWidgets))[id];
@@ -258,7 +277,8 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     }
     if (arret) return SANS_REPONSE;
     try {
-      return await lire(u.href, { profil: accord.profil });
+      const page = await lire(u.href, avecDomaines(accord.profil, declaration.sources.compte));
+      return verifierPage(page, declaration.sources.compte);
     } catch (e) {
       if (e instanceof ProfilRefuse || (e as Error)?.name === "ProfilRefuse") {
         // L'accord est retiré avant l'arrêt : quand l'état est écrit, il n'existe plus.
