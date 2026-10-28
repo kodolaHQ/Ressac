@@ -12,7 +12,7 @@ const attendus = [
   "AGENTS.md",
   "CLAUDE.md",
   "accueil/disposition.json",
-  ...["meteo", "actus-tech", "daily-dev"].flatMap((w) => [`accueil/widgets/${w}/widget.json`, `accueil/widgets/${w}/exemple.json`]),
+  ...["meteo", "actus-tech", "daily-dev"].flatMap((w) => ["widget.json", "exemple.json", "recolte.mjs", "affichage.html"].map((f) => `accueil/widgets/${w}/${f}`)),
   ".webaios/profils/claude.json",
 ];
 
