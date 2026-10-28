@@ -151,3 +151,164 @@ test("une ligne privée qui redevient non privée repart à une visite, avec tit
   h.noter({ url: "https://a.fr/", titre: "Public", espaceId: "A", prive: false });
   expect(h.recents()[0]!.visites).toBe(2);
 });
+
+// --- Texte retenu des pages (mémoire de navigation) ---
+
+const JOUR = 86_400_000;
+/** Une visite non privée et son texte retenu, à la même date. */
+function visiter(url: string, titre: string, texte: string, o: { espaceId?: string; date?: string } = {}) {
+  const d = date(o.date ?? "2026-10-01T00:00:00Z");
+  h.noter({ url, titre, espaceId: o.espaceId ?? "A", prive: false, date: d });
+  h.retenir({ url, titre, espaceId: o.espaceId ?? "A", texte, date: d });
+}
+
+test("retenir tronque le texte à 20 000 caractères", () => {
+  visiter("https://a.fr/", "A", "x".repeat(25_000));
+  expect(h.texteRetenu("https://a.fr/")!.texte).toHaveLength(20_000);
+});
+
+test("retenir une seconde fois la même page dans le même espace remplace le texte", () => {
+  visiter("https://a.fr/", "A", "premier texte");
+  visiter("https://a.fr/", "A", "second texte", { date: "2026-10-02T00:00:00Z" });
+  expect(h.texteRetenu("https://a.fr/")).toEqual({ url: "https://a.fr/", titre: "A", date: "2026-10-02T00:00:00.000Z", texte: "second texte" });
+  expect(h.rechercherPourAgent({ requete: "premier" })).toEqual([]);
+});
+
+test("Visite.retenu dit si le texte de cette visite (URL et espace) est retenu ; oublierTexte l'oublie seul", () => {
+  visiter("https://a.fr/", "A", "texte", { espaceId: "A" });
+  h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
+  expect(Object.fromEntries(h.recents().map((v) => [v.espaceId, v.retenu]))).toEqual({ A: true, B: false });
+  h.oublierTexte("https://a.fr/", "A");
+  expect(h.recents().map((v) => v.retenu)).toEqual([false, false]);
+  expect(h.recents()).toHaveLength(2);
+});
+
+test("purger efface le texte de plus de 183 jours et garde celui de 182", () => {
+  const maintenant = date("2026-10-28T12:00:00Z");
+  visiter("https://vieux.fr/", "V", "vieux", { date: new Date(maintenant.getTime() - 184 * JOUR).toISOString() });
+  visiter("https://jeune.fr/", "J", "jeune", { date: new Date(maintenant.getTime() - 182 * JOUR).toISOString() });
+  h.purger(maintenant);
+  expect(h.texteRetenu("https://vieux.fr/")).toBeNull();
+  expect(h.texteRetenu("https://jeune.fr/")).not.toBeNull();
+  expect(h.recents()).toHaveLength(2); // les visites restent
+});
+
+test("au-delà du plafond, purger efface le texte le plus ancien d'abord", () => {
+  h.fermer();
+  h = new Historique(chemin, { plafondOctets: 25 });
+  visiter("https://1.fr/", "1", "a".repeat(10), { date: "2026-10-01T00:00:00Z" });
+  visiter("https://2.fr/", "2", "é".repeat(5), { date: "2026-10-02T00:00:00Z" }); // 10 octets en UTF-8
+  visiter("https://3.fr/", "3", "c".repeat(10), { date: "2026-10-03T00:00:00Z" });
+  h.purger(date("2026-10-04T00:00:00Z"));
+  expect(["https://1.fr/", "https://2.fr/", "https://3.fr/"].map((u) => h.texteRetenu(u) !== null)).toEqual([false, true, true]);
+});
+
+test("effacer(depuis) efface aussi le texte retenu depuis cette date ; effacer() efface tout", () => {
+  visiter("https://vieux.fr/", "V", "vieux", { date: "2026-10-01T00:00:00Z" });
+  visiter("https://recent.fr/", "R", "recent", { date: "2026-10-05T00:00:00Z" });
+  h.effacer(date("2026-10-04T00:00:00Z"));
+  expect(h.texteRetenu("https://recent.fr/")).toBeNull();
+  expect(h.texteRetenu("https://vieux.fr/")).not.toBeNull();
+  expect(h.rechercherPourAgent({ requete: "recent" })).toEqual([]);
+  h.effacer();
+  expect(h.texteRetenu("https://vieux.fr/")).toBeNull();
+  expect(h.rechercherPourAgent({ requete: "vieux" })).toEqual([]);
+});
+
+test("rendrePrive oublie le texte de cet espace et garde celui de la même URL dans un autre espace", () => {
+  visiter("https://a.fr/", "A", "texte vu dans A", { espaceId: "A", date: "2026-10-02T00:00:00Z" });
+  visiter("https://a.fr/", "A", "texte vu dans B", { espaceId: "B", date: "2026-10-01T00:00:00Z" });
+  h.rendrePrive("A");
+  expect(h.texteRetenu("https://a.fr/")!.texte).toBe("texte vu dans B");
+  expect(h.recents().find((v) => v.espaceId === "A")!.retenu).toBe(false);
+});
+
+test("rechercherPourAgent trouve « eclair » dans le texte, le titre et l'URL, sans casse ni accents", () => {
+  visiter("https://patisserie.fr/1", "Recettes", "Un Éclair au café");
+  visiter("https://patisserie.fr/2", "L'ÉCLAIR parfait", "chocolat");
+  visiter("https://eclair.fr/", "Accueil", "rien");
+  expect(h.rechercherPourAgent({ requete: "eclair" }).map((r) => r.url).sort()).toEqual(["https://eclair.fr/", "https://patisserie.fr/1", "https://patisserie.fr/2"]);
+});
+
+test("rechercherPourAgent : une URL par résultat, faite des seules visites non privées", () => {
+  visiter("https://a.fr/", "Titre A", "un texte sur les éclairs", { espaceId: "A", date: "2026-10-01T00:00:00Z" });
+  h.noter({ url: "https://a.fr/", titre: "Titre A", espaceId: "A", prive: false, date: date("2026-10-03T00:00:00Z") });
+  h.noter({ url: "https://a.fr/", titre: "Titre B", espaceId: "B", prive: false, date: date("2026-10-02T00:00:00Z") });
+  h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "P", prive: true, date: date("2026-10-09T00:00:00Z") });
+  h.noter({ url: "https://secret.fr/eclairs", titre: "Éclairs secrets", espaceId: "P", prive: true });
+  expect(h.rechercherPourAgent({ requete: "éclairs" })).toEqual([
+    { url: "https://a.fr/", titre: "Titre A", derniereVisite: "2026-10-03T00:00:00.000Z", visites: 3, extrait: "un texte sur les éclairs" },
+  ]);
+});
+
+test("rechercherPourAgent ne rend jamais le texte d'une ligne privée", () => {
+  visiter("https://a.fr/", "A", "mot de passe xyzzy", { espaceId: "P" });
+  h.noter({ url: "https://a.fr/", titre: "A", espaceId: "P", prive: true }); // l'espace est devenu privé sans rendrePrive
+  h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
+  expect(h.rechercherPourAgent({ requete: "xyzzy" })).toEqual([]);
+  expect(h.rechercherPourAgent({ requete: "a.fr" })).toMatchObject([{ url: "https://a.fr/", extrait: "", visites: 1 }]);
+  expect(h.texteRetenu("https://a.fr/")).toBeNull();
+});
+
+test("rechercherPourAgent respecte depuis et jusqua", () => {
+  for (const j of ["01", "05", "09"]) visiter(`https://${j}.fr/`, `page ${j}`, "commun", { date: `2026-10-${j}T00:00:00Z` });
+  const r = h.rechercherPourAgent({ requete: "commun", depuis: date("2026-10-02T00:00:00Z"), jusqua: date("2026-10-06T00:00:00Z") });
+  expect(r.map((x) => x.url)).toEqual(["https://05.fr/"]);
+});
+
+test("rechercherPourAgent rend 20 résultats par défaut et jamais plus de 50", () => {
+  for (let i = 0; i < 60; i++) h.noter({ url: `https://a.fr/${i}`, titre: "page", espaceId: "A", prive: false });
+  expect(h.rechercherPourAgent({ requete: "page" })).toHaveLength(20);
+  expect(h.rechercherPourAgent({ requete: "page", limite: 500 })).toHaveLength(50);
+});
+
+test("rechercherPourAgent rend un extrait d'environ 300 caractères autour du mot trouvé", () => {
+  const avant = "Lorem ipsum dolor sit amet. ".repeat(100);
+  visiter("https://a.fr/", "A", `${avant} le mot introuvable est ici. ${avant}`);
+  const [r] = h.rechercherPourAgent({ requete: "introuvable" });
+  expect(r!.extrait).toContain("introuvable");
+  expect(r!.extrait.length).toBeGreaterThan(200);
+  expect(r!.extrait.length).toBeLessThan(400);
+});
+
+test("une visite sans texte se trouve par titre ou URL, avec un extrait vide", () => {
+  h.noter({ url: "https://github.com/sveltejs/svelte", titre: "Svelte • Cybernétique", espaceId: "A", prive: false });
+  expect(h.rechercherPourAgent({ requete: "CYBERNETIQUE" })).toMatchObject([{ url: "https://github.com/sveltejs/svelte", extrait: "" }]);
+  expect(h.rechercherPourAgent({ requete: "LTEJS/SV" })).toMatchObject([{ titre: "Svelte • Cybernétique", extrait: "" }]);
+});
+
+test("classement : les textes trouvés par bm25 d'abord, puis les titres et URL seuls, du plus récent au plus ancien", () => {
+  h.noter({ url: "https://titre-ancien.fr/", titre: "rust", espaceId: "A", prive: false, date: date("2026-10-01T00:00:00Z") });
+  h.noter({ url: "https://titre-recent.fr/", titre: "rust", espaceId: "A", prive: false, date: date("2026-10-08T00:00:00Z") });
+  visiter("https://peu.fr/", "Peu", `rust ${"autre chose ".repeat(200)}`, { date: "2026-10-09T00:00:00Z" });
+  visiter("https://beaucoup.fr/", "Beaucoup", "rust rust rust rust", { date: "2026-10-02T00:00:00Z" });
+  expect(h.rechercherPourAgent({ requete: "rust" }).map((r) => r.url)).toEqual(["https://beaucoup.fr/", "https://peu.fr/", "https://titre-recent.fr/", "https://titre-ancien.fr/"]);
+});
+
+test("une requête avec de la syntaxe FTS (guillemets, opérateurs) est cherchée telle quelle, sans erreur", () => {
+  visiter("https://a.fr/", "A", "le NEAR de la tour");
+  for (const q of ['"', "NEAR(", "a* OR", "titre:x", "-", "(((", 'é"é']) expect(() => h.rechercherPourAgent({ requete: q })).not.toThrow();
+  expect(h.rechercherPourAgent({ requete: "NEAR" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
+});
+
+test("une requête vide rend les visites non privées les plus récentes", () => {
+  h.noter({ url: "https://a.fr/", titre: "A", espaceId: "A", prive: false, date: date("2026-10-01T00:00:00Z") });
+  h.noter({ url: "https://b.fr/", titre: "B", espaceId: "A", prive: false, date: date("2026-10-02T00:00:00Z") });
+  h.noter({ url: "https://p.fr/", titre: "P", espaceId: "P", prive: true, date: date("2026-10-03T00:00:00Z") });
+  expect(h.rechercherPourAgent({ requete: "  " }).map((r) => r.url)).toEqual(["https://b.fr/", "https://a.fr/"]);
+});
+
+test("le texte retenu survit à la réouverture du fichier", () => {
+  visiter("https://a.fr/", "A", "persistant");
+  h.fermer();
+  h = new Historique(chemin);
+  expect(h.rechercherPourAgent({ requete: "persistant" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
+});
+
+test("après fermer, les méthodes du texte retenu ne lèvent pas d'erreur", () => {
+  h.fermer();
+  expect(() => h.retenir({ url: "https://a.fr/", titre: "A", espaceId: "A", texte: "t" })).not.toThrow();
+  expect(() => h.purger()).not.toThrow();
+  expect(h.rechercherPourAgent({ requete: "t" })).toEqual([]);
+  expect(h.texteRetenu("https://a.fr/")).toBeNull();
+});

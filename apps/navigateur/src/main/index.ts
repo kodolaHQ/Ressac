@@ -152,6 +152,7 @@ let agent: ServiceAgent | undefined;
 let applications: ServiceApplications | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
+let minuteurPurge: NodeJS.Timeout | undefined;
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
@@ -159,6 +160,9 @@ app.whenReady().then(async () => {
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
+  // Le texte retenu des pages a une durée et une taille limitées : purgé au démarrage puis toutes les 6 heures.
+  historique.purger();
+  minuteurPurge = setInterval(() => historique?.purger(), 6 * 60 * 60 * 1000);
   const diffuser = (canal: string, valeur: unknown) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
   };
@@ -485,7 +489,10 @@ app.on("second-instance", () => {
 // Clic sur l'icône du Dock sans fenêtre ouverte.
 app.on("activate", () => rouvrirFenetres());
 
-app.on("will-quit", () => historique?.fermer());
+app.on("will-quit", () => {
+  clearInterval(minuteurPurge);
+  historique?.fermer();
+});
 
 // Les fenêtres principales décident seules de quitter (voir creerFenetre).
 app.on("window-all-closed", () => {});

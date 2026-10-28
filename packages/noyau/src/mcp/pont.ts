@@ -96,6 +96,16 @@ export class OngletIntrouvable extends Error {
   }
 }
 
+/** Une page de l'historique trouvée pour l'agent : une par URL, faite des seules visites non privées. */
+export interface ResultatHistorique {
+  url: string;
+  titre: string;
+  derniereVisite: string; // ISO
+  visites: number;
+  /** Environ 300 caractères du texte retenu autour des mots cherchés ; vide si la page n'a pas de texte trouvé. */
+  extrait: string;
+}
+
 export const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 /** L'onglet est dans un espace privé : l'agent reçoit TEXTE_PRIVE, sans question posée à l'utilisateur. */
