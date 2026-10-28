@@ -156,6 +156,25 @@ export async function creerEspace(fenetre: Page, nom: string, icone: string): Pr
   );
 }
 
+/** Rend privé (ou non) l'espace actif de la fenêtre, sans toucher à ses autres réglages. */
+export async function reglerEspaceActifPrive(fenetre: Page, prive: boolean): Promise<void> {
+  type Etat = { espaces: { id: string; nom: string; icone: string; profil: string }[]; fenetres: { id: string; espaceActif: string }[] };
+  await fenetre.evaluate(
+    (prive) =>
+      new Promise<void>((ok) => {
+        const w = window as unknown as Window & { webaios: AvecApi["webaios"] & { surEtat(r: (e: Etat) => void): () => void } };
+        const fin = w.webaios.surEtat((e) => {
+          setTimeout(() => fin());
+          const actif = e.fenetres.find((f) => f.id === w.webaios.fenetreId)!.espaceActif;
+          const esp = e.espaces.find((x) => x.id === actif)!;
+          w.webaios.agir({ type: "reglerEspace", id: esp.id, nom: esp.nom, icone: esp.icone, prive, profil: esp.profil });
+          ok();
+        });
+      }),
+    prive,
+  );
+}
+
 /** Glisser-déposer progressif : `dragTo` va trop vite pour le glisser-déposer HTML quand la machine est chargée. */
 export async function glisser(
   page: Page,

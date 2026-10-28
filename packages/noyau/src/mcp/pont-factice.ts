@@ -2,6 +2,7 @@ import type { DroitDev } from "../acces/politique.js";
 import type { ProfilCpu } from "../outils-dev/resumes.js";
 import {
   OngletIntrouvable,
+  OngletPrive,
   OutilsDevOccupes,
   type MessageConsole,
   type OngletInfo,
@@ -139,6 +140,8 @@ export class PontFactice implements PontNavigateur {
   private actif: string | null;
   private readonly autoriser: boolean;
   private compteur = 0;
+  /** Onglets dans un espace privé : invisibles, comme dans le vrai navigateur. */
+  private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
@@ -183,6 +186,21 @@ export class PontFactice implements PontNavigateur {
     this.dev().occupes.add(id);
   }
 
+  /** L'onglet passe dans un espace privé (nommé `espace` si donné). */
+  rendrePrive(id: string, espace?: string): void {
+    const o = this.onglets.find((x) => x.id === id);
+    if (o && espace !== undefined) o.espace = espace;
+    this.prives.add(id);
+  }
+
+  estPrive(id: string): boolean {
+    return this.prives.has(id);
+  }
+
+  ongletActifPrive(): boolean {
+    return this.actif !== null && this.prives.has(this.actif);
+  }
+
   /** Le prochain instantané compte un objet « Fuite » de plus. */
   agrandirTas(): void {
     this.dev().objetsTas += 1;
@@ -195,17 +213,18 @@ export class PontFactice implements PontNavigateur {
   private trouver(id: string): OngletInfo {
     const o = this.onglets.find((x) => x.id === id);
     if (!o) throw new OngletIntrouvable(id);
+    if (this.prives.has(id)) throw new OngletPrive(id);
     return o;
   }
 
   async ongletActif() {
     this.noter("ongletActif");
-    return this.onglets.find((x) => x.id === this.actif) ?? null;
+    return this.onglets.find((x) => x.id === this.actif && !this.prives.has(x.id)) ?? null;
   }
 
   async listerOnglets() {
     this.noter("listerOnglets");
-    return this.onglets.map((x) => ({ ...x }));
+    return this.onglets.filter((x) => !this.prives.has(x.id)).map((x) => ({ ...x }));
   }
 
   async lireTexte(id: string) {

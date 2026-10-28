@@ -7,10 +7,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Application } from "../applications/gestionnaire.js";
 import type { DroitDev, PolitiqueAcces } from "../acces/politique.js";
 import { enregistrerOutilsDev, type FichiersProfils } from "./outils-dev.js";
-import { OngletIntrouvable, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "./pont.js";
+import { OngletIntrouvable, OngletPrive, TEXTE_PRIVE, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "./pont.js";
 
 export const TEXTE_REFUS = "Accès refusé par l'utilisateur à cet onglet.";
-const LIBELLE_PRIVE = "onglet privé";
+const LIBELLE_NON_PARTAGE = "onglet non partagé";
 
 export function genererJeton(): string {
   return randomBytes(32).toString("hex");
@@ -75,7 +75,7 @@ function creerServeurOutils(
 
   async function onglet(id: string): Promise<OngletInfo> {
     const o = (await pont.listerOnglets()).find((x) => x.id === id);
-    if (!o) throw new OngletIntrouvable(id);
+    if (!o) throw pont.estPrive?.(id) ? new OngletPrive(id) : new OngletIntrouvable(id);
     return o;
   }
 
@@ -104,13 +104,14 @@ function creerServeurOutils(
     return texte([`Titre : ${o.titre}`, `URL : ${o.url}`, ...(selection ? [`Sélection : ${selection}`] : []), "", corps].join("\n"));
   }
 
-  /** Transforme une erreur de pont en erreur d'outil lisible plutôt qu'en plantage. */
+  /** Transforme une erreur de pont en erreur d'outil lisible plutôt qu'en plantage. Un onglet privé n'est pas une erreur. */
   const proteger =
     <A>(f: (a: A) => Promise<Resultat>) =>
     async (a: A): Promise<Resultat> => {
       try {
         return await f(a);
       } catch (e) {
+        if (e instanceof OngletPrive) return texte(TEXTE_PRIVE);
         return texte(e instanceof OngletIntrouvable ? e.message : `Erreur : ${(e as Error).message}`, true);
       }
     };
@@ -119,6 +120,7 @@ function creerServeurOutils(
     "page_courante",
     { description: "URL, titre, texte principal et sélection de l'onglet que l'utilisateur regarde." },
     proteger(async () => {
+      if (pont.ongletActifPrive?.()) return texte(TEXTE_PRIVE);
       const o = await pont.ongletActif();
       return o ? contenu(o) : texte("Aucun onglet actif.");
     }),
@@ -126,12 +128,12 @@ function creerServeurOutils(
 
   serveur.registerTool(
     "lister_onglets",
-    { description: "Onglets ouverts : id · titre · url · espace. Un onglet non partagé apparaît comme « onglet privé »." },
+    { description: "Onglets ouverts : id · titre · url · espace. Un onglet non partagé apparaît comme « onglet non partagé »." },
     proteger(async () => {
       const lignes = (await pont.listerOnglets()).map((o) =>
         politique.peutLire(o)
           ? `${o.id} · ${o.titre} · ${o.url} · ${o.espace}`
-          : `${o.id} · ${LIBELLE_PRIVE} ·  · ${o.espace}`,
+          : `${o.id} · ${LIBELLE_NON_PARTAGE} ·  · ${o.espace}`,
       );
       return texte(lignes.join("\n") || "Aucun onglet ouvert.");
     }),

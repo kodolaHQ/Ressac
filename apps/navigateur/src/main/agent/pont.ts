@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
-import { OngletIntrouvable, type DroitDev, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
-import type { Decision, DemandeEnAttente, EtatFenetre, EtatNavigateur, IdEspace, IdFenetre, Onglet } from "../../commun/modele";
+import { OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
+import { ongletPrive, type Decision, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
 import type { Magasin } from "../ipc";
 import { InspecteurCdp } from "../outils-dev/inspecteur";
@@ -15,32 +15,44 @@ const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
 /** Pages internes de WebAiOs (`webaios:`) : l'agent ne les voit jamais. */
 const interne = (o: Onglet) => o.url.startsWith("webaios:");
 
+/** L'agent voit l'onglet : ni page interne, ni onglet d'un espace privé (spec §3.3). */
+const visible = (etat: EtatNavigateur, o: Onglet) => !interne(o) && !ongletPrive(etat, o);
+
 /** Tous les onglets, toutes fenêtres confondues, tels que l'agent les voit. */
 export function infosOnglets(etat: EtatNavigateur): OngletInfo[] {
-  return Object.values(etat.onglets).filter((o) => !interne(o)).map((o) => info(etat, o));
+  return Object.values(etat.onglets).filter((o) => visible(etat, o)).map((o) => info(etat, o));
+}
+
+/** L'onglet que l'utilisateur regarde dans la fenêtre, page interne comprise. */
+function ongletAffiche(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): Onglet | undefined {
+  const f = etat.fenetres.find((x) => x.id === fenetreId);
+  const id = f?.actif[f.espaceActif];
+  return id ? etat.onglets[id] : undefined;
 }
 
 export function ongletActifDe(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): OngletInfo | null {
-  const f = etat.fenetres.find((x) => x.id === fenetreId);
-  const id = f?.actif[f.espaceActif];
-  const o = id ? etat.onglets[id] : undefined;
-  return o && !interne(o) ? info(etat, o) : null;
+  const o = ongletAffiche(etat, fenetreId);
+  return o && visible(etat, o) ? info(etat, o) : null;
 }
 
-/** L'espace demandé par l'agent : par id, puis par nom (sans casse), sinon l'espace actif. */
+/** L'espace demandé par l'agent : par id, puis par nom (sans casse), sinon l'espace actif. Un espace privé compte comme inconnu. */
 export function resoudreEspace(etat: EtatNavigateur, f: EtatFenetre, espace?: string): IdEspace {
   if (!espace) return f.espaceActif;
-  const e = etat.espaces.find((x) => x.id === espace) ?? etat.espaces.find((x) => x.nom.toLowerCase() === espace.toLowerCase());
+  const ouverts = etat.espaces.filter((x) => !x.prive);
+  const e = ouverts.find((x) => x.id === espace) ?? ouverts.find((x) => x.nom.toLowerCase() === espace.toLowerCase());
   return e?.id ?? f.espaceActif;
 }
 
-/** Ce que la politique d'accès doit apprendre d'un changement d'état : navigations et fermetures. */
+/**
+ * Ce que la politique d'accès doit apprendre d'un changement d'état : navigations et fermetures. Un onglet passé dans
+ * un espace privé est fermé pour l'agent : lecture et outils de développement tombent.
+ */
 export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateur): { navigues: { id: string; url: string }[]; fermes: string[] } {
   const navigues: { id: string; url: string }[] = [];
   const fermes: string[] = [];
   for (const [id, o] of Object.entries(avant.onglets)) {
     const n = apres.onglets[id];
-    if (!n) fermes.push(id);
+    if (!n || (!ongletPrive(avant, o) && ongletPrive(apres, n))) fermes.push(id);
     else if (n.url !== o.url) navigues.push({ id, url: n.url });
   }
   return { navigues, fermes };
@@ -54,6 +66,8 @@ export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): bool
   // Une fenêtre d'appli (`app:<dossier>`) n'est pas un onglet : sa fermeture et ses navigations sont suivies à part.
   const onglet = d.cible && !d.cible.startsWith(PREFIXE_APP) ? etat.onglets[d.cible] : undefined;
   if (d.cible && !d.cible.startsWith(PREFIXE_APP) && !onglet) return true;
+  // Passé dans un espace privé : l'agent n'y a plus accès, la question n'a plus d'objet.
+  if (onglet && ongletPrive(etat, onglet)) return true;
   // Les droits portent sur le site que l'utilisateur a vu : l'onglet est parti ailleurs, la carte tombe.
   if (onglet && d.permissions.includes("outils-dev") && origineDe(onglet.url) !== d.origine) return true;
   return !d.fenetreId && d.ongletId !== null && !etat.onglets[d.ongletId];
@@ -151,7 +165,9 @@ export class PontElectron implements PontNavigateur {
   /** Outils de développement de l'agent, par le débogueur de la page de l'onglet ou de la fenêtre d'appli. */
   readonly outilsDev: OutilsDevNavigateur = new InspecteurCdp((id) => {
     if (id.startsWith(PREFIXE_APP)) return this.o.applications.webContents(id.slice(PREFIXE_APP.length));
-    return this.o.magasin.etat.onglets[id] ? (this.o.vues.vue(id) ?? undefined) : undefined;
+    const etat = this.o.magasin.etat;
+    const o = etat.onglets[id];
+    return o && !ongletPrive(etat, o) ? (this.o.vues.vue(id) ?? undefined) : undefined;
   });
 
   constructor(
@@ -175,10 +191,32 @@ export class PontElectron implements PontNavigateur {
     return wc;
   }
 
+  /** Lève OngletPrive pour un onglet d'espace privé : un appel qui croise le passage en privé ne lit rien. */
   private onglet(id: string): Onglet {
-    const o = this.o.magasin.etat.onglets[id];
+    const etat = this.o.magasin.etat;
+    const o = etat.onglets[id];
     if (!o) throw new OngletIntrouvable(id);
+    if (ongletPrive(etat, o)) throw new OngletPrive(id);
     return o;
+  }
+
+  /** Lit ou capture l'onglet, puis vérifie qu'il n'est pas devenu privé entre-temps. */
+  private async horsPrive<T>(id: string, f: (o: Onglet) => Promise<T>): Promise<T> {
+    const r = await f(this.onglet(id));
+    this.onglet(id);
+    return r;
+  }
+
+  estPrive(id: string): boolean {
+    const etat = this.o.magasin.etat;
+    const o = etat.onglets[id];
+    return !!o && !interne(o) && ongletPrive(etat, o);
+  }
+
+  ongletActifPrive(): boolean {
+    const etat = this.o.magasin.etat;
+    const o = ongletAffiche(etat, this.o.fenetreActive());
+    return !!o && !interne(o) && ongletPrive(etat, o);
   }
 
   async ongletActif(): Promise<OngletInfo | null> {
@@ -192,7 +230,7 @@ export class PontElectron implements PontNavigateur {
 
   async lireTexte(id: string): Promise<{ texte: string; selection?: string }> {
     const wc = this.fenetreAppli(id);
-    return wc ? this.o.vues.lireTexteDe(wc) : this.o.vues.lireTexte(this.onglet(id));
+    return wc ? this.o.vues.lireTexteDe(wc) : this.horsPrive(id, (o) => this.o.vues.lireTexte(o));
   }
 
   /** Les démos de l'agent s'ouvrent au premier plan, marquées ✦ (spec §6). */
@@ -200,8 +238,10 @@ export class PontElectron implements PontNavigateur {
     const etat = this.o.magasin.etat;
     const f = etat.fenetres.find((x) => x.id === this.o.fenetreActive()) ?? etat.fenetres[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
+    const espaceId = resoudreEspace(etat, f, espace);
+    if (etat.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const avant = new Set(Object.keys(etat.onglets));
-    this.o.magasin.agir({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId: resoudreEspace(etat, f, espace), activer: true, ouvertParAgent: true });
+    this.o.magasin.agir({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId, activer: true, ouvertParAgent: true });
     const nouveau = Object.values(this.o.magasin.etat.onglets).find((o) => !avant.has(o.id));
     if (!nouveau) throw new Error(`Impossible d'ouvrir ${url}`);
     this.o.magasin.agir({ type: "activerOnglet", id: nouveau.id }); // passe aussi dans son espace
@@ -224,7 +264,7 @@ export class PontElectron implements PontNavigateur {
 
   async capturer(id: string): Promise<Buffer> {
     const wc = this.fenetreAppli(id);
-    return wc ? this.o.vues.capturerDe(wc) : this.o.vues.capturer(this.onglet(id));
+    return wc ? this.o.vues.capturerDe(wc) : this.horsPrive(id, (o) => this.o.vues.capturer(o));
   }
 
   demanderAutorisation(o: OngletInfo): Promise<boolean> {

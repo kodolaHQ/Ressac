@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { PolitiqueAcces, type DroitDev } from "../../src/acces/politique.js";
-import type { OngletInfo } from "../../src/mcp/pont.js";
+import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { demarrerServeurMcp, genererJeton } from "../../src/mcp/serveur.js";
 import { SuiviOutilsDev } from "../../src/outils-dev/suivi.js";
@@ -577,4 +577,36 @@ test("SuiviOutilsDev : un onglet attaché par un noyau précédent et sans droit
   suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
   await vi.waitFor(() => expect(pont.outilsDev!.attaches()).toEqual([]));
   expect(pont.appels.some((a) => a.methode === "detacher" && a.args[0] === "gmail")).toBe(true);
+});
+
+test("espace privé : chaque outil de développement répond TEXTE_PRIVE, sans carte ni appel au débogueur", async () => {
+  await demarrer({ accorderDev: ["console", "reseau", "performances", "agir"] });
+  pont.rendrePrive("github");
+  const appels: [string, Record<string, unknown>][] = [
+    ["demander_outils_dev", { id: "github", droits: ["console"], raison: "déboguer" }],
+    ["lire_console", { id: "github" }],
+    ["lire_reseau", { id: "github" }],
+    ["lire_requete", { id: "github", requete: "1" }],
+    ["profiler_performances", { id: "github", duree_s: 1 }],
+    ["instantane_memoire", { id: "github" }],
+    ["comparer_memoire", { id: "github", a: "x", b: "y" }],
+    ["executer_js", { id: "github", code: "1" }],
+    ["recharger", { id: "github" }],
+  ];
+  for (const [name, args] of appels) {
+    const r = await client!.callTool({ name, arguments: args });
+    expect((r.content as { text: string }[])[0]!.text, name).toBe(TEXTE_PRIVE);
+    expect(r.isError, name).toBeFalsy();
+  }
+  expect(demandesDev()).toHaveLength(0);
+  expect(pont.appels.filter((a) => !["listerOnglets"].includes(a.methode))).toEqual([]);
+});
+
+test("espace privé pendant un appel : il est coupé et répond TEXTE_PRIVE", async () => {
+  await demarrer({ accorderDev: ["performances"], bloquer: true });
+  const r = appeler("profiler_performances", { id: "github", duree_s: 30 });
+  await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "profiler")).toBe(true));
+  pont.rendrePrive("github");
+  politique.ongletFerme("github"); // ce que fait le navigateur quand l'onglet devient privé
+  expect(await r).toBe(TEXTE_PRIVE);
 });

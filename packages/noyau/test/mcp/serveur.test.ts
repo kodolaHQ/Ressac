@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { PolitiqueAcces } from "../../src/acces/politique.js";
-import type { OngletInfo } from "../../src/mcp/pont.js";
+import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { demarrerServeurMcp, genererJeton, type OutilsApplications } from "../../src/mcp/serveur.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
@@ -97,9 +97,58 @@ test("lister_onglets masque les onglets inaccessibles", async () => {
   politique.interactionUtilisateur(github);
   const t = texte(await client.callTool({ name: "lister_onglets", arguments: {} }));
   expect(t).toContain("github · sveltejs/svelte · https://github.com/sveltejs/svelte · perso");
-  expect(t).toContain("gmail · onglet privé ·  · perso");
+  expect(t).toContain("gmail · onglet non partagé ·  · perso");
   expect(t).not.toContain("mail.google.com");
   expect(t).not.toContain("Boîte de réception");
+});
+
+test("espace privé : l'onglet est absent de lister_onglets, avec son espace", async () => {
+  pont.rendrePrive("gmail", "secret");
+  const t = texte(await client.callTool({ name: "lister_onglets", arguments: {} }));
+  expect(t).not.toContain("gmail");
+  expect(t).not.toContain("secret");
+  expect(t).toContain("github · onglet non partagé");
+});
+
+test("espace privé : lire_onglet, capture_ecran et naviguer répondent TEXTE_PRIVE, sans demande ni appel au pont", async () => {
+  pont.rendrePrive("gmail");
+  for (const [name, args] of [
+    ["lire_onglet", { id: "gmail" }],
+    ["capture_ecran", { id: "gmail" }],
+    ["naviguer", { id: "gmail", url: "https://exemple.test" }],
+  ] as const) {
+    const r = await client.callTool({ name, arguments: args });
+    expect(texte(r)).toBe(TEXTE_PRIVE);
+    expect(r.isError).toBeFalsy();
+  }
+  expect(TEXTE_PRIVE).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
+  expect(demandes()).toBe(0);
+  expect(pont.appels.some((a) => ["lireTexte", "capturer", "naviguer"].includes(a.methode))).toBe(false);
+});
+
+test("espace privé : même un accès accordé avant ne lit plus l'onglet", async () => {
+  politique.interactionUtilisateur(gmail);
+  pont.rendrePrive("gmail");
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "gmail" } }))).toBe(TEXTE_PRIVE);
+});
+
+test("espace privé : page_courante sur l'onglet actif privé répond TEXTE_PRIVE, sans demande", async () => {
+  politique.interactionUtilisateur(github);
+  pont.rendrePrive("github");
+  const r = await client.callTool({ name: "page_courante", arguments: {} });
+  expect(texte(r)).toBe(TEXTE_PRIVE);
+  expect(r.isError).toBeFalsy();
+  expect(demandes()).toBe(0);
+});
+
+test("espace privé pendant la question : « Autoriser » ne livre pas l'onglet", async () => {
+  pont.demanderAutorisation = async (o) => {
+    pont.appels.push({ methode: "demanderAutorisation", args: [o.id] });
+    pont.rendrePrive("gmail");
+    return true;
+  };
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "gmail" } }))).toBe(TEXTE_PRIVE);
+  expect(pont.appels.some((a) => a.methode === "lireTexte")).toBe(false);
 });
 
 test("ouvrir_onglet puis lire_onglet sur cet onglet → pas de demande", async () => {

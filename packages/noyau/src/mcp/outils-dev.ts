@@ -11,7 +11,7 @@ import {
   texteMemoire,
   tronquer,
 } from "../outils-dev/resumes.js";
-import { OngletIntrouvable, OutilsDevOccupes, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur, type RequeteReseau } from "./pont.js";
+import { OngletIntrouvable, OngletPrive, OutilsDevOccupes, TEXTE_PRIVE, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur, type RequeteReseau } from "./pont.js";
 
 export const TEXTE_REFUS_OUTIL = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 export const TEXTE_COUPE = "Accès coupé par l'utilisateur.";
@@ -89,7 +89,7 @@ export function enregistrerOutilsDev(
 
   async function onglet(id: string): Promise<OngletInfo> {
     const o = (await pont.listerOnglets()).find((x) => x.id === id);
-    if (!o) throw new OngletIntrouvable(id);
+    if (!o) throw pont.estPrive?.(id) ? new OngletPrive(id) : new OngletIntrouvable(id);
     return o;
   }
 
@@ -175,8 +175,9 @@ export function enregistrerOutilsDev(
       fichiers.push(chemin);
       return chemin;
     };
-    /** Coupé par l'utilisateur, ou parti sur un autre site. */
+    /** Coupé par l'utilisateur, parti sur un autre site, ou passé dans un espace privé. */
     const reponseInterruption = async (): Promise<Resultat> => {
+      if (pont.estPrive?.(id)) return texte(TEXTE_PRIVE);
       const maintenant = await onglet(id).catch(() => null);
       return texte(maintenant && origineDe(maintenant.url) !== origine ? TEXTE_SITE_CHANGE : TEXTE_COUPE);
     };
@@ -212,6 +213,7 @@ export function enregistrerOutilsDev(
         return await f(a);
       } catch (e) {
         if (e instanceof OutilsDevOccupes) return texte(e.message);
+        if (e instanceof OngletPrive) return texte(TEXTE_PRIVE);
         return texte(e instanceof OngletIntrouvable ? e.message : `Erreur : ${(e as Error).message}`, true);
       }
     };

@@ -57,7 +57,7 @@ l'URL par un autre moyen).
 | Outil | Rôle |
 |---|---|
 | `page_courante` | URL, titre, texte principal et sélection de l'onglet actif |
-| `lister_onglets` | Onglets ouverts (id, titre, URL, espace) ; un onglet non partagé apparaît comme « onglet privé » |
+| `lister_onglets` | Onglets ouverts (id, titre, URL, espace) ; un onglet non partagé apparaît comme « onglet non partagé », ceux des espaces privés n'apparaissent pas |
 | `lire_onglet(id)` | Texte principal d'un onglet donné |
 | `ouvrir_onglet(url, espace?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:5280` |
 | `naviguer(id, url)` | Change l'URL d'un onglet (y compris recharger une démo) |

@@ -126,3 +126,19 @@ test("initialiser : un AGENTS.md identique au modèle du plan 5 est remplacé pa
   expect(apres).toContain("sauf, pour déboguer, par `executer_js`");
   expect(apres).toContain("sauf si l'utilisateur les a coupés");
 });
+
+test("initialiser : un AGENTS.md identique au modèle d'avant les espaces privés est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle de la fin du plan 5 (385a3a1) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-avant-plan6.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "6e43cefaf3f1ad8f07dacf4165f66a360e1fd0c3cf3a54c9920de42be25b7ba7",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("« onglet non partagé »");
+  expect(apres).not.toContain("« onglet privé »");
+});

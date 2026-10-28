@@ -1,9 +1,16 @@
 import { expect, test, vi } from "vitest";
+import { OngletPrive } from "@webaios/noyau";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import { siteDe, type EtatNavigateur } from "../../src/commun/modele";
 import { attendreDroits, attendreReponse, changementsPolitique, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
+
+/** Règle le caractère privé d'un espace, sans toucher au reste. */
+function reglerPrive(e: EtatNavigateur, ag: (a: Action) => unknown, id: string, prive: boolean) {
+  const esp = e.espaces.find((x) => x.id === id)!;
+  ag({ type: "reglerEspace", id, nom: esp.nom, icone: esp.icone, prive, profil: esp.profil });
+}
 
 function preparer() {
   let n = 0;
@@ -185,4 +192,119 @@ test("siteDe : l'hôte d'une origine ; une origine illisible (about:blank, data:
   expect(siteDe("https://mail.google.com")).toBe("mail.google.com");
   expect(siteDe("http://localhost:5280")).toBe("localhost:5280");
   for (const o of ["null", "about:blank", "data:text/html,x", ""]) expect(siteDe(o)).toBe(o);
+});
+
+test("espace privé : ni listé ni actif pour l'agent, son nom non plus", () => {
+  const { e, ag, F } = preparer();
+  ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: F });
+  const secret = e().espaces.find((x) => x.nom === "Secret")!.id;
+  ag({ type: "ouvrirOnglet", fenetreId: F, url: "https://banque.test/", espaceId: secret });
+  expect(infosOnglets(e()).map((o) => o.url)).toEqual(["https://a.test/", "https://b.test/"]);
+  expect(infosOnglets(e()).some((o) => o.espace === "Secret")).toBe(false);
+  expect(e().fenetres.find((f) => f.id === F)!.espaceActif).toBe(secret);
+  expect(ongletActifDe(e(), F)).toBeNull();
+  // Espace inconnu : privé par défaut.
+  const id = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
+  const inconnu = { ...e(), onglets: { ...e().onglets, [id]: { ...e().onglets[id]!, espaceId: "disparu" } } };
+  expect(infosOnglets(inconnu).map((o) => o.url)).toEqual(["https://b.test/"]);
+});
+
+test("resoudreEspace : un espace privé, par nom ou par id, compte comme inconnu", () => {
+  const { e, ag, F } = preparer();
+  ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut" });
+  const f = e().fenetres.find((x) => x.id === F)!;
+  const secret = e().espaces.find((x) => x.nom === "Secret")!.id;
+  expect(resoudreEspace(e(), f, "secret")).toBe(f.espaceActif);
+  expect(resoudreEspace(e(), f, secret)).toBe(f.espaceActif);
+});
+
+test("changementsPolitique : un onglet dont l'espace devient privé est fermé pour l'agent, essentiel partagé compris", () => {
+  const { e, ag, F } = preparer();
+  const perso = e().espaces[0]!.id;
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
+  const boulot = e().espaces.find((x) => x.nom === "Boulot")!.id;
+  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
+  const b = Object.values(e().onglets).find((o) => o.url === "https://b.test/")!.id;
+  // a devient un essentiel, affiché aussi dans Boulot (même clé).
+  ag({ type: "ajouterEssentiel", id: a });
+  ag({ type: "activerEspace", fenetreId: F, id: boulot });
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e().essentiels[0]!.id });
+  expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBe(a);
+  const avant = e();
+  reglerPrive(e(), ag, perso, true);
+  // L'essentiel ne s'affiche plus dans Boulot : il n'y est plus lisible non plus.
+  expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBeNull();
+  expect(changementsPolitique(avant, e())).toEqual({ navigues: [], fermes: [a, b] });
+  // Redevenir non privé ne rend rien : l'accès est à redemander.
+  const prive = e();
+  reglerPrive(e(), ag, perso, false);
+  expect(changementsPolitique(prive, e())).toEqual({ navigues: [], fermes: [] });
+});
+
+test("questionCaduque : une demande de lecture tombe si l'onglet visé passe dans un espace privé", () => {
+  const { e, ag, F } = preparer();
+  const [a, b] = Object.keys(e().onglets);
+  const lecture = { id: "q", ongletId: a!, fenetreId: F, cible: b!, origine: "https://b.test", permissions: ["lire-onglet" as const] };
+  expect(questionCaduque(lecture, e())).toBe(false);
+  reglerPrive(e(), ag, e().espaces[0]!.id, true);
+  expect(questionCaduque(lecture, e())).toBe(true);
+});
+
+function pontSur(e: () => EtatNavigateur, ag: (a: Action) => unknown, F: string, vues: Record<string, unknown> = {}) {
+  return new PontElectron({
+    magasin: { get etat() { return e(); }, agir: ag } as never,
+    vues: vues as never,
+    fenetreActive: () => F,
+    demander: async () => true,
+    applications: { ouvertes: () => [], webContents: () => undefined },
+  });
+}
+
+test("PontElectron : l'espace actif privé n'accepte pas d'onglet de l'agent ; un nom d'espace privé vise l'espace actif", async () => {
+  const { e, ag, F } = preparer();
+  ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut" });
+  const pont = pontSur(e, ag, F);
+  const o = await pont.ouvrirOnglet("https://demo.test/", "Secret");
+  expect(e().onglets[o.id]!.espaceId).toBe(e().espaces[0]!.id);
+  reglerPrive(e(), ag, e().espaces[0]!.id, true);
+  const avant = Object.keys(e().onglets).length;
+  await expect(pont.ouvrirOnglet("https://demo.test/")).rejects.toThrow("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+  expect(Object.keys(e().onglets)).toHaveLength(avant);
+});
+
+test("PontElectron : un onglet privé n'est ni lu, ni capturé, ni navigué, ni inspecté", async () => {
+  const { e, ag, F } = preparer();
+  const vues = { naviguer: vi.fn(), lireTexte: vi.fn(async () => ({ texte: "secret" })), capturer: vi.fn(async () => Buffer.from("png")), vue: vi.fn(() => ({}) as never) };
+  const pont = pontSur(e, ag, F, vues);
+  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
+  expect(pont.estPrive(a)).toBe(false);
+  expect(pont.ongletActifPrive()).toBe(false);
+  reglerPrive(e(), ag, e().espaces[0]!.id, true);
+  expect(pont.estPrive(a)).toBe(true);
+  expect(pont.estPrive("inconnu")).toBe(false);
+  expect(pont.ongletActifPrive()).toBe(true);
+  expect(await pont.ongletActif()).toBeNull();
+  expect(await pont.listerOnglets()).toEqual([]);
+  await expect(pont.lireTexte(a)).rejects.toBeInstanceOf(OngletPrive);
+  await expect(pont.capturer(a)).rejects.toBeInstanceOf(OngletPrive);
+  await expect(pont.naviguer(a, "https://x.test/")).rejects.toBeInstanceOf(OngletPrive);
+  await expect(pont.outilsDev.attacher(a)).rejects.toThrow();
+  expect(vues.lireTexte).not.toHaveBeenCalled();
+  expect(vues.capturer).not.toHaveBeenCalled();
+  expect(vues.naviguer).not.toHaveBeenCalled();
+  expect(vues.vue).not.toHaveBeenCalled();
+});
+
+test("PontElectron : un onglet devenu privé pendant sa lecture ou sa capture ne rend rien", async () => {
+  const { e, ag, F } = preparer();
+  const perso = e().espaces[0]!.id;
+  const vues = {
+    lireTexte: vi.fn(async () => (reglerPrive(e(), ag, perso, true), { texte: "secret" })),
+    capturer: vi.fn(async () => (reglerPrive(e(), ag, perso, true), Buffer.from("png"))),
+  };
+  const pont = pontSur(e, ag, F, vues);
+  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
+  await expect(pont.lireTexte(a)).rejects.toBeInstanceOf(OngletPrive);
+  reglerPrive(e(), ag, perso, false);
+  await expect(pont.capturer(a)).rejects.toBeInstanceOf(OngletPrive);
 });

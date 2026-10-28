@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, dansLaVue, lancer, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
+import { appelerOutil, dansLaVue, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -21,13 +21,13 @@ test("sans Docker, la navigation fonctionne", async () => {
   await fermer();
 });
 
-test("lister_onglets : un onglet que l'utilisateur n'a pas partagé apparaît comme « onglet privé »", async () => {
+test("lister_onglets : un onglet que l'utilisateur n'a pas partagé apparaît comme « onglet non partagé »", async () => {
   const { app, fenetre, racine, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
   await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
   await expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
   const { texte } = await appelerOutil(racine, "lister_onglets");
-  expect(texte).toContain("onglet privé");
+  expect(texte).toContain("onglet non partagé");
   expect(texte).not.toContain("a.html");
   await fermer();
 });
@@ -59,6 +59,27 @@ test("un onglet de l'agent passé en arrière-plan reste lisible et capturable",
   expect(lu.texte).toContain("Le chat dort");
   const capture = await appelerOutil(racine, "capture_ecran", { id: premier });
   expect(capture.image!.length).toBeGreaterThan(1000);
+  await fermer();
+});
+
+const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
+
+test("espace rendu privé : l'onglet de l'agent disparaît de lister_onglets, lire_onglet, capture_ecran et page_courante répondent privé, ouvrir_onglet est refusé", async () => {
+  const { fenetre, racine, fermer } = await lancer();
+  await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  const { texte: id } = await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/texte.html` });
+  expect((await appelerOutil(racine, "lire_onglet", { id })).texte).toContain("Le chat dort");
+  await reglerEspaceActifPrive(fenetre, true);
+  await expect.poll(async () => (await appelerOutil(racine, "lister_onglets")).texte).toBe("Aucun onglet ouvert.");
+  for (const nom of ["lire_onglet", "capture_ecran"]) expect(await appelerOutil(racine, nom, { id })).toEqual({ texte: TEXTE_PRIVE, erreur: false });
+  expect(await appelerOutil(racine, "page_courante")).toEqual({ texte: TEXTE_PRIVE, erreur: false });
+  const ouvert = await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/b.html` });
+  expect(ouvert.texte).toContain("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+  await expect(fenetre.locator('[data-testid^="onglet-"]')).toHaveCount(1);
+  await expect(fenetre.getByTestId("demande-permission")).toHaveCount(0);
+  // Redevenu partagé : l'onglet revient dans la liste, mais l'accès est à redemander.
+  await reglerEspaceActifPrive(fenetre, false);
+  await expect.poll(async () => (await appelerOutil(racine, "lister_onglets")).texte).toContain(`${id} · onglet non partagé`);
   await fermer();
 });
 

@@ -29,6 +29,10 @@ export interface PontNavigateur {
    * d'objet (nouvelle conversation, noyau arrêté), elle est retirée et la demande répond `[]`.
    */
   demanderOutilsDev?(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]>;
+  /** L'onglet est dans un espace privé : absent de listerOnglets, l'agent n'y a pas accès. */
+  estPrive?(id: string): boolean;
+  /** L'onglet que l'utilisateur regarde est dans un espace privé (ongletActif renvoie alors null). */
+  ongletActifPrive?(): boolean;
 }
 
 export interface MessageConsole {
@@ -89,6 +93,16 @@ export class OngletIntrouvable extends Error {
   constructor(readonly id: string) {
     super(`Onglet introuvable : ${id}`);
     this.name = "OngletIntrouvable";
+  }
+}
+
+export const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
+
+/** L'onglet est dans un espace privé : l'agent reçoit TEXTE_PRIVE, sans question posée à l'utilisateur. */
+export class OngletPrive extends Error {
+  constructor(readonly id: string) {
+    super(TEXTE_PRIVE);
+    this.name = "OngletPrive";
   }
 }
 

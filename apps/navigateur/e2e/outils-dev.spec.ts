@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, dansLaVue, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
+import { appelerOutil, dansLaVue, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 /** Ports d'essai, jamais ceux des vraies applis de l'utilisateur ; délai court avant « En erreur ». */
 const ENV = { WEBAIOS_PORTS_APPS: "15285-15289", WEBAIOS_DELAI_APP_MS: "3000" };
@@ -267,6 +267,29 @@ test("Couper l'accès : la pastille disparaît, lire_onglet redemande", async ()
   await expect(fenetre.getByTestId("demande-permission")).toBeVisible();
   await fenetre.getByTestId("demande-permission").getByRole("button", { name: "Refuser" }).click();
   await appel;
+  await fermer();
+});
+
+test("espace rendu privé : la pastille disparaît, le débogueur est détaché et les outils répondent privé sans carte", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecOngletTiers();
+  await accorder(fenetre, racine, id, ["console", "agir"]);
+  await expect(fenetre.getByTestId(`onglet-${id}`).getByTestId(PASTILLE)).toHaveAttribute("data-niveau", "agir");
+  const attache = () =>
+    app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().includes("texte.html"))?.debugger.isAttached());
+  await expect.poll(attache).toBe(true);
+  await reglerEspaceActifPrive(fenetre, true);
+  await expect(fenetre.getByTestId(PASTILLE)).toHaveCount(0);
+  await expect.poll(attache).toBe(false);
+  const prive = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
+  expect(await outil(racine, "lire_console", { id })).toBe(prive);
+  expect(await outil(racine, "executer_js", { id, code: "document.title" })).toBe(prive);
+  await expect(fenetre.getByTestId(CARTE)).toHaveCount(0);
+  // Redevenu partagé : les droits ne reviennent pas, l'outil redemande.
+  await reglerEspaceActifPrive(fenetre, false);
+  const appel = outil(racine, "lire_console", { id });
+  await expect(fenetre.getByTestId(CARTE)).toBeVisible();
+  await fenetre.getByTestId(CARTE).getByRole("button", { name: "Refuser" }).click();
+  expect(await appel).toBe(REFUS);
   await fermer();
 });
 
