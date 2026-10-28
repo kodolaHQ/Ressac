@@ -2,6 +2,7 @@
 // Usage : corepack pnpm dev:noyau   (Ctrl-] pour quitter)
 import { execFile } from "node:child_process";
 import { appendFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { creerNoyau, ErreurAtelier } from "../noyau.js";
 import { PontFactice } from "../mcp/pont-factice.js";
@@ -28,7 +29,8 @@ const pont = new Proxy(factice, {
   },
 }) as PontNavigateur;
 
-const noyau = await creerNoyau({ pont });
+// Données des widgets : hors de l'espace, dans un dossier temporaire (pas de profil de navigateur ici).
+const noyau = await creerNoyau({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets") });
 journal = join(noyau.chemins.interne, "dev-pont.log");
 console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : tail -f ${journal}\nCtrl-] pour quitter.\n`);
 

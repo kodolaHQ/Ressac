@@ -441,6 +441,8 @@ app.whenReady().then(async () => {
     historique,
     // Profils bruts des sites tiers : dans le profil du navigateur, jamais dans l'espace que l'agent lit.
     dossierProfilage: join(dossier, "profilage"),
+    // Données récoltées et accords des widgets : hors de l'espace, que l'agent lit.
+    dossierWidgets: join(dossier, "widgets"),
     applications: applications.gestionnaire,
     fenetresApplications: applications.fenetres,
     magasin,

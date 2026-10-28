@@ -1,4 +1,4 @@
-// Ancien modèle « blocs » de la page d'accueil. Encore utilisé par la veille ; retiré avec elle (tâche 6).
+// Ancien modèle « blocs » de la page d'accueil. Le noyau ne s'en sert plus ; apps/navigateur l'utilise encore jusqu'à la tâche 8.
 import { readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";

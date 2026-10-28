@@ -4,7 +4,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { demarrerServeurMcp, genererJeton, type OutilsApplications } from "../../src/mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets } from "../../src/mcp/serveur.js";
+import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
 
 const github: OngletInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
@@ -351,4 +352,130 @@ test("sans applications : les outils n'existent pas", async () => {
   expect(noms).not.toContain("lancer_application");
   expect(noms).not.toContain("arreter_application");
   expect(noms).not.toContain("journal_application");
+});
+
+// --- Widgets ---
+
+/** Deux widgets : « meteo » (public) et « daily » (lit avec le compte de l'utilisateur). */
+function widgetsFactices() {
+  const donnees: Record<string, unknown> = { meteo: { t: 12 }, daily: { articles: ["secret du compte"] } };
+  const recoltes: string[] = [];
+  const outils: OutilsWidgets = {
+    async lire(id) {
+      if (id === "meteo") return { nom: "Météo", compte: false, donnees: donnees.meteo };
+      if (id === "daily") return { nom: "daily.dev", compte: true, donnees: donnees.daily };
+      return null;
+    },
+    async recolter(id): Promise<EtatWidget> {
+      recoltes.push(id);
+      if (id !== "meteo" && id !== "daily") throw new Error(`Widget inconnu : ${id}`);
+      return { statut: "ok", derniereMaj: "2026-10-28T10:00:00.000Z", derniereTentative: "2026-10-28T10:00:00.000Z", journal: `journal de ${id}` };
+    },
+  };
+  return { outils, recoltes };
+}
+
+async function avecWidgets(widgets: OutilsWidgets, o: { donneesWidget?: boolean } = {}) {
+  await client.close();
+  await serveur.arreter();
+  pont = new PontFactice([], { actif: null, autoriser: false, ...o });
+  politique = new PolitiqueAcces();
+  serveur = await demarrerServeurMcp({ pont, politique, jeton, widgets, agent: "Claude" });
+  client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${jeton}` } },
+    }),
+  );
+}
+const cartesDonnees = () => pont.appels.filter((a) => a.methode === "demanderDonneesWidget");
+
+test("recolter_widget sur un widget public rend statut et données", async () => {
+  const { outils, recoltes } = widgetsFactices();
+  await avecWidgets(outils);
+  const r = await client.callTool({ name: "recolter_widget", arguments: { id: "meteo" } });
+  expect(r.isError).toBeFalsy();
+  expect(recoltes).toEqual(["meteo"]);
+  const t = texte(r);
+  expect(t).toContain('"statut": "ok"');
+  expect(t).toContain('"t": 12');
+  expect(t).toContain("journal de meteo");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("recolter_widget sur un widget avec compte, sans accord : statut seulement, ni données ni journal, aucune carte", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils, { donneesWidget: true });
+  const t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
+  expect(t).toContain('"statut": "ok"');
+  expect(t).not.toContain("secret du compte");
+  expect(t).not.toContain("journal de daily");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("donnees_widget sur un widget avec compte demande la carte ; refus → pas de données ; accord valable jusqu'à la nouvelle conversation", async () => {
+  const { outils } = widgetsFactices();
+  // Refus.
+  await avecWidgets(outils, { donneesWidget: false });
+  let t = texte(await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } }));
+  expect(t).not.toContain("secret du compte");
+  expect(cartesDonnees()).toHaveLength(1);
+  expect(cartesDonnees()[0]!.args[0]).toEqual({ id: "daily", nom: "daily.dev", agent: "Claude" });
+
+  // Accord : retenu pour la conversation, y compris par recolter_widget.
+  await avecWidgets(outils, { donneesWidget: true });
+  t = texte(await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } }));
+  expect(t).toContain("secret du compte");
+  expect(texte(await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } }))).toContain("secret du compte");
+  const recolte = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
+  expect(recolte).toContain("secret du compte");
+  expect(recolte).toContain("journal de daily");
+  expect(cartesDonnees()).toHaveLength(1);
+
+  // Nouvelle conversation : la carte revient.
+  politique.reinitialiser();
+  expect(texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }))).not.toContain("secret du compte");
+  await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } });
+  expect(cartesDonnees()).toHaveLength(2);
+});
+
+test("donnees_widget sur un widget public : données sans carte ; widget inconnu : erreur", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils);
+  expect(texte(await client.callTool({ name: "donnees_widget", arguments: { id: "meteo" } }))).toContain('"t": 12');
+  const r = await client.callTool({ name: "donnees_widget", arguments: { id: "absent" } });
+  expect(r.isError).toBe(true);
+  expect(texte(r)).toContain("Widget inconnu : absent");
+});
+
+test("donnees_widget sans carte possible (pas de demanderDonneesWidget) : refus", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils);
+  const t = texte(await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } }));
+  expect(t).not.toContain("secret du compte");
+  expect(t).toContain("refusé");
+});
+
+test("donnees_widget : une carte en attente est retirée par une nouvelle conversation, et sa réponse tardive n'accorde rien", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils);
+  let signalRecu: AbortSignal | undefined;
+  let repondre!: (oui: boolean) => void;
+  pont.demanderDonneesWidget = (_o, signal) => {
+    signalRecu = signal;
+    return new Promise<boolean>((ok) => (repondre = ok));
+  };
+  const appel = client.callTool({ name: "donnees_widget", arguments: { id: "daily" } });
+  await vi.waitFor(() => expect(signalRecu).toBeDefined());
+  politique.reinitialiser();
+  expect(signalRecu!.aborted).toBe(true);
+  repondre(true);
+  expect(texte(await appel)).not.toContain("secret du compte");
+  expect(politique.donneesWidgetAccordees("daily")).toBe(false);
+});
+
+test("sans widgets : les outils n'existent pas", async () => {
+  const noms = (await client.listTools()).tools.map((t) => t.name);
+  expect(noms).not.toContain("recolter_widget");
+  expect(noms).not.toContain("donnees_widget");
 });

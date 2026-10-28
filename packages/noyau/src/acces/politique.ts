@@ -55,6 +55,8 @@ export class PolitiqueAcces {
   private readonly coupesConstruites = new Map<string, Set<DroitDev>>();
   /** id d'onglet → nombre d'outils en cours */
   private readonly utilisations = new Map<string, number>();
+  /** Widgets avec compte dont l'utilisateur a montré les données à l'agent (carte « donnees-widget »), pour cette conversation. */
+  private readonly donneesWidgets = new Set<string>();
   private readonly ecouteurs = new Set<() => void>();
   private numeroConversation = 0;
   private readonly portConstruit: (port: number) => boolean;
@@ -251,6 +253,16 @@ export class PolitiqueAcces {
     return org !== null && this.autorisations.get(o.id) === org;
   }
 
+  /** L'utilisateur montre à l'agent les données de ce widget avec compte, jusqu'à la prochaine conversation. */
+  accorderDonneesWidget(id: string): void {
+    this.donneesWidgets.add(id);
+    this.change();
+  }
+
+  donneesWidgetAccordees(id: string): boolean {
+    return this.donneesWidgets.has(id);
+  }
+
   /** Nouvelle conversation : plus aucune autorisation, refus ni coupe. Les « construites » restent : elles tiennent à l'onglet. */
   reinitialiser(): void {
     this.autorisations.clear();
@@ -258,6 +270,7 @@ export class PolitiqueAcces {
     this.refus.clear();
     this.coupes.clear();
     this.coupesConstruites.clear();
+    this.donneesWidgets.clear();
     this.numeroConversation++;
     this.change();
   }

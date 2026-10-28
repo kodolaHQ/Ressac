@@ -47,6 +47,12 @@ export interface PontNavigateur {
    * en plus `PageLue.url` au retour.
    */
   lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[] }): Promise<PageLue>;
+  /**
+   * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
+   * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
+   * noyau arrêté), elle est retirée et la demande répond faux. Absent : la demande est refusée.
+   */
+  demanderDonneesWidget?(o: { id: string; nom: string; agent: string }, signal?: AbortSignal): Promise<boolean>;
 }
 
 export interface MessageConsole {

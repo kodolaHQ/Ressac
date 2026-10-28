@@ -4,20 +4,24 @@ import { lstat, mkdir, open, realpath, unlink, writeFile } from "node:fs/promise
 import { basename, join, posix } from "node:path";
 import { CHEMIN_CONTENEUR, cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
-import { lireAccueilBlocs } from "./accueil/blocs-anciens.js";
-import type { EtatAccueilBlocs } from "./accueil/blocs-anciens.js";
+import { lireAccueil } from "./accueil/lire.js";
+import type { EtatAccueil, EtatWidget, WidgetLu } from "./accueil/schemas.js";
+import { ecrireEtatWidget, lireDonnees, lireEtatWidget } from "./accueil/donnees.js";
 import { surveillerAccueil } from "./accueil/surveiller.js";
 import { chargerProfils, construireCommande } from "./profils/profil.js";
 import { ecrireConfigMcp } from "./profils/config-mcp.js";
-import { Atelier, type EtatAtelier } from "./conteneur/atelier.js";
+import { Atelier, DOSSIER_DOCKER_PAR_DEFAUT, type EtatAtelier } from "./conteneur/atelier.js";
 import { executeurParDefaut, type Executeur } from "./conteneur/executeur.js";
 import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
-import { demarrerServeurMcp, genererJeton, type OutilsApplications } from "./mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets } from "./mcp/serveur.js";
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
-import { PlanificateurVeille } from "./veille/planificateur.js";
+import type { IaLocale } from "./ia/ia-locale.js";
+import { PlanificateurWidgets } from "./widgets/planificateur.js";
+import { accordRequis } from "./widgets/recolte.js";
+import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
 
 export class ErreurAtelier extends Error {
   constructor(readonly etat: EtatAtelier, detail?: string) {
@@ -161,8 +165,20 @@ export interface Noyau {
   etatAtelier(): Promise<EtatAtelier>;
   /** Nouvelle conversation : efface les autorisations. Signaler l'onglet courant (interactionUtilisateur) après. */
   ouvrirSessionAgent(o: { cols: number; rows: number }): Promise<SessionAgent>;
-  lireAccueil(): Promise<EtatAccueilBlocs>;
+  /** Widgets de la page d'accueil, avec leurs données et leur état (rangés hors de l'espace). */
+  lireAccueil(): Promise<EtatAccueil>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
+  /** Récolte ce widget tout de suite, après la récolte en cours. */
+  recolterMaintenant(id: string): Promise<EtatWidget>;
+  /** IA locale (Kev, Gemma) donnée par le navigateur ; null sans elle. */
+  ia: IaLocale | null;
+  /**
+   * L'utilisateur autorise le widget à lire avec son compte, dans ce profil de connexion. Le navigateur a vérifié avant que ce
+   * profil n'est pas celui d'un espace privé. L'accord porte sur les domaines actuels de la déclaration ; une récolte suit.
+   */
+  accorder(id: string, profil: string): Promise<void>;
+  /** Retire l'accord : le widget attend un nouvel accord (`accord-requis`). */
+  refuserAccord(id: string): Promise<void>;
   arreter(): Promise<void>;
 }
 
@@ -186,6 +202,14 @@ export async function creerNoyau(o: {
    * navigateur donne `<profil>/profilage`). Absent, ces profils ne sont pas enregistrés.
    */
   dossierProfilage?: string;
+  /** Dossier des données, états et accords des widgets, hors de l'espace (le navigateur donne `<profil>/widgets`). */
+  dossierWidgets: string;
+  /** IA locale pour les récoltes ; arrêtée avec le noyau. */
+  ia?: IaLocale;
+  /** Récolteur monté dans le conteneur de récolte (par défaut `<ressources>/docker/recolteur.mjs`). */
+  recolteur?: string;
+  /** Appelé après chaque écriture de l'état ou des données d'un widget, et après un accord ou son retrait. */
+  surChange?: () => void;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -196,6 +220,29 @@ export async function creerNoyau(o: {
   if (!profil) throw new Error(`Profil d'agent inconnu : ${profilId}`);
 
   const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
+  const { dossierWidgets } = o;
+  const ia = o.ia ?? null;
+  const signaler = () => {
+    try {
+      o.surChange?.();
+    } catch (e) {
+      console.error("[webaios] rappel des widgets :", e);
+    }
+  };
+  const widget = async (id: string): Promise<WidgetLu | undefined> =>
+    (await lireAccueil(chemins, dossierWidgets)).widgets.find((w) => w.id === id);
+  // Lus par l'agent via ses outils MCP. Un widget dont la déclaration est illisible, ou qui a un accord enregistré, compte
+  // comme lisant avec le compte de l'utilisateur : ses données ont pu être récoltées avec.
+  const outilsWidgets: OutilsWidgets = {
+    async lire(id) {
+      const w = await widget(id);
+      if (!w) return null;
+      const accord = (await lireAccords(dossierWidgets))[id] !== undefined;
+      if ("erreur" in w) return { nom: id, compte: true, donnees: await lireDonnees(dossierWidgets, id) };
+      return { nom: w.declaration.nom, compte: accord || w.declaration.sources.compte.length > 0, donnees: w.donnees };
+    },
+    recolter: (id) => planificateur.recolterMaintenant(id),
+  };
   // Le navigateur garde ses outils de développement d'un noyau à l'autre : celui-ci prend les siens, ce qui révoque ceux
   // d'un noyau précédent (ses appels en retard sont refusés, ses attachements tombent).
   const proprietaire = o.pont.outilsDev?.proprietaire?.();
@@ -209,6 +256,7 @@ export async function creerNoyau(o: {
     profils: fichiersProfils(chemins, o.dossierProfilage),
     ...(outilsDev ? { outilsDev } : {}),
     ...(o.applications ? { applications: o.applications } : {}),
+    widgets: outilsWidgets,
   });
   try {
     await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
@@ -229,7 +277,17 @@ export async function creerNoyau(o: {
     return etat;
   });
   demarrage.catch(() => {});
-  const planificateur = new PlanificateurVeille({ chemins, atelier, profil, executer, horloge: o.horloge });
+  const recolteur = o.recolteur ?? (o.ressources ? join(o.ressources, "docker", "recolteur.mjs") : join(DOSSIER_DOCKER_PAR_DEFAUT, "recolteur.mjs"));
+  const planificateur = new PlanificateurWidgets({
+    chemins,
+    dossierWidgets,
+    recolteur,
+    atelier,
+    pont: o.pont,
+    ia,
+    surChange: signaler,
+    ...(o.horloge ? { horloge: o.horloge } : {}),
+  });
   await planificateur.demarrer();
   const pont = o.pont;
   const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
@@ -257,13 +315,41 @@ export async function creerNoyau(o: {
       const id = randomBytes(8).toString("hex");
       return SessionAgent.demarrer(atelier.commandeSession(id, commande), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
     },
-    lireAccueil: () => lireAccueilBlocs(chemins),
+    lireAccueil: () => lireAccueil(chemins, dossierWidgets),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
+    recolterMaintenant: (id) => planificateur.recolterMaintenant(id),
+    ia,
+    async accorder(id, nomProfil) {
+      const w = await widget(id);
+      if (!w) throw new Error(`Widget inconnu : ${id}`);
+      if ("erreur" in w) throw new Error(`Widget illisible : ${w.erreur}`);
+      const { compte, publiques } = w.declaration.sources;
+      if (!compte.length) throw new Error(`Le widget ${id} ne lit pas avec un compte`);
+      await accorder(dossierWidgets, id, { domaines: [...compte].sort(), publiques: [...publiques].sort(), profil: nomProfil });
+      signaler();
+      // La récolte prend du temps : elle suit en arrière-plan et signale elle-même ses changements.
+      planificateur.recolterMaintenant(id).catch((e) => console.error("[webaios] récolte après accord :", e));
+    },
+    async refuserAccord(id) {
+      await retirerAccord(dossierWidgets, id);
+      const w = await widget(id);
+      if (w && !("erreur" in w) && w.declaration.sources.compte.length) {
+        const avant = await lireEtatWidget(dossierWidgets, id);
+        await ecrireEtatWidget(dossierWidgets, id, {
+          statut: "accord-requis",
+          derniereMaj: avant.derniereMaj,
+          derniereTentative: avant.derniereTentative,
+          erreur: accordRequis(w.declaration),
+        });
+      }
+      signaler();
+    },
     async arreter() {
       suivi?.arreter();
       // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
       politique.reinitialiser();
       await planificateur.arreter();
+      await ia?.arreter().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
       await serveur.arreter();
       proprietaire?.liberer();
     },

@@ -150,6 +150,7 @@ export class PontFactice implements PontNavigateur {
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
   lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[] }) => Promise<PageLue>;
+  demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
@@ -158,7 +159,8 @@ export class PontFactice implements PontNavigateur {
    * l'historique : `chercher` renvoie `resultats` (au plus `limite`), `lire` la page de `textes` à cette URL, et
    * `erreur`, si donnée, fait échouer les deux. `lecture` fournit `lirePageInvisible` : la page de `pages` à cette URL
    * (sinon une page vide), et ProfilRefuse pour un profil de `refuser`. `redirections` simule une redirection :
-   * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue.
+   * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue. `donneesWidget` fournit la carte
+   * « donnees-widget », qui répond cette valeur.
    */
   constructor(
     onglets: OngletInfo[],
@@ -170,6 +172,7 @@ export class PontFactice implements PontNavigateur {
       bloquer?: boolean;
       historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
       lecture?: { pages: PageLue[]; refuser?: string[]; redirections?: Record<string, string> };
+      donneesWidget?: boolean;
     },
   ) {
     this.onglets = onglets.map((x) => ({ ...x }));
@@ -205,6 +208,13 @@ export class PontFactice implements PontNavigateur {
         const finale = lecture.redirections?.[url] ?? url;
         const p = lecture.pages.find((x) => x.url === finale);
         return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
+      };
+    }
+    const donneesWidget = o.donneesWidget;
+    if (donneesWidget !== undefined) {
+      this.demanderDonneesWidget = async (d) => {
+        this.noter("demanderDonneesWidget", { ...d });
+        return donneesWidget;
       };
     }
     const accorder = o.accorderDev;

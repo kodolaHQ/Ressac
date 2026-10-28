@@ -55,6 +55,8 @@ export interface OptionsRecolte {
   horloge?: () => Date;
   /** Délai côté noyau ; le conteneur s'arrête de lui-même après 180 s (+5 s). */
   delaiMs?: number;
+  /** Appelé après chaque écriture de l'état ou des données du widget (rafraîchir l'affichage). */
+  surChange?: () => void;
   /** Tests seulement : permet `recuperer` et `lirePage` vers des adresses locales (127.0.0.1…). */
   adressesLocales?: boolean;
 }
@@ -70,7 +72,7 @@ const ID = /^[a-z0-9-]+$/;
 
 const PROFIL_REFUSE =
   "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
-const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
+export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
 
 const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -189,6 +191,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   const precedent = await lireEtatWidget(dossierWidgets, id);
   const debut = horloge().toISOString();
   await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut });
+  o.surChange?.();
 
   const conclure = async (r: { statut: EtatWidget["statut"]; erreur?: string; journal?: string; donnees?: unknown }) => {
     const etat: EtatWidget = {
@@ -199,6 +202,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     if (r.erreur) etat.erreur = tronquer(r.erreur, ERREUR_MAX);
     if (r.journal) etat.journal = r.journal;
     await ecrireEtatWidget(dossierWidgets, id, etat);
+    o.surChange?.();
     return r.statut === "ok" ? { etat, donnees: r.donnees } : { etat };
   };
 

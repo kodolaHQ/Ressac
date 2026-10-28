@@ -33,8 +33,6 @@ function normaliser(chemin: string): string {
   }
 }
 
-const nomVeille = (id: string) => `webaios-veille-${id}`;
-
 /** Nom du conteneur de récolte d'un widget ; l'id entre dans un nom docker, on refuse tout id douteux. */
 function nomRecolte(id: string): string {
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
@@ -189,30 +187,6 @@ export class Atelier {
     ], DELAI_SONDE_MS);
     if (run.code !== 0) throw new Error(`Démarrage du conteneur ${NOM_CONTENEUR} impossible : ${run.stderr}`);
     return this.etat();
-  }
-
-  /**
-   * Veille dans un conteneur jetable : seul le dossier du bloc est monté (et AGENTS.md en lecture),
-   * donc ni le jeton MCP ni le reste de l'espace. `timeout` arrête l'agent *dans* le conteneur :
-   * tuer le client docker local ne suffirait pas.
-   */
-  commandeVeille(id: string, argv: string[], delaiS: number): string[] {
-    if (!this.docker) throw new Error("Docker introuvable");
-    return [
-      this.docker, "run", "--rm",
-      "--name", nomVeille(id),
-      "-v", `${join(this.chemins.blocs, id)}:${CHEMIN_CONTENEUR}/accueil/blocs/${id}`,
-      "-v", `${join(this.chemins.racine, "AGENTS.md")}:${CHEMIN_CONTENEUR}/AGENTS.md:ro`,
-      "-v", `${VOLUME_HOME}:/home/node`,
-      "-w", CHEMIN_CONTENEUR,
-      IMAGE,
-      "timeout", "-k", "10", String(delaiS),
-      ...argv,
-    ];
-  }
-
-  async supprimerVeille(id: string): Promise<void> {
-    if (this.docker) await this.lancer(["rm", "-f", nomVeille(id)], DELAI_SONDE_MS);
   }
 
   /**
