@@ -2,6 +2,7 @@ import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, 
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import { BORD_REVELATION, SORTIE_GAUCHE, type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
 import { brancherCapture } from "./capture-texte";
+import { brancherBalayage } from "./balayage";
 import { attendreChargement } from "./chargement";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
 import { entreesMenuPage } from "./menu-page";
@@ -285,6 +286,7 @@ export class GestionnaireVues {
     this.sessions.set(onglet.id, session);
     const contexte = () => this.o.contexteHistorique?.(onglet.id) ?? null;
     brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, contexte);
+    brancherBalayage(wc);
     if (this.o.retenir) brancherCapture(wc, contexte, this.o.retenir);
     gererOuvertures(
       wc,

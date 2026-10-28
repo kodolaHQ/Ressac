@@ -71,6 +71,49 @@ test("← et → suivent l'historique de l'onglet", async () => {
   await fermer();
 });
 
+/** Défilements horizontaux d'un trackpad (deux doigts) envoyés à la page dont l'URL contient `morceau`. */
+const balayer = (app: ElectronApplication, morceau: string, deltaX: number, fois = 20) =>
+  app.evaluate(
+    async ({ webContents }, { morceau, deltaX, fois }) => {
+      const wc = webContents.getAllWebContents().find((w) => w.getURL().includes(morceau))!;
+      for (let i = 0; i < fois; i++) {
+        wc.sendInputEvent({ type: "mouseWheel", x: 150, y: 100, deltaX, deltaY: 0, hasPreciseScrollingDeltas: true, canScroll: true });
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    },
+    { morceau, deltaX, fois },
+  );
+
+test("balayer à deux doigts recule puis avance ; une bande qui défile garde le geste", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => titreVue(app, "a.html")).toBe("Page A");
+  const barre = fenetre.getByTestId("barre-adresse");
+  await barre.click();
+  await barre.fill(`${serveur.url}/b.html`);
+  await barre.press("Enter");
+  await expect(fenetre.locator(onglets).first()).toContainText("Page B");
+  // L'élan d'un geste ne navigue qu'une fois : 20 défilements reculent d'une seule page.
+  await balayer(app, "b.html", 20);
+  await expect(fenetre.locator(onglets).first()).toContainText("Page A");
+  await new Promise((r) => setTimeout(r, 400));
+  await balayer(app, "a.html", -20);
+  await expect(fenetre.locator(onglets).first()).toContainText("Page B");
+
+  // Une page qui défile horizontalement prend le geste : on reste dessus.
+  await barre.click();
+  await barre.fill(`${serveur.url}/large.html`);
+  await barre.press("Enter");
+  await expect(fenetre.locator(onglets).first()).toContainText("Page large");
+  await new Promise((r) => setTimeout(r, 400));
+  await balayer(app, "large.html", -20);
+  await new Promise((r) => setTimeout(r, 400));
+  await balayer(app, "large.html", 20);
+  await new Promise((r) => setTimeout(r, 800));
+  await expect(fenetre.locator(onglets).first()).toContainText("Page large");
+  await fermer();
+});
+
 test("⌘+ puis redémarrage : le zoom de l'onglet est conservé", async () => {
   const premier = await lancer();
   await ouvrirOnglet(premier.fenetre, `${serveur.url}/a.html`);
