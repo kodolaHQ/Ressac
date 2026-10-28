@@ -8,38 +8,67 @@ import type { AddressInfo } from "node:net";
 const RACINE = join(__dirname, "..");
 
 /**
- * Espace de l'agent (~/WebAiOs pour l'utilisateur) : un dossier temporaire par test, jamais le vrai. Son `accueil/` existe
- * déjà : les blocs modèles ne sont pas copiés (daily.dev serait chargé depuis internet à chaque test).
+ * Espace de l'agent (~/WebAiOs pour l'utilisateur) : un dossier temporaire par test, jamais le vrai. Son `accueil/widgets/`
+ * existe déjà : les widgets de départ ne sont pas copiés (leurs récoltes liraient internet à chaque test).
  */
 export function nouvelleRacine(): string {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "webaios-racine-")));
-  mkdirSync(join(racine, "accueil", "blocs"), { recursive: true });
+  mkdirSync(join(racine, "accueil", "widgets"), { recursive: true });
   return racine;
 }
 
-export type BlocTest =
-  | { titre: string; type: "agent"; html?: string; etat?: Record<string, unknown> }
-  | { titre: string; type: "app"; url: string };
-
-/**
- * Écrit un bloc dans `accueil/blocs/<id>/`. Un bloc d'agent a par défaut un état « à jour maintenant » : le
- * planificateur ne lance pas de veille.
- */
-export function ecrireBloc(racine: string, id: string, b: BlocTest): void {
-  const dossier = join(racine, "accueil", "blocs", id);
-  mkdirSync(dossier, { recursive: true });
-  if (b.type === "app") {
-    writeFileSync(join(dossier, "bloc.json"), JSON.stringify({ titre: b.titre, type: "app", url: b.url }));
-    return;
-  }
-  const etat = b.etat ?? { derniereMaj: new Date().toISOString(), derniereTentative: new Date().toISOString(), statut: "ok" };
-  writeFileSync(join(dossier, "etat.json"), JSON.stringify(etat));
-  if (b.html !== undefined) writeFileSync(join(dossier, "index.html"), b.html);
-  writeFileSync(join(dossier, "bloc.json"), JSON.stringify({ titre: b.titre, type: "agent", consigne: "test" }));
+/** Un widget de test : `widget.json` (complété par défaut), et ses fichiers facultatifs. */
+export interface WidgetTest {
+  nom: string;
+  tailles?: { min: { l: number; h: number }; max: { l: number; h: number }; defaut: { l: number; h: number } };
+  recolte?: { minutes: number };
+  sources?: { compte?: string[]; publiques?: string[] };
+  config?: unknown;
+  /** Contenu de `recolte.mjs`. */
+  code?: string;
+  /** Contenu de `affichage.html`. */
+  affichage?: string;
+  exemple?: unknown;
 }
 
-export function ecrireDisposition(racine: string, ordre: string[]): void {
-  writeFileSync(join(racine, "accueil", "disposition.json"), JSON.stringify({ ordre }));
+/** Écrit un widget dans `accueil/widgets/<id>/` (le code et l'affichage de l'agent ; ses données sont dans le profil). */
+export function ecrireWidget(racine: string, id: string, w: WidgetTest): void {
+  const dossier = join(racine, "accueil", "widgets", id);
+  mkdirSync(dossier, { recursive: true });
+  const declaration = {
+    nom: w.nom,
+    tailles: w.tailles ?? { min: { l: 2, h: 2 }, max: { l: 12, h: 8 }, defaut: { l: 4, h: 3 } },
+    ...(w.recolte ? { recolte: w.recolte } : {}),
+    sources: { compte: w.sources?.compte ?? [], publiques: w.sources?.publiques ?? [] },
+    ...(w.config !== undefined ? { config: w.config } : {}),
+  };
+  writeFileSync(join(dossier, "widget.json"), JSON.stringify(declaration));
+  if (w.code !== undefined) writeFileSync(join(dossier, "recolte.mjs"), w.code);
+  if (w.affichage !== undefined) writeFileSync(join(dossier, "affichage.html"), w.affichage);
+  if (w.exemple !== undefined) writeFileSync(join(dossier, "exemple.json"), JSON.stringify(w.exemple));
+}
+
+/** Données, état et accords d'un widget, rangés hors de l'espace : `<profil>/widgets/`. */
+export const dossierWidgets = (profil: string) => join(profil, "widgets");
+
+/** État d'un widget dans le profil (par défaut « à jour maintenant » : le planificateur ne le récolte pas au lancement). */
+export function ecrireEtatWidget(profil: string, id: string, etat?: Record<string, unknown>): void {
+  mkdirSync(join(dossierWidgets(profil), id), { recursive: true });
+  const maintenant = new Date().toISOString();
+  writeFileSync(
+    join(dossierWidgets(profil), id, "etat.json"),
+    JSON.stringify(etat ?? { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant }),
+  );
+}
+
+export type PlacementTest = { id: string; x: number; y: number; l: number; h: number };
+
+export function ecrireDisposition(racine: string, widgets: PlacementTest[]): void {
+  writeFileSync(join(racine, "accueil", "disposition.json"), JSON.stringify({ version: 2, widgets }));
+}
+
+export function lireDisposition(racine: string): PlacementTest[] {
+  return JSON.parse(readFileSync(join(racine, "accueil", "disposition.json"), "utf8")).widgets;
 }
 
 export function nouveauProfil(): string {
