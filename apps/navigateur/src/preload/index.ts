@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ApiPastille, ApiWebaios } from "../commun/api";
 import { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "../commun/canaux";
+import { MOTIF_INDICES_RESEAU } from "../commun/indices-reseau";
+import { gardeWidget } from "./garde-widget";
 import type { EtatNavigateur } from "../commun/modele";
 
 const fenetreId = process.argv.find((a) => a.startsWith(ARG_FENETRE))?.slice(ARG_FENETRE.length) ?? "";
@@ -114,7 +116,16 @@ const pastille: ApiPastille = {
 const cadrePrincipal = process.isMainFrame !== false && window.top === window;
 if (cadrePrincipal) {
   contextBridge.exposeInMainWorld("webaios", process.argv.some((a) => a.startsWith(ARG_PASTILLE)) ? pastille : api);
-} else if (location.protocol === "webaios-widget:") {
+} else {
+  // Tout autre cadre de l'interface est l'affichage d'un widget ou un cadre qu'il a créé : ni WebRTC, ni indice réseau
+  // (voir garde-widget.ts), posé avant le premier script de la page.
+  try {
+    contextBridge.executeInMainWorld({ func: gardeWidget, args: [MOTIF_INDICES_RESEAU] });
+  } catch (e) {
+    console.error("[webaios] garde du widget non posée :", e);
+  }
+}
+if (!cadrePrincipal && location.protocol === "webaios-widget:") {
   // Affichage d'un widget : un vrai appui de la souris (isTrusted, impossible à produire par le code du widget, qui ne
   // voit pas ce monde isolé) est signalé au process principal, qui seul permet alors un lien à ce widget. Écouté en
   // capture, avant tout écouteur du widget. Jamais un `click` : le widget peut voler le focus et faire d'un Espace ou

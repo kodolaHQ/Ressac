@@ -71,6 +71,12 @@ l'état (`etat.json`) sont gardés par le navigateur hors de ton espace : ne les
   gestionnaire de clic** (c'est permis juste après un vrai clic de l'utilisateur, pour une URL http(s)
   non locale, une seule par clic).
 - Écris le texte venu des pages avec `textContent`, jamais `innerHTML`.
+- Pas de `<link>`, de `<meta http-equiv>` ni de règles de spéculation, même dans un texte ou un
+  `srcdoc` : un affichage qui en contient est refusé (ils feraient résoudre des noms, donc sortir
+  des données). Le HTML écrit par script qui en contient lève une erreur, comme
+  `createElement("link")`. WebRTC n'existe pas dans l'affichage.
+- Pas de code en texte : ni URL `javascript:`, ni `setAttribute("onclick", …)`, ni texte d'un
+  `<script>` créé par script. Utilise `addEventListener`.
 - Le style est sobre et suit le thème clair / sombre de l'utilisateur.
 
 ### Construire et tester un widget

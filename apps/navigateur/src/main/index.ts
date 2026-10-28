@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, protocol, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
@@ -34,6 +34,7 @@ import { demarrerApplications, type ServiceApplications } from "./applications/s
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { profilsLisibles } from "./agent/lecture-invisible";
+import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 
 declare const __RESSOURCES_NOYAU__: string;
 
@@ -44,7 +45,7 @@ app.setPath("userData", cheminProfil());
 // Une seule instance par profil : deux processus écriraient la même session et le même historique.
 // (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
 if (!app.requestSingleInstanceLock()) app.exit(0);
-enregistrerSchemaWidget();
+enregistrerSchemaWidget([SCHEMA_ICONE]);
 
 /** Tests automatiques : aucune fenêtre à l'écran ni icône dans le Dock (elles gênent l'utilisateur pendant qu'il travaille). */
 export const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
@@ -138,8 +139,8 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   // L'interface n'ouvre aucune fenêtre (les widgets n'ont pas allow-popups).
   fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  // Les affichages des widgets sont des cadres de cette page : pas de WebRTC hors proxy (STUN révélerait l'adresse
-  // et ferait sortir des données sans passer par la CSP).
+  // Les affichages des widgets sont des cadres de cette page : WebRTC (s'il échappait à la garde du preload) ne passe
+  // que par le proxy de la session, qui ne mène nulle part (reseau-interface.ts) ; jamais d'UDP direct (STUN).
   fenetre.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
   const chargerInterface = () =>
     process.env.ELECTRON_RENDERER_URL
@@ -193,6 +194,15 @@ let minuteurPurge: NodeJS.Timeout | undefined;
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
+  // Avant toute fenêtre : la session de l'interface (et donc les affichages des widgets) ne sort jamais sur le réseau.
+  // Les favicons arrivent par webaios-icone:, cherchés dans une session à part (en mémoire, sans le profil de l'utilisateur).
+  try {
+    await couperReseauInterface(session.defaultSession, process.env.ELECTRON_RENDERER_URL);
+  } catch (e) {
+    console.error("[webaios] le réseau de l'interface n'a pas pu être coupé :", e);
+  }
+  const sessionIcones = session.fromPartition("webaios-icones");
+  protocol.handle(SCHEMA_ICONE, (requete) => repondreIcone((url, init) => sessionIcones.fetch(url, init), requete.url));
   const magasin = new Magasin(await chargerSession(dossier));
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);

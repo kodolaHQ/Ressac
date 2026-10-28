@@ -6,6 +6,7 @@ import { join, sep } from "node:path";
 import { placerManquants, type CheminsEspace, type EtatAccueil } from "@webaios/noyau";
 import { SchemaPlacements, type Placement, type ProfilPourAccord, type WidgetAffiche } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre } from "../../commun/modele";
+import { contientIndiceReseau } from "../../commun/indices-reseau";
 import { profilsLisibles, urlPermise } from "./lecture-invisible";
 
 export const SCHEMA_WIDGET = "webaios-widget";
@@ -15,7 +16,13 @@ const ID_WIDGET = /^[a-z0-9-]+$/;
  * formulaire, ni cadre. Ses liens passent par `postMessage` vers l'interface (d'où aucune `<base>`).
  */
 export const CSP_WIDGET =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'";
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
+/**
+ * Servi à la place d'un affichage qui contient un indice réseau (voir indices-reseau.ts) : le parseur le traiterait avant
+ * tout script, donc avant la garde du preload.
+ */
+export const AFFICHAGE_REFUSE =
+  '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color: #b44">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir AGENTS.md.</p>';
 /** Taille donnée à un widget illisible (sans déclaration), pour qu'il garde une place et montre son erreur. */
 const TAILLE_WIDGET_ILLISIBLE = { l: 4, h: 2 };
 
@@ -124,14 +131,18 @@ export async function lireAffichage(widgets: string, url: string): Promise<strin
 export async function repondreWidget(widgets: string | null, url: string): Promise<Response> {
   const html = widgets ? await lireAffichage(widgets, url) : null;
   if (html === null) return new Response("", { status: 404 });
-  return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP_WIDGET },
+  return new Response(contientIndiceReseau(html) ? AFFICHAGE_REFUSE : html, {
+    // X-DNS-Prefetch-Control : la résolution des liens reste coupée, même si le document essaie de la rallumer.
+    headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP_WIDGET, "X-DNS-Prefetch-Control": "off" },
   });
 }
 
-/** Avant `app.whenReady` : le schéma doit être standard pour que les URL aient un hôte (l'id du widget). */
-export function enregistrerSchemaWidget(): void {
-  protocol.registerSchemesAsPrivileged([{ scheme: SCHEMA_WIDGET, privileges: { standard: true, secure: true } }]);
+/**
+ * Avant `app.whenReady` : le schéma doit être standard pour que les URL aient un hôte (l'id du widget). Un seul appel
+ * enregistre tous les schémas (un second remplacerait le premier) : `autres` y ajoute ceux du reste de l'app.
+ */
+export function enregistrerSchemaWidget(autres: string[] = []): void {
+  protocol.registerSchemesAsPrivileged([SCHEMA_WIDGET, ...autres].map((scheme) => ({ scheme, privileges: { standard: true, secure: true } })));
 }
 
 /** Sert les affichages des widgets à l'interface. */

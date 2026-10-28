@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { urlIcone } from "../../commun/icone";
+
   let { favicon, titre, taille = 16 }: { favicon: string | null; titre: string; taille?: number } = $props();
   let erreur = $state(false);
+  // L'interface n'a pas de réseau : un favicon http(s) passe par webaios-icone: (main/reseau-interface.ts).
+  const source = $derived(favicon ? urlIcone(favicon) : null);
 </script>
 
-{#if favicon && !erreur}
-  <img src={favicon} alt="" width={taille} height={taille} onerror={() => (erreur = true)} />
+{#if source && !erreur}
+  <img src={source} alt="" width={taille} height={taille} onerror={() => (erreur = true)} />
 {:else}
   <span class="lettre" style:width="{taille}px" style:height="{taille}px" style:font-size="{taille * 0.6}px">{(titre.replace(/^https?:\/\/(www\.)?/, "")[0] ?? "?").toUpperCase()}</span>
 {/if}

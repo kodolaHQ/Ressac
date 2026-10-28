@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      img-src élargi à https: et http: : les favicons des sites sont chargés directement par l'interface.
-      Décision assumée : une image ne peut pas exécuter de code ; le prix est que le site d'un favicon voit
-      l'adresse IP de l'utilisateur, comme lors de la visite elle-même. Scripts et styles restent limités à 'self'.
+      L'interface ne charge rien du web (sa session n'a pas de réseau, voir main/reseau-interface.ts) : les favicons des
+      sites passent par webaios-icone:, que le process principal va chercher (le site voit l'adresse IP de l'utilisateur,
+      comme lors de la visite elle-même). Scripts et styles restent limités à 'self'.
       frame-src : seuls les affichages des widgets de la page d'accueil (protocole webaios-widget:, voir main/agent/accueil.ts).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; frame-src webaios-widget:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: webaios-icone:; frame-src webaios-widget:" />
     <title>WebAiOs</title>
   </head>
   <body>

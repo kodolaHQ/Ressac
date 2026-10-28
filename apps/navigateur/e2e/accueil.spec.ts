@@ -2,7 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from "@playwright/t
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import { createSocket } from "node:dgram";
-import type { AddressInfo } from "node:net";
+import { createServer as createNetServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,6 +20,8 @@ import {
 } from "./aide";
 
 const onglets = '[data-testid^="onglet-"]';
+/** Image PNG de 1 × 1 pixel. */
+const PNG_1PX = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const MODELES = join(__dirname, "..", "..", "..", "packages", "noyau", "modeles", "widgets");
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -99,6 +101,11 @@ test.beforeAll(async () => {
         return html(res, "<title>imprimé</title><script>print()</script><p>après</p>");
       case "/sonde":
         return html(res, "<title>?</title><script>document.title = [typeof window.webaios, typeof require, typeof process].join(' ')</script>");
+      case "/avec-icone":
+        return html(res, '<title>Icône</title><link rel="icon" href="/icone.png"><p>ok</p>');
+      case "/icone.png":
+        res.writeHead(200, { "Content-Type": "image/png" });
+        return res.end(PNG_1PX);
       case "/alerte":
         return html(res, "<title>alerté</title><script>alert('coucou')</script><p>après</p>");
       default:
@@ -530,6 +537,32 @@ test("un widget avec compte affiche le bandeau d'accord ; Autoriser avec le prof
   await fermer();
 });
 
+test("la carte d'accord montre aussi les sites publics ; si la déclaration change avant le clic, rien n'est accordé", async () => {
+  const racine = nouvelleRacine();
+  widgetCompte(racine);
+  const profil = nouveauProfil();
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const bandeau = fenetre.getByTestId("bandeau-accord");
+  await expect(bandeau).toContainText("Ce widget veut lire 127.0.0.1 avec ton compte, et ne contactera aucun autre site.");
+  await bandeau.getByRole("button", { name: "Autoriser…" }).click();
+  const carte = fenetre.getByTestId("carte-accord");
+  await expect(carte.getByTestId("accord-compte")).toContainText("127.0.0.1");
+  await expect(carte.getByTestId("accord-publiques")).toHaveText("Et ne contactera aucun autre site.");
+  // L'agent réécrit la déclaration pendant que la carte est ouverte : un site public de plus.
+  const fichier = join(racine, "accueil", "widgets", "compte", "widget.json");
+  writeFileSync(fichier, JSON.stringify({ ...lireJson(fichier), sources: { compte: ["127.0.0.1"], publiques: ["espion.example"] } }));
+  await carte.getByRole("button", { name: "Autoriser" }).click();
+  await expect(fenetre.getByTestId("widget-compte")).toContainText("Accord non enregistré");
+  expect(accords(profil)).toEqual({});
+  // La nouvelle demande s'affiche, avec le site public ; l'accord porte alors sur elle.
+  await expect(bandeau).toContainText("et pourra contacter : espion.example");
+  await bandeau.getByRole("button", { name: "Autoriser…" }).click();
+  await expect(carte.getByTestId("accord-publiques")).toHaveText("Et pourra contacter : espion.example.");
+  await carte.getByRole("button", { name: "Autoriser" }).click();
+  await expect.poll(() => accords(profil).compte).toEqual({ domaines: ["127.0.0.1"], publiques: ["espion.example"], profil: "defaut" });
+  await fermer();
+});
+
 test("la lecture publique ne voit aucun cookie du profil", async () => {
   const racine = nouvelleRacine();
   ecrireWidget(racine, "public", {
@@ -657,49 +690,177 @@ test("une lecture avec compte ne quitte pas ses domaines (302, script, meta refr
   await fermer();
 });
 
-test("l'affichage d'un widget ne peut joindre aucun serveur", async () => {
+/** Serveur TCP local qui compte les connexions (un serveur TURN en TCP n'a besoin de rien d'autre pour recevoir des données). */
+async function compteurTcp(): Promise<{ port: number; connexions: () => number; fermer(): Promise<void> }> {
+  let n = 0;
+  const serveur = createNetServer((s) => {
+    n++;
+    s.on("error", () => {});
+    s.destroy();
+  });
+  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  return { port: (serveur.address() as AddressInfo).port, connexions: () => n, fermer: () => new Promise((ok) => serveur.close(() => ok())) };
+}
+
+/** Code qui ouvre une connexion WebRTC vers un serveur TURN en TCP et un STUN en UDP ; écrit son résultat avec `noter`. */
+const codeRtc = (tcp: number, udp: number, noter: string) => `try {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: "turn:127.0.0.1:${tcp}?transport=tcp", username: "SECRET", credential: "x" }, { urls: "stun:127.0.0.1:${udp}" }] });
+  pc.createDataChannel("x");
+  pc.createOffer().then((o) => pc.setLocalDescription(o));
+  ${noter}("lancé");
+} catch (e) { ${noter}("erreur " + e.name); }`;
+
+test("l'affichage d'un widget ne peut joindre aucun serveur (ni WebRTC TURN/TCP ou STUN/UDP, y compris depuis ses cadres imbriqués)", async () => {
   const udp = createSocket("udp4");
   const paquets: Buffer[] = [];
   udp.on("message", (m) => paquets.push(m));
   await new Promise<void>((ok) => udp.bind(0, "127.0.0.1", ok));
   const portUdp = udp.address().port;
+  const tcp = await compteurTcp();
   const racine = nouvelleRacine();
   const a = site.url;
+  const dansCadre = `<script>const noter = (t) => parent.postMessage({ imbrique: t }, "*"); ${codeRtc(tcp.port, portUdp, "noter")}</script>`;
+  // Chaîne JS placée dans le script de l'affichage : « </ » y fermerait le script.
+  const enChaine = (t: string) => JSON.stringify(t).replace(/<\//g, "<\\/");
   ecrireWidget(racine, "espion", {
     nom: "Espion",
-    affichage: `<!doctype html><meta charset="utf-8"><p id="rtc">…</p>
+    affichage: `<!doctype html><meta charset="utf-8"><p id="rtc">…</p><p id="imbrique">…</p><p id="js">…</p><p id="vide">…</p>
 <script>
-  fetch(${JSON.stringify(`${a}/espion-fetch`)}).catch(() => {});
-  try { navigator.sendBeacon(${JSON.stringify(`${a}/espion-balise`)}, "x"); } catch {}
-  try { new WebSocket(${JSON.stringify(`ws://127.0.0.1:${site.port}/espion-ws`)}); } catch {}
-  const i = new Image(); i.src = ${JSON.stringify(`${a}/espion-image`)}; document.body.append(i);
-  document.body.insertAdjacentHTML("beforeend", '<img src="${a}/espion-img"><link rel="prefetch" href="${a}/espion-prefetch">');
-  (async () => {
-    try {
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:127.0.0.1:${portUdp}" }] });
-      pc.createDataChannel("x");
-      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") document.getElementById("rtc").textContent = "fini"; };
-      await pc.setLocalDescription(await pc.createOffer());
-      document.getElementById("rtc").textContent = "offre";
-    } catch (e) { document.getElementById("rtc").textContent = "erreur " + e; }
-  })();
+  const note = (id, t) => (document.getElementById(id).textContent = t);
+  const essai = (f) => { try { f(); } catch {} };
+  essai(() => fetch(${JSON.stringify(`${a}/espion-fetch`)}).catch(() => {}));
+  essai(() => navigator.sendBeacon(${JSON.stringify(`${a}/espion-balise`)}, "x"));
+  essai(() => new WebSocket(${JSON.stringify(`ws://127.0.0.1:${site.port}/espion-ws`)}));
+  essai(() => { const i = new Image(); i.src = ${JSON.stringify(`${a}/espion-image`)}; document.body.append(i); });
+  essai(() => document.body.insertAdjacentHTML("beforeend", '<img src="${a}/espion-img">'));
+  // « <" + "link » : écrit en clair, le navigateur refuserait tout l'affichage (voir le test suivant).
+  essai(() => document.body.insertAdjacentHTML("beforeend", "<" + 'link rel="prefetch" href="${a}/espion-prefetch">'));
+  ${codeRtc(tcp.port, portUdp, "((t) => note('rtc', t))")}
+  addEventListener("message", (e) => { if (e.data && e.data.imbrique) note("imbrique", e.data.imbrique); });
+  // Cadre srcdoc : la garde du preload y est aussi.
+  const s = document.createElement("iframe");
+  s.srcdoc = ${enChaine(dansCadre)};
+  document.body.append(s);
+  // Cadre javascript: (sans preload) : refusé par Trusted Types.
+  const j = document.createElement("iframe");
+  try { j.setAttribute("src", "javascript:" + encodeURIComponent(${enChaine(dansCadre)})); note("js", "posé"); } catch (e) { note("js", "erreur " + e.name); }
+  document.body.append(j);
+  // Cadre about:blank (sans preload) : le widget ne peut pas y prendre un constructeur neuf.
+  const v = document.createElement("iframe");
+  document.body.append(v);
+  try { note("vide", typeof v.contentWindow.RTCPeerConnection); } catch (e) { note("vide", "erreur " + e.name); }
 </script>`,
   });
   widgetsFuite(racine, a);
   try {
     const { fenetre, fermer } = await lancerWidgets(racine);
-    await expect(cadre(fenetre, "espion").locator("#rtc")).not.toHaveText("…");
+    const w = cadre(fenetre, "espion");
+    await expect(w.locator("#rtc")).toHaveText("erreur ReferenceError");
+    await expect(w.locator("#imbrique")).toHaveText("erreur ReferenceError");
+    await expect(w.locator("#vide")).toHaveText("erreur SecurityError");
     // Le premier chargement de l'affichage passe ; la navigation qui suit ne sort pas.
     await expect(donnees(fenetre, "fuite")).toHaveText('"reste"');
     await expect(donnees(fenetre, "fuite-data")).toHaveText('"reste"');
     await attendre(3000);
     expect(fenetre.frames().map((f) => f.url()).filter((u) => u.includes("fuite-navigation") || u.startsWith("data:"))).toEqual([]);
     expect(site.journal.filter((r) => /espion|fuite/.test(r.chemin))).toEqual([]);
-    expect(paquets.length, `STUN reçu : ${paquets.length} paquet(s) UDP ; état WebRTC du widget : ${await cadre(fenetre, "espion").locator("#rtc").textContent()}`).toBe(0);
+    expect(tcp.connexions(), "connexions TCP reçues par le faux serveur TURN").toBe(0);
+    expect(paquets.length, `STUN reçu : ${paquets.length} paquet(s) UDP`).toBe(0);
     await fermer();
   } finally {
     udp.close();
+    await tcp.fermer();
   }
+});
+
+test("filet réseau : une page de la session de l'interface, sans la garde du preload, n'atteint aucun serveur par WebRTC", async () => {
+  const tcp = await compteurTcp();
+  const udp = createSocket("udp4");
+  const paquets: Buffer[] = [];
+  udp.on("message", (m) => paquets.push(m));
+  await new Promise<void>((ok) => udp.bind(0, "127.0.0.1", ok));
+  try {
+    const { app, fermer } = await lancerWidgets(nouvelleRacine());
+    const page = `<title>…</title><script>const noter = (t) => (document.title = t); ${codeRtc(tcp.port, udp.address().port, "noter")}</script>`;
+    // Fenêtre cachée de la session par défaut, sans preload : WebRTC y existe, seul le filet réseau l'arrête.
+    const titre = await app.evaluate(async ({ BrowserWindow }, html) => {
+      const f = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+      f.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
+      await f.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise((ok) => setTimeout(ok, 4000));
+      const t = f.webContents.getTitle();
+      f.destroy();
+      return t;
+    }, page);
+    expect(titre).toBe("lancé");
+    expect(tcp.connexions(), "connexions TCP reçues par le faux serveur TURN").toBe(0);
+    expect(paquets).toHaveLength(0);
+    await fermer();
+  } finally {
+    udp.close();
+    await tcp.fermer();
+  }
+});
+
+test("l'affichage d'un widget ne fait résoudre aucun nom (dns-prefetch, preconnect, x-dns-prefetch-control, image) ; un onglet, si", async () => {
+  const suffixe = `w${Date.now().toString(36)}.webaios-test.example`;
+  const journalReseau = join(realpathSync(mkdtempSync(join(tmpdir(), "webaios-netlog-"))), "netlog.json");
+  const racine = nouvelleRacine();
+  // Affichage qui en contient dès le HTML : servi refusé (le parseur passerait avant toute garde).
+  ecrireWidget(racine, "dns-statique", {
+    nom: "DNS statique",
+    affichage: `<!doctype html><link rel="dns-prefetch" href="//statique.${suffixe}"><link rel="preconnect" href="https://preco.${suffixe}"><p id="ok">pas refusé</p>`,
+  });
+  ecrireWidget(racine, "dns-meta", {
+    nom: "DNS meta",
+    affichage: `<!doctype html><meta http-equiv="x-dns-prefetch-control" content="on"><a href="https://ancre.${suffixe}/">a</a><p id="ok">pas refusé</p>`,
+  });
+  // Affichage qui en écrit par script : chaque tentative est refusée.
+  ecrireWidget(racine, "dns-script", {
+    nom: "DNS script",
+    // « <" + "link » : écrit en clair, l'affichage entier serait refusé (comme dns-statique).
+    affichage: `<!doctype html><meta charset="utf-8"><p id="r"></p><script>
+  const L = "<" + "link";
+  const r = [];
+  const essai = (nom, f) => { try { f(); r.push(nom + ":passé"); } catch (e) { r.push(nom + ":" + e.name); } };
+  essai("create", () => { const l = document.createElement("link"); l.rel = "dns-prefetch"; l.href = "//create.${suffixe}"; document.head.append(l); });
+  essai("inner", () => { document.body.innerHTML += L + ' rel="dns-prefetch" href="//inner.${suffixe}">'; });
+  essai("srcdoc", () => { const f = document.createElement("iframe"); f.srcdoc = L + ' rel=dns-prefetch href=//srcdoc.${suffixe}>'; document.body.append(f); });
+  essai("meta", () => { const m = document.createElement("meta"); m.httpEquiv = "x-dns-prefetch-control"; m.content = "on"; document.head.append(m); });
+  essai("image", () => { const i = new Image(); i.src = "https://image.${suffixe}/i.png"; document.body.append(i); });
+  essai("ancre", () => { document.body.insertAdjacentHTML("beforeend", '<a href="https://ancre2.${suffixe}/">a</a>'); });
+  document.getElementById("r").textContent = r.join(" ");
+</script>`,
+  });
+  const { fenetre, fermer } = await lancer({ racine, env: envWidgets(), args: [`--log-net-log=${journalReseau}`] });
+  for (const id of ["dns-statique", "dns-meta"]) await expect(cadre(fenetre, id).locator("body")).toContainText("Affichage refusé");
+  await expect(cadre(fenetre, "dns-script").locator("#r")).toHaveText(
+    "create:TypeError inner:TypeError srcdoc:TypeError meta:TypeError image:passé ancre:passé",
+  );
+  // Témoin : un onglet, lui, résout les noms (le journal réseau les voit).
+  await ouvrirOnglet(fenetre, `http://temoin.${suffixe}/`, { activer: true });
+  await attendre(3000);
+  await fermer();
+  const journal = readFileSync(journalReseau, "utf8");
+  expect(journal).toContain(`temoin.${suffixe}`);
+  const noms = [...new Set(journal.match(new RegExp(`[a-z0-9-]+\\.${suffixe.replace(/\./g, "\\.")}`, "g")) ?? [])];
+  expect(noms).toEqual([`temoin.${suffixe}`]);
+});
+
+test("un favicon s'affiche dans la liste des onglets, cherché par le navigateur sans cookie (l'interface n'a pas de réseau)", async () => {
+  const { fenetre, fermer } = await lancerWidgets(nouvelleRacine());
+  await ouvrirOnglet(fenetre, `${site.url}/cookie`, { activer: true });
+  await expect(fenetre.locator(onglets)).toContainText(["cookie"]);
+  await ouvrirOnglet(fenetre, `${site.url}/avec-icone`, { activer: true });
+  const icone = fenetre.locator(`${onglets} img`);
+  await expect(icone).toHaveCount(1, { timeout: 10_000 });
+  expect(await icone.getAttribute("src")).toMatch(/^webaios-icone:\/\/site\/\?u=/);
+  await expect.poll(() => icone.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBe(1);
+  const demandes = site.journal.filter((r) => r.chemin === "/icone.png");
+  expect(demandes.length).toBeGreaterThan(0);
+  // La page l'a peut-être demandé elle-même (avec le cookie du profil) ; celle du navigateur n'en a aucun.
+  expect(demandes.some((r) => r.cookie === undefined)).toBe(true);
+  await fermer();
 });
 
 /** Deux widgets qui, après leur premier affichage, naviguent ailleurs : vers le serveur de test, vers une URL data:. */

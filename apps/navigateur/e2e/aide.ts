@@ -77,7 +77,7 @@ export function nouveauProfil(): string {
 
 /** Lance le navigateur construit (out/) sur un profil isolé et renvoie la fenêtre de l'interface. */
 export async function lancer(
-  o: { profil?: string; racine?: string; env?: Record<string, string>; visible?: boolean } = {},
+  o: { profil?: string; racine?: string; env?: Record<string, string>; visible?: boolean; args?: string[] } = {},
 ): Promise<{
   app: ElectronApplication;
   fenetre: Page;
@@ -88,7 +88,7 @@ export async function lancer(
   const profil = o.profil ?? nouveauProfil();
   const racine = o.racine ?? nouvelleRacine();
   const app = await electron.launch({
-    args: [join(RACINE, "out/main/index.js")],
+    args: [...(o.args ?? []), join(RACINE, "out/main/index.js")],
     // Invisible par défaut : seuls les tests qui ont besoin du focus ou du plein écran de macOS montrent leurs fenêtres.
     // Le faux docker (e2e/outils) passe avant tout vrai docker : aucun test ne touche à un conteneur.
     env: {

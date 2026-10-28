@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { cheminsEspace, type EtatAccueil } from "@webaios/noyau";
 import type { EtatNavigateur } from "../../src/commun/modele";
 import {
+  AFFICHAGE_REFUSE,
   CSP_WIDGET,
   permissionInterface,
   placerWidgets,
@@ -37,8 +38,9 @@ test("webaios-widget sert affichage.html avec la CSP sans réseau, refuse tout a
   expect(await ok.text()).toBe("<p>météo</p>"); // pas de <base> : les liens passent par postMessage
   expect(ok.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
   expect(ok.headers.get("Content-Security-Policy")).toBe(CSP_WIDGET);
+  expect(ok.headers.get("X-DNS-Prefetch-Control")).toBe("off");
   expect(CSP_WIDGET).toBe(
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default",
   );
 
   for (const url of [
@@ -73,6 +75,27 @@ test("webaios-widget sert affichage.html avec la CSP sans réseau, refuse tout a
   expect((await repondreWidget(c2.widgets, "webaios-widget://x/affichage.html")).status).toBe(404);
   // Noyau pas prêt : rien n'est servi.
   expect((await repondreWidget(null, "webaios-widget://meteo/affichage.html")).status).toBe(404);
+});
+
+test("webaios-widget sert un affichage refusé à la place d'un affichage avec <link>, <meta http-equiv> ou des règles de spéculation", async () => {
+  const c = espace(["a", "b", "c", "d", "e"]);
+  const html = {
+    a: '<link rel="dns-prefetch" href="//x.secret.example">',
+    b: '<meta http-equiv="x-dns-prefetch-control" content="on"><a href="https://x.secret.example">x</a>',
+    c: '<iframe srcdoc="&amp;lt;LINK rel=preconnect href=https://x.secret.example&amp;gt;"></iframe>',
+    d: '<script type="speculationrules">{"prefetch":[{"urls":["https://x.secret.example/"]}]}</script>',
+    e: '<meta charset="utf-8"><p>ok</p><script>document.body.append(document.createElement("p"))</script>',
+  };
+  for (const [id, h] of Object.entries(html)) writeFileSync(join(c.widgets, id, "affichage.html"), h);
+  for (const id of ["a", "b", "c", "d"]) {
+    const r = await repondreWidget(c.widgets, `webaios-widget://${id}/affichage.html`);
+    expect(r.status, id).toBe(200);
+    expect(r.headers.get("Content-Security-Policy")).toBe(CSP_WIDGET);
+    const t = await r.text();
+    expect(t, id).toBe(AFFICHAGE_REFUSE);
+    expect(t).not.toContain("secret");
+  }
+  expect(await (await repondreWidget(c.widgets, "webaios-widget://e/affichage.html")).text()).toBe(html.e);
 });
 
 test("placer refuse un placement hors grille ou un id inconnu", async () => {
