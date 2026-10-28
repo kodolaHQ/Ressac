@@ -21,10 +21,13 @@ export const DOSSIERS_OUTILS = [
   join(homedir(), ".docker", "bin"), // Docker Desktop installé par utilisateur
 ];
 
+/** PATH enrichi des dossiers d'outils (l'app lancée depuis le Finder a un PATH minimal). */
+export const cheminOutils = (): string => [process.env.PATH ?? "", ...DOSSIERS_OUTILS].filter(Boolean).join(":");
+
 /** Lance une commande sans jamais lever d'exception : un échec se lit dans `code`. */
 export const executeurParDefaut: Executeur = (commande, args, opts = {}) =>
   new Promise((resoudre) => {
-    const PATH = [process.env.PATH ?? "", ...DOSSIERS_OUTILS].filter(Boolean).join(":");
+    const PATH = cheminOutils();
     execFile(
       commande,
       args,

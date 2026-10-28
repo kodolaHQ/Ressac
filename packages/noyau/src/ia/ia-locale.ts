@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Executeur } from "../conteneur/executeur.js";
+import { cheminOutils, type Executeur } from "../conteneur/executeur.js";
 
 export type EtatIa = "non-installee" | "arretee" | "demarrage" | "active" | "erreur";
 
@@ -39,7 +39,7 @@ const DELAI_KEV_MS = 60_000;
 const DELAI_GEMMA_MS = 120_000;
 
 const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) => {
-  const enfant = spawn(cmd, args, { cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"] });
+  const enfant = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, PATH: cheminOutils() }, stdio: ["ignore", "pipe", "pipe"] });
   return {
     arreter: () => { enfant.kill("SIGTERM"); },
     surSortie: (r) => {
@@ -68,6 +68,7 @@ export class IaLocale {
   private demarrage?: Promise<void>;
   private minuteur?: NodeJS.Timeout;
   private dernierUsage = 0;
+  private generation = 0;
   // Modifiable : l'adresse de Kev, imposée par WEBAIOS_KEV_URL ou calculée depuis le port.
   private kevUrl: string;
   private readonly kevImposee: boolean;
@@ -135,7 +136,7 @@ export class IaLocale {
       throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${tete.stdout.trim() || tete.stderr.trim()}`);
     }
     // 3. dépendances
-    const sync = await lancer("uv", ["sync", "--extra", "serve"]);
+    const sync = await lancer("uv", ["sync", "--extra", "serve", "--project", this.dossierKev]);
     if (sync.code !== 0) throw new Error(`uv sync a échoué : ${sync.stderr.trim()}`);
     // 4. modèle Gemma
     const tire = await lancer("ollama", ["pull", MODELE_GEMMA]);
@@ -200,6 +201,7 @@ export class IaLocale {
     const p = this.processus;
     this.processus = undefined;
     this.demarrage = undefined;
+    this.generation++;
     p?.arreter();
     if (this.etatCourant === "active" || this.etatCourant === "demarrage") this.changer("arretee");
   }
@@ -222,6 +224,7 @@ export class IaLocale {
       this.changer("non-installee");
       throw new Error("IA locale non installée");
     }
+    const gen = ++this.generation;
     this.changer("demarrage");
     const lignes: string[] = [];
     let sortie: number | null | undefined;
@@ -237,6 +240,7 @@ export class IaLocale {
     const pas = this.o.sondageMs ?? 500;
     const fin = Date.now() + DELAI_DEMARRAGE_MS;
     while (Date.now() < fin) {
+      if (gen !== this.generation) return; // arreter() est passé par là
       if (mort) {
         const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${sortie}`}`;
         this.changer("erreur", msg);
@@ -244,6 +248,7 @@ export class IaLocale {
       }
       try {
         const r = await fetch(`${this.kevUrl}/v1/models`, { signal: AbortSignal.timeout(2000) });
+        if (gen !== this.generation) return;
         if (r.ok) {
           this.dernierUsage = this.horloge();
           this.changer("active");
@@ -253,6 +258,7 @@ export class IaLocale {
       } catch { /* pas encore prêt */ }
       await attendre(pas);
     }
+    if (gen !== this.generation) return;
     p.arreter();
     this.processus = undefined;
     const msg = `Kev n'a pas démarré : délai dépassé. ${lignes.slice(-5).join("\n")}`.trim();

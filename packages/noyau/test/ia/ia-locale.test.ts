@@ -119,6 +119,27 @@ describe("IaLocale", () => {
     expect(kev.requetes.filter((r) => r.url === "/v1/systemone")).toHaveLength(2);
   });
 
+  it("arreter() pendant le démarrage : état arretee, sans erreur, sans minuteur", async () => {
+    const dossier = await dossierTemporaire();
+    await mkdir(join(dossier, "kev", ".git"), { recursive: true });
+    const { executer } = executeurFactice([]);
+    let sortie!: (c: number | null) => void;
+    const lancer = (): ProcessusIa => ({
+      arreter() { setTimeout(() => sortie(null), 1); },
+      surSortie(r) { sortie = r; },
+    });
+    const ia = new IaLocale({ dossier, executer, lancer, ...rapide });
+    aArreter.push(ia);
+    const appel = ia.kev({ state: "", questions: {} }).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(ia.etat().etat).toBe("demarrage");
+    await ia.arreter();
+    await appel;
+    await new Promise((r) => setTimeout(r, 40));
+    expect(ia.etat()).toEqual({ etat: "arretee" });
+    expect((ia as any).minuteur).toBeUndefined();
+  });
+
   it("après 10 min sans appel, Kev est arrêté (horloge factice)", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
@@ -158,10 +179,10 @@ describe("IaLocale", () => {
     expect(cmds[0]).toBe("uv --version");
     expect(cmds[1]).toBe(`git clone --depth 1 --branch kev-1.0 https://github.com/jaredpalmer/kev.git ${join(dossier, "kev")}`);
     expect(cmds.some((c) => c.includes("rev-parse HEAD"))).toBe(true);
-    expect(cmds.indexOf("uv sync --extra serve")).toBeGreaterThan(1);
+    expect(cmds.findIndex((c) => c.startsWith("uv sync --extra serve"))).toBeGreaterThan(1);
     expect(cmds.at(-1)).toBe("ollama pull gemma4:e4b-mlx");
     expect(lignes).toContain("success");
-    expect(appels.find((a) => a.args[0] === "sync")).toBeTruthy();
+    expect(appels.find((a) => a.args[0] === "sync")!.args).toEqual(["sync", "--extra", "serve", "--project", join(dossier, "kev")]);
 
     // reprise : le dépôt est déjà là, pas de nouveau clone
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
