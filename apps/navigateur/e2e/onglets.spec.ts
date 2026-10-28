@@ -39,6 +39,32 @@ test("un lien target=_blank ouvre un onglet juste après la source", async () =>
   await fermer();
 });
 
+test("fermer l'onglet ouvert par un lien target=_blank réaffiche la page d'origine, attachée et peinte", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets, { hasText: "Page A" })).toBeVisible();
+  await dansLaVue(app, "a.html", "document.getElementById('lien').click()");
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+  await expect(fenetre.locator(onglets).nth(1)).toContainText("Page B");
+  const idB = (await fenetre.locator(onglets).nth(1).getAttribute("data-testid"))!.slice("onglet-".length);
+  await fenetre.evaluate((id) => (window as unknown as { webaios: { agir(a: unknown): void } }).webaios.agir({ type: "fermerOnglet", id }), idB);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  // La vue de la page A est de nouveau dans la fenêtre, à sa place, et sa capture n'est pas vide.
+  await expect
+    .poll(() =>
+      app.evaluate(async ({ BrowserWindow, webContents }) => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL().includes("a.html"));
+        const vue = BrowserWindow.getAllWindows()[0]!.contentView.children.find((v) => (v as Electron.WebContentsView).webContents === wc);
+        if (!wc || !vue) return "détachée";
+        const b = vue.getBounds();
+        if (b.width === 0 || b.height === 0) return "taille nulle";
+        return (await wc.capturePage(undefined, { stayHidden: true })).isEmpty() ? "vide" : "peinte";
+      }),
+    )
+    .toBe("peinte");
+  await fermer();
+});
+
 test("window.open avec dimensions ouvre une popup ; la fermer ne quitte pas l'app", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/popup.html`);

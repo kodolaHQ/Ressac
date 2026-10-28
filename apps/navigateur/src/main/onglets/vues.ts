@@ -375,6 +375,9 @@ export class GestionnaireVues {
     this.vues.delete(id);
     this.sessions.delete(id);
     this.zooms.delete(id);
-    if (!vue.webContents.isDestroyed()) vue.webContents.close();
+    // Page déjà fermée (onglet fermé par l'utilisateur, voir `fermer`) : la vue n'a plus de webContents. Lire
+    // `isDestroyed()` dessus lèverait, et `synchroniser` s'arrêterait avant d'afficher l'onglet suivant.
+    const wc = vue.webContents as WebContents | undefined;
+    if (wc && !wc.isDestroyed()) wc.close();
   }
 }
