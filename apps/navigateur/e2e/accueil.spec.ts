@@ -14,6 +14,7 @@ import {
   lireDisposition,
   nouveauProfil,
   nouvelleRacine,
+  dansLaVue,
   ouvrirOnglet,
   reglerEspaceActifPrive,
 } from "./aide";
@@ -96,6 +97,8 @@ test.beforeAll(async () => {
         return html(res, `<title>meta</title><meta http-equiv="refresh" content="0;url=${ailleurs("/meta")}">`);
       case "/imprime":
         return html(res, "<title>imprimé</title><script>print()</script><p>après</p>");
+      case "/sonde":
+        return html(res, "<title>?</title><script>document.title = [typeof window.webaios, typeof require, typeof process].join(' ')</script>");
       case "/alerte":
         return html(res, "<title>alerté</title><script>alert('coucou')</script><p>après</p>");
       default:
@@ -189,23 +192,32 @@ test("la page d'accueil place les widgets selon disposition.json et affiche exem
     exemple: lireJson(join(MODELES, "meteo", "exemple.json")),
   });
   ecrireWidget(racine, "sans-affichage", { nom: "Sans affichage" });
+  // Le preload tourne dans le cadre du widget, mais son code n'en voit rien.
+  ecrireWidget(racine, "sonde", {
+    nom: "Sonde",
+    affichage: `<!doctype html><p id="sonde"></p><script>
+  document.getElementById("sonde").textContent = [typeof window.webaios, typeof window.api, typeof require, typeof process, typeof module, typeof window.ipcRenderer].join(" ");
+</script>`,
+  });
   ecrireDisposition(racine, [
     { id: "un", x: 0, y: 0, l: 3, h: 2 },
     { id: "deux", x: 6, y: 1, l: 4, h: 3 },
     { id: "meteo", x: 0, y: 4, l: 3, h: 2 },
     { id: "sans-affichage", x: 4, y: 4, l: 2, h: 2 },
+    { id: "sonde", x: 6, y: 4, l: 2, h: 2 },
   ]);
   const profil = nouveauProfil();
   // Une récolte déjà en échec (données absentes) : l'exemple reste affiché, le badge dit l'échec.
   ecrireEtatWidget(profil, "deux", { statut: "erreur", derniereMaj: null, derniereTentative: new Date().toISOString(), erreur: "Délai dépassé", erreurNoyau: true });
   const { fenetre, fermer } = await lancerWidgets(racine, profil);
   await expect(fenetre.getByTestId("accueil")).toBeVisible();
-  await expect(fenetre.locator('[data-testid="titre-widget"]')).toHaveText(["Un", "Deux", "Météo", "Sans affichage"]);
+  await expect(fenetre.locator('[data-testid="titre-widget"]')).toHaveText(["Un", "Deux", "Météo", "Sans affichage", "Sonde"]);
   await expect(donnees(fenetre, "un")).toHaveText('{"exemple":"un"}');
   await expect(donnees(fenetre, "deux")).toHaveText('{"exemple":"deux"}');
   await expect(fenetre.getByTestId("widget-deux")).toContainText("Délai dépassé");
   await expect(cadre(fenetre, "meteo").locator("#ville")).toHaveText("Bordeaux");
   await expect(fenetre.getByTestId("widget-sans-affichage")).toContainText("pas encore écrit l'affichage");
+  await expect(cadre(fenetre, "sonde").locator("#sonde")).toHaveText("undefined undefined undefined undefined undefined undefined");
 
   // Les places : 12 colonnes, rangées de 90 px, 12 px d'écart.
   const grille = (await fenetre.getByTestId("accueil").boundingBox())!;
@@ -262,8 +274,8 @@ function widgetsLiens(racine: string): void {
 <button id="lien" style="width:200px;height:50px">Ouvrir</button>
 <button id="js" style="width:200px;height:50px">JS</button>
 <script>
-  let n = 0;
-  document.getElementById("lien").onclick = () => parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/lien-" + ++n }, "*");
+  // Une URL par clic (la page d'accueil recrée le cadre quand on y revient).
+  document.getElementById("lien").onclick = () => parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/lien-" + Date.now() }, "*");
   document.getElementById("js").onclick = () => parent.postMessage({ type: "ouvrir", url: "javascript:alert(1)" }, "*");
 </script>`,
   });
@@ -293,8 +305,19 @@ function widgetsLiens(racine: string): void {
   ]);
 }
 
-const liensOuverts = (app: ElectronApplication) =>
-  app.evaluate(({ webContents }) => webContents.getAllWebContents().map((w) => w.getURL()).filter((u) => u.includes("exemple.invalid")));
+/** URL des onglets ouverts vers exemple.invalid, lues dans l'état du navigateur (une vue n'existe que pour l'onglet actif). */
+const liensOuverts = (fenetre: Page) =>
+  fenetre.evaluate(
+    () =>
+      new Promise<string[]>((ok) => {
+        type Etat = { onglets: Record<string, { url: string }> };
+        const w = window as unknown as Window & { webaios: { surEtat(r: (e: Etat) => void): () => void } };
+        const fin = w.webaios.surEtat((e) => {
+          setTimeout(() => fin());
+          ok(Object.values(e.onglets).map((o) => o.url).filter((u) => u.includes("exemple.invalid")));
+        });
+      }),
+  );
 
 test("un widget n'ouvre aucun lien sans vrai clic (chargement, minuterie, boucle, focus forcé) ; javascript: est ignoré", async () => {
   const racine = nouvelleRacine();
@@ -308,26 +331,21 @@ test("un widget n'ouvre aucun lien sans vrai clic (chargement, minuterie, boucle
   await expect(cadre(fenetre, "focus").locator("#pret")).toBeVisible();
   await attendre(2000);
   for (const u of ["minuterie", "boucle", "focus"]) expect(journal).toContain(`ignoré (pas de clic dans le widget) : https://exemple.invalid/${u}`);
-  // Un vrai clic sur un lien javascript: : rien.
+  // Un vrai clic sur un lien javascript: : le clic est vu, l'URL refusée.
   await cliquer(fenetre, cadre(fenetre, "liens").locator("#js"));
-  await expect.poll(() => journal).toContain("javascript:alert(1)");
+  await expect.poll(() => journal).toContain("lien de widget refusé : javascript:alert(1)");
   await attendre(1500);
   await expect(fenetre.locator(onglets)).toHaveCount(0);
-  expect(await liensOuverts(app)).toEqual([]);
+  expect(await liensOuverts(fenetre)).toEqual([]);
   await fermer();
 });
 
-// CONSTAT (tâche 12) : un vrai clic dans l'affichage d'un widget n'est jamais vu par le process principal. L'iframe du
-// widget (sandbox, origine opaque) tourne dans son propre processus (OOPIF) : le clic est routé vers ce cadre et
-// l'événement `input-event` de la fenêtre ne se déclenche pas (vérifié : un clic Playwright, routé comme un vrai clic,
-// clique bien le bouton du widget sans aucun `input-event` ; `sendInputEvent` déclenche `input-event` mais n'atteint pas
-// le cadre). `gardienGestes` refuse donc toute demande : aucun lien de widget ne s'ouvre. Correction à décider (voir le
-// rapport de la tâche 12). Ce test passera quand ce sera corrigé : retirer alors `test.fail`.
+// Le clic est vu dans le cadre du widget (hors process) par le preload, en monde isolé : un clic Playwright passe par le
+// même routage qu'un vrai clic de la souris.
 test("un lien cliqué dans un widget ouvre un onglet, un second clic un second onglet", async () => {
-  test.fail();
   const racine = nouvelleRacine();
   widgetsLiens(racine);
-  const { app, fenetre, fermer } = await lancerWidgets(racine);
+  const { fenetre, fermer } = await lancerWidgets(racine);
   await expect(cadre(fenetre, "liens").locator("#lien")).toBeVisible();
   await cliquer(fenetre, cadre(fenetre, "liens").locator("#lien"));
   await expect(fenetre.locator(onglets)).toHaveCount(1);
@@ -339,7 +357,10 @@ test("un lien cliqué dans un widget ouvre un onglet, un second clic un second o
   await expect(fenetre.locator(onglets)).toHaveCount(2);
   await attendre(2000);
   // Ni les demandes sans clic des autres widgets, ni un second lien par clic.
-  expect((await liensOuverts(app)).sort()).toEqual(["https://exemple.invalid/lien-1", "https://exemple.invalid/lien-2"]);
+  const liens = await liensOuverts(fenetre);
+  expect(liens).toHaveLength(2);
+  expect(new Set(liens).size).toBe(2);
+  for (const l of liens) expect(l).toMatch(/^https:\/\/exemple\.invalid\/lien-\d+$/);
   await fermer();
 });
 
@@ -505,6 +526,7 @@ test("une lecture avec compte ne quitte pas ses domaines (302, script, meta refr
   await essayer("meta", a + "/meta", true);
   await essayer("imprime", a + "/imprime", true);
   await essayer("alerte", a + "/alerte", true);
+  await essayer("sonde", a + "/sonde", true);
   return r;
 };`,
     affichage: AFFICHAGE,
@@ -539,6 +561,8 @@ test("une lecture avec compte ne quitte pas ses domaines (302, script, meta refr
   expect(r.imprime.ms).toBeLessThan(15_000);
   expect(r.alerte.titre).toBe("alerté");
   expect(r.alerte.ms).toBeLessThan(15_000);
+  // La fenêtre de lecture n'a pas de preload.
+  expect(r.sonde.titre).toBe("undefined undefined undefined");
   // Le second hôte n'a reçu que la lecture témoin.
   expect(autre.journal.slice(debutAutre).map((x) => x.chemin)).toEqual(["/temoin"]);
   const cachees = fenetresVues.flat().filter((f) => !f.principale);
@@ -696,6 +720,16 @@ test("Retirer : le widget part à la corbeille ; Annuler le garde", async () => 
   await expect.poll(() => existsSync(join(racine, "accueil", "widgets", "deux"))).toBe(false);
   expect(readdirSync(join(racine, "accueil", ".corbeille")).some((f) => f.startsWith("deux-"))).toBe(true);
   await expect.poll(() => lireDisposition(racine).map((p) => p.id)).toEqual(["un"]);
+  await fermer();
+});
+
+test("une page dans un onglet n'a ni l'API de l'interface ni Node", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${site.url}/page-onglet`, { activer: true });
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await expect
+    .poll(() => dansLaVue(app, "/page-onglet", "[typeof window.webaios, typeof require, typeof process].join(' ')"))
+    .toBe("undefined undefined undefined");
   await fermer();
 });
 
