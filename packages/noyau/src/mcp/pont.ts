@@ -1,5 +1,6 @@
 import type { DroitDev } from "../acces/politique.js";
 import type { ProfilCpu } from "../outils-dev/resumes.js";
+import type { PageLue } from "../widgets/protocole.js";
 
 export interface OngletInfo {
   id: string;
@@ -35,6 +36,12 @@ export interface PontNavigateur {
   ongletActifPrive?(): boolean;
   /** Historique et texte retenu des pages, faits des seules visites non privées (absent : pas d'outils d'historique). */
   historique?: HistoriqueNavigateur;
+  /**
+   * Lit une page dans un onglet invisible, sans cliquer ni taper. `profil: null` : session vierge, sans aucun cookie ;
+   * sinon le profil de connexion nommé. Lève ProfilRefuse si ce profil est inconnu ou utilisé par un espace privé.
+   * Absent : pas de lecture de pages pour les widgets.
+   */
+  lirePageInvisible?(url: string, o: { profil: string | null }): Promise<PageLue>;
 }
 
 export interface MessageConsole {
@@ -138,5 +145,13 @@ export class OutilsDevOccupes extends Error {
   constructor() {
     super("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
     this.name = "OutilsDevOccupes";
+  }
+}
+
+/** Le profil de connexion demandé pour une lecture est inconnu ou utilisé par un espace privé. */
+export class ProfilRefuse extends Error {
+  constructor(readonly profil: string) {
+    super(`Profil de connexion refusé : ${profil}`);
+    this.name = "ProfilRefuse";
   }
 }

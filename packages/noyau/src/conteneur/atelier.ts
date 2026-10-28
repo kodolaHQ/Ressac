@@ -35,6 +35,15 @@ function normaliser(chemin: string): string {
 
 const nomVeille = (id: string) => `webaios-veille-${id}`;
 
+/** Nom du conteneur de récolte d'un widget ; l'id entre dans un nom docker, on refuse tout id douteux. */
+function nomRecolte(id: string): string {
+  if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
+  return `webaios-recolte-${id}`;
+}
+
+/** Durée maximale d'une récolte dans son conteneur (secondes), avant SIGTERM puis SIGKILL 5 s après. */
+export const DELAI_RECOLTE_S = 180;
+
 /** Le dossier d'une appli entre dans une expression grep entre apostrophes : on refuse tout nom douteux. */
 function dossierApplication(dossier: string): string {
   if (!dossierValide(dossier)) throw new Error(`dossier d'application invalide : ${dossier}`);
@@ -204,6 +213,35 @@ export class Atelier {
 
   async supprimerVeille(id: string): Promise<void> {
     if (this.docker) await this.lancer(["rm", "-f", nomVeille(id)], DELAI_SONDE_MS);
+  }
+
+  /**
+   * Récolte d'un widget, dans un conteneur jetable sans réseau : il ne voit que le dossier du widget et le récolteur,
+   * en lecture seule, et ne parle au noyau que par son entrée et sa sortie standard (`-i`).
+   */
+  commandeRecolte(id: string, dossierWidget: string, recolteur: string): string[] {
+    if (!this.docker) throw new Error("Docker introuvable");
+    // « : » changerait le sens de -v (cible, options) : un tel chemin ne peut pas être monté sans risque.
+    for (const c of [dossierWidget, recolteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
+    return [
+      this.docker, "run", "-i", "--rm",
+      "--name", nomRecolte(id),
+      "--network", "none",
+      "--read-only",
+      "--tmpfs", "/tmp",
+      "-v", `${dossierWidget}:/widget:ro`,
+      "-v", `${recolteur}:/opt/webaios/recolteur.mjs:ro`,
+      "--memory", "512m",
+      "--pids-limit", "128",
+      IMAGE,
+      "timeout", "-k", "5", String(DELAI_RECOLTE_S),
+      "node", "/opt/webaios/recolteur.mjs", "/widget",
+    ];
+  }
+
+  /** Tuer le client `docker run` ne suffit pas : le conteneur est supprimé de force. */
+  async supprimerRecolte(id: string): Promise<void> {
+    if (this.docker) await this.lancer(["rm", "-f", nomRecolte(id)], DELAI_SONDE_MS);
   }
 
   /**
