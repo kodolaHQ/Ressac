@@ -10,12 +10,27 @@
 
   /** Au-delà, la page s'efface sans capture : la modale ne doit pas attendre. */
   const ATTENTE_APERCU_MS = 1000;
+  /** Entrée n'autorise qu'une carte visible depuis ce délai : une frappe destinée à la page ne vaut pas accord. */
+  const DELAI_ENTREE_MS = 400;
 
   let carte: HTMLElement;
   let apercu = $state<string | null>(null);
   // Zone de la page au moment de la capture : l'image y reste, même si la fenêtre change ensuite de taille.
   let zone = $state(untrack(() => modale.zone));
   let prete = $state(false);
+  // Entrée armée : la carte est visible depuis DELAI_ENTREE_MS (réarmée à chaque demande de la file).
+  let armee = $state(false);
+  let minuterieEntree: ReturnType<typeof setTimeout> | undefined;
+  function armer() {
+    clearTimeout(minuterieEntree);
+    armee = false;
+    if (prete) minuterieEntree = setTimeout(() => (armee = true), DELAI_ENTREE_MS);
+  }
+  // L'onglet capturé : si un autre s'affiche (ou un panneau), l'image figée n'est plus la bonne page.
+  const ongletCapture = untrack(() => ongletId);
+  $effect(() => {
+    if (ongletId !== ongletCapture) apercu = null;
+  });
 
   const outilsDev = $derived(demande.permissions.includes("outils-dev"));
   const site = $derived(siteDe(demande.origine));
@@ -32,25 +47,31 @@
       // La capture est prise : la vue native peut s'effacer derrière la modale.
       modale.masquer = true;
       prete = true;
+      armer();
     };
     carte.focus();
     const secours = setTimeout(() => ouvrir(null), ATTENTE_APERCU_MS);
     api
-      .apercuPage(untrack(() => ongletId))
+      .apercuPage(ongletCapture)
       .then(ouvrir, () => ouvrir(null))
       .finally(() => clearTimeout(secours));
     return () => {
       finie = true;
       clearTimeout(secours);
+      clearTimeout(minuterieEntree);
       modale.masquer = false;
-      // Le focus revient où il était, s'il est encore dans l'interface (pas sur la page web, qui reprend le sien).
-      if (avant?.isConnected && avant !== document.body) avant.focus();
+      // Le focus revient où il était, s'il est encore dans l'interface (pas sur la page web, qui reprend le sien) :
+      // après la mise à jour, quand le reste de l'interface n'est plus inerte.
+      queueMicrotask(() => {
+        if (avant?.isConnected && avant !== document.body) avant.focus();
+      });
     };
   });
 
   // Demande suivante de la file : son contenu remplace l'ancien, le focus reste dans la modale.
   $effect(() => {
     void demande.id;
+    untrack(armer);
     void tick().then(() => {
       if (carte && !carte.contains(document.activeElement)) carte.focus();
     });
@@ -66,6 +87,8 @@
       e.preventDefault();
       refuser();
     } else if (e.key === "Enter") {
+      // Carte pas encore visible, ou depuis trop peu : Entrée ne fait rien, même sur un bouton.
+      if (!armee) return e.preventDefault();
       // Un bouton qui a le focus garde sa propre action ; partout ailleurs (cases comprises), Entrée autorise.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
@@ -86,7 +109,7 @@
 
 <svelte:window onkeydown={clavier} />
 
-<div class="modale" class:prete data-testid="modale-demande">
+<div class="modale" class:prete data-testid="modale-demande" data-armee={armee || undefined}>
   {#if apercu && zone}
     <div class="apercu" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.largeur}px" style:height="{zone.hauteur}px">
       <img data-testid="modale-apercu" src={apercu} alt="" />

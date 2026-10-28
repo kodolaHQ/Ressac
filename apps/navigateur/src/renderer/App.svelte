@@ -143,7 +143,7 @@
 
 <svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_REVELATION && reveler()} />
 
-<div class="fenetre" class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
+<div class="fenetre" inert={!!demandeAgent} class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
   {#if fenetre}
     <BarreLaterale
       {fenetre}

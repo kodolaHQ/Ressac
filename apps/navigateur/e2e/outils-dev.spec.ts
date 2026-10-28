@@ -374,6 +374,7 @@ test("Échap refuse la carte des outils de développement ; Entrée autorise la 
   await fenetre.keyboard.press("Space");
   await expect(fenetre.getByTestId(CARTE).locator('input[data-droit="reseau"]')).not.toBeChecked();
   await expect(fenetre.getByTestId(CARTE)).toBeVisible();
+  await expect(fenetre.getByTestId(MODALE)).toHaveAttribute("data-armee");
   await fenetre.keyboard.press("Enter");
   expect(await appel).toBe("Droits accordés : console\nRefusés : reseau");
   await expect(fenetre.getByTestId(MODALE)).toHaveCount(0);
@@ -394,10 +395,28 @@ test("la demande de lecture de l'agent est aussi une modale ; Entrée l'autorise
   await expect(modale.getByTestId("demande-permission")).toContainText("L'agent veut lire l'onglet « Texte »");
   await expect.poll(() => largeurVueTexte(app)).toBe(0);
   await expect.poll(() => fenetre.evaluate(() => !!document.activeElement?.closest('[data-testid="modale-demande"]'))).toBe(true);
+  await expect(modale).toHaveAttribute("data-armee");
   await fenetre.keyboard.press("Enter");
   expect(await lecture).toContain("Le chat dort");
   await expect(modale).toHaveCount(0);
   await expect.poll(() => largeurVueTexte(app)).toBeGreaterThan(0);
+  await fermer();
+});
+
+test("Entrée frappée dès l'arrivée de la demande n'autorise rien ; une fois la carte visible depuis un moment, si", async () => {
+  const { fenetre, racine, id, fermer } = await avecOngletTiers();
+  let repondu = false;
+  const appel = outil(racine, "demander_outils_dev", { id, droits: ["console"], raison: "Trop tôt." }).finally(() => (repondu = true));
+  await expect(fenetre.getByTestId(CARTE)).toHaveCount(1);
+  // L'utilisateur tapait dans la page à l'instant où la carte arrive : sa frappe ne vaut pas accord.
+  await fenetre.keyboard.press("Enter");
+  await new Promise((r) => setTimeout(r, 300));
+  expect(repondu).toBe(false);
+  await expect(fenetre.getByTestId(CARTE)).toBeVisible();
+  await expect(fenetre.getByTestId(MODALE)).toHaveAttribute("data-armee");
+  await fenetre.keyboard.press("Enter");
+  expect(await appel).toBe("Droits accordés : console");
+  await expect(fenetre.getByTestId(MODALE)).toHaveCount(0);
   await fermer();
 });
 
