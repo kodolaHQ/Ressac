@@ -101,6 +101,11 @@ test.beforeAll(async () => {
         return html(res, "<title>imprimé</title><script>print()</script><p>après</p>");
       case "/sonde":
         return html(res, "<title>?</title><script>document.title = [typeof window.webaios, typeof require, typeof process].join(' ')</script>");
+      case "/indice-dns": {
+        // Page d'onglet avec un indice de résolution vers l'hôte demandé (sans aucune garde : seul le réglage de Chromium joue).
+        const h = new URL(req.url ?? "/", "http://x").searchParams.get("h") ?? "";
+        return html(res, `<title>indice</title><link rel="dns-prefetch" href="//${h}"><link rel="preconnect" href="https://pre-${h}/">`);
+      }
       case "/avec-icone":
         return html(res, '<title>Icône</title><link rel="icon" href="/icone.png"><p>ok</p>');
       case "/icone.png":
@@ -802,7 +807,7 @@ test("filet réseau : une page de la session de l'interface, sans la garde du pr
   }
 });
 
-test("l'affichage d'un widget ne fait résoudre aucun nom (dns-prefetch, preconnect, x-dns-prefetch-control, image) ; un onglet, si", async () => {
+test("l'affichage d'un widget ne fait résoudre aucun nom (dns-prefetch, preconnect, x-dns-prefetch-control, image), ni une page d'onglet par <link> ; une navigation, si", async () => {
   const suffixe = `w${Date.now().toString(36)}.webaios-test.example`;
   const journalReseau = join(realpathSync(mkdtempSync(join(tmpdir(), "webaios-netlog-"))), "netlog.json");
   const racine = nouvelleRacine();
@@ -814,6 +819,21 @@ test("l'affichage d'un widget ne fait résoudre aucun nom (dns-prefetch, preconn
   ecrireWidget(racine, "dns-meta", {
     nom: "DNS meta",
     affichage: `<!doctype html><meta http-equiv="x-dns-prefetch-control" content="on"><a href="https://ancre.${suffixe}/">a</a><p id="ok">pas refusé</p>`,
+  });
+  // Contournements relevés à la revue (round 2) : srcdoc imbriqué avec « & » en référence numérique.
+  ecrireWidget(racine, "dns-entites", {
+    nom: "DNS entités",
+    affichage: `<!doctype html><iframe srcdoc="<iframe srcdoc='&#38;lt;link rel=dns-prefetch href=//entite.${suffixe}>'></iframe>"></iframe><p id="ok">pas refusé</p>`,
+  });
+  ecrireWidget(racine, "dns-entites-hex", {
+    nom: "DNS entités hex",
+    affichage: `<!doctype html><iframe srcdoc="&#x26;lt;link rel=dns-prefetch href=//entite-hex.${suffixe}>"></iframe><p id="ok">pas refusé</p>`,
+  });
+  // Un widget de départ s'affiche toujours (createElement, append, replaceChildren passent la garde).
+  ecrireWidget(racine, "actus-tech", {
+    nom: "Actus",
+    affichage: readFileSync(join(MODELES, "actus-tech", "affichage.html"), "utf8"),
+    exemple: lireJson(join(MODELES, "actus-tech", "exemple.json")),
   });
   // Affichage qui en écrit par script : chaque tentative est refusée.
   ecrireWidget(racine, "dns-script", {
@@ -829,21 +849,34 @@ test("l'affichage d'un widget ne fait résoudre aucun nom (dns-prefetch, preconn
   essai("meta", () => { const m = document.createElement("meta"); m.httpEquiv = "x-dns-prefetch-control"; m.content = "on"; document.head.append(m); });
   essai("image", () => { const i = new Image(); i.src = "https://image.${suffixe}/i.png"; document.body.append(i); });
   essai("ancre", () => { document.body.insertAdjacentHTML("beforeend", '<a href="https://ancre2.${suffixe}/">a</a>'); });
+  const XHTML = "http://www.w3.org/1999/xhtml";
+  essai("createDocument", () => { const d = document.implementation.createDocument(XHTML, "li" + "nk", null); const l = document.adoptNode(d.documentElement); l.setAttribute("rel", "dns-prefetch"); l.setAttribute("href", "//createdoc.${suffixe}"); document.head.append(l); });
+  essai("importNode", () => { const d = document.implementation.createDocument(XHTML, "li" + "nk", null); const l = document.importNode(d.documentElement); l.rel = "preconnect"; l.href = "https://import.${suffixe}/"; document.head.appendChild(l); });
+  essai("htmlDocument", () => { const d = document.implementation.createHTMLDocument(""); const l = d.createElement("li" + "nk"); l.rel = "dns-prefetch"; l.href = "//htmldoc.${suffixe}"; document.head.append(document.adoptNode(l)); });
+  essai("fragment", () => { const d = document.implementation.createDocument(XHTML, "li" + "nk", null); const f = document.createDocumentFragment(); const p = document.createElement("p"); p.appendChild(document.adoptNode(d.documentElement)); f.append(p); p.firstChild.setAttribute("rel", "dns-prefetch"); p.firstChild.setAttribute("href", "//fragment.${suffixe}"); document.body.append(f); });
+  essai("execCommand", () => { const d = document.createElement("div"); d.contentEditable = "true"; document.body.append(d); d.focus(); document.execCommand("insertHTML", false, L + " rel=dns-prefetch href=//exec.${suffixe}>"); });
+  essai("srcdocEntites", () => { const f = document.createElement("iframe"); f.srcdoc = "<iframe srcdoc='&#38;lt;" + "link rel=dns-prefetch href=//srcdoc-dyn.${suffixe}>'></iframe>"; document.body.append(f); });
   document.getElementById("r").textContent = r.join(" ");
 </script>`,
   });
   const { fenetre, fermer } = await lancer({ racine, env: envWidgets(), args: [`--log-net-log=${journalReseau}`] });
-  for (const id of ["dns-statique", "dns-meta"]) await expect(cadre(fenetre, id).locator("body")).toContainText("Affichage refusé");
+  for (const id of ["dns-statique", "dns-meta", "dns-entites", "dns-entites-hex"]) await expect(cadre(fenetre, id).locator("body")).toContainText("Affichage refusé");
   await expect(cadre(fenetre, "dns-script").locator("#r")).toHaveText(
-    "create:TypeError inner:TypeError srcdoc:TypeError meta:TypeError image:passé ancre:passé",
+    "create:TypeError inner:TypeError srcdoc:TypeError meta:TypeError image:passé ancre:passé createDocument:TypeError importNode:TypeError htmlDocument:TypeError fragment:TypeError execCommand:TypeError srcdocEntites:TypeError",
   );
-  // Témoin : un onglet, lui, résout les noms (le journal réseau les voit).
+  await expect(cadre(fenetre, "actus-tech").locator("#liste li").first()).toContainText("Un modèle de langage");
+  // Filet de Chromium (blink-settings dnsPrefetchingEnabled=false) : même une page d'onglet, sans garde, ne résout pas ses
+  // indices <link>.
+  await ouvrirOnglet(fenetre, `${site.url}/indice-dns?h=onglet.${suffixe}`, { activer: true });
+  await expect(fenetre.locator(onglets)).toContainText(["indice"]);
+  // Témoin : une navigation d'onglet, elle, résout son nom (le journal réseau le voit).
   await ouvrirOnglet(fenetre, `http://temoin.${suffixe}/`, { activer: true });
   await attendre(3000);
   await fermer();
   const journal = readFileSync(journalReseau, "utf8");
-  expect(journal).toContain(`temoin.${suffixe}`);
-  const noms = [...new Set(journal.match(new RegExp(`[a-z0-9-]+\\.${suffixe.replace(/\./g, "\\.")}`, "g")) ?? [])];
+  // Noms demandés au résolveur (pas les URL du journal, où le nom peut figurer en paramètre).
+  const resolus = new RegExp(`"(?:qname|hostname|host)":"(?:[a-z-]+://)?([a-z0-9-]+\\.${suffixe.replace(/\./g, "\\.")})`, "g");
+  const noms = [...new Set([...journal.matchAll(resolus)].map((m) => m[1]))];
   expect(noms).toEqual([`temoin.${suffixe}`]);
 });
 

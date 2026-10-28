@@ -65,7 +65,11 @@ export function gardeWidget(motif: string): void {
     let x = html;
     do {
       avant = x;
-      x = x.replace(/&(amp|lt|#0*60|#x0*3c);?/gi, (_m, e: string) => (e.toLowerCase() === "amp" ? "&" : "<"));
+      x = x.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));?/gi, (_m, dec?: string, hex?: string, nom?: string) => {
+        if (nom) return ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" } as Record<string, string>)[nom.toLowerCase()]!;
+        const n = dec !== undefined ? Number(dec) : parseInt(hex!, 16);
+        return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "\ufffd";
+      });
     } while (x !== avant);
     return indice.test(x);
   };
@@ -95,6 +99,66 @@ export function gardeWidget(motif: string): void {
       return creerNS.call(this, ns, nom, o);
     },
   });
+  // Règle structurelle, quel que soit le chemin de création (createDocument puis adoptNode, DOMParser, modèle,
+  // cloneNode…) : aucun <link> ni <meta>, seul ou dans un fragment, n'entre dans un document. Les accesseurs sont pris
+  // maintenant, avant le widget, qui ne peut donc pas les détourner.
+  const N = w.Node.prototype;
+  const lire = (proto: object, nom: string) => Object.getOwnPropertyDescriptor(proto, nom)!.get!;
+  const typeNoeud = lire(N, "nodeType");
+  const nomElement = lire(w.Element.prototype, "localName");
+  const chercherElement = w.Element.prototype.querySelector;
+  const chercherFragment = w.DocumentFragment.prototype.querySelector;
+  const selecteur = balises.join(",");
+  const interditDans = (n: unknown): boolean => {
+    if (!n || typeof n !== "object") return false;
+    let t: number;
+    try {
+      t = typeNoeud.call(n);
+    } catch {
+      return false; // pas un nœud (texte passé à append) : rien à vérifier
+    }
+    if (t === 1) return balises.includes(String(nomElement.call(n)).toLowerCase()) || chercherElement.call(n, selecteur) !== null;
+    if (t === 11) return chercherFragment.call(n, selecteur) !== null;
+    return false;
+  };
+  const garder = (proto: Record<string, unknown> | undefined, noms: string[]) => {
+    if (!proto) return;
+    for (const nom of noms) {
+      const f = proto[nom] as ((...a: unknown[]) => unknown) | undefined;
+      if (typeof f !== "function") continue;
+      Object.defineProperty(proto, nom, {
+        configurable: true,
+        writable: true,
+        value: {
+          [nom](this: unknown, ...a: unknown[]) {
+            if (a.some(interditDans)) refuser("<link> ou <meta> inséré dans la page");
+            return f.apply(this, a);
+          },
+        }[nom],
+      });
+    }
+  };
+  garder(N, ["appendChild", "insertBefore", "replaceChild"]);
+  const enfants = ["append", "prepend", "replaceChildren"];
+  const voisins = ["before", "after", "replaceWith"];
+  garder(w.Element.prototype, [...enfants, ...voisins, "insertAdjacentElement"]);
+  garder(w.Document.prototype, enfants);
+  garder(w.DocumentFragment.prototype, enfants);
+  garder(w.CharacterData?.prototype, voisins);
+  garder(w.DocumentType?.prototype, voisins);
+  garder(w.Range?.prototype, ["insertNode", "surroundContents"]);
+  // execCommand("insertHTML") n'est pas un point Trusted Types.
+  const commande = D.execCommand;
+  if (typeof commande === "function") {
+    Object.defineProperty(D, "execCommand", {
+      configurable: true,
+      writable: true,
+      value: function execCommand(this: unknown, nom: unknown, ...a: unknown[]) {
+        if (String(nom).toLowerCase() === "inserthtml" && contientIndice(String(a[1] ?? ""))) refuser("<link>, <meta http-equiv> ou règles de spéculation");
+        return commande.call(this, nom, ...a);
+      },
+    });
+  }
   const R = w.CustomElementRegistry?.prototype;
   if (R) {
     const definir = R.define;

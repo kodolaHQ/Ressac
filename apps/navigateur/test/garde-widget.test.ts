@@ -14,6 +14,11 @@ const INDICES = [
   '<iframe srcdoc="&#60;link rel=dns-prefetch>"></iframe>',
   '<iframe srcdoc="&#x3C;link rel=dns-prefetch>"></iframe>',
   '<script type="speculationrules">{}</script>',
+  // Contournement relevé à la revue : srcdoc imbriqué, & écrit en référence numérique.
+  "<iframe srcdoc=\"<iframe srcdoc='&#38;lt;link rel=dns-prefetch href=//x.evil.tld>'></iframe>\"></iframe>",
+  "<iframe srcdoc='&#x26;lt;link rel=dns-prefetch>'></iframe>",
+  "<iframe srcdoc='&#38;#60;link rel=dns-prefetch>'></iframe>",
+  "<iframe srcdoc='&lt;meta http&#45;equiv=x-dns-prefetch-control content=on&gt;'></iframe>",
 ];
 const SAINS = ['<meta charset="utf-8">', "<b>gras</b> &amp; <i>texte</i>", "<linked-list></linked-list>", '<a href="https://exemple.fr">lien</a>', "<p>a &lt; b</p>"];
 
@@ -29,7 +34,53 @@ afterEach(() => {
 });
 
 function fenetreFactice() {
+  class Node {
+    constructor(
+      readonly t: number,
+      readonly nom = "",
+      readonly enfants: Node[] = [],
+    ) {}
+    get nodeType() {
+      return this.t;
+    }
+    appendChild(n: Node) {
+      this.enfants.push(n);
+      return n;
+    }
+  }
+  const chercher = function (this: Node, sel: string): Node | null {
+    const noms = sel.split(",");
+    const visiter = (n: Node): Node | null => {
+      for (const e of n.enfants) {
+        if (noms.includes(e.nom)) return e;
+        const x = visiter(e);
+        if (x) return x;
+      }
+      return null;
+    };
+    return visiter(this);
+  };
+  class Element extends Node {
+    get localName() {
+      return this.nom;
+    }
+    querySelector(sel: string) {
+      return chercher.call(this, sel);
+    }
+    append(...n: (Node | string)[]) {
+      this.enfants.push(...(n as Node[]));
+    }
+    setHTML() {}
+  }
+  class DocumentFragment extends Node {
+    querySelector(sel: string) {
+      return chercher.call(this, sel);
+    }
+  }
   class Document {
+    execCommand(_nom: string, _ui?: boolean, _valeur?: string) {
+      return true;
+    }
     createElement(nom: string, _o?: unknown) {
       return { nom };
     }
@@ -51,7 +102,9 @@ function fenetreFactice() {
     XSLTProcessor: class {},
     Document,
     CustomElementRegistry,
-    Element: { prototype: { setHTML() {} } },
+    Node,
+    Element,
+    DocumentFragment,
     ShadowRoot: { prototype: { setHTML() {} } },
     trustedTypes: {
       createPolicy(nom: string, p: Record<string, (s: string) => unknown>) {
@@ -61,11 +114,11 @@ function fenetreFactice() {
     },
   };
   (globalThis as { window?: unknown }).window = w;
-  return { w, politique: () => politique!, document: new Document(), registre: new CustomElementRegistry() };
+  return { w, politique: () => politique!, document: new Document(), registre: new CustomElementRegistry(), Element, DocumentFragment };
 }
 
 test("gardeWidget : ni WebRTC, ni XSLT, ni setHTML ; HTML avec indice réseau et code en texte refusés ; <link> et <meta> refusés au DOM", () => {
-  const { w, politique, document, registre } = fenetreFactice();
+  const { w, politique, document, registre, Element, DocumentFragment } = fenetreFactice();
   // Sérialisée par Electron : la garde ne doit dépendre de rien d'extérieur.
   const serialisee = new Function(`return (${gardeWidget.toString()})`)() as typeof gardeWidget;
   serialisee(MOTIF_INDICES_RESEAU);
@@ -86,4 +139,15 @@ test("gardeWidget : ni WebRTC, ni XSLT, ni setHTML ; HTML avec indice réseau et
   expect(() => registre.define("x-lien", class {}, { extends: "link" })).toThrow(/Refusé/);
   registre.define("x-ok", class {});
   expect(registre.definis).toEqual(["x-ok"]);
+  // Insertion : un <link> ou un <meta> venu d'ailleurs (createDocument + adoptNode…), seul ou dans un fragment, est refusé.
+  const tete = new Element(1, "head");
+  expect(() => tete.appendChild(new Element(1, "link"))).toThrow(/Refusé/);
+  expect(() => tete.append(new Element(1, "META"))).toThrow(/Refusé/);
+  expect(() => tete.append(new DocumentFragment(11, "", [new Element(1, "div", [new Element(1, "link")])]))).toThrow(/Refusé/);
+  expect(() => tete.append(new Element(1, "div", [new Element(1, "meta")]))).toThrow(/Refusé/);
+  tete.append(new Element(1, "div", [new Element(1, "p")]), "texte");
+  tete.appendChild(new Element(1, "p"));
+  expect((tete.enfants as unknown[]).map((e) => (typeof e === "string" ? e : (e as { nom: string }).nom))).toEqual(["div", "texte", "p"]);
+  expect(() => (document as any).execCommand("insertHTML", false, "<link rel=dns-prefetch>")).toThrow(/Refusé/);
+  expect((document as any).execCommand("insertHTML", false, "<b>ok</b>")).toBe(true);
 });

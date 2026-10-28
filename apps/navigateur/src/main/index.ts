@@ -46,6 +46,10 @@ app.setPath("userData", cheminProfil());
 // (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
 if (!app.requestSingleInstanceLock()) app.exit(0);
 enregistrerSchemaWidget([SCHEMA_ICONE]);
+// Aucune résolution de nom anticipée, nulle part (<link rel=dns-prefetch>, liens) : dans un affichage de widget, elle
+// ferait sortir des données dans une requête DNS, sans passer par la CSP ni par le proxy de l'interface. Les onglets y
+// perdent un peu de vitesse ; leurs navigations résolvent les noms normalement.
+app.commandLine.appendSwitch("blink-settings", "dnsPrefetchingEnabled=false");
 
 /** Tests automatiques : aucune fenêtre à l'écran ni icône dans le Dock (elles gênent l'utilisateur pendant qu'il travaille). */
 export const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
