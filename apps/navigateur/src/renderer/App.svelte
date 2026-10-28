@@ -7,6 +7,8 @@
   import ZoneContenu from "./composants/ZoneContenu.svelte";
   import PanneauAgent from "./composants/PanneauAgent.svelte";
   import ModaleDemande from "./composants/ModaleDemande.svelte";
+  import ModaleEspace from "./composants/ModaleEspace.svelte";
+  import { reglagesEspace } from "./composants/reglagesEspace.svelte";
   import { estDemandeAgent } from "./composants/modale.svelte";
   import type { Panneau } from "../commun/api";
   import { untrack } from "svelte";
@@ -143,7 +145,7 @@
 
 <svelte:window onmousemove={(e) => compact && !revelee && e.clientX < BORD_REVELATION && reveler()} />
 
-<div class="fenetre" inert={!!demandeAgent} class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon} class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
   {#if fenetre}
     <BarreLaterale
       {fenetre}
@@ -165,7 +167,12 @@
   <PanneauAgent visible={panneauAgentOuvert && !pleinEcran} redimensionner={redimensionnerAgent} />
 </div>
 <MenuContextuel />
-{#if demandeAgent}<ModaleDemande demande={demandeAgent} ongletId={panneau ? null : (ongletActif?.id ?? null)} />{/if}
+<!-- Une demande de l'agent passe devant les réglages d'un espace, qui reviennent ensuite avec leur brouillon. -->
+{#if demandeAgent}
+  <ModaleDemande demande={demandeAgent} ongletId={panneau ? null : (ongletActif?.id ?? null)} />
+{:else if reglagesEspace.brouillon && fenetre}
+  <ModaleEspace fenetreId={fenetre.id} ongletId={panneau ? null : (ongletActif?.id ?? null)} />
+{/if}
 
 <style>
   .fenetre {

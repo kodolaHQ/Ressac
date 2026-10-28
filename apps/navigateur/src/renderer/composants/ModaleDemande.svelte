@@ -3,20 +3,15 @@
   import { siteDe, type DemandeEnAttente, type IdOnglet } from "../../commun/modele";
   import { api } from "../etat.svelte";
   import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
-  import { modale } from "./modale.svelte";
+  import FondFige from "./FondFige.svelte";
 
   /** `ongletId` : la page affichée à l'ouverture, capturée pour le fond (null : aucune, ou un panneau la cache). */
   let { demande, ongletId }: { demande: DemandeEnAttente; ongletId: IdOnglet | null } = $props();
 
-  /** Au-delà, la page s'efface sans capture : la modale ne doit pas attendre. */
-  const ATTENTE_APERCU_MS = 1000;
   /** Entrée n'autorise qu'une carte visible depuis ce délai : une frappe destinée à la page ne vaut pas accord. */
   const DELAI_ENTREE_MS = 400;
 
   let carte: HTMLElement;
-  let apercu = $state<string | null>(null);
-  // Zone de la page au moment de la capture : l'image y reste, même si la fenêtre change ensuite de taille.
-  let zone = $state(untrack(() => modale.zone));
   let prete = $state(false);
   // Entrée armée : la carte est visible depuis DELAI_ENTREE_MS (réarmée à chaque demande de la file).
   let armee = $state(false);
@@ -26,11 +21,6 @@
     armee = false;
     if (prete) minuterieEntree = setTimeout(() => (armee = true), DELAI_ENTREE_MS);
   }
-  // L'onglet capturé : si un autre s'affiche (ou un panneau), l'image figée n'est plus la bonne page.
-  const ongletCapture = untrack(() => ongletId);
-  $effect(() => {
-    if (ongletId !== ongletCapture) apercu = null;
-  });
 
   const outilsDev = $derived(demande.permissions.includes("outils-dev"));
   const site = $derived(siteDe(demande.origine));
@@ -38,28 +28,9 @@
   // Une seule ouverture pour toute la file : les demandes suivantes remplacent le contenu, la page reste cachée.
   onMount(() => {
     const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    let finie = false;
-    const ouvrir = (url: string | null) => {
-      if (finie) return;
-      finie = true;
-      apercu = url;
-      zone = modale.zone;
-      // La capture est prise : la vue native peut s'effacer derrière la modale.
-      modale.masquer = true;
-      prete = true;
-      armer();
-    };
     carte.focus();
-    const secours = setTimeout(() => ouvrir(null), ATTENTE_APERCU_MS);
-    api
-      .apercuPage(ongletCapture)
-      .then(ouvrir, () => ouvrir(null))
-      .finally(() => clearTimeout(secours));
     return () => {
-      finie = true;
-      clearTimeout(secours);
       clearTimeout(minuterieEntree);
-      modale.masquer = false;
       // Le focus revient où il était, s'il est encore dans l'interface (pas sur la page web, qui reprend le sien) :
       // après la mise à jour, quand le reste de l'interface n'est plus inerte.
       queueMicrotask(() => {
@@ -110,12 +81,13 @@
 <svelte:window onkeydown={clavier} />
 
 <div class="modale" class:prete data-testid="modale-demande" data-armee={armee || undefined}>
-  {#if apercu && zone}
-    <div class="apercu" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.largeur}px" style:height="{zone.hauteur}px">
-      <img data-testid="modale-apercu" src={apercu} alt="" />
-    </div>
-  {/if}
-  <div class="voile"></div>
+  <FondFige
+    {ongletId}
+    surPret={() => {
+      prete = true;
+      armer();
+    }}
+  />
   <div
     class="carte"
     bind:this={carte}
@@ -142,9 +114,6 @@
 
 <style>
   .modale { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; -webkit-app-region: no-drag; }
-  .apercu { position: fixed; overflow: hidden; }
-  .apercu img { display: block; width: 100%; height: 100%; object-fit: cover; filter: blur(8px); transform: scale(1.03); }
-  .voile { position: fixed; inset: 0; background: var(--voile); }
   .carte {
     position: relative;
     width: min(440px, 100%);
