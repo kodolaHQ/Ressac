@@ -1,18 +1,18 @@
 import { expect, test } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace, MODELES_PAR_DEFAUT } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
+import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 const attendus = [
   "AGENTS.md",
   "CLAUDE.md",
   "accueil/disposition.json",
-  "accueil/blocs/daily-dev/bloc.json",
-  "accueil/blocs/veille-exemple/bloc.json",
+  ...["meteo", "actus-tech", "daily-dev"].flatMap((w) => [`accueil/widgets/${w}/widget.json`, `accueil/widgets/${w}/exemple.json`]),
   ".webaios/profils/claude.json",
 ];
 
@@ -27,11 +27,12 @@ test("crée l'espace complet dans un dossier vide", async () => {
 test("n'écrase jamais un fichier existant", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });
+  const perso = '{"version":2,"widgets":[]}';
   await writeFile(join(c.racine, "AGENTS.md"), "perso");
-  await writeFile(c.disposition, '{"ordre":["mien"]}');
+  await writeFile(c.disposition, perso);
   const { crees } = await initialiserEspace(c);
   expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe("perso");
-  expect(await readFile(c.disposition, "utf8")).toBe('{"ordre":["mien"]}');
+  expect(await readFile(c.disposition, "utf8")).toBe(perso);
   expect(crees).not.toContain(join(c.racine, "AGENTS.md"));
   expect(crees).not.toContain(c.disposition);
 });
@@ -51,14 +52,50 @@ test("AGENTS.md mentionne les éléments imposés", async () => {
   }
 });
 
-test("un bloc de départ supprimé ne revient pas au lancement suivant", async () => {
+test("un espace neuf reçoit les trois widgets de départ et la disposition v2", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
-  await rm(join(c.blocs, "veille-exemple"), { recursive: true });
-  await writeFile(c.disposition, '{"ordre":["daily-dev"]}');
+  expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
+  expect(existsSync(c.blocs)).toBe(false);
+  const dispo = Disposition.parse(JSON.parse(await readFile(c.disposition, "utf8")));
+  expect(dispo.widgets.map((w) => w.id)).toEqual(["actus-tech", "daily-dev", "meteo"]);
+  for (const id of ["meteo", "actus-tech", "daily-dev"]) {
+    const d = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, id, "widget.json"), "utf8")));
+    JSON.parse(await readFile(join(c.widgets, id, "exemple.json"), "utf8"));
+    if (id !== "meteo") expect(JSON.stringify(d.config)).toContain("sécurité informatique");
+  }
+  const daily = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, "daily-dev", "widget.json"), "utf8")));
+  expect(daily.sources.compte).toEqual(["app.daily.dev"]);
+});
+
+test("des blocs existants partent dans accueil/.corbeille/blocs-…, rien n'est détruit", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await mkdir(join(c.blocs, "mien"), { recursive: true });
+  await writeFile(join(c.blocs, "mien", "bloc.json"), '{"a":1}');
+  await writeFile(c.disposition, '{"ordre":["mien"]}');
   await initialiserEspace(c);
-  expect(existsSync(join(c.blocs, "veille-exemple"))).toBe(false);
-  expect(await readFile(c.disposition, "utf8")).toBe('{"ordre":["daily-dev"]}');
+  expect(existsSync(c.blocs)).toBe(false);
+  const corbeille = join(c.accueil, ".corbeille");
+  const dossiers = await readdir(corbeille);
+  expect(dossiers).toHaveLength(1);
+  expect(dossiers[0]).toMatch(/^blocs-\d{4}-\d\d-\d\dT[^:]+$/);
+  expect(await readFile(join(corbeille, dossiers[0]!, "mien", "bloc.json"), "utf8")).toBe('{"a":1}');
+  expect(await readFile(join(corbeille, dossiers[0]!, "disposition.json"), "utf8")).toBe('{"ordre":["mien"]}');
+  expect(Disposition.safeParse(JSON.parse(await readFile(c.disposition, "utf8"))).success).toBe(true);
+  expect(existsSync(join(c.widgets, "meteo", "widget.json"))).toBe(true);
+  // Un second lancement ne remet rien de côté.
+  await initialiserEspace(c);
+  expect(await readdir(corbeille)).toHaveLength(1);
+});
+
+test("un widget de départ supprimé ne revient pas au lancement suivant", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  await rm(join(c.widgets, "meteo"), { recursive: true });
+  await writeFile(c.disposition, '{"version":2,"widgets":[]}');
+  await initialiserEspace(c);
+  expect(existsSync(join(c.widgets, "meteo"))).toBe(false);
+  expect(await readFile(c.disposition, "utf8")).toBe('{"version":2,"widgets":[]}');
 });
 
 test("AGENTS.md, CLAUDE.md et le profil sont recréés s'ils manquent", async () => {

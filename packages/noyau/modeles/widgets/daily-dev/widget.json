@@ -1,0 +1,32 @@
+{
+  "nom": "daily.dev",
+  "description": "Ton fil « Pour toi » de daily.dev, les articles les plus intéressants résumés",
+  "tailles": {
+    "min": {
+      "l": 2,
+      "h": 2
+    },
+    "max": {
+      "l": 12,
+      "h": 10
+    },
+    "defaut": {
+      "l": 6,
+      "h": 5
+    }
+  },
+  "recolte": {
+    "minutes": 120
+  },
+  "sources": {
+    "compte": [
+      "app.daily.dev"
+    ],
+    "publiques": [
+      "app.daily.dev"
+    ]
+  },
+  "config": {
+    "interets": "IA et modèles de langage, IA locale, agents de code, Svelte, Electron, TypeScript, développement web, navigateurs, sécurité informatique"
+  }
+}
