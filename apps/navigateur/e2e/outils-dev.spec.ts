@@ -39,6 +39,8 @@ async function demarrer() {
   for (const page of ["console.html", "texte.html"]) copyFileSync(join(__dirname, "pages", page), join(projet, page));
   const l = await lancer({ racine, env: ENV });
   await expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json")), { timeout: 10_000 }).toBe(true);
+  // La session du panneau démarre une nouvelle conversation (qui retire cartes, droits et coupes) : on l'attend.
+  await expect.poll(() => existsSync(join(racine, "faux-agent-pid")), { timeout: 10_000 }).toBe(true);
   const { texte } = await appelerOutil(racine, "lancer_application", { dossier: "essai" });
   expect(texte).toContain("(onglet app:essai)");
   return { ...l, page: await pageAppli(l.app) };
@@ -132,6 +134,8 @@ async function avecOngletTiers() {
   const serveur = await serveurTest();
   const l = await lancer();
   await expect.poll(() => existsSync(join(l.racine, ".webaios", "mcp.json"))).toBe(true);
+  // La session du panneau démarre une nouvelle conversation (qui retire les cartes et les droits) : on l'attend.
+  await expect.poll(() => existsSync(join(l.racine, "faux-agent-pid")), { timeout: 10_000 }).toBe(true);
   await ouvrirOnglet(l.fenetre, `${serveur.url}/texte.html`);
   await expect.poll(() => dansLaVue(l.app, "texte.html", "document.title")).toBe("Texte");
   const titre = l.fenetre.locator('[data-testid^="onglet-"]', { hasText: "Texte" });

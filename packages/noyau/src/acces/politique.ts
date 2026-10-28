@@ -191,19 +191,26 @@ export class PolitiqueAcces {
     return r;
   }
 
-  accorder(o: OngletInfo): void {
+  private autoriser(o: OngletInfo): boolean {
     const org = origine(o.url);
-    if (org) this.autorisations.set(o.id, org);
+    if (!org || this.autorisations.get(o.id) === org) return false;
+    this.autorisations.set(o.id, org);
+    return true;
+  }
+
+  /** L'utilisateur a autorisé la lecture : la pastille suit. */
+  accorder(o: OngletInfo): void {
+    if (this.autoriser(o)) this.change();
   }
 
   interactionUtilisateur(o: OngletInfo): void {
     this.refus.clear();
-    this.accorder(o);
+    this.autoriser(o);
     this.change();
   }
 
   ongletOuvertParAgent(o: OngletInfo): void {
-    if (estLocale(o.url)) this.accorder(o);
+    if (estLocale(o.url)) this.autoriser(o);
     this.construite(o);
     this.change();
   }

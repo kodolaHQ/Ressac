@@ -249,3 +249,12 @@ test("conversation : change à chaque reinitialiser", () => {
   p.reinitialiser();
   expect(p.conversation).toBe(avant + 1);
 });
+
+test("accorder signale le changement (la pastille de lecture suit) ; rien si l'accès est déjà là", () => {
+  let n = 0;
+  p.surChange(() => n++);
+  p.accorder(gmail);
+  expect(n).toBe(1);
+  p.accorder(gmail);
+  expect(n).toBe(1);
+});
