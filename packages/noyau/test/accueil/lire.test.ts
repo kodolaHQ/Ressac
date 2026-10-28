@@ -66,9 +66,10 @@ test("un widget.json invalide donne un WidgetLu en erreur sans empêcher les aut
   const casse = widgets.find((w) => w.id === "casse")!;
   expect("erreur" in casse && casse.erreur).toContain("widget.json");
   expect("erreur" in widgets.find((w) => w.id === "faux")!).toBe(true);
-  expect("erreur" in widgets.find((w) => w.id === "compte-sans-publiques")!).toBe(true);
+  const compte = widgets.find((w) => w.id === "compte-sans-publiques")!;
+  expect("declaration" in compte && compte.declaration.sources).toEqual({ compte: ["x.test"], publiques: [] });
   expect("declaration" in widgets.find((w) => w.id === "ok")!).toBe(true);
-  expect(disposition.map((p) => p.id)).toEqual(["ok"]);
+  expect(disposition.map((p) => p.id).sort()).toEqual(["compte-sans-publiques", "ok"]);
 });
 
 test("une disposition de l'ancien format ({ ordre }) est ignorée : tout est replacé", async () => {

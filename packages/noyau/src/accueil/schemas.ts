@@ -14,6 +14,7 @@ export const DeclarationWidget = z
     description: z.string().default(""),
     tailles: z.object({ min: taille, max: taille, defaut: taille }),
     recolte: z.object({ minutes: z.number().int().min(5).max(10080) }).optional(),
+    // Pour un widget avec `compte`, `publiques` vide = aucune récupération publique permise (liste appliquée par la tâche 5).
     sources: z.object({ compte: z.array(domaine).default([]), publiques: z.array(domaine).default([]) }).default({ compte: [], publiques: [] }),
     config: z.unknown().optional(),
   })
@@ -23,9 +24,6 @@ export const DeclarationWidget = z
       if (!(min[axe] <= defaut[axe] && defaut[axe] <= max[axe])) {
         ctx.addIssue({ code: "custom", path: ["tailles"], message: `min ≤ defaut ≤ max exigé (${axe})` });
       }
-    }
-    if (d.sources.compte.length > 0 && d.sources.publiques.length === 0) {
-      ctx.addIssue({ code: "custom", path: ["sources", "publiques"], message: "obligatoires pour un widget avec compte" });
     }
   });
 export type DeclarationWidget = z.infer<typeof DeclarationWidget>;
