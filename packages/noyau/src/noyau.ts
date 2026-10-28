@@ -210,6 +210,8 @@ export async function creerNoyau(o: {
   recolteur?: string;
   /** Appelé après chaque écriture de l'état ou des données d'un widget, et après un accord ou son retrait. */
   surChange?: () => void;
+  /** Tests seulement : les récoltes peuvent lire des adresses locales (le serveur de test). */
+  adressesLocales?: boolean;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -287,6 +289,7 @@ export async function creerNoyau(o: {
     ia,
     surChange: signaler,
     ...(o.horloge ? { horloge: o.horloge } : {}),
+    ...(o.adressesLocales ? { adressesLocales: true } : {}),
   });
   await planificateur.demarrer();
   const pont = o.pont;

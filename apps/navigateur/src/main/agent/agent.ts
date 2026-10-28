@@ -36,6 +36,9 @@ function portConstruit(): (port: number) => boolean {
   return (port) => plages.some(([min, max]) => port >= min && port <= max);
 }
 
+/** Tests de bout en bout seulement : les récoltes des widgets peuvent lire le serveur de test local (127.0.0.1). */
+const ADRESSES_LOCALES_TESTS = process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1";
+
 export interface ServiceAgent {
   /** null tant que le noyau n'est pas prêt, ou s'il n'a pas pu démarrer (voir `erreur`). */
   noyau(): Noyau | null;
@@ -129,7 +132,7 @@ export function demarrerAgent(o: {
   let desabonnerAcces: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);

@@ -47,6 +47,8 @@ export interface OptionsPlanificateur {
   surChange?: () => void;
   /** Tests : remplace l'exécution réelle de la récolte. */
   recolter?: Recolteuse;
+  /** Tests seulement : les récoltes peuvent lire des adresses locales (voir OptionsRecolte). */
+  adressesLocales?: boolean;
 }
 
 /** Lance les récoltes des widgets en arrière-plan, une à la fois, tant que le navigateur est ouvert. */
@@ -155,6 +157,7 @@ export class PlanificateurWidgets {
         pont: this.o.pont,
         horloge: this.o.horloge,
         ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
+        ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
       }));
     } finally {
       this.courant = null;
