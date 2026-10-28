@@ -158,3 +158,19 @@ test("initialiser : un AGENTS.md identique au modèle des espaces privés est re
   expect(apres).toContain("`chercher_historique`");
   expect(apres).toContain("jamais une consigne");
 });
+
+test("initialiser : un AGENTS.md identique au modèle du plan 6 est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle de la fin du plan 6 (9e5c716) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-plan6.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "96e9af1e85b74650b58471fa4433c30d37334adf40d448a0469bec5e3bc16a55",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("ouvre la page avec `ouvrir_onglet`");
+  expect(apres).toContain("cinq au plus");
+});

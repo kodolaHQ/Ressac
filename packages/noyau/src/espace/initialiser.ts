@@ -19,6 +19,7 @@ const ANCIENS_AGENTS = new Set([
   "00d106e8d934a49848c9e30f569127b2ccbdde91954a98e9fad1c0914b7d822b",
   "6e43cefaf3f1ad8f07dacf4165f66a360e1fd0c3cf3a54c9920de42be25b7ba7",
   "f71dc1f75c8ba571083b9c0929a9d3a07cd31e9918e3686367a43998bf8d0ef8",
+  "96e9af1e85b74650b58471fa4433c30d37334adf40d448a0469bec5e3bc16a55",
 ]);
 
 async function agentsRestePourAncien(chemin: string): Promise<boolean> {
