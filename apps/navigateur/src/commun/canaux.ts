@@ -11,6 +11,7 @@ export const CANAUX = {
   historiqueRechercher: "webaios:historique-rechercher",
   historiqueRecents: "webaios:historique-recents",
   historiqueEffacer: "webaios:historique-effacer",
+  historiqueOublierTexte: "webaios:historique-oublier-texte",
   telechargements: "webaios:telechargements",
   telechargementsListe: "webaios:telechargements-liste",
   telechargementAction: "webaios:telechargement-action",

@@ -37,6 +37,7 @@ const api: ApiWebaios = {
     rechercher: (texte, limite, distinctes) => ipcRenderer.invoke(CANAUX.historiqueRechercher, texte, limite, distinctes),
     recents: () => ipcRenderer.invoke(CANAUX.historiqueRecents),
     effacer: (depuis) => ipcRenderer.invoke(CANAUX.historiqueEffacer, depuis),
+    oublierTexte: (url, espaceId) => ipcRenderer.invoke(CANAUX.historiqueOublierTexte, url, espaceId),
   },
   telechargements: {
     liste: () => ipcRenderer.invoke(CANAUX.telechargementsListe),

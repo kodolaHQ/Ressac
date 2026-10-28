@@ -213,6 +213,7 @@ app.whenReady().then(async () => {
       const o = magasin.etat.onglets[id];
       return o ? { espaceId: o.espaceId, prive: ongletPrive(magasin.etat, o) } : null;
     },
+    retenir: (r) => historique?.retenir(r),
     resultatRecherche: (id, r) => fenetres.get(id)?.webContents.send(CANAUX.resultatRecherche, r),
     // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
     pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),

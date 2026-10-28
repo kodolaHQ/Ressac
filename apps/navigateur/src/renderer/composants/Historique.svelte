@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
+  import { ouvrirMenu } from "./menu.svelte";
   import type { EtatFenetre, Visite } from "../../commun/modele";
   import { api } from "../etat.svelte";
 
@@ -53,7 +54,12 @@
     fermer();
   }
 
-  const debutDuJour = () => {
+  function menuVisite(e: MouseEvent, v: Visite) {
+    if (!v.retenu) return;
+    ouvrirMenu(e, [{ libelle: "Oublier le texte retenu", agir: () => void api.historique.oublierTexte(v.url, v.espaceId).then(charger) }], { libre: true });
+  }
+
+    const debutDuJour = () => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   };
@@ -81,11 +87,12 @@
     <h2>{g.jour}</h2>
     <ul>
       {#each g.visites as v (`${v.espaceId}|${v.url}`)}
-        <li data-prive={v.prive ? "true" : undefined}>
-          <a href={v.url} onclick={(e) => ouvrir(e, v.url)}>
+        <li data-prive={v.prive ? "true" : undefined} data-retenu={v.retenu ? "true" : undefined}>
+          <a href={v.url} onclick={(e) => ouvrir(e, v.url)} oncontextmenu={(e) => menuVisite(e, v)}>
             <span class="heure">{new Date(v.derniereVisite).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
             {#if v.prive}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
             <span class="titre">{v.titre}</span>
+            {#if v.retenu}<span class="retenu" title="Texte retenu pour l'agent" aria-label="Texte retenu pour l'agent">🧠</span>{/if}
             <span class="url">{v.url}</span>
           </a>
         </li>
@@ -110,6 +117,7 @@
   a { display: flex; gap: 12px; padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
   a:hover { background: var(--fond-survol); }
   .heure { color: var(--texte-doux); font-variant-numeric: tabular-nums; }
+  .retenu { font-size: 11px; opacity: 0.7; }
   .titre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .url { margin-left: auto; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
   .vide { color: var(--texte-doux); }

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { creerEspace, dansLaVue, lancer, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
@@ -89,5 +89,53 @@ test("la barre d'adresse ne suggère qu'une fois une URL visitée dans deux espa
   await barre.click();
   await barre.fill("page a");
   await expect(fenetre.getByTestId("suggestion")).toHaveCount(1);
+  await fermer();
+});
+
+// Le serveur de test est sur 127.0.0.1 : la mémoire n'en retient rien, sauf en mode test (boucle locale permise).
+const memoire = { env: { WEBAIOS_MEMOIRE_BOUCLE: "1" } };
+
+/** Les lignes de l'historique (une par URL et par espace) dont l'URL contient `morceau`, vues par l'interface. */
+const lignes = (fenetre: Page, morceau: string) =>
+  fenetre.evaluate(async (morceau) => {
+    const w = window as unknown as Window & { webaios: { historique: { recents(): Promise<{ url: string; retenu: boolean; prive: boolean }[]> } } };
+    return (await w.webaios.historique.recents()).filter((v) => v.url.includes(morceau)).map((v) => ({ retenu: v.retenu, prive: v.prive }));
+  }, morceau);
+
+test("mémoire : le texte d'une page vue dans un espace non privé est retenu, marqué dans ⌘Y", async () => {
+  const { app, fenetre, fermer } = await lancer(memoire);
+  await ouvrirOnglet(fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => lignes(fenetre, "texte.html"), { timeout: 10_000 }).toEqual([{ retenu: true, prive: false }]);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("historique")?.click());
+  const ligne = fenetre.getByTestId("historique").locator("li", { hasText: "texte.html" });
+  await expect(ligne).toHaveAttribute("data-retenu", "true");
+  await expect(ligne.getByLabel("Texte retenu pour l'agent")).toBeVisible();
+  await fermer();
+});
+
+test("mémoire : rien n'est retenu d'une page vue dans un espace privé", async () => {
+  const { fenetre, fermer } = await lancer(memoire);
+  await reglerEspaceActifPrive(fenetre, true);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await creerEspace(fenetre, "Travail", "💼");
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  // B, visitée après A dans un espace non privé, est retenue : la capture de A, si elle devait avoir lieu, est passée.
+  await expect.poll(() => lignes(fenetre, "b.html"), { timeout: 10_000 }).toEqual([{ retenu: true, prive: false }]);
+  expect(await lignes(fenetre, "a.html")).toEqual([{ retenu: false, prive: true }]);
+  await fermer();
+});
+
+test("mémoire : « Oublier le texte retenu » ôte le repère et garde la visite", async () => {
+  const { app, fenetre, fermer } = await lancer(memoire);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => lignes(fenetre, "a.html"), { timeout: 10_000 }).toEqual([{ retenu: true, prive: false }]);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("historique")?.click());
+  const ligne = fenetre.getByTestId("historique").locator("li", { hasText: "Page A" });
+  await expect(ligne).toHaveAttribute("data-retenu", "true");
+  await ligne.click({ button: "right" });
+  await fenetre.getByRole("menuitem", { name: "Oublier le texte retenu" }).click();
+  await expect(ligne).not.toHaveAttribute("data-retenu", "true");
+  await expect(ligne.getByLabel("Texte retenu pour l'agent")).toHaveCount(0);
+  expect(await lignes(fenetre, "a.html")).toEqual([{ retenu: false, prive: false }]);
   await fermer();
 });

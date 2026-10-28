@@ -95,6 +95,9 @@ export function brancherIpc(g: Gestionnaires): void {
     if (date && Number.isNaN(date.getTime())) return;
     g.historique.effacer(date);
   });
+  repondre(CANAUX.historiqueOublierTexte, (url, espaceId) => {
+    if (typeof url === "string" && typeof espaceId === "string") g.historique.oublierTexte(url, espaceId);
+  });
   repondre(CANAUX.telechargementsListe, () => g.telechargements.liste());
   recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
   repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());

@@ -111,6 +111,8 @@ export interface ApiWebaios {
     recents(): Promise<Visite[]>;
     /** `depuis` : date ISO ; absent, tout l'historique. */
     effacer(depuis?: string): Promise<void>;
+    /** Oublie le texte retenu d'une visite (une URL dans un espace), sans effacer la visite. */
+    oublierTexte(url: string, espaceId: string): Promise<void>;
   };
   telechargements: {
     liste(): Promise<Telechargement[]>;

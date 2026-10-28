@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import { BORD_REVELATION, SORTIE_GAUCHE, type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
+import { brancherCapture } from "./capture-texte";
 import { attendreChargement } from "./chargement";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
 import { entreesMenuPage } from "./menu-page";
@@ -87,6 +88,8 @@ export class GestionnaireVues {
       historique?: NotesHistorique;
       /** Espace et caractère privé de l'onglet d'après l'état courant ; null : onglet disparu, rien à noter. */
       contexteHistorique?: (id: IdOnglet) => { espaceId: string; prive: boolean } | null;
+      /** Mémoire de navigation : texte des pages vues dans les onglets (jamais les fenêtres d'apps ni les blocs d'accueil). */
+      retenir?: (r: { url: string; espaceId: string; titre: string; texte: string }) => void;
       resultatRecherche?: (fenetreId: IdFenetre, r: { ongletId: IdOnglet; actif: number; total: number }) => void;
       pleinEcran?: (fenetreId: IdFenetre, actif: boolean) => void;
     },
@@ -285,7 +288,9 @@ export class GestionnaireVues {
     const wc = vue.webContents;
     this.vues.set(onglet.id, vue);
     this.sessions.set(onglet.id, session);
-    brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, () => this.o.contexteHistorique?.(onglet.id) ?? null);
+    const contexte = () => this.o.contexteHistorique?.(onglet.id) ?? null;
+    brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, contexte);
+    if (this.o.retenir) brancherCapture(wc, contexte, this.o.retenir);
     gererOuvertures(
       wc,
       (url, activer) => this.o.agir({ type: "ouvrirOnglet", fenetreId: onglet.fenetreId, url, apres: onglet.id, activer }),

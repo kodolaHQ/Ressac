@@ -141,7 +141,7 @@ export interface Visite {
   espaceId: string;
   /** Vue dans un espace privé (ou espace devenu privé depuis). */
   prive: boolean;
-  /** Le texte de la page est retenu pour l'agent (calculé à partir de la tâche suivante : toujours faux ici). */
+  /** Le texte de cette visite est retenu dans la mémoire de l'agent. */
   retenu: boolean;
 }
 
