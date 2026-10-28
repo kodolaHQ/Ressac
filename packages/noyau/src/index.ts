@@ -24,4 +24,5 @@ export * from "./ia/ia-locale.js";
 export * from "./widgets/protocole.js";
 export * from "./widgets/accords.js";
 export * from "./widgets/planificateur.js";
+export { adresseLocale } from "./widgets/recolte.js";
 export * from "./noyau.js";

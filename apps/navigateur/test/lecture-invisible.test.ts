@@ -1,4 +1,5 @@
-import { expect, test, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, expect, test, vi } from "vitest";
 import { ProfilRefuse } from "@webaios/noyau";
 import type { EtatNavigateur } from "../src/commun/modele";
 
@@ -59,4 +60,123 @@ test("urlPermise : http(s) seulement ; avec domaines, l'hôte exact (point final
   expect(urlPermise("https://exemple.test.autre.test/", ["exemple.test"])).toBe(false);
   expect(urlPermise("https://www.exemple.test/", ["exemple.test"])).toBe(false);
   expect(urlPermise("data:text/html,x", ["exemple.test"])).toBe(false);
+});
+
+test("urlPermise refuse les adresses locales, sauf option des tests", () => {
+  for (const u of ["http://localhost./", "http://localhost:11434/api", "http://127.0.0.1:11434/", "http://192.168.1.1/", "http://[::1]/", "http://10.0.0.2/", "http://box.local/"]) {
+    expect(urlPermise(u, undefined), u).toBe(false);
+    expect(urlPermise(u, undefined, true), u).toBe(true);
+  }
+  expect(urlPermise("http://127.0.0.1/", ["127.0.0.1"])).toBe(false);
+  expect(urlPermise("http://127.0.0.1/", ["127.0.0.1"], true)).toBe(true);
+  expect(urlPermise("https://exemple.test/", undefined, false)).toBe(true);
+});
+
+/** Une fausse page : les événements de navigation sont émis à la main. */
+function fausseFenetre(urlFinale: () => string, lecture: () => Promise<unknown> = async () => ({ titre: "T", texte: "texte", liens: [] })) {
+  const wc = Object.assign(new EventEmitter(), {
+    url: "about:blank",
+    commandes: [] as string[],
+    arrets: 0,
+    loadURL: vi.fn(async (u: string) => {
+      wc.url = u;
+    }),
+    getURL: () => (wc.url === "about:blank" ? wc.url : urlFinale()),
+    isDestroyed: () => false,
+    stop: () => void wc.arrets++,
+    setAudioMuted: () => {},
+    executeJavaScriptInIsolatedWorld: vi.fn(lecture),
+    debugger: Object.assign(new EventEmitter(), {
+      attach: vi.fn(),
+      isAttached: () => true,
+      detach: vi.fn(),
+      sendCommand: vi.fn(async (m: string) => void wc.commandes.push(m)),
+    }),
+  });
+  const f = { webContents: wc, isDestroyed: vi.fn(() => false), destroy: vi.fn() };
+  return { wc, f };
+}
+
+const etatLibre = etat(["defaut"], [{ profil: "defaut", prive: false }]);
+const depsAvec = (f: unknown) => ({ etat: () => etatLibre, sessionProfil: vi.fn(() => ({}) as never), sessionPublique: vi.fn(() => ({ clearStorageData: async () => {}, clearCache: async () => {} }) as never), creerFenetre: vi.fn(() => f as never) });
+
+afterEach(() => void vi.useRealTimers());
+
+test("window.print neutralisé avant les scripts de la page, cadres compris", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(wc.debugger.attach).toHaveBeenCalled();
+  expect(wc.commandes).toEqual(expect.arrayContaining(["Page.enable", "Page.addScriptToEvaluateOnNewDocument", "Target.setAutoAttach"]));
+  // Le script est posé avant le chargement de la page.
+  expect(wc.loadURL.mock.calls.map((c) => c[0])).toEqual(["about:blank", "https://exemple.test/"]);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ url: "https://exemple.test/", titre: "T" });
+  expect(f.destroy).toHaveBeenCalled();
+});
+
+test("un cadre qui charge tard repousse la lecture à 2 s après la fin de tout chargement, pas à la lecture forcée", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(1_000);
+  wc.emit("did-start-loading"); // une publicité dans un cadre
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(wc.executeJavaScriptInIsolatedWorld).not.toHaveBeenCalled();
+  wc.emit("did-stop-loading");
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(wc.executeJavaScriptInIsolatedWorld).toHaveBeenCalled();
+  await expect(r).resolves.toMatchObject({ texte: "texte" });
+});
+
+test("pushState pendant la lecture : l'URL finale, si permise, est rendue ; hors domaines, refusée", async () => {
+  vi.useFakeTimers();
+  let url = "https://exemple.test/";
+  const { wc, f } = fausseFenetre(() => url, async () => {
+    url = "https://exemple.test/fil";
+    return { titre: "T", texte: "x", liens: [] };
+  });
+  const r = lirePageInvisible("https://exemple.test/", { profil: "defaut", domaines: ["exemple.test"] }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ url: "https://exemple.test/fil" });
+
+  let url2 = "https://exemple.test/";
+  const b = fausseFenetre(() => url2, async () => {
+    url2 = "https://ailleurs.test/";
+    return { titre: "T", texte: "x", liens: [] };
+  });
+  const r2 = lirePageInvisible("https://exemple.test/", { profil: "defaut", domaines: ["exemple.test"] }, depsAvec(b.f));
+  r2.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  b.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r2).rejects.toThrow(/hors des domaines/);
+});
+
+test("une redirection vers une adresse locale est annulée avant de partir, et la lecture échoue", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  const e = { url: "http://127.0.0.1:11434/api/tags", isMainFrame: true, preventDefault: vi.fn() };
+  wc.emit("will-redirect", e);
+  expect(e.preventDefault).toHaveBeenCalled();
+  await expect(r).rejects.toThrow(/Navigation bloquée/);
+  // L'arrêt de la page est différé : jamais dans le gestionnaire d'un événement de navigation.
+  expect(wc.arrets).toBe(0);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.destroy).toHaveBeenCalled();
+});
+
+test("lirePageInvisible refuse une URL locale sans créer de vue, sauf adressesLocales", async () => {
+  const deps = { etat: () => etatLibre, sessionProfil: vi.fn(), sessionPublique: vi.fn(), creerFenetre: vi.fn() };
+  await expect(lirePageInvisible("http://127.0.0.1:11434/", { profil: null }, deps)).rejects.toThrow();
+  expect(deps.creerFenetre).not.toHaveBeenCalled();
 });

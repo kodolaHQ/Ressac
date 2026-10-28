@@ -149,7 +149,7 @@ export class PontFactice implements PontNavigateur {
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
-  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[] }) => Promise<PageLue>;
+  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }) => Promise<PageLue>;
   demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 

@@ -294,8 +294,12 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   };
 
   /** Options de lecture : pour un widget avec compte, le pont reçoit la liste des domaines où il peut naviguer. */
-  const avecDomaines = (profil: string | null, domaines: readonly string[] | null) =>
-    aCompte && domaines ? { profil, domaines: [...domaines] } : { profil };
+  // Tests seulement : le pont permet alors aussi les adresses locales (il les refuse sinon, redirections comprises).
+  const avecDomaines = (profil: string | null, domaines: readonly string[] | null) => ({
+    profil,
+    ...(aCompte && domaines ? { domaines: [...domaines] } : {}),
+    ...(adressesLocales ? { adressesLocales: true } : {}),
+  });
   /** L'adresse finale de la page (après redirections) doit respecter la même règle ; sinon son texte ne sort pas. */
   const verifierPage = (page: PageLue, domaines: readonly string[] | null): PageLue => {
     try {

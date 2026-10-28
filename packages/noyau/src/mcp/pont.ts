@@ -45,8 +45,11 @@ export interface PontNavigateur {
    * DOIT bloquer toute navigation du cadre principal (redirection, script, meta refresh) vers un hôte hors de cette
    * liste, avant que la requête parte : sinon les cookies du profil, ou l'URL elle-même, sortiraient. Le noyau vérifie
    * en plus `PageLue.url` au retour.
+   *
+   * Le pont refuse aussi toute navigation du cadre principal vers une adresse locale (`adresseLocale`), sauf si
+   * `adressesLocales` est vrai (tests seulement : le noyau le passe quand sa propre option `adressesLocales` l'est).
    */
-  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[] }): Promise<PageLue>;
+  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }): Promise<PageLue>;
   /**
    * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
    * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
