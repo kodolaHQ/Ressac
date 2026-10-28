@@ -38,10 +38,65 @@ const DELAI_DEMARRAGE_MS = 180_000;
 const DELAI_KEV_MS = 60_000;
 const DELAI_GEMMA_MS = 120_000;
 
-const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) => {
-  const enfant = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, PATH: cheminOutils() }, stdio: ["ignore", "pipe", "pipe"] });
+/** Délai entre SIGTERM et SIGKILL quand Kev (son groupe) ne s'arrête pas. */
+const DELAI_KILL_MS = 5000;
+
+/** Groupes de processus encore vivants : tués de façon synchrone si le process Node sort sans les arrêter. */
+const groupesVivants = new Set<number>();
+let sortieBranchee = false;
+function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false; // groupe déjà mort
+  }
+}
+
+/**
+ * Lance la commande dans son propre groupe de processus (`uv run` lance un enfant Python : tuer uv seul le laisserait
+ * orphelin). `arreter` envoie SIGTERM au groupe, puis SIGKILL après `delaiKillMs` s'il vit encore. Si le process Node
+ * sort sans arrêter le groupe, il est tué à la sortie.
+ */
+export function lancerProcessusIa(cmd: string, args: string[], o: { cwd: string; delaiKillMs?: number }): ProcessusIa {
+  const enfant = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, PATH: cheminOutils() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+  const pid = enfant.pid;
+  if (pid !== undefined) {
+    groupesVivants.add(pid);
+    if (!sortieBranchee) {
+      sortieBranchee = true;
+      process.on("exit", () => {
+        for (const g of groupesVivants) tuerGroupe(g, "SIGKILL");
+      });
+    }
+  }
+  let sorti = false;
+  enfant.on("exit", () => {
+    sorti = true;
+    if (pid !== undefined && !tuerGroupe(pid, 0)) groupesVivants.delete(pid);
+  });
   return {
-    arreter: () => { enfant.kill("SIGTERM"); },
+    arreter: () => {
+      if (pid === undefined) return;
+      if (!tuerGroupe(pid, "SIGTERM")) {
+        groupesVivants.delete(pid);
+        return;
+      }
+      // Le groupe peut survivre au premier processus (un enfant qui ignore SIGTERM) : on vérifie le groupe, pas `sorti`.
+      const minuterie = setTimeout(() => {
+        tuerGroupe(pid, "SIGKILL");
+        groupesVivants.delete(pid);
+      }, o.delaiKillMs ?? DELAI_KILL_MS);
+      minuterie.unref();
+      const verifier = setInterval(() => {
+        if (sorti && !tuerGroupe(pid, 0)) {
+          clearTimeout(minuterie);
+          clearInterval(verifier);
+          groupesVivants.delete(pid);
+        }
+      }, 100);
+      verifier.unref();
+    },
     surSortie: (r) => {
       enfant.on("exit", (code) => r(code));
       enfant.on("error", () => r(127));
@@ -57,7 +112,9 @@ const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) =
       }
     },
   };
-};
+}
+
+const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) => lancerProcessusIa(cmd, args, o);
 
 const attendre = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
 

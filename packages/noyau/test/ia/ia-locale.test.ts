@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { IaLocale, type ProcessusIa } from "../../src/ia/ia-locale.js";
+import { IaLocale, lancerProcessusIa, type ProcessusIa } from "../../src/ia/ia-locale.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 import { fauxKev, fauxOllama, urlInjoignable, type FauxServeur } from "../aide/faux-ia.js";
@@ -202,5 +202,45 @@ describe("IaLocale", () => {
     const mauvais = executeurFactice([[/rev-parse HEAD/, { code: 0, stdout: "deadbeef\n" }]]);
     await expect(new IaLocale({ dossier: await dossierTemporaire(), executer: mauvais.executer }).installer(() => {}))
       .rejects.toThrow(/commit/);
+  });
+});
+
+describe("lancerProcessusIa (Kev : uv lance un enfant Python)", () => {
+  const vivant = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const attendreVrai = async (f: () => boolean, ms = 5000) => {
+    const fin = Date.now() + ms;
+    while (!f() && Date.now() < fin) await new Promise((r) => setTimeout(r, 20));
+    return f();
+  };
+  /** Lance `sh -c script` ; le script écrit le pid de son enfant sur la première ligne. */
+  async function lancerAvecEnfant(script: string, delaiKillMs?: number) {
+    const p = lancerProcessusIa("sh", ["-c", script], { cwd: process.cwd(), ...(delaiKillMs ? { delaiKillMs } : {}) });
+    const pid = await new Promise<number>((ok) => p.surLigne?.((l) => ok(Number(l))));
+    let sorti = false;
+    p.surSortie(() => (sorti = true));
+    return { p, pid, sorti: () => sorti };
+  }
+
+  it("arreter() tue aussi les enfants (tout le groupe), pas seulement le premier processus", async () => {
+    const { p, pid, sorti } = await lancerAvecEnfant("sleep 300 & echo $!; wait");
+    expect(vivant(pid)).toBe(true);
+    p.arreter();
+    expect(await attendreVrai(() => !vivant(pid))).toBe(true);
+    expect(await attendreVrai(sorti)).toBe(true);
+  });
+
+  it("un groupe qui ignore SIGTERM est tué par SIGKILL après le délai", async () => {
+    const { p, pid } = await lancerAvecEnfant("trap '' TERM; sleep 300 & echo $!; wait", 200);
+    p.arreter();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(vivant(pid)).toBe(true); // SIGTERM ignoré
+    expect(await attendreVrai(() => !vivant(pid))).toBe(true);
   });
 });

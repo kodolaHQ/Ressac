@@ -1,12 +1,12 @@
 import { protocol } from "electron";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { placerManquants, type CheminsEspace, type EtatAccueil } from "@webaios/noyau";
 import { SchemaPlacements, type Placement, type ProfilPourAccord, type WidgetAffiche } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre } from "../../commun/modele";
-import { profilsLisibles } from "./lecture-invisible";
+import { profilsLisibles, urlPermise } from "./lecture-invisible";
 
 export const SCHEMA_WIDGET = "webaios-widget";
 const ID_WIDGET = /^[a-z0-9-]+$/;
@@ -77,15 +77,18 @@ export function cheminAffichage(widgets: string, url: string): string | null {
 }
 
 /**
- * Le HTML de l'affichage, ou null s'il n'existe pas, ou si un lien symbolique le fait sortir du dossier des widgets
- * (l'agent écrit dans ce dossier : il ne doit pas y montrer un fichier du Mac).
+ * Le HTML de l'affichage, ou null s'il n'existe pas, ou si un lien symbolique le fait sortir de son widget : le dossier
+ * des widgets ne doit pas être un lien, le dossier du widget doit rester dedans, et le fichier dans le dossier du widget
+ * (l'agent écrit dans ces dossiers : il ne doit pas y montrer un fichier du Mac).
  */
 export async function lireAffichage(widgets: string, url: string): Promise<string | null> {
   const chemin = cheminAffichage(widgets, url);
   if (!chemin) return null;
   try {
-    const [racine, reel] = await Promise.all([realpath(widgets), realpath(chemin)]);
-    if (!reel.startsWith(racine + sep)) return null;
+    if ((await lstat(widgets)).isSymbolicLink()) return null;
+    const racine = await realpath(widgets);
+    const [dossier, reel] = await Promise.all([realpath(join(chemin, "..")), realpath(chemin)]);
+    if (!dossier.startsWith(racine + sep) || !reel.startsWith(dossier + sep)) return null;
     return await readFile(reel, "utf8");
   } catch {
     return null;
@@ -111,14 +114,20 @@ export function servirWidgets(widgets: () => string | null): void {
   protocol.handle(SCHEMA_WIDGET, (requete) => repondreWidget(widgets(), requete.url));
 }
 
-/** Seul un lien http(s) d'un widget s'ouvre (dans un onglet) : ni `javascript:`, ni `file:`, ni rien d'autre. */
+/**
+ * Seul un lien http(s) d'un widget s'ouvre (dans un onglet) : ni `javascript:`, ni `file:`, ni une adresse de la machine
+ * ou du réseau local (l'agent écoute sur des ports locaux : un lien y porterait les données du widget).
+ */
 export function urlOuvrable(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return urlPermise(url, undefined);
+}
+
+/**
+ * Permissions demandées dans la session de l'interface : seule sa propre page (le cadre principal) en a ; un affichage
+ * de widget, ou tout autre cadre, n'a rien (ni caméra, ni notifications, ni presse-papiers…).
+ */
+export function permissionInterface(d: { requestingUrl?: string; isMainFrame?: boolean }): boolean {
+  return d.isMainFrame === true && !(d.requestingUrl ?? "").startsWith(`${SCHEMA_WIDGET}:`);
 }
 
 /**
@@ -128,14 +137,10 @@ export function urlOuvrable(url: string): boolean {
 export function profilsPourAccord(etat: Pick<EtatNavigateur, "profils" | "espaces" | "fenetres">, fenetreId: IdFenetre | undefined): ProfilPourAccord[] {
   const fenetre = etat.fenetres.find((f) => f.id === fenetreId);
   const actif = fenetre ? etat.espaces.find((e) => e.id === fenetre.espaceActif)?.profil : undefined;
-  return profilsLisibles(etat).map((id) => ({
-    id,
-    libelle: `Profil de « ${etat.espaces
-      .filter((e) => e.profil === id)
-      .map((e) => e.nom)
-      .join(", ")} »`,
-    parDefaut: id === actif,
-  }));
+  return profilsLisibles(etat).map((id) => {
+    const espaces = etat.espaces.filter((e) => e.profil === id).map((e) => e.nom);
+    return { id, libelle: espaces.length ? `Profil de « ${espaces.join(", ")} »` : `Profil « ${id} »`, parDefaut: id === actif };
+  });
 }
 
 /** Écritures de disposition.json une par une, dans l'ordre des demandes : aucune ne lit l'état qu'une autre va changer. */

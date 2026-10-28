@@ -104,8 +104,9 @@
         <div class="lecture" data-testid="demande-donnees-widget">
           <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
           <div class="actions">
-            <button onclick={refuser}>Refuser</button>
-            <button class="autoriser" data-principal onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser pour cette conversation</button>
+            <!-- Entrée refuse : montrer à l'agent des données lues avec le compte demande un vrai clic. -->
+            <button data-principal onclick={refuser}>Refuser</button>
+            <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser pour cette conversation</button>
           </div>
         </div>
       {:else}

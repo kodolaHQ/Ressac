@@ -6,6 +6,7 @@ import { cheminsEspace, type EtatAccueil } from "@webaios/noyau";
 import type { EtatNavigateur } from "../../src/commun/modele";
 import {
   CSP_WIDGET,
+  permissionInterface,
   placerWidgets,
   profilsPourAccord,
   repondreWidget,
@@ -61,6 +62,13 @@ test("webaios-widget sert affichage.html avec la CSP sans réseau, refuse tout a
     expect(r.status, url).toBe(404);
     expect(await r.text()).not.toContain("secret");
   }
+  // Le dossier des widgets lui-même est un lien vers l'extérieur : rien n'est servi.
+  const c2 = cheminsEspace(mkdtempSync(join(tmpdir(), "webaios-accueil-")));
+  mkdirSync(join(dehors, "w", "x"), { recursive: true });
+  writeFileSync(join(dehors, "w", "x", "affichage.html"), "secret");
+  mkdirSync(c2.accueil, { recursive: true });
+  symlinkSync(join(dehors, "w"), c2.widgets);
+  expect((await repondreWidget(c2.widgets, "webaios-widget://x/affichage.html")).status).toBe(404);
   // Noyau pas prêt : rien n'est servi.
   expect((await repondreWidget(null, "webaios-widget://meteo/affichage.html")).status).toBe(404);
 });
@@ -117,7 +125,7 @@ test("placer et retirer en même temps : chaque écriture aboutit, dans l'ordre 
 
 test("profilsPourAccord n'offre pas un profil d'espace privé et coche celui de l'espace actif", () => {
   const etat = {
-    profils: [{ id: "defaut" }, { id: "travail" }, { id: "secret" }, { id: "mixte" }],
+    profils: [{ id: "defaut" }, { id: "travail" }, { id: "secret" }, { id: "mixte" }, { id: "seul" }],
     espaces: [
       { id: "e1", nom: "Perso", profil: "defaut", prive: false },
       { id: "e2", nom: "Travail", profil: "travail", prive: false },
@@ -134,15 +142,20 @@ test("profilsPourAccord n'offre pas un profil d'espace privé et coche celui de 
   expect(profilsPourAccord(etat, "f1")).toEqual([
     { id: "defaut", libelle: "Profil de « Perso »", parDefaut: false },
     { id: "travail", libelle: "Profil de « Travail, Clients »", parDefaut: true },
+    { id: "seul", libelle: "Profil « seul »", parDefaut: false },
   ]);
   // Espace actif privé : son profil n'est pas offert, rien n'est coché.
-  expect(profilsPourAccord(etat, "f2").map((p) => p.parDefaut)).toEqual([false, false]);
+  expect(profilsPourAccord(etat, "f2").map((p) => p.parDefaut)).toEqual([false, false, false]);
   expect(profilsPourAccord(etat, undefined).some((p) => p.parDefaut)).toBe(false);
 });
 
 test("ouvrir refuse javascript: et file:", () => {
   expect(urlOuvrable("https://news.ycombinator.com/item?id=1")).toBe(true);
   expect(urlOuvrable("http://exemple.test/")).toBe(true);
+  // Ni la machine ni le réseau local : l'agent y écoute (ports des applis), un lien porterait les données jusqu'à lui.
+  for (const url of ["http://127.0.0.1:5280/?d=x", "http://localhost:5280/", "http://[::1]/", "http://192.168.1.2/", "http://10.0.0.1/", "http://0.0.0.0:8008/"]) {
+    expect(urlOuvrable(url), url).toBe(false);
+  }
   for (const url of ["javascript:alert(1)", "JavaScript:alert(1)", "file:///etc/passwd", "data:text/html,x", "webaios-widget://a/affichage.html", "about:blank", "pas une url", ""]) {
     expect(urlOuvrable(url), url).toBe(false);
   }
@@ -204,4 +217,13 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
   // Aucun chevauchement entre les placements rendus.
   const ps = affiches.map((w) => w.placement);
   for (const a of ps) for (const b of ps) if (a !== b) expect(a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h).toBe(false);
+});
+
+test("permissionInterface : rien pour un affichage de widget ni pour un cadre de l'interface ; la page de l'interface garde ses droits", () => {
+  expect(permissionInterface({ requestingUrl: "webaios-widget://meteo/affichage.html", isMainFrame: false })).toBe(false);
+  expect(permissionInterface({ requestingUrl: "webaios-widget://meteo/affichage.html", isMainFrame: true })).toBe(false);
+  expect(permissionInterface({ requestingUrl: "about:srcdoc", isMainFrame: false })).toBe(false);
+  expect(permissionInterface({ requestingUrl: "file:///app/out/renderer/index.html", isMainFrame: true })).toBe(true);
+  expect(permissionInterface({ requestingUrl: "http://localhost:5173/", isMainFrame: true })).toBe(true);
+  expect(permissionInterface({ requestingUrl: "", isMainFrame: undefined })).toBe(false);
 });

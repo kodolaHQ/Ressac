@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
@@ -31,7 +31,7 @@ import { Atelier, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, t
 import type { EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
-import { enregistrerSchemaWidget, lireWidgetsAffiches, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { enregistrerSchemaWidget, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { profilsLisibles } from "./agent/lecture-invisible";
 
 declare const __RESSOURCES_NOYAU__: string;
@@ -48,6 +48,10 @@ enregistrerSchemaWidget();
 /** Tests automatiques : aucune fenêtre à l'écran ni icône dans le Dock (elles gênent l'utilisateur pendant qu'il travaille). */
 export const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
 if (INVISIBLE) app.dock?.hide();
+
+// Arrêt demandé par le système ou le terminal (electron-vite qui relance, Ctrl-C) : la sortie normale, qui arrête
+// l'agent et l'IA locale (sinon Kev reste chargé en mémoire).
+for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());
 
 // Une exception oubliée ne doit ni figer l'app derrière une boîte de dialogue, ni la quitter.
 process.on("uncaughtException", (e) => console.error("[webaios] exception non rattrapée :", e));
@@ -127,6 +131,9 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   // L'interface n'ouvre aucune fenêtre (les widgets n'ont pas allow-popups).
   fenetre.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // Les affichages des widgets sont des cadres de cette page : pas de WebRTC hors proxy (STUN révélerait l'adresse
+  // et ferait sortir des données sans passer par la CSP).
+  fenetre.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
   const chargerInterface = () =>
     process.env.ELECTRON_RENDERER_URL
       ? fenetre.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -143,8 +150,12 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   return fenetre;
 }
 
-function fenetreDe(e: IpcMainEvent): IdFenetre | undefined {
-  for (const [id, f] of fenetres) if (!f.isDestroyed() && f.webContents === e.sender) return id;
+/** La fenêtre principale émettrice, seulement si le message vient de sa page (pas d'un cadre, comme un widget). */
+function fenetreDe(e: Pick<IpcMainEvent, "sender" | "senderFrame">): IdFenetre | undefined {
+  for (const [id, f] of fenetres) {
+    if (f.isDestroyed() || f.webContents !== e.sender) continue;
+    return e.senderFrame === f.webContents.mainFrame ? id : undefined;
+  }
   return undefined;
 }
 
@@ -178,10 +189,26 @@ app.whenReady().then(async () => {
     const courant = ia.etat();
     if (courant.etat !== "arretee" && courant.etat !== "non-installee") return courant;
     const verification = await ia.verifier();
+    // Pendant la vérification, l'IA a pu démarrer : son état actuel l'emporte.
+    const apres = ia.etat();
+    if (apres.etat !== "arretee" && apres.etat !== "non-installee") return apres;
     const kevPret = Boolean(process.env.WEBAIOS_KEV_URL) || (verification.kev && verification.uv);
     const manque = !kevPret || (verification.ollama && !verification.gemma);
     return { ...courant, etat: manque ? "non-installee" : "arretee", verification };
   };
+  /** Diffuse l'état de l'IA ; un résultat dépassé par une diffusion plus récente (vérification plus lente) est jeté. */
+  let diffusionIa = 0;
+  const diffuserEtatIa = () => {
+    const n = ++diffusionIa;
+    void etatIa().then((e) => {
+      if (n === diffusionIa) diffuser(CANAUX.iaEtatChange, e);
+    });
+  };
+  /** Dernier lien de widget ouvert, par fenêtre. */
+  const dernierLienWidget = new Map<IdFenetre, number>();
+  // Session de l'interface (et des pastilles) : seule la page elle-même a des permissions, jamais un affichage de widget.
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, rappel, details) => rappel(permissionInterface(details)));
+  session.defaultSession.setPermissionCheckHandler((_wc, _permission, _origine, details) => permissionInterface(details));
   /** Installation en cours (une seule à la fois). Jamais lancée sans un clic de l'utilisateur (api.ia.installer). */
   let installation: Promise<{ ok: boolean; erreur?: string }> | undefined;
   const installerIa = () => {
@@ -195,7 +222,7 @@ app.whenReady().then(async () => {
       )
       .finally(() => {
         installation = undefined;
-        void etatIa().then((e) => diffuser(CANAUX.iaEtatChange, e));
+        diffuserEtatIa();
       });
     return installation;
   };
@@ -322,8 +349,12 @@ app.whenReady().then(async () => {
         retirerWidget(a.chemins, id, oublier).catch((e) => console.error(`[webaios] widget ${id} non retiré :`, e));
       },
       ouvrir: (url, fenetreId) => {
-        if (urlOuvrable(url)) magasin.agir({ type: "ouvrirOnglet", fenetreId, url, activer: true });
-        else console.warn("[webaios] lien de widget refusé :", url);
+        // Un affichage qui ouvrirait des liens en rafale (pour faire sortir des données) : un par seconde au plus.
+        const maintenant = Date.now();
+        if (maintenant - (dernierLienWidget.get(fenetreId) ?? 0) < 1000) return console.warn("[webaios] lien de widget ignoré (trop rapproché) :", url);
+        if (!urlOuvrable(url)) return console.warn("[webaios] lien de widget refusé :", url);
+        dernierLienWidget.set(fenetreId, maintenant);
+        magasin.agir({ type: "ouvrirOnglet", fenetreId, url, activer: true });
       },
       profilsPourAccord: (fenetreId) => profilsPourAccord(magasin.etat, fenetreId),
       accorder: (id, profil) => {
@@ -516,7 +547,7 @@ app.whenReady().then(async () => {
     fenetreActive: fenetreAgent,
     surAccueil: () => diffuser(CANAUX.accueilChange, null),
     dossierIa: join(dossier, "ia-locale"),
-    surEtatIa: () => void etatIa().then((e) => diffuser(CANAUX.iaEtatChange, e)),
+    surEtatIa: diffuserEtatIa,
     // Les pastilles suivent la politique d'accès ; une rafale de changements ne donne qu'une diffusion par 50 ms.
     surAcces: () => {
       if (diffusionAcces) return;

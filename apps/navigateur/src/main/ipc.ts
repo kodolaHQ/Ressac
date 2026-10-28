@@ -31,7 +31,7 @@ export class Magasin {
 export interface Gestionnaires {
   magasin: Magasin;
   /** Fenêtre principale émettrice d'un message ; undefined pour une popup ou une page web. */
-  fenetreDe(e: Pick<IpcMainEvent, "sender">): IdFenetre | undefined;
+  fenetreDe(e: Pick<IpcMainEvent, "sender" | "senderFrame">): IdFenetre | undefined;
   naviguer(fenetreId: IdFenetre, ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
