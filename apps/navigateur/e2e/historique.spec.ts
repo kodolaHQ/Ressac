@@ -139,3 +139,25 @@ test("mémoire : « Oublier le texte retenu » ôte le repère et garde la visit
   expect(await lignes(fenetre, "a.html")).toEqual([{ retenu: false, prive: false }]);
   await fermer();
 });
+
+test("mémoire : rien n'est retenu d'une page qui n'a pas pu se charger, même dans un espace non privé", async () => {
+  const { app, fenetre, fermer } = await lancer(memoire);
+  const zone = fenetre.getByTestId("zone-contenu");
+  // Injoignable (port 1, connexion refusée) : ni visite ni texte.
+  await ouvrirOnglet(fenetre, "http://127.0.0.1:1/injoignable.html");
+  await expect(zone.getByText("Impossible d'ouvrir cette page.")).toBeVisible();
+  // Coupée en plein envoi : la visite est notée, la page finit en erreur.
+  await ouvrirOnglet(fenetre, `${serveur.url}/coupee`);
+  await expect(zone.getByText("Impossible d'ouvrir cette page.")).toBeVisible();
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  // B, visitée après, est retenue : la capture des pages en erreur, si elle devait avoir lieu, est passée.
+  await expect.poll(() => lignes(fenetre, "b.html"), { timeout: 10_000 }).toEqual([{ retenu: true, prive: false }]);
+  expect(await lignes(fenetre, "injoignable")).toEqual([]);
+  expect(await lignes(fenetre, "/coupee")).toEqual([{ retenu: false, prive: false }]);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("historique")?.click());
+  const ligne = fenetre.getByTestId("historique").locator("li", { hasText: "/coupee" });
+  await expect(ligne).toBeVisible();
+  await expect(ligne).not.toHaveAttribute("data-retenu", "true");
+  await expect(ligne.getByLabel("Texte retenu pour l'agent")).toHaveCount(0);
+  await fermer();
+});

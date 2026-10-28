@@ -99,6 +99,12 @@ export async function serveurTest(): Promise<{ url: string; fermer(): Promise<vo
       res.writeHead(200, { "Set-Cookie": "essai=1; Max-Age=86400; Path=/", "Content-Type": "text/html" });
       return res.end("<title>cookie</title>ok");
     }
+    // Une page coupée en plein envoi : elle s'affiche (la navigation aboutit) puis échoue (longueur annoncée non reçue).
+    if (chemin === "/coupee") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": "100000" });
+      res.write("<title>Coupée</title><p>Début d'une page jamais finie.</p>");
+      return void setTimeout(() => res.destroy(), 200);
+    }
     if (chemin === "/lire-cookie") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end(`<title>${req.headers.cookie ?? "aucun"}</title>`);

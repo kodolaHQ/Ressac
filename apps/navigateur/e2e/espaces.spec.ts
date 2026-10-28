@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { dansLaVue, lancer, nouveauProfil, ouvrirOnglet, serveurTest } from "./aide";
+import { dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -73,18 +73,34 @@ test("chaque profil de connexion a ses cookies ; changer le profil d'un espace r
   await fermer();
 });
 
-test("une session d'avant les espaces configurables (v1) retrouve ses onglets et est réécrite en v2", async () => {
-  const profil = nouveauProfil();
+test("une session d'avant les espaces configurables (v1) retrouve ses onglets, son essentiel et ses cookies, et est réécrite en v2", async () => {
+  // Un premier lancement pose un cookie dans la partition de toujours, comme l'aurait fait le navigateur d'avant.
+  const avant = await lancer();
+  const profil = avant.profil;
+  await ouvrirOnglet(avant.fenetre, `${serveur.url}/cookie`);
+  await expect.poll(() => dansLaVue(avant.app, "/cookie", "document.title")).toBe("cookie");
+  await avant.app.evaluate(({ session }) => session.fromPartition("persist:webaios").cookies.flushStore());
+  await avant.fermer();
+  const onglet = (id: string, url: string, lien: unknown = null) => ({
+    id,
+    fenetreId: "f1",
+    espaceId: "e1",
+    url,
+    titre: id,
+    favicon: null,
+    lien,
+    ouvertParAgent: false,
+    zoom: 1,
+  });
   const v1 = {
     version: 1,
     espaces: [{ id: "e1", nom: "Perso", icone: "🏠", epingles: [] }],
-    essentiels: [],
-    onglets: Object.fromEntries(
-      ["a", "b"].map((n) => [
-        `o-${n}`,
-        { id: `o-${n}`, fenetreId: "f1", espaceId: "e1", url: `${serveur.url}/${n}.html`, titre: n, favicon: null, lien: null, ouvertParAgent: false, zoom: 1 },
-      ]),
-    ),
+    essentiels: [{ id: "fav-c", url: `${serveur.url}/texte.html`, titre: "Texte", favicon: null }],
+    onglets: {
+      "o-a": onglet("o-a", `${serveur.url}/a.html`),
+      "o-b": onglet("o-b", `${serveur.url}/b.html`),
+      "o-c": onglet("o-c", `${serveur.url}/texte.html`, { type: "essentiel", id: "fav-c" }),
+    },
     fenetres: [
       {
         id: "f1",
@@ -106,7 +122,17 @@ test("une session d'avant les espaces configurables (v1) retrouve ses onglets et
   await expect.poll(() => JSON.parse(readFileSync(join(profil, "session.json"), "utf8")).version).toBe(2);
   const ecrit = JSON.parse(readFileSync(join(profil, "session.json"), "utf8"));
   expect(ecrit.profils).toEqual([{ id: "defaut" }]);
-  expect(Object.keys(ecrit.onglets).sort()).toEqual(["o-a", "o-b"]);
+  expect(Object.keys(ecrit.onglets).sort()).toEqual(["o-a", "o-b", "o-c"]);
+  expect(ecrit.essentiels).toEqual(v1.essentiels);
+  expect(ecrit.onglets["o-c"].lien).toEqual({ type: "essentiel", id: "fav-c" });
+  // L'essentiel s'ouvre sur son onglet d'avant, dans la partition de toujours.
+  await fenetre.getByTestId("favori-fav-c").click();
+  await expect.poll(() => dansLaVue(app, "/texte.html", "document.title")).toBe("Texte");
+  expect(await vuesDe(app, "/texte.html")).toEqual(["persist:webaios"]);
+  expect(Object.keys(JSON.parse(readFileSync(join(profil, "session.json"), "utf8")).onglets)).toHaveLength(3);
+  // Le cookie d'avant est toujours là.
+  await ouvrirOnglet(fenetre, `${serveur.url}/lire-cookie`);
+  await expect.poll(() => dansLaVue(app, "/lire-cookie", "document.title")).toBe("essai=1");
   await fermer();
 });
 
