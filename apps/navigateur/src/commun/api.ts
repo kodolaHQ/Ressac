@@ -79,6 +79,7 @@ export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
 
 export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 export type Bornes = z.infer<typeof SchemaBornes>;
+export const SchemaBoutonsFenetre = z.object({ visibles: z.boolean() }).strict();
 
 export type Panneau = "historique" | "telechargements";
 /** Raccourcis du menu destinés à l'interface (la page web a souvent le focus). */
@@ -98,6 +99,8 @@ export interface ApiWebaios {
   naviguer(ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornesContenu(b: Bornes): void;
+  /** macOS : les boutons de la fenêtre suivent la barre latérale (cachés avec elle en mode compact). */
+  boutonsFenetre(visibles: boolean): void;
   /** Mode compact : au-dessus d'une page web, la souris change de zone par rapport au bord gauche (voir revelation.ts). */
   surZoneGauche(rappel: (zone: ZoneGauche) => void): () => void;
   /** Le menu demande d'ouvrir un panneau de l'interface (⌘Y…). */

@@ -64,6 +64,8 @@ process.on("uncaughtException", (e) => console.error("[webaios] exception non ra
 
 /** Fenêtres principales (avec l'interface WebAiOs), par id d'état. */
 const fenetres = new Map<IdFenetre, BrowserWindow>();
+/** Boutons de la fenêtre (macOS) voulus visibles ou non par l'interface de chaque fenêtre (voir creerFenetre). */
+const boutonsFenetre = new Map<IdFenetre, (visibles: boolean) => void>();
 
 /** Vrai dès que l'app quitte : les fenêtres qui se ferment alors restent dans la session, pour la restauration. */
 let enSortie = false;
@@ -103,8 +105,22 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   fenetres.set(id, fenetre);
   fenetre.on("focus", () => (derniereFocalisee = id));
+  // macOS : les boutons de la fenêtre sont dans la rangée du haut de la barre latérale. L'interface les cache avec
+  // elle (mode compact, barre non révélée) : rien d'autre ne passe dessous. En plein écran, macOS les gère seul.
+  let boutonsVoulus = true;
+  const appliquerBoutons = () => {
+    if (process.platform === "darwin" && !fenetre.isDestroyed()) fenetre.setWindowButtonVisibility(boutonsVoulus || fenetre.isFullScreen());
+  };
+  boutonsFenetre.set(id, (visibles) => {
+    boutonsVoulus = visibles;
+    appliquerBoutons();
+  });
+  fenetre.on("enter-full-screen", appliquerBoutons);
   // Sortie du plein écran par la fenêtre (bouton vert) : la page doit sortir aussi.
-  fenetre.on("leave-full-screen", () => fenetre.webContents.send(CANAUX.pleinEcran, false));
+  fenetre.on("leave-full-screen", () => {
+    appliquerBoutons();
+    fenetre.webContents.send(CANAUX.pleinEcran, false);
+  });
   // Taille et position retenues pour le prochain lancement (regroupées : un glissement émet des dizaines d'événements).
   let minuterieCadre: NodeJS.Timeout | undefined;
   const planifierCadre = () => {
@@ -122,6 +138,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   // restauration. Sur « closed » : un window.close() de la page détruit la fenêtre sans émettre « close ».
   fenetre.on("closed", () => {
     fenetres.delete(id);
+    boutonsFenetre.delete(id);
     void agent?.sessions.fermerFenetre(id);
     if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
     // Dernière fenêtre (gardée dans l'état) : ses pages se ferment, elles reviendront avec elle.
@@ -355,6 +372,7 @@ app.whenReady().then(async () => {
     },
     commande: (id, c) => vues.commande(id, c),
     bornes: (f, b) => vues.bornes(f, b),
+    boutonsFenetre: (f, visibles) => boutonsFenetre.get(f)?.(visibles),
     apercu: (f, id) => vues.apercu(f, id),
     fermerOnglet: (id) => vues.fermer(id),
     historique,

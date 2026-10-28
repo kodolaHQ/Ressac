@@ -304,13 +304,13 @@ test("⇧⌘A et l'entrée de la barre latérale ouvrent une seule page Applicat
   await fermer();
 });
 
-test("mode compact : la page Applications laisse la place aux boutons de la fenêtre, et la barre revient au bord gauche", async () => {
+test("mode compact : la page Applications prend toute la place (les boutons de la fenêtre sont cachés avec la barre), et la barre revient au bord gauche", async () => {
   const { fenetre, fermer } = await ouvrirPage();
   await fenetre.getByRole("button", { name: "Mode compact" }).click();
   await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
-  // Boutons de fenêtre macOS (hiddenInset) : environ 30 px de haut en haut à gauche.
+  // Plus de retrait sous les boutons de macOS : ils ne sont visibles qu'avec la barre (voir fenetre.spec.ts).
   const volet = await fenetre.getByTestId("page-applications").getByRole("heading").first().boundingBox();
-  expect(volet!.y).toBeGreaterThanOrEqual(40);
+  expect(volet!.y).toBeLessThan(40);
   await fenetre.mouse.move(3, 300);
   await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
   await expect(fenetre.getByRole("button", { name: "Quitter le mode compact" })).toBeVisible();

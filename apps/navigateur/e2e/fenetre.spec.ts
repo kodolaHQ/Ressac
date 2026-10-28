@@ -59,3 +59,35 @@ test("si l'interface plante, elle se recharge au lieu de laisser une fenêtre bl
     .toBe(true);
   await fermer();
 });
+
+test("macOS : les boutons de la fenêtre vivent dans la barre latérale ; en mode compact, ils n'apparaissent qu'avec la barre révélée", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  // Chaque appel de setWindowButtonVisibility est noté ; « feux » : le dernier état demandé.
+  await app.evaluate(({ BrowserWindow }) => {
+    const g = globalThis as unknown as { feux?: boolean };
+    const w = BrowserWindow.getAllWindows()[0]!;
+    const original = w.setWindowButtonVisibility.bind(w);
+    w.setWindowButtonVisibility = (v: boolean) => {
+      g.feux = v;
+      original(v);
+    };
+  });
+  const feux = () => app.evaluate(() => (globalThis as unknown as { feux?: boolean }).feux);
+  await fenetre.getByRole("button", { name: "Mode compact" }).click();
+  await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
+  await expect.poll(feux).toBe(false);
+  // La barre se révèle au bord gauche : les boutons reviennent dans sa rangée du haut.
+  await fenetre.mouse.move(3, 300);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await expect.poll(feux).toBe(true);
+  await fenetre.mouse.move(900, 300);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
+  await expect.poll(feux).toBe(false);
+  await fenetre.mouse.move(3, 300);
+  await fenetre.getByRole("button", { name: "Quitter le mode compact" }).click();
+  await fenetre.mouse.move(900, 300);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await expect.poll(feux).toBe(true);
+  await fermer();
+});

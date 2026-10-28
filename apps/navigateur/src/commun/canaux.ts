@@ -6,6 +6,7 @@ export const CANAUX = {
   naviguer: "webaios:naviguer",
   commande: "webaios:commande",
   bornes: "webaios:bornes",
+  boutonsFenetre: "webaios:boutons-fenetre",
   zoneGauche: "webaios:zone-gauche",
   panneau: "webaios:panneau",
   historiqueRechercher: "webaios:historique-rechercher",

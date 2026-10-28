@@ -26,6 +26,7 @@ const api: ApiWebaios = {
   naviguer: (ongletId, saisie) => ipcRenderer.send(CANAUX.naviguer, { ongletId, saisie }),
   commande: (ongletId, c) => ipcRenderer.send(CANAUX.commande, { ongletId, c }),
   bornesContenu: (b) => ipcRenderer.send(CANAUX.bornes, b),
+  boutonsFenetre: (visibles) => ipcRenderer.send(CANAUX.boutonsFenetre, { visibles }),
   surZoneGauche: (rappel) => ecouter(CANAUX.zoneGauche, rappel),
   surPanneau: (rappel) => ecouter(CANAUX.panneau, rappel),
   surRaccourci: (rappel) => ecouter(CANAUX.raccourci, rappel),

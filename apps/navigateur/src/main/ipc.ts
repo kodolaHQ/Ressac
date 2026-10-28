@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -35,6 +35,8 @@ export interface Gestionnaires {
   naviguer(fenetreId: IdFenetre, ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornes(fenetreId: IdFenetre, b: Bornes): void;
+  /** macOS : montrer ou cacher les boutons de la fenêtre (ils suivent la barre latérale). */
+  boutonsFenetre(fenetreId: IdFenetre, visibles: boolean): void;
   /** Capture de la page affichée dans la fenêtre si c'est bien `ongletId` (fond d'une modale) ; null sinon. */
   apercu(fenetreId: IdFenetre, ongletId: IdOnglet): Promise<string | null>;
   /** Fermer un onglet en laissant la page demander confirmation (voir GestionnaireVues.fermer). */
@@ -94,6 +96,7 @@ export function brancherIpc(g: Gestionnaires): void {
   }, (v, f) => g.naviguer(f, v.ongletId, v.saisie));
   recevoir(CANAUX.commande, zod(SchemaCommande), (v) => g.commande(v.ongletId, v.c));
   recevoir(CANAUX.bornes, zod(SchemaBornes), (b, f) => g.bornes(f, b));
+  recevoir(CANAUX.boutonsFenetre, zod(SchemaBoutonsFenetre), ({ visibles }, f) => g.boutonsFenetre(f, visibles));
   const repondre = (canal: string, traiter: (...args: unknown[]) => unknown) =>
     ipcMain.handle(canal, (e, ...args: unknown[]) => {
       if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
