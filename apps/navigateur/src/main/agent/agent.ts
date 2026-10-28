@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, Session } from "electron";
 import {
   chargerProfils,
   cheminsEspace,
@@ -13,7 +13,7 @@ import {
   type OngletInfo,
   type OutilsApplications,
 } from "@webaios/noyau";
-import type { IdFenetre } from "../../commun/modele";
+import type { IdFenetre, IdProfil } from "../../commun/modele";
 import type { Historique } from "../historique";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
@@ -81,6 +81,8 @@ export function demarrerAgent(o: {
   dossierWidgets: string;
   /** Historique de navigation, cherché par l'agent (chercher_historique, lire_historique). */
   historique?: Historique;
+  /** Session d'un profil de connexion, pour les lectures invisibles des widgets. */
+  sessionProfil: (id: IdProfil) => Session;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
@@ -91,6 +93,7 @@ export function demarrerAgent(o: {
     demander: o.demanderLecture,
     demanderOutilsDev: o.demanderOutilsDev,
     applications: o.fenetresApplications,
+    sessionProfil: o.sessionProfil,
     ...(o.historique ? { historique: o.historique } : {}),
   });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).

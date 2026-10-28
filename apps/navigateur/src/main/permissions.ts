@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import type { Session, WebContents } from "electron";
 import { z } from "zod";
 import type { Decision, Demande, IdOnglet, Permission } from "../commun/modele";
+import { estInvisible } from "./contenus-invisibles";
 
 export type { Decision, Demande, Permission };
 
@@ -32,14 +33,16 @@ export class Permissions {
 
   brancher(session: Session, ongletDe: (wc: WebContents | null) => IdOnglet | null = () => null): void {
     session.setPermissionRequestHandler((wc, permission, rappel, details) => {
+      // Une lecture invisible (widget) partage la session du profil : tout lui est refusé, sans rien demander.
+      if (estInvisible(wc)) return rappel(false);
       const origine = origineDe(details.requestingUrl);
       const mediaTypes = "mediaTypes" in details ? details.mediaTypes : undefined;
       const lienExterne = "externalURL" in details ? details.externalURL : undefined;
       if (!origine) return rappel(false);
       void this.traiter({ ongletId: ongletDe(wc), origine, permission, mediaTypes, lienExterne }).then(rappel, () => rappel(false));
     });
-    session.setPermissionCheckHandler((_wc, permission, origine, details) =>
-      this.verifier(origineDe(origine) ?? "", permission, "mediaType" in details ? details.mediaType : undefined),
+    session.setPermissionCheckHandler((wc, permission, origine, details) =>
+      !estInvisible(wc) && this.verifier(origineDe(origine) ?? "", permission, "mediaType" in details ? details.mediaType : undefined),
     );
   }
 

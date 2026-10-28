@@ -23,6 +23,7 @@ import { installerMenu, type CiblesMenu } from "./menu";
 import { GestionnaireVues } from "./onglets/vues";
 import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
+import { estInvisible } from "./contenus-invisibles";
 import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
@@ -197,7 +198,12 @@ app.whenReady().then(async () => {
   const sessions = new SessionsProfils({
     dossier,
     brancher: (s, id) => {
-      s.on("will-download", (_e, item) => telechargements.suivre(item));
+      // Une lecture invisible pour un widget ne télécharge jamais rien (voir agent/lecture-invisible.ts).
+      s.on("will-download", (e, item, wc) => {
+        if (!estInvisible(wc)) return telechargements.suivre(item);
+        e.preventDefault();
+        item.cancel();
+      });
       permissionsDe(id).brancher(s, (wc) => vues.ongletDe(wc));
     },
     oublier: (id) => permissions.get(id)?.toutOublier(),
@@ -443,6 +449,8 @@ app.whenReady().then(async () => {
     dossierProfilage: join(dossier, "profilage"),
     // Données récoltées et accords des widgets : hors de l'espace, que l'agent lit.
     dossierWidgets: join(dossier, "widgets"),
+    // Lectures invisibles des widgets avec un compte : la session du profil de connexion (non privé, vérifié au pont).
+    sessionProfil: (id) => sessions.session(id),
     applications: applications.gestionnaire,
     fenetresApplications: applications.fenetres,
     magasin,
