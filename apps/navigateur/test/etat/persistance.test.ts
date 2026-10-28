@@ -22,7 +22,7 @@ function etatRiche(): EtatNavigateur {
   const [a, b] = Object.keys(e.onglets);
   e = appliquer(e, { type: "majOnglet", id: a!, champs: { titre: "A", zoom: 1.2, chargement: true, peutReculer: true, plante: true } }, g);
   e = appliquer(e, { type: "epinglerOnglet", id: b! }, g);
-  e = appliquer(e, { type: "creerEspace", nom: "Boulot", icone: "💼" }, g);
+  e = appliquer(e, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" }, g);
   return e;
 }
 
@@ -38,6 +38,41 @@ test("aller-retour : identique, hors champs volatils remis par défaut", async (
   const attendu = structuredClone(etat);
   for (const o of Object.values(attendu.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
   expect(relu).toEqual(attendu);
+});
+
+/** Le même état tel qu'un navigateur d'avant les espaces configurables l'enregistrait (version 1). */
+function enV1(etat: EtatNavigateur): unknown {
+  const { profils: _profils, ...reste } = structuredClone(etat);
+  return { ...reste, version: 1, espaces: reste.espaces.map(({ prive: _prive, profil: _profil, ...e }) => e) };
+}
+
+test("session v1 → v2 : espaces non privés sur le profil de connexion par défaut, onglets intacts", async () => {
+  const d = dossier();
+  const etat = etatRiche();
+  writeFileSync(join(d, "session.json"), JSON.stringify(enV1(etat)));
+  const e = await chargerSession(d);
+  expect(e.version).toBe(2);
+  expect(e.profils).toEqual([{ id: "defaut" }]);
+  for (const espace of e.espaces) expect(espace).toMatchObject({ prive: false, profil: "defaut" });
+  const attendu = structuredClone(etat);
+  for (const o of Object.values(attendu.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
+  expect(e).toEqual(attendu);
+  expect(mis_de_cote(d, ".corrompu")).toEqual([]);
+});
+
+test("session v2 avec un espace privé et un second profil de connexion : aller-retour identique", async () => {
+  const d = dossier();
+  let n = 100;
+  const g = () => `h${++n}`;
+  const etat = appliquer(etatRiche(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" }, g);
+  expect(etat.profils).toHaveLength(2);
+  const enr = new EnregistreurSession(d);
+  enr.planifier(etat);
+  await enr.vider();
+  const relu = await chargerSession(d);
+  expect(relu.version).toBe(2);
+  expect(relu.profils).toEqual(etat.profils);
+  expect(relu.espaces).toEqual(etat.espaces);
 });
 
 test("une session enregistrée avant le cadre des fenêtres se charge (cadre = null)", async () => {
@@ -67,7 +102,7 @@ test("JSON invalide → état initial et ancien fichier gardé de côté (….co
 
 test("version inconnue → état initial et fichier gardé de côté", async () => {
   const d = dossier();
-  writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 2 }));
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 3 }));
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
   expect(mis_de_cote(d, ".corrompu")).toHaveLength(1);

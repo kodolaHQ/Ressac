@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
-  import type { Espace, EtatFenetre } from "../../commun/modele";
+  import { PROFIL_DEFAUT, type Espace, type EtatFenetre } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import { ouvrirMenu } from "./menu.svelte";
 
@@ -20,8 +20,14 @@
     e.preventDefault();
     if (!edition || !edition.nom.trim()) return;
     const icone = edition.icone.trim() || "📁";
-    if (edition.id) api.agir({ type: "renommerEspace", id: edition.id, nom: edition.nom.trim(), icone });
-    else api.agir({ type: "creerEspace", nom: edition.nom.trim(), icone, fenetreId: fenetre.id });
+    const { id, nom } = edition;
+    const espaces = etat.valeur?.espaces ?? [];
+    // En attendant la modale des réglages : l'espace réglé garde son caractère privé et son profil de connexion,
+    // un nouvel espace n'est pas privé et prend le profil de connexion de l'espace actif.
+    const regle = espaces.find((x) => x.id === id);
+    const profilActif = espaces.find((x) => x.id === fenetre.espaceActif)?.profil ?? PROFIL_DEFAUT;
+    if (regle) api.agir({ type: "reglerEspace", id: regle.id, nom: nom.trim(), icone, prive: regle.prive, profil: regle.profil });
+    else if (!id) api.agir({ type: "creerEspace", nom: nom.trim(), icone, prive: false, profil: profilActif, fenetreId: fenetre.id });
     edition = null;
   }
 </script>

@@ -150,7 +150,7 @@ export async function creerEspace(fenetre: Page, nom: string, icone: string): Pr
   await fenetre.evaluate(
     ([nom, icone]) => {
       const w = window as unknown as AvecApi;
-      w.webaios.agir({ type: "creerEspace", nom, icone, fenetreId: w.webaios.fenetreId });
+      w.webaios.agir({ type: "creerEspace", nom, icone, prive: false, profil: "defaut", fenetreId: w.webaios.fenetreId });
     },
     [nom, icone] as const,
   );

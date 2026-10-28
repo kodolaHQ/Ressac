@@ -52,11 +52,22 @@ export interface Favori {
   favicon: string | null;
 }
 
+/** Un profil de connexion : cookies, comptes connectés et autorisations des sites (une session Chromium). */
+export type IdProfil = string;
+/** Le profil de connexion d'avant les espaces configurables (partition `persist:webaios`). */
+export const PROFIL_DEFAUT: IdProfil = "defaut";
+export interface ProfilConnexion {
+  id: IdProfil;
+}
+
 export interface Espace {
   id: IdEspace;
   nom: string;
   icone: string;
   epingles: Favori[];
+  /** Invisible pour l'agent : ses onglets ne sont ni listés, ni lus, ni retenus. */
+  prive: boolean;
+  profil: IdProfil;
 }
 
 export interface FermeRecemment {
@@ -87,9 +98,11 @@ export interface EtatFenetre {
 }
 
 export interface EtatNavigateur {
-  version: 1;
+  version: 2;
   /** Au moins un espace. */
   espaces: Espace[];
+  /** Les profils de connexion utilisés par au moins un espace. */
+  profils: ProfilConnexion[];
   /** Communs à tous les espaces et à toutes les fenêtres. */
   essentiels: Favori[];
   onglets: Record<IdOnglet, Onglet>;
@@ -98,6 +111,25 @@ export interface EtatNavigateur {
     /** Largeur du panneau agent, en pixels (L'utilisateur la règle en tirant son bord gauche). */
     largeurPanneauAgent: number;
   };
+}
+
+/**
+ * Deux espaces de même clé peuvent partager un onglet (un essentiel) : même profil de connexion, même caractère privé.
+ * Un espace inconnu a une clé à lui, qui ne correspond à aucun espace existant.
+ */
+export function cleEspace(etat: EtatNavigateur, espaceId: IdEspace): string {
+  const espace = etat.espaces.find((e) => e.id === espaceId);
+  return espace ? `${espace.profil}|${espace.prive}` : `\0inconnu|${espaceId}`;
+}
+
+/** L'onglet est dans un espace privé ; un espace inconnu compte comme privé. */
+export function ongletPrive(etat: EtatNavigateur, onglet: Onglet): boolean {
+  return etat.espaces.find((e) => e.id === onglet.espaceId)?.prive ?? true;
+}
+
+/** Le profil de connexion de l'onglet, celui de son espace (le profil par défaut si l'espace est inconnu). */
+export function profilDOnglet(etat: EtatNavigateur, onglet: Onglet): IdProfil {
+  return etat.espaces.find((e) => e.id === onglet.espaceId)?.profil ?? PROFIL_DEFAUT;
 }
 
 /** Une URL de l'historique (une ligne par URL). */

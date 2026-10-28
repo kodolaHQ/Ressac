@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
-import { URL_APPLICATIONS, type EtatNavigateur } from "../../src/commun/modele";
+import { cleEspace, ongletPrive, profilDOnglet, URL_APPLICATIONS, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -34,7 +34,9 @@ beforeEach(() => {
 });
 
 test("état initial : un espace Perso, une fenêtre, aucun onglet, Google", () => {
-  expect(e.espaces).toEqual([{ id: P, nom: "Perso", icone: "🏠", epingles: [] }]);
+  expect(e.version).toBe(2);
+  expect(e.espaces).toEqual([{ id: P, nom: "Perso", icone: "🏠", epingles: [], prive: false, profil: "defaut" }]);
+  expect(e.profils).toEqual([{ id: "defaut" }]);
   expect(e.fenetres).toHaveLength(1);
   expect(e.onglets).toEqual({});
   expect(e.reglages.moteur).toBe("google");
@@ -162,7 +164,7 @@ test("essentiels communs à tous les espaces ; retirer un essentiel", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   expect(e.essentiels).toHaveLength(1);
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   expect(fen().espaceActif).toBe(B);
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
@@ -179,7 +181,7 @@ test("essentiels communs à tous les espaces ; retirer un essentiel", () => {
 test("fermer un essentiel affiché dans deux espaces : aucun espace ne garde un onglet actif disparu", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
   ag({ type: "fermerOnglet", id: a });
@@ -190,7 +192,7 @@ test("fermer un essentiel affiché dans deux espaces : aucun espace ne garde un 
 test("supprimer l'espace d'origine d'un essentiel ouvert ailleurs : l'autre espace ne pointe plus vers lui", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
   ag({ type: "supprimerEspace", id: P });
@@ -200,7 +202,7 @@ test("supprimer l'espace d'origine d'un essentiel ouvert ailleurs : l'autre espa
 
 test("activerEspace garde l'onglet actif propre à chaque espace", () => {
   const a = ouvrir("https://a.test/");
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼" });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const B = e.espaces[1]!.id;
   expect(fen().espaceActif).toBe(P);
   ag({ type: "activerEspace", fenetreId: F, id: B });
@@ -212,7 +214,7 @@ test("activerEspace garde l'onglet actif propre à chaque espace", () => {
 });
 
 test("activerOnglet d'un autre espace bascule l'espace actif", () => {
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   const b = ouvrir("https://b.test/");
   ag({ type: "activerEspace", fenetreId: F, id: P });
@@ -220,13 +222,123 @@ test("activerOnglet d'un autre espace bascule l'espace actif", () => {
   expect(fen().espaceActif).toBe(B);
 });
 
-test("renommerEspace", () => {
-  ag({ type: "renommerEspace", id: P, nom: "Maison", icone: "🏡" });
-  expect(e.espaces[0]).toMatchObject({ nom: "Maison", icone: "🏡" });
+test("reglerEspace change le nom et l'icône", () => {
+  ag({ type: "reglerEspace", id: P, nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
+  expect(e.espaces[0]).toMatchObject({ nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
+});
+
+test("reglerEspace sans aucun changement laisse l'état inchangé", () => {
+  const avant = e;
+  ag({ type: "reglerEspace", id: P, nom: "Perso", icone: "🏠", prive: false, profil: "defaut" });
+  expect(e).toBe(avant);
+});
+
+test("creerEspace avec un nouveau profil de connexion : un profil neuf ; avec un profil existant : il est repris", () => {
+  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" });
+  const banque = e.espaces[1]!;
+  expect(banque).toMatchObject({ nom: "Banque", prive: true });
+  expect(banque.profil).not.toBe("defaut");
+  expect(banque.profil).not.toBe("nouveau");
+  expect(e.profils).toEqual([{ id: "defaut" }, { id: banque.profil }]);
+  ag({ type: "creerEspace", nom: "Comptes", icone: "📒", prive: false, profil: banque.profil });
+  expect(e.espaces[2]!.profil).toBe(banque.profil);
+  expect(e.profils).toHaveLength(2);
+});
+
+test("creerEspace sur un profil de connexion inconnu est refusé", () => {
+  const avant = e;
+  ag({ type: "creerEspace", nom: "X", icone: "❓", prive: false, profil: "inconnu" });
+  expect(e).toBe(avant);
+});
+
+test("reglerEspace qui laisse un profil de connexion inutilisé le retire, y compris le profil par défaut", () => {
+  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: false, profil: "nouveau" });
+  const banque = e.espaces[1]!;
+  ag({ type: "reglerEspace", id: banque.id, nom: "Banque", icone: "🏦", prive: false, profil: "defaut" });
+  expect(e.profils).toEqual([{ id: "defaut" }]);
+  ag({ type: "reglerEspace", id: banque.id, nom: "Banque", icone: "🏦", prive: false, profil: "nouveau" });
+  const neuf = e.espaces[1]!.profil;
+  ag({ type: "reglerEspace", id: P, nom: "Perso", icone: "🏠", prive: false, profil: neuf });
+  expect(e.profils).toEqual([{ id: neuf }]);
+  expect(e.espaces.every((x) => x.profil === neuf)).toBe(true);
+});
+
+test("supprimerEspace retire le profil de connexion qu'il était seul à utiliser", () => {
+  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: false, profil: "nouveau" });
+  const banque = e.espaces[1]!;
+  ag({ type: "supprimerEspace", id: banque.id });
+  expect(e.profils).toEqual([{ id: "defaut" }]);
+});
+
+test("essentiel ouvert dans un espace d'une autre clé (privé ou autre profil) : un second onglet, jamais le même", () => {
+  const a = ouvrir("https://mail.google.com/");
+  ag({ type: "ajouterEssentiel", id: a });
+  const essentiel = e.essentiels[0]!.id;
+  ag({ type: "creerEspace", nom: "Privé", icone: "🔒", prive: true, profil: "defaut", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essentiel });
+  const b = actif(B)!;
+  expect(b).not.toBe(a);
+  expect(e.onglets[b]).toMatchObject({ espaceId: B, lien: { type: "essentiel", id: essentiel } });
+  expect(actif(P)).toBe(a);
+  // Même clé (non privé, profil par défaut) : l'onglet de Perso est repris.
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  const C = e.espaces[2]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essentiel });
+  expect(actif(C)).toBe(a);
+  // Même clé que l'espace privé : son onglet est repris.
+  ag({ type: "creerEspace", nom: "Privé 2", icone: "🔐", prive: true, profil: "defaut", fenetreId: F });
+  const D = e.espaces[3]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essentiel });
+  expect(actif(D)).toBe(b);
+  expect(Object.keys(e.onglets)).toHaveLength(2);
+});
+
+test("reglerEspace qui change la clé d'un espace : les autres espaces lâchent ses onglets devenus incompatibles", () => {
+  const a = ouvrir("https://mail.google.com/");
+  ag({ type: "ajouterEssentiel", id: a });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
+  expect(actif(B)).toBe(a);
+  ag({ type: "reglerEspace", id: P, nom: "Perso", icone: "🏠", prive: true, profil: "defaut" });
+  expect(actif(B)).toBeNull();
+  expect(actif(P)).toBe(a);
+  expect(e.onglets[a]).toBeDefined();
+});
+
+test("reglerEspace : les pointeurs d'autres espaces restés compatibles sont gardés", () => {
+  const a = ouvrir("https://mail.google.com/");
+  ag({ type: "ajouterEssentiel", id: a });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
+  ag({ type: "reglerEspace", id: P, nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
+  expect(actif(B)).toBe(a);
+});
+
+test("cleEspace, ongletPrive, profilDOnglet", () => {
+  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" });
+  const banque = e.espaces[1]!;
+  expect(cleEspace(e, P)).toBe("defaut|false");
+  expect(cleEspace(e, banque.id)).toBe(`${banque.profil}|true`);
+  expect(cleEspace(e, "inconnu")).not.toBe(cleEspace(e, P));
+  ag({ type: "activerEspace", fenetreId: F, id: banque.id });
+  const idO = ouvrir("https://banque.test/");
+  const o = e.onglets[idO]!;
+  expect(ongletPrive(e, o)).toBe(true);
+  expect(profilDOnglet(e, o)).toBe(banque.profil);
+  ag({ type: "activerEspace", fenetreId: F, id: P });
+  const idP = ouvrir("https://a.test/");
+  const p = e.onglets[idP]!;
+  expect(ongletPrive(e, p)).toBe(false);
+  expect(profilDOnglet(e, p)).toBe("defaut");
+  const orphelin: Onglet = { ...p, espaceId: "disparu" };
+  expect(ongletPrive(e, orphelin)).toBe(true);
 });
 
 test("supprimerEspace ferme ses onglets et bascule les fenêtres", () => {
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   const b = ouvrir("https://b.test/");
   ag({ type: "supprimerEspace", id: B });
@@ -243,7 +355,7 @@ test("supprimer le dernier espace est refusé", () => {
 });
 
 test("ouvrirFenetre sur un espace donné ; fermerFenetre supprime ses onglets", () => {
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼" });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const B = e.espaces[1]!.id;
   ag({ type: "ouvrirFenetre", id: "f2", espaceId: B });
   const f2 = e.fenetres.find((f) => f.id === "f2")!;
@@ -308,7 +420,7 @@ test("appliquer ne mute jamais l'état d'entrée", () => {
   expect(() => {
     ag({ type: "ouvrirOnglet", fenetreId: F, url: "https://b.test/" });
     ag({ type: "epinglerOnglet", id: a });
-    ag({ type: "creerEspace", nom: "B", icone: "💼", fenetreId: F });
+    ag({ type: "creerEspace", nom: "B", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
     ag({ type: "fermerOnglet", id: a });
   }).not.toThrow();
 });
@@ -323,7 +435,7 @@ test("afficherPageVide : l'espace n'a plus d'onglet actif, ses onglets restent",
 test("fermerFenetre : ses onglets (tous espaces) vont dans les fermés récemment de la fenêtre restante, ⇧⌘T les rouvre", () => {
   ag({ type: "ouvrirFenetre", id: "F2" });
   ag({ type: "ouvrirOnglet", fenetreId: "F2", url: "https://x.fr" });
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: "F2" });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: "F2" });
   ag({ type: "ouvrirOnglet", fenetreId: "F2", url: "https://y.fr" });
   ag({ type: "fermerFenetre", id: "F2" });
   expect(fen().fermesRecemment.map((x) => x.url)).toEqual(["https://y.fr", "https://x.fr"]);
@@ -380,7 +492,7 @@ test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
   expect(pages()).toHaveLength(1);
   expect(actif()).toBe(page.id);
   // Depuis un autre espace : on revient à la page de la fenêtre, dans son espace.
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: F });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   expect(fen().espaceActif).not.toBe(P);
   ag({ type: "ouvrirApplications", fenetreId: F });
   expect(pages()).toHaveLength(1);

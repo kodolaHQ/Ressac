@@ -1,17 +1,18 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { EtatNavigateur } from "../../commun/modele";
+import { PROFIL_DEFAUT, type EtatNavigateur } from "../../commun/modele";
 import { etatInitial } from "./etat-initial";
 
 const FICHIER = "session.json";
 
 const SchemaFavori = z.object({ id: z.string(), url: z.string(), titre: z.string(), favicon: z.string().nullable() });
 
-const SchemaSession = z
+const SchemaEspaceV1 = z.object({ id: z.string(), nom: z.string(), icone: z.string(), epingles: z.array(SchemaFavori) });
+
+/** Les champs communs aux versions 1 et 2. */
+const SchemaCommun = z
   .object({
-    version: z.literal(1),
-    espaces: z.array(z.object({ id: z.string(), nom: z.string(), icone: z.string(), epingles: z.array(SchemaFavori) })).min(1),
     essentiels: z.array(SchemaFavori),
     onglets: z.record(
       z.string(),
@@ -46,6 +47,22 @@ const SchemaSession = z
     }),
   });
 
+/** Version 1 : avant les espaces privés et les profils de connexion. */
+const SchemaV1 = SchemaCommun.extend({ version: z.literal(1), espaces: z.array(SchemaEspaceV1).min(1) });
+const SchemaV2 = SchemaCommun.extend({
+  version: z.literal(2),
+  espaces: z.array(SchemaEspaceV1.extend({ prive: z.boolean(), profil: z.string().min(1) })).min(1),
+  profils: z.array(z.object({ id: z.string().min(1) })),
+});
+const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
+
+/** Lit une session enregistrée, quelle que soit sa version, en version 2. */
+function enV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
+  if (lu.version === 2) return lu;
+  // Les espaces d'avant restent visibles de l'agent, sur la partition de toujours : aucune connexion n'est perdue.
+  return { ...lu, version: 2, espaces: lu.espaces.map((e) => ({ ...e, prive: false, profil: PROFIL_DEFAUT })), profils: [{ id: PROFIL_DEFAUT }] };
+}
+
 /** Les champs volatils d'un onglet ne sont pas enregistrés : ils repartent de leur valeur par défaut. */
 const VOLATILS = { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null };
 
@@ -74,7 +91,7 @@ export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
     return etatInitial();
   }
   try {
-    const lu = SchemaSession.parse(JSON.parse(texte));
+    const lu = enV2(SchemaSession.parse(JSON.parse(texte)));
     return {
       ...lu,
       onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILS }])),

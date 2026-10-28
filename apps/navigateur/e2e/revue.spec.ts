@@ -101,7 +101,7 @@ test("⌘W sur une page vide ne ferme pas une fenêtre qui a encore des onglets 
   const seconde = interfaces(app).find((p) => p !== fenetre)!;
   await seconde.evaluate((url) => {
     const w = window as unknown as { webaios: { agir(a: unknown): void; fenetreId: string } };
-    w.webaios.agir({ type: "creerEspace", nom: "Boulot", icone: "💼", fenetreId: w.webaios.fenetreId });
+    w.webaios.agir({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: w.webaios.fenetreId });
     setTimeout(() => w.webaios.agir({ type: "ouvrirOnglet", fenetreId: w.webaios.fenetreId, url }), 100);
   }, `${serveur.url}/b.html`);
   await expect(seconde.locator(onglets)).toHaveCount(1);

@@ -36,7 +36,7 @@ test("ongletActifDe : null sur une page vide, l'onglet actif de l'espace actif s
 
 test("resoudreEspace : par id, par nom sans casse, sinon l'espace actif", () => {
   const { e, ag, F } = preparer();
-  ag({ type: "creerEspace", nom: "Boulot", icone: "💼" });
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const f = e().fenetres.find((x) => x.id === F)!;
   const boulot = e().espaces.find((x) => x.nom === "Boulot")!.id;
   expect(resoudreEspace(e(), f, "boulot")).toBe(boulot);

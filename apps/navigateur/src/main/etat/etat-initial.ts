@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { EtatNavigateur } from "../../commun/modele";
+import { PROFIL_DEFAUT, type EtatNavigateur } from "../../commun/modele";
 
 export function etatInitial(genId: () => string = randomUUID): EtatNavigateur {
   const espace = genId();
   return {
-    version: 1,
-    espaces: [{ id: espace, nom: "Perso", icone: "🏠", epingles: [] }],
+    version: 2,
+    espaces: [{ id: espace, nom: "Perso", icone: "🏠", epingles: [], prive: false, profil: PROFIL_DEFAUT }],
+    profils: [{ id: PROFIL_DEFAUT }],
     essentiels: [],
     onglets: {},
     fenetres: [

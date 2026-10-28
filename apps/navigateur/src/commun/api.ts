@@ -44,8 +44,9 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("desepingler"), espaceId: id, favoriId: id }),
   z.object({ type: z.literal("ajouterEssentiel"), id }),
   z.object({ type: z.literal("retirerEssentiel"), favoriId: id }),
-  z.object({ type: z.literal("creerEspace"), nom: z.string().min(1), icone: z.string().min(1), fenetreId: id.optional() }),
-  z.object({ type: z.literal("renommerEspace"), id, nom: z.string().min(1), icone: z.string().min(1) }),
+  /** `profil` : un profil de connexion existant, ou « nouveau » pour en créer un propre à l'espace. */
+  z.object({ type: z.literal("creerEspace"), nom: z.string().min(1), icone: z.string().min(1), prive: z.boolean(), profil: id, fenetreId: id.optional() }),
+  z.object({ type: z.literal("reglerEspace"), id, nom: z.string().min(1), icone: z.string().min(1), prive: z.boolean(), profil: id }),
   z.object({ type: z.literal("supprimerEspace"), id }),
   z.object({ type: z.literal("activerEspace"), fenetreId: id, id }),
   z.object({ type: z.literal("ouvrirFenetre"), id: id.optional(), espaceId: id.optional() }),

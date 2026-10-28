@@ -5,7 +5,7 @@ type Fenetre = Window & { webaios: { agir(a: unknown): void; fenetreId: string }
 
 test("une action envoyée par l'interface revient dans l'état diffusé", async () => {
   const { fenetre, fermer } = await lancer();
-  await fenetre.evaluate(() => (window as unknown as Fenetre).webaios.agir({ type: "creerEspace", nom: "Boulot", icone: "💼" }));
+  await fenetre.evaluate(() => (window as unknown as Fenetre).webaios.agir({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" }));
   await expect(fenetre.locator('[data-testid^="espace-"]', { hasText: "💼" })).toBeVisible();
   await fermer();
 });
@@ -15,7 +15,7 @@ test("une action invalide est ignorée sans planter", async () => {
   await fenetre.evaluate(() => {
     const w = window as unknown as Fenetre;
     w.webaios.agir({ type: "nimporte" });
-    w.webaios.agir({ type: "creerEspace", nom: "Jeux", icone: "🎮" });
+    w.webaios.agir({ type: "creerEspace", nom: "Jeux", icone: "🎮", prive: false, profil: "defaut" });
   });
   await expect(fenetre.locator('[data-testid^="espace-"]', { hasText: "🎮" })).toBeVisible();
   await fermer();

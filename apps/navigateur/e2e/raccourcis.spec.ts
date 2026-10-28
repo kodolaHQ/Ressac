@@ -80,7 +80,7 @@ test("⌃2 active le deuxième espace", async () => {
   const { app, fenetre, fermer } = await lancer();
   await fenetre.evaluate(() => {
     const w = window as unknown as { webaios: { agir(a: unknown): void } };
-    w.webaios.agir({ type: "creerEspace", nom: "Boulot", icone: "💼" });
+    w.webaios.agir({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   });
   await expect(fenetre.locator('[data-testid^="espace-"]')).toHaveCount(2);
   await menu(app, "espace-2");

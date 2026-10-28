@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { Action } from "../../commun/api";
-import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, URL_APPLICATIONS, type EtatFenetre, type EtatNavigateur, type Favori, type IdEspace, type IdOnglet, type Onglet } from "../../commun/modele";
+import {
+  cleEspace,
+  LARGEUR_AGENT_MAX,
+  LARGEUR_AGENT_MIN,
+  URL_APPLICATIONS,
+  type EtatFenetre,
+  type EtatNavigateur,
+  type Favori,
+  type IdEspace,
+  type IdOnglet,
+  type IdProfil,
+  type Onglet,
+} from "../../commun/modele";
 
 const MAX_FERMES = 20;
 
@@ -76,6 +88,30 @@ function lierAFavori(d: Brouillon, genId: () => string, o: Onglet, type: "essent
   return favori;
 }
 
+/** Le profil de connexion demandé : « nouveau » en crée un ; un profil inconnu donne null. */
+function profilDemande(d: Brouillon, genId: () => string, profil: IdProfil): IdProfil | null {
+  if (profil === "nouveau") {
+    const id = genId();
+    d.profils.push({ id });
+    return id;
+  }
+  return d.profils.some((p) => p.id === profil) ? profil : null;
+}
+
+/** Un profil de connexion qu'aucun espace n'utilise plus disparaît, le profil par défaut compris. */
+function retirerProfilsInutilises(d: Brouillon) {
+  d.profils = d.profils.filter((p) => d.espaces.some((e) => e.profil === p.id));
+}
+
+/** Un espace n'affiche l'onglet d'un autre espace (un essentiel) que s'ils ont la même clé. */
+function lacherIncompatibles(d: Brouillon) {
+  for (const f of d.fenetres)
+    for (const [esp, id] of Object.entries(f.actif)) {
+      const o = id ? d.onglets[id] : undefined;
+      if (o && o.espaceId !== esp && cleEspace(d, o.espaceId) !== cleEspace(d, esp)) f.actif[esp] = null;
+    }
+}
+
 function supprimerOnglet(d: Brouillon, o: Onglet) {
   const f = fenetre(d, o.fenetreId);
   if (f) {
@@ -147,9 +183,13 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
           ? d.essentiels.find((x) => x.id === a.id)
           : d.espaces.flatMap((e) => e.epingles).find((x) => x.id === a.id);
       if (!favori || !espaceDuFavori) return false;
-      // Un essentiel a un seul onglet par fenêtre, partagé par tous les espaces ; un épinglé appartient à son espace.
+      // Un essentiel a un seul onglet par fenêtre, partagé par les espaces de même clé (profil de connexion, privé) ;
+      // un épinglé appartient à son espace.
       const existant = Object.values(d.onglets).find(
-        (o) => o.fenetreId === f.id && o.lien?.id === favori.id && (a.genre === "essentiel" || o.espaceId === espaceDuFavori),
+        (o) =>
+          o.fenetreId === f.id &&
+          o.lien?.id === favori.id &&
+          (a.genre === "essentiel" ? cleEspace(d, o.espaceId) === cleEspace(d, espaceDuFavori) : o.espaceId === espaceDuFavori),
       );
       const o =
         existant ??
@@ -192,8 +232,10 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       return true;
     }
     case "creerEspace": {
+      const profil = profilDemande(d, genId, a.profil);
+      if (!profil) return false;
       const esp = genId();
-      d.espaces.push({ id: esp, nom: a.nom, icone: a.icone, epingles: [] });
+      d.espaces.push({ id: esp, nom: a.nom, icone: a.icone, epingles: [], prive: a.prive, profil });
       for (const f of d.fenetres) {
         f.ordre[esp] = [];
         f.actif[esp] = null;
@@ -202,11 +244,15 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       if (f) f.espaceActif = esp;
       return true;
     }
-    case "renommerEspace": {
+    case "reglerEspace": {
       const espace = d.espaces.find((e) => e.id === a.id);
       if (!espace) return false;
-      espace.nom = a.nom;
-      espace.icone = a.icone;
+      if (espace.nom === a.nom && espace.icone === a.icone && espace.prive === a.prive && espace.profil === a.profil) return false;
+      const profil = profilDemande(d, genId, a.profil);
+      if (!profil) return false;
+      Object.assign(espace, { nom: a.nom, icone: a.icone, prive: a.prive, profil });
+      retirerProfilsInutilises(d);
+      lacherIncompatibles(d);
       return true;
     }
     case "supprimerEspace": {
@@ -221,6 +267,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
         f.fermesRecemment = f.fermesRecemment.filter((x) => x.espaceId !== a.id);
         if (f.espaceActif === a.id) f.espaceActif = d.espaces[0]!.id;
       }
+      retirerProfilsInutilises(d);
       return true;
     }
     case "activerEspace": {
