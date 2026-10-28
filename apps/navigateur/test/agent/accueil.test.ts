@@ -174,7 +174,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
           nom: "Météo",
           description: "",
           tailles: { min: { l: 2, h: 2 }, max: { l: 6, h: 4 }, defaut: { l: 3, h: 2 } },
-          sources: { compte: ["mail.exemple.test"], publiques: [] },
+          sources: { compte: ["mail.exemple.test"], publiques: ["meteo.exemple.test"] },
         },
         etat: { statut: "ok", derniereMaj: "2026-10-28T08:00:00.000Z", derniereTentative: null },
         donnees: { t: 12 },
@@ -211,6 +211,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
     exemple: { t: 0 },
     etat: { statut: "ok", derniereMaj: "2026-10-28T08:00:00.000Z", derniereTentative: null },
     compte: ["mail.exemple.test"],
+    publiques: ["meteo.exemple.test"],
   });
   expect(affiches.find((w) => w.id === "vide")).toMatchObject({ src: null, donnees: null, exemple: null });
   const casse = affiches.find((w) => w.id === "casse");

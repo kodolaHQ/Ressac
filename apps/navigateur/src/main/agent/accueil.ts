@@ -45,6 +45,7 @@ export function versWidgetsAffiches(etat: EtatAccueil, mtimes: Record<string, nu
         exemple: w.exemple,
         etat: w.etat,
         compte: w.declaration.sources.compte,
+        publiques: w.declaration.sources.publiques,
       },
     ];
   });

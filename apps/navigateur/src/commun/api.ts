@@ -165,8 +165,11 @@ export interface ApiWebaios {
     ouvrir(url: string, id: string): void;
     /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
     profilsPourAccord(): Promise<ProfilPourAccord[]>;
-    /** L'utilisateur autorise le widget à lire avec son compte, dans ce profil. */
-    accorder(id: string, profil: string): void;
+    /**
+     * L'utilisateur autorise le widget à lire avec son compte, dans ce profil. `compte` et `publiques` : exactement ce que la
+     * carte lui a montré ; refusé (avec l'erreur) si la déclaration a changé depuis.
+     */
+    accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** L'utilisateur refuse ou retire l'accord : les données lues avec le compte sont effacées. */
     refuserAccord(id: string): void;
     /** « Mettre à jour maintenant ». */
@@ -248,7 +251,11 @@ export const SchemaPlacements = z
   )
   .max(500)
   .refine((ps) => new Set(ps.map((p) => p.id)).size === ps.length, "widget placé deux fois");
-export const SchemaAccord = z.object({ id: idWidget, profil: z.string().min(1).max(200) });
+const domaine = z.string().min(1).max(253);
+export const SchemaAccord = z
+  .object({ id: idWidget, profil: z.string().min(1).max(200), compte: z.array(domaine).max(100), publiques: z.array(domaine).max(100) })
+  .strict();
+export type Accord = z.infer<typeof SchemaAccord>;
 export const SchemaOuvrirWidget = z.object({ url: z.string().min(1).max(8192), id: idWidget }).strict();
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
@@ -276,6 +283,8 @@ export type WidgetAffiche =
       etat: EtatWidget;
       /** Domaines lus avec le compte de l'utilisateur (vide : sources publiques seulement). */
       compte: string[];
+      /** Domaines publics que le widget peut contacter ; pour un widget avec compte, couverts par le même accord. */
+      publiques: string[];
     }
   | { id: string; erreur: string; placement: Placement };
 

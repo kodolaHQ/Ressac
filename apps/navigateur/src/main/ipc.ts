@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { DroitDev } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -55,7 +55,7 @@ export interface Gestionnaires {
     /** `url` validée ici comme chaîne ; le gestionnaire n'ouvre que http(s). */
     ouvrir(url: string, id: string, fenetreId: IdFenetre): void;
     profilsPourAccord(fenetreId: IdFenetre): ProfilPourAccord[];
-    accorder(id: string, profil: string): void;
+    accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
     refuserAccord(id: string): void;
     recolter(id: string): void;
   };
@@ -136,7 +136,15 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.accueilPlacer, zod(SchemaPlacements), (p) => g.accueil.placer(p));
   recevoir(CANAUX.accueilRetirer, zod(SchemaIdWidget), (id) => g.accueil.retirer(id));
   recevoir(CANAUX.accueilOuvrir, zod(SchemaOuvrirWidget), ({ url, id }, f) => g.accueil.ouvrir(url, id, f));
-  recevoir(CANAUX.accueilAccorder, zod(SchemaAccord), ({ id, profil }) => g.accueil.accorder(id, profil));
+  ipcMain.handle(CANAUX.accueilAccorder, (e, brut: unknown) => {
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+    const r = SchemaAccord.safeParse(brut);
+    if (!r.success) {
+      console.warn(`[ipc] message invalide ignoré sur ${CANAUX.accueilAccorder}:`, brut);
+      return { ok: false, erreur: "Demande d'accord invalide" };
+    }
+    return g.accueil.accorder(r.data);
+  });
   recevoir(CANAUX.accueilRefuserAccord, zod(SchemaIdWidget), (id) => g.accueil.refuserAccord(id));
   recevoir(CANAUX.accueilRecolter, zod(SchemaIdWidget), (id) => g.accueil.recolter(id));
   repondre(CANAUX.iaEtat, () => g.ia.etat());

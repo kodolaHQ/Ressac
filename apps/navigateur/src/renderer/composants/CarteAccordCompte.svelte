@@ -5,9 +5,10 @@
   let {
     nom,
     domaines,
+    publiques,
     autoriser,
     fermer,
-  }: { nom: string; domaines: string[]; autoriser: (profil: string) => void; fermer: () => void } = $props();
+  }: { nom: string; domaines: string[]; publiques: string[]; autoriser: (profil: string) => void; fermer: () => void } = $props();
 
   let profils = $state<ProfilPourAccord[] | null>(null);
   let erreur = $state<string | null>(null);
@@ -27,7 +28,11 @@
 <div class="voile">
   <div class="carte" role="dialog" aria-modal="true" aria-labelledby="titre-accord" data-testid="carte-accord">
     <h2 id="titre-accord">Autoriser « {nom} » à lire avec ton compte</h2>
-    <p>Le widget lira {domaines.join(", ")} connecté avec le profil choisi. Les profils des espaces privés ne sont jamais proposés.</p>
+    <p data-testid="accord-compte">Ce widget veut lire {domaines.join(", ")} avec ton compte, connecté avec le profil choisi.</p>
+    <p data-testid="accord-publiques">
+      {#if publiques.length}Et pourra contacter : {publiques.join(", ")}.{:else}Et ne contactera aucun autre site.{/if}
+    </p>
+    <p>Les profils des espaces privés ne sont jamais proposés.</p>
     {#if erreur}
       <p class="erreur">Profils illisibles : {erreur}</p>
     {:else if profils === null}

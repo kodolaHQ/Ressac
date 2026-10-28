@@ -383,14 +383,23 @@ app.whenReady().then(async () => {
         magasin.agir({ type: "ouvrirOnglet", fenetreId, url, activer: true });
       },
       profilsPourAccord: (fenetreId) => profilsPourAccord(magasin.etat, fenetreId),
-      accorder: (id, profil) => {
+      accorder: async (a) => {
         const noyau = agent?.noyau();
         // Jamais un profil utilisé par un espace privé : l'état est relu au moment de l'accord.
-        if (!noyau || !profilsLisibles(magasin.etat).includes(profil)) {
-          console.warn(`[webaios] accord refusé pour ${id} (profil ${profil}, noyau ${noyau ? "prêt" : "absent"})`);
-          return;
+        if (!noyau || !profilsLisibles(magasin.etat).includes(a.profil)) {
+          console.warn(`[webaios] accord refusé pour ${a.id} (profil ${a.profil}, noyau ${noyau ? "prêt" : "absent"})`);
+          return { ok: false as const, erreur: noyau ? "Ce profil ne peut pas servir à un accord" : "Le service des widgets ne répond pas (agent arrêté ?)" };
         }
-        noyau.accorder(id, profil).catch((e) => console.error(`[webaios] accord du widget ${id} :`, e));
+        try {
+          // Le noyau refuse si la déclaration n'est plus celle que la carte a montrée.
+          await noyau.accorder(a);
+          return { ok: true as const };
+        } catch (e) {
+          console.error(`[webaios] accord du widget ${a.id} :`, e);
+          // L'interface relit la page : la nouvelle demande s'affiche.
+          diffuser(CANAUX.accueilChange, null);
+          return { ok: false as const, erreur: (e as Error).message };
+        }
       },
       refuserAccord: (id) => {
         agent?.noyau()?.refuserAccord(id).catch((e) => console.error(`[webaios] retrait de l'accord du widget ${id} :`, e));

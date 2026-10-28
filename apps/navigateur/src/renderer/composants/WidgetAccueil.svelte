@@ -114,7 +114,9 @@
   {#if !("erreur" in widget)}
     {#if widget.etat.statut === "accord-requis" && !refuse}
       <div class="bandeau" data-testid="bandeau-accord">
-        <span>Ce widget veut lire {widget.compte.join(", ")} avec ton compte.</span>
+        <span
+          >Ce widget veut lire {widget.compte.join(", ")} avec ton compte{#if widget.publiques.length}, et pourra contacter : {widget.publiques.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span
+        >
         <button onclick={autoriser}>Autoriser…</button>
         <button onclick={refuser}>Refuser</button>
       </div>

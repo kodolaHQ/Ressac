@@ -149,13 +149,27 @@
   <CarteAccordCompte
     nom={cible.nom}
     domaines={cible.compte}
+    publiques={cible.publiques}
     fermer={() => (accordPour = null)}
     autoriser={(profil) => {
-      const id = cible.id; // {@const} se relit : après accordPour = null, cible vaut null
+      // {@const} se relit : après accordPour = null, cible vaut null. L'accord porte exactement sur ce qui a été montré.
+      const { id, compte, publiques } = cible;
       accordPour = null;
       const { [id]: _, ...reste } = refuses;
       refuses = reste;
-      agir(id, () => api.accueil.accorder(id, profil));
+      agir(id, () =>
+        api.accueil.accorder({ id, profil, compte: [...compte], publiques: [...publiques] }).then(
+          (r) => {
+            if (r.ok) return;
+            // Refusé (la demande a changé entre-temps…) : rien n'est accordé, le bandeau montre la nouvelle demande.
+            clearTimeout(attentes.get(id)?.minuterie);
+            attentes.delete(id);
+            avertissements = { ...avertissements, [id]: `Accord non enregistré : ${r.erreur}` };
+            charger();
+          },
+          () => {},
+        ),
+      );
     }}
   />
 {/if}

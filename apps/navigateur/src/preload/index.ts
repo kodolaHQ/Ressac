@@ -75,7 +75,7 @@ const api: ApiWebaios = {
     retirer: (id) => ipcRenderer.send(CANAUX.accueilRetirer, id),
     ouvrir: (url, id) => ipcRenderer.send(CANAUX.accueilOuvrir, { url, id }),
     profilsPourAccord: () => ipcRenderer.invoke(CANAUX.accueilProfils),
-    accorder: (id, profil) => ipcRenderer.send(CANAUX.accueilAccorder, { id, profil }),
+    accorder: (a) => ipcRenderer.invoke(CANAUX.accueilAccorder, a),
     refuserAccord: (id) => ipcRenderer.send(CANAUX.accueilRefuserAccord, id),
     recolter: (id) => ipcRenderer.send(CANAUX.accueilRecolter, id),
   },
