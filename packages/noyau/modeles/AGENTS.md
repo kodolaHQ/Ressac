@@ -44,8 +44,13 @@ l'état (`etat.json`) sont gardés par le navigateur hors de ton espace : ne les
 | `gemma(prompt, { images?, json? })` | Gemma : résumé, extraction, lecture d'image |
 | `journal(...)` | Écrit dans le journal de la récolte (`console.log` aussi) |
 
-- Les domaines doivent être déclarés dans `widget.json` ; les adresses locales sont refusées ;
-  une ligne du protocole fait 4 Mo au plus ; la récolte entière s'arrête après environ 200 s.
+- Sans `compte`, les lectures publiques ne sont pas restreintes. Avec `compte`, un domaine absent
+  de `sources.compte` (lecture avec le compte) ou de `sources.publiques` (lecture publique) est
+  refusé. Les noms d'hôte sont comparés exactement, sans sous-domaines : écris `www.theverge.com`,
+  pas `theverge.com`. Les adresses locales sont toujours refusées.
+- `lirePage(url, { compte: true })` demande un accord de l'utilisateur pour ce widget ; sans lui, la
+  récolte s'arrête en `accord-requis` et l'utilisateur voit un bandeau pour l'accorder.
+- Une ligne du protocole fait 4 Mo au plus ; la récolte entière s'arrête après environ 200 s.
 - La récolte rend du JSON ; elle lève une erreur si elle ne peut rien récolter de sensé.
 - `trier` : **un élément par question**, jamais une longue liste dans une seule question. Kev est
   petit : une question courte et précise par élément (`« Cet article intéresse-t-il quelqu'un qui
