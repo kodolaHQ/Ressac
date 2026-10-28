@@ -364,6 +364,91 @@ test("un lien cliqué dans un widget ouvre un onglet, un second clic un second o
   await fermer();
 });
 
+test("un widget qui vole le focus n'obtient aucun lien par Espace ou Entrée tapés par l'utilisateur", async () => {
+  const racine = nouvelleRacine();
+  // Un bouton qui reprend le focus sans cesse : une touche tapée ailleurs l'active (clic « isTrusted », sans appui).
+  ecrireWidget(racine, "voleur", {
+    nom: "Voleur",
+    affichage: `<!doctype html><button id="b" style="width:200px;height:50px">b</button><script>
+  const b = document.getElementById("b");
+  let n = 0;
+  b.onclick = () => parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/vol-" + ++n }, "*");
+  setInterval(() => b.focus(), 50);
+</script>`,
+  });
+  const { app, fenetre, fermer } = await lancerWidgets(racine);
+  let journal = "";
+  app.process().stderr?.on("data", (d) => (journal += String(d)));
+  await expect(cadre(fenetre, "voleur").locator("#b")).toBeVisible();
+  await attendre(500);
+  await fenetre.keyboard.press("Space");
+  await expect.poll(() => journal).toContain("ignoré (pas de clic dans le widget) : https://exemple.invalid/vol-1");
+  await attendre(1100);
+  await fenetre.keyboard.press("Enter");
+  await expect.poll(() => journal).toContain("ignoré (pas de clic dans le widget) : https://exemple.invalid/vol-2");
+  await attendre(1000);
+  await expect(fenetre.locator(onglets)).toHaveCount(0);
+  await fermer();
+});
+
+test("un clic ouvre un seul lien même si le widget en demande deux", async () => {
+  const racine = nouvelleRacine();
+  ecrireWidget(racine, "double", {
+    nom: "Double",
+    affichage: `<!doctype html><button id="b" style="width:200px;height:50px">b</button><script>
+  document.getElementById("b").onclick = () => {
+    parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/double-1" }, "*");
+    parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/double-2" }, "*");
+  };
+</script>`,
+  });
+  const { fenetre, fermer } = await lancerWidgets(racine);
+  await cliquer(fenetre, cadre(fenetre, "double").locator("#b"));
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await attendre(2000);
+  expect(await liensOuverts(fenetre)).toEqual(["https://exemple.invalid/double-1"]);
+  await fermer();
+});
+
+test("les cadres imbriqués d'un widget (srcdoc, about:blank) n'ont aucune API et leurs clics ne comptent pas", async () => {
+  const racine = nouvelleRacine();
+  const sonde = "[typeof window.webaios, typeof window.api, typeof require, typeof process].join()";
+  ecrireWidget(racine, "imbrique", {
+    nom: "Imbriqué",
+    tailles: { min: { l: 2, h: 2 }, max: { l: 12, h: 8 }, defaut: { l: 8, h: 4 } },
+    affichage: `<!doctype html><p id="srcdoc">?</p><p id="vide">?</p><script>onerror = (m) => (document.getElementById("vide").textContent = "erreur " + m);</script><script>
+  addEventListener("message", (e) => {
+    if (e.data && e.data.sonde) document.getElementById("srcdoc").textContent = e.data.sonde;
+    if (e.data && e.data.ouvrir) parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/imbrique" }, "*");
+  });
+  const s = document.createElement("iframe");
+  s.id = "s";
+  s.style = "width:300px;height:120px";
+  s.srcdoc = '<button id="b" style="width:200px;height:50px">b</button><script>parent.postMessage({ sonde: ${sonde} }, "*"); document.getElementById("b").onclick = () => parent.postMessage({ ouvrir: 1 }, "*");<\\/script>';
+  document.body.append(s);
+  const v = document.createElement("iframe");
+  document.body.append(v);
+  try {
+    const w = v.contentWindow;
+    document.getElementById("vide").textContent = [typeof w.webaios, typeof w.api, typeof w.require, typeof w.process].join();
+  } catch (e) { document.getElementById("vide").textContent = "inaccessible " + e; }
+</script>`,
+  });
+  const { app, fenetre, fermer } = await lancerWidgets(racine);
+  let journal = "";
+  app.process().stderr?.on("data", (d) => (journal += String(d)));
+  const w = cadre(fenetre, "imbrique");
+  // Le cadre about:blank n'est même pas joignable depuis le widget (origine opaque) ; s'il l'était, rien n'y serait exposé.
+  await expect(w.locator("#vide")).toHaveText(/^(undefined,undefined,undefined,undefined|inaccessible SecurityError.*)$/);
+  await expect(w.locator("#srcdoc")).toHaveText("undefined,undefined,undefined,undefined");
+  // Un vrai clic dans le cadre srcdoc : le widget demande un lien, refusé (aucun geste n'est retenu de ce cadre).
+  await cliquer(fenetre, w.frameLocator("#s").locator("#b"));
+  await expect.poll(() => journal).toContain("ignoré (pas de clic dans le widget) : https://exemple.invalid/imbrique");
+  await attendre(1000);
+  await expect(fenetre.locator(onglets)).toHaveCount(0);
+  await fermer();
+});
+
 test("glisser un widget et l'agrandir réécrit disposition.json", async () => {
   const racine = nouvelleRacine();
   ecrireWidget(racine, "un", { nom: "Un", affichage: AFFICHAGE, exemple: 1 });
@@ -644,6 +729,24 @@ test("un widget qui navigue ailleurs reste sur son affichage", async () => {
   await attendre(3000);
   await expect(donnees(fenetre, "fuite")).toHaveText('"reste"', { timeout: 1000 });
   await expect(donnees(fenetre, "fuite-data")).toHaveText('"reste"', { timeout: 1000 });
+  await fermer();
+});
+
+test("un affichage ne prend pas la place d'un autre widget ; réécrit par l'agent, il se recharge", async () => {
+  const racine = nouvelleRacine();
+  ecrireWidget(racine, "cible", { nom: "Cible", affichage: '<!doctype html><p id="cible">cible</p>' });
+  ecrireWidget(racine, "pirate", {
+    nom: "Pirate",
+    affichage: AFFICHAGE.replace("</script>", `setTimeout(() => (location = "webaios-widget://cible/affichage.html"), 1000);</script>`),
+    exemple: "pirate",
+  });
+  const { fenetre, fermer } = await lancerWidgets(racine);
+  await expect(donnees(fenetre, "pirate")).toHaveText('"pirate"');
+  await attendre(2500);
+  await expect(cadre(fenetre, "pirate").locator("#cible")).toHaveCount(0);
+  // L'agent réécrit l'affichage de « cible » : le cadre recharge le nouveau (même widget, nouvelle version).
+  writeFileSync(join(racine, "accueil", "widgets", "cible", "affichage.html"), '<!doctype html><p id="cible">nouvelle version</p>');
+  await expect(cadre(fenetre, "cible").locator("#cible")).toHaveText("nouvelle version", { timeout: 5000 });
   await fermer();
 });
 
