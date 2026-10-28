@@ -10,6 +10,8 @@ import type { EtatNavigateur } from "../../src/commun/modele";
 
 const dossier = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
 const mis_de_cote = (d: string, suffixe: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffixe));
+/** L'état lu, chargé ou de secours. */
+const charger = async (d: string) => (await chargerSession(d)).etat;
 const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function etatRiche(): EtatNavigateur {
@@ -32,7 +34,7 @@ test("aller-retour : identique, hors champs volatils remis par défaut", async (
   const enr = new EnregistreurSession(d);
   enr.planifier(etat);
   await enr.vider();
-  const relu = await chargerSession(d);
+  const relu = await charger(d);
   const a = Object.values(relu.onglets).find((o) => o.url === "https://a.test/")!;
   expect(a).toMatchObject({ titre: "A", zoom: 1.2, chargement: false, peutReculer: false, peutAvancer: false, plante: false });
   const attendu = structuredClone(etat);
@@ -50,7 +52,7 @@ test("session v1 → v2 : espaces non privés sur le profil de connexion par dé
   const d = dossier();
   const etat = etatRiche();
   writeFileSync(join(d, "session.json"), JSON.stringify(enV1(etat)));
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.version).toBe(2);
   expect(e.profils).toEqual([{ id: "defaut" }]);
   for (const espace of e.espaces) expect(espace).toMatchObject({ prive: false, profil: "defaut" });
@@ -69,7 +71,7 @@ test("session v2 avec un espace privé et un second profil de connexion : aller-
   const enr = new EnregistreurSession(d);
   enr.planifier(etat);
   await enr.vider();
-  const relu = await chargerSession(d);
+  const relu = await charger(d);
   expect(relu.version).toBe(2);
   expect(relu.profils).toEqual(etat.profils);
   expect(relu.espaces).toEqual(etat.espaces);
@@ -80,13 +82,13 @@ test("une session enregistrée avant le cadre des fenêtres se charge (cadre = n
   const ancienne = structuredClone(etatInitial()) as unknown as { fenetres: Record<string, unknown>[] };
   for (const f of ancienne.fenetres) delete f.cadre;
   writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.fenetres[0]!.cadre).toBeNull();
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
 
 test("fichier absent → état initial", async () => {
-  const e = await chargerSession(dossier());
+  const e = await charger(dossier());
   expect(e.espaces).toHaveLength(1);
   expect(e.fenetres).toHaveLength(1);
 });
@@ -94,7 +96,7 @@ test("fichier absent → état initial", async () => {
 test("JSON invalide → état initial et ancien fichier gardé de côté (….corrompu)", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), "{ pas du json");
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.onglets).toEqual({});
   const [garde] = mis_de_cote(d, ".corrompu");
   expect(readFileSync(join(d, garde!), "utf8")).toBe("{ pas du json");
@@ -103,7 +105,7 @@ test("JSON invalide → état initial et ancien fichier gardé de côté (….co
 test("version inconnue → état initial et fichier gardé de côté", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 3 }));
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.onglets).toEqual({});
   expect(mis_de_cote(d, ".corrompu")).toHaveLength(1);
 });
@@ -111,9 +113,9 @@ test("version inconnue → état initial et fichier gardé de côté", async () 
 test("deux sessions corrompues de suite : la seconde n'écrase pas la première", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), "premier");
-  await chargerSession(d);
+  await charger(d);
   writeFileSync(join(d, "session.json"), "second");
-  await chargerSession(d);
+  await charger(d);
   const gardes = mis_de_cote(d, ".corrompu").map((f) => readFileSync(join(d, f), "utf8"));
   expect(gardes.sort()).toEqual(["premier", "second"]);
 });
@@ -123,7 +125,7 @@ test("session illisible (droits) → état initial, et le prochain enregistremen
   const chemin = join(d, "session.json");
   writeFileSync(chemin, JSON.stringify(etatRiche()));
   chmodSync(chemin, 0o000);
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.onglets).toEqual({});
   const enr = new EnregistreurSession(d, 0);
   enr.planifier(e);
@@ -136,7 +138,7 @@ test("session illisible (droits) → état initial, et le prochain enregistremen
 test("état incohérent (aucun espace) → état initial", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), espaces: [] }));
-  expect((await chargerSession(d)).espaces).toHaveLength(1);
+  expect((await charger(d)).espaces).toHaveLength(1);
 });
 
 test("planifier regroupe les écritures (3 appels rapprochés → 1 écriture)", async () => {
@@ -198,7 +200,7 @@ test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {
   const enr = new EnregistreurSession(d);
   enr.planifier(e);
   await enr.vider();
-  expect((await chargerSession(d)).onglets[id]?.erreur).toBeNull();
+  expect((await charger(d)).onglets[id]?.erreur).toBeNull();
 });
 
 test("une session enregistrée sans profilAgent se charge avec claude", async () => {
@@ -206,7 +208,7 @@ test("une session enregistrée sans profilAgent se charge avec claude", async ()
   const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
   delete ancienne.reglages.profilAgent;
   writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.reglages.profilAgent).toBe("claude");
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
@@ -216,7 +218,32 @@ test("une session enregistrée sans largeur de panneau agent se charge avec 420"
   const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
   delete ancienne.reglages.largeurPanneauAgent;
   writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
-  const e = await chargerSession(d);
+  const e = await charger(d);
   expect(e.reglages.largeurPanneauAgent).toBe(420);
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
+});
+
+test("chargée : charge vrai ; absente, corrompue ou illisible (état de secours) : charge faux", async () => {
+  const d = dossier();
+  expect((await chargerSession(d)).charge).toBe(false);
+  const enr = new EnregistreurSession(d);
+  enr.planifier(etatRiche());
+  await enr.vider();
+  expect((await chargerSession(d)).charge).toBe(true);
+  writeFileSync(join(d, "session.json"), "{ pas du json");
+  expect((await chargerSession(d)).charge).toBe(false);
+  writeFileSync(join(d, "session.json"), JSON.stringify(etatRiche()));
+  chmodSync(join(d, "session.json"), 0o000);
+  expect((await chargerSession(d)).charge).toBe(false);
+});
+
+test("session v2 dont un espace utilise un profil de connexion non listé : le profil est ajouté à la liste", async () => {
+  const d = dossier();
+  const etat = etatRiche();
+  etat.espaces[1]!.profil = "orphelin";
+  writeFileSync(join(d, "session.json"), JSON.stringify(etat));
+  const { etat: relu, charge } = await chargerSession(d);
+  expect(charge).toBe(true);
+  expect(relu.profils).toEqual([{ id: "defaut" }, { id: "orphelin" }]);
+  expect(relu.espaces[1]!.profil).toBe("orphelin");
 });

@@ -103,6 +103,29 @@ function retirerProfilsInutilises(d: Brouillon) {
   d.profils = d.profils.filter((p) => d.espaces.some((e) => e.profil === p.id));
 }
 
+/**
+ * Un espace change de clé : chacun de ses onglets qu'un autre espace de l'ancienne clé affiche passe à cet espace
+ * (le premier dans l'ordre des espaces), qui l'a vu sous cette clé ; l'espace changé le lâche.
+ * Ainsi un onglet vu dans un espace privé ne devient jamais lisible parce qu'un autre espace cesse de l'être.
+ */
+function transmettreAffiches(d: Brouillon, espaceId: IdEspace, ancienneCle: string) {
+  for (const f of d.fenetres)
+    for (const o of Object.values(d.onglets)) {
+      if (o.fenetreId !== f.id || o.espaceId !== espaceId) continue;
+      const repreneur = d.espaces.find(
+        (e) => e.id !== espaceId && f.actif[e.id] === o.id && cleEspace(d, e.id) === ancienneCle,
+      );
+      if (!repreneur) continue;
+      const l = liste(f, espaceId);
+      if (l.includes(o.id)) {
+        f.ordre[espaceId] = l.filter((x) => x !== o.id);
+        liste(f, repreneur.id).push(o.id);
+      }
+      o.espaceId = repreneur.id;
+      if (f.actif[espaceId] === o.id) f.actif[espaceId] = null;
+    }
+}
+
 /** Un espace n'affiche l'onglet d'un autre espace (un essentiel) que s'ils ont la même clé. */
 function lacherIncompatibles(d: Brouillon) {
   for (const f of d.fenetres)
@@ -250,7 +273,9 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       if (espace.nom === a.nom && espace.icone === a.icone && espace.prive === a.prive && espace.profil === a.profil) return false;
       const profil = profilDemande(d, genId, a.profil);
       if (!profil) return false;
+      const ancienneCle = cleEspace(d, espace.id);
       Object.assign(espace, { nom: a.nom, icone: a.icone, prive: a.prive, profil });
+      if (cleEspace(d, espace.id) !== ancienneCle) transmettreAffiches(d, espace.id, ancienneCle);
       retirerProfilsInutilises(d);
       lacherIncompatibles(d);
       return true;

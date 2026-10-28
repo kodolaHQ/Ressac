@@ -218,7 +218,7 @@ test("resoudreEspace : un espace privé, par nom ou par id, compte comme inconnu
   expect(resoudreEspace(e(), f, secret)).toBe(f.espaceActif);
 });
 
-test("changementsPolitique : un onglet dont l'espace devient privé est fermé pour l'agent, essentiel partagé compris", () => {
+test("changementsPolitique : un onglet dont l'espace devient privé est fermé pour l'agent ; un essentiel affiché dans un espace resté non privé passe à cet espace", () => {
   const { e, ag, F } = preparer();
   const perso = e().espaces[0]!.id;
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
@@ -232,13 +232,32 @@ test("changementsPolitique : un onglet dont l'espace devient privé est fermé p
   expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBe(a);
   const avant = e();
   reglerPrive(e(), ag, perso, true);
-  // L'essentiel ne s'affiche plus dans Boulot : il n'y est plus lisible non plus.
-  expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBeNull();
-  expect(changementsPolitique(avant, e())).toEqual({ navigues: [], fermes: [a, b] });
+  // L'essentiel reste à Boulot, non privé, qui l'affichait déjà : il n'a jamais été vu sous la clé privée.
+  expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBe(a);
+  expect(e().fenetres.find((x) => x.id === F)!.actif[perso]).toBeNull();
+  expect(e().onglets[a]!.espaceId).toBe(boulot);
+  expect(changementsPolitique(avant, e())).toEqual({ navigues: [], fermes: [b] });
   // Redevenir non privé ne rend rien : l'accès est à redemander.
   const prive = e();
   reglerPrive(e(), ag, perso, false);
   expect(changementsPolitique(prive, e())).toEqual({ navigues: [], fermes: [] });
+});
+
+test("un essentiel partagé par deux espaces privés reste invisible à l'agent quand son propriétaire cesse d'être privé", () => {
+  const { e, ag, F } = preparer();
+  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
+  const banque = e().espaces.find((x) => x.nom === "Banque")!;
+  ag({ type: "ouvrirOnglet", fenetreId: F, url: "https://mail.google.com/" });
+  const gmail = Object.values(e().onglets).find((o) => o.url === "https://mail.google.com/")!.id;
+  ag({ type: "ajouterEssentiel", id: gmail });
+  ag({ type: "creerEspace", nom: "Banque pro", icone: "💳", prive: true, profil: banque.profil, fenetreId: F });
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e().essentiels[0]!.id });
+  const avant = e();
+  reglerPrive(e(), ag, banque.id, false);
+  expect(infosOnglets(e()).map((o) => o.url)).not.toContain("https://mail.google.com/");
+  expect(ongletActifDe(e(), F)).toBeNull();
+  // Rien de nouveau pour la politique : l'onglet n'a jamais été lisible.
+  expect(changementsPolitique(avant, e())).toEqual({ navigues: [], fermes: [] });
 });
 
 test("questionCaduque : une demande de lecture tombe si l'onglet visé passe dans un espace privé", () => {

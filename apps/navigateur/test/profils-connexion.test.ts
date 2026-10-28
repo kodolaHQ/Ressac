@@ -29,7 +29,7 @@ const { partitionDe, SessionsProfils } = await import("../src/main/profils-conne
 let dossier: string;
 let branchees: string[];
 const creer = () => new SessionsProfils({ dossier, brancher: (_s, id) => void branchees.push(id) });
-const etat = (...ids: string[]) => ({ profils: ids.map((id) => ({ id })) }) as unknown as EtatNavigateur;
+const etat = (...ids: string[]) => ({ profils: ids.map((id) => ({ id })), espaces: [] }) as unknown as EtatNavigateur;
 
 beforeEach(() => {
   dossier = mkdtempSync(join(tmpdir(), "webaios-profils-"));
@@ -86,4 +86,27 @@ test("au démarrage, un profil resté sur le disque sans espace (effacement inte
   const p = creer();
   await p.synchroniser(etat("defaut", "abc"));
   expect(effacees).toEqual(["persist:webaios-vieux"]);
+});
+
+test("au démarrage sur un état de secours (session absente ou corrompue), aucun profil du disque n'est effacé", async () => {
+  mkdirSync(join(dossier, "Partitions", "webaios-banque"), { recursive: true });
+  mkdirSync(join(dossier, "Partitions", "webaios-boulot"), { recursive: true });
+  const p = creer();
+  await p.synchroniser(etat("defaut"), false);
+  await p.synchroniser(etat("defaut"));
+  expect(effacees).toEqual([]);
+  // Les profils de l'état de secours restent suivis : un profil créé puis retiré s'efface.
+  await p.synchroniser(etat("defaut", "neuf"));
+  await p.synchroniser(etat("defaut"));
+  expect(effacees).toEqual(["persist:webaios-neuf"]);
+});
+
+test("un profil qu'un espace utilise n'est jamais effacé, même absent de la liste des profils", async () => {
+  mkdirSync(join(dossier, "Partitions", "webaios-abc"), { recursive: true });
+  const p = creer();
+  const avecEspace = { profils: [{ id: "defaut" }], espaces: [{ id: "e", profil: "abc" }] } as unknown as EtatNavigateur;
+  await p.synchroniser(avecEspace);
+  expect(effacees).toEqual([]);
+  await p.synchroniser(etat("defaut"));
+  expect(effacees).toEqual(["persist:webaios-abc"]);
 });

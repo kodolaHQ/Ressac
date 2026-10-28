@@ -127,6 +127,31 @@ export function ongletPrive(etat: EtatNavigateur, onglet: Onglet): boolean {
   return etat.espaces.find((e) => e.id === onglet.espaceId)?.prive ?? true;
 }
 
+/** Les profils de connexion en usage : ceux de l'état et ceux de ses espaces. Seul un profil hors de cet ensemble s'efface. */
+export function profilsEnUsage(etat: Pick<EtatNavigateur, "profils" | "espaces">): Set<IdProfil> {
+  return new Set([...etat.profils.map((p) => p.id), ...etat.espaces.map((e) => e.profil)]);
+}
+
+/** Les profils de connexion en usage ont changé (comparés par identifiant, pas par référence). */
+export function profilsChanges(avant: EtatNavigateur, apres: EtatNavigateur): boolean {
+  const a = profilsEnUsage(avant);
+  const b = profilsEnUsage(apres);
+  return a.size !== b.size || [...a].some((id) => !b.has(id));
+}
+
+/**
+ * L'espace où compter une visite (et le texte retenu) de l'onglet : celui qui l'affiche dans sa fenêtre — un essentiel
+ * partagé est vu dans l'espace actif —, sinon le sien. Privé si cet espace ou celui de l'onglet l'est (inconnu : privé).
+ */
+export function contexteHistorique(etat: EtatNavigateur, id: IdOnglet): { espaceId: IdEspace; prive: boolean } | null {
+  const o = etat.onglets[id];
+  if (!o) return null;
+  const f = etat.fenetres.find((x) => x.id === o.fenetreId);
+  const espaceId = f && f.actif[f.espaceActif] === id ? f.espaceActif : o.espaceId;
+  const prive = (etat.espaces.find((e) => e.id === espaceId)?.prive ?? true) || ongletPrive(etat, o);
+  return { espaceId, prive };
+}
+
 /** Le profil de connexion de l'onglet, celui de son espace (le profil par défaut si l'espace est inconnu). */
 export function profilDOnglet(etat: EtatNavigateur, onglet: Onglet): IdProfil {
   return etat.espaces.find((e) => e.id === onglet.espaceId)?.profil ?? PROFIL_DEFAUT;

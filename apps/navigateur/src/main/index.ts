@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
   PROFIL_DEFAUT,
-  ongletPrive,
+  contexteHistorique,
+  profilsChanges,
   profilDOnglet,
   type Decision,
   type Demande,
@@ -156,7 +157,8 @@ let minuteurPurge: NodeJS.Timeout | undefined;
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
-  const magasin = new Magasin(await chargerSession(dossier));
+  const sessionLue = await chargerSession(dossier);
+  const magasin = new Magasin(sessionLue.etat);
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
@@ -209,10 +211,7 @@ app.whenReady().then(async () => {
     agir: (a) => magasin.agir(a),
     bordGauche: (id, dedans) => fenetres.get(id)?.webContents.send(CANAUX.bordGauche, dedans),
     historique,
-    contexteHistorique: (id) => {
-      const o = magasin.etat.onglets[id];
-      return o ? { espaceId: o.espaceId, prive: ongletPrive(magasin.etat, o) } : null;
-    },
+    contexteHistorique: (id) => contexteHistorique(magasin.etat, id),
     retenir: (r) => historique?.retenir(r),
     resultatRecherche: (id, r) => fenetres.get(id)?.webContents.send(CANAUX.resultatRecherche, r),
     // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
@@ -239,7 +238,7 @@ app.whenReady().then(async () => {
     diffuser(CANAUX.etat, etat);
     vues.synchroniser(etat);
     // Après les vues : aucune page n'est plus dans la session d'un profil effacé.
-    if (etat.profils !== avant.profils) void sessions.synchroniser(etat);
+    if (profilsChanges(avant, etat)) void sessions.synchroniser(etat);
     enregistreur?.planifier(etat);
   });
   // L'historique se met à jour même sans agent : un espace devenu privé garde ses visites mais les marque.
@@ -361,7 +360,8 @@ app.whenReady().then(async () => {
   magasin.abonner(synchroniserFenetres);
   synchroniserFenetres(magasin.etat);
   vues.synchroniser(magasin.etat);
-  void sessions.synchroniser(magasin.etat);
+  // Une session de secours (fichier absent ou corrompu) n'efface pas les profils restés sur le disque.
+  void sessions.synchroniser(magasin.etat, sessionLue.charge);
   // Une session d'une version précédente est réécrite à la version actuelle, même si rien ne change.
   enregistreur.planifier(magasin.etat);
   // Après les fenêtres : l'agent ne retarde jamais la navigation.

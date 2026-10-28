@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { session, type Session } from "electron";
-import { PROFIL_DEFAUT, type EtatNavigateur, type IdProfil } from "../commun/modele";
+import { PROFIL_DEFAUT, profilsEnUsage, type EtatNavigateur, type IdProfil } from "../commun/modele";
 
 const PARTITION_DEFAUT = "persist:webaios";
 
@@ -46,10 +46,14 @@ export class SessionsProfils {
     return s;
   }
 
-  /** Efface les profils sortis de l'état ; au premier appel, aussi ceux restés sur le disque (effacement interrompu). */
-  async synchroniser(etat: EtatNavigateur): Promise<void> {
-    const ids = new Set(etat.profils.map((p) => p.id));
-    const avant = this.connus ?? new Set(this.surLeDisque());
+  /**
+   * Efface les profils sortis de l'état (ni listés, ni utilisés par un espace). Au premier appel, aussi ceux restés sur
+   * le disque (effacement interrompu) — seulement si `sessionChargee` : un état initial de secours (session absente ou
+   * corrompue) ne dit rien des profils du disque, qui sont alors gardés.
+   */
+  async synchroniser(etat: EtatNavigateur, sessionChargee = true): Promise<void> {
+    const ids = profilsEnUsage(etat);
+    const avant = this.connus ?? (sessionChargee ? new Set(this.surLeDisque()) : ids);
     this.connus = ids;
     // Le profil par défaut n'est jamais effacé : les connexions d'avant les espaces et les blocs d'accueil y vivent.
     await Promise.all([...avant].filter((id) => !ids.has(id) && id !== PROFIL_DEFAUT).map((id) => this.effacer(id)));

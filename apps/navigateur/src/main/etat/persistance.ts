@@ -58,7 +58,11 @@ const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
 
 /** Lit une session enregistrée, quelle que soit sa version, en version 2. */
 function enV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
-  if (lu.version === 2) return lu;
+  if (lu.version === 2) {
+    // Un profil de connexion qu'utilise un espace est toujours listé : sinon il serait pris pour un profil à effacer.
+    const manquants = [...new Set(lu.espaces.map((e) => e.profil))].filter((id) => !lu.profils.some((p) => p.id === id));
+    return manquants.length ? { ...lu, profils: [...lu.profils, ...manquants.map((id) => ({ id }))] } : lu;
+  }
   // Les espaces d'avant restent visibles de l'agent, sur la partition de toujours : aucune connexion n'est perdue.
   return { ...lu, version: 2, espaces: lu.espaces.map((e) => ({ ...e, prive: false, profil: PROFIL_DEFAUT })), profils: [{ id: PROFIL_DEFAUT }] };
 }
@@ -80,7 +84,11 @@ async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): P
   }
 }
 
-export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
+/**
+ * La session enregistrée, ou l'état initial. `charge` est faux quand le fichier n'a pas été lu (absent, illisible,
+ * corrompu) : l'état ne dit alors rien des profils de connexion restés sur le disque, qu'il ne faut pas effacer.
+ */
+export async function chargerSession(dossier: string): Promise<{ etat: EtatNavigateur; charge: boolean }> {
   const chemin = join(dossier, FICHIER);
   let texte: string;
   try {
@@ -88,17 +96,18 @@ export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
   } catch (e) {
     // Absent : premier lancement. Sinon (droits…), on le garde plutôt que de l'écraser au prochain enregistrement.
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") await mettreDeCote(chemin, "illisible");
-    return etatInitial();
+    return { etat: etatInitial(), charge: false };
   }
   try {
     const lu = enV2(SchemaSession.parse(JSON.parse(texte)));
-    return {
+    const etat = {
       ...lu,
       onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILS }])),
     };
+    return { etat, charge: true };
   } catch {
     await mettreDeCote(chemin, "corrompu");
-    return etatInitial();
+    return { etat: etatInitial(), charge: false };
   }
 }
 
