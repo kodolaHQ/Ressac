@@ -211,3 +211,20 @@ test("initialiser : un AGENTS.md identique au modèle du plan 6 est remplacé pa
   expect(apres).toContain("ouvre la page avec `ouvrir_onglet`");
   expect(apres).toContain("cinq au plus");
 });
+
+test("initialiser : un AGENTS.md identique au modèle du plan 7 (après f759653) est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle avant les widgets (blocs et veille) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-plan7.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "6a12cecc4b6cc13e6fd26f2ec50fda3e3d6381421644e1e5c81d897a3c4ba5c3",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("recolter_widget");
+  expect(apres).toContain("donnees_widget");
+  expect(apres).not.toContain("disposition.json` donne l'ordre des blocs");
+});
