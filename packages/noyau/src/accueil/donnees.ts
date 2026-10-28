@@ -1,12 +1,19 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ETAT_WIDGET_PAR_DEFAUT, EtatWidget, TAILLE_MAX_DONNEES } from "./schemas.js";
 
+// Un nom temporaire propre à chaque écriture : deux écritures simultanées (refus d'un accord pendant une récolte)
+// ne se marchent pas dessus.
 async function ecrireAtomique(cible: string, texte: string): Promise<void> {
   await mkdir(join(cible, ".."), { recursive: true });
-  const temporaire = `${cible}.${process.pid}.tmp`;
-  await writeFile(temporaire, texte);
-  await rename(temporaire, cible);
+  const temporaire = `${cible}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaire, texte);
+    await rename(temporaire, cible);
+  } finally {
+    await rm(temporaire, { force: true });
+  }
 }
 
 /** Données récoltées d'un widget, ou null si absentes, abîmées ou trop grosses (plus de 2 Mo). */
