@@ -219,8 +219,8 @@ export function demarrerAgent(o: {
       // Les agents d'abord : leur arrêt passe par le conteneur, avant que l'app ne quitte.
       await sessions.toutArreter();
       await Promise.all([arreterAccueil?.(), arreterNoyau(await pret)]);
-      // Sans noyau (il n'a pas démarré), l'IA locale n'a pas été arrêtée avec lui.
-      await ia.arreter().catch(() => {});
+      // L'app quitte : l'IA locale est fermée pour de bon (aussi quand le noyau n'a pas démarré), une récolte en retard ne la relance pas.
+      await ia.fermer().catch(() => {});
     },
   };
 }

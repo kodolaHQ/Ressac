@@ -1,12 +1,15 @@
 import { afterEach, expect, test, vi } from "vitest";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
 import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { EtatAtelier } from "../../src/conteneur/atelier.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import type { OptionsRecolte } from "../../src/widgets/recolte.js";
-import { PlanificateurWidgets, widgetDu } from "../../src/widgets/planificateur.js";
+import { erreurDuNoyau, type OptionsRecolte } from "../../src/widgets/recolte.js";
+import { accorder, lireAccords } from "../../src/widgets/accords.js";
+import { ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu } from "../../src/widgets/planificateur.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -209,4 +212,133 @@ test("arreter : la récolte en cours est supprimée et son état précédent rem
   await verif;
   expect(supprimees).toEqual(["actus"]);
   expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
+});
+
+test("arreter pendant que la récolte vérifie l'atelier : elle ne démarre pas", async () => {
+  const { p, recolter, atelier } = await preparer();
+  let liberer!: () => void;
+  const verifie = vi.fn();
+  atelier.etat = async () => {
+    verifie();
+    await new Promise<void>((r) => (liberer = r));
+    return "demarre";
+  };
+  const verif = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(verifie).toHaveBeenCalled());
+  const arret = p.arreter();
+  liberer();
+  await arret;
+  await verif;
+  expect(recolter).not.toHaveBeenCalled();
+});
+
+test("arreter : une récolte qui dépasse l'attente voit son conteneur supprimé encore une fois", async () => {
+  const { dossierWidgets, recolter, atelier, c } = await preparer();
+  await p!.arreter();
+  let lancee = false;
+  let demarrer!: () => void;
+  const premiereSuppression = new Promise<void>((r) => (demarrer = r));
+  recolter.mockImplementation(async (o) => {
+    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: null });
+    // Le conteneur démarre après la première suppression, et la récolte ne finit pas.
+    await premiereSuppression;
+    lancee = true;
+    await new Promise(() => {});
+    return { etat: { statut: "ok", derniereMaj: null, derniereTentative: null } };
+  });
+  const supprimees: { id: string; lancee: boolean }[] = [];
+  atelier.supprimerRecolte = async (id) => {
+    supprimees.push({ id, lancee });
+    demarrer();
+  };
+  p = new PlanificateurWidgets({
+    chemins: c,
+    dossierWidgets,
+    recolteur: "/recolteur.mjs",
+    atelier,
+    pont: new PontFactice([], { actif: null, autoriser: false }),
+    ia: null,
+    intervalleMs: 60 * MIN,
+    recolter,
+    attenteArretMs: 100,
+  });
+  void p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(recolter).toHaveBeenCalled());
+  await p.arreter();
+  expect(supprimees).toEqual([
+    { id: "actus", lancee: false },
+    { id: "actus", lancee: true },
+  ]);
+});
+
+test("la première vérification attend que l'atelier soit prêt : pas d'« atelier arrêté » au lancement", async () => {
+  const { dossierWidgets, recolter, atelier, c, recoltes } = await preparer();
+  await p!.arreter();
+  let etat: EtatAtelier = "arrete";
+  atelier.etat = async () => etat;
+  let pret!: () => void;
+  const changements = vi.fn();
+  p = new PlanificateurWidgets({
+    chemins: c,
+    dossierWidgets,
+    recolteur: "/recolteur.mjs",
+    atelier,
+    pont: new PontFactice([], { actif: null, autoriser: false }),
+    ia: null,
+    intervalleMs: 60 * MIN,
+    recolter,
+    surChange: changements,
+    pret: new Promise<void>((r) => (pret = r)),
+  });
+  await p.demarrer();
+  await new Promise((r) => setTimeout(r, 50));
+  expect((await lireEtatWidget(dossierWidgets, "actus")).statut).not.toBe("atelier-arrete");
+  expect(changements).not.toHaveBeenCalled();
+  etat = "demarre";
+  pret();
+  await vi.waitFor(() => expect(recoltes).toEqual(["actus"]));
+});
+
+test("une récolte qui lève une erreur après avoir écrit en-cours laisse un état erreur du noyau", async () => {
+  const { p, recolter, dossierWidgets, changements } = await preparer();
+  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
+  recolter.mockImplementation(async (o) => {
+    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: DEBUT.toISOString() });
+    throw new Error("disque plein SECRET");
+  });
+  await expect(p.recolterMaintenant("actus")).resolves.toMatchObject({ statut: "erreur" });
+  const etat = await lireEtatWidget(dossierWidgets, "actus");
+  expect(etat).toEqual({
+    statut: "erreur",
+    derniereMaj: "2026-10-27T08:00:00.000Z",
+    derniereTentative: DEBUT.toISOString(),
+    erreur: ERREUR_RECOLTE_INTERNE,
+    erreurNoyau: true,
+  });
+  expect(erreurDuNoyau(ERREUR_RECOLTE_INTERNE)).toBe(true);
+  expect(changements).toHaveBeenCalled();
+  // Pareil par la vérification de fond.
+  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
+  expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
+  expect((await lireEtatWidget(dossierWidgets, "actus")).statut).toBe("erreur");
+});
+
+test("à chaque vérification, accords et données d'un widget dont le dossier a disparu sont effacés", async () => {
+  const { p, dossierWidgets, c } = await preparer();
+  for (const id of ["actus", "parti"]) {
+    await ecrireDonnees(dossierWidgets, id, { secret: id });
+    await accorder(dossierWidgets, id, { domaines: ["x.fr"], publiques: [], profil: "defaut" });
+  }
+  // Un widget illisible garde ses données : son dossier existe.
+  await ecrireWidget(c, "casse", "{", {});
+  await ecrireDonnees(dossierWidgets, "casse", { secret: "casse" });
+  await p.verifier({ auLancement: false });
+  expect(Object.keys(await lireAccords(dossierWidgets)).sort()).toEqual(["actus"]);
+  expect(existsSync(join(dossierWidgets, "parti"))).toBe(false);
+  expect(await lireDonnees(dossierWidgets, "casse")).toEqual({ secret: "casse" });
+  expect(existsSync(join(dossierWidgets, "actus"))).toBe(true);
+  // Sans dossier des widgets du tout (espace illisible), rien n'est effacé.
+  await rm(c.widgets, { recursive: true, force: true });
+  await p.verifier({ auLancement: false });
+  expect(Object.keys(await lireAccords(dossierWidgets))).toEqual(["actus"]);
 });

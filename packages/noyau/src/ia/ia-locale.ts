@@ -118,6 +118,18 @@ const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) =
 
 const attendre = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
 
+export const ERREUR_IA_FERMEE = "IA locale fermée";
+
+/**
+ * L'IA locale vue par un noyau. Une fois `fermer()` appelé (arrêt du noyau), ses appels sont refusés : une récolte en
+ * retard ne relance pas Kev. Le noyau suivant (autre profil d'agent) reçoit un nouvel accès.
+ */
+export interface AccesIa {
+  kev: IaLocale["kev"];
+  gemma: IaLocale["gemma"];
+  fermer(): Promise<void>;
+}
+
 export class IaLocale {
   private etatCourant: EtatIa = "arretee";
   private erreurCourante?: string;
@@ -126,6 +138,8 @@ export class IaLocale {
   private minuteur?: NodeJS.Timeout;
   private dernierUsage = 0;
   private generation = 0;
+  /** Fermée (le navigateur quitte) : plus rien ne démarre Kev ni n'appelle Ollama. */
+  private fermee = false;
   // Modifiable : l'adresse de Kev, imposée par WEBAIOS_KEV_URL ou calculée depuis le port.
   private kevUrl: string;
   private readonly kevImposee: boolean;
@@ -201,6 +215,7 @@ export class IaLocale {
   }
 
   async kev(corps: { state: unknown; questions: Record<string, unknown> }): Promise<unknown> {
+    if (this.fermee) throw new Error(ERREUR_IA_FERMEE);
     await this.assurerKev();
     this.dernierUsage = this.horloge();
     let r: Response;
@@ -220,6 +235,7 @@ export class IaLocale {
   }
 
   async gemma(o: { prompt: string; images?: string[]; json?: boolean }): Promise<string | unknown> {
+    if (this.fermee) throw new Error(ERREUR_IA_FERMEE);
     const message: Record<string, unknown> = { role: "user", content: o.prompt };
     if (o.images?.length) message.images = o.images;
     const corps: Record<string, unknown> = {
@@ -250,6 +266,26 @@ export class IaLocale {
     } catch {
       throw new Error("Gemma n'a pas rendu du JSON valide");
     }
+  }
+
+  /** Arrête Kev pour de bon : kev() et gemma() sont refusés ensuite (arreter(), lui, laisse relancer). */
+  async fermer(): Promise<void> {
+    this.fermee = true;
+    await this.arreter();
+  }
+
+  /** Un accès pour un noyau, fermé avec lui (voir AccesIa). */
+  acces(): AccesIa {
+    let ferme = false;
+    // Vérifié avant l'appel : kev() lance Kev de façon synchrone, avant sa première attente ; fermer() l'arrête ensuite.
+    return {
+      kev: (corps) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.kev(corps)),
+      gemma: (o) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.gemma(o)),
+      fermer: async () => {
+        ferme = true;
+        await this.arreter();
+      },
+    };
   }
 
   async arreter(): Promise<void> {

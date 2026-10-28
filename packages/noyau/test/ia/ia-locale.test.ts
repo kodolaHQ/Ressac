@@ -112,7 +112,8 @@ describe("IaLocale", () => {
       setTimeout(() => { (ia as any).kevUrl = kev.url; }, 60);
       return { arreter() {}, surSortie() {} };
     };
-    ia = new IaLocale({ dossier, executer, lancer, ...rapide });
+    // port 1 : rien n'y répond (un vrai Kev peut écouter sur 8008 pendant les tests).
+    ia = new IaLocale({ dossier, executer, lancer, port: 1, ...rapide });
     aArreter.push(ia);
     await Promise.all([ia.kev({ state: "a", questions: {} }), ia.kev({ state: "b", questions: {} })]);
     expect(n).toBe(1);
@@ -128,7 +129,7 @@ describe("IaLocale", () => {
       arreter() { setTimeout(() => sortie(null), 1); },
       surSortie(r) { sortie = r; },
     });
-    const ia = new IaLocale({ dossier, executer, lancer, ...rapide });
+    const ia = new IaLocale({ dossier, executer, lancer, port: 1, ...rapide });
     aArreter.push(ia);
     const appel = ia.kev({ state: "", questions: {} }).catch((e) => e);
     await new Promise((r) => setTimeout(r, 40));
@@ -163,6 +164,64 @@ describe("IaLocale", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(ia.etat().etat).toBe("arretee");
     expect(arrete).toBe(1);
+  });
+
+  it("arreter() au repos laisse relancer Kev ; fermer() refuse ensuite kev() et gemma() sans rien lancer", async () => {
+    const dossier = await dossierTemporaire();
+    await mkdir(join(dossier, "kev", ".git"), { recursive: true });
+    const kev = garder(await fauxKev());
+    const ollama = garder(await fauxOllama("ok"));
+    const { executer } = executeurFactice([]);
+    let lances = 0;
+    let ia!: IaLocale;
+    const lancer = (): ProcessusIa => {
+      lances++;
+      (ia as any).kevUrl = kev.url;
+      return { arreter() {}, surSortie() {} };
+    };
+    ia = new IaLocale({ dossier, executer, lancer, ollamaUrl: ollama.url, ...rapide });
+    aArreter.push(ia);
+    await ia.arreter();
+    await ia.kev({ state: "", questions: {} });
+    expect(lances).toBe(1);
+    await ia.arreter();
+    await ia.kev({ state: "", questions: {} });
+    expect(lances).toBe(2);
+    await ia.fermer();
+    expect(ia.etat().etat).toBe("arretee");
+    await expect(ia.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
+    await expect(ia.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");
+    expect(lances).toBe(2);
+    expect(ollama.requetes).toHaveLength(0);
+  });
+
+  it("accès d'un noyau : une fois fermé, il refuse et arrête Kev ; un autre accès relance Kev", async () => {
+    const dossier = await dossierTemporaire();
+    await mkdir(join(dossier, "kev", ".git"), { recursive: true });
+    const kev = garder(await fauxKev());
+    const { executer } = executeurFactice([]);
+    let lances = 0;
+    let arretes = 0;
+    let ia!: IaLocale;
+    const lancer = (): ProcessusIa => {
+      lances++;
+      (ia as any).kevUrl = kev.url;
+      return { arreter() { arretes++; }, surSortie() {} };
+    };
+    ia = new IaLocale({ dossier, executer, lancer, ...rapide });
+    aArreter.push(ia);
+    const premier = ia.acces();
+    await premier.kev({ state: "", questions: {} });
+    await premier.fermer();
+    expect(arretes).toBe(1);
+    expect(ia.etat().etat).toBe("arretee");
+    // Une récolte en retard du noyau arrêté ne relance pas Kev.
+    await expect(premier.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
+    await expect(premier.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");
+    expect(lances).toBe(1);
+    // Le noyau suivant (autre profil d'agent) a son propre accès.
+    await ia.acces().kev({ state: "", questions: {} });
+    expect(lances).toBe(2);
   });
 
   it("installer() enchaîne uv, git clone kev-1.0, uv sync, ollama pull, et reprend une installation partielle", async () => {

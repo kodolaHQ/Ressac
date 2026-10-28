@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { readdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
 import { ecrireEtatWidget, lireEtatWidget } from "../accueil/donnees.js";
 import { lireAccueil } from "../accueil/lire.js";
@@ -5,14 +8,16 @@ import type { EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import type { PontNavigateur } from "../mcp/pont.js";
-import { ERREUR_ATELIER_ARRETE, executerRecolte, type OptionsRecolte } from "./recolte.js";
+import { lireAccords, retirerAccord } from "./accords.js";
+import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, executerRecolte, type OptionsRecolte } from "./recolte.js";
 
-export { ERREUR_ATELIER_ARRETE };
+export { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE };
 
 const MINUTE = 60_000;
 /** Une récolte en erreur est retentée au plus tôt 15 min après sa dernière tentative. */
 const REESSAI_ERREUR_MS = 15 * MINUTE;
 const ATTENTE_ARRET_MS = 15_000;
+const ID_WIDGET = /^[a-z0-9-]+$/;
 
 const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime() - Date.parse(iso) : Infinity);
 
@@ -49,6 +54,13 @@ export interface OptionsPlanificateur {
   recolter?: Recolteuse;
   /** Tests seulement : les récoltes peuvent lire des adresses locales (voir OptionsRecolte). */
   adressesLocales?: boolean;
+  /**
+   * Démarrage de l'atelier : aucune vérification ni récolte avant sa fin (sinon chaque lancement afficherait un bref
+   * « atelier arrêté » pendant que le conteneur démarre).
+   */
+  pret?: Promise<unknown>;
+  /** Attente bornée d'une récolte en cours à l'arrêt (15 s par défaut). */
+  attenteArretMs?: number;
 }
 
 /** Lance les récoltes des widgets en arrière-plan, une à la fois, tant que le navigateur est ouvert. */
@@ -94,26 +106,73 @@ export class PlanificateurWidgets {
     return (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
   }
 
+  private async attendrePret(): Promise<void> {
+    await this.o.pret?.catch(() => {});
+  }
+
   private async verifierMaintenant(o: { auLancement: boolean }): Promise<string[]> {
+    await this.attendrePret();
+    if (this.arrete) return [];
+    await this.enchainer(() => this.oublierWidgetsDisparus());
     const dus = (await this.widgets()).filter((w) => widgetDu(w, this.o.horloge(), o)).map((w) => w.id);
     if (!dus.length) return [];
     const recoltes: string[] = [];
     for (const id of dus) {
       if (this.arrete) break;
       // Relu sous le verrou : une récolte demandée entre-temps a pu le mettre à jour.
-      const fait = await this.enchainer(async () => {
-        const w = (await this.widgets()).find((x) => x.id === id);
-        if (!w || !widgetDu(w, this.o.horloge(), o) || this.arrete) return false;
-        if (!(await this.atelierDemarre())) {
-          await this.marquerAtelierArrete(w);
-          return false;
-        }
-        await this.recolter(w);
-        return true;
-      });
+      const fait = await this.enchainer(() =>
+        this.enCours(id, async () => {
+          const w = (await this.widgets()).find((x) => x.id === id);
+          if (!w || !widgetDu(w, this.o.horloge(), o) || this.arrete) return false;
+          if (!(await this.atelierDemarre())) {
+            await this.marquerAtelierArrete(w);
+            return false;
+          }
+          if (this.arrete) return false;
+          await this.recolter(w);
+          return true;
+        }),
+      );
       if (fait) recoltes.push(id);
     }
     return recoltes;
+  }
+
+  /**
+   * Un widget dont le dossier a disparu perd son accord et ses données (état compris) : recréé plus tard sous le même
+   * id, il n'hérite ni du consentement de l'utilisateur ni de ce qui a été lu avec. Rien n'est effacé si le dossier des widgets
+   * lui-même manque (espace illisible ou pas encore créé).
+   */
+  private async oublierWidgetsDisparus(): Promise<void> {
+    if (!existsSync(this.o.chemins.widgets)) return;
+    const presents = new Set((await this.widgets()).map((w) => w.id));
+    const { dossierWidgets } = this.o;
+    let change = false;
+    for (const id of Object.keys(await lireAccords(dossierWidgets))) {
+      if (presents.has(id)) continue;
+      await retirerAccord(dossierWidgets, id);
+      change = true;
+    }
+    const dossiers = await readdir(dossierWidgets, { withFileTypes: true }).catch(() => []);
+    for (const d of dossiers) {
+      if (!d.isDirectory() || !ID_WIDGET.test(d.name) || presents.has(d.name)) continue;
+      await rm(join(dossierWidgets, d.name), { recursive: true, force: true });
+      change = true;
+    }
+    if (change) this.o.surChange?.();
+  }
+
+  /**
+   * Marque `id` comme la récolte en cours dès son tour venu (avant toute attente), pour qu'un arrêt à n'importe quel
+   * moment sache quel conteneur supprimer.
+   */
+  private async enCours<T>(id: string, f: () => Promise<T>): Promise<T> {
+    this.courant = id;
+    try {
+      return await f();
+    } finally {
+      if (this.courant === id) this.courant = null;
+    }
   }
 
   private enchainer<T>(f: () => Promise<T>): Promise<T> {
@@ -144,7 +203,6 @@ export class PlanificateurWidgets {
 
   private async recolter(w: WidgetLu): Promise<EtatWidget> {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
-    this.courant = w.id;
     let etat: EtatWidget;
     try {
       ({ etat } = await this.o.recolter({
@@ -159,8 +217,16 @@ export class PlanificateurWidgets {
         ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
         ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
       }));
-    } finally {
-      this.courant = null;
+    } catch (e) {
+      // La récolte a pu écrire en-cours avant d'échouer (disque, conteneur…) : le widget ne doit pas y rester. Le texte
+      // de l'exception n'est pas gardé (il peut citer ce que le widget a lu) : seul un message fixe du noyau l'est.
+      console.error(`[webaios] récolte du widget ${w.id} :`, e);
+      etat = this.arrete
+        ? avant
+        : { statut: "erreur", derniereMaj: avant.derniereMaj, derniereTentative: this.o.horloge().toISOString(), erreur: ERREUR_RECOLTE_INTERNE, erreurNoyau: true };
+      await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
+      this.o.surChange?.();
+      return etat;
     }
     // Arrêt du noyau pendant la récolte (sortie, changement de profil) : elle n'a pas échoué, elle reprendra plus tard.
     if (this.arrete && etat.statut === "erreur") {
@@ -172,14 +238,18 @@ export class PlanificateurWidgets {
   }
 
   /** Récolte ce widget tout de suite (après la récolte en cours) et rend son nouvel état. */
-  recolterMaintenant(id: string): Promise<EtatWidget> {
-    return this.enchainer(async () => {
-      const w = (await this.widgets()).find((x) => x.id === id);
-      if (!w) throw new Error(`Widget inconnu : ${id}`);
-      if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
-      if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
-      return this.recolter(w);
-    });
+  async recolterMaintenant(id: string): Promise<EtatWidget> {
+    await this.attendrePret();
+    return this.enchainer(() =>
+      this.enCours(id, async () => {
+        const w = (await this.widgets()).find((x) => x.id === id);
+        if (!w) throw new Error(`Widget inconnu : ${id}`);
+        if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
+        if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
+        if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
+        return this.recolter(w);
+      }),
+    );
   }
 
   /** Coupe la minuterie ; une récolte en cours est tuée dans son conteneur et attendue, de façon bornée. */
@@ -189,7 +259,9 @@ export class PlanificateurWidgets {
     if (this.courant) await this.o.atelier.supprimerRecolte(this.courant).catch(() => {});
     // Borné : quitter le navigateur ne doit pas attendre une récolte qui aurait échappé à l'arrêt.
     let minuterie: NodeJS.Timeout | undefined;
-    await Promise.race([this.file.catch(() => {}), new Promise((ok) => (minuterie = setTimeout(ok, ATTENTE_ARRET_MS)))]);
+    await Promise.race([this.file.catch(() => {}), new Promise((ok) => (minuterie = setTimeout(ok, this.o.attenteArretMs ?? ATTENTE_ARRET_MS)))]);
     clearTimeout(minuterie);
+    // Toujours pas finie : son conteneur a pu démarrer après la première suppression.
+    if (this.courant) await this.o.atelier.supprimerRecolte(this.courant).catch(() => {});
   }
 }

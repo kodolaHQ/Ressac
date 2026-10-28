@@ -74,6 +74,7 @@ export const PROFIL_REFUSE =
   "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
 export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
 export const ERREUR_ATELIER_ARRETE = "Mise à jour impossible : atelier arrêté";
+export const ERREUR_RECOLTE_INTERNE = "Mise à jour impossible : erreur interne du navigateur";
 
 /** Messages d'erreur fixes écrits par le noyau ; tout autre texte d'erreur a pu être écrit par le widget. */
 const ERREURS_FIXES = new Set([
@@ -81,11 +82,11 @@ const ERREURS_FIXES = new Set([
   "Réponse trop grande",
   PROFIL_REFUSE,
   ERREUR_ATELIER_ARRETE,
+  ERREUR_RECOLTE_INTERNE,
   "Ce widget n'a pas de recolte.mjs",
   "Données trop grosses (2 Mo au plus)",
 ]);
 const ERREURS_MOTIFS = [
-  /^La récolte s'est arrêtée sans résultat \(code (\d+|aucun)\)$/,
   // Les domaines déclarés n'ont que [a-z0-9.-] ; le message a pu être tronqué (« … »).
   /^Accord requis pour lire avec ton compte : [a-z0-9., -]*…?$/,
 ];

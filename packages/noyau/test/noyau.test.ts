@@ -177,11 +177,14 @@ test("noyau : arreter() arrête le planificateur et l'IA locale", async () => {
     await original.call(this);
     ordre.push("planificateur");
   });
-  const ia = { arreter: vi.fn(async () => void ordre.push("ia")) } as unknown as IaLocale;
+  // Le noyau ferme son propre accès à l'IA (une récolte en retard ne relance pas Kev), pas l'IA partagée.
+  const acces = { kev: vi.fn(), gemma: vi.fn(), fermer: vi.fn(async () => void ordre.push("ia")) };
+  const ia = { acces: () => acces, arreter: vi.fn() } as unknown as IaLocale;
   const n = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, ia });
   expect(n.ia).toBe(ia);
   await n.arreter();
   expect(ordre).toEqual(["planificateur", "ia"]);
+  expect(ia.arreter).not.toHaveBeenCalled();
   planif.mockRestore();
 });
 
@@ -207,7 +210,7 @@ test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance
     declarationWidget(undefined, { recolte: { minutes: 60 }, sources: { compte: ["b.dev", "a.dev"], publiques: ["z.com", "y.com"] } }),
     { "recolte.mjs": "export default () => 1" },
   );
-  await noyau.accorder("daily", "perso");
+  await noyau.accorder({ id: "daily", profil: "perso", compte: ["a.dev", "b.dev"], publiques: ["z.com", "y.com"] });
   expect((await lireAccords(dossierWidgets)).daily).toEqual({ domaines: ["a.dev", "b.dev"], publiques: ["y.com", "z.com"], profil: "perso" });
   expect(surChange).toHaveBeenCalled();
   // Docker absent : la récolte lancée aboutit à « atelier arrêté ».
@@ -227,7 +230,28 @@ test("noyau : accorder refuse un widget sans compte", async () => {
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   await ecrireWidget(noyau.chemins, "meteo", declarationWidget());
-  await expect(noyau.accorder("meteo", "perso")).rejects.toThrow(/compte/);
+  await expect(noyau.accorder({ id: "meteo", profil: "perso", compte: [], publiques: [] })).rejects.toThrow(/compte/);
+});
+
+test("noyau : accorder refuse si la déclaration n'est plus celle montrée à l'utilisateur (compte ou publiques)", async () => {
+  const racine = await dossierTemporaire();
+  const dossierWidgets = `${racine}-widgets`;
+  const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
+  noyau = await creerNoyau({ dossierWidgets, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  await ecrireWidget(
+    noyau.chemins,
+    "daily",
+    declarationWidget(undefined, { recolte: { minutes: 60 }, sources: { compte: ["app.daily.dev"], publiques: ["espion.example"] } }),
+    { "recolte.mjs": "export default () => 1" },
+  );
+  // Montré sans le domaine public (ancienne déclaration) : refusé.
+  await expect(noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev"], publiques: [] })).rejects.toThrow(/a changé/);
+  await expect(noyau.accorder({ id: "daily", profil: "perso", compte: ["autre.dev"], publiques: ["espion.example"] })).rejects.toThrow(/a changé/);
+  await expect(noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev", "app.daily.dev"], publiques: ["espion.example"] })).rejects.toThrow(/a changé/);
+  expect(await lireAccords(dossierWidgets)).toEqual({});
+  // Exactement ce qui est déclaré : accordé.
+  await noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev"], publiques: ["espion.example"] });
+  expect((await lireAccords(dossierWidgets)).daily).toEqual({ domaines: ["app.daily.dev"], publiques: ["espion.example"], profil: "perso" });
 });
 
 test("noyau : refuserAccord efface les données ; compte retiré ensuite → donnees_widget ne rend rien du compte", async () => {
@@ -237,7 +261,7 @@ test("noyau : refuserAccord efface les données ; compte retiré ensuite → don
   noyau = await creerNoyau({ dossierWidgets, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   const decl = (compte: string[]) => declarationWidget(undefined, { recolte: { minutes: 60 }, sources: { compte, publiques: [] } });
   await ecrireWidget(noyau.chemins, "daily", decl(["app.daily.dev"]), { "recolte.mjs": "export default () => 1" });
-  await noyau.accorder("daily", "perso");
+  await noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev"], publiques: [] });
   await ecrireDonnees(dossierWidgets, "daily", { secret: "du compte" });
   await noyau.refuserAccord("daily");
   expect(await lireDonnees(dossierWidgets, "daily")).toBeNull();

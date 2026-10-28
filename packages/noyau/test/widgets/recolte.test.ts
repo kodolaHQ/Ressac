@@ -602,7 +602,8 @@ describe("executerRecolte, widget avec compte", () => {
     expect(erreurDuNoyau("Délai dépassé")).toBe(true);
     expect(erreurDuNoyau("Réponse trop grande")).toBe(true);
     expect(erreurDuNoyau("Accord requis pour lire avec ton compte : app.daily.dev")).toBe(true);
-    expect(erreurDuNoyau("La récolte s'est arrêtée sans résultat (code 1)")).toBe(true);
+    // Écrit avec le code de sortie du widget : compte comme texte du widget.
+    expect(erreurDuNoyau("La récolte s'est arrêtée sans résultat (code 1)")).toBe(false);
     expect(erreurDuNoyau("Mise à jour impossible : atelier arrêté")).toBe(true);
     expect(erreurDuNoyau("SECRET")).toBe(false);
     expect(erreurDuNoyau("Délai dépassé SECRET")).toBe(false);

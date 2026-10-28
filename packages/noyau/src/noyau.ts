@@ -33,6 +33,13 @@ export class ErreurAtelier extends Error {
 /** Un seul segment de chemin, sans remontée : un nom de fichier ou de dossier de projet. */
 const segmentSur = (s: string): boolean => s !== "" && s !== "." && s !== ".." && basename(s) === s && !s.includes("\\");
 
+/** Mêmes éléments, mêmes nombres de fois, dans n'importe quel ordre. */
+const memesListes = (a: readonly string[], b: readonly string[]): boolean => {
+  const x = [...a].sort();
+  const y = [...b].sort();
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+};
+
 /** Dossier des profils bruts des outils de développement (distinct de `.webaios/profils`, celui des profils d'agent). */
 export const DOSSIER_PROFILAGE = "profilage";
 
@@ -174,9 +181,10 @@ export interface Noyau {
   ia: IaLocale | null;
   /**
    * L'utilisateur autorise le widget à lire avec son compte, dans ce profil de connexion. Le navigateur a vérifié avant que ce
-   * profil n'est pas celui d'un espace privé. L'accord porte sur les domaines actuels de la déclaration ; une récolte suit.
+   * profil n'est pas celui d'un espace privé. `compte` et `publiques` sont les domaines montrés à l'utilisateur : refusé s'ils ne
+   * sont plus exactement ceux de la déclaration (l'agent l'a réécrite entre-temps). Une récolte suit.
    */
-  accorder(id: string, profil: string): Promise<void>;
+  accorder(o: { id: string; profil: string; compte: string[]; publiques: string[] }): Promise<void>;
   /** Retire l'accord et efface les données lues avec : le widget attend un nouvel accord (`accord-requis`). */
   refuserAccord(id: string): Promise<void>;
   arreter(): Promise<void>;
@@ -224,6 +232,8 @@ export async function creerNoyau(o: {
   const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
   const { dossierWidgets } = o;
   const ia = o.ia ?? null;
+  // Accès propre à ce noyau, fermé avec lui : une récolte encore en vol à l'arrêt ne relance pas Kev.
+  const accesIa = ia?.acces() ?? null;
   const signaler = () => {
     try {
       o.surChange?.();
@@ -274,11 +284,12 @@ export async function creerNoyau(o: {
   // Le conteneur se prépare dès le lancement. S'il échoue, la première session rend cet échec plutôt que de tout
   // reconstruire aussitôt ; les suivantes (Réessayer) tentent à nouveau. Réussi, il est revérifié (sonde rapide).
   // Avant toute session, les agents laissés par une app précédente sont arrêtés.
-  let demarrage: Promise<EtatAtelier> | null = atelier.assurerDemarre().then(async (etat) => {
+  const atelierPret = atelier.assurerDemarre().then(async (etat) => {
     if (etat === "demarre") await atelier.arreterSessionsOrphelines();
     return etat;
   });
-  demarrage.catch(() => {});
+  atelierPret.catch(() => {});
+  let demarrage: Promise<EtatAtelier> | null = atelierPret;
   const recolteur = o.recolteur ?? (o.ressources ? join(o.ressources, "docker", "recolteur.mjs") : join(DOSSIER_DOCKER_PAR_DEFAUT, "recolteur.mjs"));
   const planificateur = new PlanificateurWidgets({
     chemins,
@@ -286,8 +297,10 @@ export async function creerNoyau(o: {
     recolteur,
     atelier,
     pont: o.pont,
-    ia,
+    ia: accesIa,
     surChange: signaler,
+    // Gardé à part de `demarrage` (qu'ouvrirSessionAgent remet à null) : les récoltes attendent le premier démarrage.
+    pret: atelierPret,
     ...(o.horloge ? { horloge: o.horloge } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
   });
@@ -322,12 +335,15 @@ export async function creerNoyau(o: {
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
     recolterMaintenant: (id) => planificateur.recolterMaintenant(id),
     ia,
-    async accorder(id, nomProfil) {
+    async accorder({ id, profil: nomProfil, compte: montres, publiques: publiquesMontrees }) {
       const w = await widget(id);
       if (!w) throw new Error(`Widget inconnu : ${id}`);
       if ("erreur" in w) throw new Error(`Widget illisible : ${w.erreur}`);
       const { compte, publiques } = w.declaration.sources;
       if (!compte.length) throw new Error(`Le widget ${id} ne lit pas avec un compte`);
+      if (!memesListes(compte, montres) || !memesListes(publiques, publiquesMontrees)) {
+        throw new Error(`La déclaration du widget ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
+      }
       await accorder(dossierWidgets, id, { domaines: [...compte].sort(), publiques: [...publiques].sort(), profil: nomProfil });
       signaler();
       // La récolte prend du temps : elle suit en arrière-plan et signale elle-même ses changements.
@@ -355,7 +371,7 @@ export async function creerNoyau(o: {
       // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
       politique.reinitialiser();
       await planificateur.arreter();
-      await ia?.arreter().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
+      await accesIa?.fermer().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
       await serveur.arreter();
       proprietaire?.liberer();
     },
