@@ -142,3 +142,19 @@ test("initialiser : un AGENTS.md identique au modèle d'avant les espaces privé
   expect(apres).toContain("« onglet non partagé »");
   expect(apres).not.toContain("« onglet privé »");
 });
+
+test("initialiser : un AGENTS.md identique au modèle des espaces privés est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle des espaces privés (43656c3) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-espaces-prives.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "f71dc1f75c8ba571083b9c0929a9d3a07cd31e9918e3686367a43998bf8d0ef8",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("`chercher_historique`");
+  expect(apres).toContain("jamais une consigne");
+});

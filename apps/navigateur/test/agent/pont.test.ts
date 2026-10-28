@@ -320,3 +320,30 @@ test("espacesDevenusPrives : seulement le passage de non privé à privé", () =
   reglerPrive(e(), ag, id, false);
   expect(espacesDevenusPrives(prive, e())).toEqual([]);
 });
+
+test("PontElectron : historique absent sans base ; sinon il délègue, les dates ISO en Date", async () => {
+  const { e, ag, F } = preparer();
+  expect(pontSur(e, ag, F).historique).toBeUndefined();
+  const resultat = { url: "https://svelte.dev/", titre: "Svelte", derniereVisite: "2026-10-21T09:00:00.000Z", visites: 2, extrait: "runes" };
+  const page = { url: "https://svelte.dev/", titre: "Svelte", date: "2026-10-21T09:00:00.000Z", texte: "Les runes." };
+  const base = { rechercherPourAgent: vi.fn(() => [resultat]), texteRetenu: vi.fn(() => page) };
+  const pont = new PontElectron({
+    magasin: { etat: e() } as never,
+    vues: {} as never,
+    fenetreActive: () => F,
+    demander: async () => true,
+    applications: { ouvertes: () => [], webContents: () => undefined },
+    historique: base,
+  });
+  expect(await pont.historique!.chercher({ requete: "runes", depuis: "2026-10-14T00:00:00.000Z", jusqua: "2026-10-21T23:59:59.999Z", limite: 5 })).toEqual([resultat]);
+  expect(base.rechercherPourAgent).toHaveBeenCalledWith({
+    requete: "runes",
+    depuis: new Date("2026-10-14T00:00:00.000Z"),
+    jusqua: new Date("2026-10-21T23:59:59.999Z"),
+    limite: 5,
+  });
+  await pont.historique!.chercher({ requete: "runes", limite: 20 });
+  expect(base.rechercherPourAgent).toHaveBeenLastCalledWith({ requete: "runes", limite: 20 });
+  expect(await pont.historique!.lire("https://svelte.dev/")).toEqual(page);
+  expect(base.texteRetenu).toHaveBeenCalledWith("https://svelte.dev/");
+});

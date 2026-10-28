@@ -4,11 +4,14 @@ import {
   OngletIntrouvable,
   OngletPrive,
   OutilsDevOccupes,
+  type HistoriqueNavigateur,
   type MessageConsole,
   type OngletInfo,
+  type PageRetenue,
   type OutilsDevNavigateur,
   type PontNavigateur,
   type RequeteReseau,
+  type ResultatHistorique,
   type ResultatJs,
 } from "./pont.js";
 
@@ -143,21 +146,50 @@ export class PontFactice implements PontNavigateur {
   /** Onglets dans un espace privé : invisibles, comme dans le vrai navigateur. */
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
+  readonly historique?: HistoriqueNavigateur;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
    * `outilsDev` fournit les outils de développement simulés ; `accorderDev` fournit aussi la carte de consentement,
-   * qui répond ces droits. `bloquer` : profils et instantanés ne finissent qu'à l'abandon.
+   * qui répond ces droits. `bloquer` : profils et instantanés ne finissent qu'à l'abandon. `historique` fournit
+   * l'historique : `chercher` renvoie `resultats` (au plus `limite`), `lire` la page de `textes` à cette URL, et
+   * `erreur`, si donnée, fait échouer les deux.
    */
   constructor(
     onglets: OngletInfo[],
-    o: { actif: string | null; autoriser: boolean; outilsDev?: boolean; accorderDev?: DroitDev[]; bloquer?: boolean },
+    o: {
+      actif: string | null;
+      autoriser: boolean;
+      outilsDev?: boolean;
+      accorderDev?: DroitDev[];
+      bloquer?: boolean;
+      historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
+    },
   ) {
     this.onglets = onglets.map((x) => ({ ...x }));
     this.actif = o.actif;
     this.autoriser = o.autoriser;
     if (o.outilsDev || o.accorderDev) {
       this.outilsDev = new OutilsDevFactice((m, ...a) => this.noter(m, ...a), (id) => this.trouver(id), o.bloquer ?? false);
+    }
+    const h = o.historique;
+    if (h) {
+      const echouer = () => {
+        if (h.erreur) throw new Error(h.erreur);
+      };
+      this.historique = {
+        chercher: async (q) => {
+          this.noter("chercherHistorique", { ...q });
+          echouer();
+          return h.resultats.slice(0, q.limite).map((r) => ({ ...r }));
+        },
+        lire: async (url) => {
+          this.noter("lireHistorique", url);
+          echouer();
+          const p = h.textes?.find((x) => x.url === url);
+          return p ? { ...p } : null;
+        },
+      };
     }
     const accorder = o.accorderDev;
     if (accorder) {

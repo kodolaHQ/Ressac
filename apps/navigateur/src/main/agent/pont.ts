@@ -1,7 +1,8 @@
 import type { WebContents } from "electron";
-import { OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
+import { OngletIntrouvable, OngletPrive, type DroitDev, type HistoriqueNavigateur, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur } from "@webaios/noyau";
 import { ongletPrive, type Decision, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
+import type { Historique } from "../historique";
 import type { Magasin } from "../ipc";
 import { InspecteurCdp } from "../outils-dev/inspecteur";
 
@@ -175,6 +176,9 @@ export class PontElectron implements PontNavigateur {
     return o && !ongletPrive(etat, o) ? (this.o.vues.vue(id) ?? undefined) : undefined;
   });
 
+  /** L'historique pour l'agent : les seules visites non privées (voir Historique.rechercherPourAgent). */
+  readonly historique?: HistoriqueNavigateur;
+
   constructor(
     private readonly o: {
       magasin: Magasin;
@@ -185,8 +189,25 @@ export class PontElectron implements PontNavigateur {
       /** Carte de consentement des outils de développement ; absente, tout est refusé. */
       demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
       applications: FenetresPourAgent;
+      /** Historique de navigation ; absent, l'agent n'a pas d'outils d'historique. */
+      historique?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">;
     },
-  ) {}
+  ) {
+    const h = o.historique;
+    if (h) {
+      this.historique = {
+        // Le noyau a vérifié les dates ISO et borné la limite.
+        chercher: async ({ requete, depuis, jusqua, limite }) =>
+          h.rechercherPourAgent({
+            requete,
+            limite,
+            ...(depuis !== undefined ? { depuis: new Date(depuis) } : {}),
+            ...(jusqua !== undefined ? { jusqua: new Date(jusqua) } : {}),
+          }),
+        lire: async (url) => h.texteRetenu(url),
+      };
+    }
+  }
 
   /** La fenêtre d'une appli si `id` est `app:<dossier>` ; undefined pour un onglet ordinaire. */
   private fenetreAppli(id: string): WebContents | undefined {

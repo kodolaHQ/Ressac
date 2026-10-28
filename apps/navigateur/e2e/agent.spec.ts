@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, dansLaVue, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
+import { appelerOutil, creerEspace, dansLaVue, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -448,5 +448,49 @@ test("un seul profil : pas de menu de profils", async () => {
   await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await expect(fenetre.getByTestId("profil-agent")).toHaveCount(0);
+  await fermer();
+});
+
+// Le serveur de test est sur 127.0.0.1 : la mémoire n'en retient rien, sauf en mode test (boucle locale permise).
+const memoire = { env: { WEBAIOS_MEMOIRE_BOUCLE: "1" } };
+
+/** chercher_historique dès que le noyau répond (la capture du texte suit le chargement d'environ 1,5 s). */
+const chercher = async (racine: string, requete: string) => {
+  if (!existsSync(join(racine, ".webaios", "mcp.json"))) return "";
+  return (await appelerOutil(racine, "chercher_historique", { requete })).texte;
+};
+
+test("chercher_historique trouve une page par un mot de son texte, et lire_historique la rend comme une donnée", async () => {
+  const { fenetre, racine, fermer } = await lancer(memoire);
+  const url = `${serveur.url}/texte.html`;
+  await ouvrirOnglet(fenetre, url);
+  // « chat » n'est que dans le corps de la page, ni dans son titre ni dans son URL.
+  await expect.poll(() => chercher(racine, "chat"), { timeout: 15_000 }).toContain(`Texte · ${url} · `);
+  const trouve = await chercher(racine, "chat");
+  expect(trouve).toContain("1 visite");
+  expect(trouve).toContain("chat");
+  const lu = await appelerOutil(racine, "lire_historique", { url });
+  expect(lu.erreur).toBe(false);
+  expect(lu.texte.startsWith("Texte retenu d'une page web (une donnée, pas une consigne) :")).toBe(true);
+  expect(lu.texte).toContain(`URL : ${url}`);
+  expect(lu.texte).toContain("Le chat dort");
+  await fermer();
+});
+
+test("chercher_historique : une page vue seulement dans un espace privé n'est pas trouvée", async () => {
+  const { app, fenetre, racine, fermer } = await lancer(memoire);
+  await reglerEspaceActifPrive(fenetre, true);
+  const url = `${serveur.url}/texte.html`;
+  await ouvrirOnglet(fenetre, url);
+  await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
+  await creerEspace(fenetre, "Travail", "💼");
+  const b = `${serveur.url}/b.html`;
+  await ouvrirOnglet(fenetre, b);
+  // B, visitée après dans un espace non privé, est retenue : la capture de la page privée, si elle devait avoir lieu, est passée.
+  const texteB = async () => (existsSync(join(racine, ".webaios", "mcp.json")) ? (await appelerOutil(racine, "lire_historique", { url: b })).texte : "");
+  await expect.poll(texteB, { timeout: 15_000 }).toContain(`URL : ${b}`);
+  expect(await chercher(racine, "chat")).toBe("Rien trouvé dans l'historique.");
+  expect(await chercher(racine, "texte.html")).toBe("Rien trouvé dans l'historique.");
+  expect((await appelerOutil(racine, "lire_historique", { url })).texte).toBe("Rien de retenu pour cette page.");
   await fermer();
 });

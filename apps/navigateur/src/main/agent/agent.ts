@@ -14,6 +14,7 @@ import {
   type OutilsApplications,
 } from "@webaios/noyau";
 import type { IdFenetre } from "../../commun/modele";
+import type { Historique } from "../historique";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import { changementsPolitique, ongletActifDe, PontElectron, type FenetresPourAgent } from "./pont";
@@ -76,10 +77,20 @@ export function demarrerAgent(o: {
   fenetresApplications: FenetresPourAgent;
   /** Dossier du profil du navigateur, hors de l'espace monté, où restent les profils bruts des sites tiers. */
   dossierProfilage: string;
+  /** Historique de navigation, cherché par l'agent (chercher_historique, lire_historique). */
+  historique?: Historique;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
-  const pont = new PontElectron({ magasin: o.magasin, vues: o.vues, fenetreActive: o.fenetreActive, demander: o.demanderLecture, demanderOutilsDev: o.demanderOutilsDev, applications: o.fenetresApplications });
+  const pont = new PontElectron({
+    magasin: o.magasin,
+    vues: o.vues,
+    fenetreActive: o.fenetreActive,
+    demander: o.demanderLecture,
+    demanderOutilsDev: o.demanderOutilsDev,
+    applications: o.fenetresApplications,
+    ...(o.historique ? { historique: o.historique } : {}),
+  });
   // La politique d'accès suit ce que fait l'utilisateur : changer de site ou fermer un onglet retire l'accès (spec §8.2).
   o.magasin.abonner((etat, avant) => {
     if (!noyau) return;

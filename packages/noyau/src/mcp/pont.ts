@@ -33,6 +33,8 @@ export interface PontNavigateur {
   estPrive?(id: string): boolean;
   /** L'onglet que l'utilisateur regarde est dans un espace privé (ongletActif renvoie alors null). */
   ongletActifPrive?(): boolean;
+  /** Historique et texte retenu des pages, faits des seules visites non privées (absent : pas d'outils d'historique). */
+  historique?: HistoriqueNavigateur;
 }
 
 export interface MessageConsole {
@@ -104,6 +106,22 @@ export interface ResultatHistorique {
   visites: number;
   /** Environ 300 caractères du texte retenu autour des mots cherchés ; vide si la page n'a pas de texte trouvé. */
   extrait: string;
+}
+
+/** Une page dont le texte a été retenu, telle que lue par l'agent. */
+export interface PageRetenue {
+  url: string;
+  titre: string;
+  date: string; // ISO
+  texte: string;
+}
+
+/** Ce que le navigateur fournit pour chercher dans l'historique : jamais une visite d'un espace privé. */
+export interface HistoriqueNavigateur {
+  /** `depuis` et `jusqua` : dates ISO déjà vérifiées par le noyau ; `limite` entre 1 et 50. */
+  chercher(q: { requete: string; depuis?: string; jusqua?: string; limite: number }): Promise<ResultatHistorique[]>;
+  /** Le texte retenu le plus récent de la page, ou null (inconnue, ou vue seulement dans un espace privé). */
+  lire(url: string): Promise<PageRetenue | null>;
 }
 
 export const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
