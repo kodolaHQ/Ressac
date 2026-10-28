@@ -126,6 +126,33 @@ describe("widgets de départ", () => {
     expect(lp.every((a) => a.a.compte === undefined || a.a.compte === false)).toBe(true);
   });
 
+  it("actus-tech résume deux articles à la fois et s'arrête quand le temps des résumés est écoulé", async () => {
+    let enVol = 0;
+    let max = 0;
+    const r = await lancer(
+      "actus-tech",
+      async (a) => {
+        if (a.f === "recuperer") return flux[a.a.url] !== undefined ? { ok: flux[a.a.url] } : { erreur: "inconnu" };
+        if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
+        if (a.f === "lirePage") return { ok: { url: a.a.url, titre: "T", texte: "contenu", liens: [] } };
+        if (a.f === "gemma") {
+          max = Math.max(max, ++enVol);
+          await new Promise((ok) => setTimeout(ok, 400));
+          enVol--;
+          return { ok: "Un résumé." };
+        }
+        return { erreur: "?" };
+      },
+      null,
+      { resumesMaxMs: 300 },
+    );
+    expect(r.terminal.t).toBe("fin");
+    expect(max).toBe(2);
+    // La première paire finit après le budget : aucune autre n'est commencée.
+    expect(r.appels.filter((a) => a.f === "gemma")).toHaveLength(2);
+    expect(r.terminal.donnees.articles.filter((x: any) => x.resume)).toHaveLength(2);
+  });
+
   it("actus-tech : une source en échec n'empêche pas les autres", async () => {
     const r = await lancer("actus-tech", (a) => {
       if (a.f === "recuperer") {
