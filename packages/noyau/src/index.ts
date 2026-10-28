@@ -22,4 +22,5 @@ export * from "./veille/planificateur.js";
 export * from "./outils-dev/resumes.js";
 export * from "./outils-dev/suivi.js";
 export * from "./mcp/outils-dev.js";
+export * from "./ia/ia-locale.js";
 export * from "./noyau.js";
