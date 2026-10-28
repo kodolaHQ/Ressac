@@ -7,6 +7,8 @@ export interface CheminsEspace {
   racine: string;
   accueil: string;
   blocs: string;
+  /** Widgets de la page d'accueil (code et affichage ; les données sont hors de l'espace). */
+  widgets: string;
   disposition: string;
   projets: string;
   /** Dossier interne `.webaios` (profils, config MCP). */
@@ -25,6 +27,7 @@ export function cheminsEspace(racine?: string): CheminsEspace {
     racine: r,
     accueil,
     blocs: join(accueil, "blocs"),
+    widgets: join(accueil, "widgets"),
     disposition: join(accueil, "disposition.json"),
     projets: join(r, "projets"),
     interne,

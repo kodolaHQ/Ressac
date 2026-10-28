@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
-import { ecrireEtatBloc, lireAccueil } from "../accueil/lire.js";
-import type { EtatBloc } from "../accueil/schemas.js";
+import { ecrireEtatBloc, lireAccueilBlocs } from "../accueil/blocs-anciens.js";
+import type { EtatBloc } from "../accueil/blocs-anciens.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import { CODE_DELAI_DEPASSE, type Executeur } from "../conteneur/executeur.js";
 import { construireCommande, type Profil } from "../profils/profil.js";
@@ -68,7 +68,7 @@ export class PlanificateurVeille {
 
   private async verifierMaintenant(o: { auLancement: boolean }): Promise<string[]> {
     if ((await this.o.atelier.etat()) !== "demarre") return [];
-    const { blocs } = await lireAccueil(this.o.chemins);
+    const { blocs } = await lireAccueilBlocs(this.o.chemins);
     const ids = blocsAEchoir(blocs, this.o.horloge(), o);
     for (const id of ids) {
       if (this.arrete) break;

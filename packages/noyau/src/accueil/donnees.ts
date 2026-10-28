@@ -1,0 +1,40 @@
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { ETAT_WIDGET_PAR_DEFAUT, EtatWidget, TAILLE_MAX_DONNEES } from "./schemas.js";
+
+async function ecrireAtomique(cible: string, texte: string): Promise<void> {
+  await mkdir(join(cible, ".."), { recursive: true });
+  const temporaire = `${cible}.${process.pid}.tmp`;
+  await writeFile(temporaire, texte);
+  await rename(temporaire, cible);
+}
+
+/** Données récoltées d'un widget, ou null si absentes, abîmées ou trop grosses (plus de 2 Mo). */
+export async function lireDonnees(dossierWidgets: string, id: string): Promise<unknown | null> {
+  const chemin = join(dossierWidgets, id, "donnees.json");
+  try {
+    if ((await stat(chemin)).size > TAILLE_MAX_DONNEES) return null;
+    return JSON.parse(await readFile(chemin, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export async function ecrireDonnees(dossierWidgets: string, id: string, donnees: unknown): Promise<void> {
+  const texte = JSON.stringify(donnees ?? null);
+  if (Buffer.byteLength(texte) > TAILLE_MAX_DONNEES) throw new Error("Données trop grosses (2 Mo au plus)");
+  await ecrireAtomique(join(dossierWidgets, id, "donnees.json"), texte);
+}
+
+export async function lireEtatWidget(dossierWidgets: string, id: string): Promise<EtatWidget> {
+  try {
+    return EtatWidget.parse(JSON.parse(await readFile(join(dossierWidgets, id, "etat.json"), "utf8")));
+  } catch {
+    // etat.json absent ou abîmé : on repart de l'état par défaut.
+    return { ...ETAT_WIDGET_PAR_DEFAUT };
+  }
+}
+
+export async function ecrireEtatWidget(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
+  await ecrireAtomique(join(dossierWidgets, id, "etat.json"), JSON.stringify(etat, null, 2));
+}

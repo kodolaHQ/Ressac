@@ -4,8 +4,8 @@ import { lstat, mkdir, open, realpath, unlink, writeFile } from "node:fs/promise
 import { basename, join, posix } from "node:path";
 import { CHEMIN_CONTENEUR, cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
-import { lireAccueil } from "./accueil/lire.js";
-import type { EtatAccueil } from "./accueil/schemas.js";
+import { lireAccueilBlocs } from "./accueil/blocs-anciens.js";
+import type { EtatAccueilBlocs } from "./accueil/blocs-anciens.js";
 import { surveillerAccueil } from "./accueil/surveiller.js";
 import { chargerProfils, construireCommande } from "./profils/profil.js";
 import { ecrireConfigMcp } from "./profils/config-mcp.js";
@@ -161,7 +161,7 @@ export interface Noyau {
   etatAtelier(): Promise<EtatAtelier>;
   /** Nouvelle conversation : efface les autorisations. Signaler l'onglet courant (interactionUtilisateur) après. */
   ouvrirSessionAgent(o: { cols: number; rows: number }): Promise<SessionAgent>;
-  lireAccueil(): Promise<EtatAccueil>;
+  lireAccueil(): Promise<EtatAccueilBlocs>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
   arreter(): Promise<void>;
 }
@@ -257,7 +257,7 @@ export async function creerNoyau(o: {
       const id = randomBytes(8).toString("hex");
       return SessionAgent.demarrer(atelier.commandeSession(id, commande), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
     },
-    lireAccueil: () => lireAccueil(chemins),
+    lireAccueil: () => lireAccueilBlocs(chemins),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
     async arreter() {
       suivi?.arreter();

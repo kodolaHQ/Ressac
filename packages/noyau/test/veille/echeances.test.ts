@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { BlocLu, EtatBloc } from "../../src/accueil/schemas.js";
+import type { BlocLu, EtatBloc } from "../../src/accueil/blocs-anciens.js";
 import { blocsAEchoir, consigneVeille } from "../../src/veille/echeances.js";
 
 const maintenant = new Date("2026-10-26T08:00:00.000Z");

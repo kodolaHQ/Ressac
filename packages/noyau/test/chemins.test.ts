@@ -14,6 +14,7 @@ test("chemins par défaut sous ~/WebAiOs", () => {
   const c = cheminsEspace();
   expect(c.racine).toBe(join(homedir(), "WebAiOs"));
   expect(c.blocs).toBe(join(homedir(), "WebAiOs", "accueil", "blocs"));
+  expect(c.widgets).toBe(join(homedir(), "WebAiOs", "accueil", "widgets"));
   expect(c.configMcp).toBe(join(homedir(), "WebAiOs", ".webaios", "mcp.json"));
 });
 

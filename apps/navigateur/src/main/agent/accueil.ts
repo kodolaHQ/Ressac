@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { lireAccueil, type CheminsEspace, type EtatAccueil } from "@webaios/noyau";
+import { lireAccueilBlocs, type CheminsEspace, type EtatAccueilBlocs } from "@webaios/noyau";
 import type { BlocAffiche } from "../../commun/api";
 
 export const SCHEMA_BLOC = "webaios-bloc";
@@ -13,7 +13,7 @@ const CSP_BLOC = "default-src 'none'; img-src https: data:; style-src 'unsafe-in
 const PARTITION_WEB = "persist:webaios";
 
 /** Ce que l'interface affiche, dans l'ordre de disposition. `mtimes` : date de index.html par bloc, pour forcer le rechargement. */
-export function versBlocsAffiches(etat: EtatAccueil, mtimes: Record<string, number>): BlocAffiche[] {
+export function versBlocsAffiches(etat: EtatAccueilBlocs, mtimes: Record<string, number>): BlocAffiche[] {
   return etat.ordre.flatMap((id): BlocAffiche[] => {
     const b = etat.blocs.find((x) => x.id === id);
     if (!b) return [];
@@ -72,7 +72,7 @@ export function avecBase(html: string): string {
 }
 
 export async function lireBlocsAffiches(c: CheminsEspace): Promise<BlocAffiche[]> {
-  const etat = await lireAccueil(c);
+  const etat = await lireAccueilBlocs(c);
   const mtimes: Record<string, number> = {};
   for (const b of etat.blocs) {
     if (!("cheminHtml" in b) || !b.cheminHtml) continue;

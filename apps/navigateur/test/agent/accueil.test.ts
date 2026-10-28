@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cheminsEspace, type EtatAccueil } from "@webaios/noyau";
+import { cheminsEspace, type EtatAccueilBlocs } from "@webaios/noyau";
 import { avecBase, cheminBloc, lireHtmlBloc, ordonnerBlocs, protegerWebviews, retirerBloc, versBlocsAffiches } from "../../src/main/agent/accueil";
 
 function espace(ids: string[]) {
@@ -17,7 +17,7 @@ function espace(ids: string[]) {
 }
 const ordreLu = (c: ReturnType<typeof espace>) => JSON.parse(readFileSync(c.disposition, "utf8")).ordre;
 
-const etat: EtatAccueil = {
+const etat: EtatAccueilBlocs = {
   ordre: ["app", "veille", "vide", "casse"],
   blocs: [
     { id: "veille", dossier: "/b/veille", config: { titre: "Veille", type: "agent", consigne: "c" }, etat: { derniereMaj: "2026-10-26T08:00:00.000Z", derniereTentative: null, statut: "erreur", erreur: "délai" }, cheminHtml: "/b/veille/index.html" },

@@ -1,5 +1,5 @@
 import { CHEMIN_CONTENEUR } from "../chemins.js";
-import type { BlocLu, ConfigBlocAgent } from "../accueil/schemas.js";
+import type { BlocLu, ConfigBlocAgent } from "../accueil/blocs-anciens.js";
 
 const HEURE = 3_600_000;
 const SEUIL_LANCEMENT_H = 12;

@@ -1,47 +1,68 @@
 import { z } from "zod";
 
-const urlWeb = z.string().refine((u) => {
-  try {
-    return ["http:", "https:"].includes(new URL(u).protocol);
-  } catch {
-    return false;
-  }
-}, "URL http(s) attendue");
+export const COLONNES = 12;
+export const TAILLE_MAX_DONNEES = 2 * 1024 * 1024;
 
-export const ConfigBloc = z.discriminatedUnion("type", [
-  z.object({
-    titre: z.string().min(1).max(80),
-    type: z.literal("agent"),
-    consigne: z.string().min(1),
-    rafraichissement: z.object({ heures: z.number().positive() }).optional(),
-  }),
-  z.object({
-    titre: z.string().min(1).max(80),
-    type: z.literal("app"),
-    url: urlWeb,
-  }),
-]);
-export type ConfigBloc = z.infer<typeof ConfigBloc>;
-export type ConfigBlocAgent = Extract<ConfigBloc, { type: "agent" }>;
+/** Nom d'hôte en minuscules (« news.ycombinator.com »). */
+const domaine = z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, "nom d'hôte en minuscules attendu");
+const cote = z.number().int().min(1).max(12);
+const taille = z.object({ l: cote, h: cote });
 
-export const EtatBloc = z.object({
-  derniereMaj: z.string().nullable(),
-  derniereTentative: z.string().nullable(),
-  statut: z.enum(["ok", "en-cours", "erreur"]),
-  erreur: z.string().optional(),
-});
-export type EtatBloc = z.infer<typeof EtatBloc>;
+export const DeclarationWidget = z
+  .object({
+    nom: z.string().min(1).max(60),
+    description: z.string().default(""),
+    tailles: z.object({ min: taille, max: taille, defaut: taille }),
+    recolte: z.object({ minutes: z.number().int().min(5).max(10080) }).optional(),
+    sources: z.object({ compte: z.array(domaine).default([]), publiques: z.array(domaine).default([]) }).default({ compte: [], publiques: [] }),
+    config: z.unknown().optional(),
+  })
+  .superRefine((d, ctx) => {
+    const { min, max, defaut } = d.tailles;
+    for (const axe of ["l", "h"] as const) {
+      if (!(min[axe] <= defaut[axe] && defaut[axe] <= max[axe])) {
+        ctx.addIssue({ code: "custom", path: ["tailles"], message: `min ≤ defaut ≤ max exigé (${axe})` });
+      }
+    }
+    if (d.sources.compte.length > 0 && d.sources.publiques.length === 0) {
+      ctx.addIssue({ code: "custom", path: ["sources", "publiques"], message: "obligatoires pour un widget avec compte" });
+    }
+  });
+export type DeclarationWidget = z.infer<typeof DeclarationWidget>;
 
-export const ETAT_PAR_DEFAUT: EtatBloc = { derniereMaj: null, derniereTentative: null, statut: "ok" };
+export const Placement = z
+  .object({ id: z.string(), x: z.number().int().min(0), y: z.number().int().min(0), l: cote, h: cote })
+  .refine((p) => p.x + p.l <= COLONNES, "déborde de la grille");
+export type Placement = z.infer<typeof Placement>;
 
-export const Disposition = z.object({ ordre: z.array(z.string()) });
+export const Disposition = z.object({ version: z.literal(2), widgets: z.array(Placement) });
 export type Disposition = z.infer<typeof Disposition>;
 
-export type BlocLu =
-  | { id: string; dossier: string; config: ConfigBloc; etat: EtatBloc; cheminHtml: string | null }
+export const EtatWidget = z.object({
+  statut: z.enum(["ok", "en-cours", "erreur", "accord-requis", "atelier-arrete"]),
+  derniereMaj: z.string().nullable(),
+  derniereTentative: z.string().nullable(),
+  erreur: z.string().optional(),
+  journal: z.string().optional(),
+});
+export type EtatWidget = z.infer<typeof EtatWidget>;
+
+export const ETAT_WIDGET_PAR_DEFAUT: EtatWidget = { statut: "ok", derniereMaj: null, derniereTentative: null };
+
+export type WidgetLu =
+  | {
+      id: string;
+      dossier: string;
+      declaration: DeclarationWidget;
+      etat: EtatWidget;
+      donnees: unknown | null;
+      exemple: unknown | null;
+      aRecolte: boolean;
+      aAffichage: boolean;
+    }
   | { id: string; dossier: string; erreur: string };
 
 export interface EtatAccueil {
-  ordre: string[];
-  blocs: BlocLu[];
+  disposition: Placement[];
+  widgets: WidgetLu[];
 }
