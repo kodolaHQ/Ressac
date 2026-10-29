@@ -193,3 +193,91 @@ test("« Retirer de Chrome » dans un profil où elle n'est pas active, ou pour 
   expect(readFileSync(join(dossier, "etat.json"), "utf8")).toBe(avant);
   expect(existsSync(version)).toBe(true);
 });
+
+// ——— Mises à jour du Store ———
+
+/** Une extension du Store en 1.0.0 (un hôte), avec une 2.0.0 en attente qui demande un hôte de plus. */
+async function majEnAttente(o: { questions?: (repondre: (d: "autoriser" | "refuser") => void, champs: unknown) => void } = {}) {
+  const manifeste = (version: string, hotes: string[]) => ({ manifest_version: 3, name: "x", version, host_permissions: hotes });
+  const ancienne = join(dossier, "store", ID, "1.0.0_0");
+  const attente = join(dossier, "store", ID, "2.0.0_0");
+  for (const [d, v, h] of [
+    [ancienne, "1.0.0", ["https://a.exemple/*"]],
+    [attente, "2.0.0", ["https://a.exemple/*", "https://b.exemple/*"]],
+  ] as const) {
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, "manifest.json"), JSON.stringify(manifeste(v, [...h])));
+  }
+  const portee = (hotes: string[]) => ({ permissions: [], hotes, reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false });
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({
+      version: 1,
+      toutesCoupees: false,
+      extensions: {
+        [`store:${ID}`]: {
+          ...entree("store", ["defaut"]),
+          idChrome: ID,
+          accord: portee(["https://a.exemple/*"]),
+          majEnAttente: { version: "2.0.0", portee: portee(["https://a.exemple/*", "https://b.exemple/*"]), chemin: attente },
+        },
+      },
+    }),
+  );
+  nav = { ...nav, fenetres: [{ id: "f1", espaceActif: "e1" }] } as unknown as EtatNavigateur;
+  const { service, pret } = demarrer();
+  await pret;
+  const cartes: unknown[] = [];
+  service.brancherQuestions((champs, repondre) => {
+    cartes.push(champs);
+    o.questions?.(repondre, champs);
+    return () => {};
+  });
+  const registre = () => JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")).extensions[`store:${ID}`];
+  return { service, ancienne, attente, cartes, registre };
+}
+
+test("revoirMiseAJour : la carte montre la mise à jour (de 1.0.0) ; acceptée, elle est appliquée et l'ancienne version effacée", async () => {
+  const { service, ancienne, attente, cartes, registre } = await majEnAttente({ questions: (repondre) => repondre("autoriser") });
+  expect(await service.revoirMiseAJour(`store:${ID}`, "f1")).toBe("appliquee");
+  expect(cartes).toHaveLength(1);
+  expect(cartes[0]).toMatchObject({ fenetreId: "f1", extension: { cle: `store:${ID}`, version: "2.0.0", maj: { de: "1.0.0" }, espaceId: "e1" } });
+  expect(registre()).toMatchObject({ version: "2.0.0", majEnAttente: null, profils: ["defaut"] });
+  expect(registre().accord.hotes).toEqual(["https://a.exemple/*", "https://b.exemple/*"]);
+  expect(existsSync(ancienne)).toBe(false);
+  expect(existsSync(join(attente, "manifest.json"))).toBe(true);
+  // Les sessions reçoivent la nouvelle version.
+  expect(synchronisees.at(-1)!.extensions[`store:${ID}`]!.version).toBe("2.0.0");
+});
+
+test("revoirMiseAJour : refusée, elle reste en attente et l'ancienne version reste chargée", async () => {
+  const { service, ancienne, attente, registre } = await majEnAttente({ questions: (repondre) => repondre("refuser") });
+  const avant = readFileSync(join(dossier, "etat.json"), "utf8");
+  expect(await service.revoirMiseAJour(`store:${ID}`, "f1")).toBe("en-attente");
+  expect(readFileSync(join(dossier, "etat.json"), "utf8")).toBe(avant);
+  expect(registre()).toMatchObject({ version: "1.0.0", majEnAttente: { version: "2.0.0" } });
+  expect(existsSync(ancienne)).toBe(true);
+  expect(existsSync(attente)).toBe(true);
+});
+
+test("revoirMiseAJour : sans mise à jour en attente, rien n'est montré", async () => {
+  const { service, cartes } = await majEnAttente();
+  expect(await service.revoirMiseAJour("agent:essai", "f1")).toBe("echec");
+  expect(await service.revoirMiseAJour(`store:${"d".repeat(32)}`, "f1")).toBe("echec");
+  expect(cartes).toEqual([]);
+});
+
+test("verifierMisesAJour : un téléchargement en échec garde son erreur dans la table du service, rien ne change", async () => {
+  const { service, registre } = await storeInstalle(["defaut"]);
+  const avant = registre();
+  const fauxFetch = (async () =>
+    new Response(
+      `)]}'\n${JSON.stringify({ response: { app: [{ appid: ID, updatecheck: { status: "ok", urls: { url: [{ codebase: "http://127.0.0.1:1/x.crx" }] }, manifest: { version: "1.1.0" } } }] } })}`,
+    )) as typeof fetch;
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  await service.verifierMisesAJour({ fetch: fauxFetch });
+  journal.mockRestore();
+  expect(service.erreurs().get(`store:${ID}`)).toMatch(/Chrome Web Store/);
+  expect(registre()).toEqual(avant);
+  expect(existsSync(join(dossier, "store-attente", ID))).toBe(false);
+});

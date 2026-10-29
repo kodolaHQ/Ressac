@@ -244,6 +244,8 @@ let applications: ServiceApplications | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
+/** Arrête la vérification périodique des mises à jour du Store. */
+let arreterMisesAJour: (() => void) | undefined;
 const serviceExtensions = new ServiceExtensions();
 
 app.whenReady().then(async () => {
@@ -433,6 +435,8 @@ app.whenReady().then(async () => {
       surChange: () => diffuser(CANAUX.extensionsChange, null),
     })
     .catch((e) => console.error("[extensions] démarrage :", e));
+  // Nos mises à jour du Store (jamais celles de la bibliothèque) : 60 s après le démarrage, puis toutes les 5 h.
+  arreterMisesAJour = serviceExtensions.planifierMisesAJour();
   // Un onglet fermé (ou parti vers un autre site, pour les outils de développement) ne répondra jamais : ses questions
   // sont refusées. Une fenêtre d'appli (`app:<dossier>`) n'est pas dans l'état : on regarde ses fenêtres ouvertes.
   const ecarterQuestionsCaduques = () => {
@@ -856,6 +860,7 @@ app.on("activate", () => rouvrirFenetres());
 
 app.on("will-quit", () => {
   clearInterval(minuteurPurge);
+  arreterMisesAJour?.();
   historique?.fermer();
 });
 

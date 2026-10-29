@@ -2,7 +2,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { WebContents } from "electron";
 import {
+  analyserManifeste,
   chargeesDans,
+  empreintePortee,
   lireCle,
   lireEtatExtensions,
   modifierEtatExtensions,
@@ -10,7 +12,7 @@ import {
   type EtatExtensions,
   type IdProfil,
 } from "@webaios/noyau";
-import type { CarteExtension, ReponseAccord } from "../../commun/extensions";
+import { carteDe, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
 export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions";
 import { aUneVue, profilsEnUsage, type Decision, type Demande, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
 import { attendreReponse, questionCaduque } from "../agent/pont";
@@ -18,7 +20,25 @@ import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
-import { desinstallerStore, installerStore, retirerDuProfilStore, type ContexteInstallation, type DependancesStore, type ResultatStore } from "./store";
+import {
+  accepterMiseAJour,
+  appliquerMiseAJour,
+  chercherMisesAJour,
+  INTERVALLE_MAJ_MS,
+  PREMIERE_MAJ_MS,
+  type DependancesMiseAJour,
+  type ResultatMiseAJour,
+} from "./mises-a-jour";
+import {
+  accordPour,
+  desinstallerStore,
+  installerStore,
+  lireManifeste,
+  retirerDuProfilStore,
+  type ContexteInstallation,
+  type DependancesStore,
+  type ResultatStore,
+} from "./store";
 
 /**
  * Pose une question dans une fenêtre (`poserQuestion` d'index.ts) : `fenetreId` absent, celle de l'agent (la fenêtre au
@@ -68,6 +88,10 @@ export class ServiceExtensions {
   private etat: EtatExtensions = { version: 1, toutesCoupees: false, extensions: {} };
   /** Erreurs de préparation (Store), par clé ; celles du chargement sont dans `ExtensionsProfils`. */
   private erreursPreparation = new Map<string, string>();
+  /** Erreur de la dernière mise à jour du Store, par clé (en mémoire : vide au démarrage, jusqu'à la prochaine vérification). */
+  private erreursMaj = new Map<string, string>();
+  /** La vérification des mises à jour en cours : une seule à la fois. */
+  private verification: Promise<void> | null = null;
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
   private poser: PoserQuestion | undefined;
@@ -308,9 +332,107 @@ export class ServiceExtensions {
     };
   }
 
-  /** La dernière erreur de préparation ou de chargement de chaque clé. */
+  /** Les erreurs de chaque clé : préparation, dernière mise à jour, chargement (jointes par « ; » quand il y en a plusieurs). */
   erreurs(): Map<string, string> {
-    return new Map([...this.erreursPreparation, ...(this.o?.profils.erreursChargement() ?? [])]);
+    const toutes = new Map<string, string>();
+    for (const table of [this.erreursPreparation, this.erreursMaj, this.o?.profils.erreursChargement() ?? new Map<string, string>()])
+      for (const [cle, erreur] of table) toutes.set(cle, toutes.has(cle) ? `${toutes.get(cle)} ; ${erreur}` : erreur);
+    return toutes;
+  }
+
+  /**
+   * Cherche les mises à jour des extensions du Store inscrites (toutes, même inactives ou pendant la coupure) et les
+   * applique une par une (`appliquerMiseAJour`) : les sessions rechargent une version appliquée pendant l'écriture du
+   * registre ; une mise à jour qui demande plus reste en attente ; un échec garde son erreur. Une seule vérification à la
+   * fois (un appel pendant une autre rend celle en cours).
+   */
+  verifierMisesAJour(o: { fetch?: typeof fetch; url?: string } = {}): Promise<void> {
+    if (!this.o || !this.pret) return Promise.resolve();
+    if (this.verification) return this.verification;
+    const d = this.dependancesMaj();
+    const entrees = Object.entries(this.etat.extensions).flatMap(([cle, x]) => {
+      const lue = lireCle(cle);
+      return lue?.source === "store" ? [{ id: lue.id, version: x.version }] : [];
+    });
+    const verification = (async () => {
+      const majs = await chercherMisesAJour(entrees, { fetch: o.fetch ?? fetch, ...(o.url ? { url: o.url } : {}) });
+      for (const maj of majs) {
+        const r = await appliquerMiseAJour(maj, d);
+        if (r !== "echec") console.info(`[extensions] mise à jour store:${maj.id} ${maj.version} : ${r}`);
+      }
+    })().finally(() => {
+      this.verification = null;
+    });
+    this.verification = verification;
+    return verification;
+  }
+
+  /**
+   * Vérifie les mises à jour 60 s après l'appel, puis toutes les 5 h. Rien sous `WEBAIOS_INVISIBLE=1` (tests), sauf si
+   * `WEBAIOS_TEST_STORE_MAJ_URL` est posée. Rend de quoi l'arrêter.
+   */
+  planifierMisesAJour(): () => void {
+    if (process.env.WEBAIOS_INVISIBLE === "1" && !process.env.WEBAIOS_TEST_STORE_MAJ_URL) return () => {};
+    const verifier = () => void this.verifierMisesAJour().catch((e: unknown) => console.error("[extensions] mises à jour :", e));
+    let intervalle: ReturnType<typeof setInterval> | undefined;
+    const premiere = setTimeout(() => {
+      verifier();
+      intervalle = setInterval(verifier, INTERVALLE_MAJ_MS);
+      intervalle.unref?.();
+    }, PREMIERE_MAJ_MS);
+    premiere.unref?.();
+    return () => {
+      clearTimeout(premiere);
+      if (intervalle) clearInterval(intervalle);
+    };
+  }
+
+  /**
+   * « Revoir la mise à jour » : la carte de la version en attente (`maj: { de }`, telle que sur le disque) dans la fenêtre
+   * `fenetre`, pour l'espace actif de la fenêtre s'il utilise un profil où elle est active, sinon le premier qui en
+   * utilise un. Acceptée (pour la portée en attente) : appliquée, rechargée, l'ancienne version effacée. Refusée : elle
+   * reste en attente. Sans mise à jour en attente : `"echec"`, rien n'est montré.
+   */
+  async revoirMiseAJour(cle: string, fenetre?: IdFenetre): Promise<ResultatMiseAJour> {
+    const o = this.o;
+    const x = this.etat.extensions[cle];
+    const lue = lireCle(cle);
+    const m = x?.majEnAttente;
+    if (!o || !x || !m || lue?.source !== "store") return "echec";
+    const d = this.dependancesMaj();
+    const analyse = analyserManifeste(await lireManifeste(join(o.dossier, "store", lue.id, `${m.version}_0`)), { source: "store" });
+    if (analyse.refus.length > 0 || analyse.version !== m.version || empreintePortee(analyse.portee) !== empreintePortee(m.portee)) {
+      d.noterErreur(cle, `Mise à jour ${m.version} illisible : elle sera téléchargée de nouveau`);
+      return "echec";
+    }
+    const nav = o.magasin.etat;
+    const actif = nav.fenetres.find((f) => f.id === fenetre)?.espaceActif;
+    const espace =
+      nav.espaces.find((e) => e.id === actif && x.profils.includes(e.profil)) ??
+      nav.espaces.find((e) => x.profils.includes(e.profil)) ??
+      nav.espaces.find((e) => e.id === actif) ??
+      nav.espaces[0];
+    if (!espace) return "en-attente";
+    const carte = carteDe(analyse, { cle, source: "store", espace, etat: nav, maj: { de: x.version } });
+    const r = await this.demanderAccord(carte, fenetre ? { fenetre } : {});
+    if (!accordPour(r, m.portee)) return "en-attente";
+    return accepterMiseAJour(cle, { version: m.version, nom: analyse.nom, portee: m.portee }, d);
+  }
+
+  private dependancesMaj(): DependancesMiseAJour {
+    const s = this.dependancesStore();
+    return {
+      dossier: s.dossier,
+      etatExtensions: s.etatExtensions,
+      modifier: s.modifier,
+      preparer: s.preparer,
+      noterErreur: (cle, erreur) => {
+        if ((this.erreursMaj.get(cle) ?? null) === erreur) return;
+        if (erreur === null) this.erreursMaj.delete(cle);
+        else this.erreursMaj.set(cle, erreur);
+        this.o?.surChange?.();
+      },
+    };
   }
 
   /** L'état du registre tel que chargé. */

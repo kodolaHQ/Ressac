@@ -84,8 +84,14 @@ export interface DependancesStore {
   preparer(cle: string, dossierVersion: string): Promise<void>;
 }
 
-/** Une opération à la fois par extension (téléchargement, installation, désinstallation), par dossier. */
+/** Une opération à la fois par extension (téléchargement, installation, mise à jour, désinstallation), par dossier. */
 const files = new Map<string, Promise<unknown>>();
+
+/** La file de l'extension `id` du Store dans `dossier` : celle de l'installation et de la désinstallation. */
+export function enFileStore<T>(dossier: string, id: string, f: () => Promise<T>): Promise<T> {
+  return uneAlaFois(`${dossier}|${id}`, f);
+}
+
 function uneAlaFois<T>(cle: string, f: () => Promise<T>): Promise<T> {
   const suivante = (files.get(cle) ?? Promise.resolve()).catch(() => {}).then(f);
   files.set(cle, suivante);
@@ -97,7 +103,7 @@ function uneAlaFois<T>(cle: string, f: () => Promise<T>): Promise<T> {
   return suivante;
 }
 
-async function lireManifeste(dossierVersion: string): Promise<unknown> {
+export async function lireManifeste(dossierVersion: string): Promise<unknown> {
   try {
     return JSON.parse(await readFile(join(dossierVersion, "manifest.json"), "utf8"));
   } catch {
@@ -106,7 +112,7 @@ async function lireManifeste(dossierVersion: string): Promise<unknown> {
 }
 
 /** Accord écrit seulement si l'utilisateur a accepté exactement la portée qu'on enregistre. */
-function accordPour(r: ReponseAccord, portee: Portee): boolean {
+export function accordPour(r: ReponseAccord, portee: Portee): boolean {
   return r.accepte && r.empreinte === empreintePortee(portee);
 }
 
