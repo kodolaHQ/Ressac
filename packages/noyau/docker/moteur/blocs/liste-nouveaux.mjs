@@ -58,10 +58,11 @@ export default {
     if (sansCle) journal(`${sansCle} élément(s) sans clé ${parametres.cle}, gardés`);
     // Les clés revues cette fois deviennent les plus récentes, datées de maintenant (une annonce toujours en ligne ne
     // revient pas) ; les plus anciennes sont oubliées au-delà de CLES_MAX.
-    const cles = [
+    const toutes = [
       ...[...vues].filter(([c]) => !vuesCetteFois.has(c)),
       ...[...vuesCetteFois].map((c) => [c, instant]),
-    ].slice(-CLES_MAX);
-    return { sortie, memoire: cles, nouvelles };
+    ];
+    // `memoireEntiere` (avant le plafond) sert à l'exécution progressive, qui retire d'abord les clés en suspens.
+    return { sortie, memoire: toutes.slice(-CLES_MAX), nouvelles, memoireEntiere: toutes };
   },
 };

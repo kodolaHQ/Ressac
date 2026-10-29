@@ -7,7 +7,7 @@ import { workflowImplicite } from "../../src/workflows/valider.js";
 import { pathToFileURL } from "node:url";
 import { MOTEUR, bloc, chaine, lancer as lancerWorkflow, sortie, workflowEnvoye } from "../aide/moteur.js";
 
-const { LIMITE_GLOBALE_MS, echeanceDe } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+const { BLOCS_LIVRES, LIMITE_GLOBALE_MS, echeanceDe, executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
@@ -170,9 +170,40 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
 
 describe("recolteur : limite de durée (limiteMs)", () => {
   it("limiteMs 1000 : plus aucun élément lancé après 1 s", async () => {
-    const annonces = Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` }));
-    const debutA = Date.now();
+    // Horloge factice : l'échéance de la ligne debut reçue à 0, chaque élément dure 300 ms, deux à la fois.
+    let maintenant = 0;
     const lances: number[] = [];
+    const traces: any[] = [];
+    await executerWorkflow({
+      workflow: workflowEnvoye(
+        {
+          version: 1,
+          blocs: [bloc("liste", "code", { source: "liste.mjs" }), bloc("cherche", "web.chercher", { requete: "{modele}", parElement: true }), sortie],
+          liens: chaine("liste", "cherche", "sortie"),
+        },
+        { web: true, dureeMaxMinutes: 1 },
+      ),
+      memoire: {},
+      maintenant: "2026-10-29T10:00:00.000Z",
+      dossier: "/nulle-part",
+      horloge: () => maintenant,
+      echeance: echeanceDe({ t: "debut", limiteMs: 1000 }, 0),
+      tracer: (m: unknown) => traces.push(m),
+      appeler: async () => {
+        lances.push(maintenant);
+        await Promise.resolve();
+        maintenant += 300;
+        return [];
+      },
+      blocs: { ...BLOCS_LIVRES, code: { parElement: "non", executer: async () => ({ sortie: Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` })) }) } },
+    });
+    // Paires lancées à 0, 600 ; à 1200, plus rien.
+    expect(lances).toEqual([0, 0, 600, 600]);
+    expect(traces.find((l) => l.t === "bloc" && l.id === "cherche" && l.etape === "fin")).toMatchObject({ statut: "partiel" });
+    expect(traces).toContainEqual({ t: "journal", bloc: "cherche", texte: "temps écoulé : 16 élément(s) non lancé(s)" });
+  });
+
+  it("dans le conteneur, limiteMs de la ligne debut est l'échéance : 20 ms, passés pendant la liste, aucun élément lancé", async () => {
     const r = await lancerWorkflow({
       workflow: {
         version: 1,
@@ -180,20 +211,12 @@ describe("recolteur : limite de durée (limiteMs)", () => {
         liens: chaine("liste", "cherche", "sortie"),
       },
       contexte: { web: true, dureeMaxMinutes: 1 },
-      fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(annonces)});` },
-      debut: { limiteMs: 1000 },
-      repondre: async () => {
-        lances.push(Date.now() - debutA);
-        await new Promise((ok) => setTimeout(ok, 300));
-        return { ok: [] };
-      },
+      fichiers: { "liste.mjs": `export default async () => { await new Promise((ok) => setTimeout(ok, 80)); return [{ modele: "a" }, { modele: "b" }]; };` },
+      debut: { limiteMs: 20 },
+      repondre: () => ({ ok: [] }),
     });
-    expect(r.terminal.t).toBe("fin");
+    expect(r.appels).toEqual([]);
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
-    // Deux à la fois, 300 ms chacun : quelques paires, puis plus rien passé 1 s (marge pour le démarrage de Node).
-    expect(lances.length).toBeGreaterThanOrEqual(2);
-    expect(lances.length).toBeLessThan(12);
-    expect(r.lignes.some((l) => l.t === "journal" && /^temps écoulé : \d+ élément\(s\) non lancé\(s\)$/.test(l.texte))).toBe(true);
   });
 
   it("sans limiteMs : 150 s comme avant", () => {

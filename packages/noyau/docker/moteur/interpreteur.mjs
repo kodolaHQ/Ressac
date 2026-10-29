@@ -29,7 +29,7 @@ import iaRediger from "./blocs/ia-rediger.mjs";
 import iaTrier from "./blocs/ia-trier.mjs";
 import listeDedoublonner from "./blocs/liste-dedoublonner.mjs";
 import listeGarder from "./blocs/liste-garder.mjs";
-import listeNouveaux, { JOUR_MS, enCle } from "./blocs/liste-nouveaux.mjs";
+import listeNouveaux, { CLES_MAX, JOUR_MS, enCle } from "./blocs/liste-nouveaux.mjs";
 import sortie from "./blocs/sortie.mjs";
 import sourceFlux from "./blocs/source-flux.mjs";
 import sourcePage from "./blocs/source-page.mjs";
@@ -356,7 +356,8 @@ export async function executerWorkflow({
     for (const b of workflow.blocs) {
       let valeur;
       const suivi = suivis.get(b.id);
-      if (suivi) valeur = suivi.memoire.filter((e) => !suivi.enSuspens.has(e[0]));
+      // Les clés en suspens retirées avant le plafond : elles ne prennent pas la place d'anciennes clés.
+      if (suivi) valeur = suivi.memoire.filter((e) => !suivi.enSuspens.has(e[0])).slice(-CLES_MAX);
       else if (nouvelleMemoire.has(b.id)) valeur = nouvelleMemoire.get(b.id);
       else if (memoireEnCours.has(b.id)) valeur = memoireEnCours.get(b.id)();
       else if (memoire[b.id]?.type === b.type) valeur = memoire[b.id].valeur;
@@ -380,25 +381,50 @@ export async function executerWorkflow({
     if (horloge() - derniereMemoire >= ECART_MEMOIRE_MS) envoyerMemoire();
   };
 
-  /** Après un bloc réussi : clés en échec chez lui, clés des éléments qu'il a écartés résolues ; toutes après `sortie`. */
+  /**
+   * Après un bloc réussi, pour chaque `liste.nouveaux` suivi dont il est en aval : les clés de ses éléments en échec ou
+   * non lancés passent en échec (pour toute l'exécution, quelle que soit la branche, même si une autre branche les avait
+   * résolues) ; les clés des éléments qu'il a écartés sont résolues. Après `sortie`, toutes celles qui restent hors échec.
+   * Si un bloc fait perdre le champ de la clé aux éléments (un `code` qui les remodèle), il ne résout rien par
+   * disparition ; si ensuite un élément sans clé échoue, on ne sait plus lequel : le suivi devient « aveugle », plus rien
+   * n'est résolu dans cette exécution et les clés pas encore résolues reviendront la fois suivante.
+   */
   function suivreCles(bloc, entree, r) {
     for (const suivi of suivis.values()) {
-      if (suivi.enSuspens.size === 0) continue;
       if (suivi.aval.has(bloc.id)) {
         const cleDe = (element) => (estObjet(element) ? enCle(lireChemin(element, suivi.chemin)) : null);
+        const entrees = elementsDe(entree);
+        const restees = elementsDe(r.sortie);
+        const sansCle = (liste) => liste.filter((e) => cleDe(e) === null).length;
+        const perteIci = sansCle(restees) > sansCle(entrees);
+        if (perteIci) suivi.clePerdue = true;
         if (Array.isArray(entree) && r.enEchec) {
           for (const i of r.enEchec) {
             const cle = cleDe(entree[i]);
-            if (cle !== null && suivi.enSuspens.has(cle)) suivi.enEchec.add(cle);
+            if (cle === null) {
+              if (suivi.clePerdue && !suivi.aveugle) {
+                suivi.aveugle = true;
+                tracer({
+                  t: "journal",
+                  bloc: suivi.id,
+                  texte: `le champ ${suivi.chemin} n'est plus dans les éléments : un élément en échec n'a pas pu être reconnu, les éléments pas encore résolus reviendront la fois suivante`,
+                });
+              }
+            } else if (suivi.nouvelles.has(cle)) {
+              suivi.enEchec.add(cle);
+              suivi.enSuspens.add(cle);
+            }
           }
         }
-        const restees = new Set(elementsDe(r.sortie).map(cleDe));
-        for (const element of elementsDe(entree)) {
-          const cle = cleDe(element);
-          if (cle !== null && !restees.has(cle) && !suivi.enEchec.has(cle)) suivi.enSuspens.delete(cle);
+        if (!suivi.aveugle && !perteIci) {
+          const clesRestees = new Set(restees.map(cleDe));
+          for (const element of entrees) {
+            const cle = cleDe(element);
+            if (cle !== null && !clesRestees.has(cle) && !suivi.enEchec.has(cle)) suivi.enSuspens.delete(cle);
+          }
         }
       }
-      if (bloc.type === "sortie") {
+      if (bloc.type === "sortie" && !suivi.aveugle) {
         for (const cle of [...suivi.enSuspens]) if (!suivi.enEchec.has(cle)) suivi.enSuspens.delete(cle);
       }
     }
@@ -449,13 +475,17 @@ export async function executerWorkflow({
     if (r.memoire !== undefined) nouvelleMemoire.set(id, r.memoire);
     if (enProgression) {
       suivreCles(bloc, entree, r);
-      if (bloc.type === "liste.nouveaux" && Array.isArray(r.memoire) && Array.isArray(r.nouvelles)) {
+      if (bloc.type === "liste.nouveaux" && Array.isArray(r.memoireEntiere) && Array.isArray(r.nouvelles)) {
         suivis.set(id, {
+          id,
           chemin: bloc.parametres?.cle,
-          memoire: r.memoire,
+          memoire: r.memoireEntiere,
+          nouvelles: new Set(r.nouvelles),
           enSuspens: new Set(r.nouvelles),
           enEchec: new Set(),
           aval: descendants(workflow, id),
+          clePerdue: false,
+          aveugle: false,
         });
       }
     }
@@ -502,7 +532,7 @@ function copieBornable(valeur) {
   return valeur;
 }
 
-/** Un bloc : rend { statut, sortie (JSON), memoire?, enEchec?, nouvelles? } ou lève son erreur. */
+/** Un bloc : rend { statut, sortie (JSON), memoire?, enEchec?, nouvelles?, memoireEntiere? } ou lève son erreur. */
 async function executerBloc(bloc, entree, o) {
   const module = Object.hasOwn(o.blocs, bloc.type) ? o.blocs[bloc.type] : undefined;
   if (!module) throw new Error(`type inconnu dans le conteneur : ${bloc.type}`);
@@ -542,6 +572,7 @@ async function executerBloc(bloc, entree, o) {
         ...(rendu?.memoire !== undefined ? { memoire: rendu.memoire } : {}),
         // liste.nouveaux : les clés nouvelles de cette fois (en suspens d'une exécution progressive).
         ...(Array.isArray(rendu?.nouvelles) ? { nouvelles: rendu.nouvelles } : {}),
+        ...(Array.isArray(rendu?.memoireEntiere) ? { memoireEntiere: rendu.memoireEntiere } : {}),
       };
     } catch (e) {
       if (!(e instanceof ValeurAbsente)) throw e;

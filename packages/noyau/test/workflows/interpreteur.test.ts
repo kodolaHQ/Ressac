@@ -1246,6 +1246,132 @@ describe("interpréteur : exécution progressive", () => {
     expect(memoires(ko)).toEqual([]);
   });
 
+  const lireSaufSur = (echoueSur: string, champ = "url") => ({
+    parElement: "toujours",
+    async traiterElement(ctx: any) {
+      if (ctx.element[champ] === echoueSur) throw new Error("page illisible");
+      return "texte";
+    },
+  });
+  const abc = () => ["a", "b", "c"].map((url) => ({ url }));
+
+  it("progressif : un code qui renomme le champ de la clé puis un élément en échec : rien de résolu après, b revient, une ligne de journal", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: abc(),
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "remodeler", type: "test.code" },
+        { id: "lire", type: "test.lire", parametres: { champ: "page" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.code": { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree.map((e: any) => ({ lien: e.url })) }) },
+        "test.lire": lireSaufSur("b", "lien"),
+      },
+    });
+    expect(r.erreur).toBeNull();
+    expect(r.resultat!.memoire.nv!.valeur).toEqual([]);
+    expect(r.journal("nv")).toContain(
+      "le champ url n'est plus dans les éléments : un élément en échec n'a pas pu être reconnu, les éléments pas encore résolus reviendront la fois suivante",
+    );
+  });
+
+  it("progressif : un code qui renomme le champ de la clé sans échec ensuite : toutes retenues après sortie", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: abc(),
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "remodeler", type: "test.code" },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.code": { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree.map((e: any) => ({ lien: e.url })) }) },
+      },
+    });
+    expect(r.resultat!.memoire.nv!.valeur).toEqual(["a", "b", "c"].map((c) => [c, MAINTENANT]));
+    expect(r.journal("nv")).toEqual([]);
+  });
+
+  it("progressif : un code qui filtre écarte b (résolue), c en échec plus loin n'est pas retenue", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: abc(),
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "filtrer", type: "test.code" },
+        { id: "lire", type: "test.lire", parametres: { champ: "page" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.code": { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree.filter((e: any) => e.url !== "b") }) },
+        "test.lire": lireSaufSur("c"),
+      },
+    });
+    expect(r.resultat!.donnees).toEqual([{ url: "a", page: "texte" }, { url: "c" }]);
+    expect(r.resultat!.memoire.nv!.valeur).toEqual([["a", MAINTENANT], ["b", MAINTENANT]]);
+  });
+
+  it("progressif : branches parallèles, b écartée par garder sur l'une et en échec sur l'autre, n'est pas retenue (dans les deux ordres)", async () => {
+    for (const ordre of [["src", "nv", "garder", "lire", "sortie"], ["src", "nv", "lire", "garder", "sortie"]]) {
+      const traces: any[] = [];
+      const r = await executerWorkflow({
+        workflow: {
+          blocs: [
+            { id: "src", type: "test.source", parametres: {} },
+            { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+            { id: "garder", type: "liste.garder", parametres: { nombre: 1 } },
+            { id: "lire", type: "test.lire", parametres: { champ: "page" } },
+            { id: "sortie", type: "sortie", parametres: {} },
+          ],
+          liens: [
+            { de: "src", vers: "nv" },
+            { de: "nv", vers: "garder" },
+            { de: "nv", vers: "lire" },
+            { de: "garder", vers: "sortie" },
+            { de: "lire", vers: "sortie" },
+          ],
+          ordre,
+        },
+        memoire: {},
+        maintenant: MAINTENANT,
+        dossier: "/nulle-part",
+        appeler: async () => null,
+        tracer: (m: unknown) => traces.push(m),
+        progressif: true,
+        blocs: {
+          "test.source": { parElement: "non", executer: async () => ({ sortie: abc() }) },
+          "liste.nouveaux": listeNouveaux,
+          "liste.garder": listeGarder,
+          "test.lire": lireSaufSur("b"),
+          sortie: { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree }) },
+        },
+      });
+      expect(r.memoire.nv.valeur, ordre.join(",")).toEqual([["a", MAINTENANT], ["c", MAINTENANT]]);
+    }
+  });
+
+  it("progressif : les clés en suspens sont retirées avant le plafond de 5000 clés", async () => {
+    const anciennes = Array.from({ length: 5000 }, (_, i) => [`k${i}`, VIEUX]);
+    const r = await executer({
+      progressif: true,
+      entree: [{ url: "x" }],
+      memoire: { nv: { type: "liste.nouveaux", valeur: anciennes } },
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "lire", type: "test.lire", parametres: { champ: "page" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: { "liste.nouveaux": listeNouveaux, "test.lire": lireSaufSur("x") },
+    });
+    // x en échec n'est pas retenue et ne fait pas oublier k0.
+    expect(r.resultat!.memoire.nv!.valeur).toEqual(anciennes);
+  });
+
   it("un essai (rejeu) progressif n'envoie aucune mémoire", async () => {
     let maintenant = 0;
     const r = await executer({
