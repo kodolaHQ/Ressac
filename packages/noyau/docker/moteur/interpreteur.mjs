@@ -19,16 +19,26 @@
 import { ValeurAbsente, lireChemin, remplir } from "./gabarits.mjs";
 import { creerWebaios, formater } from "./webaios.mjs";
 import code from "./blocs/code.mjs";
+import iaRediger from "./blocs/ia-rediger.mjs";
+import iaTrier from "./blocs/ia-trier.mjs";
 import listeDedoublonner from "./blocs/liste-dedoublonner.mjs";
 import listeGarder from "./blocs/liste-garder.mjs";
 import listeNouveaux from "./blocs/liste-nouveaux.mjs";
 import sortie from "./blocs/sortie.mjs";
+import sourceFlux from "./blocs/source-flux.mjs";
+import sourcePage from "./blocs/source-page.mjs";
+import sourceRecuperer from "./blocs/source-recuperer.mjs";
 
 /** Les blocs livrés avec le moteur, par type. Aucun moyen d'en charger d'autres depuis le conteneur. */
 export const BLOCS_LIVRES = Object.freeze({
+  "source.page": sourcePage,
+  "source.flux": sourceFlux,
+  "source.recuperer": sourceRecuperer,
   "liste.nouveaux": listeNouveaux,
   "liste.dedoublonner": listeDedoublonner,
   "liste.garder": listeGarder,
+  "ia.trier": iaTrier,
+  "ia.rediger": iaRediger,
   code,
   sortie,
 });
