@@ -1349,25 +1349,44 @@ test("un widget en cours avec progression affiche « mise à jour… 7 / 12 »",
   await fermer();
 });
 
-test("un widget à heures affiche sa prochaine exécution", async () => {
+test("un widget à heures affiche sa prochaine exécution (la plus proche avec une fréquence) ; jamais en attente d'accord", async () => {
   const racine = nouvelleRacine();
   // Une heure à trois heures d'ici : le texte attendu ne change pas pendant le test.
   const dans3h = new Date(Date.now() + 3 * 3600_000);
   const heure = `${String(dans3h.getHours()).padStart(2, "0")}:${String(dans3h.getMinutes()).padStart(2, "0")}`;
   ecrireWidget(racine, "matin", { nom: "Matin", recolte: { heures: [heure] }, affichage: AFFICHAGE, exemple: { exemple: "matin" } });
   ecrireWidget(racine, "horaire", { nom: "Horaire", recolte: { minutes: 60 }, affichage: AFFICHAGE, exemple: { exemple: "horaire" } });
+  ecrireWidget(racine, "deux", { nom: "Deux", recolte: { minutes: 30, heures: [heure] }, affichage: AFFICHAGE, exemple: { exemple: "deux" } });
+  ecrireWidget(racine, "attente", {
+    nom: "Attente",
+    recolte: { heures: [heure] },
+    sources: { compte: ["mail.exemple.test"] },
+    affichage: AFFICHAGE,
+    exemple: { exemple: "attente" },
+  });
   ecrireDisposition(racine, [
     { id: "matin", x: 0, y: 0, l: 4, h: 3 },
     { id: "horaire", x: 4, y: 0, l: 4, h: 3 },
+    { id: "deux", x: 0, y: 3, l: 4, h: 3 },
+    { id: "attente", x: 4, y: 3, l: 4, h: 3 },
   ]);
   const profil = nouveauProfil();
   const maintenant = new Date().toISOString();
   ecrireEtatWidget(profil, "matin", { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant, heures: { faite: "9999-12-31T23:59", echecs: null } });
   ecrireEtatWidget(profil, "horaire");
+  const faite = { faite: "9999-12-31T23:59", echecs: null };
+  ecrireEtatWidget(profil, "deux", { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant, heures: faite });
+  ecrireEtatWidget(profil, "attente", { statut: "accord-requis", derniereMaj: null, derniereTentative: null, heures: faite });
   const { fenetre, fermer } = await lancerWidgets(racine, profil);
   const attendu = prochaineExecution([heure], new Date());
   expect(attendu).toMatch(/^(aujourd'hui|demain) \d\d:\d\d$/);
   await expect(fenetre.getByTestId("widget-matin").getByTestId("prochaine")).toHaveText(`prochaine : ${attendu}`);
   await expect(fenetre.getByTestId("widget-horaire").getByTestId("prochaine")).toHaveCount(0);
+  // Fréquence de 30 min et heure dans 3 h : la fréquence, plus proche.
+  const deux = prochaineExecution([heure], new Date(), { minutes: 30, derniereMaj: maintenant });
+  expect(deux).not.toBe(attendu);
+  await expect(fenetre.getByTestId("widget-deux").getByTestId("prochaine")).toHaveText(`prochaine : ${deux}`);
+  await expect(fenetre.getByTestId("widget-attente")).toBeVisible();
+  await expect(fenetre.getByTestId("widget-attente").getByTestId("prochaine")).toHaveCount(0);
   await fermer();
 });

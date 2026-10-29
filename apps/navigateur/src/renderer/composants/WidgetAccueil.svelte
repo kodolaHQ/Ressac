@@ -46,7 +46,12 @@
     const minuterie = setInterval(() => (maintenant = new Date()), 60_000);
     return () => clearInterval(minuterie);
   });
-  const prochaine = $derived("erreur" in widget ? null : prochaineExecution(widget.heures, maintenant));
+  // Jamais pour un widget qui attend l'accord de l'utilisateur : rien ne part sans lui.
+  const prochaine = $derived(
+    "erreur" in widget || widget.etat.statut === "accord-requis"
+      ? null
+      : prochaineExecution(widget.heures, maintenant, widget.minutes !== null ? { minutes: widget.minutes, derniereMaj: widget.etat.derniereMaj } : undefined),
+  );
 
   function poignee(e: PointerEvent) {
     if (e.target instanceof Element && e.target.closest("button")) return;

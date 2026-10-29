@@ -242,6 +242,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
     publiques: ["meteo.exemple.test"],
     aRecolte: true,
     heures: [],
+    minutes: null,
   });
   expect(affiches.find((w) => w.id === "vide")).toMatchObject({ src: null, donnees: null, exemple: null, aRecolte: false });
   const casse = affiches.find((w) => w.id === "casse");
@@ -252,7 +253,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
   for (const a of ps) for (const b of ps) if (a !== b) expect(a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h).toBe(false);
 });
 
-test("versWidgetsAffiches transmet les heures", () => {
+test("versWidgetsAffiches transmet les heures et la fréquence", () => {
   const declaration = (recolte?: { minutes?: number; heures?: string[] }) => ({
     nom: "Veille",
     description: "",
@@ -273,12 +274,13 @@ test("versWidgetsAffiches transmet les heures", () => {
   });
   const etat: EtatAccueil = {
     disposition: [],
-    widgets: [widget("matin", { heures: ["07:00", "19:00"] }), widget("horaire", { minutes: 60 }), widget("sans")],
+    widgets: [widget("matin", { heures: ["07:00", "19:00"] }), widget("horaire", { minutes: 60 }), widget("sans"), widget("deux", { minutes: 120, heures: ["07:00"] })],
   };
   const parId = new Map(versWidgetsAffiches(etat, {}).map((w) => [w.id, w]));
-  expect(parId.get("matin")).toMatchObject({ heures: ["07:00", "19:00"] });
-  expect(parId.get("horaire")).toMatchObject({ heures: [] });
-  expect(parId.get("sans")).toMatchObject({ heures: [] });
+  expect(parId.get("matin")).toMatchObject({ heures: ["07:00", "19:00"], minutes: null });
+  expect(parId.get("horaire")).toMatchObject({ heures: [], minutes: 60 });
+  expect(parId.get("sans")).toMatchObject({ heures: [], minutes: null });
+  expect(parId.get("deux")).toMatchObject({ heures: ["07:00"], minutes: 120 });
 });
 
 test("permissionInterface : rien pour un affichage de widget ni pour un cadre de l'interface ; la page de l'interface garde ses droits", () => {

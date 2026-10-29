@@ -374,6 +374,8 @@ export type WidgetAffiche =
       aRecolte: boolean;
       /** Heures fixes de la récolte (« HH:MM »), vide sans elles. */
       heures: string[];
+      /** Fréquence de la récolte en minutes, null sans elle. */
+      minutes: number | null;
     }
   | { id: string; erreur: string; placement: Placement };
 
