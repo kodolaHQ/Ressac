@@ -50,7 +50,12 @@
   const prochaine = $derived(
     "erreur" in widget || widget.etat.statut === "accord-requis"
       ? null
-      : prochaineExecution(widget.heures, maintenant, widget.minutes !== null ? { minutes: widget.minutes, derniereMaj: widget.etat.derniereMaj } : undefined),
+      : prochaineExecution(
+          widget.heures,
+          maintenant,
+          widget.minutes !== null ? { minutes: widget.minutes, derniereMaj: widget.etat.derniereMaj } : undefined,
+          widget.etat,
+        ),
   );
 
   function poignee(e: PointerEvent) {
