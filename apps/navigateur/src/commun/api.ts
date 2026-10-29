@@ -133,7 +133,8 @@ export interface ApiWebaios {
   surTelechargements(rappel: (liste: Telechargement[]) => void): () => void;
   permissions: {
     enAttente(): Promise<DemandeEnAttente[]>;
-    repondre(id: string, decision: Decision, droits?: DroitDev[]): void;
+    /** `o.confirme` : la case « Je comprends » d'une carte d'extension renforcée est cochée. */
+    repondre(id: string, decision: Decision, droits?: DroitDev[], o?: { confirme?: boolean }): void;
   };
   surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
   /**
@@ -248,6 +249,7 @@ export const SchemaReponsePermission = z.object({
   id,
   decision: z.enum(["autoriser", "refuser"]),
   droits: z.array(z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]])).optional(),
+  confirme: z.boolean().optional(),
 });
 
 /** Couper un droit de l'agent sur un onglet, ou tout son accès si `droit` est absent. */

@@ -97,6 +97,7 @@
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
+    aria-describedby={demande.extension?.renforce ? "carte-extension-avertissement" : undefined}
     aria-label={outilsDev
       ? "Demande d'accès aux outils de développement"
       : donneesWidget

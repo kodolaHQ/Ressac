@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   accordRenforce,
   analyserManifeste,
+  empreintePortee,
   libellesPortee,
   porteeElargie,
   type Portee,
@@ -255,4 +256,19 @@ test("R3-5 porteeElargie : scripts faux→vrai élargit, vrai→faux non", () =>
   const p: Portee = { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
   expect(porteeElargie(p, { ...p, scripts: true })).toBe(true);
   expect(porteeElargie({ ...p, scripts: true }, p)).toBe(false);
+});
+
+test("empreintePortee : stable quel que soit l'ordre des clés et des listes ; change avec la portée", () => {
+  const p: Portee = { permissions: ["tabs", "storage"], hotes: ["https://b.com/*", "https://a.com/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
+  const melangee = { scriptsTousLesSites: false, tousLesSites: false, reseau: [], hotes: ["https://a.com/*", "https://b.com/*"], permissions: ["storage", "tabs"] } as Portee;
+  expect(empreintePortee(p)).toMatch(/^[0-9a-f]{64}$/);
+  expect(empreintePortee(melangee)).toBe(empreintePortee(p));
+  // `scripts` absent vaut faux.
+  expect(empreintePortee({ ...p, scripts: false })).toBe(empreintePortee(p));
+  expect(empreintePortee({ ...p, scripts: true })).not.toBe(empreintePortee(p));
+  expect(empreintePortee({ ...p, permissions: ["storage"] })).not.toBe(empreintePortee(p));
+  expect(empreintePortee({ ...p, reseau: ["api.a.com"] })).not.toBe(empreintePortee(p));
+  expect(empreintePortee({ ...p, tousLesSites: true })).not.toBe(empreintePortee(p));
+  // Une liste ne se confond pas avec une autre (frontières des éléments).
+  expect(empreintePortee({ ...p, permissions: ["a,b"] })).not.toBe(empreintePortee({ ...p, permissions: ["a", "b"] }));
 });

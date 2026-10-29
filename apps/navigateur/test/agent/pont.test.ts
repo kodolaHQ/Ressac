@@ -4,7 +4,7 @@ import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import { siteDe, type EtatNavigateur } from "../../src/commun/modele";
-import { attendreDroits, attendreReponse, changementsPolitique, espacesDevenusPrives, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreDroits, attendreReponse, changementsPolitique, decisionPermise, espacesDevenusPrives, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 /** Règle le caractère privé d'un espace, sans toucher au reste. */
 function reglerPrive(e: EtatNavigateur, ag: (a: Action) => unknown, id: string, prive: boolean) {
@@ -379,4 +379,50 @@ test("PontElectron : historique absent sans base ; sinon il délègue, les dates
   expect(base.rechercherPourAgent).toHaveBeenLastCalledWith({ requete: "runes", limite: 20 });
   expect(await pont.historique!.lire("https://svelte.dev/")).toEqual(page);
   expect(base.texteRetenu).toHaveBeenCalledWith("https://svelte.dev/");
+});
+
+const carteExtension = (espaceId: string, source: "store" | "agent", renforce = false) => ({
+  cle: source === "agent" ? "agent:essai" : `store:${"a".repeat(32)}`,
+  nom: "Essai",
+  source,
+  version: "1.0.0",
+  droits: [],
+  sites: [],
+  tousLesSites: false,
+  reseau: source === "agent" ? [] : null,
+  renforce,
+  espace: "Perso",
+  espaceId,
+  autresEspaces: [],
+  maj: null,
+  empreinte: "0".repeat(64),
+});
+
+test("questionCaduque : une carte d'extension tombe avec son espace ; celle de l'agent aussi quand le profil devient privé", () => {
+  const { e, ag, F } = preparer();
+  const espace = e().espaces[0]!.id;
+  const agent = { id: "x", ongletId: null, fenetreId: F, origine: "agent:essai", permissions: ["extension" as const], extension: carteExtension(espace, "agent") };
+  const store = { ...agent, id: "y", extension: carteExtension(espace, "store") };
+  expect(questionCaduque(agent, e())).toBe(false);
+  expect(questionCaduque(store, e())).toBe(false);
+  // Un autre espace du même profil devient privé : le profil l'est, l'extension de l'agent n'y a plus sa place.
+  ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: false, profil: e().espaces[0]!.profil });
+  const secret = e().espaces.at(-1)!.id;
+  reglerPrive(e(), ag, secret, true);
+  expect(questionCaduque(agent, e())).toBe(true);
+  expect(questionCaduque(store, e())).toBe(false);
+  // Espace supprimé : toute carte tombe.
+  expect(questionCaduque({ ...store, extension: carteExtension("inconnu", "store") }, e())).toBe(true);
+});
+
+test("decisionPermise : un « oui » à une carte renforcée sans la case cochée vaut refus", () => {
+  const renforcee = { id: "x", ongletId: null, origine: "agent:essai", permissions: ["extension" as const], extension: carteExtension("e", "agent", true) };
+  expect(decisionPermise(renforcee, "autoriser")).toBe("refuser");
+  expect(decisionPermise(renforcee, "autoriser", false)).toBe("refuser");
+  expect(decisionPermise(renforcee, "autoriser", true)).toBe("autoriser");
+  expect(decisionPermise(renforcee, "refuser", true)).toBe("refuser");
+  const simple = { ...renforcee, extension: carteExtension("e", "agent") };
+  expect(decisionPermise(simple, "autoriser")).toBe("autoriser");
+  const lecture = { id: "l", ongletId: null, origine: "https://a.test", permissions: ["lire-onglet" as const] };
+  expect(decisionPermise(lecture, "autoriser")).toBe("autoriser");
 });

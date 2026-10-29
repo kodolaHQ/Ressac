@@ -10,9 +10,9 @@ import {
   type EtatExtensions,
   type IdProfil,
 } from "@webaios/noyau";
-import type { CarteExtension } from "../../commun/extensions";
+import type { CarteExtension, ReponseAccord } from "../../commun/extensions";
 import { aUneVue, profilsEnUsage, type Decision, type Demande, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
-import { attendreReponse } from "../agent/pont";
+import { attendreReponse, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
@@ -23,6 +23,20 @@ import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./session
  * premier plan, ou la dernière utilisée). Rend de quoi la retirer.
  */
 export type PoserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Decision) => void) => () => void;
+
+/** `reponse`, ou `refus` dès que `signal` tombe. */
+function avecSignal<T>(reponse: Promise<T>, signal: AbortSignal | undefined, refus: T): Promise<T> {
+  if (!signal) return reponse;
+  if (signal.aborted) return Promise.resolve(refus);
+  return new Promise((ok) => {
+    const abandon = () => ok(refus);
+    signal.addEventListener("abort", abandon, { once: true });
+    void reponse.then((r) => {
+      signal.removeEventListener("abort", abandon);
+      ok(r);
+    });
+  });
+}
 
 /** Les profils de connexion utilisés par au moins un espace privé. */
 export function profilsPrives(etat: EtatNavigateur): Set<IdProfil> {
@@ -55,6 +69,8 @@ export class ServiceExtensions {
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
   private poser: PoserQuestion | undefined;
+  /** Les cartes d'accord affichées, par clé. `connue` : l'extension était dans le registre quand la carte a été posée. */
+  private cartes = new Map<string, { reponse: Promise<ReponseAccord>; empreinte: string; retrait: AbortController; connue: boolean }>();
   private o:
     | {
         dossier: string;
@@ -109,6 +125,7 @@ export class ServiceExtensions {
     const o = this.o;
     if (!o) throw new Error("Service des extensions non démarré");
     this.etat = await modifierEtatExtensions(o.dossier, changer, () => profilsPrives(o.magasin.etat));
+    this.perimerCartes();
     await this.appliquer();
     return this.etat;
   }
@@ -151,8 +168,8 @@ export class ServiceExtensions {
     void (async () => {
       try {
         const carte = JSON.parse(await readFile(chemin, "utf8")) as CarteExtension;
-        const accord = await this.demanderAccord(carte, {});
-        await writeFile(`${chemin}.reponse`, String(accord));
+        const { accepte } = await this.demanderAccord(carte, {});
+        await writeFile(`${chemin}.reponse`, String(accepte));
       } catch (e) {
         console.error("[extensions] carte de test :", e);
       }
@@ -160,18 +177,40 @@ export class ServiceExtensions {
   }
 
   /**
-   * La carte d'accord : vrai si l'utilisateur clique « Activer ». Sans `delaiMs` (demande venue d'un clic de l'utilisateur), elle
-   * attend ; l'agent passe `DELAI_QUESTION_MS`, au bout duquel elle tombe et vaut refus, comme un `signal` levé.
-   * Questions pas encore branchées : refus.
+   * La carte d'accord : `accepte` si l'utilisateur clique « Activer » ; `empreinte` est celle de la portée montrée, que
+   * l'appelant compare à `empreintePortee` de la portée qu'il va écrire (différente : il n'écrit rien). Sans `delaiMs`
+   * (demande venue d'un clic de l'utilisateur), elle attend ; l'agent passe `DELAI_QUESTION_MS`, au bout duquel elle tombe et
+   * vaut refus, comme un `signal` levé. Refus aussi : questions pas encore branchées, extensions toutes coupées, carte
+   * déjà caduque ; et, carte affichée, l'extension retirée du registre, la coupure générale, la carte caduque
+   * (`questionCaduque`), sa fenêtre fermée sans autre fenêtre (index.ts).
    */
-  demanderAccord(c: CarteExtension, o: { fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal }): Promise<boolean> {
+  demanderAccord(c: CarteExtension, o: { fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal }): Promise<ReponseAccord> {
+    const refus: ReponseAccord = { accepte: false, empreinte: c.empreinte };
+    // Une carte par clé : une deuxième demande rejoint la première (même réponse, même empreinte montrée), sauf si son
+    // propre signal tombe avant.
+    const ouverte = this.cartes.get(c.cle);
+    if (ouverte) return avecSignal(ouverte.reponse, o.signal, { accepte: false, empreinte: ouverte.empreinte });
     const poser = this.poser;
-    if (!poser) return Promise.resolve(false);
-    return attendreReponse(
-      (repondre) => poser({ permissions: ["extension"], origine: c.cle, extension: c, ...(o.fenetre ? { fenetreId: o.fenetre } : {}) }, repondre),
-      o.delaiMs ?? Infinity,
-      o.signal,
+    if (!poser || o.signal?.aborted || this.etat.toutesCoupees) return Promise.resolve(refus);
+    const demande = { permissions: ["extension" as const], origine: c.cle, extension: c, ...(o.fenetre ? { fenetreId: o.fenetre } : {}) };
+    // Déjà caduque (espace disparu, profil privé pour l'agent) : pas de carte.
+    if (this.o && questionCaduque({ ...demande, id: "", ongletId: null }, this.o.magasin.etat)) return Promise.resolve(refus);
+    const retrait = new AbortController();
+    o.signal?.addEventListener("abort", () => retrait.abort(), { once: true });
+    const reponse = attendreReponse((repondre) => poser(demande, repondre), o.delaiMs ?? Infinity, retrait.signal).then(
+      (accepte): ReponseAccord => {
+        this.cartes.delete(c.cle);
+        return { accepte, empreinte: c.empreinte };
+      },
     );
+    this.cartes.set(c.cle, { reponse, empreinte: c.empreinte, retrait, connue: c.cle in this.etat.extensions });
+    return reponse;
+  }
+
+  /** Après chaque écriture du registre : les cartes d'une extension retirée, ou toutes si tout est coupé, tombent. */
+  private perimerCartes(): void {
+    for (const [cle, carte] of this.cartes)
+      if (this.etat.toutesCoupees || (carte.connue && !(cle in this.etat.extensions))) carte.retrait.abort();
   }
 
   /** La dernière erreur de préparation ou de chargement de chaque clé. */

@@ -43,7 +43,7 @@ export interface Gestionnaires {
   fermerOnglet(ongletId: IdOnglet): void;
   historique: Historique;
   telechargements: Telechargements;
-  permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision, droits?: DroitDev[]): void };
+  permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision, droits?: DroitDev[], confirme?: boolean): void };
   agent: {
     demarrer(f: IdFenetre, t: TailleTerminal): void;
     ecrire(f: IdFenetre, d: string): void;
@@ -130,7 +130,7 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.telechargementsListe, () => g.telechargements.liste());
   recevoir(CANAUX.telechargementAction, zod(SchemaActionTelechargement), ({ id, action }) => g.telechargements[action](id));
   repondre(CANAUX.permissionsListe, () => g.permissions.enAttente());
-  recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision, droits }) => g.permissions.repondre(id, decision, droits));
+  recevoir(CANAUX.repondrePermission, zod(SchemaReponsePermission), ({ id, decision, droits, confirme }) => g.permissions.repondre(id, decision, droits, confirme));
   // La modale prend le clavier (la page l'avait peut-être) ; la capture ne vise que la page affichée dans cette fenêtre.
   ipcMain.handle(CANAUX.apercuPage, (e, brut: unknown) => {
     const fenetreId = g.fenetreDe(e);

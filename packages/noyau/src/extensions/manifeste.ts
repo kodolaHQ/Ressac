@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type SourceExtension = "store" | "agent";
 
 export interface Portee {
@@ -206,6 +208,24 @@ export function porteeElargie(accordee: Portee, nouvelle: Portee): boolean {
     (!accordee.scriptsTousLesSites && nouvelle.scriptsTousLesSites) ||
     (!accordee.scripts && !!nouvelle.scripts)
   );
+}
+
+/**
+ * Empreinte d'une portée (sha-256 hexadécimal d'un JSON canonique : clés triées, listes triées, `scripts` absent = faux).
+ * La carte d'accord la porte : un appelant n'enregistre l'accord que si la portée qu'il écrit a la même empreinte que
+ * celle montrée à l'utilisateur.
+ */
+export function empreintePortee(p: Portee): string {
+  const triee = (l: string[]) => [...l].sort();
+  const canonique = JSON.stringify({
+    hotes: triee(p.hotes),
+    permissions: triee(p.permissions),
+    reseau: triee(p.reseau),
+    scripts: !!p.scripts,
+    scriptsTousLesSites: p.scriptsTousLesSites,
+    tousLesSites: p.tousLesSites,
+  });
+  return createHash("sha256").update(canonique).digest("hex");
 }
 
 /** Accord renforcé (agent) : scripts partout, ou injection possible partout via `scripting`. */

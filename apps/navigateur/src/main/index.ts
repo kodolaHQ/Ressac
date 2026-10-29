@@ -28,7 +28,7 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { creerNotifieur } from "./notifications";
-import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
@@ -163,6 +163,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   // restauration. Sur « closed » : un window.close() de la page détruit la fenêtre sans émettre « close ».
   fenetre.on("closed", () => {
     fenetres.delete(id);
+    questionsFenetreFermee(id);
     boutonsFenetre.delete(id);
     selectionsConstructeur.delete(id);
     void agent?.sessions.fermerFenetre(id);
@@ -233,6 +234,8 @@ function fenetreDe(e: Pick<IpcMainEvent, "sender" | "senderFrame">): IdFenetre |
 
 let enregistreur: EnregistreurSession | undefined;
 let rouvrirFenetres = (): boolean => false;
+/** Une fenêtre principale fermée : ses questions passent dans une autre, ou valent refus s'il n'en reste aucune. */
+let questionsFenetreFermee = (_id: IdFenetre): void => {};
 let agent: ServiceAgent | undefined;
 const fileEcritures = new FileEcritures();
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
@@ -571,11 +574,11 @@ app.whenReady().then(async () => {
     },
     permissions: {
       enAttente,
-      repondre: (id, d, droits) => {
+      repondre: (id, d, droits, confirme) => {
         const q = questions.get(id);
         if (!q) return;
         questions.delete(id);
-        q.repondre(d, droits);
+        q.repondre(decisionPermise(q.demande, d, confirme), droits);
         diffuser(CANAUX.permissions, enAttente());
       },
     },
@@ -704,9 +707,25 @@ app.whenReady().then(async () => {
       diffuser(CANAUX.permissions, enAttente());
     };
   };
-  // Les cartes d'accord des extensions passent par les mêmes questions (modale de la fenêtre).
+  // Une question qui vise une fenêtre fermée ne serait plus jamais vue (et une carte sans délai ne tomberait jamais).
+  questionsFenetreFermee = (fermee) => {
+    const autre = fenetreAgent();
+    let change = false;
+    for (const [id, q] of questions) {
+      if (q.demande.fenetreId !== fermee) continue;
+      change = true;
+      if (autre) q.demande = { ...q.demande, fenetreId: autre, ongletId: ongletActifDe(magasin.etat, autre)?.id ?? null };
+      else {
+        questions.delete(id);
+        q.repondre("refuser");
+      }
+    }
+    if (change) diffuser(CANAUX.permissions, enAttente());
+  };
+  // Les cartes d'accord des extensions passent par les mêmes questions (modale de la fenêtre). La carte de test des
+  // e2e n'est posée qu'en mode invisible.
   serviceExtensions.brancherQuestions(poserQuestion, {
-    ...(process.env.WEBAIOS_TEST_CARTE_EXTENSION ? { carteTest: process.env.WEBAIOS_TEST_CARTE_EXTENSION } : {}),
+    ...(INVISIBLE && process.env.WEBAIOS_TEST_CARTE_EXTENSION ? { carteTest: process.env.WEBAIOS_TEST_CARTE_EXTENSION } : {}),
   });
   /** Une question de l'agent sur un onglet (lecture, outils de développement) : elle tombe avec l'onglet. */
   const poserQuestionAgent = (

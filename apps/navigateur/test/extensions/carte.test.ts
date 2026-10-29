@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, test, vi } from "vitest";
-import type { AnalyseManifeste, Portee } from "@webaios/noyau";
+import { empreintePortee, type AnalyseManifeste, type EtatExtensions, type Portee } from "@webaios/noyau";
 import type { Decision, Demande, EtatNavigateur } from "../../src/commun/modele";
 import { carteDe, type CarteExtension } from "../../src/commun/extensions";
 
@@ -75,8 +75,10 @@ test("carteDe : libellés, sites, réseau (null pour le Store) et mise à jour",
     reseau: ["api.a.com"],
     renforce: false,
     espace: "Perso",
+    espaceId: "e1",
     autresEspaces: ["Lecture", "Achats"],
     maj: null,
+    empreinte: empreintePortee(portee(p)),
   } satisfies CarteExtension);
   const store = carteDe(analyse(p), { cle: `store:${"a".repeat(32)}`, source: "store", espace: perso, etat, maj: { de: "1.1.0" } });
   expect(store.reseau).toBeNull();
@@ -103,7 +105,7 @@ test("demanderAccord : la carte est posée dans la fenêtre demandée ; « Activ
   expect(posees).toHaveLength(1);
   expect(posees[0]!.champs).toEqual({ permissions: ["extension"], origine: "agent:essai", extension: CARTE, fenetreId: "f2" });
   posees[0]!.repondre("autoriser");
-  await expect(reponse).resolves.toBe(true);
+  await expect(reponse).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
 });
 
 test("demanderAccord : sans délai, la carte attend l'utilisateur ; avec un délai, elle tombe et vaut refus", async () => {
@@ -116,12 +118,12 @@ test("demanderAccord : sans délai, la carte attend l'utilisateur ; avec un dél
     expect(finie).toBe(false);
     expect(posees[0]!.retiree).toBe(false);
     posees[0]!.repondre("refuser");
-    await expect(sansDelai).resolves.toBe(false);
+    await expect(sansDelai).resolves.toEqual({ accepte: false, empreinte: CARTE.empreinte });
 
     const avecDelai = service.demanderAccord(CARTE, { delaiMs: 1000 });
     await vi.advanceTimersByTimeAsync(1000);
     expect(posees[1]!.retiree).toBe(true);
-    await expect(avecDelai).resolves.toBe(false);
+    await expect(avecDelai).resolves.toMatchObject({ accepte: false });
   } finally {
     vi.useRealTimers();
   }
@@ -132,9 +134,9 @@ test("demanderAccord : un signal levé retire la carte et refuse ; sans question
   const controle = new AbortController();
   const reponse = service.demanderAccord(CARTE, { signal: controle.signal });
   controle.abort();
-  await expect(reponse).resolves.toBe(false);
+  await expect(reponse).resolves.toMatchObject({ accepte: false });
   expect(posees[0]!.retiree).toBe(true);
-  await expect(new ServiceExtensions().demanderAccord(CARTE, {})).resolves.toBe(false);
+  await expect(new ServiceExtensions().demanderAccord(CARTE, {})).resolves.toMatchObject({ accepte: false });
 });
 
 test("carte de test : posée au branchement, la réponse est notée à côté du fichier", async () => {
@@ -155,4 +157,92 @@ test("carte de test : posée au branchement, la réponse est notée à côté du
   expect(posees[0]!.champs.extension).toEqual(CARTE);
   posees[0]!.repondre("autoriser");
   await vi.waitFor(() => expect(readFileSync(`${chemin}.reponse`, "utf8")).toBe("true"));
+});
+
+test("une seule carte par clé : une deuxième demande rejoint la première et reçoit la même réponse", async () => {
+  const { service, posees } = avecQuestions();
+  const premiere = service.demanderAccord(CARTE, {});
+  const seconde = service.demanderAccord({ ...CARTE, empreinte: "f".repeat(64) }, {});
+  expect(posees).toHaveLength(1);
+  posees[0]!.repondre("autoriser");
+  // La même réponse, avec l'empreinte de la carte montrée (la première).
+  await expect(seconde).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
+  await expect(premiere).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
+  // Réglée : une nouvelle demande pose une nouvelle carte.
+  void service.demanderAccord(CARTE, {});
+  expect(posees).toHaveLength(2);
+});
+
+test("une demande jointe dont le signal tombe reçoit un refus, sans retirer la carte des autres", async () => {
+  const { service, posees } = avecQuestions();
+  const premiere = service.demanderAccord(CARTE, {});
+  const controle = new AbortController();
+  const jointe = service.demanderAccord(CARTE, { signal: controle.signal });
+  controle.abort();
+  await expect(jointe).resolves.toMatchObject({ accepte: false });
+  expect(posees[0]!.retiree).toBe(false);
+  posees[0]!.repondre("autoriser");
+  await expect(premiere).resolves.toMatchObject({ accepte: true });
+});
+
+// Registre réel (dossier temporaire) : la carte tombe quand l'extension est retirée ou que tout est coupé.
+const entree = (source: "store" | "agent") => ({
+  source,
+  idChrome: null,
+  nom: "Essai",
+  version: "1.0.0",
+  accord: portee(),
+  profils: [],
+  epinglee: false,
+  modifieeLe: null,
+  desactivee: null,
+  majEnAttente: null,
+  vues: {},
+});
+
+async function avecRegistre(extensions: EtatExtensions["extensions"], toutesCoupees = false) {
+  const dossier = mkdtempSync(join(tmpdir(), "webaios-carte-registre-"));
+  temporaires.push(dossier);
+  const gardes = join(dossier, "gardes");
+  mkdirSync(gardes);
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees, extensions }));
+  const nav = { espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: false }], profils: [{ id: "defaut" }], fenetres: [], onglets: {} } as unknown as EtatNavigateur;
+  const { service, posees } = avecQuestions();
+  await service.demarrer({
+    dossier,
+    dossierGardes: gardes,
+    magasin: { etat: nav, abonner: () => {} },
+    profils: { synchroniser: async () => {}, erreursChargement: () => new Map(), retirerAgentsPrives: () => {} },
+    sessions: { session: () => {} },
+    vues: {},
+  } as never);
+  return { service, posees };
+}
+
+test("une carte d'une extension retirée du registre tombe et vaut refus ; celle d'une extension pas encore installée, non", async () => {
+  const { service, posees } = await avecRegistre({ "agent:essai": entree("agent") });
+  const retiree = service.demanderAccord(CARTE, {});
+  const nouvelle = service.demanderAccord({ ...CARTE, cle: "agent:autre" }, {});
+  await service.modifier((e) => ({ ...e, extensions: {} }));
+  await expect(retiree).resolves.toMatchObject({ accepte: false });
+  expect(posees[0]!.retiree).toBe(true);
+  expect(posees[1]!.retiree).toBe(false);
+  posees[1]!.repondre("autoriser");
+  await expect(nouvelle).resolves.toMatchObject({ accepte: true });
+});
+
+test("« Désactiver toutes les extensions » retire les cartes ouvertes ; tant qu'il est actif, aucune carte n'est posée", async () => {
+  const { service, posees } = await avecRegistre({});
+  const ouverte = service.demanderAccord(CARTE, {});
+  await service.modifier((e) => ({ ...e, toutesCoupees: true }));
+  await expect(ouverte).resolves.toMatchObject({ accepte: false });
+  expect(posees[0]!.retiree).toBe(true);
+  await expect(service.demanderAccord(CARTE, {})).resolves.toMatchObject({ accepte: false });
+  expect(posees).toHaveLength(1);
+});
+
+test("une carte dont l'espace n'existe plus n'est pas posée", async () => {
+  const { service, posees } = await avecRegistre({});
+  await expect(service.demanderAccord({ ...CARTE, espaceId: "disparu" }, {})).resolves.toMatchObject({ accepte: false });
+  expect(posees).toHaveLength(0);
 });

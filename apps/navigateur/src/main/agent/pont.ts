@@ -70,6 +70,13 @@ export function espacesDevenusPrives(avant: EtatNavigateur, apres: EtatNavigateu
  * dans sa fenêtre, quel que soit l'onglet affiché : fermer celui-ci ne la concerne pas.
  */
 export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): boolean {
+  // Carte d'accord d'une extension : elle tombe avec son espace ; celle de l'agent aussi quand le profil de l'espace
+  // devient privé (aucune extension de l'agent n'y est chargée). Retrait du registre et coupure : ServiceExtensions.
+  if (d.extension) {
+    const espace = etat.espaces.find((e) => e.id === d.extension!.espaceId);
+    if (!espace) return true;
+    if (d.extension.source === "agent" && etat.espaces.some((e) => e.profil === espace.profil && e.prive)) return true;
+  }
   // Une fenêtre d'appli (`app:<dossier>`) n'est pas un onglet : sa fermeture et ses navigations sont suivies à part.
   const onglet = d.cible && !d.cible.startsWith(PREFIXE_APP) ? etat.onglets[d.cible] : undefined;
   if (d.cible && !d.cible.startsWith(PREFIXE_APP) && !onglet) return true;
@@ -78,6 +85,15 @@ export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): bool
   // Les droits portent sur le site que l'utilisateur a vu : l'onglet est parti ailleurs, la carte tombe.
   if (onglet && d.permissions.includes("outils-dev") && origineDe(onglet.url) !== d.origine) return true;
   return !d.fenetreId && d.ongletId !== null && !etat.onglets[d.ongletId];
+}
+
+/**
+ * La décision retenue pour une réponse de l'interface : un « oui » à une carte d'extension renforcée n'est reçu que s'il
+ * porte la case « Je comprends » cochée (`confirme`) ; sinon c'est un refus, quel que soit ce qu'affiche l'interface.
+ */
+export function decisionPermise(d: DemandeEnAttente, decision: Decision, confirme?: boolean): Decision {
+  if (decision === "autoriser" && d.extension?.renforce && confirme !== true) return "refuser";
+  return decision;
 }
 
 /** L'origine d'une URL, ou l'URL telle quelle si elle n'en a pas. */

@@ -46,7 +46,8 @@ const api: ApiWebaios = {
   },
   permissions: {
     enAttente: () => ipcRenderer.invoke(CANAUX.permissionsListe),
-    repondre: (id, decision, droits) => ipcRenderer.send(CANAUX.repondrePermission, { id, decision, ...(droits ? { droits } : {}) }),
+    repondre: (id, decision, droits, o) =>
+      ipcRenderer.send(CANAUX.repondrePermission, { id, decision, ...(droits ? { droits } : {}), ...(o?.confirme !== undefined ? { confirme: o.confirme } : {}) }),
   },
   apercuPage: (ongletId) => ipcRenderer.invoke(CANAUX.apercuPage, { ongletId }),
   surPermissions(rappel) {
