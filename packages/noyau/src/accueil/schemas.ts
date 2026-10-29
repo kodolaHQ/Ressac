@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const COLONNES = 12;
-export const TAILLE_MAX_DONNEES = 2 * 1024 * 1024;
+export { TAILLE_MAX_DONNEES } from "../workflows/protocole.js";
 
 /** Nom d'hôte en minuscules (« news.ycombinator.com »). */
 const domaine = z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, "nom d'hôte en minuscules attendu");

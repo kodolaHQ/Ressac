@@ -300,3 +300,13 @@ test("commandeRecolte monte le moteur en lecture seule et lance /opt/webaios/mot
   // Le dossier du moteur est monté tel quel, pas son parent : rien d'autre du paquet n'entre dans le conteneur.
   expect(() => atelier.commandeRecolte("meteo", "/d", "/app/x:y")).toThrow();
 });
+
+test("commandeRecolte avec delaiS 1830 : timeout -k 5 1830", () => {
+  const atelier = new Atelier({ chemins, docker: "/usr/local/bin/docker" });
+  const c = atelier.commandeRecolte("veille", "/d", "/app/docker/moteur", 1830);
+  const i = c.indexOf("timeout");
+  expect(c.slice(i, i + 4)).toEqual(["timeout", "-k", "5", "1830"]);
+  // Sans délai donné : 180 s comme avant.
+  const d = atelier.commandeRecolte("veille", "/d", "/app/docker/moteur");
+  expect(d.slice(d.indexOf("timeout"), d.indexOf("timeout") + 4)).toEqual(["timeout", "-k", "5", "180"]);
+});

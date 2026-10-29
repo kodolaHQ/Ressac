@@ -2,6 +2,9 @@ import { z } from "zod";
 import type { MemoireBlocs } from "./memoire.js";
 import type { Bloc, Lien } from "./schema.js";
 
+/** Taille maximale des données d'un widget (son `donnees.json`, une publication au fil de l'eau). */
+export const TAILLE_MAX_DONNEES = 2 * 1024 * 1024;
+
 /** Taille maximale d'une ligne du protocole récolteur <-> noyau. */
 export const LIGNE_MAX_OCTETS = 4 * 1024 * 1024;
 
@@ -15,7 +18,8 @@ export const StatutBlocConteneur = z.enum(["reussi", "partiel", "echoue"]);
 
 /**
  * Sortie standard du récolteur : une ligne JSON par message. Pour un workflow, des traces (`bloc`, `journal`) et la
- * mémoire des blocs (`memoire`, juste avant `fin`) ; la fin reste `fin` / `echec`.
+ * mémoire des blocs (`memoire`, juste avant `fin` ; aussi en cours de route pour une exécution progressive, la dernière
+ * reçue vaut) ; pendant la chaîne au fil de l'eau, des `publication` ; la fin reste `fin` / `echec`.
  */
 export const MessageRecolteur = z.union([
   z.object({ t: z.literal("appel"), n: z.number().int(), f: FonctionRecolteur, a: z.unknown() }),
@@ -31,6 +35,7 @@ export const MessageRecolteur = z.union([
   }),
   z.object({ t: z.literal("journal"), bloc: z.string(), texte: z.string() }),
   z.object({ t: z.literal("memoire"), memoire: MemoireEnvoyee }),
+  z.object({ t: z.literal("publication"), donnees: z.unknown(), faits: z.number().int().min(0), total: z.number().int().min(0) }),
   z.object({ t: z.literal("fin"), donnees: z.unknown() }),
   z.object({ t: z.literal("echec"), erreur: z.string() }),
 ]);
@@ -54,6 +59,8 @@ export const MessageNoyau = z.union([
     config: z.unknown().optional(),
     workflow: z.object({ blocs: z.array(z.unknown()), liens: z.array(z.unknown()), ordre: z.array(z.string()) }),
     rejeu: z.object({ relances: z.array(z.string()), sorties: z.record(z.string(), z.unknown()) }).optional(),
+    limiteMs: z.number().int().positive().optional(),
+    progressif: z.literal(true).optional(),
   }),
   z.object({ t: z.literal("memoire"), memoire: MemoireEnvoyee }),
   z.object({ t: z.literal("reponse"), n: z.number().int(), ok: z.unknown() }),
@@ -85,9 +92,22 @@ export function ligneReponse(n: number, resultat: { ok: unknown } | { erreur: st
   return JSON.stringify({ t: "reponse", n, ...resultat }) + "\n";
 }
 
-export type OptionsDebut = { precedent: unknown; maintenant: string; config: unknown; workflow: WorkflowEnvoye; rejeu?: RejeuEnvoye };
+export type OptionsDebut = {
+  precedent: unknown;
+  maintenant: string;
+  config: unknown;
+  workflow: WorkflowEnvoye;
+  rejeu?: RejeuEnvoye;
+  /** Plus aucun élément lancé après ce délai (`dureeMaxMinutes × 60 000`). */
+  limiteMs?: number;
+  /** Mémoire envoyée en cours de route, publications au fil de l'eau. */
+  progressif?: true;
+};
 
-/** La ligne `debut` ; sans rejeu, aucune clé `rejeu` (la ligne d'une vraie exécution ne change pas). */
+/**
+ * La ligne `debut` ; les clés `rejeu`, `limiteMs` et `progressif` n'y sont que si elles sont données (la ligne d'un
+ * widget sans les nouveaux champs ne change pas).
+ */
 export function ligneDebut(o: OptionsDebut): string {
   return (
     JSON.stringify({
@@ -97,6 +117,8 @@ export function ligneDebut(o: OptionsDebut): string {
       config: o.config ?? null,
       workflow: o.workflow,
       ...(o.rejeu ? { rejeu: { relances: o.rejeu.relances, sorties: o.rejeu.sorties } } : {}),
+      ...(o.limiteMs !== undefined ? { limiteMs: o.limiteMs } : {}),
+      ...(o.progressif ? { progressif: true } : {}),
     }) + "\n"
   );
 }

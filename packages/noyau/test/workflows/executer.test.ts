@@ -4,11 +4,14 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import {
   DELAI_EXECUTION_MS,
+  ECART_MEMOIRE_MS,
+  ECART_PUBLICATIONS_MS,
   MEMOIRE_NON_GARDEE,
   PROFIL_REFUSE,
   executerWorkflow,
@@ -26,6 +29,9 @@ import { REJEU_TROP_GROS } from "../../src/workflows/rejeu.js";
 import { empreinteParametres, type MemoireBlocs } from "../../src/workflows/memoire.js";
 import { validerWorkflow } from "../../src/workflows/valider.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
+import { Atelier } from "../../src/conteneur/atelier.js";
+import { cheminsEspace } from "../../src/chemins.js";
+import { chaineAuFilDeLEau } from "../../src/workflows/chaine.js";
 
 const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
 const SCRIPT = join(MOTEUR, "recolteur.mjs");
@@ -868,5 +874,331 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
     for (const ok of enAttente.splice(0)) ok();
     await new Promise((ok) => setTimeout(ok, 20));
     expect(html()).toHaveLength(1);
+  });
+});
+
+describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en cours de route)", () => {
+  /** liste (code) → fiche → avis (source.recuperer par élément) → sortie. */
+  const veille = (o: { auFilDeLEau?: boolean } = {}) => ({
+    version: 1,
+    blocs: [
+      { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
+      { id: "fiche", type: "source.recuperer", parametres: { url: "{url}", parElement: true } },
+      { id: "avis", type: "source.recuperer", parametres: { url: "{url}", parElement: true } },
+      { id: "sortie", type: "sortie", parametres: { vers: "widget", ...(o.auFilDeLEau ? { auFilDeLEau: true } : {}) } },
+    ],
+    liens: [{ de: "liste", vers: "fiche" }, { de: "fiche", vers: "avis" }, { de: "avis", vers: "sortie" }],
+  });
+
+  /**
+   * Un faux conteneur qui écrit ses lignes une à une (une fonction est appelée à sa place : avancer l'horloge) ;
+   * `recu` reçoit ce que le noyau lui écrit ; `bloque` : il ne sort jamais de lui-même (seulement tué).
+   */
+  const lanceurPas = (pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    stdin.on("data", (d: Buffer) => o.recu?.push(d.toString()));
+    let tuer = () => {};
+    const fin = new Promise<number | null>((ok) => {
+      tuer = () => ok(null);
+      void (async () => {
+        for (const p of pas) {
+          await new Promise((r) => setImmediate(r));
+          if (typeof p === "function") p();
+          else stdout.write(JSON.stringify(p) + "\n");
+        }
+        await new Promise((r) => setImmediate(r));
+        if (o.bloque) return;
+        stdout.end();
+        stderr.end();
+        setImmediate(() => ok(0));
+      })();
+    });
+    return { stdin, stdout, stderr, tuer: () => tuer(), fin };
+  };
+
+  /** Une horloge que les pas font avancer. */
+  const horlogeFactice = (b: Banc) => {
+    let t = MAINTENANT.getTime();
+    b.infra.horloge = () => new Date(t);
+    return (ms: number) => () => {
+      t += ms;
+    };
+  };
+
+  /** La commande réelle de l'atelier, gardée pour lire son `timeout`. */
+  const brancherAtelier = (b: Banc) => {
+    const atelier = new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
+    const commandes: string[][] = [];
+    b.infra.atelier = {
+      commandeRecolte: (id, d, m, s) => {
+        const c = atelier.commandeRecolte(id, d, m, s);
+        commandes.push(c);
+        return c;
+      },
+      supprimerRecolte: async () => {},
+    };
+    return () => {
+      const c = commandes[0]!;
+      return c.slice(c.indexOf("timeout"), c.indexOf("timeout") + 4);
+    };
+  };
+
+  /** Les délais donnés à setTimeout pendant `f`. */
+  async function delaisPendant(f: () => Promise<unknown>): Promise<unknown[]> {
+    const espion = vi.spyOn(globalThis, "setTimeout");
+    try {
+      await f();
+      return espion.mock.calls.map((c) => c[1]);
+    } finally {
+      espion.mockRestore();
+    }
+  }
+
+  const debutBloc = (id: string) => ({ t: "bloc", id, etape: "debut" });
+  const finBloc = (id: string, sortie: unknown = [{ url: "https://a.example/1" }], statut = "reussi") => ({ t: "bloc", id, etape: "fin", statut, sortie });
+  const pub = (donnees: unknown, faits: number, total: number) => ({ t: "publication", donnees, faits, total });
+  const essai = (b: Banc) => {
+    b.ctx.declencheur = "rejeu";
+    b.ctx.rejeu = { relances: [...b.ctx.valide.ordre], sorties: {}, repris: {} };
+  };
+
+  it("la chaîne de veille() est fiche → avis", () => {
+    expect(chaineAuFilDeLEau(valide(veille({ auFilDeLEau: true })))).toEqual(["fiche", "avis"]);
+  });
+
+  it("widget sans les nouveaux champs : ligne debut identique à aujourd'hui, timeout 180, délai 200 s", async () => {
+    const recu: string[] = [];
+    const b = await banc(veille(), {}, { lancer: lanceurPas([{ t: "fin", donnees: null }], { recu }) });
+    const timeout = brancherAtelier(b);
+    const delais = await delaisPendant(() => executerWorkflow(b.ctx, b.infra));
+    const { workflow, ordre } = b.ctx.valide;
+    expect(recu.join("").split("\n")[0]).toBe(
+      JSON.stringify({ t: "debut", precedent: null, maintenant: MAINTENANT.toISOString(), config: { interets: "rust" }, workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre } }),
+    );
+    expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
+    expect(delais).toContain(200_000);
+  });
+
+  it("dureeMaxMinutes 30 : debut porte limiteMs 1 800 000 et progressif, conteneur lancé avec timeout 1830, délai 1 850 s", async () => {
+    const recu: string[] = [];
+    const b = await banc(veille(), {}, { lancer: lanceurPas([{ t: "fin", donnees: null }], { recu }) });
+    b.ctx.dureeMaxMinutes = 30;
+    const timeout = brancherAtelier(b);
+    const delais = await delaisPendant(() => executerWorkflow(b.ctx, b.infra));
+    const debut = JSON.parse(recu.join("").split("\n")[0]!);
+    expect(debut).toMatchObject({ t: "debut", limiteMs: 1_800_000, progressif: true });
+    expect(timeout()).toEqual(["timeout", "-k", "5", "1830"]);
+    expect(delais).toContain(1_850_000);
+    expect(delais).not.toContain(200_000);
+  });
+
+  it("auFilDeLEau sans dureeMaxMinutes : progressif sans limiteMs ; un essai n'est jamais progressif", async () => {
+    const recu: string[] = [];
+    const b = await banc(veille({ auFilDeLEau: true }), {}, { lancer: lanceurPas([{ t: "fin", donnees: null }], { recu }) });
+    await executerWorkflow(b.ctx, b.infra);
+    const debut = JSON.parse(recu.join("").split("\n")[0]!);
+    expect(debut.progressif).toBe(true);
+    expect("limiteMs" in debut).toBe(false);
+
+    const recuEssai: string[] = [];
+    const e = await banc(veille({ auFilDeLEau: true }), {}, { lancer: lanceurPas([{ t: "fin", donnees: null }], { recu: recuEssai }) });
+    e.ctx.dureeMaxMinutes = 30;
+    essai(e);
+    await executerWorkflow(e.ctx, e.infra);
+    const debutEssai = JSON.parse(recuEssai.join("").split("\n")[0]!);
+    expect("progressif" in debutEssai).toBe(false);
+    expect(debutEssai.limiteMs).toBe(1_800_000);
+  });
+
+  it("traces de chaîne acceptées ; une fin de chaîne dans le désordre rejetée", async () => {
+    const enChaine = await banc(veille({ auFilDeLEau: true }), {}, {
+      lancer: lanceurPas([
+        debutBloc("liste"), finBloc("liste"),
+        debutBloc("fiche"), debutBloc("avis"),
+        { t: "journal", bloc: "fiche", texte: "lu" },
+        finBloc("fiche"), finBloc("avis"),
+        debutBloc("sortie"), finBloc("sortie"),
+        { t: "fin", donnees: [] },
+      ]),
+    });
+    const relayees: unknown[] = [];
+    enChaine.infra.surTrace = (t) => relayees.push(t);
+    const r = await executerWorkflow(enChaine.ctx, enChaine.infra);
+    expect(r.execution.statut).toBe("reussie");
+    expect(r.execution.blocs.find((x) => x.id === "fiche")!.journal).toEqual(["lu"]);
+    expect(relayees).toEqual([
+      { bloc: "liste", etape: "debut" },
+      { bloc: "liste", etape: "fin", statut: "reussi", elements: 1 },
+      { bloc: "fiche", etape: "debut" },
+      { bloc: "avis", etape: "debut" },
+      { bloc: "fiche", etape: "fin", statut: "reussi", elements: 1 },
+      { bloc: "avis", etape: "fin", statut: "reussi", elements: 1 },
+      { bloc: "sortie", etape: "debut" },
+      { bloc: "sortie", etape: "fin", statut: "reussi", elements: 1 },
+    ]);
+
+    // Fin d'avis avant celle de fiche : rejetée ; avis commencé sans fin, la sortie (qui arrive trop tôt) rejetée.
+    const desordre = await banc(veille({ auFilDeLEau: true }), {}, {
+      lancer: lanceurPas([
+        debutBloc("liste"), finBloc("liste"),
+        debutBloc("fiche"), debutBloc("avis"),
+        finBloc("avis"), finBloc("fiche"),
+        debutBloc("sortie"),
+        { t: "fin", donnees: [] },
+      ]),
+    });
+    const relayees2: unknown[] = [];
+    desordre.infra.surTrace = (t) => relayees2.push(t);
+    const r2 = await executerWorkflow(desordre.ctx, desordre.infra);
+    expect(r2.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "reussi", "echoue", "pas-lance"]);
+    expect(relayees2).not.toContainEqual(expect.objectContaining({ bloc: "avis", etape: "fin" }));
+
+    // Sans auFilDeLEau : deux debut de suite, le second est rejeté comme aujourd'hui.
+    const sans = await banc(veille(), {}, {
+      lancer: lanceurPas([
+        debutBloc("liste"), finBloc("liste"),
+        debutBloc("fiche"), debutBloc("avis"),
+        finBloc("fiche"), finBloc("avis"),
+        { t: "fin", donnees: [] },
+      ]),
+    });
+    const r3 = await executerWorkflow(sans.ctx, sans.infra);
+    expect(r3.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
+
+    // Un essai n'a pas de chaîne : même rejet.
+    const e = await banc(veille({ auFilDeLEau: true }), {}, {
+      lancer: lanceurPas([
+        debutBloc("liste"), finBloc("liste"),
+        debutBloc("fiche"), debutBloc("avis"),
+        finBloc("fiche"), finBloc("avis"),
+        { t: "fin", donnees: [] },
+      ]),
+    });
+    essai(e);
+    const r4 = await executerWorkflow(e.ctx, e.infra);
+    expect(r4.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
+  });
+
+  it("publication relayée seulement pendant la chaîne et à 5 s d'écart ; ignorée avant la chaîne, pour un essai, sans auFilDeLEau, au-delà de 2 Mo", async () => {
+    const gros = "x".repeat(2 * 1024 * 1024);
+    const pas = (avancer: (ms: number) => () => void) => [
+      debutBloc("liste"), finBloc("liste"),
+      pub("avant la chaîne", 0, 3),
+      debutBloc("fiche"),
+      pub("entre deux debut", 0, 3),
+      debutBloc("avis"),
+      pub("A", 1, 3),
+      avancer(3000), pub("trop tôt", 2, 3),
+      avancer(1500), pub("C", 2, 3),
+      avancer(5000), pub("faits > total", 4, 3),
+      avancer(5000), pub(gros, 3, 3),
+      avancer(5000), pub("D", 3, 3),
+      finBloc("fiche"),
+      avancer(5000), pub("après une fin", 3, 3),
+      finBloc("avis"),
+      avancer(5000), pub("après la chaîne", 3, 3),
+      debutBloc("sortie"), finBloc("sortie"),
+      { t: "fin", donnees: "finale" },
+    ];
+    const lancerAvec = async (workflow: unknown, regler: (b: Banc) => void = () => {}) => {
+      const b = await banc(workflow);
+      const avancer = horlogeFactice(b);
+      b.infra.lancer = lanceurPas(pas(avancer));
+      regler(b);
+      const relayees: unknown[] = [];
+      b.infra.surPublication = async (p) => {
+        relayees.push(p);
+      };
+      const r = await executerWorkflow(b.ctx, b.infra);
+      expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "finale" } });
+      return relayees;
+    };
+
+    expect(await lancerAvec(veille({ auFilDeLEau: true }))).toEqual([
+      { donnees: "A", faits: 1, total: 3 },
+      { donnees: "C", faits: 2, total: 3 },
+      { donnees: "D", faits: 3, total: 3 },
+    ]);
+    expect(await lancerAvec(veille({ auFilDeLEau: true }), essai)).toEqual([]);
+    expect(await lancerAvec(veille(), (b) => void (b.ctx.dureeMaxMinutes = 30))).toEqual([]);
+  });
+
+  it("une surPublication lente est finie avant que executerWorkflow rende", async () => {
+    const b = await banc(veille({ auFilDeLEau: true }));
+    const avancer = horlogeFactice(b);
+    b.infra.lancer = lanceurPas([
+      debutBloc("liste"), finBloc("liste"), debutBloc("fiche"), debutBloc("avis"),
+      pub("A", 1, 2), avancer(5000), pub("B", 2, 2),
+      finBloc("fiche"), finBloc("avis"), debutBloc("sortie"), finBloc("sortie"),
+      { t: "fin", donnees: "finale" },
+    ]);
+    const finies: unknown[] = [];
+    let enCours = 0;
+    let auPlus = 0;
+    b.infra.surPublication = async (p) => {
+      enCours++;
+      auPlus = Math.max(auPlus, enCours);
+      await new Promise((ok) => setTimeout(ok, 80));
+      finies.push(p.donnees);
+      enCours--;
+    };
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(finies).toEqual(["A", "B"]);
+    expect(auPlus).toBe(1);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "finale" } });
+  });
+
+  it("progressif : surMemoire au plus toutes les 30 s ; un echec porte la dernière mémoire reçue ; non progressif : ni surMemoire ni memoire dans l'issue", async () => {
+    // L'empreinte des paramètres validés (défauts compris) du bloc liste.
+    const empreinte = empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const m = (n: number) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: n }, inconnu: { type: "code", valeur: n } } });
+    const marquee = (n: number) => ({ liste: { type: "code", valeur: n, empreinte } });
+    const lancerAvec = async (d: number | undefined, fin: unknown = { t: "echec", erreur: "cassé" }) => {
+      const b = await banc(veille());
+      if (d !== undefined) b.ctx.dureeMaxMinutes = d;
+      const avancer = horlogeFactice(b);
+      b.infra.lancer = lanceurPas([m(1), avancer(10_000), m(2), avancer(25_000), m(3), m(4), fin]);
+      const relayees: unknown[] = [];
+      b.infra.surMemoire = async (x) => {
+        relayees.push(x);
+      };
+      const r = await executerWorkflow(b.ctx, b.infra);
+      return { r, relayees };
+    };
+
+    const prog = await lancerAvec(30);
+    expect(prog.relayees).toEqual([marquee(1), marquee(3)]);
+    expect(prog.r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(4) });
+
+    const sans = await lancerAvec(undefined);
+    expect(sans.relayees).toEqual([]);
+    expect(sans.r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true });
+
+    // Une fin garde la mémoire comme aujourd'hui.
+    const fin = await lancerAvec(30, { t: "fin", donnees: null });
+    expect(fin.r.issue).toMatchObject({ t: "fin", memoire: marquee(4) });
+  });
+
+  it("progressif : un arrêt (délai) porte la dernière mémoire reçue ; non progressif : aucune", async () => {
+    // L'empreinte des paramètres validés (défauts compris) du bloc liste.
+    const empreinte = empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const lancerAvec = async (d: number | undefined) => {
+      const b = await banc(veille(), {}, { delaiMs: 300 });
+      if (d !== undefined) b.ctx.dureeMaxMinutes = d;
+      b.infra.lancer = lanceurPas([{ t: "memoire", memoire: { liste: { type: "code", valeur: 7 } } }], { bloque: true });
+      return (await executerWorkflow(b.ctx, b.infra)).issue;
+    };
+    expect(await lancerAvec(30)).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé", memoire: { liste: { type: "code", valeur: 7, empreinte } } });
+    expect(await lancerAvec(undefined)).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+  });
+
+  it("ECART_PUBLICATIONS_MS et ECART_MEMOIRE_MS d'executer.ts égalent ceux d'interpreteur.mjs", async () => {
+    const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+    expect(ECART_PUBLICATIONS_MS).toBe(5000);
+    expect(ECART_MEMOIRE_MS).toBe(30_000);
+    expect(interpreteur.ECART_PUBLICATIONS_MS).toBe(ECART_PUBLICATIONS_MS);
+    expect(interpreteur.ECART_MEMOIRE_MS).toBe(ECART_MEMOIRE_MS);
   });
 });

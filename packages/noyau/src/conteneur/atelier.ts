@@ -192,9 +192,9 @@ export class Atelier {
   /**
    * Exécution d'un workflow, dans un conteneur jetable sans réseau : il ne voit que le dossier des fichiers et le dossier du
    * moteur (celui du récolteur et de ses modules), en lecture seule, et ne parle au noyau que par son entrée et sa
-   * sortie standard (`-i`).
+   * sortie standard (`-i`). `delaiS` : le conteneur est arrêté après ce délai (+5 s pour finir).
    */
-  commandeRecolte(id: string, dossierFichiers: string, moteur: string): string[] {
+  commandeRecolte(id: string, dossierFichiers: string, moteur: string, delaiS: number = DELAI_RECOLTE_S): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     // « : » changerait le sens de -v (cible, options) : un tel chemin ne peut pas être monté sans risque.
     for (const c of [dossierFichiers, moteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
@@ -209,7 +209,7 @@ export class Atelier {
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
-      "timeout", "-k", "5", String(DELAI_RECOLTE_S),
+      "timeout", "-k", "5", String(delaiS),
       "node", "/opt/webaios/moteur/recolteur.mjs", "/widget",
     ];
   }

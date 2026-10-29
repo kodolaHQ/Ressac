@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
-import type { Atelier } from "../conteneur/atelier.js";
+import { DELAI_RECOLTE_S, type Atelier } from "../conteneur/atelier.js";
 import { cheminOutils } from "../conteneur/executeur.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import { ProfilRefuse, type PontNavigateur } from "../mcp/pont.js";
@@ -19,6 +19,7 @@ import {
   verifierUrl,
 } from "./acces.js";
 import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, URL_DUCKDUCKGO, extraireResultats, urlRecherche } from "./duckduckgo.js";
+import { chaineAuFilDeLEau } from "./chaine.js";
 import { Menagement } from "./menagement.js";
 import { SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
 import { MEMOIRE_MAX_OCTETS, empreinteParametres, type MemoireBlocs } from "./memoire.js";
@@ -29,6 +30,7 @@ import {
   ArgsLirePage,
   ArgsRecuperer,
   LIGNE_MAX_OCTETS,
+  TAILLE_MAX_DONNEES,
   ligneDebut,
   ligneMemoire,
   ligneReponse,
@@ -61,6 +63,28 @@ export const lancerParDefaut: LanceurProcessus = (cmd, args) => {
 
 /** Délai côté noyau ; le conteneur s'arrête de lui-même après 180 s (+5 s). */
 export const DELAI_EXECUTION_MS = 200_000;
+
+// Recopiées dans l'interpréteur du conteneur (docker/moteur/interpreteur.mjs) : un test vérifie qu'elles s'accordent.
+/** Écart entre deux publications au fil de l'eau. */
+export const ECART_PUBLICATIONS_MS = 5000;
+/** Écart entre deux envois de la mémoire en cours de route (exécution progressive). */
+export const ECART_MEMOIRE_MS = 30_000;
+/**
+ * Une publication arrivée moins de 4 s après la précédente relayée est ignorée : le conteneur les espace de 5 s sur
+ * son horloge, la marge couvre l'écart entre les deux horloges et le temps de transport.
+ */
+const ECART_PUBLICATIONS_TOLERE_MS = ECART_PUBLICATIONS_MS - 1000;
+
+/**
+ * Les délais d'une exécution. Sans `dureeMaxMinutes` : ceux d'aujourd'hui (conteneur 180 s, noyau 200 s, aucune limite
+ * envoyée : l'interpréteur garde ses 150 s). Avec D minutes : plus aucun élément lancé après D × 60 s, conteneur arrêté
+ * à D × 60 + 30 s, noyau à D × 60 + 50 s.
+ */
+export function delaisExecution(dureeMaxMinutes: number | undefined): { conteneurS: number; noyauMs: number; limiteMs?: number } {
+  if (dureeMaxMinutes === undefined) return { conteneurS: DELAI_RECOLTE_S, noyauMs: DELAI_EXECUTION_MS };
+  return { conteneurS: dureeMaxMinutes * 60 + 30, noyauMs: dureeMaxMinutes * 60_000 + 50_000, limiteMs: dureeMaxMinutes * 60_000 };
+}
+
 export const PROFIL_REFUSE =
   "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
 
@@ -100,7 +124,12 @@ export interface ContexteWorkflow {
    * de l'exécution d'origine ; aucune mémoire envoyée ni gardée. `repris` : les blocs repris et leur nombre d'éléments.
    */
   rejeu?: { relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> };
+  /** `recolte.dureeMaxMinutes` du widget : règle les délais et rend l'exécution progressive (hors essai). */
+  dureeMaxMinutes?: number;
 }
+
+/** Une publication au fil de l'eau : les éléments déjà terminés, `faits` sur `total`. */
+export type Publication = { donnees: unknown; faits: number; total: number };
 
 /** Une trace acceptée (dans l'ordre), relayée en direct au constructeur. */
 export type TraceDirecte =
@@ -125,14 +154,24 @@ export interface InfraWorkflow {
   urlRecherche?: string;
   /** Appelé pour chaque trace acceptée (jamais pour une ligne rejetée) ; une erreur du relais est ignorée. */
   surTrace?: (t: TraceDirecte) => void;
+  /**
+   * Une publication de la chaîne au fil de l'eau (voir `executerWorkflow`). Les relais (publications et mémoire) sont
+   * faits l'un après l'autre et tous finis avant que l'exécution rende ; une erreur d'un relais est ignorée.
+   */
+  surPublication?: (p: Publication) => Promise<void>;
+  /** Exécution progressive seulement : la mémoire reçue en cours de route, au plus toutes les ECART_MEMOIRE_MS. */
+  surMemoire?: (m: MemoireBlocs) => Promise<void>;
 }
 
 export type IssueWorkflow =
   | { t: "fin"; sortie: { vers: GenreSortie; valeur: unknown }; memoire: MemoireBlocs | null }
-  /** `erreurDuCode` : le texte vient du conteneur (le code de l'agent a pu l'écrire), pas du noyau. */
-  | { t: "echec"; erreur: string; erreurDuCode: boolean }
-  /** Arrêté par le noyau (délai, accord, profil refusé, réponse trop grande…) : le texte est du noyau. */
-  | { t: "arret"; statut: "erreur" | "accord-requis"; erreur: string };
+  /**
+   * `erreurDuCode` : le texte vient du conteneur (le code de l'agent a pu l'écrire), pas du noyau. `memoire` (exécution
+   * progressive seulement, absente sinon) : la dernière mémoire reçue, null si aucune.
+   */
+  | { t: "echec"; erreur: string; erreurDuCode: boolean; memoire?: MemoireBlocs | null }
+  /** Arrêté par le noyau (délai, accord, profil refusé, réponse trop grande…) : le texte est du noyau. `memoire` : idem. */
+  | { t: "arret"; statut: "erreur" | "accord-requis"; erreur: string; memoire?: MemoireBlocs | null };
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
   const r = schema.safeParse(a);
@@ -154,6 +193,12 @@ type TraceEnCours = TraceBloc & { commence: boolean; fini: boolean; coupees: num
  * Exécute un workflow validé dans un conteneur sans réseau : envoie `debut` (workflow, config, précédent) et la
  * mémoire des blocs, répond aux appels (lirePage, recuperer, kev, gemma) avec les règles des sources et de l'accord,
  * range les traces des blocs. N'écrit rien : l'appelant décide de ce qui est gardé (vie privée).
+ *
+ * Exécution progressive (hors essai, avec `dureeMaxMinutes` ou une sortie au fil de l'eau) : la mémoire reçue en cours
+ * de route est relayée (`surMemoire`) et la dernière revient avec un échec ou un arrêt. Une ligne `publication` n'est
+ * relayée (`surPublication`) que pendant la chaîne au fil de l'eau (entre le dernier `debut` et la première `fin` de
+ * ses blocs), au moins 4 s après la précédente relayée, avec `faits ≤ total` et des données de 2 Mo au plus : une
+ * publication écrite par le code de l'agent hors de la chaîne, ou en retard, ne peut pas écraser la sortie finale.
  */
 export async function executerWorkflow(
   ctx: ContexteWorkflow,
@@ -168,6 +213,11 @@ export async function executerWorkflow(
   const relances = rejeu ? new Set(rejeu.relances) : null;
   const attendu = relances ? ordre.filter((id) => relances.has(id)) : ordre;
   const types = new Map(workflow.blocs.map((b) => [b.id, b.type]));
+  const auFilDeLEau = workflow.blocs.find((b) => b.id === ctx.valide.sortie.id)?.parametres.auFilDeLEau === true;
+  const progressif = !rejeu && (ctx.dureeMaxMinutes !== undefined || auFilDeLEau);
+  // Un essai n'a pas de chaîne : il tourne bloc par bloc et ne publie rien.
+  const chaine = rejeu ? [] : chaineAuFilDeLEau(ctx.valide);
+  const delais = delaisExecution(ctx.dureeMaxMinutes);
   // Les paramètres validés de cette exécution : la mémoire n'est reprise que si elle a été retenue avec les mêmes.
   const empreintes = new Map(workflow.blocs.map((b) => [b.id, empreinteParametres(b.parametres)]));
   const traces = new Map<string, TraceEnCours>(
@@ -240,6 +290,8 @@ export async function executerWorkflow(
     config: ctx.config ?? null,
     workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre },
     ...(rejeu ? { rejeu: { relances: rejeu.relances, sorties: rejeu.sorties } } : {}),
+    ...(delais.limiteMs !== undefined ? { limiteMs: delais.limiteMs } : {}),
+    ...(progressif ? { progressif: true as const } : {}),
   });
   // Filet : l'appelant mesure avant (`debutTropGros`) pour refuser sans rien écrire ; le récolteur refuserait la ligne.
   if (rejeu && Buffer.byteLength(debutLigne) > LIGNE_MAX_OCTETS) {
@@ -248,7 +300,7 @@ export async function executerWorkflow(
 
   let processus: ProcessusRecolte;
   try {
-    const [cmd, ...argv] = infra.atelier.commandeRecolte(ctx.proprietaire.id, ctx.dossierFichiers, infra.moteur);
+    const [cmd, ...argv] = infra.atelier.commandeRecolte(ctx.proprietaire.id, ctx.dossierFichiers, infra.moteur, delais.conteneurS);
     processus = (infra.lancer ?? lancerParDefaut)(cmd!, argv);
   } catch (e) {
     return conclure({ t: "arret", statut: "erreur", erreur: `Récolte impossible à lancer : ${message(e)}` });
@@ -258,13 +310,20 @@ export async function executerWorkflow(
   let terminal: Extract<MessageRecolteur, { t: "fin" | "echec" }> | null = null;
   let memoireRecue: MemoireBlocs | null = null;
   let enVol = 0;
+  // Relais vers l'appelant (publications, mémoire), l'un après l'autre ; tous attendus avant de rendre.
+  let relais: Promise<void> = Promise.resolve();
+  const enFile = (f: () => Promise<void>) => {
+    relais = relais.then(f).catch(() => {});
+  };
+  let memoireRelayeeA: number | null = null;
+  let publicationRelayeeA: number | null = null;
   const arreter = (a: Arret) => {
     if (arret) return;
     arret = a;
     finExecution.abort(new Error("Exécution arrêtée"));
     processus.tuer();
   };
-  const minuteur = setTimeout(() => arreter({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? DELAI_EXECUTION_MS);
+  const minuteur = setTimeout(() => arreter({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? delais.noyauMs);
 
   processus.stdin.on("error", () => {});
   processus.stdin.write(debutLigne);
@@ -388,9 +447,15 @@ export async function executerWorkflow(
 
   // Les traces viennent du conteneur, où tourne le code de l'agent : il peut en écrire de fausses sur stdout. Seules
   // comptent celles des blocs de ce workflow, dans l'ordre d'exécution (un bloc à la fois), au format du protocole.
-  // Pour un essai, seuls les blocs relancés : une ligne pour un bloc repris ou non relancé est rejetée.
+  // Pour un essai, seuls les blocs relancés : une ligne pour un bloc repris ou non relancé est rejetée. Seule exception :
+  // la chaîne au fil de l'eau, dont les blocs commencent tous à la suite puis finissent dans l'ordre.
   let suivant = 0;
-  let enCours: TraceEnCours | null = null;
+  /** Blocs commencés et pas encore finis, dans l'ordre : un seul, ou les blocs de la chaîne. */
+  const ouverts: TraceEnCours[] = [];
+  /** Une fin de la chaîne est arrivée : plus aucun début accepté avant que ses blocs aient tous fini. */
+  let fermeture = false;
+  /** Entre le dernier `debut` et la première `fin` de la chaîne : le seul moment où une publication compte. */
+  const pendantLaChaine = () => chaine.length > 0 && !fermeture && ouverts.length === chaine.length && ouverts[0]!.id === chaine[0];
   const relayer = (t: TraceDirecte) => {
     try {
       infra.surTrace?.(t);
@@ -409,7 +474,25 @@ export async function executerWorkflow(
       } else {
         memoireRecue = filtree;
         remarque = null;
+        const maintenant = horloge().getTime();
+        const surMemoire = infra.surMemoire;
+        if (progressif && surMemoire && (memoireRelayeeA === null || maintenant - memoireRelayeeA >= ECART_MEMOIRE_MS)) {
+          memoireRelayeeA = maintenant;
+          enFile(() => surMemoire(filtree));
+        }
       }
+      return;
+    }
+    if (m.t === "publication") {
+      if (!pendantLaChaine() || m.faits > m.total || m.donnees === undefined) return;
+      const maintenant = horloge().getTime();
+      if (publicationRelayeeA !== null && maintenant - publicationRelayeeA < ECART_PUBLICATIONS_TOLERE_MS) return;
+      if (Buffer.byteLength(JSON.stringify(m.donnees)) > TAILLE_MAX_DONNEES) return;
+      const surPublication = infra.surPublication;
+      if (!surPublication) return;
+      publicationRelayeeA = maintenant;
+      const p: Publication = { donnees: m.donnees, faits: m.faits, total: m.total };
+      enFile(() => surPublication(p));
       return;
     }
     if (m.t === "journal") {
@@ -426,16 +509,19 @@ export async function executerWorkflow(
     const t = traces.get(m.id);
     if (!t) return;
     if (m.etape === "debut") {
-      if (enCours || attendu[suivant] !== m.id) return;
+      if (attendu[suivant] !== m.id) return;
+      // Un bloc déjà ouvert : seul le bloc suivant de la chaîne peut commencer, avant toute fin.
+      if (ouverts.length > 0 && (fermeture || ouverts[0]!.id !== chaine[0] || chaine[ouverts.length] !== m.id)) return;
       suivant++;
       t.commence = true;
       t.debut = horloge().toISOString();
-      enCours = t;
+      ouverts.push(t);
       relayer({ bloc: m.id, etape: "debut" });
       return;
     }
-    if (enCours !== t) return;
-    enCours = null;
+    if (ouverts[0] !== t) return;
+    ouverts.shift();
+    fermeture = ouverts.length > 0;
     t.fini = true;
     t.fin = horloge().toISOString();
     t.statut = m.statut;
@@ -500,20 +586,24 @@ export async function executerWorkflow(
   const code = await processus.fin;
   clearTimeout(minuteur);
   finExecution.abort(new Error("Exécution finie"));
+  // La sortie finale est écrite après la dernière publication.
+  await relais;
+  // Exécution progressive : la dernière mémoire reçue revient avec un échec ou un arrêt.
+  const avecMemoire = <T extends IssueWorkflow>(issue: T): T => (progressif ? { ...issue, memoire: memoireRecue } : issue);
   const fin = terminal as MessageRecolteur | null;
   const arretFinal = arret as Arret | null;
   if (arretFinal) {
     // Tuer le client docker laisse le conteneur tourner : on le supprime.
     await infra.atelier.supprimerRecolte(ctx.proprietaire.id).catch(() => {});
-    return conclure({ t: "arret", ...arretFinal });
+    return conclure(avecMemoire({ t: "arret", ...arretFinal }));
   }
   if (fin?.t === "fin" && code === 0) {
     return conclure({ t: "fin", sortie: { vers: ctx.valide.sortie.vers, valeur: fin.donnees }, memoire: memoireRecue });
   }
-  if (fin?.t === "echec") return conclure(echec(fin.erreur, true));
-  if (code === 124) return conclure(echec("Délai dépassé", false));
+  if (fin?.t === "echec") return conclure(avecMemoire(echec(fin.erreur, true)));
+  if (code === 124) return conclure(avecMemoire(echec("Délai dépassé", false)));
   // Le code de sortie est choisi par le code de l'agent : il pourrait y coder des données du compte.
-  return conclure(echec(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true));
+  return conclure(avecMemoire(echec(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true)));
 }
 
 /** Ce qui est envoyé au conteneur : les entrées de même type et, si elles en ont une, de même empreinte. Sans l'empreinte. */
