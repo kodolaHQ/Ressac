@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, expect, test, vi } from "vitest";
-import { ProfilRefuse } from "@webaios/noyau";
+import { Menagement, ProfilRefuse } from "@webaios/noyau";
 import type { EtatNavigateur } from "../src/commun/modele";
 
 vi.mock("electron", () => ({
@@ -293,69 +293,202 @@ test("une lecture annulée en attente d'une place quitte la file ; les autres, d
   expect(a.f.destroy).toHaveBeenCalled();
 });
 
-test("lecture ménagée : une redirection vers un autre site attend changerHote avant de partir, puis charge la cible", async () => {
+/** Des fenêtres factices créées à la demande, chacune avec sa propre URL ; la session publique compte ses vidages. */
+function plusieursFenetres() {
+  const liste: ReturnType<typeof fausseFenetre>[] = [];
+  const vidages = vi.fn(async () => {});
+  const deps = {
+    ...depsAvec(null),
+    sessionPublique: vi.fn(() => ({ clearStorageData: vidages, clearCache: async () => {} }) as never),
+    creerFenetre: vi.fn(() => {
+      const x = {} as ReturnType<typeof fausseFenetre>;
+      Object.assign(x, fausseFenetre(() => x.wc.url));
+      liste.push(x);
+      return x.f as never;
+    }),
+  };
+  return { liste, deps, vidages };
+}
+const urls = (x: ReturnType<typeof fausseFenetre>) => x.wc.loadURL.mock.calls.map((c) => c[0]);
+
+test("lecture ménagée : une redirection vers un autre site ferme la fenêtre et rend sa place, attend changerHote, puis lit la cible dans une nouvelle fenêtre", async () => {
   vi.useFakeTimers();
-  const { wc, f } = fausseFenetre(() => wc.url);
+  const { liste, deps, vidages } = plusieursFenetres();
   let ouvrir!: () => void;
   const changerHote = vi.fn(() => new Promise<void>((r) => (ouvrir = r)));
-  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, depsAvec(f));
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, deps);
   await vi.advanceTimersByTimeAsync(0);
   const e = { url: "https://www.Autre.test/x", isMainFrame: true, preventDefault: vi.fn() };
-  wc.emit("will-redirect", e);
+  liste[0]!.wc.emit("will-redirect", e);
   expect(e.preventDefault).toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(liste[0]!.f.destroy).toHaveBeenCalled();
   expect(changerHote).toHaveBeenCalledWith("www.autre.test");
-  // Rien n'est lu pendant l'attente, même si la page d'origine finit de charger.
-  wc.emit("did-finish-load");
+  // Rien d'autre pendant l'attente : ni fenêtre, ni chargement.
   await vi.advanceTimersByTimeAsync(5_000);
-  expect(wc.executeJavaScriptInIsolatedWorld).not.toHaveBeenCalled();
-  expect(wc.loadURL.mock.calls.map((c) => c[0])).toEqual(["about:blank", "https://exemple.test/"]);
+  expect(liste).toHaveLength(1);
   ouvrir();
   await vi.advanceTimersByTimeAsync(0);
-  expect(wc.loadURL.mock.calls.map((c) => c[0])).toEqual(["about:blank", "https://exemple.test/", "https://www.Autre.test/x"]);
-  wc.emit("did-finish-load");
+  expect(liste).toHaveLength(2);
+  expect(urls(liste[1]!)).toEqual(["about:blank", "https://www.Autre.test/x"]);
+  liste[1]!.wc.emit("did-finish-load");
   await vi.advanceTimersByTimeAsync(2_000);
   await expect(r).resolves.toMatchObject({ url: "https://www.Autre.test/x" });
+  // La session publique n'est vidée qu'une fois : la cible voit les cookies du redirecteur.
+  expect(vidages).toHaveBeenCalledTimes(1);
+  expect(liste[1]!.f.destroy).toHaveBeenCalled();
 });
 
-test("lecture ménagée : un script qui mène vers un autre site attend aussi ; le même site (www.) passe sans attendre", async () => {
+test("lecture ménagée : le même site (www.) passe sans attendre ; deux navigations vers d'autres sites à la suite : seule la première est suivie", async () => {
   vi.useFakeTimers();
-  const { wc, f } = fausseFenetre(() => wc.url);
+  const { liste, deps } = plusieursFenetres();
   const changerHote = vi.fn(async () => {});
-  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, depsAvec(f));
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, deps);
   await vi.advanceTimersByTimeAsync(0);
   const meme = { url: "https://WWW.exemple.test/a", isMainFrame: true, preventDefault: vi.fn() };
-  wc.emit("will-redirect", meme);
+  liste[0]!.wc.emit("will-redirect", meme);
   expect(meme.preventDefault).not.toHaveBeenCalled();
-  expect(changerHote).not.toHaveBeenCalled();
-  const script = { url: "https://autre.test/", preventDefault: vi.fn() };
-  wc.emit("will-navigate", script);
-  expect(script.preventDefault).toHaveBeenCalled();
-  expect(changerHote).toHaveBeenCalledWith("autre.test");
+  const premiere = { url: "https://autre.test/", preventDefault: vi.fn() };
+  const seconde = { url: "https://troisieme.test/", preventDefault: vi.fn() };
+  liste[0]!.wc.emit("will-navigate", premiere);
+  liste[0]!.wc.emit("will-navigate", seconde);
+  expect(premiere.preventDefault).toHaveBeenCalled();
+  expect(seconde.preventDefault).toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(0);
-  expect(wc.loadURL.mock.calls.at(-1)?.[0]).toBe("https://autre.test/");
+  expect(changerHote.mock.calls).toEqual([["autre.test"]]);
+  expect(liste).toHaveLength(2);
+  expect(urls(liste[1]!)).toEqual(["about:blank", "https://autre.test/"]);
   // De retour vers le site d'origine : attendu de nouveau.
-  const retour = { url: "https://exemple.test/fin", isMainFrame: true, preventDefault: vi.fn() };
-  wc.emit("will-redirect", retour);
-  expect(changerHote).toHaveBeenLastCalledWith("exemple.test");
+  liste[1]!.wc.emit("will-redirect", { url: "https://exemple.test/fin", isMainFrame: true, preventDefault: vi.fn() });
   await vi.advanceTimersByTimeAsync(0);
-  wc.emit("did-finish-load");
+  expect(changerHote).toHaveBeenLastCalledWith("exemple.test");
+  liste[2]!.wc.emit("did-finish-load");
   await vi.advanceTimersByTimeAsync(2_000);
   await expect(r).resolves.toMatchObject({ url: "https://exemple.test/fin" });
 });
 
 test("lecture ménagée : changerHote rejeté (exécution arrêtée) fait échouer la lecture, rien n'est chargé", async () => {
   vi.useFakeTimers();
-  const { wc, f } = fausseFenetre(() => wc.url);
+  const { liste, deps } = plusieursFenetres();
   const changerHote = vi.fn(async () => {
     throw new Error("Exécution arrêtée");
   });
-  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, depsAvec(f));
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, deps);
   r.catch(() => {});
   await vi.advanceTimersByTimeAsync(0);
-  wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
+  liste[0]!.wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
   await expect(r).rejects.toThrow("Exécution arrêtée");
-  expect(wc.loadURL.mock.calls.map((c) => c[0])).not.toContain("https://autre.test/");
-  expect(f.destroy).toHaveBeenCalled();
+  expect(liste).toHaveLength(1);
+  expect(liste[0]!.f.destroy).toHaveBeenCalled();
+});
+
+test("lecture ménagée : l'attente compte dans les 30 s ; dépassées, « Page trop lente »", async () => {
+  vi.useFakeTimers();
+  const { liste, deps } = plusieursFenetres();
+  const changerHote = vi.fn(() => new Promise<void>(() => {}));
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, deps);
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(10_000);
+  liste[0]!.wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
+  await vi.advanceTimersByTimeAsync(19_000);
+  expect(liste).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1_000);
+  await expect(r).rejects.toThrow("Page trop lente : 30 s dépassées");
+});
+
+/** Deux lectures ordinaires prennent les deux places ; rendues quand on le dit. */
+async function deuxPlacesPrises() {
+  const a = plusieursFenetres();
+  const b = plusieursFenetres();
+  const ra = lirePageInvisible("https://p.test/a", { profil: null }, a.deps);
+  const rb = lirePageInvisible("https://p.test/b", { profil: null }, b.deps);
+  await vi.advanceTimersByTimeAsync(0);
+  return {
+    async rendre() {
+      for (const x of [a, b]) x.liste[0]!.wc.emit("did-finish-load");
+      await vi.advanceTimersByTimeAsync(2_000);
+      await ra;
+      await rb;
+    },
+  };
+}
+
+test("lecture ménagée : un arrêt pendant l'attente du site ou d'une nouvelle place rend tout, une seule fois", async () => {
+  vi.useFakeTimers();
+  // Arrêt pendant l'attente du site : aucune place n'est tenue.
+  const un = plusieursFenetres();
+  let ouvrir!: () => void;
+  const arret1 = new AbortController();
+  const r1 = lirePageInvisible("https://exemple.test/", { profil: null, signal: arret1.signal, changerHote: () => new Promise<void>((ok) => (ouvrir = ok)) }, un.deps);
+  r1.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  un.liste[0]!.wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
+  await vi.advanceTimersByTimeAsync(0);
+  arret1.abort(new Error("Exécution arrêtée"));
+  await expect(r1).rejects.toThrow("Exécution arrêtée");
+  ouvrir();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(un.liste).toHaveLength(1);
+
+  // Arrêt pendant l'attente d'une nouvelle place (les deux sont prises) : la lecture quitte la file.
+  const deux = plusieursFenetres();
+  const arret2 = new AbortController();
+  let ouvrir2!: () => void;
+  const r2 = lirePageInvisible("https://exemple.test/", { profil: null, signal: arret2.signal, changerHote: () => new Promise<void>((ok) => (ouvrir2 = ok)) }, deux.deps);
+  r2.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  deux.liste[0]!.wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
+  await vi.advanceTimersByTimeAsync(0);
+  const places = await deuxPlacesPrises();
+  ouvrir2();
+  await vi.advanceTimersByTimeAsync(0);
+  arret2.abort(new Error("Exécution arrêtée"));
+  await expect(r2).rejects.toThrow("Exécution arrêtée");
+  await places.rendre();
+  expect(deux.liste).toHaveLength(1);
+
+  // Les deux places sont libres, ni plus ni moins : deux lectures partent tout de suite, une troisième attend.
+  const trois = [plusieursFenetres(), plusieursFenetres(), plusieursFenetres()];
+  const lectures = trois.map((x, i) => lirePageInvisible(`https://q.test/${i}`, { profil: null }, x.deps));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(trois.map((x) => x.liste.length)).toEqual([1, 1, 0]);
+  for (const x of trois.slice(0, 2)) x.liste[0]!.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  trois[2]!.liste[0]!.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await Promise.all(lectures);
+});
+
+test("lecture ménagée : deux lectures redirigées vers le site d'une troisième, qui attend une place, ne bloquent rien", async () => {
+  vi.useFakeTimers();
+  const menagement = new Menagement();
+  const lire = (url: string, x: ReturnType<typeof plusieursFenetres>) =>
+    menagement.lire(new URL(url).hostname, (changerHote) => lirePageInvisible(url, { profil: null, changerHote }, x.deps));
+  const [un, deux, trois] = [plusieursFenetres(), plusieursFenetres(), plusieursFenetres()];
+  const r1 = lire("https://t.test/x", un);
+  const r2 = lire("https://c.test/y", deux);
+  await vi.advanceTimersByTimeAsync(0);
+  // R3 prend la voie b.test, puis attend une place (R1 et R2 tiennent les deux).
+  const r3 = lire("https://b.test/", trois);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(trois.liste).toHaveLength(0);
+  un.liste[0]!.wc.emit("will-redirect", { url: "https://b.test/1", isMainFrame: true, preventDefault: vi.fn() });
+  deux.liste[0]!.wc.emit("will-redirect", { url: "https://b.test/2", isMainFrame: true, preventDefault: vi.fn() });
+  await vi.advanceTimersByTimeAsync(0);
+  // R1 et R2 ont rendu leur place en attendant la voie b.test : R3 lit tout de suite.
+  expect(trois.liste).toHaveLength(1);
+  trois.liste[0]!.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r3).resolves.toMatchObject({ url: "https://b.test/" });
+  // Puis R1 et R2, chacune à son tour sur b.test (1 s d'écart), bien avant les 30 s.
+  for (const x of [un, deux]) {
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(x.liste).toHaveLength(2);
+    x.liste[1]!.wc.emit("did-finish-load");
+    await vi.advanceTimersByTimeAsync(2_000);
+  }
+  await expect(r1).resolves.toMatchObject({ url: "https://b.test/1" });
+  await expect(r2).resolves.toMatchObject({ url: "https://b.test/2" });
 });
 
 test("sans changerHote (lecture non ménagée) : une redirection permise vers un autre site part comme avant", async () => {

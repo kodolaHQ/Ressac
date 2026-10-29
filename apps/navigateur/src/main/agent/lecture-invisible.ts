@@ -6,8 +6,9 @@ import { marquerInvisible } from "../contenus-invisibles";
 /** Session des lectures publiques : sans `persist:`, rien n'est écrit sur le disque ; vidée avant chaque lecture. */
 export const PARTITION_PUBLIQUE = "webaios-lecture-publique";
 const DELAI_TOTAL_MS = 30_000;
-/** Une page chargée encore en mouvement à ce moment est lue telle quelle, pour finir dans les 30 s. */
-const DELAI_LECTURE_FORCEE_MS = 26_000;
+const TROP_LENTE = "Page trop lente : 30 s dépassées";
+/** Une page chargée encore en mouvement 4 s avant la fin des 30 s est lue telle quelle, pour finir à temps. */
+const MARGE_LECTURE_FORCEE_MS = 4_000;
 const CALME_MS = 2_000;
 const MAX_TEXTE = 20_000;
 const MAX_LIENS = 400;
@@ -189,39 +190,74 @@ async function lireFenetre<T>(
   };
   verifierProfil();
   if (!permise(url)) throw new Error(`Adresse refusée pour une lecture : ${hoteDe(url)}`);
-  await prendrePlace(signal);
-  try {
-    // L'état a pu changer pendant l'attente d'une place.
-    verifierProfil();
-    signal?.throwIfAborted();
-    let s: Session;
-    if (profil === null) {
-      s = (deps.sessionPublique ?? sessionLecturePublique)();
-      await jusquAuSignal(s.clearStorageData(), signal);
-      await jusquAuSignal(s.clearCache(), signal);
-    } else {
-      s = deps.sessionProfil(profil);
-    }
-    const f = (deps.creerFenetre ?? creerFenetre)(s);
+  let cible = url;
+  /** Fin des 30 s, fixée au premier chargement : les redirections ménagées et leurs attentes y comptent. */
+  let echeance: number | null = null;
+  for (let premiere = true; ; premiere = false) {
+    let redirection: string;
+    await prendrePlace(signal);
     try {
-      await jusquAuSignal(neutraliserImpression(f.webContents), signal);
-      const page = await lireDans(f.webContents, url, permise, lecture, signal, o.changerHote);
-      // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
+      // L'état a pu changer pendant l'attente d'une place.
       verifierProfil();
-      return page;
-    } finally {
-      if (!f.isDestroyed()) {
-        try {
-          if (f.webContents.debugger.isAttached()) f.webContents.debugger.detach();
-        } catch {
-          // La fenêtre est détruite juste après : le débogueur part avec elle.
+      signal?.throwIfAborted();
+      let s: Session;
+      if (profil === null) {
+        s = (deps.sessionPublique ?? sessionLecturePublique)();
+        // Vidée une seule fois : après une redirection ménagée, la page cible voit les cookies posés par le
+        // redirecteur, comme une redirection ordinaire.
+        if (premiere) {
+          await jusquAuSignal(s.clearStorageData(), signal);
+          await jusquAuSignal(s.clearCache(), signal);
         }
-        f.destroy();
+      } else {
+        s = deps.sessionProfil(profil);
       }
+      const f = (deps.creerFenetre ?? creerFenetre)(s);
+      try {
+        await jusquAuSignal(neutraliserImpression(f.webContents), signal);
+        echeance ??= Date.now() + DELAI_TOTAL_MS;
+        const page = await lireDans(f.webContents, cible, permise, lecture, echeance, signal, o.changerHote);
+        // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
+        verifierProfil();
+        return page;
+      } catch (e) {
+        if (!(e instanceof Redirection)) throw e;
+        redirection = e.cible;
+      } finally {
+        if (!f.isDestroyed()) {
+          try {
+            if (f.webContents.debugger.isAttached()) f.webContents.debugger.detach();
+          } catch {
+            // La fenêtre est détruite juste après : le débogueur part avec elle.
+          }
+          f.destroy();
+        }
+      }
+    } finally {
+      rendrePlace();
     }
-  } finally {
-    rendrePlace();
+    // Redirection vers un autre site (lecture ménagée) : son tour est attendu sans fenêtre ni place, sinon deux
+    // lectures redirigées vers le site d'une troisième, qui attend une place, bloqueraient toutes les lectures.
+    await jusquAEcheance(o.changerHote!(new URL(redirection).hostname), echeance!, signal);
+    cible = redirection;
   }
+}
+
+/** Une navigation vers un autre site, arrêtée pour attendre son tour (lecture ménagée) : à reprendre sur `cible`. */
+class Redirection extends Error {
+  constructor(readonly cible: string) {
+    super(`Redirection vers ${hoteDe(cible)}`);
+  }
+}
+
+/** `p`, rejetée avec « Page trop lente » à `echeance` et avec `signal.reason` s'il est levé (son issue est alors ignorée). */
+function jusquAEcheance<T>(p: Promise<T>, echeance: number, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((ok, ko) => {
+    const minuterie = setTimeout(() => ko(new Error(TROP_LENTE)), Math.max(0, echeance - Date.now()));
+    jusquAuSignal(p, signal)
+      .then(ok, ko)
+      .finally(() => clearTimeout(minuterie));
+  });
 }
 
 /**
@@ -337,15 +373,17 @@ async function preparer(wc: WebContents): Promise<void> {
 }
 
 /**
- * Charge `url`, attend la fin du chargement puis 2 s de calme (30 s au plus), lit la page ; `signal` levé : abandon.
- * Avec `changerHote`, une navigation permise du cadre principal vers un autre site (`siteMenage`) est annulée, puis
- * relancée vers la même adresse quand `changerHote` rend la main (rejeté : la lecture échoue) ; rien n'est lu entre-temps.
+ * Charge `url`, attend la fin du chargement puis 2 s de calme (jusqu'à `echeance` au plus), lit la page ; `signal`
+ * levé : abandon. Avec `changerHote` (lecture ménagée), une navigation permise du cadre principal vers un autre site
+ * (`siteMenage`) est annulée et la promesse rejetée avec `Redirection` : l'appelant ferme la fenêtre, attend le tour de
+ * ce site, puis reprend la lecture sur la cible dans une nouvelle fenêtre.
  */
 function lireDans<T>(
   wc: WebContents,
   url: string,
   permise: (u: string) => boolean,
   lecture: Lecture<T>,
+  echeance: number,
   signal?: AbortSignal,
   changerHote?: ChangerHote,
 ): Promise<T> {
@@ -353,9 +391,7 @@ function lireDans<T>(
     let fini = false;
     let charge = false;
     let enLecture = false;
-    /** Une navigation vers un autre site attend le ménagement de ce site : rien n'est lu pendant ce temps. */
-    let enAttenteDuSite = false;
-    let site = siteDe(url);
+    const site = siteDe(url);
     let calme: NodeJS.Timeout | undefined;
     const finir = (r: { erreur: Error } | { page: T }) => {
       if (fini) return;
@@ -377,23 +413,14 @@ function lireDans<T>(
     const bloquer = (cible: string) => arreterPage(new Error(`Navigation bloquée : ${hoteDe(cible)} est hors des domaines permis`));
     // L'exécution qui lit est arrêtée : plus rien n'est lu, la fenêtre est fermée par l'appelant.
     const abandonner = () => arreterPage(signal!.reason);
-    /** Vers un autre site, en lecture ménagée : la navigation attend son tour (voir la doc de `lireDans`). */
+    /** Vers un autre site, en lecture ménagée : la lecture s'arrête ici, reprise sur la cible à son tour. */
     const menager = (e: { preventDefault(): void }, cible: string) => {
       const autre = siteDe(cible);
       if (!changerHote || autre === null || autre === site) return;
       e.preventDefault();
-      site = autre;
-      enAttenteDuSite = true;
-      clearTimeout(calme);
-      changerHote(new URL(cible).hostname).then(
-        () => {
-          enAttenteDuSite = false;
-          if (fini || wc.isDestroyed()) return;
-          // Les échecs arrivent par did-fail-load, comme pour le premier chargement.
-          wc.loadURL(cible).catch(() => {});
-        },
-        (erreur: unknown) => arreterPage(erreur instanceof Error ? erreur : new Error(String(erreur))),
-      );
+      // Une seule redirection retenue : la première ; toute navigation suivante de cette page est sans suite.
+      if (fini) return;
+      arreterPage(new Redirection(cible));
     };
     // Avant que la requête parte : redirection du serveur, script, meta refresh, formulaire, lien.
     const garder = (e: { preventDefault(): void }, cible: string) => {
@@ -429,7 +456,7 @@ function lireDans<T>(
     wc.on("render-process-gone", () => finir({ erreur: new Error("La page s'est arrêtée pendant la lecture") }));
 
     const lire = async () => {
-      if (fini || enLecture || enAttenteDuSite || wc.isDestroyed()) return;
+      if (fini || enLecture || wc.isDestroyed()) return;
       enLecture = true;
       clearTimeout(calme);
       try {
@@ -446,8 +473,8 @@ function lireDans<T>(
     };
     const forcee = setTimeout(() => {
       if (charge) void lire();
-    }, DELAI_LECTURE_FORCEE_MS);
-    const limite = setTimeout(() => finir({ erreur: new Error("Page trop lente : 30 s dépassées") }), DELAI_TOTAL_MS);
+    }, Math.max(0, echeance - Date.now() - MARGE_LECTURE_FORCEE_MS));
+    const limite = setTimeout(() => finir({ erreur: new Error(TROP_LENTE) }), Math.max(0, echeance - Date.now()));
     if (signal?.aborted) return abandonner();
     signal?.addEventListener("abort", abandonner, { once: true });
     // Les échecs arrivent par did-fail-load (ou par le blocage) ; la promesse de loadURL n'apporte rien de plus.
