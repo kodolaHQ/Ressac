@@ -6,6 +6,7 @@ import {
   activer,
   analyserManifeste,
   cleExtension,
+  desactiver,
   empreintePortee,
   lireCle,
   retirer,
@@ -235,6 +236,27 @@ export function desinstallerStore(cle: string, d: DependancesStore): Promise<voi
   return uneAlaFois(`${d.dossier}|${lue.id}`, async () => {
     await d.modifier((e) => retirer(e, cle));
     await rm(join(d.dossier, lue.source === "store" ? "store" : "copies", lue.id), { recursive: true, force: true });
+  });
+}
+
+/**
+ * « Retirer de Chrome » sur la page du Store d'un profil : n'agit que sur ce profil. Refusé si l'extension n'y est pas
+ * active ; retirée de ce profil seulement si un autre la garde (fichiers et entrée restent) ; sinon désinstallée
+ * (entrée retirée, puis `store/<id>` effacé). Décidé dans l'écriture sérialisée du registre, une à la fois par id.
+ */
+export function retirerDuProfilStore(cle: string, profil: IdProfil, d: DependancesStore): Promise<void> {
+  const lue = lireCle(cle);
+  if (lue?.source !== "store") return Promise.reject(new Error(`Extension du Store inconnue : ${cle}`));
+  return uneAlaFois(`${d.dossier}|${lue.id}`, async () => {
+    let derniere = false;
+    await d.modifier((e) => {
+      const x = e.extensions[cle];
+      if (!x) throw new Error(`Extension du Store inconnue : ${cle}`);
+      if (!x.profils.includes(profil)) throw new Error(`Extension pas active dans ce profil : ${cle}`);
+      derniere = x.profils.length === 1;
+      return derniere ? retirer(e, cle) : desactiver(e, cle, profil);
+    });
+    if (derniere) await rm(join(d.dossier, "store", lue.id), { recursive: true, force: true });
   });
 }
 

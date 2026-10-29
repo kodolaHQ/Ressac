@@ -152,21 +152,44 @@ test("noterVue : une version déjà vue n'écrit pas etat.json", async () => {
   expect(existsSync(join(dossier, "etat.json"))).toBe(false);
 });
 
-test("« Retirer de Chrome » sur la page du Store : seulement une extension du Store inscrite, retirée du registre et de tous les profils, dossier effacé", async () => {
+/** Une extension du Store installée (dossier, registre) active dans `profils`, plus une extension de l'agent. */
+async function storeInstalle(profils: string[]) {
   const version = join(dossier, "store", ID, "1.0.0_0");
   mkdirSync(version, { recursive: true });
   writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
   writeFileSync(
     join(dossier, "etat.json"),
-    JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`store:${ID}`]: entree("store", ["defaut", "travail"]), "agent:essai": entree("agent", ["defaut"]) } }),
+    JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`store:${ID}`]: entree("store", profils), "agent:essai": entree("agent", ["defaut"]) } }),
   );
   const { service, pret } = demarrer();
   await pret;
-  await expect(service.desinstallerDepuisStore("d".repeat(32))).rejects.toThrow(/inconnue/);
-  await expect(service.desinstallerDepuisStore("essai")).rejects.toThrow(/inconnue/);
+  const registre = () => JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")).extensions as Record<string, { profils: string[] }>;
+  return { service, version, registre };
+}
+
+test("« Retirer de Chrome » sur la page du Store d'un profil : un autre profil la garde → retirée de ce profil seulement, fichiers gardés, toujours chargée ailleurs", async () => {
+  nav = { ...nav, espaces: [...nav.espaces, { id: "e2", profil: "travail", prive: false }], profils: [{ id: "defaut" }, { id: "travail" }] } as unknown as EtatNavigateur;
+  const { service, version, registre } = await storeInstalle(["defaut", "travail"]);
+  await service.desinstallerDepuisStore(ID, "defaut");
+  expect(registre()[`store:${ID}`]!.profils).toEqual(["travail"]);
   expect(existsSync(version)).toBe(true);
-  await service.desinstallerDepuisStore(ID);
-  expect(Object.keys(JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")).extensions)).toEqual(["agent:essai"]);
+  expect(synchronisees.at(-1)!.extensions[`store:${ID}`]!.profils).toEqual(["travail"]);
+});
+
+test("« Retirer de Chrome » depuis le dernier profil qui la garde : désinstallation complète (registre et dossier)", async () => {
+  const { service, registre } = await storeInstalle(["defaut"]);
+  await service.desinstallerDepuisStore(ID, "defaut");
+  expect(Object.keys(registre())).toEqual(["agent:essai"]);
   expect(Object.keys(synchronisees.at(-1)!.extensions)).toEqual(["agent:essai"]);
   expect(existsSync(join(dossier, "store", ID))).toBe(false);
+});
+
+test("« Retirer de Chrome » dans un profil où elle n'est pas active, ou pour une extension inconnue ou de l'agent : refusé, rien ne change", async () => {
+  const { service, version } = await storeInstalle(["travail"]);
+  const avant = readFileSync(join(dossier, "etat.json"), "utf8");
+  await expect(service.desinstallerDepuisStore(ID, "defaut")).rejects.toThrow(/pas active/);
+  await expect(service.desinstallerDepuisStore("d".repeat(32), "defaut")).rejects.toThrow(/inconnue/);
+  await expect(service.desinstallerDepuisStore("essai", "defaut")).rejects.toThrow(/inconnue/);
+  expect(readFileSync(join(dossier, "etat.json"), "utf8")).toBe(avant);
+  expect(existsSync(version)).toBe(true);
 });

@@ -165,8 +165,11 @@ export class ExtensionsProfils {
        * absent : la page du Store n'est pas équipée.
        */
       avantInstallationStore?(s: Session, profil: IdProfil): (details: { id: string; frame: Electron.WebFrameMain }) => Promise<{ action: "allow" | "deny" }>;
-      /** `chrome.management.uninstall` de la page du Store (crochet du correctif) : lève si elle ne peut pas être retirée. */
-      desinstallerDepuisStore?(id: string): Promise<void>;
+      /**
+       * `chrome.management.uninstall` de la page du Store (crochet du correctif), avec le profil de la session qui
+       * l'héberge (la bibliothèque choisit le gestionnaire par la session de l'expéditeur IPC) : lève si refusé.
+       */
+      desinstallerDepuisStore?(id: string, profil: IdProfil): Promise<void>;
     },
   ) {
     instancesVivantes.add(this);
@@ -253,7 +256,8 @@ export class ExtensionsProfils {
         autoUpdate: false,
         beforeInstall: avant,
         // Crochet du correctif : la bibliothèque n'efface jamais `store/<id>` elle-même (commun à tous les profils).
-        uninstallHandler: (id) => desinstaller(id),
+        // Le gestionnaire de cette session : la page du Store qui l'appelle est dans ce profil.
+        uninstallHandler: (id) => desinstaller(id, profil),
       }).catch(
         (erreur: unknown) => console.error(`[extensions] page du Store non équipée dans le profil ${profil} :`, erreur),
       );

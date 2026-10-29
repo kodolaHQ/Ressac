@@ -18,7 +18,7 @@ import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
-import { desinstallerStore, installerStore, type ContexteInstallation, type DependancesStore, type ResultatStore } from "./store";
+import { desinstallerStore, installerStore, retirerDuProfilStore, type ContexteInstallation, type DependancesStore, type ResultatStore } from "./store";
 
 /**
  * Pose une question dans une fenêtre (`poserQuestion` d'index.ts) : `fenetreId` absent, celle de l'agent (la fenêtre au
@@ -273,13 +273,15 @@ export class ServiceExtensions {
   }
 
   /**
-   * « Retirer de Chrome » sur la page du Store : seulement une extension du Store inscrite au registre (une extension de
-   * l'agent chargée dans la session a un autre id) ; retirée partout, comme depuis la page Extensions.
+   * « Retirer de Chrome » sur la page du Store hébergée dans la session de `profil` : seulement une extension du Store
+   * inscrite (une extension de l'agent a un autre id) et active dans ce profil ; retirée de ce profil seulement, et
+   * désinstallée (fichiers, entrée) quand aucun autre profil ne la garde.
    */
-  desinstallerDepuisStore(id: string): Promise<void> {
+  desinstallerDepuisStore(id: string, profil: IdProfil): Promise<void> {
     const cle = /^[a-p]{32}$/.test(id) ? `store:${id}` : null;
     if (!cle || !(cle in this.etat.extensions)) return Promise.reject(new Error(`Extension du Store inconnue : ${id}`));
-    return this.desinstaller(cle);
+    if (!this.o) return Promise.reject(new Error("Service des extensions non démarré"));
+    return retirerDuProfilStore(cle, profil, this.dependancesStore());
   }
 
   /** Retire une extension de toutes les sessions et du registre, et efface son dossier. */

@@ -380,7 +380,7 @@ app.whenReady().then(async () => {
       }),
     // « Retirer de Chrome » sur la page du Store : notre désinstallation (registre, tous les profils), jamais celle de la
     // bibliothèque.
-    desinstallerDepuisStore: (id) => serviceExtensions.desinstallerDepuisStore(id),
+    desinstallerDepuisStore: (id, profil) => serviceExtensions.desinstallerDepuisStore(id, profil),
     // verifierUrl / verifierHote : branchés par la tâche 12 pour les extensions de l'agent ; absents, tout est permis.
   });
   // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.

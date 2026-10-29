@@ -147,3 +147,12 @@ test("chrome.management.uninstall passe par le crochet de WebAiOs : la biblioth�
   expect(await piege.appeler("chrome.management.uninstall", "https://chromewebstore.google.com.attaquant.tld", true, ID, {})).toBeUndefined();
   expect(appels).toEqual([]);
 });
+
+test("le crochet appelé est celui de la session qui héberge la page du Store (le profil de l'expéditeur IPC)", async () => {
+  const appels: string[] = [];
+  const a = await equiper({ desinstaller: async (id) => void appels.push(`a:${id}`) });
+  const b = await equiper({ desinstaller: async (id) => void appels.push(`b:${id}`) });
+  await b.appeler("chrome.management.uninstall", STORE, true, ID, {});
+  await a.appeler("chrome.management.uninstall", STORE, true, ID, {});
+  expect(appels).toEqual([`b:${ID}`, `a:${ID}`]);
+});
