@@ -579,8 +579,14 @@ function lireDans<T>(
           // Le bas est atteint et rien n'a chargé : défiler encore n'apporterait rien.
           if (mesure.bas && mesure.hauteur <= avant) break;
         }
-      } catch (e) {
-        return finir({ erreur: e instanceof Error ? e : new Error(String(e)) });
+      } catch {
+        // Un script de défilement a échoué (la page navigue, le document a changé) : plus de défilement, la page est
+        // lue au calme suivant, ou à la lecture forcée, comme sans `defiler`.
+        if (fini) return;
+        defiler = 0;
+        enLecture = false;
+        if (charge && !enChargement) attendreCalme();
+        return;
       }
       await lireMaintenant();
     };

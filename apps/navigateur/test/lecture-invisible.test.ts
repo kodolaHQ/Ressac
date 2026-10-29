@@ -560,7 +560,14 @@ test("lecture ménagée : une place obtenue après l'échéance n'ouvre aucune f
  * texte (défilement : `scrollBy`, rend la hauteur d'avant ; mesure : le reste ; lecture : `querySelectorAll`). `apresDefilement(n)` est
  * appelé après le n-ième défilement (pour faire grandir la page).
  */
-function pageDefilante(o: { hauteur: number; apresDefilement?: (n: number, p: { hauteur: number }) => void; avantMesure?: (p: { hauteur: number }) => void; lu?: () => unknown }) {
+function pageDefilante(o: {
+  hauteur: number;
+  apresDefilement?: (n: number, p: { hauteur: number }) => void;
+  avantMesure?: (p: { hauteur: number }) => void;
+  lu?: () => unknown;
+  /** Le défilement échoue (page en train de naviguer, cadre détruit). */
+  echec?: boolean;
+}) {
   const p = { hauteur: o.hauteur, haut: 0, defilements: 0, mondes: [] as number[], scripts: [] as string[] };
   const bas = () => p.haut + 900 >= p.hauteur - 2;
   const { wc, f } = fausseFenetre(() => "https://exemple.test/");
@@ -569,6 +576,7 @@ function pageDefilante(o: { hauteur: number; apresDefilement?: (n: number, p: { 
     p.mondes.push(monde);
     if (code.includes("scrollBy")) {
       p.scripts.push("defiler");
+      if (o.echec) throw new Error("Script failed to execute");
       // La hauteur d'avant le défilement : ce qui charge ensuite fait grandir la page.
       const avant = p.hauteur;
       p.haut = Math.max(0, Math.min(p.haut + 900, p.hauteur - 900));
@@ -721,4 +729,17 @@ test("plafonds : 20 000 caractères et 400 liens sans défiler, 100 000 et 1 000
     expect(script).toContain(`>= ${liens}`);
     expect(p.scripts.at(-1)).toBe("lire");
   }
+});
+
+test("defiler : un script de défilement qui échoue (page qui navigue) : la page est lue sans défiler au calme suivant", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, echec: true });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 8 }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(p.scripts).toEqual(["defiler"]);
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ texte: "lu après 0 défilements" });
+  expect(p.scripts).toEqual(["defiler", "lire"]);
 });
