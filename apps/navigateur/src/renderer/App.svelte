@@ -13,7 +13,7 @@
   import type { Panneau } from "../commun/api";
   import { untrack } from "svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "./etat.svelte";
-  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
+  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, widgetDeUrlWorkflow } from "../commun/modele";
   import { masquer, REVELATION_INITIALE, surZone, zoneGauche, zoneSortie, type ZoneGauche } from "../commun/revelation";
 
   const MASQUAGE_MS = 300;
@@ -24,6 +24,8 @@
     const id = fenetre?.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;
   });
+  // Le constructeur montre l'agent dans son onglet « Agent » : pas de panneau latéral à côté.
+  const constructeurActif = $derived(!!ongletActif && widgetDeUrlWorkflow(ongletActif.url) !== null);
 
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant
   // toujours l'interface, la barre « révélée » reprend sa colonne le temps du survol. La position de la souris vient
@@ -31,6 +33,7 @@
   const compact = $derived(fenetre?.compact ?? false);
   // Plein écran HTML (vidéo) : seule la page reste.
   let pleinEcran = $state(false);
+  const agentLateral = $derived(panneauAgentOuvert && !pleinEcran && !constructeurActif);
   let revelee = $state(false);
   let armee = REVELATION_INITIALE.armee;
   let zone: ZoneGauche = "loin";
@@ -172,7 +175,7 @@
   onmouseout={(e) => !e.relatedTarget && surZoneSouris(zoneSortie(dernierX))}
 />
 
-<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon} class:compact={!barreVisible} class:agent={panneauAgentOuvert && !pleinEcran} style:--agent="{largeurAgent}px">
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon} class:compact={!barreVisible} class:agent={agentLateral} style:--agent="{largeurAgent}px">
   {#if fenetre}
     <BarreLaterale
       {fenetre}
@@ -183,7 +186,7 @@
     <aside data-testid="barre-laterale"></aside>
   {/if}
   <ZoneContenu {fenetre} onglet={ongletActif} {panneau} fermerPanneau={() => (panneau = null)} />
-  <PanneauAgent visible={panneauAgentOuvert && !pleinEcran} redimensionner={redimensionnerAgent} />
+  <PanneauAgent visible={agentLateral} redimensionner={redimensionnerAgent} />
 </div>
 <MenuContextuel />
 <!-- Une demande de l'agent passe devant les réglages d'un espace, qui reviennent ensuite avec leur brouillon. -->

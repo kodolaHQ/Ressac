@@ -146,6 +146,10 @@ export function installerMenu(c: CiblesMenu): void {
           "Panneau agent",
           "CmdOrCtrl+J",
           dansFenetre((f) => {
+            // Dans le constructeur, l'agent a son onglet « Agent » : ⌘J l'y montre, sans toucher au panneau latéral
+            // (ni pré-remplir de contexte : l'agent sait ce qui est ouvert par `workflow_ouvert`).
+            const o = ongletActif(f);
+            if (o && widgetDeUrlWorkflow(c.etat().onglets[o]?.url ?? "")) return c.raccourci(f, "agent");
             c.agir({ type: "basculerPanneauAgent", fenetreId: f });
             // Ouvert depuis une page web : le clavier doit quitter la page pour le terminal.
             if (c.etat().fenetres.find((x) => x.id === f)?.panneauAgentOuvert) c.raccourci(f, "agent");

@@ -3,6 +3,7 @@
   import { SvelteFlowProvider } from "@xyflow/svelte";
   import { untrack } from "svelte";
   import type { CatalogueBloc } from "@webaios/noyau";
+  import { focusAgent } from "../composants/agent.svelte";
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
   import ApercuWidget from "./ApercuWidget.svelte";
@@ -12,6 +13,7 @@
   import { creerEdition, suivreDisparitions } from "./edition.svelte";
   import { Executions } from "./executions.svelte";
   import ListeExecutions from "./ListeExecutions.svelte";
+  import OngletAgent from "./OngletAgent.svelte";
   import OngletBloc from "./OngletBloc.svelte";
   import Palette from "./Palette.svelte";
   import { pastillesDe } from "./pastilles";
@@ -38,6 +40,13 @@
   let canevas = $state<ReturnType<typeof Canevas>>();
   let vue = $state<"workflow" | "executions">("workflow");
   let apercuOuvert = $state(false);
+  /** Onglet du volet de droite : le bloc sélectionné, ou la conversation de l'agent de la fenêtre. */
+  let ongletDroit = $state<"bloc" | "agent">("bloc");
+  // ⌘J ou ✦ pendant que le constructeur est affiché : l'onglet « Agent », dont le terminal prend le clavier.
+  const demandesAgent = untrack(() => focusAgent.n);
+  $effect(() => {
+    if (focusAgent.n !== demandesAgent) ongletDroit = "agent";
+  });
 
   const nom = $derived(edition.widget?.nom ?? id);
   const aSortie = $derived(edition.brouillon?.blocs.some((b) => b.type === "sortie") ?? false);
@@ -144,12 +153,39 @@
     </div>
   {/if}
 
+  <!-- Le volet de droite : « Bloc » (seulement avec un canevas) et « Agent », la conversation de l'agent de la fenêtre. -->
+  {#snippet volet(avecBloc: boolean)}
+    <aside class="droite" class:agent={ongletDroit === "agent"} aria-label={ongletDroit === "agent" ? "Agent" : "Bloc"}>
+      <div class="onglets-droite" role="tablist">
+        {#if avecBloc}
+          <button role="tab" aria-selected={ongletDroit === "bloc"} class:actif={ongletDroit === "bloc"} onclick={() => (ongletDroit = "bloc")}>Bloc</button>
+        {/if}
+        <button role="tab" data-testid="onglet-agent" aria-selected={ongletDroit === "agent"} class:actif={ongletDroit === "agent"} onclick={() => (ongletDroit = "agent")}
+          >Agent</button
+        >
+      </div>
+      {#if avecBloc}
+        <!-- L'onglet « Bloc » reste monté, caché : un réglage ou du code en cours de frappe n'y est pas perdu. -->
+        <div class="volet-bloc" hidden={ongletDroit !== "bloc"}>
+          <OngletBloc widget={id} {edition} {executions} catalogue={parType} {selection} />
+        </div>
+      {/if}
+      {#if ongletDroit === "agent"}<OngletAgent />{/if}
+    </aside>
+  {/snippet}
+
   {#if edition.chargement === "chargement"}
     <p class="doux message">Chargement…</p>
-  {:else if edition.chargement === "introuvable"}
-    <p class="doux message">Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs).</p>
-  {:else if typeof edition.chargement === "object"}
-    <p class="erreur message" data-testid="workflow-illisible">{edition.chargement.illisible}</p>
+  {:else if edition.chargement === "introuvable" || typeof edition.chargement === "object"}
+    <!-- Sans canevas, l'agent reste là : c'est à lui de réparer ou d'écrire le workflow. -->
+    <div class="corps">
+      {#if edition.chargement === "introuvable"}
+        <p class="doux message">Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs).</p>
+      {:else}
+        <p class="erreur message" data-testid="workflow-illisible">{edition.chargement.illisible}</p>
+      {/if}
+      {@render volet(false)}
+    </div>
   {:else}
     <SvelteFlowProvider>
       <div class="corps">
@@ -166,12 +202,7 @@
           />
           {#if apercuOuvert}<ApercuWidget {id} {executions} />{/if}
         </div>
-        <aside class="droite" aria-label="Bloc">
-          <div class="onglets-droite" role="tablist">
-            <button role="tab" aria-selected="true" class="actif">Bloc</button>
-          </div>
-          <OngletBloc widget={id} {edition} {executions} catalogue={parType} {selection} />
-        </aside>
+        {@render volet(true)}
       </div>
       {#if vue === "workflow"}
         <BarreExecutions {executions} {selection} sortie={idSortie} rejouable={edition.disqueValide && edition.etatEnregistrement !== "en-cours"} />
@@ -199,10 +230,14 @@
   .corps { position: relative; flex: 1; display: flex; min-height: 0; }
   .zone-canevas { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
   .droite { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--bord); background: var(--fond-barre); }
+  .droite.agent { width: 420px; }
+  .volet-bloc { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .volet-bloc[hidden] { display: none; }
   .onglets-droite { display: flex; gap: 2px; padding: 8px 12px 0; }
   .onglets-droite button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--texte-doux); }
   .onglets-droite button.actif { background: var(--fond-actif); color: var(--texte); }
   .message { padding: 20px 24px; margin: 0; }
+  .corps > .message { flex: 1; min-width: 0; }
   .doux { color: var(--texte-doux); }
   .erreur { color: var(--en-erreur); white-space: pre-wrap; word-break: break-word; }
 </style>

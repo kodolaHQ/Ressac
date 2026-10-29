@@ -20,9 +20,10 @@
     }),
   );
 
-  /** ⌘S : enregistre le code (sans menu : la page n'a pas de « Enregistrer » à elle). */
+  /** ⌘S : enregistre le code (sans menu : la page n'a pas de « Enregistrer » à elle), sauf tapé dans le terminal de l'agent. */
   function touche(e: KeyboardEvent): void {
     if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key.toLowerCase() !== "s") return;
+    if (e.target instanceof Element && e.target.closest(".xterm")) return;
     e.preventDefault();
     void fichier.enregistrer();
   }

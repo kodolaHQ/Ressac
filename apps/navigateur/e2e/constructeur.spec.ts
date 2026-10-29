@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync,
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { dossierWidgets, ecrireDisposition, ecrireEtatWidget, ecrireWidget, lancer, nouveauProfil, nouvelleRacine } from "./aide";
+import { appelerOutil, dossierWidgets, ecrireDisposition, ecrireEtatWidget, ecrireWidget, lancer, nouveauProfil, nouvelleRacine } from "./aide";
+
+const AUCUN_WORKFLOW = "Aucun workflow ouvert au premier plan dans le constructeur de cette fenêtre.";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Serveurs de test : tout est local. Le site lu par les widgets, un faux Kev et un faux Ollama (sans Gemma).
@@ -910,5 +912,171 @@ test("pendant une exécution, Lancer et Rejouer sont grisés", async () => {
   await expect(fenetre.getByTestId("rejouer")).toBeEnabled();
   await expect(fenetre.getByTestId("pastille-textes")).toHaveClass(/ok/);
   await expect(fenetre.getByTestId("pastille-tri")).toHaveText("1");
+  await fermer();
+});
+
+// Tâche 12 : l'onglet « Agent »
+
+const terminalPanneau = (p: Page) => p.getByTestId("panneau-agent").locator(".xterm-rows");
+const terminalIntegre = (p: Page) => p.getByTestId("terminal-agent-integre").locator(".xterm-rows");
+/** ⌘J (le menu « Panneau agent »), comme l'utilisateur au clavier. */
+const menuAgent = (app: import("@playwright/test").ElectronApplication) =>
+  app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("panneau-agent")?.click());
+const occurrences = async (l: Locator, texte: string) => ((await l.textContent()) ?? "").split(texte).length - 1;
+const lireTexte = (chemin: string) => (existsSync(chemin) ? readFileSync(chemin, "utf8") : "");
+
+test("l'onglet Agent montre la même conversation que le panneau, sans doublon de sortie", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  // La page d'accueil ouvre le panneau latéral : la session de la fenêtre y démarre.
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  await fenetre.getByTestId("panneau-agent").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("premier");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminalPanneau(fenetre)).toContainText("reçu: premier");
+
+  // Dans le constructeur, le panneau latéral laisse la place à l'onglet « Agent » : le même terminal, déplacé.
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await fenetre.getByTestId("palette-liste.garder").click();
+  await expect(fenetre.getByTestId("noeud-liste-garder")).toBeVisible();
+  await fenetre.getByTestId("onglet-agent").click();
+  await expect(terminalIntegre(fenetre)).toContainText("reçu: premier");
+  expect(await occurrences(terminalIntegre(fenetre), "reçu: premier")).toBe(1);
+  await expect(fenetre.locator(".xterm")).toHaveCount(1);
+  await fenetre.getByTestId("terminal-agent-integre").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("second");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminalIntegre(fenetre)).toContainText("reçu: second");
+  expect(await occurrences(terminalIntegre(fenetre), "reçu: second")).toBe(1);
+  // ⌘Z tapé dans le terminal ne défait pas l'ajout du canevas.
+  await fenetre.keyboard.press("Meta+z");
+  await attendre(300);
+  await expect(fenetre.getByTestId("noeud-liste-garder")).toHaveCount(1);
+  // Une seule session pour la fenêtre : la saisie n'est arrivée qu'une fois à l'agent.
+  expect(lireTexte(join(racine, "faux-agent-entree.txt")).split("second\r").length - 1).toBe(1);
+
+  // De retour sur la page d'accueil, le panneau latéral reprend la conversation.
+  await fenetre.getByTestId("nouvel-onglet").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+  await expect(terminalPanneau(fenetre)).toContainText("reçu: second");
+  expect(await occurrences(terminalPanneau(fenetre), "reçu: second")).toBe(1);
+  await expect(fenetre.locator(".xterm")).toHaveCount(1);
+  await fermer();
+});
+
+test("⌘J et ✦ dans le constructeur ouvrent l'onglet Agent, sans panneau latéral ni contexte pré-rempli", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { app, fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId("terminal-agent-integre")).toHaveCount(0);
+  await menuAgent(app);
+  await expect(terminalIntegre(fenetre)).toContainText("faux agent prêt>");
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  // Retour à l'onglet « Bloc », puis le bouton ✦ : de nouveau l'onglet « Agent ».
+  await fenetre.getByRole("tab", { name: "Bloc" }).click();
+  await expect(fenetre.getByTestId("terminal-agent-integre")).toHaveCount(0);
+  await fenetre.getByTestId("bouton-agent").click();
+  await expect(terminalIntegre(fenetre)).toContainText("faux agent prêt>");
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await attendre(500);
+  expect(lireTexte(join(racine, "faux-agent-entree.txt"))).toBe("");
+  await fermer();
+});
+
+test("workflow_ouvert (appelerOutil avec le jeton de la session de cette fenêtre) rend le widget et le bloc sélectionné", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  const ouvert = async (o: { session?: boolean } = { session: true }) => (await appelerOutil(racine, "workflow_ouvert", {}, o)).texte;
+  await expect.poll(() => ouvert()).toBe(AUCUN_WORKFLOW);
+
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect.poll(() => ouvert()).toBe('{"widget":"veille","bloc":null}');
+  await fenetre.getByTestId("noeud-tri").click();
+  await expect.poll(() => ouvert()).toBe('{"widget":"veille","bloc":"tri"}');
+  // L'onglet « Agent » ne change rien à ce que l'agent sait.
+  await fenetre.getByTestId("onglet-agent").click();
+  await expect.poll(() => ouvert()).toBe('{"widget":"veille","bloc":"tri"}');
+  // Le jeton principal (sans fenêtre) ne voit aucun constructeur.
+  expect(await ouvert({})).toBe(AUCUN_WORKFLOW);
+  // Constructeur quitté : plus rien d'ouvert.
+  await fenetre.getByTestId("nouvel-onglet").click();
+  await expect.poll(() => ouvert()).toBe(AUCUN_WORKFLOW);
+  await fermer();
+});
+
+test("l'agent réécrit workflow.json : le canevas montre le nouveau bloc sans changer le zoom ; avec un brouillon invalide de l'utilisateur, le bandeau propose les deux versions", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId("noeud-tri")).toBeVisible();
+  // L'utilisateur zoome : la vue n'est plus celle de l'ouverture.
+  const vue = fenetre.locator(".svelte-flow__viewport");
+  const depart = await vue.getAttribute("style");
+  await fenetre.locator(".svelte-flow__controls-zoomin").click();
+  await expect.poll(() => vue.getAttribute("style")).not.toBe(depart);
+  await attendre(300);
+  const zoome = await vue.getAttribute("style");
+
+  // L'agent ajoute un bloc entre « tri » et « textes ».
+  const avecGarder = {
+    ...WORKFLOW_VEILLE,
+    blocs: [...WORKFLOW_VEILLE.blocs.slice(0, 3), { id: "garder", type: "liste.garder", parametres: { nombre: 5 } }, ...WORKFLOW_VEILLE.blocs.slice(3)],
+    liens: [
+      { de: "page", vers: "liens" },
+      { de: "liens", vers: "tri" },
+      { de: "tri", vers: "garder" },
+      { de: "garder", vers: "textes" },
+      { de: "textes", vers: "sortie" },
+    ],
+  };
+  ecrireCommeAgent(racine, avecGarder);
+  await expect(fenetre.getByTestId("noeud-garder")).toHaveCount(1);
+  await expect(fenetre.getByTestId("bandeau-fichier")).toHaveCount(0);
+  await attendre(300);
+  expect(await vue.getAttribute("style")).toBe(zoome);
+
+  // Un brouillon invalide de l'utilisateur, puis une nouvelle version de l'agent : le bandeau propose les deux.
+  await fenetre.getByTestId("palette-liste.dedoublonner").click();
+  await expect(fenetre.getByTestId("etat-enregistrement")).toContainText("entrée manquante");
+  ecrireCommeAgent(racine, avecSeuil(0.8));
+  await expect(fenetre.getByTestId("bandeau-fichier")).toBeVisible();
+  await expect(fenetre.getByTestId("prendre-version")).toBeVisible();
+  await expect(fenetre.getByTestId("garder-mienne")).toBeVisible();
+  expect(await vue.getAttribute("style")).toBe(zoome);
+  await fermer();
+});
+
+test("workflow.json illisible : pas de canevas, mais ⌘J ouvre quand même l'onglet Agent", async () => {
+  const racine = nouvelleRacine();
+  ecrireWidget(racine, "casse", {
+    nom: "Cassé",
+    recolte: { minutes: 60 },
+    workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa',
+    affichage: AFFICHAGE,
+    exemple: { exemple: "casse" },
+  });
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "casse");
+  const { app, fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  await ouvrirConstructeur(fenetre, "casse");
+  await expect(fenetre.getByTestId("workflow-illisible")).toBeVisible();
+  await menuAgent(app);
+  await expect(terminalIntegre(fenetre)).toContainText("faux agent prêt>");
   await fermer();
 });

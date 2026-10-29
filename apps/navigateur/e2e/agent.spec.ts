@@ -159,6 +159,8 @@ test("une question de lecture ne s'affiche que dans la fenêtre active", async (
   await fermer();
 });
 
+/** Config MCP d'une session de fenêtre, vue du conteneur. */
+const CONFIG_SESSION = /^\/workspace\/\.webaios\/sessions\/[0-9a-f]{16}\.json$/;
 const terminal = (p: import("@playwright/test").Page) => p.getByTestId("panneau-agent").locator(".xterm-rows");
 const menuAgent = (app: import("@playwright/test").ElectronApplication) =>
   app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("panneau-agent")?.click());
@@ -170,11 +172,12 @@ test("le panneau de la page d'accueil fait tourner le vrai CLI avec la config MC
   const { fenetre, racine, fermer } = await lancer();
   await panneauAccueil(fenetre);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+  // La session d'une fenêtre a sa config MCP à elle (son jeton : `workflow_ouvert` sait quelle fenêtre parle).
   expect(JSON.parse(lireFichier(join(racine, "faux-agent-args.json")))).toEqual([
     "claude",
     "--dangerously-skip-permissions",
     "--mcp-config",
-    "/workspace/.webaios/mcp.json",
+    expect.stringMatching(CONFIG_SESSION),
   ]);
   await fermer();
 });
@@ -437,7 +440,7 @@ test("un second profil dans .webaios/profils apparaît dans le panneau ; le choi
   await expect(choix.locator("option")).toHaveText(["Autre", "Claude Code"]);
   await choix.selectOption("autre");
   await expect.poll(() => lireFichier(join(racine, "faux-agent-pid"))).not.toBe(premier);
-  expect(JSON.parse(lireFichier(join(racine, "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", "/workspace/.webaios/mcp.json"]);
+  expect(JSON.parse(lireFichier(join(racine, "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(CONFIG_SESSION)]);
   await expect(terminal(fenetre)).toContainText("faux agent prêt>");
   await expect(fenetre.getByTestId("panneau-agent")).not.toContainText("L'agent s'est arrêté.");
   await fermer();

@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, realpathSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -233,15 +233,31 @@ export async function glisser(
   await page.mouse.up();
 }
 
-/** Appelle un outil du serveur MCP du navigateur, comme le ferait l'agent du conteneur. */
+/** Configs MCP des sessions d'agent des fenêtres (`.webaios/sessions/<session>.json`, une par fenêtre dont l'agent tourne). */
+export const configsSession = (racine: string): string[] => {
+  const dossier = join(racine, ".webaios", "sessions");
+  return existsSync(dossier) ? readdirSync(dossier).filter((f) => f.endsWith(".json")).map((f) => join(dossier, f)) : [];
+};
+
+/**
+ * Appelle un outil du serveur MCP du navigateur, comme le ferait l'agent du conteneur : avec le jeton principal
+ * (`.webaios/mcp.json`, sans fenêtre), ou avec `session: true` celui de la seule session d'agent ouverte (celle d'une fenêtre).
+ */
 export async function appelerOutil(
   racine: string,
   nom: string,
   args: Record<string, unknown> = {},
+  o: { session?: boolean } = {},
 ): Promise<{ texte: string; image?: string; erreur: boolean }> {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-  const config = JSON.parse(readFileSync(join(racine, ".webaios", "mcp.json"), "utf8")).mcpServers.webaios;
+  let chemin = join(racine, ".webaios", "mcp.json");
+  if (o.session) {
+    const sessions = configsSession(racine);
+    if (sessions.length !== 1) throw new Error(`une seule session d'agent attendue, ${sessions.length} trouvée(s)`);
+    chemin = sessions[0]!;
+  }
+  const config = JSON.parse(readFileSync(chemin, "utf8")).mcpServers.webaios;
   const transport = new StreamableHTTPClientTransport(new URL(config.url.replace("host.docker.internal", "127.0.0.1")), {
     requestInit: { headers: config.headers },
   });
