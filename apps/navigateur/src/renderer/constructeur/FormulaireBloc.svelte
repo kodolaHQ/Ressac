@@ -9,7 +9,8 @@
 
   /**
    * Les réglages d'un bloc, tirés de son catalogue. Une case ou une liste de choix s'enregistre aussitôt ; un champ de
-   * texte à la perte du focus ou après 400 ms sans frappe, en une seule entrée d'historique par champ édité.
+   * texte à la perte du focus ou après 400 ms sans frappe ; un nombre à la perte du focus ou sur Entrée seulement (une
+   * valeur de passage comme « 0. » effacerait la mémoire du bloc). Une seule entrée d'historique par champ édité.
    * Sans geste de l'utilisateur, rien n'est écrit (sélectionner un bloc n'enregistre rien).
    */
   let { edition, bloc, catalogue, disponibles }: { edition: Edition; bloc: BlocBrouillon; catalogue: CatalogueBloc; disponibles: string[] | null } =
@@ -23,7 +24,7 @@
   const champs = $derived(champsAffiches(catalogue, bloc.parametres));
   /** Texte des champs en cours d'édition (focus) ; les autres montrent la valeur du bloc. */
   let saisies = $state<Record<string, string>>({});
-  /** Texte au moment du focus : un champ quitté sans changement n'écrit rien. */
+  /** Texte au focus, puis au dernier enregistrement : un champ quitté sans changement n'écrit rien. */
   const initiales: Record<string, string> = {};
   const seances: Record<string, number> = {};
   let seance = 0;
@@ -34,6 +35,8 @@
     minuteries.delete(nom);
     const t = saisies[nom];
     if (t === undefined || t === initiales[nom]) return;
+    // Revenir ensuite à la valeur d'avant est un changement, qui s'enregistre.
+    initiales[nom] = t;
     const fusion = `${id}/${nom}/${seances[nom]}`;
     if (nom === NOM) {
       edition.modifier((b) => renommer(b, id, t.trim()), fusion);
@@ -58,6 +61,11 @@
     saisies[nom] = texte;
     clearTimeout(minuteries.get(nom));
     minuteries.set(nom, setTimeout(() => valider(nom), ATTENTE_MS));
+  }
+  /** Nombre : la saisie est retenue, enregistrée seulement à la perte du focus ou sur Entrée. */
+  function noter(nom: string, texte: string): void {
+    if (saisies[nom] === undefined) entrer(nom, texte);
+    saisies[nom] = texte;
   }
   function quitter(nom: string): void {
     valider(nom);
@@ -113,6 +121,7 @@
       <label class="champ">
         <span class="libelle">{f.libelle}{f.requis ? " *" : ""}</span>
         <select data-testid="champ-{f.nom}" value={typeof v === "string" ? v : ""} onchange={(e) => choisir(f, e.currentTarget.value)}>
+          {#if f.requis && typeof v !== "string"}<option value="" disabled>— choisir —</option>{/if}
           {#if !f.requis}<option value="">Par défaut{f.defaut === undefined ? "" : ` (${texteDe(f, f.defaut)})`}</option>{/if}
           {#each f.choix ?? [] as c (c)}<option value={c}>{c}</option>{/each}
           {#if typeof v === "string" && v !== "" && !(f.choix ?? []).includes(v)}<option value={v}>{v}</option>{/if}
@@ -135,10 +144,15 @@
             placeholder={texteDe(f, f.defaut)}
             onfocus={(e) => entrer(f.nom, e.currentTarget.value)}
             oninput={(e) => {
-              // « 0. » en cours de frappe se lit comme vide : la clé ne doit pas partir pour autant.
-              if (!e.currentTarget.validity.badInput) taper(f.nom, e.currentTarget.value);
+              // Une saisie illisible (« - ») se lit comme vide : la clé ne doit pas partir pour autant.
+              if (!e.currentTarget.validity.badInput) noter(f.nom, e.currentTarget.value);
             }}
-            onblur={() => quitter(f.nom)}
+            onkeydown={(e) => e.key === "Enter" && valider(f.nom)}
+            onblur={(e) => {
+              quitter(f.nom);
+              // Restée illisible : le champ remontre la valeur du bloc.
+              if (e.currentTarget.validity.badInput) e.currentTarget.value = texteDe(f, bloc.parametres[f.nom]);
+            }}
           />
         {:else if f.genre === "texte"}
           <input

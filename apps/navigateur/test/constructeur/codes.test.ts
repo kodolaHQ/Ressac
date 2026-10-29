@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { MODELE_CODE } from "../../src/renderer/constructeur/ajout";
-import { codesNonEnregistres, FichierCode, oublierCodes, type DepotCode } from "../../src/renderer/constructeur/codes.svelte";
+import { codesNonEnregistres, FichierCode, garderCodesDe, oublierCodes, type DepotCode } from "../../src/renderer/constructeur/codes.svelte";
 
 function faux(fichiers: Record<string, string> = {}) {
   const etat = { fichiers: { ...fichiers }, refus: false };
@@ -153,5 +153,17 @@ test("oublierCodes(widget) n'efface que les brouillons de ce widget", async () =
   oublierCodes("w");
   expect(codesNonEnregistres("w")).toEqual([]);
   expect(codesNonEnregistres("x")).toEqual(["a.mjs"]);
+  expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
+});
+
+test("garderCodesDe abandonne les brouillons des widgets dont le constructeur n'est plus ouvert", async () => {
+  const f = faux({ "a.mjs": "v1" });
+  const a = new FichierCode("w", "a.mjs", f.depot);
+  const b = new FichierCode("x", "a.mjs", f.depot);
+  await a.lire();
+  await b.lire();
+  a.saisir("1");
+  b.saisir("2");
+  garderCodesDe(["x", "autre"]);
   expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
 });

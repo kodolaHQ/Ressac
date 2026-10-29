@@ -33,7 +33,7 @@
   const source = $derived(bloc?.type === "code" && typeof bloc.parametres.source === "string" ? bloc.parametres.source : null);
 </script>
 
-<div class="onglet" data-testid="onglet-bloc">
+<div class="volet" data-testid="volet-bloc">
   {#if bloc}
     {#key bloc.id}
       <h3><span>{c?.libelle ?? bloc.type}</span> <code>{bloc.type}</code></h3>
@@ -51,7 +51,7 @@
       {#if source}
         {#key source}<EditeurCode {widget} nom={source} />{/key}
       {/if}
-      <SortieBloc bloc={bloc.id} choisie={executions.choisie} execution={executions.detail} />
+      <SortieBloc bloc={bloc.id} choisie={executions.choisie} execution={executions.detail} introuvable={executions.introuvable} />
     {/key}
   {:else}
     <PanneauWidget widget={edition.widget} />
@@ -59,7 +59,7 @@
 </div>
 
 <style>
-  .onglet { padding: 12px; overflow-y: auto; min-height: 0; flex: 1; color: var(--texte); }
+  .volet { padding: 12px; overflow-y: auto; min-height: 0; flex: 1; color: var(--texte); }
   h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   h3 code { font-size: 11px; font-weight: 400; padding: 0 5px; border-radius: 4px; background: var(--fond-survol); color: var(--texte-doux); }
   .erreur { margin: 0 0 6px; color: var(--en-erreur); font-size: 12px; white-space: pre-wrap; word-break: break-word; }

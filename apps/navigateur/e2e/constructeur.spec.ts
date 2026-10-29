@@ -491,7 +491,7 @@ test("changer le seuil d'ia.trier dans l'onglet Bloc réécrit workflow.json et 
   await expect(fenetre.getByTestId("widget-config")).toContainText(`"url": "${site.url}/liens"`);
 
   await fenetre.getByTestId("noeud-tri").click();
-  const onglet = fenetre.getByTestId("onglet-bloc");
+  const onglet = fenetre.getByTestId("volet-bloc");
   await expect(onglet.getByTestId("nom-bloc")).toHaveValue("Tri par Kev");
   await expect(onglet.getByTestId("id-bloc")).toHaveText("tri");
   await expect(onglet.getByTestId("champ-question")).toHaveValue("Parle d'IA ?");
@@ -502,20 +502,31 @@ test("changer le seuil d'ia.trier dans l'onglet Bloc réécrit workflow.json et 
   await attendre(500);
   expect(lireJson(fichier)).toEqual(WORKFLOW_VEILLE);
 
-  // Une saisie illisible en cours de frappe (« - ») n'efface ni le seuil ni la mémoire.
+  // Une saisie illisible (« - ») n'écrit rien ; quittée, le champ remontre la valeur du bloc.
   const seuil = onglet.getByTestId("champ-seuil");
   await seuil.click();
   await seuil.press("Meta+a");
   await seuil.pressSequentially("-");
+  await seuil.press("Tab");
+  await expect(seuil).toHaveValue("0.5");
+  // Un nombre ne s'enregistre pas en cours de frappe (« 0. » effacerait la mémoire) : Entrée ou perte du focus.
+  await seuil.fill("0.7");
   await attendre(700);
   expect(seuilDe(fichier)).toBe(0.5);
   expect(Object.keys(lireJson(memoireDe(profil)).blocs)).toEqual(["tri", "textes"]);
-  await seuil.fill("0.7");
-  await seuil.press("Tab");
+  await seuil.press("Enter");
   await expect.poll(() => seuilDe(fichier)).toBe(0.7);
   await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
   await expect.poll(() => Object.keys(lireJson(memoireDe(profil)).blocs)).toEqual(["textes"]);
-  // ⌘Z (hors du champ) revient au seuil d'avant en une seule fois.
+  // Revenir à la valeur du focus après un enregistrement s'enregistre aussi.
+  await seuil.fill("0.5");
+  await seuil.press("Tab");
+  await expect.poll(() => seuilDe(fichier)).toBe(0.5);
+  await expect(seuil).toHaveValue("0.5");
+  // ⌘Z (hors du champ) défait une édition du champ en une seule fois.
+  await seuil.fill("0.8");
+  await seuil.press("Tab");
+  await expect.poll(() => seuilDe(fichier)).toBe(0.8);
   await fenetre.getByTestId("constructeur").getByRole("heading", { name: "Veille" }).click();
   await fenetre.keyboard.press("Meta+z");
   await expect.poll(() => seuilDe(fichier)).toBe(0.5);
@@ -538,6 +549,18 @@ test("un gabarit {config.inconnu} affiche un avertissement et s'enregistre quand
   await expect(fenetre.getByTestId("avertissement-tri")).toContainText("config.inconnu absent de la configuration du widget");
   await expect(fenetre.getByTestId("noeud-tri")).toHaveClass(/avertit/);
   await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  // Revenir au texte du focus, dans la même séance, s'enregistre : l'avertissement part.
+  const questionDe = () => lireJson(fichier).blocs.find((b: { id: string }) => b.id === "tri").parametres.question;
+  await question.fill("Parle d'IA ?");
+  await expect.poll(questionDe).toBe("Parle d'IA ?");
+  await expect(fenetre.getByTestId("avertissement-tri")).toHaveCount(0);
+  // Une frappe en attente quand on change de bloc est enregistrée sur son bloc, pas sur le nouveau.
+  await question.fill("Parle de cuisine ?");
+  await fenetre.getByTestId("noeud-liens").click();
+  await expect.poll(questionDe).toBe("Parle de cuisine ?");
+  // (Le premier geste a figé les positions affichées : seule la position s'ajoute.)
+  const { position: _p, ...liens } = lireJson(fichier).blocs.find((b: { id: string }) => b.id === "liens");
+  expect(liens).toEqual(WORKFLOW_VEILLE.blocs[1]);
   await fermer();
 });
 

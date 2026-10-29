@@ -26,14 +26,16 @@ export function texteDe(f: ChampFormulaire, v: unknown): string {
 
 /**
  * Les paramètres avec la nouvelle valeur du champ (texte saisi, ou booléen d'une case) ; null si la saisie ne veut rien
- * dire (nombre illisible). Un champ vidé et non requis retire sa clé ; requis, il reste vide (le validateur le dira).
+ * dire (nombre illisible, ou nombre requis vidé). Un champ vidé et non requis retire sa clé ; un texte requis reste vide
+ * (le validateur le dira).
  */
 export function parametresAvec(parametres: Record<string, unknown>, f: ChampFormulaire, saisie: string | boolean): Record<string, unknown> | null {
   const { [f.nom]: _ancien, ...sans } = parametres;
   if (typeof saisie === "boolean") return { ...parametres, [f.nom]: saisie };
   let v: unknown;
   if (f.genre === "nombre") {
-    if (saisie.trim() === "") return sans;
+    // Requis, un nombre vidé ne change rien (le bloc garde sa valeur tant qu'on ne tape pas un nombre).
+    if (saisie.trim() === "") return f.requis ? null : sans;
     v = Number(saisie.trim().replace(",", "."));
     if (!Number.isFinite(v)) return null;
   } else if (f.genre === "textes") {

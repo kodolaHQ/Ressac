@@ -5,7 +5,12 @@
    * Ce que le bloc a produit à l'exécution choisie : statut, durée, éléments, erreur, journal et sortie repliable. Tout
    * vient d'une page ou du code de l'agent : affiché en texte, jamais en HTML.
    */
-  let { bloc, choisie, execution }: { bloc: string; choisie: ResumeExecution | null; execution: Execution | null } = $props();
+  let {
+    bloc,
+    choisie,
+    execution,
+    introuvable,
+  }: { bloc: string; choisie: ResumeExecution | null; execution: Execution | null; introuvable: boolean } = $props();
 
   const LIBELLES: Record<string, string> = {
     reussi: "réussi",
@@ -17,8 +22,12 @@
   };
 
   const trace = $derived(execution?.id === choisie?.id ? execution?.blocs.find((b) => b.id === bloc) : undefined);
-  /** La sortie n'est mise en forme qu'une fois le repli ouvert (elle peut peser 256 Ko). */
-  let ouverte = $state(false);
+  /**
+   * La sortie n'est mise en forme qu'une fois le repli ouvert (elle peut peser 256 Ko) : la trace dont le repli est
+   * ouvert. Une autre exécution recrée un repli fermé, sans JSON.
+   */
+  let ouverteSur = $state.raw<object | null>(null);
+  const ouverte = $derived(trace !== undefined && ouverteSur === trace);
   const json = $derived(ouverte && trace && trace.sortie !== undefined ? JSON.stringify(trace.sortie, null, 2) : "");
 
   function duree(debut: string | null, fin: string | null): string | null {
@@ -36,7 +45,9 @@
     <p class="doux">Aucune exécution pour l'instant.</p>
   {:else}
     <p class="doux">{heure(choisie.debut)} · {choisie.declencheur}{choisie.essai ? " (essai)" : ""}</p>
-    {#if execution?.id !== choisie.id}
+    {#if introuvable}
+      <p class="doux" data-testid="execution-introuvable">Cette exécution n'est plus lisible.</p>
+    {:else if execution?.id !== choisie.id}
       <p class="doux">Chargement…</p>
     {:else if !trace}
       <p class="doux">Ce bloc n'était pas dans cette exécution.</p>
@@ -59,10 +70,12 @@
         </details>
       {/if}
       {#if trace.sortie !== undefined || trace.sortieTronquee}
-        <details data-testid="sortie-repliable" ontoggle={(e) => (ouverte = e.currentTarget.open)}>
-          <summary>Sortie{trace.sortieTronquee ? " (tronquée)" : ""}</summary>
-          {#if ouverte}<pre data-testid="sortie-json">{json}</pre>{/if}
-        </details>
+        {#key trace}
+          <details data-testid="sortie-repliable" ontoggle={(e) => (ouverteSur = e.currentTarget.open ? trace : null)}>
+            <summary>Sortie{trace.sortieTronquee ? " (tronquée)" : ""}</summary>
+            {#if ouverte}<pre data-testid="sortie-json">{json}</pre>{/if}
+          </details>
+        {/key}
       {/if}
     {/if}
   {/if}

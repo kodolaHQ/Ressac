@@ -21,6 +21,15 @@ export function codesNonEnregistres(widget?: string): string[] {
   return cles.filter((c) => c.startsWith(`${widget}/`)).map((c) => c.slice(widget.length + 1));
 }
 
+/**
+ * Abandonne les brouillons des widgets dont plus aucun onglet du constructeur n'est ouvert dans la fenêtre (onglet
+ * fermé par l'agent, espace fermé…) : la fenêtre ne retient jamais sa fermeture pour un code qu'on ne voit plus.
+ */
+export function garderCodesDe(ouverts: Iterable<string>): void {
+  const w = new Set(ouverts);
+  for (const c of [...brouillons.keys()]) if (!w.has(c.slice(0, c.indexOf("/")))) brouillons.delete(c);
+}
+
 /** Abandonne les brouillons d'un widget (onglet fermé malgré tout), ou tous. */
 export function oublierCodes(widget?: string): void {
   for (const c of [...brouillons.keys()]) if (widget === undefined || c.startsWith(`${widget}/`)) brouillons.delete(c);

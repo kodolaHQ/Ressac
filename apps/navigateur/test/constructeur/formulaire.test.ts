@@ -45,3 +45,7 @@ test("case et choix : valeurs telles quelles ; valeur affichée par défaut cell
   expect(texteDe(champ("ia.trier", "seuil"), 0.9)).toBe("0.9");
   expect(texteDe(champ("ia.trier", "question"), undefined)).toBe("");
 });
+
+test("un nombre requis vidé ne change rien", () => {
+  expect(parametresAvec({ nombre: 10 }, champ("liste.garder", "nombre"), "")).toBeNull();
+});

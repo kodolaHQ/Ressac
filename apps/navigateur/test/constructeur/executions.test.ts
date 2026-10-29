@@ -77,3 +77,30 @@ test("relire sans changement ne redemande pas le détail", async () => {
   await x.charger();
   expect(f.demandes).toEqual(["b"]);
 });
+
+test("détail introuvable (chassé entre la liste et le détail) : signalé, la liste est relue une fois", async () => {
+  const f = faux([resume("b"), resume("a")]);
+  let listes = 0;
+  const source: SourceExecutions = {
+    executions: async () => {
+      listes++;
+      return f.source.executions("w");
+    },
+    execution: async (_w, id) => (id === "b" ? null : f.source.execution("w", id)),
+  };
+  const x = new Executions("w", source);
+  await x.charger();
+  expect(x.introuvable).toBe(true);
+  expect(x.detail).toBeNull();
+  expect(listes).toBe(2);
+  await x.choisir("a");
+  expect(x.introuvable).toBe(false);
+  expect(x.detail?.id).toBe("a");
+});
+
+test("détail en erreur : introuvable, pas d'attente sans fin", async () => {
+  const f = faux([resume("b")]);
+  const x = new Executions("w", { ...f.source, execution: async () => Promise.reject(new Error("canal")) });
+  await x.charger();
+  expect(x.introuvable).toBe(true);
+});

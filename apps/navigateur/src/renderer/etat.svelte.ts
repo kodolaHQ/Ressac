@@ -1,6 +1,6 @@
 import type { ApiWebaios } from "../commun/api";
 import { widgetDeUrlWorkflow, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdOnglet, type Onglet, type Telechargement } from "../commun/modele";
-import { confirmerFermeture } from "./constructeur/codes.svelte";
+import { confirmerFermeture, garderCodesDe } from "./constructeur/codes.svelte";
 
 declare global {
   interface Window {
@@ -15,6 +15,10 @@ export const etat = $state<{ valeur: EtatNavigateur | null }>({ valeur: null });
 
 api.surEtat((e) => {
   etat.valeur = e;
+  // Le code non enregistré d'un constructeur dont l'onglet est parti, par n'importe quel chemin, est abandonné.
+  garderCodesDe(
+    Object.values(e.onglets).flatMap((o) => (o.fenetreId === api.fenetreId ? (widgetDeUrlWorkflow(o.url) ?? []) : [])),
+  );
 });
 
 /** L'état de la fenêtre qui affiche cette interface. */
