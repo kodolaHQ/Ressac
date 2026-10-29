@@ -1345,6 +1345,32 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect((await lireExecution(donneesDe(ctx), r.execution!))?.statut).toBe("echouee");
   });
 
+  it("F3 : une publication ne recouvre jamais un état qui n'est plus en-cours (accord-requis écrit entre-temps)", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx, { auFilDeLEau: true });
+    await etatAvant(ctx);
+    const { horloge: h } = horlogeMobile();
+    let vu: unknown;
+    await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      lancer: lanceurPas(ctx, [
+        ...avantChaine([A1, A2]),
+        // Ce qu'écrit refuserAccord pendant l'exécution.
+        () => ecrireEtatWidget(ctx.dossierWidgets, "veille", { statut: "accord-requis", derniereMaj: DERNIERE_MAJ, derniereTentative: DERNIERE_MAJ }),
+        mem(["1"]),
+        pub([A1], 1, 2),
+        async () => {
+          await attendre(async () => existsSync(fichierDonnees(ctx)));
+          await new Promise((ok) => setTimeout(ok, 50));
+          vu = (await lireEtatWidget(ctx.dossierWidgets, "veille")).statut;
+        },
+        { t: "echec", erreur: "cassé" },
+      ]),
+    });
+    expect(vu).toBe("accord-requis");
+  });
+
   it("données finales de plus de 2 Mo : memoire.json reste la dernière mémoire relayée avant la sortie", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });

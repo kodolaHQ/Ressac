@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "../accueil/donnees.js";
+import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, modifierEtatWidget, supprimerDonnees } from "../accueil/donnees.js";
 import type { DeclarationWidget, EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
@@ -345,7 +345,10 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     await ecrireDonnees(dossierWidgets, id, p.donnees);
     if (await fermerSiAccordRetire()) return;
     const progression = { faits: p.faits, total: p.total };
-    await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, progression, avant });
+    // Seulement par-dessus l'en-cours de cette exécution : un accord-requis écrit entre-temps (refuserAccord) reste.
+    await modifierEtatWidget(dossierWidgets, id, (e) =>
+      e.statut === "en-cours" ? { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, progression, avant } : null,
+    );
     if (await fermerSiAccordRetire()) return;
     o.surChange?.();
   };
