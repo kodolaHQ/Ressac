@@ -919,6 +919,8 @@ test("interrompue : rattrapée au lancement suivant le même jour", async () => 
   fixer(le(7, 0));
   const verif = p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(duMatin(recoltes)).toBe(1));
+  // `tuer` n'est posé qu'après l'écriture de l'état en-cours : sans lui, arreter() attendrait 15 s (F5).
+  await vi.waitFor(() => expect(tuer).toBeDefined());
   await p.arreter();
   await verif;
   // Interrompue : sans effet sur le suivi, l'état d'avant est remis.
