@@ -4,7 +4,7 @@ import type { Atelier } from "../conteneur/atelier.js";
 import { cheminOutils } from "../conteneur/executeur.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import { ProfilRefuse, type PontNavigateur } from "../mcp/pont.js";
-import { recuperer, verifierPage, verifierUrl } from "./acces.js";
+import { message, recuperer, tronquer, verifierPage, verifierUrl } from "./acces.js";
 import { SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
 import { MEMOIRE_MAX_OCTETS, type MemoireBlocs } from "./memoire.js";
 import {
@@ -48,8 +48,14 @@ export const PROFIL_REFUSE =
   "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
 
 const MAX_APPELS_EN_VOL = 32;
-const JOURNAL_MAX = 2000;
-const ERREUR_MAX = 500;
+/**
+ * Plafonds effectifs du noyau : une erreur (d'exécution, de bloc, d'appel) à 500 caractères, le journal global à 2000.
+ * Ceux du conteneur (2000 caractères par trace) et de l'écriture des exécutions (2 Ko par ligne) ne sont que des filets.
+ */
+export const JOURNAL_MAX = 2000;
+export const ERREUR_MAX = 500;
+/** Remarque du noyau quand la mémoire des blocs rendue est trop grosse pour son fichier. */
+export const MEMOIRE_NON_GARDEE = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
 const JOURNAL_BLOC_LIGNES = 200;
 const JOURNAL_BLOC_CARACTERES = 500;
 
@@ -91,9 +97,6 @@ export type IssueWorkflow =
   | { t: "echec"; erreur: string; erreurDuCode: boolean }
   /** Arrêté par le noyau (délai, accord, profil refusé, réponse trop grande…) : le texte est du noyau. */
   | { t: "arret"; statut: "erreur" | "accord-requis"; erreur: string };
-
-const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
   const r = schema.safeParse(a);
@@ -282,7 +285,7 @@ export async function executerWorkflow(
       const filtree = memoireDuWorkflow(m.memoire as MemoireBlocs, types);
       if (Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS) {
         memoireRecue = null;
-        remarque = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
+        remarque = MEMOIRE_NON_GARDEE;
       } else {
         memoireRecue = filtree;
         remarque = null;

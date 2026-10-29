@@ -7,8 +7,10 @@ const RECUPERER_MAX_OCTETS = 5 * 1024 * 1024;
 const RECUPERER_DELAI_MS = 20_000;
 const MAX_REDIRECTIONS = 5;
 
-const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** Un texte de `n` caractères au plus, « … » à la fin s'il est coupé. */
+export const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+/** Le message d'une exception, ou sa valeur en texte. */
+export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Adresse de la machine ou du réseau local, écrite telle quelle dans l'URL (le nom n'est pas résolu). */
 export function adresseLocale(hote: string): boolean {

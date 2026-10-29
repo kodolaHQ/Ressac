@@ -49,8 +49,11 @@ export const LIMITE_GLOBALE_MS = 150_000;
 const ELEMENTS_EN_PARALLELE = 2;
 /** Valeurs gardées par `reutiliser`, par bloc (les plus anciennes oubliées au-delà). */
 export const REUTILISES_MAX_OCTETS = 2 * 1024 * 1024;
-/** Toute la mémoire envoyée au noyau (son fichier est refusé au-delà de 3 Mo, une ligne au-delà de 4 Mo). */
-export const MEMOIRE_MAX_OCTETS = 2.5 * 1024 * 1024;
+/**
+ * Toute la mémoire envoyée au noyau, sous le plafond de son fichier (MEMOIRE_MAX_OCTETS, 3 Mo, dans
+ * src/workflows/memoire.ts : au-delà, le noyau la refuse et garde l'ancienne) et d'une ligne (4 Mo).
+ */
+export const MEMOIRE_ENVOYEE_MAX_OCTETS = 2.5 * 1024 * 1024;
 const LIGNE_MAX = 4 * 1024 * 1024;
 const TEXTE_TRACE_MAX = 2000;
 
@@ -78,7 +81,7 @@ function borner(reutilises) {
 }
 
 /**
- * Borne toute la mémoire à MEMOIRE_MAX_OCTETS : oublie les plus anciennes valeurs de `reutiliser`, en commençant
+ * Borne toute la mémoire à MEMOIRE_ENVOYEE_MAX_OCTETS : oublie les plus anciennes valeurs de `reutiliser`, en commençant
  * toujours par le bloc qui en garde le plus, puis, s'il le faut encore, les plus anciennes clés de `liste.nouveaux`.
  */
 function bornerMemoire(memoire) {
@@ -97,7 +100,7 @@ function bornerMemoire(memoire) {
   ];
   for (const garder of phases) {
     const blocs = listes(garder);
-    while (total > MEMOIRE_MAX_OCTETS) {
+    while (total > MEMOIRE_ENVOYEE_MAX_OCTETS) {
       const plus = blocs.filter((b) => b.liste.length > 0).reduce((a, b) => (!a || b.total > a.total ? b : a), null);
       if (!plus) break;
       const t = plus.tailles.shift();

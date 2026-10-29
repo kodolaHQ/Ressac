@@ -5,7 +5,17 @@ import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import type { PontNavigateur } from "../mcp/pont.js";
 import { accordValide, lireAccords, retirerAccord } from "./accords.js";
-import { DELAI_EXECUTION_MS, PROFIL_REFUSE, executerWorkflow, type IssueWorkflow, type LanceurProcessus } from "../workflows/executer.js";
+import { message, tronquer } from "../workflows/acces.js";
+import {
+  DELAI_EXECUTION_MS,
+  ERREUR_MAX,
+  JOURNAL_MAX,
+  MEMOIRE_NON_GARDEE,
+  PROFIL_REFUSE,
+  executerWorkflow,
+  type IssueWorkflow,
+  type LanceurProcessus,
+} from "../workflows/executer.js";
 import { ecrireExecution, idExecution, type Execution, type TraceBloc } from "../workflows/executions.js";
 import { lireWorkflow } from "../workflows/lire.js";
 import { ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
@@ -43,8 +53,6 @@ export interface OptionsRecolte {
 export type ResultatRecolte = { etat: EtatWidget; donnees?: unknown; execution?: string };
 
 export const DELAI_RECOLTE_MS = DELAI_EXECUTION_MS;
-const ERREUR_MAX = 500;
-const JOURNAL_MAX = 2000;
 const ID = /^[a-z0-9-]+$/;
 
 export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
@@ -52,7 +60,6 @@ export const ERREUR_ATELIER_ARRETE = "Mise à jour impossible : atelier arrêté
 export const ERREUR_RECOLTE_INTERNE = "Mise à jour impossible : erreur interne du navigateur";
 export const ERREUR_SANS_WORKFLOW = "Ce widget n'a ni workflow.json ni recolte.mjs";
 export const ERREUR_INTERROMPUE = "Interrompue : WebAiOs s'est arrêté";
-const MEMOIRE_NON_GARDEE = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
 
 /** Messages d'erreur fixes écrits par le noyau ; tout autre texte d'erreur a pu être écrit par le widget. */
 const ERREURS_FIXES = new Set([
@@ -83,9 +90,6 @@ const ERREURS_MOTIFS = [
 export function erreurDuNoyau(erreur: string): boolean {
   return ERREURS_FIXES.has(erreur) || ERREURS_MOTIFS.some((m) => m.test(erreur));
 }
-
-const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * La récolte d'un widget : l'exécution de son workflow (`workflow.json`, ou `recolte.mjs` seul, en workflow implicite)
