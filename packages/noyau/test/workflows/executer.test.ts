@@ -778,15 +778,19 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
     expect(html()).toHaveLength(1);
   });
 
-  it("une recherche en file quand le refus arrive ne part pas", async () => {
+  it("une recherche en file quand le refus arrive ne part pas, et ne consomme pas l'écart des recherches", async () => {
+    const { menagement, attentes } = menagementFactice();
     const { b, html } = await bancWeb(
       `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
       export default async (e, w) => Promise.all([essai(w.chercherWeb("a")), essai(w.chercherWeb("b"))]);`,
-      { web: true, html: { [urlRecherche("a", BASE)]: page("verification.html"), [urlRecherche("b", BASE)]: page("resultats.html") } },
+      { web: true, menagement, html: { [urlRecherche("a", BASE)]: page("verification.html"), [urlRecherche("b", BASE)]: page("resultats.html") } },
     );
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(valeur(r)).toEqual([`erreur: ${RECHERCHE_REFUSEE}`, `erreur: ${RECHERCHES_ARRETEES}`]);
     expect(html()).toHaveLength(1);
+    // « b » n'a rien attendu ; la recherche suivante attend 2 s depuis la fin de « a », la seule partie (pas 2 s de plus).
+    await menagement.rechercher(async () => {});
+    expect(attentes).toEqual([2000]);
   });
 
   it("page changée : RESULTATS_ILLISIBLES, jamais une liste vide ; aucun résultat : liste vide", async () => {
@@ -827,6 +831,61 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
     expect(espion.mock.calls.slice(40).every((c) => c[0] === "127.0.0.1")).toBe(true);
     expect(attentes.every((ms) => ms === 1000)).toBe(true);
     expect(attentes).toHaveLength(98);
+  });
+
+  it("widget web : une lecture redirigée vers un autre site attend le ménagement de ce site", async () => {
+    const { menagement, attentes } = menagementFactice();
+    const pont = new PontFactice([], {
+      actif: null,
+      autoriser: false,
+      lecture: {
+        pages: [{ url: "https://b.example/2", titre: "deux", texte: "", liens: [] }],
+        redirections: { "https://a.example/court": "https://www.b.example/2", "https://a.example/meme": "https://www.a.example/x" },
+      },
+    });
+    const b = await banc(
+      chaine("a"),
+      {
+        "a.mjs": `export default async (e, w) => [
+          (await w.lirePage("https://b.example/1")).url,
+          (await w.lirePage("https://a.example/court")).url,
+          (await w.lirePage("https://a.example/meme")).url,
+        ];`,
+      },
+      { pont },
+    );
+    b.ctx.sources = { ...b.ctx.sources, web: true };
+    b.infra.menagement = menagement;
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual(["https://b.example/1", "https://www.b.example/2", "https://www.a.example/x"]);
+    // b.example lu juste avant : la redirection attend 1 s. a.example, rendue dès la redirection, ne fait pas attendre
+    // la 3e lecture, redirigée vers le même site (www.).
+    expect(pont.appels.filter((a) => a.methode === "changerHote").map((a) => a.args[0])).toEqual(["www.b.example", "www.a.example"]);
+    expect(attentes).toEqual([1000]);
+  });
+
+  it("widget web : une récupération redirigée vers un autre site attend le ménagement de ce site", async () => {
+    let ailleurs = "";
+    // /vers-localhost redirige vers le même serveur, sous un autre nom d'hôte.
+    const web = await serveurWeb({
+      "/f": (res) => res.end("fini"),
+      "/vers-localhost": (res) => {
+        res.writeHead(302, { location: ailleurs });
+        res.end();
+      },
+    });
+    ailleurs = `http://localhost:${web.port}/f`;
+    const { menagement, attentes } = menagementFactice();
+    const lire = vi.spyOn(menagement, "lire");
+    const { b } = await bancWeb(
+      `export default async (e, w) => [await w.recuperer("${ailleurs}"), await w.recuperer("${web.url}/vers-localhost")];`,
+      { web: true, menagement },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual(["fini", "fini"]);
+    expect(lire.mock.calls.map((c) => c[0])).toEqual(["localhost", "127.0.0.1"]);
+    // localhost lu juste avant : la redirection attend son écart.
+    expect(attentes).toEqual([1000]);
   });
 
   it("widget sans web : 150 lectures passent, aucune attente du ménagement", async () => {

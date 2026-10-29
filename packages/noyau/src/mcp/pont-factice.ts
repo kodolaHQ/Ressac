@@ -1,5 +1,6 @@
 import type { DroitDev } from "../acces/politique.js";
 import type { ProfilCpu } from "../outils-dev/resumes.js";
+import type { ChangerHote } from "../workflows/menagement.js";
 import type { PageLue } from "../workflows/protocole.js";
 import {
   OngletIntrouvable,
@@ -149,7 +150,7 @@ export class PontFactice implements PontNavigateur {
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
-  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal }) => Promise<PageLue>;
+  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote }) => Promise<PageLue>;
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Lectures suspendues en cours, par URL : `relacher` les laisse finir. */
   private readonly suspendues = new Map<string, (() => void)[]>();
@@ -164,7 +165,8 @@ export class PontFactice implements PontNavigateur {
    * (sinon une page vide), `lireHtmlInvisible` : le HTML de `html` à cette URL (sinon ""), et ProfilRefuse pour un profil de `refuser`. Une lecture (page ou HTML) d'une URL de `suspendues` ne
    * finit qu'à `relacher(url)`, ou à l'abandon de son `signal` : elle est alors notée « lectureAnnulee » et rejetée avec
    * la raison du signal, comme le vrai pont qui ferme sa fenêtre. `redirections` simule une redirection :
-   * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue. `donneesWidget` fournit la carte
+   * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue ; vers un autre hôte, avec
+   * `changerHote`, elle l'attend d'abord (notée « changerHote »). `donneesWidget` fournit la carte
    * « donnees-widget », qui répond cette valeur.
    */
   constructor(
@@ -224,11 +226,17 @@ export class PontFactice implements PontNavigateur {
           signal?.addEventListener("abort", annuler, { once: true });
         });
       };
-      this.lirePageInvisible = async (url, { signal, ...l }) => {
+      this.lirePageInvisible = async (url, { signal, changerHote, ...l }) => {
         this.noter("lirePageInvisible", url, { ...l });
         await attendre(url, signal);
         if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfilRefuse(l.profil);
         const finale = lecture.redirections?.[url] ?? url;
+        // Comme le vrai pont : une redirection vers un autre hôte attend `changerHote` avant de partir.
+        const hote = new URL(finale).hostname;
+        if (changerHote && hote !== new URL(url).hostname) {
+          this.noter("changerHote", hote);
+          await changerHote(hote);
+        }
         const p = lecture.pages.find((x) => x.url === finale);
         return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
       };

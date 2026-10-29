@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import type { ChangerHote } from "./menagement.js";
 import type { PageLue } from "./protocole.js";
 
 // Accès du conteneur au dehors, tous côté noyau : URL vérifiées, récupération brute, page lue revérifiée.
@@ -82,7 +83,8 @@ async function lireCorps(r: Response): Promise<Buffer> {
 
 /**
  * Récupération brute, sans cookie ni identifiant ; chaque redirection est revérifiée avec la même règle. `arret` levé
- * (l'exécution est arrêtée) : la requête est abandonnée et la promesse rejetée avec `arret.reason`.
+ * (l'exécution est arrêtée) : la requête est abandonnée et la promesse rejetée avec `arret.reason`. `changerHote`
+ * (lecture ménagée) : attendu avant de suivre une redirection vers un autre hôte.
  */
 export async function recuperer(
   brute: string,
@@ -90,6 +92,7 @@ export async function recuperer(
   domaines: readonly string[] | null,
   adressesLocales: boolean,
   arret?: AbortSignal,
+  changerHote?: ChangerHote,
 ) {
   const delai = AbortSignal.timeout(RECUPERER_DELAI_MS);
   const echeance = arret ? AbortSignal.any([delai, arret]) : delai;
@@ -101,7 +104,9 @@ export async function recuperer(
       if (r.status >= 300 && r.status < 400 && cible) {
         await r.body?.cancel().catch(() => {});
         if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
-        url = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
+        const suivante = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
+        if (changerHote && suivante.hostname !== url.hostname) await changerHote(suivante.hostname);
+        url = suivante;
         continue;
       }
       if (!r.ok) {

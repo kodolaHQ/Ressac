@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ECART_LECTURES_MS, ECART_RECHERCHES_MS, Menagement } from "../../src/workflows/menagement.js";
+import { ECART_LECTURES_MS, ECART_RECHERCHES_MS, Menagement, siteMenage } from "../../src/workflows/menagement.js";
 
 /** Horloge et attente factices : attendre(ms) fait avancer le temps sans dormir. */
 function factice() {
@@ -119,5 +119,113 @@ describe("Menagement", () => {
     await m.rechercher(async () => {});
     await m.rechercher(async () => {});
     expect(attentes).toEqual([2000, 1]);
+  });
+
+  it("une recherche refusée avant son tour (verifier lève) n'appelle pas f et ne consomme pas l'écart", async () => {
+    const { m, attentes } = factice();
+    await m.rechercher(async () => 1);
+    let appels = 0;
+    const refus = () => { throw new Error("refusée"); };
+    await expect(m.rechercher(async () => { appels++; }, undefined, refus)).rejects.toThrow("refusée");
+    expect(appels).toBe(0);
+    expect(attentes).toEqual([]);
+    await m.rechercher(async () => 3);
+    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+  });
+
+  it("une recherche refusée pendant son attente ne retarde pas la suivante", async () => {
+    let t = 1000;
+    let refusee = false;
+    const attentes: number[] = [];
+    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += ms; refusee = true; } });
+    await m.rechercher(async () => 1);
+    const verifier = () => { if (refusee) throw new Error("refusée"); };
+    await expect(m.rechercher(async () => 2, undefined, verifier)).rejects.toThrow("refusée");
+    // L'écart compte toujours depuis la fin de la première : la suivante n'attend plus rien.
+    await m.rechercher(async () => 3);
+    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+  });
+
+  it("siteMenage : minuscules, sans www. ni point final", () => {
+    expect(siteMenage("WWW.Exemple.fr.")).toBe("exemple.fr");
+    expect(siteMenage("blog.exemple.fr")).toBe("blog.exemple.fr");
+  });
+
+  it("une lecture redirigée vers un autre hôte attend l'écart de cet hôte, et rend la voie du premier", async () => {
+    const { m, attentes, maintenant } = factice();
+    await m.lire("b.fr", async () => {});
+    let lueA = -1;
+    await m.lire("a.fr", async (changerHote) => {
+      await changerHote("b.fr");
+      lueA = maintenant();
+    });
+    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    expect(lueA).toBe(1000 + ECART_LECTURES_MS);
+    // a.fr rendue à la redirection (t = 1000) : écart écoulé. b.fr, finie à 2000 : 1 s.
+    await m.lire("a.fr", async () => {});
+    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    await m.lire("b.fr", async () => {});
+    expect(attentes).toEqual([ECART_LECTURES_MS, ECART_LECTURES_MS]);
+  });
+
+  it("redirection vers le même site (www., majuscules) : rien ne change", async () => {
+    const { m, attentes } = factice();
+    await m.lire("a.fr", async (changerHote) => {
+      await changerHote("WWW.a.fr");
+      await changerHote("a.fr");
+    });
+    expect(attentes).toEqual([]);
+  });
+
+  it("pendant une lecture redirigée vers b.fr, une lecture de b.fr attend sa fin ; une lecture de a.fr passe", async () => {
+    let t = 0;
+    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
+    let finir!: () => void;
+    let redirigee!: () => void;
+    const estRedirigee = new Promise<void>((r) => (redirigee = r));
+    const longue = m.lire("a.fr", async (changerHote) => {
+      await changerHote("b.fr");
+      redirigee();
+      await new Promise<void>((r) => (finir = r));
+    });
+    await estRedirigee;
+    const journal: string[] = [];
+    const b = m.lire("b.fr", async () => void journal.push(`b@${t}`));
+    const a = m.lire("a.fr", async () => void journal.push(`a@${t}`));
+    await a;
+    expect(journal).toEqual([`a@${ECART_LECTURES_MS}`]);
+    t = 5000;
+    finir();
+    await longue;
+    await b;
+    expect(journal).toEqual([`a@${ECART_LECTURES_MS}`, `b@${5000 + ECART_LECTURES_MS}`]);
+  });
+
+  it("a.fr → b.fr → a.fr : chaque voie reprise à son tour, sans blocage", async () => {
+    const { m, attentes } = factice();
+    await m.lire("a.fr", async (changerHote) => {
+      await changerHote("b.fr");
+      await changerHote("a.fr");
+    });
+    // Retour sur a.fr, rendue à la première redirection : 1 s d'écart.
+    expect(attentes).toEqual([ECART_LECTURES_MS]);
+  });
+
+  it("signal levé pendant l'attente d'une redirection : rejetée, aucune voie ne reste prise", async () => {
+    let t = 0;
+    const enAttente: (() => void)[] = [];
+    const m = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
+    await m.lire("b.fr", async () => {});
+    const ctrl = new AbortController();
+    const p = m.lire("a.fr", async (changerHote) => { await changerHote("b.fr"); return "lue"; }, ctrl.signal);
+    await new Promise((r) => setTimeout(r, 0));
+    ctrl.abort(new Error("stop"));
+    await expect(p).rejects.toThrow("stop");
+    t = 10_000;
+    for (const ok of enAttente.splice(0)) ok();
+    // Ni a.fr ni b.fr ne restent prises.
+    await m.lire("a.fr", async () => {});
+    await m.lire("b.fr", async () => {});
+    expect(enAttente).toEqual([]);
   });
 });

@@ -20,7 +20,7 @@ import {
 } from "./acces.js";
 import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, URL_DUCKDUCKGO, extraireResultats, urlRecherche } from "./duckduckgo.js";
 import { chaineAuFilDeLEau } from "./chaine.js";
-import { Menagement } from "./menagement.js";
+import { Menagement, type ChangerHote } from "./menagement.js";
 import { SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
 import { MEMOIRE_MAX_OCTETS, empreinteParametres, type MemoireBlocs } from "./memoire.js";
 import {
@@ -387,9 +387,9 @@ export async function executerWorkflow(
 
   /**
    * Une lecture ouverte (page sans compte, récupération, flux) : pour un widget `web`, comptée (100 par exécution) et
-   * ménagée par hôte ; sinon, faite tout de suite comme avant.
+   * ménagée par hôte, redirections vers un autre site comprises (`changerHote`) ; sinon, faite tout de suite comme avant.
    */
-  const lectureOuverte = <T>(u: URL, f: () => Promise<T>): Promise<T> => {
+  const lectureOuverte = <T>(u: URL, f: (changerHote?: ChangerHote) => Promise<T>): Promise<T> => {
     if (!web) return f();
     if (lecturesOuvertes >= MAX_LECTURES_OUVERTES) throw new Error(TROP_DE_LECTURES);
     lecturesOuvertes++;
@@ -402,7 +402,7 @@ export async function executerWorkflow(
     if (!lire) throw new Error("Lecture de pages indisponible");
     if (!compte) {
       const u = verifierUrl(url, domainesPublics, adressesLocales);
-      const page = await lectureOuverte(u, () => lire(u.href, avecDomaines(null, domainesPublics)));
+      const page = await lectureOuverte(u, (changerHote) => lire(u.href, { ...avecDomaines(null, domainesPublics), ...(changerHote ? { changerHote } : {}) }));
       return verifierPage(page, domainesPublics, adressesLocales);
     }
     // Le domaine doit être déclaré en `compte` ; l'accord est relu à chaque lecture (il a pu être retiré).
@@ -439,19 +439,24 @@ export async function executerWorkflow(
     const lireHtml = infra.pont.lireHtmlInvisible?.bind(infra.pont);
     if (!lireHtml) throw new Error(RECHERCHE_INDISPONIBLE);
     recherches++;
-    const { html } = await menagement.rechercher(() => {
-      // Un refus arrivé pendant l'attente : celle-ci ne part pas.
-      if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
-      return lireHtml(urlRecherche(requete, infra.urlRecherche ?? URL_DUCKDUCKGO), {
-        ...(adressesLocales ? { adressesLocales: true } : {}),
-        signal: finExecution.signal,
-      });
-    }, finExecution.signal);
-    const r = extraireResultats(html, Infinity);
-    if ("refus" in r) {
-      rechercheRefusee = true;
-      throw new Error(RECHERCHE_REFUSEE);
-    }
+    const r = await menagement.rechercher(
+      async () => {
+        const { html } = await lireHtml(urlRecherche(requete, infra.urlRecherche ?? URL_DUCKDUCKGO), {
+          ...(adressesLocales ? { adressesLocales: true } : {}),
+          signal: finExecution.signal,
+        });
+        const lus = extraireResultats(html, Infinity);
+        // Marqué avant de rendre la voie : une recherche en file voit le refus avant de partir.
+        if ("refus" in lus) rechercheRefusee = true;
+        return lus;
+      },
+      finExecution.signal,
+      // Un refus arrivé pendant l'attente : celle-ci ne part pas, et ne retarde pas la recherche suivante.
+      () => {
+        if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
+      },
+    );
+    if ("refus" in r) throw new Error(RECHERCHE_REFUSEE);
     if ("illisible" in r) throw new Error(RESULTATS_ILLISIBLES);
     // Un résultat vers la machine ou le réseau local n'est jamais rendu (il serait lu ensuite).
     return r.resultats.filter((x) => !adresseLocale(new URL(x.url).hostname)).slice(0, nombre);
@@ -465,7 +470,7 @@ export async function executerWorkflow(
         const { url, format } = args(ArgsRecuperer, a, "recuperer");
         if (!web) return recuperer(url, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal);
         const u = verifierUrl(url, domainesPublics, adressesLocales);
-        return lectureOuverte(u, () => recuperer(u.href, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal));
+        return lectureOuverte(u, (changerHote) => recuperer(u.href, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal, changerHote));
       }
       case "chercherWeb":
         return chercherWeb(a);

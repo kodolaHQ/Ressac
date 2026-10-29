@@ -1,5 +1,6 @@
 import type { DroitDev } from "../acces/politique.js";
 import type { ProfilCpu } from "../outils-dev/resumes.js";
+import type { ChangerHote } from "../workflows/menagement.js";
 import type { PageLue } from "../workflows/protocole.js";
 
 export interface OngletInfo {
@@ -51,8 +52,12 @@ export interface PontNavigateur {
    *
    * `signal` levé (l'exécution qui lit est arrêtée ou finie) : la lecture, en attente ou en cours, est abandonnée, sa
    * fenêtre fermée, et la promesse rejetée avec `signal.reason`.
+   *
+   * `changerHote` (donné pour une lecture ménagée, celle d'un widget `web`) : avant de suivre une navigation du cadre
+   * principal (redirection, script, meta refresh) vers un autre site (`siteMenage` différent), le pont la retient et
+   * attend `changerHote(hôte)`, qui rend la main quand le ménagement de ce site le permet ; rejetée, la lecture échoue.
    */
-  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal }): Promise<PageLue>;
+  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote }): Promise<PageLue>;
   /**
    * Le HTML d'une page publique (`document.documentElement.outerHTML`, 2 Mo au plus) : toujours la session publique,
    * vidée avant la lecture, jamais un profil ni un compte. Mêmes gardes que `lirePageInvisible` (http(s), adresse
