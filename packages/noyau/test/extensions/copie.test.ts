@@ -203,11 +203,53 @@ describe("preparerCopie", () => {
       const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
       expect(analyse.refus.some((r) => r.includes("i/icone.svg")), svg).toBe(true);
     }
-    const src = await source({ "manifest.json": manifesteBase(), "icone.svg": '<svg><path d="M0 0" data-online="x"/></svg>' });
+    const src = await source({ "manifest.json": manifesteBase(), "icone.svg": '<svg><path d="M0 0"/></svg>' });
     const c = await cible();
     const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     expect(analyse.refus).toEqual([]);
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
+  });
+
+  it("SVG : règle fermée (préfixe d'espace de noms, UTF-16, javascript:, entité, octets invalides), .svgz refusé", async () => {
+    const cas: [string, Buffer | string, string][] = [
+      ["s.svg", '<svg xmlns:s="http://www.w3.org/2000/svg"><s:script href="x.js"/></svg>', "script"],
+      ["u16.svg", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<svg><script href="x.js"/></svg>', "utf16le")]), "UTF-16"],
+      ["u16sansbom.svg", Buffer.from("<svg/>", "utf16le"), "NUL"],
+      ["js.svg", '<svg><a href="JavaScript:x()"/></svg>', "javascript:"],
+      ["ent.svg", '<!DOCTYPE svg [<!ENTITY e "x">]><svg/>', "<!entity"],
+      ["fo.svg", "<svg><FOREIGNOBJECT/></svg>", "foreignobject"],
+      ["on.svg", '<svg><a onfocus="x()"/></svg>', "on…="],
+      ["bad.svg", Buffer.from([0x3c, 0x73, 0x76, 0x67, 0xff, 0x2f, 0x3e]), "UTF-8"],
+      ["image.svgz", Buffer.from([0x1f, 0x8b, 0x08]), ".svgz"],
+    ];
+    for (const [nom, contenu, motif] of cas) {
+      const src = await source({ "manifest.json": manifesteBase() });
+      await writeFile(join(src, nom), contenu);
+      const c = await cible();
+      const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+      const r = analyse.refus.find((x) => x.includes(nom));
+      expect(r, nom).toBeDefined();
+      expect(r, nom).toContain(motif);
+      expect(existsSync(c)).toBe(false);
+    }
+    const icone = await source({
+      "manifest.json": manifesteBase(),
+      "icone.svg": '<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Étoile</title><path fill="#fc0" d="M12 2l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z"/></svg>',
+    });
+    const c = await cible();
+    expect((await preparerCopie({ source: icone, cible: c, dossierGardes: GARDES_PAR_DEFAUT })).analyse.refus).toEqual([]);
+    expect(existsSync(join(c, "icone.svg"))).toBe(true);
+  });
+
+  it("une page HTML en UTF-16 ou UTF-32 (BOM) est refusée", async () => {
+    for (const bom of [[0xff, 0xfe], [0xfe, 0xff], [0xff, 0xfe, 0x00, 0x00], [0x00, 0x00, 0xfe, 0xff]]) {
+      const src = await source({ "manifest.json": manifesteBase() });
+      await writeFile(join(src, "popup.html"), Buffer.concat([Buffer.from(bom), Buffer.from("<p>x</p>", "utf16le")]));
+      const c = await cible();
+      const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+      expect(analyse.refus.some((r) => r.includes("popup.html")), String(bom)).toBe(true);
+      expect(existsSync(c)).toBe(false);
+    }
   });
 
   it("background.scripts ou background.page refusés", async () => {

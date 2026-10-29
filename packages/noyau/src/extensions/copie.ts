@@ -212,18 +212,49 @@ function insererGardePage(page: Buffer): Buffer {
   return Buffer.concat([page.subarray(0, position), BALISE_GARDE, page.subarray(position)]);
 }
 
-const DOCUMENTS_REFUSES = /\.(xhtml|xht|xml|xsl|xslt|mht|mhtml)$/i;
-const SVG_ACTIF = [/<script/i, /<foreignObject/i, /\son[a-z]+\s*=/i];
+const DOCUMENTS_REFUSES = /\.(xhtml|xht|xml|xsl|xslt|mht|mhtml|svgz)$/i;
+const PAGES = /\.(html?|shtml)$/i;
+const MOTS_SVG = ["javascript:", "script", "foreignobject", "<!entity"];
 
-/** Refus propres au contenu des fichiers : noms réservés, documents hors HTML, SVG actifs. */
+/** BOM UTF-16 (FF FE, FE FF) ou UTF-32 (FF FE 00 00, 00 00 FE FF). */
+function bomUtf16Ou32(o: Buffer): boolean {
+  return (
+    (o[0] === 0xff && o[1] === 0xfe) ||
+    (o[0] === 0xfe && o[1] === 0xff) ||
+    (o.length >= 4 && o[0] === 0 && o[1] === 0 && o[2] === 0xfe && o[3] === 0xff)
+  );
+}
+
+/** Règle fermée : la raison du refus d'un SVG, ou null s'il est accepté. */
+function refusSvg(contenu: Buffer): string | null {
+  if (bomUtf16Ou32(contenu)) return "encodage UTF-16 ou UTF-32";
+  if (contenu.includes(0)) return "octet NUL";
+  let texte: string;
+  try {
+    texte = new TextDecoder("utf-8", { fatal: true }).decode(contenu).toLowerCase();
+  } catch {
+    return "UTF-8 invalide";
+  }
+  const mot = MOTS_SVG.find((m) => texte.includes(m));
+  if (mot) return `contient « ${mot} »`;
+  if (/\bon[a-z]+\s*=/i.test(texte)) return "attribut on…=";
+  return null;
+}
+
+/** Refus propres au contenu des fichiers : noms réservés, documents hors HTML, SVG actifs, pages en UTF-16/32. */
 function refusFichiers(fichiers: Map<string, Buffer>): string[] {
   const refus: string[] = [];
   const reserves = new Set([FOND, ...GARDES]);
   for (const [chemin, contenu] of fichiers) {
     if (reserves.has(chemin.normalize("NFC").toLowerCase())) refus.push(`Nom de fichier réservé à WebAiOs : ${chemin}`);
-    if (DOCUMENTS_REFUSES.test(chemin)) refus.push(`Type de fichier refusé (document hors HTML) : ${chemin}`);
-    if (/\.svg$/i.test(chemin) && SVG_ACTIF.some((re) => re.test(contenu.toString("latin1")))) {
-      refus.push(`Image SVG refusée (script ou contenu actif) : ${chemin}`);
+    const document = DOCUMENTS_REFUSES.exec(chemin);
+    if (document) refus.push(`Type de fichier refusé (.${document[1]!.toLowerCase()}) : ${chemin}`);
+    if (/\.svg$/i.test(chemin)) {
+      const raison = refusSvg(contenu);
+      if (raison) refus.push(`Image SVG refusée (${raison}) : ${chemin}`);
+    }
+    if (PAGES.test(chemin) && bomUtf16Ou32(contenu)) {
+      refus.push(`Page HTML refusée (encodage UTF-16 ou UTF-32) : ${chemin}`);
     }
   }
   return refus;
@@ -295,7 +326,7 @@ export async function preparerCopie(o: {
       await mkdir(dirname(destination), { recursive: true });
       await writeFile(
         destination,
-        /\.(html?|shtml)$/i.test(chemin) ? insererGardePage(contenu) : contenu,
+        PAGES.test(chemin) ? insererGardePage(contenu) : contenu,
       );
     }
     for (const g of GARDES) await copyFile(join(o.dossierGardes, g), join(tmp, g));
