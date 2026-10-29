@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { dossierValide } from "../applications/manifeste.js";
 import { CHEMIN_CONTENEUR, type CheminsEspace } from "../chemins.js";
 import { executeurParDefaut, type Executeur } from "./executeur.js";
@@ -190,28 +190,27 @@ export class Atelier {
   }
 
   /**
-   * Récolte d'un widget, dans un conteneur jetable sans réseau : il ne voit que le dossier du widget et le dossier du
+   * Exécution d'un workflow, dans un conteneur jetable sans réseau : il ne voit que le dossier des fichiers et le dossier du
    * moteur (celui du récolteur et de ses modules), en lecture seule, et ne parle au noyau que par son entrée et sa
    * sortie standard (`-i`).
    */
-  commandeRecolte(id: string, dossierWidget: string, recolteur: string): string[] {
+  commandeRecolte(id: string, dossierFichiers: string, moteur: string): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     // « : » changerait le sens de -v (cible, options) : un tel chemin ne peut pas être monté sans risque.
-    for (const c of [dossierWidget, recolteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
-    const moteur = dirname(recolteur);
+    for (const c of [dossierFichiers, moteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
     return [
       this.docker, "run", "-i", "--rm",
       "--name", nomRecolte(id),
       "--network", "none",
       "--read-only",
       "--tmpfs", "/tmp",
-      "-v", `${dossierWidget}:/widget:ro`,
+      "-v", `${dossierFichiers}:/widget:ro`,
       "-v", `${moteur}:/opt/webaios/moteur:ro`,
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
       "timeout", "-k", "5", String(DELAI_RECOLTE_S),
-      "node", `/opt/webaios/moteur/${basename(recolteur)}`, "/widget",
+      "node", "/opt/webaios/moteur/recolteur.mjs", "/widget",
     ];
   }
 

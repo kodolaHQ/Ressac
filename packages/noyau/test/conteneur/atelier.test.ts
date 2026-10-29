@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Atelier, DELAI_CONSTRUCTION_MS, empreinteDockerfile, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
+import { Atelier, DELAI_CONSTRUCTION_MS, IMAGE, empreinteDockerfile, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -278,4 +278,25 @@ test("arreterApplication : le point d'un nom de dossier n'est pas un joker de gr
     new Promise<boolean>((ok) => execFile("sh", ["-c", `printf '%s' "$1" | grep -qx "$2"`, "sh", valeur, motif], (e) => ok(!e)));
   expect(await vise("WEBAIOS_APP=my.app")).toBe(true);
   expect(await vise("WEBAIOS_APP=myxapp")).toBe(false);
+});
+
+test("commandeRecolte monte le moteur en lecture seule et lance /opt/webaios/moteur/recolteur.mjs", () => {
+  const atelier = new Atelier({ chemins, docker: "/usr/local/bin/docker" });
+  const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur");
+  expect(c).toEqual([
+    "/usr/local/bin/docker", "run", "-i", "--rm",
+    "--name", "webaios-recolte-meteo",
+    "--network", "none",
+    "--read-only",
+    "--tmpfs", "/tmp",
+    "-v", "/Users/t/WebAiOs/accueil/widgets/meteo:/widget:ro",
+    "-v", "/app/docker/moteur:/opt/webaios/moteur:ro",
+    "--memory", "512m",
+    "--pids-limit", "128",
+    IMAGE,
+    "timeout", "-k", "5", "180",
+    "node", "/opt/webaios/moteur/recolteur.mjs", "/widget",
+  ]);
+  // Le dossier du moteur est monté tel quel, pas son parent : rien d'autre du paquet n'entre dans le conteneur.
+  expect(() => atelier.commandeRecolte("meteo", "/d", "/app/x:y")).toThrow();
 });

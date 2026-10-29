@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
 import { lireAccueil } from "../../src/accueil/lire.js";
 import { Atelier, IMAGE } from "../../src/conteneur/atelier.js";
@@ -209,12 +209,12 @@ describe("executerRecolte", () => {
     expect(existsSync(join(ctx.widget.dossier, "donnees.json"))).toBe(false);
     expect(existsSync(join(ctx.widget.dossier, "etat.json"))).toBe(false);
     // Le lanceur reçoit la commande docker de l'atelier.
-    expect(ctx.commandes[0]).toEqual(ctx.atelier.commandeRecolte("meteo", ctx.widget.dossier, SCRIPT));
+    expect(ctx.commandes[0]).toEqual(ctx.atelier.commandeRecolte("meteo", ctx.widget.dossier, dirname(SCRIPT)));
   });
 
   it("commandeRecolte monte le widget en :ro, coupe le réseau (--network none) et ne monte rien d'autre de l'espace", async () => {
     const atelier = new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
-    const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur/recolteur.mjs");
+    const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur");
     expect(c).toEqual([
       "/usr/local/bin/docker", "run", "-i", "--rm",
       "--name", "webaios-recolte-meteo",

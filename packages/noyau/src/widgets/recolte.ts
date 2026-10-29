@@ -1,13 +1,12 @@
-import { spawn } from "node:child_process";
-import { isIP } from "node:net";
-import type { Readable, Writable } from "node:stream";
+import { dirname } from "node:path";
 import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "../accueil/donnees.js";
 import type { DeclarationWidget, EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
-import { cheminOutils } from "../conteneur/executeur.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import { ProfilRefuse, type PontNavigateur } from "../mcp/pont.js";
 import { accordValide, lireAccords, retirerAccord } from "./accords.js";
+import { recuperer, verifierPage, verifierUrl } from "../workflows/acces.js";
+import { DELAI_EXECUTION_MS, PROFIL_REFUSE, lancerParDefaut, type LanceurProcessus, type ProcessusRecolte } from "../workflows/executer.js";
 import {
   ArgsGemma,
   ArgsKev,
@@ -18,28 +17,11 @@ import {
   ligneReponse,
   lireMessageRecolteur,
   type MessageRecolteur,
-  type PageLue,
 } from "../workflows/protocole.js";
 
-/** Le processus de la récolte (le client `docker run -i`) : son seul canal avec le noyau est stdin / stdout. */
-export interface ProcessusRecolte {
-  stdin: Writable;
-  stdout: Readable;
-  stderr: Readable;
-  tuer(): void;
-  /** Code de sortie ; null si tué par un signal ou impossible à lancer. */
-  fin: Promise<number | null>;
-}
-export type LanceurProcessus = (cmd: string, args: string[]) => ProcessusRecolte;
-
-export const lancerParDefaut: LanceurProcessus = (cmd, args) => {
-  const enfant = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, PATH: cheminOutils() } });
-  const fin = new Promise<number | null>((ok) => {
-    enfant.once("close", (code) => ok(code));
-    enfant.once("error", () => ok(null));
-  });
-  return { stdin: enfant.stdin, stdout: enfant.stdout, stderr: enfant.stderr, tuer: () => void enfant.kill("SIGKILL"), fin };
-};
+// Déplacés dans le moteur des workflows ; réexportés pour les modules et tests qui les prennent ici.
+export { adresseLocale } from "../workflows/acces.js";
+export { PROFIL_REFUSE, lancerParDefaut, type LanceurProcessus, type ProcessusRecolte } from "../workflows/executer.js";
 
 export interface OptionsRecolte {
   id: string;
@@ -61,17 +43,12 @@ export interface OptionsRecolte {
   adressesLocales?: boolean;
 }
 
-export const DELAI_RECOLTE_MS = 200_000;
+export const DELAI_RECOLTE_MS = DELAI_EXECUTION_MS;
 const MAX_APPELS_EN_VOL = 32;
-const RECUPERER_MAX_OCTETS = 5 * 1024 * 1024;
-const RECUPERER_DELAI_MS = 20_000;
-const MAX_REDIRECTIONS = 5;
 const JOURNAL_MAX = 2000;
 const ERREUR_MAX = 500;
 const ID = /^[a-z0-9-]+$/;
 
-export const PROFIL_REFUSE =
-  "Le profil de connexion choisi n'est plus utilisable (supprimé ou utilisé par un espace privé) : accord à redonner";
 export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
 export const ERREUR_ATELIER_ARRETE = "Mise à jour impossible : atelier arrêté";
 export const ERREUR_RECOLTE_INTERNE = "Mise à jour impossible : erreur interne du navigateur";
@@ -101,97 +78,6 @@ export function erreurDuNoyau(erreur: string): boolean {
 
 const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-/** Adresse de la machine ou du réseau local, écrite telle quelle dans l'URL (le nom n'est pas résolu). */
-export function adresseLocale(hote: string): boolean {
-  // « localhost. » (point final) désigne la même machine que « localhost ».
-  const h = hote.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
-  if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
-  if (isIP(h) === 4) {
-    const [a = 0, b = 0] = h.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  if (isIP(h) === 6) {
-    return h === "::" || h === "::1" || /^f[cd]/.test(h) || /^fe[89ab]/.test(h) || h.startsWith("::ffff:") || h.startsWith("64:ff9b:");
-  }
-  return false;
-}
-
-/**
- * Vérifie une URL demandée par la récolte : http(s), sans identifiants, pas d'adresse locale, et, si `domaines` est
- * donné, un nom d'hôte exactement dans cette liste. Rend l'URL normalisée, celle qui sera lue.
- */
-function verifierUrl(brute: string, domaines: readonly string[] | null, adressesLocales: boolean): URL {
-  let u: URL;
-  try {
-    u = new URL(brute);
-  } catch {
-    throw new Error(`URL invalide : ${tronquer(brute, 200)}`);
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Seules les URL http(s) sont permises");
-  if (u.username || u.password) throw new Error("URL avec identifiants refusée");
-  // Le point final (« app.daily.dev. ») ne change pas le nom : il est retiré avant toute comparaison.
-  const hote = u.hostname.toLowerCase().replace(/\.+$/, "");
-  if (domaines && !domaines.includes(hote)) throw new Error(`Domaine non déclaré : ${hote}`);
-  if (!adressesLocales && adresseLocale(hote)) throw new Error(`Adresse locale refusée : ${hote}`);
-  return u;
-}
-
-async function lireCorps(r: Response): Promise<Buffer> {
-  const annonce = Number(r.headers.get("content-length"));
-  if (Number.isFinite(annonce) && annonce > RECUPERER_MAX_OCTETS) {
-    await r.body?.cancel().catch(() => {});
-    throw new Error("Réponse trop grande (5 Mo maximum)");
-  }
-  if (!r.body) return Buffer.alloc(0);
-  const morceaux: Buffer[] = [];
-  let taille = 0;
-  const lecteur = r.body.getReader();
-  for (;;) {
-    const { done, value } = await lecteur.read();
-    if (done) break;
-    taille += value.byteLength;
-    if (taille > RECUPERER_MAX_OCTETS) {
-      await lecteur.cancel().catch(() => {});
-      throw new Error("Réponse trop grande (5 Mo maximum)");
-    }
-    morceaux.push(Buffer.from(value));
-  }
-  return Buffer.concat(morceaux);
-}
-
-/** Récupération brute, sans cookie ni identifiant ; chaque redirection est revérifiée avec la même règle. */
-async function recuperer(brute: string, format: "texte" | "json", domaines: readonly string[] | null, adressesLocales: boolean) {
-  const echeance = AbortSignal.timeout(RECUPERER_DELAI_MS);
-  let url = verifierUrl(brute, domaines, adressesLocales);
-  try {
-    for (let redirections = 0; ; redirections++) {
-      const r = await fetch(url, { redirect: "manual", credentials: "omit", signal: echeance });
-      const cible = r.headers.get("location");
-      if (r.status >= 300 && r.status < 400 && cible) {
-        await r.body?.cancel().catch(() => {});
-        if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
-        url = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
-        continue;
-      }
-      if (!r.ok) {
-        await r.body?.cancel().catch(() => {});
-        throw new Error(`HTTP ${r.status}`);
-      }
-      const texte = (await lireCorps(r)).toString("utf8");
-      if (format === "texte") return texte;
-      try {
-        return JSON.parse(texte) as unknown;
-      } catch {
-        throw new Error("La réponse n'est pas du JSON");
-      }
-    }
-  } catch (e) {
-    if (echeance.aborted) throw new Error("Délai dépassé (20 s)");
-    throw e;
-  }
-}
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
   const r = schema.safeParse(a);
@@ -263,7 +149,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   const donneesPrecedentes = await lireDonnees(dossierWidgets, id);
   let processus: ProcessusRecolte;
   try {
-    const [cmd, ...argv] = o.atelier.commandeRecolte(id, widget.dossier, o.recolteur);
+    const [cmd, ...argv] = o.atelier.commandeRecolte(id, widget.dossier, dirname(o.recolteur));
     processus = (o.lancer ?? lancerParDefaut)(cmd!, argv);
   } catch (e) {
     return conclure({ statut: "erreur", erreur: `Récolte impossible à lancer : ${message(e)}` });
@@ -301,23 +187,13 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     ...(aCompte && domaines ? { domaines: [...domaines] } : {}),
     ...(adressesLocales ? { adressesLocales: true } : {}),
   });
-  /** L'adresse finale de la page (après redirections) doit respecter la même règle ; sinon son texte ne sort pas. */
-  const verifierPage = (page: PageLue, domaines: readonly string[] | null): PageLue => {
-    try {
-      verifierUrl(String(page?.url), domaines, adressesLocales);
-    } catch (e) {
-      throw new Error(`Page refusée : elle a mené hors des domaines permis (${message(e)})`);
-    }
-    return page;
-  };
-
   const lirePage = async (a: unknown): Promise<unknown> => {
     const { url, compte } = args(ArgsLirePage, a, "lirePage");
     const lire = o.pont.lirePageInvisible?.bind(o.pont);
     if (!lire) throw new Error("Lecture de pages indisponible");
     if (!compte) {
       const page = await lire(verifierUrl(url, domainesPublics, adressesLocales).href, avecDomaines(null, domainesPublics));
-      return verifierPage(page, domainesPublics);
+      return verifierPage(page, domainesPublics, adressesLocales);
     }
     // Le domaine doit être déclaré en `compte` ; l'accord est relu à chaque lecture (il a pu être retiré).
     const u = verifierUrl(url, declaration.sources.compte, adressesLocales);
@@ -329,7 +205,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     if (arret) return SANS_REPONSE;
     try {
       const page = await lire(u.href, avecDomaines(accord.profil, declaration.sources.compte));
-      return verifierPage(page, declaration.sources.compte);
+      return verifierPage(page, declaration.sources.compte, adressesLocales);
     } catch (e) {
       if (e instanceof ProfilRefuse || (e as Error)?.name === "ProfilRefuse") {
         // L'accord est retiré avant l'arrêt : quand l'état est écrit, il n'existe plus. Les données lues avec ce compte

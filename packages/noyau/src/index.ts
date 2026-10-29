@@ -23,7 +23,7 @@ export * from "./ia/ia-locale.js";
 export * from "./workflows/protocole.js";
 export * from "./widgets/accords.js";
 export * from "./widgets/planificateur.js";
-export { adresseLocale } from "./widgets/recolte.js";
+export { adresseLocale } from "./workflows/acces.js";
 export * from "./noyau.js";
 export * from "./workflows/schema.js";
 export * from "./workflows/valider.js";

@@ -64,7 +64,8 @@ const LIGNE_MAX_OCTETS = 2 * 1024;
 const ERREUR_MAX_OCTETS = 2 * 1024;
 const LIGNES_MAX = 200;
 
-function coupe(texte: string, octets: number): string {
+/** Le début d'un texte, `octets` octets au plus. */
+export function coupe(texte: string, octets: number): string {
   let s = texte.slice(0, octets);
   while (Buffer.byteLength(s) > octets) s = s.slice(0, Math.floor(s.length * 0.9));
   return s;
