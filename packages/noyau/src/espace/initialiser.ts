@@ -10,7 +10,8 @@ export const MODELES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "modeles
 
 /**
  * Empreintes sha256 des anciennes versions du modèle AGENTS.md. Un AGENTS.md qui en a une est resté tel
- * quel : il est remplacé par le modèle courant. À compléter à chaque nouvelle version du modèle.
+ * quel : il est remplacé par le modèle courant. À compléter à chaque nouvelle version du modèle : chaque version
+ * commitée va dans `test/espace/agents-livres/` (un test le vérifie contre l'historique git).
  */
 const ANCIENS_AGENTS = new Set([
   "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
@@ -21,6 +22,8 @@ const ANCIENS_AGENTS = new Set([
   "f71dc1f75c8ba571083b9c0929a9d3a07cd31e9918e3686367a43998bf8d0ef8",
   "96e9af1e85b74650b58471fa4433c30d37334adf40d448a0469bec5e3bc16a55",
   "6a12cecc4b6cc13e6fd26f2ec50fda3e3d6381421644e1e5c81d897a3c4ba5c3",
+  "129ee6e03468f3fe0e0038f001031901a97283e65dd2fe4fdc1ab22de5d21f41",
+  "aeb6f717e6ae38f6ed40d7e51bdb66e667cb54252dbe57affc36aa8d5df0ceec",
   "cf62b40d452d20d454d8d2b836a06c5acf9401b1017314c5f893a913ed37e1fd",
 ]);
 

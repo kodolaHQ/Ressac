@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
 import { chmod, cp, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
@@ -252,6 +253,44 @@ test("initialiser : un AGENTS.md identique au modèle d'avant les workflows est 
   expect(apres).toBe(modele);
   expect(apres).toContain("workflow.json");
   expect(apres).toContain("executions_widget");
+});
+
+// ——— Chaque version livrée du modèle AGENTS.md ———
+
+const AGENTS_LIVRES = join(import.meta.dirname, "agents-livres");
+const sha256 = (contenu: string | Buffer) => createHash("sha256").update(contenu).digest("hex");
+
+for (const fichier of readdirSync(AGENTS_LIVRES).sort()) {
+  test(`un AGENTS.md resté à une version livrée est remplacé par le modèle courant (${fichier})`, async () => {
+    const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+    const ancien = await readFile(join(AGENTS_LIVRES, fichier), "utf8");
+    // La version courante n'a rien à remplacer.
+    if (ancien === modele) return;
+    const c = cheminsEspace(await dossierTemporaire());
+    await writeFile(join(c.racine, "AGENTS.md"), ancien);
+    const { crees } = await initialiserEspace(c);
+    expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(modele);
+    expect(crees).toContain(join(c.racine, "AGENTS.md"));
+  });
+}
+
+test("chaque version commitée du modèle AGENTS.md est dans agents-livres", async (ctx) => {
+  const git = (args: string[]) => execFileSync("git", args, { cwd: MODELES_PAR_DEFAUT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  let commits: string[];
+  try {
+    commits = git(["log", "--format=%h", "--", "AGENTS.md"]).split("\n").filter(Boolean);
+  } catch {
+    ctx.skip(); // Pas de git (archive, CI sans historique) : les fixtures suffisent.
+    return;
+  }
+  const modele = sha256(await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md")));
+  const livres = new Set(await Promise.all(readdirSync(AGENTS_LIVRES).map(async (f) => sha256(await readFile(join(AGENTS_LIVRES, f))))));
+  expect(commits.length).toBeGreaterThan(0);
+  for (const h of commits) {
+    const version = sha256(git(["show", `${h}:./AGENTS.md`]));
+    if (version === modele) continue;
+    expect(livres.has(version), `version ${h} absente de agents-livres (et sans doute de ANCIENS_AGENTS)`).toBe(true);
+  }
 });
 
 // ——— Bascule des widgets de départ en workflows ———
