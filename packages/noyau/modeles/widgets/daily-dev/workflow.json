@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "blocs": [
+    {
+      "id": "fil",
+      "type": "source.page",
+      "nom": "Ton fil daily.dev",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parametres": {
+        "url": "https://app.daily.dev/",
+        "compte": true
+      }
+    },
+    {
+      "id": "liens",
+      "type": "code",
+      "nom": "Les posts du fil",
+      "position": {
+        "x": 260,
+        "y": 0
+      },
+      "parametres": {
+        "source": "liens.mjs"
+      }
+    },
+    {
+      "id": "tri",
+      "type": "ia.trier",
+      "nom": "Tri par Kev selon tes intérêts",
+      "position": {
+        "x": 520,
+        "y": 0
+      },
+      "parametres": {
+        "question": "Cet article intéresse-t-il quelqu'un qui suit : {config.interets} ?",
+        "texte": "Titre : {titre}\nSource : {source}",
+        "seuil": 0.6,
+        "siErreur": "sauter"
+      }
+    },
+    {
+      "id": "top",
+      "type": "liste.garder",
+      "nom": "Les 12 meilleurs",
+      "position": {
+        "x": 780,
+        "y": 0
+      },
+      "parametres": {
+        "nombre": 12
+      }
+    },
+    {
+      "id": "a-resumer",
+      "type": "liste.garder",
+      "nom": "Les 6 premiers à résumer",
+      "position": {
+        "x": 780,
+        "y": 160
+      },
+      "parametres": {
+        "nombre": 6
+      }
+    },
+    {
+      "id": "pages",
+      "type": "source.page",
+      "nom": "Lire chaque article",
+      "position": {
+        "x": 1040,
+        "y": 160
+      },
+      "parametres": {
+        "url": "{url}",
+        "parElement": true,
+        "champ": "page",
+        "budgetSecondes": 60
+      }
+    },
+    {
+      "id": "resumes",
+      "type": "ia.rediger",
+      "nom": "Résumé par Gemma",
+      "position": {
+        "x": 1300,
+        "y": 160
+      },
+      "parametres": {
+        "consigne": "Résume en français, en 2 phrases au plus, l'article dont le contenu est ci-dessous. Réponds uniquement par le résumé.\n\nTitre : {titre}\n\n--- DÉBUT DU CONTENU ---\n{page.texte}\n--- FIN DU CONTENU ---",
+        "parElement": true,
+        "champ": "resume",
+        "texteMax": 12000,
+        "reutiliser": "url",
+        "budgetSecondes": 60
+      }
+    },
+    {
+      "id": "articles",
+      "type": "code",
+      "nom": "Articles et résumés",
+      "position": {
+        "x": 1560,
+        "y": 0
+      },
+      "parametres": {
+        "source": "articles.mjs"
+      }
+    },
+    {
+      "id": "sortie",
+      "type": "sortie",
+      "position": {
+        "x": 1820,
+        "y": 0
+      },
+      "parametres": {
+        "vers": "widget"
+      }
+    }
+  ],
+  "liens": [
+    {
+      "de": "fil",
+      "vers": "liens"
+    },
+    {
+      "de": "liens",
+      "vers": "tri"
+    },
+    {
+      "de": "tri",
+      "vers": "top"
+    },
+    {
+      "de": "top",
+      "vers": "a-resumer"
+    },
+    {
+      "de": "a-resumer",
+      "vers": "pages"
+    },
+    {
+      "de": "pages",
+      "vers": "resumes"
+    },
+    {
+      "de": "top",
+      "vers": "articles"
+    },
+    {
+      "de": "resumes",
+      "vers": "articles"
+    },
+    {
+      "de": "articles",
+      "vers": "sortie"
+    }
+  ]
+}

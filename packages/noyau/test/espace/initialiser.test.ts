@@ -1,18 +1,27 @@
 import { expect, test } from "vitest";
-import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
+import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
-import { initialiserEspace, MODELES_PAR_DEFAUT } from "../../src/espace/initialiser.js";
+import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
+
+/** Les fichiers des widgets de départ dans un espace neuf : des workflows, sans recolte.mjs. */
+const FICHIERS_DEPART: Record<string, string[]> = {
+  meteo: ["widget.json", "exemple.json", "affichage.html", "workflow.json", "prevision.mjs"],
+  "actus-tech": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "articles.mjs"],
+  "daily-dev": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "liens.mjs", "articles.mjs"],
+};
+/** Le code de la bascule : workflow.json et les .mjs du modèle. */
+const CODE_DEPART = (id: string) => FICHIERS_DEPART[id]!.filter((f) => f === "workflow.json" || f.endsWith(".mjs"));
 
 const attendus = [
   "AGENTS.md",
   "CLAUDE.md",
   "accueil/disposition.json",
-  ...["meteo", "actus-tech", "daily-dev"].flatMap((w) => ["widget.json", "exemple.json", "recolte.mjs", "affichage.html"].map((f) => `accueil/widgets/${w}/${f}`)),
+  ...Object.entries(FICHIERS_DEPART).flatMap(([w, fichiers]) => fichiers.map((f) => `accueil/widgets/${w}/${f}`)),
   ".webaios/profils/claude.json",
 ];
 
@@ -227,4 +236,131 @@ test("initialiser : un AGENTS.md identique au modèle du plan 7 (après f759653)
   expect(apres).toContain("recolter_widget");
   expect(apres).toContain("donnees_widget");
   expect(apres).not.toContain("disposition.json` donne l'ordre des blocs");
+});
+
+// ——— Bascule des widgets de départ en workflows ———
+
+const LIVREES = join(import.meta.dirname, "recoltes-livrees");
+
+/** Un espace dont le widget `id` est resté à une ancienne version livrée (recolte.mjs, sans workflow). */
+async function espaceAvecAncienneRecolte(id: string, recolte: string) {
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  for (const f of CODE_DEPART(id)) await rm(join(c.widgets, id, f));
+  await writeFile(join(c.widgets, id, "recolte.mjs"), recolte);
+  return c;
+}
+
+test("les 7 versions livrées de recolte.mjs ont les empreintes connues", async () => {
+  const fichiers = (await readdir(LIVREES)).sort();
+  expect(fichiers).toHaveLength(7);
+  const empreintes: Record<string, string[]> = {};
+  for (const f of fichiers) {
+    const id = f.replace(/-[0-9a-f]{7}\.mjs$/, "");
+    (empreintes[id] ??= []).push(createHash("sha256").update(await readFile(join(LIVREES, f))).digest("hex"));
+  }
+  for (const [id, liste] of Object.entries(empreintes)) {
+    expect([...RECOLTES_LIVREES[id as keyof typeof RECOLTES_LIVREES]].sort(), id).toEqual(liste.sort());
+  }
+  expect(Object.keys(empreintes).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
+});
+
+for (const fichier of readdirSync(join(import.meta.dirname, "recoltes-livrees")).sort()) {
+  const id = fichier.replace(/-[0-9a-f]{7}\.mjs$/, "");
+  test(`un widget de départ non modifié passe en workflow, son recolte.mjs part à la corbeille (${fichier})`, async () => {
+    const ancienne = await readFile(join(LIVREES, fichier), "utf8");
+    const c = await espaceAvecAncienneRecolte(id, ancienne);
+    // Ce que l'utilisateur voit et règle n'est jamais touché.
+    await writeFile(join(c.widgets, id, "widget.json"), '{"nom":"le mien"}');
+    await writeFile(join(c.widgets, id, "affichage.html"), "<p>le mien</p>");
+    const { crees } = await initialiserEspace(c);
+
+    expect(existsSync(join(c.widgets, id, "recolte.mjs"))).toBe(false);
+    for (const f of CODE_DEPART(id)) {
+      expect(await readFile(join(c.widgets, id, f), "utf8"), f).toBe(await readFile(join(MODELES_PAR_DEFAUT, "widgets", id, f), "utf8"));
+      expect(crees).toContain(join(c.widgets, id, f));
+    }
+    expect(await readFile(join(c.widgets, id, "widget.json"), "utf8")).toBe('{"nom":"le mien"}');
+    expect(await readFile(join(c.widgets, id, "affichage.html"), "utf8")).toBe("<p>le mien</p>");
+    const corbeille = await readdir(join(c.accueil, ".corbeille"));
+    expect(corbeille).toHaveLength(1);
+    expect(corbeille[0]).toMatch(new RegExp(`^${id}-recolte-\\d{4}-\\d\\d-\\d\\dT[^:]+\\.mjs$`));
+    expect(await readFile(join(c.accueil, ".corbeille", corbeille[0]!), "utf8")).toBe(ancienne);
+    // Les autres widgets de départ n'ont pas bougé, et un second lancement ne fait plus rien.
+    expect((await initialiserEspace(c)).crees).toEqual([]);
+    expect(await readdir(join(c.accueil, ".corbeille"))).toHaveLength(1);
+  });
+}
+
+test("un widget de départ modifié n'est pas touché", async () => {
+  const ancienne = await readFile(join(LIVREES, "actus-tech-4d4c5f1.mjs"), "utf8");
+  const modifiee = ancienne.replace("const GARDER = 15;", "const GARDER = 20;");
+  expect(modifiee).not.toBe(ancienne);
+  const c = await espaceAvecAncienneRecolte("actus-tech", modifiee);
+  await initialiserEspace(c);
+  expect(await readFile(join(c.widgets, "actus-tech", "recolte.mjs"), "utf8")).toBe(modifiee);
+  for (const f of CODE_DEPART("actus-tech")) expect(existsSync(join(c.widgets, "actus-tech", f)), f).toBe(false);
+  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+});
+
+test("un widget de départ qui a déjà son workflow.json, ou un .mjs à lui du même nom, n'est pas touché", async () => {
+  const ancienne = await readFile(join(LIVREES, "meteo-4d4c5f1.mjs"), "utf8");
+  const c = await espaceAvecAncienneRecolte("meteo", ancienne);
+  await writeFile(join(c.widgets, "meteo", "workflow.json"), '{"version":1,"blocs":[],"liens":[]}');
+  await initialiserEspace(c);
+  expect(await readFile(join(c.widgets, "meteo", "recolte.mjs"), "utf8")).toBe(ancienne);
+  expect(await readFile(join(c.widgets, "meteo", "workflow.json"), "utf8")).toBe('{"version":1,"blocs":[],"liens":[]}');
+  expect(existsSync(join(c.widgets, "meteo", "prevision.mjs"))).toBe(false);
+
+  const d = await espaceAvecAncienneRecolte("daily-dev", await readFile(join(LIVREES, "daily-dev-4d4c5f1.mjs"), "utf8"));
+  await writeFile(join(d.widgets, "daily-dev", "liens.mjs"), "export default () => [];");
+  await initialiserEspace(d);
+  expect(existsSync(join(d.widgets, "daily-dev", "recolte.mjs"))).toBe(true);
+  expect(existsSync(join(d.widgets, "daily-dev", "workflow.json"))).toBe(false);
+  expect(existsSync(join(d.widgets, "daily-dev", "articles.mjs"))).toBe(false);
+  expect(await readFile(join(d.widgets, "daily-dev", "liens.mjs"), "utf8")).toBe("export default () => [];");
+  expect(existsSync(join(d.accueil, ".corbeille"))).toBe(false);
+});
+
+test("un widget de l'agent (gmail) n'est pas touché, même avec un recolte.mjs livré", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  const gmail = join(c.widgets, "gmail");
+  await mkdir(gmail);
+  const fichiers = {
+    "widget.json": '{"nom":"Gmail","sources":{"compte":["mail.google.com"],"publiques":[]}}',
+    "recolte.mjs": "export default async (webaios) => ({ messages: [] });",
+    "affichage.html": "<p>gmail</p>",
+  };
+  for (const [f, contenu] of Object.entries(fichiers)) await writeFile(join(gmail, f), contenu);
+  // Même une copie exacte d'une récolte livrée, hors d'un dossier de départ, reste où elle est.
+  const copie = join(c.widgets, "meteo-bis");
+  await mkdir(copie);
+  await writeFile(join(copie, "recolte.mjs"), await readFile(join(LIVREES, "meteo-4d4c5f1.mjs")));
+  await initialiserEspace(c);
+  expect((await readdir(gmail)).sort()).toEqual(Object.keys(fichiers).sort());
+  for (const [f, contenu] of Object.entries(fichiers)) expect(await readFile(join(gmail, f), "utf8")).toBe(contenu);
+  expect(await readdir(copie)).toEqual(["recolte.mjs"]);
+  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+});
+
+test("un recolte.mjs livré qui est un lien symbolique n'est pas suivi", async () => {
+  const c = await espaceAvecAncienneRecolte("meteo", "");
+  await rm(join(c.widgets, "meteo", "recolte.mjs"));
+  const dehors = join(await dossierTemporaire(), "recolte.mjs");
+  await writeFile(dehors, await readFile(join(LIVREES, "meteo-4d4c5f1.mjs")));
+  await symlink(dehors, join(c.widgets, "meteo", "recolte.mjs"));
+  await initialiserEspace(c);
+  expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
+  expect((await lstat(join(c.widgets, "meteo", "recolte.mjs"))).isSymbolicLink()).toBe(true);
+  expect(existsSync(dehors)).toBe(true);
+});
+
+test("un espace neuf reçoit les workflows", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  for (const [id, fichiers] of Object.entries(FICHIERS_DEPART)) {
+    expect((await readdir(join(c.widgets, id))).sort(), id).toEqual([...fichiers].sort());
+  }
+  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
 });

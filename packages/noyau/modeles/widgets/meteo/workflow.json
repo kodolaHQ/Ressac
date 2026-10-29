@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "blocs": [
+    {
+      "id": "geo",
+      "type": "source.recuperer",
+      "nom": "Trouver la ville",
+      "position": { "x": 0, "y": 0 },
+      "parametres": {
+        "url": "https://geocoding-api.open-meteo.com/v1/search?name={config.ville}&count=1&language=fr",
+        "format": "json"
+      }
+    },
+    {
+      "id": "prevision",
+      "type": "code",
+      "nom": "Prévision heure par heure et jour par jour",
+      "position": { "x": 260, "y": 0 },
+      "parametres": { "source": "prevision.mjs" }
+    },
+    {
+      "id": "sortie",
+      "type": "sortie",
+      "position": { "x": 520, "y": 0 },
+      "parametres": { "vers": "widget" }
+    }
+  ],
+  "liens": [
+    { "de": "geo", "vers": "prevision" },
+    { "de": "prevision", "vers": "sortie" }
+  ]
+}

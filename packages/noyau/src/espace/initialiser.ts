@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rename } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readdir, readFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
@@ -23,9 +23,11 @@ const ANCIENS_AGENTS = new Set([
   "6a12cecc4b6cc13e6fd26f2ec50fda3e3d6381421644e1e5c81d897a3c4ba5c3",
 ]);
 
+const empreinte = (contenu: Buffer) => createHash("sha256").update(contenu).digest("hex");
+
 async function agentsRestePourAncien(chemin: string): Promise<boolean> {
   try {
-    return ANCIENS_AGENTS.has(createHash("sha256").update(await readFile(chemin)).digest("hex"));
+    return ANCIENS_AGENTS.has(empreinte(await readFile(chemin)));
   } catch {
     return false;
   }
@@ -96,6 +98,89 @@ async function correspondances(c: CheminsEspace, modeles: string): Promise<[stri
   return paires;
 }
 
+/**
+ * Empreintes sha256 de chaque version livrée du `recolte.mjs` des widgets de départ (avant les workflows). Un
+ * widget de départ dont le `recolte.mjs` en a une est resté tel quel : il passe en workflow au lancement.
+ */
+export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
+  meteo: new Set(["c30b449bd9bce4addd59be19e0bdf7bf4010bdc796ce29ca57805be536652f98"]),
+  "actus-tech": new Set([
+    "64a3c44433f8682395ca70f1586157105a35991ce2bc8ab5b1eff8e332b298d0",
+    "7f8ffd4664afd595f2cf470109ab07513403659969d4cb46fa37528553fad184",
+    "bfaaa411ccdc9546c4dfc47a7b01ac3c62ad5a64fb05cafcfa9f10fabca66b8f",
+  ]),
+  "daily-dev": new Set([
+    "0b8c31a0b4c06412f82e9a57487774d11e6a3506b186400d46c86b981230b431",
+    "e700f36785086198ea2f6beb1d111bfde7441d6d4ff88e1e5e6e5d0d5a475706",
+    "07942c89c7f74b6486a53e00684b2ce2d874634c1bdc2d2c898688c68b93d116",
+  ]),
+};
+
+/** Le contenu d'un fichier ordinaire (jamais un lien symbolique) ; null s'il est absent ou autre chose. */
+async function fichierOrdinaire(chemin: string): Promise<Buffer | null> {
+  try {
+    if (!(await lstat(chemin)).isFile()) return null;
+    return await readFile(chemin);
+  } catch {
+    return null;
+  }
+}
+
+async function absent(chemin: string): Promise<boolean> {
+  try {
+    await lstat(chemin);
+    return false;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw e;
+  }
+}
+
+/**
+ * Bascule un widget de départ resté tel que livré (`recolte.mjs` d'une version connue, sans `workflow.json`) vers
+ * son modèle en workflow : les `.mjs` puis `workflow.json` du modèle sont copiés sans rien écraser, puis
+ * `recolte.mjs` part dans `accueil/.corbeille/<id>-recolte-<horodatage>.mjs`. Un widget modifié, ou dont un fichier
+ * du modèle existe déjà avec un autre contenu, n'est pas touché. Rien d'autre que ce dossier et la corbeille.
+ */
+async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof RECOLTES_LIVREES): Promise<string[]> {
+  const dossier = join(c.widgets, id);
+  try {
+    if (!(await lstat(dossier)).isDirectory()) return [];
+  } catch {
+    return [];
+  }
+  const recolte = await fichierOrdinaire(join(dossier, "recolte.mjs"));
+  if (!recolte || !RECOLTES_LIVREES[id].has(empreinte(recolte))) return [];
+  if (!(await absent(join(dossier, "workflow.json")))) return [];
+
+  const modele = join(modeles, "widgets", id);
+  const codes = (await readdir(modele)).filter((f) => f.endsWith(".mjs")).sort();
+  if (!existsSync(join(modele, "workflow.json"))) return [];
+  // Un .mjs du même nom déjà là : seulement s'il est identique au modèle (une bascule interrompue), sinon il est à l'utilisateur.
+  for (const f of codes) {
+    const present = join(dossier, f);
+    if (await absent(present)) continue;
+    const contenu = await fichierOrdinaire(present);
+    if (!contenu || !contenu.equals(await readFile(join(modele, f)))) return [];
+  }
+
+  const crees: string[] = [];
+  // workflow.json en dernier : il n'apparaît qu'une fois son code en place.
+  for (const f of [...codes, "workflow.json"]) {
+    const destination = join(dossier, f);
+    try {
+      await copyFile(join(modele, f), destination, constants.COPYFILE_EXCL);
+      crees.push(destination);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+  }
+  const corbeille = join(c.accueil, ".corbeille");
+  await mkdir(corbeille, { recursive: true });
+  await renommerSiPresent(join(dossier, "recolte.mjs"), join(corbeille, `${id}-recolte-${horodatage()}.mjs`));
+  return crees;
+}
+
 /** Crée l'espace de travail à partir des modèles, sans écraser un fichier existant (sauf un AGENTS.md d'un ancien modèle). */
 export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_DEFAUT): Promise<{ crees: string[] }> {
   const crees: string[] = [];
@@ -111,6 +196,9 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
+  }
+  for (const id of Object.keys(RECOLTES_LIVREES) as (keyof typeof RECOLTES_LIVREES)[]) {
+    crees.push(...(await basculerWidgetDeDepart(c, modeles, id)));
   }
   await mkdir(c.projets, { recursive: true });
   return { crees };

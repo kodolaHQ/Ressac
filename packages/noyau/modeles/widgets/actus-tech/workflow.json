@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "blocs": [
+    {
+      "id": "flux",
+      "type": "source.flux",
+      "nom": "Flux tech",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "parametres": {
+        "urls": [
+          "https://news.ycombinator.com/rss",
+          "https://lobste.rs/rss",
+          "https://www.theverge.com/rss/index.xml",
+          "https://next.ink/feed/"
+        ]
+      }
+    },
+    {
+      "id": "uniques",
+      "type": "liste.dedoublonner",
+      "nom": "Sans doublons",
+      "position": {
+        "x": 260,
+        "y": 0
+      },
+      "parametres": {
+        "cles": [
+          "url",
+          "titre"
+        ]
+      }
+    },
+    {
+      "id": "tri",
+      "type": "ia.trier",
+      "nom": "Tri par Kev selon tes intérêts",
+      "position": {
+        "x": 520,
+        "y": 0
+      },
+      "parametres": {
+        "question": "Cet article intéresse-t-il quelqu'un qui suit : {config.interets} ?",
+        "texte": "Titre : {titre}\nSource : {source}",
+        "seuil": 0.6,
+        "siErreur": "sauter"
+      }
+    },
+    {
+      "id": "top",
+      "type": "liste.garder",
+      "nom": "Les 15 meilleurs",
+      "position": {
+        "x": 780,
+        "y": 0
+      },
+      "parametres": {
+        "nombre": 15
+      }
+    },
+    {
+      "id": "a-resumer",
+      "type": "liste.garder",
+      "nom": "Les 8 premiers à résumer",
+      "position": {
+        "x": 780,
+        "y": 160
+      },
+      "parametres": {
+        "nombre": 8
+      }
+    },
+    {
+      "id": "pages",
+      "type": "source.page",
+      "nom": "Lire chaque article",
+      "position": {
+        "x": 1040,
+        "y": 160
+      },
+      "parametres": {
+        "url": "{url}",
+        "parElement": true,
+        "champ": "page",
+        "budgetSecondes": 60
+      }
+    },
+    {
+      "id": "resumes",
+      "type": "ia.rediger",
+      "nom": "Résumé par Gemma",
+      "position": {
+        "x": 1300,
+        "y": 160
+      },
+      "parametres": {
+        "consigne": "Résume en français, en 2 phrases au plus, le contenu de la page ci-dessous. Réponds uniquement par le résumé.\n\nTitre : {titre}\n\n--- DÉBUT DU CONTENU ---\n{page.texte}\n--- FIN DU CONTENU ---",
+        "parElement": true,
+        "champ": "resume",
+        "texteMax": 12000,
+        "reutiliser": "url",
+        "budgetSecondes": 60
+      }
+    },
+    {
+      "id": "articles",
+      "type": "code",
+      "nom": "Articles et résumés",
+      "position": {
+        "x": 1560,
+        "y": 0
+      },
+      "parametres": {
+        "source": "articles.mjs"
+      }
+    },
+    {
+      "id": "sortie",
+      "type": "sortie",
+      "position": {
+        "x": 1820,
+        "y": 0
+      },
+      "parametres": {
+        "vers": "widget"
+      }
+    }
+  ],
+  "liens": [
+    {
+      "de": "flux",
+      "vers": "uniques"
+    },
+    {
+      "de": "uniques",
+      "vers": "tri"
+    },
+    {
+      "de": "tri",
+      "vers": "top"
+    },
+    {
+      "de": "top",
+      "vers": "a-resumer"
+    },
+    {
+      "de": "a-resumer",
+      "vers": "pages"
+    },
+    {
+      "de": "pages",
+      "vers": "resumes"
+    },
+    {
+      "de": "top",
+      "vers": "articles"
+    },
+    {
+      "de": "resumes",
+      "vers": "articles"
+    },
+    {
+      "de": "articles",
+      "vers": "sortie"
+    }
+  ]
+}
