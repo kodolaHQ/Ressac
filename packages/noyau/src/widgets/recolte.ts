@@ -12,15 +12,19 @@ import {
   JOURNAL_MAX,
   MEMOIRE_NON_GARDEE,
   PROFIL_REFUSE,
+  delaisExecution,
   executerWorkflow,
   type ContexteWorkflow,
   type IssueWorkflow,
   type LanceurProcessus,
+  type Publication,
   type TraceDirecte,
 } from "../workflows/executer.js";
 import { ecrireExecution, idEssai, idExecution, lireExecution, listerExecutions, type Execution, type TraceBloc } from "../workflows/executions.js";
 import { lireWorkflow } from "../workflows/lire.js";
-import { avecMemoire, ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
+import type { Menagement } from "../workflows/menagement.js";
+import { avecMemoire, ecrireMemoire, lireMemoire, type MemoireBlocs } from "../workflows/memoire.js";
+import { compterNouveaux } from "./nouveautes.js";
 import { debutTropGros } from "../workflows/protocole.js";
 import { PROFONDEUR_REJEU, REJEU_TROP_GROS, planRejeu } from "../workflows/rejeu.js";
 import { PREFIXE_WORKFLOW_INVALIDE, type Proprietaire } from "../workflows/schema.js";
@@ -54,6 +58,10 @@ export interface OptionsRecolte {
   interrompue?: () => boolean;
   /** Chaque trace acceptée, en direct (le constructeur suit les blocs) ; doit rendre la main tout de suite. */
   surTrace?: (t: TraceDirecte) => void;
+  /** Ménagement des recherches et des lectures ouvertes, partagé par toutes les exécutions du noyau. */
+  menagement?: Menagement;
+  /** Tests seulement : la base des recherches DuckDuckGo. */
+  urlRecherche?: string;
 }
 
 /**
@@ -62,8 +70,12 @@ export interface OptionsRecolte {
  */
 export type ResultatEssai = { ok: true; execution: string; statut: Execution["statut"] } | { ok: false; erreur: string };
 
-/** `execution` : l'id de l'exécution écrite (aucune quand rien n'a tourné, ou quand l'accord a été retiré pendant). */
-export type ResultatRecolte = { etat: EtatWidget; donnees?: unknown; execution?: string };
+/**
+ * `execution` : l'id de l'exécution écrite (aucune quand rien n'a tourné, ou quand l'accord a été retiré pendant).
+ * `nouveaux` : seulement pour une exécution qui finit d'un widget `recolte.notifier`, le nombre d'éléments qui n'étaient
+ * pas dans les données d'avant l'exécution.
+ */
+export type ResultatRecolte = { etat: EtatWidget; donnees?: unknown; execution?: string; nouveaux?: number };
 
 export const DELAI_RECOLTE_MS = DELAI_EXECUTION_MS;
 const ID = /^[a-z0-9-]+$/;
@@ -199,6 +211,8 @@ function infraDe(o: OptionsRecolte, horloge: () => Date): Parameters<typeof exec
     ...(o.delaiMs !== undefined ? { delaiMs: o.delaiMs } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
     ...(o.surTrace ? { surTrace: o.surTrace } : {}),
+    ...(o.menagement ? { menagement: o.menagement } : {}),
+    ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
   };
 }
 
@@ -299,32 +313,73 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     return conclure({ statut: "accord-requis", erreur, execution: await sansConteneur("accord-requis", erreur, pasLances) });
   }
 
+  // L'accord a pu être retiré pendant l'exécution (refuserAccord efface tout), ou pendant une écriture d'ici (elle a pu
+  // arriver après l'effacement) : rien de ce qui a été lu avec ne reste, pas même l'exécution.
+  const accordRetire = () => accordRetireDe(dossierWidgets, id, declaration);
+  /** La mémoire d'une exécution, sous le verrou de la mémoire du widget, si l'accord tient ; false si trop grosse. */
+  const garderMemoire = (m: MemoireBlocs) =>
+    avecMemoire(dossierDonnees, async () => (await accordRetire()) || (await ecrireMemoire(dossierDonnees, m)));
+
+  // Exécution progressive (le moteur ne relaie rien aux autres) : chaque publication acceptée est écrite tout de suite,
+  // avec la progression dans l'état ; la mémoire sûre reçue en cours de route aussi. Le moteur fait ces relais l'un
+  // après l'autre et les attend tous avant de rendre : la sortie finale, écrite ensuite, n'est jamais recouverte.
+  // Accord retiré (widget avec compte) : ce qui a été publié part, et plus rien n'est écrit en cours de route.
+  const donneesAvant = await lireDonnees(dossierWidgets, id);
+  let relaisFermes = false;
+  const fermerSiAccordRetire = async (): Promise<boolean> => {
+    if (!(await accordRetire())) return false;
+    relaisFermes = true;
+    await supprimerDonnees(dossierWidgets, id);
+    return true;
+  };
+  const surPublication = async (p: Publication) => {
+    if (relaisFermes) return;
+    await ecrireDonnees(dossierWidgets, id, p.donnees);
+    if (await fermerSiAccordRetire()) return;
+    const progression = { faits: p.faits, total: p.total };
+    await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, progression });
+    if (await fermerSiAccordRetire()) return;
+    o.surChange?.();
+  };
+  const surMemoire = async (m: MemoireBlocs) => {
+    if (relaisFermes) return;
+    await garderMemoire(m);
+  };
+
+  const dureeMaxMinutes = declaration.recolte?.dureeMaxMinutes;
   const { issue, execution, journal: journalExecution } = await executerWorkflow(
     {
       proprietaire,
       valide,
       dossierFichiers: widget.dossier,
       config: declaration.config ?? null,
-      precedent: await lireDonnees(dossierWidgets, id),
+      precedent: donneesAvant,
       memoire: await lireMemoire(dossierDonnees),
       ...contexteAccord(dossierWidgets, id, declaration),
       declencheur,
+      ...(dureeMaxMinutes !== undefined ? { dureeMaxMinutes } : {}),
     },
-    infraDe(o, horloge),
+    { ...infraDe(o, horloge), surPublication, surMemoire },
   );
+  // Les relais sont tous finis (le moteur les attend) : plus rien ne s'écrit en cours de route.
+  relaisFermes = true;
   let journal = journalExecution;
 
-  // L'accord a pu être retiré pendant l'exécution (refuserAccord efface tout), ou pendant une écriture d'ici (elle a pu
-  // arriver après l'effacement) : rien de ce qui a été lu avec ne reste, pas même l'exécution.
-  const accordRetire = () => accordRetireDe(dossierWidgets, id, declaration);
   const refusee = async () => {
     await supprimerDonnees(dossierWidgets, id);
     return conclure({ statut: "accord-requis", erreur: messageRefus(issue, declaration) });
   };
-  /** Échec ou arrêt : l'exécution est écrite, les données et la mémoire précédentes restent. */
-  const conclureSansDonnees = async (e: Execution, r: Parameters<typeof conclure>[0]): Promise<ResultatRecolte> => {
+  /**
+   * Échec ou arrêt : l'exécution est écrite ; les données (précédentes, ou publiées en cours de route) restent. La
+   * mémoire précédente reste, sauf pour une exécution progressive qui rend sa dernière mémoire sûre (`memoire`).
+   */
+  const conclureSansDonnees = async (e: Execution, r: Parameters<typeof conclure>[0], memoire?: MemoireBlocs | null): Promise<ResultatRecolte> => {
     await ecrireExecution(dossierDonnees, e);
     if (await accordRetire()) return refusee();
+    if (memoire) {
+      await garderMemoire(memoire);
+      if (await accordRetire()) return refusee();
+    }
     const fini = await conclure({ ...r, execution: e.id });
     if (await accordRetire()) return refusee();
     return fini;
@@ -343,8 +398,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     }
     if (await accordRetire()) return refusee();
     if (issue.memoire) {
-      const memoire = issue.memoire;
-      if (!(await avecMemoire(dossierDonnees, () => ecrireMemoire(dossierDonnees, memoire)))) {
+      if (!(await garderMemoire(issue.memoire))) {
         journal = ajouter(journal, MEMOIRE_NON_GARDEE);
         // Aussi dans l'exécution, au journal du bloc de sortie.
         execution.blocs.find((b) => b.id === valide.sortie.id)?.journal.push(MEMOIRE_NON_GARDEE);
@@ -356,6 +410,8 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     const ok = await conclure({ statut: "ok", donnees: issue.sortie.valeur, journal, execution: execution.id });
     // Retiré pendant l'écriture de l'état : « ok » ne doit pas recouvrir l'accord-requis écrit par refuserAccord.
     if (await accordRetire()) return refusee();
+    // Comptés contre les données d'avant l'exécution (celles publiées en cours de route n'y sont pas).
+    if (declaration.recolte?.notifier === true) return { ...ok, nouveaux: compterNouveaux(donneesAvant, issue.sortie.valeur) };
     return ok;
   }
 
@@ -363,8 +419,10 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   // Son erreur est celle du noyau (pas celle, sans objet, du conteneur tué) ; un bloc commencé sans fin est interrompu.
   const interrompue = o.interrompue?.() === true && execution.statut !== "accord-requis";
   if (interrompue) marquerInterrompue(execution);
+  // Exécution progressive : sa dernière mémoire sûre est gardée (jamais quand elle s'arrête faute d'accord).
+  const memoire = issue.t === "arret" && issue.statut === "accord-requis" ? null : issue.memoire;
   return issue.t === "arret"
-    ? conclureSansDonnees(execution, { statut: issue.statut, erreur: issue.erreur, journal })
+    ? conclureSansDonnees(execution, { statut: issue.statut, erreur: issue.erreur, journal }, memoire)
     : // La provenance vient du moteur : `erreurNoyau` absent, le texte a pu être écrit par le code du widget.
       // Interrompue : le message est celui du noyau, pas le texte que le code du widget a pu écrire.
       conclureSansDonnees(
@@ -372,6 +430,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
         interrompue
           ? { statut: "erreur", erreur: ERREUR_INTERROMPUE, journal }
           : { statut: "erreur", erreur: issue.erreur, erreurWidget: !execution.erreurNoyau, journal },
+        memoire,
       );
 }
 
@@ -408,8 +467,14 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
   const config = declaration.config ?? null;
   const workflow = { blocs: valide.workflow.blocs, liens: valide.workflow.liens, ordre: valide.ordre };
   const rejeu = { relances: plan.relances, sorties: plan.sorties };
-  // Mesuré avant tout conteneur : le récolteur refuserait la ligne, et rien ne doit être écrit.
-  if (debutTropGros({ precedent, maintenant: horloge().toISOString(), config, workflow, rejeu })) return refus(REJEU_TROP_GROS);
+  // Un essai a les délais de la durée maximale du widget (une veille doit pouvoir s'essayer), sans jamais être progressif.
+  const dureeMaxMinutes = declaration.recolte?.dureeMaxMinutes;
+  const { limiteMs } = delaisExecution(dureeMaxMinutes);
+  // Mesuré avant tout conteneur, sur la ligne telle qu'elle partira : le récolteur la refuserait, et rien ne doit être écrit.
+  const maintenant = horloge().toISOString();
+  if (debutTropGros({ precedent, maintenant, config, workflow, rejeu, ...(limiteMs !== undefined ? { limiteMs } : {}) })) {
+    return refus(REJEU_TROP_GROS);
+  }
 
   const { issue, execution } = await executerWorkflow(
     {
@@ -423,6 +488,7 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
       ...contexteAccord(dossierWidgets, id, declaration),
       declencheur: "rejeu",
       rejeu: { ...rejeu, repris: plan.repris },
+      ...(dureeMaxMinutes !== undefined ? { dureeMaxMinutes } : {}),
     },
     infraDe(o, horloge),
   );

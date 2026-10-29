@@ -12,7 +12,8 @@ import { erreurDuNoyau, executerRecolte, type LanceurProcessus, type OptionsReco
 import { ecrireExecution, idEssai, listerExecutions, type Execution } from "../../src/workflows/executions.js";
 import { ecrireMemoire } from "../../src/workflows/memoire.js";
 import { accorder, lireAccords } from "../../src/widgets/accords.js";
-import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu, type EtatDirect } from "../../src/widgets/planificateur.js";
+import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu, type EtatDirect, type OptionsPlanificateur } from "../../src/widgets/planificateur.js";
+import { Menagement } from "../../src/workflows/menagement.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -26,7 +27,7 @@ afterEach(async () => {
 });
 
 /** Un widget « actus » qui récolte toutes les 60 min ; la récolte factice réussit (ou rend `statut`). */
-async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"] } = {}) {
+async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"]; options?: Partial<OptionsPlanificateur> } = {}) {
   const racine = await dossierTemporaire();
   const c = cheminsEspace(racine);
   const dossierWidgets = join(await dossierTemporaire(), "widgets");
@@ -72,6 +73,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     recolterEssai,
     surChange: changements,
     surDirect: (e) => directs.push(structuredClone(e)),
+    ...o.options,
   });
   return {
     essais,
@@ -111,6 +113,23 @@ test("la récolte reçoit le widget, le dossier des données, le moteur et l'IA"
   expect(o.widget).toMatchObject({ id: "actus", dossier: join(c.widgets, "actus") });
   // surChange suit chaque écriture faite par la récolte.
   expect(o.surChange).toBeTypeOf("function");
+});
+
+test("le ménagement et la base des recherches sont transmis à chaque récolte et à chaque essai ; absents, rien n'est transmis", async () => {
+  const menagement = new Menagement();
+  const { p, recolter, recolterEssai } = await preparer({ options: { menagement, urlRecherche: "http://127.0.0.1:9/html/" } });
+  await p.verifier({ auLancement: true });
+  await p.recolterMaintenant("actus");
+  await p.rejouer("actus", "x", "recolte");
+  for (const o of [recolter.mock.calls[0]![0], recolter.mock.calls[1]![0], recolterEssai.mock.calls[0]![0]]) {
+    expect(o.menagement).toBe(menagement);
+    expect(o.urlRecherche).toBe("http://127.0.0.1:9/html/");
+  }
+  await p.arreter();
+  const sans = await preparer();
+  await sans.p.verifier({ auLancement: true });
+  expect(sans.recolter.mock.calls[0]![0]).not.toHaveProperty("menagement");
+  expect(sans.recolter.mock.calls[0]![0]).not.toHaveProperty("urlRecherche");
 });
 
 test("accord-requis n'est jamais relancé tout seul", async () => {

@@ -20,6 +20,7 @@ import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
 import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
+import { Menagement } from "./workflows/menagement.js";
 import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
 import { accordRequis } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
@@ -233,6 +234,8 @@ export async function creerNoyau(o: {
   surChange?: () => void;
   /** Tests seulement : les récoltes peuvent lire des adresses locales (le serveur de test). */
   adressesLocales?: boolean;
+  /** Tests seulement : la base des recherches DuckDuckGo (une page enregistrée servie en local). */
+  urlRecherche?: string;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -332,6 +335,9 @@ export async function creerNoyau(o: {
     pret: atelierPret,
     ...(o.horloge ? { horloge: o.horloge } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
+    // Un seul ménagement pour toutes les exécutions de ce noyau : une recherche à la fois, une lecture à la fois par hôte.
+    menagement: new Menagement(),
+    ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
   });
   await planificateur.demarrer();
   const pont = o.pont;

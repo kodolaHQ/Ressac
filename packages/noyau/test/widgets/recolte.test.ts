@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { spawn } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -17,6 +18,8 @@ import { erreurDuNoyau, executerEssai, executerRecolte, type LanceurProcessus } 
 import { PROFIL_REFUSE } from "../../src/workflows/executer.js";
 import { ecrireExecution, idEssai, lireExecution, listerExecutions, type Execution } from "../../src/workflows/executions.js";
 import { avecMemoire, ecrireMemoire, lireMemoire } from "../../src/workflows/memoire.js";
+import { Menagement } from "../../src/workflows/menagement.js";
+import { urlRecherche } from "../../src/workflows/duckduckgo.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 import { fauxKev, fauxOllama, type FauxServeur } from "../aide/faux-ia.js";
@@ -1171,5 +1174,319 @@ describe("executerEssai", () => {
     const seconde = await executerRecolte({ ...optionsDe(ctx), horloge: plusTard });
     expect(seconde.execution).toBe(premiere.execution);
     expect((await listerExecutions(donneesDe(ctx))).filter((e) => !e.essai)).toHaveLength(1);
+  });
+});
+
+describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardée, nouveautés)", () => {
+  const donneesDe = (ctx: Contexte) => join(ctx.dossierWidgets, ctx.widget.id);
+  const fichierDonnees = (ctx: Contexte) => join(donneesDe(ctx), "donnees.json");
+  const fichierMemoire = (ctx: Contexte) => join(donneesDe(ctx), "memoire.json");
+  /** liste (code) → fiche (source.recuperer par élément) → sortie. */
+  const veille = (o: { auFilDeLEau?: boolean } = {}) => ({
+    version: 1,
+    blocs: [
+      { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
+      { id: "fiche", type: "source.recuperer", parametres: { url: "{url}", parElement: true } },
+      { id: "sortie", type: "sortie", parametres: { vers: "widget", ...(o.auFilDeLEau ? { auFilDeLEau: true } : {}) } },
+    ],
+    liens: [{ de: "liste", vers: "fiche" }, { de: "fiche", vers: "sortie" }],
+  });
+  async function enVeille(ctx: Contexte, o: { auFilDeLEau?: boolean; dureeMaxMinutes?: number } = {}) {
+    await rm(join(ctx.widget.dossier, "recolte.mjs"), { force: true });
+    await writeFile(join(ctx.widget.dossier, "workflow.json"), JSON.stringify(veille(o)));
+    await writeFile(join(ctx.widget.dossier, "liste.mjs"), "export default () => [];");
+    if (o.dureeMaxMinutes !== undefined) ctx.widget.declaration.recolte = { minutes: 60, dureeMaxMinutes: o.dureeMaxMinutes };
+  }
+
+  /**
+   * Un faux conteneur qui écrit ses lignes une à une ; une fonction (éventuellement asynchrone) est appelée à la place
+   * d'une ligne. `recu` : ce que le noyau lui écrit ; `bloque` : il ne sort jamais de lui-même (seulement tué).
+   */
+  const lanceurPas = (ctx: Contexte, pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => (cmd, args) => {
+    ctx.commandes.push([cmd, ...args]);
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    stdin.on("data", (d: Buffer) => o.recu?.push(d.toString()));
+    let tuer = () => {};
+    const fin = new Promise<number | null>((ok) => {
+      tuer = () => ok(null);
+      void (async () => {
+        for (const p of pas) {
+          await new Promise((r) => setImmediate(r));
+          if (typeof p === "function") await p();
+          else stdout.write(typeof p === "string" ? p : JSON.stringify(p) + "\n");
+        }
+        await new Promise((r) => setImmediate(r));
+        if (o.bloque) return;
+        stdout.end();
+        stderr.end();
+        setImmediate(() => ok(0));
+      })().catch(() => {
+        // Une sonde a échoué : le conteneur s'arrête tout de suite (le test échoue sur ce que la sonde n'a pas vu).
+        stdout.end();
+        stderr.end();
+        ok(1);
+      });
+    });
+    return { stdin, stdout, stderr, tuer: () => tuer(), fin };
+  };
+
+  /** Une horloge que les pas font avancer. */
+  const horlogeMobile = () => {
+    let t = MAINTENANT.getTime();
+    return { horloge: () => new Date(t), avancer: (ms: number) => () => void (t += ms) };
+  };
+  const debutBloc = (id: string) => ({ t: "bloc", id, etape: "debut" });
+  const finBloc = (id: string, sortie: unknown) => ({ t: "bloc", id, etape: "fin", statut: "reussi", sortie });
+  const pub = (donnees: unknown, faits: number, total: number) => ({ t: "publication", donnees, faits, total });
+  const mem = (valeur: unknown) => ({ t: "memoire", memoire: { liste: { type: "code", valeur } } });
+  const A1 = { url: "https://a.example/1" };
+  const A2 = { url: "https://a.example/2" };
+  const A3 = { url: "https://a.example/3" };
+  /** Le début d'une exécution de veille() jusqu'à l'ouverture de la chaîne (fiche). */
+  const avantChaine = (liste: unknown[]) => [debutBloc("liste"), finBloc("liste", liste), debutBloc("fiche")];
+  /** Attend que `f` soit vrai (les relais s'écrivent en tâche de fond). */
+  async function attendre(f: () => Promise<boolean>): Promise<void> {
+    for (let i = 0; i < 200; i++) {
+      if (await f()) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error("attente trop longue");
+  }
+  const progressionVaut = (ctx: Contexte, faits: number) => async () =>
+    (await lireEtatWidget(ctx.dossierWidgets, ctx.widget.id)).progression?.faits === faits;
+  const DERNIERE_MAJ = "2026-10-27T08:00:00.000Z";
+  async function etatAvant(ctx: Contexte) {
+    await ecrireEtatWidget(ctx.dossierWidgets, ctx.widget.id, { statut: "ok", derniereMaj: DERNIERE_MAJ, derniereTentative: DERNIERE_MAJ });
+  }
+
+  it("deux publications écrivent données et état en-cours avec progression ; la fin écrit le résultat final et retire la progression", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx, { auFilDeLEau: true });
+    await etatAvant(ctx);
+    const { horloge: h, avancer } = horlogeMobile();
+    const vus: unknown[] = [];
+    const sonde = (faits: number) => async () => {
+      await attendre(progressionVaut(ctx, faits));
+      vus.push({ etat: await lireEtatWidget(ctx.dossierWidgets, "veille"), donnees: await lireJson(fichierDonnees(ctx)) });
+    };
+    let changes = 0;
+    const r = await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      surChange: () => void changes++,
+      lancer: lanceurPas(ctx, [
+        ...avantChaine([A1, A2]),
+        mem(["1"]),
+        pub([A1], 1, 2),
+        sonde(1),
+        avancer(5000),
+        mem(["1", "2"]),
+        pub([A1, A2], 2, 2),
+        sonde(2),
+        finBloc("fiche", [A1, A2]),
+        debutBloc("sortie"),
+        finBloc("sortie", [A1, A2]),
+        { t: "fin", donnees: { final: [A1, A2] } },
+      ]),
+    });
+    expect(vus).toEqual([
+      {
+        etat: { statut: "en-cours", derniereMaj: DERNIERE_MAJ, derniereTentative: MAINTENANT.toISOString(), progression: { faits: 1, total: 2 } },
+        donnees: [A1],
+      },
+      {
+        etat: { statut: "en-cours", derniereMaj: DERNIERE_MAJ, derniereTentative: MAINTENANT.toISOString(), progression: { faits: 2, total: 2 } },
+        donnees: [A1, A2],
+      },
+    ]);
+    // Début, deux publications, fin.
+    expect(changes).toBe(4);
+    expect(r.etat.statut).toBe("ok");
+    expect(r.donnees).toEqual({ final: [A1, A2] });
+    expect(await lireJson(fichierDonnees(ctx))).toEqual({ final: [A1, A2] });
+    const etat = await lireEtatWidget(ctx.dossierWidgets, "veille");
+    expect(etat.statut).toBe("ok");
+    expect(etat.progression).toBeUndefined();
+    expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1", "2"]);
+  });
+
+  it("échec après deux publications : la dernière reste, état erreur, mémoire de l'exécution gardée", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
+    await etatAvant(ctx);
+    await ecrireDonnees(ctx.dossierWidgets, "veille", { ancien: true });
+    await ecrireMemoire(donneesDe(ctx), { liste: { type: "code", valeur: ["ancienne"] } });
+    const { horloge: h, avancer } = horlogeMobile();
+    const recu: string[] = [];
+    const r = await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      lancer: lanceurPas(
+        ctx,
+        [...avantChaine([A1, A2, A3]), mem(["1"]), pub([A1], 1, 3), avancer(5000), mem(["1", "2"]), pub([A1, A2], 2, 3), { t: "journal", bloc: "fiche", texte: "x" }, { t: "echec", erreur: "cassé" }],
+        { recu },
+      ),
+    });
+    // La durée maximale est passée : limite envoyée, exécution progressive, conteneur arrêté à 30 min + 30 s.
+    expect(JSON.parse(recu.join("").split("\n")[0]!)).toMatchObject({ limiteMs: 1_800_000, progressif: true });
+    expect(ctx.commandes[0]!.slice(ctx.commandes[0]!.indexOf("timeout"), ctx.commandes[0]!.indexOf("timeout") + 4)).toEqual(["timeout", "-k", "5", "1830"]);
+    expect(r.etat).toMatchObject({ statut: "erreur", erreur: "cassé", derniereMaj: DERNIERE_MAJ });
+    expect(r.etat.progression).toBeUndefined();
+    expect(await lireJson(fichierDonnees(ctx))).toEqual([A1, A2]);
+    const etat = await lireEtatWidget(ctx.dossierWidgets, "veille");
+    expect(etat).toMatchObject({ statut: "erreur", derniereMaj: DERNIERE_MAJ });
+    expect(etat.progression).toBeUndefined();
+    // La dernière mémoire sûre (pas seulement celle relayée en cours de route, la première).
+    expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1", "2"]);
+    expect((await lireExecution(donneesDe(ctx), r.execution!))?.statut).toBe("echouee");
+  });
+
+  it("interrompue après une publication : données publiées et mémoire gardées, exécution interrompue", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx, { auFilDeLEau: true });
+    const { horloge: h, avancer } = horlogeMobile();
+    const r = await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      delaiMs: 500,
+      interrompue: () => true,
+      lancer: lanceurPas(ctx, [...avantChaine([A1, A2]), mem(["0"]), pub([], 0, 2), avancer(5000), mem(["1"]), pub([A1], 1, 2), { t: "journal", bloc: "fiche", texte: "x" }], { bloque: true }),
+    });
+    expect(r.etat.statut).toBe("erreur");
+    expect(await lireJson(fichierDonnees(ctx))).toEqual([A1]);
+    expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1"]);
+    expect((await lireExecution(donneesDe(ctx), r.execution!))?.statut).toBe("interrompue");
+  });
+
+  it("widget sans les nouveaux champs en échec : mémoire non écrite (comme avant)", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx);
+    await ecrireMemoire(donneesDe(ctx), { liste: { type: "code", valeur: ["ancienne"] } });
+    const avant = await readFile(fichierMemoire(ctx), "utf8");
+    const r = await executerRecolte({
+      ...optionsDe(ctx),
+      lancer: lanceurPas(ctx, [debutBloc("liste"), mem(["1"]), finBloc("liste", [A1]), debutBloc("fiche"), { t: "echec", erreur: "cassé" }]),
+    });
+    expect(r.etat.statut).toBe("erreur");
+    expect(await readFile(fichierMemoire(ctx), "utf8")).toBe(avant);
+  });
+
+  it("widget avec compte et auFilDeLEau : accord retiré entre deux publications → données effacées, accord-requis, plus rien d'écrit", async () => {
+    const ctx = await preparer("veille", "", { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] });
+    await enVeille(ctx, { auFilDeLEau: true });
+    await accorder(ctx.dossierWidgets, "veille", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const { horloge: h, avancer } = horlogeMobile();
+    const vus: unknown[] = [];
+    const r = await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      lancer: lanceurPas(ctx, [
+        ...avantChaine([A1, A2, A3]),
+        mem(["1"]),
+        pub([A1], 1, 3),
+        async () => {
+          await attendre(progressionVaut(ctx, 1));
+          // Ce que fait refuserAccord, sans l'effacement : seul le retrait est vu par l'exécution.
+          await retirerAccord(ctx.dossierWidgets, "veille");
+        },
+        avancer(5000),
+        mem(["1", "2"]),
+        pub([A1, A2], 2, 3),
+        avancer(5000),
+        mem(["1", "2", "3"]),
+        pub([A1, A2, A3], 3, 3),
+        async () => {
+          await new Promise((t) => setTimeout(t, 150));
+          vus.push({
+            donnees: existsSync(fichierDonnees(ctx)),
+            memoire: existsSync(fichierMemoire(ctx)),
+            progression: (await lireEtatWidget(ctx.dossierWidgets, "veille")).progression,
+          });
+        },
+        finBloc("fiche", [A1, A2, A3]),
+        debutBloc("sortie"),
+        finBloc("sortie", [A1, A2, A3]),
+        { t: "fin", donnees: [A1, A2, A3] },
+      ]),
+    });
+    // Après le retrait, ni données ni mémoire, et l'état ne montre plus aucune publication.
+    expect(vus).toEqual([{ donnees: false, memoire: false, progression: { faits: 1, total: 3 } }]);
+    expect(r.etat).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
+    expect(r.donnees).toBeUndefined();
+    expect(existsSync(fichierDonnees(ctx))).toBe(false);
+    expect(existsSync(fichierMemoire(ctx))).toBe(false);
+    expect(await listerExecutions(donneesDe(ctx))).toEqual([]);
+    expect((await lireEtatWidget(ctx.dossierWidgets, "veille")).statut).toBe("accord-requis");
+  });
+
+  it("un essai d'un widget auFilDeLEau n'écrit ni données ni état (ni mémoire), même avec dureeMaxMinutes ; limiteMs envoyé, jamais progressif", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
+    const { horloge: h, avancer } = horlogeMobile();
+    const reel = await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      lancer: lanceurPas(ctx, [...avantChaine([A1]), mem(["1"]), pub([A1], 1, 1), finBloc("fiche", [A1]), debutBloc("sortie"), finBloc("sortie", [A1]), { t: "fin", donnees: [A1] }]),
+    });
+    expect(reel.etat.statut).toBe("ok");
+    const instantane = async () => {
+      const r: Record<string, { texte: string; mtime: number } | null> = {};
+      for (const nom of ["donnees.json", "memoire.json", "etat.json"]) {
+        const chemin = join(donneesDe(ctx), nom);
+        r[nom] = existsSync(chemin) ? { texte: await readFile(chemin, "utf8"), mtime: (await stat(chemin)).mtimeMs } : null;
+      }
+      return r;
+    };
+    const avant = await instantane();
+    expect(Object.values(avant).every((f) => f !== null)).toBe(true);
+    const recu: string[] = [];
+    avancer(60_000)();
+    const r = await executerEssai({
+      ...optionsDe(ctx),
+      horloge: h,
+      origine: reel.execution!,
+      depart: "fiche",
+      lancer: lanceurPas(
+        ctx,
+        [debutBloc("fiche"), mem(["2"]), pub([A2], 1, 1), avancer(5000), mem(["3"]), pub([A3], 1, 1), finBloc("fiche", [A2]), debutBloc("sortie"), finBloc("sortie", [A2]), { t: "fin", donnees: [A2] }],
+        { recu },
+      ),
+    });
+    expect(r).toMatchObject({ ok: true, statut: "reussie" });
+    const debut = JSON.parse(recu.join("").split("\n")[0]!);
+    expect(debut.limiteMs).toBe(1_800_000);
+    expect(debut.progressif).toBeUndefined();
+    expect(await instantane()).toEqual(avant);
+  });
+
+  it("web : la recherche part de urlRecherche, par le ménagement donné", async () => {
+    const BASE = "https://ddg.test/html/";
+    const html = `<div class="result"><a class="result__a" href="https://a.example/1">Titre</a><a class="result__snippet">Extrait</a></div>`;
+    const ctx = await preparer("veille", `export default async (w) => w.chercherWeb("clio", { nombre: 1 });`);
+    ctx.widget.declaration.sources.web = true;
+    const menagement = new Menagement({ attendre: async () => {} });
+    const rechercher = vi.spyOn(menagement, "rechercher");
+    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [], html: { [urlRecherche("clio", BASE)]: html } } });
+    const r = await executerRecolte({ ...optionsDe(ctx), pont, menagement, urlRecherche: BASE });
+    expect(r.donnees).toEqual([{ titre: "Titre", url: "https://a.example/1", extrait: "Extrait" }]);
+    expect(rechercher).toHaveBeenCalledTimes(1);
+  });
+
+  it("nouveaux : 3 annonces dont 1 déjà dans les données précédentes → 2 ; widget sans notifier → absent", async () => {
+    const code = `export default async () => [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }];`;
+    const ctx = await preparer("annonces", code);
+    ctx.widget.declaration.recolte = { minutes: 60, notifier: true };
+    await ecrireDonnees(ctx.dossierWidgets, "annonces", [{ url: "https://a.example/1", prix: 10 }]);
+    const r = await executerRecolte(optionsDe(ctx));
+    expect(r.etat.statut).toBe("ok");
+    expect(r.nouveaux).toBe(2);
+
+    const sans = await preparer("annonces", code);
+    await ecrireDonnees(sans.dossierWidgets, "annonces", [{ url: "https://a.example/1", prix: 10 }]);
+    const r2 = await executerRecolte(optionsDe(sans));
+    expect(r2.etat.statut).toBe("ok");
+    expect(r2).not.toHaveProperty("nouveaux");
   });
 });

@@ -11,6 +11,7 @@ import type { PontNavigateur } from "../mcp/pont.js";
 import { lireAccords, retirerAccord } from "./accords.js";
 import type { TraceDirecte } from "../workflows/executer.js";
 import { lireExecution, type Execution } from "../workflows/executions.js";
+import type { Menagement } from "../workflows/menagement.js";
 import {
   ERREUR_ATELIER_ARRETE,
   ERREUR_INTERROMPUE,
@@ -80,6 +81,10 @@ export interface OptionsPlanificateur {
   surDirect?: (e: EtatDirect) => void;
   /** Tests seulement : les récoltes peuvent lire des adresses locales (voir OptionsRecolte). */
   adressesLocales?: boolean;
+  /** Ménagement des recherches et des lectures ouvertes, partagé par toutes les récoltes et tous les essais. */
+  menagement?: Menagement;
+  /** Tests seulement : la base des recherches DuckDuckGo (voir OptionsRecolte). */
+  urlRecherche?: string;
   /**
    * Démarrage de l'atelier : aucune vérification ni récolte avant sa fin (sinon chaque lancement afficherait un bref
    * « atelier arrêté » pendant que le conteneur démarre).
@@ -323,6 +328,8 @@ export class PlanificateurWidgets {
       horloge: this.o.horloge,
       ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
       ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
+      ...(this.o.menagement ? { menagement: this.o.menagement } : {}),
+      ...(this.o.urlRecherche !== undefined ? { urlRecherche: this.o.urlRecherche } : {}),
       interrompue: () => this.arrete,
       surTrace,
     };
