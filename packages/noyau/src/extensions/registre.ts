@@ -195,7 +195,7 @@ async function lire(dossier: string): Promise<Lecture> {
 
 /**
  * L'état du fichier. Absent (ENOENT) : état vide. Abîmé ou de version future : état vide aussi, sans rien effacer
- * (voir `modifierEtatExtensions`). Toute autre erreur de lecture lève.
+ * (voir `modifierEtatExtensions`). Lève pour toute erreur de lecture autre que ENOENT.
  */
 export async function lireEtatExtensions(dossier: string): Promise<EtatExtensions> {
   return (await lire(dossier)).etat;
@@ -213,7 +213,7 @@ const files = new Map<string, Promise<unknown>>();
 export function modifierEtatExtensions(
   dossier: string,
   changer: (e: EtatExtensions, profilsPrives: ReadonlySet<IdProfil>) => EtatExtensions,
-  profilsPrives: () => ReadonlySet<IdProfil> = () => new Set(),
+  profilsPrives: () => ReadonlySet<IdProfil>,
 ): Promise<EtatExtensions> {
   const precedente = files.get(dossier) ?? Promise.resolve();
   const suivante = precedente.catch(() => {}).then(async () => {
