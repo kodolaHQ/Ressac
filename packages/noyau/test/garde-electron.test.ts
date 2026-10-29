@@ -25,7 +25,18 @@ test("le noyau ne dépend pas d'electron", () => {
 test("src/workflows n'importe ni widgets/ ni accueil/", () => {
   const sources = fichiers(join(racine, "src", "workflows"));
   expect(sources.length).toBeGreaterThan(0);
+  // `from "…"`, `import "…"` (effet de bord) et `import("…")` (dynamique).
+  const interdit = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.\.\/)+(widgets|accueil)\//;
+  for (const exemple of [
+    'import { x } from "../widgets/recolte.js";',
+    'import "../accueil/donnees.js";',
+    'const m = await import("../../widgets/recolte.js");',
+    "await import( '../accueil/schemas.js')",
+  ]) {
+    expect(exemple).toMatch(interdit);
+  }
+  expect('import { x } from "./acces.js";').not.toMatch(interdit);
   for (const f of sources) {
-    expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["'](\.\.\/)+(widgets|accueil)\//);
+    expect(readFileSync(f, "utf8"), f).not.toMatch(interdit);
   }
 });
