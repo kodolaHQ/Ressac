@@ -106,6 +106,20 @@ test("agent : content_script world MAIN refusé ; le Store l'accepte", () => {
   expect(analyserManifeste(m, { source: "store" }).refus).toEqual([]);
 });
 
+test("agent : devtools_page, background.scripts et background.page refusés ; le Store les garde", () => {
+  for (const ajout of [
+    { devtools_page: "d.html" },
+    { background: { scripts: ["a.js"] } },
+    { background: { page: "fond.html" } },
+    { background: { service_worker: 3 } },
+  ]) {
+    const m = { ...base, ...ajout };
+    expect(analyserManifeste(m, { source: "agent" }).refus, JSON.stringify(ajout)).toHaveLength(1);
+    expect(analyserManifeste(m, { source: "store" }).refus).toEqual([]);
+  }
+  expect(analyserManifeste({ ...base, background: { service_worker: "sw.js", type: "module" } }, { source: "agent" }).refus).toEqual([]);
+});
+
 test("Store : webRequest accepté avec le libellé « Observer les requêtes des pages »", () => {
   const a = analyserManifeste({ ...base, permissions: ["webRequest"] }, { source: "store" });
   expect(a.refus).toEqual([]);

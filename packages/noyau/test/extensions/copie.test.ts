@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { link, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
 import {
+  ENTREES_MAX,
   FICHIERS_MAX,
   GARDES_PAR_DEFAUT,
   cspAgent,
@@ -11,6 +12,38 @@ import {
   preparerStore,
 } from "../../src/extensions/copie.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
+
+// Crochets pour simuler un dossier modifié pendant la lecture, ou un renommage en échec.
+const crochets = vi.hoisted(() => ({
+  apresLstat: null as null | ((p: string) => Promise<void>),
+  apresReaddir: null as null | ((p: string) => Promise<void>),
+  avantRename: null as null | ((de: string, vers: string) => void),
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...orig,
+    lstat: (async (p: string, ...r: unknown[]) => {
+      const v = await (orig.lstat as (...a: unknown[]) => Promise<unknown>)(p, ...r);
+      if (crochets.apresLstat) await crochets.apresLstat(p);
+      return v;
+    }) as typeof orig.lstat,
+    readdir: (async (p: string, ...r: unknown[]) => {
+      const v = await (orig.readdir as (...a: unknown[]) => Promise<unknown>)(p, ...r);
+      if (crochets.apresReaddir) await crochets.apresReaddir(p);
+      return v;
+    }) as typeof orig.readdir,
+    rename: (async (de: string, vers: string) => {
+      crochets.avantRename?.(de, vers);
+      return orig.rename(de, vers);
+    }) as typeof orig.rename,
+  };
+});
+afterEach(() => {
+  crochets.apresLstat = null;
+  crochets.apresReaddir = null;
+  crochets.avantRename = null;
+});
 
 const GARDES = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-garde-fond.js"];
 
@@ -122,28 +155,89 @@ describe("preparerCopie", () => {
     expect(imports).toEqual(["./webaios-garde-fond.js", "./sw.js"]);
   });
 
-  it("le garde de fond est le premier script de chaque page HTML, même sans <head>, les scripts existants restent après", async () => {
+  it("le garde de fond est préfixé à chaque page HTML (octets bruts, chemin absolu), les scripts existants restent après", async () => {
+    const GARDE = '<script src="/webaios-garde-fond.js"></script>';
     const src = await source({
       "manifest.json": manifesteBase(),
       "popup.html": '<!doctype html><html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>',
       "pages/options.html": "<p>options</p><script src=\"options.js\"></script>",
-      "offscreen.HTML": "<!DOCTYPE html>\n<script>1</script>",
+      "commentaire.html": '<!-- <head> --><head><script src="a.js"></script></head>',
+      "base.htm": '<html><base href="x/"><head><script src="a.js"></script></head></html>',
+      "offscreen.HTML": "\uFEFF<!DOCTYPE html>\n<script>1</script>",
     });
+    await writeFile(join(src, "latin1.html"), Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e]));
     const c = await cible();
     await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     const scripts = (html: string) => [...html.matchAll(/<script[^>]*>/gi)].map((x) => x[0]);
 
     const popup = await readFile(join(c, "popup.html"), "utf8");
-    expect(scripts(popup)).toEqual(['<script src="webaios-garde-fond.js">', '<script src="popup.js">']);
-    expect(popup.indexOf("webaios-garde-fond.js")).toBeGreaterThan(popup.indexOf("<head>"));
+    expect(popup).toBe('<!doctype html>' + GARDE + '<html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>');
+    expect(scripts(popup)).toEqual(['<script src="/webaios-garde-fond.js">', '<script src="popup.js">']);
+    expect(await readFile(join(c, "pages/options.html"), "utf8")).toBe(GARDE + '<p>options</p><script src="options.js"></script>');
+    expect(await readFile(join(c, "commentaire.html"), "utf8")).toBe(GARDE + '<!-- <head> --><head><script src="a.js"></script></head>');
+    expect(await readFile(join(c, "base.htm"), "utf8")).toBe(GARDE + '<html><base href="x/"><head><script src="a.js"></script></head></html>');
+    expect(await readFile(join(c, "offscreen.HTML"), "utf8")).toBe("\uFEFF<!DOCTYPE html>" + GARDE + "\n<script>1</script>");
+    expect(await readFile(join(c, "latin1.html"))).toEqual(
+      Buffer.concat([Buffer.from(GARDE), Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e])]),
+    );
+  });
 
-    const options = await readFile(join(c, "pages/options.html"), "utf8");
-    expect(scripts(options)).toEqual(['<script src="../webaios-garde-fond.js">', '<script src="options.js">']);
-    expect(options.endsWith("<p>options</p><script src=\"options.js\"></script>")).toBe(true);
+  it("les fichiers qui font un document hors HTML sont refusés", async () => {
+    for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
+      const src = await source({ "manifest.json": manifesteBase(), [`p.${ext}`]: "<x/>" });
+      const c = await cible();
+      const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+      expect(analyse.refus.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
+      expect(existsSync(c)).toBe(false);
+    }
+  });
 
-    const offscreen = await readFile(join(c, "offscreen.HTML"), "utf8");
-    expect(offscreen.startsWith('<!DOCTYPE html><script src="webaios-garde-fond.js"></script>')).toBe(true);
-    expect(scripts(offscreen)).toEqual(['<script src="webaios-garde-fond.js">', "<script>"]);
+  it("un SVG avec du script est refusé, un SVG simple passe", async () => {
+    for (const svg of [
+      '<svg><SCRIPT href="x.js"/></svg>',
+      "<svg><foreignobject><div/></foreignobject></svg>",
+      '<svg onload = "x()"></svg>',
+      '<svg><a\nONCLICK="x()"/></svg>',
+    ]) {
+      const src = await source({ "manifest.json": manifesteBase(), "i/icone.svg": svg });
+      const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
+      expect(analyse.refus.some((r) => r.includes("i/icone.svg")), svg).toBe(true);
+    }
+    const src = await source({ "manifest.json": manifesteBase(), "icone.svg": '<svg><path d="M0 0" data-online="x"/></svg>' });
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus).toEqual([]);
+    expect(existsSync(join(c, "icone.svg"))).toBe(true);
+  });
+
+  it("background.scripts ou background.page refusés", async () => {
+    for (const background of [{ scripts: ["a.js"] }, { page: "fond.html" }, { service_worker: "sw.js", scripts: ["a.js"] }]) {
+      const src = await source({ "manifest.json": manifesteBase({ background }), "a.js": "", "sw.js": "", "fond.html": "" });
+      const c = await cible();
+      const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+      expect(analyse.refus.length, JSON.stringify(background)).toBeGreaterThan(0);
+      expect(existsSync(c)).toBe(false);
+    }
+  });
+
+  it("plus de 32 niveaux de dossiers refusés", async () => {
+    const profond = Array.from({ length: 33 }, (_, i) => `d${i}`).join("/");
+    const src = await source({ "manifest.json": manifesteBase(), [`${profond}/f.js`]: "" });
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes("32"))).toBe(true);
+    expect(existsSync(c)).toBe(false);
+    const ok = await source({ "manifest.json": manifesteBase(), [`${Array.from({ length: 31 }, (_, i) => `d${i}`).join("/")}/f.js`]: "" });
+    expect((await preparerCopie({ source: ok, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT })).analyse.refus).toEqual([]);
+  });
+
+  it("plus de 5000 entrées (dossiers compris) refusées", async () => {
+    const src = await source({ "manifest.json": manifesteBase() });
+    for (let i = 0; i < ENTREES_MAX; i++) await mkdir(join(src, `v${i}`));
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes(String(ENTREES_MAX)))).toBe(true);
+    expect(existsSync(c)).toBe(false);
   });
 
   it("un lien symbolique (vers un fichier hors du dossier) est refusé, cible inchangée", async () => {
@@ -196,10 +290,120 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un nom de fichier réservé à WebAiOs est refusé", async () => {
-    const src = await source({ "manifest.json": manifesteBase(), "webaios-fond.js": "1" });
+  it("un nom de fichier réservé à WebAiOs est refusé, quelle que soit la casse", async () => {
+    for (const nom of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS"]) {
+      const src = await source({ "manifest.json": manifesteBase(), [nom]: "1" });
+      const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
+      expect(analyse.refus.some((r) => r.includes(nom)), nom).toBe(true);
+    }
+  });
+
+  it("un lien symbolique dans un sous-dossier est refusé", async () => {
+    const dehors = join(await dossierTemporaire(), "secret");
+    await writeFile(dehors, "x");
+    const src = await source({ "manifest.json": manifesteBase(), "a/b/c.js": "" });
+    await symlink(dehors, join(src, "a/b/lien.js"));
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes("a/b/lien.js"))).toBe(true);
+    expect(existsSync(c)).toBe(false);
+  });
+
+  it("un lien symbolique vers un dossier est refusé, la racine aussi", async () => {
+    const dehors = await dossierTemporaire();
+    await writeFile(join(dehors, "id_ed25519"), "x");
+    const src = await source({ "manifest.json": manifesteBase() });
+    await symlink(dehors, join(src, "ssh"));
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes("ssh"))).toBe(true);
+    expect(existsSync(c)).toBe(false);
+
+    const vrai = await source({ "manifest.json": manifesteBase() });
+    const lienRacine = join(dirname(vrai), "lien-racine");
+    await symlink(vrai, lienRacine);
+    const r = await preparerCopie({ source: lienRacine, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(r.analyse.refus.length).toBeGreaterThan(0);
+    expect(existsSync(c)).toBe(false);
+  });
+
+  it("un lien physique est refusé", async () => {
+    const dehors = join(await dossierTemporaire(), "secret");
+    await writeFile(dehors, "x");
+    const src = await source({ "manifest.json": manifesteBase() });
+    await link(dehors, join(src, "physique.txt"));
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes("physique.txt"))).toBe(true);
+    expect(existsSync(c)).toBe(false);
+  });
+
+  it("un fichier remplacé par un lien après son lstat est refusé (rien n'est lu hors du dossier)", async () => {
+    const dehors = join(await dossierTemporaire(), "secret");
+    await writeFile(dehors, "clé privée");
+    const src = await source({ "manifest.json": manifesteBase(), "a.js": "1" });
+    crochets.apresLstat = async (p) => {
+      if (p === join(src, "a.js")) {
+        crochets.apresLstat = null;
+        await rm(p);
+        await symlink(dehors, p);
+      }
+    };
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes("a.js"))).toBe(true);
+    expect(existsSync(c)).toBe(false);
+  });
+
+  it("un fichier remplacé par un autre fichier après son lstat est refusé", async () => {
+    const src = await source({ "manifest.json": manifesteBase(), "a.js": "1" });
+    crochets.apresLstat = async (p) => {
+      if (p === join(src, "a.js")) {
+        crochets.apresLstat = null;
+        await writeFile(join(src, "b.tmp"), "2");
+        await rename(join(src, "b.tmp"), p);
+      }
+    };
     const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
-    expect(analyse.refus.some((r) => r.includes("webaios-fond.js"))).toBe(true);
+    expect(analyse.refus.some((r) => r.includes("a.js"))).toBe(true);
+  });
+
+  it("un sous-dossier remplacé par un lien pendant sa lecture est refusé", async () => {
+    const dehors = await dossierTemporaire();
+    await writeFile(join(dehors, "id_ed25519"), "x");
+    const src = await source({ "manifest.json": manifesteBase(), "sous/id_ed25519": "leurre" });
+    crochets.apresReaddir = async (p) => {
+      if (p === join(src, "sous")) {
+        crochets.apresReaddir = null;
+        await rename(p, join(src, "ailleurs"));
+        await symlink(dehors, p);
+      }
+    };
+    const c = await cible();
+    const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.refus.some((r) => r.includes("sous"))).toBe(true);
+    expect(existsSync(c)).toBe(false);
+  });
+
+  it("l'ancienne copie est remise en place si le second renommage échoue", async () => {
+    const c = await cible();
+    await preparerCopie({ source: await source({ "manifest.json": manifesteBase(), "a.js": "ancien" }), cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    crochets.avantRename = (de, vers) => {
+      if (de.endsWith(".tmp") && vers === c) throw Object.assign(new Error("échec simulé"), { code: "EIO" });
+    };
+    const seconde = await source({ "manifest.json": manifesteBase(), "b.js": "nouveau" });
+    await expect(preparerCopie({ source: seconde, cible: c, dossierGardes: GARDES_PAR_DEFAUT })).rejects.toThrow("échec simulé");
+    expect(await readFile(join(c, "a.js"), "utf8")).toBe("ancien");
+    expect(existsSync(join(c, "b.js"))).toBe(false);
+    expect(await readdir(dirname(c))).toEqual(["essai"]);
+  });
+
+  it("le dossier temporaire est supprimé après une erreur d'écriture", async () => {
+    const c = await cible();
+    const src = await source({ "manifest.json": manifesteBase(), "a.js": "" });
+    await expect(preparerCopie({ source: src, cible: c, dossierGardes: join(src, "absent") })).rejects.toThrow();
+    expect(existsSync(c)).toBe(false);
+    expect(await readdir(dirname(c))).toEqual([]);
   });
 
   it("une seconde copie remplace la première d'un coup (aucun mélange de fichiers)", async () => {
@@ -236,8 +440,12 @@ describe("preparerStore", () => {
       }),
       "cs.js": "",
     });
+    const renommages: string[] = [];
+    crochets.avantRename = (_de, vers) => void renommages.push(vers);
     await preparerStore(d, GARDES_PAR_DEFAUT);
     await preparerStore(d, GARDES_PAR_DEFAUT);
+    expect(renommages.filter((v) => v === join(d, "manifest.json"))).toHaveLength(2);
+    expect((await readdir(d)).sort()).toEqual(["cs.js", "manifest.json", "webaios-correctifs-page.js"]);
     const m = await lireJson(join(d, "manifest.json"));
     expect(m.content_scripts[0].js).toEqual(["webaios-correctifs-page.js", "cs.js"]);
     expect(m.content_scripts[1].js).toBeUndefined();

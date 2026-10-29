@@ -1,6 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, posix } from "node:path";
+import { constants } from "node:fs";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+  type FileHandle,
+} from "node:fs/promises";
+import { basename, dirname, join, posix } from "node:path";
 import { analyserManifeste, type AnalyseManifeste } from "./manifeste.js";
 
 /** Dossier des gardes livrés avec le noyau ; un navigateur qui embarque le noyau peut en fournir un autre. */
@@ -8,6 +21,9 @@ export const GARDES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "extensio
 
 export const FICHIERS_MAX = 2000;
 export const TAILLE_MAX = 20 * 1024 * 1024;
+/** Fichiers et dossiers comptés ensemble. */
+export const ENTREES_MAX = 5000;
+export const PROFONDEUR_MAX = 32;
 
 const CORRECTIFS_PAGE = "webaios-correctifs-page.js";
 const GARDE_PAGE = "webaios-garde-page.js";
@@ -39,48 +55,113 @@ function json(contenu: Buffer | undefined): unknown {
   }
 }
 
+class RefusLecture extends Error {}
+
+const LIENS = new Set(["ELOOP", "EMLINK", "ENOTDIR"]);
+// O_NOFOLLOW : un lien à la place du fichier fait échouer l'ouverture ; O_NONBLOCK : un tube ne bloque pas.
+const DRAPEAUX_LECTURE = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+
+interface Repere {
+  chemin: string;
+  dev: number;
+  ino: number;
+}
+
 /**
- * Fichiers ordinaires du dossier (chemins relatifs en `/`), lus sans suivre aucun lien. Un lien symbolique, un
- * fichier spécial, ou un dépassement de `FICHIERS_MAX` / `TAILLE_MAX` donne des refus (le parcours s'arrête).
+ * Fichiers ordinaires du dossier (chemins relatifs en `/`), lus sans suivre aucun lien. Chaque fichier est ouvert
+ * en `O_NOFOLLOW` et doit être celui vu par `lstat` (même dev/ino), sans autre lien physique ; chaque dossier doit
+ * rester le même pendant sa lecture, et les dossiers parents sont revérifiés après chaque fichier. Un lien, un
+ * fichier spécial, un remplacement pendant la lecture, ou un dépassement des limites donne un refus (le parcours
+ * s'arrête).
  */
-async function lireDossier(racine: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[] }> {
+async function lireDossier(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[] }> {
   const fichiers = new Map<string, Buffer>();
-  const refus: string[] = [];
+  const racine = join(await realpath(dirname(source)), basename(source));
   let taille = 0;
-  const parcourir = async (rel: string): Promise<boolean> => {
-    const entrees = (await readdir(join(racine, rel))).sort();
-    for (const nom of entrees) {
-      const chemin = rel ? `${rel}/${nom}` : nom;
-      const info = await lstat(join(racine, chemin));
-      if (info.isSymbolicLink()) {
-        refus.push(`Lien symbolique refusé : ${chemin}`);
-        return false;
+  let entrees = 0;
+  const refuser = (message: string): never => {
+    throw new RefusLecture(message);
+  };
+  const absolu = (rel: string) => (rel ? join(racine, rel) : racine);
+  const verifierDossiers = async (chaine: Repere[]): Promise<void> => {
+    for (const d of chaine) {
+      const info = await lstat(absolu(d.chemin)).catch(() => null);
+      if (!info?.isDirectory() || info.dev !== d.dev || info.ino !== d.ino) {
+        refuser(`Dossier remplacé pendant la lecture : ${d.chemin || "."}`);
       }
+    }
+  };
+  const lireFichier = async (chemin: string, vu: Repere): Promise<Buffer> => {
+    let fh: FileHandle;
+    try {
+      fh = await open(absolu(chemin), DRAPEAUX_LECTURE);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "";
+      if (LIENS.has(code)) refuser(`Lien symbolique refusé : ${chemin}`);
+      if (code === "ENOENT") refuser(`Fichier remplacé pendant la lecture : ${chemin}`);
+      throw e;
+    }
+    try {
+      const info = await fh.stat();
+      if (!info.isFile() || info.dev !== vu.dev || info.ino !== vu.ino) {
+        refuser(`Fichier remplacé pendant la lecture : ${chemin}`);
+      }
+      if (info.nlink !== 1) refuser(`Lien physique refusé : ${chemin}`);
+      const reste = TAILLE_MAX - taille;
+      const morceaux: Buffer[] = [];
+      let lu = 0;
+      for (;;) {
+        const tampon = Buffer.alloc(Math.min(64 * 1024, reste + 1 - lu));
+        const { bytesRead } = await fh.read(tampon, 0, tampon.length, null);
+        if (bytesRead === 0) break;
+        morceaux.push(tampon.subarray(0, bytesRead));
+        lu += bytesRead;
+        if (lu > reste) refuser(`Extension trop lourde : ${TAILLE_MAX / 1024 / 1024} Mo au plus`);
+      }
+      taille += lu;
+      return Buffer.concat(morceaux);
+    } finally {
+      await fh.close();
+    }
+  };
+  const parcourir = async (chaine: Repere[]): Promise<void> => {
+    const dossier = chaine[chaine.length - 1]!;
+    let noms: string[];
+    try {
+      noms = (await readdir(absolu(dossier.chemin))).sort();
+    } catch (e) {
+      if (["ENOENT", ...LIENS].includes((e as NodeJS.ErrnoException).code ?? "")) {
+        refuser(`Dossier remplacé pendant la lecture : ${dossier.chemin || "."}`);
+      }
+      throw e;
+    }
+    await verifierDossiers(chaine);
+    for (const nom of noms) {
+      const chemin = dossier.chemin ? `${dossier.chemin}/${nom}` : nom;
+      if (++entrees > ENTREES_MAX) refuser(`Trop d'entrées : ${ENTREES_MAX} fichiers et dossiers au plus`);
+      if (chemin.split("/").length > PROFONDEUR_MAX) refuser(`Arborescence trop profonde : ${PROFONDEUR_MAX} niveaux au plus`);
+      const info = await lstat(absolu(chemin)).catch(() => refuser(`Fichier remplacé pendant la lecture : ${chemin}`));
+      const repere = { chemin, dev: info.dev, ino: info.ino };
+      if (info.isSymbolicLink()) refuser(`Lien symbolique refusé : ${chemin}`);
       if (info.isDirectory()) {
-        if (!(await parcourir(chemin))) return false;
+        await parcourir([...chaine, repere]);
         continue;
       }
-      if (!info.isFile()) {
-        refus.push(`Fichier spécial refusé : ${chemin}`);
-        return false;
-      }
-      if (fichiers.size >= FICHIERS_MAX) {
-        refus.push(`Trop de fichiers : ${FICHIERS_MAX} au plus`);
-        return false;
-      }
-      taille += info.size;
-      if (taille > TAILLE_MAX) {
-        refus.push(`Extension trop lourde : ${TAILLE_MAX / 1024 / 1024} Mo au plus`);
-        return false;
-      }
-      fichiers.set(chemin, await readFile(join(racine, chemin)));
+      if (!info.isFile()) refuser(`Fichier spécial refusé : ${chemin}`);
+      if (fichiers.size >= FICHIERS_MAX) refuser(`Trop de fichiers : ${FICHIERS_MAX} au plus`);
+      fichiers.set(chemin, await lireFichier(chemin, repere));
+      await verifierDossiers(chaine);
     }
-    return true;
   };
-  const info = await lstat(racine);
-  if (!info.isDirectory()) refus.push("Le dossier de l'extension n'est pas un dossier");
-  else await parcourir("");
-  return { fichiers, refus };
+  try {
+    const info = await lstat(racine);
+    if (!info.isDirectory()) refuser("Le dossier de l'extension n'est pas un dossier");
+    await parcourir([{ chemin: "", dev: info.dev, ino: info.ino }]);
+  } catch (e) {
+    if (e instanceof RefusLecture) return { fichiers, refus: [e.message] };
+    throw e;
+  }
+  return { fichiers, refus: [] };
 }
 
 function empreinteDe(fichiers: Map<string, Buffer>): string {
@@ -117,20 +198,35 @@ function scriptsEnTete(manifeste: Manifeste, enTete: string[]): void {
   }
 }
 
-/** Insère le garde de fond comme premier script d'une page HTML de l'extension. */
-function insererGardePage(html: string, chemin: string): string {
-  const profondeur = chemin.split("/").length - 1;
-  const balise = `<script src="${"../".repeat(profondeur)}${GARDE_FOND}"></script>`;
-  const apres = (re: RegExp): number | null => {
-    const m = re.exec(html);
-    return m ? m.index + m[0].length : null;
-  };
-  let position =
-    apres(/<head(\s[^>]*)?>/i) ?? apres(/<html(\s[^>]*)?>/i) ?? apres(/<!doctype[^>]*>/i) ?? 0;
-  // Un script placé avant cet endroit (avant <head>, par exemple) : le garde passe devant lui.
-  const premierScript = html.search(/<script[\s>]/i);
-  if (premierScript !== -1 && premierScript < position) position = premierScript;
-  return html.slice(0, position) + balise + html.slice(position);
+const BALISE_GARDE = Buffer.from(`<script src="/${GARDE_FOND}"></script>`);
+const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+
+/**
+ * Préfixe les octets d'une page HTML par le garde de fond (après un BOM et un `<!doctype …>` placés tout au
+ * début) : rien ne peut le précéder, ni commentaire, ni `<base>`, ni changement d'encodage ; le reste est intact.
+ */
+function insererGardePage(page: Buffer): Buffer {
+  let position = page.subarray(0, 3).equals(BOM) ? 3 : 0;
+  const doctype = /^<!doctype[^>]*>/i.exec(page.subarray(position, position + 1024).toString("latin1"));
+  if (doctype) position += doctype[0].length;
+  return Buffer.concat([page.subarray(0, position), BALISE_GARDE, page.subarray(position)]);
+}
+
+const DOCUMENTS_REFUSES = /\.(xhtml|xht|xml|xsl|xslt|mht|mhtml)$/i;
+const SVG_ACTIF = [/<script/i, /<foreignObject/i, /\son[a-z]+\s*=/i];
+
+/** Refus propres au contenu des fichiers : noms réservés, documents hors HTML, SVG actifs. */
+function refusFichiers(fichiers: Map<string, Buffer>): string[] {
+  const refus: string[] = [];
+  const reserves = new Set([FOND, ...GARDES]);
+  for (const [chemin, contenu] of fichiers) {
+    if (reserves.has(chemin.normalize("NFC").toLowerCase())) refus.push(`Nom de fichier réservé à WebAiOs : ${chemin}`);
+    if (DOCUMENTS_REFUSES.test(chemin)) refus.push(`Type de fichier refusé (document hors HTML) : ${chemin}`);
+    if (/\.svg$/i.test(chemin) && SVG_ACTIF.some((re) => re.test(contenu.toString("latin1")))) {
+      refus.push(`Image SVG refusée (script ou contenu actif) : ${chemin}`);
+    }
+  }
+  return refus;
 }
 
 function fondGenere(original: string, module: boolean): string {
@@ -174,12 +270,7 @@ export async function preparerCopie(o: {
   const webaiosBrut = fichiers.get("webaios.json");
   const webaios = webaiosBrut === undefined ? undefined : (json(webaiosBrut) ?? "illisible");
   const analyse = analyserManifeste(brut, { source: "agent", webaios, regles: reglesDe(brut, fichiers) });
-  const reserves = [...fichiers.keys()].filter((f) => f === FOND || GARDES.includes(f));
-  analyse.refus = [
-    ...refusDossier,
-    ...reserves.map((f) => `Nom de fichier réservé à WebAiOs : ${f}`),
-    ...analyse.refus,
-  ];
+  analyse.refus = [...refusDossier, ...refusFichiers(fichiers), ...analyse.refus];
   const empreinte = empreinteDe(fichiers);
   if (analyse.refus.length > 0) return { analyse, empreinte };
 
@@ -204,7 +295,7 @@ export async function preparerCopie(o: {
       await mkdir(dirname(destination), { recursive: true });
       await writeFile(
         destination,
-        /\.html?$/i.test(chemin) ? insererGardePage(contenu.toString("utf8"), chemin) : contenu,
+        /\.(html?|shtml)$/i.test(chemin) ? insererGardePage(contenu) : contenu,
       );
     }
     for (const g of GARDES) await copyFile(join(o.dossierGardes, g), join(tmp, g));
@@ -225,5 +316,12 @@ export async function preparerStore(dossierVersion: string, dossierGardes: strin
   if (!objet(manifeste)) throw new Error(`Manifeste illisible : ${chemin}`);
   await copyFile(join(dossierGardes, CORRECTIFS_PAGE), join(dossierVersion, CORRECTIFS_PAGE));
   scriptsEnTete(manifeste as Manifeste, [CORRECTIFS_PAGE]);
-  await writeFile(chemin, JSON.stringify(manifeste, null, 2));
+  const tmp = `${chemin}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmp, JSON.stringify(manifeste, null, 2));
+    await rename(tmp, chemin);
+  } catch (e) {
+    await rm(tmp, { force: true });
+    throw e;
+  }
 }

@@ -28,7 +28,7 @@ const PERMISSIONS_REFUSEES_AGENT = [
   "debugger",
   "proxy",
 ];
-const CLES_REFUSEES_AGENT = ["externally_connectable", "sandbox", "chrome_url_overrides"];
+const CLES_REFUSEES_AGENT = ["externally_connectable", "sandbox", "chrome_url_overrides", "devtools_page"];
 /** Vrai si le motif couvre tous les sites : <all_urls>, ou un hôte `*` ou `*.<un seul label>` (jokers de TLD compris). */
 export function motifTousLesSites(motif: string): boolean {
   if (motif === "<all_urls>") return true;
@@ -166,6 +166,14 @@ export function analyserManifeste(
     }
     for (const cle of CLES_REFUSEES_AGENT) {
       if (cle in m) refus.push(`Clé refusée : ${cle}`);
+    }
+    const fond = objet(m.background);
+    if (fond) {
+      if ("scripts" in fond || "page" in fond) {
+        refus.push("background refusé : seul « service_worker » est permis");
+      } else if ("service_worker" in fond && typeof fond.service_worker !== "string") {
+        refus.push("background.service_worker doit être un chemin de fichier");
+      }
     }
     analyserRegles(m, o.regles ?? {}, refus);
     if (Array.isArray(m.optional_permissions) && m.optional_permissions.length > 0) {
