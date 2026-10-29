@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { api, etat as etatNavigateur } from "../etat.svelte";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
@@ -48,22 +48,35 @@
 
   // Le terminal de la fenêtre vient ici à la première ouverture de ce panneau, puis y reste attaché : fermer le panneau
   // ne fait que le cacher, la conversation continue. L'onglet « Agent » l'emprunte le temps d'être affiché.
+  // Redevenir visible (en quittant le constructeur, la page d'accueil qui le rouvre) ne prend pas le clavier : une
+  // frappe suivie d'Entrée partirait à l'agent. Seule une demande explicite (focusAgent) le donne au terminal.
   let detacher: (() => void) | undefined;
   $effect(() => () => detacher?.());
   $effect(() => {
     if (!visible) return;
     detacher ??= terminalAgent.attacher(hote);
     terminalAgent.ajuster();
-    terminalAgent.focus();
     const obs = new ResizeObserver(() => terminalAgent.ajuster());
     obs.observe(hote);
     return () => obs.disconnect();
   });
 
+  // Dernière demande de focus servie. Une demande faite pendant que ce panneau est caché ne le concerne pas (⌘J dans le
+  // constructeur vise son onglet « Agent ») : elle est écartée. L'onglet « Agent », lui, s'affiche toujours à la demande
+  // de l'utilisateur (clic, ⌘J, ✦) : il prend le clavier dès qu'il est monté.
+  // svelte-ignore state_referenced_locally
+  let servie = integre ? -1 : untrack(() => focusAgent.n);
+
   // ⌘J depuis une page web : le clavier passe de la page à l'interface. Pendant ce passage, Chromium ignore un
   // focus demandé trop tôt : on le redemande peu après si le terminal ne l'a pas.
   $effect(() => {
-    if (!focusAgent.n) return;
+    const n = focusAgent.n;
+    if (!visible) {
+      servie = n;
+      return;
+    }
+    if (n === servie) return;
+    servie = n;
     const viser = () => visible && terminalAgent.focus();
     void tick().then(viser);
     const relance = setTimeout(() => !terminalAgent.aLeFocus() && viser(), 100);

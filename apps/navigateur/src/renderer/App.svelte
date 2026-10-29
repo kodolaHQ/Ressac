@@ -11,7 +11,7 @@
   import { reglagesEspace } from "./composants/reglagesEspace.svelte";
   import { estDemandeAgent } from "./composants/modale.svelte";
   import type { Panneau } from "../commun/api";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "./etat.svelte";
   import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, widgetDeUrlWorkflow } from "../commun/modele";
   import { masquer, REVELATION_INITIALE, surZone, zoneGauche, zoneSortie, type ZoneGauche } from "../commun/revelation";
@@ -24,8 +24,8 @@
     const id = fenetre?.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;
   });
-  // Le constructeur montre l'agent dans son onglet « Agent » : pas de panneau latéral à côté.
-  const constructeurActif = $derived(!!ongletActif && widgetDeUrlWorkflow(ongletActif.url) !== null);
+  /** L'onglet actif est un constructeur (affiché, ou sous l'historique / les téléchargements). */
+  const ongletConstructeur = $derived(!!ongletActif && widgetDeUrlWorkflow(ongletActif.url) !== null);
 
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant
   // toujours l'interface, la barre « révélée » reprend sa colonne le temps du survol. La position de la souris vient
@@ -33,7 +33,6 @@
   const compact = $derived(fenetre?.compact ?? false);
   // Plein écran HTML (vidéo) : seule la page reste.
   let pleinEcran = $state(false);
-  const agentLateral = $derived(panneauAgentOuvert && !pleinEcran && !constructeurActif);
   let revelee = $state(false);
   let armee = REVELATION_INITIALE.armee;
   let zone: ZoneGauche = "loin";
@@ -68,6 +67,19 @@
   let dernierX = Infinity;
 
   let panneau = $state<Panneau | null>(null);
+  // Le constructeur affiché montre l'agent dans son onglet « Agent » : pas de panneau latéral à côté.
+  const constructeurActif = $derived(ongletConstructeur && panneau === null);
+  const agentLateral = $derived(panneauAgentOuvert && !pleinEcran && !constructeurActif);
+
+  /**
+   * ⌘J ou ✦ sur un onglet constructeur : son onglet « Agent ». Un panneau de l'interface posé dessus se referme d'abord ;
+   * la demande attend que le constructeur soit remonté, pour qu'il la voie.
+   */
+  function agentDuConstructeur(): void {
+    if (panneau === null) return void focusAgent.n++;
+    panneau = null;
+    void tick().then(() => focusAgent.n++);
+  }
 
   // Une demande de l'agent couvre toute la fenêtre (barre latérale et panneau agent compris) ; sous un panneau de
   // l'interface, la page n'est pas affichée : pas de capture à montrer derrière.
@@ -89,8 +101,10 @@
       if (r === "fermerOnglet") {
         if (ongletActif) fermerOnglet(ongletActif.id);
       } else if (r === "adresse") adresse.focus++;
-      else if (r === "agent") focusAgent.n++;
-      else if (r === "rechercher") {
+      else if (r === "agent") {
+        if (ongletConstructeur) agentDuConstructeur();
+        else focusAgent.n++;
+      } else if (r === "rechercher") {
         recherche.ouverte = true;
         recherche.focus++;
       } else if (recherche.ouverte) recherche.pas = { n: recherche.pas.n + 1, precedent: r === "chercherPrecedent" };
@@ -113,6 +127,8 @@
     if (ouvert !== ouvertAvant) {
       // Changement venu d'ailleurs (⌘J, bouton ✦) : le panneau appartient désormais à l'utilisateur.
       const deUtilisateur = ouvert !== attendu;
+      // Ouvert par l'utilisateur (bouton ✦, ⌘J…) : le terminal prend le clavier. Rouvert par la page d'accueil : non.
+      if (deUtilisateur && ouvert) untrack(() => focusAgent.n++);
       if (deUtilisateur) ouvertParAccueil = false;
       if (deUtilisateur && surAccueil && !ouvert) panneauFermeSurAccueil = true;
       attendu = null;
@@ -181,6 +197,7 @@
       {fenetre}
       cachee={!barreVisible}
       {basculerPanneau}
+      {agentDuConstructeur}
     />
   {:else}
     <aside data-testid="barre-laterale"></aside>

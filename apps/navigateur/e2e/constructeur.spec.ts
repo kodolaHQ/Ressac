@@ -1080,3 +1080,81 @@ test("workflow.json illisible : pas de canevas, mais ⌘J ouvre quand même l'on
   await expect(terminalIntegre(fenetre)).toContainText("faux agent prêt>");
   await fermer();
 });
+
+// Revue de la tâche 12 (fix round 1)
+
+const saisieTerminal = (p: Page) => p.locator(".xterm-helper-textarea");
+const menu = (app: import("@playwright/test").ElectronApplication, id: string) =>
+  app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
+
+test("entrer dans le constructeur puis en sortir ne donne pas le clavier au terminal de l'agent ; ✦ le lui donne", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  await ouvrirConstructeur(fenetre, "veille");
+  await attendre(300);
+  await expect(saisieTerminal(fenetre)).not.toBeFocused();
+  // Retour à la page d'accueil, qui rouvre le panneau latéral : il s'affiche sans prendre le clavier.
+  await fenetre.getByTestId("nouvel-onglet").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+  await attendre(300);
+  await expect(saisieTerminal(fenetre)).not.toBeFocused();
+  // Ouvert par l'utilisateur (✦) : là, le terminal prend le clavier.
+  await fenetre.getByTestId("bouton-agent").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await fenetre.getByTestId("bouton-agent").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+  await expect(saisieTerminal(fenetre)).toBeFocused();
+  await fermer();
+});
+
+test("panneau fermé : Agent → Bloc → Agent garde une seule conversation et un seul terminal", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  // L'utilisateur ferme le panneau de la page d'accueil : le terminal n'a plus d'hôte affiché en dessous de l'onglet.
+  await fenetre.getByTestId("bouton-agent").click();
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("onglet-agent").click();
+  await fenetre.getByTestId("terminal-agent-integre").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("un");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminalIntegre(fenetre)).toContainText("reçu: un");
+  await fenetre.getByRole("tab", { name: "Bloc" }).click();
+  await expect(fenetre.getByTestId("terminal-agent-integre")).toHaveCount(0);
+  await fenetre.getByTestId("onglet-agent").click();
+  await fenetre.getByTestId("terminal-agent-integre").locator(".xterm-screen").click();
+  await fenetre.keyboard.type("deux");
+  await fenetre.keyboard.press("Enter");
+  await expect(terminalIntegre(fenetre)).toContainText("reçu: deux");
+  expect(await occurrences(terminalIntegre(fenetre), "reçu: un")).toBe(1);
+  expect(await occurrences(terminalIntegre(fenetre), "reçu: deux")).toBe(1);
+  expect(lireTexte(join(racine, "faux-agent-entree.txt"))).toBe("un\rdeux\r");
+  await expect(fenetre.locator(".xterm")).toHaveCount(1);
+  await fermer();
+});
+
+test("l'historique posé sur le constructeur : ⌘J le referme et ouvre l'onglet Agent", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { app, fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+  await ouvrirConstructeur(fenetre, "veille");
+  await menu(app, "historique");
+  await expect(fenetre.getByTestId("historique")).toBeVisible();
+  await expect(fenetre.getByTestId("constructeur")).toHaveCount(0);
+  await menuAgent(app);
+  await expect(fenetre.getByTestId("historique")).toHaveCount(0);
+  await expect(terminalIntegre(fenetre)).toContainText("faux agent prêt>");
+  await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await fermer();
+});

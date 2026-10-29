@@ -21,10 +21,11 @@ let element: HTMLDivElement | undefined;
 const hotes: HTMLElement[] = [];
 
 // Une session qui repart (Relancer, changement de profil) efface l'écran de la précédente.
-api.agent.surEtat((e) => {
+const finEtat = api.agent.surEtat((e) => {
   if (e.etat === "preparation" && agent.etat.etat !== "preparation") terminal?.reset();
   agent.etat = e;
 });
+let finDonnees: (() => void) | undefined;
 
 const taille = () => ({ cols: Math.max(2, terminal?.cols ?? 80), rows: Math.max(2, terminal?.rows ?? 24) });
 
@@ -39,7 +40,7 @@ function creer(hote: HTMLElement): void {
   terminal.open(element);
   ajustement.fit();
   terminal.onData((d) => api.agent.ecrire(d));
-  api.agent.surDonnees((d) => terminal!.write(d));
+  finDonnees = api.agent.surDonnees((d) => terminal!.write(d));
   api.agent.demarrer(taille());
 }
 
@@ -85,4 +86,15 @@ export function aLeFocus(): boolean {
 export function reinitialiser(): void {
   terminal?.reset();
   api.agent.demarrer(taille());
+}
+
+// Rechargement à chaud (développement) : l'ancien module rend ses abonnements et son terminal, sinon la sortie de
+// l'agent s'écrirait dans un terminal fantôme en plus du nouveau.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    finEtat();
+    finDonnees?.();
+    terminal?.dispose();
+    element?.remove();
+  });
 }

@@ -230,7 +230,8 @@
   .corps { position: relative; flex: 1; display: flex; min-height: 0; }
   .zone-canevas { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
   .droite { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--bord); background: var(--fond-barre); }
-  .droite.agent { width: 420px; }
+  /* La largeur du panneau latéral (--agent, posée par App) : le terminal garde ses colonnes en passant de l'un à l'autre. */
+  .droite.agent { width: var(--agent, 420px); }
   .volet-bloc { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .volet-bloc[hidden] { display: none; }
   .onglets-droite { display: flex; gap: 2px; padding: 8px 12px 0; }

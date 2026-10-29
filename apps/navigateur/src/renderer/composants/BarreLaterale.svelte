@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Panneau } from "../../commun/api";
   import { URL_APPLICATIONS, widgetDeUrlWorkflow, type EtatFenetre } from "../../commun/modele";
-  import { focusAgent } from "./agent.svelte";
   import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
@@ -15,10 +14,13 @@
     fenetre,
     cachee = false,
     basculerPanneau,
+    agentDuConstructeur,
   }: {
     fenetre: EtatFenetre;
     cachee?: boolean;
     basculerPanneau?: (p: Panneau) => void;
+    /** ✦ sur un onglet constructeur : son onglet « Agent » (au lieu du panneau latéral). */
+    agentDuConstructeur?: () => void;
   } = $props();
   const enCours = $derived(telechargements.liste.filter((t) => t.etat === "en-cours"));
   const progression = $derived.by(() => {
@@ -75,7 +77,7 @@
       aria-label="Agent (⌘J)"
       title="Agent (⌘J)"
       aria-pressed={!constructeur && fenetre.panneauAgentOuvert}
-      onclick={() => (constructeur ? focusAgent.n++ : api.agir({ type: "basculerPanneauAgent", fenetreId: fenetre.id }))}><Icone nom="agent" /></button
+      onclick={() => (constructeur ? agentDuConstructeur?.() : api.agir({ type: "basculerPanneauAgent", fenetreId: fenetre.id }))}><Icone nom="agent" /></button
     >
     <button
       class="outil"
