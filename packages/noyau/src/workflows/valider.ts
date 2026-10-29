@@ -21,12 +21,58 @@ export function erreurWorkflow(cause: string): { ok: false; erreur: string } {
   return { ok: false, erreur: texte.length > LONGUEUR_MAX_ERREUR ? texte.slice(0, LONGUEUR_MAX_ERREUR - 1) + "…" : texte };
 }
 
+const TYPES: Record<string, string> = {
+  string: "texte attendu",
+  number: "nombre attendu",
+  int: "nombre entier attendu",
+  boolean: "booléen attendu",
+  array: "liste attendue",
+  object: "objet attendu",
+  record: "objet attendu",
+};
+const pluriel = (n: unknown, mot: string) => `${String(n)} ${mot}${Number(n) > 1 ? "s" : ""}`;
+
+/**
+ * Le message d'un problème zod en français court, pour les cas courants. Un message écrit dans un schéma (déjà en
+ * français) est gardé ; un cas non prévu garde le texte de zod.
+ */
+function enFrancais(p: z.core.$ZodIssue): string {
+  if (!/^(Invalid|Too (big|small)|Unrecognized)/.test(p.message)) return p.message;
+  const i = p as z.core.$ZodIssue & Record<string, unknown>;
+  switch (p.code) {
+    case "invalid_type": {
+      const attendu = TYPES[String(i.expected)] ?? `${String(i.expected)} attendu`;
+      return /received undefined$/.test(p.message) ? `manquant (${attendu})` : attendu;
+    }
+    case "too_big": {
+      const n = i.maximum;
+      if (i.origin === "array") return `${pluriel(n, "élément")} au plus`;
+      if (i.origin === "string") return `${pluriel(n, "caractère")} au plus`;
+      return i.inclusive === false ? `doit être inférieur à ${String(n)}` : `${String(n)} au plus`;
+    }
+    case "too_small": {
+      const n = i.minimum;
+      if (i.origin === "array") return `au moins ${pluriel(n, "élément")}`;
+      if (i.origin === "string") return Number(n) === 1 ? "vide" : `au moins ${pluriel(n, "caractère")}`;
+      return i.inclusive === false ? `doit être supérieur à ${String(n)}` : `au moins ${String(n)}`;
+    }
+    case "invalid_value": {
+      const valeurs = (Array.isArray(i.values) ? i.values : []).map((v) => JSON.stringify(v)).join(", ");
+      return Array.isArray(i.values) && i.values.length === 1 ? `${valeurs} attendu` : `une valeur parmi ${valeurs} attendue`;
+    }
+    case "unrecognized_keys":
+      return "paramètre inconnu";
+    default:
+      return p.message;
+  }
+}
+
 /** Premier problème zod, sous la forme « <chemin> : <message> ». */
 function premierProbleme(erreur: z.ZodError, racine?: string): string {
   const p = erreur.issues[0]!;
   const chemin = [...p.path.map(String)];
   if (p.code === "unrecognized_keys") chemin.push(...p.keys.slice(0, 1));
-  const message = p.code === "unrecognized_keys" ? "paramètre inconnu" : p.message;
+  const message = enFrancais(p);
   const nom = [...(racine ? [racine] : []), ...chemin].join(".");
   return nom ? `${nom} : ${message}` : message;
 }

@@ -99,3 +99,32 @@ test("chaque type du registre a un module et un schéma de paramètres", () => {
   for (const t of types) expect(typeof REGISTRE_BLOCS.get(t)!.parametres.safeParse).toBe("function");
   expect(REGISTRE_BLOCS.get("ia.trier")!.parElement).toBe("toujours");
 });
+
+test("les messages courants de zod sont dits en français", () => {
+  expect(refus({ version: 2, blocs: [] })).toBe('Workflow invalide : version : 1 attendu');
+  expect(refus({ version: 1, blocs: "x" })).toBe("Workflow invalide : blocs : liste attendue");
+  expect(refus({ version: 1 })).toBe("Workflow invalide : blocs : manquant (liste attendue)");
+  expect(refus(wf([{ id: "t", type: "ia.trier", parametres: { question: "q", texte: "t", siErreur: "ignorer" } }, sortie()]))).toBe(
+    'Workflow invalide : t.siErreur : une valeur parmi "sauter", "echouer" attendue',
+  );
+  expect(refus(wf([{ id: "f", type: "source.flux", parametres: { urls: [] } }, sortie()]))).toMatch(/^Workflow invalide : f\.urls : au moins 1 élément$/);
+  expect(refus(wf([sortie()], [{ de: "", vers: "s" }]))).toBe("Workflow invalide : liens.0.de : vide");
+  expect(refus(wf([{ ...sortie(), nom: "x".repeat(61) }]))).toBe("Workflow invalide : blocs.0.nom : 60 caractères au plus");
+  expect(refus({ ...wf([sortie()]), autre: 1 })).toBe("Workflow invalide : autre : paramètre inconnu");
+  // Un message écrit dans un schéma est gardé tel quel.
+  expect(refus(wf([sortie("ID!")]))).toContain("id de bloc invalide");
+});
+
+test("plus de 100 blocs, ou plus de 400 liens : refusé", () => {
+  const blocs = Array.from({ length: 101 }, (_, i) => ({ id: `b${i}`, type: "liste.garder", parametres: { nombre: 1 } }));
+  expect(refus(wf(blocs))).toBe("Workflow invalide : blocs : 100 éléments au plus");
+  const liens = Array.from({ length: 401 }, () => ({ de: "s", vers: "s" }));
+  expect(refus(wf([sortie()], liens))).toBe("Workflow invalide : liens : 400 éléments au plus");
+  // À la limite : accepté par le schéma (100 blocs, 400 liens).
+  const cent = [...blocs.slice(0, 99), sortie()];
+  const chaine = cent.slice(1).map((b, i) => ({ de: cent[i]!.id, vers: b.id }));
+  const doublons = Array.from({ length: 400 - chaine.length }, () => chaine[0]!);
+  const r = validerWorkflow(wf(cent, [...chaine, ...doublons]));
+  if (!r.ok) throw new Error(r.erreur);
+  expect(r.valide.ordre).toHaveLength(100);
+});
