@@ -1,7 +1,7 @@
 <script lang="ts">
   import { URL_APPLICATIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
   import Applications from "./Applications.svelte";
-  import PageWorkflow from "./PageWorkflow.svelte";
+  import Constructeur from "../constructeur/Constructeur.svelte";
   import { acces, api, demandeDe } from "../etat.svelte";
   import { estDemandeAgent, modale } from "./modale.svelte";
   import DemandePermission from "./DemandePermission.svelte";
@@ -57,7 +57,7 @@
   {:else if onglet?.url === URL_APPLICATIONS}
     <Applications />
   {:else if widgetWorkflow}
-    {#key widgetWorkflow}<PageWorkflow id={widgetWorkflow} />{/key}
+    {#key widgetWorkflow}<Constructeur id={widgetWorkflow} />{/key}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>
