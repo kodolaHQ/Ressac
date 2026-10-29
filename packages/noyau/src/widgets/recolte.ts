@@ -123,16 +123,36 @@ async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {
 
 /**
  * Un accord qui ne vaut plus pour la déclaration actuelle (domaines changés, compte retiré) est retiré, et ce qui a été
- * lu avec effacé (données, exécutions, mémoire) : rien ne passe à la récolte suivante ni, plus tard, à l'agent. Rend
- * vrai si le widget peut tourner : sans compte, ou avec un accord valide (qui couvre aussi ses domaines publics).
+ * lu avec effacé (données, exécutions, mémoire) : rien ne passe à la récolte suivante ni, plus tard, à l'agent.
+ * `peut` : le widget peut tourner (sans compte, ou avec un accord valide, qui couvre aussi ses domaines publics) ;
+ * `retire` : un accord périmé vient d'être retiré.
  */
-async function accordEnRegle(dossierWidgets: string, id: string, declaration: DeclarationWidget): Promise<boolean> {
+async function accordEnRegle(dossierWidgets: string, id: string, declaration: DeclarationWidget): Promise<{ peut: boolean; retire: boolean }> {
   const accordEnregistre = (await lireAccords(dossierWidgets))[id];
-  if (accordEnregistre && !accordValide(declaration, accordEnregistre)) {
+  const retire = accordEnregistre !== undefined && !accordValide(declaration, accordEnregistre);
+  if (retire) {
     await retirerAccord(dossierWidgets, id);
     await supprimerDonnees(dossierWidgets, id);
   }
-  return declaration.sources.compte.length === 0 || accordValide(declaration, (await lireAccords(dossierWidgets))[id]);
+  const peut = declaration.sources.compte.length === 0 || accordValide(declaration, (await lireAccords(dossierWidgets))[id]);
+  return { peut, retire };
+}
+
+/**
+ * L'accord vient d'être perdu hors d'une récolte (pendant un essai) : comme `refuserAccord`, le widget passe en attente
+ * d'accord (dates gardées) et l'affichage est prévenu. Déjà en attente d'accord : rien n'est réécrit.
+ */
+async function marquerAccordRequis(o: OptionsRecolte, erreur: string): Promise<void> {
+  const avant = await lireEtatWidget(o.dossierWidgets, o.id);
+  if (avant.statut === "accord-requis") return;
+  await ecrireEtatWidget(o.dossierWidgets, o.id, {
+    statut: "accord-requis",
+    derniereMaj: avant.derniereMaj,
+    derniereTentative: avant.derniereTentative,
+    erreur: tronquer(erreur, ERREUR_MAX),
+    erreurNoyau: true,
+  });
+  o.surChange?.();
 }
 
 /** Ce que l'exécution d'un widget demande sur son accord (relu à chaque lecture avec compte). */
@@ -256,7 +276,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   if (lu.t === "invalide") return conclure({ statut: "erreur", erreur: lu.erreur, execution: await sansConteneur("echouee", lu.erreur, []) });
   const { valide, declaration } = lu;
   // Un widget qui lit avec le compte de l'utilisateur ne tourne qu'avec son accord (un accord périmé est retiré, avec ses données).
-  if (!(await accordEnRegle(dossierWidgets, id, declaration))) {
+  if (!(await accordEnRegle(dossierWidgets, id, declaration)).peut) {
     const erreur = accordRequis(declaration);
     // Déjà en attente d'accord à la dernière exécution : pas une de plus à chaque planification (elles pousseraient
     // dehors l'historique des vraies exécutions), la dernière tient lieu. Les essais ne comptent pas.
@@ -351,9 +371,11 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
 
 /**
  * Un essai du constructeur : rejoue le workflow du widget depuis le bloc `depart`, en reprenant de l'exécution
- * `origine` la sortie des blocs en amont. N'écrit jamais `etat.json`, `donnees.json` ni `memoire.json` : seule
- * l'exécution `-essai` est gardée (un essai en échec ne montre aucune erreur sur l'accueil). Comme une récolte, un widget
- * avec compte ne tourne qu'avec l'accord de l'utilisateur ; retiré pendant l'essai, tout ce qui a été lu avec part, essai compris.
+ * `origine` la sortie des blocs en amont. Ce que l'essai produit ne touche jamais `etat.json`, `donnees.json` ni
+ * `memoire.json` : seule l'exécution `-essai` est gardée (un essai en échec ne montre aucune erreur sur l'accueil). Comme
+ * une récolte, un widget avec compte ne tourne qu'avec l'accord de l'utilisateur. Seule exception : un accord perdu à cause de
+ * l'essai (périmé au départ, profil refusé, retiré pendant) suit le chemin normal du retrait — tout ce qui a été lu avec
+ * part, essai compris, et le widget passe en `accord-requis`.
  */
 export async function executerEssai(o: OptionsRecolte & { origine: string; depart: string }): Promise<ResultatEssai> {
   const { id, widget, dossierWidgets } = o;
@@ -366,7 +388,12 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
   if (lu.t === "absent") return refus(ERREUR_SANS_WORKFLOW);
   if (lu.t !== "ok") return refus(lu.erreur);
   const { valide, declaration } = lu;
-  if (!(await accordEnRegle(dossierWidgets, id, declaration))) return refus(accordRequis(declaration));
+  const accord = await accordEnRegle(dossierWidgets, id, declaration);
+  if (!accord.peut) {
+    // Accord périmé retiré : le widget attend un nouvel accord. Jamais donné : rien n'est écrit.
+    if (accord.retire) await marquerAccordRequis(o, accordRequis(declaration));
+    return refus(accordRequis(declaration));
+  }
 
   const plan = planRejeu(valide, await lireExecution(dossierDonnees, o.origine), o.depart);
   if (!plan.ok) return refus(plan.erreur);
@@ -399,7 +426,9 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
   const retire = async () => {
     if (!(await accordRetireDe(dossierWidgets, id, declaration))) return null;
     await supprimerDonnees(dossierWidgets, id);
-    return refus(messageRefus(issue, declaration));
+    const erreur = messageRefus(issue, declaration);
+    await marquerAccordRequis(o, erreur);
+    return refus(erreur);
   };
   const avant = await retire();
   if (avant) return avant;

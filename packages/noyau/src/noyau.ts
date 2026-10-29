@@ -181,6 +181,7 @@ export interface Noyau {
   /**
    * Essai du constructeur : rejoue le workflow du widget depuis le bloc `depart`, avec les sorties amont de l'exécution
    * `origine`, dans la même file que les récoltes. N'écrit ni données, ni mémoire, ni état : seulement l'exécution d'essai.
+   * Exception : un accord perdu pendant l'essai suit le chemin normal du retrait (données effacées, `accord-requis`).
    */
   rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai>;
   /** L'exécution (ou l'essai) qui tourne, ses blocs au fil des traces, et les demandes en attente. */

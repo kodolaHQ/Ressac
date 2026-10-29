@@ -115,14 +115,15 @@ export class PlanificateurWidgets {
 
   /** Ce qui tourne en ce moment, et les demandes qui attendent leur tour. */
   direct(): EtatDirect {
-    return { courant: this.enDirect, enAttente: [...new Set(this.attente)] };
+    // Une copie : l'appelant ne voit pas bouger l'état suivi, et ne peut pas le modifier.
+    return structuredClone({ courant: this.enDirect, enAttente: [...new Set(this.attente)] });
   }
 
   /** Une erreur du rappel ne doit jamais arrêter une exécution. */
   private signalerDirect(): void {
     if (!this.o.surDirect) return;
     try {
-      this.o.surDirect(structuredClone(this.direct()));
+      this.o.surDirect(this.direct());
     } catch (e) {
       console.error("[webaios] suivi en direct :", e);
     }

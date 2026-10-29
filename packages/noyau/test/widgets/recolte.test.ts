@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -9,7 +9,7 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { lireAccueil } from "../../src/accueil/lire.js";
 import { Atelier, IMAGE } from "../../src/conteneur/atelier.js";
 import { DeclarationWidget, type WidgetLu } from "../../src/accueil/schemas.js";
-import { ecrireDonnees, lireEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
+import { ecrireDonnees, ecrireEtatWidget, lireEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
 import { IaLocale } from "../../src/ia/ia-locale.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
@@ -1029,6 +1029,67 @@ describe("executerEssai", () => {
     expect(appelsLecture(pont)).toHaveLength(1);
     expect(await instantane(ctx)).toEqual(avant);
     expect(existsSync(join(ctx.widget.dossier, "workflow.json"))).toBe(false);
+  });
+
+  it("accord périmé au départ d'un essai : accord retiré, données effacées, état accord-requis signalé, aucun conteneur", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
+    const etat = { statut: "ok" as const, derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+    await ecrireEtatWidget(ctx.dossierWidgets, "daily", etat);
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const surChange = vi.fn();
+    const r = await essai(ctx, "2026-10-27T08-00-00-000Z", "recolte", { surChange });
+    expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(ctx.commandes).toHaveLength(0);
+    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(existsSync(join(donneesDe(ctx), "donnees.json"))).toBe(false);
+    expect(await lireEtatWidget(ctx.dossierWidgets, "daily")).toEqual({
+      ...etat,
+      statut: "accord-requis",
+      erreur: "Accord requis pour lire avec ton compte : app.daily.dev",
+      erreurNoyau: true,
+    });
+    expect(surChange).toHaveBeenCalled();
+  });
+
+  it("profil refusé pendant l'essai : aucune exécution, accord retiré, état accord-requis", async () => {
+    const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const reel = await executerRecolte(optionsDe(ctx));
+    expect(reel.etat.statut).toBe("ok");
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    const surChange = vi.fn();
+    const r = await essai(ctx, reel.execution!, "recolte", { pont: pontLecture(["prive"]), surChange });
+    expect(r).toEqual({ ok: false, erreur: PROFIL_REFUSE });
+    expect(await listerExecutions(donneesDe(ctx))).toEqual([]);
+    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(existsSync(join(donneesDe(ctx), "donnees.json"))).toBe(false);
+    expect(await lireEtatWidget(ctx.dossierWidgets, "daily")).toMatchObject({
+      statut: "accord-requis",
+      erreur: PROFIL_REFUSE,
+      erreurNoyau: true,
+      derniereMaj: reel.etat.derniereMaj,
+      derniereTentative: reel.etat.derniereTentative,
+    });
+    expect(surChange).toHaveBeenCalled();
+  });
+
+  it("interrompu pendant l'essai : exécution -essai interrompue, ni données, ni mémoire, ni état touchés", async () => {
+    const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
+    await ecrireDonnees(ctx.dossierWidgets, "lent", { ancien: true });
+    await ecrireEtatWidget(ctx.dossierWidgets, "lent", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
+    const origine: Execution = {
+      version: 1, id: "2026-10-27T08-00-00-000Z", proprietaire: { type: "widget", id: "lent" }, declencheur: "planifiee",
+      debut: "2026-10-27T08:00:00.000Z", fin: "2026-10-27T08:00:01.000Z", statut: "reussie", blocs: [],
+    };
+    await ecrireExecution(donneesDe(ctx), origine);
+    const avant = await instantane(ctx);
+    const r = await essai(ctx, origine.id, "recolte", { delaiMs: 300, interrompue: () => true });
+    expect(r).toEqual({ ok: true, execution: idEssai(MAINTENANT.toISOString()), statut: "interrompue" });
+    const e = (await lireExecution(donneesDe(ctx), idEssai(MAINTENANT.toISOString())))!;
+    expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
+    expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
+    expect(await instantane(ctx)).toEqual(avant);
   });
 
   it("sans accord : un essai plus récent n'empêche pas la dernière exécution accord-requis de tenir lieu", async () => {
