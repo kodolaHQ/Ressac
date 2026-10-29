@@ -159,16 +159,83 @@ test("carte de test : posée au branchement, la réponse est notée à côté du
   await vi.waitFor(() => expect(readFileSync(`${chemin}.reponse`, "utf8")).toBe("true"));
 });
 
-test("une seule carte par clé : une deuxième demande rejoint la première et reçoit la même réponse", async () => {
+test("une demande identique rejoint la carte ouverte et reçoit la même réponse", async () => {
   const { service, posees } = avecQuestions();
   const premiere = service.demanderAccord(CARTE, {});
-  const seconde = service.demanderAccord({ ...CARTE, empreinte: "f".repeat(64) }, {});
+  const seconde = service.demanderAccord({ ...CARTE }, {});
   expect(posees).toHaveLength(1);
   posees[0]!.repondre("autoriser");
-  // La même réponse, avec l'empreinte de la carte montrée (la première).
   await expect(seconde).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
   await expect(premiere).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
   // Réglée : une nouvelle demande pose une nouvelle carte.
+  void service.demanderAccord(CARTE, {});
+  expect(posees).toHaveLength(2);
+});
+
+test("même clé, autre espace, autre portée, autre mise à jour ou autre renforcé : une carte à part, chacune sa réponse", async () => {
+  const { service, posees } = avecQuestions();
+  const premiere = service.demanderAccord(CARTE, {});
+  const autreEspace = service.demanderAccord({ ...CARTE, espaceId: "e3", espace: "Lecture" }, {});
+  const autrePortee = service.demanderAccord({ ...CARTE, empreinte: "f".repeat(64) }, {});
+  const autreMaj = service.demanderAccord({ ...CARTE, maj: { de: "1.0.0" } }, {});
+  const autreRenforce = service.demanderAccord({ ...CARTE, renforce: true }, {});
+  expect(posees).toHaveLength(5);
+  expect(posees.map((q) => q.champs.extension?.espaceId)).toEqual(["e1", "e3", "e1", "e1", "e1"]);
+  posees[1]!.repondre("autoriser");
+  await expect(autreEspace).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
+  posees[2]!.repondre("refuser");
+  await expect(autrePortee).resolves.toEqual({ accepte: false, empreinte: "f".repeat(64) });
+  // La première carte attend toujours l'utilisateur.
+  expect(posees[0]!.retiree).toBe(false);
+  posees[0]!.repondre("refuser");
+  await expect(premiere).resolves.toMatchObject({ accepte: false });
+  posees[3]!.repondre("autoriser");
+  posees[4]!.repondre("autoriser");
+  await expect(autreMaj).resolves.toMatchObject({ accepte: true });
+  await expect(autreRenforce).resolves.toMatchObject({ accepte: true });
+});
+
+test("une demande jointe garde son propre délai : elle seule tombe, la carte reste pour la première", async () => {
+  vi.useFakeTimers();
+  try {
+    const { service, posees } = avecQuestions();
+    const premiere = service.demanderAccord(CARTE, {});
+    const jointe = service.demanderAccord(CARTE, { delaiMs: 1000 });
+    expect(posees).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(jointe).resolves.toMatchObject({ accepte: false });
+    expect(posees[0]!.retiree).toBe(false);
+    posees[0]!.repondre("autoriser");
+    await expect(premiere).resolves.toMatchObject({ accepte: true });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("la première demande abandonnée pendant qu'une jointe attend : la carte reste, la jointe reçoit la réponse de l'utilisateur", async () => {
+  const { service, posees } = avecQuestions();
+  const controle = new AbortController();
+  const premiere = service.demanderAccord(CARTE, { signal: controle.signal });
+  const jointe = service.demanderAccord(CARTE, {});
+  controle.abort();
+  await expect(premiere).resolves.toMatchObject({ accepte: false });
+  expect(posees[0]!.retiree).toBe(false);
+  posees[0]!.repondre("autoriser");
+  await expect(jointe).resolves.toEqual({ accepte: true, empreinte: CARTE.empreinte });
+});
+
+test("toutes les demandes d'une carte abandonnées : la carte est retirée ; une nouvelle demande en pose une autre", async () => {
+  const { service, posees } = avecQuestions();
+  const a = new AbortController();
+  const b = new AbortController();
+  const premiere = service.demanderAccord(CARTE, { signal: a.signal });
+  const jointe = service.demanderAccord(CARTE, { signal: b.signal });
+  a.abort();
+  expect(posees[0]!.retiree).toBe(false);
+  b.abort();
+  await expect(premiere).resolves.toMatchObject({ accepte: false });
+  await expect(jointe).resolves.toMatchObject({ accepte: false });
+  expect(posees[0]!.retiree).toBe(true);
   void service.demanderAccord(CARTE, {});
   expect(posees).toHaveLength(2);
 });
