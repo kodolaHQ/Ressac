@@ -29,6 +29,10 @@ export interface WidgetTest {
   /** Contenu de `affichage.html`. */
   affichage?: string;
   exemple?: unknown;
+  /** Contenu de `workflow.json` (un objet, écrit en JSON ; une chaîne, écrite telle quelle : JSON coupé…). */
+  workflow?: unknown;
+  /** Autres fichiers du dossier (le code des blocs `code` : `extraire.mjs`…), par nom. */
+  fichiers?: Record<string, string>;
 }
 
 /** Écrit un widget dans `accueil/widgets/<id>/` (le code et l'affichage de l'agent ; ses données sont dans le profil). */
@@ -46,6 +50,9 @@ export function ecrireWidget(racine: string, id: string, w: WidgetTest): void {
   if (w.code !== undefined) writeFileSync(join(dossier, "recolte.mjs"), w.code);
   if (w.affichage !== undefined) writeFileSync(join(dossier, "affichage.html"), w.affichage);
   if (w.exemple !== undefined) writeFileSync(join(dossier, "exemple.json"), JSON.stringify(w.exemple));
+  if (w.workflow !== undefined)
+    writeFileSync(join(dossier, "workflow.json"), typeof w.workflow === "string" ? w.workflow : JSON.stringify(w.workflow));
+  for (const [nom, contenu] of Object.entries(w.fichiers ?? {})) writeFileSync(join(dossier, nom), contenu);
 }
 
 /** Données, état et accords d'un widget, rangés hors de l'espace : `<profil>/widgets/`. */

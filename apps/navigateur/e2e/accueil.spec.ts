@@ -1132,3 +1132,264 @@ test("tirer le bord gauche du panneau agent change sa largeur, retenue au procha
   await expect.poll(async () => Math.round((await second.fenetre.getByTestId("panneau-agent").boundingBox())!.width)).toBe(620);
   await second.fermer();
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Workflows des widgets (plan 8)
+
+/** Widget en workflow : la page de test, ses liens extraits par du code, triés par Kev, puis leurs textes. */
+function widgetVeille(racine: string): void {
+  ecrireWidget(racine, "veille", {
+    nom: "Veille",
+    recolte: { minutes: 60 },
+    config: { url: `${site.url}/liens` },
+    workflow: {
+      version: 1,
+      blocs: [
+        { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
+        { id: "liens", type: "code", nom: "Liens de la page", parametres: { source: "liens.mjs" } },
+        { id: "tri", type: "ia.trier", nom: "Tri par Kev", parametres: { question: "Parle d'IA ?", texte: "{texte}", seuil: 0.5 } },
+        { id: "textes", type: "code", parametres: { source: "textes.mjs" } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      ],
+      liens: [
+        { de: "page", vers: "liens" },
+        { de: "liens", vers: "tri" },
+        { de: "tri", vers: "textes" },
+        { de: "textes", vers: "sortie" },
+      ],
+    },
+    fichiers: {
+      "liens.mjs": "export default async (page) => page.liens;",
+      "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
+    },
+    affichage: AFFICHAGE,
+    exemple: { exemple: "veille" },
+  });
+}
+
+/** « Voir le workflow » par le menu du widget : la page s'ouvre dans un onglet « Workflow — <nom> ». */
+async function voirWorkflow(fenetre: Page, id: string): Promise<import("@playwright/test").Locator> {
+  const w = fenetre.getByTestId(`widget-${id}`);
+  await w.getByRole("button", { name: "Options du widget" }).click();
+  await w.getByRole("menuitem", { name: "Voir le workflow" }).click();
+  const page = fenetre.getByTestId("page-workflow");
+  await expect(page).toBeVisible();
+  return page;
+}
+
+/** Les lignes de la liste des exécutions (boutons), la plus récente en tête. */
+const lignesExecutions = (page: import("@playwright/test").Locator) => page.locator(".executions > li > button");
+
+/** Le bloc `id` dans le détail d'une exécution dépliée. */
+const blocExecution = (page: import("@playwright/test").Locator, id: string) =>
+  page.locator(".detail .blocs > li").filter({ has: page.page().locator(".ligne > b", { hasText: new RegExp(`^${id}$`) }) });
+
+test("un widget en workflow (source.page → code → ia.trier → code → sortie) se met à jour ; « Voir le workflow » montre ses blocs, et l'exécution bloc par bloc", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(donnees(fenetre, "veille")).toHaveText('{"exemple":"veille"}');
+  await recolter(fenetre, "veille");
+  await expect(donnees(fenetre, "veille")).toHaveText('{"liens":["Nouveau modèle IA"]}', { timeout: 20_000 });
+  expect(lireJson(join(dossierWidgets(profil), "veille", "donnees.json"))).toEqual({ liens: ["Nouveau modèle IA"] });
+  expect(readdirSync(join(dossierWidgets(profil), "veille", "executions"))).toHaveLength(1);
+
+  const page = await voirWorkflow(fenetre, "veille");
+  await expect(fenetre.locator(onglets)).toContainText(["Workflow — Veille"]);
+  await expect(page.locator("h1")).toHaveText("Veille");
+  // Les blocs, dans l'ordre d'exécution, avec leur type et ce qui les alimente.
+  const blocs = page.locator("section").first().locator(".blocs > li");
+  await expect(blocs.locator(".ligne > b")).toHaveText(["page", "Liens de la page", "Tri par Kev", "textes", "sortie"]);
+  await expect(blocs.locator(".ligne > code")).toHaveText(["source.page", "code", "ia.trier", "code", "sortie"]);
+  await expect(blocs.nth(2)).toContainText("← liens");
+  await expect(blocs.nth(2)).toContainText("1 élément à la dernière exécution");
+  // L'exécution, bloc par bloc.
+  await expect(lignesExecutions(page)).toHaveCount(1);
+  await expect(lignesExecutions(page).first()).toContainText("Manuelle");
+  await expect(lignesExecutions(page).first()).toContainText("Réussie");
+  await lignesExecutions(page).first().click();
+  await expect(page.locator(".detail .blocs > li .ligne > b")).toHaveText(["page", "liens", "tri", "textes", "sortie"]);
+  await expect(page.locator(".detail .blocs > li .ligne")).toContainText(["Réussi", "Réussi", "Réussi", "Réussi", "Réussi"]);
+  const tri = blocExecution(page, "tri");
+  await tri.locator("summary", { hasText: "Sortie" }).click();
+  await expect(tri.locator("pre")).toContainText("Nouveau modèle IA");
+  await expect(tri.locator("pre")).not.toContainText("Recette de cuisine");
+  // Avant le tri, les deux liens y étaient.
+  const liens = blocExecution(page, "liens");
+  await liens.locator("summary", { hasText: "Sortie" }).click();
+  await expect(liens.locator("pre")).toContainText("Recette de cuisine");
+  await fermer();
+});
+
+test("« Lancer maintenant » sur la page du workflow ajoute une exécution en tête de liste", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  // Sans état : récolté au lancement (planifiée).
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(donnees(fenetre, "veille")).toHaveText('{"liens":["Nouveau modèle IA"]}', { timeout: 20_000 });
+  const page = await voirWorkflow(fenetre, "veille");
+  await expect(lignesExecutions(page)).toHaveCount(1);
+  await expect(lignesExecutions(page).first()).toContainText("Planifiée");
+  const lancerMaintenant = page.getByRole("button", { name: "Lancer maintenant" });
+  await expect(lancerMaintenant).toBeEnabled();
+  await lancerMaintenant.click();
+  await expect(lignesExecutions(page)).toHaveCount(2, { timeout: 20_000 });
+  await expect(lignesExecutions(page).first()).toContainText("Manuelle");
+  await expect(lignesExecutions(page).first()).toContainText("Réussie", { timeout: 20_000 });
+  await expect(lignesExecutions(page).nth(1)).toContainText("Planifiée");
+  await expect(page.getByRole("button", { name: "Lancer maintenant" })).toBeEnabled();
+  expect(readdirSync(join(dossierWidgets(profil), "veille", "executions"))).toHaveLength(2);
+  await fermer();
+});
+
+test("un widget avec seulement recolte.mjs et un compte tourne comme avant ; sa page montre le workflow implicite", async () => {
+  const racine = nouvelleRacine();
+  widgetCompte(racine);
+  const profil = nouveauProfil();
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(fenetre.getByTestId("bandeau-accord")).toContainText("127.0.0.1");
+  await poserCookie(fenetre);
+  await fenetre.getByTestId("bandeau-accord").getByRole("button", { name: "Autoriser…" }).click();
+  await fenetre.getByTestId("carte-accord").getByRole("button", { name: "Autoriser" }).click();
+  await expect(donnees(fenetre, "compte")).toHaveText('{"vu":"essai=1"}', { timeout: 20_000 });
+  expect(lireJson(join(dossierWidgets(profil), "compte", "donnees.json"))).toEqual({ vu: "essai=1" });
+  expect(lireJson(join(dossierWidgets(profil), "compte", "etat.json")).statut).toBe("ok");
+
+  const page = await voirWorkflow(fenetre, "compte");
+  await expect(fenetre.locator(onglets)).toContainText(["Workflow — Compte"]);
+  await expect(page).toContainText("Workflow implicite (recolte.mjs).");
+  const blocs = page.locator("section").first().locator(".blocs > li");
+  await expect(blocs.locator(".ligne > b")).toHaveText(["recolte", "sortie"]);
+  await expect(blocs.locator(".ligne > code")).toHaveText(["code", "sortie"]);
+  await expect(blocs.first()).toContainText('"appel": "recolte"');
+  // Au lancement, sans accord, une exécution « accord requis » sans conteneur ; puis celle d'après l'accord.
+  await expect(lignesExecutions(page)).toHaveCount(2);
+  await expect(lignesExecutions(page).first()).toContainText("Réussie");
+  await expect(lignesExecutions(page).nth(1)).toContainText("Accord requis");
+  await lignesExecutions(page).first().click();
+  await expect(page.locator(".detail .blocs > li .ligne > b")).toHaveText(["recolte", "sortie"]);
+  const recolte = blocExecution(page, "recolte");
+  await recolte.locator("summary", { hasText: "Sortie" }).click();
+  await expect(recolte.locator("pre")).toContainText("essai=1");
+  await fermer();
+});
+
+test("refuser l'accord efface données, exécutions et mémoire", async () => {
+  const racine = nouvelleRacine();
+  widgetCompte(racine);
+  const profil = nouveauProfil();
+  // Ce qu'un accord passé a laissé : données, une exécution, la mémoire des blocs ; le widget attend un nouvel accord.
+  const dossier = join(dossierWidgets(profil), "compte");
+  mkdirSync(join(dossier, "executions"), { recursive: true });
+  const maintenant = new Date().toISOString();
+  ecrireEtatWidget(profil, "compte", {
+    statut: "accord-requis",
+    derniereMaj: maintenant,
+    derniereTentative: maintenant,
+    erreur: "Accord requis pour lire avec ton compte : 127.0.0.1",
+    erreurNoyau: true,
+  });
+  writeFileSync(join(dossier, "donnees.json"), JSON.stringify({ vu: "secret" }));
+  const id = maintenant.replace(/[:.]/g, "-");
+  writeFileSync(
+    join(dossier, "executions", `${id}.json`),
+    JSON.stringify({
+      version: 1,
+      id,
+      proprietaire: { type: "widget", id: "compte" },
+      declencheur: "planifiee",
+      debut: maintenant,
+      fin: maintenant,
+      statut: "reussie",
+      blocs: [],
+    }),
+  );
+  writeFileSync(join(dossier, "memoire.json"), JSON.stringify({ version: 1, blocs: { recolte: { type: "code", valeur: ["secret"] } } }));
+  // Le journal du site est partagé par les tests : seules les lectures d'après comptent.
+  const lectures = () => site.journal.filter((r) => r.chemin === "/lire-cookie?compte").length;
+  const lecturesAvant = lectures();
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const bandeau = fenetre.getByTestId("bandeau-accord");
+  await expect(bandeau).toContainText("127.0.0.1");
+  // Rien n'est effacé avant la réponse de l'utilisateur.
+  expect(existsSync(join(dossier, "donnees.json"))).toBe(true);
+  expect(existsSync(join(dossier, "memoire.json"))).toBe(true);
+  expect(readdirSync(join(dossier, "executions"))).toHaveLength(1);
+  await bandeau.getByRole("button", { name: "Refuser" }).click();
+  await expect(bandeau).toBeHidden();
+  await expect.poll(() => existsSync(join(dossier, "donnees.json"))).toBe(false);
+  await expect.poll(() => existsSync(join(dossier, "memoire.json"))).toBe(false);
+  await expect.poll(() => existsSync(join(dossier, "executions")) && readdirSync(join(dossier, "executions")).length).toBeFalsy();
+  expect(accords(profil)).toEqual({});
+  expect(lireJson(join(dossier, "etat.json")).statut).toBe("accord-requis");
+  await expect(donnees(fenetre, "compte")).toHaveText('{"exemple":"compte"}');
+  expect(lectures()).toBe(lecturesAvant);
+  await fermer();
+});
+
+test("un workflow.json invalide affiche « Workflow invalide : … » sur le widget ; les autres widgets se mettent à jour", async () => {
+  const racine = nouvelleRacine();
+  // Écrit à moitié par l'agent : JSON coupé.
+  ecrireWidget(racine, "casse", {
+    nom: "Cassé",
+    recolte: { minutes: 60 },
+    workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa',
+    affichage: AFFICHAGE,
+    exemple: { exemple: "casse" },
+  });
+  // Un cycle : refusé aussi, sans conteneur.
+  ecrireWidget(racine, "cycle", {
+    nom: "Cycle",
+    recolte: { minutes: 60 },
+    workflow: {
+      version: 1,
+      blocs: [
+        { id: "a", type: "liste.garder", parametres: { nombre: 1 } },
+        { id: "b", type: "liste.garder", parametres: { nombre: 1 } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      ],
+      liens: [
+        { de: "a", vers: "b" },
+        { de: "b", vers: "a" },
+        { de: "b", vers: "sortie" },
+      ],
+    },
+    affichage: AFFICHAGE,
+    exemple: { exemple: "cycle" },
+  });
+  ecrireWidget(racine, "bon", {
+    nom: "Bon",
+    recolte: { minutes: 60 },
+    code: "export default async () => ({ bon: true });",
+    affichage: AFFICHAGE,
+    exemple: { exemple: "bon" },
+  });
+  widgetVeille(racine);
+  ecrireDisposition(racine, [
+    { id: "casse", x: 0, y: 0, l: 4, h: 3 },
+    { id: "cycle", x: 4, y: 0, l: 4, h: 3 },
+    { id: "bon", x: 8, y: 0, l: 4, h: 3 },
+    { id: "veille", x: 0, y: 3, l: 4, h: 3 },
+  ]);
+  const profil = nouveauProfil();
+  // Données d'une récolte passée : un workflow invalide ne les efface pas.
+  mkdirSync(join(dossierWidgets(profil), "casse"), { recursive: true });
+  writeFileSync(join(dossierWidgets(profil), "casse", "donnees.json"), JSON.stringify({ ancien: true }));
+  // Sans état : tous récoltés au lancement.
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(donnees(fenetre, "bon")).toHaveText('{"bon":true}', { timeout: 20_000 });
+  await expect(donnees(fenetre, "veille")).toHaveText('{"liens":["Nouveau modèle IA"]}', { timeout: 20_000 });
+  await expect(fenetre.getByTestId("widget-casse")).toContainText("Workflow invalide : ", { timeout: 20_000 });
+  await expect(fenetre.getByTestId("widget-cycle")).toContainText("Workflow invalide : ", { timeout: 20_000 });
+  await expect(donnees(fenetre, "casse")).toHaveText('{"ancien":true}');
+  expect(lireJson(join(dossierWidgets(profil), "casse", "donnees.json"))).toEqual({ ancien: true });
+  expect(lireJson(join(dossierWidgets(profil), "casse", "etat.json")).erreur).toMatch(/^Workflow invalide : /);
+  // La page du workflow le dit aussi, et ne propose pas de le lancer.
+  const page = await voirWorkflow(fenetre, "cycle");
+  await expect(page.getByTestId("workflow-invalide")).toContainText("Workflow invalide : ");
+  await expect(page.getByRole("button", { name: "Lancer maintenant" })).toBeDisabled();
+  await fermer();
+});
