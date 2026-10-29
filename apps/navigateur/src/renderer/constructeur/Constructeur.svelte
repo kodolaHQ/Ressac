@@ -5,10 +5,13 @@
   import type { CatalogueBloc } from "@webaios/noyau";
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
+  import ApercuWidget from "./ApercuWidget.svelte";
+  import BarreExecutions from "./BarreExecutions.svelte";
   import Canevas from "./Canevas.svelte";
   import { confirmerChangementDeBloc, garderAvantFermeture } from "./codes.svelte";
   import { creerEdition, suivreDisparitions } from "./edition.svelte";
   import { Executions } from "./executions.svelte";
+  import ListeExecutions from "./ListeExecutions.svelte";
   import OngletBloc from "./OngletBloc.svelte";
   import Palette from "./Palette.svelte";
   import { pastillesDe } from "./pastilles";
@@ -22,18 +25,23 @@
   suivreDisparitions(api.accueil);
   garderAvantFermeture();
   // svelte-ignore state_referenced_locally
-  const executions = new Executions(id, api.accueil);
+  const executions = new Executions(id, api.accueil, api.workflow);
   let catalogue = $state.raw<CatalogueBloc[]>([]);
   const parType = $derived(new Map(catalogue.map((c) => [c.type, c])));
-  /** Éléments et statut de chaque bloc à l'exécution choisie (par défaut la dernière vraie, pas un essai). */
-  const pastilles = $derived(pastillesDe(executions.choisie, null));
+  /**
+   * Éléments et statut de chaque bloc à l'exécution choisie (par défaut la dernière vraie, pas un essai), remplacés au
+   * fil des traces par ceux de l'exécution de ce widget qui tourne.
+   */
+  const pastilles = $derived(pastillesDe(executions.choisie, executions.enDirect));
   /** Le bloc affiché dans l'onglet « Bloc ». */
   let selection = $state<string | null>(null);
   let canevas = $state<ReturnType<typeof Canevas>>();
-  let lancement = $state(false);
+  let vue = $state<"workflow" | "executions">("workflow");
+  let apercuOuvert = $state(false);
 
   const nom = $derived(edition.widget?.nom ?? id);
   const aSortie = $derived(edition.brouillon?.blocs.some((b) => b.type === "sortie") ?? false);
+  const idSortie = $derived(edition.brouillon?.blocs.find((b) => b.type === "sortie")?.id);
   const etat = $derived.by(() => {
     const e = edition.etatEnregistrement;
     if (e === "enregistre") return "Enregistré";
@@ -63,12 +71,14 @@
     void api.workflow.catalogue().then((c) => (catalogue = c));
     void edition.ouvrir();
     chargerExecutions();
+    const finDirect = executions.suivre();
     const fin = api.accueil.surChange(() => {
       void edition.relire();
       chargerExecutions();
     });
     return () => {
       fin();
+      finDirect();
       api.workflow.selection(id, null);
     };
   }));
@@ -90,15 +100,7 @@
     void edition.ajouter(c, p);
   }
 
-  async function lancer(): Promise<void> {
-    lancement = true;
-    try {
-      await api.workflow.lancer(id);
-    } finally {
-      lancement = false;
-      chargerExecutions();
-    }
-  }
+  const lancer = () => void executions.lancer().catch(() => {});
 
   function reorganiser(): void {
     edition.reorganiser();
@@ -112,17 +114,19 @@
   <header>
     <h1>{nom}</h1>
     <div class="onglets" role="tablist">
-      <button role="tab" aria-selected="true" class="actif">Workflow</button>
-      <button role="tab" aria-selected="false" disabled>Exécutions</button>
+      <button role="tab" aria-selected={vue === "workflow"} class:actif={vue === "workflow"} onclick={() => (vue = "workflow")}>Workflow</button>
+      <button role="tab" data-testid="vue-executions" aria-selected={vue === "executions"} class:actif={vue === "executions"} onclick={() => (vue = "executions")}
+        >Exécutions</button
+      >
     </div>
     <span class="etat" class:invalide={edition.etatEnregistrement !== "enregistre" && edition.etatEnregistrement !== "en-cours"} data-testid="etat-enregistrement"
       >{etat}</span
     >
     <div class="actions">
-      <button disabled>Aperçu du widget</button>
+      <button data-testid="bouton-apercu" aria-pressed={apercuOuvert} onclick={() => (apercuOuvert = !apercuOuvert)}>Aperçu du widget</button>
       <button data-testid="reorganiser" disabled={!edition.brouillon} onclick={reorganiser}>Réorganiser</button>
-      <button class="lancer" data-testid="lancer" disabled={!edition.disqueValide || lancement} onclick={lancer}>
-        {lancement ? "Exécution…" : "▶ Lancer"}
+      <button class="lancer" data-testid="lancer" disabled={!edition.disqueValide || executions.occupe} onclick={lancer}>
+        {executions.occupe ? "Exécution…" : "▶ Lancer"}
       </button>
     </div>
   </header>
@@ -149,15 +153,19 @@
   {:else}
     <SvelteFlowProvider>
       <div class="corps">
+        {#if vue === "executions"}<ListeExecutions {executions} onchoisie={() => (vue = "workflow")} />{/if}
         <Palette {catalogue} {aSortie} onajouter={(type) => ajouter(type)} />
-        <Canevas
-          bind:this={canevas}
-          {edition}
-          catalogue={parType}
-          {pastilles}
-          onselection={selectionner}
-          onajouter={(type, p) => ajouter(type, p)}
-        />
+        <div class="zone-canevas">
+          <Canevas
+            bind:this={canevas}
+            {edition}
+            catalogue={parType}
+            {pastilles}
+            onselection={selectionner}
+            onajouter={(type, p) => ajouter(type, p)}
+          />
+          {#if apercuOuvert}<ApercuWidget {id} {executions} />{/if}
+        </div>
         <aside class="droite" aria-label="Bloc">
           <div class="onglets-droite" role="tablist">
             <button role="tab" aria-selected="true" class="actif">Bloc</button>
@@ -165,6 +173,9 @@
           <OngletBloc widget={id} {edition} {executions} catalogue={parType} {selection} />
         </aside>
       </div>
+      {#if vue === "workflow"}
+        <BarreExecutions {executions} {selection} sortie={idSortie} rejouable={edition.disqueValide && edition.etatEnregistrement !== "en-cours"} />
+      {/if}
     </SvelteFlowProvider>
   {/if}
 </div>
@@ -185,7 +196,8 @@
   .actions .lancer { border-color: var(--accent); background: var(--accent); color: white; }
   .bandeau { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--fond-actif); font-size: 13px; }
   .bandeau span { flex: 1; }
-  .corps { flex: 1; display: flex; min-height: 0; }
+  .corps { position: relative; flex: 1; display: flex; min-height: 0; }
+  .zone-canevas { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
   .droite { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--bord); background: var(--fond-barre); }
   .onglets-droite { display: flex; gap: 2px; padding: 8px 12px 0; }
   .onglets-droite button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--texte-doux); }

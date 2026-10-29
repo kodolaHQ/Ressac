@@ -23,11 +23,12 @@
 
   const trace = $derived(execution?.id === choisie?.id ? execution?.blocs.find((b) => b.id === bloc) : undefined);
   /**
-   * La sortie n'est mise en forme qu'une fois le repli ouvert (elle peut peser 256 Ko) : la trace dont le repli est
-   * ouvert. Une autre exécution recrée un repli fermé, sans JSON.
+   * La sortie n'est mise en forme qu'une fois le repli ouvert (elle peut peser 256 Ko) : le repli ouvert, par exécution et
+   * par bloc. Une autre exécution recrée un repli fermé, sans JSON ; la même exécution relue (finie entre-temps) le garde.
    */
-  let ouverteSur = $state.raw<object | null>(null);
-  const ouverte = $derived(trace !== undefined && ouverteSur === trace);
+  const cle = $derived(trace && execution ? `${execution.id}/${trace.id}` : null);
+  let ouverteSur = $state<string | null>(null);
+  const ouverte = $derived(cle !== null && ouverteSur === cle);
   const json = $derived(ouverte && trace && trace.sortie !== undefined ? JSON.stringify(trace.sortie, null, 2) : "");
 
   function duree(debut: string | null, fin: string | null): string | null {
@@ -70,8 +71,8 @@
         </details>
       {/if}
       {#if trace.sortie !== undefined || trace.sortieTronquee}
-        {#key trace}
-          <details data-testid="sortie-repliable" ontoggle={(e) => (ouverteSur = e.currentTarget.open ? trace : null)}>
+        {#key cle}
+          <details data-testid="sortie-repliable" open={ouverte} ontoggle={(e) => (ouverteSur = e.currentTarget.open ? cle : null)}>
             <summary>Sortie{trace.sortieTronquee ? " (tronquée)" : ""}</summary>
             {#if ouverte}<pre data-testid="sortie-json">{json}</pre>{/if}
           </details>

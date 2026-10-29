@@ -3,6 +3,7 @@ import type { ApiWebaios, EditionWorkflow } from "../../commun/api";
 import { MODELE_CODE, parametresNeufs } from "./ajout";
 import { ajouterBloc, deplacer, Historique, memeBrouillon, suivreFichier, versBrouillon, type Brouillon } from "./brouillon";
 import { disposer, positionsAffichees, sansDisposition } from "./disposition";
+import { oublierChoixExecutions } from "./executions.svelte";
 
 type Position = { x: number; y: number };
 export type Validation = { ok: true } | { ok: false; erreur: string; bloc?: string };
@@ -355,6 +356,7 @@ const editions = new Map<string, Edition>();
 export function oublierEditions(presents: Iterable<string>): void {
   const ids = new Set(presents);
   for (const id of [...editions.keys()]) if (!ids.has(id)) editions.delete(id);
+  oublierChoixExecutions(ids);
 }
 
 let suivi = false;

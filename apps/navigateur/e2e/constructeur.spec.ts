@@ -27,11 +27,14 @@ async function ecouter(gerer: (req: IncomingMessage, res: ServerResponse) => voi
 }
 
 let site: Serveur;
+/** Journal du faux site : nombre de pages servies. */
+let lecturesSite = 0;
 let kev: Serveur;
 let ollama: Serveur;
 
 test.beforeAll(async () => {
   site = await ecouter((_req, res) => {
+    lecturesSite++;
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(
       '<title>Liens</title><a href="https://exemple.invalid/ia">Nouveau modèle IA</a> <a href="https://exemple.invalid/cuisine">Recette de cuisine</a>',
@@ -105,11 +108,11 @@ const dossierVeille = (racine: string) => join(racine, "accueil", "widgets", "ve
 /** Ce que le constructeur a pu écrire dans le dossier du widget : noms et dates de modification. */
 const instantane = (dossier: string) => readdirSync(dossier).map((f) => `${f}:${statSync(join(dossier, f)).mtimeMs}`).sort();
 
-/** « Voir le workflow » par le menu du widget : le constructeur s'ouvre dans un onglet. */
+/** « Voir / modifier le workflow » par le menu du widget : le constructeur s'ouvre dans un onglet. */
 async function ouvrirConstructeur(fenetre: Page, id: string): Promise<Locator> {
   const w = fenetre.getByTestId(`widget-${id}`);
   await w.getByRole("button", { name: "Options du widget" }).click();
-  await w.getByRole("menuitem", { name: "Voir le workflow" }).click();
+  await w.getByRole("menuitem", { name: "Voir / modifier le workflow" }).click();
   const page = fenetre.getByTestId("constructeur");
   await expect(page).toBeVisible();
   return page;
@@ -715,5 +718,184 @@ test("une sortie qui contient <img src=x onerror=…> s'affiche en texte", async
   expect(await fenetre.locator("img").count()).toBe(images);
   expect(await fenetre.locator('img[src="x"]').count()).toBe(0);
   expect(await fenetre.evaluate(() => (window as unknown as { piege?: number }).piege)).toBeUndefined();
+  await fermer();
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Exécutions, « ▶ Lancer », « Rejouer depuis ce bloc » et aperçu (tâche 11).
+
+/** Le dernier bloc de code attend un peu : de quoi voir les pastilles « en cours » et les boutons grisés. */
+function widgetVeilleLent(racine: string): void {
+  widgetVeille(racine);
+  writeFileSync(
+    join(dossierVeille(racine), "textes.mjs"),
+    "export default async (liens) => { await new Promise((r) => setTimeout(r, 2500)); return { liens: liens.map((l) => l.texte) }; };",
+  );
+}
+const dossierExecutionsDe = (profil: string) => join(dossierWidgets(profil), "veille", "executions");
+const apercu = (fenetre: Page) => fenetre.frameLocator('[data-testid="apercu-widget"] iframe').locator("#donnees");
+/** Le contenu d'un fichier du widget hors de l'espace (données, mémoire, état), ou null s'il n'existe pas. */
+const contenu = (chemin: string) => (existsSync(chemin) ? readFileSync(chemin, "utf8") : null);
+
+test("▶ Lancer : pastilles en cours puis éléments par bloc, nouvelle exécution choisie, aperçu à jour", async () => {
+  const racine = nouvelleRacine();
+  widgetVeilleLent(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const erreurs = erreursConsole(fenetre);
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId("noeud-textes")).toBeVisible();
+  // Aucune exécution : l'aperçu montre l'exemple, comme l'accueil.
+  await fenetre.getByTestId("bouton-apercu").click();
+  await expect(apercu(fenetre)).toHaveText('{"exemple":"veille"}');
+  await expect(fenetre.getByTestId("apercu-mention")).toHaveCount(0);
+
+  await fenetre.getByTestId("lancer").click();
+  await expect(fenetre.getByTestId("pastille-textes")).toHaveClass(/en-cours/, { timeout: 20_000 });
+  await expect(fenetre.getByTestId("pastille-liens")).toHaveText("2");
+  await expect(fenetre.getByTestId("lancer")).toBeDisabled();
+  await expect(fenetre.getByTestId("pastille-textes")).toHaveClass(/ok/, { timeout: 20_000 });
+  await expect(fenetre.getByTestId("pastille-tri")).toHaveText("1");
+  await expect(fenetre.getByTestId("lancer")).toBeEnabled();
+  const [id] = readdirSync(dossierExecutionsDe(profil)).map((f) => f.replace(/\.json$/, ""));
+  await expect(fenetre.getByTestId(`execution-${id}`)).toHaveAttribute("aria-pressed", "true");
+  await expect(fenetre.getByTestId(`execution-${id}`)).toContainText("Manuelle");
+  await expect(fenetre.getByTestId(`execution-${id}`)).toContainText("Réussie");
+  await expect(apercu(fenetre)).toHaveText('{"liens":["Nouveau modèle IA"]}');
+  expect(erreurs).toEqual([]);
+  await fermer();
+});
+
+test("Rejouer depuis tri après avoir changé le seuil : essai marqué, page non relue, données, mémoire et état inchangés, aperçu de l'essai", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  // Sans état : récolté au lancement (une vraie exécution, la page lue une fois).
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(donnees(fenetre, "veille")).toHaveText('{"liens":["Nouveau modèle IA"]}', { timeout: 20_000 });
+  const dossier = join(dossierWidgets(profil), "veille");
+  const [origine] = readdirSync(dossierExecutionsDe(profil)).map((f) => f.replace(/\.json$/, ""));
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId(`execution-${origine}`)).toHaveAttribute("aria-pressed", "true");
+  // Rien de sélectionné : rien à rejouer.
+  await expect(fenetre.getByTestId("rejouer")).toBeDisabled();
+
+  await fenetre.getByTestId("noeud-tri").click();
+  const seuil = fenetre.getByTestId("volet-bloc").getByTestId("champ-seuil");
+  await seuil.fill("0.05");
+  await seuil.press("Enter");
+  await expect.poll(() => seuilDe(join(dossierVeille(racine), "workflow.json"))).toBe(0.05);
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  const avant = {
+    donnees: contenu(join(dossier, "donnees.json")),
+    memoire: contenu(join(dossier, "memoire.json")),
+    etat: contenu(join(dossier, "etat.json")),
+  };
+  expect(avant.donnees).not.toBeNull();
+  const lectures = lecturesSite;
+
+  await fenetre.getByTestId("rejouer").click();
+  await expect.poll(() => readdirSync(dossierExecutionsDe(profil)).length, { timeout: 20_000 }).toBe(2);
+  const essai = readdirSync(dossierExecutionsDe(profil)).find((f) => f.includes("-essai"))!.replace(/\.json$/, "");
+  const bouton = fenetre.getByTestId(`execution-${essai}`);
+  await expect(bouton).toContainText("essai");
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await expect(fenetre.getByTestId("refus-rejeu")).toHaveCount(0);
+  await expect(fenetre.getByTestId("pastille-liens")).toHaveClass(/neutre/);
+  await expect(fenetre.getByTestId("pastille-tri")).toHaveText("2");
+  await fenetre.getByTestId("bouton-apercu").click();
+  await expect(apercu(fenetre)).toHaveText('{"liens":["Nouveau modèle IA","Recette de cuisine"]}');
+  await expect(fenetre.getByTestId("apercu-mention")).toHaveCount(0);
+
+  // La page n'a pas été relue ; ni les données, ni la mémoire, ni l'état du widget n'ont bougé.
+  expect(lecturesSite).toBe(lectures);
+  expect(contenu(join(dossier, "donnees.json"))).toBe(avant.donnees);
+  expect(contenu(join(dossier, "memoire.json"))).toBe(avant.memoire);
+  expect(contenu(join(dossier, "etat.json"))).toBe(avant.etat);
+
+  // L'onglet « Exécutions » : toutes, l'essai marqué avec son bloc de départ ; en choisir une revient au canevas.
+  await fenetre.getByTestId("vue-executions").click();
+  const liste = fenetre.getByTestId("liste-executions");
+  await expect(liste.getByTestId(`execution-${essai}`)).toContainText("essai depuis « tri »");
+  await expect(liste.getByTestId(`execution-${origine}`)).toContainText("Planifiée");
+  await liste.getByTestId(`execution-${origine}`).click();
+  await expect(liste).toHaveCount(0);
+  await expect(fenetre.getByTestId(`execution-${origine}`)).toHaveAttribute("aria-pressed", "true");
+  await expect(apercu(fenetre)).toHaveText('{"liens":["Nouveau modèle IA"]}');
+  await fermer();
+});
+
+test("Rejouer depuis un bloc dont la sortie amont est tronquée : message « Rejeu impossible : … tronquée … », aucune exécution ajoutée", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const debut = "2026-10-29T10:00:00.000Z";
+  const id = "2026-10-29T10-00-00-000Z";
+  const trace = (bloc: string, type: string, champs: Record<string, unknown>) => ({
+    id: bloc,
+    type,
+    statut: "reussi",
+    debut,
+    fin: "2026-10-29T10:00:01.000Z",
+    elements: null,
+    journal: [],
+    ...champs,
+  });
+  mkdirSync(dossierExecutionsDe(profil), { recursive: true });
+  writeFileSync(
+    join(dossierExecutionsDe(profil), `${id}.json`),
+    JSON.stringify({
+      version: 1,
+      id,
+      proprietaire: { type: "widget", id: "veille" },
+      declencheur: "planifiee",
+      debut,
+      fin: "2026-10-29T10:00:02.000Z",
+      statut: "reussie",
+      blocs: [
+        trace("page", "source.page", { sortie: { titre: "Liens" } }),
+        trace("liens", "code", { elements: 2, sortie: '[{"texte":"Nouveau', sortieTronquee: true }),
+        trace("tri", "ia.trier", { elements: 1, sortie: [] }),
+        trace("textes", "code", { sortie: { liens: [] } }),
+        trace("sortie", "sortie", { sortie: { liens: [] } }),
+      ],
+    }),
+  );
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId(`execution-${id}`)).toHaveAttribute("aria-pressed", "true");
+  await fenetre.getByTestId("noeud-tri").click();
+  await fenetre.getByTestId("rejouer").click();
+  await expect(fenetre.getByTestId("refus-rejeu")).toHaveText("Rejeu impossible : la sortie de « liens » a été tronquée dans cette exécution");
+  await attendre(500);
+  expect(readdirSync(dossierExecutionsDe(profil))).toEqual([`${id}.json`]);
+  await expect(fenetre.getByTestId("rejouer")).toBeEnabled();
+  await fermer();
+});
+
+test("pendant une exécution, Lancer et Rejouer sont grisés", async () => {
+  const racine = nouvelleRacine();
+  widgetVeilleLent(racine);
+  const profil = nouveauProfil();
+  // Sans état : récolté au lancement, il a une exécution à rejouer.
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(donnees(fenetre, "veille")).toHaveText('{"liens":["Nouveau modèle IA"]}', { timeout: 20_000 });
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("noeud-tri").click();
+  await expect(fenetre.getByTestId("rejouer")).toBeEnabled();
+  await expect(fenetre.getByTestId("lancer")).toBeEnabled();
+
+  // Une exécution lancée d'ailleurs (l'agent, l'accueil) : le constructeur la voit en direct.
+  await fenetre.evaluate(() => (window as unknown as { webaios: { accueil: { recolter(id: string): void } } }).webaios.accueil.recolter("veille"));
+  await expect(fenetre.getByTestId("lancer")).toBeDisabled();
+  await expect(fenetre.getByTestId("rejouer")).toBeDisabled();
+  await expect(fenetre.getByTestId("pastille-textes")).toHaveClass(/en-cours/, { timeout: 20_000 });
+  // À la fin, la vue se recale sur l'exécution écrite : plus de pastille « en cours ».
+  await expect(fenetre.getByTestId("lancer")).toBeEnabled({ timeout: 20_000 });
+  await expect(fenetre.getByTestId("rejouer")).toBeEnabled();
+  await expect(fenetre.getByTestId("pastille-textes")).toHaveClass(/ok/);
+  await expect(fenetre.getByTestId("pastille-tri")).toHaveText("1");
   await fermer();
 });
