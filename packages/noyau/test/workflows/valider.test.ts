@@ -84,6 +84,15 @@ test("des paramètres invalides sont nommés par l'id du bloc", () => {
   expect(refus(wf([{ id: "tri", type: "ia.trier", parametres: { texte: "t" } }, sortie()]))).toMatch(/tri\.question/);
 });
 
+test("source.page : defiler entier de 0 à 20, facultatif et sans défaut (l'empreinte d'un bloc existant ne change pas)", () => {
+  const page = (parametres: object) => wf([{ id: "p", type: "source.page", parametres: { url: "https://a.fr/", ...parametres } }, sortie()], [{ de: "p", vers: "s" }]);
+  for (const defiler of [21, -1, 1.5, "8"]) expect(refus(page({ defiler }))).toMatch(/^Workflow invalide : p\.defiler : /);
+  const r = validerWorkflow(page({ defiler: 8 }));
+  expect(r.ok && r.valide.workflow.blocs[0]!.parametres.defiler).toBe(8);
+  const sans = validerWorkflow(page({}));
+  expect(sans.ok && sans.valide.workflow.blocs[0]!.parametres).not.toHaveProperty("defiler");
+});
+
 test("un fichier de bloc code hors du dossier est refusé", () => {
   for (const source of ["../x.mjs", "/etc/x.mjs", "x.js", "a/b.mjs"]) {
     expect(refus(wf([{ id: "c", type: "code", parametres: { source } }, sortie()]))).toMatch(/^Workflow invalide : c\.source : /);

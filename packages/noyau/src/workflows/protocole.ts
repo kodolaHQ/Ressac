@@ -69,7 +69,9 @@ export const MessageNoyau = z.union([
 export type MessageNoyau = z.infer<typeof MessageNoyau>;
 
 /** Arguments des appels, selon la fonction. */
-export const ArgsLirePage = z.object({ url: z.string(), compte: z.boolean().optional() });
+/** Au plus 20 écrans défilés par une lecture de page (`defiler`). */
+export const DEFILER_MAX = 20;
+export const ArgsLirePage = z.object({ url: z.string(), compte: z.boolean().optional(), defiler: z.number().int().min(0).max(DEFILER_MAX).optional() });
 export const ArgsRecuperer = z.object({ url: z.string(), format: z.enum(["texte", "json"]).optional() });
 export const ArgsKev = z.object({ state: z.string(), questions: z.record(z.string(), z.unknown()) });
 /** Recherche web faite par le noyau ; réponse : `{ titre, url, extrait }[]`, au plus `nombre`. */

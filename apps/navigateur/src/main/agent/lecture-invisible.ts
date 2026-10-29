@@ -1,5 +1,5 @@
 import { BrowserWindow, session, type Session, type WebContents } from "electron";
-import { adresseLocale, ProfilRefuse, siteMenage, type ChangerHote, type PageLue } from "@webaios/noyau";
+import { adresseLocale, ProfilRefuse, siteMenage, type ChangerHote, type OptionsLecturePage, type PageLue } from "@webaios/noyau";
 import type { EtatNavigateur, IdProfil } from "../../commun/modele";
 import { marquerInvisible } from "../contenus-invisibles";
 
@@ -14,6 +14,13 @@ const MARGE_LECTURE_FORCEE_MS = 4_000;
 const CALME_MS = 2_000;
 const MAX_TEXTE = 20_000;
 const MAX_LIENS = 400;
+/** Avec `defiler` : une page défilée montre plus d'éléments, d'où des plafonds plus hauts. */
+const MAX_TEXTE_DEFILEE = 100_000;
+const MAX_LIENS_DEFILEE = 1_000;
+/** Après un défilement : 1 s sans croissance de la page ni chargement en cours, hauteur relevée toutes les 250 ms. */
+const CALME_DEFILEMENT_MS = 1_000;
+const RELEVE_MS = 250;
+const DEFILER_MAX = 20;
 /** Au plus 2 Mo de HTML rendus par `lireHtmlInvisible`. */
 export const HTML_MAX = 2 * 1024 * 1024;
 const LECTURES_SIMULTANEES = 2;
@@ -181,7 +188,7 @@ interface Lecture<T> {
  */
 async function lireFenetre<T>(
   url: string,
-  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote },
+  o: OptionsLecturePage,
   deps: DepsLecture,
   lecture: Lecture<T>,
 ): Promise<T> {
@@ -221,7 +228,7 @@ async function lireFenetre<T>(
       try {
         await jusquAuSignal(neutraliserImpression(f.webContents), signal);
         echeance ??= Date.now() + DELAI_TOTAL_MS;
-        const page = await lireDans(f.webContents, cible, permise, lecture, echeance, signal, o.changerHote);
+        const page = await lireDans(f.webContents, cible, permise, lecture, echeance, signal, o.changerHote, ecrans(o.defiler));
         // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
         verifierProfil();
         return page;
@@ -274,12 +281,17 @@ function jusquAEcheance<T>(p: Promise<T>, echeance: number, signal?: AbortSignal
  * Avec `changerHote` (lecture ménagée), une navigation du cadre principal vers un autre site est retenue jusqu'à ce que
  * le ménagement de ce site le permette, puis reprise.
  */
-export function lirePageInvisible(
-  url: string,
-  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote },
-  deps: DepsLecture,
-): Promise<PageLue> {
-  return lireFenetre(url, o, deps, { script: LECTURE, forme: (u, brut) => mettreEnForme(u, (brut ?? { titre: "", texte: "", liens: [] }) as PartiesLues) });
+export function lirePageInvisible(url: string, o: OptionsLecturePage, deps: DepsLecture): Promise<PageLue> {
+  const bornes = ecrans(o.defiler) > 0 ? { texte: MAX_TEXTE_DEFILEE, liens: MAX_LIENS_DEFILEE } : { texte: MAX_TEXTE, liens: MAX_LIENS };
+  return lireFenetre(url, o, deps, {
+    script: lecturePage(bornes),
+    forme: (u, brut) => mettreEnForme(u, (brut ?? { titre: "", texte: "", liens: [] }) as PartiesLues, bornes),
+  });
+}
+
+/** Le nombre d'écrans à faire défiler : un entier de 0 à 20 (toute autre valeur : 0, la lecture d'avant). */
+function ecrans(defiler: unknown): number {
+  return typeof defiler === "number" && Number.isInteger(defiler) && defiler > 0 ? Math.min(defiler, DEFILER_MAX) : 0;
 }
 
 /**
@@ -304,36 +316,60 @@ interface PartiesLues {
   liens: unknown;
 }
 
+interface Bornes {
+  texte: number;
+  liens: number;
+}
+
 /** Lu dans le monde isolé 999 : la page ne peut ni remplacer ces fonctions ni falsifier le résultat. */
-const LECTURE = `(() => {
+const lecturePage = (b: Bornes) => `(() => {
   const vus = new Set();
   const liens = [];
   for (const a of document.querySelectorAll("a[href]")) {
-    if (liens.length >= ${MAX_LIENS}) break;
+    if (liens.length >= ${b.liens}) break;
     const url = a.href;
     if (typeof url !== "string" || !/^https?:/i.test(url) || vus.has(url)) continue;
     vus.add(url);
     liens.push({ texte: (a.innerText || a.textContent || "").replace(/\\s+/g, " ").trim(), url });
   }
-  return { titre: document.title, texte: (document.body?.innerText ?? "").slice(0, ${MAX_TEXTE}), liens };
+  return { titre: document.title, texte: (document.body?.innerText ?? "").slice(0, ${b.texte}), liens };
+})()`;
+
+/**
+ * Dans le monde isolé 999 : la hauteur de la page avant de défiler, puis un défilement d'un écran. Jamais de clic, de
+ * frappe ni de focus ; la page voit un défilement ordinaire (événement `scroll`, IntersectionObserver).
+ */
+const DEFILEMENT = `(() => {
+  const el = document.scrollingElement || document.documentElement;
+  const hauteur = el ? el.scrollHeight : 0;
+  const ecran = window.innerHeight || 900;
+  if (el) el.scrollBy(0, ecran); else window.scrollBy(0, ecran);
+  return { hauteur };
+})()`;
+
+/** Dans le monde isolé 999 : la hauteur de la page, et si le bas de l'écran l'atteint. */
+const MESURE = `(() => {
+  const el = document.scrollingElement || document.documentElement;
+  if (!el) return { hauteur: 0, bas: true };
+  return { hauteur: el.scrollHeight, bas: el.scrollTop + (window.innerHeight || el.clientHeight) >= el.scrollHeight - 2 };
 })()`;
 
 /** Le HTML entier de la page, lu dans le monde isolé 999. */
 const LECTURE_HTML = `(() => document.documentElement.outerHTML)()`;
 
 /** Remet en forme ce que le script a lu : la page a pu tout influencer, sauf les types et les bornes. */
-function mettreEnForme(url: string, p: PartiesLues): PageLue {
+function mettreEnForme(url: string, p: PartiesLues, b: Bornes): PageLue {
   const liens: PageLue["liens"] = [];
   const vus = new Set<string>();
   for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
-    if (liens.length >= MAX_LIENS) break;
+    if (liens.length >= b.liens) break;
     const brut = (l as { url?: unknown; texte?: unknown } | null) ?? {};
     const lien = typeof brut.url === "string" ? brut.url : "";
     if (!/^https?:\/\//i.test(lien) || vus.has(lien)) continue;
     vus.add(lien);
     liens.push({ texte: String(brut.texte ?? "").replace(/\s+/g, " ").trim(), url: lien });
   }
-  return { url, titre: String(p.titre ?? ""), texte: String(p.texte ?? "").slice(0, MAX_TEXTE), liens };
+  return { url, titre: String(p.titre ?? ""), texte: String(p.texte ?? "").slice(0, b.texte), liens };
 }
 
 /** Rend `window.print` inopérant : sinon il suspend la page en attendant un panneau d'impression jamais montré. */
@@ -381,7 +417,8 @@ async function preparer(wc: WebContents): Promise<void> {
 
 /**
  * Charge `url`, attend la fin du chargement puis 2 s de calme (jusqu'à `echeance` au plus), lit la page ; `signal`
- * levé : abandon. Avec `changerHote` (lecture ménagée), une navigation permise du cadre principal vers un autre site
+ * levé : abandon. Avec `defiler` > 0, après ce calme, la page est défilée d'un écran à la fois (voir `defilerPuisLire`)
+ * avant d'être lue. Avec `changerHote` (lecture ménagée), une navigation permise du cadre principal vers un autre site
  * (`siteMenage`) est annulée et la promesse rejetée avec `Redirection` : l'appelant ferme la fenêtre, attend le tour de
  * ce site, puis reprend la lecture sur la cible dans une nouvelle fenêtre.
  */
@@ -393,20 +430,28 @@ function lireDans<T>(
   echeance: number,
   signal?: AbortSignal,
   changerHote?: ChangerHote,
+  defiler = 0,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let fini = false;
     let charge = false;
     let enLecture = false;
+    /** Un chargement en cours (cadre principal ou non) : l'attente après un défilement ne finit pas pendant. */
+    let enChargement = false;
     const site = siteDe(url);
     const heureForcee = echeance - MARGE_LECTURE_FORCEE_MS;
     let calme: NodeJS.Timeout | undefined;
+    /** La pause en cours du défilement, et de quoi la finir tout de suite (à la fin de la lecture). */
+    let pause: NodeJS.Timeout | undefined;
+    let reveil: (() => void) | undefined;
     const finir = (r: { erreur: Error } | { page: T }) => {
       if (fini) return;
       fini = true;
       clearTimeout(calme);
       clearTimeout(forcee);
       clearTimeout(limite);
+      clearTimeout(pause);
+      reveil?.();
       signal?.removeEventListener("abort", abandonner);
       if ("erreur" in r) reject(r.erreur);
       else resolve(r.page);
@@ -448,10 +493,14 @@ function lireDans<T>(
     // mesure d'audience) suspend l'attente, qui reprend quand plus rien ne charge.
     const attendreCalme = () => {
       clearTimeout(calme);
-      calme = setTimeout(() => void lire(), CALME_MS);
+      calme = setTimeout(() => void (defiler > 0 ? defilerPuisLire() : lire()), CALME_MS);
     };
-    wc.on("did-start-loading", () => clearTimeout(calme));
+    wc.on("did-start-loading", () => {
+      enChargement = true;
+      clearTimeout(calme);
+    });
     wc.on("did-stop-loading", () => {
+      enChargement = false;
       if (charge) attendreCalme();
     });
     wc.on("did-finish-load", () => {
@@ -465,10 +514,15 @@ function lireDans<T>(
     });
     wc.on("render-process-gone", () => finir({ erreur: new Error("La page s'est arrêtée pendant la lecture") }));
 
+    /** Lit la page tout de suite, une seule fois (calme, lecture forcée). */
     const lire = async () => {
       if (fini || enLecture || wc.isDestroyed()) return;
       enLecture = true;
       clearTimeout(calme);
+      await lireMaintenant();
+    };
+    const lireMaintenant = async () => {
+      if (fini || wc.isDestroyed()) return;
       try {
         const avant = wc.getURL();
         if (!permise(avant)) return bloquer(avant);
@@ -480,6 +534,61 @@ function lireDans<T>(
       } catch (e) {
         finir({ erreur: e instanceof Error ? e : new Error(String(e)) });
       }
+    };
+
+    const dormir = (ms: number) =>
+      new Promise<void>((ok) => {
+        reveil = ok;
+        pause = setTimeout(ok, ms);
+      });
+    /** Ce que rend un script de défilement ou de mesure : la page a pu l'influencer, seuls les types comptent. */
+    const mesurer = async (code: string): Promise<{ hauteur: number; bas: boolean }> => {
+      const brut = (await wc.executeJavaScriptInIsolatedWorld(999, [{ code }])) as { hauteur?: unknown; bas?: unknown } | null;
+      return { hauteur: typeof brut?.hauteur === "number" ? brut.hauteur : 0, bas: brut?.bas === true };
+    };
+    /**
+     * Après le premier calme : défile d'un écran (monde isolé 999), attend que la page ne grandisse plus depuis 1 s
+     * sans chargement en cours, et recommence, jusqu'à `defiler` écrans, jusqu'au bas d'une page qui n'a plus grandi,
+     * ou jusqu'à l'heure de la lecture forcée ; puis lit. Les gardes de navigation et le signal restent actifs : ils
+     * finissent la lecture (`fini`), et la boucle s'arrête à son pas suivant.
+     */
+    const defilerPuisLire = async () => {
+      if (fini || enLecture || wc.isDestroyed()) return;
+      enLecture = true;
+      clearTimeout(calme);
+      try {
+        for (let n = 0; n < defiler && Date.now() < heureForcee; n++) {
+          const ici = wc.getURL();
+          if (!permise(ici)) return bloquer(ici);
+          const { hauteur: avant } = await mesurer(DEFILEMENT);
+          let mesure = { hauteur: avant, bas: false };
+          let hauteur = -1;
+          let depuis = Date.now();
+          for (;;) {
+            if (fini || wc.isDestroyed()) return;
+            mesure = await mesurer(MESURE);
+            if (fini) return;
+            const maintenant = Date.now();
+            if (mesure.hauteur !== hauteur || enChargement) {
+              hauteur = mesure.hauteur;
+              depuis = maintenant;
+            }
+            if (maintenant >= heureForcee || maintenant - depuis >= CALME_DEFILEMENT_MS) break;
+            await dormir(Math.min(RELEVE_MS, heureForcee - maintenant));
+          }
+          // Le bas est atteint et rien n'a chargé : défiler encore n'apporterait rien.
+          if (mesure.bas && mesure.hauteur <= avant) break;
+        }
+      } catch {
+        // Un script de défilement a échoué (la page navigue, le document a changé) : plus de défilement, la page est
+        // lue au calme suivant, ou à la lecture forcée, comme sans `defiler`.
+        if (fini) return;
+        defiler = 0;
+        enLecture = false;
+        if (charge && !enChargement) attendreCalme();
+        return;
+      }
+      await lireMaintenant();
     };
     const forcee = setTimeout(() => {
       if (charge) void lire();

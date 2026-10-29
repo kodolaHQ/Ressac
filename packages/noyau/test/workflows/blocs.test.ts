@@ -73,6 +73,17 @@ describe("source.page", () => {
     ]);
   });
 
+  it("source.page passe defiler à lirePage seulement s'il est plus grand que 0", async () => {
+    const lire = (parametres: object) =>
+      lancer({
+        workflow: { version: 1, blocs: [bloc("fil", "source.page", { url: "https://a.fr/", ...parametres }), sortie], liens: chaine("fil", "sortie") },
+        repondre: (a) => ({ ok: page(a.a.url) }),
+      });
+    expect((await lire({ defiler: 8 })).appels.map((a) => [a.f, a.a])).toEqual([["lirePage", { url: "https://a.fr/", defiler: 8 }]]);
+    expect((await lire({ defiler: 3, compte: true })).appels.map((a) => a.a)).toEqual([{ url: "https://a.fr/", compte: true, defiler: 3 }]);
+    expect((await lire({ defiler: 0 })).appels.map((a) => a.a)).toEqual([{ url: "https://a.fr/" }]);
+  });
+
   it("source.page par élément : une URL absente laisse l'élément sans champ, sans appel ni erreur", async () => {
     const { bloc: src, fichiers } = liste([{ lien: "https://a.fr/1" }, { autre: 1 }, { lien: "" }]);
     const r = await lancer({

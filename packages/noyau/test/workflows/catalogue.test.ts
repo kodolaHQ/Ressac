@@ -29,6 +29,8 @@ test("les défauts et bornes des champs sont ceux des schémas zod", () => {
   expect(champ("code", "appel")).toMatchObject({ genre: "choix", choix: ["entree", "recolte"], defaut: "entree" });
   expect(champ("ia.rediger", "texteMax")).toMatchObject({ defaut: 12_000, min: 1, max: 200_000, entier: true });
   expect(champ("source.page", "champ")).toMatchObject({ defaut: "page", requis: false });
+  expect(champ("source.page", "defiler")).toMatchObject({ genre: "nombre", requis: false, min: 0, max: 20, entier: true });
+  expect(champ("source.page", "defiler")).not.toHaveProperty("defaut");
   expect(champ("sortie", "vers").genre).toBe("choix");
   expect(champ("liste.dedoublonner", "cles").genre).toBe("textes");
   expect(champ("source.page", "compte").genre).toBe("case");
