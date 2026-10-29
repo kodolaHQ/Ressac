@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { effacerExecutionsEtMemoire } from "../workflows/memoire.js";
 import { ETAT_WIDGET_PAR_DEFAUT, EtatWidget, TAILLE_MAX_DONNEES } from "./schemas.js";
 
 // Un nom temporaire propre à chaque écriture : deux écritures simultanées (refus d'un accord pendant une récolte)
@@ -33,10 +34,11 @@ export async function ecrireDonnees(dossierWidgets: string, id: string, donnees:
   await ecrireAtomique(join(dossierWidgets, id, "donnees.json"), texte);
 }
 
-/** Efface les données récoltées (par exemple celles lues avec un compte dont l'accord est retiré). */
+/** Efface les données récoltées, les exécutions et la mémoire des blocs (par exemple quand l'accord d'un compte est retiré). */
 export async function supprimerDonnees(dossierWidgets: string, id: string): Promise<void> {
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await rm(join(dossierWidgets, id, "donnees.json"), { force: true });
+  await effacerExecutionsEtMemoire(join(dossierWidgets, id));
 }
 
 export async function lireEtatWidget(dossierWidgets: string, id: string): Promise<EtatWidget> {

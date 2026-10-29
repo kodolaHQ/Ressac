@@ -28,3 +28,5 @@ export * from "./noyau.js";
 export * from "./workflows/schema.js";
 export * from "./workflows/valider.js";
 export * from "./workflows/lire.js";
+export * from "./workflows/executions.js";
+export * from "./workflows/memoire.js";
