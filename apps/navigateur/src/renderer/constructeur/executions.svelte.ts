@@ -32,8 +32,8 @@ export class Executions {
   detail = $state.raw<Execution | null>(null);
   /** L'exécution choisie n'a pas pu être lue (chassée entre la liste et le détail, ou erreur). */
   introuvable = $state(false);
-  /** Ce qui tourne en ce moment (tous widgets confondus) et ce qui attend dans la file. */
-  direct = $state.raw<EtatDirect>({ courant: null, enAttente: [] });
+  /** Ce qui tourne en ce moment (tous widgets confondus, une exécution par voie) et ce qui attend dans les files. */
+  direct = $state.raw<EtatDirect>({ courants: [], enAttente: [] });
   /** Le dernier refus de « Rejouer », en texte. */
   refus = $state<string | null>(null);
   /** Une demande « Lancer » ou « Rejouer » de ce constructeur n'a pas encore répondu. */
@@ -42,7 +42,7 @@ export class Executions {
     (this.voulue === null ? undefined : this.liste.find((e) => e.id === this.voulue)) ?? this.liste.find((e) => !e.essai) ?? null,
   );
   /** L'exécution (ou l'essai) de ce widget qui tourne en ce moment. */
-  readonly enDirect: DirectWidget | null = $derived.by(() => (this.direct.courant?.widget === this.widget ? this.direct.courant : null));
+  readonly enDirect: DirectWidget | null = $derived.by(() => this.direct.courants.find((c) => c.widget === this.widget) ?? null);
   /** Une seule exécution à la fois par widget : « Lancer » et « Rejouer » attendent. */
   readonly occupe: boolean = $derived.by(() => this.demande || this.enDirect !== null || this.direct.enAttente.includes(this.widget));
   private requeteListe = 0;

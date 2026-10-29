@@ -297,9 +297,9 @@ test("noyau : rejouer passe par la file du planificateur ; surDirect suit la fil
   const vus: unknown[] = [];
   const desabonner = n.surDirect((e) => vus.push(e));
   expect(await n.rejouer("meteo", "2026-10-28T09-00-00-000Z", "recolte")).toEqual({ ok: false, erreur: "Mise à jour impossible : atelier arrêté" });
-  expect(vus).toContainEqual({ courant: null, enAttente: ["meteo"] });
-  expect(vus.at(-1)).toEqual({ courant: null, enAttente: [] });
-  expect(n.direct()).toEqual({ courant: null, enAttente: [] });
+  expect(vus).toContainEqual({ courants: [], enAttente: ["meteo"] });
+  expect(vus.at(-1)).toEqual({ courants: [], enAttente: [] });
+  expect(n.direct()).toEqual({ courants: [], enAttente: [] });
   desabonner();
   const avant = vus.length;
   await n.rejouer("meteo", "2026-10-28T09-00-00-000Z", "recolte");

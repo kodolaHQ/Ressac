@@ -12,8 +12,19 @@ import { erreurDuNoyau, executerRecolte, type LanceurProcessus, type OptionsReco
 import { ecrireExecution, idEssai, listerExecutions, type Execution } from "../../src/workflows/executions.js";
 import { ecrireMemoire } from "../../src/workflows/memoire.js";
 import { accorder, lireAccords } from "../../src/widgets/accords.js";
-import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu, type EtatDirect, type OptionsPlanificateur } from "../../src/widgets/planificateur.js";
+import {
+  ERREUR_ATELIER_ARRETE,
+  ERREUR_RECOLTE_INTERNE,
+  PlanificateurWidgets,
+  VOIE_LONGUE_MINUTES,
+  voieDe,
+  widgetDu,
+  type EtatDirect,
+  type OptionsPlanificateur,
+} from "../../src/widgets/planificateur.js";
 import { Menagement } from "../../src/workflows/menagement.js";
+import { lireAccueil } from "../../src/accueil/lire.js";
+import type { CheminsEspace } from "../../src/chemins.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -486,9 +497,9 @@ test("deux rejouer demandés coup sur coup s'exécutent l'un après l'autre", as
   expect(await b).toMatchObject({ execution: "e1-essai" });
 });
 
-test("direct() montre le widget en cours, son genre et ses blocs au fil des traces, puis courant null", async () => {
+test("direct() montre le widget en cours, son genre et ses blocs au fil des traces, puis plus rien", async () => {
   const { p, recolterEssai, directs, dossierWidgets } = await preparer();
-  expect(p.direct()).toEqual({ courant: null, enAttente: [] });
+  expect(p.direct()).toEqual({ courants: [], enAttente: [] });
   const vus: EtatDirect[] = [];
   recolterEssai.mockImplementation(async (o) => {
     o.surTrace!({ bloc: "liste", etape: "debut" });
@@ -510,16 +521,19 @@ test("direct() montre le widget en cours, son genre et ses blocs au fil des trac
   });
   await p.rejouer("actus", "o", "liste");
   const debut = DEBUT.toISOString();
-  expect(vus[0]).toEqual({ courant: { widget: "actus", genre: "essai", debut, blocs: { liste: { statut: "en-cours", elements: null } } }, enAttente: [] });
-  expect(vus[1]!.courant!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "en-cours", elements: null } });
+  expect(vus[0]).toEqual({
+    courants: [{ widget: "actus", genre: "essai", debut, blocs: { liste: { statut: "en-cours", elements: null } } }],
+    enAttente: [],
+  });
+  expect(vus[1]!.courants[0]!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "en-cours", elements: null } });
   // Fin : resynchronisé sur l'exécution écrite, puis plus rien en cours.
-  expect(directs.at(-2)!.courant!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "echoue", elements: null } });
-  expect(directs.at(-1)).toEqual({ courant: null, enAttente: [] });
-  expect(p.direct()).toEqual({ courant: null, enAttente: [] });
+  expect(directs.at(-2)!.courants[0]!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "echoue", elements: null } });
+  expect(directs.at(-1)).toEqual({ courants: [], enAttente: [] });
+  expect(p.direct()).toEqual({ courants: [], enAttente: [] });
   // Une vraie exécution se suit de la même façon, genre « execution ».
   await p.recolterMaintenant("actus");
-  expect(directs.some((d) => d.courant?.genre === "execution" && d.courant.widget === "actus")).toBe(true);
-  expect(p.direct().courant).toBeNull();
+  expect(directs.some((d) => d.courants.some((x) => x.genre === "execution" && x.widget === "actus"))).toBe(true);
+  expect(p.direct().courants).toEqual([]);
 });
 
 test("enAttente liste un widget demandé pendant qu'un autre tourne", async () => {
@@ -530,7 +544,7 @@ test("enAttente liste un widget demandé pendant qu'un autre tourne", async () =
     return { ok: true, execution: "e-essai", statut: "reussie" };
   });
   const essai = p.rejouer("actus", "o", "liste");
-  await vi.waitFor(() => expect(p.direct().courant?.widget).toBe("actus"));
+  await vi.waitFor(() => expect(p.direct().courants[0]?.widget).toBe("actus"));
   const autre = p.recolterMaintenant("fixe");
   await vi.waitFor(() => expect(p.direct().enAttente).toEqual(["fixe"]));
   expect(recoltes).toEqual([]);
@@ -538,7 +552,7 @@ test("enAttente liste un widget demandé pendant qu'un autre tourne", async () =
   await essai;
   await autre;
   expect(recoltes).toEqual(["fixe"]);
-  expect(p.direct()).toEqual({ courant: null, enAttente: [] });
+  expect(p.direct()).toEqual({ courants: [], enAttente: [] });
 });
 
 test("atelier arrêté : rejouer refuse sans changer l'état", async () => {
@@ -565,4 +579,217 @@ test("widgetDu : un widget à heures sans minutes n'est jamais dû par la fréqu
   };
   expect(widgetDu(w, DEBUT, { auLancement: true })).toBe(false);
   expect(widgetDu({ ...w, etat: { ...w.etat, statut: "erreur" as const } }, DEBUT, { auLancement: false })).toBe(false);
+});
+
+// --- Deux voies : les veilles (dureeMaxMinutes > 3) tournent à part ---
+
+/** Un widget qui récolte toutes les 60 min, avec la durée maximale donnée. */
+async function ecrireVeille(c: CheminsEspace, id: string, dureeMaxMinutes: number) {
+  await ecrireWidget(c, id, declarationWidget(undefined, { recolte: { minutes: 60, dureeMaxMinutes } }), { "recolte.mjs": "export default () => 1" });
+}
+
+/** Les récoltes des widgets `retenus` attendent `liberer(id)` ; toutes passent ensuite par la récolte factice de base. */
+function retenir(recolter: Awaited<ReturnType<typeof preparer>>["recolter"], retenus: string[]) {
+  const base = recolter.getMockImplementation()!;
+  const journal: string[] = [];
+  const fins = new Map<string, (() => void)[]>();
+  recolter.mockImplementation(async (o) => {
+    journal.push(`début ${o.id}`);
+    if (retenus.includes(o.id)) {
+      const d = differe<void>();
+      fins.set(o.id, [...(fins.get(o.id) ?? []), d.resoudre]);
+      await d.promesse;
+    }
+    try {
+      return await base(o);
+    } finally {
+      journal.push(`fin ${o.id}`);
+    }
+  });
+  return {
+    journal,
+    liberer: (id: string) => {
+      const f = fins.get(id)?.shift();
+      if (!f) throw new Error(`rien à libérer pour ${id}`);
+      f();
+    },
+  };
+}
+
+test("voieDe : longue au-delà de VOIE_LONGUE_MINUTES (3), courte sinon", async () => {
+  expect(VOIE_LONGUE_MINUTES).toBe(3);
+  const { c, dossierWidgets } = await preparer();
+  await ecrireVeille(c, "trois", 3);
+  await ecrireVeille(c, "quatre", 4);
+  const widgets = (await lireAccueil(c, dossierWidgets)).widgets;
+  const voie = (id: string) => voieDe(widgets.find((w) => w.id === id)!);
+  expect([voie("actus"), voie("trois"), voie("quatre"), voie("fixe")]).toEqual(["courte", "courte", "longue", "courte"]);
+});
+
+test("une exécution longue (dureeMaxMinutes 30) n'empêche pas un widget court de tourner", async () => {
+  const { p, c, recolter } = await preparer();
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille"]);
+  // La vérification lance la veille sans l'attendre, et récolte « actus » pendant qu'elle tourne.
+  expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
+  expect(r.journal).toContain("fin actus");
+  await vi.waitFor(() => expect(r.journal).toContain("début veille"));
+  expect(r.journal).not.toContain("fin veille");
+  // Une demande manuelle d'un widget court passe aussi.
+  expect((await p.recolterMaintenant("actus")).statut).toBe("ok");
+  r.liberer("veille");
+  await vi.waitFor(() => expect(r.journal).toContain("fin veille"));
+});
+
+test("deux widgets longs : l'un après l'autre", async () => {
+  const { p, c, recolter } = await preparer();
+  await ecrireVeille(c, "veille-a", 30);
+  await ecrireVeille(c, "veille-b", 20);
+  const r = retenir(recolter, ["veille-a", "veille-b"]);
+  await p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(r.journal.filter((l) => l.startsWith("début veille"))).toHaveLength(1));
+  await new Promise((ok) => setImmediate(ok));
+  const premiere = r.journal.find((l) => l.startsWith("début veille"))!.slice("début ".length);
+  const seconde = premiere === "veille-a" ? "veille-b" : "veille-a";
+  expect(r.journal).not.toContain(`début ${seconde}`);
+  r.liberer(premiere);
+  await vi.waitFor(() => expect(r.journal).toContain(`début ${seconde}`));
+  expect(r.journal.indexOf(`fin ${premiere}`)).toBeLessThan(r.journal.indexOf(`début ${seconde}`));
+  r.liberer(seconde);
+  await vi.waitFor(() => expect(r.journal).toContain(`fin ${seconde}`));
+});
+
+test("un widget long et son essai : jamais en même temps", async () => {
+  const { p, c, recolter, recolterEssai } = await preparer();
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille"]);
+  recolterEssai.mockImplementation(async (o) => {
+    r.journal.push(`essai ${o.id}`);
+    return { ok: true, execution: "e-essai", statut: "reussie" };
+  });
+  const execution = p.recolterMaintenant("veille");
+  await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
+  const essai = p.rejouer("veille", "o", "liste");
+  await vi.waitFor(() => expect(p.direct().enAttente).toEqual(["veille"]));
+  // Un widget court tourne pendant ce temps : l'essai qui attend ne bloque pas sa voie.
+  await p.recolterMaintenant("actus");
+  expect(r.journal).not.toContain("essai veille");
+  r.liberer("veille");
+  await execution;
+  expect(await essai).toMatchObject({ ok: true });
+  expect(r.journal.indexOf("fin veille")).toBeLessThan(r.journal.indexOf("essai veille"));
+});
+
+test("dureeMaxMinutes passé de 30 à 2 pendant l'exécution : la nouvelle demande attend la fin de la première", async () => {
+  const { p, c, recolter, recoltes } = await preparer();
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille"]);
+  const premiere = p.recolterMaintenant("veille");
+  await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
+  await ecrireVeille(c, "veille", 2);
+  const seconde = p.recolterMaintenant("veille");
+  // La voie courte reste libre pour les autres widgets, et une vérification n'attend pas ce widget occupé.
+  await p.recolterMaintenant("actus");
+  expect(await p.verifier({ auLancement: false })).toEqual([]);
+  expect(r.journal.filter((l) => l === "début veille")).toHaveLength(1);
+  r.liberer("veille");
+  await premiere;
+  await vi.waitFor(() => expect(r.journal.filter((l) => l === "début veille")).toHaveLength(2));
+  expect(r.journal.indexOf("fin veille")).toBeLessThan(r.journal.lastIndexOf("début veille"));
+  expect(recoltes).toEqual(["actus", "veille"]);
+  r.liberer("veille");
+  expect((await seconde).statut).toBe("ok");
+});
+
+test("une vérification ne reste pas bloquée par une exécution longue : un widget court dû plus tard est récolté", async () => {
+  const { p, c, recolter, avancer } = await preparer();
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille"]);
+  expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
+  avancer(61 * MIN);
+  // « actus » est de nouveau dû ; la veille aussi d'après ses données, mais elle tourne encore : pas relancée.
+  expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
+  avancer(61 * MIN);
+  expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
+  expect(r.journal.filter((l) => l === "début veille")).toHaveLength(1);
+  r.liberer("veille");
+  await vi.waitFor(() => expect(r.journal).toContain("fin veille"));
+});
+
+test("direct().courants liste les deux exécutions", async () => {
+  const { p, c, recolter } = await preparer();
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille", "actus"]);
+  void p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(r.journal).toEqual(expect.arrayContaining(["début veille", "début actus"])));
+  await vi.waitFor(() =>
+    expect(
+      p
+        .direct()
+        .courants.map((x) => x.widget)
+        .sort(),
+    ).toEqual(["actus", "veille"]),
+  );
+  expect(p.direct().courants.every((x) => x.genre === "execution")).toBe(true);
+  r.liberer("actus");
+  await vi.waitFor(() => expect(p.direct().courants.map((x) => x.widget)).toEqual(["veille"]));
+  r.liberer("veille");
+  await vi.waitFor(() => expect(p.direct()).toEqual({ courants: [], enAttente: [] }));
+});
+
+test("arreter supprime les deux conteneurs et attend les deux voies", async () => {
+  const { p, c, recolter, atelier } = await preparer();
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille", "actus"]);
+  const supprimees: string[] = [];
+  const tour = () => new Promise((ok) => setImmediate(ok));
+  atelier.supprimerRecolte = async (id) => {
+    supprimees.push(id);
+    if (id === "actus") return void setImmediate(() => r.liberer(id));
+    // La veille tuée finit bien après la courte (elle écrit encore sa mémoire et son exécution « interrompue »).
+    void (async () => {
+      while (!r.journal.includes("fin actus")) await tour();
+      for (let i = 0; i < 5; i++) await tour();
+      r.liberer(id);
+    })();
+  };
+  void p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(p.direct().courants).toHaveLength(2));
+  await p.arreter();
+  expect(supprimees.sort()).toEqual(["actus", "veille"]);
+  expect(r.journal).toEqual(expect.arrayContaining(["fin actus", "fin veille"]));
+});
+
+test("arreter : une exécution longue qui ne finit pas est attendue de façon bornée, son conteneur supprimé deux fois", async () => {
+  const { p, c, recolter, atelier } = await preparer({
+    options: { attenteArretMs: 1 },
+  });
+  await ecrireVeille(c, "veille", 30);
+  const r = retenir(recolter, ["veille"]);
+  const supprimees: string[] = [];
+  atelier.supprimerRecolte = async (id) => void supprimees.push(id);
+  await p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(r.journal).toContain("début veille"));
+  await p.arreter();
+  expect(supprimees).toEqual(["veille", "veille"]);
+  r.liberer("veille");
+});
+
+test("l'IA passe par le répartiteur : chaque exécution a sa vue, les appels arrivent à l'IA donnée", async () => {
+  const appels: string[] = [];
+  const ia = {
+    kev: async () => "k",
+    gemma: async (o: { prompt: string }) => (appels.push(o.prompt), "g"),
+  };
+  const { p, c, recolter, recolterEssai } = await preparer({ options: { ia } });
+  await ecrireVeille(c, "veille", 30);
+  await p.recolterMaintenant("actus");
+  await p.recolterMaintenant("veille");
+  await p.rejouer("actus", "o", "liste");
+  const vues = [recolter.mock.calls[0]![0].ia, recolter.mock.calls[1]![0].ia, recolterEssai.mock.calls[0]![0].ia];
+  for (const v of vues) {
+    expect(v).not.toBe(ia);
+    expect(await v!.gemma({ prompt: "p" })).toBe("g");
+  }
+  expect(appels).toEqual(["p", "p", "p"]);
 });

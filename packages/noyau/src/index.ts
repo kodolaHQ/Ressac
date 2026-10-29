@@ -20,6 +20,7 @@ export * from "./outils-dev/resumes.js";
 export * from "./outils-dev/suivi.js";
 export * from "./mcp/outils-dev.js";
 export * from "./ia/ia-locale.js";
+export * from "./ia/repartiteur.js";
 export * from "./workflows/protocole.js";
 export * from "./widgets/accords.js";
 export * from "./widgets/planificateur.js";

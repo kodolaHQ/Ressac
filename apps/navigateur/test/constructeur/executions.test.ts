@@ -114,7 +114,7 @@ function lanceurFaux(f: ReturnType<typeof faux>) {
   const rappels: Rappel[] = [];
   let finir: (() => void) | null = null;
   const lanceur: Lanceur = {
-    direct: async () => ({ courant: null, enAttente: [] }),
+    direct: async () => ({ courants: [], enAttente: [] }),
     surDirect: (r) => {
       rappels.push(r);
       return () => rappels.splice(rappels.indexOf(r), 1);
@@ -135,7 +135,7 @@ function lanceurFaux(f: ReturnType<typeof faux>) {
   return { lanceur, appels, emettre: (e: EtatDirect) => rappels.forEach((r) => r(e)), rappels, finir: () => finir?.() };
 }
 const directDe = (widget: string, blocs: DirectWidget["blocs"] = {}, debut = "d1"): EtatDirect => ({
-  courant: { widget, genre: "execution", debut, blocs },
+  courants: [{ widget, genre: "execution", debut, blocs }],
   enAttente: [],
 });
 const attendreQue = async (cond: () => boolean) => {
@@ -154,13 +154,35 @@ test("occupé quand une exécution de ce widget tourne ou attend ; pas pour un a
   l.emettre(directDe("autre"));
   expect(x.occupe).toBe(false);
   expect(x.enDirect).toBeNull();
-  l.emettre({ courant: null, enAttente: ["w"] });
+  l.emettre({ courants: [], enAttente: ["w"] });
   expect(x.occupe).toBe(true);
   l.emettre(directDe("w", { tri: { statut: "en-cours", elements: null } }));
   expect(x.occupe).toBe(true);
   expect(x.enDirect?.blocs.tri?.statut).toBe("en-cours");
   fin();
   expect(l.rappels).toHaveLength(0);
+});
+
+test("occupe quand le widget est parmi les courants ou en attente", async () => {
+  const f = faux([resume("b")]);
+  const l = lanceurFaux(f);
+  const x = new Executions("w", f.source, l.lanceur);
+  const fin = x.suivre();
+  await x.charger();
+  const veille: DirectWidget = { widget: "veille", genre: "execution", debut: "d0", blocs: {} };
+  l.emettre({ courants: [veille], enAttente: [] });
+  expect(x.occupe).toBe(false);
+  expect(x.enDirect).toBeNull();
+  // Deux exécutions en même temps (voie courte et voie longue) : ce widget est le second.
+  l.emettre({ courants: [veille, { widget: "w", genre: "essai", debut: "d1", blocs: { tri: { statut: "reussi", elements: 2 } } }], enAttente: [] });
+  expect(x.occupe).toBe(true);
+  expect(x.enDirect).toMatchObject({ widget: "w", genre: "essai", debut: "d1" });
+  l.emettre({ courants: [veille], enAttente: ["autre", "w"] });
+  expect(x.occupe).toBe(true);
+  expect(x.enDirect).toBeNull();
+  l.emettre({ courants: [veille], enAttente: ["autre"] });
+  expect(x.occupe).toBe(false);
+  fin();
 });
 
 test("fin de l'exécution suivie en direct : liste et détail relus, plus de direct périmé", async () => {
@@ -172,7 +194,7 @@ test("fin de l'exécution suivie en direct : liste et détail relus, plus de dir
   l.emettre(directDe("w", { tri: { statut: "en-cours", elements: null } }));
   // L'exécution planifiée s'écrit, le direct s'arrête (les blocs non finis ne sont pas relayés à la fin).
   f.etat.liste = [resume("c"), resume("b")];
-  l.emettre({ courant: null, enAttente: [] });
+  l.emettre({ courants: [], enAttente: [] });
   expect(x.enDirect).toBeNull();
   await attendreQue(() => x.detail?.id === "c");
   expect(x.choisie?.id).toBe("c");
@@ -247,7 +269,7 @@ test("Rejouer sans exécution choisie ou pendant une exécution : aucune demande
   await x.rejouer("tri");
   f.etat.liste = [resume("b")];
   await x.charger();
-  l.emettre({ courant: null, enAttente: ["w"] });
+  l.emettre({ courants: [], enAttente: ["w"] });
   await x.rejouer("tri");
   expect(l.appels).toEqual([]);
 });
@@ -274,7 +296,7 @@ test("la lecture initiale du direct n'écrase pas un événement poussé plus r�
   l.lanceur.direct = () => new Promise((ok) => (rendre = ok));
   const x = new Executions("w", f.source, l.lanceur);
   x.suivre();
-  l.emettre({ courant: null, enAttente: [] });
+  l.emettre({ courants: [], enAttente: [] });
   rendre(directDe("w"));
   await attendreQue(() => false);
   expect(x.occupe).toBe(false);

@@ -496,7 +496,7 @@ app.whenReady().then(async () => {
       selection: (f, widget, bloc) => {
         selectionsConstructeur.set(f, { widget, bloc });
       },
-      direct: async () => agent?.noyau()?.direct() ?? { courant: null, enAttente: [] },
+      direct: async () => agent?.noyau()?.direct() ?? { courants: [], enAttente: [] },
     },
     ia: {
       etat: () => etatIa(),
