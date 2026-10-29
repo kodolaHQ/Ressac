@@ -580,7 +580,8 @@ test("le détail d'une exécution d'un widget avec compte pose la carte ; refus�
   await avecWidgets(outils, { donneesWidget: false });
   let t = texte(await client.callTool({ name: "executions_widget", arguments: args }));
   expect(cartesDonnees()).toHaveLength(1);
-  expect(JSON.parse(t)).toEqual({ id: args.execution, statut: "reussie" });
+  expect(t.endsWith("\nUtilisateur a refusé de montrer le détail.")).toBe(true);
+  expect(JSON.parse(t.slice(0, t.lastIndexOf("\n")))).toEqual({ id: args.execution, statut: "reussie" });
   expect(t).not.toContain("secret");
   await avecWidgets(outils, { donneesWidget: true });
   t = texte(await client.callTool({ name: "executions_widget", arguments: args }));
@@ -591,6 +592,14 @@ test("le détail d'une exécution d'un widget avec compte pose la carte ; refus�
   const liste = texte(await client.callTool({ name: "executions_widget", arguments: { id: "daily" } }));
   expect(liste).toContain('"elements": 12');
   expect(cartesDonnees()).toHaveLength(1);
+});
+
+test("le détail d'une exécution inconnue d'un widget avec compte ne pose pas de carte", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils, { donneesWidget: false });
+  const t = texte(await client.callTool({ name: "executions_widget", arguments: { id: "daily", execution: "2020-01-01T00-00-00-000Z" } }));
+  expect(t).toBe("Aucune exécution 2020-01-01T00-00-00-000Z pour le widget daily.");
+  expect(cartesDonnees()).toHaveLength(0);
 });
 
 test("un id d'exécution invalide est refusé par le schéma", async () => {

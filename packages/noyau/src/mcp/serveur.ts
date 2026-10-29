@@ -482,10 +482,16 @@ function enregistrerOutilsWidgets(
         if (permises(id, widget)) return texte(`${PREFIXE_DONNEES_WIDGET}\n${json(liste)}`);
         return texte(`${json(liste.map((e) => ({ id: e.id, statut: statutCache(e.statut) })))}\n${AVIS_EXECUTIONS_CACHEES}`);
       }
-      const montrer = await demanderSiBesoin(id, widget);
+      const aucune = texte(`Aucune exécution ${execution} pour le widget ${id}.`);
+      // Une exécution inconnue ne pose pas de carte : il n'y a rien à montrer.
+      const connue = await w.outils.execution(id, execution);
+      if (!connue) return aucune;
+      if (!(await demanderSiBesoin(id, widget))) {
+        return texte(`${json({ id: connue.id, statut: statutCache(connue.statut) })}\nUtilisateur a refusé de montrer le détail.`);
+      }
+      // Relue après l'accord : elle a pu être effacée pendant la question (accord retiré).
       const detail = await w.outils.execution(id, execution);
-      if (!detail) return texte(`Aucune exécution ${execution} pour le widget ${id}.`);
-      if (!montrer) return texte(json({ id: detail.id, statut: statutCache(detail.statut) }));
+      if (!detail) return aucune;
       return texte(`${PREFIXE_DONNEES_WIDGET}\n${json(detail)}`);
     }),
   );
