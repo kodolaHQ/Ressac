@@ -27,7 +27,13 @@ vi.mock("electron", () => {
     }
   }
   return {
-    app: { name: "WebAiOs", isReady: () => true, on: (n: string, f: (...a: unknown[]) => void) => ecouteursApp.on(n, f) },
+    app: {
+      name: "WebAiOs",
+      isReady: () => true,
+      on: (n: string, f: (...a: unknown[]) => void) => ecouteursApp.on(n, f),
+      getMaxListeners: () => ecouteursApp.getMaxListeners(),
+      setMaxListeners: (n: number) => ecouteursApp.setMaxListeners(n),
+    },
     ipcMain: { handle: () => {}, on: () => {} },
     session: { defaultSession: fausseSession("defaut-electron") },
     BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null, getFocusedWindow: () => null },
@@ -50,6 +56,8 @@ interface FausseSession {
   retraits: string[];
   demarres: string[];
   echecs: Set<string>;
+  /** Tant qu'elle n'est pas résolue, chaque chargement attend. */
+  lent?: Promise<void>;
   extensions: EventEmitter & Record<string, unknown>;
   serviceWorkers: EventEmitter & Record<string, unknown>;
   protocol: Record<string, unknown>;
@@ -73,6 +81,7 @@ function fausseSession(nom: string): FausseSession {
   const extensions = Object.assign(new EventEmitter(), {
     async loadExtension(chemin: string, options: unknown) {
       s.chargements.push({ chemin, options });
+      if (s.lent) await s.lent;
       if (s.echecs.has(chemin)) throw new Error(`Manifest file is missing or unreadable: ${chemin}`);
       const id = `id-${chemin.split("/").slice(-2).join("-")}`;
       const manifeste = chemin.includes("fond") ? { background: { service_worker: "fond.js" } } : {};
@@ -99,7 +108,7 @@ function fausseSession(nom: string): FausseSession {
 }
 
 const { ElectronChromeExtensions } = await import("electron-chrome-extensions");
-const { ExtensionsProfils } = await import("../../src/main/extensions/sessions");
+const { detournerNotifications, ExtensionsProfils } = await import("../../src/main/extensions/sessions");
 
 const temporaires: string[] = [];
 afterAll(() => {
@@ -351,4 +360,61 @@ test("mode invisible : toute fenêtre créée ensuite reste cachée (show, showI
   expect(montree.show).not.toHaveBeenCalled();
   expect(montree.showInactive).not.toHaveBeenCalled();
   expect(montree.focus).not.toHaveBeenCalled();
+});
+
+test("un profil devenu privé : ses extensions de l'agent sont retirées tout de suite, même celle dont le chargement est en cours", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"]), [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  expect(s.charges.size).toBe(2);
+  // Une seconde extension de l'agent se charge lentement…
+  let liberer!: () => void;
+  s.lent = new Promise((ok) => (liberer = ok));
+  const enCours = p.synchroniser(
+    etatExt({ "agent:fond": entree("agent", ["defaut"]), "agent:lente": entree("agent", ["defaut"]), [`store:${ID_A}`]: entree("store", ["defaut"]) }),
+  );
+  await vi.waitFor(() => expect(s.chargements.map((c) => c.chemin)).toContain(join(dossier, "copies", "lente")));
+  // …quand l'espace devient privé : le retrait est synchrone, sans attendre la file.
+  etat = etatNav([{ id: "e1", profil: "defaut", prive: true }]);
+  p.retirerAgentsPrives(etat);
+  expect([...s.charges.values()].map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "1.0.0_0")]);
+  liberer();
+  await enCours;
+  // Celle qui se chargeait est retirée dès la fin de son chargement.
+  expect([...s.charges.values()].map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "1.0.0_0")]);
+});
+
+test("beaucoup de profils : aucun avertissement d'écouteurs en trop sur app", () => {
+  // La bibliothèque ajoute un `app.on("web-contents-created")` par session équipée.
+  const p = creer();
+  for (let i = 0; i < 15; i++) p.brancher(fausseSession(`p${i}`) as unknown as Electron.Session, `p${i}`);
+  expect(ecouteursApp.listenerCount("web-contents-created")).toBeLessThanOrEqual(ecouteursApp.getMaxListeners());
+});
+
+test("détournement des notifications impossible (bibliothèque changée) : erreur levée, jamais une vraie notification", () => {
+  expect(() => detournerNotifications({} as never, undefined)).toThrow(/notifications/);
+});
+
+test("brancher en mode invisible lève si les notifications ne peuvent pas être détournées, et rien n'est chargé dans ce profil", async () => {
+  const p = creer({ invisible: true });
+  const s = fausseSession("defaut");
+  // La bibliothèque sans routeur : simulée en cassant `ctx` juste après sa construction.
+  // (`prependPreload` est le dernier appel du constructeur.)
+  const vrai = Object.getOwnPropertyDescriptor(ElectronChromeExtensions.prototype, "prependPreload")!;
+  Object.defineProperty(ElectronChromeExtensions.prototype, "prependPreload", {
+    configurable: true,
+    value(this: { ctx?: unknown }, ...a: unknown[]) {
+      const r = vrai.value.call(this, ...a);
+      delete this.ctx;
+      return r;
+    },
+  });
+  try {
+    expect(() => p.brancher(s as unknown as Electron.Session, "defaut")).toThrow(/notifications/);
+  } finally {
+    Object.defineProperty(ElectronChromeExtensions.prototype, "prependPreload", vrai);
+  }
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  expect(s.chargements).toEqual([]);
 });

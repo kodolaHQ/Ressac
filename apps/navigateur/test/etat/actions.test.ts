@@ -222,6 +222,17 @@ test("activerOnglet d'un autre espace bascule l'espace actif", () => {
   expect(fen().espaceActif).toBe(B);
 });
 
+test("activerOnglet garderEspace : l'onglet devient celui de son espace, la fenêtre reste sur le sien", () => {
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  const b1 = ouvrir("https://b1.test/");
+  ouvrir("https://b2.test/");
+  ag({ type: "activerEspace", fenetreId: F, id: P });
+  ag({ type: "activerOnglet", id: b1, garderEspace: true });
+  expect(fen().espaceActif).toBe(P);
+  expect(actif(B)).toBe(b1);
+});
+
 test("reglerEspace change le nom et l'icône", () => {
   ag({ type: "reglerEspace", id: P, nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
   expect(e.espaces[0]).toMatchObject({ nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });

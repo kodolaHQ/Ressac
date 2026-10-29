@@ -42,8 +42,10 @@ const cacheur = {
 
 /**
  * Expose ce que voit l'extension par `console.log` d'une ligne `sonde:<JSON>` (onglets, fenêtres, stockage), au démarrage
- * et à chaque événement d'onglet. Une page dont l'URL contient `ouvrir-onglet` lui fait ouvrir (une fois) la même URL
- * avec `ouverte-par-sonde`, par `tabs.create`.
+ * et à chaque événement d'onglet. Selon l'URL d'une page chargée (une fois par onglet) :
+ * - `ouvrir-onglet` : `tabs.create` de la même URL avec `ouverte-par-sonde` ;
+ * - `ouvrir-actif` : `tabs.create({ active: true })` de la même URL avec `ouverte-active` ;
+ * - `activer-plus-tard` : `tabs.update(cet onglet, { active: true })` 1,5 s plus tard.
  */
 const sonde = {
   "manifest.json": {
@@ -72,9 +74,16 @@ chrome.tabs.onUpdated.addListener((id, changement, onglet) => {
   if (changement.status !== "complete" && !changement.url) return;
   rapporter("maj");
   const url = onglet.url || "";
-  if (url.includes("ouvrir-onglet") && !ouverts.has(id)) {
+  if (ouverts.has(id)) return;
+  if (url.includes("ouvrir-onglet")) {
     ouverts.add(id);
     chrome.tabs.create({ url: url.replace("ouvrir-onglet", "ouverte-par-sonde") });
+  } else if (url.includes("ouvrir-actif")) {
+    ouverts.add(id);
+    chrome.tabs.create({ url: url.replace("ouvrir-actif", "ouverte-active"), active: true });
+  } else if (url.includes("activer-plus-tard")) {
+    ouverts.add(id);
+    setTimeout(() => chrome.tabs.update(id, { active: true }), 1500);
   }
 });
 rapporter("demarrage");

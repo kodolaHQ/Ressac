@@ -1,5 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { dansLaVue, lancer, nouveauProfil, ouvrirOnglet, serveurTest } from "./aide";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { appelerOutil, dansLaVue, ecrireProjet, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 import { installerStoreFactice } from "./extensions/fixtures";
 
 // Extensions de test « du Store » (construites et posées dans le profil avant le lancement, jamais le vrai Store),
@@ -15,8 +17,8 @@ test.afterAll(async () => {
 
 type Etat = {
   espaces: { id: string; profil: string }[];
-  onglets: Record<string, { url: string; espaceId: string }>;
-  fenetres: { id: string; espaceActif: string }[];
+  onglets: Record<string, { id: string; url: string; espaceId: string }>;
+  fenetres: { id: string; espaceActif: string; actif: Record<string, string | null> }[];
 };
 type Api = { webaios: { fenetreId: string; agir(a: unknown): void; surEtat(r: (e: Etat) => void): () => void } };
 
@@ -149,15 +151,40 @@ test("aucune extension dans session.defaultSession, webaios-lecture-publique, we
   const profil = nouveauProfil();
   installerStoreFactice(profil, "sonde", { profils: ["defaut"] });
   installerStoreFactice(profil, "cacheur", { profils: ["defaut"] });
-  const { app, fenetre, fermer } = await lancer({ profil });
+  const racine = nouvelleRacine();
+  ecrireProjet(racine, "essai", { manifeste: { nom: "Essai" } });
+  // Ports d'essai à part (applications.spec.ts prend 15280-15284) ; le faux docker d'e2e/outils lance le serveur.
+  const { app, fenetre, fermer } = await lancer({ profil, racine, env: { WEBAIOS_PORTS_APPS: "15290-15294", WEBAIOS_DELAI_APP_MS: "3000" } });
   try {
     await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
     await expect.poll(async () => (await extensionsDe(app, "persist:webaios")).sort()).toEqual(["Cacheur de test", "Sonde de test"]);
-    for (const partition of ["", "webaios-lecture-publique", "webaios-icones", "persist:app-essai"]) {
+    // Une vraie appli, dans sa vraie session (`persist:app-essai`), ouverte pendant que les extensions tournent.
+    await expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json")), { timeout: 10_000 }).toBe(true);
+    expect((await appelerOutil(racine, "lancer_application", { dossier: "essai" })).texte).toContain("en marche sur http://localhost:1529");
+    let extensionsAppli: string[] | null = null;
+    await expect
+      .poll(async () =>
+        (extensionsAppli = await app.evaluate(({ BrowserWindow }) => {
+          const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://localhost:1529"));
+          return w ? w.webContents.session.extensions.getAllExtensions().map((e) => e.name) : null;
+        })),
+      )
+      .not.toBeNull();
+    expect(extensionsAppli).toEqual([]);
+    // Les autres sessions hors profil (créées au démarrage ou à la demande) : aucune extension non plus.
+    for (const partition of ["", "webaios-lecture-publique", "webaios-icones"]) {
       expect(await extensionsDe(app, partition), partition || "session par défaut").toEqual([]);
     }
   } finally {
     await fermer();
+    // Le serveur d'essai de l'appli ne reste pas sur son port.
+    for (const f of existsSync(racine) ? readdirSync(racine) : [])
+      if (/^faux-docker-app-.*\.pid$/.test(f))
+        try {
+          process.kill(-Number(readFileSync(join(racine, f), "utf8")), "SIGKILL");
+        } catch {
+          // déjà arrêté
+        }
   }
 });
 
@@ -180,6 +207,56 @@ test("un tabs.create de la sonde ouvre un onglet dans l'espace de son profil", a
       .poll(async () => (ouvert = Object.values((await lireEtat(fenetre)).onglets).find((o) => o.url.includes("ouverte-par-sonde"))), { timeout: 10_000 })
       .toBeTruthy();
     expect(ouvert!.espaceId).toBe(espaceA);
+    expect((await lireEtat(fenetre)).fenetres[0]!.espaceActif).toBe(espaceB);
+  } finally {
+    await fermer();
+  }
+});
+
+test("un tabs.create({ active: true }) de la sonde ne fait jamais changer la fenêtre d'espace", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde", { profils: ["defaut"] });
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    const espaceA = (await lireEtat(fenetre)).fenetres[0]!.espaceActif;
+    const { espace: espaceB } = await espaceAutreProfil(fenetre);
+    await agir(fenetre, [
+      { type: "activerEspace", id: espaceA, fenetreId: "$fenetre" },
+      { type: "ouvrirOnglet", fenetreId: "$fenetre", url: `${serveur.url}/a.html?ouvrir-actif` },
+      { type: "activerEspace", id: espaceB, fenetreId: "$fenetre" },
+    ]);
+    let ouvert: { id: string; espaceId: string } | undefined;
+    await expect
+      .poll(async () => (ouvert = Object.values((await lireEtat(fenetre)).onglets).find((o) => o.url.includes("ouverte-active"))), { timeout: 10_000 })
+      .toBeTruthy();
+    // L'activation demandée (onActivated) a eu le temps d'arriver.
+    await new Promise((r) => setTimeout(r, 500));
+    const etat = await lireEtat(fenetre);
+    expect(ouvert!.espaceId).toBe(espaceA);
+    expect(etat.fenetres[0]!.espaceActif).toBe(espaceB);
+    expect(etat.fenetres[0]!.actif[espaceA]).toBe(ouvert!.id);
+  } finally {
+    await fermer();
+  }
+});
+
+test("un tabs.update({ active: true }) d'un onglet d'un autre espace le choisit dans son espace, sans changer celui de la fenêtre", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde", { profils: ["defaut"] });
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    const espaceA = (await lireEtat(fenetre)).fenetres[0]!.espaceActif;
+    const { espace: espaceB } = await espaceAutreProfil(fenetre);
+    // Dans A : l'onglet qui sera activé (sa vue se crée et se charge), puis un autre par-dessus ; la fenêtre repasse dans B.
+    await agir(fenetre, [
+      { type: "activerEspace", id: espaceA, fenetreId: "$fenetre" },
+      { type: "ouvrirOnglet", fenetreId: "$fenetre", url: `${serveur.url}/a.html?activer-plus-tard` },
+      { type: "ouvrirOnglet", fenetreId: "$fenetre", url: `${serveur.url}/b.html` },
+      { type: "activerEspace", id: espaceB, fenetreId: "$fenetre" },
+    ]);
+    const cible = Object.values((await lireEtat(fenetre)).onglets).find((o) => o.url.includes("activer-plus-tard"))!;
+    expect((await lireEtat(fenetre)).fenetres[0]!.actif[espaceA]).not.toBe(cible.id);
+    await expect.poll(async () => (await lireEtat(fenetre)).fenetres[0]!.actif[espaceA], { timeout: 10_000 }).toBe(cible.id);
     expect((await lireEtat(fenetre)).fenetres[0]!.espaceActif).toBe(espaceB);
   } finally {
     await fermer();

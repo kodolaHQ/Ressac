@@ -43,6 +43,8 @@ export class ServiceExtensions {
   private etat: EtatExtensions = { version: 1, toutesCoupees: false, extensions: {} };
   /** Erreurs de préparation (Store), par clé ; celles du chargement sont dans `ExtensionsProfils`. */
   private erreursPreparation = new Map<string, string>();
+  /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
+  private pret = false;
   private o:
     | {
         dossier: string;
@@ -65,15 +67,9 @@ export class ServiceExtensions {
     dossierGardes: string;
   }): Promise<void> {
     this.o = o;
-    try {
-      this.etat = await lireEtatExtensions(o.dossier);
-    } catch (e) {
-      // Registre illisible (droits, disque) : aucune extension chargée, jamais un plantage au démarrage.
-      console.error("[extensions] registre illisible, aucune extension chargée :", e);
-      return;
-    }
-    await this.preparerStore();
-    // Un espace devenu privé, ou un profil apparu ou disparu : ce qui est chargé dans chaque profil change.
+    // Posé d'abord, de façon synchrone : il existe même si la lecture du registre échoue, et index.ts appelle `demarrer`
+    // avant d'abonner les vues, donc il passe avant elles. Un espace devenu privé, ou un profil apparu ou disparu :
+    // ce qui est chargé dans chaque profil change.
     let prives = [...profilsPrives(o.magasin.etat)].sort().join("|");
     let enUsage = [...profilsEnUsage(o.magasin.etat)].sort().join("|");
     o.magasin.abonner((etat) => {
@@ -82,8 +78,19 @@ export class ServiceExtensions {
       if (p === prives && u === enUsage) return;
       prives = p;
       enUsage = u;
-      void this.appliquer();
+      // Tout de suite, hors de la file : aucune page d'un espace privé ne se charge avec une extension de l'agent.
+      o.profils.retirerAgentsPrives(etat);
+      if (this.pret) void this.appliquer();
     });
+    try {
+      this.etat = await lireEtatExtensions(o.dossier);
+    } catch (e) {
+      // Registre illisible (droits, disque) : aucune extension chargée, jamais un plantage au démarrage.
+      console.error("[extensions] registre illisible, aucune extension chargée :", e);
+      return;
+    }
+    await this.preparerStore();
+    this.pret = true;
     await this.appliquer();
   }
 

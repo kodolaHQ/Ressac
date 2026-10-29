@@ -35,6 +35,7 @@ let dossier: string;
 let gardes: string;
 let synchronisees: EtatExtensions[];
 let branchees: string[];
+let retraitsPrives: EtatNavigateur[];
 let abonnes: ((e: EtatNavigateur) => void)[];
 let nav: EtatNavigateur;
 
@@ -44,7 +45,11 @@ const etatNav = (prive: boolean) =>
 function demarrer() {
   const service = new ServiceExtensions();
   const magasin = { get etat() { return nav; }, abonner: (f: (e: EtatNavigateur) => void) => void abonnes.push(f) };
-  const profils = { synchroniser: async (e: EtatExtensions) => void synchronisees.push(e), erreursChargement: () => new Map<string, string>() };
+  const profils = {
+    synchroniser: async (e: EtatExtensions) => void synchronisees.push(e),
+    erreursChargement: () => new Map<string, string>(),
+    retirerAgentsPrives: (e: EtatNavigateur) => void retraitsPrives.push(e),
+  };
   const sessions = { session: (id: string) => void branchees.push(id) };
   return {
     service,
@@ -60,6 +65,7 @@ beforeEach(() => {
   writeFileSync(join(gardes, "webaios-correctifs-page.js"), "// correctifs\n");
   synchronisees = [];
   branchees = [];
+  retraitsPrives = [];
   abonnes = [];
   nav = etatNav(false);
 });
@@ -100,5 +106,18 @@ test("un espace qui devient privé relance la synchronisation ; un changement sa
   expect(synchronisees).toHaveLength(1);
   nav = etatNav(true);
   for (const f of abonnes) f(nav);
+  // Le retrait des extensions de l'agent est fait tout de suite, dans l'abonné, avant la synchronisation en file.
+  expect(retraitsPrives).toEqual([nav]);
   await vi.waitFor(() => expect(synchronisees).toHaveLength(2));
+});
+
+test("registre illisible : l'abonnement aux profils privés est quand même posé", async () => {
+  mkdirSync(join(dossier, "etat.json"));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  await demarrer().pret;
+  erreur.mockRestore();
+  expect(abonnes).toHaveLength(1);
+  nav = etatNav(true);
+  for (const f of abonnes) f(nav);
+  expect(retraitsPrives).toEqual([nav]);
 });

@@ -188,7 +188,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       const f = o && fenetre(d, o.fenetreId);
       if (!o || !f) return false;
       f.actif[o.espaceId] = o.id;
-      f.espaceActif = o.espaceId;
+      if (!a.garderEspace) f.espaceActif = o.espaceId;
       return true;
     }
     case "deplacerOnglet": {

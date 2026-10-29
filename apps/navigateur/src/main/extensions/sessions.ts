@@ -43,11 +43,29 @@ export function cheminExtension(dossier: string, cle: string, e: EtatExtensions)
 
 /** Ce que la bibliothèque laisse voir de ses rouages (version figée 4.10.0) : son routeur d'API. */
 interface Rouages {
-  ctx?: { router?: { handle(nom: string, f: (evenement: { extension?: Electron.Extension }, ...args: unknown[]) => unknown): void } };
+  ctx?: { router?: { handle?(nom: string, f: (evenement: { extension?: Electron.Extension }, ...args: unknown[]) => unknown): void } };
+}
+
+/**
+ * `chrome.notifications` de la bibliothèque montre de vraies notifications de macOS : en tests, elles sont notées dans
+ * `fichier` (une ligne JSON `{ titre, texte, extension }`) ou jetées, jamais montrées. Lève si la bibliothèque a changé
+ * et que le détournement est impossible : mieux vaut un profil sans extensions qu'une vraie notification.
+ */
+export function detournerNotifications(extensions: ElectronChromeExtensions, fichier: string | undefined): void {
+  const routeur = (extensions as unknown as Rouages).ctx?.router;
+  if (typeof routeur?.handle !== "function") throw new Error("notifications des extensions non détournables : la bibliothèque a changé");
+  routeur.handle("notifications.create", ({ extension }, a, b) => {
+    const id = typeof a === "string" ? a : "guid";
+    const opts = (typeof a === "object" ? a : b) as { title?: unknown; message?: unknown } | undefined;
+    if (fichier) appendFileSync(fichier, JSON.stringify({ titre: String(opts?.title ?? ""), texte: String(opts?.message ?? ""), extension: extension?.id }) + "\n");
+    return id;
+  });
 }
 
 let fenetresNeutralisees = false;
 let protocoleCrx = false;
+/** Sessions équipées par la bibliothèque dans ce processus (chacune ajoute un écouteur à `app`). */
+let sessionsEquipees = 0;
 
 /**
  * Les extensions dans les sessions des profils de connexion : une instance d'`ElectronChromeExtensions` par session de
@@ -101,6 +119,9 @@ export class ExtensionsProfils {
   /** Équipe la session d'un profil (une fois) et y charge ses extensions si l'état est déjà connu. */
   brancher(s: Session, profil: IdProfil): void {
     if (this.instances.has(profil) || ElectronChromeExtensions.fromSession(s)) return;
+    // La bibliothèque ajoute un `app.on("web-contents-created")` par session équipée : sans cela, Node signalerait une
+    // fuite d'écouteurs (10 par défaut) dès le dixième profil. La limite suit le nombre de sessions équipées.
+    app.setMaxListeners(Math.max(app.getMaxListeners(), 10 + ++sessionsEquipees));
     if (!protocoleCrx) {
       protocoleCrx = true;
       // Icônes des boutons d'extension (`crx://`), affichées par l'interface.
@@ -125,7 +146,8 @@ export class ExtensionsProfils {
       removeWindow: () => {},
       requestPermissions: async () => false,
     });
-    if (this.o.invisible || this.o.fichierNotifications) this.detournerNotifications(extensions);
+    // Lève si c'est impossible : le profil n'est alors pas enregistré, et aucune extension n'y sera jamais chargée.
+    if (this.o.invisible || this.o.fichierNotifications) detournerNotifications(extensions, this.o.fichierNotifications);
     this.instances.set(profil, { session: s, extensions });
     this.chargees.set(profil, new Map());
     if (this.dernier) void this.synchroniser(this.dernier);
@@ -138,6 +160,23 @@ export class ExtensionsProfils {
       .then(() => this.appliquer())
       .catch((erreur: unknown) => console.error("[extensions] synchronisation :", erreur));
     return this.file;
+  }
+
+  /**
+   * Retire tout de suite (de façon synchrone, hors de la file) les extensions de l'agent des profils qu'utilise désormais
+   * un espace privé : appelé par l'abonné du magasin avant que les vues de l'espace privé ne chargent leur page. Une
+   * extension dont le chargement est en cours est retirée dès qu'il finit (voir `appliquerProfil`).
+   */
+  retirerAgentsPrives(etat: EtatNavigateur): void {
+    for (const [profil, { session }] of this.instances) {
+      if (!profilPrive(etat, profil)) continue;
+      const chargees = this.chargees.get(profil)!;
+      for (const [cle, c] of chargees) {
+        if (lireCle(cle)?.source !== "agent") continue;
+        this.retirer(session, profil, cle, c.id);
+        chargees.delete(cle);
+      }
+    }
   }
 
   /** La dernière erreur de chargement de chaque clé (effacée quand elle se charge). */
@@ -204,19 +243,20 @@ export class ExtensionsProfils {
     }
     for (const [cle, c] of chargees) {
       if (voulues.get(cle) === c.chemin) continue;
-      try {
-        s.extensions.removeExtension(c.id);
-      } catch (erreur) {
-        console.error(`[extensions] ${cle} non retirée du profil ${profil} :`, erreur);
-      }
+      this.retirer(s, profil, cle, c.id);
       chargees.delete(cle);
     }
     for (const [cle, chemin] of voulues) {
       if (chargees.has(cle)) continue;
       try {
         const ext = await s.extensions.loadExtension(chemin, { allowFileAccess: false });
-        chargees.set(cle, { id: ext.id, chemin });
         this.erreurs.delete(cle);
+        // Le profil est devenu privé pendant le chargement : une extension de l'agent repart aussitôt.
+        if (lireCle(cle)?.source === "agent" && profilPrive(this.o.etat(), profil)) {
+          this.retirer(s, profil, cle, ext.id);
+          continue;
+        }
+        chargees.set(cle, { id: ext.id, chemin });
         // Rien n'assure qu'un service worker MV3 démarre au chargement : ses règles et son onInstalled en dépendent.
         if ((ext.manifest as { background?: unknown }).background) {
           await s.serviceWorkers.startWorkerForScope(ext.url).catch((erreur: unknown) => console.error(`[extensions] fond de ${cle} non démarré :`, erreur));
@@ -228,19 +268,11 @@ export class ExtensionsProfils {
     }
   }
 
-  /**
-   * `chrome.notifications` de la bibliothèque montre de vraies notifications de macOS : en tests, elles sont notées dans
-   * le fichier des tests (ou jetées), jamais montrées.
-   */
-  private detournerNotifications(extensions: ElectronChromeExtensions): void {
-    const routeur = (extensions as unknown as Rouages).ctx?.router;
-    if (!routeur) return console.error("[extensions] notifications non détournées : la bibliothèque a changé");
-    const fichier = this.o.fichierNotifications;
-    routeur.handle("notifications.create", ({ extension }, a, b) => {
-      const id = typeof a === "string" ? a : "guid";
-      const opts = (typeof a === "object" ? a : b) as { title?: unknown; message?: unknown } | undefined;
-      if (fichier) appendFileSync(fichier, JSON.stringify({ titre: String(opts?.title ?? ""), texte: String(opts?.message ?? ""), extension: extension?.id }) + "\n");
-      return id;
-    });
+  private retirer(s: Session, profil: IdProfil, cle: string, id: string): void {
+    try {
+      s.extensions.removeExtension(id);
+    } catch (erreur) {
+      console.error(`[extensions] ${cle} non retirée du profil ${profil} :`, erreur);
+    }
   }
 }

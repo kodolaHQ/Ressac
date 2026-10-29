@@ -348,9 +348,10 @@ app.whenReady().then(async () => {
       const o = id ? magasin.etat.onglets[id] : undefined;
       return (o && fenetres.get(o.fenetreId)) ?? null;
     },
+    // Jamais de changement d'espace par une extension : l'onglet devient celui de son espace, la fenêtre reste où elle est.
     activer: (wc) => {
       const id = vues.ongletDe(wc);
-      if (id) magasin.agir({ type: "activerOnglet", id });
+      if (id) magasin.agir({ type: "activerOnglet", id, garderEspace: true });
     },
     fermer: (wc) => {
       const id = vues.ongletDe(wc);
@@ -370,7 +371,12 @@ app.whenReady().then(async () => {
         item.cancel();
       });
       permissionsDe(id).brancher(s, (wc) => vues.ongletDe(wc));
-      extensions.brancher(s, id);
+      // La session reste utilisable sans extensions si la bibliothèque échoue.
+      try {
+        extensions.brancher(s, id);
+      } catch (e) {
+        console.error(`[extensions] profil ${id} sans extensions :`, e);
+      }
     },
     oublier: (id) => permissions.get(id)?.toutOublier(),
   });
@@ -391,6 +397,11 @@ app.whenReady().then(async () => {
       detruite: (wc) => extensions.ongletDetruit(wc),
     },
   });
+  // Lancé ici, attendu plus bas (avant les fenêtres) : son abonnement au magasin, posé tout de suite, passe ainsi avant
+  // celui des vues (un espace devenu privé perd ses extensions de l'agent avant que ses pages ne se chargent).
+  const demarrageExtensions = serviceExtensions
+    .demarrer({ dossier: join(dossier, "extensions"), profils: extensions, sessions, vues, magasin, dossierGardes: join(__RESSOURCES_NOYAU__, "extensions") })
+    .catch((e) => console.error("[extensions] démarrage :", e));
   // Un onglet fermé (ou parti vers un autre site, pour les outils de développement) ne répondra jamais : ses questions
   // sont refusées. Une fenêtre d'appli (`app:<dossier>`) n'est pas dans l'état : on regarde ses fenêtres ouvertes.
   const ecarterQuestionsCaduques = () => {
@@ -612,12 +623,7 @@ app.whenReady().then(async () => {
   });
   // Avant les fenêtres : un bloqueur actif agit dès la première page. Une lecture ou un chargement trop lent ne retarde
   // pas la fenêtre plus de 2 s (les extensions arrivent alors un peu après).
-  await Promise.race([
-    serviceExtensions
-      .demarrer({ dossier: join(dossier, "extensions"), profils: extensions, sessions, vues, magasin, dossierGardes: join(__RESSOURCES_NOYAU__, "extensions") })
-      .catch((e) => console.error("[extensions] démarrage :", e)),
-    new Promise((ok) => setTimeout(ok, 2000)),
-  ]);
+  await Promise.race([demarrageExtensions, new Promise((ok) => setTimeout(ok, 2000))]);
   // Une fenêtre principale par EtatFenetre : ⌘N en ajoute une, sa fermeture la retire.
   const synchroniserFenetres = (etat: EtatNavigateur) => {
     for (const f of etat.fenetres) if (!fenetres.has(f.id) && !gardees.has(f.id)) creerFenetre(f.id, magasin, vues);

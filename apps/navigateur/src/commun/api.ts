@@ -20,7 +20,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
     apres: id.optional(),
   }),
   z.object({ type: z.literal("fermerOnglet"), id }),
-  z.object({ type: z.literal("activerOnglet"), id }),
+  // garderEspace : l'onglet devient celui de son espace sans que la fenêtre change d'espace (demande d'une extension).
+  z.object({ type: z.literal("activerOnglet"), id, garderEspace: z.boolean().optional() }),
   z.object({ type: z.literal("deplacerOnglet"), id, index: z.number().int() }),
   z.object({ type: z.literal("rouvrirOngletFerme"), fenetreId: id }),
   z.object({
