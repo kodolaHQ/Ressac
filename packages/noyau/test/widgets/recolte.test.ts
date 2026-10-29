@@ -843,6 +843,17 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "pas-lance"], ["sortie", "pas-lance"]]);
   });
 
+  it("sans accord, encore : pas de nouvelle exécution accord-requis, la dernière tient lieu", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const premiere = await recolter(ctx);
+    // Une heure plus tard : sans la règle, une seconde exécution (autre id) serait écrite.
+    const plusTard = () => new Date(MAINTENANT.getTime() + 3_600_000);
+    const seconde = await executerRecolte({ ...optionsDe(ctx), horloge: plusTard });
+    expect(seconde.etat.statut).toBe("accord-requis");
+    expect(seconde.execution).toBe(premiere.execution);
+    expect((await listerExecutions(donneesDe(ctx))).map((e) => e.statut)).toEqual(["accord-requis"]);
+  });
+
   it("l'exécution porte le déclencheur demandé", async () => {
     const ctx = await preparer("meteo", `export default async () => 1;`);
     const r = await executerRecolte({ ...optionsDe(ctx), declencheur: "agent" });

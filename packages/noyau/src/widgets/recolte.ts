@@ -16,7 +16,7 @@ import {
   type IssueWorkflow,
   type LanceurProcessus,
 } from "../workflows/executer.js";
-import { ecrireExecution, idExecution, type Execution, type TraceBloc } from "../workflows/executions.js";
+import { ecrireExecution, idExecution, listerExecutions, type Execution, type TraceBloc } from "../workflows/executions.js";
 import { lireWorkflow } from "../workflows/lire.js";
 import { ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
 import { PREFIXE_WORKFLOW_INVALIDE, type Proprietaire } from "../workflows/schema.js";
@@ -176,6 +176,10 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   // Un widget qui lit avec le compte de l'utilisateur ne tourne qu'avec son accord, qui couvre aussi ses domaines publics.
   if (aCompte && !accordValide(declaration, (await lireAccords(dossierWidgets))[id])) {
     const erreur = accordRequis(declaration);
+    // Déjà en attente d'accord à la dernière exécution : pas une de plus à chaque planification (elles pousseraient
+    // dehors l'historique des vraies exécutions), la dernière tient lieu.
+    const derniere = (await listerExecutions(dossierDonnees))[0];
+    if (derniere?.statut === "accord-requis") return conclure({ statut: "accord-requis", erreur, execution: derniere.id });
     const pasLances: TraceBloc[] = valide.ordre.map((b) => ({
       id: b,
       type: valide.workflow.blocs.find((x) => x.id === b)!.type,
