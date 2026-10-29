@@ -13,9 +13,9 @@ import { dossierWidgets, ecrireWidget, lancer, nouveauProfil, nouvelleRacine } f
  * après que le bas de la liste est vu : par IntersectionObserver (`/io`) ou par l'événement `scroll` (`/defilement`).
  * La page écrit aussi ce qu'elle voit de sa fenêtre (cachée) : `visibilityState` et les images d'animation.
  */
-const pageAnnonces = (mode: "io" | "defilement") => `<!doctype html><meta charset="utf-8"><title>Annonces</title>
+const pageAnnonces = (mode: "io" | "defilement" | "virtuelle") => `<!doctype html><meta charset="utf-8"><title>Annonces</title>
 <style>body{margin:0} .a{height:300px}</style>
-<p id="etat"></p><div id="liste"></div><div id="fin" style="height:10px"></div>
+<p id="etat"></p><div id="haut"></div><div id="liste"></div><div id="fin" style="height:10px"></div>
 <script>
   const liste = document.getElementById("liste");
   let n = 0, enCours = false, images = 0;
@@ -41,6 +41,20 @@ const pageAnnonces = (mode: "io" | "defilement") => `<!doctype html><meta charse
       ? `new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) plus(); }).observe(document.getElementById("fin"));`
       : `addEventListener("scroll", () => { if (innerHeight + scrollY >= document.documentElement.scrollHeight - 50) plus(); });`
   }
+  ${
+    // Liste virtualisée (comme Leboncoin) : une annonce sortie de l'écran par le haut est retirée de la page, remplacée
+    // par de l'espace vide de même hauteur.
+    mode === "virtuelle"
+      ? `addEventListener("scroll", () => {
+          const haut = document.getElementById("haut");
+          for (const d of [...liste.children]) {
+            if (d.getBoundingClientRect().bottom >= -300) break;
+            haut.style.height = (haut.offsetHeight + d.offsetHeight) + "px";
+            d.remove();
+          }
+        });`
+      : ""
+  }
 </script>`;
 
 let site: { url: string; serveur: Server };
@@ -50,7 +64,8 @@ test.beforeAll(async () => {
   const serveur = createServer((req, res) => {
     const chemin = new URL(req.url ?? "/", "http://x").pathname;
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(chemin === "/io" ? pageAnnonces("io") : chemin === "/defilement" ? pageAnnonces("defilement") : "<title>ok</title>");
+    const mode = ({ "/io": "io", "/defilement": "defilement", "/virtuelle": "virtuelle" } as const)[chemin as "/io"];
+    res.end(mode ? pageAnnonces(mode) : "<title>ok</title>");
   });
   await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
   site = { url: `http://127.0.0.1:${(serveur.address() as AddressInfo).port}`, serveur };
@@ -106,6 +121,7 @@ test("le lecteur fait défiler une page qui charge en défilant (IntersectionObs
   widgetAnnonces(racine, "sans-defiler", "/io");
   widgetAnnonces(racine, "io", "/io", 8);
   widgetAnnonces(racine, "defilement", "/defilement", 8);
+  widgetAnnonces(racine, "virtuelle", "/virtuelle", 8);
   const profil = nouveauProfil();
   const { fermer } = await lancer({
     racine,
@@ -113,13 +129,14 @@ test("le lecteur fait défiler une page qui charge en défilant (IntersectionObs
     env: { WEBAIOS_KEV_URL: `http://127.0.0.1:${(ia.address() as AddressInfo).port}`, WEBAIOS_OLLAMA_URL: `http://127.0.0.1:${(ia.address() as AddressInfo).port}`, WEBAIOS_TEST_ADRESSES_LOCALES: "1" },
   });
   try {
-    for (const id of ["sans-defiler", "io", "defilement"]) {
+    for (const id of ["sans-defiler", "io", "defilement", "virtuelle"]) {
       await expect.poll(() => donnees(profil, id), { timeout: 120_000, intervals: [500] }).not.toBeNull();
     }
     const sans = donnees(profil, "sans-defiler")!;
     const io = donnees(profil, "io")!;
     const defilement = donnees(profil, "defilement")!;
-    console.log("mesures :", JSON.stringify({ sans, io, defilement }));
+    const virtuelle = donnees(profil, "virtuelle")!;
+    console.log("mesures :", JSON.stringify({ sans, io, defilement, virtuelle }));
     // Sans defiler : seulement les 5 premières annonces, comme avant.
     expect(sans).toMatchObject({ annonces: 5, liens: 5 });
     // Avec defiler : la page a chargé en défilant, dans la fenêtre cachée, par les deux mécanismes.
@@ -127,6 +144,9 @@ test("le lecteur fait défiler une page qui charge en défilant (IntersectionObs
     expect(io.liens).toBe(io.annonces);
     expect(defilement.annonces).toBeGreaterThan(5);
     expect(defilement.liens).toBe(defilement.annonces);
+    // Liste virtualisée : les annonces retirées en défilant sont gardées au fur et à mesure, chacune une fois.
+    expect(virtuelle.annonces).toBe(defilement.annonces);
+    expect(virtuelle.liens).toBe(virtuelle.annonces);
     // Mesuré (Electron 45) : la fenêtre cachée (show: false, paintWhenInitiallyHidden, sans ralentissement d'arrière-plan)
     // se dit visible et anime ses images : IntersectionObserver et `scroll` y marchent sans rien de plus.
     expect(io.etat).toBe("visibilite=visible images=oui");

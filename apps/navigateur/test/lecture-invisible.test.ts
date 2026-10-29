@@ -8,7 +8,7 @@ vi.mock("electron", () => ({
   BrowserWindow: vi.fn(),
 }));
 
-const { lirePageInvisible, lireHtmlInvisible, profilsLisibles, urlPermise } = await import("../src/main/agent/lecture-invisible");
+const { cumulerParties, lirePageInvisible, lireHtmlInvisible, profilsLisibles, urlPermise } = await import("../src/main/agent/lecture-invisible");
 
 const etat = (profils: string[], espaces: { profil: string; prive: boolean }[]) =>
   ({ profils: profils.map((id) => ({ id })), espaces: espaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as EtatNavigateur;
@@ -564,7 +564,7 @@ function pageDefilante(o: {
   hauteur: number;
   apresDefilement?: (n: number, p: { hauteur: number }) => void;
   avantMesure?: (p: { hauteur: number }) => void;
-  lu?: () => unknown;
+  lu?: (defilements: number) => unknown;
   /** Le défilement échoue (page en train de naviguer, cadre détruit). */
   echec?: boolean;
 }) {
@@ -575,6 +575,8 @@ function pageDefilante(o: {
     const code = scripts[0]!.code;
     p.mondes.push(monde);
     if (code.includes("scrollBy")) {
+      // Une lecture juste avant un défilement est un relevé (liste virtualisée), pas la lecture finale.
+      if (p.scripts.at(-1) === "lire") p.scripts[p.scripts.length - 1] = "releve";
       p.scripts.push("defiler");
       if (o.echec) throw new Error("Script failed to execute");
       // La hauteur d'avant le défilement : ce qui charge ensuite fait grandir la page.
@@ -586,7 +588,7 @@ function pageDefilante(o: {
     }
     if (code.includes("querySelectorAll")) {
       p.scripts.push("lire");
-      return o.lu ? o.lu() : { titre: "T", texte: `lu après ${p.defilements} défilements`, liens: [] };
+      return o.lu ? o.lu(p.defilements) : { titre: "T", texte: `lu après ${p.defilements} défilements`, liens: [] };
     }
     p.scripts.push("mesurer");
     o.avantMesure?.(p);
@@ -616,7 +618,7 @@ test("defiler : un écran à la fois dans le monde 999, jusqu'au bas d'une page 
   await vi.advanceTimersByTimeAsync(1_999);
   expect(p.scripts).toEqual([]);
   await vi.advanceTimersByTimeAsync(10_000);
-  await expect(r).resolves.toMatchObject({ texte: "lu après 3 défilements" });
+  expect((await r).texte.split("\n").at(-1)).toBe("lu après 3 défilements");
   expect(p.scripts.filter((s) => s === "defiler")).toHaveLength(3);
   expect(p.scripts.at(-1)).toBe("lire");
   expect(new Set(p.mondes)).toEqual(new Set([999]));
@@ -630,7 +632,7 @@ test("defiler : une page longue mais fixe est défilée jusqu'en bas (détails m
   wc.emit("did-finish-load");
   await vi.advanceTimersByTimeAsync(15_000);
   // 3 600 − 900 = 2 700 : trois écrans pour atteindre le bas.
-  await expect(r).resolves.toMatchObject({ texte: "lu après 3 défilements" });
+  expect((await r).texte.split("\n").at(-1)).toBe("lu après 3 défilements");
 });
 
 test("defiler : au plus le nombre d'écrans demandé, même si la page grandit encore", async () => {
@@ -640,7 +642,7 @@ test("defiler : au plus le nombre d'écrans demandé, même si la page grandit e
   await vi.advanceTimersByTimeAsync(0);
   wc.emit("did-finish-load");
   await vi.advanceTimersByTimeAsync(10_000);
-  await expect(r).resolves.toMatchObject({ texte: "lu après 2 défilements" });
+  expect((await r).texte.split("\n").at(-1)).toBe("lu après 2 défilements");
   expect(p.defilements).toBe(2);
 });
 
@@ -672,7 +674,7 @@ test("defiler : un chargement en cours (cadre, navigation interne) prolonge l'at
   expect(p.scripts).not.toContain("lire");
   wc.emit("did-stop-loading");
   await vi.advanceTimersByTimeAsync(1_500);
-  await expect(r).resolves.toMatchObject({ texte: "lu après 1 défilements" });
+  expect((await r).texte.split("\n").at(-1)).toBe("lu après 1 défilements");
 });
 
 test("defiler : signal levé pendant le défilement : rejetée avec la raison, rien n'est lu, plus aucun script", async () => {
@@ -738,8 +740,56 @@ test("defiler : un script de défilement qui échoue (page qui navigue) : la pag
   await vi.advanceTimersByTimeAsync(0);
   wc.emit("did-finish-load");
   await vi.advanceTimersByTimeAsync(2_000);
-  expect(p.scripts).toEqual(["defiler"]);
+  expect(p.scripts).toEqual(["releve", "defiler"]);
   await vi.advanceTimersByTimeAsync(2_000);
+  // Le relevé d'avant l'échec et la lecture finale montrent la même page : elle n'est gardée qu'une fois.
   await expect(r).resolves.toMatchObject({ texte: "lu après 0 défilements" });
-  expect(p.scripts).toEqual(["defiler", "lire"]);
+  expect(p.scripts).toEqual(["releve", "defiler", "lire"]);
+});
+
+test("defiler : une liste virtualisée (les éléments sortis de l'écran disparaissent) est gardée au fur et à mesure", async () => {
+  vi.useFakeTimers();
+  // Chaque écran ne montre que ses 3 annonces ; deux annonces différentes ont le même prix.
+  const ecran = (n: number) => ({
+    titre: "Recherche",
+    texte: ["Leboncoin", ...[1, 2, 3].flatMap((i) => [`Annonce ${n * 3 + i}`, "4 500 €"]), "Pied de page"].join("\n"),
+    liens: [1, 2, 3].map((i) => ({ texte: `Annonce ${n * 3 + i} 4 500 €`, url: `https://exemple.test/a/${n * 3 + i}` })),
+  });
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, apresDefilement: (n, q) => void (n <= 2 && (q.hauteur += 900)), lu: ecran });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 8 }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(15_000);
+  const page = await r;
+  expect(p.scripts.filter((s) => s === "releve").length).toBeGreaterThan(0);
+  for (let i = 1; i <= 12; i++) expect(page.texte).toContain(`Annonce ${i}\n4 500 €`);
+  expect(page.texte.match(/4 500 €/g)).toHaveLength(12);
+  expect(page.texte.match(/Leboncoin/g)).toHaveLength(1);
+  expect(page.texte.match(/Pied de page/g)).toHaveLength(1);
+  expect(page.liens.map((l) => l.url)).toEqual(Array.from({ length: 12 }, (_, i) => `https://exemple.test/a/${i + 1}`));
+});
+
+test("cumulerParties : lignes gardées une fois dans l'ordre d'apparition, liens par adresse avec le plus long texte", () => {
+  const r = cumulerParties([
+    { titre: "A", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "court" }] },
+    { titre: "B", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "plus long" }] },
+    { titre: "C", texte: "en-tête\nz\n10 €\nw", liens: [{ url: "https://e.test/2", texte: "deux" }, { url: 3 }] },
+  ]);
+  expect(r.titre).toBe("C");
+  expect(r.texte).toBe("en-tête\nx\n10 €\ny\nz\n10 €\nw");
+  expect(r.liens).toEqual([
+    { url: "https://e.test/1", texte: "plus long" },
+    { url: "https://e.test/2", texte: "deux" },
+  ]);
+});
+
+test("cumulerParties : une liste qui avance (virtualisée) est recalée sur ce qu'elle partage avec le relevé d'avant, prix identiques gardés", () => {
+  const r = cumulerParties([
+    { titre: "T", texte: "En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…", liens: [] },
+    // A1 est sorti de la page ; A2 est encore là ; A3 et A4 arrivent, au même prix.
+    { titre: "T", texte: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", liens: [] },
+    // Rien de nouveau : la page n'a plus bougé.
+    { titre: "T", texte: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", liens: [] },
+  ]);
+  expect(r.texte).toBe("En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…\nA3\n4 500 €\nA4\n4 500 €");
 });

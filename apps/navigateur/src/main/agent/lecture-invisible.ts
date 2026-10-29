@@ -177,6 +177,11 @@ function jusquAuSignal<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
 interface Lecture<T> {
   script: string;
   forme: (url: string, brut: unknown) => T;
+  /**
+   * Avec `defiler` : `script` est aussi lu avant chaque défilement, et `cumuler` réunit ces relevés et la lecture
+   * finale en un seul résultat. Sans lui, seule la lecture finale compte.
+   */
+  cumuler?: (releves: unknown[]) => unknown;
 }
 
 /**
@@ -286,6 +291,7 @@ export function lirePageInvisible(url: string, o: OptionsLecturePage, deps: Deps
   return lireFenetre(url, o, deps, {
     script: lecturePage(bornes),
     forme: (u, brut) => mettreEnForme(u, (brut ?? { titre: "", texte: "", liens: [] }) as PartiesLues, bornes),
+    cumuler: cumulerParties,
   });
 }
 
@@ -372,6 +378,79 @@ function mettreEnForme(url: string, p: PartiesLues, b: Bornes): PageLue {
   return { url, titre: String(p.titre ?? ""), texte: String(p.texte ?? "").slice(0, b.texte), liens };
 }
 
+/**
+ * Réunit les relevés d'une page défilée. Une liste virtualisée (Leboncoin) retire de la page les éléments sortis de
+ * l'écran : la lecture finale n'en montre que les derniers. Chaque relevé est comparé au précédent : l'en-tête et le
+ * pied de page communs sont mis de côté, puis la liste du nouveau relevé est recalée sur la fin de celle du précédent
+ * (ce qu'ils ont en commun), et seule la suite, nouvelle, est ajoutée, avant le pied de page. Rien n'est dédoublonné
+ * ligne à ligne : un même prix ou un même libellé d'un élément à l'autre reste. Les liens sont réunis par adresse, avec
+ * le plus long texte vu. Le titre est celui de la lecture finale. Les plafonds s'appliquent ensuite, à la mise en forme.
+ */
+export function cumulerParties(releves: unknown[]): PartiesLues {
+  let lignes: string[] = [];
+  const liens = new Map<string, string>();
+  let titre: unknown = "";
+  let precedent: string[] | null = null;
+  for (const r of releves) {
+    const p = (r ?? {}) as Partial<PartiesLues>;
+    titre = p.titre ?? titre;
+    const ici = String(p.texte ?? "").split("\n");
+    if (precedent === null) lignes = [...ici];
+    else lignes = ajouterSuite(lignes, precedent, ici);
+    precedent = ici;
+    for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
+      const brut = (l as { url?: unknown; texte?: unknown } | null) ?? {};
+      if (typeof brut.url !== "string") continue;
+      const texte = String(brut.texte ?? "");
+      if (texte.length > (liens.get(brut.url)?.length ?? -1)) liens.set(brut.url, texte);
+    }
+  }
+  return { titre, texte: lignes.join("\n"), liens: [...liens].map(([url, texte]) => ({ url, texte })) };
+}
+
+/** Lignes de fin du relevé précédent qu'on peut ignorer pour le recalage (« Chargement… », bouton « Voir plus »). */
+const FIN_IGNOREE = 3;
+
+/** `cumul` complété de ce que `ici` montre de nouveau par rapport à `avant`, le relevé précédent. */
+function ajouterSuite(cumul: string[], avant: string[], ici: string[]): string[] {
+  // En-tête : les premières lignes communes.
+  let debut = 0;
+  while (debut < ici.length && debut < avant.length && ici[debut] === avant[debut]) debut++;
+  // Pied de page : les dernières lignes communes, mais seulement tant que la ligne d'avant est aussi la même. Sinon le
+  // dernier prix de la liste, pareil par hasard d'un écran à l'autre, serait pris pour du pied de page.
+  let pied = 0;
+  const dernier = (t: string[], k: number) => t[t.length - 1 - k];
+  while (
+    ici.length - pied - 1 > debut &&
+    avant.length - pied - 1 > debut &&
+    dernier(ici, pied) === dernier(avant, pied) &&
+    dernier(ici, pied + 1) === dernier(avant, pied + 1)
+  ) {
+    pied++;
+  }
+  const listeAvant = avant.slice(debut, avant.length - pied);
+  const liste = ici.slice(debut, ici.length - pied);
+  // Le recalage : la plus longue fin de la liste d'avant (à quelques lignes près) qui commence la nouvelle liste.
+  let commun = 0;
+  for (let ignorees = 0; ignorees <= Math.min(FIN_IGNOREE, listeAvant.length) && commun === 0; ignorees++) {
+    const fin = listeAvant.length - ignorees;
+    // Une seule ligne commune après des lignes ignorées peut l'être par hasard : il en faut alors au moins deux.
+    for (let k = Math.min(fin, liste.length); k > (ignorees > 0 ? 1 : 0); k--) {
+      let pareil = true;
+      for (let j = 0; j < k && pareil; j++) pareil = listeAvant[fin - k + j] === liste[j];
+      if (pareil) {
+        commun = k;
+        break;
+      }
+    }
+  }
+  const suite = liste.slice(commun);
+  if (suite.length === 0) return cumul;
+  // Avant le pied de page déjà gardé, s'il termine le cumul.
+  const piedGarde = pied > 0 && cumul.slice(-pied).every((l, i) => l === ici[ici.length - pied + i]) ? pied : 0;
+  return [...cumul.slice(0, cumul.length - piedGarde), ...suite, ...cumul.slice(cumul.length - piedGarde)];
+}
+
 /** Rend `window.print` inopérant : sinon il suspend la page en attendant un panneau d'impression jamais montré. */
 const SANS_IMPRESSION = `(() => {
   try { Object.defineProperty(window, "print", { value: () => {}, writable: false, configurable: false }); } catch {}
@@ -444,6 +523,8 @@ function lireDans<T>(
     /** La pause en cours du défilement, et de quoi la finir tout de suite (à la fin de la lecture). */
     let pause: NodeJS.Timeout | undefined;
     let reveil: (() => void) | undefined;
+    /** Avec `defiler` et `lecture.cumuler` : la page lue avant chaque défilement, réunie à la lecture finale. */
+    const releves: unknown[] = [];
     const finir = (r: { erreur: Error } | { page: T }) => {
       if (fini) return;
       fini = true;
@@ -530,7 +611,8 @@ function lireDans<T>(
         // pushState/replaceState (application d'une page) a pu changer l'URL : elle doit rester permise.
         const apres = wc.isDestroyed() ? "" : wc.getURL();
         if (!permise(apres)) return bloquer(apres);
-        finir({ page: lecture.forme(apres, brut) });
+        const tout = lecture.cumuler && releves.length > 0 ? lecture.cumuler([...releves, brut]) : brut;
+        finir({ page: lecture.forme(apres, tout) });
       } catch (e) {
         finir({ erreur: e instanceof Error ? e : new Error(String(e)) });
       }
@@ -560,6 +642,11 @@ function lireDans<T>(
         for (let n = 0; n < defiler && Date.now() < heureForcee; n++) {
           const ici = wc.getURL();
           if (!permise(ici)) return bloquer(ici);
+          // Ce que montre la page avant de défiler : une liste virtualisée le retirera ensuite.
+          if (lecture.cumuler) {
+            releves.push(await wc.executeJavaScriptInIsolatedWorld(999, [{ code: lecture.script }]));
+            if (fini) return;
+          }
           const { hauteur: avant } = await mesurer(DEFILEMENT);
           let mesure = { hauteur: avant, bas: false };
           let hauteur = -1;
