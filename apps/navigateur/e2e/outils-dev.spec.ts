@@ -463,9 +463,17 @@ test("fenêtre d'appli : la pastille ⚡ est affichée ; Couper l'accès la reti
   expect(await pastille.evaluate(async () => Object.keys((await window.webaios.acces.etat()).onglets))).toEqual(["app:essai"]);
   await pastille.getByTestId(PASTILLE).click();
   await expect(pastille.getByTestId(BULLE)).toContainText("Agir sur la page");
-  // Bulle ouverte : la vue grandit pour la contenir, en entier et sous la pastille.
-  const [vue, bulle] = await pastille.evaluate(() => [innerHeight, document.querySelector("[data-testid=bulle-acces]")!.getBoundingClientRect().bottom]);
-  expect(bulle).toBeLessThanOrEqual(vue!);
+  // Bulle ouverte : la vue grandit pour la contenir, en entier et sous la pastille. La vue grandit par IPC, puis la bulle
+  // se replace au « resize » suivant : entre les deux, une image où elle garde sa largeur de 120 px (bas ≈ 490 dans une
+  // vue de 320). On attend donc l'état posé, sans délai fixe.
+  await expect
+    .poll(() =>
+      pastille.evaluate(() => {
+        const bas = document.querySelector("[data-testid=bulle-acces]")!.getBoundingClientRect().bottom;
+        return innerHeight > 28 && bas <= innerHeight ? "contenue" : `bulle ${bas} > vue ${innerHeight}`;
+      }),
+    )
+    .toBe("contenue");
   await pastille.getByTestId(BULLE).getByRole("button", { name: "Couper l'accès" }).click();
   await expect(pastille.getByTestId(PASTILLE)).toHaveCount(0);
   // Une construite coupée le reste jusqu'à la prochaine conversation : l'outil redemande.
