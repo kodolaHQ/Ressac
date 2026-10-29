@@ -161,7 +161,11 @@ export async function executerWorkflow(
       execution.erreur = issue.erreur;
       if (issue.t === "arret" || !issue.erreurDuCode) execution.erreurNoyau = true;
     }
-    if (remarque) journal = (journal ? journal + "\n" : "") + remarque;
+    if (remarque) {
+      journal = (journal ? journal + "\n" : "") + remarque;
+      // Aussi dans l'exécution, au journal du bloc de sortie.
+      blocs.find((b) => b.id === ctx.valide.sortie.id)?.journal.push(remarque);
+    }
     return { issue, execution, journal: journal.slice(-JOURNAL_MAX) };
   };
   const echec = (erreur: string, erreurDuCode: boolean): IssueWorkflow => ({ t: "echec", erreur: tronquer(erreur, ERREUR_MAX), erreurDuCode });

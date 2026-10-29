@@ -256,7 +256,11 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     }
     if (await accordRetire()) return refusee();
     if (issue.memoire) {
-      if (!(await ecrireMemoire(dossierDonnees, issue.memoire))) journal = ajouter(journal, MEMOIRE_NON_GARDEE);
+      if (!(await ecrireMemoire(dossierDonnees, issue.memoire))) {
+        journal = ajouter(journal, MEMOIRE_NON_GARDEE);
+        // Aussi dans l'exécution, au journal du bloc de sortie.
+        execution.blocs.find((b) => b.id === valide.sortie.id)?.journal.push(MEMOIRE_NON_GARDEE);
+      }
       if (await accordRetire()) return refusee();
     }
     await ecrireExecution(dossierDonnees, execution);

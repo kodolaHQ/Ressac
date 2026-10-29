@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import {
   DELAI_EXECUTION_MS,
+  MEMOIRE_NON_GARDEE,
   PROFIL_REFUSE,
   executerWorkflow,
   type ContexteWorkflow,
@@ -310,7 +311,9 @@ describe("executerWorkflow", () => {
     });
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "fin", memoire: null });
-    expect(r.journal).toMatch(/mémoire/i);
+    expect(r.journal).toContain(MEMOIRE_NON_GARDEE);
+    // Aussi dans l'exécution, au journal du bloc de sortie.
+    expect(r.execution.blocs.find((x) => x.id === "sortie")!.journal).toEqual([MEMOIRE_NON_GARDEE]);
   });
 
   it("une trace de bloc commencé sans fin le donne échoué ; journal de bloc borné à 200 lignes de 500 caractères", async () => {
