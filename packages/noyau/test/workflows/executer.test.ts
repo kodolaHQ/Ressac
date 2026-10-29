@@ -24,7 +24,8 @@ import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES, TROP_DE_LECTURES } from "../..
 import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, extraireResultats, urlRecherche } from "../../src/workflows/duckduckgo.js";
 import { Menagement } from "../../src/workflows/menagement.js";
 import { WEB_REQUIS } from "../../src/workflows/valider.js";
-import { LIGNE_MAX_OCTETS } from "../../src/workflows/protocole.js";
+import { LIGNE_MAX_OCTETS, TAILLE_MAX_DONNEES } from "../../src/workflows/protocole.js";
+import { TAILLE_MAX_DONNEES as TAILLE_MAX_DONNEES_ACCUEIL } from "../../src/accueil/schemas.js";
 import { REJEU_TROP_GROS } from "../../src/workflows/rejeu.js";
 import { empreinteParametres, type MemoireBlocs } from "../../src/workflows/memoire.js";
 import { validerWorkflow } from "../../src/workflows/valider.js";
@@ -891,7 +892,8 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
   });
 
   /**
-   * Un faux conteneur qui écrit ses lignes une à une (une fonction est appelée à sa place : avancer l'horloge) ;
+   * Un faux conteneur qui écrit ses lignes une à une (une fonction est appelée à sa place : avancer l'horloge ; un texte
+   * est écrit tel quel, plusieurs lignes d'un coup) ;
    * `recu` reçoit ce que le noyau lui écrit ; `bloque` : il ne sort jamais de lui-même (seulement tué).
    */
   const lanceurPas = (pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => () => {
@@ -906,7 +908,7 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
         for (const p of pas) {
           await new Promise((r) => setImmediate(r));
           if (typeof p === "function") p();
-          else stdout.write(JSON.stringify(p) + "\n");
+          else stdout.write(typeof p === "string" ? p : JSON.stringify(p) + "\n");
         }
         await new Promise((r) => setImmediate(r));
         if (o.bloque) return;
@@ -979,6 +981,31 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
     );
     expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
     expect(delais).toContain(200_000);
+  });
+
+  it("widget Gmail (compte, recolte.mjs seul) : ligne debut identique, timeout 180, délai 200 s, ni surMemoire ni memoire sur un echec", async () => {
+    const recu: string[] = [];
+    const implicite = { version: 1, blocs: [{ id: "recolte", type: "code", parametres: { source: "recolte.mjs" } }, { id: "sortie", type: "sortie", parametres: { vers: "widget" } }], liens: [{ de: "recolte", vers: "sortie" }] };
+    const b = await banc(implicite, {}, {
+      compte: ["mail.google.com"],
+      accord: { profil: "p1" },
+      lancer: lanceurPas([{ t: "memoire", memoire: { recolte: { type: "code", valeur: 1 } } }, { t: "journal", bloc: "recolte", texte: "x" }, { t: "echec", erreur: "cassé" }], { recu }),
+    });
+    const timeout = brancherAtelier(b);
+    const memoires: unknown[] = [];
+    b.infra.surMemoire = async (m) => void memoires.push(m);
+    let issue: unknown;
+    const delais = await delaisPendant(async () => {
+      issue = (await executerWorkflow(b.ctx, b.infra)).issue;
+    });
+    const { workflow, ordre } = b.ctx.valide;
+    expect(recu.join("").split("\n")[0]).toBe(
+      JSON.stringify({ t: "debut", precedent: null, maintenant: MAINTENANT.toISOString(), config: { interets: "rust" }, workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre } }),
+    );
+    expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
+    expect(delais).toContain(200_000);
+    expect(memoires).toEqual([]);
+    expect(issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true });
   });
 
   it("dureeMaxMinutes 30 : debut porte limiteMs 1 800 000 et progressif, conteneur lancé avec timeout 1830, délai 1 850 s", async () => {
@@ -1181,17 +1208,99 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
     expect(fin.r.issue).toMatchObject({ t: "fin", memoire: marquee(4) });
   });
 
-  it("progressif : un arrêt (délai) porte la dernière mémoire reçue ; non progressif : aucune", async () => {
+  it("progressif : un arrêt (délai) porte la dernière mémoire reçue ; une mémoire encore tenue (rien reçu après) ne compte pas ; non progressif : aucune", async () => {
     // L'empreinte des paramètres validés (défauts compris) du bloc liste.
     const empreinte = empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
     const lancerAvec = async (d: number | undefined) => {
       const b = await banc(veille(), {}, { delaiMs: 300 });
       if (d !== undefined) b.ctx.dureeMaxMinutes = d;
-      b.infra.lancer = lanceurPas([{ t: "memoire", memoire: { liste: { type: "code", valeur: 7 } } }], { bloque: true });
+      b.infra.lancer = lanceurPas(
+        [
+          { t: "memoire", memoire: { liste: { type: "code", valeur: 7 } } },
+          { t: "journal", bloc: "liste", texte: "suite" },
+          // Tenue jusqu'à la ligne suivante, qui n'arrive jamais : elle pourrait précéder une publication jamais lue.
+          { t: "memoire", memoire: { liste: { type: "code", valeur: 8 } } },
+        ],
+        { bloque: true },
+      );
       return (await executerWorkflow(b.ctx, b.infra)).issue;
     };
     expect(await lancerAvec(30)).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé", memoire: { liste: { type: "code", valeur: 7, empreinte } } });
     expect(await lancerAvec(undefined)).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+  });
+
+  describe("la mémoire qui précède une publication suit son sort (R34)", () => {
+    const empreinte = () => empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const mem = (n: number) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: n } } });
+    const marquee = (n: number) => ({ liste: { type: "code", valeur: n, empreinte: empreinte() } });
+    const ouvrirChaine = [debutBloc("liste"), finBloc("liste"), debutBloc("fiche"), debutBloc("avis")];
+    const lancerAvec = async (pas: (avancer: (ms: number) => () => void) => unknown[]) => {
+      const b = await banc(veille({ auFilDeLEau: true }));
+      const avancer = horlogeFactice(b);
+      b.infra.lancer = lanceurPas(pas(avancer));
+      const publiees: unknown[] = [];
+      const memoires: unknown[] = [];
+      b.infra.surPublication = async (p) => void publiees.push(p.donnees);
+      b.infra.surMemoire = async (m) => void memoires.push(m);
+      const r = await executerWorkflow(b.ctx, b.infra);
+      return { issue: r.issue, publiees, memoires };
+    };
+
+    it("une publication de plus de 2 Mo suivie d'un echec : l'issue porte la mémoire d'avant, même après d'autres mémoires", async () => {
+      const r = await lancerAvec((avancer) => [
+        ...ouvrirChaine,
+        mem(1), pub("A", 1, 3),
+        avancer(5000), mem(2), pub("x".repeat(2 * 1024 * 1024 + 10), 2, 3),
+        // Envoyée ensuite par le conteneur (verifierMemoire, avant echec) : elle retient encore les clés de la publication rejetée.
+        avancer(40_000), mem(3),
+        { t: "echec", erreur: "cassé" },
+      ]);
+      expect(r.publiees).toEqual(["A"]);
+      expect(r.memoires).toEqual([marquee(1)]);
+      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(1) });
+    });
+
+    it("une publication acceptée après une rejetée remet la mémoire en route", async () => {
+      const r = await lancerAvec((avancer) => [
+        ...ouvrirChaine,
+        mem(1), pub("A", 1, 3),
+        avancer(5000), mem(2), pub("faits > total", 4, 3),
+        avancer(1000), mem(3), pub("B", 2, 3),
+        mem(4),
+        { t: "echec", erreur: "cassé" },
+      ]);
+      expect(r.publiees).toEqual(["A", "B"]);
+      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(4) });
+    });
+
+    it("deux publications dans le même morceau de stdout : la seconde est rejetée et sa mémoire écartée", async () => {
+      const ligne = (x: unknown) => JSON.stringify(x) + "\n";
+      const r = await lancerAvec(() => [
+        ...ouvrirChaine,
+        ligne(mem(1)) + ligne(pub("A", 1, 3)) + ligne(mem(2)) + ligne(pub("B", 2, 3)) + ligne({ t: "echec", erreur: "cassé" }),
+      ]);
+      expect(r.publiees).toEqual(["A"]);
+      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(1) });
+    });
+
+    it("une fin garde la dernière mémoire reçue, comme avant (la sortie montre tout)", async () => {
+      const r = await lancerAvec((avancer) => [
+        ...ouvrirChaine,
+        mem(1), pub("A", 1, 3),
+        avancer(1000), mem(2), pub("trop tôt", 2, 3),
+        finBloc("fiche"), finBloc("avis"), debutBloc("sortie"), finBloc("sortie"),
+        mem(3),
+        { t: "fin", donnees: "finale" },
+      ]);
+      expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(3) });
+    });
+  });
+
+  it("TAILLE_MAX_DONNEES d'interpreteur.mjs égale celle du noyau, réexportée par accueil", async () => {
+    const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+    expect(interpreteur.TAILLE_MAX_DONNEES).toBe(TAILLE_MAX_DONNEES);
+    expect(TAILLE_MAX_DONNEES_ACCUEIL).toBe(TAILLE_MAX_DONNEES);
+    expect(TAILLE_MAX_DONNEES).toBe(2 * 1024 * 1024);
   });
 
   it("ECART_PUBLICATIONS_MS et ECART_MEMOIRE_MS d'executer.ts égalent ceux d'interpreteur.mjs", async () => {

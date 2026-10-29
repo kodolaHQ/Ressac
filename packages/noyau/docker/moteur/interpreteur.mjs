@@ -59,6 +59,11 @@ export const LIMITE_GLOBALE_MS = 150_000;
 export const ECART_MEMOIRE_MS = 30_000;
 /** Au fil de l'eau : une ligne `publication` au plus par cet écart (recopié de src/workflows/executer.ts). */
 export const ECART_PUBLICATIONS_MS = 5000;
+/**
+ * Au fil de l'eau : une publication plus grosse (en JSON) n'est pas envoyée, le noyau l'ignorerait (recopié de
+ * TAILLE_MAX_DONNEES, src/workflows/protocole.ts).
+ */
+export const TAILLE_MAX_DONNEES = 2 * 1024 * 1024;
 
 /**
  * Passé cette heure, plus aucun élément n'est lancé : `limiteMs` de la ligne `debut` (la durée déclarée du widget),
@@ -599,6 +604,7 @@ export async function executerWorkflow({
     // montre (ou, en fin normale de chaîne, par `sortie`). Sur un échec de l'exécution ou un arrêt, un élément terminé
     // mais pas encore publié n'a jamais été affiché : il reste en suspens et revient la fois suivante.
     const aResoudre = [];
+    let publicationTropGrosseSignalee = false;
 
     /** L'élément `i` terminé : en échec dans un bloc, sa clé passe en échec tout de suite ; sinon elle attend sa publication. */
     function terminerElement(i) {
@@ -612,6 +618,14 @@ export async function executerWorkflow({
     /** Les clés des éléments que la publication va montrer sont résolues, puis la mémoire part, puis la publication. */
     function publier() {
       dernierePublication = horloge();
+      const donnees = apres[apres.length - 1].filter((_, i) => termines[i]);
+      // Trop grosse pour le noyau : rien n'est envoyé ni résolu, ses éléments restent en attente (la sortie les montrera).
+      if (taille(donnees) > TAILLE_MAX_DONNEES) {
+        if (!publicationTropGrosseSignalee) versErreur("publication non envoyée : plus de 2 Mo, les éléments seront montrés à la fin");
+        publicationTropGrosseSignalee = true;
+        verifierMemoire();
+        return;
+      }
       for (const i of aResoudre.splice(0)) {
         for (const suivi of suivisAmont) {
           const cle = cleSuivie(suivi, entree[i]);
@@ -619,7 +633,6 @@ export async function executerWorkflow({
         }
       }
       envoyerMemoire();
-      const donnees = apres[apres.length - 1].filter((_, i) => termines[i]);
       try {
         tracer({ t: "publication", donnees, faits, total: n });
       } catch (e) {

@@ -316,6 +316,33 @@ export async function executerWorkflow(
     relais = relais.then(f).catch(() => {});
   };
   let memoireRelayeeA: number | null = null;
+  // Exécution progressive : le conteneur résout les clés des éléments qu'une publication va montrer, envoie `memoire`,
+  // puis `publication`. Si le noyau rejette cette publication, ces éléments n'ont jamais été montrés : la mémoire doit
+  // rester celle d'avant (R34). Une mémoire est donc tenue jusqu'à la ligne suivante :
+  // - une publication acceptée la rend sûre ; rejetée, elle est écartée, et les mémoires suivantes aussi (elles
+  //   retiennent encore ces clés) jusqu'à la prochaine publication acceptée, qui montre de nouveau tous les éléments ;
+  // - une autre ligne (trace, appel, echec, fin…) la rend sûre : elle ne précédait pas de publication ;
+  // - rien après (arrêt, conteneur tué) : écartée, elle précédait peut-être une publication jamais lue.
+  // `memoireSure` est celle d'un échec ou d'un arrêt et des relais `surMemoire` ; une fin garde la dernière reçue
+  // (`memoireRecue`), car la sortie montre tout.
+  let memoireSure: MemoireBlocs | null = null;
+  let memoireTenue: { memoire: MemoireBlocs | null; recueA: number } | null = null;
+  let memoireDouteuse = false;
+  const adopterMemoire = (t: { memoire: MemoireBlocs | null; recueA: number }) => {
+    if (!t.memoire || memoireDouteuse) return;
+    const memoire = t.memoire;
+    memoireSure = memoire;
+    const surMemoire = infra.surMemoire;
+    if (surMemoire && (memoireRelayeeA === null || t.recueA - memoireRelayeeA >= ECART_MEMOIRE_MS)) {
+      memoireRelayeeA = t.recueA;
+      enFile(() => surMemoire(memoire));
+    }
+  };
+  const libererMemoireTenue = () => {
+    const t = memoireTenue;
+    memoireTenue = null;
+    if (t) adopterMemoire(t);
+  };
   let publicationRelayeeA: number | null = null;
   const arreter = (a: Arret) => {
     if (arret) return;
@@ -468,31 +495,34 @@ export async function executerWorkflow(
       // Un essai ne garde aucune mémoire : ce que le conteneur en dit est ignoré.
       if (rejeu) return;
       const filtree = marquerMemoire(m.memoire as MemoireBlocs, types, empreintes);
-      if (Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS) {
-        memoireRecue = null;
-        remarque = MEMOIRE_NON_GARDEE;
-      } else {
-        memoireRecue = filtree;
-        remarque = null;
-        const maintenant = horloge().getTime();
-        const surMemoire = infra.surMemoire;
-        if (progressif && surMemoire && (memoireRelayeeA === null || maintenant - memoireRelayeeA >= ECART_MEMOIRE_MS)) {
-          memoireRelayeeA = maintenant;
-          enFile(() => surMemoire(filtree));
-        }
-      }
+      const tropGrosse = Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS;
+      memoireRecue = tropGrosse ? null : filtree;
+      remarque = tropGrosse ? MEMOIRE_NON_GARDEE : null;
+      if (progressif) memoireTenue = { memoire: tropGrosse ? null : filtree, recueA: horloge().getTime() };
       return;
     }
     if (m.t === "publication") {
-      if (!pendantLaChaine() || m.faits > m.total || m.donnees === undefined) return;
+      const tenue = memoireTenue;
+      memoireTenue = null;
       const maintenant = horloge().getTime();
-      if (publicationRelayeeA !== null && maintenant - publicationRelayeeA < ECART_PUBLICATIONS_TOLERE_MS) return;
-      if (Buffer.byteLength(JSON.stringify(m.donnees)) > TAILLE_MAX_DONNEES) return;
       const surPublication = infra.surPublication;
-      if (!surPublication) return;
+      const acceptee =
+        pendantLaChaine() &&
+        m.faits <= m.total &&
+        m.donnees !== undefined &&
+        (publicationRelayeeA === null || maintenant - publicationRelayeeA >= ECART_PUBLICATIONS_TOLERE_MS) &&
+        Buffer.byteLength(JSON.stringify(m.donnees)) <= TAILLE_MAX_DONNEES &&
+        surPublication !== undefined;
+      if (!acceptee) {
+        // Le conteneur croit ces éléments montrés : sa mémoire n'est plus sûre avant la prochaine publication acceptée.
+        if (progressif && (tenue || pendantLaChaine())) memoireDouteuse = true;
+        return;
+      }
+      memoireDouteuse = false;
+      if (tenue) adopterMemoire(tenue);
       publicationRelayeeA = maintenant;
       const p: Publication = { donnees: m.donnees, faits: m.faits, total: m.total };
-      enFile(() => surPublication(p));
+      enFile(() => surPublication!(p));
       return;
     }
     if (m.t === "journal") {
@@ -543,6 +573,8 @@ export async function executerWorkflow(
     if (arret || terminal || !ligne.trim()) return;
     const m = lireMessageRecolteur(ligne);
     if (!m) return; // Une ligne hors protocole (le code a écrit sur stdout) est ignorée.
+    // Une mémoire tenue que ne suit pas une publication : elle ne retient que des éléments déjà montrés.
+    if (m.t !== "publication") libererMemoireTenue();
     if (m.t === "fin" || m.t === "echec") {
       terminal = m;
       processus.stdin.end();
@@ -589,7 +621,7 @@ export async function executerWorkflow(
   // La sortie finale est écrite après la dernière publication.
   await relais;
   // Exécution progressive : la dernière mémoire reçue revient avec un échec ou un arrêt.
-  const avecMemoire = <T extends IssueWorkflow>(issue: T): T => (progressif ? { ...issue, memoire: memoireRecue } : issue);
+  const avecMemoire = <T extends IssueWorkflow>(issue: T): T => (progressif ? { ...issue, memoire: memoireSure } : issue);
   const fin = terminal as MessageRecolteur | null;
   const arretFinal = arret as Arret | null;
   if (arretFinal) {

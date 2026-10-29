@@ -1724,6 +1724,32 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(derniere.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
   });
 
+  it("une publication de plus de 2 Mo (TAILLE_MAX_DONNEES) n'est pas envoyée, et aucune de ses clés n'est retenue avant la fin de la chaîne", async () => {
+    const evenements: Evenement[] = [];
+    const horloge = { t: 0 };
+    const gros = "x".repeat(1.2 * 1024 * 1024);
+    // u0 finit vite et est publiée seule (1,2 Mo) ; u1, lente, finit plus de 5 s après : [u0, u1] ferait 2,4 Mo.
+    const r = await executer({
+      progressif: true,
+      horloge: () => horloge.t,
+      entree: liste(2).map((e) => ({ ...e, url: `u${e.n}`, gros })),
+      blocs: [{ id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } }, ...BLOCS_CHAINE()],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        ...registreChaine(evenements, {}, { fiche: { horloge, duree: (n) => (n === 1 ? 9000 : 1000), tours: (n) => (n === 1 ? 50 : 1) } }),
+      },
+    });
+    expect(r.erreur).toBeNull();
+    expect(publications(r).map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
+    // Jusqu'à la fin de la chaîne, aucune mémoire ne retient u1 (jamais montrée par une publication).
+    const finChaine = r.traces.findIndex((l) => l.t === "bloc" && l.etape === "fin" && l.id === "fiche");
+    const memoires = r.traces.slice(0, finChaine).filter((l) => l.t === "memoire");
+    expect(memoires.length).toBeGreaterThan(0);
+    for (const m of memoires) expect((m.memoire.nv?.valeur ?? []).map((e: any) => e[0])).not.toContain("u1");
+    // La sortie montre tout : u1 est retenue à la fin.
+    expect((r.resultat!.memoire.nv!.valeur as any[]).map((e) => e[0])).toEqual(["u0", "u1"]);
+  });
+
   it("clés : la mémoire envoyée par verifierMemoire après la chaîne ne retient pas un élément terminé mais pas publié ; sortie le retient", async () => {
     const horloge = { t: 0 };
     const traces: any[] = [];
