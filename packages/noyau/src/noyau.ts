@@ -20,7 +20,7 @@ import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
 import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
-import { Menagement } from "./workflows/menagement.js";
+import { MENAGEMENT_PAR_DEFAUT } from "./workflows/executer.js";
 import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
 import type { NotificationWidget } from "./widgets/nouveautes.js";
 import { accordRequis } from "./widgets/recolte.js";
@@ -338,8 +338,9 @@ export async function creerNoyau(o: {
     pret: atelierPret,
     ...(o.horloge ? { horloge: o.horloge } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
-    // Un seul ménagement pour toutes les exécutions de ce noyau : une recherche à la fois, une lecture à la fois par hôte.
-    menagement: new Menagement(),
+    // Un seul ménagement pour toute l'application (tous les noyaux, essais compris) : une recherche à la fois, une
+    // lecture à la fois par hôte, même pendant les 15 s où l'ancien noyau s'arrête au changement de profil.
+    menagement: MENAGEMENT_PAR_DEFAUT,
     ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
     ...(o.notifier ? { notifier: o.notifier } : {}),
   });
