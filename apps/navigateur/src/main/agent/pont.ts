@@ -1,5 +1,5 @@
 import type { Session, WebContents } from "electron";
-import { OngletIntrouvable, OngletPrive, type DroitDev, type HistoriqueNavigateur, type OngletInfo, type OutilsDevNavigateur, type PageLue, type PontNavigateur } from "@webaios/noyau";
+import { OngletIntrouvable, OngletPrive, type ChangerHote, type DroitDev, type HistoriqueNavigateur, type OngletInfo, type OutilsDevNavigateur, type PageLue, type PontNavigateur } from "@webaios/noyau";
 import { ongletPrive, type Decision, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
 import type { Historique } from "../historique";
@@ -315,7 +315,7 @@ export class PontElectron implements PontNavigateur {
    * Lecture invisible pour un widget (voir lecture-invisible.ts) : l'état est relu à chaque appel, un profil passé
    * à un espace privé est refusé (ProfilRefuse). Rien n'entre dans l'état ni dans l'historique.
    */
-  async lirePageInvisible(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal }): Promise<PageLue> {
+  async lirePageInvisible(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote }): Promise<PageLue> {
     const sessionProfil = this.o.sessionProfil;
     if (!sessionProfil) throw new Error("Lecture invisible indisponible");
     return lirePageInvisible(url, o, { etat: () => this.o.magasin.etat, sessionProfil });

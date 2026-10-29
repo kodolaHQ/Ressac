@@ -292,3 +292,81 @@ test("une lecture annulée en attente d'une place quitte la file ; les autres, d
   expect(depsC.creerFenetre).not.toHaveBeenCalled();
   expect(a.f.destroy).toHaveBeenCalled();
 });
+
+test("lecture ménagée : une redirection vers un autre site attend changerHote avant de partir, puis charge la cible", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => wc.url);
+  let ouvrir!: () => void;
+  const changerHote = vi.fn(() => new Promise<void>((r) => (ouvrir = r)));
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  const e = { url: "https://www.Autre.test/x", isMainFrame: true, preventDefault: vi.fn() };
+  wc.emit("will-redirect", e);
+  expect(e.preventDefault).toHaveBeenCalled();
+  expect(changerHote).toHaveBeenCalledWith("www.autre.test");
+  // Rien n'est lu pendant l'attente, même si la page d'origine finit de charger.
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(wc.executeJavaScriptInIsolatedWorld).not.toHaveBeenCalled();
+  expect(wc.loadURL.mock.calls.map((c) => c[0])).toEqual(["about:blank", "https://exemple.test/"]);
+  ouvrir();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(wc.loadURL.mock.calls.map((c) => c[0])).toEqual(["about:blank", "https://exemple.test/", "https://www.Autre.test/x"]);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ url: "https://www.Autre.test/x" });
+});
+
+test("lecture ménagée : un script qui mène vers un autre site attend aussi ; le même site (www.) passe sans attendre", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => wc.url);
+  const changerHote = vi.fn(async () => {});
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  const meme = { url: "https://WWW.exemple.test/a", isMainFrame: true, preventDefault: vi.fn() };
+  wc.emit("will-redirect", meme);
+  expect(meme.preventDefault).not.toHaveBeenCalled();
+  expect(changerHote).not.toHaveBeenCalled();
+  const script = { url: "https://autre.test/", preventDefault: vi.fn() };
+  wc.emit("will-navigate", script);
+  expect(script.preventDefault).toHaveBeenCalled();
+  expect(changerHote).toHaveBeenCalledWith("autre.test");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(wc.loadURL.mock.calls.at(-1)?.[0]).toBe("https://autre.test/");
+  // De retour vers le site d'origine : attendu de nouveau.
+  const retour = { url: "https://exemple.test/fin", isMainFrame: true, preventDefault: vi.fn() };
+  wc.emit("will-redirect", retour);
+  expect(changerHote).toHaveBeenLastCalledWith("exemple.test");
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ url: "https://exemple.test/fin" });
+});
+
+test("lecture ménagée : changerHote rejeté (exécution arrêtée) fait échouer la lecture, rien n'est chargé", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => wc.url);
+  const changerHote = vi.fn(async () => {
+    throw new Error("Exécution arrêtée");
+  });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
+  await expect(r).rejects.toThrow("Exécution arrêtée");
+  expect(wc.loadURL.mock.calls.map((c) => c[0])).not.toContain("https://autre.test/");
+  expect(f.destroy).toHaveBeenCalled();
+});
+
+test("sans changerHote (lecture non ménagée) : une redirection permise vers un autre site part comme avant", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://autre.test/");
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  const e = { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() };
+  wc.emit("will-redirect", e);
+  expect(e.preventDefault).not.toHaveBeenCalled();
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ url: "https://autre.test/" });
+});

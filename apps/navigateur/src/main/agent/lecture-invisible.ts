@@ -1,5 +1,5 @@
 import { BrowserWindow, session, type Session, type WebContents } from "electron";
-import { adresseLocale, ProfilRefuse, type PageLue } from "@webaios/noyau";
+import { adresseLocale, ProfilRefuse, siteMenage, type ChangerHote, type PageLue } from "@webaios/noyau";
 import type { EtatNavigateur, IdProfil } from "../../commun/modele";
 import { marquerInvisible } from "../contenus-invisibles";
 
@@ -42,6 +42,15 @@ export function urlPermise(brute: string, domaines: readonly string[] | undefine
   if (!adressesLocales && adresseLocale(u.hostname)) return false;
   return !domaines || domaines.map(normaliser).includes(normaliser(u.hostname));
 }
+
+/** Le site d'une adresse pour le ménagement (`siteMenage` du noyau), ou null si elle est illisible. */
+const siteDe = (brute: string) => {
+  try {
+    return siteMenage(new URL(brute).hostname);
+  } catch {
+    return null;
+  }
+};
 
 const hoteDe = (brute: string) => {
   try {
@@ -169,7 +178,7 @@ interface Lecture<T> {
  */
 async function lireFenetre<T>(
   url: string,
-  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal },
+  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote },
   deps: DepsLecture,
   lecture: Lecture<T>,
 ): Promise<T> {
@@ -196,7 +205,7 @@ async function lireFenetre<T>(
     const f = (deps.creerFenetre ?? creerFenetre)(s);
     try {
       await jusquAuSignal(neutraliserImpression(f.webContents), signal);
-      const page = await lireDans(f.webContents, url, permise, lecture, signal);
+      const page = await lireDans(f.webContents, url, permise, lecture, signal, o.changerHote);
       // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
       verifierProfil();
       return page;
@@ -219,10 +228,12 @@ async function lireFenetre<T>(
  * Lit une page dans une fenêtre invisible, publique (`profil: null`) ou avec un profil de connexion qu'aucun espace
  * privé n'utilise (sinon ProfilRefuse, sans rien créer). Rien n'en est retenu : ni historique, ni onglet dans l'état.
  * Avec `domaines`, toute navigation du cadre principal hors de ces hôtes est annulée avant de partir, et la lecture échoue.
+ * Avec `changerHote` (lecture ménagée), une navigation du cadre principal vers un autre site est retenue jusqu'à ce que
+ * le ménagement de ce site le permette, puis reprise.
  */
 export function lirePageInvisible(
   url: string,
-  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal },
+  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote },
   deps: DepsLecture,
 ): Promise<PageLue> {
   return lireFenetre(url, o, deps, { script: LECTURE, forme: (u, brut) => mettreEnForme(u, (brut ?? { titre: "", texte: "", liens: [] }) as PartiesLues) });
@@ -325,12 +336,26 @@ async function preparer(wc: WebContents): Promise<void> {
   await cible();
 }
 
-/** Charge `url`, attend la fin du chargement puis 2 s de calme (30 s au plus), lit la page ; `signal` levé : abandon. */
-function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boolean, lecture: Lecture<T>, signal?: AbortSignal): Promise<T> {
+/**
+ * Charge `url`, attend la fin du chargement puis 2 s de calme (30 s au plus), lit la page ; `signal` levé : abandon.
+ * Avec `changerHote`, une navigation permise du cadre principal vers un autre site (`siteMenage`) est annulée, puis
+ * relancée vers la même adresse quand `changerHote` rend la main (rejeté : la lecture échoue) ; rien n'est lu entre-temps.
+ */
+function lireDans<T>(
+  wc: WebContents,
+  url: string,
+  permise: (u: string) => boolean,
+  lecture: Lecture<T>,
+  signal?: AbortSignal,
+  changerHote?: ChangerHote,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let fini = false;
     let charge = false;
     let enLecture = false;
+    /** Une navigation vers un autre site attend le ménagement de ce site : rien n'est lu pendant ce temps. */
+    let enAttenteDuSite = false;
+    let site = siteDe(url);
     let calme: NodeJS.Timeout | undefined;
     const finir = (r: { erreur: Error } | { page: T }) => {
       if (fini) return;
@@ -352,9 +377,27 @@ function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boole
     const bloquer = (cible: string) => arreterPage(new Error(`Navigation bloquée : ${hoteDe(cible)} est hors des domaines permis`));
     // L'exécution qui lit est arrêtée : plus rien n'est lu, la fenêtre est fermée par l'appelant.
     const abandonner = () => arreterPage(signal!.reason);
+    /** Vers un autre site, en lecture ménagée : la navigation attend son tour (voir la doc de `lireDans`). */
+    const menager = (e: { preventDefault(): void }, cible: string) => {
+      const autre = siteDe(cible);
+      if (!changerHote || autre === null || autre === site) return;
+      e.preventDefault();
+      site = autre;
+      enAttenteDuSite = true;
+      clearTimeout(calme);
+      changerHote(new URL(cible).hostname).then(
+        () => {
+          enAttenteDuSite = false;
+          if (fini || wc.isDestroyed()) return;
+          // Les échecs arrivent par did-fail-load, comme pour le premier chargement.
+          wc.loadURL(cible).catch(() => {});
+        },
+        (erreur: unknown) => arreterPage(erreur instanceof Error ? erreur : new Error(String(erreur))),
+      );
+    };
     // Avant que la requête parte : redirection du serveur, script, meta refresh, formulaire, lien.
     const garder = (e: { preventDefault(): void }, cible: string) => {
-      if (permise(cible)) return;
+      if (permise(cible)) return menager(e, cible);
       e.preventDefault();
       bloquer(cible);
     };
@@ -386,7 +429,7 @@ function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boole
     wc.on("render-process-gone", () => finir({ erreur: new Error("La page s'est arrêtée pendant la lecture") }));
 
     const lire = async () => {
-      if (fini || enLecture || wc.isDestroyed()) return;
+      if (fini || enLecture || enAttenteDuSite || wc.isDestroyed()) return;
       enLecture = true;
       clearTimeout(calme);
       try {
