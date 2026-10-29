@@ -16,6 +16,8 @@ import {
   type LanceurProcessus,
 } from "../../src/workflows/executer.js";
 import { SORTIE_MAX_OCTETS } from "../../src/workflows/executions.js";
+import { LIGNE_MAX_OCTETS } from "../../src/workflows/protocole.js";
+import { REJEU_TROP_GROS } from "../../src/workflows/rejeu.js";
 import { empreinteParametres, type MemoireBlocs } from "../../src/workflows/memoire.js";
 import { validerWorkflow } from "../../src/workflows/valider.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -530,6 +532,119 @@ describe("executerWorkflow", () => {
     // workflow.json a changé (cle: titre) : la seconde exécution reçoit une mémoire vide pour ce bloc.
     const seconde = await memoireVueParLeConteneur(wf("titre"), premiere.rendue!);
     expect(seconde.envoyee).toEqual({});
+  });
+
+  describe("essais (rejeu depuis un bloc)", () => {
+    const T = MAINTENANT.toISOString();
+    /** a → b → c → sortie : rejeu depuis c, b repris (2 éléments), a ni relancé ni repris. */
+    const rejeuDepuisC = { relances: ["c", "sortie"], sorties: { b: [{ x: 1 }, { x: 2 }] }, repris: { b: 2 } };
+
+    it("un essai rend une exécution avec repris, pas-lance et les blocs relancés", async () => {
+      const b = await banc(chaine("a", "b", "c"), {
+        "a.mjs": `export default async () => { throw new Error("a lancé"); };`,
+        "b.mjs": `export default async () => { throw new Error("b lancé"); };`,
+        "c.mjs": `export default async (entree) => entree.map((e) => e.x * 10);`,
+      });
+      b.ctx.declencheur = "rejeu";
+      b.ctx.rejeu = rejeuDepuisC;
+      const r = await executerWorkflow(b.ctx, b.infra);
+      expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [10, 20] }, memoire: null });
+      expect(r.execution.statut).toBe("reussie");
+      expect(r.execution.declencheur).toBe("rejeu");
+      expect(r.execution.blocs).toEqual([
+        { id: "a", type: "code", statut: "pas-lance", debut: null, fin: null, elements: null, journal: [] },
+        { id: "b", type: "code", statut: "repris", debut: null, fin: null, elements: 2, journal: [] },
+        { id: "c", type: "code", statut: "reussi", debut: T, fin: T, elements: 2, sortie: [10, 20], journal: [] },
+        { id: "sortie", type: "sortie", statut: "reussi", debut: T, fin: T, elements: 2, sortie: [10, 20], journal: [] },
+      ]);
+    });
+
+    it("un essai : le statut ne compte que les blocs relancés, et les lignes forgées pour un bloc repris ou non relancé sont rejetées", async () => {
+      const b = await banc(chaine("a", "b", "c"), {}, {
+        lancer: lanceurScripte([
+          { t: "bloc", id: "b", etape: "debut" },
+          { t: "journal", bloc: "b", texte: "forgé" },
+          { t: "bloc", id: "b", etape: "fin", statut: "reussi", sortie: "forgée" },
+          { t: "journal", bloc: "a", texte: "forgé" },
+          { t: "bloc", id: "c", etape: "debut" },
+          { t: "bloc", id: "c", etape: "fin", statut: "reussi", sortie: [1] },
+          { t: "bloc", id: "a", etape: "debut" },
+          { t: "bloc", id: "sortie", etape: "debut" },
+          { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: [1] },
+          { t: "fin", donnees: [1] },
+        ]),
+      });
+      b.ctx.rejeu = rejeuDepuisC;
+      const relayees: unknown[] = [];
+      b.infra.surTrace = (t) => relayees.push(t);
+      const r = await executerWorkflow(b.ctx, b.infra);
+      expect(r.execution.statut).toBe("reussie");
+      expect(r.execution.blocs.map((x) => [x.id, x.statut])).toEqual([["a", "pas-lance"], ["b", "repris"], ["c", "reussi"], ["sortie", "reussi"]]);
+      expect(r.execution.blocs[0]!.journal).toEqual([]);
+      expect(r.execution.blocs[1]).toMatchObject({ elements: 2, journal: [], debut: null });
+      expect(r.execution.blocs[1]!.sortie).toBeUndefined();
+      expect(relayees.map((t: any) => `${t.etape}:${t.bloc}`)).toEqual(["debut:c", "fin:c", "debut:sortie", "fin:sortie"]);
+    });
+
+    it("un essai n'envoie aucune mémoire et n'en rend aucune", async () => {
+      const recu: string[] = [];
+      const b = await banc(chaine("a", "b", "c"), {}, {
+        lancer: () => {
+          const p = lanceurScripte([{ t: "memoire", memoire: { c: { type: "code", valeur: "forgée" } } }, { t: "fin", donnees: null }])("", []);
+          p.stdin.on("data", (d: Buffer) => recu.push(d.toString()));
+          return p;
+        },
+        memoire: { a: { type: "code", valeur: 1 }, c: { type: "code", valeur: 2 } },
+      });
+      b.ctx.rejeu = rejeuDepuisC;
+      const r = await executerWorkflow(b.ctx, b.infra);
+      const lignes = recu.join("").trim().split("\n").map((l) => JSON.parse(l));
+      expect(lignes[0].rejeu).toEqual({ relances: ["c", "sortie"], sorties: { b: [{ x: 1 }, { x: 2 }] } });
+      expect(lignes[1]).toEqual({ t: "memoire", memoire: {} });
+      expect(r.issue).toMatchObject({ t: "fin", memoire: null });
+    });
+
+    it("des sorties à reprendre de plus de 4 Mo arrêtent l'essai sans lancer de conteneur", async () => {
+      const b = await banc(chaine("a", "b", "c"));
+      b.ctx.rejeu = { ...rejeuDepuisC, sorties: { b: "x".repeat(LIGNE_MAX_OCTETS) } };
+      const r = await executerWorkflow(b.ctx, b.infra);
+      expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
+      expect(REJEU_TROP_GROS).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
+      expect(b.commandes).toEqual([]);
+      expect(r.execution).toMatchObject({ statut: "echouee", erreur: REJEU_TROP_GROS, erreurNoyau: true });
+    });
+  });
+
+  it("surTrace reçoit debut puis fin de chaque bloc, avec elements ; une fausse trace hors ordre n'est pas relayée", async () => {
+    const b = await banc(chaine("a"), {
+      "a.mjs": `export default async () => {
+        const l = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+        l({ t: "bloc", id: "sortie", etape: "debut" });
+        l({ t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: "forgée" });
+        l({ t: "bloc", id: "inconnu", etape: "debut" });
+        return [1, 2, 3];
+      };`,
+    });
+    const relayees: unknown[] = [];
+    b.infra.surTrace = (t) => relayees.push(t);
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: [1, 2, 3] } });
+    expect(relayees).toEqual([
+      { bloc: "a", etape: "debut" },
+      { bloc: "a", etape: "fin", statut: "reussi", elements: 3 },
+      { bloc: "sortie", etape: "debut" },
+      { bloc: "sortie", etape: "fin", statut: "reussi", elements: 3 },
+    ]);
+  });
+
+  it("un surTrace qui lève ne casse pas l'exécution", async () => {
+    const b = await banc(chaine("a"), { "a.mjs": `export default async () => 1;` });
+    b.infra.surTrace = () => {
+      throw new Error("relais cassé");
+    };
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: 1 } });
+    expect(r.execution.statut).toBe("reussie");
   });
 
   it("le conteneur impossible à lancer : arrêt erreur, exécution échouée sans bloc lancé", async () => {

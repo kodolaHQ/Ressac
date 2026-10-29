@@ -3,8 +3,8 @@
 // Usage : node recolteur.mjs <dossier du widget>
 //
 // Le noyau envoie `debut` (avec son `workflow` : pour un widget qui n'a que `recolte.mjs`, le workflow implicite
-// récolte → sortie), puis la ligne `memoire` ; le workflow est exécuté par l'interpréteur (traces `bloc` et
-// `journal`, `memoire` juste avant `fin`).
+// récolte → sortie ; pour un essai du constructeur, `rejeu`), puis la ligne `memoire` ; le workflow est exécuté par
+// l'interpréteur (traces `bloc` et `journal`, `memoire` juste avant `fin`, sauf pour un essai).
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { LIMITE_GLOBALE_MS, executerWorkflow } from "./interpreteur.mjs";
@@ -105,12 +105,16 @@ async function principal() {
     tracer: envoyer,
     echeance: debutRecuA + LIMITE_GLOBALE_MS,
     versErreur,
+    rejeu: debut.rejeu ?? null,
   });
-  try {
-    envoyer({ t: "memoire", memoire: r.memoire });
-  } catch (e) {
-    // Trop grosse pour une ligne : le noyau garde l'ancienne.
-    versErreur(`mémoire non envoyée : ${e.message}`);
+  // Un essai (rejeu) ne rend aucune mémoire : le noyau n'en garde pas.
+  if (!debut.rejeu) {
+    try {
+      envoyer({ t: "memoire", memoire: r.memoire });
+    } catch (e) {
+      // Trop grosse pour une ligne : le noyau garde l'ancienne.
+      versErreur(`mémoire non envoyée : ${e.message}`);
+    }
   }
   envoyer({ t: "fin", donnees: r.donnees });
   sortie.write("", () => process.exit(0));

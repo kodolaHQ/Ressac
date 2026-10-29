@@ -213,6 +213,11 @@ function remplirOuLever(gabarit, element, config, options) {
  * Exécute un workflow validé par le noyau (`{ blocs, liens, ordre }`), bloc par bloc dans `ordre`. Envoie par
  * `tracer` le début et la fin de chaque bloc et ses lignes de journal. Rend les données (la sortie du bloc `sortie`)
  * et la mémoire des blocs du workflow ; lève l'erreur du premier bloc échoué (les suivants ne sont pas lancés).
+ *
+ * Avec `rejeu` (`{ relances, sorties }`, un essai du constructeur) : seuls les blocs de `relances` sont lancés et
+ * tracés ; la sortie d'un autre bloc est celle de `rejeu.sorties` (reprise de l'exécution d'origine). Un essai ne lit
+ * ni ne rend aucune mémoire : `liste.nouveaux` laisse tout passer, `reutiliser` ne reprend rien, la mémoire rendue est
+ * vide. Les données sont la sortie du bloc `sortie` s'il est relancé, null sinon.
  */
 export async function executerWorkflow({
   workflow,
@@ -227,7 +232,11 @@ export async function executerWorkflow({
   horloge = Date.now,
   echeance = horloge() + LIMITE_GLOBALE_MS,
   versErreur = (texte) => process.stderr.write(texte + "\n"),
+  rejeu = null,
 }) {
+  const relances = rejeu ? new Set(Array.isArray(rejeu.relances) ? rejeu.relances : []) : null;
+  const reprises = rejeu && estObjet(rejeu.sorties) ? rejeu.sorties : {};
+  if (rejeu) memoire = {};
   const parId = new Map(workflow.blocs.map((b) => [b.id, b]));
   const predecesseurs = new Map(workflow.blocs.map((b) => [b.id, []]));
   for (const { de, vers } of workflow.liens) {
@@ -239,6 +248,11 @@ export async function executerWorkflow({
   let donnees = null;
 
   for (const id of workflow.ordre) {
+    if (relances && !relances.has(id)) {
+      // Ni lancé ni tracé : sa sortie, s'il en faut une, est celle de l'exécution d'origine.
+      if (Object.hasOwn(reprises, id)) sorties.set(id, reprises[id]);
+      continue;
+    }
     const bloc = parId.get(id);
     const preds = predecesseurs.get(id);
     const entree = preds.length === 0 ? null : preds.length === 1 ? sorties.get(preds[0]) : Object.fromEntries(preds.map((p) => [p, sorties.get(p)]));
@@ -279,6 +293,7 @@ export async function executerWorkflow({
     } else tracer(fin);
   }
 
+  if (rejeu) return { donnees, memoire: {} };
   // Seulement les blocs du workflow, avec leur type : la nouvelle valeur, sinon l'ancienne si le type n'a pas changé.
   const memoireFinale = {};
   for (const b of workflow.blocs) {

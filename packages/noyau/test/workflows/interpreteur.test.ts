@@ -10,6 +10,7 @@ import { MOTEUR, SCRIPT, bloc, chaine, lancer, sortie } from "../aide/moteur.js"
 
 // Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
 const { executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+const { default: listeNouveaux } = await import(pathToFileURL(join(MOTEUR, "blocs", "liste-nouveaux.mjs")).href);
 
 describe("interpréteur (dans le conteneur)", () => {
   it("exécute les blocs dans l'ordre et envoie debut puis fin de chaque bloc avant fin", async () => {
@@ -275,6 +276,94 @@ describe("interpréteur (dans le conteneur)", () => {
   });
 });
 
+describe("interpréteur : rejeu depuis un bloc", () => {
+  it("avec rejeu, seuls les blocs relancés sont tracés, dans l'ordre, et reçoivent les sorties reprises", async () => {
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("b", "code", { source: "b.mjs" }), sortie],
+        liens: chaine("src", "b", "sortie"),
+      },
+      fichiers: {
+        "src.mjs": `export default async () => { throw new Error("src ne doit pas être lancé"); };`,
+        "b.mjs": `export default async (entree) => ({ recu: entree });`,
+      },
+      rejeu: { relances: ["b", "sortie"], sorties: { src: [1, 2] } },
+    });
+    expect(r.code).toBe(0);
+    // Aucune trace pour src, et aucune mémoire rendue : le noyau n'en garde pas pour un essai.
+    expect(r.traces.map((l) => (l.t === "bloc" ? `${l.etape}:${l.id}` : l.t))).toEqual([
+      "debut:b", "fin:b",
+      "debut:sortie", "fin:sortie",
+      "fin",
+    ]);
+    expect(r.terminal).toEqual({ t: "fin", donnees: { recu: [1, 2] } });
+  });
+
+  it("un bloc relancé à deux entrées reçoit { id: sortie } mêlant reprise et relance", async () => {
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [bloc("a", "code", { source: "a.mjs" }), bloc("b", "code", { source: "b.mjs" }), bloc("tout", "code", { source: "tout.mjs" }), sortie],
+        liens: [{ de: "a", vers: "tout" }, { de: "b", vers: "tout" }, { de: "tout", vers: "sortie" }],
+      },
+      fichiers: {
+        "a.mjs": `export default async () => { throw new Error("a ne doit pas être lancé"); };`,
+        "b.mjs": `export default async () => "B relancé";`,
+        "tout.mjs": `export default async (entree) => entree;`,
+      },
+      rejeu: { relances: ["b", "tout", "sortie"], sorties: { a: { repris: true } } },
+    });
+    expect(r.terminal).toEqual({ t: "fin", donnees: { a: { repris: true }, b: "B relancé" } });
+    expect(r.lignes.filter((l) => l.t === "bloc" && l.etape === "debut").map((l) => l.id)).toEqual(["b", "tout", "sortie"]);
+  });
+
+  it("sans le bloc sortie parmi les relancés, les données sont null", async () => {
+    const r = await lancer({
+      workflow: { version: 1, blocs: [bloc("a", "code", { source: "a.mjs" }), sortie], liens: chaine("a", "sortie") },
+      fichiers: { "a.mjs": `export default async () => "a";` },
+      rejeu: { relances: ["a"], sorties: {} },
+    });
+    expect(r.terminal).toEqual({ t: "fin", donnees: null });
+    expect(r.finBloc("sortie")).toBeUndefined();
+  });
+
+  it("avec rejeu, l'interpréteur ignore la mémoire reçue : liste.nouveaux laisse tout passer, reutiliser ne reprend rien, aucun bloc ne rend de mémoire", async () => {
+    // Le noyau envoie une mémoire vide pour un essai ; l'interpréteur ne s'y fie pas : même une mémoire reçue
+    // (y compris celle d'un bloc non relancé) n'est ni lue ni rendue.
+    const calcules: string[] = [];
+    const r = await executer({
+      entree: "jamais lu",
+      memoire: {
+        src: { type: "test.source", valeur: "ancienne" },
+        nv: { type: "liste.nouveaux", valeur: ["a", "b"] },
+        b: { type: "test.resume", valeur: { reutilises: [["a", "ancien résumé"]] } },
+      },
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.resume": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            calcules.push(ctx.element.url);
+            return `résumé de ${ctx.element.url}`;
+          },
+        },
+      },
+      rejeu: { relances: ["nv", "b", "sortie"], sorties: { src: [{ url: "a" }, { url: "b" }] } },
+    });
+    expect(r.erreur).toBeNull();
+    expect(r.traces.some((l) => l.id === "src")).toBe(false);
+    expect(calcules).toEqual(["a", "b"]);
+    expect(r.resultat!.donnees).toEqual([{ url: "a", resume: "résumé de a" }, { url: "b", resume: "résumé de b" }]);
+    expect(r.resultat!.memoire).toEqual({});
+  });
+});
+
 /** Exécution directe de l'interpréteur, avec un registre de blocs de test. */
 async function executer(o: {
   blocs: { id: string; type: string; parametres?: Record<string, unknown> }[];
@@ -283,6 +372,7 @@ async function executer(o: {
   memoire?: MemoireBlocs;
   echeance?: number;
   horloge?: () => number;
+  rejeu?: { relances: string[]; sorties: Record<string, unknown> };
 }) {
   const traces: any[] = [];
   const workflow = {
@@ -310,6 +400,7 @@ async function executer(o: {
       blocs: registre,
       ...(o.echeance !== undefined ? { echeance: o.echeance } : {}),
       ...(o.horloge ? { horloge: o.horloge } : {}),
+      ...(o.rejeu ? { rejeu: o.rejeu } : {}),
     });
   } catch (e) {
     erreur = e as Error;

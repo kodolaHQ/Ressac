@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { LIGNE_MAX_OCTETS, debutTropGros, octetsLigneDebut, planRejeu, validerWorkflow, type Execution, type TraceBloc, type WorkflowValide } from "../../src/index.js";
+import { LIGNE_MAX_OCTETS, debutTropGros, ligneDebut, octetsLigneDebut, planRejeu, validerWorkflow, type Execution, type TraceBloc, type WorkflowValide } from "../../src/index.js";
 
 const brut = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "modeles", "widgets", "actus-tech", "workflow.json"), "utf8"));
 const r = validerWorkflow(brut);
@@ -85,8 +85,15 @@ test("une sortie amont partielle est reprise", () => {
 
 test("debutTropGros mesure la ligne de début avec les sorties à reprendre", () => {
   const o = { precedent: null, maintenant: "2026-10-29T08:00:00.000Z", config: null, workflow: { blocs: [], liens: [], ordre: [] } };
+  const rejeu = (sorties: Record<string, unknown>) => ({ ...o, rejeu: { relances: ["b"], sorties } });
   expect(debutTropGros(o)).toBe(false);
-  expect(debutTropGros(o, { a: "x".repeat(1024) })).toBe(false);
-  expect(debutTropGros(o, { a: "x".repeat(LIGNE_MAX_OCTETS) })).toBe(true);
-  expect(octetsLigneDebut(o, {})).toBeGreaterThan(octetsLigneDebut(o));
+  expect(debutTropGros(rejeu({ a: "x".repeat(1024) }))).toBe(false);
+  expect(debutTropGros(rejeu({ a: "x".repeat(LIGNE_MAX_OCTETS) }))).toBe(true);
+  expect(octetsLigneDebut(rejeu({}))).toBeGreaterThan(octetsLigneDebut(o));
+  // La mesure est celle de la ligne réellement envoyée, au octet près (é compte deux octets).
+  const ligne = rejeu({ a: "é".repeat(1000) });
+  expect(octetsLigneDebut(ligne)).toBe(Buffer.byteLength(ligneDebut(ligne)));
+  expect(JSON.parse(ligneDebut(ligne)).rejeu).toEqual({ relances: ["b"], sorties: { a: "é".repeat(1000) } });
+  // Sans rejeu, la ligne est celle d'avant : aucune clé `rejeu`.
+  expect("rejeu" in JSON.parse(ligneDebut(o))).toBe(false);
 });

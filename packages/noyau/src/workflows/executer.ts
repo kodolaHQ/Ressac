@@ -19,6 +19,7 @@ import {
   lireMessageRecolteur,
   type MessageRecolteur,
 } from "./protocole.js";
+import { REJEU_TROP_GROS } from "./rejeu.js";
 import type { GenreSortie, Proprietaire } from "./schema.js";
 import type { WorkflowValide } from "./valider.js";
 
@@ -75,7 +76,17 @@ export interface ContexteWorkflow {
   surProfilRefuse(): Promise<void>;
   messageAccordRequis: string;
   declencheur: Execution["declencheur"];
+  /**
+   * Un essai du constructeur (plan de `planRejeu`) : seuls les blocs `relances` tournent, avec les `sorties` reprises
+   * de l'exécution d'origine ; aucune mémoire envoyée ni gardée. `repris` : les blocs repris et leur nombre d'éléments.
+   */
+  rejeu?: { relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> };
 }
+
+/** Une trace acceptée (dans l'ordre), relayée en direct au constructeur. */
+export type TraceDirecte =
+  | { bloc: string; etape: "debut" }
+  | { bloc: string; etape: "fin"; statut: "reussi" | "partiel" | "echoue"; elements: number | null };
 
 export interface InfraWorkflow {
   /** Dossier du moteur sur le Mac (`docker/moteur`), monté en lecture seule. */
@@ -89,6 +100,8 @@ export interface InfraWorkflow {
   delaiMs?: number;
   /** Tests seulement : permet `recuperer` et `lirePage` vers des adresses locales (127.0.0.1…). */
   adressesLocales?: boolean;
+  /** Appelé pour chaque trace acceptée (jamais pour une ligne rejetée) ; une erreur du relais est ignorée. */
+  surTrace?: (t: TraceDirecte) => void;
 }
 
 export type IssueWorkflow =
@@ -124,6 +137,10 @@ export async function executerWorkflow(
   const adressesLocales = infra.adressesLocales ?? false;
   const debut = horloge().toISOString();
   const { workflow, ordre } = ctx.valide;
+  const rejeu = ctx.rejeu ?? null;
+  // Pour un essai, seuls les blocs relancés envoient des traces, dans l'ordre d'exécution.
+  const relances = rejeu ? new Set(rejeu.relances) : null;
+  const attendu = relances ? ordre.filter((id) => relances.has(id)) : ordre;
   const types = new Map(workflow.blocs.map((b) => [b.id, b.type]));
   // Les paramètres validés de cette exécution : la mémoire n'est reprise que si elle a été retenue avec les mêmes.
   const empreintes = new Map(workflow.blocs.map((b) => [b.id, empreinteParametres(b.parametres)]));
@@ -133,6 +150,12 @@ export async function executerWorkflow(
       { id, type: types.get(id)!, statut: "pas-lance", debut: null, fin: null, elements: null, journal: [], commence: false, fini: false, coupees: 0 },
     ]),
   );
+  if (rejeu) {
+    for (const [id, elements] of Object.entries(rejeu.repris)) {
+      const t = traces.get(id);
+      if (t && !relances!.has(id)) Object.assign(t, { statut: "repris", elements });
+    }
+  }
   let journal = "";
   let remarque: string | null = null;
 
@@ -146,8 +169,9 @@ export async function executerWorkflow(
     });
     const statut: Execution["statut"] =
       issue.t === "fin"
-        ? // Un bloc partiel, ou qui n'a pas fini (une `fin` arrivée avant lui) : la sortie n'est pas complète.
-          blocs.every((b) => b.statut === "reussi") ? "reussie" : "partielle"
+        ? // Un bloc partiel, ou qui n'a pas fini (une `fin` arrivée avant lui) : la sortie n'est pas complète. Pour un
+          // essai, seuls les blocs relancés comptent.
+          blocs.every((b) => b.statut === "reussi" || (relances !== null && !relances.has(b.id))) ? "reussie" : "partielle"
         : issue.t === "arret" && issue.statut === "accord-requis" ? "accord-requis" : "echouee";
     const execution: Execution = {
       version: 1,
@@ -176,6 +200,18 @@ export async function executerWorkflow(
   const aCompte = ctx.sources.compte.length > 0;
   const domainesPublics = aCompte ? ctx.sources.publiques : null;
 
+  const debutLigne = ligneDebut({
+    precedent: ctx.precedent,
+    maintenant: debut,
+    config: ctx.config ?? null,
+    workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre },
+    ...(rejeu ? { rejeu: { relances: rejeu.relances, sorties: rejeu.sorties } } : {}),
+  });
+  // Filet : l'appelant mesure avant (`debutTropGros`) pour refuser sans rien écrire ; le récolteur refuserait la ligne.
+  if (rejeu && Buffer.byteLength(debutLigne) > LIGNE_MAX_OCTETS) {
+    return conclure({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
+  }
+
   let processus: ProcessusRecolte;
   try {
     const [cmd, ...argv] = infra.atelier.commandeRecolte(ctx.proprietaire.id, ctx.dossierFichiers, infra.moteur);
@@ -196,16 +232,9 @@ export async function executerWorkflow(
   const minuteur = setTimeout(() => arreter({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? DELAI_EXECUTION_MS);
 
   processus.stdin.on("error", () => {});
-  processus.stdin.write(
-    ligneDebut({
-      precedent: ctx.precedent,
-      maintenant: debut,
-      config: ctx.config ?? null,
-      workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre },
-    }),
-  );
-  // Seulement la mémoire des blocs de ce workflow, avec leur type.
-  processus.stdin.write(ligneMemoire(reprendreMemoire(ctx.memoire, types, empreintes)));
+  processus.stdin.write(debutLigne);
+  // Seulement la mémoire des blocs de ce workflow, avec leur type ; aucune pour un essai.
+  processus.stdin.write(ligneMemoire(rejeu ? {} : reprendreMemoire(ctx.memoire, types, empreintes)));
   processus.stderr.setEncoding("utf8");
   processus.stderr.on("data", (d: string) => {
     journal = (journal + d).slice(-JOURNAL_MAX);
@@ -284,10 +313,20 @@ export async function executerWorkflow(
 
   // Les traces viennent du conteneur, où tourne le code de l'agent : il peut en écrire de fausses sur stdout. Seules
   // comptent celles des blocs de ce workflow, dans l'ordre d'exécution (un bloc à la fois), au format du protocole.
+  // Pour un essai, seuls les blocs relancés : une ligne pour un bloc repris ou non relancé est rejetée.
   let suivant = 0;
   let enCours: TraceEnCours | null = null;
+  const relayer = (t: TraceDirecte) => {
+    try {
+      infra.surTrace?.(t);
+    } catch {
+      // Le relais en direct n'arrête jamais l'exécution.
+    }
+  };
   const traiterTrace = (m: Exclude<MessageRecolteur, { t: "appel" | "fin" | "echec" }>) => {
     if (m.t === "memoire") {
+      // Un essai ne garde aucune mémoire : ce que le conteneur en dit est ignoré.
+      if (rejeu) return;
       const filtree = marquerMemoire(m.memoire as MemoireBlocs, types, empreintes);
       if (Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS) {
         memoireRecue = null;
@@ -300,7 +339,7 @@ export async function executerWorkflow(
     }
     if (m.t === "journal") {
       const t = traces.get(m.bloc);
-      if (!t) return;
+      if (!t || (relances && !relances.has(m.bloc))) return;
       t.journal.push(tronquer(m.texte, JOURNAL_BLOC_CARACTERES));
       // La place de la ligne « … N lignes coupées » est gardée : 200 lignes au plus en tout.
       while (t.journal.length + (t.coupees > 0 ? 1 : 0) > JOURNAL_BLOC_LIGNES) {
@@ -312,11 +351,12 @@ export async function executerWorkflow(
     const t = traces.get(m.id);
     if (!t) return;
     if (m.etape === "debut") {
-      if (enCours || ordre[suivant] !== m.id) return;
+      if (enCours || attendu[suivant] !== m.id) return;
       suivant++;
       t.commence = true;
       t.debut = horloge().toISOString();
       enCours = t;
+      relayer({ bloc: m.id, etape: "debut" });
       return;
     }
     if (enCours !== t) return;
@@ -335,6 +375,7 @@ export async function executerWorkflow(
         t.sortieTronquee = true;
       } else t.sortie = m.sortie;
     }
+    relayer({ bloc: m.id, etape: "fin", statut: m.statut, elements: t.elements });
   };
 
   const traiterLigne = (ligne: string) => {

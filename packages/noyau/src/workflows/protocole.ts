@@ -39,6 +39,9 @@ export type MessageRecolteur = z.infer<typeof MessageRecolteur>;
 /** Ce que le conteneur reçoit d'un workflow validé : ses blocs, ses liens et l'ordre d'exécution. */
 export type WorkflowEnvoye = { blocs: Bloc[]; liens: Lien[]; ordre: string[] };
 
+/** Pour un essai : les blocs à relancer (dans l'ordre) et les sorties reprises de l'exécution d'origine, par bloc. */
+export type RejeuEnvoye = { relances: string[]; sorties: Record<string, unknown> };
+
 /**
  * Entrée standard du récolteur : la ligne initiale (toujours avec son workflow, implicite pour un `recolte.mjs` seul),
  * puis la mémoire des blocs, puis les réponses.
@@ -50,6 +53,7 @@ export const MessageNoyau = z.union([
     maintenant: z.string(),
     config: z.unknown().optional(),
     workflow: z.object({ blocs: z.array(z.unknown()), liens: z.array(z.unknown()), ordre: z.array(z.string()) }),
+    rejeu: z.object({ relances: z.array(z.string()), sorties: z.record(z.string(), z.unknown()) }).optional(),
   }),
   z.object({ t: z.literal("memoire"), memoire: MemoireEnvoyee }),
   z.object({ t: z.literal("reponse"), n: z.number().int(), ok: z.unknown() }),
@@ -79,7 +83,10 @@ export function ligneReponse(n: number, resultat: { ok: unknown } | { erreur: st
   return JSON.stringify({ t: "reponse", n, ...resultat }) + "\n";
 }
 
-export function ligneDebut(o: { precedent: unknown; maintenant: string; config: unknown; workflow: WorkflowEnvoye }): string {
+export type OptionsDebut = { precedent: unknown; maintenant: string; config: unknown; workflow: WorkflowEnvoye; rejeu?: RejeuEnvoye };
+
+/** La ligne `debut` ; sans rejeu, aucune clé `rejeu` (la ligne d'une vraie exécution ne change pas). */
+export function ligneDebut(o: OptionsDebut): string {
   return (
     JSON.stringify({
       t: "debut",
@@ -87,21 +94,21 @@ export function ligneDebut(o: { precedent: unknown; maintenant: string; config: 
       maintenant: o.maintenant,
       config: o.config ?? null,
       workflow: o.workflow,
+      ...(o.rejeu ? { rejeu: { relances: o.rejeu.relances, sorties: o.rejeu.sorties } } : {}),
     }) + "\n"
   );
 }
 
 /**
- * Octets de la ligne de début (avec, pour un rejeu, les `sorties` reprises) : le récolteur refuse une ligne de plus de
- * `LIGNE_MAX_OCTETS`. À mesurer avant de lancer un essai, pour refuser sans rien écrire.
+ * Octets de la ligne de début telle qu'elle est envoyée (avec, pour un rejeu, les sorties reprises) : le récolteur
+ * refuse une ligne de plus de `LIGNE_MAX_OCTETS`. À mesurer avant de lancer un essai, pour refuser sans rien écrire.
  */
-export function octetsLigneDebut(o: Parameters<typeof ligneDebut>[0], sorties?: Record<string, unknown>): number {
-  const base = Buffer.byteLength(ligneDebut(o));
-  return sorties === undefined ? base : base + Buffer.byteLength(`,"sorties":${JSON.stringify(sorties)}`);
+export function octetsLigneDebut(o: OptionsDebut): number {
+  return Buffer.byteLength(ligneDebut(o));
 }
 
-export function debutTropGros(o: Parameters<typeof ligneDebut>[0], sorties?: Record<string, unknown>): boolean {
-  return octetsLigneDebut(o, sorties) > LIGNE_MAX_OCTETS;
+export function debutTropGros(o: OptionsDebut): boolean {
+  return octetsLigneDebut(o) > LIGNE_MAX_OCTETS;
 }
 
 export function ligneMemoire(m: MemoireBlocs): string {

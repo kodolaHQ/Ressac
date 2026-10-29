@@ -26,6 +26,7 @@ export async function lancer(o: {
   config?: unknown;
   precedent?: unknown;
   repondre?: Repondeur;
+  rejeu?: { relances: string[]; sorties: Record<string, unknown> };
 }) {
   const dossier = await dossierTemporaire();
   await writeFile(join(dossier, "widget.json"), JSON.stringify({ config: { lu: "dans widget.json" } }));
@@ -59,6 +60,7 @@ export async function lancer(o: {
       maintenant: "2026-10-29T10:00:00.000Z",
       config: o.config ?? null,
       workflow: workflowEnvoye(o.workflow),
+      ...(o.rejeu ? { rejeu: o.rejeu } : {}),
     }) + "\n",
   );
   enfant.stdin.write(JSON.stringify({ t: "memoire", memoire: o.memoire ?? {} }) + "\n");
