@@ -429,6 +429,30 @@ describe("executerWorkflow", () => {
     expect(pont.appels.find((a) => a.methode === "lirePageInvisible")!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
   });
 
+  it("lirePage avec defiler : le pont le reçoit (avec ou sans compte) ; 0 ne passe rien ; hors de 0 à 20, refusé", async () => {
+    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [] } });
+    const b = await banc(
+      chaine("a"),
+      {
+        "a.mjs": `const essai = (p) => p.then(() => "ok", (e) => "refus: " + e.message);
+        export default async (e, w) => [
+          await essai(w.lirePage("https://app.daily.dev/a", { defiler: 8 })),
+          await essai(w.lirePage("https://app.daily.dev/b", { compte: true, defiler: 2 })),
+          await essai(w.lirePage("https://app.daily.dev/c", { defiler: 0 })),
+          await essai(w.lirePage("https://app.daily.dev/d", { defiler: 21 })),
+        ];`,
+      },
+      { compte: ["app.daily.dev"], publiques: ["app.daily.dev"], accord: { profil: "perso" }, pont },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: ["ok", "ok", "ok", "refus: Arguments invalides pour lirePage"] } });
+    expect(pont.appels.filter((a) => a.methode === "lirePageInvisible").map((a) => a.args)).toEqual([
+      ["https://app.daily.dev/a", { profil: null, domaines: ["app.daily.dev"], adressesLocales: true, defiler: 8 }],
+      ["https://app.daily.dev/b", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true, defiler: 2 }],
+      ["https://app.daily.dev/c", { profil: null, domaines: ["app.daily.dev"], adressesLocales: true }],
+    ]);
+  });
+
   it("recuperer vers un domaine non déclaré pour un propriétaire avec compte : refusé", async () => {
     const web = await serveurWeb({ "/": (res) => res.end("ok") });
     const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [] } });

@@ -3,6 +3,17 @@ import type { ProfilCpu } from "../outils-dev/resumes.js";
 import type { ChangerHote } from "../workflows/menagement.js";
 import type { PageLue } from "../workflows/protocole.js";
 
+/** Les options d'une lecture de page invisible (voir `PontNavigateur.lirePageInvisible`). */
+export interface OptionsLecturePage {
+  profil: string | null;
+  domaines?: string[];
+  adressesLocales?: boolean;
+  signal?: AbortSignal;
+  changerHote?: ChangerHote;
+  /** Écrans à faire défiler avant la lecture (1 à 20) ; absent : la page est lue sans défiler. */
+  defiler?: number;
+}
+
 export interface OngletInfo {
   id: string;
   titre: string;
@@ -56,8 +67,12 @@ export interface PontNavigateur {
    * `changerHote` (donné pour une lecture ménagée, celle d'un widget `web`) : avant de suivre une navigation du cadre
    * principal (redirection, script, meta refresh) vers un autre site (`siteMenage` différent), le pont la retient et
    * attend `changerHote(hôte)`, qui rend la main quand le ménagement de ce site le permet ; rejetée, la lecture échoue.
+   *
+   * `defiler` (1 à 20) : après le premier calme, la page est défilée d'un écran à la fois (jamais de clic, de frappe
+   * ni de focus) tant que sa hauteur grandit, au plus `defiler` écrans et dans les mêmes 30 s ; le texte lu va
+   * alors jusqu'à 100 000 caractères et 1 000 liens (20 000 et 400 sans défiler).
    */
-  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote }): Promise<PageLue>;
+  lirePageInvisible?(url: string, o: OptionsLecturePage): Promise<PageLue>;
   /**
    * Le HTML d'une page publique (`document.documentElement.outerHTML`, 2 Mo au plus) : toujours la session publique,
    * vidée avant la lecture, jamais un profil ni un compte. Mêmes gardes que `lirePageInvisible` (http(s), adresse

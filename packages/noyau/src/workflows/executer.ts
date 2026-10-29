@@ -397,12 +397,13 @@ export async function executerWorkflow(
   };
 
   const lirePage = async (a: unknown): Promise<unknown> => {
-    const { url, compte } = args(ArgsLirePage, a, "lirePage");
+    const { url, compte, defiler } = args(ArgsLirePage, a, "lirePage");
+    const defilement = defiler ? { defiler } : {};
     const lire = infra.pont.lirePageInvisible?.bind(infra.pont);
     if (!lire) throw new Error("Lecture de pages indisponible");
     if (!compte) {
       const u = verifierUrl(url, domainesPublics, adressesLocales);
-      const page = await lectureOuverte(u, (changerHote) => lire(u.href, { ...avecDomaines(null, domainesPublics), ...(changerHote ? { changerHote } : {}) }));
+      const page = await lectureOuverte(u, (changerHote) => lire(u.href, { ...avecDomaines(null, domainesPublics), ...defilement, ...(changerHote ? { changerHote } : {}) }));
       return verifierPage(page, domainesPublics, adressesLocales);
     }
     // Le domaine doit être déclaré en `compte` ; l'accord est relu à chaque lecture (il a pu être retiré).
@@ -414,7 +415,7 @@ export async function executerWorkflow(
     }
     if (arret) return SANS_REPONSE;
     try {
-      const page = await lire(u.href, avecDomaines(accord.profil, ctx.sources.compte));
+      const page = await lire(u.href, { ...avecDomaines(accord.profil, ctx.sources.compte), ...defilement });
       return verifierPage(page, ctx.sources.compte, adressesLocales);
     } catch (e) {
       if (e instanceof ProfilRefuse || (e as Error)?.name === "ProfilRefuse") {

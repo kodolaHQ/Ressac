@@ -1,6 +1,5 @@
 import type { DroitDev } from "../acces/politique.js";
 import type { ProfilCpu } from "../outils-dev/resumes.js";
-import type { ChangerHote } from "../workflows/menagement.js";
 import type { PageLue } from "../workflows/protocole.js";
 import {
   OngletIntrouvable,
@@ -10,6 +9,7 @@ import {
   type HistoriqueNavigateur,
   type MessageConsole,
   type OngletInfo,
+  type OptionsLecturePage,
   type PageRetenue,
   type OutilsDevNavigateur,
   type PontNavigateur,
@@ -150,7 +150,7 @@ export class PontFactice implements PontNavigateur {
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
-  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal; changerHote?: ChangerHote }) => Promise<PageLue>;
+  lirePageInvisible?: (url: string, o: OptionsLecturePage) => Promise<PageLue>;
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Lectures suspendues en cours, par URL : `relacher` les laisse finir. */
   private readonly suspendues = new Map<string, (() => void)[]>();

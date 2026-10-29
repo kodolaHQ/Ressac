@@ -32,7 +32,7 @@ export function creerWebaios({ appeler, config, precedent, maintenant, journal }
     config,
     precedent,
     maintenant,
-    lirePage: (url, options = {}) => appeler("lirePage", { url, compte: options.compte }),
+    lirePage: (url, options = {}) => appeler("lirePage", { url, compte: options.compte, defiler: options.defiler }),
     recuperer: (url, options = {}) => appeler("recuperer", { url, format: options.format ?? "texte" }),
     chercherWeb: (requete, { nombre = 8 } = {}) => appeler("chercherWeb", { requete, nombre }),
     lireFlux: async (url) => analyserFlux(String(await appeler("recuperer", { url, format: "texte" }))),
