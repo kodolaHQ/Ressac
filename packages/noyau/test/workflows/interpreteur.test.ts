@@ -220,6 +220,23 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(m.valeur).toContain("k3");
   });
 
+  it("liste.nouveaux : un doublon dans la même liste n'est pas nouveau ; une clé longue est gardée coupée à 500 caractères", async () => {
+    const longue = "u".repeat(800);
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("nv", "liste.nouveaux", { cle: "url" }), sortie],
+        liens: chaine("src", "nv", "sortie"),
+      },
+      memoire: { nv: { type: "liste.nouveaux", valeur: ["u".repeat(500)] } },
+      fichiers: {
+        "src.mjs": `export default async () => [{ url: "a", n: 1 }, { url: "a", n: 2 }, { url: "b" }, { url: ${JSON.stringify(longue)} }];`,
+      },
+    });
+    expect(r.terminal.donnees).toEqual([{ url: "a", n: 1 }, { url: "b" }]);
+    expect(r.lignes.find((l) => l.t === "memoire").memoire.nv.valeur).toEqual(["a", "b", "u".repeat(500)]);
+  });
+
   it("liste.dedoublonner : doublon sur l'une des clés normalisées (utm_, www., / final ; accents et casse du titre)", async () => {
     const elements = [
       { titre: "Été à Paris", url: "https://www.a.fr/x/?utm_source=rss&id=1" },
@@ -331,6 +348,7 @@ async function executer(o: {
   entree: unknown;
   memoire?: MemoireBlocs;
   echeance?: number;
+  horloge?: () => number;
 }) {
   const traces: any[] = [];
   const workflow = {
@@ -356,7 +374,8 @@ async function executer(o: {
       appeler: async () => null,
       tracer: (m: unknown) => traces.push(m),
       blocs: registre,
-      ...(o.echeance ? { echeance: o.echeance } : {}),
+      ...(o.echeance !== undefined ? { echeance: o.echeance } : {}),
+      ...(o.horloge ? { horloge: o.horloge } : {}),
     });
   } catch (e) {
     erreur = e as Error;
@@ -500,50 +519,87 @@ describe("interpréteur : blocs par élément", () => {
   });
 
   it("budgetSecondes : passé le temps, plus aucun élément lancé, les suivants sans champ, bloc partiel", async () => {
+    // Horloge simulée : chaque élément « dure » 300 ms, la fin de l'élément avance l'heure.
+    let maintenant = 0;
     const lances: number[] = [];
     const r = await executer({
       entree: liste(12),
+      horloge: () => maintenant,
       blocs: [{ id: "b", type: "test.lent", parametres: { champ: "r", budgetSecondes: 1 } }, { id: "sortie", type: "sortie" }],
       registre: {
         "test.lent": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
             lances.push(ctx.element.n);
-            await attendre(300);
+            await Promise.resolve();
+            maintenant += 300;
             return "fait";
           },
         },
       },
     });
+    // Les deux éléments en cours finissent avant la vérification suivante : paires lancées à 0 et 600 ; à 1200, plus rien.
+    expect(lances).toEqual([0, 1, 2, 3]);
     const sortie = r.resultat!.donnees as { n: number; r?: string }[];
-    // Deux à la fois, 300 ms chacun : 4 paires lancées avant 1 s (0, 300, 600, 900 ms).
-    expect(lances.length).toBeGreaterThanOrEqual(6);
-    expect(lances.length).toBeLessThan(12);
-    expect(sortie.filter((e) => e.r === "fait").map((e) => e.n)).toEqual(lances.sort((a, b) => a - b));
-    expect(sortie.slice(lances.length).every((e) => !("r" in e))).toBe(true);
+    expect(sortie.filter((e) => e.r === "fait").map((e) => e.n)).toEqual([0, 1, 2, 3]);
+    expect(sortie.slice(4).every((e) => !("r" in e))).toBe(true);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
-    expect(r.journal("b").join("\n")).toMatch(/non lancé/);
+    expect(r.journal("b")).toContain("temps écoulé : 8 élément(s) non lancé(s)");
   });
 
   it("le temps global (150 s depuis debut) arrête aussi de lancer des éléments", async () => {
+    let maintenant = 0;
     let lances = 0;
     const r = await executer({
       entree: liste(10),
-      echeance: Date.now() + 120,
+      horloge: () => maintenant,
+      echeance: 250,
       blocs: [{ id: "b", type: "test.lent", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
       registre: {
         "test.lent": {
           parElement: "toujours",
           async traiterElement() {
             lances++;
-            await attendre(100);
+            await Promise.resolve();
+            maintenant += 100;
             return 1;
           },
         },
       },
     });
+    // Paires lancées à 0 et 200 ; à 400, plus rien.
     expect(lances).toBe(4);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
+  });
+
+  it("parmi les éléments lancés, aucun réussi et au moins un en échec : le bloc échoue (non lancés et valeurs absentes ne comptent pas)", async () => {
+    let maintenant = 0;
+    const registre = {
+      "test.ko": {
+        parElement: "toujours",
+        async traiterElement(ctx: any) {
+          ctx.remplir("{url}");
+          await Promise.resolve();
+          maintenant += 600;
+          throw new Error("raté");
+        },
+      },
+    };
+    const temps = await executer({
+      entree: liste(6).map((e) => ({ ...e, url: "u" })),
+      horloge: () => maintenant,
+      blocs: [{ id: "b", type: "test.ko", parametres: { champ: "r", budgetSecondes: 1 } }, { id: "sortie", type: "sortie" }],
+      registre,
+    });
+    expect(temps.finBloc("b")).toMatchObject({ statut: "echoue" });
+    expect(temps.erreur?.message).toContain("raté");
+
+    const absente = await executer({
+      entree: [{ url: "u" }, { autre: 1 }],
+      blocs: [{ id: "b", type: "test.ko", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
+      registre,
+    });
+    expect(absente.finBloc("b")).toMatchObject({ statut: "echoue" });
   });
 
   it("reutiliser reprend la valeur de la mémoire sans appel et range les nouvelles", async () => {
@@ -584,6 +640,25 @@ describe("interpréteur : blocs par élément", () => {
     });
     const gardees = (r.resultat!.memoire.b!.valeur as { reutilises: [string, string][] }).reutilises.map(([k]) => k);
     expect(gardees).toEqual(["k2", "k3", "k4"]);
+  });
+
+  it("toute la mémoire envoyée tient en 2,5 Mo : les plus anciennes valeurs du plus gros bloc partent d'abord", async () => {
+    const gros = "x".repeat(450 * 1024);
+    const r = await executer({
+      entree: liste(5).map((e) => ({ ...e, cle: `k${e.n}` })),
+      blocs: [
+        { id: "b1", type: "test.gros", parametres: { champ: "g1", reutiliser: "cle" } },
+        { id: "b2", type: "test.gros", parametres: { champ: "g2", reutiliser: "cle" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: { "test.gros": { parElement: "toujours", traiterElement: async () => gros } },
+    });
+    const memoire = r.resultat!.memoire;
+    expect(Buffer.byteLength(JSON.stringify(memoire))).toBeLessThanOrEqual(2.5 * 1024 * 1024);
+    const cles = (id: string) => (memoire[id]!.valeur as { reutilises: [string, string][] }).reutilises.map(([k]) => k);
+    // Chacun borné à 2 Mo (4 gardées), puis le plus gros perd sa plus ancienne, tour à tour.
+    expect(cles("b1")).toEqual(["k3", "k4"]);
+    expect(cles("b2")).toEqual(["k2", "k3", "k4"]);
   });
 
   it("finaliser reçoit la liste enrichie et rend la sortie du bloc", async () => {

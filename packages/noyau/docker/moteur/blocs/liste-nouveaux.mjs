@@ -3,14 +3,21 @@
 import { lireChemin } from "../gabarits.mjs";
 
 export const CLES_MAX = 5000;
+/** Une clé plus longue est gardée (et comparée) coupée à cette longueur. */
+export const CLE_LONGUEUR_MAX = 500;
 
-const enCle = (v) => (v === undefined || v === null || v === "" ? null : typeof v === "object" ? JSON.stringify(v) : String(v));
+const enCle = (v) =>
+  v === undefined || v === null || v === ""
+    ? null
+    : (typeof v === "object" ? JSON.stringify(v) : String(v)).slice(0, CLE_LONGUEUR_MAX);
 
 export default {
   parElement: "non",
   async executer({ entree, parametres, memoire, journal }) {
     if (!Array.isArray(entree)) throw new Error("liste attendue en entrée");
-    const anciennes = Array.isArray(memoire) ? memoire.filter((c) => typeof c === "string") : [];
+    const anciennes = Array.isArray(memoire)
+      ? [...new Set(memoire.filter((c) => typeof c === "string").map((c) => c.slice(0, CLE_LONGUEUR_MAX)))]
+      : [];
     const dejaVues = new Set(anciennes);
     const vuesCetteFois = new Set();
     let sansCle = 0;
@@ -21,8 +28,10 @@ export default {
         sansCle++;
         return true;
       }
+      // Déjà vue avant, ou déjà passée plus haut dans cette liste : pas nouvelle.
+      const nouvelle = !dejaVues.has(cle) && !vuesCetteFois.has(cle);
       vuesCetteFois.add(cle);
-      return !dejaVues.has(cle);
+      return nouvelle;
     });
     if (sansCle) journal(`${sansCle} élément(s) sans clé ${parametres.cle}, gardés`);
     // Les clés revues cette fois deviennent les plus récentes ; les plus anciennes sont oubliées au-delà de CLES_MAX.

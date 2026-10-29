@@ -38,6 +38,8 @@ export const LIMITE_GLOBALE_MS = 150_000;
 const ELEMENTS_EN_PARALLELE = 2;
 /** Valeurs gardées par `reutiliser`, par bloc (les plus anciennes oubliées au-delà). */
 export const REUTILISES_MAX_OCTETS = 2 * 1024 * 1024;
+/** Toute la mémoire envoyée au noyau (son fichier est refusé au-delà de 3 Mo, une ligne au-delà de 4 Mo). */
+export const MEMOIRE_MAX_OCTETS = 2.5 * 1024 * 1024;
 const LIGNE_MAX = 4 * 1024 * 1024;
 const TEXTE_TRACE_MAX = 2000;
 
@@ -52,14 +54,48 @@ function cleReutilisee(element, chemin) {
   return typeof v === "object" ? JSON.stringify(v) : String(v);
 }
 
+const taille = (v) => Buffer.byteLength(JSON.stringify(v));
+
 /** Valeurs gardées par `reutiliser`, de la plus ancienne à la plus récente, bornées à REUTILISES_MAX_OCTETS. */
 function borner(reutilises) {
   const entrees = [...reutilises];
-  const tailles = entrees.map((e) => Buffer.byteLength(JSON.stringify(e)) + 1);
+  const tailles = entrees.map((e) => taille(e) + 1);
   let total = tailles.reduce((a, b) => a + b, 0);
   let debut = 0;
   while (total > REUTILISES_MAX_OCTETS && debut < entrees.length) total -= tailles[debut++];
   return entrees.slice(debut);
+}
+
+/**
+ * Borne toute la mémoire à MEMOIRE_MAX_OCTETS : oublie les plus anciennes valeurs de `reutiliser`, en commençant
+ * toujours par le bloc qui en garde le plus, puis, s'il le faut encore, les plus anciennes clés de `liste.nouveaux`.
+ */
+function bornerMemoire(memoire) {
+  let total = taille(memoire);
+  const listes = (garder) =>
+    Object.values(memoire)
+      .map((m) => garder(m))
+      .filter(Boolean)
+      .map((liste) => {
+        const tailles = liste.map((e) => taille(e) + 1);
+        return { liste, tailles, total: tailles.reduce((a, b) => a + b, 0) };
+      });
+  const phases = [
+    (m) => (Array.isArray(m.valeur?.reutilises) ? m.valeur.reutilises : null),
+    (m) => (m.type === "liste.nouveaux" && Array.isArray(m.valeur) ? m.valeur : null),
+  ];
+  for (const garder of phases) {
+    const blocs = listes(garder);
+    while (total > MEMOIRE_MAX_OCTETS) {
+      const plus = blocs.filter((b) => b.liste.length > 0).reduce((a, b) => (!a || b.total > a.total ? b : a), null);
+      if (!plus) break;
+      const t = plus.tailles.shift();
+      plus.liste.shift();
+      plus.total -= t;
+      total -= t;
+    }
+  }
+  return memoire;
 }
 
 function lireReutilises(memoire) {
@@ -68,12 +104,12 @@ function lireReutilises(memoire) {
 }
 
 /** Boucle par élément : rend { statut, sortie, memoire? } ou lève l'erreur du bloc. */
-async function parElement(module, ctx, { echeance }) {
+async function parElement(module, ctx, { echeance, horloge }) {
   const { entree, parametres, journal } = ctx;
   if (!Array.isArray(entree)) throw new Error("liste attendue en entrée");
   const { champ, reutiliser, budgetSecondes } = parametres;
   const siErreur = parametres.siErreur ?? "sauter";
-  const limite = Math.min(echeance, budgetSecondes ? Date.now() + budgetSecondes * 1000 : Infinity);
+  const limite = Math.min(echeance, budgetSecondes ? horloge() + budgetSecondes * 1000 : Infinity);
   const reutilises = reutiliser ? lireReutilises(ctx.memoire) : null;
   const ranger = (cle, valeur) => {
     reutilises.delete(cle);
@@ -83,6 +119,7 @@ async function parElement(module, ctx, { echeance }) {
   const resultat = entree.slice();
   let suivant = 0;
   let echecs = 0;
+  let reussis = 0;
   let premiereErreur = null;
   let erreurBloc = null;
 
@@ -94,6 +131,7 @@ async function parElement(module, ctx, { echeance }) {
       const valeur = reutilises.get(cle);
       ranger(cle, valeur);
       resultat[i] = { ...element, [champ]: valeur };
+      reussis++;
       return;
     }
     const valeur = await module.traiterElement({
@@ -103,11 +141,12 @@ async function parElement(module, ctx, { echeance }) {
     });
     if (valeur === undefined) throw new Error("aucune valeur rendue");
     resultat[i] = { ...element, [champ]: valeur };
+    reussis++;
     if (cle !== null) ranger(cle, valeur);
   }
 
   async function ouvrier() {
-    while (!erreurBloc && suivant < entree.length && Date.now() < limite) {
+    while (!erreurBloc && suivant < entree.length && horloge() < limite) {
       const i = suivant++;
       try {
         await traiter(i);
@@ -126,7 +165,9 @@ async function parElement(module, ctx, { echeance }) {
   await Promise.all(Array.from({ length: ELEMENTS_EN_PARALLELE }, ouvrier));
 
   if (erreurBloc) throw erreurBloc;
-  if (entree.length > 0 && echecs === entree.length) {
+  // Parmi les éléments lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés
+  // (temps) ou sans valeur de gabarit ne comptent pas comme réussis.
+  if (echecs > 0 && reussis === 0) {
     throw new Error(`Tous les éléments ont échoué (${message(premiereErreur)})`);
   }
   const nonLances = entree.length - suivant;
@@ -160,7 +201,8 @@ export async function executerWorkflow({
   appeler,
   tracer,
   blocs = BLOCS_LIVRES,
-  echeance = Date.now() + LIMITE_GLOBALE_MS,
+  horloge = Date.now,
+  echeance = horloge() + LIMITE_GLOBALE_MS,
   versErreur = (texte) => process.stderr.write(texte + "\n"),
 }) {
   const parId = new Map(workflow.blocs.map((b) => [b.id, b]));
@@ -186,6 +228,7 @@ export async function executerWorkflow({
         config,
         dossier,
         echeance,
+        horloge,
         journal,
         memoire: memoire[id]?.type === bloc.type ? memoire[id].valeur : null,
         webaios: creerWebaios({
@@ -219,7 +262,7 @@ export async function executerWorkflow({
     if (nouvelleMemoire.has(b.id)) memoireFinale[b.id] = { type: b.type, valeur: nouvelleMemoire.get(b.id) };
     else if (memoire[b.id]?.type === b.type) memoireFinale[b.id] = memoire[b.id];
   }
-  return { donnees, memoire: memoireFinale };
+  return { donnees, memoire: bornerMemoire(memoireFinale) };
 }
 
 /** Un bloc : rend { statut, sortie (JSON), memoire? } ou lève son erreur. */
@@ -244,7 +287,7 @@ async function executerBloc(bloc, entree, o) {
   };
   const elementParElement = module.parElement === "toujours" || (module.parElement === "option" && parametres.parElement === true);
   let r;
-  if (elementParElement) r = await parElement(module, ctx, { echeance: o.echeance });
+  if (elementParElement) r = await parElement(module, ctx, { echeance: o.echeance, horloge: o.horloge });
   else {
     try {
       const rendu = await module.executer(ctx);
