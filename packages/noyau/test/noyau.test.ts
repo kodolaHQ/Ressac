@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Atelier } from "../src/conteneur/atelier.js";
 import { cheminsEspace } from "../src/chemins.js";
 import { existsSync } from "node:fs";
-import { cp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { creerNoyau, ErreurAtelier, type Noyau } from "../src/noyau.js";
 import type { IaLocale } from "../src/ia/ia-locale.js";
@@ -294,4 +294,44 @@ test("noyau : rejouer passe par la file du planificateur ; surDirect suit la fil
   const avant = vus.length;
   await n.rejouer("meteo", "2026-10-28T09-00-00-000Z", "recolte");
   expect(vus).toHaveLength(avant);
+});
+
+// Docker « prêt » : la session n'a pas besoin d'un vrai pty pour vérifier la config écrite (le lancement échoue après).
+async function creerPret() {
+  const racine = await dossierTemporaire();
+  const { executer } = executeurFactice([
+    [/ info$/, { code: 0 }],
+    [/ inspect -f/, { code: 0, stdout: "true\n" }],
+  ]);
+  const { empreinteDockerfile } = await import("../src/conteneur/atelier.js");
+  const executerAJour: typeof executer = (c, args, o) =>
+    args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour });
+  return noyau;
+}
+
+test("une session ouverte pour une fenêtre écrit sa propre config MCP, supprimée à la fin de la session", async () => {
+  const n = await creerPret();
+  const dossier = join(n.chemins.interne, "sessions");
+  const session = await n.ouvrirSessionAgent({ cols: 80, rows: 24, fenetre: "F1" });
+  const fichiers = await readdir(dossier);
+  expect(fichiers).toHaveLength(1);
+  const propre = JSON.parse(await readFile(join(dossier, fichiers[0]!), "utf8")).mcpServers.webaios;
+  const principal = await lireMcp(n);
+  expect(propre.url).toBe(principal.url);
+  expect(propre.headers.Authorization).toMatch(/^Bearer [0-9a-f]{64}$/);
+  expect(propre.headers.Authorization).not.toBe(principal.headers.Authorization);
+  expect((await (await import("node:fs/promises")).stat(join(dossier, fichiers[0]!))).mode & 0o777).toBe(0o600);
+  await session.arreter();
+  await vi.waitFor(async () => expect(await readdir(dossier)).toEqual([]));
+});
+
+test("au démarrage du noyau, les configs de session laissées par un plantage sont purgées", async () => {
+  const racine = await dossierTemporaire();
+  const dossier = join(cheminsEspace(racine).interne, "sessions");
+  await mkdir(dossier, { recursive: true });
+  await writeFile(join(dossier, "reste.json"), "{}");
+  const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  expect(existsSync(join(dossier, "reste.json"))).toBe(false);
 });

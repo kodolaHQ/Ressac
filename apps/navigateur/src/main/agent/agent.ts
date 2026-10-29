@@ -15,6 +15,7 @@ import {
   type Noyau,
   type OngletInfo,
   type OutilsApplications,
+  type WorkflowOuvert,
 } from "@webaios/noyau";
 import type { IdFenetre, IdProfil } from "../../commun/modele";
 import type { Historique } from "../historique";
@@ -95,6 +96,8 @@ export function demarrerAgent(o: {
   dossierProfilage: string;
   /** Dossier du profil du navigateur, hors de l'espace monté, où sont rangés données, états et accords des widgets. */
   dossierWidgets: string;
+  /** Le workflow ouvert dans le constructeur d'une fenêtre (outil MCP `workflow_ouvert`) ; fourni par la tâche 7. */
+  workflowOuvert?: (fenetre: IdFenetre) => WorkflowOuvert | null;
   /** Historique de navigation, cherché par l'agent (chercher_historique, lire_historique). */
   historique?: Historique;
   /** Session d'un profil de connexion, pour les lectures invisibles des widgets. */
@@ -132,7 +135,7 @@ export function demarrerAgent(o: {
   let desabonnerAcces: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);
@@ -163,10 +166,10 @@ export function demarrerAgent(o: {
     void sessions.relancerTout();
   });
   const sessions = new SessionsAgent({
-    async ouvrir(t) {
+    async ouvrir(f, t) {
       const n = await pret;
       if (!n) throw new Error(erreur ?? "le noyau de l'agent n'a pas démarré");
-      return n.ouvrirSessionAgent(t);
+      return n.ouvrirSessionAgent({ ...t, fenetre: f });
     },
     // L'utilisateur parle à l'agent depuis l'onglet affiché : il le lui donne (spec §8.2).
     surEnvoi: (f) => {

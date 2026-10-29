@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsApplications, type OutilsWidgets } from "../../src/mcp/serveur.js";
+import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
@@ -615,4 +615,81 @@ test("recolter_widget indique l'exécution créée, même pour un widget avec co
   const t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
   expect(t).toContain('"execution": "2026-10-28T10-00-00-000Z"');
   expect(t).not.toContain("secret du compte");
+});
+
+// --- Sessions par fenêtre et workflow_ouvert ---
+
+async function avecWorkflowOuvert(
+  workflowOuvert: (fenetre: string) => WorkflowOuvert | null,
+  essai: (o: { s: Awaited<ReturnType<typeof demarrerServeurMcp>>; appeler: (jeton: string) => Promise<string> }) => Promise<void>,
+) {
+  const principal = genererJeton();
+  const s = await demarrerServeurMcp({ pont: new PontFactice([], { actif: null, autoriser: false }), politique: new PolitiqueAcces(), jeton: principal, workflowOuvert });
+  const clients: Client[] = [];
+  const appeler = async (jetonClient: string) => {
+    const c = new Client({ name: "test", version: "0" });
+    clients.push(c);
+    await c.connect(
+      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${jetonClient}` } } }),
+    );
+    return texte(await c.callTool({ name: "workflow_ouvert", arguments: {} }));
+  };
+  try {
+    await essai({ s, appeler: (j) => appeler(j === "principal" ? principal : j) });
+  } finally {
+    await Promise.all(clients.map((c) => c.close()));
+    await s.arreter();
+  }
+}
+
+test("workflow_ouvert rend le widget et le bloc de la fenêtre de la session", async () => {
+  await avecWorkflowOuvert(
+    (f) => (f === "F1" ? { widget: "veille", bloc: "trier" } : null),
+    async ({ s, appeler }) => {
+      const jetonSession = s.ouvrirSession("F1");
+      expect(jetonSession).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.parse(await appeler(jetonSession))).toEqual({ widget: "veille", bloc: "trier" });
+    },
+  );
+});
+
+test("deux sessions de deux fenêtres voient chacune le leur", async () => {
+  const ouverts: Record<string, WorkflowOuvert> = { F1: { widget: "a", bloc: null }, F2: { widget: "b", bloc: "x" } };
+  await avecWorkflowOuvert(
+    (f) => ouverts[f] ?? null,
+    async ({ s, appeler }) => {
+      const j1 = s.ouvrirSession("F1");
+      const j2 = s.ouvrirSession("F2");
+      expect(JSON.parse(await appeler(j1))).toEqual({ widget: "a", bloc: null });
+      expect(JSON.parse(await appeler(j2))).toEqual({ widget: "b", bloc: "x" });
+    },
+  );
+});
+
+test("avec le jeton principal, ou sans workflow ouvert : AUCUN_WORKFLOW_OUVERT", async () => {
+  await avecWorkflowOuvert(
+    () => null,
+    async ({ s, appeler }) => {
+      expect(await appeler("principal")).toBe(AUCUN_WORKFLOW_OUVERT);
+      expect(await appeler(s.ouvrirSession("F1"))).toBe(AUCUN_WORKFLOW_OUVERT);
+    },
+  );
+});
+
+test("un jeton de session fermée est refusé (401)", async () => {
+  await avecWorkflowOuvert(
+    () => null,
+    async ({ s }) => {
+      const jetonSession = s.ouvrirSession("F1");
+      const requete = (j: string) =>
+        fetch(`http://127.0.0.1:${s.port}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${j}` },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+        });
+      expect((await requete(jetonSession)).status).toBe(200);
+      s.fermerSession(jetonSession);
+      expect((await requete(jetonSession)).status).toBe(401);
+    },
+  );
 });

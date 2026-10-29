@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, relative, isAbsolute } from "node:path";
+import { dirname, join, relative, isAbsolute } from "node:path";
 
 export const CHEMIN_CONTENEUR = "/workspace";
 
@@ -35,6 +35,11 @@ export function cheminsEspace(racine?: string): CheminsEspace {
     configMcp: join(interne, "mcp.json"),
     journaux: join(interne, "journaux"),
   };
+}
+
+/** Config MCP propre à la session d'agent d'une fenêtre (`<dossier de configMcp>/sessions/<session>.json`). */
+export function cheminConfigSession(c: CheminsEspace, session: string): string {
+  return join(dirname(c.configMcp), "sessions", `${session}.json`);
 }
 
 /** Traduit un chemin de l'espace sur le Mac en chemin dans le conteneur. */

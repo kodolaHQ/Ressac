@@ -154,7 +154,7 @@ test("relancerTout arrête chaque session et en rouvre une à la même taille, s
   const sessions: FausseSession[] = [];
   const envois: { f: string; canal: string; v: unknown }[] = [];
   const gestion = new SessionsAgent({
-    ouvrir: async (t) => {
+    ouvrir: async (_f, t) => {
       tailles.push(t);
       const s = new FausseSession();
       sessions.push(s);
@@ -236,4 +236,17 @@ test("preRemplir sur une session active écrit tout de suite", async () => {
   expect(sessions[0]!.ecrit).toEqual(["[application : Essai] "]);
   expect(appele).toBe(1);
   expect(messages).toEqual([]);
+});
+
+test("ouvrir reçoit la fenêtre de la session", async () => {
+  const recues: { f: string; t: { cols: number; rows: number } }[] = [];
+  const gestion = new SessionsAgent({
+    ouvrir: async (f, t) => {
+      recues.push({ f, t });
+      return new FausseSession();
+    },
+    envoyer: () => {},
+  });
+  await gestion.demarrer("F7", taille);
+  expect(recues).toEqual([{ f: "F7", t: taille }]);
 });

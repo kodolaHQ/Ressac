@@ -8,6 +8,7 @@ export async function ecrireConfigMcp(
   c: CheminsEspace,
   format: Profil["configMcp"],
   serveur: { url: string; jeton: string },
+  chemin: string = c.configMcp,
 ): Promise<void> {
   const contenu = {
     "claude-json": {
@@ -16,7 +17,7 @@ export async function ecrireConfigMcp(
       },
     },
   }[format];
-  await mkdir(dirname(c.configMcp), { recursive: true });
-  await writeFile(c.configMcp, JSON.stringify(contenu, null, 2), { mode: 0o600 });
-  await chmod(c.configMcp, 0o600);
+  await mkdir(dirname(chemin), { recursive: true });
+  await writeFile(chemin, JSON.stringify(contenu, null, 2), { mode: 0o600 });
+  await chmod(chemin, 0o600);
 }

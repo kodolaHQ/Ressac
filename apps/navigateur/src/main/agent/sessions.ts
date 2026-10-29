@@ -75,7 +75,7 @@ export class SessionsAgent {
 
   constructor(
     private readonly o: {
-      ouvrir: (t: TailleTerminal) => Promise<SessionLike>;
+      ouvrir: (f: IdFenetre, t: TailleTerminal) => Promise<SessionLike>;
       envoyer: (f: IdFenetre, canal: "donnees" | "etat", v: string | EtatPanneauAgent) => void;
       /** L'utilisateur valide un message (Entrée) dans le terminal de cette fenêtre. */
       surEnvoi?: (f: IdFenetre) => void;
@@ -102,7 +102,7 @@ export class SessionsAgent {
     this.annulerEnvoi(entree);
     this.o.envoyer(f, "etat", { etat: "preparation" });
     entree.demarrage = this.o
-      .ouvrir(taille)
+      .ouvrir(f, taille)
       .then(
         (s) => {
           // Fenêtre fermée pendant le démarrage : personne n'affichera cet agent.

@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, unlink, writeFile } from "node:fs/promises";
-import { basename, join, posix } from "node:path";
-import { CHEMIN_CONTENEUR, cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
+import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join, posix } from "node:path";
+import { CHEMIN_CONTENEUR, cheminConfigSession, cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
 import { lireAccueil } from "./accueil/lire.js";
 import type { EtatAccueil, EtatWidget, WidgetLu } from "./accueil/schemas.js";
@@ -15,7 +15,7 @@ import { executeurParDefaut, type Executeur } from "./conteneur/executeur.js";
 import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
-import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets } from "./mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
@@ -172,7 +172,7 @@ export interface Noyau {
   agent: string;
   etatAtelier(): Promise<EtatAtelier>;
   /** Nouvelle conversation : efface les autorisations. Signaler l'onglet courant (interactionUtilisateur) après. */
-  ouvrirSessionAgent(o: { cols: number; rows: number }): Promise<SessionAgent>;
+  ouvrirSessionAgent(o: { cols: number; rows: number; fenetre?: string }): Promise<SessionAgent>;
   /** Widgets de la page d'accueil, avec leurs données et leur état (rangés hors de l'espace). */
   lireAccueil(): Promise<EtatAccueil>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
@@ -227,6 +227,8 @@ export async function creerNoyau(o: {
   ia?: IaLocale;
   /** Moteur des workflows, monté dans le conteneur de récolte (par défaut `<ressources>/docker/moteur`). */
   moteur?: string;
+  /** Le workflow ouvert dans le constructeur d'une fenêtre (outil MCP `workflow_ouvert`). */
+  workflowOuvert?: (fenetre: string) => WorkflowOuvert | null;
   /** Appelé après chaque écriture de l'état ou des données d'un widget, et après un accord ou son retrait. */
   surChange?: () => void;
   /** Tests seulement : les récoltes peuvent lire des adresses locales (le serveur de test). */
@@ -282,8 +284,11 @@ export async function creerNoyau(o: {
     ...(outilsDev ? { outilsDev } : {}),
     ...(o.applications ? { applications: o.applications } : {}),
     widgets: outilsWidgets,
+    ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}),
   });
   try {
+    // Configs de session laissées par un plantage : leurs jetons ne valent plus rien.
+    await rm(dirname(cheminConfigSession(chemins, "x")), { recursive: true, force: true });
     await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
   } catch (e) {
     await serveur.arreter();
@@ -331,12 +336,15 @@ export async function creerNoyau(o: {
   const pont = o.pont;
   const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
 
+  // Nettoyages des sessions avec fenêtre encore ouvertes, faits aussi à l'arrêt du noyau.
+  const sessionsOuvertes = new Set<() => void>();
+
   return {
     chemins,
     politique,
     agent: profil.nom,
     etatAtelier: () => atelier.etat(),
-    async ouvrirSessionAgent({ cols, rows }) {
+    async ouvrirSessionAgent({ cols, rows, fenetre }) {
       const premier = demarrage;
       demarrage = null;
       const tentative = premier ? premier.then(() => atelier.assurerDemarre()) : atelier.assurerDemarre();
@@ -350,9 +358,36 @@ export async function creerNoyau(o: {
       // Nouvelle conversation : plus aucune autorisation. Les sessions partagent le serveur MCP et donc la politique :
       // une session d'une autre fenêtre perd aussi ses accès (elle redemandera), plutôt que d'en hériter.
       politique.reinitialiser();
-      const commande = construireCommande(profil, "interactif", { mcpConfig: cheminDansConteneur(chemins.configMcp, chemins) });
       const id = randomBytes(8).toString("hex");
-      return SessionAgent.demarrer(atelier.commandeSession(id, commande), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
+      // Avec une fenêtre : un jeton et une config à elle, pour que `workflow_ouvert` sache laquelle parle (sans fenêtre,
+      // CLI de dev : la config principale).
+      let jetonSession: string | undefined;
+      const configSession = cheminConfigSession(chemins, id);
+      const nettoyer = () => {
+        if (jetonSession === undefined) return;
+        serveur.fermerSession(jetonSession);
+        jetonSession = undefined;
+        void rm(configSession, { force: true }).catch(() => {});
+      };
+      try {
+        if (fenetre !== undefined) {
+          jetonSession = serveur.ouvrirSession(fenetre);
+          await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton: jetonSession }, configSession);
+        }
+        const commande = construireCommande(profil, "interactif", {
+          mcpConfig: cheminDansConteneur(fenetre !== undefined ? configSession : chemins.configMcp, chemins),
+        });
+        const session = SessionAgent.demarrer(atelier.commandeSession(id, commande), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
+        sessionsOuvertes.add(nettoyer);
+        session.surFin(() => {
+          sessionsOuvertes.delete(nettoyer);
+          nettoyer();
+        });
+        return session;
+      } catch (e) {
+        nettoyer();
+        throw e;
+      }
     },
     lireAccueil: () => lireAccueil(chemins, dossierWidgets),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
@@ -397,6 +432,8 @@ export async function creerNoyau(o: {
     },
     async arreter() {
       suivi?.arreter();
+      for (const nettoyer of [...sessionsOuvertes]) nettoyer();
+      sessionsOuvertes.clear();
       // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
       politique.reinitialiser();
       await planificateur.arreter();
