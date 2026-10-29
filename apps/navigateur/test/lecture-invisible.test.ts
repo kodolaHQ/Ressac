@@ -552,3 +552,173 @@ test("lecture ménagée : une place obtenue après l'échéance n'ouvre aucune f
   await expect(r).rejects.toThrow("Page trop lente : 30 s dépassées");
   expect(liste).toHaveLength(1);
 });
+
+// ——— Défilement (`defiler`) ———
+
+/**
+ * Une fausse page qu'on peut faire défiler : `hauteur` de la page, écran de 900 px. Les scripts sont reconnus à leur
+ * texte (défilement : `scrollBy`, rend la hauteur d'avant ; mesure : le reste ; lecture : `querySelectorAll`). `apresDefilement(n)` est
+ * appelé après le n-ième défilement (pour faire grandir la page).
+ */
+function pageDefilante(o: { hauteur: number; apresDefilement?: (n: number, p: { hauteur: number }) => void; avantMesure?: (p: { hauteur: number }) => void; lu?: () => unknown }) {
+  const p = { hauteur: o.hauteur, haut: 0, defilements: 0, mondes: [] as number[], scripts: [] as string[] };
+  const bas = () => p.haut + 900 >= p.hauteur - 2;
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  wc.executeJavaScriptInIsolatedWorld.mockImplementation((async (monde: number, scripts: { code: string }[]) => {
+    const code = scripts[0]!.code;
+    p.mondes.push(monde);
+    if (code.includes("scrollBy")) {
+      p.scripts.push("defiler");
+      // La hauteur d'avant le défilement : ce qui charge ensuite fait grandir la page.
+      const avant = p.hauteur;
+      p.haut = Math.max(0, Math.min(p.haut + 900, p.hauteur - 900));
+      p.defilements++;
+      o.apresDefilement?.(p.defilements, p);
+      return { hauteur: avant, bas: bas() };
+    }
+    if (code.includes("querySelectorAll")) {
+      p.scripts.push("lire");
+      return o.lu ? o.lu() : { titre: "T", texte: `lu après ${p.defilements} défilements`, liens: [] };
+    }
+    p.scripts.push("mesurer");
+    o.avantMesure?.(p);
+    return { hauteur: p.hauteur, bas: bas() };
+  }) as never);
+  return { p, wc, f };
+}
+
+test("sans defiler : la page est lue sans défiler, comme avant", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 5_000 });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ texte: "lu après 0 défilements" });
+  expect(p.scripts).toEqual(["lire"]);
+});
+
+test("defiler : un écran à la fois dans le monde 999, jusqu'au bas d'une page qui ne grandit plus, puis lecture", async () => {
+  vi.useFakeTimers();
+  // 1 800 px : chaque défilement qui touche le bas en charge 900 de plus, deux fois.
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, apresDefilement: (n, q) => void (n <= 2 && (q.hauteur += 900)) });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 8 }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(1_999);
+  expect(p.scripts).toEqual([]);
+  await vi.advanceTimersByTimeAsync(10_000);
+  await expect(r).resolves.toMatchObject({ texte: "lu après 3 défilements" });
+  expect(p.scripts.filter((s) => s === "defiler")).toHaveLength(3);
+  expect(p.scripts.at(-1)).toBe("lire");
+  expect(new Set(p.mondes)).toEqual(new Set([999]));
+});
+
+test("defiler : une page longue mais fixe est défilée jusqu'en bas (détails montrés à l'écran), pas au-delà", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 3_600 });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 20 }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(15_000);
+  // 3 600 − 900 = 2 700 : trois écrans pour atteindre le bas.
+  await expect(r).resolves.toMatchObject({ texte: "lu après 3 défilements" });
+});
+
+test("defiler : au plus le nombre d'écrans demandé, même si la page grandit encore", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, apresDefilement: (_n, q) => void (q.hauteur += 900) });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 2 }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(10_000);
+  await expect(r).resolves.toMatchObject({ texte: "lu après 2 défilements" });
+  expect(p.defilements).toBe(2);
+});
+
+test("defiler : l'attente après un défilement finit dès 1 s sans croissance ; une page qui grandit sans cesse est lue à l'heure forcée, dans les 30 s", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, avantMesure: (q) => void (q.hauteur += 10) });
+  const debut = Date.now();
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 20 }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(25_000);
+  expect(p.scripts).not.toContain("lire");
+  await vi.advanceTimersByTimeAsync(1_500);
+  await expect(r).resolves.toMatchObject({ titre: "T" });
+  expect(Date.now() - debut).toBeLessThan(30_000);
+  expect(p.defilements).toBe(1);
+});
+
+test("defiler : un chargement en cours (cadre, navigation interne) prolonge l'attente après un défilement", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, apresDefilement: () => void wc.emit("did-start-loading") });
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 1 }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(p.defilements).toBe(1);
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(p.scripts).not.toContain("lire");
+  wc.emit("did-stop-loading");
+  await vi.advanceTimersByTimeAsync(1_500);
+  await expect(r).resolves.toMatchObject({ texte: "lu après 1 défilements" });
+});
+
+test("defiler : signal levé pendant le défilement : rejetée avec la raison, rien n'est lu, plus aucun script", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, apresDefilement: (_n, q) => void (q.hauteur += 900) });
+  const arret = new AbortController();
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, defiler: 20, signal: arret.signal }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(3_500);
+  expect(p.defilements).toBeGreaterThan(0);
+  const raison = new Error("Exécution arrêtée");
+  arret.abort(raison);
+  await expect(r).rejects.toBe(raison);
+  const vus = p.scripts.length;
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(p.scripts).toHaveLength(vus);
+  expect(p.scripts).not.toContain("lire");
+  expect(f.destroy).toHaveBeenCalled();
+});
+
+test("defiler : une navigation hors des domaines pendant le défilement arrête la lecture, rien n'est lu", async () => {
+  vi.useFakeTimers();
+  const { p, wc, f } = pageDefilante({ hauteur: 1_800, apresDefilement: (_n, q) => void (q.hauteur += 900) });
+  const r = lirePageInvisible("https://exemple.test/", { profil: "defaut", domaines: ["exemple.test"], defiler: 20 }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_500);
+  const e = { url: "https://ailleurs.test/", preventDefault: vi.fn() };
+  wc.emit("will-navigate", e);
+  expect(e.preventDefault).toHaveBeenCalled();
+  await expect(r).rejects.toThrow(/Navigation bloquée/);
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(p.scripts).not.toContain("lire");
+});
+
+test("plafonds : 20 000 caractères et 400 liens sans défiler, 100 000 et 1 000 avec defiler", async () => {
+  vi.useFakeTimers();
+  const lu = () => ({ titre: "T", texte: "a".repeat(150_000), liens: Array.from({ length: 1_200 }, (_, i) => ({ texte: "l", url: `https://exemple.test/${i}` })) });
+  for (const [defiler, texte, liens] of [[undefined, 20_000, 400], [3, 100_000, 1_000]] as const) {
+    const { p, wc, f } = pageDefilante({ hauteur: 900, lu });
+    const r = lirePageInvisible("https://exemple.test/", { profil: null, ...(defiler ? { defiler } : {}) }, depsAvec(f));
+    await vi.advanceTimersByTimeAsync(0);
+    wc.emit("did-finish-load");
+    await vi.advanceTimersByTimeAsync(5_000);
+    const page = await r;
+    expect(page.texte).toHaveLength(texte);
+    expect(page.liens).toHaveLength(liens);
+    const appels = wc.executeJavaScriptInIsolatedWorld.mock.calls as unknown as [number, { code: string }[]][];
+    const script = appels.map((a) => a[1][0]!.code).find((c) => c.includes("querySelectorAll"))!;
+    expect(script).toContain(`slice(0, ${texte})`);
+    expect(script).toContain(`>= ${liens}`);
+    expect(p.scripts.at(-1)).toBe("lire");
+  }
+});
