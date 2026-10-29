@@ -42,3 +42,4 @@ export * from "./workflows/rejeu.js";
 export * from "./workflows/menagement.js";
 export * from "./workflows/duckduckgo.js";
 export * from "./extensions/manifeste.js";
+export * from "./extensions/registre.js";
