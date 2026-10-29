@@ -78,4 +78,46 @@ describe("Menagement", () => {
     await deux.m.rechercher(async () => 1);
     expect(deux.attentes).toEqual([]);
   });
+
+  it("une demande en file dont le signal est levé rejette tout de suite, sans appeler f", async () => {
+    let t = 0;
+    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
+    let finir!: () => void;
+    const longue = m.lire("a.fr", () => new Promise<void>((r) => { finir = r; }));
+    const ctrl = new AbortController();
+    let appels = 0;
+    const p = m.lire("a.fr", async () => { appels++; }, ctrl.signal);
+    ctrl.abort(new Error("stop"));
+    await expect(p).rejects.toThrow("stop");
+    finir();
+    await longue;
+    await m.lire("a.fr", async () => {});
+    expect(appels).toBe(0);
+  });
+
+  it("www.a.fr et a.fr partagent une voie, b.fr non", async () => {
+    const { m, attentes } = factice();
+    await m.lire("www.A.fr", async () => {});
+    await m.lire("a.fr", async () => {});
+    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    await m.lire("b.fr", async () => {});
+    expect(attentes).toEqual([ECART_LECTURES_MS]);
+  });
+
+  it("une horloge reculée n'allonge pas l'attente au-delà de l'écart", async () => {
+    const { m, attentes, avancer } = factice();
+    await m.rechercher(async () => {});
+    avancer(-3_600_000);
+    await m.rechercher(async () => {});
+    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+  });
+
+  it("un minuteur parti trop tôt est suivi d'une nouvelle attente", async () => {
+    let t = 0;
+    const attentes: number[] = [];
+    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += attentes.length === 1 ? ms - 1 : ms; } });
+    await m.rechercher(async () => {});
+    await m.rechercher(async () => {});
+    expect(attentes).toEqual([2000, 1]);
+  });
 });

@@ -58,6 +58,53 @@ describe("extraireResultats", () => {
   });
 });
 
+describe("extraireResultats : pages hostiles et cas limites", () => {
+  const bloc = (titre: string, href = "https://a.example/", extrait = "E") =>
+    `<div class="result"><a class="result__a" href="${href}">${titre}</a><a class="result__snippet">${extrait}</a></div>`;
+  const rapide = (html: string) => {
+    const t = Date.now();
+    const r = extraireResultats(html, 5);
+    expect(Date.now() - t).toBeLessThan(200);
+    return r;
+  };
+
+  it("24 Ko de « <div class=\" » répétés après un résultat : rapide", () => {
+    rapide(bloc("T") + '<div class="'.repeat(2000));
+  });
+  it("54 Ko de balises result__snippet non fermées : rapide", () => {
+    rapide('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet" '.repeat(2000));
+    rapide('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet">'.repeat(2000));
+  });
+  it("une page de 5 Mo est lue sans figer", () => {
+    rapide("<".repeat(5 * 1024 * 1024));
+    rapide(bloc("T") + "<a ".repeat(1_000_000));
+  });
+  it("« anomaly-modal » dans un titre ou un extrait n'est pas un refus", () => {
+    const r = extraireResultats(bloc("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);
+    expect(r).toMatchObject({ resultats: [{ url: "https://a.example/" }] });
+  });
+  it("de vrais résultats l'emportent sur un marqueur no-results ; no-results exact seulement", () => {
+    expect(extraireResultats('<div class="no-results"></div>' + bloc("T"), 5)).toMatchObject({ resultats: [{ titre: "T" }] });
+    expect(extraireResultats('<div class="not-no-results"></div>', 5)).toEqual({ illisible: true });
+  });
+  it("l'url est normalisée : contrôles retirés, non http(s) et identifiants refusés", () => {
+    const u = (v: string) => `//duckduckgo.com/l/?uddg=${encodeURIComponent(v)}`;
+    const r = extraireResultats(
+      bloc("a", u("https://x.fr/a%0Ab")) + bloc("b", u("ftp://x.fr/")) + bloc("c", u("https://u:p@x.fr/")) + bloc("d", "//exemple.fr/"),
+      9,
+    );
+    expect(r).toEqual({ resultats: [{ titre: "a", url: "https://x.fr/a%0Ab", extrait: "E" }] });
+  });
+  it("titre et extrait : contrôles, bidi et demi-paires retirés", () => {
+    const r = extraireResultats(bloc("A&#8238;B&#x0;C&#xD800;D&#10;E", "https://a.example/", "x&#x202E;y"), 5);
+    expect(r).toMatchObject({ resultats: [{ titre: "A BCD E", extrait: "x y" }] });
+  });
+  it("un extrait avec une balise de même nom imbriquée n'est pas coupé", () => {
+    const html = '<div class="result"><a class="result__a" href="https://a.example/">T</a><span class="result__snippet">un <span>deux</span> trois</span></div>';
+    expect(extraireResultats(html, 5)).toMatchObject({ resultats: [{ extrait: "un deux trois" }] });
+  });
+});
+
 describe("urlRecherche", () => {
   it("encode « fiabilité Clio 4 »", () => {
     expect(urlRecherche("fiabilité Clio 4")).toBe("https://html.duckduckgo.com/html/?q=fiabilit%C3%A9%20Clio%204");
