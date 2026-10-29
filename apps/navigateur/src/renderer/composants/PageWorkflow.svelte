@@ -26,6 +26,10 @@
       lus = await Promise.all([api.accueil.lire(), api.accueil.workflow(id), api.accueil.executions(id)]);
     } catch (err) {
       if (n === requete) {
+        // Rien d'un autre widget (ou d'une lecture plus ancienne) ne reste affiché sous l'erreur.
+        widget = null;
+        vue = null;
+        executions = [];
         echec = true;
         chargee = true;
       }

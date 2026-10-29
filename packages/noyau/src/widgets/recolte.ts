@@ -273,7 +273,8 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
 
   // Arrêt du noyau (sortie, changement de profil) : l'exécution n'a pas échoué, elle est interrompue.
   // Son erreur est celle du noyau (pas celle, sans objet, du conteneur tué) ; un bloc commencé sans fin est interrompu.
-  if (o.interrompue?.() && execution.statut !== "accord-requis") {
+  const interrompue = o.interrompue?.() === true && execution.statut !== "accord-requis";
+  if (interrompue) {
     execution.statut = "interrompue";
     execution.erreur = ERREUR_INTERROMPUE;
     execution.erreurNoyau = true;
@@ -282,7 +283,13 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   return issue.t === "arret"
     ? conclureSansDonnees(execution, { statut: issue.statut, erreur: issue.erreur, journal })
     : // La provenance vient du moteur : `erreurNoyau` absent, le texte a pu être écrit par le code du widget.
-      conclureSansDonnees(execution, { statut: "erreur", erreur: issue.erreur, erreurWidget: !execution.erreurNoyau, journal });
+      // Interrompue : le message est celui du noyau, pas le texte que le code du widget a pu écrire.
+      conclureSansDonnees(
+        execution,
+        interrompue
+          ? { statut: "erreur", erreur: ERREUR_INTERROMPUE, journal }
+          : { statut: "erreur", erreur: issue.erreur, erreurWidget: !execution.erreurNoyau, journal },
+      );
 }
 
 /** Le message d'un widget qui attend un nouvel accord : celui du moteur s'il s'est arrêté pour ça (profil refusé…). */
