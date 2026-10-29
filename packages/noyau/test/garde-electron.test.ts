@@ -21,3 +21,11 @@ test("le noyau ne dépend pas d'electron", () => {
     expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["']electron["']|require\(["']electron["']\)/);
   }
 });
+
+test("src/workflows n'importe ni widgets/ ni accueil/", () => {
+  const sources = fichiers(join(racine, "src", "workflows"));
+  expect(sources.length).toBeGreaterThan(0);
+  for (const f of sources) {
+    expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["'](\.\.\/)+(widgets|accueil)\//);
+  }
+});
