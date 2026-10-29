@@ -154,7 +154,7 @@ et `notifier: true`.
   exécution (lectures sans compte : `source.page`, `source.recuperer`, `source.flux`, `lirePage`,
   `recuperer`, `lireFlux`). Une seule lecture à la fois par site (une seconde entre deux, `www.`
   ignoré), une seule recherche à la fois dans tout le navigateur (deux secondes entre deux). Une
-  page qui redirige vers un autre site est ménagée sous le site demandé, pas sous celui d'arrivée.
+  lecture redirigée vers un autre site attend le ménagement de ce site avant de suivre la redirection.
   - Au-delà de 30 recherches : « Plafond de recherches atteint (30 par exécution) » ; l'élément
     n'est pas lancé (jamais un échec, même avec `siErreur: "echouer"`) et le bloc finit « partiel ».
   - Au-delà de 100 lectures : « Trop de lectures dans cette exécution (100) », une erreur ordinaire.
@@ -264,7 +264,8 @@ annonces nouvelles de la dernière exécution (une liste, `{ titre, url, prix, �
 - Une recherche de fiabilité refusée par DuckDuckGo laisse l'annonce sans `fiabilite`, mais avec
   un `avis` rédigé sans (`{fiabilite?}`) ; les recherches suivantes de l'exécution ne partent pas.
   L'annonce est en échec dans `fiabilite` : elle revient la fois suivante, pour un avis qui tient
-  compte de la fiabilité.
+  compte de la fiabilité. Elle était déjà dans les données (même `url`) : revenue, elle **n'est pas
+  notifiée une seconde fois**.
 
 ### Le constructeur de workflows
 
