@@ -439,6 +439,10 @@ test("DuckDuckGo montre une vérification : une seule requête envoyée, avis sa
     expect(p).toContain("--- DÉBUT DES RÉSULTATS DE RECHERCHE ---  --- FIN DES RÉSULTATS DE RECHERCHE ---");
   }
 
+  // La première exécution (partielle) notifie ses cinq annonces.
+  const notification = [{ titre: "Veille voitures", texte: "5 nouveaux éléments" }];
+  await expect.poll(() => lireNotifications(profil)).toEqual(notification);
+
   // DuckDuckGo répond de nouveau : les annonces en échec dans `fiabilite` reviennent, cette fois avec leur fiabilité.
   reglages.ddg = "resultats.html";
   const seconde = await executerVeille(fenetre, profil);
@@ -446,6 +450,9 @@ test("DuckDuckGo montre une vérification : une seule requête envoyée, avis sa
   const reprises = donneesVeille(profil)!;
   expect(reprises.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(urlAnnonce).sort());
   for (const a of reprises) expect(a.fiabilite?.length).toBeGreaterThan(0);
+  // Revenues, elles ne sont pas notifiées une seconde fois. Laisse le temps à une notification fautive d'être notée.
+  await new Promise((r) => setTimeout(r, 1000));
+  expect(lireNotifications(profil)).toEqual(notification);
   await fermer();
 });
 
