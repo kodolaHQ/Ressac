@@ -41,3 +41,4 @@ export * from "./workflows/chaine.js";
 export * from "./workflows/rejeu.js";
 export * from "./workflows/menagement.js";
 export * from "./workflows/duckduckgo.js";
+export * from "./extensions/manifeste.js";
