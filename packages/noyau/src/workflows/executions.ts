@@ -50,7 +50,7 @@ export function idExecution(debutIso: string): string {
 const dossierExecutions = (dossierDonnees: string) => join(dossierDonnees, "executions");
 
 // Un nom temporaire propre à chaque écriture, comme pour donnees.json.
-async function ecrireAtomique(cible: string, texte: string): Promise<void> {
+export async function ecrireAtomique(cible: string, texte: string): Promise<void> {
   await mkdir(join(cible, ".."), { recursive: true });
   const temporaire = `${cible}.${randomUUID()}.tmp`;
   try {

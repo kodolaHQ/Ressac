@@ -31,3 +31,5 @@ export * from "./workflows/catalogue.js";
 export * from "./workflows/lire.js";
 export * from "./workflows/executions.js";
 export * from "./workflows/memoire.js";
+export * from "./workflows/edition.js";
+export * from "./workflows/avertissements.js";

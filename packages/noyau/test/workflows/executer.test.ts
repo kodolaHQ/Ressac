@@ -16,7 +16,7 @@ import {
   type LanceurProcessus,
 } from "../../src/workflows/executer.js";
 import { SORTIE_MAX_OCTETS } from "../../src/workflows/executions.js";
-import type { MemoireBlocs } from "../../src/workflows/memoire.js";
+import { empreinteParametres, type MemoireBlocs } from "../../src/workflows/memoire.js";
 import { validerWorkflow } from "../../src/workflows/valider.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -298,7 +298,7 @@ describe("executerWorkflow", () => {
       ]),
     });
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [] }, memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"] } } });
+    expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [] }, memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) } } });
     // Aucune trace de bloc reçue : un bloc jamais commencé reste pas-lancé.
     expect(r.execution.blocs.map((x) => x.statut)).toEqual(["pas-lance", "pas-lance", "pas-lance"]);
   });
@@ -475,6 +475,61 @@ describe("executerWorkflow", () => {
       workflow: { blocs: b.ctx.valide.workflow.blocs, liens: b.ctx.valide.workflow.liens, ordre: ["a", "sortie"] },
     });
     expect(lignes[1]).toEqual({ t: "memoire", memoire: { a: { type: "code", valeur: 1 } } });
+  });
+
+  /** Les lignes que le conteneur reçoit (début, mémoire) et la mémoire rendue, pour un workflow `a` → `sortie`. */
+  async function memoireVueParLeConteneur(workflow: unknown, memoire: MemoireBlocs, rendue: MemoireBlocs = {}) {
+    const recu: string[] = [];
+    const b = await banc(workflow, {}, {
+      lancer: () => {
+        const p = lanceurScripte([{ t: "memoire", memoire: rendue }, { t: "fin", donnees: null }])("", []);
+        p.stdin.on("data", (d: Buffer) => recu.push(d.toString()));
+        return p;
+      },
+      memoire,
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    const lignes = recu.join("").trim().split("\n").map((l) => JSON.parse(l));
+    return { envoyee: lignes[1].memoire as MemoireBlocs, rendue: r.issue.t === "fin" ? r.issue.memoire : null, ctx: b.ctx };
+  }
+
+  it("une mémoire dont l'empreinte ne correspond plus aux paramètres n'est pas envoyée au conteneur", async () => {
+    const wf = (cle: string) => ({
+      version: 1,
+      blocs: [
+        { id: "a", type: "code", parametres: { source: "a.mjs" } },
+        { id: "n", type: "liste.nouveaux", parametres: { cle } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      ],
+      liens: [{ de: "a", vers: "n" }, { de: "n", vers: "sortie" }],
+    });
+    const memoire: MemoireBlocs = {
+      n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) },
+      a: { type: "code", valeur: 1 }, // ancienne mémoire sans empreinte : acceptée une fois
+    };
+    const memes = await memoireVueParLeConteneur(wf("url"), memoire);
+    expect(memes.envoyee).toEqual({ n: { type: "liste.nouveaux", valeur: ["x"] }, a: { type: "code", valeur: 1 } }); // sans l'empreinte
+    const autres = await memoireVueParLeConteneur(wf("titre"), memoire);
+    expect(autres.envoyee).toEqual({ a: { type: "code", valeur: 1 } });
+  });
+
+  it("la mémoire rendue est marquée de l'empreinte des paramètres de l'exécution, même si workflow.json a changé pendant", async () => {
+    // L'exécution ne lit jamais workflow.json : elle reçoit ctx.valide, validé au départ. Un fichier réécrit pendant
+    // l'exécution ne change donc rien à ce qui est marqué ; les nouveaux réglages ne retrouvent pas cette mémoire.
+    const wf = (cle: string) => ({
+      version: 1,
+      blocs: [
+        { id: "a", type: "code", parametres: { source: "a.mjs" } },
+        { id: "n", type: "liste.nouveaux", parametres: { cle } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      ],
+      liens: [{ de: "a", vers: "n" }, { de: "n", vers: "sortie" }],
+    });
+    const premiere = await memoireVueParLeConteneur(wf("url"), {}, { n: { type: "liste.nouveaux", valeur: ["vu"] } });
+    expect(premiere.rendue).toEqual({ n: { type: "liste.nouveaux", valeur: ["vu"], empreinte: empreinteParametres({ cle: "url" }) } });
+    // workflow.json a changé (cle: titre) : la seconde exécution reçoit une mémoire vide pour ce bloc.
+    const seconde = await memoireVueParLeConteneur(wf("titre"), premiere.rendue!);
+    expect(seconde.envoyee).toEqual({});
   });
 
   it("le conteneur impossible à lancer : arrêt erreur, exécution échouée sans bloc lancé", async () => {

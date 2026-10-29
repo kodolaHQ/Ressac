@@ -6,7 +6,7 @@ import type { IaLocale } from "../ia/ia-locale.js";
 import { ProfilRefuse, type PontNavigateur } from "../mcp/pont.js";
 import { message, recuperer, tronquer, verifierPage, verifierUrl } from "./acces.js";
 import { SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
-import { MEMOIRE_MAX_OCTETS, type MemoireBlocs } from "./memoire.js";
+import { MEMOIRE_MAX_OCTETS, empreinteParametres, type MemoireBlocs } from "./memoire.js";
 import {
   ArgsGemma,
   ArgsKev,
@@ -125,6 +125,8 @@ export async function executerWorkflow(
   const debut = horloge().toISOString();
   const { workflow, ordre } = ctx.valide;
   const types = new Map(workflow.blocs.map((b) => [b.id, b.type]));
+  // Les paramètres validés de cette exécution : la mémoire n'est reprise que si elle a été retenue avec les mêmes.
+  const empreintes = new Map(workflow.blocs.map((b) => [b.id, empreinteParametres(b.parametres)]));
   const traces = new Map<string, TraceEnCours>(
     ordre.map((id) => [
       id,
@@ -203,7 +205,7 @@ export async function executerWorkflow(
     }),
   );
   // Seulement la mémoire des blocs de ce workflow, avec leur type.
-  processus.stdin.write(ligneMemoire(memoireDuWorkflow(ctx.memoire, types)));
+  processus.stdin.write(ligneMemoire(reprendreMemoire(ctx.memoire, types, empreintes)));
   processus.stderr.setEncoding("utf8");
   processus.stderr.on("data", (d: string) => {
     journal = (journal + d).slice(-JOURNAL_MAX);
@@ -286,7 +288,7 @@ export async function executerWorkflow(
   let enCours: TraceEnCours | null = null;
   const traiterTrace = (m: Exclude<MessageRecolteur, { t: "appel" | "fin" | "echec" }>) => {
     if (m.t === "memoire") {
-      const filtree = memoireDuWorkflow(m.memoire as MemoireBlocs, types);
+      const filtree = marquerMemoire(m.memoire as MemoireBlocs, types, empreintes);
       if (Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS) {
         memoireRecue = null;
         remarque = MEMOIRE_NON_GARDEE;
@@ -397,9 +399,22 @@ export async function executerWorkflow(
   return conclure(echec(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true));
 }
 
-/** Les entrées d'une mémoire qui sont à un bloc de ce workflow, avec son type. */
-function memoireDuWorkflow(memoire: MemoireBlocs, types: Map<string, string>): MemoireBlocs {
+/** Ce qui est envoyé au conteneur : les entrées de même type et, si elles en ont une, de même empreinte. Sans l'empreinte. */
+function reprendreMemoire(memoire: MemoireBlocs, types: Map<string, string>, empreintes: Map<string, string>): MemoireBlocs {
   const r: MemoireBlocs = {};
-  for (const [id, e] of Object.entries(memoire)) if (types.get(id) === e?.type) r[id] = { type: e.type, valeur: e.valeur };
+  for (const [id, e] of Object.entries(memoire)) {
+    if (types.get(id) !== e?.type) continue;
+    if (e.empreinte !== undefined && e.empreinte !== empreintes.get(id)) continue;
+    r[id] = { type: e.type, valeur: e.valeur };
+  }
+  return r;
+}
+
+/** La mémoire rendue par le conteneur : les entrées de ce workflow, marquées de l'empreinte de cette exécution. */
+function marquerMemoire(memoire: MemoireBlocs, types: Map<string, string>, empreintes: Map<string, string>): MemoireBlocs {
+  const r: MemoireBlocs = {};
+  for (const [id, e] of Object.entries(memoire)) {
+    if (types.get(id) === e?.type) r[id] = { type: e.type, valeur: e.valeur, empreinte: empreintes.get(id)! };
+  }
   return r;
 }

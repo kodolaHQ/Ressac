@@ -1,17 +1,36 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 
 export const MEMOIRE_MAX_OCTETS = 3 * 1024 * 1024;
 
-/** Mémoire des blocs d'un widget : par id de bloc, son type et ce qu'il a retenu d'une exécution à l'autre. */
-export type MemoireBlocs = Record<string, { type: string; valeur: unknown }>;
+/**
+ * Mémoire des blocs d'un widget : par id de bloc, son type, ce qu'il a retenu d'une exécution à l'autre et
+ * l'empreinte des paramètres avec lesquels il l'a retenu (absente d'une ancienne mémoire).
+ */
+export type MemoireBlocs = Record<string, { type: string; valeur: unknown; empreinte?: string }>;
 
 const FichierMemoire = z.object({
   version: z.literal(1),
-  blocs: z.record(z.string(), z.object({ type: z.string(), valeur: z.unknown() })),
+  blocs: z.record(z.string(), z.object({ type: z.string(), valeur: z.unknown(), empreinte: z.string().optional() })),
 });
+
+function canonique(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonique);
+  if (v !== null && typeof v === "object") {
+    return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonique((v as Record<string, unknown>)[k])]));
+  }
+  return v;
+}
+
+/** Texte JSON d'une valeur, clés triées récursivement : deux valeurs égales donnent le même texte. */
+export const jsonCanonique = (v: unknown): string => JSON.stringify(canonique(v));
+
+/** Empreinte (16 caractères) des paramètres d'un bloc : la mémoire d'un bloc ne vaut que pour ses réglages. */
+export function empreinteParametres(p: Record<string, unknown>): string {
+  return createHash("sha256").update(jsonCanonique(p)).digest("hex").slice(0, 16);
+}
 
 /** Mémoire des blocs, ou vide si absente, abîmée ou trop grosse. */
 export async function lireMemoire(dossierDonnees: string): Promise<MemoireBlocs> {
