@@ -274,7 +274,7 @@ export const SchemaBlocWorkflow = z.string().regex(/^[a-z0-9-]{1,40}$/);
 /** Nom d'un fichier de code du widget : un `.mjs` à la racine de son dossier. */
 export const SchemaNomCode = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
 /** Texte d'un `.mjs` : 256 Ko au plus (en octets, comme à l'écriture). */
-export const SchemaCodeWorkflow = z.string().refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
+export const SchemaCodeWorkflow = z.string().max(256 * 1024).refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
 /**
  * Brouillon du constructeur : borné mais pas forcément valide pour le moteur (c'est `enregistrerWorkflow` qui répond).
  * Les paramètres restent libres : le moteur les valide.

@@ -163,6 +163,8 @@ export function demarrerAgent(o: {
     desabonnerDirect = undefined;
     o.surAcces(); // plus de noyau : plus aucune pastille
     await n?.arreter();
+    // Un essai ou une exécution en cours a pris fin avec le noyau : les constructeurs ne gardent pas un « en cours » fantôme.
+    if (n) o.surDirect({ courant: null, enAttente: [] });
   };
   let pret = lancerNoyau(o.magasin.etat.reglages.profilAgent);
   // Autre profil (spec §10) : un nouveau noyau (commande, config MCP, veilles), et un nouvel agent dans chaque panneau.

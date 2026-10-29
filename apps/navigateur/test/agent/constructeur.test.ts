@@ -27,6 +27,13 @@ test("onglet actif qui n'est pas un constructeur : null", () => {
   expect(workflowOuvertDe(e(), new Map(), "inconnue")).toBeNull();
 });
 
+test("URL de constructeur qui n'en est pas une (../x, #x, ?y) : null, comme pour le canevas", () => {
+  for (const url of ["webaios://workflow/../x", "webaios://workflow/gmail#x", "webaios://workflow/gmail?y", "webaios://workflow/"]) {
+    const { e, F } = preparer(url);
+    expect(workflowOuvertDe(e(), new Map(), F), url).toBeNull();
+  }
+});
+
 test("sélection d'un autre widget : bloc null", () => {
   const { e, F } = preparer("webaios://workflow/gmail");
   expect(workflowOuvertDe(e(), new Map([[F, { widget: "meteo", bloc: "x" }]]), F)).toEqual({ widget: "gmail", bloc: null });
@@ -103,4 +110,89 @@ test("lireEdition et enregistrerEdition : widget sans récolte null, avertisseme
   expect(existsSync(join(dossier, "workflow.json"))).toBe(true);
   const invalide = await enregistrerEdition(c, "meteo", { version: 1, blocs: [], liens: [] });
   expect(invalide.avertissements).toEqual([]);
+});
+
+async function monter(avecRecolte = true) {
+  const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { cheminsEspace } = await import("@webaios/noyau");
+  const racine = mkdtempSync(join(tmpdir(), "constructeur-"));
+  const chemins = cheminsEspace(join(racine, "espace"));
+  const dossier = join(chemins.widgets, "meteo");
+  mkdirSync(dossier, { recursive: true });
+  const decl = { nom: "Météo", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, sources: { compte: [], publiques: [] }, config: { ville: "Lyon" } };
+  writeFileSync(join(dossier, "widget.json"), JSON.stringify(decl));
+  if (avecRecolte) writeFileSync(join(dossier, "recolte.mjs"), "export default 1");
+  return { racine, chemins, dossier, c: { chemins, dossierWidgets: join(racine, "donnees") }, join };
+}
+const page = (extra: object = {}) => ({ id: "page", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://{config.absente}/x" }, ...extra });
+const sortie = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, parametres: {} };
+
+test("lireEdition : workflow.json invalide gardé tel quel, JSON coupé : brut null, config par défaut null, avertissement de config", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const { lireEdition } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  writeFileSync(m.join(m.dossier, "workflow.json"), '{"version":1,"blocs":[{"id":"a"');
+  const coupe = await lireEdition(m.c, "meteo");
+  expect(coupe).toMatchObject({ origine: "fichier", brut: null, avertissements: [], validation: { ok: false } });
+  const valide = { version: 1, blocs: [page(), sortie], liens: [{ de: "page", vers: "sortie" }] };
+  writeFileSync(m.join(m.dossier, "workflow.json"), JSON.stringify(valide));
+  const e = await lireEdition(m.c, "meteo");
+  expect(e?.avertissements).toEqual([{ bloc: "page", message: "config.absente absent de la configuration du widget" }]);
+  expect(e?.widget.config).toEqual({ ville: "Lyon" });
+});
+
+test("enregistrerEdition : widget inconnu et widget.json invalide refusés, widget.json du workflow intact", async () => {
+  const { readFileSync, writeFileSync } = await import("node:fs");
+  const { enregistrerEdition } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  const inconnu = await enregistrerEdition(m.c, "absent", { version: 1, blocs: [], liens: [] });
+  expect(inconnu).toMatchObject({ ok: false, erreur: "Widget introuvable" });
+  const avant = JSON.stringify({ version: 1, blocs: [page({ parametres: {} }), sortie], liens: [{ de: "page", vers: "sortie" }] });
+  writeFileSync(m.join(m.dossier, "workflow.json"), avant);
+  const invalide = await enregistrerEdition(m.c, "meteo", { version: 1, blocs: [], liens: [] });
+  expect(invalide.ok).toBe(false);
+  expect(invalide.avertissements).toEqual([]);
+  expect(readFileSync(m.join(m.dossier, "workflow.json"), "utf8")).toBe(avant);
+  writeFileSync(m.join(m.dossier, "widget.json"), "{pas du json");
+  expect(await enregistrerEdition(m.c, "meteo", { version: 1, blocs: [], liens: [] })).toMatchObject({ ok: false, erreur: expect.stringContaining("widget.json invalide") });
+});
+
+test("dossier de widget qui est un lien : rien n'est lu ni écrit hors de l'espace", async () => {
+  const { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { enregistrerCodeSur, enregistrerEdition, lireCodeSur, lireEdition } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  const dehors = mkdtempSync(m.join(tmpdir(), "dehors-"));
+  const copie = m.join(dehors, "copie");
+  mkdirSync(copie);
+  for (const f of ["widget.json", "recolte.mjs"]) writeFileSync(m.join(copie, f), readFileSync(m.join(m.dossier, f)));
+  writeFileSync(m.join(copie, "trier.mjs"), "secret");
+  renameSync(m.dossier, m.join(m.chemins.widgets, "ancien"));
+  symlinkSync(copie, m.dossier);
+  expect(await lireCodeSur(m.chemins, "meteo", "trier.mjs")).toEqual({ erreur: "Widget introuvable" });
+  expect(await enregistrerCodeSur(m.chemins, "meteo", "trier.mjs", "pwned")).toMatchObject({ ok: false });
+  expect(await enregistrerCodeSur(m.chemins, "meteo", "neuf.mjs", "pwned")).toMatchObject({ ok: false });
+  expect(readFileSync(m.join(copie, "trier.mjs"), "utf8")).toBe("secret");
+  expect(existsSync(m.join(copie, "neuf.mjs"))).toBe(false);
+  expect(await lireEdition(m.c, "meteo")).toBeNull();
+  expect(await enregistrerEdition(m.c, "meteo", { version: 1, blocs: [page({ parametres: {} }), sortie], liens: [{ de: "page", vers: "sortie" }] })).toMatchObject({ ok: false });
+  expect(existsSync(m.join(copie, "workflow.json"))).toBe(false);
+});
+
+test("dossier des widgets qui est un lien : refusé", async () => {
+  const { renameSync, symlinkSync } = await import("node:fs");
+  const { lireCodeSur } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  renameSync(m.chemins.widgets, m.join(m.racine, "vrais"));
+  symlinkSync(m.join(m.racine, "vrais"), m.chemins.widgets);
+  expect(await lireCodeSur(m.chemins, "meteo", "x.mjs")).toEqual({ erreur: "Widget introuvable" });
+});
+
+test("code d'un widget normal : écrit et relu", async () => {
+  const { enregistrerCodeSur, lireCodeSur } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  expect(await enregistrerCodeSur(m.chemins, "meteo", "trier.mjs", "ok")).toEqual({ ok: true });
+  expect(await lireCodeSur(m.chemins, "meteo", "trier.mjs")).toEqual({ texte: "ok" });
 });

@@ -27,13 +27,13 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
-import { Atelier, catalogueBlocs, cheminsEspace, enregistrerCode, lireAccueil, lireCode, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
+import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, vueWorkflow, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
-import { enregistrerEdition, FileEcritures, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
+import { enregistrerCodeSur, enregistrerEdition, FileEcritures, lireCodeSur, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 
@@ -461,9 +461,9 @@ app.whenReady().then(async () => {
         agent
           ? fileEcritures.enSerie(id, () => enregistrerEdition({ chemins: agent!.chemins, dossierWidgets: agent!.dossierWidgets }, id, brouillon))
           : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] },
-      lireCode: async (id, nom) => (agent ? lireCode(join(agent.chemins.widgets, id), nom) : { erreur: MESSAGE_AGENT_ARRETE }),
+      lireCode: async (id, nom) => (agent ? lireCodeSur(agent.chemins, id, nom) : { erreur: MESSAGE_AGENT_ARRETE }),
       enregistrerCode: async (id, nom, texte) =>
-        agent ? fileEcritures.enSerie(id, () => enregistrerCode(join(agent!.chemins.widgets, id), nom, texte)) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE },
+        agent ? fileEcritures.enSerie(id, () => enregistrerCodeSur(agent!.chemins, id, nom, texte)) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE },
       rejouer: async (id, execution, bloc) => {
         const noyau = agent?.noyau();
         return noyau ? noyau.rejouer(id, execution, bloc) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };

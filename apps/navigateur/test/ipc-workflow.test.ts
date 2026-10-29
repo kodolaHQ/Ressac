@@ -8,6 +8,7 @@ test("SchemaBrouillon refuse 101 blocs, un id ../x, une position NaN", () => {
   expect(SchemaBrouillon.safeParse(ok).success).toBe(true);
   expect(SchemaBrouillon.safeParse({ ...ok, blocs: Array.from({ length: 101 }, (_, i) => bloc(i)) }).success).toBe(false);
   expect(SchemaBrouillon.safeParse({ ...ok, blocs: [bloc(1, { id: "x".repeat(41) })] }).success).toBe(false);
+  expect(SchemaBrouillon.safeParse({ ...ok, blocs: [bloc(1, { id: "../x" })] }).success).toBe(false);
   expect(SchemaBrouillon.safeParse({ ...ok, blocs: [bloc(1, { position: { x: NaN, y: 0 } })] }).success).toBe(false);
   expect(SchemaBrouillon.safeParse({ ...ok, blocs: [bloc(1, { position: { x: 0, y: Infinity } })] }).success).toBe(false);
   expect(SchemaBrouillon.safeParse({ ...ok, version: 2 }).success).toBe(false);
