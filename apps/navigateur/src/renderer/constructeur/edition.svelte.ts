@@ -2,7 +2,7 @@ import type { Avertissement, CatalogueBloc } from "@webaios/noyau";
 import type { ApiWebaios, EditionWorkflow } from "../../commun/api";
 import { MODELE_CODE, parametresNeufs } from "./ajout";
 import { ajouterBloc, deplacer, Historique, memeBrouillon, suivreFichier, versBrouillon, type Brouillon } from "./brouillon";
-import { disposer, positionsAffichees } from "./disposition";
+import { disposer, positionsAffichees, sansDisposition } from "./disposition";
 
 type Position = { x: number; y: number };
 export type Validation = { ok: true } | { ok: false; erreur: string; bloc?: string };
@@ -13,6 +13,9 @@ export type Depot = Pick<ApiWebaios["workflow"], "lire" | "enregistrer" | "lireC
 export type Viewport = { x: number; y: number; zoom: number };
 
 const PREFIXE_NON_ENREGISTRE = /^Non enregistré : /;
+/** Un geste pendant que le bandeau propose la version de l'agent : rien ne part avant le choix de l'utilisateur. */
+export const EN_ATTENTE_DU_CHOIX = "l'agent a modifié le workflow, choisis une version";
+const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * L'état d'édition du workflow d'un widget dans cette fenêtre : brouillon, historique, validation, enregistrement.
@@ -43,6 +46,8 @@ export class Edition {
   /** Brouillons partis à l'enregistrement, pas encore confirmés : leur écho sur le disque est ignoré. */
   private envoyes: Brouillon[] = [];
   private prochain: Brouillon | null = null;
+  /** Brouillon retenu pendant le bandeau « proposer » : envoyé par « Garder la mienne », abandonné sinon. */
+  private retenu: Brouillon | null = null;
   private enregistrementEnCours = false;
   private lecture = 0;
 
@@ -131,9 +136,14 @@ export class Edition {
       this.disqueValide = l.validation.ok;
       this.bandeau = null;
       this.versionDisque = null;
+      if (this.retenu) {
+        // Le disque a rejoint le brouillon retenu : plus rien à choisir ni à envoyer.
+        this.retenu = null;
+        this.etatEnregistrement = l.validation.ok ? "enregistre" : invalide(l.validation.erreur, l.validation.bloc);
+      }
       if (this.etatEnregistrement !== "en-cours") {
-        this.validation = l.validation;
-        this.avertissements = l.avertissements;
+        if (!memeJson(this.validation, l.validation)) this.validation = l.validation;
+        if (!memeJson(this.avertissements, l.avertissements)) this.avertissements = l.avertissements;
       }
     } else if (this.bandeau === "illisible") {
       this.bandeau = null;
@@ -145,17 +155,23 @@ export class Edition {
   prendreVersionDisque(): void {
     const v = this.versionDisque;
     if (!v || !this.historique) return;
+    this.retenu = null;
     this.historique.faire(v.brouillon);
     this.origine = v.lecture.origine;
     this.adopterLecture(v.brouillon, v.lecture);
   }
 
-  /** Bandeau : garder le brouillon ; valide, il remplace la version du disque. */
+  /**
+   * Bandeau : garder le brouillon. Il part à l'enregistrement (retenu par un geste, ou valide) et remplace alors la
+   * version du disque ; invalide, il est refusé et rien n'est écrit.
+   */
   garderLaMienne(): void {
     if (this.versionDisque) this.dernierConnu = this.versionDisque.brouillon;
+    const envoyer = this.retenu !== null || this.validation.ok;
     this.versionDisque = null;
     this.bandeau = null;
-    if (this.brouillon && this.validation.ok) this.enregistrer(this.brouillon);
+    this.retenu = null;
+    if (this.brouillon && envoyer) this.enregistrer(this.brouillon);
   }
 
   /**
@@ -195,11 +211,17 @@ export class Edition {
     const parametres = parametresNeufs(c);
     if (c.type === "code") {
       const source = await this.fichierLibre(c.type);
-      if (source) {
-        parametres.source = source;
-        const r = await this.depot.enregistrerCode(this.id, source, MODELE_CODE);
-        if (!r.ok) this.etatEnregistrement = { erreur: r.erreur };
+      // Jamais le fichier d'un autre : sans nom libre (ou sans pouvoir écrire le modèle), le bloc n'est pas ajouté.
+      if (!source) {
+        this.etatEnregistrement = { erreur: "aucun nom de fichier libre pour le bloc Code" };
+        return "";
       }
+      const r = await this.depot.enregistrerCode(this.id, source, MODELE_CODE);
+      if (!r.ok) {
+        this.etatEnregistrement = { erreur: r.erreur };
+        return "";
+      }
+      parametres.source = source;
     }
     let id = "";
     this.modifier((b) => {
@@ -220,18 +242,19 @@ export class Edition {
       if (pris.has(nom)) continue;
       const lu = await this.depot.lireCode(this.id, nom);
       if ("absent" in lu) return nom;
+      if ("erreur" in lu) return null;
     }
     return null;
   }
 
   annuler(): void {
     const b = this.historique?.annuler();
-    if (b) this.appliquer(b);
+    if (b) this.appliquer(b, true);
   }
 
   retablir(): void {
     const b = this.historique?.retablir();
-    if (b) this.appliquer(b);
+    if (b) this.appliquer(b, true);
   }
 
   /** Refait la disposition automatique : positions affichées seulement, rien n'est enregistré. */
@@ -239,12 +262,25 @@ export class Edition {
     if (this.brouillon) this.positions = disposer(this.brouillon);
   }
 
-  private appliquer(b: Brouillon): void {
+  /**
+   * `historique` : retour à un état passé ; sans disposition, il reprend la disposition automatique (pas les positions
+   * affichées, qui garderaient le déplacement annulé).
+   */
+  private appliquer(b: Brouillon, historique = false): void {
     this.brouillon = b;
-    this.positions = positionsAffichees(b, this.positions);
+    this.positions = positionsAffichees(b, historique && sansDisposition(b) ? null : this.positions);
+    if (this.bandeau === "proposer") {
+      this.retenir(b);
+      return;
+    }
     this.bandeau = null;
     this.versionDisque = null;
     this.enregistrer(b);
+  }
+
+  private retenir(b: Brouillon): void {
+    this.retenu = b;
+    this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
   }
 
   /** Les enregistrements partent un par un ; un brouillon dépassé avant son départ n'est pas envoyé. */
@@ -258,6 +294,12 @@ export class Edition {
     this.enregistrementEnCours = true;
     try {
       while (this.prochain) {
+        if (this.bandeau === "proposer") {
+          // Le bandeau est apparu entre-temps : ce brouillon attend le choix de l'utilisateur.
+          this.retenir(this.prochain);
+          this.prochain = null;
+          break;
+        }
         const b = this.prochain;
         this.prochain = null;
         this.envoyes.push(b);
@@ -298,6 +340,26 @@ function invalide(erreur: string, bloc?: string): EtatEnregistrement {
 
 /** Une édition par widget et par fenêtre : changer d'onglet ne perd ni un brouillon invalide ni l'historique. */
 const editions = new Map<string, Edition>();
+
+/** Oublie l'édition des widgets qui ne sont plus sur l'accueil : un id réutilisé ne reprend jamais l'ancien historique. */
+export function oublierEditions(presents: Iterable<string>): void {
+  const ids = new Set(presents);
+  for (const id of [...editions.keys()]) if (!ids.has(id)) editions.delete(id);
+}
+
+let suivi = false;
+/** Une fois par fenêtre : à chaque changement de l'accueil, les éditions des widgets partis sont oubliées. */
+export function suivreDisparitions(accueil: Pick<ApiWebaios["accueil"], "lire" | "surChange">): void {
+  if (suivi) return;
+  suivi = true;
+  accueil.surChange(() => {
+    void accueil
+      .lire()
+      // Une liste vide est plutôt un accueil illisible un instant : rien n'est oublié sur elle.
+      .then((ws) => ws.length > 0 && oublierEditions(ws.map((w) => w.id)))
+      .catch(() => {});
+  });
+}
 
 export function creerEdition(id: string, depot: Depot): Edition {
   let e = editions.get(id);

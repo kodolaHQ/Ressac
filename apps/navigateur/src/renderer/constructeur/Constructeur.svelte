@@ -6,7 +6,7 @@
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
   import Canevas from "./Canevas.svelte";
-  import { creerEdition } from "./edition.svelte";
+  import { creerEdition, suivreDisparitions } from "./edition.svelte";
   import Palette from "./Palette.svelte";
   import type { Pastille } from "./pastilles";
 
@@ -16,6 +16,7 @@
   // Gardée par fenêtre et par widget : changer d'onglet ne perd ni un brouillon invalide ni l'historique.
   // svelte-ignore state_referenced_locally
   const edition = creerEdition(id, api.workflow);
+  suivreDisparitions(api.accueil);
   let catalogue = $state.raw<CatalogueBloc[]>([]);
   const parType = $derived(new Map(catalogue.map((c) => [c.type, c])));
   let pastilles = $state.raw<Record<string, Pastille>>({});
@@ -39,7 +40,9 @@
     const liste = await api.accueil.executions(id);
     if (n !== requetePastilles) return;
     const derniere = liste.find((e) => !e.essai);
-    pastilles = Object.fromEntries((derniere?.blocs ?? []).map((b) => [b.id, { statut: b.statut, elements: b.elements }]));
+    const p = Object.fromEntries((derniere?.blocs ?? []).map((b) => [b.id, { statut: b.statut, elements: b.elements }]));
+    // Un changement de l'accueil qui ne touche pas ce widget ne redessine pas le canevas.
+    if (JSON.stringify(p) !== JSON.stringify(pastilles)) pastilles = p;
   }
 
   $effect(() => untrack(() => {

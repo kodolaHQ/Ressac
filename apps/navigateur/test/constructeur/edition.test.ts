@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import type { Brouillon, EditionWorkflow } from "../../src/commun/api";
 import { MODELE_CODE, parametresNeufs, placeLibre } from "../../src/renderer/constructeur/ajout";
 import { relier } from "../../src/renderer/constructeur/brouillon";
-import { creerEdition, Edition, type Depot } from "../../src/renderer/constructeur/edition.svelte";
+import { creerEdition, Edition, EN_ATTENTE_DU_CHOIX, oublierEditions, type Depot } from "../../src/renderer/constructeur/edition.svelte";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres });
 /** Workflow livré sans positions. */
@@ -20,7 +20,17 @@ const attendre = () => new Promise((r) => setTimeout(r, 0));
 
 /** Faux dépôt : un `workflow.json` en mémoire, validé par le vrai validateur ; garde la trace des écritures. */
 function faux(initial: unknown, fichiers: Record<string, string> = {}) {
-  const etat = { disque: structuredClone(initial) as unknown, lisible: true, introuvable: false, fichiers: { ...fichiers } };
+  const etat = {
+    disque: structuredClone(initial) as unknown,
+    lisible: true,
+    introuvable: false,
+    fichiers: { ...fichiers },
+    /** Erreur de lecture du code ; refus d'écrire le code ; enregistrements suspendus jusqu'à `liberer()`. */
+    erreurCode: false,
+    refusCode: false,
+    suspendu: false,
+  };
+  const enAttente: (() => void)[] = [];
   const ecritures: Brouillon[] = [];
   const lecture = (): EditionWorkflow | null => {
     if (etat.introuvable) return null;
@@ -37,19 +47,25 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
   const depot: Depot = {
     lire: async () => lecture(),
     enregistrer: async (_id, b) => {
+      if (etat.suspendu) await new Promise<void>((ok) => enAttente.push(ok));
       const v = validerWorkflow(structuredClone(b));
       if (!v.ok) return { ok: false, erreur: v.erreur, ...(v.bloc ? { bloc: v.bloc } : {}), avertissements: [] };
       ecritures.push(structuredClone(b));
       etat.disque = structuredClone(b);
       return { ok: true, ecrit: true, memoireEffacee: [], avertissements: [] };
     },
-    lireCode: async (_id, nom) => (nom in etat.fichiers ? { texte: etat.fichiers[nom]! } : { absent: true }),
+    lireCode: async (_id, nom) => (etat.erreurCode ? { erreur: "Fichier illisible" } : nom in etat.fichiers ? { texte: etat.fichiers[nom]! } : { absent: true }),
     enregistrerCode: async (_id, nom, texte) => {
+      if (etat.refusCode) return { ok: false, erreur: "Écriture impossible" };
       etat.fichiers[nom] = texte;
       return { ok: true };
     },
   };
-  return { depot, etat, ecritures };
+  const liberer = () => {
+    etat.suspendu = false;
+    for (const ok of enAttente.splice(0)) ok();
+  };
+  return { depot, etat, ecritures, liberer };
 }
 
 async function ouverte(f: ReturnType<typeof faux>): Promise<Edition> {
@@ -222,4 +238,109 @@ test("paramètres neufs : valeurs neutres des champs requis, pas d'adresse inven
 test("placeLibre décale sous les blocs affichés", () => {
   expect(placeLibre({ x: 10, y: 0 }, [])).toEqual({ x: 10, y: 0 });
   expect(placeLibre({ x: 10, y: 0 }, [{ x: 0, y: 0 }, { x: 0, y: 110 }])).toEqual({ x: 10, y: 220 });
+});
+
+// Fix round 1 (revue de la tâche 9)
+
+/** Brouillon invalide (bloc non relié), puis l'agent change `garder` sur le disque : le bandeau propose sa version. */
+async function avecBandeau() {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  const id = await e.ajouter(catalogue("liste.garder"), { x: 0, y: 300 });
+  await attendre();
+  const agent = livre();
+  agent.blocs[0]!.parametres = { source: "b.mjs" };
+  f.etat.disque = agent;
+  await e.relire();
+  expect(e.bandeau).toBe("proposer");
+  return { f, e, id };
+}
+
+test("I1 : un geste pendant le bandeau n'écrit rien et le bandeau reste ; « Garder la mienne » envoie le brouillon", async () => {
+  const { f, e, id } = await avecBandeau();
+  e.modifier((b) => relier(b, "garder", id));
+  await attendre();
+  expect(f.ecritures).toEqual([]);
+  expect(e.bandeau).toBe("proposer");
+  expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
+  expect((f.etat.disque as Brouillon).blocs[0]!.parametres).toEqual({ source: "b.mjs" });
+  e.garderLaMienne();
+  await attendre();
+  expect(e.bandeau).toBeNull();
+  expect(f.ecritures).toHaveLength(1);
+  expect(f.ecritures[0]!.liens).toContainEqual({ de: "garder", vers: id });
+  expect(f.ecritures[0]!.blocs[0]!.parametres).toEqual({ source: "a.mjs" });
+  expect(e.etatEnregistrement).toBe("enregistre");
+});
+
+test("I1 : un geste pendant le bandeau, puis « Prendre sa version » : le brouillon retenu est abandonné", async () => {
+  const { f, e, id } = await avecBandeau();
+  e.modifier((b) => relier(b, "garder", id));
+  e.prendreVersionDisque();
+  await attendre();
+  expect(f.ecritures).toEqual([]);
+  expect(e.bandeau).toBeNull();
+  expect(e.brouillon!.blocs[0]!.parametres).toEqual({ source: "b.mjs" });
+  expect(e.brouillon!.blocs.map((b) => b.id)).not.toContain(id);
+  expect(e.etatEnregistrement).toBe("enregistre");
+});
+
+test("I2 : ⌘Z après le premier déplacement d'un workflow sans disposition remet le bloc à sa place", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
+  await attendre();
+  e.annuler();
+  await attendre();
+  expect(e.positions.tri).toEqual({ x: 260, y: 0 });
+  expect((f.etat.disque as Brouillon).blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 0, y: 0 });
+  e.retablir();
+  expect(e.positions.tri).toEqual({ x: 300, y: 40 });
+});
+
+test("M2 : relire pendant un enregistrement en vol ignore l'écho du brouillon envoyé", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  f.etat.suspendu = true;
+  e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
+  await attendre();
+  // Un second geste attend son tour pendant que le premier est en vol.
+  e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
+  // Le disque porte déjà le premier brouillon (écrit, réponse pas encore reçue).
+  const enVol = structuredClone(e.brouillon!);
+  enVol.blocs.find((b) => b.id === "tri")!.position = { x: 300, y: 40 };
+  f.etat.disque = enVol;
+  await e.relire();
+  expect(e.bandeau).toBeNull();
+  expect(e.positions.tri).toEqual({ x: 320, y: 60 });
+  f.liberer();
+  await attendre();
+  await attendre();
+  expect(e.etatEnregistrement).toBe("enregistre");
+});
+
+test("M3 : l'édition d'un widget parti de l'accueil est oubliée ; un id réutilisé repart de zéro", () => {
+  const { depot } = faux(livre());
+  const a = creerEdition("parti", depot);
+  const b = creerEdition("reste", depot);
+  oublierEditions(["reste"]);
+  expect(creerEdition("parti", depot)).not.toBe(a);
+  expect(creerEdition("reste", depot)).toBe(b);
+});
+
+test("M4 : sans nom de fichier libre (lecture en erreur) ou sans écriture du modèle, le bloc Code n'est pas ajouté", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  f.etat.erreurCode = true;
+  expect(await e.ajouter(catalogue("code"), { x: 0, y: 300 })).toBe("");
+  expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
+  expect(e.etatEnregistrement).toEqual({ erreur: "aucun nom de fichier libre pour le bloc Code" });
+  f.etat.erreurCode = false;
+  f.etat.refusCode = true;
+  expect(await e.ajouter(catalogue("code"), { x: 0, y: 300 })).toBe("");
+  expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
+  expect(e.etatEnregistrement).toEqual({ erreur: "Écriture impossible" });
+  await attendre();
+  expect(f.ecritures).toEqual([]);
+  expect(Object.keys(f.etat.fichiers)).toEqual([]);
 });

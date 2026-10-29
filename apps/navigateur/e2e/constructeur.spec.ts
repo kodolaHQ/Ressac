@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -361,5 +361,110 @@ test("un workflow.json invalide s'ouvre avec son erreur et ne se lance pas ; ill
   await ouvrirConstructeur(fenetre, "casse");
   await expect(fenetre.getByTestId("workflow-illisible")).toContainText("Workflow invalide : ");
   await expect(fenetre.getByTestId("lancer")).toBeDisabled();
+  await fermer();
+});
+
+// Revue de la tâche 9 (fix round 1)
+
+/** L'agent réécrit `workflow.json` (écriture atomique, comme ses outils). */
+function ecrireCommeAgent(racine: string, workflow: unknown): void {
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  writeFileSync(`${fichier}.agent`, JSON.stringify(workflow, null, 2));
+  renameSync(`${fichier}.agent`, fichier);
+}
+const avecSeuil = (seuil: number) => ({
+  ...WORKFLOW_VEILLE,
+  blocs: WORKFLOW_VEILLE.blocs.map((b) => (b.id === "tri" ? { ...b, parametres: { ...b.parametres, seuil } } : b)),
+});
+const seuilDe = (fichier: string) => lireJson(fichier).blocs.find((b: { id: string }) => b.id === "tri").parametres.seuil;
+
+test("Suppr supprime la sélection mais jamais la sortie", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("noeud-sortie").click();
+  await fenetre.keyboard.press("Delete");
+  await attendre(300);
+  await expect(fenetre.getByTestId("noeud-sortie")).toBeVisible();
+  expect(lireJson(fichier)).toEqual(WORKFLOW_VEILLE);
+  // Avec un autre bloc sélectionné aussi : lui seul part (la sortie, sans entrée, rend le brouillon invalide).
+  await fenetre.getByTestId("noeud-textes").click();
+  await fenetre.keyboard.down("Meta");
+  await fenetre.getByTestId("noeud-sortie").click();
+  await fenetre.keyboard.up("Meta");
+  await fenetre.keyboard.press("Delete");
+  await expect(fenetre.getByTestId("noeud-textes")).toHaveCount(0);
+  await expect(fenetre.getByTestId("noeud-sortie")).toBeVisible();
+  await expect(fenetre.getByTestId("etat-enregistrement")).toContainText("entrée manquante");
+  expect(lireJson(fichier)).toEqual(WORKFLOW_VEILLE);
+  await fermer();
+});
+
+test("⌘Z tapé dans un champ de texte ne défait pas le canevas", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("palette-liste.garder").click();
+  await expect(fenetre.getByTestId("noeud-liste-garder")).toBeVisible();
+  const barre = fenetre.getByTestId("barre-adresse");
+  await barre.click();
+  await barre.pressSequentially("abc");
+  await barre.press("Meta+z");
+  await attendre(300);
+  await expect(fenetre.getByTestId("noeud-liste-garder")).toBeVisible();
+  // Hors du champ, ⌘Z défait l'ajout.
+  await fenetre.getByTestId("constructeur").getByRole("heading", { name: "Veille" }).click();
+  await fenetre.keyboard.press("Meta+z");
+  await expect(fenetre.getByTestId("noeud-liste-garder")).toHaveCount(0);
+  await fermer();
+});
+
+test("l'agent réécrit workflow.json pendant un brouillon invalide : bandeau, « Garder la mienne » puis « Prendre sa version »", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("palette-liste.garder").click();
+  await expect(fenetre.getByTestId("etat-enregistrement")).toContainText("entrée manquante");
+
+  ecrireCommeAgent(racine, avecSeuil(0.7));
+  const bandeau = fenetre.getByTestId("bandeau-fichier");
+  await expect(bandeau).toBeVisible();
+  // Un geste pendant le bandeau n'écrase pas la version de l'agent.
+  await relier(fenetre, "tri", "liste-garder");
+  await attendre(500);
+  await expect(bandeau).toBeVisible();
+  expect(seuilDe(fichier)).toBe(0.7);
+  // Garder la mienne : mon brouillon (relié, donc valide) remplace la version de l'agent.
+  await fenetre.getByTestId("garder-mienne").click();
+  await expect(bandeau).toBeHidden();
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  await expect.poll(() => seuilDe(fichier)).toBe(0.5);
+  expect(lireJson(fichier).liens).toContainEqual({ de: "tri", vers: "liste-garder" });
+
+  // Nouveau brouillon invalide, nouvelle version de l'agent : la prendre abandonne le brouillon, sans rien écrire.
+  await fenetre.getByTestId("palette-liste.garder").click();
+  await expect(fenetre.getByTestId("noeud-liste-garder-2")).toBeVisible();
+  ecrireCommeAgent(racine, avecSeuil(0.9));
+  await expect(bandeau).toBeVisible();
+  const avant = statSync(fichier).mtimeMs;
+  await fenetre.getByTestId("prendre-version").click();
+  await expect(bandeau).toBeHidden();
+  await expect(fenetre.getByTestId("noeud-liste-garder-2")).toHaveCount(0);
+  await expect(fenetre.getByTestId("noeud-liste-garder")).toHaveCount(0);
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  await attendre(500);
+  expect(statSync(fichier).mtimeMs).toBe(avant);
+  expect(seuilDe(fichier)).toBe(0.9);
   await fermer();
 });

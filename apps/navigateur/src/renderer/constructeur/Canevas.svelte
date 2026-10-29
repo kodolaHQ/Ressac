@@ -31,11 +31,20 @@
   let nodes = $state.raw<Noeud[]>([]);
   let edges = $state.raw<Edge[]>([]);
 
+  /** Un bloc est en train d'être glissé : le canevas n'est pas redessiné sous la souris, seulement à la fin. */
+  let reporte = false;
+
   /** Nœuds et liens tirés du brouillon (la sélection affichée est gardée). */
   function reconstruire(): void {
     const b = edition.brouillon;
     if (!b) return;
-    const selectionnes = new Set(untrack(() => nodes).filter((n) => n.selected).map((n) => n.id));
+    const actuels = untrack(() => nodes);
+    if (actuels.some((n) => n.dragging)) {
+      reporte = true;
+      return;
+    }
+    reporte = false;
+    const selectionnes = new Set(actuels.filter((n) => n.selected).map((n) => n.id));
     const avecEntree = new Set(b.liens.map((l) => l.vers));
     const avecSortie = new Set(b.liens.map((l) => l.de));
     const erreurBloc = edition.validation.ok ? null : (edition.validation.bloc ?? null);
@@ -82,6 +91,8 @@
 
   function deplace(): void {
     edition.deplacer(Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }])));
+    // Un changement arrivé pendant le glisser (fichier, pastilles) est dessiné maintenant.
+    if (reporte) setTimeout(reconstruire, 0);
   }
 
   function depose(e: DragEvent): void {
