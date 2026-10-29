@@ -16,7 +16,8 @@
 //     une valeur absente lève ValeurAbsente : en mode simple la sortie est null, par élément l'élément reste sans
 //     champ ; dans les deux cas, une ligne de journal et pas d'erreur.
 //   - par élément, un ElementNonLance (erreurs.mjs) laisse l'élément sans champ et le bloc « partiel », sans jamais
-//     compter comme un échec ; en mode simple, c'est une erreur ordinaire.
+//     compter comme un échec ; en mode simple, c'est une erreur ordinaire. Après le premier, plus aucun élément n'est
+//     lancé (sauf ceux que `reutiliser` reprend) : une ligne de journal pour le premier, une pour tous les suivants.
 //   - `partiel(raison?)` : en mode simple, le bloc finira « partiel » (par exemple un flux sur plusieurs en échec).
 // La boucle par élément (deux à la fois, budget de temps, `siErreur`, `reutiliser`) est celle de l'interpréteur.
 import { ElementNonLance } from "./erreurs.mjs";
@@ -147,6 +148,8 @@ async function parElement(module, ctx, { echeance, horloge }) {
   let echecs = 0;
   let reussis = 0;
   let refuses = 0;
+  // Premier refus du noyau (plafond, recherches arrêtées) : il vaut pour toute l'exécution, plus rien n'est lancé.
+  let refusNoyau = null;
   let premiereErreur = null;
   let erreurBloc = null;
 
@@ -161,6 +164,7 @@ async function parElement(module, ctx, { echeance, horloge }) {
       reussis++;
       return;
     }
+    if (refusNoyau !== null) throw new ElementNonLance(refusNoyau);
     const valeur = await module.traiterElement({
       ...ctx,
       element,
@@ -183,9 +187,13 @@ async function parElement(module, ctx, { echeance, horloge }) {
           continue;
         }
         if (e instanceof ElementNonLance) {
-          // Refusé par le noyau (plafond de recherches…) : non lancé, jamais un échec.
+          // Refusé par le noyau (plafond de recherches…) : non lancé, jamais un échec. Une ligne pour le premier, les
+          // suivants sont comptés ensemble à la fin.
           refuses++;
-          journal(`élément ${i + 1} : ${e.message}`);
+          if (refusNoyau === null) {
+            refusNoyau = e.message;
+            journal(`élément ${i + 1} : ${e.message}`);
+          }
           continue;
         }
         echecs++;
@@ -205,6 +213,7 @@ async function parElement(module, ctx, { echeance, horloge }) {
   if (module.echecSiTousEchouent === true && echecs > 0 && reussis === 0) {
     throw new Error(`Tous les éléments ont échoué (${message(premiereErreur)})`);
   }
+  if (refuses > 1) journal(`${refuses - 1} autre(s) élément(s) non lancé(s)`);
   const nonLances = entree.length - suivant;
   if (nonLances > 0) journal(`temps écoulé : ${nonLances} élément(s) non lancé(s)`);
   const sortie = module.finaliser ? (await module.finaliser(resultat, ctx))?.sortie : resultat;

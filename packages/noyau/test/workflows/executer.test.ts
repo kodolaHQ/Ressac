@@ -1,8 +1,9 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
+import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
@@ -16,6 +17,10 @@ import {
   type LanceurProcessus,
 } from "../../src/workflows/executer.js";
 import { SORTIE_MAX_OCTETS } from "../../src/workflows/executions.js";
+import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES, TROP_DE_LECTURES } from "../../src/workflows/acces.js";
+import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, extraireResultats, urlRecherche } from "../../src/workflows/duckduckgo.js";
+import { Menagement } from "../../src/workflows/menagement.js";
+import { WEB_REQUIS } from "../../src/workflows/valider.js";
 import { LIGNE_MAX_OCTETS } from "../../src/workflows/protocole.js";
 import { REJEU_TROP_GROS } from "../../src/workflows/rejeu.js";
 import { empreinteParametres, type MemoireBlocs } from "../../src/workflows/memoire.js";
@@ -654,5 +659,214 @@ describe("executerWorkflow", () => {
     expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Récolte impossible à lancer : Docker introuvable" });
     expect(r.execution.statut).toBe("echouee");
     expect(r.execution.blocs.every((x) => x.statut === "pas-lance")).toBe(true);
+  });
+});
+
+describe("executerWorkflow : recherche web et lectures ouvertes", () => {
+  const BASE = "https://ddg.test/html/";
+  const page = (nom: string) => readFileSync(new URL(`./fixtures/duckduckgo/${nom}`, import.meta.url), "utf8");
+  const resultatsFixture = (() => {
+    const r = extraireResultats(page("resultats.html"), 20);
+    if (!("resultats" in r)) throw new Error("attendu : des résultats");
+    return r.resultats;
+  })();
+
+  /** Ménagement à horloge factice : chaque attente avance l'horloge, sans jamais attendre pour de vrai. */
+  const menagementFactice = () => {
+    let t = 0;
+    const attentes: number[] = [];
+    const menagement = new Menagement({
+      maintenant: () => t,
+      attendre: async (ms) => {
+        attentes.push(ms);
+        t += ms;
+      },
+    });
+    return { menagement, attentes };
+  };
+
+  /** Un widget `a` → sortie dont le code est donné ; `web` et le ménagement réglés. */
+  async function bancWeb(code: string, o: { web?: boolean; compte?: string[]; html?: Record<string, string>; pages?: { url: string; titre: string; texte: string; liens: [] }[]; menagement?: Menagement; delaiMs?: number } = {}) {
+    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: o.pages ?? [], html: o.html ?? {} } });
+    const b = await banc(chaine("a"), { "a.mjs": code }, { pont, compte: o.compte, accord: { profil: "perso" }, delaiMs: o.delaiMs });
+    b.ctx.sources = { ...b.ctx.sources, ...(o.web !== undefined ? { web: o.web } : {}) };
+    b.infra.menagement = o.menagement ?? menagementFactice().menagement;
+    b.infra.urlRecherche = BASE;
+    return { b, pont, html: () => pont.appels.filter((a) => a.methode === "lireHtmlInvisible") };
+  }
+  const valeur = (r: Awaited<ReturnType<typeof executerWorkflow>>) => (r.issue.t === "fin" ? r.issue.sortie.valeur : r.issue);
+  /** Code qui fait ces appels l'un après l'autre et rend, pour chacun, le résultat ou « erreur: <message> ». */
+  const enSuite = (appels: string[]) => `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
+    export default async (e, w) => { const r = []; ${appels.map((a) => `r.push(await essai(${a}));`).join(" ")} return r; };`;
+
+  it("chercherWeb rend les résultats de la page enregistrée, url de recherche construite sur urlRecherche", async () => {
+    const { b, html } = await bancWeb(enSuite([`w.chercherWeb("clio fiabilité", { nombre: 3 })`]), {
+      web: true,
+      html: { [urlRecherche("clio fiabilité", BASE)]: page("resultats.html") },
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([resultatsFixture.slice(0, 3)]);
+    expect(html().map((a) => a.args)).toEqual([[urlRecherche("clio fiabilité", BASE), { adressesLocales: true }]]);
+  });
+
+  it("chercherWeb écarte les résultats vers une adresse locale, puis coupe à nombre", async () => {
+    const bloc = (u: string) => `<div class="result"><a class="result__a" href="${u}">T</a><a class="result__snippet">E</a></div>`;
+    const local = [
+      "http://127.0.0.1:8080/admin",
+      "http://localhost/x",
+      "http://192.168.1.1/",
+      "http://imprimante.local/",
+      "http://[::1]/",
+      "https://a.example/",
+      "https://b.example/",
+      "https://c.example/",
+    ].map(bloc).join("");
+    const { b } = await bancWeb(enSuite([`w.chercherWeb("x", { nombre: 2 })`]), { web: true, html: { [urlRecherche("x", BASE)]: local } });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([[{ titre: "T", url: "https://a.example/", extrait: "E" }, { titre: "T", url: "https://b.example/", extrait: "E" }]]);
+  });
+
+  it("sans web : WEB_REQUIS, aucun appel au pont", async () => {
+    const { b, pont } = await bancWeb(enSuite([`w.chercherWeb("x")`]), { html: { [urlRecherche("x", BASE)]: page("resultats.html") } });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([`erreur: ${WEB_REQUIS}`]);
+    expect(pont.appels).toEqual([]);
+  });
+
+  it("widget avec compte : WEB_REQUIS", async () => {
+    // web avec compte est refusé à la lecture de widget.json ; l'exécuteur refuse quand même.
+    const { b, html } = await bancWeb(enSuite([`w.chercherWeb("x")`]), {
+      web: true,
+      compte: ["mail.google.com"],
+      html: { [urlRecherche("x", BASE)]: page("resultats.html") },
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([`erreur: ${WEB_REQUIS}`]);
+    expect(html()).toEqual([]);
+  });
+
+  it("31e recherche : PLAFOND_RECHERCHES, 30 lectures de HTML seulement", async () => {
+    const { menagement, attentes } = menagementFactice();
+    const { b, html } = await bancWeb(enSuite(Array.from({ length: 31 }, () => `w.chercherWeb("clio", { nombre: 1 })`)), {
+      web: true,
+      menagement,
+      html: { [urlRecherche("clio", BASE)]: page("resultats.html") },
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    const sortie = valeur(r) as unknown[];
+    expect(sortie.slice(0, 30)).toEqual(Array.from({ length: 30 }, () => resultatsFixture.slice(0, 1)));
+    expect(sortie[30]).toBe(`erreur: ${PLAFOND_RECHERCHES}`);
+    expect(html()).toHaveLength(30);
+    // Ménagées : 2 s entre deux recherches.
+    expect(attentes).toEqual(Array.from({ length: 29 }, () => 2000));
+  });
+
+  it("page de vérification : RECHERCHE_REFUSEE, puis RECHERCHES_ARRETEES sans nouvelle lecture", async () => {
+    const { b, html } = await bancWeb(enSuite([`w.chercherWeb("a")`, `w.chercherWeb("b")`]), {
+      web: true,
+      html: { [urlRecherche("a", BASE)]: page("verification.html"), [urlRecherche("b", BASE)]: page("resultats.html") },
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([`erreur: ${RECHERCHE_REFUSEE}`, `erreur: ${RECHERCHES_ARRETEES}`]);
+    expect(html()).toHaveLength(1);
+  });
+
+  it("une recherche en file quand le refus arrive ne part pas", async () => {
+    const { b, html } = await bancWeb(
+      `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
+      export default async (e, w) => Promise.all([essai(w.chercherWeb("a")), essai(w.chercherWeb("b"))]);`,
+      { web: true, html: { [urlRecherche("a", BASE)]: page("verification.html"), [urlRecherche("b", BASE)]: page("resultats.html") } },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([`erreur: ${RECHERCHE_REFUSEE}`, `erreur: ${RECHERCHES_ARRETEES}`]);
+    expect(html()).toHaveLength(1);
+  });
+
+  it("page changée : RESULTATS_ILLISIBLES, jamais une liste vide ; aucun résultat : liste vide", async () => {
+    const { b } = await bancWeb(enSuite([`w.chercherWeb("a")`, `w.chercherWeb("b")`]), {
+      web: true,
+      html: { [urlRecherche("a", BASE)]: page("changee.html"), [urlRecherche("b", BASE)]: page("aucun-resultat.html") },
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toEqual([`erreur: ${RESULTATS_ILLISIBLES}`, []]);
+  });
+
+  it("widget web : la 101e lecture ouverte (pages et flux) lève TROP_DE_LECTURES", async () => {
+    const web = await serveurWeb({ "/f": (res) => res.end("<rss><channel><item><title>T</title><link>https://x.example/</link></item></channel></rss>") });
+    const { menagement, attentes } = menagementFactice();
+    const espion = vi.spyOn(menagement, "lire");
+    const { b, pont } = await bancWeb(
+      `const essai = (p) => p.then(() => "ok", (e) => "erreur: " + e.message);
+      export default async (e, w) => {
+        const r = [];
+        for (let i = 0; i < 40; i++) r.push(await essai(w.lirePage("https://www.pages.example/" + i)));
+        for (let i = 0; i < 30; i++) r.push(await essai(w.recuperer("${web.url}/f")));
+        for (let i = 0; i < 30; i++) r.push(await essai(w.lireFlux("${web.url}/f")));
+        r.push(await essai(w.lirePage("https://pages.example/de-trop")));
+        r.push(await essai(w.recuperer("${web.url}/f")));
+        return r;
+      };`,
+      { web: true, menagement },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    const sortie = valeur(r) as string[];
+    expect(sortie.slice(0, 100).every((x) => x === "ok")).toBe(true);
+    expect(sortie.slice(100)).toEqual([`erreur: ${TROP_DE_LECTURES}`, `erreur: ${TROP_DE_LECTURES}`]);
+    expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(40);
+    expect(web.requetes).toHaveLength(60);
+    // Chacune passe par le ménagement, par hôte : 1 s entre deux lectures du même hôte.
+    expect(espion).toHaveBeenCalledTimes(100);
+    expect(espion.mock.calls.slice(0, 40).every((c) => c[0] === "www.pages.example")).toBe(true);
+    expect(espion.mock.calls.slice(40).every((c) => c[0] === "127.0.0.1")).toBe(true);
+    expect(attentes.every((ms) => ms === 1000)).toBe(true);
+    expect(attentes).toHaveLength(98);
+  });
+
+  it("widget sans web : 150 lectures passent, aucune attente du ménagement", async () => {
+    const espion = new Menagement({ attendre: async () => { throw new Error("aucune attente attendue"); } });
+    const lire = vi.spyOn(espion, "lire");
+    const rechercher = vi.spyOn(espion, "rechercher");
+    const { b, pont } = await bancWeb(
+      `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.lirePage("https://pages.example/" + i); return "fini"; };`,
+      { menagement: espion },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toBe("fini");
+    expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(150);
+    expect(lire).not.toHaveBeenCalled();
+    expect(rechercher).not.toHaveBeenCalled();
+  });
+
+  it("arrêt de l'exécution : une lecture en attente du ménagement ne part pas", async () => {
+    let t = 0;
+    const enAttente: (() => void)[] = [];
+    const menagement = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
+    const { b, pont } = await bancWeb(
+      `export default async (e, w) => { await w.lirePage("https://pages.example/1"); return w.lirePage("https://pages.example/2"); };`,
+      { web: true, menagement, delaiMs: 300 },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    // L'écart s'écoule après l'arrêt : la lecture en file ne part pas.
+    t += 10_000;
+    for (const ok of enAttente.splice(0)) ok();
+    await new Promise((ok) => setTimeout(ok, 20));
+    expect(pont.appels.filter((a) => a.methode === "lirePageInvisible").map((a) => a.args[0])).toEqual(["https://pages.example/1"]);
+  });
+
+  it("fin de l'exécution : une recherche encore en file ne part pas", async () => {
+    let t = 0;
+    const enAttente: (() => void)[] = [];
+    const menagement = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
+    const { b, html } = await bancWeb(
+      `export default async (e, w) => { await w.chercherWeb("a"); w.chercherWeb("b").catch(() => {}); return "fini"; };`,
+      { web: true, menagement, html: { [urlRecherche("a", BASE)]: page("resultats.html") } },
+    );
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(valeur(r)).toBe("fini");
+    t += 10_000;
+    for (const ok of enAttente.splice(0)) ok();
+    await new Promise((ok) => setTimeout(ok, 20));
+    expect(html()).toHaveLength(1);
   });
 });

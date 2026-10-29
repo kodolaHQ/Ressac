@@ -7,7 +7,7 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 import type { MemoireBlocs } from "../../src/workflows/memoire.js";
 import { workflowImplicite } from "../../src/workflows/valider.js";
 import { MOTEUR, SCRIPT, bloc, chaine, lancer, sortie } from "../aide/moteur.js";
-import { PLAFOND_RECHERCHES } from "../../src/workflows/acces.js";
+import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES } from "../../src/workflows/acces.js";
 import { RECHERCHE_REFUSEE } from "../../src/workflows/duckduckgo.js";
 
 // Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
@@ -796,10 +796,67 @@ describe("interpréteur : web.chercher", () => {
     expect(donnees.filter((e) => !("recherche" in e))).toHaveLength(2);
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
     const journal = journalDe(r, "cherche");
-    expect(journal.filter((t) => t.endsWith(` : ${PLAFOND_RECHERCHES}`))).toHaveLength(2);
-    expect(journal.every((t) => /^élément \d : /.test(t))).toBe(true);
+    // Une ligne pour le premier refus, une pour les éléments qui suivent : pas une par élément.
+    expect(journal.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${PLAFOND_RECHERCHES}`)]);
+    expect(journal.length).toBeLessThanOrEqual(2);
     // Le bloc sortie a bien tourné.
     expect(r.finBloc("sortie")).toMatchObject({ statut: "reussi" });
+  });
+
+  it("après le premier refus du noyau, plus aucune recherche : les éléments restants non lancés, une seule ligne de plus", async () => {
+    const vingt = Array.from({ length: 20 }, (_, i) => ({ marque: "M" + i, modele: "X" }));
+    const r = await lancer({
+      workflow: workflow({ reutiliser: "marque" }),
+      fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(vingt)});` },
+      contexte: WEB,
+      // M15 est déjà connu : il est repris sans recherche, même après le refus.
+      memoire: { cherche: { type: "web.chercher", valeur: { reutilises: [["M15", [{ titre: "Connu", url: "https://avis.fr/15", extrait: "" }]]] } } },
+      repondre: (a) => (a.a.requete.startsWith("M0 ") ? { ok: resultat(a.a.requete) } : { erreur: RECHERCHES_ARRETEES }),
+    });
+    expect(r.terminal.t).toBe("fin");
+    // M0 et M1 partent ensemble (deux à la fois) ; M1 refusé, M2 au plus a pu partir avant que le refus soit connu.
+    expect(r.appels.length).toBeLessThanOrEqual(3);
+    const donnees = r.terminal.donnees as Record<string, unknown>[];
+    expect(donnees.filter((e) => "recherche" in e).map((e) => e.marque)).toEqual(["M0", "M15"]);
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
+    const journal = journalDe(r, "cherche");
+    expect(journal).toHaveLength(2);
+    expect(journal[0]).toMatch(new RegExp(`^élément \\d+ : ${RECHERCHES_ARRETEES.replace(/[()]/g, "\\$&")}$`));
+    expect(journal[1]).toBe("17 autre(s) élément(s) non lancé(s)");
+  });
+
+  it("en mode simple, le succès rend la liste elle-même, remise en forme (non textes en \"\", clés en trop retirées)", async () => {
+    const r = await lancer({
+      workflow: { version: 1, blocs: [bloc("cherche", "web.chercher", { requete: "rust" }), sortie], liens: chaine("cherche", "sortie") },
+      contexte: WEB,
+      repondre: () => ({ ok: [{ titre: 1, url: "u", extrait: null, rang: 2 }] }),
+    });
+    expect(r.terminal).toEqual({ t: "fin", donnees: [{ titre: "", url: "u", extrait: "" }] });
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "reussi" });
+  });
+
+  it("une réponse qui n'est pas une liste : « résultats de recherche invalides »", async () => {
+    const r = await lancer({
+      workflow: { version: 1, blocs: [bloc("cherche", "web.chercher", { requete: "rust" }), sortie], liens: chaine("cherche", "sortie") },
+      contexte: WEB,
+      repondre: () => ({ ok: {} }),
+    });
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: "résultats de recherche invalides" });
+  });
+
+  it("la requête remplie est coupée à 500 caractères et débarrassée de ses blancs ; vide, c'est une valeur absente", async () => {
+    const elements = [{ marque: "  " + "a".repeat(400), modele: "b".repeat(400) }, { marque: "   ", modele: "  " }];
+    const r = await lancer({
+      workflow: workflow({ requete: "{marque} {modele}" }),
+      fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(elements)});` },
+      contexte: WEB,
+      repondre: (a) => ({ ok: resultat(a.a.requete) }),
+    });
+    expect(r.appels.map((a) => a.a.requete)).toEqual(["a".repeat(400) + " " + "b".repeat(99)]);
+    const donnees = r.terminal.donnees as Record<string, unknown>[];
+    expect("recherche" in donnees[0]!).toBe(true);
+    expect("recherche" in donnees[1]!).toBe(false);
+    expect(journalDe(r, "cherche")).toEqual(["élément 2 : valeur absente : requete"]);
   });
 
   it("RECHERCHE_REFUSEE sur un élément avec siErreur echouer : le bloc échoue", async () => {

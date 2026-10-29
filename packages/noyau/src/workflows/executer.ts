@@ -4,10 +4,26 @@ import type { Atelier } from "../conteneur/atelier.js";
 import { cheminOutils } from "../conteneur/executeur.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import { ProfilRefuse, type PontNavigateur } from "../mcp/pont.js";
-import { message, recuperer, tronquer, verifierPage, verifierUrl } from "./acces.js";
+import {
+  MAX_LECTURES_OUVERTES,
+  MAX_RECHERCHES,
+  PLAFOND_RECHERCHES,
+  RECHERCHE_INDISPONIBLE,
+  RECHERCHES_ARRETEES,
+  TROP_DE_LECTURES,
+  adresseLocale,
+  message,
+  recuperer,
+  tronquer,
+  verifierPage,
+  verifierUrl,
+} from "./acces.js";
+import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, URL_DUCKDUCKGO, extraireResultats, urlRecherche } from "./duckduckgo.js";
+import { Menagement } from "./menagement.js";
 import { SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
 import { MEMOIRE_MAX_OCTETS, empreinteParametres, type MemoireBlocs } from "./memoire.js";
 import {
+  ArgsChercherWeb,
   ArgsGemma,
   ArgsKev,
   ArgsLirePage,
@@ -21,7 +37,7 @@ import {
 } from "./protocole.js";
 import { REJEU_TROP_GROS } from "./rejeu.js";
 import type { GenreSortie, Proprietaire } from "./schema.js";
-import type { WorkflowValide } from "./valider.js";
+import { WEB_REQUIS, type WorkflowValide } from "./valider.js";
 
 /** Le processus de l'exécution (le client `docker run -i`) : son seul canal avec le noyau est stdin / stdout. */
 export interface ProcessusRecolte {
@@ -68,8 +84,11 @@ export interface ContexteWorkflow {
   config: unknown;
   precedent: unknown;
   memoire: MemoireBlocs;
-  /** Domaines lus avec le compte de l'utilisateur, et domaines publics permis quand il y en a avec compte. */
-  sources: { compte: readonly string[]; publiques: readonly string[] };
+  /**
+   * Domaines lus avec le compte de l'utilisateur, et domaines publics permis quand il y en a avec compte. `web` : recherches
+   * web permises et lectures ouvertes ménagées (jamais avec un compte).
+   */
+  sources: { compte: readonly string[]; publiques: readonly string[]; web?: boolean };
   /** Relu à chaque lecture avec compte ; null = plus d'accord. */
   accord(): Promise<{ profil: string } | null>;
   /** Le navigateur refuse le profil de l'accord (supprimé, devenu privé). */
@@ -100,6 +119,10 @@ export interface InfraWorkflow {
   delaiMs?: number;
   /** Tests seulement : permet `recuperer` et `lirePage` vers des adresses locales (127.0.0.1…). */
   adressesLocales?: boolean;
+  /** Ménagement des recherches et des lectures ouvertes (défaut : MENAGEMENT_PAR_DEFAUT, partagé). */
+  menagement?: Menagement;
+  /** Tests seulement : la base des recherches DuckDuckGo. */
+  urlRecherche?: string;
   /** Appelé pour chaque trace acceptée (jamais pour une ligne rejetée) ; une erreur du relais est ignorée. */
   surTrace?: (t: TraceDirecte) => void;
 }
@@ -116,6 +139,9 @@ function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | {
   if (!r.success) throw new Error(`Arguments invalides pour ${f}`);
   return r.data;
 }
+
+/** Le ménagement partagé par toutes les exécutions du noyau, quand l'appelant n'en donne pas. */
+export const MENAGEMENT_PAR_DEFAUT = new Menagement();
 
 type Arret = { statut: "erreur" | "accord-requis"; erreur: string };
 /** L'exécution est arrêtée : l'appel ne reçoit aucune réponse. */
@@ -199,6 +225,14 @@ export async function executerWorkflow(
   // Pour un propriétaire avec compte, les lectures publiques sont limitées aux domaines déclarés (vide : aucune).
   const aCompte = ctx.sources.compte.length > 0;
   const domainesPublics = aCompte ? ctx.sources.publiques : null;
+  // Recherches web et lectures ouvertes ménagées : seulement pour un widget qui déclare `web`, jamais avec un compte.
+  const web = ctx.sources.web === true && !aCompte;
+  const menagement = infra.menagement ?? MENAGEMENT_PAR_DEFAUT;
+  // Levé à l'arrêt ou à la fin : une recherche ou une lecture encore en file ne part pas.
+  const finExecution = new AbortController();
+  let recherches = 0;
+  let rechercheRefusee = false;
+  let lecturesOuvertes = 0;
 
   const debutLigne = ligneDebut({
     precedent: ctx.precedent,
@@ -227,6 +261,7 @@ export async function executerWorkflow(
   const arreter = (a: Arret) => {
     if (arret) return;
     arret = a;
+    finExecution.abort(new Error("Exécution arrêtée"));
     processus.tuer();
   };
   const minuteur = setTimeout(() => arreter({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? DELAI_EXECUTION_MS);
@@ -255,12 +290,24 @@ export async function executerWorkflow(
     ...(adressesLocales ? { adressesLocales: true } : {}),
   });
 
+  /**
+   * Une lecture ouverte (page sans compte, récupération, flux) : pour un widget `web`, comptée (100 par exécution) et
+   * ménagée par hôte ; sinon, faite tout de suite comme avant.
+   */
+  const lectureOuverte = <T>(u: URL, f: () => Promise<T>): Promise<T> => {
+    if (!web) return f();
+    if (lecturesOuvertes >= MAX_LECTURES_OUVERTES) throw new Error(TROP_DE_LECTURES);
+    lecturesOuvertes++;
+    return menagement.lire(u.hostname, f, finExecution.signal);
+  };
+
   const lirePage = async (a: unknown): Promise<unknown> => {
     const { url, compte } = args(ArgsLirePage, a, "lirePage");
     const lire = infra.pont.lirePageInvisible?.bind(infra.pont);
     if (!lire) throw new Error("Lecture de pages indisponible");
     if (!compte) {
-      const page = await lire(verifierUrl(url, domainesPublics, adressesLocales).href, avecDomaines(null, domainesPublics));
+      const u = verifierUrl(url, domainesPublics, adressesLocales);
+      const page = await lectureOuverte(u, () => lire(u.href, avecDomaines(null, domainesPublics)));
       return verifierPage(page, domainesPublics, adressesLocales);
     }
     // Le domaine doit être déclaré en `compte` ; l'accord est relu à chaque lecture (il a pu être retiré).
@@ -288,14 +335,42 @@ export async function executerWorkflow(
     }
   };
 
+  const chercherWeb = async (a: unknown): Promise<unknown> => {
+    const { requete, nombre } = args(ArgsChercherWeb, a, "chercherWeb");
+    // Refusé ici même si la validation l'a laissé passer : un bloc `code` ou un recolte.mjs peut appeler chercherWeb.
+    if (!web) throw new Error(WEB_REQUIS);
+    if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
+    if (recherches >= MAX_RECHERCHES) throw new Error(PLAFOND_RECHERCHES);
+    const lireHtml = infra.pont.lireHtmlInvisible?.bind(infra.pont);
+    if (!lireHtml) throw new Error(RECHERCHE_INDISPONIBLE);
+    recherches++;
+    const { html } = await menagement.rechercher(() => {
+      // Un refus arrivé pendant l'attente : celle-ci ne part pas.
+      if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
+      return lireHtml(urlRecherche(requete, infra.urlRecherche ?? URL_DUCKDUCKGO), adressesLocales ? { adressesLocales: true } : {});
+    }, finExecution.signal);
+    const r = extraireResultats(html, Infinity);
+    if ("refus" in r) {
+      rechercheRefusee = true;
+      throw new Error(RECHERCHE_REFUSEE);
+    }
+    if ("illisible" in r) throw new Error(RESULTATS_ILLISIBLES);
+    // Un résultat vers la machine ou le réseau local n'est jamais rendu (il serait lu ensuite).
+    return r.resultats.filter((x) => !adresseLocale(new URL(x.url).hostname)).slice(0, nombre);
+  };
+
   const traiterAppel = async (f: string, a: unknown): Promise<unknown> => {
     switch (f) {
       case "lirePage":
         return lirePage(a);
       case "recuperer": {
         const { url, format } = args(ArgsRecuperer, a, "recuperer");
-        return recuperer(url, format ?? "texte", domainesPublics, adressesLocales);
+        if (!web) return recuperer(url, format ?? "texte", domainesPublics, adressesLocales);
+        const u = verifierUrl(url, domainesPublics, adressesLocales);
+        return lectureOuverte(u, () => recuperer(u.href, format ?? "texte", domainesPublics, adressesLocales));
       }
+      case "chercherWeb":
+        return chercherWeb(a);
       case "kev": {
         const corps = args(ArgsKev, a, "kev");
         if (!infra.ia) throw new Error("IA locale indisponible");
@@ -424,6 +499,7 @@ export async function executerWorkflow(
 
   const code = await processus.fin;
   clearTimeout(minuteur);
+  finExecution.abort(new Error("Exécution finie"));
   const fin = terminal as MessageRecolteur | null;
   const arretFinal = arret as Arret | null;
   if (arretFinal) {

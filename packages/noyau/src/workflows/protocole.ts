@@ -5,7 +5,7 @@ import type { Bloc, Lien } from "./schema.js";
 /** Taille maximale d'une ligne du protocole récolteur <-> noyau. */
 export const LIGNE_MAX_OCTETS = 4 * 1024 * 1024;
 
-export const FonctionRecolteur = z.enum(["lirePage", "recuperer", "kev", "gemma"]);
+export const FonctionRecolteur = z.enum(["lirePage", "recuperer", "kev", "gemma", "chercherWeb"]);
 export type FonctionRecolteur = z.infer<typeof FonctionRecolteur>;
 
 const MemoireEnvoyee = z.record(z.string(), z.object({ type: z.string(), valeur: z.unknown() }));
@@ -65,6 +65,8 @@ export type MessageNoyau = z.infer<typeof MessageNoyau>;
 export const ArgsLirePage = z.object({ url: z.string(), compte: z.boolean().optional() });
 export const ArgsRecuperer = z.object({ url: z.string(), format: z.enum(["texte", "json"]).optional() });
 export const ArgsKev = z.object({ state: z.string(), questions: z.record(z.string(), z.unknown()) });
+/** Recherche web faite par le noyau ; réponse : `{ titre, url, extrait }[]`, au plus `nombre`. */
+export const ArgsChercherWeb = z.object({ requete: z.string().min(1).max(500), nombre: z.number().int().min(1).max(20) });
 export const ArgsGemma = z.object({ prompt: z.string(), images: z.array(z.string()).optional(), json: z.boolean().optional() });
 
 export type PageLue = { url: string; titre: string; texte: string; liens: { texte: string; url: string }[] };
