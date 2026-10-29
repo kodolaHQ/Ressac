@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Portee, SourceExtension } from "./manifeste.js";
@@ -144,48 +144,85 @@ export function appliquerProfilsPrives(
 }
 
 /** Clés actives dans ce profil, avec un accord, non désactivées ; rien pendant la coupure générale. */
-export function chargeesDans(e: EtatExtensions, profil: IdProfil): string[] {
+export function chargeesDans(e: EtatExtensions, profil: IdProfil, profilPrive: boolean): string[] {
   if (e.toutesCoupees) return [];
   return Object.entries(e.extensions)
+    .filter(([, x]) => !(profilPrive && x.source === "agent"))
     .filter(([, x]) => x.profils.includes(profil) && x.accord !== null && x.desactivee === null)
     .map(([cle]) => cle);
 }
 
 const fichier = (dossier: string) => join(dossier, "etat.json");
 
-/** L'état du fichier ; absent ou abîmé : état vide, sans rien effacer. Les entrées invalides sont ignorées. */
-export async function lireEtatExtensions(dossier: string): Promise<EtatExtensions> {
+interface Lecture {
+  etat: EtatExtensions;
+  /** Fichier présent mais illisible, de forme inconnue, ou dont des entrées ont été ignorées. */
+  abime: boolean;
+  /** Fichier d'une version plus récente : lecture vide, écriture refusée. */
+  futur: boolean;
+}
+
+async function lire(dossier: string): Promise<Lecture> {
+  let texte: string;
+  try {
+    texte = await readFile(fichier(dossier), "utf8");
+  } catch (erreur) {
+    if ((erreur as NodeJS.ErrnoException).code === "ENOENT") return { etat: vide(), abime: false, futur: false };
+    throw erreur;
+  }
   let brut: unknown;
   try {
-    brut = JSON.parse(await readFile(fichier(dossier), "utf8"));
+    brut = JSON.parse(texte);
   } catch {
-    return vide();
+    return { etat: vide(), abime: true, futur: false };
   }
-  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return vide();
+  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return { etat: vide(), abime: true, futur: false };
   const b = brut as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown };
-  if (b.version !== 1) return vide();
+  if (typeof b.version === "number" && b.version > 1) return { etat: vide(), abime: false, futur: true };
+  if (b.version !== 1) return { etat: vide(), abime: true, futur: false };
   const extensions: Record<string, EntreeExtension> = {};
+  let abime = false;
   if (b.extensions && typeof b.extensions === "object" && !Array.isArray(b.extensions)) {
     for (const [cle, valeur] of Object.entries(b.extensions)) {
       const cleLue = lireCle(cle);
       const r = EntreeSchema.safeParse(valeur);
       if (cleLue && r.success && r.data.source === cleLue.source) extensions[cle] = r.data;
+      else abime = true;
     }
-  }
-  return { version: 1, toutesCoupees: b.toutesCoupees === true, extensions };
+  } else if (b.extensions !== undefined) abime = true;
+  return { etat: { version: 1, toutesCoupees: b.toutesCoupees === true, extensions }, abime, futur: false };
+}
+
+/**
+ * L'état du fichier. Absent (ENOENT) : état vide. Abîmé ou de version future : état vide aussi, sans rien effacer
+ * (voir `modifierEtatExtensions`). Toute autre erreur de lecture lève.
+ */
+export async function lireEtatExtensions(dossier: string): Promise<EtatExtensions> {
+  return (await lire(dossier)).etat;
 }
 
 /** Une écriture à la fois par dossier ; fichier temporaire puis `rename`. */
 const files = new Map<string, Promise<unknown>>();
 
+/**
+ * Modifie l'état, une écriture à la fois. `changer` reçoit l'état et les profils privés ; `profilsPrives` est un
+ * fournisseur évalué DANS la modification sérialisée (jamais capturé avant), et `appliquerProfilsPrives` est
+ * rappliqué au résultat. Un fichier abîmé (ou aux entrées ignorées) est copié en `etat.json.abime-<horodatage>` avant
+ * d'être remplacé ; un fichier de version plus récente refuse l'écriture.
+ */
 export function modifierEtatExtensions(
   dossier: string,
-  changer: (e: EtatExtensions) => EtatExtensions,
+  changer: (e: EtatExtensions, profilsPrives: ReadonlySet<IdProfil>) => EtatExtensions,
+  profilsPrives: () => ReadonlySet<IdProfil> = () => new Set(),
 ): Promise<EtatExtensions> {
   const precedente = files.get(dossier) ?? Promise.resolve();
   const suivante = precedente.catch(() => {}).then(async () => {
-    const nouveau = changer(await lireEtatExtensions(dossier));
+    const lu = await lire(dossier);
+    if (lu.futur) throw new Error("état des extensions d'une version plus récente");
+    const prives = profilsPrives();
+    const nouveau = appliquerProfilsPrives(changer(lu.etat, prives), prives).etat;
     await mkdir(dossier, { recursive: true });
+    if (lu.abime) await copyFile(fichier(dossier), `${fichier(dossier)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
     const temporaire = `${fichier(dossier)}.${randomUUID()}.tmp`;
     try {
       await writeFile(temporaire, JSON.stringify(nouveau, null, 2));
