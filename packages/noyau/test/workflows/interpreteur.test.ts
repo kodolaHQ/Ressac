@@ -1704,6 +1704,71 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect((r.resultat!.memoire.nv!.valeur as [string, string][]).map((e) => e[0])).toEqual(["u0", "u2"]);
   });
 
+  it("clés : un élément terminé moins de 5 s après une publication, puis un echouer : sa clé n'est pas dans la dernière mémoire", async () => {
+    const evenements: Evenement[] = [];
+    const r = await executer({
+      progressif: true,
+      horloge: () => 0,
+      entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
+      blocs: [{ id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } }, ...BLOCS_CHAINE({ auFilDeLEau: true }, { fiabilite: { siErreur: "echouer" } })],
+      registre: { "liste.nouveaux": listeNouveaux, ...registreChaine(evenements, {}, { fiabilite: { echoueSur: 2 } }) },
+    });
+    expect(r.erreur?.message).toBe("fiabilite raté");
+    // u0 publiée ; u1 terminée ensuite (pas publiée, moins de 5 s) ; puis u2 échoue.
+    expect(publications(r).map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
+    expect(evenements.indexOf("fin:avis:1")).toBeGreaterThanOrEqual(0);
+    expect(evenements.indexOf("fin:avis:1")).toBeLessThan(evenements.indexOf("fin:fiabilite:2"));
+    const derniere = r.traces.filter((l) => l.t === "memoire").at(-1);
+    expect(r.traces.at(-1)).toBe(derniere);
+    // u1 n'a jamais été montrée : elle revient la fois suivante.
+    expect(derniere.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
+  });
+
+  it("clés : la mémoire envoyée par verifierMemoire après la chaîne ne retient pas un élément terminé mais pas publié ; sortie le retient", async () => {
+    const horloge = { t: 0 };
+    const traces: any[] = [];
+    const r = await executerWorkflow({
+      workflow: {
+        // « lent », sans lien, tourne entre la chaîne (fiche) et la sortie, et prend 40 s.
+        blocs: [
+          { id: "src", type: "test.source", parametres: {} },
+          { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+          { id: "fiche", type: "test.fiche", parametres: { parElement: true, champ: "page" } },
+          { id: "lent", type: "test.lent", parametres: {} },
+          { id: "sortie", type: "sortie", parametres: { auFilDeLEau: true } },
+        ],
+        liens: chaine("src", "nv", "fiche", "sortie"),
+        ordre: ["src", "nv", "fiche", "lent", "sortie"],
+      },
+      memoire: {},
+      maintenant: "2026-10-29T10:00:00.000Z",
+      dossier: "/nulle-part",
+      appeler: async () => null,
+      tracer: (m: any) => traces.push(m),
+      blocs: {
+        "test.source": { parElement: "non", executer: async () => ({ sortie: [{ n: 0, url: "u0" }, { n: 1, url: "u1" }] }) },
+        "liste.nouveaux": listeNouveaux,
+        "test.fiche": etape("fiche", []),
+        "test.lent": {
+          parElement: "non",
+          async executer() {
+            horloge.t += 40_000;
+            return { sortie: null };
+          },
+        },
+        sortie: { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree }) },
+      },
+      horloge: () => horloge.t,
+      progressif: true,
+    });
+    expect(traces.filter((l) => l.t === "publication").map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
+    const iLent = traces.findIndex((l) => l.t === "bloc" && l.id === "lent" && l.etape === "fin");
+    const apresLent = traces[iLent + 1];
+    expect(apresLent.t).toBe("memoire");
+    expect(apresLent.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
+    expect(r.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0", "u1"]);
+  });
+
   it("clés : la clé perdue avant la chaîne puis un élément en échec dans la chaîne : rien de plus n'est retenu (R31)", async () => {
     const r = await executer({
       progressif: true,

@@ -21,6 +21,8 @@
 //     lancé (sauf ceux que `reutiliser` reprend) : une ligne de journal pour le premier, une pour tous les suivants.
 //   - `partiel(raison?)` : en mode simple, le bloc finira « partiel » (par exemple un flux sur plusieurs en échec).
 // La boucle par élément (deux à la fois, budget de temps, `siErreur`, `reutiliser`) est celle de l'interpréteur.
+// Dans la chaîne au fil de l'eau, `ctx.entree` est l'entrée de la chaîne (pas la sortie du bloc d'avant) : un module
+// chaînable ne la lit pas dans `traiterElement`.
 import { ElementNonLance } from "./erreurs.mjs";
 import { ValeurAbsente, lireChemin, remplir } from "./gabarits.mjs";
 import { creerWebaios, formater } from "./webaios.mjs";
@@ -520,10 +522,10 @@ export async function executerWorkflow({
    * passe sans son champ (non lancé pour ce bloc) et continue. Plus aucun élément n'entre dans la chaîne après
    * l'échéance globale.
    *
-   * À chaque élément terminé, sa clé est résolue (ou, s'il a échoué ou n'a pas été lancé dans un bloc, mise en échec) ;
-   * puis, si ECART_PUBLICATIONS_MS est passé depuis la dernière publication (ou s'il n'y en a pas encore eu), la ligne
-   * `memoire` part, puis `publication` : un élément publié n'est donc jamais retraité la fois suivante, même si le
-   * conteneur s'arrête juste après.
+   * À chaque élément terminé : s'il a échoué ou n'a pas été lancé dans un bloc, sa clé passe en échec ; sinon elle
+   * attend. Si ECART_PUBLICATIONS_MS est passé depuis la dernière publication (ou s'il n'y en a pas encore eu), les clés
+   * en attente sont résolues, la ligne `memoire` part, puis `publication` : un élément publié n'est jamais retraité la
+   * fois suivante, même si le conteneur s'arrête juste après, et un élément pas encore montré n'est jamais retenu.
    *
    * Traces : `debut` de tous les blocs de la chaîne d'un coup, au début, et leurs `fin` à la fin. La durée retenue pour
    * chaque bloc de la chaîne est donc celle de toute la chaîne, pas le temps passé dans ce bloc.
@@ -593,18 +595,29 @@ export async function executerWorkflow({
       return true;
     }
 
-    /** Clés de l'élément `i` terminé : résolue s'il a passé tous les blocs, en échec sinon. */
-    function resoudre(i) {
-      const echoue = etapes.some(({ etape }) => etape.enEchec.has(i));
-      for (const suivi of suivisAmont) {
-        const cle = cleSuivie(suivi, entree[i]);
-        if (echoue) noterEchec(suivi, cle);
-        else if (!suivi.aveugle && cle !== null && !suivi.enEchec.has(cle)) suivi.enSuspens.delete(cle);
+    // Éléments terminés sans échec dont la clé attend d'être montrée : elle n'est retenue qu'à la publication qui les
+    // montre (ou, en fin normale de chaîne, par `sortie`). Sur un échec de l'exécution ou un arrêt, un élément terminé
+    // mais pas encore publié n'a jamais été affiché : il reste en suspens et revient la fois suivante.
+    const aResoudre = [];
+
+    /** L'élément `i` terminé : en échec dans un bloc, sa clé passe en échec tout de suite ; sinon elle attend sa publication. */
+    function terminerElement(i) {
+      if (!etapes.some(({ etape }) => etape.enEchec.has(i))) {
+        aResoudre.push(i);
+        return;
       }
+      for (const suivi of suivisAmont) noterEchec(suivi, cleSuivie(suivi, entree[i]));
     }
 
+    /** Les clés des éléments que la publication va montrer sont résolues, puis la mémoire part, puis la publication. */
     function publier() {
       dernierePublication = horloge();
+      for (const i of aResoudre.splice(0)) {
+        for (const suivi of suivisAmont) {
+          const cle = cleSuivie(suivi, entree[i]);
+          if (!suivi.aveugle && cle !== null && !suivi.enEchec.has(cle)) suivi.enSuspens.delete(cle);
+        }
+      }
       envoyerMemoire();
       const donnees = apres[apres.length - 1].filter((_, i) => termines[i]);
       try {
@@ -621,7 +634,7 @@ export async function executerWorkflow({
         if (await parcourir(i)) {
           termines[i] = true;
           faits++;
-          resoudre(i);
+          terminerElement(i);
           if (dernierePublication === null || horloge() - dernierePublication >= ECART_PUBLICATIONS_MS) {
             publier();
             continue;
