@@ -377,6 +377,24 @@ test("un widget de départ qui a déjà son workflow.json, ou un .mjs à lui du 
   expect(existsSync(join(d.accueil, ".corbeille"))).toBe(false);
 });
 
+test("une bascule interrompue (workflow.json du modèle déjà là, recolte.mjs livré resté) range recolte.mjs", async () => {
+  const ancienne = await readFile(join(LIVREES, "daily-dev-4d4c5f1.mjs"), "utf8");
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  // Code et workflow.json du modèle copiés, recolte.mjs pas encore rangé.
+  await writeFile(join(c.widgets, "daily-dev", "recolte.mjs"), ancienne);
+  const { crees } = await initialiserEspace(c);
+  expect(crees).toEqual([]);
+  expect(existsSync(join(c.widgets, "daily-dev", "recolte.mjs"))).toBe(false);
+  const corbeille = await readdir(join(c.accueil, ".corbeille"));
+  expect(corbeille).toHaveLength(1);
+  expect(corbeille[0]).toMatch(/^daily-dev-recolte-/);
+  expect(await readFile(join(c.accueil, ".corbeille", corbeille[0]!), "utf8")).toBe(ancienne);
+  for (const f of CODE_DEPART("daily-dev")) {
+    expect(await readFile(join(c.widgets, "daily-dev", f), "utf8"), f).toBe(await readFile(join(MODELES_PAR_DEFAUT, "widgets", "daily-dev", f), "utf8"));
+  }
+});
+
 test("un widget de l'agent (gmail) n'est pas touché, même avec un recolte.mjs livré", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);

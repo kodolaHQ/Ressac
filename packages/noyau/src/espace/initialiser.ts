@@ -144,7 +144,8 @@ async function absent(chemin: string): Promise<boolean> {
  * Bascule un widget de départ resté tel que livré (`recolte.mjs` d'une version connue, sans `workflow.json`) vers
  * son modèle en workflow : les `.mjs` puis `workflow.json` du modèle sont copiés sans rien écraser, puis
  * `recolte.mjs` part dans `accueil/.corbeille/<id>-recolte-<horodatage>.mjs`. Un widget modifié, ou dont un fichier
- * du modèle existe déjà avec un autre contenu, n'est pas touché. Rien d'autre que ce dossier et la corbeille.
+ * du modèle existe déjà avec un autre contenu, n'est pas touché. Rien d'autre que ce dossier et la corbeille. Avec
+ * déjà le `workflow.json` du modèle (bascule interrompue), seul `recolte.mjs` est rangé.
  */
 async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof RECOLTES_LIVREES): Promise<string[]> {
   const dossier = join(c.widgets, id);
@@ -155,11 +156,15 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
   }
   const recolte = await fichierOrdinaire(join(dossier, "recolte.mjs"));
   if (!recolte || !RECOLTES_LIVREES[id].has(empreinte(recolte))) return [];
-  if (!(await absent(join(dossier, "workflow.json")))) return [];
-
   // Le modèle n'est lu qu'ensuite : des modèles sans ce widget, et rien ne bouge.
   const modele = join(modeles, "widgets", id);
   if (!existsSync(join(modele, "workflow.json"))) return [];
+  if (!(await absent(join(dossier, "workflow.json")))) {
+    // workflow.json du modèle déjà là : une bascule interrompue avant de ranger recolte.mjs, qu'elle finit.
+    const present = await fichierOrdinaire(join(dossier, "workflow.json"));
+    if (present && present.equals(await readFile(join(modele, "workflow.json")))) await rangerRecolte(c, id);
+    return [];
+  }
   const codes = (await readdir(modele)).filter((f) => f.endsWith(".mjs")).sort();
   // Un .mjs du même nom déjà là : seulement s'il est identique au modèle (une bascule interrompue), sinon il est à l'utilisateur.
   for (const f of codes) {
@@ -180,10 +185,15 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
   }
+  await rangerRecolte(c, id);
+  return crees;
+}
+
+/** `recolte.mjs` d'un widget de départ basculé part dans `accueil/.corbeille/<id>-recolte-<horodatage>.mjs`. */
+async function rangerRecolte(c: CheminsEspace, id: string): Promise<void> {
   const corbeille = join(c.accueil, ".corbeille");
   await mkdir(corbeille, { recursive: true });
-  await renommerSiPresent(join(dossier, "recolte.mjs"), join(corbeille, `${id}-recolte-${horodatage()}.mjs`));
-  return crees;
+  await renommerSiPresent(join(c.widgets, id, "recolte.mjs"), join(corbeille, `${id}-recolte-${horodatage()}.mjs`));
 }
 
 /** Crée l'espace de travail à partir des modèles, sans écraser un fichier existant (sauf un AGENTS.md d'un ancien modèle). */
