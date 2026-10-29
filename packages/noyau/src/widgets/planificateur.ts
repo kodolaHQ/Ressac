@@ -127,7 +127,7 @@ export class PlanificateurWidgets {
   private files: Record<Voie, Promise<unknown>> = { courte: Promise.resolve(), longue: Promise.resolve() };
   /** Par widget, la dernière demande (en attente ou en cours, toutes voies) : la suivante l'attend. */
   private parWidget = new Map<string, Promise<unknown>>();
-  /** Par widget, ses demandes de la voie longue en attente ou en cours. */
+  /** Par widget, ses demandes de la voie longue (ou dont la voie n'est pas encore choisie) en attente ou en cours. */
   private longues = new Map<string, number>();
   private verification: Promise<string[]> | null = null;
   /** Widgets dont la récolte tourne en ce moment (leur tour venu). */
@@ -135,8 +135,6 @@ export class PlanificateurWidgets {
   private arrete = false;
   /** Les exécutions suivies en direct (celles qui tournent vraiment, pas une vérification sans récolte). */
   private enDirect: DirectWidget[] = [];
-  /** Dernière voie connue de chaque widget (relue à chaque lecture de l'accueil) : la voie où une demande attend d'abord. */
-  private voies = new Map<string, Voie>();
   /** Appels à l'IA servis à tour de rôle entre les exécutions ; aucun sans IA. */
   private readonly repartiteur: ReturnType<typeof creerRepartiteurIa> | null;
   /** Widgets des demandes en file, pas encore commencées (un par demande). */
@@ -260,28 +258,26 @@ export class PlanificateurWidgets {
   }
 
   private async widgets(): Promise<WidgetLu[]> {
-    const widgets = (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
-    for (const w of widgets) this.voies.set(w.id, voieDe(w));
-    return widgets;
+    return (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
+  }
+
+  /** La voie du widget d'après sa déclaration lue maintenant (courte s'il est inconnu ou illisible). */
+  private async voieActuelle(id: string): Promise<Voie> {
+    const w = (await this.widgets().catch(() => [])).find((x) => x.id === id);
+    return w ? voieDe(w) : "courte";
   }
 
   /**
-   * Exécute `f` pour le widget `id` dans la voie de sa déclaration relue sous le verrou. Si elle a changé pendant que la
-   * demande attendait (`dureeMaxMinutes` modifié), la demande sort de son tour et repart dans l'autre voie : refaite
-   * hors du travail en cours, qui sinon attendrait sa propre fin.
+   * Exécute `f` pour le widget `id` dans la voie de sa déclaration, lue quand le tour du widget vient (avant d'entrer
+   * dans une voie), puis relue sous le verrou de la voie. Si elle a changé pendant l'attente de la voie, la demande
+   * repart dans l'autre sans perdre son tour dans le widget.
    */
-  private async dansSaVoie<T>(id: string, f: (w: WidgetLu | undefined) => Promise<T>): Promise<T> {
-    let voie = this.voies.get(id) ?? "courte";
-    for (;;) {
-      const prevue = voie;
-      const r = await this.seul(id, prevue, async (): Promise<T | AutreVoie> => {
-        const w = (await this.widgets()).find((x) => x.id === id);
-        if (w && voieDe(w) !== prevue) return new AutreVoie(voieDe(w));
-        return f(w);
-      });
-      if (!(r instanceof AutreVoie)) return r;
-      voie = r.voie;
-    }
+  private dansSaVoie<T>(id: string, f: (w: WidgetLu | undefined) => Promise<T>): Promise<T> {
+    return this.seul(id, "a-choisir", async (voie): Promise<T | AutreVoie> => {
+      const w = (await this.widgets()).find((x) => x.id === id);
+      if (w && voieDe(w) !== voie) return new AutreVoie(voieDe(w));
+      return f(w);
+    });
   }
 
   private async attendrePret(): Promise<void> {
@@ -371,23 +367,46 @@ export class PlanificateurWidgets {
     return suivante;
   }
 
+  private compterLongue(id: string, d: 1 | -1): void {
+    const n = (this.longues.get(id) ?? 0) + d;
+    if (n > 0) this.longues.set(id, n);
+    else this.longues.delete(id);
+  }
+
   /**
-   * Exécute `f` pour le widget `id` dans la voie `voie`, après la fin de toute demande précédente de ce widget, quelle
-   * qu'en soit la voie (`dureeMaxMinutes` a pu changer pendant qu'il tournait). La demande n'entre dans sa voie qu'une
-   * fois le widget libre : elle n'y retient pas les autres widgets en attendant.
+   * Exécute `f` pour le widget `id`, après la fin de toute demande précédente de ce widget, quelle qu'en soit la voie
+   * (`dureeMaxMinutes` a pu changer pendant qu'il tournait). Sa place est prise tout de suite : l'ordre des demandes
+   * d'un widget est gardé. La demande n'entre dans sa voie qu'une fois le widget libre : elle n'y retient pas les autres
+   * widgets en attendant. `"a-choisir"` : la voie est lue à ce moment-là ; si `f` rend `AutreVoie` (changée pendant
+   * l'attente de la voie), la demande repart dans l'autre, toujours à son tour dans le widget.
    */
-  private seul<T>(id: string, voie: Voie, f: () => Promise<T>): Promise<T> {
-    if (voie === "longue") this.longues.set(id, (this.longues.get(id) ?? 0) + 1);
+  private seul<T>(id: string, voie: Voie | "a-choisir", f: (voie: Voie) => Promise<T | AutreVoie>): Promise<T> {
+    // Une demande dont la voie n'est pas encore choisie compte comme longue : une vérification ne l'attend pas.
+    let comptee = voie !== "courte";
+    if (comptee) this.compterLongue(id, 1);
     const precedente = this.parWidget.get(id) ?? Promise.resolve();
-    const tache = precedente.then(() => this.enchainer(voie, () => this.enCours(id, f)));
+    const tache = precedente.then(async () => {
+      let v = voie === "a-choisir" ? await this.voieActuelle(id) : voie;
+      try {
+        for (;;) {
+          if (comptee !== (v === "longue")) {
+            comptee = v === "longue";
+            this.compterLongue(id, comptee ? 1 : -1);
+          }
+          const prevue = v;
+          const r = await this.enchainer(prevue, () => this.enCours(id, () => f(prevue)));
+          if (!(r instanceof AutreVoie)) return r;
+          v = r.voie;
+        }
+      } finally {
+        if (comptee) this.compterLongue(id, -1);
+        comptee = false;
+      }
+    });
     const fin = tache.catch(() => {});
     this.parWidget.set(id, fin);
     void fin.then(() => {
       if (this.parWidget.get(id) === fin) this.parWidget.delete(id);
-      if (voie !== "longue") return;
-      const n = (this.longues.get(id) ?? 1) - 1;
-      if (n > 0) this.longues.set(id, n);
-      else this.longues.delete(id);
     });
     return tache;
   }

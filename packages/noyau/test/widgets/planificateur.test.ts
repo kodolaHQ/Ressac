@@ -29,6 +29,23 @@ import type { CheminsEspace } from "../../src/chemins.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
+/** Lectures de l'accueil en cours : un test attend qu'il n'y en ait plus pour savoir ce qu'une demande a déjà lu. */
+const lectures = vi.hoisted(() => ({ enVol: 0 }));
+vi.mock("../../src/accueil/lire.js", async (original) => {
+  const m = await original<typeof import("../../src/accueil/lire.js")>();
+  return {
+    ...m,
+    lireAccueil: async (...a: Parameters<typeof m.lireAccueil>) => {
+      lectures.enVol++;
+      try {
+        return await m.lireAccueil(...a);
+      } finally {
+        lectures.enVol--;
+      }
+    },
+  };
+});
+
 const MIN = 60_000;
 const DEBUT = new Date("2026-10-28T10:00:00.000Z");
 
@@ -805,14 +822,15 @@ test("l'IA passe par le répartiteur : chaque exécution a sa vue, les appels ar
 });
 
 test("dureeMaxMinutes passé de 2 à 30 pendant qu'une demande attend : elle part dans la voie longue", async () => {
-  const { p, c, recolter, dossierWidgets } = await preparer();
+  const { p, c, recolter } = await preparer();
   await ecrireVeille(c, "veille", 2);
   const r = retenir(recolter, ["veille"]);
   const premiere = p.recolterMaintenant("veille");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
   const seconde = p.recolterMaintenant("veille");
-  // La demande a eu le temps de voir la déclaration à 2 (quelques lectures de l'accueil) avant le changement.
-  for (let i = 0; i < 3; i++) await lireAccueil(c, dossierWidgets);
+  // Toute lecture que la demande ferait tout de suite (choix de la voie à la demande) est finie avant le changement.
+  await new Promise((ok) => setImmediate(ok));
+  await vi.waitFor(() => expect(lectures.enVol).toBe(0));
   await ecrireVeille(c, "veille", 30);
   r.liberer("veille");
   await premiere;
@@ -822,4 +840,20 @@ test("dureeMaxMinutes passé de 2 à 30 pendant qu'une demande attend : elle par
   expect(await p.verifier({ auLancement: false })).toEqual([]);
   r.liberer("veille");
   expect((await seconde).statut).toBe("ok");
+});
+
+test("widget passé de 30 à 2 juste avant un essai : l'essai passe pendant la veille d'un autre widget", async () => {
+  const { p, c, recolter, recolterEssai } = await preparer();
+  await ecrireVeille(c, "veille-a", 30);
+  await ecrireVeille(c, "veille-b", 30);
+  const r = retenir(recolter, ["veille-a"]);
+  // La veille A tourne dans la voie longue ; le planificateur a lu B à 30 pendant ce temps.
+  const a = p.recolterMaintenant("veille-a");
+  await vi.waitFor(() => expect(r.journal).toEqual(["début veille-a"]));
+  await ecrireVeille(c, "veille-b", 2);
+  expect(await p.rejouer("veille-b", "o", "liste")).toMatchObject({ ok: true });
+  expect(recolterEssai.mock.calls.map((x) => x[0].id)).toEqual(["veille-b"]);
+  expect(r.journal).not.toContain("fin veille-a");
+  r.liberer("veille-a");
+  await a;
 });
