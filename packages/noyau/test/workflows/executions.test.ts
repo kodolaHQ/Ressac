@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   EXECUTION_MAX_OCTETS, SORTIE_MAX_OCTETS, ecrireExecution, idExecution, listerExecutions, lireExecution,
@@ -97,4 +97,25 @@ test("journaux et erreurs énormes sont bornés : le fichier reste sous 4 Mo", a
   expect(Buffer.byteLength(lue.blocs[0]!.erreur!)).toBeLessThanOrEqual(2048);
   expect(lue.blocs.every((b) => b.journal.length >= 1 && b.journal.length <= 201)).toBe(true);
   expect(lue.blocs[0]!.journal.some((l) => l.includes("lignes coupées"))).toBe(true);
+});
+
+test("listerExecutions ne relit pas un fichier inchangé (même date, même taille), relit un fichier réécrit", async () => {
+  const d = await dossierTemporaire();
+  const e = execution(horodatage(1), [bloc("a")]);
+  await ecrireExecution(d, e);
+  const chemin = join(d, "executions", `${e.id}.json`);
+  // Une date ronde, que utimes sait remettre à l'identique.
+  const date = new Date("2026-10-29T08:00:00.000Z");
+  await utimes(chemin, date, date);
+  expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["reussie"]);
+  // Même taille, même date : le fichier n'est pas relu (le résumé gardé reste).
+  await writeFile(chemin, (await readFile(chemin, "utf8")).replace('"reussie"', '"echouee"'));
+  await utimes(chemin, date, date);
+  expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["reussie"]);
+  // Date changée : relu.
+  await utimes(chemin, date, new Date(date.getTime() + 5000));
+  expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["echouee"]);
+  // Effacé : plus listé.
+  await rm(chemin);
+  expect(await listerExecutions(d)).toEqual([]);
 });

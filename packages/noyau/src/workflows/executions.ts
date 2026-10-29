@@ -159,21 +159,49 @@ export async function lireExecution(dossierDonnees: string, id: string): Promise
   }
 }
 
+function resumer(e: Execution): ResumeExecution {
+  return {
+    id: e.id,
+    declencheur: e.declencheur,
+    debut: e.debut,
+    fin: e.fin,
+    statut: e.statut,
+    blocs: e.blocs.map((b) => ({ id: b.id, statut: b.statut, elements: b.elements })),
+  };
+}
+
+/**
+ * Résumés déjà lus, par chemin, avec l'inode, la date et la taille du fichier : la liste est relue à chaque changement
+ * d'un widget (jusqu'à 20 fichiers de 4 Mo chacun), seul un fichier nouveau ou réécrit est relu. null : fichier abîmé.
+ */
+const resumesLus = new Map<string, { ino: number; mtimeMs: number; size: number; resume: ResumeExecution | null }>();
+const RESUMES_LUS_MAX = 1000;
+
 /** Résumés des exécutions gardées, la plus récente d'abord ; un fichier abîmé est ignoré. */
 export async function listerExecutions(dossierDonnees: string): Promise<ResumeExecution[]> {
-  const noms = (await nomsExecutions(dossierExecutions(dossierDonnees))).sort().reverse();
+  const dossier = dossierExecutions(dossierDonnees);
+  const noms = (await nomsExecutions(dossier)).sort().reverse();
   const resumes: ResumeExecution[] = [];
   for (const nom of noms) {
-    const e = await lireExecution(dossierDonnees, nom.slice(0, -5));
-    if (!e) continue;
-    resumes.push({
-      id: e.id,
-      declencheur: e.declencheur,
-      debut: e.debut,
-      fin: e.fin,
-      statut: e.statut,
-      blocs: e.blocs.map((b) => ({ id: b.id, statut: b.statut, elements: b.elements })),
-    });
+    const chemin = join(dossier, nom);
+    let s;
+    try {
+      s = await stat(chemin);
+    } catch {
+      continue;
+    }
+    const connu = resumesLus.get(chemin);
+    let resume: ResumeExecution | null;
+    if (connu && connu.ino === s.ino && connu.mtimeMs === s.mtimeMs && connu.size === s.size) resume = connu.resume;
+    else {
+      const e = await lireExecution(dossierDonnees, nom.slice(0, -5));
+      resume = e ? resumer(e) : null;
+      resumesLus.delete(chemin);
+      resumesLus.set(chemin, { ino: s.ino, mtimeMs: s.mtimeMs, size: s.size, resume });
+      // Les plus anciennes entrées partent d'abord.
+      while (resumesLus.size > RESUMES_LUS_MAX) resumesLus.delete(resumesLus.keys().next().value!);
+    }
+    if (resume) resumes.push(resume);
   }
   return resumes;
 }
