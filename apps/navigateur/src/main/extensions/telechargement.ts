@@ -13,6 +13,9 @@ export function urlCrx(id: string): string {
   return `https://clients2.google.com/service/update2/crx?response=redirect&acceptformat=crx3&prodversion=${process.versions.chrome ?? ""}&x=${x}`;
 }
 
+/** Identifiant Chrome d'une extension : 32 lettres de a à p. */
+const ID_CHROME = /^[a-p]{32}$/;
+
 /** Codes d'erreur de Node pour un réseau coupé ou un serveur injoignable. */
 const CODES_RESEAU = new Set(["ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN", "ETIMEDOUT", "EHOSTUNREACH", "ENETUNREACH", "EPIPE", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"]);
 
@@ -28,10 +31,11 @@ function erreurReseau(e: unknown): boolean {
 /**
  * Télécharge, vérifie (signature CRX3, identifiant attendu) et décompresse une extension du Store dans
  * `<dossier>/<id>/<version>_0`, dont le chemin est rendu. Un échec lève `ERREUR_STORE` (réseau, HTTP) ou
- * `CRX_INVALIDE` (tout le reste : signature, format, identifiant, manifeste), le détail en `cause`, et ne laisse
+ * `CRX_INVALIDE` (tout le reste : identifiant mal formé, signature, format, identifiant d'un autre, manifeste, version), le détail en `cause`, et ne laisse
  * rien de nouveau dans `<dossier>/<id>/` (les versions déjà là restent).
  */
 export async function telechargerStore(id: string, dossier: string, url?: string): Promise<string> {
+  if (!ID_CHROME.test(id)) throw new Error(CRX_INVALIDE, { cause: new Error(`Identifiant d'extension invalide : ${id}`) });
   const dossierId = join(dossier, id);
   const avant = existsSync(dossierId) ? new Set(readdirSync(dossierId)) : null;
   try {
