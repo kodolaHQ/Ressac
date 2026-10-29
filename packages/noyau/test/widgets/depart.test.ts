@@ -117,6 +117,14 @@ describe("widgets de départ", () => {
     expect(d.jours).toHaveLength(5);
     expect(d.jours[1]).toEqual({ date: "2026-10-29", min: 10, max: 16, code: 61, libelle: "Pluie faible" });
 
+    // Une ville en espaces seulement : comme sans ville, aucun appel. Une ville entourée d'espaces est rognée.
+    const blanche = await lancer("meteo", () => ({ erreur: "ne devrait rien appeler" }), { config: { ville: "  " } });
+    expect(blanche.terminal).toEqual({ t: "fin", donnees: { ville: null } });
+    expect(blanche.appels).toHaveLength(0);
+    const rognee = await lancer("meteo", () => ({ ok: { results: [] } }), { config: { ville: "  Saint Malo " } });
+    expect(rognee.appels[0]!.a.url).toBe("https://geocoding-api.open-meteo.com/v1/search?name=Saint%20Malo&count=1&language=fr");
+    expect(rognee.terminal).toEqual({ t: "echec", erreur: "Ville introuvable : Saint Malo" });
+
     const introuvable = await lancer("meteo", () => ({ ok: { results: [] } }), { config: { ville: "Nullepart" } });
     expect(introuvable.terminal).toEqual({ t: "echec", erreur: "Ville introuvable : Nullepart" });
   });
@@ -218,6 +226,12 @@ describe("widgets de départ", () => {
     expect(arts.some((x: any) => x.titre.startsWith("Lobsters"))).toBe(false);
     expect(arts.every((x: any) => x.resume === undefined)).toBe(true);
     expect(r.finBloc("flux").statut).toBe("partiel");
+  });
+
+  it("actus-tech : des flux lus mais sans aucun article, échec « Aucun article récupéré »", async () => {
+    const r = await lancer("actus-tech", (a) => (a.f === "recuperer" ? { ok: rss([]) } : { erreur: "?" }));
+    expect(r.terminal).toEqual({ t: "echec", erreur: "Aucun article récupéré" });
+    expect(r.appels.every((a) => a.f === "recuperer")).toBe(true);
   });
 
   it("actus-tech : Gemma en panne, les articles restent, sans résumé", async () => {

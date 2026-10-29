@@ -1,6 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
@@ -10,7 +10,7 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 
 /** Les fichiers des widgets de départ dans un espace neuf : des workflows, sans recolte.mjs. */
 const FICHIERS_DEPART: Record<string, string[]> = {
-  meteo: ["widget.json", "exemple.json", "affichage.html", "workflow.json", "prevision.mjs"],
+  meteo: ["widget.json", "exemple.json", "affichage.html", "workflow.json", "ville.mjs", "prevision.mjs"],
   "actus-tech": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "articles.mjs"],
   "daily-dev": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "liens.mjs", "articles.mjs"],
 };
@@ -354,6 +354,40 @@ test("un recolte.mjs livré qui est un lien symbolique n'est pas suivi", async (
   expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
   expect((await lstat(join(c.widgets, "meteo", "recolte.mjs"))).isSymbolicLink()).toBe(true);
   expect(existsSync(dehors)).toBe(true);
+});
+
+test("une bascule ratée ne bloque pas le lancement : les autres widgets passent, le raté réessaie au suivant", async () => {
+  const modeles = join(await dossierTemporaire(), "modeles");
+  await cp(MODELES_PAR_DEFAUT, modeles, { recursive: true });
+  const c = await espaceAvecAncienneRecolte("meteo", await readFile(join(LIVREES, "meteo-4d4c5f1.mjs"), "utf8"));
+  for (const f of CODE_DEPART("actus-tech")) await rm(join(c.widgets, "actus-tech", f));
+  await writeFile(join(c.widgets, "actus-tech", "recolte.mjs"), await readFile(join(LIVREES, "actus-tech-4d4c5f1.mjs")));
+  for (const f of CODE_DEPART("daily-dev")) await rm(join(c.widgets, "daily-dev", f));
+  await writeFile(join(c.widgets, "daily-dev", "recolte.mjs"), await readFile(join(LIVREES, "daily-dev-4d4c5f1.mjs")));
+  // daily-dev absent des modèles, et une copie de meteo qui échoue (fichier illisible).
+  await rm(join(modeles, "widgets", "daily-dev"), { recursive: true });
+  await chmod(join(modeles, "widgets", "meteo", "prevision.mjs"), 0o000);
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  let notes = 0;
+  try {
+    await expect(initialiserEspace(c, modeles)).resolves.toBeDefined();
+    notes = erreur.mock.calls.length;
+  } finally {
+    erreur.mockRestore();
+    await chmod(join(modeles, "widgets", "meteo", "prevision.mjs"), 0o644);
+  }
+  expect(existsSync(join(c.widgets, "actus-tech", "workflow.json"))).toBe(true);
+  expect(existsSync(join(c.widgets, "actus-tech", "recolte.mjs"))).toBe(false);
+  expect(existsSync(join(c.widgets, "daily-dev", "recolte.mjs"))).toBe(true);
+  expect(existsSync(join(c.widgets, "daily-dev", "workflow.json"))).toBe(false);
+  expect(existsSync(join(c.widgets, "meteo", "recolte.mjs"))).toBe(true);
+  expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
+  expect(notes).toBe(1); // meteo ; daily-dev, absent des modèles, est simplement sauté
+
+  // Au lancement suivant, la copie de meteo réussit (le .mjs déjà copié est identique au modèle).
+  await initialiserEspace(c, modeles);
+  expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(true);
+  expect(existsSync(join(c.widgets, "meteo", "recolte.mjs"))).toBe(false);
 });
 
 test("un espace neuf reçoit les workflows", async () => {

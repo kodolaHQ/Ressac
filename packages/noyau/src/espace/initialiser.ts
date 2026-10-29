@@ -153,9 +153,10 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
   if (!recolte || !RECOLTES_LIVREES[id].has(empreinte(recolte))) return [];
   if (!(await absent(join(dossier, "workflow.json")))) return [];
 
+  // Le modèle n'est lu qu'ensuite : des modèles sans ce widget, et rien ne bouge.
   const modele = join(modeles, "widgets", id);
-  const codes = (await readdir(modele)).filter((f) => f.endsWith(".mjs")).sort();
   if (!existsSync(join(modele, "workflow.json"))) return [];
+  const codes = (await readdir(modele)).filter((f) => f.endsWith(".mjs")).sort();
   // Un .mjs du même nom déjà là : seulement s'il est identique au modèle (une bascule interrompue), sinon il est à l'utilisateur.
   for (const f of codes) {
     const present = join(dossier, f);
@@ -198,7 +199,12 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
     }
   }
   for (const id of Object.keys(RECOLTES_LIVREES) as (keyof typeof RECOLTES_LIVREES)[]) {
-    crees.push(...(await basculerWidgetDeDepart(c, modeles, id)));
+    // Au mieux, widget par widget : une bascule ratée ne bloque jamais le lancement (le widget garde son recolte.mjs).
+    try {
+      crees.push(...(await basculerWidgetDeDepart(c, modeles, id)));
+    } catch (e) {
+      console.error(`[webaios] bascule du widget ${id} en workflow :`, e);
+    }
   }
   await mkdir(c.projets, { recursive: true });
   return { crees };
