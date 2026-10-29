@@ -156,6 +156,7 @@ export class Edition {
     const v = this.versionDisque;
     if (!v || !this.historique) return;
     this.retenu = null;
+    this.prochain = null;
     this.historique.faire(v.brouillon);
     this.origine = v.lecture.origine;
     this.adopterLecture(v.brouillon, v.lecture);
@@ -278,6 +279,11 @@ export class Edition {
     this.enregistrer(b);
   }
 
+  /** Le bandeau propose la version de l'agent (relu après chaque attente : il a pu apparaître entre-temps). */
+  private choixAttendu(): boolean {
+    return this.bandeau === "proposer";
+  }
+
   private retenir(b: Brouillon): void {
     this.retenu = b;
     this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
@@ -315,7 +321,10 @@ export class Edition {
           this.disqueValide = true;
         }
         if (this.prochain) continue;
-        if (!("ok" in r)) {
+        if (this.choixAttendu()) {
+          // Le bandeau est apparu pendant le vol : l'en-tête garde l'attente du choix de l'utilisateur.
+          this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
+        } else if (!("ok" in r)) {
           this.etatEnregistrement = { erreur: r.erreur };
         } else if (r.ok) {
           this.validation = { ok: true };

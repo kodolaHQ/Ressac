@@ -26,7 +26,7 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
     introuvable: false,
     fichiers: { ...fichiers },
     /** Erreur de lecture du code ; refus d'écrire le code ; enregistrements suspendus jusqu'à `liberer()`. */
-    erreurCode: false,
+    erreurCode: false as boolean | string[],
     refusCode: false,
     suspendu: false,
   };
@@ -54,7 +54,7 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
       etat.disque = structuredClone(b);
       return { ok: true, ecrit: true, memoireEffacee: [], avertissements: [] };
     },
-    lireCode: async (_id, nom) => (etat.erreurCode ? { erreur: "Fichier illisible" } : nom in etat.fichiers ? { texte: etat.fichiers[nom]! } : { absent: true }),
+    lireCode: async (_id, nom) => (etat.erreurCode === true || (Array.isArray(etat.erreurCode) && etat.erreurCode.includes(nom)) ? { erreur: "Fichier illisible" } : nom in etat.fichiers ? { texte: etat.fichiers[nom]! } : { absent: true }),
     enregistrerCode: async (_id, nom, texte) => {
       if (etat.refusCode) return { ok: false, erreur: "Écriture impossible" };
       etat.fichiers[nom] = texte;
@@ -343,4 +343,79 @@ test("M4 : sans nom de fichier libre (lecture en erreur) ou sans écriture du mo
   await attendre();
   expect(f.ecritures).toEqual([]);
   expect(Object.keys(f.etat.fichiers)).toEqual([]);
+});
+
+// Fix round 2
+
+test("N1 : un brouillon en file derrière un enregistrement en vol est retenu si le bandeau apparaît entre-temps", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  f.etat.suspendu = true;
+  e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
+  await attendre();
+  e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
+  const agent = livre();
+  agent.blocs[0]!.parametres = { source: "b.mjs" };
+  f.etat.disque = agent;
+  await e.relire();
+  expect(e.bandeau).toBe("proposer");
+  f.liberer();
+  await attendre();
+  await attendre();
+  // Seul le brouillon déjà en vol est parti ; celui en file attend le choix.
+  expect(f.ecritures).toHaveLength(1);
+  expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
+  expect(e.bandeau).toBe("proposer");
+  expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
+  // Prendre sa version abandonne aussi le brouillon en file.
+  e.prendreVersionDisque();
+  await attendre();
+  expect(f.ecritures).toHaveLength(1);
+  expect(e.brouillon!.blocs[0]!.parametres).toEqual({ source: "b.mjs" });
+});
+
+test("N2 : un enregistrement qui aboutit pendant le bandeau laisse l'en-tête sur l'attente du choix", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  f.etat.suspendu = true;
+  e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
+  await attendre();
+  const agent = livre();
+  agent.blocs[0]!.parametres = { source: "b.mjs" };
+  f.etat.disque = agent;
+  await e.relire();
+  expect(e.bandeau).toBe("proposer");
+  f.liberer();
+  await attendre();
+  await attendre();
+  expect(e.bandeau).toBe("proposer");
+  expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
+});
+
+test("N1 : une erreur de lecture sur le premier nom arrête la recherche (jamais un nom suivant au hasard)", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  f.etat.erreurCode = ["code.mjs"];
+  expect(await e.ajouter(catalogue("code"), { x: 0, y: 300 })).toBe("");
+  expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
+  expect(Object.keys(f.etat.fichiers)).toEqual([]);
+});
+
+test("N2 : « Prendre sa version » avant la fin d'un enregistrement en vol abandonne aussi le brouillon en file", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  f.etat.suspendu = true;
+  e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
+  await attendre();
+  e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
+  const agent = livre();
+  agent.blocs[0]!.parametres = { source: "b.mjs" };
+  f.etat.disque = agent;
+  await e.relire();
+  e.prendreVersionDisque();
+  f.liberer();
+  await attendre();
+  await attendre();
+  expect(f.ecritures).toHaveLength(1);
+  expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
 });
