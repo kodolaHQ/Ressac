@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, type Application, type DeclarationWidget, type DroitDev, type EtatIa, type EtatWidget } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type DeclarationWidget, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution } from "@webaios/noyau";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
@@ -62,6 +62,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
   /** Active la page Applications de l'espace actif, ou l'ouvre. */
   z.object({ type: z.literal("ouvrirApplications"), fenetreId: id }),
+  /** Active la page « Voir le workflow » du widget `id` dans cette fenêtre, ou l'ouvre. */
+  z.object({ type: z.literal("ouvrirWorkflow"), fenetreId: id, id: z.string().regex(/^[a-z0-9-]+$/).max(100), nom: z.string().max(60) }),
   /** Ouverture et fermeture automatiques du panneau par la page d'accueil (pas une action de l'utilisateur). */
   z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
@@ -178,6 +180,12 @@ export interface ApiWebaios {
     refuserAccord(id: string): void;
     /** « Mettre à jour maintenant ». */
     recolter(id: string): void;
+    /** Le workflow du widget, pour la page « Voir le workflow » ; null s'il n'a pas de récolte. */
+    workflow(id: string): Promise<VueWorkflow | null>;
+    /** Les dernières exécutions du widget, la plus récente d'abord. */
+    executions(id: string): Promise<ResumeExecution[]>;
+    /** Une exécution complète (blocs, sorties, journaux) ; null si elle n'existe plus ou si l'id est invalide. */
+    execution(id: string, execution: string): Promise<Execution | null>;
   };
   /** IA locale (Kev et Gemma) des récoltes. */
   ia: {
@@ -244,6 +252,8 @@ export type EtatPanneauAgent =
 const COLONNES_GRILLE = 12;
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 export const SchemaIdWidget = idWidget;
+/** Id d'une exécution : son début ISO sans « : » ni « . » (jamais un chemin). */
+export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
 const cote = z.number().int().min(1).max(COLONNES_GRILLE);
 /** Les placements de la grille de 12 colonnes : entiers, dans la grille, un seul par widget. */
 export const SchemaPlacements = z
@@ -289,8 +299,18 @@ export type WidgetAffiche =
       compte: string[];
       /** Domaines publics que le widget peut contacter ; pour un widget avec compte, couverts par le même accord. */
       publiques: string[];
+      /** Le widget a une récolte (`workflow.json` ou `recolte.mjs`) : son menu propose « Voir le workflow ». */
+      aRecolte: boolean;
     }
   | { id: string; erreur: string; placement: Placement };
+
+/**
+ * Ce que la page « Voir le workflow » montre d'un workflow : ses blocs dans l'ordre d'exécution, chacun avec les blocs
+ * dont il reçoit la sortie ; ou l'erreur de validation de `workflow.json`.
+ */
+export type VueWorkflow =
+  | { origine: "fichier" | "implicite"; blocs: { id: string; type: string; nom?: string; parametres: unknown; entrees: string[] }[] }
+  | { origine: "fichier"; erreur: string };
 
 export interface ProfilPourAccord {
   id: string;

@@ -2,6 +2,17 @@ import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
 
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
 export const URL_APPLICATIONS = "webaios://applications";
+/** Page interne « Voir le workflow » d'un widget : `webaios://workflow/<id du widget>`. */
+export const PREFIXE_WORKFLOW = "webaios://workflow/";
+export const urlWorkflow = (id: string) => PREFIXE_WORKFLOW + id;
+/** Le widget d'une page « Voir le workflow », ou null si l'URL n'en est pas une. */
+export function widgetDeUrlWorkflow(url: string): string | null {
+  if (!url.startsWith(PREFIXE_WORKFLOW)) return null;
+  const id = url.slice(PREFIXE_WORKFLOW.length);
+  return /^[a-z0-9-]{1,100}$/.test(id) ? id : null;
+}
+/** Une page interne (`webaios:`) n'a pas de vue : c'est l'interface qui l'affiche, comme la page vide. */
+export const aUneVue = (url: string) => !url.startsWith("webaios:");
 
 /** Le site affiché sur une demande : l'hôte de l'origine, ou le texte tel quel s'il n'en est pas une (about:blank…). */
 export function siteDe(origine: string): string {

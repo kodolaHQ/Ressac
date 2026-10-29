@@ -1,7 +1,7 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type VueWorkflow, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
-import type { DroitDev } from "@webaios/noyau";
+import type { DroitDev, Execution, ResumeExecution } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
@@ -60,6 +60,10 @@ export interface Gestionnaires {
     accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
     refuserAccord(id: string): void;
     recolter(id: string): void;
+    /** Page « Voir le workflow » : ids déjà validés ici. */
+    workflow(id: string): Promise<VueWorkflow | null>;
+    executions(id: string): Promise<ResumeExecution[]>;
+    execution(id: string, execution: string): Promise<Execution | null>;
   };
   /** IA locale : `installer` télécharge plusieurs gigaoctets, seulement sur un clic de l'utilisateur. */
   ia: { etat(): Promise<EtatIaAffiche>; installer(): Promise<{ ok: boolean; erreur?: string }> };
@@ -150,6 +154,13 @@ export function brancherIpc(g: Gestionnaires): void {
   });
   recevoir(CANAUX.accueilRefuserAccord, zod(SchemaIdWidget), (id) => g.accueil.refuserAccord(id));
   recevoir(CANAUX.accueilRecolter, zod(SchemaIdWidget), (id) => g.accueil.recolter(id));
+  // Page « Voir le workflow » : seulement l'interface d'une fenêtre principale (comme les autres accueil.*), ids validés.
+  const idWidgetValide = (v: unknown): v is string => SchemaIdWidget.safeParse(v).success;
+  repondre(CANAUX.accueilWorkflow, (id) => (idWidgetValide(id) ? g.accueil.workflow(id) : null));
+  repondre(CANAUX.accueilExecutions, (id) => (idWidgetValide(id) ? g.accueil.executions(id) : []));
+  repondre(CANAUX.accueilExecution, (id, execution) =>
+    idWidgetValide(id) && SchemaIdExecution.safeParse(execution).success ? g.accueil.execution(id, execution as string) : null,
+  );
   repondre(CANAUX.iaEtat, () => g.ia.etat());
   // Seule une fenêtre principale (un clic de l'utilisateur dans l'interface) lance l'installation.
   repondre(CANAUX.iaInstaller, () => g.ia.installer());

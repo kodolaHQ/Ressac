@@ -1,6 +1,6 @@
 import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
-import { type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
+import { aUneVue, type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
 import { zoneGauche, zoneSortie, type ZoneGauche } from "../../commun/revelation";
 import { brancherCapture } from "./capture-texte";
 import { brancherBalayage } from "./balayage";
@@ -113,8 +113,7 @@ export class GestionnaireVues {
       if (!fenetre || fenetre.isDestroyed()) continue;
       const actif = f.actif[f.espaceActif];
       const onglet = actif ? etat.onglets[actif] : undefined;
-      // Une page interne (`webaios:`) n'a pas de vue : c'est l'interface qui l'affiche, comme la page vide.
-      const web = onglet && !onglet.url.startsWith("webaios:") ? onglet : undefined;
+      const web = onglet && aUneVue(onglet.url) ? onglet : undefined;
       if (web && !this.vues.has(web.id)) this.creerVue(web);
       // Une page plantée ou en erreur est remplacée par le message de l'interface.
       const cible = web && !web.plante && !web.erreur ? web.id : undefined;

@@ -77,6 +77,9 @@ const api: ApiWebaios = {
     accorder: (a) => ipcRenderer.invoke(CANAUX.accueilAccorder, a),
     refuserAccord: (id) => ipcRenderer.send(CANAUX.accueilRefuserAccord, id),
     recolter: (id) => ipcRenderer.send(CANAUX.accueilRecolter, id),
+    workflow: (id) => ipcRenderer.invoke(CANAUX.accueilWorkflow, id),
+    executions: (id) => ipcRenderer.invoke(CANAUX.accueilExecutions, id),
+    execution: (id, execution) => ipcRenderer.invoke(CANAUX.accueilExecution, id, execution),
   },
   ia: {
     etat: () => ipcRenderer.invoke(CANAUX.iaEtat),

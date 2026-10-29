@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { URL_APPLICATIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { URL_APPLICATIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
   import Applications from "./Applications.svelte";
+  import PageWorkflow from "./PageWorkflow.svelte";
   import { acces, api, demandeDe } from "../etat.svelte";
   import { estDemandeAgent, modale } from "./modale.svelte";
   import DemandePermission from "./DemandePermission.svelte";
@@ -20,6 +21,7 @@
   let zone: HTMLElement;
   // Les questions des sites ; celles de l'agent s'ouvrent en modale (App.svelte).
   const demande = $derived(demandeDe(fenetre, onglet));
+  const widgetWorkflow = $derived(onglet ? widgetDeUrlWorkflow(onglet.url) : null);
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
@@ -54,6 +56,8 @@
     <PageVide {fenetre} />
   {:else if onglet?.url === URL_APPLICATIONS}
     <Applications />
+  {:else if widgetWorkflow}
+    {#key widgetWorkflow}<PageWorkflow id={widgetWorkflow} />{/key}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>

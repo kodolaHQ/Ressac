@@ -3,8 +3,8 @@ import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { placerManquants, type CheminsEspace, type EtatAccueil } from "@webaios/noyau";
-import { SchemaPlacements, type Placement, type ProfilPourAccord, type WidgetAffiche } from "../../commun/api";
+import { lireExecution, lireWorkflow, listerExecutions, placerManquants, type CheminsEspace, type EtatAccueil, type Execution, type ResumeExecution } from "@webaios/noyau";
+import { SchemaIdExecution, SchemaIdWidget, SchemaPlacements, type Placement, type ProfilPourAccord, type VueWorkflow, type WidgetAffiche } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre } from "../../commun/modele";
 import { contientIndiceReseau } from "../../commun/indices-reseau";
 import { profilsLisibles, urlPermise } from "./lecture-invisible";
@@ -53,6 +53,7 @@ export function versWidgetsAffiches(etat: EtatAccueil, mtimes: Record<string, nu
         etat: w.etat,
         compte: w.declaration.sources.compte,
         publiques: w.declaration.sources.publiques,
+        aRecolte: w.aRecolte,
       },
     ];
   });
@@ -70,6 +71,37 @@ export async function lireWidgetsAffiches(etat: EtatAccueil): Promise<WidgetAffi
     }
   }
   return versWidgetsAffiches(etat, mtimes);
+}
+
+/**
+ * Le workflow d'un widget pour la page « Voir le workflow » (lu comme du JSON, rien n'est exécuté) : ses blocs dans
+ * l'ordre d'exécution, ou l'erreur de validation ; null sans récolte.
+ */
+export async function vueWorkflow(dossierFichiers: string): Promise<VueWorkflow | null> {
+  const lu = await lireWorkflow(dossierFichiers);
+  if (!lu) return null;
+  if (!lu.resultat.ok) return { origine: "fichier", erreur: lu.resultat.erreur };
+  const { workflow, ordre, predecesseurs } = lu.resultat.valide;
+  const parId = new Map(workflow.blocs.map((b) => [b.id, b]));
+  return {
+    origine: lu.origine,
+    blocs: ordre.map((id) => {
+      const b = parId.get(id)!;
+      return { id, type: b.type, ...(b.nom === undefined ? {} : { nom: b.nom }), parametres: b.parametres, entrees: predecesseurs[id] ?? [] };
+    }),
+  };
+}
+
+/** Les exécutions gardées d'un widget (`<dossierWidgets>/<id>`), hors de l'espace ; rien pour un id invalide. */
+export async function executionsWidget(dossierWidgets: string, id: string): Promise<ResumeExecution[]> {
+  if (!SchemaIdWidget.safeParse(id).success) return [];
+  return listerExecutions(join(dossierWidgets, id));
+}
+
+/** Une exécution d'un widget ; null si l'un des deux ids est invalide (jamais un chemin) ou si elle n'existe plus. */
+export async function executionWidget(dossierWidgets: string, id: string, execution: string): Promise<Execution | null> {
+  if (!SchemaIdWidget.safeParse(id).success || !SchemaIdExecution.safeParse(execution).success) return null;
+  return lireExecution(join(dossierWidgets, id), execution);
 }
 
 /** Fichier servi pour une URL `webaios-widget:` : seulement `<widgets>/<id>/affichage.html`, sinon null. */

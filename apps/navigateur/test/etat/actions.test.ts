@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
-import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, URL_APPLICATIONS, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
+import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, URL_APPLICATIONS, urlWorkflow, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -575,6 +575,37 @@ test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
   expect(pages()).toHaveLength(1);
   expect(fen().espaceActif).toBe(P);
   expect(actif()).toBe(page.id);
+});
+
+test("ouvrirWorkflow ouvre un onglet webaios://workflow/<id> titré, puis y revient au lieu d'en ouvrir un second", () => {
+  ouvrir("https://a.test/");
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
+  const pages = (id = "meteo") => Object.values(e.onglets).filter((o) => o.url === urlWorkflow(id));
+  expect(pages()).toHaveLength(1);
+  const page = pages()[0]!;
+  expect(page).toMatchObject({ url: "webaios://workflow/meteo", titre: "Workflow — Météo", espaceId: P });
+  expect(actif()).toBe(page.id);
+  const avant = e;
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
+  expect(e).toBe(avant);
+  ouvrir("https://b.test/");
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
+  expect(pages()).toHaveLength(1);
+  expect(actif()).toBe(page.id);
+  // Depuis un autre espace : on revient à la page de la fenêtre, dans son espace.
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
+  expect(pages()).toHaveLength(1);
+  expect(fen().espaceActif).toBe(P);
+  expect(actif()).toBe(page.id);
+  // Un autre widget : sa propre page.
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "actus", nom: "Actus" });
+  expect(pages("actus")).toHaveLength(1);
+  expect(pages()).toHaveLength(1);
+  // Le widget renommé : on revient à la même page, et son titre suit.
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo de Lyon" });
+  expect(pages()).toHaveLength(1);
+  expect(pages()[0]).toMatchObject({ id: page.id, titre: "Workflow — Météo de Lyon" });
 });
 
 test("profilsEnUsage et profilsChanges : par identifiant, espaces compris", () => {

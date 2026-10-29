@@ -5,6 +5,7 @@ import {
   LARGEUR_AGENT_MAX,
   LARGEUR_AGENT_MIN,
   URL_APPLICATIONS,
+  urlWorkflow,
   type EtatFenetre,
   type EtatNavigateur,
   type Favori,
@@ -60,6 +61,27 @@ function ouvrir(
   l.splice(i >= 0 ? i + 1 : l.length, 0, o.id);
   if (a.activer ?? true) f.actif[esp] = o.id;
   return o;
+}
+
+/** Active la page interne `url` de la fenêtre (dans son espace) si elle est déjà ouverte, sinon l'ouvre. */
+function ouvrirPageInterne(d: Brouillon, genId: () => string, fenetreId: string, url: string, titre: string): boolean {
+  const f = fenetre(d, fenetreId);
+  if (!f) return false;
+  const espaces = [f.espaceActif, ...Object.keys(f.ordre).filter((x) => x !== f.espaceActif)];
+  for (const esp of espaces) {
+    const existant = liste(f, esp).find((id) => d.onglets[id]?.url === url);
+    if (!existant) continue;
+    const o = d.onglets[existant]!;
+    if (f.espaceActif === esp && f.actif[esp] === existant && o.titre === titre) return false;
+    // Le widget a pu être renommé depuis : le titre suit.
+    o.titre = titre;
+    f.actif[esp] = existant;
+    f.espaceActif = esp;
+    return true;
+  }
+  const o = ouvrir(d, genId, f, { url });
+  if (o) o.titre = titre;
+  return !!o;
 }
 
 /** Un onglet d'essentiel peut être affiché dans plusieurs espaces : les autres espaces le lâchent. */
@@ -356,22 +378,11 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       return true;
     }
     // Une seule page Applications par fenêtre : on y revient (dans son espace) plutôt que d'en ouvrir une deuxième.
-    case "ouvrirApplications": {
-      const f = fenetre(d, a.fenetreId);
-      if (!f) return false;
-      const espaces = [f.espaceActif, ...Object.keys(f.ordre).filter((x) => x !== f.espaceActif)];
-      for (const esp of espaces) {
-        const existant = liste(f, esp).find((id) => d.onglets[id]?.url === URL_APPLICATIONS);
-        if (!existant) continue;
-        if (f.espaceActif === esp && f.actif[esp] === existant) return false;
-        f.actif[esp] = existant;
-        f.espaceActif = esp;
-        return true;
-      }
-      const o = ouvrir(d, genId, f, { url: URL_APPLICATIONS });
-      if (o) o.titre = "Applications";
-      return !!o;
-    }
+    case "ouvrirApplications":
+      return ouvrirPageInterne(d, genId, a.fenetreId, URL_APPLICATIONS, "Applications");
+    // De même, une seule page « Voir le workflow » par widget et par fenêtre.
+    case "ouvrirWorkflow":
+      return ouvrirPageInterne(d, genId, a.fenetreId, urlWorkflow(a.id), `Workflow — ${a.nom}`);
     // Ouvrir le panneau sur un onglet le donne à l'agent : la page d'accueil ne l'ouvre que si elle est encore affichée.
     case "panneauAgentAccueil": {
       const f = fenetre(d, a.fenetreId);

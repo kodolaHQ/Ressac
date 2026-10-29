@@ -32,7 +32,7 @@ import type { EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
-import { enregistrerSchemaWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { enregistrerSchemaWidget, executionWidget, executionsWidget, vueWorkflow, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 
@@ -442,6 +442,10 @@ app.whenReady().then(async () => {
       recolter: (id) => {
         agent?.noyau()?.recolterMaintenant(id).catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
       },
+      // Lus sans le noyau, comme la page d'accueil : le workflow dans l'espace, les exécutions hors de l'espace.
+      workflow: async (id) => (agent ? vueWorkflow(join(agent.chemins.widgets, id)) : null),
+      executions: async (id) => (agent ? executionsWidget(agent.dossierWidgets, id) : []),
+      execution: async (id, execution) => (agent ? executionWidget(agent.dossierWidgets, id, execution) : null),
     },
     ia: {
       etat: () => etatIa(),

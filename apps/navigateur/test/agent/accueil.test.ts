@@ -2,11 +2,15 @@ import { expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cheminsEspace, type EtatAccueil } from "@webaios/noyau";
+import { cheminsEspace, ecrireExecution, idExecution, type EtatAccueil, type Execution } from "@webaios/noyau";
+import { SchemaIdExecution } from "../../src/commun/api";
 import type { EtatNavigateur } from "../../src/commun/modele";
 import {
   AFFICHAGE_REFUSE,
   CSP_WIDGET,
+  executionWidget,
+  executionsWidget,
+  vueWorkflow,
   permissionInterface,
   placerWidgets,
   profilsPourAccord,
@@ -237,8 +241,9 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
     etat: { statut: "ok", derniereMaj: "2026-10-28T08:00:00.000Z", derniereTentative: null },
     compte: ["mail.exemple.test"],
     publiques: ["meteo.exemple.test"],
+    aRecolte: true,
   });
-  expect(affiches.find((w) => w.id === "vide")).toMatchObject({ src: null, donnees: null, exemple: null });
+  expect(affiches.find((w) => w.id === "vide")).toMatchObject({ src: null, donnees: null, exemple: null, aRecolte: false });
   const casse = affiches.find((w) => w.id === "casse");
   expect(casse).toMatchObject({ erreur: "widget.json invalide : x" });
   expect(casse?.placement).toMatchObject({ id: "casse" });
@@ -275,4 +280,64 @@ test("navigationCadrePermise : un cadre ne va que vers l'affichage de son propre
   expect(navigationCadrePermise("webaios-widget://meteo/affichage.html", "https://exemple.test/")).toBe(false);
   expect(navigationCadrePermise("", "data:text/html,x")).toBe(false);
   expect(navigationCadrePermise("", "webaios-widget://meteo/autre.html")).toBe(false);
+});
+
+const execution = (id: string, debut: string): Execution => ({
+  version: 1,
+  id,
+  proprietaire: { type: "widget", id: "meteo" },
+  declencheur: "manuelle",
+  debut,
+  fin: debut,
+  statut: "reussie",
+  blocs: [{ id: "recolte", type: "code", statut: "reussi", debut, fin: debut, elements: null, sortie: { a: 1 }, journal: [] }],
+});
+
+test("accueil.execution refuse un id d'exécution invalide", async () => {
+  const widgets = mkdtempSync(join(tmpdir(), "webaios-executions-"));
+  const debut = "2026-10-29T10:00:00.000Z";
+  await ecrireExecution(join(widgets, "meteo"), execution(idExecution(debut), debut));
+  writeFileSync(join(widgets, "meteo", "etat.json"), JSON.stringify(execution("etat", debut)));
+  expect(SchemaIdExecution.safeParse("../etat").success).toBe(false);
+  expect(SchemaIdExecution.safeParse(idExecution(debut)).success).toBe(true);
+  expect(await executionWidget(widgets, "meteo", "../etat")).toBeNull();
+  expect(await executionWidget(widgets, "../meteo", idExecution(debut))).toBeNull();
+  expect((await executionWidget(widgets, "meteo", idExecution(debut)))?.blocs[0]?.sortie).toEqual({ a: 1 });
+  expect((await executionsWidget(widgets, "meteo")).map((r) => r.id)).toEqual([idExecution(debut)]);
+  expect(await executionsWidget(widgets, "../x")).toEqual([]);
+});
+
+test("vueWorkflow : blocs dans l'ordre avec leurs entrées, workflow implicite, erreur de validation", async () => {
+  const c = espace(["actus", "gmail", "casse", "vide"]);
+  writeFileSync(
+    join(c.widgets, "actus", "workflow.json"),
+    JSON.stringify({
+      version: 1,
+      blocs: [
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+        { id: "garder", type: "liste.garder", nom: "Les 5 premiers", parametres: { nombre: 5 } },
+        { id: "flux", type: "source.flux", parametres: { urls: ["https://lobste.rs/rss"] } },
+      ],
+      liens: [
+        { de: "flux", vers: "garder" },
+        { de: "garder", vers: "sortie" },
+      ],
+    }),
+  );
+  writeFileSync(join(c.widgets, "gmail", "recolte.mjs"), "export default async () => 1");
+  writeFileSync(join(c.widgets, "casse", "workflow.json"), '{"version": 1, "blocs": [');
+  const vue = await vueWorkflow(join(c.widgets, "actus"));
+  expect(vue && "blocs" in vue && vue.origine).toBe("fichier");
+  expect(vue && "blocs" in vue && vue.blocs.map((b) => [b.id, b.entrees])).toEqual([
+    ["flux", []],
+    ["garder", ["flux"]],
+    ["sortie", ["garder"]],
+  ]);
+  expect(vue && "blocs" in vue && vue.blocs[1]).toMatchObject({ type: "liste.garder", nom: "Les 5 premiers", parametres: { nombre: 5 } });
+  const implicite = await vueWorkflow(join(c.widgets, "gmail"));
+  expect(implicite && "blocs" in implicite && implicite.origine).toBe("implicite");
+  expect(implicite && "blocs" in implicite && implicite.blocs.map((b) => b.type)).toEqual(["code", "sortie"]);
+  const casse = await vueWorkflow(join(c.widgets, "casse"));
+  expect(casse).toMatchObject({ origine: "fichier", erreur: expect.stringMatching(/^Workflow invalide/) });
+  expect(await vueWorkflow(join(c.widgets, "vide"))).toBeNull();
 });
