@@ -121,13 +121,13 @@ workflow ») : il y ajoute, relie, règle et déplace des blocs, et chaque versi
 enregistrée toute seule dans `workflow.json`. Donc :
 
 - Relis `workflow.json` juste avant de le réécrire : L'utilisateur a pu le changer.
-- **Garde les `position`** des blocs existants. Donne à un nouveau bloc une position à droite de
-  son prédécesseur, ou `{ "x": 0, "y": 0 }` sans prédécesseur.
+- **Garde les `position`** des blocs existants. Place un nouveau bloc à droite de son
+  prédécesseur (`x` + 260, même `y`), ou à `{ "x": 0, "y": 0 }` sans prédécesseur.
 - Un bloc dont l'entrée est requise doit être relié (voir plus haut).
 - Changer les paramètres d'un bloc remet sa mémoire à zéro (`liste.nouveaux` revoit tout).
 - Quand l'utilisateur dit « ce bloc » ou « ce workflow », appelle `workflow_ouvert` : il rend seulement
-  des identifiants (`{ widget, bloc? }`), ceux du constructeur de ta propre fenêtre. Lis ensuite
-  le fichier ; sans constructeur ouvert, l'outil le dit.
+  des identifiants (`{ widget, bloc }`, `bloc` à `null` sans sélection), ceux du constructeur de
+  ta propre fenêtre. Lis ensuite le fichier ; sans constructeur ouvert, l'outil le dit.
 - Les essais de l'utilisateur (`declencheur: "rejeu"`) apparaissent dans `executions_widget` ; ils ne
   changent ni les données ni l'état du widget.
 - Le constructeur ne crée pas de widget : pour un nouveau widget, écris ses fichiers.
