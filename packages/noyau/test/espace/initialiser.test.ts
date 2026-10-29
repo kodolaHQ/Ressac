@@ -255,6 +255,24 @@ test("initialiser : un AGENTS.md identique au modèle d'avant les workflows est 
   expect(apres).toContain("executions_widget");
 });
 
+test("initialiser : un AGENTS.md identique au modèle du plan 8 est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle de la fin du plan 8 (e09ed17) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-livres", "AGENTS-e09ed17.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "3866a3fd951eb95c9fee1aeae273a9a7eb5ad1b0e09ad8ee85a2f0b3190a634c",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("workflow_ouvert");
+  expect(apres).toContain("constructeur");
+  expect(apres).not.toContain("Voir le workflow");
+  expect(apres).not.toContain("**Entrée d'un bloc** : `null` sans prédécesseur ;");
+});
+
 // ——— Chaque version livrée du modèle AGENTS.md ———
 
 const AGENTS_LIVRES = join(import.meta.dirname, "agents-livres");

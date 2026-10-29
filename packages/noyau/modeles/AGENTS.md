@@ -52,10 +52,13 @@ afficher « Workflow invalide : … » au widget, qui garde ses données.
 ```
 
 - `id` de bloc : minuscules, chiffres et tirets (40 au plus), uniques. `nom` (60 au plus) et
-  `position: { x, y }` sont facultatifs (la page « Voir le workflow » les affiche).
+  `position: { x, y }` sont facultatifs (le constructeur les affiche ; voir plus bas).
 - **Une seule** `sortie` (`"vers": "widget"`) : sa valeur est ce que reçoit `affichage.html`.
-- **Entrée d'un bloc** : `null` sans prédécesseur ; la sortie du prédécesseur s'il n'y en a qu'un ;
-  avec plusieurs, un objet `{ "<id du prédécesseur>": sortie }`. Les blocs s'exécutent l'un après
+- **Entrée d'un bloc** : la sortie du prédécesseur s'il n'y en a qu'un ; avec plusieurs, un objet
+  `{ "<id du prédécesseur>": sortie }` ; `null` sans prédécesseur, mais seulement pour les blocs à
+  entrée facultative (`source.flux`, `code`). Tous les autres (`liste.*`, `ia.trier`, `sortie`, et
+  `source.page`, `source.recuperer`, `ia.rediger` en mode par élément) **doivent être reliés** :
+  sinon le workflow est invalide (« entrée manquante »). Les blocs s'exécutent l'un après
   l'autre (ordre des liens, puis ordre du tableau `blocs`). Un bloc dont un prédécesseur a échoué
   n'est pas lancé et l'exécution échoue.
 
@@ -110,6 +113,24 @@ Exemple complet, les actus tech (`accueil/widgets/actus-tech/workflow.json`) : `
 `reutiliser: "url"`, `budgetSecondes: 60`) ; `top` et `resumes` → `articles` (`code`, `articles.mjs` :
 `({ top, resumes }) => ({ articles })`, qui joint les résumés aux articles par URL) → `sortie`.
 Lis ce fichier et `articles.mjs` pour copier la forme.
+
+### Le constructeur de workflows
+
+L'utilisateur ouvre aussi un workflow dans le constructeur (menu du widget : « Voir / modifier le
+workflow ») : il y ajoute, relie, règle et déplace des blocs, et chaque version **valide** est
+enregistrée toute seule dans `workflow.json`. Donc :
+
+- Relis `workflow.json` juste avant de le réécrire : L'utilisateur a pu le changer.
+- **Garde les `position`** des blocs existants. Donne à un nouveau bloc une position à droite de
+  son prédécesseur, ou `{ "x": 0, "y": 0 }` sans prédécesseur.
+- Un bloc dont l'entrée est requise doit être relié (voir plus haut).
+- Changer les paramètres d'un bloc remet sa mémoire à zéro (`liste.nouveaux` revoit tout).
+- Quand l'utilisateur dit « ce bloc » ou « ce workflow », appelle `workflow_ouvert` : il rend seulement
+  des identifiants (`{ widget, bloc? }`), ceux du constructeur de ta propre fenêtre. Lis ensuite
+  le fichier ; sans constructeur ouvert, l'outil le dit.
+- Les essais de l'utilisateur (`declencheur: "rejeu"`) apparaissent dans `executions_widget` ; ils ne
+  changent ni les données ni l'état du widget.
+- Le constructeur ne crée pas de widget : pour un nouveau widget, écris ses fichiers.
 
 ### API `webaios` de la récolte (blocs `code` et `recolte.mjs`)
 
@@ -221,6 +242,7 @@ l'URL par un autre moyen).
 | `lire_historique(url)` | Texte retenu d'une page de l'historique, pour la résumer |
 | `recolter_widget(id)` | Lance tout de suite la récolte d'un widget et rend `{ statut, execution?, erreur?, journal?, donnees? }` (réduit pour un widget avec compte sans accord de l'utilisateur) |
 | `executions_widget(id, execution?)` | Exécutions récentes d'un widget (liste) ou le détail de l'une : statut, blocs, durées, éléments, sorties, journaux ; pour un widget avec compte, statut seul sans l'accord de l'utilisateur |
+| `workflow_ouvert` | Le workflow (`widget`) et le bloc (`bloc`, si l'utilisateur en a sélectionné un) ouverts dans le constructeur de ta fenêtre : des identifiants seulement |
 | `donnees_widget(id)` | Dernières données récoltées d'un widget ; pour un widget avec compte, une carte demande l'accord de l'utilisateur |
 
 Tu ne peux ni cliquer ni taper dans les pages, sauf, pour déboguer, par `executer_js` (voir plus bas).
