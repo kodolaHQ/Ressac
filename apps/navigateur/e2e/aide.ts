@@ -95,6 +95,16 @@ export function nouveauProfil(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), "webaios-profil-")));
 }
 
+/** Fichier où l'app lancée sur ce profil note ses notifications (une ligne JSON `{ titre, texte }` chacune), à côté du profil. */
+export const fichierNotifications = (profil: string) => `${profil}-notifications.jsonl`;
+
+/** Notifications notées par l'app lancée sur ce profil, dans l'ordre. */
+export function lireNotifications(profil: string): { titre: string; texte: string }[] {
+  const f = fichierNotifications(profil);
+  if (!existsSync(f)) return [];
+  return readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+}
+
 /** Lance le navigateur construit (out/) sur un profil isolé et renvoie la fenêtre de l'interface. */
 export async function lancer(
   o: { profil?: string; racine?: string; env?: Record<string, string>; visible?: boolean; args?: string[] } = {},
@@ -117,6 +127,8 @@ export async function lancer(
       WEBAIOS_PROFIL: profil,
       WEBAIOS_RACINE: racine,
       ...(o.visible ? {} : { WEBAIOS_INVISIBLE: "1" }),
+      // Aucun e2e, même visible, ne montre une vraie notification de macOS : elles sont notées dans ce fichier.
+      WEBAIOS_TEST_NOTIFICATIONS: fichierNotifications(profil),
       ...o.env,
     } as Record<string, string>,
   });

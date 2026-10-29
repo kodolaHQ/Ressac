@@ -41,6 +41,8 @@ function portConstruit(): (port: number) => boolean {
 
 /** Tests de bout en bout seulement : les récoltes des widgets peuvent lire le serveur de test local (127.0.0.1). */
 const ADRESSES_LOCALES_TESTS = process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1";
+/** Tests de bout en bout seulement : une fausse DuckDuckGo locale à la place de la vraie. */
+const DUCKDUCKGO_TESTS = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
 
 export interface ServiceAgent {
   /** null tant que le noyau n'est pas prêt, ou s'il n'a pas pu démarrer (voir `erreur`). */
@@ -142,7 +144,7 @@ export function demarrerAgent(o: {
   let desabonnerDirect: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}), ...(DUCKDUCKGO_TESTS ? { urlRecherche: DUCKDUCKGO_TESTS } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);
