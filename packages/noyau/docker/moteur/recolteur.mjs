@@ -6,7 +6,7 @@
 // récolte → sortie ; pour un essai du constructeur, `rejeu`), puis la ligne `memoire` ; le workflow est exécuté par
 // l'interpréteur (traces `bloc` et `journal`, `memoire` juste avant `fin`, sauf pour un essai). Avec `progressif`,
 // la ligne `memoire` vient aussi en cours de route et avant `echec` (la dernière reçue vaut) ; `limiteMs` remplace
-// la limite de 150 s.
+// la limite de 150 s ; si la sortie publie au fil de l'eau, des lignes `publication` montrent les éléments terminés.
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { echeanceDe, executerWorkflow } from "./interpreteur.mjs";

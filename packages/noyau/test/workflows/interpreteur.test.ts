@@ -1418,3 +1418,331 @@ describe("interpréteur : exécution progressive", () => {
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
 });
+
+describe("interpréteur : chaîne au fil de l'eau", () => {
+  type Evenement = string;
+  /** Un bloc chaînable de test : note `debut:<bloc>:<n>` et `fin:<bloc>:<n>` et rend `<bloc> <n>`. */
+  const etape = (nom: string, evenements: Evenement[], o: { duree?: (n: number) => number; horloge?: { t: number }; echoueSur?: number; tours?: (n: number) => number } = {}) => ({
+    parElement: "option",
+    async executer(ctx: any) {
+      evenements.push(`bloc:${nom}`);
+      return { sortie: ctx.entree.map((e: any) => ({ ...e, [ctx.parametres.champ]: `${nom} ${e.n}` })) };
+    },
+    async traiterElement(ctx: any) {
+      const n = ctx.element.n;
+      evenements.push(`debut:${nom}:${n}`);
+      // Un élément « lent » attend plus de tours de la file des micro-tâches : il finit après d'autres lancés après lui.
+      for (let k = 0; k < (o.tours?.(n) ?? 1); k++) await Promise.resolve();
+      if (o.horloge && o.duree) o.horloge.t += o.duree(n);
+      evenements.push(`fin:${nom}:${n}`);
+      if (n === o.echoueSur) throw new Error(`${nom} raté`);
+      return `${nom} ${n}`;
+    },
+  });
+  const BLOCS_CHAINE = (sortieParams: Record<string, unknown> = { auFilDeLEau: true }, extra: Record<string, Record<string, unknown>> = {}) => [
+    { id: "fiche", type: "test.fiche", parametres: { parElement: true, champ: "page", ...extra.fiche } },
+    { id: "fiabilite", type: "test.fiabilite", parametres: { parElement: true, champ: "fiabilite", ...extra.fiabilite } },
+    { id: "avis", type: "test.avis", parametres: { parElement: true, champ: "avis", ...extra.avis } },
+    { id: "sortie", type: "sortie", parametres: sortieParams },
+  ];
+  const registreChaine = (evenements: Evenement[], o: Parameters<typeof etape>[2] = {}, parBloc: Record<string, Parameters<typeof etape>[2]> = {}) => ({
+    "test.fiche": etape("fiche", evenements, { ...o, ...parBloc.fiche }),
+    "test.fiabilite": etape("fiabilite", evenements, { ...o, ...parBloc.fiabilite }),
+    "test.avis": etape("avis", evenements, { ...o, ...parBloc.avis }),
+  });
+  const annonce = (n: number) => ({ n, url: `u${n}`, page: `fiche ${n}`, fiabilite: `fiabilite ${n}`, avis: `avis ${n}` });
+  const publications = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "publication");
+  const resume = (r: { traces: any[] }) =>
+    r.traces.filter((l) => l.t === "bloc").map((l) => `${l.etape}:${l.id}`);
+
+  it("au fil de l'eau : chaque annonce traverse fiche → fiabilite → avis avant d'être terminée, deux à la fois", async () => {
+    const evenements: Evenement[] = [];
+    const r = await executer({
+      progressif: true,
+      entree: liste(6),
+      blocs: BLOCS_CHAINE(),
+      registre: registreChaine(evenements),
+    });
+    expect(r.erreur).toBeNull();
+    // Chaque annonce passe les trois blocs dans l'ordre.
+    for (let n = 0; n < 6; n++) {
+      const pos = (e: string) => evenements.indexOf(e);
+      expect(pos(`fin:fiche:${n}`)).toBeLessThan(pos(`debut:fiabilite:${n}`));
+      expect(pos(`fin:fiabilite:${n}`)).toBeLessThan(pos(`debut:avis:${n}`));
+    }
+    // Deux annonces à la fois au plus : une annonce est en cours du début de sa fiche à la fin de son avis.
+    let enCours = 0;
+    let max = 0;
+    for (const e of evenements) {
+      if (e.startsWith("debut:fiche:")) max = Math.max(max, ++enCours);
+      if (e.startsWith("fin:avis:")) enCours--;
+    }
+    expect(max).toBe(2);
+    // La troisième ne commence qu'après qu'une des deux premières a fini son avis.
+    expect(Math.min(evenements.indexOf("fin:avis:0"), evenements.indexOf("fin:avis:1"))).toBeLessThan(evenements.indexOf("debut:fiche:2"));
+    expect(r.resultat!.donnees).toEqual(liste(6).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` })));
+  });
+
+  it("publications : éléments terminés dans l'ordre de la liste, au plus une toutes les 5 s, faits et total justes", async () => {
+    const evenements: Evenement[] = [];
+    const horloge = { t: 0 };
+    const traces: any[] = [];
+    // L'annonce 0 est lente (fiche de 9 s, et plus de tours) : l'annonce 1 finit avant elle. Les autres blocs prennent 1 s.
+    const r = await executer({
+      progressif: true,
+      entree: liste(10),
+      horloge: () => horloge.t,
+      blocs: BLOCS_CHAINE(),
+      registre: registreChaine(evenements, { horloge, duree: () => 1000 }, { fiche: { horloge, duree: (n) => (n === 0 ? 9000 : 1000), tours: (n) => (n === 0 ? 50 : 1) } }),
+    });
+    expect(r.erreur).toBeNull();
+    traces.push(...r.traces);
+    const pubs = publications(r);
+    const final = liste(10).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` }));
+    expect(pubs.length).toBeGreaterThan(1);
+    expect(pubs.length).toBeLessThan(10);
+    // La première dès la première annonce terminée : l'annonce 1, avant la 0.
+    expect(pubs[0]).toEqual({ t: "publication", donnees: [final[1]], faits: 1, total: 10 });
+    // Une fois l'annonce 0 terminée, elle vient en tête : l'ordre est celui de la liste, pas celui des fins.
+    expect(pubs.at(-1).donnees[0]).toEqual(final[0]);
+    let faitsAvant = 0;
+    for (const p of pubs) {
+      expect(p.total).toBe(10);
+      expect(p.faits).toBe(p.donnees.length);
+      expect(p.faits).toBeGreaterThan(faitsAvant);
+      faitsAvant = p.faits;
+      // Dans l'ordre de la liste, tels qu'après le dernier bloc.
+      const ns = p.donnees.map((e: any) => e.n);
+      expect(ns).toEqual([...ns].sort((a: number, b: number) => a - b));
+      for (const e of p.donnees) expect(e).toEqual(final[e.n]);
+    }
+    // Chaque publication juste après une ligne memoire ; 5 s au moins entre deux publications (heure de la mémoire
+    // envoyée juste avant, vue par le fil des traces).
+    const indices = traces.map((l, i) => (l.t === "publication" ? i : -1)).filter((i) => i >= 0);
+    for (const i of indices) expect(traces[i - 1].t).toBe("memoire");
+    expect(r.resultat!.donnees).toEqual(final);
+  });
+
+  it("publications : jamais deux à moins de 5 s (heure de l'horloge factice à chaque publication)", async () => {
+    const horloge = { t: 0 };
+    const heures: number[] = [];
+    const evenements: Evenement[] = [];
+    const registre = registreChaine(evenements, { horloge, duree: () => 700 });
+    const traces: any[] = [];
+    const workflow = {
+      blocs: [{ id: "src", type: "test.source", parametres: {} }, ...BLOCS_CHAINE()],
+      liens: chaine("src", "fiche", "fiabilite", "avis", "sortie"),
+      ordre: ["src", "fiche", "fiabilite", "avis", "sortie"],
+    };
+    await executerWorkflow({
+      workflow,
+      memoire: {},
+      maintenant: "2026-10-29T10:00:00.000Z",
+      dossier: "/nulle-part",
+      appeler: async () => null,
+      tracer: (m: any) => {
+        traces.push(m);
+        if (m.t === "publication") heures.push(horloge.t);
+      },
+      blocs: {
+        "test.source": { parElement: "non", executer: async () => ({ sortie: liste(20) }) },
+        sortie: { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree }) },
+        ...registre,
+      },
+      horloge: () => horloge.t,
+      progressif: true,
+    });
+    expect(heures[0]).toBeLessThan(5000);
+    for (let i = 1; i < heures.length; i++) expect(heures[i]! - heures[i - 1]!).toBeGreaterThanOrEqual(5000);
+    // 20 annonces de 2,1 s deux à la fois (~21 s) : plusieurs publications, pas une par annonce.
+    expect(heures.length).toBeGreaterThanOrEqual(3);
+    expect(heures.length).toBeLessThanOrEqual(6);
+  });
+
+  it("traces : debut des trois blocs puis leurs fins dans l'ordre ; sortie de chaque bloc = la liste après lui", async () => {
+    const r = await executer({ progressif: true, entree: liste(3), blocs: BLOCS_CHAINE(), registre: registreChaine([]) });
+    expect(resume(r)).toEqual([
+      "debut:src", "fin:src",
+      "debut:fiche", "debut:fiabilite", "debut:avis",
+      "fin:fiche", "fin:fiabilite", "fin:avis",
+      "debut:sortie", "fin:sortie",
+    ]);
+    expect(r.finBloc("fiche")).toEqual({ t: "bloc", id: "fiche", etape: "fin", statut: "reussi", sortie: liste(3).map((e) => ({ ...e, page: `fiche ${e.n}` })) });
+    expect(r.finBloc("fiabilite").sortie).toEqual(liste(3).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}` })));
+    expect(r.finBloc("avis")).toMatchObject({ statut: "reussi", sortie: r.resultat!.donnees });
+    expect(r.finBloc("sortie").sortie).toEqual(liste(3).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` })));
+  });
+
+  it("budgetSecondes de fiche compté depuis le début de la chaîne : les annonces suivantes passent sans page, partiel", async () => {
+    const evenements: Evenement[] = [];
+    const horloge = { t: 0 };
+    // fiche ne prend pas de temps, fiabilite 600 ms : passé 1 s depuis le début de la chaîne, plus de fiche.
+    const r = await executer({
+      progressif: true,
+      entree: liste(5),
+      horloge: () => horloge.t,
+      blocs: BLOCS_CHAINE({ auFilDeLEau: true }, { fiche: { budgetSecondes: 1 } }),
+      registre: registreChaine(evenements, {}, { fiabilite: { horloge, duree: () => 600 } }),
+    });
+    expect(r.erreur).toBeNull();
+    expect(evenements.filter((e) => e.startsWith("debut:fiche:"))).toEqual(["debut:fiche:0", "debut:fiche:1"]);
+    expect(evenements.filter((e) => e.startsWith("debut:avis:"))).toHaveLength(5);
+    expect(r.finBloc("fiche")).toMatchObject({ statut: "partiel" });
+    expect(r.journal("fiche")).toContain("temps écoulé : 3 élément(s) non lancé(s)");
+    expect(r.finBloc("fiabilite")).toMatchObject({ statut: "reussi" });
+    expect(r.finBloc("avis")).toMatchObject({ statut: "reussi" });
+    expect(r.resultat!.donnees).toEqual(
+      liste(5).map((e) => (e.n < 2 ? { ...e, page: `fiche ${e.n}` } : { ...e }) ).map((e) => ({ ...e, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` })),
+    );
+  });
+
+  it("sans auFilDeLEau : appels et traces bloc par bloc, identiques à aujourd'hui", async () => {
+    const evenements: Evenement[] = [];
+    const r = await executer({ progressif: true, entree: liste(3), blocs: BLOCS_CHAINE({}), registre: registreChaine(evenements) });
+    expect(r.erreur).toBeNull();
+    const debuts = evenements.filter((e) => e.startsWith("debut:"));
+    expect(debuts.slice(0, 3).every((e) => e.startsWith("debut:fiche:"))).toBe(true);
+    expect(debuts.slice(3, 6).every((e) => e.startsWith("debut:fiabilite:"))).toBe(true);
+    expect(debuts.slice(6).every((e) => e.startsWith("debut:avis:"))).toBe(true);
+    expect(resume(r)).toEqual([
+      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
+    ]);
+    expect(publications(r)).toEqual([]);
+  });
+
+  it("sans progressif (une exécution qui n'est pas progressive) : bloc par bloc, aucune publication", async () => {
+    const evenements: Evenement[] = [];
+    const r = await executer({ entree: liste(3), blocs: BLOCS_CHAINE(), registre: registreChaine(evenements) });
+    expect(resume(r)).toEqual([
+      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
+    ]);
+    expect(publications(r)).toEqual([]);
+  });
+
+  it("essai (rejeu) d'un workflow auFilDeLEau : bloc par bloc, aucune publication", async () => {
+    const evenements: Evenement[] = [];
+    const r = await executer({
+      progressif: true,
+      entree: liste(3),
+      blocs: BLOCS_CHAINE(),
+      registre: registreChaine(evenements),
+      rejeu: { relances: ["src", "fiche", "fiabilite", "avis", "sortie"], sorties: {} },
+    });
+    expect(r.erreur).toBeNull();
+    expect(resume(r)).toEqual([
+      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
+    ]);
+    expect(evenements.indexOf("fin:fiche:2")).toBeLessThan(evenements.indexOf("debut:fiabilite:0"));
+    expect(publications(r)).toEqual([]);
+  });
+
+  it("auFilDeLEau derrière liste.garder : aucune publication, sortie à la fin", async () => {
+    const evenements: Evenement[] = [];
+    const [fiche, fiabilite, avis, s] = BLOCS_CHAINE();
+    const r = await executer({
+      progressif: true,
+      entree: liste(4),
+      blocs: [fiche!, fiabilite!, avis!, { id: "garder", type: "liste.garder", parametres: { nombre: 2 } }, s!],
+      registre: { ...registreChaine(evenements), "liste.garder": listeGarder },
+    });
+    expect(r.erreur).toBeNull();
+    expect(publications(r)).toEqual([]);
+    expect(resume(r)).toEqual([
+      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis",
+      "debut:garder", "fin:garder", "debut:sortie", "fin:sortie",
+    ]);
+    expect(r.resultat!.donnees).toHaveLength(2);
+  });
+
+  it("un élément en échec dans la chaîne (sauter) est terminé sans le champ, il est publié ; le bloc finit partiel", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: liste(3),
+      blocs: BLOCS_CHAINE(),
+      registre: registreChaine([], {}, { fiabilite: { echoueSur: 1 } }),
+    });
+    expect(r.erreur).toBeNull();
+    expect(r.finBloc("fiabilite")).toMatchObject({ statut: "partiel" });
+    expect(r.finBloc("fiche")).toMatchObject({ statut: "reussi" });
+    expect(r.journal("fiabilite").join("\n")).toContain("élément 2 : fiabilite raté");
+    expect(r.resultat!.donnees).toEqual([
+      { n: 0, page: "fiche 0", fiabilite: "fiabilite 0", avis: "avis 0" },
+      { n: 1, page: "fiche 1", avis: "avis 1" },
+      { n: 2, page: "fiche 2", fiabilite: "fiabilite 2", avis: "avis 2" },
+    ]);
+  });
+
+  it("siErreur echouer dans la chaîne : le bloc en cause échoue, les autres de la chaîne finissent partiel, puis mémoire et erreur", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: liste(4),
+      blocs: BLOCS_CHAINE({ auFilDeLEau: true }, { fiabilite: { siErreur: "echouer" } }),
+      registre: registreChaine([], {}, { fiabilite: { echoueSur: 1 } }),
+    });
+    expect(r.erreur?.message).toBe("fiabilite raté");
+    const fins = r.traces.filter((l) => l.t === "bloc" && l.etape === "fin" && l.id !== "src");
+    expect(fins.map((l) => [l.id, l.statut])).toEqual([["fiche", "partiel"], ["fiabilite", "echoue"], ["avis", "partiel"]]);
+    expect(r.finBloc("fiabilite").erreur).toBe("fiabilite raté");
+    expect(r.traces.some((l) => l.id === "sortie")).toBe(false);
+    expect(r.traces.at(-1)?.t).toBe("memoire");
+  });
+
+  it("clés : une annonce arrivée au bout de la chaîne est retenue dans la mémoire envoyée avant sa publication ; une annonce en échec ne l'est pas", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
+      blocs: [{ id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } }, ...BLOCS_CHAINE()],
+      registre: { "liste.nouveaux": listeNouveaux, ...registreChaine([], {}, { avis: { echoueSur: 1 } }) },
+    });
+    expect(r.erreur).toBeNull();
+    const pubs = r.traces.map((l, i) => [l, i] as const).filter(([l]) => l.t === "publication");
+    // La première publication (u0 seule) suit une mémoire qui retient déjà u0.
+    const [premiere, i] = pubs[0]!;
+    expect(premiere.donnees.map((e: any) => e.url)).toEqual(["u0"]);
+    expect(r.traces[i - 1].memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
+    // À la fin : u0 et u2 retenues, u1 (avis en échec) reviendra.
+    expect((r.resultat!.memoire.nv!.valeur as [string, string][]).map((e) => e[0])).toEqual(["u0", "u2"]);
+  });
+
+  it("clés : la clé perdue avant la chaîne puis un élément en échec dans la chaîne : rien de plus n'est retenu (R31)", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "remodeler", type: "test.remodeler" },
+        ...BLOCS_CHAINE(),
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.remodeler": { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree.map((e: any) => ({ n: e.n, adresse: e.url })) }) },
+        ...registreChaine([], {}, { avis: { echoueSur: 0 } }),
+      },
+    });
+    expect(r.erreur).toBeNull();
+    expect(r.resultat!.memoire.nv!.valeur).toEqual([]);
+    expect(r.journal("nv").join("\n")).toContain("n'est plus dans les éléments");
+  });
+
+  it("dans le conteneur : debut progressif et sortie auFilDeLEau, les lignes publication viennent avant la fin", async () => {
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [
+          bloc("src", "code", { source: "src.mjs" }),
+          bloc("fiche", "source.page", { url: "https://x.fr/{url}", parElement: true, champ: "page" }),
+          bloc("sortie", "sortie", { vers: "widget", auFilDeLEau: true }),
+        ],
+        liens: chaine("src", "fiche", "sortie"),
+      },
+      fichiers: { "src.mjs": `export default async () => [{ url: "a" }, { url: "b" }];` },
+      repondre: (a) => ({ ok: { url: a.a.url, titre: "T", texte: "texte", liens: [] } }),
+      debut: { progressif: true },
+    });
+    expect(r.code).toBe(0);
+    const pub = r.lignes.find((l) => l.t === "publication");
+    expect(pub).toMatchObject({ t: "publication", faits: 1, total: 2 });
+    expect(r.lignes.indexOf(pub)).toBeLessThan(r.lignes.findIndex((l) => l.t === "fin"));
+    expect(r.terminal.donnees).toHaveLength(2);
+  });
+});

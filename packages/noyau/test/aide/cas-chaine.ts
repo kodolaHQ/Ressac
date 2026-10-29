@@ -4,12 +4,22 @@
 type Bloc = { id: string; type: string; parametres: Record<string, unknown> };
 type Lien = { de: string; vers: string };
 
-export type CasChaine = { nom: string; brut: { version: 1; blocs: Bloc[]; liens: Lien[] }; attendu: string[] };
+import type { ContexteValidation } from "../../src/workflows/valider.js";
+
+export type CasChaine = {
+  nom: string;
+  brut: { version: 1; blocs: Bloc[]; liens: Lien[] };
+  attendu: string[];
+  /** Ce que le widget déclare (web.chercher demande `web`) ; les règles d'avant sans lui. */
+  contexte?: ContexteValidation;
+};
 
 const b = (id: string, type: string, parametres: Record<string, unknown>): Bloc => ({ id, type, parametres });
 const page = (id: string, parElement = true) => b(id, "source.page", { url: "https://x.fr/{url}", parElement });
 const recuperer = (id: string, parElement = true) => b(id, "source.recuperer", { url: "https://x.fr/{url}/api", parElement });
 const rediger = (id: string, parElement = true) => b(id, "ia.rediger", { consigne: "Résume : {page}", parElement });
+const chercher = (id: string, parElement = true) => b(id, "web.chercher", { requete: "{titre} avis", parElement, champ: "recherche" });
+const WEB: ContexteValidation = { web: true, dureeMaxMinutes: null };
 const sortie = (auFilDeLEau?: boolean) => b("sortie", "sortie", auFilDeLEau === undefined ? { vers: "widget" } : { vers: "widget", auFilDeLEau });
 const suite = (...ids: string[]): Lien[] => ids.slice(1).map((id, i) => ({ de: ids[i]!, vers: id }));
 const wf = (blocs: Bloc[], liens: Lien[]) => ({ version: 1 as const, blocs, liens });
@@ -86,5 +96,17 @@ export const CAS_CHAINE: CasChaine[] = [
       [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")],
     ),
     attendu: ["infos", "avis"],
+  },
+  {
+    nom: "web.chercher par élément dans la chaîne : top → chercher → avis → sortie",
+    brut: wf([...tete, chercher("chercher"), rediger("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "chercher", "avis", "sortie")]),
+    attendu: ["chercher", "avis"],
+    contexte: WEB,
+  },
+  {
+    nom: "web.chercher sans parElement arrête la chaîne",
+    brut: wf([...tete, chercher("chercher", false), rediger("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "chercher", "avis", "sortie")]),
+    attendu: ["avis"],
+    contexte: WEB,
   },
 ];

@@ -55,6 +55,8 @@ export const BLOCS_LIVRES = Object.freeze({
 export const LIMITE_GLOBALE_MS = 150_000;
 /** Exécution progressive : la mémoire est envoyée au noyau au plus une fois par cet écart (recopié de src/workflows/executer.ts). */
 export const ECART_MEMOIRE_MS = 30_000;
+/** Au fil de l'eau : une ligne `publication` au plus par cet écart (recopié de src/workflows/executer.ts). */
+export const ECART_PUBLICATIONS_MS = 5000;
 
 /**
  * Passé cette heure, plus aucun élément n'est lancé : `limiteMs` de la ligne `debut` (la durée déclarée du widget),
@@ -150,13 +152,18 @@ function lireReutilises(memoire, maintenant, garderJours) {
   return reutilises;
 }
 
-/** Boucle par élément : rend { statut, sortie, memoire? } ou lève l'erreur du bloc. */
-async function parElement(module, ctx, { echeance, horloge, apresElement, exposerMemoire }) {
-  const { entree, parametres, journal } = ctx;
-  if (!Array.isArray(entree)) throw new Error("liste attendue en entrée");
-  const { champ, reutiliser, budgetSecondes } = parametres;
+/**
+ * Un bloc par élément, élément par élément : ses règles (`reutiliser`, valeur absente, ElementNonLance, `siErreur`) et
+ * ses comptes. Sert à la boucle d'un bloc seul (`parElement`) et à la chaîne au fil de l'eau (`executerChaine`).
+ *   - `passer(i, element)` : l'élément après le bloc (sans `champ` s'il n'a pas de valeur cette fois) ; une erreur avec
+ *     `siErreur: "echouer"` est rangée dans `erreurBloc`, jamais levée ;
+ *   - `nonLance(i, element)` : l'élément passe le bloc sans y être lancé (temps, budget) ;
+ *   - `terminer()` : les lignes de journal de fin et le statut.
+ */
+function creerEtape(module, ctx, exposerMemoire) {
+  const { parametres, journal } = ctx;
+  const { champ, reutiliser } = parametres;
   const siErreur = parametres.siErreur ?? "sauter";
-  const limite = Math.min(echeance, budgetSecondes ? horloge() + budgetSecondes * 1000 : Infinity);
   const reutilises = reutiliser ? lireReutilises(ctx.memoire, ctx.maintenant, parametres.garderJours) : null;
   // Exécution progressive : ce que le bloc a déjà appris fait partie de la mémoire envoyée en cours de route.
   if (reutilises && exposerMemoire) exposerMemoire(() => ({ reutilises: borner(reutilises) }));
@@ -169,50 +176,86 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
   // Calculs en cours par clé de `reutiliser` : un élément de même clé attend celui-là plutôt que d'en lancer un second.
   const enCours = new Map();
 
-  // Un élément sans valeur cette fois (échec, non lancé, valeur absente) sort sans `champ`, même s'il en avait un :
-  // une ancienne valeur ne passe jamais pour celle de ce bloc (ia.trier ne trie pas sur une ancienne note).
-  const sansChamp = (element) => {
-    if (!estObjet(element) || !Object.hasOwn(element, champ)) return element;
-    const { [champ]: _ancienne, ...reste } = element;
-    return reste;
+  const etape = {
+    echecs: 0,
+    reussis: 0,
+    refuses: 0,
+    nonLances: 0,
+    // Premier refus du noyau (plafond, recherches arrêtées) : il vaut pour toute l'exécution, plus rien n'est lancé.
+    refusNoyau: null,
+    premiereErreur: null,
+    erreurBloc: null,
+    // Indices des éléments en échec, refusés par le noyau ou non lancés.
+    enEchec: new Set(),
+    reutilises,
+    // Un élément sans valeur cette fois (échec, non lancé, valeur absente) sort sans `champ`, même s'il en avait un :
+    // une ancienne valeur ne passe jamais pour celle de ce bloc (ia.trier ne trie pas sur une ancienne note).
+    sansChamp(element) {
+      if (!estObjet(element) || !Object.hasOwn(element, champ)) return element;
+      const { [champ]: _ancienne, ...reste } = element;
+      return reste;
+    },
+    async passer(i, element) {
+      try {
+        return await traiter(element);
+      } catch (e) {
+        if (e instanceof ValeurAbsente) {
+          journal(`élément ${i + 1} : ${e.message}`);
+          return etape.sansChamp(element);
+        }
+        if (e instanceof ElementNonLance) {
+          // Refusé par le noyau (plafond de recherches…) : non lancé, jamais un échec. Une ligne pour le premier, les
+          // suivants sont comptés ensemble à la fin.
+          etape.refuses++;
+          etape.enEchec.add(i);
+          if (etape.refusNoyau === null) {
+            etape.refusNoyau = e.message;
+            journal(`élément ${i + 1} : ${e.message}`);
+          }
+          return etape.sansChamp(element);
+        }
+        etape.echecs++;
+        etape.enEchec.add(i);
+        etape.premiereErreur ??= e;
+        journal(`élément ${i + 1} : ${message(e)}`);
+        if (siErreur === "echouer") etape.erreurBloc ??= e;
+        return etape.sansChamp(element);
+      }
+    },
+    nonLance(i, element) {
+      etape.nonLances++;
+      etape.enEchec.add(i);
+      return etape.sansChamp(element);
+    },
+    terminer() {
+      if (etape.refuses > 1) journal(`${etape.refuses - 1} autre(s) élément(s) non lancé(s)`);
+      if (etape.nonLances > 0) journal(`temps écoulé : ${etape.nonLances} élément(s) non lancé(s)`);
+      return etape.echecs > 0 || etape.nonLances > 0 || etape.refuses > 0 ? "partiel" : "reussi";
+    },
   };
-  const resultat = entree.map(sansChamp);
-  let suivant = 0;
-  let echecs = 0;
-  let reussis = 0;
-  let refuses = 0;
-  // Premier refus du noyau (plafond, recherches arrêtées) : il vaut pour toute l'exécution, plus rien n'est lancé.
-  let refusNoyau = null;
-  let premiereErreur = null;
-  let erreurBloc = null;
-  // Indices des éléments en échec ou refusés par le noyau (les non lancés faute de temps sont ajoutés à la fin).
-  const enEchec = new Set();
 
-  async function traiter(i) {
-    const element = entree[i];
+  async function traiter(element) {
     if (!estObjet(element)) throw new Error("l'élément n'est pas un objet");
     const cle = reutilises ? cleReutilisee(element, reutiliser) : null;
     if (cle !== null && reutilises.has(cle)) {
       const reprise = reutilises.get(cle);
       ranger(cle, reprise);
-      resultat[i] = { ...element, [champ]: reprise.valeur };
-      reussis++;
-      return;
+      etape.reussis++;
+      return { ...element, [champ]: reprise.valeur };
     }
     if (cle !== null && enCours.has(cle)) {
       // Le même calcul est en cours pour un autre élément : sa valeur, ou, s'il échoue, un calcul à soi.
       try {
         const valeur = await enCours.get(cle);
-        resultat[i] = { ...element, [champ]: valeur };
-        reussis++;
-        return;
+        etape.reussis++;
+        return { ...element, [champ]: valeur };
       } catch (e) {
         // Refusé par le noyau : celui-ci le serait aussi, inutile de redemander.
         if (e instanceof ElementNonLance) throw e;
         // Son erreur est comptée chez lui ; celui-ci tente à son tour.
       }
     }
-    if (refusNoyau !== null) throw new ElementNonLance(refusNoyau);
+    if (etape.refusNoyau !== null) throw new ElementNonLance(etape.refusNoyau);
     const calcul = (async () => {
       const valeur = await module.traiterElement({
         ...ctx,
@@ -229,37 +272,32 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
     } finally {
       if (cle !== null && enCours.get(cle) === calcul) enCours.delete(cle);
     }
-    resultat[i] = { ...element, [champ]: valeur };
-    reussis++;
+    etape.reussis++;
     if (cle !== null) ranger(cle, { valeur, date: ctx.maintenant });
+    return { ...element, [champ]: valeur };
   }
 
+  return etape;
+}
+
+/** Échéance d'un bloc par élément : l'échéance globale, avancée par `budgetSecondes` compté depuis `depuis`. */
+const limiteDe = (parametres, echeance, depuis) =>
+  Math.min(echeance, parametres.budgetSecondes ? depuis + parametres.budgetSecondes * 1000 : Infinity);
+
+/** Boucle par élément : rend { statut, sortie, memoire?, enEchec } ou lève l'erreur du bloc. */
+async function parElement(module, ctx, { echeance, horloge, apresElement, exposerMemoire }) {
+  const { entree } = ctx;
+  if (!Array.isArray(entree)) throw new Error("liste attendue en entrée");
+  const limite = limiteDe(ctx.parametres, echeance, horloge());
+  const etape = creerEtape(module, ctx, exposerMemoire);
+  const resultat = entree.map(etape.sansChamp);
+  let suivant = 0;
+
   async function ouvrier() {
-    while (!erreurBloc && suivant < entree.length && horloge() < limite) {
+    while (!etape.erreurBloc && suivant < entree.length && horloge() < limite) {
       const i = suivant++;
       try {
-        await traiter(i);
-      } catch (e) {
-        if (e instanceof ValeurAbsente) {
-          journal(`élément ${i + 1} : ${e.message}`);
-          continue;
-        }
-        if (e instanceof ElementNonLance) {
-          // Refusé par le noyau (plafond de recherches…) : non lancé, jamais un échec. Une ligne pour le premier, les
-          // suivants sont comptés ensemble à la fin.
-          refuses++;
-          enEchec.add(i);
-          if (refusNoyau === null) {
-            refusNoyau = e.message;
-            journal(`élément ${i + 1} : ${e.message}`);
-          }
-          continue;
-        }
-        echecs++;
-        enEchec.add(i);
-        premiereErreur ??= e;
-        journal(`élément ${i + 1} : ${message(e)}`);
-        if (siErreur === "echouer") erreurBloc ??= e;
+        resultat[i] = await etape.passer(i, entree[i]);
       } finally {
         apresElement?.();
       }
@@ -267,24 +305,22 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
   }
   await Promise.all(Array.from({ length: ELEMENTS_EN_PARALLELE }, ouvrier));
 
-  if (erreurBloc) throw erreurBloc;
+  if (etape.erreurBloc) throw etape.erreurBloc;
   // Pour un bloc qui le demande (ia.trier : sans aucune note, sa sortie vide ne veut rien dire), parmi les éléments
   // lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés (temps, refusés par le
   // noyau) ou sans valeur de gabarit ne comptent pas comme réussis. Les autres blocs (qui enrichissent) laissent passer
   // les éléments sans leur champ et finissent « partiel ».
-  if (module.echecSiTousEchouent === true && echecs > 0 && reussis === 0) {
-    throw new Error(`Tous les éléments ont échoué (${message(premiereErreur)})`);
+  if (module.echecSiTousEchouent === true && etape.echecs > 0 && etape.reussis === 0) {
+    throw new Error(`Tous les éléments ont échoué (${message(etape.premiereErreur)})`);
   }
-  if (refuses > 1) journal(`${refuses - 1} autre(s) élément(s) non lancé(s)`);
-  const nonLances = entree.length - suivant;
-  if (nonLances > 0) journal(`temps écoulé : ${nonLances} élément(s) non lancé(s)`);
-  for (let i = suivant; i < entree.length; i++) enEchec.add(i);
+  for (let i = suivant; i < entree.length; i++) etape.nonLance(i, entree[i]);
+  const statut = etape.terminer();
   const sortie = module.finaliser ? (await module.finaliser(resultat, ctx))?.sortie : resultat;
   return {
-    statut: echecs > 0 || nonLances > 0 || refuses > 0 ? "partiel" : "reussi",
+    statut,
     sortie,
-    ...(reutilises ? { memoire: { reutilises: borner(reutilises) } } : {}),
-    enEchec,
+    ...(etape.reutilises ? { memoire: { reutilises: borner(etape.reutilises) } } : {}),
+    enEchec: etape.enEchec,
   };
 }
 
@@ -311,7 +347,10 @@ function remplirOuLever(gabarit, element, config, options) {
  *   - les nouvelles clés d'un `liste.nouveaux` restent « en suspens » et ne sont retenues que résolues : l'élément a
  *     disparu entre l'entrée et la sortie d'un bloc en aval sans y être en échec (écarté par un tri, `garder`, un
  *     doublon, un bloc `code`), ou le bloc `sortie` a tourné. Un élément en échec ou non lancé (temps, budget, refus
- *     du noyau) dans un bloc par élément en aval garde sa clé hors de la mémoire : il reviendra la fois suivante.
+ *     du noyau) dans un bloc par élément en aval garde sa clé hors de la mémoire : il reviendra la fois suivante ;
+ *   - si la sortie publie au fil de l'eau (`chaineDe` non vide), les blocs de la chaîne tournent élément par élément
+ *     (`executerChaine`) : chaque élément terminé y résout sa clé, et des lignes `memoire` puis `publication`
+ *     montrent les éléments terminés au plus toutes les ECART_PUBLICATIONS_MS.
  * Sans `progressif`, rien de cela : toutes les nouvelles clés sont retenues et la mémoire n'est rendue qu'à la fin.
  */
 export async function executerWorkflow({
@@ -389,32 +428,40 @@ export async function executerWorkflow({
    * disparition ; si ensuite un élément sans clé échoue, on ne sait plus lequel : le suivi devient « aveugle », plus rien
    * n'est résolu dans cette exécution et les clés pas encore résolues reviendront la fois suivante.
    */
+  /**
+   * Un élément en échec ou non lancé en aval d'un `liste.nouveaux` suivi : sa clé (nouvelle de cette fois) passe en
+   * échec et revient en suspens. Sans clé alors que le champ a été perdu en route : on ne sait plus lequel, le suivi
+   * devient aveugle.
+   */
+  function noterEchec(suivi, cle) {
+    if (cle === null) {
+      if (suivi.clePerdue && !suivi.aveugle) {
+        suivi.aveugle = true;
+        tracer({
+          t: "journal",
+          bloc: suivi.id,
+          texte: `le champ ${suivi.chemin} n'est plus dans les éléments : un élément en échec n'a pas pu être reconnu, les éléments pas encore résolus reviendront la fois suivante`,
+        });
+      }
+    } else if (suivi.nouvelles.has(cle)) {
+      suivi.enEchec.add(cle);
+      suivi.enSuspens.add(cle);
+    }
+  }
+
+  const cleSuivie = (suivi, element) => (estObjet(element) ? enCle(lireChemin(element, suivi.chemin)) : null);
+
   function suivreCles(bloc, entree, r) {
     for (const suivi of suivis.values()) {
       if (suivi.aval.has(bloc.id)) {
-        const cleDe = (element) => (estObjet(element) ? enCle(lireChemin(element, suivi.chemin)) : null);
+        const cleDe = (element) => cleSuivie(suivi, element);
         const entrees = elementsDe(entree);
         const restees = elementsDe(r.sortie);
         const sansCle = (liste) => liste.filter((e) => cleDe(e) === null).length;
         const perteIci = sansCle(restees) > sansCle(entrees);
         if (perteIci) suivi.clePerdue = true;
         if (Array.isArray(entree) && r.enEchec) {
-          for (const i of r.enEchec) {
-            const cle = cleDe(entree[i]);
-            if (cle === null) {
-              if (suivi.clePerdue && !suivi.aveugle) {
-                suivi.aveugle = true;
-                tracer({
-                  t: "journal",
-                  bloc: suivi.id,
-                  texte: `le champ ${suivi.chemin} n'est plus dans les éléments : un élément en échec n'a pas pu être reconnu, les éléments pas encore résolus reviendront la fois suivante`,
-                });
-              }
-            } else if (suivi.nouvelles.has(cle)) {
-              suivi.enEchec.add(cle);
-              suivi.enSuspens.add(cle);
-            }
-          }
+          for (const i of r.enEchec) noterEchec(suivi, cleDe(entree[i]));
         }
         if (!suivi.aveugle && !perteIci) {
           const clesRestees = new Set(restees.map(cleDe));
@@ -430,6 +477,178 @@ export async function executerWorkflow({
     }
   }
 
+  const journalDe = (id) => (texte) => tracer({ t: "journal", bloc: id, texte: tronquer(String(texte), TEXTE_TRACE_MAX) });
+  /** Ce que reçoit un bloc, hors entrée : configuration, mémoire, horloge, journal, `webaios`. */
+  const optionsBloc = (id, bloc, journal) => ({
+    blocs,
+    config,
+    maintenant: instant,
+    dossier,
+    echeance,
+    horloge,
+    journal,
+    memoire: memoire[id]?.type === bloc.type ? memoire[id].valeur : null,
+    webaios: creerWebaios({
+      appeler,
+      config,
+      precedent,
+      maintenant,
+      journal: (...a) => {
+        const texte = formater(...a);
+        versErreur(texte);
+        journal(texte);
+      },
+    }),
+  });
+
+  /** La trace `fin` d'un bloc réussi ou partiel, sans la sortie si elle ne tient pas sur une ligne. */
+  function tracerFin(id, statut, sortie) {
+    const fin = { t: "bloc", id, etape: "fin", statut, sortie };
+    if (Buffer.byteLength(JSON.stringify(fin)) > LIGNE_MAX) {
+      tracer({ t: "bloc", id, etape: "fin", statut, sortieTropGrosse: true });
+    } else tracer(fin);
+  }
+
+  // Au fil de l'eau : seulement pour une exécution progressive (jamais un essai).
+  const chaine = enProgression ? chaineDe(workflow, blocs) : [];
+  const dansLaChaine = new Set(chaine);
+
+  /**
+   * La chaîne au fil de l'eau : chaque élément de l'entrée traverse tous ses blocs avant d'être terminé, deux éléments
+   * à la fois, avec par bloc les règles d'un bloc par élément (`creerEtape`). L'échéance d'un bloc est le début de la
+   * chaîne plus son `budgetSecondes`, bornée par l'échéance globale ; un élément qui arrive à un bloc après elle le
+   * passe sans son champ (non lancé pour ce bloc) et continue. Plus aucun élément n'entre dans la chaîne après
+   * l'échéance globale.
+   *
+   * À chaque élément terminé, sa clé est résolue (ou, s'il a échoué ou n'a pas été lancé dans un bloc, mise en échec) ;
+   * puis, si ECART_PUBLICATIONS_MS est passé depuis la dernière publication (ou s'il n'y en a pas encore eu), la ligne
+   * `memoire` part, puis `publication` : un élément publié n'est donc jamais retraité la fois suivante, même si le
+   * conteneur s'arrête juste après.
+   *
+   * Traces : `debut` de tous les blocs de la chaîne d'un coup, au début, et leurs `fin` à la fin. La durée retenue pour
+   * chaque bloc de la chaîne est donc celle de toute la chaîne, pas le temps passé dans ce bloc.
+   */
+  async function executerChaine(entree) {
+    const debutChaine = horloge();
+    for (const id of chaine) tracer({ t: "bloc", id, etape: "debut" });
+    const etapes = chaine.map((id) => {
+      const bloc = parId.get(id);
+      const journal = journalDe(id);
+      const { module, parametres, ctx } = contexteBloc(bloc, entree, optionsBloc(id, bloc, journal));
+      return {
+        id,
+        bloc,
+        etape: creerEtape(module, ctx, (lire) => memoireEnCours.set(id, lire)),
+        limite: limiteDe(parametres, echeance, debutChaine),
+      };
+    });
+
+    /** Le bloc `b` échoue avec `e`, les autres de la chaîne finissent « partiel » ; la mémoire part avant l'erreur. */
+    const echouer = (b, e) => {
+      chaine.forEach((id, k) =>
+        tracer(
+          k === b
+            ? { t: "bloc", id, etape: "fin", statut: "echoue", erreur: tronquer(message(e), TEXTE_TRACE_MAX) }
+            : { t: "bloc", id, etape: "fin", statut: "partiel" },
+        ),
+      );
+      envoyerMemoire();
+      throw e instanceof Error ? e : new Error(message(e));
+    };
+
+    if (!Array.isArray(entree)) echouer(0, new Error("liste attendue en entrée"));
+    const n = entree.length;
+    // La liste telle qu'après chaque bloc.
+    const apres = chaine.map(() => new Array(n));
+    const termines = new Array(n).fill(false);
+    let faits = 0;
+    let suivant = 0;
+    let erreur = null;
+    let dernierePublication = null;
+    const suivisAmont = [...suivis.values()].filter((s) => s.aval.has(chaine[0]));
+
+    /** L'élément `i` à travers tous les blocs ; false s'il est abandonné (l'exécution échoue). */
+    async function parcourir(i) {
+      let element = entree[i];
+      for (let b = 0; b < etapes.length; b++) {
+        if (erreur) return false;
+        const { id, etape, limite } = etapes[b];
+        if (horloge() >= limite) element = etape.nonLance(i, element);
+        else {
+          element = await etape.passer(i, element);
+          if (etape.erreurBloc) {
+            erreur ??= { b, e: etape.erreurBloc };
+            return false;
+          }
+        }
+        // Ce qui circule entre les blocs est du JSON, copié : un bloc ne modifie pas ce qu'un autre a rendu.
+        const copie = copieJson(element);
+        if (copie === undefined) {
+          erreur ??= { b, e: new Error(`le bloc ${id} doit rendre du JSON`) };
+          return false;
+        }
+        apres[b][i] = copie;
+        element = structuredClone(copie);
+      }
+      return true;
+    }
+
+    /** Clés de l'élément `i` terminé : résolue s'il a passé tous les blocs, en échec sinon. */
+    function resoudre(i) {
+      const echoue = etapes.some(({ etape }) => etape.enEchec.has(i));
+      for (const suivi of suivisAmont) {
+        const cle = cleSuivie(suivi, entree[i]);
+        if (echoue) noterEchec(suivi, cle);
+        else if (!suivi.aveugle && cle !== null && !suivi.enEchec.has(cle)) suivi.enSuspens.delete(cle);
+      }
+    }
+
+    function publier() {
+      dernierePublication = horloge();
+      envoyerMemoire();
+      const donnees = apres[apres.length - 1].filter((_, i) => termines[i]);
+      try {
+        tracer({ t: "publication", donnees, faits, total: n });
+      } catch (e) {
+        // Trop grosse pour une ligne : la suivante, ou la sortie, la remplacera.
+        versErreur(`publication non envoyée : ${message(e)}`);
+      }
+    }
+
+    async function ouvrier() {
+      while (!erreur && suivant < n && horloge() < echeance) {
+        const i = suivant++;
+        if (await parcourir(i)) {
+          termines[i] = true;
+          faits++;
+          resoudre(i);
+          if (dernierePublication === null || horloge() - dernierePublication >= ECART_PUBLICATIONS_MS) {
+            publier();
+            continue;
+          }
+        }
+        verifierMemoire();
+      }
+    }
+    await Promise.all(Array.from({ length: ELEMENTS_EN_PARALLELE }, ouvrier));
+    if (erreur) echouer(erreur.b, erreur.e);
+
+    // Plus aucun élément n'entre après l'échéance globale : ceux-là passent tous les blocs sans y être lancés.
+    for (let i = suivant; i < n; i++) {
+      let element = entree[i];
+      etapes.forEach(({ etape }, b) => (element = apres[b][i] = etape.nonLance(i, element)));
+    }
+    etapes.forEach(({ id, bloc, etape }, b) => {
+      const statut = etape.terminer();
+      memoireEnCours.delete(id);
+      if (etape.reutilises) nouvelleMemoire.set(id, { reutilises: borner(etape.reutilises) });
+      sorties.set(id, apres[b]);
+      suivreCles(bloc, b === 0 ? entree : apres[b - 1], { sortie: apres[b], enEchec: etape.enEchec });
+      tracerFin(id, statut, apres[b]);
+    });
+    verifierMemoire();
+  }
+
   for (const id of workflow.ordre) {
     if (relances && !relances.has(id)) {
       // Ni lancé ni tracé : sa sortie, s'il en faut une, est celle de l'exécution d'origine.
@@ -439,30 +658,17 @@ export async function executerWorkflow({
     const bloc = parId.get(id);
     const preds = predecesseurs.get(id);
     const entree = preds.length === 0 ? null : preds.length === 1 ? sorties.get(preds[0]) : Object.fromEntries(preds.map((p) => [p, sorties.get(p)]));
+    if (dansLaChaine.has(id)) {
+      // Toute la chaîne d'un coup, à son premier bloc (une tranche contiguë de l'ordre).
+      if (id === chaine[0]) await executerChaine(entree);
+      continue;
+    }
     tracer({ t: "bloc", id, etape: "debut" });
-    const journal = (texte) => tracer({ t: "journal", bloc: id, texte: tronquer(String(texte), TEXTE_TRACE_MAX) });
+    const journal = journalDe(id);
     let r;
     try {
       r = await executerBloc(bloc, entree, {
-        blocs,
-        config,
-        maintenant: instant,
-        dossier,
-        echeance,
-        horloge,
-        journal,
-        memoire: memoire[id]?.type === bloc.type ? memoire[id].valeur : null,
-        webaios: creerWebaios({
-          appeler,
-          config,
-          precedent,
-          maintenant,
-          journal: (...a) => {
-            const texte = formater(...a);
-            versErreur(texte);
-            journal(texte);
-          },
-        }),
+        ...optionsBloc(id, bloc, journal),
         ...(enProgression ? { apresElement: verifierMemoire, exposerMemoire: (lire) => memoireEnCours.set(id, lire) } : {}),
       });
     } catch (e) {
@@ -490,10 +696,7 @@ export async function executerWorkflow({
       }
     }
     if (bloc.type === "sortie") donnees = r.sortie;
-    const fin = { t: "bloc", id, etape: "fin", statut: r.statut, sortie: r.sortie };
-    if (Buffer.byteLength(JSON.stringify(fin)) > LIGNE_MAX) {
-      tracer({ t: "bloc", id, etape: "fin", statut: r.statut, sortieTropGrosse: true });
-    } else tracer(fin);
+    tracerFin(id, r.statut, r.sortie);
     if (enProgression) verifierMemoire();
   }
 
@@ -525,6 +728,62 @@ function descendants(workflow, id) {
   return vus;
 }
 
+/** Un bloc que chaque élément peut traverser seul : par élément en option, sans `finaliser` ni `echecSiTousEchouent`. */
+function chainable(bloc, blocs) {
+  const module = Object.hasOwn(blocs, bloc.type) ? blocs[bloc.type] : undefined;
+  return (
+    module?.parElement === "option" &&
+    !module.finaliser &&
+    module.echecSiTousEchouent !== true &&
+    bloc.parametres?.parElement === true
+  );
+}
+
+/**
+ * La chaîne « au fil de l'eau », recopie de `chaineAuFilDeLEau` (src/workflows/chaine.ts ; un test vérifie qu'elles
+ * s'accordent) : les blocs que chaque élément traverse seul jusqu'à la sortie, dans l'ordre d'exécution. Vide si la
+ * sortie ne publie pas au fil de l'eau ou n'a pas exactement un prédécesseur. En remontant depuis le prédécesseur de la
+ * sortie, on prend un bloc tant qu'il est chaînable et qu'il n'a qu'un successeur (le bloc pris juste avant, ou la
+ * sortie) ; on remonte par son unique prédécesseur, et on s'arrête après lui s'il en a plusieurs. Enfin, on retire des
+ * blocs au début tant que la suite n'est pas une tranche contiguë de l'ordre. Un essai n'a pas de chaîne : c'est à
+ * l'appelant d'en juger (executerWorkflow ne la cherche que pour une exécution progressive).
+ */
+export function chaineDe(workflow, blocs) {
+  const parId = new Map(workflow.blocs.map((b) => [b.id, b]));
+  const sortieBloc = workflow.blocs.find((b) => b.type === "sortie");
+  if (sortieBloc?.parametres?.auFilDeLEau !== true) return [];
+  const predecesseurs = new Map(workflow.blocs.map((b) => [b.id, []]));
+  const successeurs = new Map(workflow.blocs.map((b) => [b.id, []]));
+  for (const { de, vers } of workflow.liens) {
+    if (predecesseurs.has(vers) && !predecesseurs.get(vers).includes(de)) predecesseurs.get(vers).push(de);
+    if (successeurs.has(de) && !successeurs.get(de).includes(vers)) successeurs.get(de).push(vers);
+  }
+  const amont = predecesseurs.get(sortieBloc.id);
+  if (amont.length !== 1) return [];
+
+  const chaine = [];
+  let suivant = sortieBloc.id;
+  let courant = amont[0];
+  while (courant !== undefined) {
+    const b = parId.get(courant);
+    if (!b || !chainable(b, blocs)) break;
+    const apres = successeurs.get(courant);
+    if (apres.length !== 1 || apres[0] !== suivant) break;
+    chaine.unshift(courant);
+    const avant = predecesseurs.get(courant);
+    if (avant.length !== 1) break;
+    suivant = courant;
+    courant = avant[0];
+  }
+
+  while (chaine.length > 0) {
+    const debut = workflow.ordre.indexOf(chaine[0]);
+    if (chaine.every((id, i) => workflow.ordre[debut + i] === id)) break;
+    chaine.shift();
+  }
+  return chaine;
+}
+
 /** Copie des listes que bornerMemoire raccourcit sur place (la mémoire en cours sert encore après un envoi). */
 function copieBornable(valeur) {
   if (Array.isArray(valeur)) return [...valeur];
@@ -532,8 +791,8 @@ function copieBornable(valeur) {
   return valeur;
 }
 
-/** Un bloc : rend { statut, sortie (JSON), memoire?, enEchec?, nouvelles?, memoireEntiere? } ou lève son erreur. */
-async function executerBloc(bloc, entree, o) {
+/** Le module d'un bloc et le `ctx` qu'il reçoit (voir le contrat en tête du fichier). */
+function contexteBloc(bloc, entree, o) {
   const module = Object.hasOwn(o.blocs, bloc.type) ? o.blocs[bloc.type] : undefined;
   if (!module) throw new Error(`type inconnu dans le conteneur : ${bloc.type}`);
   const parametres = bloc.parametres ?? {};
@@ -553,6 +812,23 @@ async function executerBloc(bloc, entree, o) {
       if (raison) o.journal(raison);
     },
   };
+  return { module, parametres, ctx, estPartiel: () => partiel };
+}
+
+/** Une valeur passée par JSON (ce qui circule entre les blocs) ; undefined si ce n'en est pas. */
+function copieJson(valeur) {
+  let json;
+  try {
+    json = JSON.stringify(valeur);
+  } catch {
+    return undefined;
+  }
+  return json === undefined ? undefined : JSON.parse(json);
+}
+
+/** Un bloc : rend { statut, sortie (JSON), memoire?, enEchec?, nouvelles?, memoireEntiere? } ou lève son erreur. */
+async function executerBloc(bloc, entree, o) {
+  const { module, parametres, ctx, estPartiel } = contexteBloc(bloc, entree, o);
   const elementParElement = module.parElement === "toujours" || (module.parElement === "option" && parametres.parElement === true);
   let r;
   if (elementParElement) {
@@ -567,7 +843,7 @@ async function executerBloc(bloc, entree, o) {
     try {
       const rendu = await module.executer(ctx);
       r = {
-        statut: partiel ? "partiel" : "reussi",
+        statut: estPartiel() ? "partiel" : "reussi",
         sortie: rendu?.sortie,
         ...(rendu?.memoire !== undefined ? { memoire: rendu.memoire } : {}),
         // liste.nouveaux : les clés nouvelles de cette fois (en suspens d'une exécution progressive).
@@ -581,12 +857,7 @@ async function executerBloc(bloc, entree, o) {
     }
   }
   // Ce qui circule entre les blocs est du JSON (copié : un bloc ne modifie pas la sortie d'un autre).
-  let json;
-  try {
-    json = JSON.stringify(r.sortie);
-  } catch {
-    json = undefined;
-  }
-  if (json === undefined) throw new Error(`le bloc ${bloc.id} doit rendre du JSON`);
-  return { ...r, sortie: JSON.parse(json) };
+  const sortie = copieJson(r.sortie);
+  if (sortie === undefined) throw new Error(`le bloc ${bloc.id} doit rendre du JSON`);
+  return { ...r, sortie };
 }
