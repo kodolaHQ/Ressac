@@ -359,6 +359,9 @@ app.whenReady().then(async () => {
     },
     invisible: INVISIBLE,
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
+    preloadCorrectifs: join(__dirname, "../preload/extensions.js"),
+    noterVue: (cle, profil, version) => serviceExtensions.noterVue(cle, profil, version),
+    // verifierUrl / verifierHote : branchés par la tâche 12 pour les extensions de l'agent ; absents, tout est permis.
   });
   // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.
   const sessions = new SessionsProfils({

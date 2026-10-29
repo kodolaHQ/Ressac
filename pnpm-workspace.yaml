@@ -7,4 +7,5 @@ allowBuilds:
   esbuild: true
   node-pty: true
 patchedDependencies:
+  electron-chrome-extensions@4.10.0: patches/electron-chrome-extensions@4.10.0.patch
   electron-chrome-web-store@0.13.0: patches/electron-chrome-web-store@0.13.0.patch

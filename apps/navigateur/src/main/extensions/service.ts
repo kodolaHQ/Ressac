@@ -103,6 +103,29 @@ export class ServiceExtensions {
     return this.etat;
   }
 
+  /**
+   * Note la version démarrée d'une extension dans un profil (`vues[profil]`, pour `onInstalled` et les rulesets du
+   * manifeste). Lu et écrit dans la même modification sérialisée : deux démarrages simultanés n'ont qu'une seule
+   * « première fois ». Les sessions ne sont pas resynchronisées (les vues ne changent pas ce qui est chargé).
+   */
+  async noterVue(cle: string, profil: IdProfil, version: string): Promise<{ nouvelle: boolean; precedente?: string }> {
+    const o = this.o;
+    if (!o) throw new Error("Service des extensions non démarré");
+    let resultat: { nouvelle: boolean; precedente?: string } = { nouvelle: false };
+    this.etat = await modifierEtatExtensions(
+      o.dossier,
+      (e) => {
+        const x = e.extensions[cle];
+        const precedente = x?.vues[profil];
+        if (!x || precedente === version) return e;
+        resultat = precedente ? { nouvelle: true, precedente } : { nouvelle: true };
+        return { ...e, extensions: { ...e.extensions, [cle]: { ...x, vues: { ...x.vues, [profil]: version } } } };
+      },
+      () => profilsPrives(o.magasin.etat),
+    );
+    return resultat;
+  }
+
   /** La dernière erreur de préparation ou de chargement de chaque clé. */
   erreurs(): Map<string, string> {
     return new Map([...this.erreursPreparation, ...(this.o?.profils.erreursChargement() ?? [])]);

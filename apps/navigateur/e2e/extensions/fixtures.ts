@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createPublicKey } from "node:crypto";
+import { createPublicKey, type KeyObject } from "node:crypto";
 import { construireCrx } from "./crx";
 
 /** Écrit une extension : chaque fichier par chemin relatif (un objet est écrit en JSON). */
@@ -90,21 +90,115 @@ rapporter("demarrage");
 `,
 };
 
-export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde } as const;
+/**
+ * Les correctifs de la spec §4.3, vus de l'intérieur d'une extension du Store (« Bitwarden-like » : `nativeMessaging`).
+ * Le fond (en mode strict, comme les extensions empaquetées) note ce qu'il observe et tient un journal (`journal` dans
+ * `storage.local` : chaque démarrage, chaque `onInstalled`). Le script de contenu écrit `storage.sync` puis le relit
+ * (`data-sync` de la page), et selon l'URL de la page demande au fond (réponse JSON dans `data-<demande>`) :
+ * - `couper-regles` (`data-couper`) : coupe le ruleset statique « regles » (`updateEnabledRulesets`) ;
+ * - `natif` (`data-natif`) : `connectNative("com.webaios.essai")`, et l'erreur reçue à la fermeture du port ;
+ * - sinon (`data-rapport`) : `{ browserEstChrome, commandes, ajout, journal, rulesets }`.
+ * Son ruleset statique « regles », activé dans le manifeste, bloque le script `/pub.js`.
+ */
+const sondeCorrectifs = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Sonde des correctifs",
+    version: "1.0.0",
+    permissions: ["storage", "declarativeNetRequest", "nativeMessaging"],
+    background: { service_worker: "fond.js" },
+    declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
+    content_scripts: [{ matches: ["<all_urls>"], js: ["contenu.js"] }],
+  },
+  "regles.json": [{ id: 1, priority: 1, action: { type: "block" }, condition: { urlFilter: "/pub.js", resourceTypes: ["script"] } }],
+  "fond.js": `"use strict";
+let ajout;
+try {
+  chrome.webaiosAjout = 1;
+  ajout = chrome.webaiosAjout === 1 ? "gardee" : "perdue";
+} catch (e) {
+  ajout = "erreur : " + e.message;
+}
+const observe = {
+  browserEstChrome: typeof browser !== "undefined" && browser === chrome,
+  commandes: typeof browser !== "undefined" && browser ? typeof browser.commands : "sans browser",
+  ajout,
+};
+let file = Promise.resolve();
+function noter(entree) {
+  file = file.then(async () => {
+    const { journal = [] } = await chrome.storage.local.get("journal");
+    journal.push(entree);
+    await chrome.storage.local.set({ journal });
+  });
+  return file;
+}
+chrome.runtime.onInstalled.addListener((d) => noter({ e: "installe", raison: d.reason, precedente: d.previousVersion ?? null }));
+noter({ e: "demarrage", version: chrome.runtime.getManifest().version });
+chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
+  if (m === "rapport") {
+    file.then(async () => {
+      const { journal = [] } = await chrome.storage.local.get("journal");
+      repondre({ ...observe, journal, rulesets: await chrome.declarativeNetRequest.getEnabledRulesets() });
+    });
+    return true;
+  }
+  if (m === "couper") {
+    chrome.declarativeNetRequest.updateEnabledRulesets({ disableRulesetIds: ["regles"] }).then(async () => repondre(await chrome.declarativeNetRequest.getEnabledRulesets()));
+    return true;
+  }
+  if (m === "natif") {
+    try {
+      const port = chrome.runtime.connectNative("com.webaios.essai");
+      port.onDisconnect.addListener(() => repondre({ erreur: chrome.runtime.lastError ? chrome.runtime.lastError.message : null }));
+      port.postMessage({ bonjour: 1 });
+    } catch (e) {
+      repondre({ exception: e.message });
+    }
+    return true;
+  }
+});
+`,
+  "contenu.js": `(async () => {
+  const racine = document.documentElement;
+  try {
+    await chrome.storage.sync.set({ essai: "valeur-sync" });
+    const lu = await chrome.storage.sync.get("essai");
+    racine.dataset.sync = String(lu.essai);
+  } catch (e) {
+    racine.dataset.sync = "erreur : " + e.message;
+  }
+  const demande = location.search.includes("couper-regles") ? "couper" : location.search.includes("natif") ? "natif" : "rapport";
+  try {
+    racine.dataset[demande] = JSON.stringify((await chrome.runtime.sendMessage(demande)) ?? null);
+  } catch (e) {
+    racine.dataset[demande] = JSON.stringify({ exception: e.message });
+  }
+})();
+`,
+};
+
+export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 
 /**
  * Installe une extension de test comme si elle venait du Store, dans le profil `dossierProfil` (userData) : le CRX est
  * construit (son id vient de sa clé), son contenu posé dans `extensions/store/<id>/<version>_0` avec la clé publique
  * dans le manifeste (comme le fait l'installeur), et son entrée écrite au registre, accordée et active dans `profils`.
+ * Une nouvelle version (`version`) de la même extension reprend sa `cle` ; ses `vues` au registre sont gardées.
  */
-export function installerStoreFactice(dossierProfil: string, extension: ExtensionTest, o: { profils: string[] }): { id: string } {
+export function installerStoreFactice(
+  dossierProfil: string,
+  extension: ExtensionTest,
+  o: { profils: string[]; version?: string; cle?: KeyObject },
+): { id: string; cle: KeyObject } {
   const source = mkdtempSync(join(tmpdir(), "webaios-ext-source-"));
   try {
     const fichiers = EXTENSIONS_TEST[extension];
-    ecrireExtension(source, fichiers);
-    const { id, cle } = construireCrx(source);
-    const manifeste = fichiers["manifest.json"] as { name: string; version: string; permissions?: string[] };
+    const lu = fichiers["manifest.json"] as { name: string; version: string; permissions?: string[] };
+    const manifeste = { ...lu, version: o.version ?? lu.version };
+    ecrireExtension(source, { ...fichiers, "manifest.json": manifeste });
+    const { id, cle } = construireCrx(source, o.cle ? { cle: o.cle } : {});
     const cible = join(dossierProfil, "extensions", "store", id, `${manifeste.version}_0`);
     mkdirSync(dirname(cible), { recursive: true });
     cpSync(source, cible, { recursive: true });
@@ -118,6 +212,7 @@ export function installerStoreFactice(dossierProfil: string, extension: Extensio
     } catch {
       // Registre absent : il est créé.
     }
+    const ancienne = etat.extensions[`store:${id}`] as { vues?: Record<string, string> } | undefined;
     etat.extensions[`store:${id}`] = {
       source: "store",
       idChrome: id,
@@ -129,10 +224,10 @@ export function installerStoreFactice(dossierProfil: string, extension: Extensio
       modifieeLe: null,
       desactivee: null,
       majEnAttente: null,
-      vues: {},
+      vues: ancienne?.vues ?? {},
     };
     writeFileSync(fichierEtat, JSON.stringify(etat, null, 2));
-    return { id };
+    return { id, cle };
   } finally {
     rmSync(source, { recursive: true, force: true });
   }

@@ -1,9 +1,39 @@
-import { appendFileSync } from "node:fs";
-import { join } from "node:path";
-import { app, session as sessionsElectron, type BrowserWindow, type Session, type WebContents } from "electron";
+import { appendFileSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { app, ipcMain, session as sessionsElectron, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
 import { ElectronChromeExtensions } from "electron-chrome-extensions";
 import { chargeesDans, lireCle, type EtatExtensions, type IdProfil } from "@webaios/noyau";
 import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
+import { connexionNative } from "./natif";
+
+/** Canal du preload des correctifs (`src/preload/extensions.ts`) : service workers et pages `chrome-extension://`. */
+export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
+
+/**
+ * Ce que Chrome aurait fait au chargement, donné une fois par version et par profil : `installation` pour
+ * `runtime.onInstalled`, et les rulesets statiques du manifeste à activer (seulement cette fois-là : un ruleset coupé
+ * ensuite par l'extension reste coupé). `agent` : extension de l'agent.
+ */
+export interface DemarrageExtension {
+  installation: { reason: "install" | "update"; previousVersion?: string } | null;
+  rulesets: string[];
+  agent: boolean;
+}
+
+/** Les `rule_resources` du manifeste à `enabled: true`. */
+export function rulesetsDuManifeste(manifeste: unknown): string[] {
+  const r = (manifeste as { declarative_net_request?: { rule_resources?: unknown } } | null)?.declarative_net_request?.rule_resources;
+  if (!Array.isArray(r)) return [];
+  return r.filter((x): x is { id: string } => typeof x === "object" && x !== null && x.enabled === true && typeof x.id === "string").map((x) => x.id);
+}
+
+function cheminReel(chemin: string): string {
+  try {
+    return realpathSync(chemin);
+  } catch {
+    return resolve(chemin);
+  }
+}
 
 /** Où ouvrir l'onglet demandé par une extension : une fenêtre et un espace du profil de l'extension. */
 export interface CibleOnglet {
@@ -64,6 +94,11 @@ export function detournerNotifications(extensions: ElectronChromeExtensions, fic
 
 let fenetresNeutralisees = false;
 let protocoleCrx = false;
+/** Les instances vivantes : le canal des pages (`ipcMain`, un seul par processus) cherche celle de la session. */
+const instancesVivantes = new Set<ExtensionsProfils>();
+let canalPagesPose = false;
+/** Service workers dont le canal de démarrage est posé. */
+const workersEcoutes = new WeakSet<object>();
 /** Sessions équipées par la bibliothèque dans ce processus (chacune ajoute un écouteur à `app`). */
 let sessionsEquipees = 0;
 
@@ -81,6 +116,8 @@ export class ExtensionsProfils {
   private erreurs = new Map<string, string>();
   private dernier: EtatExtensions | undefined;
   private file: Promise<void> = Promise.resolve();
+  /** Par profil : clé → dossier voulu (posé avant le chargement : un service worker peut démarrer pendant celui-ci). */
+  private voulues = new Map<IdProfil, Map<string, string>>();
   /** Pendant nos propres appels à la bibliothèque, ses rappels `selectTab` / `removeTab` ne reviennent pas vers WebAiOs. */
   private echo = false;
 
@@ -103,8 +140,30 @@ export class ExtensionsProfils {
       invisible: boolean;
       /** Tests : les notifications des extensions y sont notées (une ligne JSON), jamais montrées. */
       fichierNotifications?: string;
+      /** Le preload des correctifs (`out/preload/extensions.js`). */
+      preloadCorrectifs: string;
+      /**
+       * Note au registre la version démarrée dans ce profil (`vues[profil]`) : `nouvelle` si elle ne l'était pas encore,
+       * avec la version vue avant (`precedente`, absente à la première installation).
+       */
+      noterVue(cle: string, profil: IdProfil, version: string): Promise<{ nouvelle: boolean; precedente?: string }>;
+      /** `tabs.create`, `tabs.update`, `windows.create` d'une extension vers `url` ; absent : permis. */
+      verifierUrl?(extension: Electron.Extension, url: string): boolean;
+      /** `tabs.insertCSS` d'une extension dans un onglet à l'adresse `url` ; absent : permis. */
+      verifierHote?(extension: Electron.Extension, url: string): boolean;
     },
   ) {
+    instancesVivantes.add(this);
+    if (!canalPagesPose) {
+      canalPagesPose = true;
+      ipcMain.handle(CANAL_DEMARRAGE, (e) => {
+        for (const x of instancesVivantes) {
+          const r = x.demarrageDepuisPage(e);
+          if (r) return r;
+        }
+        throw new Error("Expéditeur refusé : pas une page d'extension chargée");
+      });
+    }
     // Les popups d'action, et toute autre fenêtre, restent cachées pendant les tests (yeux de l'utilisateur).
     if (o.invisible && !fenetresNeutralisees) {
       fenetresNeutralisees = true;
@@ -145,6 +204,22 @@ export class ExtensionsProfils {
       // Ni fermeture de fenêtre principale par une extension, ni destruction par la bibliothèque.
       removeWindow: () => {},
       requestPermissions: async () => false,
+      // Crochets du correctif de la bibliothèque (patches/electron-chrome-extensions@4.10.0.patch).
+      verifierUrl: (extension, url) => this.o.verifierUrl?.(extension, url) ?? true,
+      verifierHote: (extension, url) => this.o.verifierHote?.(extension, url) ?? true,
+      connectNative: connexionNative,
+    });
+    // Après ceux de la bibliothèque : `chrome` y est déjà complété.
+    s.registerPreloadScript({ id: "webaios-extensions-fond", type: "service-worker", filePath: this.o.preloadCorrectifs });
+    s.registerPreloadScript({ id: "webaios-extensions-page", type: "frame", filePath: this.o.preloadCorrectifs });
+    // Comme le routeur de la bibliothèque : les IPC d'un service worker arrivent sur son propre `ipc`.
+    s.serviceWorkers.on("running-status-changed", ({ runningStatus, versionId }) => {
+      if (runningStatus !== "starting") return;
+      const worker = s.serviceWorkers.getWorkerFromVersionID(versionId);
+      if (!worker || workersEcoutes.has(worker) || !worker.scope.startsWith("chrome-extension://")) return;
+      workersEcoutes.add(worker);
+      const id = new URL(worker.scope).host;
+      worker.ipc.handle(CANAL_DEMARRAGE, () => this.demarrage(profil, s, id, "fond"));
     });
     // Lève si c'est impossible : le profil n'est alors pas enregistré, et aucune extension n'y sera jamais chargée.
     if (this.o.invisible || this.o.fichierNotifications) detournerNotifications(extensions, this.o.fichierNotifications);
@@ -177,6 +252,59 @@ export class ExtensionsProfils {
         chargees.delete(cle);
       }
     }
+  }
+
+  /**
+   * Canal des pages : null si l'expéditeur n'est pas dans une session de cette instance ; lève si ce n'est pas une
+   * page `chrome-extension://` d'une extension chargée dans sa session.
+   */
+  demarrageDepuisPage(e: IpcMainInvokeEvent): Promise<DemarrageExtension> | null {
+    const s = e.sender.session;
+    const profil = [...this.instances].find(([, x]) => x.session === s)?.[0];
+    if (profil === undefined) return null;
+    let id = "";
+    try {
+      const url = new URL(e.senderFrame?.url ?? "");
+      if (url.protocol === "chrome-extension:") id = url.host;
+    } catch {
+      // Adresse illisible : refusée plus bas.
+    }
+    if (!id || !s.extensions.getExtension(id)) throw new Error("Expéditeur refusé : pas une page d'extension chargée");
+    return this.demarrage(profil, s, id, "page");
+  }
+
+  /**
+   * Réponse au preload des correctifs. La première fois qu'une version démarre dans un profil (registre, `vues`) :
+   * l'installation (`install`, ou `update` avec la version précédente) et les rulesets du manifeste ; ensuite rien. Une
+   * page d'une extension qui a un fond ne reçoit jamais l'installation : c'est son fond qui la reçoit.
+   */
+  private async demarrage(profil: IdProfil, s: Session, id: string, contexte: "fond" | "page"): Promise<DemarrageExtension> {
+    const vide = (agent: boolean): DemarrageExtension => ({ installation: null, rulesets: [], agent });
+    const ext = s.extensions.getExtension(id);
+    const cle = ext ? this.cleDe(profil, ext) : undefined;
+    if (!ext || !cle) return vide(false);
+    const agent = lireCle(cle)?.source === "agent";
+    if (contexte === "page" && (ext.manifest as { background?: unknown }).background) return vide(agent);
+    try {
+      const vue = await this.o.noterVue(cle, profil, ext.version);
+      if (!vue.nouvelle) return vide(agent);
+      return {
+        installation: vue.precedente ? { reason: "update", previousVersion: vue.precedente } : { reason: "install" },
+        rulesets: rulesetsDuManifeste(ext.manifest),
+        agent,
+      };
+    } catch (erreur) {
+      console.error(`[extensions] démarrage de ${cle} non noté :`, erreur);
+      return vide(agent);
+    }
+  }
+
+  /** La clé d'une extension chargée (ou en cours de chargement) dans ce profil. */
+  private cleDe(profil: IdProfil, ext: Electron.Extension): string | undefined {
+    for (const [cle, c] of this.chargees.get(profil) ?? []) if (c.id === ext.id) return cle;
+    const reel = cheminReel(ext.path);
+    for (const [cle, chemin] of this.voulues.get(profil) ?? []) if (cheminReel(chemin) === reel) return cle;
+    return undefined;
   }
 
   /** La dernière erreur de chargement de chaque clé (effacée quand elle se charge). */
@@ -241,6 +369,7 @@ export class ExtensionsProfils {
       const chemin = cheminExtension(this.o.dossier, cle, e);
       if (chemin) voulues.set(cle, chemin);
     }
+    this.voulues.set(profil, voulues);
     for (const [cle, c] of chargees) {
       if (voulues.get(cle) === c.chemin) continue;
       this.retirer(s, profil, cle, c.id);

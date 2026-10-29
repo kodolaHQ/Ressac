@@ -1,0 +1,276 @@
+diff --git a/dist/chrome-extension-api.preload.js b/dist/chrome-extension-api.preload.js
+index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..dbff32782bfa3b411e2b0ec007648f852cdd3344 100644
+--- a/dist/chrome-extension-api.preload.js
++++ b/dist/chrome-extension-api.preload.js
+@@ -80,9 +80,9 @@
+         receive(message);
+       };
+       import_electron2.ipcRenderer.on(`crx-native-msg-${connectionId}`, onMessage);
+-      import_electron2.ipcRenderer.once(`crx-native-msg-${connectionId}-disconnect`, () => {
++      import_electron2.ipcRenderer.once(`crx-native-msg-${connectionId}-disconnect`, (_event, error) => {
+         import_electron2.ipcRenderer.off(`crx-native-msg-${connectionId}`, onMessage);
+-        disconnect();
++        disconnect(typeof error === "string" ? error : void 0);
+       });
+       const send = (message) => {
+         import_electron2.ipcRenderer.send(`crx-native-msg-${connectionId}`, message);
+@@ -197,17 +197,35 @@
+           ;
+           this.onMessage._emit(message);
+         }
+-        _disconnect() {
+-          this.disconnect();
++        _disconnect(error) {
++          if (!this.connected) return;
++          if (typeof error !== "string") {
++            this.disconnect();
++            return;
++          }
++          this.error = { message: error };
++          const runtime = chrome.runtime;
++          const before = runtime && Object.getOwnPropertyDescriptor(runtime, "lastError");
++          try {
++            if (runtime) {
++              Object.defineProperty(runtime, "lastError", { value: { message: error }, configurable: true, enumerable: true, writable: true });
++            }
++            this.disconnect();
++          } finally {
++            if (runtime) {
++              if (before) Object.defineProperty(runtime, "lastError", before);
++              else delete runtime.lastError;
++            }
++          }
+         }
+         postMessage(message) {
+           this._send(message);
+         }
+         disconnect() {
+           if (this.connected) {
+-            electron.disconnectNative(extensionId, this.connectionId);
+-            this.onDisconnect._emit();
+             this.connected = false;
++            electron.disconnectNative(extensionId, this.connectionId);
++            this.onDisconnect._emit(this);
+           }
+         }
+       }
+@@ -567,7 +585,10 @@
+         });
+       });
+       delete globalThis.electron;
+-      Object.freeze(chrome);
++      try {
++        globalThis.browser = chrome;
++      } catch {
++      }
+     }
+     if (!process.contextIsolated) {
+       console.warn(`injectExtensionAPIs: context isolation disabled in ${location.href}`);
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+index a91ca8fd07194abb081e9bb35fad0060fefddf91..3057f6ac1d7ce1a3f5e6d2236035ee4fe73719f4 100644
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -71,6 +71,24 @@ var validateExtensionUrl = (url, extension) => {
+   }
+   return url;
+ };
++// WebAiOs : crochets de l'application (options du constructeur). Absents : tout est permis, comme avant.
++var NATIF_NON_PRIS_EN_CHARGE = "Messagerie native non prise en charge";
++var verifierUrlExtension = (store, extension, url) => {
++  const verifier = store.impl.verifierUrl;
++  if (typeof verifier === "function" && verifier(extension, url) !== true) {
++    throw new Error(`Adresse refusée pour cette extension : ${url}`);
++  }
++};
++var verifierHoteExtension = (store, extension, url) => {
++  const verifier = store.impl.verifierHote;
++  if (typeof verifier === "function" && verifier(extension, url) !== true) {
++    throw new Error(`Site refusé pour cette extension : ${url}`);
++  }
++};
++var natifPermis = (store, extension, application) => {
++  const permis = store.impl.connectNative;
++  return typeof permis === "function" && permis(extension, application) === true;
++};
+ var resolveExtensionPath = (extension, uri, requestPath) => {
+   const relativePath = path.join(requestPath || "/", uri);
+   const resPath = path.join(extension.path, relativePath);
+@@ -781,6 +799,7 @@ var _WindowsAPI = class _WindowsAPI {
+     if (details.url) {
+       const urls = Array.isArray(details.url) ? details.url : [details.url];
+       const resolved = urls.map((u) => validateExtensionUrl(u, event.extension));
++      resolved.forEach((u) => verifierUrlExtension(this.ctx.store, event.extension, u));
+       details = { ...details, url: Array.isArray(details.url) ? resolved : resolved[0] };
+     }
+     const win = await this.ctx.store.createWindow(event, details);
+@@ -974,6 +993,7 @@ var _TabsAPI = class _TabsAPI {
+   }
+   async create(event, details = {}) {
+     const url = details.url ? validateExtensionUrl(details.url, event.extension) : void 0;
++    if (url) verifierUrlExtension(this.ctx.store, event.extension, url);
+     const tab = await this.ctx.store.createTab({ ...details, url });
+     const tabDetails = this.getTabDetails(tab);
+     if (details.active) {
+@@ -981,9 +1001,10 @@ var _TabsAPI = class _TabsAPI {
+     }
+     return tabDetails;
+   }
+-  insertCSS(event, tabId, details) {
++  async insertCSS(event, tabId, details) {
+     const tab = this.ctx.store.getTabById(tabId);
+     if (!tab) return;
++    verifierHoteExtension(this.ctx.store, event.extension, tab.getURL());
+     if (details.code) {
+       tab.insertCSS(details.code);
+     }
+@@ -1043,11 +1064,12 @@ var _TabsAPI = class _TabsAPI {
+   async update(event, arg1, arg2) {
+     let tabId = typeof arg1 === "number" ? arg1 : void 0;
+     const updateProperties = (typeof arg1 === "object" ? arg1 : arg2) || {};
++    const url = updateProperties.url ? validateExtensionUrl(updateProperties.url, event.extension) : void 0;
++    if (url) verifierUrlExtension(this.ctx.store, event.extension, url);
+     const tab = tabId ? this.ctx.store.getTabById(tabId) : this.ctx.store.getActiveTabOfCurrentWindow();
+     if (!tab) return;
+     tabId = tab.id;
+     const props = updateProperties;
+-    const url = props.url ? validateExtensionUrl(props.url, event.extension) : void 0;
+     if (url) await tab.loadURL(url);
+     if (typeof props.muted === "boolean") tab.setAudioMuted(props.muted);
+     if (props.active) this.onActivated(tabId);
+@@ -1955,6 +1977,10 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
+     this.ctx = ctx;
+     this.hostMap = {};
+     this.connectNative = async (event, connectionId, application) => {
++      if (!natifPermis(this.ctx.store, event.extension, application)) {
++        event.sender.send(`crx-native-msg-${connectionId}-disconnect`, NATIF_NON_PRIS_EN_CHARGE);
++        return;
++      }
+       const host = new NativeMessagingHost(
+         event.extension.id,
+         event.sender,
+@@ -1968,6 +1994,9 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
+       this.hostMap[connectionId] = void 0;
+     };
+     this.sendNativeMessage = async (event, application, message) => {
++      if (!natifPermis(this.ctx.store, event.extension, application)) {
++        throw new Error(NATIF_NON_PRIS_EN_CHARGE);
++      }
+       const connectionId = (0, import_node_crypto.randomUUID)();
+       const host = new NativeMessagingHost(
+         event.extension.id,
+diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
+index 43929222572e4d6875cc192aca0750da79d8ff14..2de99b300a7c3a1e8d7e167643372784c7d80d5e 100644
+--- a/dist/esm/index.mjs
++++ b/dist/esm/index.mjs
+@@ -34,6 +34,24 @@ var validateExtensionUrl = (url, extension) => {
+   }
+   return url;
+ };
++// WebAiOs : crochets de l'application (options du constructeur). Absents : tout est permis, comme avant.
++var NATIF_NON_PRIS_EN_CHARGE = "Messagerie native non prise en charge";
++var verifierUrlExtension = (store, extension, url) => {
++  const verifier = store.impl.verifierUrl;
++  if (typeof verifier === "function" && verifier(extension, url) !== true) {
++    throw new Error(`Adresse refusée pour cette extension : ${url}`);
++  }
++};
++var verifierHoteExtension = (store, extension, url) => {
++  const verifier = store.impl.verifierHote;
++  if (typeof verifier === "function" && verifier(extension, url) !== true) {
++    throw new Error(`Site refusé pour cette extension : ${url}`);
++  }
++};
++var natifPermis = (store, extension, application) => {
++  const permis = store.impl.connectNative;
++  return typeof permis === "function" && permis(extension, application) === true;
++};
+ var resolveExtensionPath = (extension, uri, requestPath) => {
+   const relativePath = path.join(requestPath || "/", uri);
+   const resPath = path.join(extension.path, relativePath);
+@@ -744,6 +762,7 @@ var _WindowsAPI = class _WindowsAPI {
+     if (details.url) {
+       const urls = Array.isArray(details.url) ? details.url : [details.url];
+       const resolved = urls.map((u) => validateExtensionUrl(u, event.extension));
++      resolved.forEach((u) => verifierUrlExtension(this.ctx.store, event.extension, u));
+       details = { ...details, url: Array.isArray(details.url) ? resolved : resolved[0] };
+     }
+     const win = await this.ctx.store.createWindow(event, details);
+@@ -937,6 +956,7 @@ var _TabsAPI = class _TabsAPI {
+   }
+   async create(event, details = {}) {
+     const url = details.url ? validateExtensionUrl(details.url, event.extension) : void 0;
++    if (url) verifierUrlExtension(this.ctx.store, event.extension, url);
+     const tab = await this.ctx.store.createTab({ ...details, url });
+     const tabDetails = this.getTabDetails(tab);
+     if (details.active) {
+@@ -944,9 +964,10 @@ var _TabsAPI = class _TabsAPI {
+     }
+     return tabDetails;
+   }
+-  insertCSS(event, tabId, details) {
++  async insertCSS(event, tabId, details) {
+     const tab = this.ctx.store.getTabById(tabId);
+     if (!tab) return;
++    verifierHoteExtension(this.ctx.store, event.extension, tab.getURL());
+     if (details.code) {
+       tab.insertCSS(details.code);
+     }
+@@ -1006,11 +1027,12 @@ var _TabsAPI = class _TabsAPI {
+   async update(event, arg1, arg2) {
+     let tabId = typeof arg1 === "number" ? arg1 : void 0;
+     const updateProperties = (typeof arg1 === "object" ? arg1 : arg2) || {};
++    const url = updateProperties.url ? validateExtensionUrl(updateProperties.url, event.extension) : void 0;
++    if (url) verifierUrlExtension(this.ctx.store, event.extension, url);
+     const tab = tabId ? this.ctx.store.getTabById(tabId) : this.ctx.store.getActiveTabOfCurrentWindow();
+     if (!tab) return;
+     tabId = tab.id;
+     const props = updateProperties;
+-    const url = props.url ? validateExtensionUrl(props.url, event.extension) : void 0;
+     if (url) await tab.loadURL(url);
+     if (typeof props.muted === "boolean") tab.setAudioMuted(props.muted);
+     if (props.active) this.onActivated(tabId);
+@@ -1918,6 +1940,10 @@ var RuntimeAPI = class extends EventEmitter3 {
+     this.ctx = ctx;
+     this.hostMap = {};
+     this.connectNative = async (event, connectionId, application) => {
++      if (!natifPermis(this.ctx.store, event.extension, application)) {
++        event.sender.send(`crx-native-msg-${connectionId}-disconnect`, NATIF_NON_PRIS_EN_CHARGE);
++        return;
++      }
+       const host = new NativeMessagingHost(
+         event.extension.id,
+         event.sender,
+@@ -1931,6 +1957,9 @@ var RuntimeAPI = class extends EventEmitter3 {
+       this.hostMap[connectionId] = void 0;
+     };
+     this.sendNativeMessage = async (event, application, message) => {
++      if (!natifPermis(this.ctx.store, event.extension, application)) {
++        throw new Error(NATIF_NON_PRIS_EN_CHARGE);
++      }
+       const connectionId = randomUUID();
+       const host = new NativeMessagingHost(
+         event.extension.id,
+diff --git a/dist/types/browser/impl.d.ts b/dist/types/browser/impl.d.ts
+index 28dcab4817e9a14057da54b4e37bd48878aa678c..b037673d133335624ec7252ee383c35fbe9e78c3 100644
+--- a/dist/types/browser/impl.d.ts
++++ b/dist/types/browser/impl.d.ts
+@@ -12,4 +12,19 @@ export interface ChromeExtensionImpl {
+     createWindow?(details: chrome.windows.CreateData): Promise<Electron.BaseWindow>;
+     removeWindow?(window: Electron.BaseWindow): void;
+     requestPermissions?(extension: Electron.Extension, permissions: chrome.permissions.Permissions): Promise<boolean>;
++    /**
++     * WebAiOs : appelé par `tabs.create`, `tabs.update` et `windows.create` avec l'extension appelante et l'adresse
++     * résolue ; autre chose que `true` fait échouer l'appel. Absent : tout est permis.
++     */
++    verifierUrl?(extension: Electron.Extension, url: string): boolean;
++    /**
++     * WebAiOs : appelé par `tabs.insertCSS` avec l'extension appelante et l'adresse de l'onglet ; autre chose que
++     * `true` fait échouer l'appel. Absent : tout est permis.
++     */
++    verifierHote?(extension: Electron.Extension, url: string): boolean;
++    /**
++     * WebAiOs : `runtime.connectNative` / `sendNativeMessage` ne cherchent et ne lancent un hôte natif que si ceci
++     * rend `true`. Absent ou `false` : le port se ferme avec « Messagerie native non prise en charge ».
++     */
++    connectNative?(extension: Electron.Extension, application: string): boolean;
+ }

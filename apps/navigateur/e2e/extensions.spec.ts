@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { appelerOutil, dansLaVue, ecrireProjet, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 import { installerStoreFactice } from "./extensions/fixtures";
@@ -258,6 +258,158 @@ test("un tabs.update({ active: true }) d'un onglet d'un autre espace le choisit 
     expect((await lireEtat(fenetre)).fenetres[0]!.actif[espaceA]).not.toBe(cible.id);
     await expect.poll(async () => (await lireEtat(fenetre)).fenetres[0]!.actif[espaceA], { timeout: 10_000 }).toBe(cible.id);
     expect((await lireEtat(fenetre)).fenetres[0]!.espaceActif).toBe(espaceB);
+  } finally {
+    await fermer();
+  }
+});
+
+// --- Correctifs de la spec §4.3 (sonde-correctifs, extension du Store factice) ---
+
+type Rapport = {
+  browserEstChrome: boolean;
+  commandes: string;
+  ajout: string;
+  journal: ({ e: "demarrage"; version: string } | { e: "installe"; raison: string; precedente: string | null })[];
+  rulesets: string[];
+};
+
+/** Ouvre `url` dans un onglet et rend ce que le script de contenu de la sonde y a écrit dans `data-<cle>` (JSON). */
+async function lireSonde(app: ElectronApplication, fenetre: Page, url: string, cle: string): Promise<unknown> {
+  await ouvrirOnglet(fenetre, url);
+  const morceau = url.replace(serveur.url, "");
+  let brut: unknown = null;
+  await expect
+    .poll(async () => typeof (brut = await dansLaVue(app, morceau, `document.documentElement.dataset[${JSON.stringify(cle)}] ?? null`)), { timeout: 10_000 })
+    .toBe("string");
+  return JSON.parse(brut as string);
+}
+let numero = 0;
+/** Un rapport du fond de la sonde (une nouvelle page à chaque fois). */
+const rapport = (app: ElectronApplication, fenetre: Page) => lireSonde(app, fenetre, `${serveur.url}/a.html?rapport-${++numero}`, "rapport") as Promise<Rapport>;
+const installations = (r: Rapport) => r.journal.filter((x) => x.e === "installe");
+const demarrages = (r: Rapport) => r.journal.filter((x) => x.e === "demarrage");
+
+test("browser est chrome dans le service worker (browser.commands défini)", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    const r = await rapport(app, fenetre);
+    expect(r.browserEstChrome).toBe(true);
+    expect(r.commandes).toBe("object");
+  } finally {
+    await fermer();
+  }
+});
+
+test("une propriété ajoutée à chrome par l'extension reste (chrome non gelé)", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    expect((await rapport(app, fenetre)).ajout).toBe("gardee");
+  } finally {
+    await fermer();
+  }
+});
+
+test("runtime.onInstalled reçu une fois avec reason install, pas au redémarrage, puis reason update et previousVersion après une nouvelle version", async () => {
+  const profil = nouveauProfil();
+  const { cle } = installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  // 1er lancement : installation.
+  let lance = await lancer({ profil });
+  try {
+    let r: Rapport | undefined;
+    await expect.poll(async () => installations((r = await rapport(lance.app, lance.fenetre))).length, { timeout: 15_000 }).toBe(1);
+    expect(installations(r!)).toEqual([{ e: "installe", raison: "install", precedente: null }]);
+  } finally {
+    await lance.fermer();
+  }
+  // 2e lancement : le fond redémarre, sans nouvel onInstalled ; le ruleset du manifeste, activé au 1er, bloque encore.
+  lance = await lancer({ profil });
+  try {
+    let r: Rapport | undefined;
+    await expect.poll(async () => demarrages((r = await rapport(lance.app, lance.fenetre))).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    await new Promise((ok) => setTimeout(ok, 1000));
+    r = await rapport(lance.app, lance.fenetre);
+    expect(installations(r)).toHaveLength(1);
+    expect(r.rulesets).toEqual(["regles"]);
+    await ouvrirOnglet(lance.fenetre, `${serveur.url}/pub.html?apres-redemarrage`);
+    await expect.poll(() => dansLaVue(lance.app, "pub.html?apres-redemarrage", "document.title")).toBe("pub bloquée");
+  } finally {
+    await lance.fermer();
+  }
+  // Nouvelle version (même clé, donc même id) : update, avec la version précédente.
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"], version: "1.1.0", cle });
+  lance = await lancer({ profil });
+  try {
+    let r: Rapport | undefined;
+    await expect.poll(async () => installations((r = await rapport(lance.app, lance.fenetre))).length, { timeout: 15_000 }).toBe(2);
+    expect(installations(r!)[1]).toEqual({ e: "installe", raison: "update", precedente: "1.0.0" });
+    expect(demarrages(r!).at(-1)).toEqual({ e: "demarrage", version: "1.1.0" });
+  } finally {
+    await lance.fermer();
+  }
+});
+
+test("un ruleset statique enabled du manifeste bloque dès le chargement ; coupé par l'extension, il reste coupé après redémarrage", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  let lance = await lancer({ profil });
+  try {
+    // Aucune règle dynamique : seul le ruleset du manifeste peut bloquer /pub.js.
+    await ouvrirOnglet(lance.fenetre, `${serveur.url}/pub.html?r1`);
+    await expect.poll(() => dansLaVue(lance.app, "pub.html?r1", "document.title")).toMatch(/^pub /);
+    await expect.poll(() => charger(lance.app, "pub.html?r1", `${serveur.url}/pub.html?r1`), { timeout: 10_000 }).toBe("pub bloquée");
+    expect(await lireSonde(lance.app, lance.fenetre, `${serveur.url}/a.html?couper-regles`, "couper")).toEqual([]);
+    expect(await charger(lance.app, "pub.html?r1", `${serveur.url}/pub.html?r1`)).toBe("pub chargée");
+  } finally {
+    await lance.fermer();
+  }
+  lance = await lancer({ profil });
+  try {
+    let r: Rapport | undefined;
+    await expect.poll(async () => demarrages((r = await rapport(lance.app, lance.fenetre))).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    await new Promise((ok) => setTimeout(ok, 1000));
+    expect((await rapport(lance.app, lance.fenetre)).rulesets).toEqual([]);
+    await ouvrirOnglet(lance.fenetre, `${serveur.url}/pub.html?r2`);
+    await expect.poll(() => dansLaVue(lance.app, "pub.html?r2", "document.title")).toBe("pub chargée");
+  } finally {
+    await lance.fermer();
+  }
+});
+
+test("chrome.storage.sync.set puis get dans un script de contenu rend la valeur", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    await ouvrirOnglet(fenetre, `${serveur.url}/b.html?sync`);
+    await expect.poll(() => dansLaVue(app, "b.html?sync", "document.documentElement.dataset.sync ?? null"), { timeout: 10_000 }).toBe("valeur-sync");
+  } finally {
+    await fermer();
+  }
+});
+
+test("connectNative rend un port fermé avec « Messagerie native non prise en charge », aucun processus lancé (Bitwarden-like : manifeste avec nativeMessaging)", async () => {
+  const profil = nouveauProfil();
+  const { id } = installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  // Un hôte natif bien déclaré là où la bibliothèque les cherche (<userData>/NativeMessagingHosts) : lancé, il laisserait
+  // une trace. Il ne doit jamais l'être.
+  const trace = join(profil, "hote-lance");
+  const hote = join(profil, "hote.sh");
+  writeFileSync(hote, `#!/bin/sh\ntouch "${trace}"\ncat > /dev/null\n`);
+  chmodSync(hote, 0o755);
+  mkdirSync(join(profil, "NativeMessagingHosts"), { recursive: true });
+  writeFileSync(
+    join(profil, "NativeMessagingHosts", "com.webaios.essai.json"),
+    JSON.stringify({ name: "com.webaios.essai", description: "essai", path: hote, type: "stdio", allowed_origins: [`chrome-extension://${id}/`] }),
+  );
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    expect(await lireSonde(app, fenetre, `${serveur.url}/a.html?natif`, "natif")).toEqual({ erreur: "Messagerie native non prise en charge" });
+    await new Promise((ok) => setTimeout(ok, 1000));
+    expect(existsSync(trace)).toBe(false);
   } finally {
     await fermer();
   }

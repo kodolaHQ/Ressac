@@ -15,7 +15,11 @@ export default defineConfig({
     // du noyau, à ce chemin fixé à la construction (pas de distribution en V1).
     define: { __RESSOURCES_NOYAU__: JSON.stringify(resolve(__dirname, "../../packages/noyau")) },
   },
-  preload: {},
+  // Deux preloads, sans morceau partagé (un preload en bac à sable ne peut charger que lui-même) : celui de
+  // l'interface, et celui des correctifs des extensions (enregistré sur les sessions des profils).
+  preload: {
+    build: { rollupOptions: { input: { index: resolve(__dirname, "src/preload/index.ts"), extensions: resolve(__dirname, "src/preload/extensions.ts") } } },
+  },
   // Deux pages : l'interface d'une fenêtre, et la pastille d'accès posée sur les fenêtres d'appli.
   renderer: {
     plugins: [svelte()],

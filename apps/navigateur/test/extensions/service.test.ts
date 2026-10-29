@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, expect, test, vi } from "vitest";
@@ -120,4 +120,23 @@ test("registre illisible : l'abonnement aux profils privés est quand même pos�
   nav = etatNav(true);
   for (const f of abonnes) f(nav);
   expect(retraitsPrives).toEqual([nav]);
+});
+
+test("noterVue : la première fois d'une version dans un profil, elle est écrite au registre ; ensuite, rien de nouveau", async () => {
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:essai": entree("agent", ["defaut"]) } }));
+  const { service, pret } = demarrer();
+  await pret;
+  const syncAvant = synchronisees.length;
+  expect(await service.noterVue("agent:essai", "defaut", "1.0.0")).toEqual({ nouvelle: true });
+  expect(await service.noterVue("agent:essai", "defaut", "1.0.0")).toEqual({ nouvelle: false });
+  expect(await service.noterVue("agent:essai", "defaut", "1.1.0")).toEqual({ nouvelle: true, precedente: "1.0.0" });
+  // Chaque profil a sa propre vue.
+  expect(await service.noterVue("agent:essai", "autre", "1.1.0")).toEqual({ nouvelle: true });
+  const lu = JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8"));
+  expect(lu.extensions["agent:essai"].vues).toEqual({ defaut: "1.1.0", autre: "1.1.0" });
+  expect(service.etatExtensions().extensions["agent:essai"]!.vues).toEqual({ defaut: "1.1.0", autre: "1.1.0" });
+  // Rien à recharger : les vues ne changent pas ce qui est chargé.
+  expect(synchronisees).toHaveLength(syncAvant);
+  // Une clé inconnue n'est jamais « nouvelle » (et rien n'est écrit pour elle).
+  expect(await service.noterVue("agent:inconnue", "defaut", "1.0.0")).toEqual({ nouvelle: false });
 });
