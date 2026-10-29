@@ -183,8 +183,6 @@ export interface ApiWebaios {
     refuserAccord(id: string): void;
     /** « Mettre à jour maintenant ». */
     recolter(id: string): void;
-    /** Le workflow du widget, pour la page « Voir le workflow » ; null s'il n'a pas de récolte. */
-    workflow(id: string): Promise<VueWorkflow | null>;
     /** Les dernières exécutions du widget, la plus récente d'abord. */
     executions(id: string): Promise<ResumeExecution[]>;
     /** Une exécution complète (blocs, sorties, journaux) ; null si elle n'existe plus ou si l'id est invalide. */
@@ -272,8 +270,11 @@ const COLONNES_GRILLE = 12;
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 export const SchemaIdWidget = idWidget;
 
-/** Id d'un bloc de workflow (`^[a-z0-9-]{1,40}$`). */
-export const SchemaBlocWorkflow = z.string().regex(/^[a-z0-9-]{1,40}$/);
+/**
+ * Id d'un bloc venu de l'interface : borné en taille seulement (jamais un chemin). Le moteur valide la forme et nomme
+ * le bloc en cause : un id écrit par l'agent qu'il refuse doit lui parvenir.
+ */
+export const SchemaBlocWorkflow = z.string().min(1).max(200);
 /** Nom d'un fichier de code du widget : un `.mjs` à la racine de son dossier. */
 export const SchemaNomCode = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
 /** Texte d'un `.mjs` : 256 Ko au plus (en octets, comme à l'écriture). */
@@ -288,15 +289,26 @@ export const SchemaBrouillon = z.object({
     .array(
       z.object({
         id: SchemaBlocWorkflow,
-        type: z.string().min(1).max(60),
-        nom: z.string().max(60).optional(),
+        type: z.string().min(1).max(200),
+        nom: z.string().max(200).optional(),
         position: z.object({ x: z.number().finite(), y: z.number().finite() }),
         parametres: z.record(z.string(), z.unknown()),
       }),
     )
     .max(100),
-  liens: z.array(z.object({ de: z.string().min(1).max(40), vers: z.string().min(1).max(40) })).max(400),
+  liens: z.array(z.object({ de: SchemaBlocWorkflow, vers: SchemaBlocWorkflow })).max(400),
 });
+
+/**
+ * Le bloc sélectionné dans le constructeur d'un widget : un bloc invalide devient « aucun » (`workflow_ouvert` ne
+ * montre jamais l'ancien) ; null, message ignoré, si le widget est invalide.
+ */
+export function selectionConstructeur(v: unknown): { id: string; bloc: string | null } | null {
+  const o = v as { id?: unknown; bloc?: unknown } | null;
+  if (!SchemaIdWidget.safeParse(o?.id).success) return null;
+  const bloc = SchemaBlocWorkflow.safeParse(o?.bloc);
+  return { id: o!.id as string, bloc: bloc.success ? bloc.data : null };
+}
 export type Brouillon = z.infer<typeof SchemaBrouillon>;
 
 export type EditionWorkflow = LectureBrouillon & {
@@ -354,14 +366,6 @@ export type WidgetAffiche =
       aRecolte: boolean;
     }
   | { id: string; erreur: string; placement: Placement };
-
-/**
- * Ce que la page « Voir le workflow » montre d'un workflow : ses blocs dans l'ordre d'exécution, chacun avec les blocs
- * dont il reçoit la sortie ; ou l'erreur de validation de `workflow.json`.
- */
-export type VueWorkflow =
-  | { origine: "fichier" | "implicite"; blocs: { id: string; type: string; nom?: string; parametres: unknown; entrees: string[] }[] }
-  | { origine: "fichier"; erreur: string };
 
 export interface ProfilPourAccord {
   id: string;

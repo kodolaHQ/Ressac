@@ -441,3 +441,37 @@ test("T10 : les frappes d'un même champ (même clé de fusion) font une seule e
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
 });
+
+test("source d'un bloc code vers un fichier absent : refusé ; une fois le code enregistré, le brouillon repart", async () => {
+  const f = faux(livre(), { "a.mjs": "x" });
+  const enregistrer = f.depot.enregistrer;
+  // Comme le noyau : un bloc code dont le fichier manque est refusé, bloc nommé.
+  f.depot.enregistrer = async (id, b) => {
+    const manque = b.blocs.find((x) => x.type === "code" && !(String(x.parametres.source) in f.etat.fichiers));
+    if (manque) return { ok: false, erreur: `Non enregistré : fichier ${String(manque.parametres.source)} absent`, bloc: manque.id, avertissements: [] };
+    return enregistrer(id, b);
+  };
+  const e = await ouverte(f);
+  e.modifier((b) => regler(b, "garder", { source: "b.mjs" }));
+  await attendre();
+  expect(e.etatEnregistrement).toEqual({ invalide: "fichier b.mjs absent", bloc: "garder" });
+  expect(f.ecritures).toEqual([]);
+
+  // Un autre fichier enregistré ne relance rien.
+  f.etat.fichiers["c.mjs"] = "y";
+  e.codeEnregistre("c.mjs");
+  await attendre();
+  expect(f.ecritures).toEqual([]);
+
+  f.etat.fichiers["b.mjs"] = MODELE_CODE;
+  e.codeEnregistre("b.mjs");
+  expect(e.etatEnregistrement).toBe("en-cours");
+  await attendre();
+  expect(e.etatEnregistrement).toBe("enregistre");
+  expect(f.ecritures.map((b) => b.blocs[0]!.parametres.source)).toEqual(["b.mjs"]);
+
+  // Déjà enregistré : un nouvel enregistrement du code n'envoie rien.
+  e.codeEnregistre("b.mjs");
+  await attendre();
+  expect(f.ecritures).toHaveLength(1);
+});

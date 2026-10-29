@@ -32,7 +32,7 @@ import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
-import { enregistrerSchemaWidget, executionWidget, executionsWidget, vueWorkflow, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { enregistrerCodeSur, enregistrerEdition, FileEcritures, lireCodeSur, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
@@ -463,9 +463,7 @@ app.whenReady().then(async () => {
       recolter: (id) => {
         agent?.noyau()?.recolterMaintenant(id).catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
       },
-      // Lus sans le noyau, comme la page d'accueil : le workflow dans l'espace, les exécutions hors de l'espace.
-      // L'id devient un chemin dans l'espace : validé ici aussi, pas seulement à l'IPC.
-      workflow: async (id) => (agent && SchemaIdWidget.safeParse(id).success ? vueWorkflow(join(agent.chemins.widgets, id)) : null),
+      // Lues sans le noyau, comme la page d'accueil : les exécutions, hors de l'espace.
       executions: async (id) => (agent ? executionsWidget(agent.dossierWidgets, id) : []),
       execution: async (id, execution) => (agent ? executionWidget(agent.dossierWidgets, id, execution) : null),
     },

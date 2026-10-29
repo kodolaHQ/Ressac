@@ -10,7 +10,6 @@ import {
   CSP_WIDGET,
   executionWidget,
   executionsWidget,
-  vueWorkflow,
   permissionInterface,
   placerWidgets,
   profilsPourAccord,
@@ -307,37 +306,3 @@ test("accueil.execution refuse un id d'exécution invalide", async () => {
   expect(await executionsWidget(widgets, "../x")).toEqual([]);
 });
 
-test("vueWorkflow : blocs dans l'ordre avec leurs entrées, workflow implicite, erreur de validation", async () => {
-  const c = espace(["actus", "gmail", "casse", "vide"]);
-  writeFileSync(
-    join(c.widgets, "actus", "workflow.json"),
-    JSON.stringify({
-      version: 1,
-      blocs: [
-        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
-        { id: "garder", type: "liste.garder", nom: "Les 5 premiers", parametres: { nombre: 5 } },
-        { id: "flux", type: "source.flux", parametres: { urls: ["https://lobste.rs/rss"] } },
-      ],
-      liens: [
-        { de: "flux", vers: "garder" },
-        { de: "garder", vers: "sortie" },
-      ],
-    }),
-  );
-  writeFileSync(join(c.widgets, "gmail", "recolte.mjs"), "export default async () => 1");
-  writeFileSync(join(c.widgets, "casse", "workflow.json"), '{"version": 1, "blocs": [');
-  const vue = await vueWorkflow(join(c.widgets, "actus"));
-  expect(vue && "blocs" in vue && vue.origine).toBe("fichier");
-  expect(vue && "blocs" in vue && vue.blocs.map((b) => [b.id, b.entrees])).toEqual([
-    ["flux", []],
-    ["garder", ["flux"]],
-    ["sortie", ["garder"]],
-  ]);
-  expect(vue && "blocs" in vue && vue.blocs[1]).toMatchObject({ type: "liste.garder", nom: "Les 5 premiers", parametres: { nombre: 5 } });
-  const implicite = await vueWorkflow(join(c.widgets, "gmail"));
-  expect(implicite && "blocs" in implicite && implicite.origine).toBe("implicite");
-  expect(implicite && "blocs" in implicite && implicite.blocs.map((b) => b.type)).toEqual(["code", "sortie"]);
-  const casse = await vueWorkflow(join(c.widgets, "casse"));
-  expect(casse).toMatchObject({ origine: "fichier", erreur: expect.stringMatching(/^Workflow invalide/) });
-  expect(await vueWorkflow(join(c.widgets, "vide"))).toBeNull();
-});

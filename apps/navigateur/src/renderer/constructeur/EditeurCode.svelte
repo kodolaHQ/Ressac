@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { api } from "../etat.svelte";
   import { FichierCode } from "./codes.svelte";
+  import { creerEdition } from "./edition.svelte";
 
   /**
    * Le fichier `.mjs` d'un bloc `code`. Rien n'est écrit à la frappe (le widget en marche lirait un code à moitié écrit) :
@@ -10,7 +11,8 @@
   let { widget, nom }: { widget: string; nom: string } = $props();
 
   // svelte-ignore state_referenced_locally
-  const fichier = new FichierCode(widget, nom, api.workflow);
+  // Enregistré, le code peut débloquer le workflow refusé faute de ce fichier (même édition que le constructeur).
+  const fichier = new FichierCode(widget, nom, api.workflow, (n) => creerEdition(widget, api.workflow).codeEnregistre(n));
 
   $effect(() =>
     untrack(() => {

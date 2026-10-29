@@ -39,7 +39,6 @@ export const CANAUX = {
   accueilAccorder: "webaios:accueil-accorder",
   accueilRefuserAccord: "webaios:accueil-refuser-accord",
   accueilRecolter: "webaios:accueil-recolter",
-  accueilWorkflow: "webaios:accueil-workflow",
   accueilExecutions: "webaios:accueil-executions",
   accueilExecution: "webaios:accueil-execution",
   workflowCatalogue: "webaios:workflow-catalogue",

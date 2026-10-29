@@ -167,3 +167,16 @@ test("garderCodesDe abandonne les brouillons des widgets dont le constructeur n'
   garderCodesDe(["x", "autre"]);
   expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
 });
+
+test("un code enregistré le signale (le workflow bloqué sur ce fichier repart) ; un refus ne signale rien", async () => {
+  const f = faux();
+  const signales: string[] = [];
+  const c = new FichierCode("w", "b.mjs", f.depot, (nom) => signales.push(nom));
+  await c.lire();
+  f.etat.refus = true;
+  await c.enregistrer();
+  expect(signales).toEqual([]);
+  f.etat.refus = false;
+  await c.enregistrer();
+  expect(signales).toEqual(["b.mjs"]);
+});

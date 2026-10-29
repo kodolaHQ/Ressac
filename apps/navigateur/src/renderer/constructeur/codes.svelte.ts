@@ -49,6 +49,8 @@ export class FichierCode {
     readonly widget: string,
     readonly nom: string,
     private readonly depot: DepotCode,
+    /** Après chaque enregistrement réussi (le workflow refusé faute de ce fichier peut repartir). */
+    private readonly apresEnregistrement?: (nom: string) => void,
   ) {}
 
   private get cle(): string {
@@ -122,6 +124,7 @@ export class FichierCode {
       // Une frappe pendant l'écriture reste un brouillon, sur la base de ce qui vient d'être écrit.
       if (!b || b.texte === texte) brouillons.delete(this.cle);
       else brouillons.set(this.cle, { texte: b.texte, base: texte });
+      this.apresEnregistrement?.(this.nom);
     } catch (e) {
       this.erreur = (e as Error).message || "Enregistrement impossible";
     } finally {

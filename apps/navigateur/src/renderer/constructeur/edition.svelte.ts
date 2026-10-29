@@ -250,6 +250,17 @@ export class Edition {
     return null;
   }
 
+  /**
+   * Le fichier `source` vient d'être enregistré : si le brouillon a été refusé faute de ce fichier (bloc `code` en cause
+   * qui le lit), il repart à l'enregistrement. Sinon rien (aucun écho du disque ne le ferait).
+   */
+  codeEnregistre(source: string): void {
+    const v = this.validation;
+    if (v.ok || v.bloc === undefined || !this.brouillon || this.bandeau === "proposer" || this.etatEnregistrement === "en-cours") return;
+    const b = this.brouillon.blocs.find((x) => x.id === v.bloc);
+    if (b?.type === "code" && b.parametres.source === source) this.enregistrer(this.brouillon);
+  }
+
   annuler(): void {
     const b = this.historique?.annuler();
     if (b) this.appliquer(b, true);

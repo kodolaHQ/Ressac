@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type VueWorkflow, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, selectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -60,8 +60,6 @@ export interface Gestionnaires {
     accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
     refuserAccord(id: string): void;
     recolter(id: string): void;
-    /** Page « Voir le workflow » : ids déjà validés ici. */
-    workflow(id: string): Promise<VueWorkflow | null>;
     executions(id: string): Promise<ResumeExecution[]>;
     execution(id: string, execution: string): Promise<Execution | null>;
   };
@@ -166,9 +164,8 @@ export function brancherIpc(g: Gestionnaires): void {
   });
   recevoir(CANAUX.accueilRefuserAccord, zod(SchemaIdWidget), (id) => g.accueil.refuserAccord(id));
   recevoir(CANAUX.accueilRecolter, zod(SchemaIdWidget), (id) => g.accueil.recolter(id));
-  // Page « Voir le workflow » : seulement l'interface d'une fenêtre principale (comme les autres accueil.*), ids validés.
+  // Exécutions d'un widget : seulement l'interface d'une fenêtre principale (comme les autres accueil.*), ids validés.
   const idWidgetValide = (v: unknown): v is string => SchemaIdWidget.safeParse(v).success;
-  repondre(CANAUX.accueilWorkflow, (id) => (idWidgetValide(id) ? g.accueil.workflow(id) : null));
   repondre(CANAUX.accueilExecutions, (id) => (idWidgetValide(id) ? g.accueil.executions(id) : []));
   repondre(CANAUX.accueilExecution, (id, execution) =>
     idWidgetValide(id) && SchemaIdExecution.safeParse(execution).success ? g.accueil.execution(id, execution as string) : null,
@@ -195,11 +192,7 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.workflowLancer, (id) => (idWidgetValide(id) ? g.workflow.lancer(id) : {}));
   recevoir(
     CANAUX.workflowSelection,
-    (v) => {
-      const o = v as { id?: unknown; bloc?: unknown } | null;
-      const bloc = o?.bloc === null ? null : SchemaBlocWorkflow.safeParse(o?.bloc).success ? (o?.bloc as string) : undefined;
-      return idWidgetValide(o?.id) && bloc !== undefined ? { id: o.id, bloc } : null;
-    },
+    selectionConstructeur,
     ({ id, bloc }, f) => g.workflow.selection(f, id, bloc),
   );
   repondre(CANAUX.workflowDirectLire, () => g.workflow.direct());

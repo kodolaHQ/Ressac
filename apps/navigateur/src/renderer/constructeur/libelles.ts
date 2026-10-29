@@ -1,6 +1,6 @@
 import type { Execution, ResumeExecution } from "@webaios/noyau";
 
-/** Libellés d'une exécution, comme la page « Voir le workflow » de l'étape 1. */
+/** Libellés d'une exécution, pour la barre des exécutions et l'onglet d'un bloc. */
 export const DECLENCHEURS: Record<Execution["declencheur"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
 export const STATUTS: Record<Execution["statut"], string> = {
   reussie: "Réussie",

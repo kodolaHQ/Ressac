@@ -134,7 +134,7 @@
     <div class="actions">
       <button data-testid="bouton-apercu" aria-pressed={apercuOuvert} onclick={() => (apercuOuvert = !apercuOuvert)}>Aperçu du widget</button>
       <button data-testid="reorganiser" disabled={!edition.brouillon} onclick={reorganiser}>Réorganiser</button>
-      <button class="lancer" data-testid="lancer" disabled={!edition.disqueValide || executions.occupe} onclick={lancer}>
+      <button class="lancer" data-testid="lancer" disabled={!edition.disqueValide || executions.occupe || edition.etatEnregistrement === "en-cours"} onclick={lancer}>
         {executions.occupe ? "Exécution…" : "▶ Lancer"}
       </button>
     </div>
