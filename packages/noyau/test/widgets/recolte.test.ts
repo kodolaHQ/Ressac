@@ -1345,6 +1345,32 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect((await lireExecution(donneesDe(ctx), r.execution!))?.statut).toBe("echouee");
   });
 
+  it("données finales de plus de 2 Mo : memoire.json reste la dernière mémoire relayée avant la sortie", async () => {
+    const ctx = await preparer("veille", "");
+    await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
+    await etatAvant(ctx);
+    const { horloge: h, avancer } = horlogeMobile();
+    const r = await executerRecolte({
+      ...optionsDe(ctx),
+      horloge: h,
+      lancer: lanceurPas(ctx, [
+        ...avantChaine([A1, A2, A3]),
+        mem(["1"]),
+        pub([A1], 1, 3),
+        avancer(40_000),
+        finBloc("fiche", [A1, A2, A3]),
+        debutBloc("sortie"),
+        finBloc("sortie", [A1, A2, A3]),
+        // Retient les clés de 2 et 3, que seule la sortie finale montre : elle est refusée.
+        mem(["1", "2", "3"]),
+        { t: "fin", donnees: "x".repeat(2 * 1024 * 1024 + 10) },
+      ]),
+    });
+    expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Données trop grosses (2 Mo au plus)" });
+    expect(await lireJson(fichierDonnees(ctx))).toEqual([A1]);
+    expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1"]);
+  });
+
   it("interrompue après une publication : données publiées et mémoire gardées, exécution interrompue", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true });

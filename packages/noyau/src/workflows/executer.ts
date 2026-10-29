@@ -328,6 +328,10 @@ export async function executerWorkflow(
   let memoireSure: MemoireBlocs | null = null;
   let memoireTenue: { memoire: MemoireBlocs | null; recueA: number } | null = null;
   let memoireDouteuse = false;
+  // La trace `fin` du bloc de sortie est passée : une mémoire reçue ensuite (verifierMemoire, juste avant `fin`) a
+  // résolu toutes les clés en suspens, que seule la sortie finale montre. Elle ne sert qu'à l'issue `fin`
+  // (`memoireRecue`), jamais relayée ni sûre : si les données finales sont refusées, la mémoire sûre d'avant reste.
+  let sortieFinie = false;
   const adopterMemoire = (t: { memoire: MemoireBlocs | null; recueA: number }) => {
     if (!t.memoire || memoireDouteuse) return;
     const memoire = t.memoire;
@@ -498,7 +502,7 @@ export async function executerWorkflow(
       const tropGrosse = Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS;
       memoireRecue = tropGrosse ? null : filtree;
       remarque = tropGrosse ? MEMOIRE_NON_GARDEE : null;
-      if (progressif) memoireTenue = { memoire: tropGrosse ? null : filtree, recueA: horloge().getTime() };
+      if (progressif && !sortieFinie) memoireTenue = { memoire: tropGrosse ? null : filtree, recueA: horloge().getTime() };
       return;
     }
     if (m.t === "publication") {
@@ -553,6 +557,7 @@ export async function executerWorkflow(
     ouverts.shift();
     fermeture = ouverts.length > 0;
     t.fini = true;
+    if (t.id === ctx.valide.sortie.id) sortieFinie = true;
     t.fin = horloge().toISOString();
     t.statut = m.statut;
     if (m.erreur !== undefined) t.erreur = tronquer(m.erreur, ERREUR_MAX);
@@ -573,8 +578,10 @@ export async function executerWorkflow(
     if (arret || terminal || !ligne.trim()) return;
     const m = lireMessageRecolteur(ligne);
     if (!m) return; // Une ligne hors protocole (le code a écrit sur stdout) est ignorée.
-    // Une mémoire tenue que ne suit pas une publication : elle ne retient que des éléments déjà montrés.
-    if (m.t !== "publication") libererMemoireTenue();
+    // Une mémoire tenue que ne suit pas une publication : elle ne retient que des éléments déjà montrés. Suivie de
+    // `fin`, elle ne sert qu'à l'issue `fin` : la sortie finale, pas encore écrite, peut encore être refusée.
+    if (m.t === "fin") memoireTenue = null;
+    else if (m.t !== "publication") libererMemoireTenue();
     if (m.t === "fin" || m.t === "echec") {
       terminal = m;
       processus.stdin.end();

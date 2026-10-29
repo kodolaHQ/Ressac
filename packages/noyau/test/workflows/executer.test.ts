@@ -1294,6 +1294,43 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
       ]);
       expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(3) });
     });
+
+    it("une mémoire après la fin du bloc de sortie, puis fin : ni relayée ni sûre, elle ne sert qu'à l'issue fin", async () => {
+      const r = await lancerAvec((avancer) => [
+        ...ouvrirChaine,
+        mem(1), pub("A", 1, 3),
+        avancer(40_000),
+        finBloc("fiche"), finBloc("avis"), debutBloc("sortie"), finBloc("sortie"),
+        mem(2),
+        { t: "fin", donnees: "finale" },
+      ]);
+      expect(r.memoires).toEqual([marquee(1)]);
+      expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(2) });
+    });
+
+    it("une mémoire suivie de fin n'est pas relayée, même sans trace de fin de sortie", async () => {
+      const r = await lancerAvec((avancer) => [
+        ...ouvrirChaine,
+        mem(1), pub("A", 1, 3),
+        avancer(40_000), mem(2),
+        { t: "fin", donnees: "finale" },
+      ]);
+      expect(r.memoires).toEqual([marquee(1)]);
+      expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(2) });
+    });
+
+    it("une mémoire après la fin du bloc de sortie, puis echec : l'issue garde la mémoire sûre d'avant", async () => {
+      const r = await lancerAvec((avancer) => [
+        ...ouvrirChaine,
+        mem(1), pub("A", 1, 3),
+        avancer(40_000),
+        finBloc("fiche"), finBloc("avis"), debutBloc("sortie"), finBloc("sortie"),
+        mem(2), { t: "journal", bloc: "sortie", texte: "après" },
+        { t: "echec", erreur: "cassé" },
+      ]);
+      expect(r.memoires).toEqual([marquee(1)]);
+      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(1) });
+    });
   });
 
   it("TAILLE_MAX_DONNEES d'interpreteur.mjs égale celle du noyau, réexportée par accueil", async () => {
