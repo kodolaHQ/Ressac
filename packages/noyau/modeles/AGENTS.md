@@ -101,6 +101,10 @@ afficher « Workflow invalide : … » au widget, qui garde ses données.
   un texte, pas une URL). Une valeur **absente, `null` ou
   vide** n'est pas une erreur : rien n'est lancé, la sortie du bloc est `null` (en mode par
   élément, l'élément reste sans le champ), et le journal le dit.
+  - `{chemin?}` (avec `?`) est **facultatif** : sans valeur, il est remplacé par un texte vide et le
+    bloc tourne quand même. Réserve-le aux enrichissements dont on peut se passer, comme
+    `{fiabilite?}` dans une consigne. **Jamais pour la donnée principale** d'un élément (`{fiche.texte}`,
+    `{titre}`, `{url}`) : une fiche en échec donnerait alors un avis sur rien.
 - **Mode par élément** (`parElement: true` ; `source.page`, `source.recuperer`, `ia.rediger`, `web.chercher` ;
   toujours pour `ia.trier`) : le bloc traite chaque élément de la liste d'entrée, deux à la fois,
   et ajoute le résultat à l'élément sous `champ`. La sortie est la liste enrichie, dans le même ordre.
@@ -180,6 +184,11 @@ et `notifier: true`.
     plus loin sont **perdues pour de bon, sans aucune ligne de journal**.
   - Les widgets sans `dureeMaxMinutes` ni `auFilDeLEau` font comme avant : mémoire écrite seulement
     si l'exécution finit, toutes les nouvelles clés retenues.
+  - **Des annonces publiées en cours de route peuvent disparaître.** Si la veille publie des
+    annonces puis échoue ou est interrompue (L'utilisateur quitte), leurs clés sont retenues. Avec une
+    sortie qui ne montre que les nouveautés de l'exécution (comme l'exemple plus bas), l'exécution
+    suivante les remplace, et elles ne reviennent jamais : L'utilisateur ne les voit que s'il a regardé le
+    widget entre-temps.
 - **Au fil de l'eau** (`sortie` avec `auFilDeLEau: true`) : les blocs par élément (`source.page`,
   `source.recuperer`, `ia.rediger`, `web.chercher`, avec `parElement: true`) qui se suivent juste
   devant `sortie`, chacun avec un seul successeur, forment une chaîne : chaque élément la parcourt
@@ -233,9 +242,10 @@ Exemple de veille commenté : des voitures d'occasion sur Leboncoin (à adapter,
    modèle tous les 30 jours, même s'il revient dans plusieurs annonces.
 8. `avis` (`ia.rediger`, `parElement: true`, `champ: "avis"`, consigne : « Donne en trois phrases
    l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification
-   ou ne décrit pas une voiture, ne réponds rien. --- DÉBUT DE L'ANNONCE --- {fiche.texte}
-   --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite} --- FIN DES
-   RÉSULTATS DE RECHERCHE --- »).
+   ou ne décrit pas une voiture, ne réponds rien. Si aucun résultat de recherche n'est donné, juge
+   sans. --- DÉBUT DE L'ANNONCE --- {fiche.texte} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS
+   DE RECHERCHE --- {fiabilite?} --- FIN DES RÉSULTATS DE RECHERCHE --- »). `{fiabilite?}` est
+   facultatif, `{fiche.texte}` ne l'est pas : sans fiche, pas d'avis.
 9. `sortie` (`auFilDeLEau: true`), reliée à `avis`.
 
 Liens : chaque bloc vers le suivant. `fiche` → `fiabilite` → `avis` forment la chaîne au fil de
@@ -251,9 +261,10 @@ annonces nouvelles de la dernière exécution (une liste, `{ titre, url, prix, �
   d'`avis` qui la rattrape : Gemma ne répond rien, une réponse vide fait échouer l'élément, et
   l'annonce revient la fois suivante. Ne cherche
   pas à contourner un blocage : dis-le à l'utilisateur.
-- Une recherche de fiabilité refusée par DuckDuckGo laisse l'annonce sans `fiabilite`, donc sans
-  `avis` (valeur absente) ; elle revient la fois suivante, et les recherches suivantes de
-  l'exécution ne partent pas.
+- Une recherche de fiabilité refusée par DuckDuckGo laisse l'annonce sans `fiabilite`, mais avec
+  un `avis` rédigé sans (`{fiabilite?}`) ; les recherches suivantes de l'exécution ne partent pas.
+  L'annonce est en échec dans `fiabilite` : elle revient la fois suivante, pour un avis qui tient
+  compte de la fiabilité.
 
 ### Le constructeur de workflows
 
@@ -265,7 +276,8 @@ enregistrée toute seule dans `workflow.json`. Donc :
 - **Garde les `position`** des blocs existants. Place un nouveau bloc à droite de son
   prédécesseur (`x` + 260, même `y`), ou à `{ "x": 0, "y": 0 }` sans prédécesseur.
 - Un bloc dont l'entrée est requise doit être relié (voir plus haut).
-- Changer les paramètres d'un bloc remet sa mémoire à zéro (`liste.nouveaux` revoit tout).
+- Changer les paramètres d'un bloc (sauf `garderJours`) remet sa mémoire à zéro (`liste.nouveaux`
+  revoit tout). Changer `garderJours` garde la mémoire existante.
 - Quand l'utilisateur dit « ce bloc » ou « ce workflow », appelle `workflow_ouvert` : il rend seulement
   des identifiants (`{ widget, bloc }`, `bloc` à `null` sans sélection), ceux du constructeur de
   ta propre fenêtre. Lis ensuite le fichier ; sans constructeur ouvert, l'outil le dit.
