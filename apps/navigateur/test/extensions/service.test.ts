@@ -151,3 +151,22 @@ test("noterVue : une version déjà vue n'écrit pas etat.json", async () => {
   expect(await service.noterVue("agent:essai", "defaut", "1.0.0")).toEqual({ nouvelle: false });
   expect(existsSync(join(dossier, "etat.json"))).toBe(false);
 });
+
+test("« Retirer de Chrome » sur la page du Store : seulement une extension du Store inscrite, retirée du registre et de tous les profils, dossier effacé", async () => {
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`store:${ID}`]: entree("store", ["defaut", "travail"]), "agent:essai": entree("agent", ["defaut"]) } }),
+  );
+  const { service, pret } = demarrer();
+  await pret;
+  await expect(service.desinstallerDepuisStore("d".repeat(32))).rejects.toThrow(/inconnue/);
+  await expect(service.desinstallerDepuisStore("essai")).rejects.toThrow(/inconnue/);
+  expect(existsSync(version)).toBe(true);
+  await service.desinstallerDepuisStore(ID);
+  expect(Object.keys(JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")).extensions)).toEqual(["agent:essai"]);
+  expect(Object.keys(synchronisees.at(-1)!.extensions)).toEqual(["agent:essai"]);
+  expect(existsSync(join(dossier, "store", ID))).toBe(false);
+});

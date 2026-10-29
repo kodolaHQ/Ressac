@@ -4,6 +4,9 @@ import type { Espace, EtatNavigateur } from "./modele";
 /** Réponse à une saisie qui n'est ni un id d'extension, ni l'adresse de sa page du Chrome Web Store. */
 export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
 
+export const DESACTIVEE_PLANTAGES = "Désactivée : elle a planté 3 fois en une minute";
+export const DESACTIVEE_PORTEE = "Désactivée : elle demande plus de droits qu'accordé";
+
 /** Ce que montre la carte d'accord d'une extension (DemandeExtension.svelte) : tout y est affiché en texte. */
 export interface CarteExtension {
   cle: string;

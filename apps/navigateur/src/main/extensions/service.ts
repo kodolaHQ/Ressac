@@ -11,6 +11,7 @@ import {
   type IdProfil,
 } from "@webaios/noyau";
 import type { CarteExtension, ReponseAccord } from "../../commun/extensions";
+export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions";
 import { aUneVue, profilsEnUsage, type Decision, type Demande, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
 import { attendreReponse, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
@@ -269,6 +270,16 @@ export class ServiceExtensions {
   installerStore(id: string, c: ContexteInstallation): Promise<ResultatStore> {
     if (!this.o) return Promise.resolve({ ok: false, erreur: "Service des extensions non démarré" });
     return installerStore(id, c, this.dependancesStore());
+  }
+
+  /**
+   * « Retirer de Chrome » sur la page du Store : seulement une extension du Store inscrite au registre (une extension de
+   * l'agent chargée dans la session a un autre id) ; retirée partout, comme depuis la page Extensions.
+   */
+  desinstallerDepuisStore(id: string): Promise<void> {
+    const cle = /^[a-p]{32}$/.test(id) ? `store:${id}` : null;
+    if (!cle || !(cle in this.etat.extensions)) return Promise.reject(new Error(`Extension du Store inconnue : ${id}`));
+    return this.desinstaller(cle);
   }
 
   /** Retire une extension de toutes les sessions et du registre, et efface son dossier. */

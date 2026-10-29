@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
-import { activer as activerRegistre, empreintePortee, type EtatExtensions, type IdProfil } from "@webaios/noyau";
+import { activer as activerRegistre, empreintePortee, preparerStore, type EtatExtensions, type IdProfil } from "@webaios/noyau";
 import type { CarteExtension, ReponseAccord } from "../../src/commun/extensions";
 import type { Espace, EtatNavigateur } from "../../src/commun/modele";
 import { construireCrx } from "../../e2e/extensions/crx";
@@ -23,10 +23,11 @@ vi.mock("electron", () => ({
   webContents: { fromFrame: (f: unknown) => cadres.get(f) },
 }));
 
-const { avantInstallation, desinstallerStore, idDepuisSaisie, installerStore, INSTALLATION_REFUSEE, SAISIE_INVALIDE } = await import(
+const { avantInstallation, desinstallerStore, idDepuisSaisie, installerStore, INSTALLATION_REFUSEE, SAISIE_INVALIDE, TOUTES_COUPEES } = await import(
   "../../src/main/extensions/store"
 );
 const { CRX_INVALIDE, ERREUR_STORE } = await import("../../src/main/extensions/telechargement");
+const { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } = await import("../../src/commun/extensions");
 
 const ID = "ddkjiahejlhfcafbddmgiahcphecmpfh";
 
@@ -314,15 +315,88 @@ test("installerStore : deux demandes simultanées du même id ne téléchargent 
   expect(etat.extensions[`store:${id}`]!.profils.sort()).toEqual(["defaut", "travail"]);
 });
 
-test("installerStore pendant la coupure générale : la carte est demandée malgré la coupure, l'extension installée et accordée", async () => {
+test("installerStore pendant la coupure générale, depuis l'interface de WebAiOs : la carte est demandée malgré la coupure, l'extension installée et accordée", async () => {
   const id = publier();
   etat = { ...etat, toutesCoupees: true };
   const d = dependances();
   const demander = vi.fn(d.demanderAccord);
-  expect(await installerStore(id, contexte(), { ...d, demanderAccord: demander })).toEqual({ ok: true });
+  expect(await installerStore(id, { ...contexte(), depuisInterface: true }, { ...d, demanderAccord: demander })).toEqual({ ok: true });
   expect(demander).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pendantCoupure: true, fenetre: "f1" }));
   expect(etat.toutesCoupees).toBe(true);
   expect(etat.extensions[`store:${id}`]!.profils).toEqual(["defaut"]);
+});
+
+test("installerStore pendant la coupure générale, depuis la page du Store : refus, ni carte ni téléchargement", async () => {
+  const id = publier();
+  etat = { ...etat, toutesCoupees: true };
+  expect(await installerStore(id, contexte(), dependances())).toEqual({ ok: false, erreur: TOUTES_COUPEES });
+  expect(cartes).toEqual([]);
+  expect(requetes).toBe(0);
+  expect(etat.extensions).toEqual({});
+  // Hors coupure, la page du Store ne demande jamais `pendantCoupure`.
+  etat = { ...etat, toutesCoupees: false };
+  const d = dependances();
+  const demander = vi.fn(d.demanderAccord);
+  await installerStore(id, contexte(), { ...d, demanderAccord: demander });
+  expect(demander).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pendantCoupure: false }));
+});
+
+test("installerStore : si l'inscription au registre échoue, la version déplacée et préparée est retirée", async () => {
+  const id = publier();
+  const d = dependances();
+  const r = await installerStore(id, contexte(), {
+    ...d,
+    modifier: async () => {
+      throw new Error("disque plein");
+    },
+  });
+  expect(r).toEqual({ ok: false, erreur: "disque plein" });
+  expect(existsSync(join(dossier, "store", id, "1.0.0_0"))).toBe(false);
+  expect(contenu(join(dossier, "store-attente"))).toEqual([]);
+});
+
+test("installerStore d'une extension inscrite dont les fichiers manquent : téléchargée de nouveau, sa désactivation et ses profils gardés, statut explicite", async () => {
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  const desactivee = { raison: "plantages" as const, le: "2026-10-30T00:00:00.000Z" };
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, profils: ["defaut", "ailleurs"], desactivee } } };
+  rmSync(join(dossier, "store", id), { recursive: true, force: true });
+  const travail = { ...espace, id: "e2", nom: "Travail", profil: "travail" } as Espace;
+  expect(await installerStore(id, contexte("travail", travail), dependances())).toEqual({ ok: false, erreur: DESACTIVEE_PLANTAGES });
+  expect(existsSync(join(dossier, "store", id, "1.0.0_0", "manifest.json"))).toBe(true);
+  expect(etat.extensions[cle]!.desactivee).toEqual(desactivee);
+  expect(etat.extensions[cle]!.profils).toEqual(["defaut", "ailleurs", "travail"]);
+});
+
+test("installerStore déjà installée mais désactivée : statut explicite, ni carte ni changement", async () => {
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, desactivee: { raison: "portee-elargie", le: "2026-10-30T00:00:00.000Z" } } } };
+  const avant = etat;
+  cartes = [];
+  expect(await installerStore(id, contexte(), dependances())).toEqual({ ok: false, erreur: DESACTIVEE_PORTEE });
+  const travail = { ...espace, id: "e2", nom: "Travail", profil: "travail" } as Espace;
+  expect(await installerStore(id, contexte("travail", travail), dependances())).toEqual({ ok: false, erreur: DESACTIVEE_PORTEE });
+  expect(cartes).toEqual([]);
+  expect(etat).toBe(avant);
+});
+
+test("avec la vraie préparation : le manifeste préparé redonne l'empreinte de la première carte", async () => {
+  // Scripts de contenu et pas de fond : la préparation réécrit le manifeste (correctifs en tête, fond minimal).
+  const id = publier({ name: "Cacheur", content_scripts: [{ matches: ["https://exemple.com/*"], js: ["c.js"] }], permissions: ["storage"] });
+  const d = { ...dependances(), preparer: (_cle: string, chemin: string) => preparerStore(chemin, gardes) };
+  await installerStore(id, contexte(), d);
+  const prepare = JSON.parse(readFileSync(join(dossier, "store", id, "1.0.0_0", "manifest.json"), "utf8"));
+  expect(prepare.background).toEqual({ service_worker: "webaios-fond.js" });
+  expect(prepare.content_scripts[0].js[0]).toBe("webaios-correctifs-page.js");
+  const travail = { ...espace, id: "e2", nom: "Travail", profil: "travail" } as Espace;
+  expect(await installerStore(id, contexte("travail", travail), d)).toEqual({ ok: true });
+  expect(cartes).toHaveLength(2);
+  expect(cartes[1]!.empreinte).toBe(cartes[0]!.empreinte);
+  expect(empreintePortee(etat.extensions[`store:${id}`]!.accord!)).toBe(cartes[0]!.empreinte);
+  expect(requetes).toBe(1);
 });
 
 test("desinstallerStore : entrée retirée du registre (les sessions suivent), puis dossier store/<id> effacé", async () => {

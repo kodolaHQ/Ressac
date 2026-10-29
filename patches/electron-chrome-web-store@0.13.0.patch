@@ -1,5 +1,18 @@
+diff --git a/dist/chrome-web-store.preload.js b/dist/chrome-web-store.preload.js
+index 94fb2b4c5d240bc80aba0d8e72b526b12684daf9..0624e54093dfa311e915f380014d1d49f40d18e4 100644
+--- a/dist/chrome-web-store.preload.js
++++ b/dist/chrome-web-store.preload.js
+@@ -292,7 +292,7 @@
+       window.navigation.addEventListener("navigate", maybeUpdateBranding);
+     }
+   }
+-  if (location.href.startsWith("https://chromewebstore.google.com")) {
++  if (location.origin === "https://chromewebstore.google.com" && process.isMainFrame === true) {
+     log("Injecting Chrome Web Store API");
+     setupChromeWebStoreApi();
+   }
 diff --git a/dist/cjs/browser/index.js b/dist/cjs/browser/index.js
-index 4580b782dcf28a2d8d9ec2f0318276365cf2b957..bc334bf1d2da95681b2ba4efcdf833f75be27c95 100644
+index 4580b782dcf28a2d8d9ec2f0318276365cf2b957..6ed2253e4eeaf7e4c6cced0695955abc9b9c59eb 100644
 --- a/dist/cjs/browser/index.js
 +++ b/dist/cjs/browser/index.js
 @@ -31,6 +31,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
@@ -105,7 +118,47 @@ index 4580b782dcf28a2d8d9ec2f0318276365cf2b957..bc334bf1d2da95681b2ba4efcdf833f7
      const versionedPath = path3.join(extensionsDir, crx.extensionId, `${manifest.version}_0`);
      await fs2.promises.rename(unpackedPath, versionedPath);
      return versionedPath;
-@@ -1666,6 +1692,7 @@ async function installChromeWebStore(opts = {}) {
+@@ -1275,7 +1301,9 @@ function registerWebStoreApi(webStoreState) {
+       import_electron3.ipcMain.handle(channel, async function handleWebStoreIpc(event, ...args) {
+         d3("received %s", channel);
+         const senderOrigin = event.senderFrame?.origin;
+-        if (!senderOrigin || !senderOrigin.startsWith(WEBSTORE_URL)) {
++        // WebAiOs : origine exacte, et seulement le cadre principal (ni sous-domaine piège, ni iframe).
++        const mainFrame = !!event.senderFrame && event.senderFrame === event.sender?.mainFrame;
++        if (!senderOrigin || senderOrigin !== WEBSTORE_URL || !mainFrame) {
+           d3("ignoring webstore request from %s", senderOrigin);
+           return;
+         }
+@@ -1376,7 +1404,9 @@ function registerWebStoreApi(webStoreState) {
+       if (options?.showConfirmDialog) {
+       }
+       try {
+-        await uninstallExtension(id, webStoreState);
++        // WebAiOs : le crochet de l'application (son registre) désinstalle ; la bibliothèque n'efface rien elle-même.
++        if (webStoreState.uninstallHandler) await webStoreState.uninstallHandler(id);
++        else await uninstallExtension(id, webStoreState);
+         queueMicrotask(() => {
+           event.sender.send("chrome.management.onUninstalled", id);
+         });
+@@ -1628,6 +1658,7 @@ async function installChromeWebStore(opts = {}) {
+   const autoUpdate = typeof opts.autoUpdate === "boolean" ? opts.autoUpdate : true;
+   const minimumManifestVersion = typeof opts.minimumManifestVersion === "number" ? opts.minimumManifestVersion : 3;
+   const beforeInstall = typeof opts.beforeInstall === "function" ? opts.beforeInstall : void 0;
++  const uninstallHandler = typeof opts.uninstallHandler === "function" ? opts.uninstallHandler : void 0;
+   const webStoreState = {
+     session,
+     extensionsPath,
+@@ -1635,7 +1666,8 @@ async function installChromeWebStore(opts = {}) {
+     allowlist: opts.allowlist ? new Set(opts.allowlist) : void 0,
+     denylist: opts.denylist ? new Set(opts.denylist) : void 0,
+     minimumManifestVersion,
+-    beforeInstall
++    beforeInstall,
++    uninstallHandler
+   };
+   const preloadPath = resolvePreloadPath(opts.modulePath);
+   if ("registerPreloadScript" in session) {
+@@ -1666,6 +1698,7 @@ async function installChromeWebStore(opts = {}) {
  // Annotate the CommonJS export names for ESM import in node:
  0 && (module.exports = {
    downloadExtension,
@@ -114,7 +167,7 @@ index 4580b782dcf28a2d8d9ec2f0318276365cf2b957..bc334bf1d2da95681b2ba4efcdf833f7
    installExtension,
    loadAllExtensions,
 diff --git a/dist/esm/browser/index.mjs b/dist/esm/browser/index.mjs
-index 85ba0e0023ea491e8d07b9a8effd01cfc89ee977..632699f55927bd39c7e8cd6926a521f2c03f4069 100644
+index 85ba0e0023ea491e8d07b9a8effd01cfc89ee977..17a08613d5e4176f33eeae8f599354f7aebc7c50 100644
 --- a/dist/esm/browser/index.mjs
 +++ b/dist/esm/browser/index.mjs
 @@ -128,7 +128,7 @@ function readSignedDataField(tag, obj, pbf) {
@@ -221,7 +274,47 @@ index 85ba0e0023ea491e8d07b9a8effd01cfc89ee977..632699f55927bd39c7e8cd6926a521f2
      const versionedPath = path3.join(extensionsDir, crx.extensionId, `${manifest.version}_0`);
      await fs2.promises.rename(unpackedPath, versionedPath);
      return versionedPath;
-@@ -942,6 +967,7 @@ async function installChromeWebStore(opts = {}) {
+@@ -552,7 +577,9 @@ function registerWebStoreApi(webStoreState) {
+       ipcMain.handle(channel, async function handleWebStoreIpc(event, ...args) {
+         d3("received %s", channel);
+         const senderOrigin = event.senderFrame?.origin;
+-        if (!senderOrigin || !senderOrigin.startsWith(WEBSTORE_URL)) {
++        // WebAiOs : origine exacte, et seulement le cadre principal (ni sous-domaine piège, ni iframe).
++        const mainFrame = !!event.senderFrame && event.senderFrame === event.sender?.mainFrame;
++        if (!senderOrigin || senderOrigin !== WEBSTORE_URL || !mainFrame) {
+           d3("ignoring webstore request from %s", senderOrigin);
+           return;
+         }
+@@ -653,7 +680,9 @@ function registerWebStoreApi(webStoreState) {
+       if (options?.showConfirmDialog) {
+       }
+       try {
+-        await uninstallExtension(id, webStoreState);
++        // WebAiOs : le crochet de l'application (son registre) désinstalle ; la bibliothèque n'efface rien elle-même.
++        if (webStoreState.uninstallHandler) await webStoreState.uninstallHandler(id);
++        else await uninstallExtension(id, webStoreState);
+         queueMicrotask(() => {
+           event.sender.send("chrome.management.onUninstalled", id);
+         });
+@@ -905,6 +934,7 @@ async function installChromeWebStore(opts = {}) {
+   const autoUpdate = typeof opts.autoUpdate === "boolean" ? opts.autoUpdate : true;
+   const minimumManifestVersion = typeof opts.minimumManifestVersion === "number" ? opts.minimumManifestVersion : 3;
+   const beforeInstall = typeof opts.beforeInstall === "function" ? opts.beforeInstall : void 0;
++  const uninstallHandler = typeof opts.uninstallHandler === "function" ? opts.uninstallHandler : void 0;
+   const webStoreState = {
+     session,
+     extensionsPath,
+@@ -912,7 +942,8 @@ async function installChromeWebStore(opts = {}) {
+     allowlist: opts.allowlist ? new Set(opts.allowlist) : void 0,
+     denylist: opts.denylist ? new Set(opts.denylist) : void 0,
+     minimumManifestVersion,
+-    beforeInstall
++    beforeInstall,
++    uninstallHandler
+   };
+   const preloadPath = resolvePreloadPath(opts.modulePath);
+   if ("registerPreloadScript" in session) {
+@@ -942,6 +973,7 @@ async function installChromeWebStore(opts = {}) {
  }
  export {
    downloadExtension,
@@ -230,7 +323,7 @@ index 85ba0e0023ea491e8d07b9a8effd01cfc89ee977..632699f55927bd39c7e8cd6926a521f2
    installExtension,
    loadAllExtensions,
 diff --git a/dist/types/browser/index.d.ts b/dist/types/browser/index.d.ts
-index 895f30373eeba990a9bb4063d7c76b89bbe36988..6ecf610946f5912ed37408183f0c3831d26e15bf 100644
+index 895f30373eeba990a9bb4063d7c76b89bbe36988..6a3d01dcd561e639cc51b88489ff97ac7e7d1463 100644
 --- a/dist/types/browser/index.d.ts
 +++ b/dist/types/browser/index.d.ts
 @@ -1,5 +1,5 @@
@@ -240,3 +333,24 @@ index 895f30373eeba990a9bb4063d7c76b89bbe36988..6ecf610946f5912ed37408183f0c3831
  export { updateExtensions } from './updater';
  import { BeforeInstall, ExtensionId } from './types';
  interface ElectronChromeWebStoreOptions {
+@@ -53,6 +53,10 @@ interface ElectronChromeWebStoreOptions {
+      * to be taken.
+      */
+     beforeInstall?: BeforeInstall;
++    /**
++     * WebAiOs : appelé par `chrome.management.uninstall` de la page du Store à la place de `uninstallExtension`.
++     */
++    uninstallHandler?: (extensionId: ExtensionId) => Promise<void>;
+ }
+ /**
+  * Install Chrome Web Store support.
+diff --git a/dist/types/browser/types.d.ts b/dist/types/browser/types.d.ts
+index 3c8c4f9e92df59aa3db3550201ca9d7f8a198c6e..a7621658c63df1e112517d95aad118811c63e12e 100644
+--- a/dist/types/browser/types.d.ts
++++ b/dist/types/browser/types.d.ts
+@@ -18,4 +18,5 @@ export interface WebStoreState {
+     denylist?: Set<ExtensionId>;
+     minimumManifestVersion: number;
+     beforeInstall?: BeforeInstall;
++    uninstallHandler?: (extensionId: ExtensionId) => Promise<void>;
+ }

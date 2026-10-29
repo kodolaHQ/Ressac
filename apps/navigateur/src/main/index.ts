@@ -378,6 +378,9 @@ app.whenReady().then(async () => {
         },
         installer: (id, c) => serviceExtensions.installerStore(id, c),
       }),
+    // « Retirer de Chrome » sur la page du Store : notre désinstallation (registre, tous les profils), jamais celle de la
+    // bibliothèque.
+    desinstallerDepuisStore: (id) => serviceExtensions.desinstallerDepuisStore(id),
     // verifierUrl / verifierHote : branchés par la tâche 12 pour les extensions de l'agent ; absents, tout est permis.
   });
   // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.
@@ -587,7 +590,7 @@ app.whenReady().then(async () => {
         const f = magasin.etat.fenetres.find((x) => x.id === fenetreId);
         const espace = f && magasin.etat.espaces.find((e) => e.id === f.espaceActif);
         if (!espace) return { ok: false, erreur: "Aucun espace actif dans cette fenêtre" };
-        return serviceExtensions.installerStore(id, { profil: espace.profil, espace, fenetre: fenetreId });
+        return serviceExtensions.installerStore(id, { profil: espace.profil, espace, fenetre: fenetreId, depuisInterface: true });
       },
     },
     acces: {

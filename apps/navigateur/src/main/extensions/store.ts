@@ -9,16 +9,22 @@ import {
   empreintePortee,
   lireCle,
   retirer,
+  type EntreeExtension,
   type EtatExtensions,
   type IdProfil,
   type Portee,
 } from "@webaios/noyau";
-import { carteDe, SAISIE_INVALIDE, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
+import { carteDe, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, SAISIE_INVALIDE, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
 import type { Espace, EtatNavigateur, IdFenetre } from "../../commun/modele";
 import { telechargerStore, urlCrx } from "./telechargement";
 
 export { SAISIE_INVALIDE };
 export const INSTALLATION_REFUSEE = "Installation refusée";
+export const TOUTES_COUPEES = "Les extensions sont toutes désactivées : installe-la depuis la page Extensions";
+
+/** Le statut d'une extension désactivée (plantages, portée élargie) : rien n'est chargé tant que l'utilisateur ne la réactive pas. */
+const statutDesactivee = (d: EntreeExtension["desactivee"]): ResultatStore | null =>
+  d ? { ok: false, erreur: d.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE } : null;
 
 const ID_CHROME = /^[a-p]{32}$/;
 
@@ -53,6 +59,11 @@ export interface ContexteInstallation {
   profil: IdProfil;
   espace: Espace;
   fenetre: IdFenetre;
+  /**
+   * Demandée depuis l'interface de WebAiOs (adresse collée, IPC de la fenêtre principale) : seule à pouvoir poser une
+   * carte pendant la coupure générale. La page du Store (scriptable) ne l'est jamais.
+   */
+  depuisInterface?: boolean;
 }
 
 export type ResultatStore = { ok: true } | { ok: false; erreur: string };
@@ -113,7 +124,10 @@ export function installerStore(id: string, o: ContexteInstallation, d: Dependanc
 
 async function installer(id: string, o: ContexteInstallation, d: DependancesStore): Promise<ResultatStore> {
   const cle = cleExtension("store", id);
-  const demander = (c: CarteExtension) => d.demanderAccord(c, { fenetre: o.fenetre, pendantCoupure: true });
+  const depuisInterface = o.depuisInterface === true;
+  // Pendant la coupure générale, seule l'interface de WebAiOs peut demander une carte : la page du Store, non.
+  if (d.etatExtensions().toutesCoupees && !depuisInterface) return { ok: false, erreur: TOUTES_COUPEES };
+  const demander = (c: CarteExtension) => d.demanderAccord(c, { fenetre: o.fenetre, pendantCoupure: depuisInterface });
   const carte = (portee: { nom: string; version: string; portee: Portee; refus: string[]; avertissements: string[] }) =>
     carteDe(portee, { cle, source: "store", espace: o.espace, etat: d.etatNavigateur() });
 
@@ -121,6 +135,8 @@ async function installer(id: string, o: ContexteInstallation, d: DependancesStor
   const connue = d.etatExtensions().extensions[cle];
   const dossierConnu = connue ? join(d.dossier, "store", id, `${connue.version}_0`) : null;
   if (connue && dossierConnu && existsSync(join(dossierConnu, "manifest.json"))) {
+    const desactivee = statutDesactivee(connue.desactivee);
+    if (desactivee) return desactivee;
     if (connue.accord && connue.profils.includes(o.profil)) return { ok: true };
     const analyse = analyserManifeste(await lireManifeste(dossierConnu), { source: "store" });
     if (analyse.refus.length > 0) return { ok: false, erreur: analyse.refus.join(" ; ") };
@@ -168,30 +184,39 @@ async function installer(id: string, o: ContexteInstallation, d: DependancesStor
       await rm(cible, { recursive: true, force: true });
       return { ok: false, erreur: `Extension non préparée : ${(e as Error).message}` };
     }
-    await d.modifier((e) => {
-      const avant = e.extensions[cle];
-      const profils = avant ? [...new Set([...avant.profils, o.profil])] : [o.profil];
-      return {
-        ...e,
-        extensions: {
-          ...e.extensions,
-          [cle]: {
-            source: "store",
-            idChrome: id,
-            nom: analyse.nom,
-            version: analyse.version,
-            accord: analyse.portee,
-            profils,
-            epinglee: avant?.epinglee ?? false,
-            modifieeLe: null,
-            desactivee: null,
-            majEnAttente: null,
-            vues: avant?.vues ?? {},
+    let desactivee: EntreeExtension["desactivee"] = null;
+    try {
+      await d.modifier((e) => {
+        const avant = e.extensions[cle];
+        desactivee = avant?.desactivee ?? null;
+        const profils = avant ? [...new Set([...avant.profils, o.profil])] : [o.profil];
+        return {
+          ...e,
+          extensions: {
+            ...e.extensions,
+            [cle]: {
+              source: "store",
+              idChrome: id,
+              nom: analyse.nom,
+              version: analyse.version,
+              accord: analyse.portee,
+              profils,
+              epinglee: avant?.epinglee ?? false,
+              modifieeLe: null,
+              // Fichiers retrouvés : une désactivation (plantages, portée élargie) reste, avec ses profils.
+              desactivee,
+              majEnAttente: null,
+              vues: avant?.vues ?? {},
+            },
           },
-        },
-      };
-    });
-    return { ok: true };
+        };
+      });
+    } catch (e) {
+      // Rien d'inscrit : la version déplacée et préparée ne reste pas à moitié installée.
+      await rm(cible, { recursive: true, force: true });
+      throw e;
+    }
+    return statutDesactivee(desactivee) ?? { ok: true };
   } catch (e) {
     console.error(`[extensions] ${cle} non installée :`, e);
     return { ok: false, erreur: (e as Error).message };

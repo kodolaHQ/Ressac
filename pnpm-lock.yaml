@@ -164,7 +164,7 @@ settings:
 
 patchedDependencies:
   electron-chrome-extensions@4.10.0: 12f118923b110e2cb66682b2bf9419a80f4dba0e31421eec14ce44c3b528861d
-  electron-chrome-web-store@0.13.0: 715be264f2ef9cfc752a0b4d03fcae8da3ad37ca1d61abfa49bc18d4435761a9
+  electron-chrome-web-store@0.13.0: b4f4ebe2c710a9c995682f6a8a2b5a723fd9dfc6ea12a0eaf92bd9144f7dde30
 
 importers:
 
@@ -180,7 +180,7 @@ importers:
         version: 4.10.0(patch_hash=12f118923b110e2cb66682b2bf9419a80f4dba0e31421eec14ce44c3b528861d)
       electron-chrome-web-store:
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=715be264f2ef9cfc752a0b4d03fcae8da3ad37ca1d61abfa49bc18d4435761a9)
+        version: 0.13.0(patch_hash=b4f4ebe2c710a9c995682f6a8a2b5a723fd9dfc6ea12a0eaf92bd9144f7dde30)
       node-pty:
         specifier: 1.1.0
         version: 1.1.0
@@ -2344,7 +2344,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-chrome-web-store@0.13.0(patch_hash=715be264f2ef9cfc752a0b4d03fcae8da3ad37ca1d61abfa49bc18d4435761a9):
+  electron-chrome-web-store@0.13.0(patch_hash=b4f4ebe2c710a9c995682f6a8a2b5a723fd9dfc6ea12a0eaf92bd9144f7dde30):
     dependencies:
       '@types/chrome': 0.0.287
       adm-zip: 0.5.18

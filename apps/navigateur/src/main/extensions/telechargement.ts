@@ -5,9 +5,12 @@ import { downloadExtensionFromURL } from "electron-chrome-web-store";
 export const ERREUR_STORE = "Le Chrome Web Store n'a pas fourni l'extension (réseau coupé, ou le Store a changé sa façon de les servir)";
 export const CRX_INVALIDE = "Fichier d'extension invalide ou mal signé : installation refusée";
 
-/** Adresse du CRX3 d'une extension du Store ; en test, le faux Store local de `WEBAIOS_TEST_STORE_URL`. */
+/**
+ * Adresse du CRX3 d'une extension du Store ; en test (mode invisible seulement), le faux Store local de
+ * `WEBAIOS_TEST_STORE_URL`.
+ */
 export function urlCrx(id: string): string {
-  const test = process.env.WEBAIOS_TEST_STORE_URL;
+  const test = process.env.WEBAIOS_INVISIBLE === "1" ? process.env.WEBAIOS_TEST_STORE_URL : undefined;
   if (test) return `${test.replace(/\/+$/, "")}/${id}.crx`;
   const x = encodeURIComponent(`id=${id}&uc`);
   return `https://clients2.google.com/service/update2/crx?response=redirect&acceptformat=crx3&prodversion=${process.versions.chrome ?? ""}&x=${x}`;

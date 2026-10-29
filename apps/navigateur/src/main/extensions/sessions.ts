@@ -165,6 +165,8 @@ export class ExtensionsProfils {
        * absent : la page du Store n'est pas équipée.
        */
       avantInstallationStore?(s: Session, profil: IdProfil): (details: { id: string; frame: Electron.WebFrameMain }) => Promise<{ action: "allow" | "deny" }>;
+      /** `chrome.management.uninstall` de la page du Store (crochet du correctif) : lève si elle ne peut pas être retirée. */
+      desinstallerDepuisStore?(id: string): Promise<void>;
     },
   ) {
     instancesVivantes.add(this);
@@ -243,7 +245,16 @@ export class ExtensionsProfils {
     // n'installe jamais elle-même (`beforeInstall` ne rend `allow` que pour une extension déjà chargée par nous).
     const avant = this.o.avantInstallationStore?.(s, profil);
     if (avant) {
-      void installChromeWebStore({ session: s, extensionsPath: join(this.o.dossier, "store"), loadExtensions: false, autoUpdate: false, beforeInstall: avant }).catch(
+      const desinstaller = this.o.desinstallerDepuisStore ?? (() => Promise.reject(new Error("Désinstallation depuis la page du Store non branchée")));
+      void installChromeWebStore({
+        session: s,
+        extensionsPath: join(this.o.dossier, "store"),
+        loadExtensions: false,
+        autoUpdate: false,
+        beforeInstall: avant,
+        // Crochet du correctif : la bibliothèque n'efface jamais `store/<id>` elle-même (commun à tous les profils).
+        uninstallHandler: (id) => desinstaller(id),
+      }).catch(
         (erreur: unknown) => console.error(`[extensions] page du Store non équipée dans le profil ${profil} :`, erreur),
       );
     }

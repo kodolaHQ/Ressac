@@ -199,6 +199,10 @@ test("urlCrx suit WEBAIOS_TEST_STORE_URL", () => {
   expect(reelle.searchParams.get("x")).toBe(`id=${id}&uc`);
   expect(urlCrx(id)).toContain(`x=id%3D${id}%26uc`);
   vi.stubEnv("WEBAIOS_TEST_STORE_URL", "http://127.0.0.1:9999/store");
+  // Hors du mode invisible des tests, le faux Store est ignoré.
+  vi.stubEnv("WEBAIOS_INVISIBLE", "");
+  expect(urlCrx(id)).toContain("https://clients2.google.com/service/update2/crx");
+  vi.stubEnv("WEBAIOS_INVISIBLE", "1");
   expect(urlCrx(id)).toBe(`http://127.0.0.1:9999/store/${id}.crx`);
   vi.unstubAllEnvs();
 });
