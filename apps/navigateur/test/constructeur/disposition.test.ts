@@ -7,8 +7,8 @@ const lien = (de: string, vers: string) => ({ de, vers });
 
 const actus = (): Brouillon => ({
   version: 1,
-  blocs: ["flux", "uniques", "nouveaux", "tries", "garder", "rediger", "code", "articles", "sortie"].map((id) => bloc(id)),
-  liens: [lien("flux", "uniques"), lien("uniques", "nouveaux"), lien("nouveaux", "tries"), lien("tries", "garder"), lien("garder", "rediger"), lien("rediger", "code"), lien("code", "articles"), lien("articles", "sortie")],
+  blocs: ["flux", "uniques", "tri", "top", "a-resumer", "pages", "resumes", "articles", "sortie"].map((id) => bloc(id)),
+  liens: [lien("flux", "uniques"), lien("uniques", "tri"), lien("tri", "top"), lien("top", "a-resumer"), lien("a-resumer", "pages"), lien("pages", "resumes"), lien("top", "articles"), lien("resumes", "articles"), lien("articles", "sortie")],
 });
 
 test("disposer : actus en colonnes (flux 0, uniques 1, …, articles 7, sortie 8)", () => {

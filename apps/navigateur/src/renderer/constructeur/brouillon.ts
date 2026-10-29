@@ -54,8 +54,8 @@ export function relier(b: Brouillon, de: string, vers: string): Brouillon {
 }
 
 export function supprimerBlocs(b: Brouillon, ids: Iterable<string>): Brouillon {
-  const sortie = new Set(b.blocs.filter((x) => x.type !== "sortie").map((x) => x.id));
-  const a = new Set([...ids].filter((i) => sortie.has(i)));
+  const supprimables = new Set(b.blocs.filter((x) => x.type !== "sortie").map((x) => x.id));
+  const a = new Set([...ids].filter((i) => supprimables.has(i)));
   if (a.size === 0) return b;
   return { ...b, blocs: b.blocs.filter((x) => !a.has(x.id)), liens: b.liens.filter((l) => !a.has(l.de) && !a.has(l.vers)) };
 }
@@ -70,7 +70,7 @@ export function deplacer(b: Brouillon, positions: Record<string, Position>): Bro
   let change = false;
   const blocs = b.blocs.map((x) => {
     const p = positions[x.id];
-    if (!p || (p.x === x.position.x && p.y === x.position.y)) return x;
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || (p.x === x.position.x && p.y === x.position.y)) return x;
     change = true;
     return { ...x, position: { x: p.x, y: p.y } };
   });

@@ -63,6 +63,12 @@ test("deplacer : sans changement de position, rend le même brouillon", () => {
   expect(c.blocs[0]!.position).toEqual({ x: 5, y: 6 });
 });
 
+test("deplacer ignore les positions non finies", () => {
+  const b = avec([bloc("a")]);
+  expect(deplacer(b, { a: { x: NaN, y: 1 } })).toBe(b);
+  expect(deplacer(b, { a: { x: 1, y: Infinity } })).toBe(b);
+});
+
 test("versBrouillon est indulgent", () => {
   expect(versBrouillon({ blocs: [{ id: "a", type: "code" }] })).toEqual({ version: 1, blocs: [{ id: "a", type: "code", position: { x: 0, y: 0 }, parametres: {} }], liens: [] });
   expect(versBrouillon({ blocs: "non" })).toBeNull();
@@ -120,6 +126,9 @@ describe("suivreFichier", () => {
   });
   test("proposé quand l'utilisateur a un brouillon non enregistré", () => {
     expect(suivreFichier({ local: C, dernierConnu: A, disque: B, envoyes: [] })).toBe("proposer");
+  });
+  test("premier chargement (dernierConnu null) et disque différent → proposer", () => {
+    expect(suivreFichier({ local: A, dernierConnu: null, disque: B, envoyes: [] })).toBe("proposer");
   });
   test("JSON illisible → illisible", () => {
     expect(suivreFichier({ local: A, dernierConnu: A, disque: null, envoyes: [] })).toBe("illisible");
