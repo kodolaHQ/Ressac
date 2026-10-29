@@ -20,7 +20,7 @@ import {
   type LanceurProcessus,
 } from "../../src/workflows/executer.js";
 import { SORTIE_MAX_OCTETS } from "../../src/workflows/executions.js";
-import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES, TROP_DE_LECTURES } from "../../src/workflows/acces.js";
+import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES, TROP_DE_LECTURES, recuperer } from "../../src/workflows/acces.js";
 import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, extraireResultats, urlRecherche } from "../../src/workflows/duckduckgo.js";
 import { Menagement } from "../../src/workflows/menagement.js";
 import { WEB_REQUIS } from "../../src/workflows/valider.js";
@@ -886,6 +886,26 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
     expect(lire.mock.calls.map((c) => c[0])).toEqual(["localhost", "127.0.0.1"]);
     // localhost lu juste avant : la redirection attend son écart.
     expect(attentes).toEqual([1000]);
+  });
+
+  it("recuperer : l'attente du site d'une redirection est bornée par l'arrêt (et le délai), sans requête vers la cible", async () => {
+    let cible = "";
+    const web = await serveurWeb({
+      "/f": (res) => res.end("fini"),
+      "/vers-localhost": (res) => {
+        res.writeHead(302, { location: cible });
+        res.end();
+      },
+    });
+    cible = `http://localhost:${web.port}/f`;
+    const arret = new AbortController();
+    const changerHote = vi.fn(() => new Promise<void>(() => {}));
+    const p = recuperer(`${web.url}/vers-localhost`, "texte", null, true, arret.signal, changerHote);
+    p.catch(() => {});
+    await vi.waitFor(() => expect(changerHote).toHaveBeenCalledWith("localhost"));
+    arret.abort(new Error("Exécution arrêtée"));
+    await expect(p).rejects.toThrow("Exécution arrêtée");
+    expect(web.requetes).toEqual(["/vers-localhost"]);
   });
 
   it("widget sans web : 150 lectures passent, aucune attente du ménagement", async () => {

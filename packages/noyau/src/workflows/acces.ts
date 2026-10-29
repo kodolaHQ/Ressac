@@ -81,10 +81,20 @@ async function lireCorps(r: Response): Promise<Buffer> {
   return Buffer.concat(morceaux);
 }
 
+/** `p`, ou rejetée avec `signal.reason` dès que le signal est levé (son issue est alors ignorée). */
+function jusquAuSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((ok, ko) => {
+    const stop = () => ko(signal.reason);
+    p.then(ok, ko).finally(() => signal.removeEventListener("abort", stop));
+    if (signal.aborted) return stop();
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}
+
 /**
  * Récupération brute, sans cookie ni identifiant ; chaque redirection est revérifiée avec la même règle. `arret` levé
  * (l'exécution est arrêtée) : la requête est abandonnée et la promesse rejetée avec `arret.reason`. `changerHote`
- * (lecture ménagée) : attendu avant de suivre une redirection vers un autre hôte.
+ * (lecture ménagée) : attendu avant de suivre une redirection vers un autre hôte, dans le délai de 20 s.
  */
 export async function recuperer(
   brute: string,
@@ -105,7 +115,8 @@ export async function recuperer(
         await r.body?.cancel().catch(() => {});
         if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
         const suivante = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
-        if (changerHote && suivante.hostname !== url.hostname) await changerHote(suivante.hostname);
+        // L'attente du tour de l'autre site compte dans le délai, et cède à l'arrêt.
+        if (changerHote && suivante.hostname !== url.hostname) await jusquAuSignal(changerHote(suivante.hostname), echeance);
         url = suivante;
         continue;
       }
