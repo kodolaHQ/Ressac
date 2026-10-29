@@ -1,7 +1,11 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import { construireCrx } from "../../e2e/extensions/crx";
 import type { EtatExtensions } from "@webaios/noyau";
 import type { EtatNavigateur } from "../../src/commun/modele";
 
@@ -280,4 +284,114 @@ test("verifierMisesAJour : un téléchargement en échec garde son erreur dans l
   expect(service.erreurs().get(`store:${ID}`)).toMatch(/Chrome Web Store/);
   expect(registre()).toEqual(avant);
   expect(existsSync(join(dossier, "store-attente", ID))).toBe(false);
+});
+
+test("revoirMiseAJour : une attente qui ne correspond plus au disque est abandonnée (dossier et majEnAttente), pour être téléchargée de nouveau", async () => {
+  const { service, attente, cartes, registre } = await majEnAttente({ questions: (repondre) => repondre("autoriser") });
+  // Le manifeste en attente ne demande plus la même portée que celle inscrite.
+  writeFileSync(join(attente, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "2.0.0", host_permissions: ["https://c.exemple/*"] }));
+  expect(await service.revoirMiseAJour(`store:${ID}`, "f1")).toBe("echec");
+  expect(cartes).toEqual([]);
+  expect(registre()).toMatchObject({ version: "1.0.0", majEnAttente: null });
+  expect(existsSync(attente)).toBe(false);
+  expect(existsSync(join(dossier, "store", ID, "1.0.0_0", "manifest.json"))).toBe(true);
+  expect(service.erreurs().get(`store:${ID}`)).toMatch(/téléchargée de nouveau/);
+});
+
+test("désinstallée : son erreur de mise à jour disparaît", async () => {
+  const { service } = await storeInstalle(["defaut"]);
+  const fauxFetch = (async () =>
+    new Response(
+      `)]}'\n${JSON.stringify({ response: { app: [{ appid: ID, updatecheck: { status: "ok", urls: { url: [{ codebase: "http://127.0.0.1:1/x.crx" }] }, manifest: { version: "1.1.0" } } }] } })}`,
+    )) as typeof fetch;
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  await service.verifierMisesAJour({ fetch: fauxFetch });
+  journal.mockRestore();
+  expect(service.erreurs().has(`store:${ID}`)).toBe(true);
+  await service.desinstaller(`store:${ID}`);
+  expect(service.erreurs().has(`store:${ID}`)).toBe(false);
+});
+
+test("planifierMisesAJour : registre pas prêt à la première vérification → nouvel essai 60 s plus tard, puis toutes les 5 h", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("WEBAIOS_INVISIBLE", "");
+  try {
+    const service = new ServiceExtensions();
+    const verifier = vi.spyOn(service, "verifierMisesAJour").mockResolvedValue();
+    const arreter = service.planifierMisesAJour();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(verifier).not.toHaveBeenCalled();
+    (service as unknown as { pret: boolean }).pret = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(verifier).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5 * 3600_000);
+    expect(verifier).toHaveBeenCalledTimes(2);
+    arreter();
+    await vi.advanceTimersByTimeAsync(5 * 3600_000);
+    expect(verifier).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  }
+});
+
+// ——— Une vraie mise à jour (CRX servi en local) quand la version installée n'a pas pu être préparée ———
+
+const servis = new Map<string, Buffer>();
+let serveur: Server;
+let base: string;
+beforeAll(async () => {
+  serveur = createServer((req, res) => {
+    const corps = servis.get(req.url ?? "");
+    if (!corps) return void res.writeHead(404).end();
+    res.writeHead(200).end(corps);
+  });
+  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  base = `http://127.0.0.1:${(serveur.address() as AddressInfo).port}`;
+});
+afterAll(async () => {
+  await new Promise<void>((ok) => serveur.close(() => ok()));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Store en 1.0.0 dont la préparation a échoué au démarrage (manifeste absent) ; la mise à jour `version` publiée. */
+async function preparationRatee(version: string, hotes: string[]) {
+  const cle = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey;
+  const source = mkdtempSync(join(tmpdir(), "webaios-ext-service-src-"));
+  temporaires.push(source);
+  writeFileSync(join(source, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version, host_permissions: hotes }));
+  const { crx, id } = construireCrx(source, { cle });
+  servis.set(`/${id}.crx`, crx);
+  mkdirSync(join(dossier, "store", id, "1.0.0_0"), { recursive: true }); // sans manifeste : préparation en échec
+  const portee = { permissions: [], hotes: ["https://a.exemple/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`store:${id}`]: { ...entree("store", ["defaut"]), idChrome: id, accord: portee } } }),
+  );
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { service, pret } = demarrer();
+  await pret;
+  const fauxFetch = (async () =>
+    new Response(
+      `)]}'\n${JSON.stringify({ response: { app: [{ appid: id, updatecheck: { status: "ok", urls: { url: [{ codebase: `${base}/${id}.crx` }] }, manifest: { version } } }] } })}`,
+    )) as typeof fetch;
+  await service.verifierMisesAJour({ fetch: fauxFetch });
+  journal.mockRestore();
+  return { service, cle: `store:${id}` };
+}
+
+test("une mise à jour élargie, préparée, ne lève pas l'erreur de préparation de la version installée (qui reste non chargée)", async () => {
+  const { service, cle } = await preparationRatee("2.0.0", ["https://a.exemple/*", "https://b.exemple/*"]);
+  expect(service.etatExtensions().extensions[cle]!.majEnAttente?.version).toBe("2.0.0");
+  expect(service.erreurs().get(cle)).toMatch(/ENOENT/);
+  expect(synchronisees.at(-1)!.extensions[cle]).toBeUndefined();
+});
+
+test("une mise à jour appliquée, préparée, remplace la version qui n'avait pas pu l'être : chargée", async () => {
+  const { service, cle } = await preparationRatee("1.1.0", ["https://a.exemple/*"]);
+  expect(service.etatExtensions().extensions[cle]!.version).toBe("1.1.0");
+  expect(service.erreurs().has(cle)).toBe(false);
+  expect(synchronisees.at(-1)!.extensions[cle]!.version).toBe("1.1.0");
 });

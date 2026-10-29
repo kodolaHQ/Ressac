@@ -21,6 +21,7 @@ import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
 import {
+  abandonnerMiseAJour,
   accepterMiseAJour,
   appliquerMiseAJour,
   chercherMisesAJour,
@@ -90,6 +91,11 @@ export class ServiceExtensions {
   private erreursPreparation = new Map<string, string>();
   /** Erreur de la dernière mise à jour du Store, par clé (en mémoire : vide au démarrage, jusqu'à la prochaine vérification). */
   private erreursMaj = new Map<string, string>();
+  /**
+   * Versions préparées par une mise à jour, par clé : leur réussite n'efface l'erreur de préparation de la clé que quand
+   * le registre en fait la version installée (une version en attente n'est jamais chargée).
+   */
+  private prepareesMaj = new Map<string, string>();
   /** La vérification des mises à jour en cours : une seule à la fois. */
   private verification: Promise<void> | null = null;
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
@@ -305,12 +311,20 @@ export class ServiceExtensions {
     const cle = /^[a-p]{32}$/.test(id) ? `store:${id}` : null;
     if (!cle || !(cle in this.etat.extensions)) return Promise.reject(new Error(`Extension du Store inconnue : ${id}`));
     if (!this.o) return Promise.reject(new Error("Service des extensions non démarré"));
-    return retirerDuProfilStore(cle, profil, this.dependancesStore());
+    return retirerDuProfilStore(cle, profil, this.dependancesStore()).then(() => this.oublierMaj(cle));
   }
 
-  /** Retire une extension de toutes les sessions et du registre, et efface son dossier. */
-  desinstaller(cle: string): Promise<void> {
-    return desinstallerStore(cle, this.dependancesStore());
+  /** Retire une extension de toutes les sessions et du registre, et efface son dossier (et oublie son erreur de mise à jour). */
+  async desinstaller(cle: string): Promise<void> {
+    await desinstallerStore(cle, this.dependancesStore());
+    this.oublierMaj(cle);
+  }
+
+  /** Une extension partie du registre n'a plus d'erreur de mise à jour. */
+  private oublierMaj(cle: string): void {
+    if (cle in this.etat.extensions) return;
+    this.erreursMaj.delete(cle);
+    this.prepareesMaj.delete(cle);
   }
 
   private dependancesStore(): DependancesStore {
@@ -368,18 +382,27 @@ export class ServiceExtensions {
   }
 
   /**
-   * Vérifie les mises à jour 60 s après l'appel, puis toutes les 5 h. Rien sous `WEBAIOS_INVISIBLE=1` (tests), sauf si
+   * Vérifie les mises à jour 60 s après l'appel (puis de 60 s en 60 s tant que le registre n'est pas prêt), ensuite toutes
+   * les 5 h. Rien sous `WEBAIOS_INVISIBLE=1` (tests), sauf si
    * `WEBAIOS_TEST_STORE_MAJ_URL` est posée. Rend de quoi l'arrêter.
    */
   planifierMisesAJour(): () => void {
     if (process.env.WEBAIOS_INVISIBLE === "1" && !process.env.WEBAIOS_TEST_STORE_MAJ_URL) return () => {};
     const verifier = () => void this.verifierMisesAJour().catch((e: unknown) => console.error("[extensions] mises à jour :", e));
     let intervalle: ReturnType<typeof setInterval> | undefined;
-    const premiere = setTimeout(() => {
+    // Registre pas encore prêt (démarrage lent) : nouvel essai 60 s plus tard, pas 5 h.
+    let premiere: ReturnType<typeof setTimeout>;
+    const essayer = () => {
+      if (!this.pret) {
+        premiere = setTimeout(essayer, PREMIERE_MAJ_MS);
+        premiere.unref?.();
+        return;
+      }
       verifier();
       intervalle = setInterval(verifier, INTERVALLE_MAJ_MS);
       intervalle.unref?.();
-    }, PREMIERE_MAJ_MS);
+    };
+    premiere = setTimeout(essayer, PREMIERE_MAJ_MS);
     premiere.unref?.();
     return () => {
       clearTimeout(premiere);
@@ -402,6 +425,7 @@ export class ServiceExtensions {
     const d = this.dependancesMaj();
     const analyse = analyserManifeste(await lireManifeste(join(o.dossier, "store", lue.id, `${m.version}_0`)), { source: "store" });
     if (analyse.refus.length > 0 || analyse.version !== m.version || empreintePortee(analyse.portee) !== empreintePortee(m.portee)) {
+      await abandonnerMiseAJour(cle, m.version, d);
       d.noterErreur(cle, `Mise à jour ${m.version} illisible : elle sera téléchargée de nouveau`);
       return "echec";
     }
@@ -420,12 +444,29 @@ export class ServiceExtensions {
   }
 
   private dependancesMaj(): DependancesMiseAJour {
-    const s = this.dependancesStore();
+    const o = this.o;
+    if (!o) throw new Error("Service des extensions non démarré");
     return {
-      dossier: s.dossier,
-      etatExtensions: s.etatExtensions,
-      modifier: s.modifier,
-      preparer: s.preparer,
+      dossier: o.dossier,
+      etatExtensions: () => this.etat,
+      // Une version préparée par la mise à jour devient l'installée dans cette écriture : l'erreur de préparation de
+      // l'ancienne tombe avant que les sessions ne se synchronisent (elles la chargent alors).
+      modifier: (changer) =>
+        this.modifier((e, prives) => {
+          const r = changer(e, prives);
+          for (const [cle, version] of this.prepareesMaj)
+            if (r.extensions[cle]?.version === version) {
+              this.erreursPreparation.delete(cle);
+              this.prepareesMaj.delete(cle);
+            }
+          return r;
+        }),
+      // Préparée, mais pas encore installée : l'erreur de préparation de la version installée reste.
+      preparer: async (cle, chemin) => {
+        await preparerStore(chemin, o.dossierGardes);
+        const version = /([^/\\]+)_0$/.exec(chemin)?.[1];
+        if (version) this.prepareesMaj.set(cle, version);
+      },
       noterErreur: (cle, erreur) => {
         if ((this.erreursMaj.get(cle) ?? null) === erreur) return;
         if (erreur === null) this.erreursMaj.delete(cle);

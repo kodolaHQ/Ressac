@@ -139,8 +139,12 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
   const cle = cleExtension("store", maj.id);
   const x = d.etatExtensions().extensions[cle];
   if (!x || x.source !== "store" || comparerVersions(x.version, maj.version) >= 0) return "echec";
-  // Déjà téléchargée et en attente de l'accord : rien à refaire.
-  if (x.majEnAttente?.version === maj.version && existsSync(join(dossierVersion(d.dossier, maj.id, maj.version), "manifest.json"))) return "en-attente";
+  // Une attente n'est jamais remplacée par une version plus basse, ni par la même déjà téléchargée (rien à refaire).
+  const m = x.majEnAttente;
+  if (m) {
+    const ecart = comparerVersions(maj.version, m.version);
+    if (ecart < 0 || (ecart === 0 && existsSync(join(dossierVersion(d.dossier, maj.id, m.version), "manifest.json")))) return "en-attente";
+  }
 
   const echec = (message: string, cause?: unknown): ResultatMiseAJour => {
     console.error(`[extensions] mise à jour de ${cle} non installée :`, cause ?? message);
@@ -160,7 +164,9 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
     }
     const analyse = analyserManifeste(await lireManifeste(telecharge), { source: "store" });
     if (analyse.refus.length > 0) return echec(analyse.refus.join(" ; "));
-    if (comparerVersions(x.version, analyse.version) >= 0) return echec(`version ${analyse.version} pas plus récente que ${x.version}`);
+    // Comme Chrome : le fichier doit être la version annoncée (sinon, ni une version plus basse ni une boucle de
+    // téléchargements ne remplacent ce qui est installé ou en attente).
+    if (analyse.version !== maj.version) return echec(`le Store a annoncé la version ${maj.version} et fourni la ${analyse.version}`);
 
     const nouvelle = dossierVersion(d.dossier, maj.id, analyse.version);
     await mkdir(join(d.dossier, "store", maj.id), { recursive: true });
@@ -178,6 +184,11 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
     let elargie = false as boolean;
     let ancienne = null as string | null;
     let attenteAvant = null as string | null;
+    const inscrite = () => {
+      const y = d.etatExtensions().extensions[cle];
+      return !!y && (y.version === analyse.version || y.majEnAttente?.version === analyse.version);
+    };
+    let suiteRatee = false;
     await d.modifier((e) => {
       const y = e.extensions[cle];
       if (!y) throw new Error("extension retirée pendant la mise à jour");
@@ -189,10 +200,16 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
       }
       ancienne = dossierVersion(d.dossier, maj.id, y.version);
       return { ...e, extensions: { ...e.extensions, [cle]: { ...y, nom: analyse.nom, version: analyse.version, majEnAttente: null } } };
+    }).catch((e: unknown) => {
+      // Le registre a pu être écrit avant l'erreur (sessions, cartes, avis) : la version qu'il nomme reste alors.
+      if (!inscrite()) throw e;
+      suiteRatee = true;
+      console.error(`[extensions] mise à jour de ${cle} inscrite, mais la suite a échoué :`, e);
     });
     cible = null; // inscrite : elle reste.
     // Les sessions ont rechargé (ou gardé) ce qu'il faut : l'ancienne version et une attente abandonnée s'effacent.
-    for (const reste of [ancienne, attenteAvant]) if (reste && reste !== nouvelle) await rm(reste, { recursive: true, force: true });
+    // Sessions pas synchronisées : l'ancienne version, peut-être encore chargée, reste.
+    for (const reste of [suiteRatee ? null : ancienne, attenteAvant]) if (reste && reste !== nouvelle) await rm(reste, { recursive: true, force: true });
     d.noterErreur(cle, null);
     return elargie ? "en-attente" : "appliquee";
   } catch (e) {
@@ -218,6 +235,7 @@ export function accepterMiseAJour(
   return enFileStore(d.dossier, id, async () => {
     const nouvelle = dossierVersion(d.dossier, id, attendue.version);
     let ancienne = null as string | null;
+    let suiteRatee = false;
     try {
       if (!existsSync(join(nouvelle, "manifest.json"))) throw new Error("fichiers de la mise à jour absents");
       await d.modifier((e) => {
@@ -227,14 +245,39 @@ export function accepterMiseAJour(
           throw new Error("la mise à jour en attente a changé");
         ancienne = dossierVersion(d.dossier, id, y.version);
         return { ...e, extensions: { ...e.extensions, [cle]: { ...y, nom: attendue.nom, version: m.version, accord: m.portee, majEnAttente: null } } };
+      }).catch((e: unknown) => {
+        // Écrit avant l'erreur (sessions, cartes, avis) : appliquée, mais l'ancienne, peut-être encore chargée, reste.
+        if (d.etatExtensions().extensions[cle]?.version !== attendue.version) throw e;
+        suiteRatee = true;
+        console.error(`[extensions] mise à jour de ${cle} inscrite, mais la suite a échoué :`, e);
       });
     } catch (e) {
       console.error(`[extensions] mise à jour de ${cle} non appliquée :`, e);
       d.noterErreur(cle, `Mise à jour ${attendue.version} non installée : ${(e as Error).message}`);
       return "echec";
     }
-    if (ancienne && ancienne !== nouvelle) await rm(ancienne, { recursive: true, force: true });
+    if (ancienne && ancienne !== nouvelle && !suiteRatee) await rm(ancienne, { recursive: true, force: true });
     d.noterErreur(cle, null);
     return "appliquee";
+  });
+}
+
+/**
+ * Abandonne la mise à jour en attente `version` (ses fichiers ne correspondent plus à ce qui est inscrit), dans la file
+ * de l'extension : `majEnAttente` retiré et son dossier effacé, pour qu'elle soit téléchargée de nouveau à la prochaine
+ * vérification.
+ */
+export function abandonnerMiseAJour(cle: string, version: string, d: DependancesMiseAJour): Promise<void> {
+  const id = cle.slice("store:".length);
+  if (!cle.startsWith("store:") || !ID_CHROME.test(id)) return Promise.resolve();
+  return enFileStore(d.dossier, id, async () => {
+    const x = d.etatExtensions().extensions[cle];
+    if (x?.majEnAttente?.version !== version) return;
+    await d.modifier((e) => {
+      const y = e.extensions[cle];
+      if (y?.majEnAttente?.version !== version) return e;
+      return { ...e, extensions: { ...e.extensions, [cle]: { ...y, majEnAttente: null } } };
+    });
+    if (d.etatExtensions().extensions[cle]?.version !== version) await rm(dossierVersion(d.dossier, id, version), { recursive: true, force: true });
   });
 }

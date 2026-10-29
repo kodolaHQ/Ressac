@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, type KeyObject } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { analyserManifeste, type EntreeExtension, type EtatExtensions, type IdProfil } from "@webaios/noyau";
 import { construireCrx } from "../../e2e/extensions/crx";
 
@@ -87,6 +87,10 @@ const omaha = (apps: { appid: string; status?: string; version?: string; codebas
       })),
     },
   });
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
   appels = [];
@@ -177,7 +181,6 @@ test("chercherMisesAJour : WEBAIOS_TEST_STORE_MAJ_URL remplace l'adresse, en mod
   await chercherMisesAJour([{ id: a, version: "1.0.0" }], { fetch: f });
   vi.stubEnv("WEBAIOS_INVISIBLE", "1");
   await chercherMisesAJour([{ id: a, version: "1.0.0" }], { fetch: f });
-  vi.unstubAllEnvs();
   expect(appels.map((x) => x.url)).toEqual([URL_MISES_A_JOUR, "http://127.0.0.1:9/maj"]);
   expect(INTERVALLE_MAJ_MS).toBe(5 * 3600_000);
 });
@@ -354,4 +357,77 @@ test("une extension désinstallée entre-temps, ou déjà à jour : rien n'est t
   expect(await appliquerMiseAJour({ id: "d".repeat(32), version: "2.0.0", url }, dependances())).toBe("echec");
   expect(requetes).toBe(0);
   expect(erreurs.size).toBe(0);
+});
+
+test("le CRX n'a pas la version annoncée : refusée, rien ne change (ni plus haute, ni plus basse)", async () => {
+  const cle = nouvelleCle();
+  const { id } = installer(cle);
+  const avant = JSON.stringify(etat);
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { url } = publier(cle, { version: "1.2.0" });
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, dependances())).toBe("echec");
+  expect(erreurs.get(`store:${id}`)).toMatch(/1\.2\.0.*1\.1\.0|1\.1\.0.*1\.2\.0/);
+  const { url: basse } = publier(cle, { version: "0.9.0" });
+  expect(await appliquerMiseAJour({ id, version: "1.3.0", url: basse }, dependances())).toBe("echec");
+  journal.mockRestore();
+  expect(JSON.stringify(etat)).toBe(avant);
+  expect(contenu(join(dossier, "store", id))).toEqual(["1.0.0_0"]);
+  expect(contenu(join(dossier, "store-attente"))).toEqual([]);
+});
+
+test("une attente n'est jamais remplacée par une version égale ou plus basse", async () => {
+  const cle = nouvelleCle();
+  const { id } = installer(cle);
+  const elargie = { host_permissions: ["https://a.exemple/*", "https://b.exemple/*"] };
+  const { url } = publier(cle, { version: "2.0.0", ...elargie });
+  expect(await appliquerMiseAJour({ id, version: "2.0.0", url }, dependances())).toBe("en-attente");
+  const attente = join(dossier, "store", id, "2.0.0_0");
+  const avant = requetes;
+  // Plus basse que l'attente (même si plus haute que l'installée) : ni téléchargée, ni écrite.
+  const { url: basse } = publier(cle, { version: "1.5.0", ...elargie });
+  expect(await appliquerMiseAJour({ id, version: "1.5.0", url: basse }, dependances())).toBe("en-attente");
+  expect(requetes).toBe(avant);
+  expect(etat.extensions[`store:${id}`]!.majEnAttente!.version).toBe("2.0.0");
+  expect(existsSync(join(attente, "manifest.json"))).toBe(true);
+  expect(contenu(join(dossier, "store", id)).sort()).toEqual(["1.0.0_0", "2.0.0_0"]);
+});
+
+test("modifier lève APRÈS l'écriture du registre : la version inscrite reste sur le disque", async () => {
+  const cle = nouvelleCle();
+  const { id, ancienne } = installer(cle);
+  const { url } = publier(cle, { version: "1.1.0" });
+  const d = {
+    ...dependances(),
+    modifier: async (changer: (e: EtatExtensions, p: ReadonlySet<IdProfil>) => EtatExtensions) => {
+      etat = changer(etat, new Set());
+      throw new Error("sessions en panne");
+    },
+  };
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, d)).toBe("appliquee");
+  journal.mockRestore();
+  expect(etat.extensions[`store:${id}`]!.version).toBe("1.1.0");
+  expect(existsSync(join(dossier, "store", id, "1.1.0_0", "manifest.json"))).toBe(true);
+  // L'ancienne peut être encore chargée (sessions non synchronisées) : elle n'est pas effacée.
+  expect(existsSync(ancienne)).toBe(true);
+  expect(contenu(join(dossier, "store-attente"))).toEqual([]);
+});
+
+test("l'écriture du registre elle-même échoue : rien ne reste, rien ne change", async () => {
+  const cle = nouvelleCle();
+  const { id } = installer(cle);
+  const { url } = publier(cle, { version: "1.1.0" });
+  const avant = JSON.stringify(etat);
+  const d = {
+    ...dependances(),
+    modifier: async () => {
+      throw new Error("disque plein");
+    },
+  };
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, d)).toBe("echec");
+  journal.mockRestore();
+  expect(JSON.stringify(etat)).toBe(avant);
+  expect(erreurs.get(`store:${id}`)).toContain("disque plein");
+  expect(contenu(join(dossier, "store", id))).toEqual(["1.0.0_0"]);
 });
