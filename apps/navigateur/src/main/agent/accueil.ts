@@ -54,6 +54,7 @@ export function versWidgetsAffiches(etat: EtatAccueil, mtimes: Record<string, nu
         compte: w.declaration.sources.compte,
         publiques: w.declaration.sources.publiques,
         aRecolte: w.aRecolte,
+        heures: w.declaration.recolte?.heures ?? [],
       },
     ];
   });

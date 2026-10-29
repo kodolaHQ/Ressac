@@ -89,7 +89,9 @@ test("garderJours, auFilDeLEau et la borne de budgetSecondes dans le catalogue",
   }
   expect(champ("ia.trier", "garderJours").parElementSeulement).toBeUndefined();
   expect(champ("liste.nouveaux", "garderJours")).toMatchObject({ libelle: "Oublier après (jours)", requis: false, genre: "nombre", min: 1, max: 365, entier: true });
-  expect(champ("sortie", "auFilDeLEau")).toMatchObject({ libelle: "Publier au fil de l'eau", requis: false, defaut: false, genre: "case" });
+  expect(champ("sortie", "auFilDeLEau")).toMatchObject({ libelle: "Publier au fil de l'eau", requis: false, genre: "case" });
+  // Sans valeur par défaut : la clé reste absente tant que l'utilisateur ne coche pas (absente = faux).
+  expect(champ("sortie", "auFilDeLEau")).not.toHaveProperty("defaut");
   expect(de("source.page")).not.toHaveProperty("chaine");
 });
 

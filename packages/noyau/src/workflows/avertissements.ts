@@ -5,6 +5,9 @@ import type { WorkflowValide } from "./valider.js";
 
 export const AVERTISSEMENT_FIL_DE_L_EAU = "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément";
 
+/** Une recherche web prend vite plus que les 150 s d'une exécution ordinaire. */
+export const AVERTISSEMENT_WEB_SANS_DUREE = "sans dureeMaxMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer dureeMaxMinutes";
+
 export type Avertissement = { bloc: string; message: string };
 
 /** L'hôte d'une adresse, sauf si la partie avant le chemin contient un gabarit (`{…}`) ou n'est pas http(s). */
@@ -21,11 +24,12 @@ function hoteDe(url: string): string | null {
 /**
  * Ce qui ne bloque pas l'enregistrement mais risque de faire échouer l'exécution : un domaine absent des sources
  * déclarées (seulement pour un widget avec compte), une clé `{config.…}` absente de la configuration du widget et, avec
- * `valide` (le même workflow validé), une sortie « au fil de l'eau » sans chaîne : elle n'aurait rien à publier.
+ * `valide` (le même workflow validé), une sortie « au fil de l'eau » sans chaîne : elle n'aurait rien à publier. Avec
+ * `dureeMaxMinutes: null` (le widget n'en déclare pas), chaque `web.chercher` : l'exécution risque d'être coupée.
  */
 export function avertirWorkflow(
   workflow: Workflow,
-  ctx: { sources: { compte: readonly string[]; publiques: readonly string[] }; config: unknown },
+  ctx: { sources: { compte: readonly string[]; publiques: readonly string[] }; config: unknown; dureeMaxMinutes?: number | null },
   valide?: WorkflowValide,
 ): Avertissement[] {
   const r: Avertissement[] = [];
@@ -56,6 +60,7 @@ export function avertirWorkflow(
       }
     }
     for (const cle of manquantes) r.push({ bloc: b.id, message: `config.${cle} absent de la configuration du widget` });
+    if (b.type === "web.chercher" && ctx.dureeMaxMinutes === null) r.push({ bloc: b.id, message: AVERTISSEMENT_WEB_SANS_DUREE });
   }
   if (valide) {
     const sortie = valide.workflow.blocs.find((b) => b.id === valide.sortie.id);

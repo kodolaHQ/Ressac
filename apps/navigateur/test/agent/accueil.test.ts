@@ -241,6 +241,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
     compte: ["mail.exemple.test"],
     publiques: ["meteo.exemple.test"],
     aRecolte: true,
+    heures: [],
   });
   expect(affiches.find((w) => w.id === "vide")).toMatchObject({ src: null, donnees: null, exemple: null, aRecolte: false });
   const casse = affiches.find((w) => w.id === "casse");
@@ -249,6 +250,35 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
   // Aucun chevauchement entre les placements rendus.
   const ps = affiches.map((w) => w.placement);
   for (const a of ps) for (const b of ps) if (a !== b) expect(a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h).toBe(false);
+});
+
+test("versWidgetsAffiches transmet les heures", () => {
+  const declaration = (recolte?: { minutes?: number; heures?: string[] }) => ({
+    nom: "Veille",
+    description: "",
+    tailles: { min: { l: 2, h: 2 }, max: { l: 6, h: 4 }, defaut: { l: 2, h: 2 } },
+    sources: { compte: [], publiques: [], web: true },
+    ...(recolte ? { recolte } : {}),
+  });
+  const widget = (id: string, recolte?: { minutes?: number; heures?: string[] }) => ({
+    id,
+    dossier: `/w/${id}`,
+    declaration: declaration(recolte),
+    etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null },
+    donnees: null,
+    exemple: null,
+    aRecolte: true,
+    aWorkflow: true,
+    aAffichage: false,
+  });
+  const etat: EtatAccueil = {
+    disposition: [],
+    widgets: [widget("matin", { heures: ["07:00", "19:00"] }), widget("horaire", { minutes: 60 }), widget("sans")],
+  };
+  const parId = new Map(versWidgetsAffiches(etat, {}).map((w) => [w.id, w]));
+  expect(parId.get("matin")).toMatchObject({ heures: ["07:00", "19:00"] });
+  expect(parId.get("horaire")).toMatchObject({ heures: [] });
+  expect(parId.get("sans")).toMatchObject({ heures: [] });
 });
 
 test("permissionInterface : rien pour un affichage de widget ni pour un cadre de l'interface ; la page de l'interface garde ses droits", () => {

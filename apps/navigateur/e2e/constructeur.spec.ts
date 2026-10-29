@@ -1388,3 +1388,123 @@ test("un workflow de 30 blocs s'ouvre lisible : aucun nœud ne se chevauche, tou
   expect(instantane(join(racine, "accueil", "widgets", "grand"))).toEqual(avant);
   await fermer();
 });
+
+// Tâche 15 (plan 10) : la veille dans le constructeur
+
+/** État « à jour » dont le suivi des heures dit tout fait : aucune heure n'est due pendant le test. */
+const etatSansHeureDue = () => {
+  const maintenant = new Date().toISOString();
+  return { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant, heures: { faite: "9999-12-31T23:59", echecs: null } };
+};
+
+test("le panneau Widget d'un widget web affiche « Accès au web : ouvert » et ses heures ; Chercher sur le web s'ajoute depuis la palette", async () => {
+  const racine = nouvelleRacine();
+  ecrireWidget(racine, "veille", {
+    nom: "Veille",
+    recolte: { heures: ["07:00", "19:00"], dureeMaxMinutes: 30, notifier: true },
+    sources: { web: true },
+    config: { url: `${site.url}/liens` },
+    workflow: WORKFLOW_VEILLE,
+    fichiers: {
+      "liens.mjs": "export default async (page) => page.liens;",
+      "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
+    },
+    affichage: AFFICHAGE,
+    exemple: { exemple: "veille" },
+  });
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille", etatSansHeureDue());
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const declaration = readFileSync(join(dossierVeille(racine), "widget.json"), "utf8");
+  await ouvrirConstructeur(fenetre, "veille");
+  const panneau = fenetre.getByTestId("panneau-widget");
+  await expect(fenetre.getByTestId("widget-web")).toHaveText("Accès au web : ouvert");
+  await expect(fenetre.getByTestId("widget-heures")).toHaveText("Heures prévues : 07:00, 19:00");
+  await expect(panneau).toContainText("Durée maximale : 30 min");
+  await expect(panneau).toContainText("Notification à la fin : oui");
+
+  const chercher = fenetre.getByTestId("palette-web.chercher");
+  await expect(chercher).toBeEnabled();
+  await chercher.click();
+  await expect(fenetre.getByTestId("noeud-web-chercher")).toBeVisible();
+  await expect(fenetre.getByTestId("etat-enregistrement")).not.toContainText("doit déclarer");
+  // widget.json n'est jamais écrit par le constructeur.
+  expect(readFileSync(join(dossierVeille(racine), "widget.json"), "utf8")).toBe(declaration);
+  await fermer();
+});
+
+test("dans un widget sans web, Chercher sur le web est grisé ; un web.chercher écrit par l'agent rend « Non enregistré » / « Workflow invalide : web.chercher … »", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId("noeud-tri")).toBeVisible();
+  // Rien sur le web dans le panneau d'un widget sans accès.
+  await expect(fenetre.getByTestId("widget-web")).toHaveCount(0);
+  await expect(fenetre.getByTestId("widget-heures")).toHaveCount(0);
+  const chercher = fenetre.getByTestId("palette-web.chercher");
+  await expect(chercher).toBeDisabled();
+  await expect(chercher).toHaveAttribute("title", 'Le widget doit déclarer "web": true : demande-le à l\'agent.');
+  await chercher.click({ force: true });
+  await expect(fenetre.getByTestId("noeud-web-chercher")).toHaveCount(0);
+
+  ecrireCommeAgent(racine, {
+    version: 1,
+    blocs: [
+      { id: "chercher", type: "web.chercher", parametres: { requete: "voitures" } },
+      { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+    ],
+    liens: [{ de: "chercher", vers: "sortie" }],
+  });
+  await expect(fenetre.getByTestId("noeud-chercher")).toBeVisible();
+  await expect(fenetre.getByTestId("etat-enregistrement")).toContainText("Non enregistré : ");
+  await expect(fenetre.getByTestId("etat-enregistrement")).toContainText('Workflow invalide : web.chercher : le widget doit déclarer "web": true');
+  await fermer();
+});
+
+test("auFilDeLEau derrière Garder les N premiers : avertissement sur la sortie", async () => {
+  const racine = nouvelleRacine();
+  ecrireWidget(racine, "veille", {
+    nom: "Veille",
+    recolte: { minutes: 60 },
+    config: { url: `${site.url}/liens` },
+    workflow: {
+      version: 1,
+      blocs: [
+        { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
+        { id: "liens", type: "code", parametres: { source: "liens.mjs" } },
+        { id: "garder", type: "liste.garder", parametres: { nombre: 5 } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget", auFilDeLEau: true } },
+      ],
+      liens: [
+        { de: "page", vers: "liens" },
+        { de: "liens", vers: "garder" },
+        { de: "garder", vers: "sortie" },
+      ],
+    },
+    fichiers: { "liens.mjs": "export default async (page) => page.liens;" },
+    affichage: AFFICHAGE,
+    exemple: { exemple: "veille" },
+  });
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("noeud-sortie").click();
+  await expect(fenetre.getByTestId("avertissement-sortie")).toContainText(
+    "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément",
+  );
+  await expect(fenetre.getByTestId("noeud-sortie")).toHaveClass(/avertit/);
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+
+  // Décochée, la case retire la clé (absente = faux) : rien d'autre n'est écrit dans la sortie.
+  const caseFil = fenetre.getByTestId("champ-auFilDeLEau");
+  await expect(caseFil).toBeChecked();
+  await caseFil.uncheck();
+  await expect.poll(() => lireJson(fichier).blocs.find((b: { id: string }) => b.id === "sortie").parametres).toEqual({ vers: "widget" });
+  await expect(fenetre.getByTestId("avertissement-sortie")).toHaveCount(0);
+  await fermer();
+});

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { AVERTISSEMENT_FIL_DE_L_EAU, avertirWorkflow, validerWorkflow, type Workflow } from "../../src/index.js";
+import { AVERTISSEMENT_FIL_DE_L_EAU, AVERTISSEMENT_WEB_SANS_DUREE, avertirWorkflow, validerWorkflow, type Workflow } from "../../src/index.js";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown>) => ({ id, type, position: { x: 0, y: 0 }, parametres });
 const wf = (...blocs: ReturnType<typeof bloc>[]): Workflow => ({ version: 1, blocs, liens: [] });
@@ -65,4 +65,13 @@ test("auFilDeLEau derrière liste.garder : AVERTISSEMENT_FIL_DE_L_EAU sur la sor
   expect(avertir(brut(bloc("g", "liste.garder", { nombre: 2 })))).toEqual([{ bloc: "s", message: AVERTISSEMENT_FIL_DE_L_EAU }]);
   expect(avertir(brut(bloc("p", "source.page", { url: "https://x.fr/{url}", parElement: true })))).toEqual([]);
   expect(AVERTISSEMENT_FIL_DE_L_EAU).toBe("rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
+});
+
+test("web.chercher sans durée maximale déclarée : avertissement (pas une erreur) ; avec, ou sans le contexte, rien", () => {
+  const w = wf(bloc("c", "web.chercher", { requete: "x" }), bloc("p", "source.page", { url: "https://a.fr" }));
+  const sansCompte = { sources: { compte: [], publiques: [] }, config: {} };
+  expect(AVERTISSEMENT_WEB_SANS_DUREE).toBe("sans dureeMaxMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer dureeMaxMinutes");
+  expect(avertirWorkflow(w, { ...sansCompte, dureeMaxMinutes: null })).toEqual([{ bloc: "c", message: AVERTISSEMENT_WEB_SANS_DUREE }]);
+  expect(avertirWorkflow(w, { ...sansCompte, dureeMaxMinutes: 30 })).toEqual([]);
+  expect(avertirWorkflow(w, sansCompte)).toEqual([]);
 });

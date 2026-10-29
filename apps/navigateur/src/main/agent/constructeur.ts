@@ -94,7 +94,7 @@ export async function lireDeclaration(chemins: CheminsEspace, id: string): Promi
 
 function avertissementsDe(brut: unknown, d: DeclarationWidget): Avertissement[] {
   const r = validerWorkflow(brut, contexteValidation(d));
-  return r.ok ? avertirWorkflow(r.valide.workflow, { sources: d.sources, config: d.config }, r.valide) : [];
+  return r.ok ? avertirWorkflow(r.valide.workflow, { sources: d.sources, config: d.config, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null }, r.valide) : [];
 }
 
 /** Ce que le constructeur ouvre pour un widget ; null : widget inconnu (ou widget.json illisible), sans récolte, ou disque en erreur. N'écrit rien. */
@@ -105,10 +105,20 @@ export async function lireEdition(c: Contexte, id: string): Promise<EditionWorkf
     const l = await lireBrouillon(d.dossier, contexteValidation(d.declaration));
     if (!l) return null;
     const decl = d.declaration;
+    const r = decl.recolte;
     return {
       ...l,
       avertissements: l.brut === null ? [] : avertissementsDe(l.brut, decl),
-      widget: { nom: decl.nom, compte: decl.sources.compte, publiques: decl.sources.publiques, config: decl.config ?? null },
+      widget: {
+        nom: decl.nom,
+        compte: decl.sources.compte,
+        publiques: decl.sources.publiques,
+        config: decl.config ?? null,
+        web: decl.sources.web,
+        recolte: r
+          ? { minutes: r.minutes ?? null, heures: r.heures ?? [], dureeMaxMinutes: r.dureeMaxMinutes ?? null, notifier: r.notifier === true }
+          : null,
+      },
     };
   } catch (e) {
     console.error(`[webaios] lecture du workflow du widget ${id} :`, e);

@@ -41,7 +41,7 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
       brut,
       validation: v.ok ? { ok: true } : { ok: false, erreur: v.erreur, ...(v.bloc ? { bloc: v.bloc } : {}) },
       avertissements: [],
-      widget: { nom: "Essai", compte: [], publiques: [], config: {} },
+      widget: { nom: "Essai", compte: [], publiques: [], config: {}, web: false, recolte: null },
     };
   };
   const depot: Depot = {

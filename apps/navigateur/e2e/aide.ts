@@ -21,8 +21,9 @@ export function nouvelleRacine(): string {
 export interface WidgetTest {
   nom: string;
   tailles?: { min: { l: number; h: number }; max: { l: number; h: number }; defaut: { l: number; h: number } };
-  recolte?: { minutes: number };
-  sources?: { compte?: string[]; publiques?: string[] };
+  recolte?: { minutes?: number; heures?: string[]; dureeMaxMinutes?: number; notifier?: boolean };
+  /** `web` n'est écrit que s'il est donné : la déclaration d'un widget d'aujourd'hui ne change pas. */
+  sources?: { compte?: string[]; publiques?: string[]; web?: boolean };
   config?: unknown;
   /** Contenu de `recolte.mjs`. */
   code?: string;
@@ -43,7 +44,11 @@ export function ecrireWidget(racine: string, id: string, w: WidgetTest): void {
     nom: w.nom,
     tailles: w.tailles ?? { min: { l: 2, h: 2 }, max: { l: 12, h: 8 }, defaut: { l: 4, h: 3 } },
     ...(w.recolte ? { recolte: w.recolte } : {}),
-    sources: { compte: w.sources?.compte ?? [], publiques: w.sources?.publiques ?? [] },
+    sources: {
+      compte: w.sources?.compte ?? [],
+      publiques: w.sources?.publiques ?? [],
+      ...(w.sources?.web !== undefined ? { web: w.sources.web } : {}),
+    },
     ...(w.config !== undefined ? { config: w.config } : {}),
   };
   writeFileSync(join(dossier, "widget.json"), JSON.stringify(declaration));

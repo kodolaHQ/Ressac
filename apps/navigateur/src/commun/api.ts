@@ -313,7 +313,15 @@ export type Brouillon = z.infer<typeof SchemaBrouillon>;
 
 export type EditionWorkflow = LectureBrouillon & {
   avertissements: Avertissement[];
-  widget: { nom: string; compte: string[]; publiques: string[]; config: unknown };
+  /** Ce que `widget.json` déclare, en lecture seule ; `recolte` null : le widget n'en déclare pas. */
+  widget: {
+    nom: string;
+    compte: string[];
+    publiques: string[];
+    config: unknown;
+    web: boolean;
+    recolte: { minutes: number | null; heures: string[]; dureeMaxMinutes: number | null; notifier: boolean } | null;
+  };
 };
 /** Id d'une exécution : son début ISO sans « : » ni « . » (jamais un chemin). */
 export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
@@ -364,6 +372,8 @@ export type WidgetAffiche =
       publiques: string[];
       /** Le widget a une récolte (`workflow.json` ou `recolte.mjs`) : son menu propose « Voir / modifier le workflow ». */
       aRecolte: boolean;
+      /** Heures fixes de la récolte (« HH:MM »), vide sans elles. */
+      heures: string[];
     }
   | { id: string; erreur: string; placement: Placement };
 

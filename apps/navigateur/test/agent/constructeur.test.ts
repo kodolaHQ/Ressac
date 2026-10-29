@@ -94,7 +94,7 @@ test("lireEdition et enregistrerEdition : widget sans récolte null, avertisseme
   expect(await lireEdition(c, "absent")).toBeNull();
   writeFileSync(join(dossier, "recolte.mjs"), "export default 1");
   const e = await lireEdition(c, "meteo");
-  expect(e).toMatchObject({ origine: "implicite", widget: { nom: "Météo", compte: ["a.test"] } });
+  expect(e).toMatchObject({ origine: "implicite", widget: { nom: "Météo", compte: ["a.test"], web: false, recolte: null } });
   expect(existsSync(join(dossier, "workflow.json"))).toBe(false);
   const brouillon = {
     version: 1,
@@ -164,6 +164,29 @@ test("lireEdition et enregistrerEdition valident selon le widget (durée maximal
   const r = await enregistrerEdition(m.c, "meteo", sansChaine);
   expect(r).toMatchObject({ ok: true, avertissements: [{ bloc: "sortie", message: AVERTISSEMENT_FIL_DE_L_EAU }] });
   expect((await lireEdition(m.c, "meteo"))?.avertissements).toEqual([{ bloc: "sortie", message: AVERTISSEMENT_FIL_DE_L_EAU }]);
+});
+
+test("lireEdition : accès au web et récolte du widget ; web.chercher sans durée maximale avertit", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const { AVERTISSEMENT_WEB_SANS_DUREE } = await import("@webaios/noyau");
+  const { enregistrerEdition, lireEdition } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  const tailles = { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } };
+  const ecrireDecl = (recolte: object) => writeFileSync(m.join(m.dossier, "widget.json"), JSON.stringify({ nom: "Météo", tailles, sources: { web: true }, recolte }));
+  ecrireDecl({ heures: ["07:00", "19:00"], notifier: true });
+  const chercher = { id: "chercher", type: "web.chercher", position: { x: 0, y: 0 }, parametres: { requete: "voitures" } };
+  const wf = { version: 1, blocs: [chercher, sortie], liens: [{ de: "chercher", vers: "sortie" }] };
+  const r = await enregistrerEdition(m.c, "meteo", wf);
+  expect(r).toMatchObject({ ok: true, avertissements: [{ bloc: "chercher", message: AVERTISSEMENT_WEB_SANS_DUREE }] });
+  expect(await lireEdition(m.c, "meteo")).toMatchObject({
+    widget: { web: true, recolte: { minutes: null, heures: ["07:00", "19:00"], dureeMaxMinutes: null, notifier: true } },
+    avertissements: [{ bloc: "chercher", message: AVERTISSEMENT_WEB_SANS_DUREE }],
+  });
+  ecrireDecl({ minutes: 60, dureeMaxMinutes: 30 });
+  expect(await lireEdition(m.c, "meteo")).toMatchObject({
+    widget: { web: true, recolte: { minutes: 60, heures: [], dureeMaxMinutes: 30, notifier: false } },
+    avertissements: [],
+  });
 });
 
 test("enregistrerEdition : widget inconnu et widget.json invalide refusés, widget.json du workflow intact", async () => {

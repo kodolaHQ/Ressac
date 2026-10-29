@@ -1,6 +1,7 @@
 <script lang="ts">
   import CadreWidget from "./CadreWidget.svelte";
   import Icone from "./Icone.svelte";
+  import { prochaineExecution } from "./prochaine";
   import type { Placement, WidgetAffiche } from "../../commun/api";
 
   let {
@@ -39,6 +40,14 @@
 
   let menuOuvert = $state(false);
 
+  /** Relue chaque minute : « prochaine : … » passe d'aujourd'hui à demain sans attendre un changement du widget. */
+  let maintenant = $state(new Date());
+  $effect(() => {
+    const minuterie = setInterval(() => (maintenant = new Date()), 60_000);
+    return () => clearInterval(minuterie);
+  });
+  const prochaine = $derived("erreur" in widget ? null : prochaineExecution(widget.heures, maintenant));
+
   function poignee(e: PointerEvent) {
     if (e.target instanceof Element && e.target.closest("button")) return;
     menuOuvert = false;
@@ -55,13 +64,19 @@
     {:else}
       <h2 data-testid="titre-widget">{widget.nom}</h2>
       {#if widget.etat.statut === "en-cours"}
-        <span class="badge">mise à jour…</span>
+        {#if widget.etat.progression}
+          <span class="badge" data-testid="progression">mise à jour… {widget.etat.progression.faits} / {widget.etat.progression.total}</span>
+        {:else}
+          <span class="badge">mise à jour…</span>
+        {/if}
       {:else if widget.etat.statut === "erreur"}
         <span class="badge echec" title={widget.etat.journal ?? ""}
           >échec du {date(widget.etat.derniereTentative)} : {widget.etat.erreur ?? "erreur inconnue"}</span
         >
       {:else if widget.etat.statut === "atelier-arrete"}
         <span class="badge echec">mise à jour impossible : atelier arrêté</span>
+      {:else if prochaine}
+        <span class="badge doux" data-testid="prochaine">prochaine : {prochaine}</span>
       {/if}
     {/if}
     <div class="actions">
@@ -110,6 +125,7 @@
   header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; cursor: grab; user-select: none; min-height: 20px; }
   h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--texte); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .badge { font-size: 11px; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .badge.doux { color: var(--texte-doux); }
   .badge.echec, .illisible, .avertissement { color: var(--en-erreur); }
   .illisible { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
   .actions { position: relative; margin-left: auto; }

@@ -16,6 +16,12 @@
       <dt>Domaines publics</dt>
       <dd data-testid="widget-publiques">{widget.publiques.length ? widget.publiques.join(", ") : "aucun"}</dd>
     </dl>
+    {#if widget.web}<p class="ligne" data-testid="widget-web">Accès au web : ouvert</p>{/if}
+    {#if widget.recolte?.heures.length}
+      <p class="ligne" data-testid="widget-heures">Heures prévues : {widget.recolte.heures.join(", ")}</p>
+    {/if}
+    {#if widget.recolte?.dureeMaxMinutes}<p class="ligne">Durée maximale : {widget.recolte.dureeMaxMinutes} min</p>{/if}
+    {#if widget.recolte?.notifier}<p class="ligne">Notification à la fin : oui</p>{/if}
     <p class="libelle">Configuration</p>
     <pre data-testid="widget-config">{config}</pre>
   {/if}
@@ -29,6 +35,7 @@
   dl { display: grid; grid-template-columns: 1fr; gap: 2px; margin: 0 0 8px; }
   dt { color: var(--texte-doux); }
   dd { margin: 0 0 6px; word-break: break-word; }
+  .ligne { margin: 0 0 6px; }
   .libelle { margin: 0; color: var(--texte-doux); }
   pre { margin: 4px 0 10px; padding: 6px 8px; max-height: 260px; overflow: auto; border-radius: 6px; background: var(--fond); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
   .doux { margin: 0 0 6px; color: var(--texte-doux); }

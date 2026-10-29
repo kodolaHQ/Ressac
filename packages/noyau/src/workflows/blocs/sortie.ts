@@ -10,14 +10,14 @@ export const definition: DefinitionBloc = {
   entree: "requise",
   champs: [
     { nom: "vers", libelle: "Destination", requis: false, defaut: "widget", genre: "choix", choix: [...GENRES_SORTIE] },
-    { nom: "auFilDeLEau", libelle: "Publier au fil de l'eau", aide: "Chaque élément fini est montré sans attendre la fin de l'exécution.", requis: false, defaut: false, genre: "case" },
+    { nom: "auFilDeLEau", libelle: "Publier au fil de l'eau", aide: "Chaque élément fini est montré sans attendre la fin de l'exécution.", requis: false, genre: "case" },
   ],
   parElement: "non",
   chaine: false,
   parametres: z
     .object({
       vers: z.enum(GENRES_SORTIE, { error: (i) => `vers inconnu : ${String(i.input)}` }).default("widget"),
-      // Facultatif (absent = faux), jamais `.default(false)` : les paramètres validés d'une sortie d'aujourd'hui, donc la
+      // Facultatif (absent = faux), jamais `.default(false)` (ni valeur par défaut au catalogue : décochée, la case retire la clé) : les paramètres validés d'une sortie d'aujourd'hui, donc la
       // ligne `debut` envoyée au conteneur, ne changent pas.
       auFilDeLEau: z.boolean().optional(),
     })

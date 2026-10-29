@@ -2,8 +2,14 @@
   import type { CatalogueBloc, FamilleBloc } from "@webaios/noyau";
   import { GLISSER_BLOC } from "./ajout";
 
-  /** Les blocs par famille : un clic en pose un au centre de la vue, un glisser là où on le lâche. */
-  let { catalogue, aSortie, onajouter }: { catalogue: CatalogueBloc[]; aSortie: boolean; onajouter: (type: string) => void } = $props();
+  /**
+   * Les blocs par famille : un clic en pose un au centre de la vue, un glisser là où on le lâche. `web` : le widget déclare
+   * `"web": true` ; sans lui, « Chercher sur le web » est grisé (le validateur le refuserait).
+   */
+  let { catalogue, aSortie, web, onajouter }: { catalogue: CatalogueBloc[]; aSortie: boolean; web: boolean; onajouter: (type: string) => void } = $props();
+
+  const SANS_WEB = 'Le widget doit déclarer "web": true : demande-le à l\'agent.';
+  const grise = (type: string) => type === "web.chercher" && !web;
 
   let repliees = $state<Partial<Record<FamilleBloc, boolean>>>({});
   const familles = $derived.by(() => {
@@ -26,10 +32,12 @@
             <li>
               <button
                 class="bloc"
-                draggable="true"
+                draggable={!grise(c.type)}
+                disabled={grise(c.type)}
                 data-testid="palette-{c.type}"
-                title={c.description}
+                title={grise(c.type) ? SANS_WEB : c.description}
                 ondragstart={(e) => {
+                  if (grise(c.type)) return void e.preventDefault();
                   e.dataTransfer?.setData(GLISSER_BLOC, c.type);
                   if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
                 }}
@@ -53,5 +61,6 @@
   .chevron.replie { transform: rotate(-90deg); }
   ul { list-style: none; margin: 0; padding: 0; }
   .bloc { all: unset; box-sizing: border-box; width: 100%; padding: 6px 8px; border-radius: 6px; cursor: grab; font-size: 13px; color: var(--texte); }
-  .bloc:hover { background: var(--fond-survol); }
+  .bloc:hover:not(:disabled) { background: var(--fond-survol); }
+  .bloc:disabled { cursor: default; opacity: 0.45; }
 </style>

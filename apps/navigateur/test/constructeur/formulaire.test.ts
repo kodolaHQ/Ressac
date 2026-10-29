@@ -49,3 +49,12 @@ test("case et choix : valeurs telles quelles ; valeur affichée par défaut cell
 test("un nombre requis vidé ne change rien", () => {
   expect(parametresAvec({ nombre: 10 }, champ("liste.garder", "nombre"), "")).toBeNull();
 });
+
+test("case sans valeur par défaut (auFilDeLEau) : décochée, la clé part ; cochée, true", () => {
+  const f = champ("sortie", "auFilDeLEau");
+  expect(parametresAvec({ vers: "widget" }, f, true)).toEqual({ vers: "widget", auFilDeLEau: true });
+  expect(parametresAvec({ vers: "widget", auFilDeLEau: true }, f, false)).toEqual({ vers: "widget" });
+  expect(entreeDe(f, {})).toBeUndefined();
+  // Une case avec valeur par défaut garde la valeur décochée telle quelle.
+  expect(parametresAvec({ parElement: true }, champ("ia.rediger", "parElement"), false)).toEqual({ parElement: false });
+});
