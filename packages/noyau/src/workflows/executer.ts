@@ -332,16 +332,19 @@ export async function executerWorkflow(
   // résolu toutes les clés en suspens, que seule la sortie finale montre. Elle ne sert qu'à l'issue `fin`
   // (`memoireRecue`), jamais relayée ni sûre : si les données finales sont refusées, la mémoire sûre d'avant reste.
   let sortieFinie = false;
-  const adopterMemoire = (t: { memoire: MemoireBlocs | null; recueA: number }) => {
+  // L'adoption se fait dans la file des relais, après les publications reçues avant elle : une mémoire n'est sûre que
+  // si les données qu'elle suppose montrées ont bien été écrites (F1).
+  const adopterDansLaFile = async (t: { memoire: MemoireBlocs | null; recueA: number }) => {
     if (!t.memoire || memoireDouteuse) return;
     const memoire = t.memoire;
     memoireSure = memoire;
     const surMemoire = infra.surMemoire;
     if (surMemoire && (memoireRelayeeA === null || t.recueA - memoireRelayeeA >= ECART_MEMOIRE_MS)) {
       memoireRelayeeA = t.recueA;
-      enFile(() => surMemoire(memoire));
+      await surMemoire(memoire);
     }
   };
+  const adopterMemoire = (t: { memoire: MemoireBlocs | null; recueA: number }) => enFile(() => adopterDansLaFile(t));
   const libererMemoireTenue = () => {
     const t = memoireTenue;
     memoireTenue = null;
@@ -519,14 +522,26 @@ export async function executerWorkflow(
         surPublication !== undefined;
       if (!acceptee) {
         // Le conteneur croit ces éléments montrés : sa mémoire n'est plus sûre avant la prochaine publication acceptée.
-        if (progressif && (tenue || pendantLaChaine())) memoireDouteuse = true;
+        if (progressif && (tenue || pendantLaChaine())) {
+          enFile(async () => {
+            memoireDouteuse = true;
+          });
+        }
         return;
       }
-      memoireDouteuse = false;
-      if (tenue) adopterMemoire(tenue);
       publicationRelayeeA = maintenant;
       const p: Publication = { donnees: m.donnees, faits: m.faits, total: m.total };
-      enFile(() => surPublication!(p));
+      // Les données d'abord, puis la mémoire qu'elles rendent sûre ; une écriture refusée la laisse douteuse.
+      enFile(async () => {
+        try {
+          await surPublication!(p);
+        } catch {
+          memoireDouteuse = true;
+          return;
+        }
+        memoireDouteuse = false;
+        if (tenue) await adopterDansLaFile(tenue);
+      });
       return;
     }
     if (m.t === "journal") {

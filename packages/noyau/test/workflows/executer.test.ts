@@ -1295,6 +1295,41 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
       expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(3) });
     });
 
+    it("F1 : les données d'une publication sont écrites avant la mémoire qu'elle rend sûre", async () => {
+      const b = await banc(veille({ auFilDeLEau: true }));
+      b.infra.lancer = lanceurPas([...ouvrirChaine, mem(1), pub("A", 1, 3), { t: "echec", erreur: "cassé" }]);
+      const ecrits: string[] = [];
+      b.infra.surPublication = async (p) => {
+        await new Promise((ok) => setTimeout(ok, 20));
+        ecrits.push(`donnees ${p.donnees}`);
+      };
+      b.infra.surMemoire = async (m) => void ecrits.push(`memoire ${m.liste?.valeur}`);
+      const r = await executerWorkflow(b.ctx, b.infra);
+      expect(ecrits).toEqual(["donnees A", "memoire 1"]);
+      expect(r.issue).toMatchObject({ memoire: marquee(1) });
+    });
+
+    it("F1 : une écriture de données refusée laisse la mémoire douteuse jusqu'à la prochaine publication écrite", async () => {
+      const lancer = async (pas: unknown[]) => {
+        const b = await banc(veille({ auFilDeLEau: true }));
+        const avancer = horlogeFactice(b);
+        b.infra.lancer = lanceurPas(pas.map((p) => (p === "avancer" ? avancer(5000) : p)));
+        const memoires: unknown[] = [];
+        b.infra.surPublication = async (p) => {
+          if (p.donnees === "refusee") throw new Error("disque plein");
+        };
+        b.infra.surMemoire = async (m) => void memoires.push(m);
+        const r = await executerWorkflow(b.ctx, b.infra);
+        return { issue: r.issue, memoires };
+      };
+      const refusee = await lancer([...ouvrirChaine, mem(1), pub("refusee", 1, 3), mem(2), { t: "journal", bloc: "fiche", texte: "x" }, { t: "echec", erreur: "cassé" }]);
+      expect(refusee.memoires).toEqual([]);
+      expect(refusee.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: null });
+      const reprise = await lancer([...ouvrirChaine, mem(1), pub("refusee", 1, 3), "avancer", mem(2), pub("B", 2, 3), mem(3), { t: "echec", erreur: "cassé" }]);
+      expect(reprise.memoires).toEqual([marquee(2)]);
+      expect(reprise.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(3) });
+    });
+
     it("une mémoire après la fin du bloc de sortie, puis fin : ni relayée ni sûre, elle ne sert qu'à l'issue fin", async () => {
       const r = await lancerAvec((avancer) => [
         ...ouvrirChaine,
