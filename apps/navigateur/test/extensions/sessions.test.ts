@@ -624,6 +624,38 @@ test("démarrage : une extension de l'agent est signalée comme telle ; un servi
   expect(gestionnaires.has(CANAL_DEMARRAGE)).toBe(false);
 });
 
+test("extension de l'agent : un nouveau modifieeLe la retire puis la recharge depuis la même copie ; sinon rien", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { modifieeLe: "2026-10-30T10:00:00.000Z" }) }));
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { modifieeLe: "2026-10-30T10:00:00.000Z" }) }));
+  expect(s.chargements).toHaveLength(1);
+  expect(s.retraits).toEqual([]);
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { modifieeLe: "2026-10-30T11:00:00.000Z" }) }));
+  expect(s.retraits).toEqual(["id-copies-fond"]);
+  expect(s.chargements.map((c) => c.chemin)).toEqual([join(dossier, "copies", "fond"), join(dossier, "copies", "fond")]);
+});
+
+test("extension de l'agent rechargée à la même version : onInstalled « update » et rulesets du manifeste, comme le rechargement de Chrome", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const chemin = join(dossier, "copies", "fond");
+  s.manifestes.set(chemin, { version: "1.0.0", background: { service_worker: "fond.js" }, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "r.json" }] } });
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { modifieeLe: "2026-10-30T10:00:00.000Z" }) }));
+  expect(await demarrerFond(s, "id-copies-fond", 1)).toEqual({ installation: { reason: "install" }, rulesets: ["r"], rulesetsInactifs: [], agent: true });
+  expect(await demarrerFond(s, "id-copies-fond", 2)).toMatchObject({ installation: null });
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { modifieeLe: "2026-10-30T11:00:00.000Z" }) }));
+  expect(await demarrerFond(s, "id-copies-fond", 3)).toEqual({
+    installation: { reason: "update", previousVersion: "1.0.0" },
+    rulesets: ["r"],
+    rulesetsInactifs: [],
+    agent: true,
+  });
+  expect(await demarrerFond(s, "id-copies-fond", 4)).toMatchObject({ installation: null });
+});
+
 test("démarrage depuis une page d'extension : expéditeur vérifié ; l'installation n'y est donnée que si l'extension n'a pas de fond", async () => {
   const p = creer();
   const s = fausseSession("defaut");

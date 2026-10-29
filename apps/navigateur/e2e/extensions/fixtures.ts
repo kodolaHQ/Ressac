@@ -253,3 +253,11 @@ export function installerStoreFactice(
     rmSync(source, { recursive: true, force: true });
   }
 }
+
+/**
+ * Écrit une extension de l'agent dans `<racine>/extensions/<id>/` (le `~/WebAiOs` du test) : chaque fichier par chemin
+ * relatif (un objet est écrit en JSON). Rien de ce qui est écrit là n'accorde un droit.
+ */
+export function ecrireExtensionAgent(racine: string, id: string, fichiers: Record<string, string | object>): void {
+  ecrireExtension(join(racine, "extensions", id), fichiers);
+}

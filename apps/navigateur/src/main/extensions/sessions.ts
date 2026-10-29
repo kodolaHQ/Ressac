@@ -80,6 +80,9 @@ export function cheminExtension(dossier: string, cle: string, e: EtatExtensions)
   return lue.source === "store" ? join(dossier, "store", lue.id, `${entree.version}_0`) : join(dossier, "copies", lue.id);
 }
 
+/** Ce qui fait recharger une extension dont le dossier ne change pas : `modifieeLe` (copie de l'agent refaite). */
+const marqueDe = (e: EtatExtensions, cle: string): string => e.extensions[cle]?.modifieeLe ?? "";
+
 /** Ce que la bibliothèque laisse voir de ses rouages (version figée 4.10.0) : son routeur d'API. */
 interface Rouages {
   ctx?: { router?: { handle?(nom: string, f: (evenement: { extension?: Electron.Extension }, ...args: unknown[]) => unknown): void } };
@@ -120,8 +123,8 @@ let sessionsEquipees = 0;
  */
 export class ExtensionsProfils {
   private instances = new Map<IdProfil, { session: Session; extensions: ElectronChromeExtensions }>();
-  /** Par profil : clé → extension chargée (id Chromium, dossier). */
-  private chargees = new Map<IdProfil, Map<string, { id: string; chemin: string }>>();
+  /** Par profil : clé → extension chargée (id Chromium, dossier, `marqueDe` au chargement). */
+  private chargees = new Map<IdProfil, Map<string, { id: string; chemin: string; marque: string }>>();
   private erreurs = new Map<string, string>();
   private dernier: EtatExtensions | undefined;
   private file: Promise<void> = Promise.resolve();
@@ -156,6 +159,8 @@ export class ExtensionsProfils {
        * avec la version vue avant (`precedente`, absente à la première installation).
        */
       noterVue(cle: string, profil: IdProfil, version: string): Promise<{ nouvelle: boolean; precedente?: string }>;
+      /** Note l'id que Chromium a donné à la copie d'une extension de l'agent (`idChrome` du registre). */
+      noterIdChrome?(cle: string, id: string): void;
       /** `tabs.create`, `tabs.update`, `windows.create` d'une extension vers `url` ; absent : permis. */
       verifierUrl?(extension: Electron.Extension, url: string): boolean;
       /** `tabs.insertCSS` d'une extension dans un onglet à l'adresse `url` ; absent : permis. */
@@ -328,11 +333,14 @@ export class ExtensionsProfils {
     const agent = lireCle(cle)?.source === "agent";
     if (contexte === "page" && (ext.manifest as { background?: unknown }).background) return vide(agent);
     try {
-      const vue = await this.o.noterVue(cle, profil, ext.version);
+      // Agent : une copie rechargée (même version) est une nouvelle vue, comme le rechargement d'une extension non
+      // empaquetée dans Chrome (onInstalled « update », rulesets du manifeste) : la vue porte aussi `modifieeLe`.
+      const vue = await this.o.noterVue(cle, profil, agent ? `${ext.version}#${this.dernier?.extensions[cle]?.modifieeLe ?? ""}` : ext.version);
       if (!vue.nouvelle) return vide(agent);
       const { actifs, inactifs } = rulesetsDuManifeste(ext.manifest);
+      const precedente = vue.precedente?.split("#")[0];
       return {
-        installation: vue.precedente ? { reason: "update", previousVersion: vue.precedente } : { reason: "install" },
+        installation: precedente ? { reason: "update", previousVersion: precedente } : { reason: "install" },
         rulesets: actifs,
         rulesetsInactifs: inactifs,
         agent,
@@ -415,7 +423,8 @@ export class ExtensionsProfils {
     }
     this.voulues.set(profil, voulues);
     for (const [cle, c] of chargees) {
-      if (voulues.get(cle) === c.chemin) continue;
+      // Même dossier et même marque : rien à faire. Une copie de l'agent refaite (même dossier) a une nouvelle marque.
+      if (voulues.get(cle) === c.chemin && marqueDe(e, cle) === c.marque) continue;
       this.retirer(s, profil, cle, c.id);
       chargees.delete(cle);
     }
@@ -429,7 +438,8 @@ export class ExtensionsProfils {
           this.retirer(s, profil, cle, ext.id);
           continue;
         }
-        chargees.set(cle, { id: ext.id, chemin });
+        chargees.set(cle, { id: ext.id, chemin, marque: marqueDe(e, cle) });
+        if (lireCle(cle)?.source === "agent" && e.extensions[cle]?.idChrome !== ext.id) this.o.noterIdChrome?.(cle, ext.id);
         // Rien n'assure qu'un service worker MV3 démarre au chargement : ses règles et son onInstalled en dépendent.
         if ((ext.manifest as { background?: unknown }).background) {
           await s.serviceWorkers.startWorkerForScope(ext.url).catch((erreur: unknown) => console.error(`[extensions] fond de ${cle} non démarré :`, erreur));

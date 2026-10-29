@@ -14,11 +14,21 @@ import {
 } from "@webaios/noyau";
 import { carteDe, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
 export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions";
-import { aUneVue, profilsEnUsage, type Decision, type Demande, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
+import { aUneVue, profilsEnUsage, type Decision, type Demande, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
 import { attendreReponse, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
+import {
+  demanderActivation,
+  demarrerAgents,
+  preparerAgent,
+  recharger,
+  type DependancesAgent,
+  type PreparationAgent,
+  type ResultatActivation,
+  type ResultatRechargement,
+} from "./agent";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
 import {
   abandonnerMiseAJour,
@@ -96,6 +106,10 @@ export class ServiceExtensions {
    * le registre en fait la version installée (une version en attente n'est jamais chargée).
    */
   private prepareesMaj = new Map<string, string>();
+  /** Erreurs des extensions de l'agent (préparation de la copie, dossier absent), par clé, en mémoire. */
+  private erreursAgent = new Map<string, string>();
+  /** Extensions de l'agent qui ne sont plus chargées tant que leur erreur reste (dossier absent). */
+  private agentsBloques = new Set<string>();
   /** La vérification des mises à jour en cours : une seule à la fois. */
   private verification: Promise<void> | null = null;
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
@@ -111,6 +125,7 @@ export class ServiceExtensions {
         vues: GestionnaireVues;
         magasin: Magasin;
         dossierGardes: string;
+        dossierAgent?: string;
         surChange?: () => void;
       }
     | undefined;
@@ -124,6 +139,11 @@ export class ServiceExtensions {
     magasin: Magasin;
     /** Les gardes et correctifs livrés (`packages/noyau/extensions`). */
     dossierGardes: string;
+    /**
+     * `~/WebAiOs/extensions` (ce qu'écrit l'agent) : au démarrage, chaque extension de l'agent accordée y est recopiée
+     * (`demarrerAgents`). Absent : les copies en place sont chargées telles quelles.
+     */
+    dossierAgent?: string;
     /** Après chaque écriture du registre (`CANAUX.extensionsChange`). */
     surChange?: () => void;
   }): Promise<void> {
@@ -151,6 +171,8 @@ export class ServiceExtensions {
       return;
     }
     await this.preparerStore();
+    // Avant le premier chargement : chaque copie de l'agent est refaite depuis son dossier (ou déchargée, ou désactivée).
+    if (o.dossierAgent) await demarrerAgents(this.dependancesAgent());
     this.pret = true;
     await this.appliquer();
   }
@@ -161,7 +183,8 @@ export class ServiceExtensions {
     if (!o) throw new Error("Service des extensions non démarré");
     this.etat = await modifierEtatExtensions(o.dossier, changer, () => profilsPrives(o.magasin.etat));
     this.perimerCartes();
-    await this.appliquer();
+    // Pendant le démarrage (extensions de l'agent recopiées), le premier chargement vient ensuite.
+    if (this.pret) await this.appliquer();
     o.surChange?.();
     return this.etat;
   }
@@ -314,6 +337,63 @@ export class ServiceExtensions {
     return retirerDuProfilStore(cle, profil, this.dependancesStore()).then(() => this.oublierMaj(cle));
   }
 
+  /** Prépare la copie d'attente d'une extension de l'agent (voir `preparerAgent` d'agent.ts). */
+  preparerAgent(id: string): Promise<PreparationAgent> {
+    return preparerAgent(id, this.dependancesAgent());
+  }
+
+  /** L'agent demande d'activer son extension `id` dans un espace : la carte de la copie préparée (agent.ts). */
+  demanderActivation(id: string, o: { espace: Espace; fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal }): Promise<ResultatActivation> {
+    if (!this.o || !this.pret) return Promise.resolve({ ok: false, erreur: "Service des extensions non démarré" });
+    return demanderActivation(id, o, this.dependancesAgent());
+  }
+
+  /** Recharge l'extension de l'agent `id` depuis son dossier, sans carte si sa portée reste dans l'accord (agent.ts). */
+  recharger(id: string): Promise<ResultatRechargement> {
+    if (!this.o || !this.pret) return Promise.resolve({ etat: "refusee", detail: ["Service des extensions non démarré"] });
+    return recharger(id, this.dependancesAgent());
+  }
+
+  private dependancesAgent(): DependancesAgent {
+    const o = this.o;
+    if (!o?.dossierAgent) throw new Error("Service des extensions non démarré");
+    return {
+      dossier: o.dossier,
+      dossierAgent: o.dossierAgent,
+      dossierGardes: o.dossierGardes,
+      etatNavigateur: () => o.magasin.etat,
+      etatExtensions: () => this.etat,
+      modifier: (changer) => this.modifier(changer),
+      demanderAccord: (c, x) => this.demanderAccord(c, x),
+      noterErreur: async (cle, erreur, bloquee = false) => {
+        const avant = this.agentsBloques.has(cle);
+        if (erreur === null) this.erreursAgent.delete(cle);
+        else this.erreursAgent.set(cle, erreur);
+        if (erreur !== null && bloquee) this.agentsBloques.add(cle);
+        else this.agentsBloques.delete(cle);
+        if (avant !== this.agentsBloques.has(cle) && this.pret) await this.appliquer();
+        o.surChange?.();
+      },
+    };
+  }
+
+  /**
+   * Note l'id que Chromium a donné à la copie d'une extension de l'agent (`idChrome`), sans resynchroniser les sessions.
+   */
+  async noterIdChrome(cle: string, id: string): Promise<void> {
+    const o = this.o;
+    if (!o || this.etat.extensions[cle]?.idChrome === id) return;
+    this.etat = await modifierEtatExtensions(
+      o.dossier,
+      (e) => {
+        const x = e.extensions[cle];
+        return !x || x.source !== "agent" || x.idChrome === id ? e : { ...e, extensions: { ...e.extensions, [cle]: { ...x, idChrome: id } } };
+      },
+      () => profilsPrives(o.magasin.etat),
+    );
+    o.surChange?.();
+  }
+
   /** Retire une extension de toutes les sessions et du registre, et efface son dossier (et oublie son erreur de mise à jour). */
   async desinstaller(cle: string): Promise<void> {
     await desinstallerStore(cle, this.dependancesStore());
@@ -349,7 +429,7 @@ export class ServiceExtensions {
   /** Les erreurs de chaque clé : préparation, dernière mise à jour, chargement (jointes par « ; » quand il y en a plusieurs). */
   erreurs(): Map<string, string> {
     const toutes = new Map<string, string>();
-    for (const table of [this.erreursPreparation, this.erreursMaj, this.o?.profils.erreursChargement() ?? new Map<string, string>()])
+    for (const table of [this.erreursPreparation, this.erreursMaj, this.erreursAgent, this.o?.profils.erreursChargement() ?? new Map<string, string>()])
       for (const [cle, erreur] of table) toutes.set(cle, toutes.has(cle) ? `${toutes.get(cle)} ; ${erreur}` : erreur);
     return toutes;
   }
@@ -504,10 +584,13 @@ export class ServiceExtensions {
   private async appliquer(): Promise<void> {
     const o = this.o!;
     const nav = o.magasin.etat;
-    // Une extension du Store dont la préparation a échoué n'est pas chargée (son erreur reste lisible).
+    // Une extension du Store dont la préparation a échoué n'est pas chargée (son erreur reste lisible), ni une extension
+    // de l'agent dont le dossier a disparu.
     const e: EtatExtensions = {
       ...this.etat,
-      extensions: Object.fromEntries(Object.entries(this.etat.extensions).filter(([cle]) => !this.erreursPreparation.has(cle))),
+      extensions: Object.fromEntries(
+        Object.entries(this.etat.extensions).filter(([cle]) => !this.erreursPreparation.has(cle) && !this.agentsBloques.has(cle)),
+      ),
     };
     for (const profil of profilsEnUsage(nav)) if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);
     await o.profils.synchroniser(e);

@@ -367,6 +367,7 @@ app.whenReady().then(async () => {
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     preloadCorrectifs: join(__dirname, "../preload/extensions.js"),
     noterVue: (cle, profil, version) => serviceExtensions.noterVue(cle, profil, version),
+    noterIdChrome: (cle, id) => void serviceExtensions.noterIdChrome(cle, id).catch((e) => console.error(`[extensions] idChrome de ${cle} non noté :`, e)),
     // La page du Chrome Web Store passe par notre installation (carte, téléchargement vérifié, préparation).
     avantInstallationStore: (s, profil) =>
       avantInstallation({
@@ -432,6 +433,8 @@ app.whenReady().then(async () => {
       vues,
       magasin,
       dossierGardes: join(__RESSOURCES_NOYAU__, "extensions"),
+      // Ce qu'écrit l'agent (~/WebAiOs/extensions) : jamais un droit, seulement la source des copies accordées.
+      dossierAgent: cheminsEspace().extensions,
       surChange: () => diffuser(CANAUX.extensionsChange, null),
     })
     .catch((e) => console.error("[extensions] démarrage :", e));
