@@ -149,8 +149,10 @@ export class PontFactice implements PontNavigateur {
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
-  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }) => Promise<PageLue>;
-  lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean }) => Promise<{ url: string; html: string }>;
+  lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal }) => Promise<PageLue>;
+  lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
+  /** Lectures suspendues en cours, par URL : `relacher` les laisse finir. */
+  private readonly suspendues = new Map<string, (() => void)[]>();
   demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
@@ -159,7 +161,9 @@ export class PontFactice implements PontNavigateur {
    * qui répond ces droits. `bloquer` : profils et instantanés ne finissent qu'à l'abandon. `historique` fournit
    * l'historique : `chercher` renvoie `resultats` (au plus `limite`), `lire` la page de `textes` à cette URL, et
    * `erreur`, si donnée, fait échouer les deux. `lecture` fournit `lirePageInvisible` : la page de `pages` à cette URL
-   * (sinon une page vide), `lireHtmlInvisible` : le HTML de `html` à cette URL (sinon ""), et ProfilRefuse pour un profil de `refuser`. `redirections` simule une redirection :
+   * (sinon une page vide), `lireHtmlInvisible` : le HTML de `html` à cette URL (sinon ""), et ProfilRefuse pour un profil de `refuser`. Une lecture (page ou HTML) d'une URL de `suspendues` ne
+   * finit qu'à `relacher(url)`, ou à l'abandon de son `signal` : elle est alors notée « lectureAnnulee » et rejetée avec
+   * la raison du signal, comme le vrai pont qui ferme sa fenêtre. `redirections` simule une redirection :
    * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue. `donneesWidget` fournit la carte
    * « donnees-widget », qui répond cette valeur.
    */
@@ -172,7 +176,7 @@ export class PontFactice implements PontNavigateur {
       accorderDev?: DroitDev[];
       bloquer?: boolean;
       historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
-      lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string> };
+      lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string>; suspendues?: string[] };
       donneesWidget?: boolean;
     },
   ) {
@@ -203,15 +207,34 @@ export class PontFactice implements PontNavigateur {
     }
     const lecture = o.lecture;
     if (lecture) {
-      this.lirePageInvisible = async (url, l) => {
+      const attendre = async (url: string, signal: AbortSignal | undefined) => {
+        if (signal?.aborted) throw signal.reason;
+        if (!lecture.suspendues?.includes(url)) return;
+        await new Promise<void>((ok, ko) => {
+          const fin = () => {
+            signal?.removeEventListener("abort", annuler);
+            ok();
+          };
+          const annuler = () => {
+            this.suspendues.set(url, (this.suspendues.get(url) ?? []).filter((f) => f !== fin));
+            this.noter("lectureAnnulee", url);
+            ko(signal!.reason);
+          };
+          this.suspendues.set(url, [...(this.suspendues.get(url) ?? []), fin]);
+          signal?.addEventListener("abort", annuler, { once: true });
+        });
+      };
+      this.lirePageInvisible = async (url, { signal, ...l }) => {
         this.noter("lirePageInvisible", url, { ...l });
+        await attendre(url, signal);
         if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfilRefuse(l.profil);
         const finale = lecture.redirections?.[url] ?? url;
         const p = lecture.pages.find((x) => x.url === finale);
         return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
       };
-      this.lireHtmlInvisible = async (url, l) => {
+      this.lireHtmlInvisible = async (url, { signal, ...l }) => {
         this.noter("lireHtmlInvisible", url, { ...l });
+        await attendre(url, signal);
         return { url, html: lecture.html?.[url] ?? "" };
       };
     }
@@ -229,6 +252,14 @@ export class PontFactice implements PontNavigateur {
         return [...accorder];
       };
     }
+  }
+
+  /** Laisse finir les lectures suspendues de cette URL ; rend leur nombre. */
+  relacher(url: string): number {
+    const liste = this.suspendues.get(url) ?? [];
+    this.suspendues.delete(url);
+    for (const fin of liste) fin();
+    return liste.length;
   }
 
   private dev(): OutilsDevFactice {

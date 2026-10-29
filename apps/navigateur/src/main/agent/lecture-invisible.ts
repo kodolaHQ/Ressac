@@ -113,20 +113,45 @@ function creerFenetre(s: Session): BrowserWindow {
   return f;
 }
 
-// Deux lectures au plus en même temps ; une place rendue passe directement à la suivante.
+// Deux lectures au plus en même temps ; une place rendue passe directement à la suivante. Une lecture abandonnée
+// (`signal` levé) pendant qu'elle attend quitte la file sans prendre de place.
 let enCours = 0;
 const file: (() => void)[] = [];
-async function prendrePlace(): Promise<void> {
+async function prendrePlace(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   if (enCours < LECTURES_SIMULTANEES) {
     enCours++;
     return;
   }
-  await new Promise<void>((r) => file.push(r));
+  await new Promise<void>((ok, ko) => {
+    const servir = () => {
+      signal?.removeEventListener("abort", quitter);
+      ok();
+    };
+    const quitter = () => {
+      const i = file.indexOf(servir);
+      if (i >= 0) file.splice(i, 1);
+      ko(signal!.reason);
+    };
+    file.push(servir);
+    signal?.addEventListener("abort", quitter, { once: true });
+  });
 }
 function rendrePlace(): void {
   const suivante = file.shift();
   if (suivante) suivante();
   else enCours--;
+}
+
+/** Comme `p`, mais rejetée avec `signal.reason` dès que le signal est levé (`p` continue, son issue est ignorée). */
+function jusquAuSignal<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  return new Promise<T>((ok, ko) => {
+    const stop = () => ko(signal.reason);
+    p.then(ok, ko).finally(() => signal.removeEventListener("abort", stop));
+    if (signal.aborted) return stop();
+    signal.addEventListener("abort", stop, { once: true });
+  });
 }
 
 /** Ce qu'une lecture lit dans la page : le script (monde isolé 999) et la mise en forme de ce qu'il rend. */
@@ -139,36 +164,39 @@ interface Lecture<T> {
  * Charge `url` dans une fenêtre invisible (session publique vidée si `profil` est null, sinon celle d'un profil de
  * connexion qu'aucun espace privé n'utilise : sinon ProfilRefuse, sans rien créer) et la lit avec `lecture`. Une seule
  * fonction de chargement pour toutes les lectures : mêmes gardes, mêmes deux places, même limite de 30 s.
+ * `signal` levé (l'exécution qui lit est arrêtée) : la lecture, en attente d'une place ou en cours, est abandonnée,
+ * sa fenêtre fermée, et la promesse rejetée avec `signal.reason`.
  */
 async function lireFenetre<T>(
   url: string,
-  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean },
+  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal },
   deps: DepsLecture,
   lecture: Lecture<T>,
 ): Promise<T> {
-  const { profil, domaines } = o;
+  const { profil, domaines, signal } = o;
   const permise = (u: string) => urlPermise(u, domaines, o.adressesLocales === true);
   const verifierProfil = () => {
     if (profil !== null && !profilsLisibles(deps.etat()).includes(profil)) throw new ProfilRefuse(profil);
   };
   verifierProfil();
   if (!permise(url)) throw new Error(`Adresse refusée pour une lecture : ${hoteDe(url)}`);
-  await prendrePlace();
+  await prendrePlace(signal);
   try {
     // L'état a pu changer pendant l'attente d'une place.
     verifierProfil();
+    signal?.throwIfAborted();
     let s: Session;
     if (profil === null) {
       s = (deps.sessionPublique ?? sessionLecturePublique)();
-      await s.clearStorageData();
-      await s.clearCache();
+      await jusquAuSignal(s.clearStorageData(), signal);
+      await jusquAuSignal(s.clearCache(), signal);
     } else {
       s = deps.sessionProfil(profil);
     }
     const f = (deps.creerFenetre ?? creerFenetre)(s);
     try {
-      await neutraliserImpression(f.webContents);
-      const page = await lireDans(f.webContents, url, permise, lecture);
+      await jusquAuSignal(neutraliserImpression(f.webContents), signal);
+      const page = await lireDans(f.webContents, url, permise, lecture, signal);
       // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
       verifierProfil();
       return page;
@@ -194,7 +222,7 @@ async function lireFenetre<T>(
  */
 export function lirePageInvisible(
   url: string,
-  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean },
+  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal },
   deps: DepsLecture,
 ): Promise<PageLue> {
   return lireFenetre(url, o, deps, { script: LECTURE, forme: (u, brut) => mettreEnForme(u, (brut ?? { titre: "", texte: "", liens: [] }) as PartiesLues) });
@@ -204,8 +232,13 @@ export function lirePageInvisible(
  * Le HTML d'une page publique (`document.documentElement.outerHTML`, coupé à 2 Mo) : toujours la session publique,
  * vidée avant la lecture, jamais un profil. Lu dans le monde isolé 999 ; `url` est l'adresse finale (permise).
  */
-export function lireHtmlInvisible(url: string, o: { adressesLocales?: boolean }, deps: DepsLecture): Promise<{ url: string; html: string }> {
-  return lireFenetre(url, { profil: null, ...(o.adressesLocales === true ? { adressesLocales: true } : {}) }, deps, {
+export function lireHtmlInvisible(
+  url: string,
+  o: { adressesLocales?: boolean; signal?: AbortSignal },
+  deps: DepsLecture,
+): Promise<{ url: string; html: string }> {
+  const options = { profil: null, ...(o.adressesLocales === true ? { adressesLocales: true } : {}), ...(o.signal ? { signal: o.signal } : {}) };
+  return lireFenetre(url, options, deps, {
     script: LECTURE_HTML,
     forme: (u, brut) => ({ url: u, html: typeof brut === "string" ? brut.slice(0, HTML_MAX) : "" }),
   });
@@ -292,8 +325,8 @@ async function preparer(wc: WebContents): Promise<void> {
   await cible();
 }
 
-/** Charge `url`, attend la fin du chargement puis 2 s de calme (30 s au plus), lit la page. */
-function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boolean, lecture: Lecture<T>): Promise<T> {
+/** Charge `url`, attend la fin du chargement puis 2 s de calme (30 s au plus), lit la page ; `signal` levé : abandon. */
+function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boolean, lecture: Lecture<T>, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let fini = false;
     let charge = false;
@@ -305,16 +338,20 @@ function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boole
       clearTimeout(calme);
       clearTimeout(forcee);
       clearTimeout(limite);
+      signal?.removeEventListener("abort", abandonner);
       if ("erreur" in r) reject(r.erreur);
       else resolve(r.page);
     };
-    const bloquer = (cible: string) => {
-      finir({ erreur: new Error(`Navigation bloquée : ${hoteDe(cible)} est hors des domaines permis`) });
+    const arreterPage = (erreur: Error) => {
+      finir({ erreur });
       // Jamais dans le gestionnaire d'un événement de navigation ; la fenêtre est de toute façon détruite ensuite.
       setImmediate(() => {
         if (!wc.isDestroyed()) wc.stop();
       });
     };
+    const bloquer = (cible: string) => arreterPage(new Error(`Navigation bloquée : ${hoteDe(cible)} est hors des domaines permis`));
+    // L'exécution qui lit est arrêtée : plus rien n'est lu, la fenêtre est fermée par l'appelant.
+    const abandonner = () => arreterPage(signal!.reason);
     // Avant que la requête parte : redirection du serveur, script, meta refresh, formulaire, lien.
     const garder = (e: { preventDefault(): void }, cible: string) => {
       if (permise(cible)) return;
@@ -368,6 +405,8 @@ function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boole
       if (charge) void lire();
     }, DELAI_LECTURE_FORCEE_MS);
     const limite = setTimeout(() => finir({ erreur: new Error("Page trop lente : 30 s dépassées") }), DELAI_TOTAL_MS);
+    if (signal?.aborted) return abandonner();
+    signal?.addEventListener("abort", abandonner, { once: true });
     // Les échecs arrivent par did-fail-load (ou par le blocage) ; la promesse de loadURL n'apporte rien de plus.
     wc.loadURL(url).catch(() => {});
   });

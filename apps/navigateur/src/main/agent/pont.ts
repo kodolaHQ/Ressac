@@ -315,14 +315,14 @@ export class PontElectron implements PontNavigateur {
    * Lecture invisible pour un widget (voir lecture-invisible.ts) : l'état est relu à chaque appel, un profil passé
    * à un espace privé est refusé (ProfilRefuse). Rien n'entre dans l'état ni dans l'historique.
    */
-  async lirePageInvisible(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }): Promise<PageLue> {
+  async lirePageInvisible(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal }): Promise<PageLue> {
     const sessionProfil = this.o.sessionProfil;
     if (!sessionProfil) throw new Error("Lecture invisible indisponible");
     return lirePageInvisible(url, o, { etat: () => this.o.magasin.etat, sessionProfil });
   }
 
   /** Le HTML d'une page publique (session vidée avant la lecture, jamais un profil) : voir `lireHtmlInvisible`. */
-  async lireHtmlInvisible(url: string, o: { adressesLocales?: boolean }): Promise<{ url: string; html: string }> {
+  async lireHtmlInvisible(url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }): Promise<{ url: string; html: string }> {
     const sessionProfil = this.o.sessionProfil;
     if (!sessionProfil) throw new Error("Lecture invisible indisponible");
     return lireHtmlInvisible(url, o, { etat: () => this.o.magasin.etat, sessionProfil });

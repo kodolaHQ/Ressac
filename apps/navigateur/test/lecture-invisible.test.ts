@@ -219,3 +219,76 @@ test("le HTML lu est coupé à 2 Mo", async () => {
   await vi.advanceTimersByTimeAsync(2_000);
   expect((await r).html).toHaveLength(2 * 1024 * 1024);
 });
+
+test("signal levé pendant la lecture : fenêtre fermée, promesse rejetée avec la raison, plus rien de lu", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  const arret = new AbortController();
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, signal: arret.signal }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(1_000);
+  const raison = new Error("Exécution arrêtée");
+  arret.abort(raison);
+  await expect(r).rejects.toBe(raison);
+  expect(f.destroy).toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(wc.executeJavaScriptInIsolatedWorld).not.toHaveBeenCalled();
+});
+
+test("signal levé pendant la préparation (session vidée, page préparée) : rejetée tout de suite, fenêtre fermée", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  wc.debugger.sendCommand.mockImplementation(() => new Promise(() => {})); // le débogueur ne répond jamais
+  const arret = new AbortController();
+  const r = lireHtmlInvisible("https://exemple.test/", { signal: arret.signal }, depsAvec(f));
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  arret.abort(new Error("Exécution arrêtée"));
+  await expect(r).rejects.toThrow("Exécution arrêtée");
+  expect(f.destroy).toHaveBeenCalled();
+  expect(wc.loadURL.mock.calls.map((c) => c[0])).not.toContain("https://exemple.test/");
+});
+
+test("signal déjà levé : rien n'est créé", async () => {
+  const deps = { etat: () => etatLibre, sessionProfil: vi.fn(), sessionPublique: vi.fn(), creerFenetre: vi.fn() };
+  const arret = new AbortController();
+  arret.abort(new Error("Exécution arrêtée"));
+  await expect(lirePageInvisible("https://exemple.test/", { profil: null, signal: arret.signal }, deps)).rejects.toThrow("Exécution arrêtée");
+  await expect(lireHtmlInvisible("https://exemple.test/", { signal: arret.signal }, deps)).rejects.toThrow("Exécution arrêtée");
+  expect(deps.sessionPublique).not.toHaveBeenCalled();
+  expect(deps.creerFenetre).not.toHaveBeenCalled();
+});
+
+test("une lecture annulée en attente d'une place quitte la file ; les autres, d'une autre exécution, ne sont pas touchées", async () => {
+  vi.useFakeTimers();
+  const a = fausseFenetre(() => "https://exemple.test/a");
+  const b = fausseFenetre(() => "https://exemple.test/b");
+  const c = fausseFenetre(() => "https://exemple.test/c");
+  const d = fausseFenetre(() => "https://exemple.test/d");
+  const autre = new AbortController();
+  const arret = new AbortController();
+  const ra = lirePageInvisible("https://exemple.test/a", { profil: null, signal: autre.signal }, depsAvec(a.f));
+  const rb = lirePageInvisible("https://exemple.test/b", { profil: null, signal: autre.signal }, depsAvec(b.f));
+  const depsC = depsAvec(c.f);
+  const rc = lirePageInvisible("https://exemple.test/c", { profil: null, signal: arret.signal }, depsC);
+  rc.catch(() => {});
+  const rd = lirePageInvisible("https://exemple.test/d", { profil: null, signal: autre.signal }, depsAvec(d.f));
+  await vi.advanceTimersByTimeAsync(0);
+  // Deux places : c et d attendent.
+  expect(depsC.creerFenetre).not.toHaveBeenCalled();
+  arret.abort(new Error("Exécution arrêtée"));
+  await expect(rc).rejects.toThrow("Exécution arrêtée");
+  for (const x of [a, b]) x.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(ra).resolves.toMatchObject({ url: "https://exemple.test/a" });
+  await expect(rb).resolves.toMatchObject({ url: "https://exemple.test/b" });
+  // La place de c n'est jamais prise : d passe à la place rendue.
+  await vi.advanceTimersByTimeAsync(0);
+  d.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(rd).resolves.toMatchObject({ url: "https://exemple.test/d" });
+  expect(depsC.creerFenetre).not.toHaveBeenCalled();
+  expect(a.f.destroy).toHaveBeenCalled();
+});

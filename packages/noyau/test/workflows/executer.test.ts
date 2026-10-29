@@ -878,6 +878,124 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
   });
 });
 
+describe("executerWorkflow : un arrêt annule les lectures en cours", () => {
+  const BASE = "https://ddg.test/html/";
+  /** Un faux conteneur : envoie ces appels, puis attend d'être tué ; garde ce que le noyau lui écrit. */
+  const conteneurAppels = (appels: { f: string; a: unknown }[]) => {
+    const recu: string[] = [];
+    let tuer = () => {};
+    const lancer: LanceurProcessus = () => {
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      const stdin = new PassThrough();
+      stdin.on("data", (d) => recu.push(String(d)));
+      let finir!: (c: number | null) => void;
+      const fin = new Promise<number | null>((ok) => (finir = ok));
+      tuer = () => {
+        stdout.end();
+        stderr.end();
+        finir(null);
+      };
+      setImmediate(() => appels.forEach((x, i) => stdout.write(JSON.stringify({ t: "appel", n: i + 1, ...x }) + "\n")));
+      return { stdin, stdout, stderr, tuer: () => tuer(), fin };
+    };
+    return {
+      lancer,
+      /** Le conteneur est supprimé de l'extérieur (quitter le navigateur). */
+      tuer: () => tuer(),
+      reponses: () => recu.join("").split("\n").filter((l) => l.includes(`"t":"reponse"`)),
+    };
+  };
+  const annulees = (pont: PontFactice) => pont.appels.filter((a) => a.methode === "lectureAnnulee").map((a) => a.args[0]);
+  const valeur = (r: Awaited<ReturnType<typeof executerWorkflow>>) => (r.issue.t === "fin" ? r.issue.sortie.valeur : r.issue);
+
+  it("délai dépassé : pages (publique, avec compte) et récupération en cours annulées, rien ne revient au conteneur", async () => {
+    const fermees: string[] = [];
+    const web = await serveurWeb({ "/lent": (res) => void res.on("close", () => fermees.push("/lent")) });
+    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [], suspendues: ["https://pages.example/a", "https://app.daily.dev/b"] } });
+    const c = conteneurAppels([
+      { f: "lirePage", a: { url: "https://pages.example/a" } },
+      { f: "lirePage", a: { url: "https://app.daily.dev/b", compte: true } },
+      { f: "recuperer", a: { url: `${web.url}/lent` } },
+    ]);
+    const b = await banc(chaine("a"), {}, { pont, compte: ["app.daily.dev"], publiques: ["pages.example", "127.0.0.1"], accord: { profil: "perso" }, delaiMs: 300, lancer: c.lancer });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    await vi.waitFor(() => {
+      expect(annulees(pont).sort()).toEqual(["https://app.daily.dev/b", "https://pages.example/a"]);
+      expect(fermees).toEqual(["/lent"]);
+    });
+    await new Promise((ok) => setTimeout(ok, 20));
+    expect(c.reponses()).toEqual([]);
+  });
+
+  it("conteneur supprimé (quitter) : ses lectures sont annulées, pas celles d'une autre exécution", async () => {
+    const pont = new PontFactice([], {
+      actif: null,
+      autoriser: false,
+      lecture: { pages: [{ url: "https://pages.example/b", titre: "B", texte: "", liens: [] }], suspendues: ["https://pages.example/a", "https://pages.example/b"] },
+    });
+    const autre = await banc(chaine("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://pages.example/b")).titre;` }, { pont });
+    const c = conteneurAppels([{ f: "lirePage", a: { url: "https://pages.example/a" } }]);
+    const b = await banc(chaine("a"), {}, { pont, lancer: c.lancer });
+    const rAutre = executerWorkflow(autre.ctx, autre.infra);
+    const r = executerWorkflow(b.ctx, b.infra);
+    await vi.waitFor(() => expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(2));
+    c.tuer();
+    expect((await r).issue.t).toBe("echec");
+    await vi.waitFor(() => expect(annulees(pont)).toEqual(["https://pages.example/a"]));
+    // L'autre exécution, elle, lit toujours.
+    expect(pont.relacher("https://pages.example/b")).toBe(1);
+    expect(valeur(await rAutre)).toBe("B");
+    expect(annulees(pont)).toEqual(["https://pages.example/a"]);
+  });
+
+  it("widget web : une lecture et une recherche en cours annulées libèrent leur tour, l'écart compte depuis l'annulation", async () => {
+    let t = 0;
+    const attentes: number[] = [];
+    const menagement = new Menagement({
+      maintenant: () => t,
+      attendre: async (ms) => {
+        attentes.push(ms);
+        t += ms;
+      },
+    });
+    const pont = new PontFactice([], {
+      actif: null,
+      autoriser: false,
+      lecture: {
+        pages: [{ url: "https://pages.example/2", titre: "deux", texte: "", liens: [] }],
+        html: { [urlRecherche("b", BASE)]: readFileSync(new URL("./fixtures/duckduckgo/aucun-resultat.html", import.meta.url), "utf8") },
+        suspendues: ["https://pages.example/1", urlRecherche("a", BASE)],
+      },
+    });
+    const preparer = (bb: Banc) => {
+      bb.ctx.sources = { ...bb.ctx.sources, web: true };
+      bb.infra.menagement = menagement;
+      bb.infra.urlRecherche = BASE;
+    };
+    const c = conteneurAppels([
+      { f: "lirePage", a: { url: "https://pages.example/1" } },
+      { f: "chercherWeb", a: { requete: "a", nombre: 1 } },
+    ]);
+    const b = await banc(chaine("a"), {}, { pont, delaiMs: 300, lancer: c.lancer });
+    preparer(b);
+    expect((await executerWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    await vi.waitFor(() => expect(annulees(pont).sort()).toEqual(["https://pages.example/1", urlRecherche("a", BASE)].sort()));
+    // Une autre exécution sur le même ménagement : ni la voie de l'hôte ni celle des recherches ne restent prises.
+    const suivante = await banc(
+      chaine("a"),
+      { "a.mjs": `export default async (e, w) => [(await w.lirePage("https://pages.example/2")).titre, (await w.chercherWeb("b", { nombre: 1 })).length];` },
+      { pont, delaiMs: 3000 },
+    );
+    preparer(suivante);
+    expect(valeur(await executerWorkflow(suivante.ctx, suivante.infra))).toEqual(["deux", 0]);
+    // Les demandes annulées étaient parties : l'écart compte depuis leur annulation (t = 0). La lecture attend ses 1 s,
+    // puis la recherche le reste de ses 2 s (1 s déjà passée).
+    expect(attentes).toEqual([1000, 1000]);
+  });
+});
+
 describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en cours de route)", () => {
   /** liste (code) → fiche → avis (source.recuperer par élément) → sortie. */
   const veille = (o: { auFilDeLEau?: boolean } = {}) => ({

@@ -48,14 +48,18 @@ export interface PontNavigateur {
    *
    * Le pont refuse aussi toute navigation du cadre principal vers une adresse locale (`adresseLocale`), sauf si
    * `adressesLocales` est vrai (tests seulement : le noyau le passe quand sa propre option `adressesLocales` l'est).
+   *
+   * `signal` levé (l'exécution qui lit est arrêtée ou finie) : la lecture, en attente ou en cours, est abandonnée, sa
+   * fenêtre fermée, et la promesse rejetée avec `signal.reason`.
    */
-  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }): Promise<PageLue>;
+  lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean; signal?: AbortSignal }): Promise<PageLue>;
   /**
    * Le HTML d'une page publique (`document.documentElement.outerHTML`, 2 Mo au plus) : toujours la session publique,
    * vidée avant la lecture, jamais un profil ni un compte. Mêmes gardes que `lirePageInvisible` (http(s), adresse
-   * locale refusée sauf `adressesLocales`), même limite de 30 s ; `url` est l'adresse finale, qui doit rester permise.
+   * locale refusée sauf `adressesLocales`), même limite de 30 s, même abandon par `signal` ; `url` est l'adresse
+   * finale, qui doit rester permise.
    */
-  lireHtmlInvisible?(url: string, o: { adressesLocales?: boolean }): Promise<{ url: string; html: string }>;
+  lireHtmlInvisible?(url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }): Promise<{ url: string; html: string }>;
   /**
    * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
    * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,

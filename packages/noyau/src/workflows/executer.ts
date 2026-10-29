@@ -278,7 +278,8 @@ export async function executerWorkflow(
   // Recherches web et lectures ouvertes ménagées : seulement pour un widget qui déclare `web`, jamais avec un compte.
   const web = ctx.sources.web === true && !aCompte;
   const menagement = infra.menagement ?? MENAGEMENT_PAR_DEFAUT;
-  // Levé à l'arrêt ou à la fin : une recherche ou une lecture encore en file ne part pas.
+  // Levé à l'arrêt ou à la fin : une recherche ou une lecture encore en file ne part pas, et celles en cours (pont,
+  // récupération) sont abandonnées. Propre à cette exécution : les lectures des autres ne sont pas touchées.
   const finExecution = new AbortController();
   let recherches = 0;
   let rechercheRefusee = false;
@@ -381,6 +382,7 @@ export async function executerWorkflow(
     profil,
     ...(aCompte && domaines ? { domaines: [...domaines] } : {}),
     ...(adressesLocales ? { adressesLocales: true } : {}),
+    signal: finExecution.signal,
   });
 
   /**
@@ -440,7 +442,10 @@ export async function executerWorkflow(
     const { html } = await menagement.rechercher(() => {
       // Un refus arrivé pendant l'attente : celle-ci ne part pas.
       if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
-      return lireHtml(urlRecherche(requete, infra.urlRecherche ?? URL_DUCKDUCKGO), adressesLocales ? { adressesLocales: true } : {});
+      return lireHtml(urlRecherche(requete, infra.urlRecherche ?? URL_DUCKDUCKGO), {
+        ...(adressesLocales ? { adressesLocales: true } : {}),
+        signal: finExecution.signal,
+      });
     }, finExecution.signal);
     const r = extraireResultats(html, Infinity);
     if ("refus" in r) {
@@ -458,9 +463,9 @@ export async function executerWorkflow(
         return lirePage(a);
       case "recuperer": {
         const { url, format } = args(ArgsRecuperer, a, "recuperer");
-        if (!web) return recuperer(url, format ?? "texte", domainesPublics, adressesLocales);
+        if (!web) return recuperer(url, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal);
         const u = verifierUrl(url, domainesPublics, adressesLocales);
-        return lectureOuverte(u, () => recuperer(u.href, format ?? "texte", domainesPublics, adressesLocales));
+        return lectureOuverte(u, () => recuperer(u.href, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal));
       }
       case "chercherWeb":
         return chercherWeb(a);

@@ -80,9 +80,19 @@ async function lireCorps(r: Response): Promise<Buffer> {
   return Buffer.concat(morceaux);
 }
 
-/** Récupération brute, sans cookie ni identifiant ; chaque redirection est revérifiée avec la même règle. */
-export async function recuperer(brute: string, format: "texte" | "json", domaines: readonly string[] | null, adressesLocales: boolean) {
-  const echeance = AbortSignal.timeout(RECUPERER_DELAI_MS);
+/**
+ * Récupération brute, sans cookie ni identifiant ; chaque redirection est revérifiée avec la même règle. `arret` levé
+ * (l'exécution est arrêtée) : la requête est abandonnée et la promesse rejetée avec `arret.reason`.
+ */
+export async function recuperer(
+  brute: string,
+  format: "texte" | "json",
+  domaines: readonly string[] | null,
+  adressesLocales: boolean,
+  arret?: AbortSignal,
+) {
+  const delai = AbortSignal.timeout(RECUPERER_DELAI_MS);
+  const echeance = arret ? AbortSignal.any([delai, arret]) : delai;
   let url = verifierUrl(brute, domaines, adressesLocales);
   try {
     for (let redirections = 0; ; redirections++) {
@@ -107,7 +117,8 @@ export async function recuperer(brute: string, format: "texte" | "json", domaine
       }
     }
   } catch (e) {
-    if (echeance.aborted) throw new Error("Délai dépassé (20 s)");
+    if (arret?.aborted) throw arret.reason;
+    if (delai.aborted) throw new Error("Délai dépassé (20 s)");
     throw e;
   }
 }
