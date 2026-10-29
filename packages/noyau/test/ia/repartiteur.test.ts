@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { creerRepartiteurIa, IA_SIMULTANES } from "../../src/ia/repartiteur.js";
+import { creerRepartiteurIa, IA_ABANDONNEE, IA_SIMULTANES } from "../../src/ia/repartiteur.js";
 
 /** Une IA factice : chaque appel attend qu'on le termine de l'extérieur. */
 function iaFactice() {
@@ -101,4 +101,25 @@ test("un appel qui lève tout de suite n'arrête pas sa file", async () => {
   const ia = r.pour("x");
   await expect(ia.kev({ state: 1, questions: {} })).rejects.toThrow("tout de suite");
   expect(await ia.kev({ state: 2, questions: {} })).toBe("ok");
+});
+
+test("oublier : les appels en file de l'exécution sont refusés sans partir, comme ceux qui viennent après", async () => {
+  const f = iaFactice();
+  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const a = r.pour("a");
+  const b = r.pour("b");
+  const a1 = a.gemma({ prompt: "a1" });
+  const a2 = a.gemma({ prompt: "a2" });
+  const b1 = b.gemma({ prompt: "b1" });
+  await attendre();
+  const refus = expect(a2).rejects.toThrow(IA_ABANDONNEE);
+  a.oublier();
+  await refus;
+  await expect(a.gemma({ prompt: "a3" })).rejects.toThrow(IA_ABANDONNEE);
+  // L'appel déjà en vol finit normalement ; la place va ensuite à « b ».
+  await f.finirPremier();
+  expect(await a1).toBe("gemma a1");
+  await f.finirPremier();
+  expect(await b1).toBe("gemma b1");
+  expect(f.journal).toEqual(["gemma a1", "gemma b1"]);
 });

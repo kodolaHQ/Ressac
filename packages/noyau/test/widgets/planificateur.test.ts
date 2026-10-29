@@ -23,6 +23,7 @@ import {
   type OptionsPlanificateur,
 } from "../../src/widgets/planificateur.js";
 import { Menagement } from "../../src/workflows/menagement.js";
+import { IA_ABANDONNEE } from "../../src/ia/repartiteur.js";
 import { lireAccueil } from "../../src/accueil/lire.js";
 import type { CheminsEspace } from "../../src/chemins.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
@@ -775,21 +776,50 @@ test("arreter : une exécution longue qui ne finit pas est attendue de façon bo
   r.liberer("veille");
 });
 
-test("l'IA passe par le répartiteur : chaque exécution a sa vue, les appels arrivent à l'IA donnée", async () => {
+test("l'IA passe par le répartiteur : chaque exécution a sa vue, les appels arrivent à l'IA donnée, refusés après sa fin", async () => {
   const appels: string[] = [];
-  const ia = {
-    kev: async () => "k",
-    gemma: async (o: { prompt: string }) => (appels.push(o.prompt), "g"),
-  };
+  const ia = { kev: async () => "k", gemma: async (o: { prompt: string }) => (appels.push(o.prompt), "g") };
   const { p, c, recolter, recolterEssai } = await preparer({ options: { ia } });
   await ecrireVeille(c, "veille", 30);
+  const reponses: unknown[] = [];
+  const base = recolter.getMockImplementation()!;
+  recolter.mockImplementation(async (o) => {
+    reponses.push(await o.ia!.gemma({ prompt: o.id }));
+    return base(o);
+  });
+  recolterEssai.mockImplementation(async (o) => {
+    reponses.push(await o.ia!.gemma({ prompt: `essai ${o.id}` }));
+    return { ok: true, execution: "e-essai", statut: "reussie" };
+  });
   await p.recolterMaintenant("actus");
   await p.recolterMaintenant("veille");
   await p.rejouer("actus", "o", "liste");
   const vues = [recolter.mock.calls[0]![0].ia, recolter.mock.calls[1]![0].ia, recolterEssai.mock.calls[0]![0].ia];
-  for (const v of vues) {
-    expect(v).not.toBe(ia);
-    expect(await v!.gemma({ prompt: "p" })).toBe("g");
-  }
-  expect(appels).toEqual(["p", "p", "p"]);
+  expect(new Set(vues).size).toBe(3);
+  for (const v of vues) expect(v).not.toBe(ia);
+  expect(reponses).toEqual(["g", "g", "g"]);
+  expect(appels).toEqual(["actus", "veille", "essai actus"]);
+  // L'exécution finie, sa vue refuse : un appel tardif ne part plus vers l'IA.
+  await expect(vues[0]!.gemma({ prompt: "tard" })).rejects.toThrow(IA_ABANDONNEE);
+  expect(appels).toHaveLength(3);
+});
+
+test("dureeMaxMinutes passé de 2 à 30 pendant qu'une demande attend : elle part dans la voie longue", async () => {
+  const { p, c, recolter, dossierWidgets } = await preparer();
+  await ecrireVeille(c, "veille", 2);
+  const r = retenir(recolter, ["veille"]);
+  const premiere = p.recolterMaintenant("veille");
+  await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
+  const seconde = p.recolterMaintenant("veille");
+  // La demande a eu le temps de voir la déclaration à 2 (quelques lectures de l'accueil) avant le changement.
+  for (let i = 0; i < 3; i++) await lireAccueil(c, dossierWidgets);
+  await ecrireVeille(c, "veille", 30);
+  r.liberer("veille");
+  await premiere;
+  await vi.waitFor(() => expect(r.journal.filter((l) => l === "début veille")).toHaveLength(2));
+  // La seconde tourne dans la voie longue : la voie courte et la vérification restent libres.
+  expect((await p.recolterMaintenant("actus")).statut).toBe("ok");
+  expect(await p.verifier({ auLancement: false })).toEqual([]);
+  r.liberer("veille");
+  expect((await seconde).statut).toBe("ok");
 });

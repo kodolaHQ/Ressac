@@ -49,6 +49,11 @@ export function voieDe(w: WidgetLu): Voie {
   return (w.declaration.recolte?.dureeMaxMinutes ?? 0) > VOIE_LONGUE_MINUTES ? "longue" : "courte";
 }
 
+/** Rendu par une demande dont le widget a changé de voie pendant qu'elle attendait. */
+class AutreVoie {
+  constructor(readonly voie: Voie) {}
+}
+
 const MINUTE = 60_000;
 /** Une récolte en erreur est retentée au plus tôt 15 min après sa dernière tentative. */
 const REESSAI_ERREUR_MS = 15 * MINUTE;
@@ -130,6 +135,8 @@ export class PlanificateurWidgets {
   private arrete = false;
   /** Les exécutions suivies en direct (celles qui tournent vraiment, pas une vérification sans récolte). */
   private enDirect: DirectWidget[] = [];
+  /** Dernière voie connue de chaque widget (relue à chaque lecture de l'accueil) : la voie où une demande attend d'abord. */
+  private voies = new Map<string, Voie>();
   /** Appels à l'IA servis à tour de rôle entre les exécutions ; aucun sans IA. */
   private readonly repartiteur: ReturnType<typeof creerRepartiteurIa> | null;
   /** Widgets des demandes en file, pas encore commencées (un par demande). */
@@ -198,12 +205,15 @@ export class PlanificateurWidgets {
       suivi.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
       this.signalerDirect();
     };
+    // Chaque exécution a sa file d'appels à l'IA.
+    const ia = this.repartiteur?.pour(`${widget}:${suivi.debut}`) ?? null;
     let r: T | undefined;
     try {
-      // Chaque exécution a sa file d'appels à l'IA.
-      r = await f(surTrace, this.repartiteur?.pour(`${widget}:${suivi.debut}`) ?? null);
+      r = await f(surTrace, ia);
       return r;
     } finally {
+      // Ses appels encore en file ne partent plus : ils prendraient la place des autres exécutions.
+      ia?.oublier();
       await this.resynchroniser(suivi, r === undefined ? undefined : executionDe(r));
       this.enDirect = this.enDirect.filter((x) => x !== suivi);
       this.signalerDirect();
@@ -250,7 +260,28 @@ export class PlanificateurWidgets {
   }
 
   private async widgets(): Promise<WidgetLu[]> {
-    return (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
+    const widgets = (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
+    for (const w of widgets) this.voies.set(w.id, voieDe(w));
+    return widgets;
+  }
+
+  /**
+   * Exécute `f` pour le widget `id` dans la voie de sa déclaration relue sous le verrou. Si elle a changé pendant que la
+   * demande attendait (`dureeMaxMinutes` modifié), la demande sort de son tour et repart dans l'autre voie : refaite
+   * hors du travail en cours, qui sinon attendrait sa propre fin.
+   */
+  private async dansSaVoie<T>(id: string, f: (w: WidgetLu | undefined) => Promise<T>): Promise<T> {
+    let voie = this.voies.get(id) ?? "courte";
+    for (;;) {
+      const prevue = voie;
+      const r = await this.seul(id, prevue, async (): Promise<T | AutreVoie> => {
+        const w = (await this.widgets()).find((x) => x.id === id);
+        if (w && voieDe(w) !== prevue) return new AutreVoie(voieDe(w));
+        return f(w);
+      });
+      if (!(r instanceof AutreVoie)) return r;
+      voie = r.voie;
+    }
   }
 
   private async attendrePret(): Promise<void> {
@@ -276,6 +307,8 @@ export class PlanificateurWidgets {
       const tache = this.seul(id, voie, async () => {
         const w = (await this.widgets()).find((x) => x.id === id);
         if (!w || !widgetDu(w, this.o.horloge(), o) || this.arrete) return false;
+        // Passé dans l'autre voie depuis la lecture : la vérification suivante l'y lancera.
+        if (voieDe(w) !== voie) return false;
         if (!(await this.atelierDemarre())) {
           await this.marquerAtelierArrete(w);
           return false;
@@ -300,8 +333,8 @@ export class PlanificateurWidgets {
    */
   private async oublierWidgetsDisparus(): Promise<void> {
     if (!existsSync(this.o.chemins.widgets)) return;
-    // Un widget qui a une demande en attente ou en cours est laissé à la vérification suivante (une veille, dans
-    // l'autre voie, écrit encore dans son dossier).
+    // Un widget qui a une demande en attente ou en cours, dans l'une ou l'autre voie, est laissé à la vérification
+    // suivante (une veille, dans l'autre voie, peut encore écrire dans son dossier).
     const presents = new Set([...(await this.widgets()).map((w) => w.id), ...this.parWidget.keys()]);
     const { dossierWidgets } = this.o;
     let change = false;
@@ -436,22 +469,18 @@ export class PlanificateurWidgets {
   async recolterMaintenant(id: string, declencheur: Execution["declencheur"] = "manuelle"): Promise<EtatWidget & { execution?: string }> {
     const demande = this.demande(id);
     await this.attendrePret();
-    const voie = await this.voieDuWidget(id);
-    return this.seul(id, voie, async () => {
+    try {
+      return await this.dansSaVoie(id, async (w) => {
+        demande.commencee();
+        if (!w) throw new Error(`Widget inconnu : ${id}`);
+        if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
+        if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
+        if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
+        return this.recolter(w, declencheur);
+      });
+    } finally {
       demande.commencee();
-      const w = (await this.widgets()).find((x) => x.id === id);
-      if (!w) throw new Error(`Widget inconnu : ${id}`);
-      if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
-      if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
-      if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
-      return this.recolter(w, declencheur);
-    });
-  }
-
-  /** La voie d'une demande, d'après la déclaration du widget au moment où elle est faite (courte s'il est inconnu). */
-  private async voieDuWidget(id: string): Promise<Voie> {
-    const w = (await this.widgets().catch(() => [])).find((x) => x.id === id);
-    return w ? voieDe(w) : "courte";
+    }
   }
 
   /**
@@ -463,27 +492,29 @@ export class PlanificateurWidgets {
     const demande = this.demande(id);
     await this.attendrePret();
     // L'essai suit la voie de son widget.
-    const voie = await this.voieDuWidget(id);
-    return this.seul(id, voie, async (): Promise<ResultatEssai> => {
+    try {
+      return await this.dansSaVoie(id, async (w): Promise<ResultatEssai> => {
+        demande.commencee();
+        if (!w) return { ok: false, erreur: `Widget inconnu : ${id}` };
+        if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
+        if (!(await this.atelierDemarre())) return { ok: false, erreur: ERREUR_ATELIER_ARRETE };
+        if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
+        try {
+          return await this.suivre(
+            id,
+            "essai",
+            (surTrace, ia) => this.o.recolterEssai({ ...this.optionsRecolte(w, surTrace, ia), declencheur: "rejeu", origine, depart }),
+            (r) => (r.ok ? r.execution : undefined),
+          );
+        } catch (e) {
+          // Le texte de l'exception peut citer ce que le widget a lu : seul un message fixe du noyau est rendu.
+          console.error(`[webaios] essai du widget ${id} :`, e);
+          return { ok: false, erreur: ERREUR_RECOLTE_INTERNE };
+        }
+      });
+    } finally {
       demande.commencee();
-      const w = (await this.widgets()).find((x) => x.id === id);
-      if (!w) return { ok: false, erreur: `Widget inconnu : ${id}` };
-      if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
-      if (!(await this.atelierDemarre())) return { ok: false, erreur: ERREUR_ATELIER_ARRETE };
-      if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
-      try {
-        return await this.suivre(
-          id,
-          "essai",
-          (surTrace, ia) => this.o.recolterEssai({ ...this.optionsRecolte(w, surTrace, ia), declencheur: "rejeu", origine, depart }),
-          (r) => (r.ok ? r.execution : undefined),
-        );
-      } catch (e) {
-        // Le texte de l'exception peut citer ce que le widget a lu : seul un message fixe du noyau est rendu.
-        console.error(`[webaios] essai du widget ${id} :`, e);
-        return { ok: false, erreur: ERREUR_RECOLTE_INTERNE };
-      }
-    });
+    }
   }
 
   private async supprimerConteneurs(): Promise<void> {
