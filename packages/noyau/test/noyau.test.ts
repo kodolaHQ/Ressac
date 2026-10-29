@@ -280,3 +280,18 @@ test("noyau : refuserAccord efface les données ; compte retiré ensuite → don
   expect(t).not.toContain("du compte");
   expect(t).toContain("Aucune donnée");
 });
+
+test("noyau : rejouer passe par la file du planificateur ; surDirect suit la file et se désabonne", async () => {
+  const n = await creerSansDocker();
+  await ecrireWidget(n.chemins, "meteo", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+  const vus: unknown[] = [];
+  const desabonner = n.surDirect((e) => vus.push(e));
+  expect(await n.rejouer("meteo", "2026-10-28T09-00-00-000Z", "recolte")).toEqual({ ok: false, erreur: "Mise à jour impossible : atelier arrêté" });
+  expect(vus).toContainEqual({ courant: null, enAttente: ["meteo"] });
+  expect(vus.at(-1)).toEqual({ courant: null, enAttente: [] });
+  expect(n.direct()).toEqual({ courant: null, enAttente: [] });
+  desabonner();
+  const avant = vus.length;
+  await n.rejouer("meteo", "2026-10-28T09-00-00-000Z", "recolte");
+  expect(vus).toHaveLength(avant);
+});

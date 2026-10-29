@@ -8,11 +8,11 @@ import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget } from "..
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { EtatAtelier } from "../../src/conteneur/atelier.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { erreurDuNoyau, executerRecolte, type LanceurProcessus, type OptionsRecolte } from "../../src/widgets/recolte.js";
-import { ecrireExecution, listerExecutions } from "../../src/workflows/executions.js";
+import { erreurDuNoyau, executerRecolte, type LanceurProcessus, type OptionsRecolte, type ResultatEssai } from "../../src/widgets/recolte.js";
+import { ecrireExecution, idEssai, listerExecutions, type Execution } from "../../src/workflows/executions.js";
 import { ecrireMemoire } from "../../src/workflows/memoire.js";
 import { accorder, lireAccords } from "../../src/widgets/accords.js";
-import { ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu } from "../../src/widgets/planificateur.js";
+import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu, type EtatDirect } from "../../src/widgets/planificateur.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -52,6 +52,12 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     await ecrireEtatWidget(r.dossierWidgets, r.id, etat);
     return { etat };
   });
+  const essais: string[] = [];
+  const recolterEssai = vi.fn(async (r: OptionsRecolte & { origine: string; depart: string }): Promise<ResultatEssai> => {
+    essais.push(r.id);
+    return { ok: true, execution: idEssai(horloge().toISOString()), statut: "reussie" };
+  });
+  const directs: EtatDirect[] = [];
   const atelier = { etat: async () => etatAtelier, commandeRecolte: () => ["docker"], supprimerRecolte: async (_id: string) => {} };
   p = new PlanificateurWidgets({
     chemins: c,
@@ -63,9 +69,14 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     horloge,
     intervalleMs: 60 * MIN, // la minuterie ne gêne pas : les tests appellent verifier eux-mêmes
     recolter,
+    recolterEssai,
     surChange: changements,
+    surDirect: (e) => directs.push(structuredClone(e)),
   });
   return {
+    essais,
+    recolterEssai,
+    directs,
     p,
     c,
     dossierWidgets,
@@ -398,4 +409,125 @@ test("le dossier disparu efface aussi exécutions et mémoire", async () => {
   await ecrireMemoire(dossier, { a: { type: "liste.nouveaux", valeur: [] } });
   await p.verifier({ auLancement: false });
   expect(existsSync(dossier)).toBe(false);
+});
+
+/** Une promesse à résoudre de l'extérieur. */
+function differe<T>() {
+  let resoudre!: (v: T) => void;
+  const promesse = new Promise<T>((ok) => (resoudre = ok));
+  return { promesse, resoudre };
+}
+
+test("une exécution planifiée due pendant un essai attend sa fin", async () => {
+  const { p, recolter, recolterEssai } = await preparer();
+  const journal: string[] = [];
+  const fin = differe<ResultatEssai>();
+  recolterEssai.mockImplementation(async (o) => {
+    journal.push(`essai ${o.id} ${o.origine} ${o.depart}`);
+    const r = await fin.promesse;
+    journal.push("fin de l'essai");
+    return r;
+  });
+  recolter.mockImplementation(async (o) => {
+    journal.push(`récolte ${o.id} ${o.declencheur}`);
+    return { etat: { statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() } };
+  });
+  const essai = p.rejouer("actus", "2026-10-28T09-00-00-000Z", "liste");
+  await vi.waitFor(() => expect(journal).toEqual(["essai actus 2026-10-28T09-00-00-000Z liste"]));
+  const verification = p.verifier({ auLancement: true });
+  await new Promise((r) => setTimeout(r, 30));
+  expect(journal).toHaveLength(1);
+  fin.resoudre({ ok: true, execution: "x-essai", statut: "reussie" });
+  expect(await essai).toEqual({ ok: true, execution: "x-essai", statut: "reussie" });
+  expect(await verification).toEqual(["actus"]);
+  expect(journal).toEqual(["essai actus 2026-10-28T09-00-00-000Z liste", "fin de l'essai", "récolte actus planifiee"]);
+});
+
+test("deux rejouer demandés coup sur coup s'exécutent l'un après l'autre", async () => {
+  const { p, recolterEssai } = await preparer();
+  const journal: string[] = [];
+  const fins = [differe<void>(), differe<void>()];
+  let n = 0;
+  recolterEssai.mockImplementation(async (o) => {
+    const i = n++;
+    journal.push(`début ${i} ${o.depart}`);
+    await fins[i]!.promesse;
+    journal.push(`fin ${i}`);
+    return { ok: true, execution: `e${i}-essai`, statut: "reussie" };
+  });
+  const a = p.rejouer("actus", "o", "a");
+  const b = p.rejouer("actus", "o", "b");
+  await vi.waitFor(() => expect(journal).toEqual(["début 0 a"]));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(journal).toEqual(["début 0 a"]);
+  fins[0]!.resoudre();
+  await vi.waitFor(() => expect(journal).toEqual(["début 0 a", "fin 0", "début 1 b"]));
+  fins[1]!.resoudre();
+  expect(await a).toMatchObject({ execution: "e0-essai" });
+  expect(await b).toMatchObject({ execution: "e1-essai" });
+});
+
+test("direct() montre le widget en cours, son genre et ses blocs au fil des traces, puis courant null", async () => {
+  const { p, recolterEssai, directs, dossierWidgets } = await preparer();
+  expect(p.direct()).toEqual({ courant: null, enAttente: [] });
+  const vus: EtatDirect[] = [];
+  recolterEssai.mockImplementation(async (o) => {
+    o.surTrace!({ bloc: "liste", etape: "debut" });
+    vus.push(structuredClone(p.direct()));
+    o.surTrace!({ bloc: "liste", etape: "fin", statut: "reussi", elements: 3 });
+    // Commencé, sans fin : seule l'exécution finale dit qu'il a échoué.
+    o.surTrace!({ bloc: "sortie", etape: "debut" });
+    vus.push(structuredClone(p.direct()));
+    const e: Execution = {
+      version: 1, id: idEssai(DEBUT.toISOString()), proprietaire: { type: "widget", id: o.id }, declencheur: "rejeu",
+      essai: { depart: o.depart, origine: o.origine }, debut: DEBUT.toISOString(), fin: DEBUT.toISOString(), statut: "echouee",
+      blocs: [
+        { id: "liste", type: "code", statut: "reussi", debut: "x", fin: "x", elements: 3, journal: [] },
+        { id: "sortie", type: "sortie", statut: "echoue", debut: "x", fin: null, elements: null, journal: [] },
+      ],
+    };
+    await ecrireExecution(join(dossierWidgets, o.id), e);
+    return { ok: true, execution: e.id, statut: e.statut };
+  });
+  await p.rejouer("actus", "o", "liste");
+  const debut = DEBUT.toISOString();
+  expect(vus[0]).toEqual({ courant: { widget: "actus", genre: "essai", debut, blocs: { liste: { statut: "en-cours", elements: null } } }, enAttente: [] });
+  expect(vus[1]!.courant!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "en-cours", elements: null } });
+  // Fin : resynchronisé sur l'exécution écrite, puis plus rien en cours.
+  expect(directs.at(-2)!.courant!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "echoue", elements: null } });
+  expect(directs.at(-1)).toEqual({ courant: null, enAttente: [] });
+  expect(p.direct()).toEqual({ courant: null, enAttente: [] });
+  // Une vraie exécution se suit de la même façon, genre « execution ».
+  await p.recolterMaintenant("actus");
+  expect(directs.some((d) => d.courant?.genre === "execution" && d.courant.widget === "actus")).toBe(true);
+  expect(p.direct().courant).toBeNull();
+});
+
+test("enAttente liste un widget demandé pendant qu'un autre tourne", async () => {
+  const { p, recolterEssai, recoltes } = await preparer();
+  const fin = differe<void>();
+  recolterEssai.mockImplementation(async () => {
+    await fin.promesse;
+    return { ok: true, execution: "e-essai", statut: "reussie" };
+  });
+  const essai = p.rejouer("actus", "o", "liste");
+  await vi.waitFor(() => expect(p.direct().courant?.widget).toBe("actus"));
+  const autre = p.recolterMaintenant("fixe");
+  await vi.waitFor(() => expect(p.direct().enAttente).toEqual(["fixe"]));
+  expect(recoltes).toEqual([]);
+  fin.resoudre();
+  await essai;
+  await autre;
+  expect(recoltes).toEqual(["fixe"]);
+  expect(p.direct()).toEqual({ courant: null, enAttente: [] });
+});
+
+test("atelier arrêté : rejouer refuse sans changer l'état", async () => {
+  const { p, recolterEssai, dossierWidgets, changements } = await preparer({ atelier: "arrete" });
+  const etat: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await ecrireEtatWidget(dossierWidgets, "actus", etat);
+  expect(await p.rejouer("actus", "o", "liste")).toEqual({ ok: false, erreur: ERREUR_ATELIER_ARRETE });
+  expect(recolterEssai).not.toHaveBeenCalled();
+  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(etat);
+  expect(changements).not.toHaveBeenCalled();
 });

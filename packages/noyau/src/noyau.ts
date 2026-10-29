@@ -20,7 +20,7 @@ import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
 import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
-import { PlanificateurWidgets } from "./widgets/planificateur.js";
+import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
 import { accordRequis } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
 
@@ -178,6 +178,15 @@ export interface Noyau {
   surveillerAccueil(rappel: () => void): () => Promise<void>;
   /** Récolte ce widget tout de suite, après la récolte en cours (déclencheur : « manuelle » par défaut). */
   recolterMaintenant(id: string, declencheur?: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }>;
+  /**
+   * Essai du constructeur : rejoue le workflow du widget depuis le bloc `depart`, avec les sorties amont de l'exécution
+   * `origine`, dans la même file que les récoltes. N'écrit ni données, ni mémoire, ni état : seulement l'exécution d'essai.
+   */
+  rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai>;
+  /** L'exécution (ou l'essai) qui tourne, ses blocs au fil des traces, et les demandes en attente. */
+  direct(): EtatDirect;
+  /** Appelé à chaque changement de `direct()` ; rend de quoi se désabonner. */
+  surDirect(rappel: (e: EtatDirect) => void): () => void;
   /** IA locale (Kev, Gemma) donnée par le navigateur ; null sans elle. */
   ia: IaLocale | null;
   /**
@@ -294,6 +303,7 @@ export async function creerNoyau(o: {
   atelierPret.catch(() => {});
   let demarrage: Promise<EtatAtelier> | null = atelierPret;
   const moteur = o.moteur ?? (o.ressources ? join(o.ressources, "docker", "moteur") : join(DOSSIER_DOCKER_PAR_DEFAUT, "moteur"));
+  const abonnesDirect = new Set<(e: EtatDirect) => void>();
   const planificateur = new PlanificateurWidgets({
     chemins,
     dossierWidgets,
@@ -302,6 +312,15 @@ export async function creerNoyau(o: {
     pont: o.pont,
     ia: accesIa,
     surChange: signaler,
+    surDirect(e) {
+      for (const rappel of abonnesDirect) {
+        try {
+          rappel(e);
+        } catch (err) {
+          console.error("[webaios] suivi en direct :", err);
+        }
+      }
+    },
     // Gardé à part de `demarrage` (qu'ouvrirSessionAgent remet à null) : les récoltes attendent le premier démarrage.
     pret: atelierPret,
     ...(o.horloge ? { horloge: o.horloge } : {}),
@@ -337,6 +356,12 @@ export async function creerNoyau(o: {
     lireAccueil: () => lireAccueil(chemins, dossierWidgets),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
     recolterMaintenant: (id, declencheur) => planificateur.recolterMaintenant(id, declencheur),
+    rejouer: (id, origine, depart) => planificateur.rejouer(id, origine, depart),
+    direct: () => planificateur.direct(),
+    surDirect(rappel) {
+      abonnesDirect.add(rappel);
+      return () => void abonnesDirect.delete(rappel);
+    },
     ia,
     async accorder({ id, profil: nomProfil, compte: montres, publiques: publiquesMontrees }) {
       const w = await widget(id);

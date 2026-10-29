@@ -13,13 +13,18 @@ import {
   MEMOIRE_NON_GARDEE,
   PROFIL_REFUSE,
   executerWorkflow,
+  type ContexteWorkflow,
   type IssueWorkflow,
   type LanceurProcessus,
+  type TraceDirecte,
 } from "../workflows/executer.js";
-import { ecrireExecution, idExecution, listerExecutions, type Execution, type TraceBloc } from "../workflows/executions.js";
+import { ecrireExecution, idEssai, idExecution, lireExecution, listerExecutions, type Execution, type TraceBloc } from "../workflows/executions.js";
 import { lireWorkflow } from "../workflows/lire.js";
 import { ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
+import { debutTropGros } from "../workflows/protocole.js";
+import { REJEU_TROP_GROS, planRejeu } from "../workflows/rejeu.js";
 import { PREFIXE_WORKFLOW_INVALIDE, type Proprietaire } from "../workflows/schema.js";
+import type { WorkflowValide } from "../workflows/valider.js";
 
 // Déplacés dans le moteur des workflows ; réexportés pour les modules et tests qui les prennent ici.
 export { adresseLocale } from "../workflows/acces.js";
@@ -47,7 +52,15 @@ export interface OptionsRecolte {
   declencheur?: Execution["declencheur"];
   /** Vrai quand le noyau s'arrête : une exécution qui n'a pas fini est alors « interrompue », pas « échouée ». */
   interrompue?: () => boolean;
+  /** Chaque trace acceptée, en direct (le constructeur suit les blocs) ; doit rendre la main tout de suite. */
+  surTrace?: (t: TraceDirecte) => void;
 }
+
+/**
+ * Issue d'un essai du constructeur : `ok` dès qu'il a tourné (même en échec, son exécution le dit) ; sinon, la raison
+ * du refus (rien n'a été écrit, aucun conteneur lancé ou rien gardé de lui).
+ */
+export type ResultatEssai = { ok: true; execution: string; statut: Execution["statut"] } | { ok: false; erreur: string };
 
 /** `execution` : l'id de l'exécution écrite (aucune quand rien n'a tourné, ou quand l'accord a été retiré pendant). */
 export type ResultatRecolte = { etat: EtatWidget; donnees?: unknown; execution?: string };
@@ -89,6 +102,87 @@ const ERREURS_MOTIFS = [
  */
 export function erreurDuNoyau(erreur: string): boolean {
   return ERREURS_FIXES.has(erreur) || ERREURS_MOTIFS.some((m) => m.test(erreur));
+}
+
+/** Le workflow d'un widget : `workflow.json`, ou `recolte.mjs` seul (workflow implicite). */
+type WorkflowDuWidget =
+  | { t: "ok"; valide: WorkflowValide; declaration: DeclarationWidget }
+  /** Le widget est illisible : son erreur peut citer ses fichiers. */
+  | { t: "illisible"; erreur: string }
+  | { t: "absent" }
+  /** workflow.json à moitié écrit, bloc inconnu, cycle… (message du validateur, tronqué). */
+  | { t: "invalide"; erreur: string };
+
+async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {
+  if ("erreur" in widget) return { t: "illisible", erreur: widget.erreur };
+  const lu = await lireWorkflow(widget.dossier);
+  if (!lu) return { t: "absent" };
+  if (!lu.resultat.ok) return { t: "invalide", erreur: tronquer(lu.resultat.erreur, ERREUR_MAX) };
+  return { t: "ok", valide: lu.resultat.valide, declaration: widget.declaration };
+}
+
+/**
+ * Un accord qui ne vaut plus pour la déclaration actuelle (domaines changés, compte retiré) est retiré, et ce qui a été
+ * lu avec effacé (données, exécutions, mémoire) : rien ne passe à la récolte suivante ni, plus tard, à l'agent. Rend
+ * vrai si le widget peut tourner : sans compte, ou avec un accord valide (qui couvre aussi ses domaines publics).
+ */
+async function accordEnRegle(dossierWidgets: string, id: string, declaration: DeclarationWidget): Promise<boolean> {
+  const accordEnregistre = (await lireAccords(dossierWidgets))[id];
+  if (accordEnregistre && !accordValide(declaration, accordEnregistre)) {
+    await retirerAccord(dossierWidgets, id);
+    await supprimerDonnees(dossierWidgets, id);
+  }
+  return declaration.sources.compte.length === 0 || accordValide(declaration, (await lireAccords(dossierWidgets))[id]);
+}
+
+/** Ce que l'exécution d'un widget demande sur son accord (relu à chaque lecture avec compte). */
+function contexteAccord(
+  dossierWidgets: string,
+  id: string,
+  declaration: DeclarationWidget,
+): Pick<ContexteWorkflow, "accord" | "surProfilRefuse" | "messageAccordRequis" | "sources"> {
+  return {
+    sources: declaration.sources,
+    async accord() {
+      const a = (await lireAccords(dossierWidgets))[id];
+      return accordValide(declaration, a) ? { profil: a.profil } : null;
+    },
+    // L'accord est retiré avant l'arrêt : quand l'exécution conclut, il n'existe plus. Ce qui a été lu avec ce compte part
+    // avec lui (le widget montre son exemple jusqu'au nouvel accord).
+    async surProfilRefuse() {
+      await retirerAccord(dossierWidgets, id);
+      await supprimerDonnees(dossierWidgets, id);
+    },
+    messageAccordRequis: accordRequis(declaration),
+  };
+}
+
+/** L'accord a-t-il été retiré (refuserAccord efface tout) ? Toujours faux pour un widget sans compte. */
+async function accordRetireDe(dossierWidgets: string, id: string, declaration: DeclarationWidget): Promise<boolean> {
+  return declaration.sources.compte.length > 0 && !accordValide(declaration, (await lireAccords(dossierWidgets))[id]);
+}
+
+/** Ce que l'infrastructure reçoit des options d'une récolte ou d'un essai. */
+function infraDe(o: OptionsRecolte, horloge: () => Date): Parameters<typeof executerWorkflow>[1] {
+  return {
+    moteur: o.moteur,
+    atelier: o.atelier,
+    ...(o.lancer ? { lancer: o.lancer } : {}),
+    ia: o.ia,
+    pont: o.pont,
+    horloge,
+    ...(o.delaiMs !== undefined ? { delaiMs: o.delaiMs } : {}),
+    ...(o.adressesLocales ? { adressesLocales: true } : {}),
+    ...(o.surTrace ? { surTrace: o.surTrace } : {}),
+  };
+}
+
+/** Arrêt du noyau : l'exécution n'a pas échoué, elle est interrompue ; un bloc commencé sans fin est interrompu. */
+function marquerInterrompue(execution: Execution): void {
+  execution.statut = "interrompue";
+  execution.erreur = ERREUR_INTERROMPUE;
+  execution.erreurNoyau = true;
+  execution.blocs = execution.blocs.map((b) => (b.debut !== null && b.fin === null ? { ...b, statut: "interrompu" } : b));
 }
 
 /**
@@ -154,31 +248,19 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     return e.id;
   };
 
+  const lu = await workflowDuWidget(widget);
   // L'erreur de lecture du widget peut citer ses fichiers : elle compte comme écrite par le widget.
-  if ("erreur" in widget) return conclure({ statut: "erreur", erreur: widget.erreur, erreurWidget: true });
-  const lu = await lireWorkflow(widget.dossier);
-  if (!lu) return conclure({ statut: "erreur", erreur: ERREUR_SANS_WORKFLOW });
+  if (lu.t === "illisible") return conclure({ statut: "erreur", erreur: lu.erreur, erreurWidget: true });
+  if (lu.t === "absent") return conclure({ statut: "erreur", erreur: ERREUR_SANS_WORKFLOW });
   // workflow.json à moitié écrit, bloc inconnu, cycle… : aucun conteneur n'est lancé, les données restent.
-  if (!lu.resultat.ok) {
-    const erreur = tronquer(lu.resultat.erreur, ERREUR_MAX);
-    return conclure({ statut: "erreur", erreur, execution: await sansConteneur("echouee", erreur, []) });
-  }
-  const valide = lu.resultat.valide;
-  const declaration = widget.declaration;
-  const aCompte = declaration.sources.compte.length > 0;
-  // Un accord qui ne vaut plus pour la déclaration actuelle (domaines changés, compte retiré) est retiré, et ce qui a été
-  // lu avec effacé (données, exécutions, mémoire) : rien ne passe à la récolte suivante ni, plus tard, à l'agent.
-  const accordEnregistre = (await lireAccords(dossierWidgets))[id];
-  if (accordEnregistre && !accordValide(declaration, accordEnregistre)) {
-    await retirerAccord(dossierWidgets, id);
-    await supprimerDonnees(dossierWidgets, id);
-  }
-  // Un widget qui lit avec le compte de l'utilisateur ne tourne qu'avec son accord, qui couvre aussi ses domaines publics.
-  if (aCompte && !accordValide(declaration, (await lireAccords(dossierWidgets))[id])) {
+  if (lu.t === "invalide") return conclure({ statut: "erreur", erreur: lu.erreur, execution: await sansConteneur("echouee", lu.erreur, []) });
+  const { valide, declaration } = lu;
+  // Un widget qui lit avec le compte de l'utilisateur ne tourne qu'avec son accord (un accord périmé est retiré, avec ses données).
+  if (!(await accordEnRegle(dossierWidgets, id, declaration))) {
     const erreur = accordRequis(declaration);
     // Déjà en attente d'accord à la dernière exécution : pas une de plus à chaque planification (elles pousseraient
-    // dehors l'historique des vraies exécutions), la dernière tient lieu.
-    const derniere = (await listerExecutions(dossierDonnees))[0];
+    // dehors l'historique des vraies exécutions), la dernière tient lieu. Les essais ne comptent pas.
+    const derniere = (await listerExecutions(dossierDonnees)).find((e) => !e.essai);
     if (derniere?.statut === "accord-requis") return conclure({ statut: "accord-requis", erreur, execution: derniere.id });
     const pasLances: TraceBloc[] = valide.ordre.map((b) => ({
       id: b,
@@ -200,36 +282,16 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
       config: declaration.config ?? null,
       precedent: await lireDonnees(dossierWidgets, id),
       memoire: await lireMemoire(dossierDonnees),
-      sources: declaration.sources,
-      async accord() {
-        const a = (await lireAccords(dossierWidgets))[id];
-        return accordValide(declaration, a) ? { profil: a.profil } : null;
-      },
-      // L'accord est retiré avant l'arrêt : quand la récolte conclut, il n'existe plus. Ce qui a été lu avec ce compte part
-      // avec lui (le widget montre son exemple jusqu'au nouvel accord).
-      async surProfilRefuse() {
-        await retirerAccord(dossierWidgets, id);
-        await supprimerDonnees(dossierWidgets, id);
-      },
-      messageAccordRequis: accordRequis(declaration),
+      ...contexteAccord(dossierWidgets, id, declaration),
       declencheur,
     },
-    {
-      moteur: o.moteur,
-      atelier: o.atelier,
-      ...(o.lancer ? { lancer: o.lancer } : {}),
-      ia: o.ia,
-      pont: o.pont,
-      horloge,
-      ...(o.delaiMs !== undefined ? { delaiMs: o.delaiMs } : {}),
-      ...(o.adressesLocales ? { adressesLocales: true } : {}),
-    },
+    infraDe(o, horloge),
   );
   let journal = journalExecution;
 
   // L'accord a pu être retiré pendant l'exécution (refuserAccord efface tout), ou pendant une écriture d'ici (elle a pu
   // arriver après l'effacement) : rien de ce qui a été lu avec ne reste, pas même l'exécution.
-  const accordRetire = async () => aCompte && !accordValide(declaration, (await lireAccords(dossierWidgets))[id]);
+  const accordRetire = () => accordRetireDe(dossierWidgets, id, declaration);
   const refusee = async () => {
     await supprimerDonnees(dossierWidgets, id);
     return conclure({ statut: "accord-requis", erreur: messageRefus(issue, declaration) });
@@ -274,12 +336,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   // Arrêt du noyau (sortie, changement de profil) : l'exécution n'a pas échoué, elle est interrompue.
   // Son erreur est celle du noyau (pas celle, sans objet, du conteneur tué) ; un bloc commencé sans fin est interrompu.
   const interrompue = o.interrompue?.() === true && execution.statut !== "accord-requis";
-  if (interrompue) {
-    execution.statut = "interrompue";
-    execution.erreur = ERREUR_INTERROMPUE;
-    execution.erreurNoyau = true;
-    execution.blocs = execution.blocs.map((b) => (b.debut !== null && b.fin === null ? { ...b, statut: "interrompu" } : b));
-  }
+  if (interrompue) marquerInterrompue(execution);
   return issue.t === "arret"
     ? conclureSansDonnees(execution, { statut: issue.statut, erreur: issue.erreur, journal })
     : // La provenance vient du moteur : `erreurNoyau` absent, le texte a pu être écrit par le code du widget.
@@ -290,6 +347,70 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
           ? { statut: "erreur", erreur: ERREUR_INTERROMPUE, journal }
           : { statut: "erreur", erreur: issue.erreur, erreurWidget: !execution.erreurNoyau, journal },
       );
+}
+
+/**
+ * Un essai du constructeur : rejoue le workflow du widget depuis le bloc `depart`, en reprenant de l'exécution
+ * `origine` la sortie des blocs en amont. N'écrit jamais `etat.json`, `donnees.json` ni `memoire.json` : seule
+ * l'exécution `-essai` est gardée (un essai en échec ne montre aucune erreur sur l'accueil). Comme une récolte, un widget
+ * avec compte ne tourne qu'avec l'accord de l'utilisateur ; retiré pendant l'essai, tout ce qui a été lu avec part, essai compris.
+ */
+export async function executerEssai(o: OptionsRecolte & { origine: string; depart: string }): Promise<ResultatEssai> {
+  const { id, widget, dossierWidgets } = o;
+  if (!ID.test(id) || widget.id !== id) throw new Error(`id de widget invalide : ${id}`);
+  const horloge = o.horloge ?? (() => new Date());
+  const dossierDonnees = join(dossierWidgets, id);
+  const refus = (erreur: string): ResultatEssai => ({ ok: false, erreur });
+
+  const lu = await workflowDuWidget(widget);
+  if (lu.t === "absent") return refus(ERREUR_SANS_WORKFLOW);
+  if (lu.t !== "ok") return refus(lu.erreur);
+  const { valide, declaration } = lu;
+  if (!(await accordEnRegle(dossierWidgets, id, declaration))) return refus(accordRequis(declaration));
+
+  const plan = planRejeu(valide, await lireExecution(dossierDonnees, o.origine), o.depart);
+  if (!plan.ok) return refus(plan.erreur);
+  const precedent = await lireDonnees(dossierWidgets, id);
+  const config = declaration.config ?? null;
+  const workflow = { blocs: valide.workflow.blocs, liens: valide.workflow.liens, ordre: valide.ordre };
+  const rejeu = { relances: plan.relances, sorties: plan.sorties };
+  // Mesuré avant tout conteneur : le récolteur refuserait la ligne, et rien ne doit être écrit.
+  if (debutTropGros({ precedent, maintenant: horloge().toISOString(), config, workflow, rejeu })) return refus(REJEU_TROP_GROS);
+
+  const { issue, execution } = await executerWorkflow(
+    {
+      proprietaire: { type: "widget", id },
+      valide,
+      dossierFichiers: widget.dossier,
+      config,
+      precedent,
+      // Un essai ne reçoit ni ne garde aucune mémoire.
+      memoire: {},
+      ...contexteAccord(dossierWidgets, id, declaration),
+      declencheur: "rejeu",
+      rejeu: { ...rejeu, repris: plan.repris },
+    },
+    infraDe(o, horloge),
+  );
+  // Filet de l'exécuteur (la mesure d'ici a dû refuser avant) : un refus, rien d'écrit.
+  if (issue.t === "arret" && issue.erreur === REJEU_TROP_GROS) return refus(REJEU_TROP_GROS);
+
+  // L'accord a pu être retiré pendant l'essai, ou pendant son écriture : rien de ce qui a été lu avec ne reste.
+  const retire = async () => {
+    if (!(await accordRetireDe(dossierWidgets, id, declaration))) return null;
+    await supprimerDonnees(dossierWidgets, id);
+    return refus(messageRefus(issue, declaration));
+  };
+  const avant = await retire();
+  if (avant) return avant;
+
+  execution.id = idEssai(execution.debut);
+  execution.essai = { depart: o.depart, origine: o.origine };
+  if (issue.t !== "fin" && o.interrompue?.() === true && execution.statut !== "accord-requis") marquerInterrompue(execution);
+  await ecrireExecution(dossierDonnees, execution);
+  const apres = await retire();
+  if (apres) return apres;
+  return { ok: true, execution: execution.id, statut: execution.statut };
 }
 
 /** Le message d'un widget qui attend un nouvel accord : celui du moteur s'il s'est arrêté pour ça (profil refusé…). */

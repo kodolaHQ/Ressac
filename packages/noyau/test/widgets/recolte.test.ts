@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
@@ -13,9 +13,9 @@ import { ecrireDonnees, lireEtatWidget, supprimerDonnees } from "../../src/accue
 import { IaLocale } from "../../src/ia/ia-locale.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
-import { erreurDuNoyau, executerRecolte, type LanceurProcessus } from "../../src/widgets/recolte.js";
+import { erreurDuNoyau, executerEssai, executerRecolte, type LanceurProcessus } from "../../src/widgets/recolte.js";
 import { PROFIL_REFUSE } from "../../src/workflows/executer.js";
-import { ecrireExecution, lireExecution, listerExecutions, type Execution } from "../../src/workflows/executions.js";
+import { ecrireExecution, idEssai, lireExecution, listerExecutions, type Execution } from "../../src/workflows/executions.js";
 import { ecrireMemoire, lireMemoire } from "../../src/workflows/memoire.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
@@ -870,5 +870,180 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
     expect(erreurDuNoyau(e.erreur!)).toBe(true);
+  });
+});
+
+describe("executerEssai", () => {
+  const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
+  const donneesDe = (ctx: Contexte) => join(ctx.dossierWidgets, ctx.widget.id);
+  async function enWorkflow(ctx: Contexte, workflow: unknown, fichiers: Record<string, string> = {}) {
+    await rm(join(ctx.widget.dossier, "recolte.mjs"), { force: true });
+    await writeFile(join(ctx.widget.dossier, "workflow.json"), JSON.stringify(workflow));
+    for (const [nom, texte] of Object.entries(fichiers)) await writeFile(join(ctx.widget.dossier, nom), texte);
+  }
+  const NOUVEAUX = {
+    version: 1,
+    blocs: [
+      { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
+      { id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "id" } },
+      { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+    ],
+    liens: [{ de: "liste", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }],
+  };
+  /** Contenu et date de modification des fichiers gardés hors de l'espace (absent : null). */
+  const instantane = async (ctx: Contexte) => {
+    const r: Record<string, { texte: string; mtime: number } | null> = {};
+    for (const nom of ["donnees.json", "memoire.json", "etat.json"]) {
+      const chemin = join(donneesDe(ctx), nom);
+      r[nom] = existsSync(chemin) ? { texte: await readFile(chemin, "utf8"), mtime: (await stat(chemin)).mtimeMs } : null;
+    }
+    return r;
+  };
+  const essai = (ctx: Contexte, origine: string, depart: string, o: Partial<Parameters<typeof executerEssai>[0]> = {}) =>
+    executerEssai({ ...optionsDe(ctx), origine, depart, ...o });
+
+  it("un essai écrit une exécution -essai avec depart et origine, et ne touche ni données, ni mémoire, ni état", async () => {
+    const ctx = await preparer("flux", "");
+    await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
+    const reel = await executerRecolte(optionsDe(ctx));
+    expect(reel.etat.statut).toBe("ok");
+    expect((await lireMemoire(donneesDe(ctx))).nouveaux).toBeDefined();
+    const avant = await instantane(ctx);
+    expect(Object.values(avant).every((f) => f !== null)).toBe(true);
+    // La liste n'est pas relancée : sa sortie est reprise de l'exécution d'origine.
+    await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("relancée"); };`);
+    const traces: unknown[] = [];
+    const r = await essai(ctx, reel.execution!, "nouveaux", { surTrace: (t) => traces.push(t) });
+    expect(r).toEqual({ ok: true, execution: idEssai(MAINTENANT.toISOString()), statut: "reussie" });
+    const e = (await lireExecution(donneesDe(ctx), (r as { execution: string }).execution))!;
+    expect(e).toMatchObject({ declencheur: "rejeu", essai: { depart: "nouveaux", origine: reel.execution }, statut: "reussie" });
+    expect(e.blocs.map((b) => [b.id, b.statut, b.elements])).toEqual([["liste", "repris", 2], ["nouveaux", "reussi", 2], ["sortie", "reussi", 2]]);
+    expect(traces).toEqual([
+      { bloc: "nouveaux", etape: "debut" },
+      { bloc: "nouveaux", etape: "fin", statut: "reussi", elements: 2 },
+      { bloc: "sortie", etape: "debut" },
+      { bloc: "sortie", etape: "fin", statut: "reussi", elements: 2 },
+    ]);
+    expect(await instantane(ctx)).toEqual(avant);
+    // La vraie exécution est toujours là, à côté de l'essai.
+    expect((await listerExecutions(donneesDe(ctx))).map((x) => x.id).sort()).toEqual([reel.execution, e.id].sort());
+  });
+
+  it("un essai en échec n'écrit aucune erreur dans l'état du widget", async () => {
+    const ctx = await preparer("flux", "");
+    await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }];` });
+    const reel = await executerRecolte(optionsDe(ctx));
+    const avant = await instantane(ctx);
+    await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("boum"); };`);
+    const r = await essai(ctx, reel.execution!, "liste");
+    expect(r).toMatchObject({ ok: true, statut: "echouee" });
+    expect(await instantane(ctx)).toEqual(avant);
+    const etat = await lireEtatWidget(ctx.dossierWidgets, "flux");
+    expect(etat.statut).toBe("ok");
+    expect(etat.erreur).toBeUndefined();
+  });
+
+  it("essai d'un widget avec compte sans accord : refusé avec le message d'accord, aucun conteneur, rien d'écrit", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const r = await essai(ctx, "2026-10-27T08-00-00-000Z", "recolte");
+    expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(ctx.commandes).toHaveLength(0);
+    expect(existsSync(donneesDe(ctx))).toBe(false);
+  });
+
+  it("accord retiré pendant l'essai : aucune exécution sur le disque", async () => {
+    const ctx = await preparer(
+      "daily",
+      `export default async (w) => { const p = await w.lirePage("https://app.daily.dev/", { compte: true }); await w.kev("x", {}); return p.texte; };`,
+      sources,
+    );
+    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const faux = { kev: async () => ({}), gemma: async () => "" };
+    const reel = await executerRecolte({ ...optionsDe(ctx), ia: faux });
+    expect(reel.etat.statut).toBe("ok");
+    // Ce que fait refuserAccord, pendant l'essai.
+    const retirer = {
+      kev: async () => {
+        await retirerAccord(ctx.dossierWidgets, "daily");
+        await supprimerDonnees(ctx.dossierWidgets, "daily");
+        return {};
+      },
+      gemma: async () => "",
+    };
+    const r = await essai(ctx, reel.execution!, "recolte", { ia: retirer });
+    expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(await listerExecutions(donneesDe(ctx))).toEqual([]);
+    expect(existsSync(join(donneesDe(ctx), "donnees.json"))).toBe(false);
+  });
+
+  it("essai refusé par le plan de rejeu : message exact, aucun conteneur lancé", async () => {
+    const ctx = await preparer("flux", "");
+    await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }];` });
+    const reel = await executerRecolte(optionsDe(ctx));
+    const lances = ctx.commandes.length;
+    const avant = await instantane(ctx);
+    expect(await essai(ctx, reel.execution!, "absent")).toEqual({ ok: false, erreur: "Rejeu impossible : le bloc « absent » n'est pas dans le workflow" });
+    expect(await essai(ctx, "2020-01-01T00-00-00-000Z", "liste")).toEqual({ ok: false, erreur: "Rejeu impossible : exécution introuvable" });
+    expect(ctx.commandes).toHaveLength(lances);
+    expect(await instantane(ctx)).toEqual(avant);
+    expect(await listerExecutions(donneesDe(ctx))).toHaveLength(1);
+  });
+
+  it("essai dont les sorties reprises et le précédent dépassent 4 Mo : refusé, aucun conteneur, rien d'écrit", async () => {
+    const ctx = await preparer("gros", "");
+    const amont = Array.from({ length: 10 }, (_, i) => `a${i}`);
+    await enWorkflow(ctx, {
+      version: 1,
+      blocs: [
+        ...amont.map((id) => ({ id, type: "code", parametres: { source: "a.mjs" } })),
+        { id: "tout", type: "code", parametres: { source: "a.mjs" } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      ],
+      liens: [...amont.map((de) => ({ de, vers: "tout" })), { de: "tout", vers: "sortie" }],
+    }, { "a.mjs": `export default async () => 1;` });
+    await ecrireDonnees(ctx.dossierWidgets, "gros", "x".repeat(1_900_000));
+    const origine: Execution = {
+      version: 1, id: "2026-10-27T08-00-00-000Z", proprietaire: { type: "widget", id: "gros" }, declencheur: "planifiee",
+      debut: "2026-10-27T08:00:00.000Z", fin: "2026-10-27T08:00:01.000Z", statut: "reussie",
+      blocs: amont.map((id) => ({ id, type: "code", statut: "reussi" as const, debut: null, fin: null, elements: null, sortie: "y".repeat(240_000), journal: [] })),
+    };
+    await ecrireExecution(donneesDe(ctx), origine);
+    const r = await essai(ctx, origine.id, "tout");
+    expect(r).toEqual({ ok: false, erreur: "Rejeu impossible : les sorties à reprendre dépassent 4 Mo" });
+    expect(ctx.commandes).toHaveLength(0);
+    expect((await listerExecutions(donneesDe(ctx))).map((e) => e.id)).toEqual([origine.id]);
+  });
+
+  it("un widget sans workflow.json (recolte.mjs seul) : rejouer depuis sortie reprend la sortie de recolte", async () => {
+    const ctx = await preparer("gmail", `export default async (w) => ({ texte: (await w.lirePage("https://app.daily.dev/", { compte: true })).texte });`, sources);
+    await accorder(ctx.dossierWidgets, "gmail", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const pont = pontLecture();
+    const reel = await executerRecolte({ ...optionsDe(ctx), pont });
+    expect(reel.etat.statut).toBe("ok");
+    const avant = await instantane(ctx);
+    await writeFile(join(ctx.widget.dossier, "recolte.mjs"), `export default async () => { throw new Error("relancée"); };`);
+    const r = await essai(ctx, reel.execution!, "sortie", { pont });
+    expect(r).toMatchObject({ ok: true, statut: "reussie" });
+    const e = (await lireExecution(donneesDe(ctx), (r as { execution: string }).execution))!;
+    expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "repris"], ["sortie", "reussi"]]);
+    expect(appelsLecture(pont)).toHaveLength(1);
+    expect(await instantane(ctx)).toEqual(avant);
+    expect(existsSync(join(ctx.widget.dossier, "workflow.json"))).toBe(false);
+  });
+
+  it("sans accord : un essai plus récent n'empêche pas la dernière exécution accord-requis de tenir lieu", async () => {
+    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const premiere = await executerRecolte(optionsDe(ctx));
+    expect(premiere.etat.statut).toBe("accord-requis");
+    const essaiEcrit: Execution = {
+      version: 1, id: "2026-10-28T11-00-00-000Z-essai", proprietaire: { type: "widget", id: "daily" }, declencheur: "rejeu",
+      essai: { depart: "recolte", origine: premiere.execution! },
+      debut: "2026-10-28T11:00:00.000Z", fin: "2026-10-28T11:00:01.000Z", statut: "echouee", blocs: [],
+    };
+    await ecrireExecution(donneesDe(ctx), essaiEcrit);
+    const plusTard = () => new Date(MAINTENANT.getTime() + 2 * 3_600_000);
+    const seconde = await executerRecolte({ ...optionsDe(ctx), horloge: plusTard });
+    expect(seconde.execution).toBe(premiere.execution);
+    expect((await listerExecutions(donneesDe(ctx))).filter((e) => !e.essai)).toHaveLength(1);
   });
 });

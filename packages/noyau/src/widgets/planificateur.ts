@@ -9,10 +9,27 @@ import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import type { PontNavigateur } from "../mcp/pont.js";
 import { lireAccords, retirerAccord } from "./accords.js";
-import type { Execution } from "../workflows/executions.js";
-import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, executerRecolte, type OptionsRecolte, type ResultatRecolte } from "./recolte.js";
+import type { TraceDirecte } from "../workflows/executer.js";
+import { lireExecution, type Execution } from "../workflows/executions.js";
+import {
+  ERREUR_ATELIER_ARRETE,
+  ERREUR_INTERROMPUE,
+  ERREUR_RECOLTE_INTERNE,
+  executerEssai,
+  executerRecolte,
+  type OptionsRecolte,
+  type ResultatEssai,
+  type ResultatRecolte,
+} from "./recolte.js";
 
-export { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE };
+export { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, type ResultatEssai };
+
+/** Un bloc de l'exécution en cours, d'après ses traces. */
+export type BlocDirect = { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null };
+/** L'exécution (vraie, ou essai du constructeur) qui tourne en ce moment. */
+export type DirectWidget = { widget: string; genre: "execution" | "essai"; debut: string; blocs: Record<string, BlocDirect> };
+/** `enAttente` : widgets dont une demande (récolte manuelle, essai) attend son tour dans la file. */
+export type EtatDirect = { courant: DirectWidget | null; enAttente: string[] };
 
 const MINUTE = 60_000;
 /** Une récolte en erreur est retentée au plus tôt 15 min après sa dernière tentative. */
@@ -38,6 +55,7 @@ export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolea
 }
 
 export type Recolteuse = (o: OptionsRecolte) => Promise<ResultatRecolte>;
+export type Essayeuse = (o: OptionsRecolte & { origine: string; depart: string }) => Promise<ResultatEssai>;
 
 export interface OptionsPlanificateur {
   chemins: CheminsEspace;
@@ -54,6 +72,10 @@ export interface OptionsPlanificateur {
   surChange?: () => void;
   /** Tests : remplace l'exécution réelle de la récolte. */
   recolter?: Recolteuse;
+  /** Tests : remplace l'exécution réelle d'un essai. */
+  recolterEssai?: Essayeuse;
+  /** Appelé à chaque entrée et sortie de la file, et à chaque trace de l'exécution en cours. */
+  surDirect?: (e: EtatDirect) => void;
   /** Tests seulement : les récoltes peuvent lire des adresses locales (voir OptionsRecolte). */
   adressesLocales?: boolean;
   /**
@@ -67,7 +89,7 @@ export interface OptionsPlanificateur {
 
 /** Lance les récoltes des widgets en arrière-plan, une à la fois, tant que le navigateur est ouvert. */
 export class PlanificateurWidgets {
-  private readonly o: OptionsPlanificateur & { horloge: () => Date; intervalleMs: number; recolter: Recolteuse };
+  private readonly o: OptionsPlanificateur & { horloge: () => Date; intervalleMs: number; recolter: Recolteuse; recolterEssai: Essayeuse };
   private minuterie: NodeJS.Timeout | undefined;
   /** Une récolte à la fois : chaque récolte s'enchaîne sur la précédente. */
   private file: Promise<unknown> = Promise.resolve();
@@ -75,6 +97,10 @@ export class PlanificateurWidgets {
   /** Widget dont la récolte tourne en ce moment. */
   private courant: string | null = null;
   private arrete = false;
+  /** L'exécution suivie en direct (celle qui tourne vraiment, pas une vérification sans récolte). */
+  private enDirect: DirectWidget | null = null;
+  /** Widgets des demandes en file, pas encore commencées (un par demande). */
+  private attente: string[] = [];
 
   constructor(o: OptionsPlanificateur) {
     // `??` plutôt qu'un spread : une option passée explicitement à undefined garde sa valeur par défaut.
@@ -83,7 +109,86 @@ export class PlanificateurWidgets {
       horloge: o.horloge ?? (() => new Date()),
       intervalleMs: o.intervalleMs ?? MINUTE,
       recolter: o.recolter ?? executerRecolte,
+      recolterEssai: o.recolterEssai ?? executerEssai,
     };
+  }
+
+  /** Ce qui tourne en ce moment, et les demandes qui attendent leur tour. */
+  direct(): EtatDirect {
+    return { courant: this.enDirect, enAttente: [...new Set(this.attente)] };
+  }
+
+  /** Une erreur du rappel ne doit jamais arrêter une exécution. */
+  private signalerDirect(): void {
+    if (!this.o.surDirect) return;
+    try {
+      this.o.surDirect(structuredClone(this.direct()));
+    } catch (e) {
+      console.error("[webaios] suivi en direct :", e);
+    }
+  }
+
+  /** Une demande entre dans la file ; `commencee` l'en sort quand son tour vient. */
+  private demande(id: string): { commencee(): void } {
+    this.attente.push(id);
+    this.signalerDirect();
+    let faite = false;
+    return {
+      commencee: () => {
+        if (faite) return;
+        faite = true;
+        const i = this.attente.indexOf(id);
+        if (i >= 0) this.attente.splice(i, 1);
+        this.signalerDirect();
+      },
+    };
+  }
+
+  /**
+   * Suit en direct l'exécution `f` du widget `widget`. Synchrone : le moteur n'attrape que les erreurs levées tout de
+   * suite par le relais des traces. À la fin, les blocs sont repris de l'exécution écrite (un bloc commencé sans fin n'a
+   * pas de trace de fin), puis plus rien n'est en cours.
+   */
+  private async suivre<T>(
+    widget: string,
+    genre: DirectWidget["genre"],
+    f: (surTrace: (t: TraceDirecte) => void) => Promise<T>,
+    executionDe: (r: T) => string | undefined,
+  ): Promise<T> {
+    const suivi: DirectWidget = { widget, genre, debut: this.o.horloge().toISOString(), blocs: {} };
+    this.enDirect = suivi;
+    this.signalerDirect();
+    const surTrace = (t: TraceDirecte) => {
+      if (this.enDirect !== suivi) return;
+      suivi.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
+      this.signalerDirect();
+    };
+    let r: T | undefined;
+    try {
+      r = await f(surTrace);
+      return r;
+    } finally {
+      await this.resynchroniser(suivi, r === undefined ? undefined : executionDe(r));
+      if (this.enDirect === suivi) this.enDirect = null;
+      this.signalerDirect();
+    }
+  }
+
+  private async resynchroniser(suivi: DirectWidget, execution: string | undefined): Promise<void> {
+    const e = execution ? await lireExecution(join(this.o.dossierWidgets, suivi.widget), execution).catch(() => null) : null;
+    if (e) {
+      const blocs: Record<string, BlocDirect> = {};
+      for (const b of e.blocs) {
+        if (b.debut === null) continue;
+        const statut = b.statut === "reussi" || b.statut === "partiel" ? b.statut : "echoue";
+        blocs[b.id] = { statut, elements: b.elements };
+      }
+      suivi.blocs = blocs;
+    } else {
+      // Rien d'écrit (refus, accord retiré…) : un bloc encore en cours ne finira pas.
+      for (const b of Object.values(suivi.blocs)) if (b.statut === "en-cours") b.statut = "echoue";
+    }
+    if (this.enDirect === suivi) this.signalerDirect();
   }
 
   /** Vérifie au lancement, en arrière-plan (une récolte prend du temps), puis à intervalle régulier. */
@@ -203,25 +308,34 @@ export class PlanificateurWidgets {
     return etat;
   }
 
+  private optionsRecolte(w: WidgetLu, surTrace: (t: TraceDirecte) => void): OptionsRecolte {
+    return {
+      id: w.id,
+      widget: w,
+      dossierWidgets: this.o.dossierWidgets,
+      moteur: this.o.moteur,
+      atelier: this.o.atelier,
+      ia: this.o.ia,
+      pont: this.o.pont,
+      horloge: this.o.horloge,
+      ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
+      ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
+      interrompue: () => this.arrete,
+      surTrace,
+    };
+  }
+
   private async recolter(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }> {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
     let etat: EtatWidget;
     let execution: string | undefined;
     try {
-      ({ etat, execution } = await this.o.recolter({
-        id: w.id,
-        widget: w,
-        dossierWidgets: this.o.dossierWidgets,
-        moteur: this.o.moteur,
-        atelier: this.o.atelier,
-        ia: this.o.ia,
-        pont: this.o.pont,
-        horloge: this.o.horloge,
-        ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
-        ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
-        declencheur,
-        interrompue: () => this.arrete,
-      }));
+      ({ etat, execution } = await this.suivre(
+        w.id,
+        "execution",
+        (surTrace) => this.o.recolter({ ...this.optionsRecolte(w, surTrace), declencheur }),
+        (r) => r.execution,
+      ));
     } catch (e) {
       // La récolte a pu écrire en-cours avant d'échouer (disque, conteneur…) : le widget ne doit pas y rester. Le texte
       // de l'exception n'est pas gardé (il peut citer ce que le widget a lu) : seul un message fixe du noyau l'est.
@@ -247,15 +361,49 @@ export class PlanificateurWidgets {
    * (aucune si rien n'a tourné : atelier arrêté, noyau qui s'arrête, accord retiré pendant).
    */
   async recolterMaintenant(id: string, declencheur: Execution["declencheur"] = "manuelle"): Promise<EtatWidget & { execution?: string }> {
+    const demande = this.demande(id);
     await this.attendrePret();
     return this.enchainer(() =>
       this.enCours(id, async () => {
+        demande.commencee();
         const w = (await this.widgets()).find((x) => x.id === id);
         if (!w) throw new Error(`Widget inconnu : ${id}`);
         if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
         if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
         if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
         return this.recolter(w, declencheur);
+      }),
+    );
+  }
+
+  /**
+   * Essai du constructeur : rejoue le workflow du widget depuis `depart` avec les sorties amont de l'exécution
+   * `origine`, dans la même file que les vraies exécutions (le conteneur porte l'id du widget). Sans atelier, refusé
+   * sans toucher à l'état du widget.
+   */
+  async rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai> {
+    const demande = this.demande(id);
+    await this.attendrePret();
+    return this.enchainer(() =>
+      this.enCours(id, async (): Promise<ResultatEssai> => {
+        demande.commencee();
+        const w = (await this.widgets()).find((x) => x.id === id);
+        if (!w) return { ok: false, erreur: `Widget inconnu : ${id}` };
+        if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
+        if (!(await this.atelierDemarre())) return { ok: false, erreur: ERREUR_ATELIER_ARRETE };
+        if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
+        try {
+          return await this.suivre(
+            id,
+            "essai",
+            (surTrace) => this.o.recolterEssai({ ...this.optionsRecolte(w, surTrace), declencheur: "rejeu", origine, depart }),
+            (r) => (r.ok ? r.execution : undefined),
+          );
+        } catch (e) {
+          // Le texte de l'exception peut citer ce que le widget a lu : seul un message fixe du noyau est rendu.
+          console.error(`[webaios] essai du widget ${id} :`, e);
+          return { ok: false, erreur: ERREUR_RECOLTE_INTERNE };
+        }
       }),
     );
   }
