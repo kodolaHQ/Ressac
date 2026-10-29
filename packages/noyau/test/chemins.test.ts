@@ -32,3 +32,7 @@ test("cheminDansConteneur traduit un chemin de l'espace et refuse le reste", () 
   expect(() => cheminDansConteneur("/etc/passwd", c)).toThrow();
   expect(() => cheminDansConteneur("/tmp/w-autre/x", c)).toThrow();
 });
+
+test("cheminsEspace().extensions vaut <racine>/extensions", () => {
+  expect(cheminsEspace("/tmp/w").extensions).toBe("/tmp/w/extensions");
+});

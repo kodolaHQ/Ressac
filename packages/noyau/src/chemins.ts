@@ -17,6 +17,8 @@ export interface CheminsEspace {
   configMcp: string;
   /** Journaux des applications lancées (`<dossier>.log`). */
   journaux: string;
+  /** Extensions écrites par l'agent (`<dossier>/manifest.json`) ; rien de ce qui s'y trouve n'accorde un droit. */
+  extensions: string;
 }
 
 export function cheminsEspace(racine?: string): CheminsEspace {
@@ -34,6 +36,7 @@ export function cheminsEspace(racine?: string): CheminsEspace {
     profils: join(interne, "profils"),
     configMcp: join(interne, "mcp.json"),
     journaux: join(interne, "journaux"),
+    extensions: join(r, "extensions"),
   };
 }
 
