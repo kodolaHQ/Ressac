@@ -430,7 +430,8 @@ describe("interpréteur : blocs par élément", () => {
       },
     };
     const parElement = await executer({
-      entree: [{ url: "a b" }, { autre: 1 }],
+      // Une ancienne valeur sous `champ` ne survit pas à un élément sans valeur cette fois.
+      entree: [{ url: "a b", u: "ancienne" }, { autre: 1, u: "ancienne" }],
       blocs: [{ id: "b", type: "test.gabarit", parametres: { parElement: true, champ: "u" } }, { id: "sortie", type: "sortie" }],
       registre,
     });

@@ -126,7 +126,14 @@ async function parElement(module, ctx, { echeance, horloge }) {
     reutilises.set(cle, valeur);
   };
 
-  const resultat = entree.slice();
+  // Un élément sans valeur cette fois (échec, non lancé, valeur absente) sort sans `champ`, même s'il en avait un :
+  // une ancienne valeur ne passe jamais pour celle de ce bloc (ia.trier ne trie pas sur une ancienne note).
+  const sansChamp = (element) => {
+    if (!estObjet(element) || !Object.hasOwn(element, champ)) return element;
+    const { [champ]: _ancienne, ...reste } = element;
+    return reste;
+  };
+  const resultat = entree.map(sansChamp);
   let suivant = 0;
   let echecs = 0;
   let reussis = 0;
