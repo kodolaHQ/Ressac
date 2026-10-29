@@ -4,7 +4,10 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { workflowImplicite } from "../../src/workflows/valider.js";
-import { workflowEnvoye } from "../aide/moteur.js";
+import { pathToFileURL } from "node:url";
+import { MOTEUR, bloc, chaine, lancer as lancerWorkflow, sortie, workflowEnvoye } from "../aide/moteur.js";
+
+const { LIMITE_GLOBALE_MS, echeanceDe } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
@@ -162,5 +165,40 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     expect(r.lignes.map((l) => l.t)).toEqual(["bloc", "journal", "bloc", "bloc", "bloc", "memoire", "fin"]);
     expect(r.lignes.find((l) => l.t === "journal")).toEqual({ t: "journal", bloc: "recolte", texte: expect.stringContaining("bonjour") });
     expect(r.terminal).toEqual({ t: "fin", donnees: 1 });
+  });
+});
+
+describe("recolteur : limite de durée (limiteMs)", () => {
+  it("limiteMs 1000 : plus aucun élément lancé après 1 s", async () => {
+    const annonces = Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` }));
+    const debutA = Date.now();
+    const lances: number[] = [];
+    const r = await lancerWorkflow({
+      workflow: {
+        version: 1,
+        blocs: [bloc("liste", "code", { source: "liste.mjs" }), bloc("cherche", "web.chercher", { requete: "{modele}", parElement: true }), sortie],
+        liens: chaine("liste", "cherche", "sortie"),
+      },
+      contexte: { web: true, dureeMaxMinutes: 1 },
+      fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(annonces)});` },
+      debut: { limiteMs: 1000 },
+      repondre: async () => {
+        lances.push(Date.now() - debutA);
+        await new Promise((ok) => setTimeout(ok, 300));
+        return { ok: [] };
+      },
+    });
+    expect(r.terminal.t).toBe("fin");
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
+    // Deux à la fois, 300 ms chacun : quelques paires, puis plus rien passé 1 s (marge pour le démarrage de Node).
+    expect(lances.length).toBeGreaterThanOrEqual(2);
+    expect(lances.length).toBeLessThan(12);
+    expect(r.lignes.some((l) => l.t === "journal" && /^temps écoulé : \d+ élément\(s\) non lancé\(s\)$/.test(l.texte))).toBe(true);
+  });
+
+  it("sans limiteMs : 150 s comme avant", () => {
+    expect(LIMITE_GLOBALE_MS).toBe(150_000);
+    expect(echeanceDe({ t: "debut" }, 1_000)).toBe(151_000);
+    expect(echeanceDe({ t: "debut", limiteMs: 1_000 }, 1_000)).toBe(2_000);
   });
 });

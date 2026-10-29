@@ -13,6 +13,8 @@ import { RECHERCHE_REFUSEE } from "../../src/workflows/duckduckgo.js";
 // Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
 const { executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
 const { default: listeNouveaux } = await import(pathToFileURL(join(MOTEUR, "blocs", "liste-nouveaux.mjs")).href);
+const { default: listeGarder } = await import(pathToFileURL(join(MOTEUR, "blocs", "liste-garder.mjs")).href);
+const { ElementNonLance } = await import(pathToFileURL(join(MOTEUR, "erreurs.mjs")).href);
 
 describe("interpréteur (dans le conteneur)", () => {
   it("exécute les blocs dans l'ordre et envoie debut puis fin de chaque bloc avant fin", async () => {
@@ -380,6 +382,7 @@ async function executer(o: {
   echeance?: number;
   horloge?: () => number;
   rejeu?: { relances: string[]; sorties: Record<string, unknown> };
+  progressif?: boolean;
 }) {
   const traces: any[] = [];
   const workflow = {
@@ -408,6 +411,7 @@ async function executer(o: {
       ...(o.echeance !== undefined ? { echeance: o.echeance } : {}),
       ...(o.horloge ? { horloge: o.horloge } : {}),
       ...(o.rejeu ? { rejeu: o.rejeu } : {}),
+      ...(o.progressif !== undefined ? { progressif: o.progressif } : {}),
     });
   } catch (e) {
     erreur = e as Error;
@@ -1062,6 +1066,229 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
     });
     expect(lances).toEqual([1, 2]);
     expect(r.resultat!.donnees).toEqual([{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2, avis: "avis" }]);
+    expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
+  });
+});
+
+describe("interpréteur : exécution progressive", () => {
+  const MAINTENANT = "2026-10-29T10:00:00.000Z";
+  const VIEUX = "2026-10-01T10:00:00.000Z";
+  const memoires = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "memoire").map((l) => l.memoire);
+  const avis = (echoueSur: string) => ({
+    parElement: "toujours",
+    async traiterElement(ctx: any) {
+      await Promise.resolve();
+      if (ctx.element.modele === echoueSur) throw new Error("raté");
+      return `avis ${ctx.element.modele}`;
+    },
+  });
+  const echecAvis = (progressif: boolean) =>
+    executer({
+      progressif,
+      entree: [{ url: "a", modele: "Clio" }, { url: "b", modele: "208" }, { url: "c", modele: "Panda" }],
+      memoire: { nv: { type: "liste.nouveaux", valeur: [["vieille", VIEUX]] } },
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "avis", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele", siErreur: "echouer" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: { "liste.nouveaux": listeNouveaux, "test.avis": avis("Panda") },
+    });
+
+  // nouvelles → tri → garder 2 → lire (une lecture en échec) → sortie
+  const veille = (progressif: boolean) =>
+    executer({
+      progressif,
+      entree: ["a", "b", "c", "d", "e", "f"].map((url) => ({ url, note: url === "b" ? 1 : 9 })),
+      memoire: { nv: { type: "liste.nouveaux", valeur: [["a", VIEUX]] } },
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "tri", type: "test.tri", parametres: { champ: "n" } },
+        { id: "garder", type: "liste.garder", parametres: { nombre: 2 } },
+        { id: "lire", type: "test.lire", parametres: { champ: "page" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "liste.garder": listeGarder,
+        "test.tri": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            return ctx.element.note;
+          },
+          async finaliser(liste: any[]) {
+            return { sortie: liste.filter((e) => e.n >= 5) };
+          },
+        },
+        "test.lire": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            if (ctx.element.url === "d") throw new Error("page illisible");
+            return "texte";
+          },
+        },
+      },
+    });
+
+  it("progressif : une erreur de bloc envoie la mémoire (fiabilités déjà trouvées) avant echec", async () => {
+    const r = await echecAvis(true);
+    expect(r.erreur?.message).toBe("raté");
+    expect(memoires(r)).toEqual([
+      {
+        // a, b, c n'ont fini aucune suite de blocs : pas retenues, elles reviendront.
+        nv: { type: "liste.nouveaux", valeur: [["vieille", VIEUX]] },
+        avis: { type: "test.avis", valeur: { reutilises: [["Clio", "avis Clio", MAINTENANT], ["208", "avis 208", MAINTENANT]] } },
+      },
+    ]);
+    // Envoyée après la fin échouée du bloc, juste avant de relever l'erreur (donc avant echec).
+    expect(r.traces.at(-1)?.t).toBe("memoire");
+    expect(r.traces.at(-2)).toMatchObject({ t: "bloc", id: "avis", etape: "fin", statut: "echoue" });
+  });
+
+  it("progressif : mémoire envoyée au plus toutes les 30 s (horloge factice), et la dernière avant fin", async () => {
+    let maintenant = 0;
+    const r = await executer({
+      progressif: true,
+      entree: liste(10).map((e) => ({ ...e, url: `u${e.n}` })),
+      horloge: () => maintenant,
+      blocs: [{ id: "lent", type: "test.lent", parametres: { champ: "r", reutiliser: "url" } }, { id: "sortie", type: "sortie" }],
+      registre: {
+        "test.lent": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            await Promise.resolve();
+            maintenant += 10_000;
+            return `fait ${ctx.element.n}`;
+          },
+        },
+      },
+    });
+    expect(r.erreur).toBeNull();
+    // Dix éléments de 10 s, deux à la fois : les paires finissent à 20, 40, 60, 80, 100 s. Vérifiée à la fin de chaque
+    // élément et de chaque bloc, la mémoire part à 40 s (4 avis) et à 80 s (8 avis) seulement : ni à 20, ni à 60, ni à 100.
+    expect(memoires(r).map((m) => m.lent.valeur.reutilises.length)).toEqual([4, 8]);
+    expect((r.resultat!.memoire.lent!.valeur as { reutilises: unknown[] }).reutilises).toHaveLength(10);
+
+    // Dans le conteneur : la dernière mémoire juste avant fin, comme aujourd'hui.
+    const c = await lancer({
+      workflow: { version: 1, blocs: [bloc("src", "code", { source: "src.mjs" }), sortie], liens: chaine("src", "sortie") },
+      fichiers: { "src.mjs": `export default async () => [1];` },
+      debut: { progressif: true },
+    });
+    expect(c.traces.slice(-2).map((l) => l.t)).toEqual(["memoire", "fin"]);
+  });
+
+  it("progressif : nouvelles → tri → garder 2 → lire (une lecture en échec) → sortie : la clé de l'annonce en échec n'est pas retenue, celles écartées par garder et par le tri le sont, les deux lues aussi", async () => {
+    const r = await veille(true);
+    expect(r.erreur).toBeNull();
+    expect(r.resultat!.donnees).toEqual([{ url: "c", note: 9, n: 9, page: "texte" }, { url: "d", note: 9, n: 9 }]);
+    // b écartée par le tri, e et f par garder, c lue et sortie ; d en échec ; a revue prend la date du jour.
+    expect(r.resultat!.memoire.nv!.valeur).toEqual([["a", MAINTENANT], ["b", MAINTENANT], ["c", MAINTENANT], ["e", MAINTENANT], ["f", MAINTENANT]]);
+  });
+
+  it("progressif : élément non lancé faute de temps : sa clé n'est pas retenue", async () => {
+    let maintenant = 0;
+    const r = await executer({
+      progressif: true,
+      entree: liste(12).map((e) => ({ ...e, url: `u${e.n}` })),
+      horloge: () => maintenant,
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "lent", type: "test.lent", parametres: { champ: "r", budgetSecondes: 1 } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.lent": {
+          parElement: "toujours",
+          async traiterElement() {
+            await Promise.resolve();
+            maintenant += 300;
+            return "fait";
+          },
+        },
+      },
+    });
+    expect(r.finBloc("lent")).toMatchObject({ statut: "partiel" });
+    expect(r.resultat!.memoire.nv!.valeur).toEqual(["u0", "u1", "u2", "u3"].map((c) => [c, MAINTENANT]));
+  });
+
+  it("progressif : élément refusé par le noyau (ElementNonLance) : sa clé n'est pas retenue", async () => {
+    const r = await executer({
+      progressif: true,
+      entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
+      blocs: [
+        { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "cherche", type: "test.cherche", parametres: { champ: "r" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "liste.nouveaux": listeNouveaux,
+        "test.cherche": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            if (ctx.element.n === 2) throw new ElementNonLance(PLAFOND_RECHERCHES);
+            return "ok";
+          },
+        },
+      },
+    });
+    expect(r.resultat!.memoire.nv!.valeur).toEqual([["u0", MAINTENANT], ["u1", MAINTENANT]]);
+  });
+
+  it("sans progressif : toutes les nouvelles clés retenues et aucune mémoire avant echec (comme avant)", async () => {
+    const r = await veille(false);
+    expect(r.resultat!.memoire.nv!.valeur).toEqual(["a", "b", "c", "d", "e", "f"].map((c) => [c, MAINTENANT]));
+    expect(memoires(r)).toEqual([]);
+
+    const ko = await echecAvis(false);
+    expect(ko.erreur?.message).toBe("raté");
+    expect(memoires(ko)).toEqual([]);
+  });
+
+  it("un essai (rejeu) progressif n'envoie aucune mémoire", async () => {
+    let maintenant = 0;
+    const r = await executer({
+      progressif: true,
+      entree: null,
+      horloge: () => maintenant,
+      blocs: [
+        { id: "avis", type: "test.avis", parametres: { champ: "avis", siErreur: "echouer" } },
+        { id: "sortie", type: "sortie" },
+      ],
+      registre: {
+        "test.avis": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            maintenant += 20_000;
+            if (ctx.element.modele === "Panda") throw new Error("raté");
+            return "avis";
+          },
+        },
+      },
+      rejeu: { relances: ["avis", "sortie"], sorties: { src: [{ modele: "Clio" }, { modele: "208" }, { modele: "Panda" }] } },
+    });
+    expect(r.erreur?.message).toBe("raté");
+    expect(memoires(r)).toEqual([]);
+  });
+
+  it("reutiliser : si le calcul en cours de la même clé est refusé par le noyau, le second élément n'en relance pas", async () => {
+    const lances: number[] = [];
+    const r = await executer({
+      entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],
+      blocs: [{ id: "b", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele" } }, { id: "sortie", type: "sortie" }],
+      registre: {
+        "test.avis": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            lances.push(ctx.element.n);
+            await attendre(10);
+            throw new ElementNonLance(PLAFOND_RECHERCHES);
+          },
+        },
+      },
+    });
+    expect(lances).toEqual([1]);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
 });

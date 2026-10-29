@@ -4,10 +4,12 @@
 //
 // Le noyau envoie `debut` (avec son `workflow` : pour un widget qui n'a que `recolte.mjs`, le workflow implicite
 // récolte → sortie ; pour un essai du constructeur, `rejeu`), puis la ligne `memoire` ; le workflow est exécuté par
-// l'interpréteur (traces `bloc` et `journal`, `memoire` juste avant `fin`, sauf pour un essai).
+// l'interpréteur (traces `bloc` et `journal`, `memoire` juste avant `fin`, sauf pour un essai). Avec `progressif`,
+// la ligne `memoire` vient aussi en cours de route et avant `echec` (la dernière reçue vaut) ; `limiteMs` remplace
+// la limite de 150 s.
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
-import { LIMITE_GLOBALE_MS, executerWorkflow } from "./interpreteur.mjs";
+import { echeanceDe, executerWorkflow } from "./interpreteur.mjs";
 import { formater } from "./webaios.mjs";
 
 const LIGNE_MAX = 4 * 1024 * 1024;
@@ -103,9 +105,11 @@ async function principal() {
     dossier,
     appeler,
     tracer: envoyer,
-    echeance: debutRecuA + LIMITE_GLOBALE_MS,
+    echeance: echeanceDe(debut, debutRecuA),
     versErreur,
     rejeu: debut.rejeu ?? null,
+    // Exécution longue ou au fil de l'eau : mémoire envoyée en cours de route (lignes `memoire`) et avant `echec`.
+    progressif: debut.progressif === true,
   });
   // Un essai (rejeu) ne rend aucune mémoire : le noyau n'en garde pas.
   if (!debut.rejeu) {

@@ -9,7 +9,8 @@ export const CLES_MAX = 5000;
 export const CLE_LONGUEUR_MAX = 500;
 export const JOUR_MS = 86_400_000;
 
-const enCle = (v) =>
+/** La clé retenue pour une valeur (coupée à CLE_LONGUEUR_MAX) ; null si absente. */
+export const enCle = (v) =>
   v === undefined || v === null || v === ""
     ? null
     : (typeof v === "object" ? JSON.stringify(v) : String(v)).slice(0, CLE_LONGUEUR_MAX);
