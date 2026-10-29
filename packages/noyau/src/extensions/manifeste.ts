@@ -29,13 +29,14 @@ const PERMISSIONS_REFUSEES_AGENT = [
   "proxy",
 ];
 const CLES_REFUSEES_AGENT = ["externally_connectable", "sandbox", "chrome_url_overrides"];
-const MOTIFS_TOUS_LES_SITES = new Set([
-  "<all_urls>",
-  "*://*/*",
-  "http://*/*",
-  "https://*/*",
-  "*://*",
-]);
+/** Vrai si le motif couvre tous les sites : <all_urls>, ou un hôte `*` ou `*.<un seul label>` (jokers de TLD compris). */
+export function motifTousLesSites(motif: string): boolean {
+  if (motif === "<all_urls>") return true;
+  const m = /^(\*|https?|wss?|ftp):\/\/([^/]*)(\/.*)?$/.exec(motif);
+  if (!m) return false;
+  const hote = m[2]!;
+  return hote === "*" || /^\*\.[^.*]+$/.test(hote);
+}
 const DOMAINE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
 function objet(v: unknown): Record<string, unknown> | null {
@@ -62,8 +63,15 @@ function analyserRegles(
   for (const res of ressources) {
     const chemin = objet(res)?.path;
     if (typeof chemin !== "string") continue;
+    if (chemin.startsWith("/") || chemin.split(/[\\/]/).includes("..")) {
+      refus.push(`Fichier de règles DNR refusé : chemin non permis « ${chemin} »`);
+      continue;
+    }
     const liste = regles[chemin] ?? regles[chemin.replace(/^\.\//, "")];
-    if (!Array.isArray(liste)) continue;
+    if (!Array.isArray(liste)) {
+      refus.push(`Fichier de règles DNR illisible ou absent : ${chemin}`);
+      continue;
+    }
     liste.forEach((r, i) => {
       const regle = objet(r);
       if (!regle) return;
@@ -142,7 +150,7 @@ export function analyserManifeste(
     if (!c) continue;
     const matches = chaines(c.matches);
     matchesScripts.push(...matches);
-    if (matches.some((x) => MOTIFS_TOUS_LES_SITES.has(x))) scriptsTous = true;
+    if (matches.some((x) => motifTousLesSites(x))) scriptsTous = true;
     if (agent && c.world === "MAIN") {
       refus.push('Script de contenu refusé : world "MAIN" n\'est pas permis');
     }
@@ -160,6 +168,12 @@ export function analyserManifeste(
       if (cle in m) refus.push(`Clé refusée : ${cle}`);
     }
     analyserRegles(m, o.regles ?? {}, refus);
+    if (Array.isArray(m.optional_permissions) && m.optional_permissions.length > 0) {
+      refus.push("optional_permissions refusé : déclare ces droits dans permissions");
+    }
+    if (Array.isArray(m.optional_host_permissions) && m.optional_host_permissions.length > 0) {
+      refus.push("optional_host_permissions refusé : déclare ces hôtes dans host_permissions");
+    }
   }
   const reseau = agent ? analyserReseau(o.webaios, refus) : [];
 
@@ -167,7 +181,7 @@ export function analyserManifeste(
     permissions,
     hotes,
     reseau,
-    tousLesSites: hotes.some((h) => MOTIFS_TOUS_LES_SITES.has(h)),
+    tousLesSites: hotes.some((h) => motifTousLesSites(h)),
     scriptsTousLesSites: scriptsTous,
     scripts: scripts.length > 0,
   };

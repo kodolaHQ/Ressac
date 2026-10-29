@@ -142,11 +142,12 @@ test("porteeElargie", () => {
   expect(porteeElargie({ ...p, tousLesSites: true }, p)).toBe(false);
 });
 
-test("optional_permissions ignorées", () => {
+test("optional_permissions ignorées pour le Store", () => {
   const a = analyserManifeste(
     { ...base, permissions: ["storage"], optional_permissions: ["tabs"], optional_host_permissions: ["https://z.com/*"] },
     { source: "store" },
   );
+  expect(a.refus).toEqual([]);
   expect(a.portee.permissions).toEqual(["storage"]);
   expect(a.portee.hotes).toEqual([]);
 });
@@ -171,4 +172,73 @@ test("libellés : droit inconnu et ordre", () => {
     "Agir sur l'onglet affiché quand tu cliques sur son bouton (non pris en charge par WebAiOs)",
     "Droit « idle »",
   ]);
+});
+
+const dnr = { ...base, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "rules.json" }] } };
+
+test("R3-1 agent : fichier de règles absent, non tableau, chemin absolu ou avec .. : refusé", () => {
+  const refus = (path: string, regles: Record<string, unknown>) =>
+    analyserManifeste(
+      { ...base, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path }] } },
+      { source: "agent", regles },
+    ).refus;
+  expect(refus("rules.json", {})).toHaveLength(1);
+  expect(refus("rules.json", { "rules.json": { id: 1 } })).toHaveLength(1);
+  expect(refus("/rules.json", { "/rules.json": [] })).toHaveLength(1);
+  expect(refus("a/../rules.json", { "a/../rules.json": [] })).toHaveLength(1);
+  expect(refus("rules.json", { "rules.json": [] })).toEqual([]);
+  expect(refus("rules.json", {})[0]).toContain("rules.json");
+  // le Store n'est pas concerné
+  expect(analyserManifeste(dnr, { source: "store" }).refus).toEqual([]);
+});
+
+test("R3-2 agent : optional_permissions et optional_host_permissions refusés ; Store inchangé", () => {
+  const a = analyserManifeste({ ...base, optional_permissions: ["downloads"] }, { source: "agent" });
+  expect(a.refus).toHaveLength(1);
+  expect(a.refus[0]).toContain("permissions");
+  const b = analyserManifeste({ ...base, optional_host_permissions: ["<all_urls>"] }, { source: "agent" });
+  expect(b.refus).toHaveLength(1);
+  expect(b.refus[0]).toContain("host_permissions");
+  expect(analyserManifeste({ ...base, optional_permissions: [] }, { source: "agent" }).refus).toEqual([]);
+});
+
+test("R3-3/R3-4 tous les sites, dans host_permissions et dans permissions", () => {
+  for (const m of ["*://*/*", "http://*/*", "https://*/*", "*://*", "<all_urls>", "https://*", "*://*.com/*", "https://*.fr/*"]) {
+    const h = analyserManifeste({ ...base, host_permissions: [m] }, { source: "store" });
+    expect(h.portee.tousLesSites, `host_permissions ${m}`).toBe(true);
+    const p = analyserManifeste({ ...base, permissions: [m] }, { source: "store" });
+    expect(p.portee.tousLesSites, `permissions ${m}`).toBe(true);
+  }
+  for (const m of ["*://*.exemple.com/*", "https://exemple.com/*", "https://a.b.fr/*"]) {
+    expect(analyserManifeste({ ...base, host_permissions: [m] }, { source: "store" }).portee.tousLesSites, m).toBe(false);
+  }
+});
+
+test("R3-3 accord renforcé de bout en bout", () => {
+  const renforce = (m: object) => {
+    const a = analyserManifeste({ ...base, ...m }, { source: "agent" });
+    expect(a.refus).toEqual([]);
+    return accordRenforce(a.portee, "agent");
+  };
+  expect(renforce({ content_scripts: [{ matches: ["<all_urls>"], js: ["a.js"] }] })).toBe(true);
+  expect(renforce({ permissions: ["scripting"], host_permissions: ["*://*/*"] })).toBe(true);
+  expect(renforce({ permissions: ["scripting"], host_permissions: ["https://a.com/*"] })).toBe(false);
+  expect(renforce({ host_permissions: ["<all_urls>"] })).toBe(false);
+});
+
+test("R3-3 webRequestBlocking et redirect.transform refusés", () => {
+  expect(analyserManifeste({ ...base, permissions: ["webRequestBlocking"] }, { source: "agent" }).refus).toEqual([
+    "Droit refusé : webRequestBlocking",
+  ]);
+  const a = analyserManifeste(dnr, {
+    source: "agent",
+    regles: { "rules.json": [{ id: 7, action: { type: "allow", redirect: { transform: { scheme: "https" } } } }] },
+  });
+  expect(a.refus).toEqual(["Règle DNR refusée (transform) dans rules.json, règle 7"]);
+});
+
+test("R3-5 porteeElargie : scripts faux→vrai élargit, vrai→faux non", () => {
+  const p: Portee = { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
+  expect(porteeElargie(p, { ...p, scripts: true })).toBe(true);
+  expect(porteeElargie({ ...p, scripts: true }, p)).toBe(false);
 });
