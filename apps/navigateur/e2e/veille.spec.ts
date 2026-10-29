@@ -195,7 +195,7 @@ function ecrireVeille(racine: string): void {
             parElement: true,
             champ: "avis",
             consigne:
-              "Donne en trois phrases l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification ou ne décrit pas une voiture, ne réponds rien. --- DÉBUT DE L'ANNONCE --- {fiche.texte} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite} --- FIN DES RÉSULTATS DE RECHERCHE ---",
+              "Donne en trois phrases l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification ou ne décrit pas une voiture, ne réponds rien. Si aucun résultat de recherche n'est donné, juge sans. --- DÉBUT DE L'ANNONCE --- {fiche.texte} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite?} --- FIN DES RÉSULTATS DE RECHERCHE ---",
           },
         },
         { id: "sortie", type: "sortie", parametres: { vers: "widget", auFilDeLEau: true } },
@@ -246,7 +246,7 @@ const executions = (profil: string, id = "voitures") => {
   if (!existsSync(dossier)) return [];
   return readdirSync(dossier)
     .sort()
-    .map((f) => lireJson(join(dossier, f)) as { statut: string; declencheur: string; blocs: { id: string; statut: string }[] });
+    .map((f) => lireJson(join(dossier, f)) as { statut: string; declencheur: string; blocs: { id: string; statut: string; journal: string[] }[] });
 };
 const statutBloc = (e: { blocs: { id: string; statut: string }[] }, id: string) => e.blocs.find((b) => b.id === id)?.statut;
 const urlAnnonce = (n: number) => `${site.url}/annonce/${n}`;
@@ -256,7 +256,7 @@ const recherches = (depuis: number) => site.journal.slice(depuis).filter((c) => 
 const lecturesAnnonces = (depuis: number) => site.journal.slice(depuis).filter((c) => c.startsWith("/annonce/"));
 
 /** Une exécution manuelle de la veille, attendue jusqu'à sa fin (une nouvelle exécution écrite). */
-async function executerVeille(fenetre: Page, profil: string): Promise<{ statut: string; blocs: { id: string; statut: string }[] }> {
+async function executerVeille(fenetre: Page, profil: string): Promise<{ statut: string; blocs: { id: string; statut: string; journal: string[] }[] }> {
   const avant = executions(profil).length;
   await recolter(fenetre, "voitures");
   await expect.poll(() => executions(profil).length, { timeout: 60_000 }).toBe(avant + 1);
@@ -406,8 +406,8 @@ test("une veille longue en cours n'empêche pas un widget court de se mettre à 
   await fermer();
 });
 
-test("DuckDuckGo montre une vérification : une seule requête envoyée, avis sans fiabilité, bloc partiel", async () => {
-  test.setTimeout(120_000);
+test("DuckDuckGo montre une vérification : une seule requête envoyée, avis sans fiabilité, bloc partiel ; les annonces reviennent ensuite avec leur fiabilité", async () => {
+  test.setTimeout(180_000);
   reglages.ddg = "verification.html";
   const racine = nouvelleRacine();
   ecrireVeille(racine);
@@ -415,20 +415,37 @@ test("DuckDuckGo montre une vérification : une seule requête envoyée, avis sa
   const profil = nouveauProfil();
   etatSansRattrapage(profil, "voitures");
   const depuis = site.journal.length;
+  const promptsAvant = ollama.prompts.length;
   const { fenetre, fermer } = await lancerVeille(racine, profil);
   const execution = await executerVeille(fenetre, profil);
   // Une seule requête : après le refus, les recherches suivantes de l'exécution ne partent plus.
   expect(recherches(depuis)).toHaveLength(1);
   expect(statutBloc(execution, "fiabilite")).toBe("partiel");
+  expect(execution.blocs.find((b) => b.id === "fiabilite")!.journal.join("\n")).toContain("Recherche refusée par DuckDuckGo (vérification anti-robot)");
   expect(execution.statut).toBe("partielle");
-  // Aucune annonce n'a de fiabilité ; l'avis, qui la demande, n'est donc pas rédigé (valeur absente, voir AGENTS.md).
+  // Aucune annonce n'a de fiabilité ; l'avis est rédigé sans ({fiabilite?}, voir AGENTS.md).
   const annonces = donneesVeille(profil)!;
   expect(annonces).toHaveLength(5);
   for (const a of annonces) {
     expect(a.fiche?.texte).toContain("première main");
     expect(a.fiabilite).toBeUndefined();
-    expect(a.avis).toBeUndefined();
+    expect(a.avis).toBe("Bonne affaire.");
   }
+  // Gemma a rédigé les cinq avis, sans aucun texte de fiabilité dans sa consigne.
+  const prompts = ollama.prompts.slice(promptsAvant);
+  expect(prompts).toHaveLength(5);
+  for (const p of prompts) {
+    expect(p).toContain("première main");
+    expect(p).toContain("--- DÉBUT DES RÉSULTATS DE RECHERCHE ---  --- FIN DES RÉSULTATS DE RECHERCHE ---");
+  }
+
+  // DuckDuckGo répond de nouveau : les annonces en échec dans `fiabilite` reviennent, cette fois avec leur fiabilité.
+  reglages.ddg = "resultats.html";
+  const seconde = await executerVeille(fenetre, profil);
+  expect(seconde.statut).toBe("reussie");
+  const reprises = donneesVeille(profil)!;
+  expect(reprises.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(urlAnnonce).sort());
+  for (const a of reprises) expect(a.fiabilite?.length).toBeGreaterThan(0);
   await fermer();
 });
 
