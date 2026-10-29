@@ -28,7 +28,7 @@ import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
-import type { EtatIaAffiche } from "../commun/api";
+import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
@@ -443,7 +443,8 @@ app.whenReady().then(async () => {
         agent?.noyau()?.recolterMaintenant(id).catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
       },
       // Lus sans le noyau, comme la page d'accueil : le workflow dans l'espace, les exécutions hors de l'espace.
-      workflow: async (id) => (agent ? vueWorkflow(join(agent.chemins.widgets, id)) : null),
+      // L'id devient un chemin dans l'espace : validé ici aussi, pas seulement à l'IPC.
+      workflow: async (id) => (agent && SchemaIdWidget.safeParse(id).success ? vueWorkflow(join(agent.chemins.widgets, id)) : null),
       executions: async (id) => (agent ? executionsWidget(agent.dossierWidgets, id) : []),
       execution: async (id, execution) => (agent ? executionWidget(agent.dossierWidgets, id, execution) : null),
     },

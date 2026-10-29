@@ -10,6 +10,8 @@
   let vue = $state.raw<VueWorkflow | null>(null);
   let executions = $state.raw<ResumeExecution[]>([]);
   let chargee = $state(false);
+  /** La dernière lecture a échoué : la page le dit au lieu de montrer « pas de workflow ». */
+  let echec = $state(false);
   let choisie = $state<string | null>(null);
   let detail = $state.raw<Execution | null>(null);
   /** Sorties dépliées (`<exécution>/<bloc>`) : une sortie n'est mise en forme qu'une fois ouverte (jusqu'à 256 Ko). */
@@ -19,8 +21,19 @@
   let requete = 0;
   async function charger() {
     const n = ++requete;
-    const [w, v, e] = await Promise.all([api.accueil.lire(), api.accueil.workflow(id), api.accueil.executions(id)]);
+    let lus: [WidgetAffiche[], VueWorkflow | null, ResumeExecution[]];
+    try {
+      lus = await Promise.all([api.accueil.lire(), api.accueil.workflow(id), api.accueil.executions(id)]);
+    } catch (err) {
+      if (n === requete) {
+        echec = true;
+        chargee = true;
+      }
+      throw err;
+    }
     if (n !== requete) return;
+    const [w, v, e] = lus;
+    echec = false;
     widget = w.find((x) => x.id === id) ?? null;
     vue = v;
     executions = e;
@@ -115,6 +128,8 @@
     <h2>Blocs</h2>
     {#if !chargee}
       <p class="doux">Chargement…</p>
+    {:else if echec}
+      <p class="erreur" data-testid="workflow-echec">Lecture du workflow impossible. Réessaie dans un instant.</p>
     {:else if !vue}
       <p class="doux">Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs).</p>
     {:else if "erreur" in vue}
