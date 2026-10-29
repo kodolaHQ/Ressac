@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync,
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { appelerOutil, dossierWidgets, ecrireDisposition, ecrireEtatWidget, ecrireWidget, lancer, nouveauProfil, nouvelleRacine } from "./aide";
+import { appelerOutil, dossierWidgets, ecrireDisposition, ecrireEtatWidget, ecrireWidget, lancer, lireMtimes, nouveauProfil, nouvelleRacine } from "./aide";
 
 const AUCUN_WORKFLOW = "Aucun workflow ouvert au premier plan dans le constructeur de cette fenêtre.";
 
@@ -114,7 +114,7 @@ const instantane = (dossier: string) => readdirSync(dossier).map((f) => `${f}:${
 async function ouvrirConstructeur(fenetre: Page, id: string): Promise<Locator> {
   const w = fenetre.getByTestId(`widget-${id}`);
   await w.getByRole("button", { name: "Options du widget" }).click();
-  await w.getByRole("menuitem", { name: "Voir / modifier le workflow" }).click();
+  await w.getByRole("menuitem", { name: "Voir / modifier le workflow", exact: true }).click();
   const page = fenetre.getByTestId("constructeur");
   await expect(page).toBeVisible();
   return page;
@@ -1156,5 +1156,217 @@ test("l'historique posé sur le constructeur : ⌘J le referme et ouvre l'onglet
   await expect(fenetre.getByTestId("historique")).toHaveCount(0);
   await expect(terminalIntegre(fenetre)).toContainText("faux agent prêt>");
   await expect(fenetre.getByTestId("panneau-agent")).toBeHidden();
+  await fermer();
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Tâche 14 : de bout en bout.
+
+test("un widget avec seulement recolte.mjs et un compte : le constructeur montre recolte → sortie ; ouvrir, sélectionner, réorganiser, choisir une exécution n'écrivent rien", async () => {
+  const racine = nouvelleRacine();
+  // Comme le widget Gmail de l'utilisateur : widget.json, recolte.mjs, affichage.html, un compte, pas de workflow.json.
+  ecrireWidget(racine, "gmail", {
+    nom: "Gmail",
+    recolte: { minutes: 60 },
+    sources: { compte: ["127.0.0.1"], publiques: [] },
+    config: { url: `${site.url}/boite` },
+    code: `export default async (webaios) => ({ vu: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });`,
+    affichage: AFFICHAGE,
+    exemple: { exemple: "gmail" },
+  });
+  const profil = nouveauProfil();
+  // L'accord manque et vient d'être demandé : aucune exécution ne part au lancement.
+  const maintenant = new Date().toISOString();
+  ecrireEtatWidget(profil, "gmail", {
+    statut: "accord-requis",
+    derniereMaj: maintenant,
+    derniereTentative: maintenant,
+    erreur: "Accord requis pour lire avec ton compte : 127.0.0.1",
+    erreurNoyau: true,
+  });
+  // Deux exécutions passées, de quoi en choisir une autre que la dernière.
+  const executions = join(dossierWidgets(profil), "gmail", "executions");
+  mkdirSync(executions, { recursive: true });
+  const ids = ["2026-10-28T08-00-00-000Z", "2026-10-28T09-00-00-000Z"];
+  for (const id of ids) {
+    const debut = id.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "T$1:$2:$3.$4Z");
+    const trace = (bloc: string, type: string, sortie: unknown) => ({ id: bloc, type, statut: "reussi", debut, fin: debut, elements: null, journal: [], sortie });
+    writeFileSync(
+      join(executions, `${id}.json`),
+      JSON.stringify({
+        version: 1,
+        id,
+        proprietaire: { type: "widget", id: "gmail" },
+        declencheur: "planifiee",
+        debut,
+        fin: debut,
+        statut: "reussie",
+        blocs: [trace("recolte", "code", { vu: id }), trace("sortie", "sortie", { vu: id })],
+      }),
+    );
+  }
+  const dossier = join(racine, "accueil", "widgets", "gmail");
+  const horsEspace = join(dossierWidgets(profil), "gmail");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const erreurs = erreursConsole(fenetre);
+  await expect(fenetre.getByTestId("bandeau-accord")).toContainText("127.0.0.1");
+  // L'accueil posé : ce qu'il a pu écrire au lancement ne compte pas.
+  await attendre(1500);
+  const avant = { espace: lireMtimes(dossier), profil: lireMtimes(horsEspace) };
+  expect(avant.profil.some((f) => f.startsWith("etat.json:"))).toBe(true);
+
+  await ouvrirConstructeur(fenetre, "gmail");
+  await expect(fenetre.getByTestId("noeud-recolte")).toContainText("code");
+  await expect(fenetre.getByTestId("noeud-sortie")).toContainText("sortie");
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  // La dernière exécution est choisie à l'ouverture.
+  await expect(fenetre.getByTestId(`execution-${ids[1]}`)).toHaveAttribute("aria-pressed", "true");
+
+  // Sélectionner par un clic tremblé (sous le seuil de glissé de 4 px).
+  const b = (await fenetre.getByTestId("noeud-recolte").boundingBox())!;
+  await fenetre.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await fenetre.mouse.down();
+  await fenetre.mouse.move(b.x + b.width / 2 + 2, b.y + b.height / 2 + 1);
+  await fenetre.mouse.up();
+  await expect(fenetre.getByTestId("volet-bloc")).toBeVisible();
+  await fenetre.getByTestId("noeud-sortie").click();
+  // Réorganiser, puis choisir l'autre exécution.
+  await fenetre.getByTestId("reorganiser").click();
+  await fenetre.getByTestId(`execution-${ids[0]}`).click();
+  await expect(fenetre.getByTestId(`execution-${ids[0]}`)).toHaveAttribute("aria-pressed", "true");
+  await attendre(1500);
+
+  expect(existsSync(join(dossier, "workflow.json"))).toBe(false);
+  expect(lireMtimes(dossier)).toEqual(avant.espace);
+  expect(lireMtimes(horsEspace)).toEqual(avant.profil);
+  expect(erreurs).toEqual([]);
+  await fermer();
+});
+
+test("modifier le workflow implicite crée workflow.json, garde recolte.mjs, et le widget se met à jour avec les mêmes données", async () => {
+  const racine = nouvelleRacine();
+  const code = "export default async () => ({ bon: true });";
+  ecrireWidget(racine, "simple", { nom: "Simple", recolte: { minutes: 60 }, code, affichage: AFFICHAGE, exemple: { exemple: "simple" } });
+  const profil = nouveauProfil();
+  // Sans état : récolté au lancement, par recolte.mjs seul.
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await expect(donnees(fenetre, "simple")).toHaveText('{"bon":true}', { timeout: 20_000 });
+  const dossier = join(racine, "accueil", "widgets", "simple");
+  const executions = join(dossierWidgets(profil), "simple", "executions");
+  expect(readdirSync(executions)).toHaveLength(1);
+  expect(existsSync(join(dossier, "workflow.json"))).toBe(false);
+
+  await ouvrirConstructeur(fenetre, "simple");
+  // Un vrai geste : déplacer la sortie de 80 px.
+  const b = (await fenetre.getByTestId("noeud-sortie").boundingBox())!;
+  await fenetre.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await fenetre.mouse.down();
+  await fenetre.mouse.move(b.x + b.width / 2 + 80, b.y + b.height / 2 + 40, { steps: 10 });
+  await fenetre.mouse.up();
+  await expect.poll(() => existsSync(join(dossier, "workflow.json"))).toBe(true);
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  const ecrit = lireJson(join(dossier, "workflow.json"));
+  expect(ecrit.blocs.map((x: { id: string; type: string }) => `${x.id}:${x.type}`)).toEqual(["recolte:code", "sortie:sortie"]);
+  expect(ecrit.blocs[0].parametres).toMatchObject({ source: "recolte.mjs" });
+  expect(ecrit.liens).toEqual([{ de: "recolte", vers: "sortie" }]);
+  expect(readFileSync(join(dossier, "recolte.mjs"), "utf8")).toBe(code);
+
+  // Le widget passe désormais par workflow.json : mêmes données.
+  await fenetre.getByTestId("nouvel-onglet").click();
+  await expect(donnees(fenetre, "simple")).toHaveText('{"bon":true}');
+  await fenetre.evaluate(() => (window as unknown as { webaios: { accueil: { recolter(id: string): void } } }).webaios.accueil.recolter("simple"));
+  await expect.poll(() => readdirSync(executions).length, { timeout: 20_000 }).toBe(2);
+  const derniere = lireJson(join(executions, readdirSync(executions).sort().at(-1)!));
+  expect(derniere.statut).toBe("reussie");
+  expect(derniere.declencheur).toBe("manuelle");
+  await expect(donnees(fenetre, "simple")).toHaveText('{"bon":true}');
+  expect(lireJson(join(dossierWidgets(profil), "simple", "donnees.json"))).toEqual({ bon: true });
+  expect(lireJson(join(dossierWidgets(profil), "simple", "etat.json")).statut).toBe("ok");
+  await fermer();
+});
+
+test("l'agent écrit un workflow.json coupé : le canevas reste, le bandeau dit « illisible », le widget affiche « Workflow invalide : … »", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  await ouvrirConstructeur(fenetre, "veille");
+  await expect(fenetre.getByTestId("noeud-tri")).toBeVisible();
+
+  // L'agent écrit sans passer par un fichier temporaire : JSON coupé en plein milieu.
+  const coupe = JSON.stringify(WORKFLOW_VEILLE).slice(0, 120);
+  writeFileSync(fichier, coupe);
+  const bandeau = fenetre.getByTestId("bandeau-fichier");
+  await expect(bandeau).toContainText("illisible");
+  for (const id of ["page", "liens", "tri", "textes", "sortie"]) await expect(fenetre.getByTestId(`noeud-${id}`)).toBeVisible();
+  await expect(fenetre.getByTestId("workflow-illisible")).toHaveCount(0);
+  await attendre(500);
+  // Le constructeur n'a pas réécrit par-dessus.
+  expect(readFileSync(fichier, "utf8")).toBe(coupe);
+
+  // Sur l'accueil, la récolte suivante le dit sur le widget.
+  await fenetre.getByTestId("nouvel-onglet").click();
+  await fenetre.evaluate(() => (window as unknown as { webaios: { accueil: { recolter(id: string): void } } }).webaios.accueil.recolter("veille"));
+  await expect(fenetre.getByTestId("widget-veille")).toContainText("Workflow invalide : ", { timeout: 20_000 });
+  expect(lireJson(join(dossierWidgets(profil), "veille", "etat.json")).erreur).toMatch(/^Workflow invalide : /);
+  await fermer();
+});
+
+/** 30 blocs : six sources de code, chacune suivie de trois listes, réunies puis triées et mises en forme. */
+function workflowTrenteBlocs(): { workflow: unknown; fichiers: Record<string, string> } {
+  const blocs: { id: string; type: string; parametres: Record<string, unknown> }[] = [];
+  const liens: { de: string; vers: string }[] = [];
+  const fichiers: Record<string, string> = {};
+  for (let i = 1; i <= 6; i++) {
+    blocs.push({ id: `source-${i}`, type: "code", parametres: { source: `source-${i}.mjs` } });
+    fichiers[`source-${i}.mjs`] = `export default async () => [{ url: "https://exemple.invalid/${i}" }];`;
+    blocs.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", parametres: { cle: "url" } });
+    blocs.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", parametres: { cles: ["url"] } });
+    blocs.push({ id: `garder-${i}`, type: "liste.garder", parametres: { nombre: 10 } });
+    liens.push({ de: `source-${i}`, vers: `nouveaux-${i}` }, { de: `nouveaux-${i}`, vers: `dedoublonner-${i}` }, { de: `dedoublonner-${i}`, vers: `garder-${i}` });
+    liens.push({ de: `garder-${i}`, vers: "fusion" });
+  }
+  blocs.push(
+    { id: "fusion", type: "code", parametres: { source: "fusion.mjs" } },
+    { id: "tri", type: "ia.trier", parametres: { question: "Parle d'IA ?", texte: "{url}", seuil: 0.5 } },
+    { id: "garder", type: "liste.garder", parametres: { nombre: 20 } },
+    { id: "dedoublonner", type: "liste.dedoublonner", parametres: { cles: ["url"] } },
+    { id: "forme", type: "code", parametres: { source: "forme.mjs" } },
+    { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+  );
+  fichiers["fusion.mjs"] = "export default async (entrees) => Object.values(entrees).flat();";
+  fichiers["forme.mjs"] = "export default async (liens) => ({ liens });";
+  liens.push({ de: "fusion", vers: "tri" }, { de: "tri", vers: "garder" }, { de: "garder", vers: "dedoublonner" }, { de: "dedoublonner", vers: "forme" }, { de: "forme", vers: "sortie" });
+  return { workflow: { version: 1, blocs, liens }, fichiers };
+}
+
+test("un workflow de 30 blocs s'ouvre lisible : aucun nœud ne se chevauche, tous dans la vue après fitView", async () => {
+  const racine = nouvelleRacine();
+  const { workflow, fichiers } = workflowTrenteBlocs();
+  expect((workflow as { blocs: unknown[] }).blocs).toHaveLength(30);
+  ecrireWidget(racine, "grand", { nom: "Grand", recolte: { minutes: 60 }, workflow, fichiers, affichage: AFFICHAGE, exemple: { exemple: "grand" } });
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "grand");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const avant = instantane(join(racine, "accueil", "widgets", "grand"));
+  await ouvrirConstructeur(fenetre, "grand");
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  const noeuds = fenetre.locator('[data-testid^="noeud-"]');
+  await expect(noeuds).toHaveCount(30);
+  await attendre(500);
+  const vue = (await fenetre.locator(".svelte-flow").boundingBox())!;
+  const boites: Boite[] = [];
+  for (const n of await noeuds.all()) boites.push((await n.boundingBox())!);
+  for (const [i, a] of boites.entries()) {
+    expect(a.x, `nœud ${i} à gauche de la vue`).toBeGreaterThanOrEqual(vue.x);
+    expect(a.y, `nœud ${i} au-dessus de la vue`).toBeGreaterThanOrEqual(vue.y);
+    expect(a.x + a.width, `nœud ${i} à droite de la vue`).toBeLessThanOrEqual(vue.x + vue.width);
+    expect(a.y + a.height, `nœud ${i} sous la vue`).toBeLessThanOrEqual(vue.y + vue.height);
+  }
+  for (let i = 0; i < boites.length; i++) for (let j = i + 1; j < boites.length; j++) expect(chevauchent(boites[i]!, boites[j]!), `nœuds ${i} et ${j}`).toBe(false);
+  // Disposé à l'ouverture sans rien écrire.
+  expect(instantane(join(racine, "accueil", "widgets", "grand"))).toEqual(avant);
   await fermer();
 });

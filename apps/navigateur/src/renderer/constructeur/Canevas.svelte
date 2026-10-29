@@ -10,6 +10,8 @@
 
   /** Moitié d'un bloc affiché : un bloc posé est centré sur le point visé. */
   const DEMI = { x: 100, y: 30 };
+  /** Assez petit pour qu'un workflow de 30 blocs (une dizaine de colonnes) tienne entier dans la vue à l'ouverture. */
+  const MIN_ZOOM = 0.2;
 
   let {
     edition,
@@ -136,6 +138,7 @@
     {nodeTypes}
     colorMode="system"
     nodeDragThreshold={4}
+    minZoom={MIN_ZOOM}
     deleteKey={["Delete", "Backspace"]}
     fitView={edition.viewport === null}
     fitViewOptions={{ maxZoom: 1 }}

@@ -350,7 +350,7 @@ export type WidgetAffiche =
       compte: string[];
       /** Domaines publics que le widget peut contacter ; pour un widget avec compte, couverts par le même accord. */
       publiques: string[];
-      /** Le widget a une récolte (`workflow.json` ou `recolte.mjs`) : son menu propose « Voir le workflow ». */
+      /** Le widget a une récolte (`workflow.json` ou `recolte.mjs`) : son menu propose « Voir / modifier le workflow ». */
       aRecolte: boolean;
     }
   | { id: string; erreur: string; placement: Placement };

@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -66,6 +66,14 @@ export function ecrireEtatWidget(profil: string, id: string, etat?: Record<strin
     join(dossierWidgets(profil), id, "etat.json"),
     JSON.stringify(etat ?? { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant }),
   );
+}
+
+/** Chaque fichier d'un dossier (sous-dossiers compris), avec sa date de modification : « chemin:mtime », triés. */
+export function lireMtimes(dossier: string): string[] {
+  if (!existsSync(dossier)) return [];
+  return readdirSync(dossier, { recursive: true, encoding: "utf8" })
+    .map((f) => `${f}:${statSync(join(dossier, f)).mtimeMs}`)
+    .sort();
 }
 
 export type PlacementTest = { id: string; x: number; y: number; l: number; h: number };
