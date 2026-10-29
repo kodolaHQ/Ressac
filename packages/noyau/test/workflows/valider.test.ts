@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { validerWorkflow, workflowImplicite } from "../../src/index.js";
 import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
@@ -31,12 +32,12 @@ test("un workflow valide donne l'ordre topologique, à égalité dans l'ordre de
 });
 
 test("les paramètres reçoivent leurs défauts", () => {
-  const r = validerWorkflow(wf([{ id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t" } }, sortie()], [{ de: "tri", vers: "s" }]));
+  const r = validerWorkflow(wf([{ id: "src", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t" } }, sortie()], [{ de: "src", vers: "tri" }, { de: "tri", vers: "s" }]));
   if (!r.ok) throw new Error(r.erreur);
-  const tri = r.valide.workflow.blocs[0]!;
+  const tri = r.valide.workflow.blocs[1]!;
   expect(tri.parametres).toMatchObject({ seuil: 0.5, champ: "p", siErreur: "sauter" });
   expect(tri.position).toEqual({ x: 0, y: 0 });
-  expect(r.valide.workflow.blocs[1]!.parametres).toEqual({ vers: "widget" });
+  expect(r.valide.workflow.blocs[2]!.parametres).toEqual({ vers: "widget" });
 });
 
 test("le workflow implicite est valide", () => {
@@ -121,10 +122,63 @@ test("plus de 100 blocs, ou plus de 400 liens : refusé", () => {
   const liens = Array.from({ length: 401 }, () => ({ de: "s", vers: "s" }));
   expect(refus(wf([sortie()], liens))).toBe("Workflow invalide : liens : 400 éléments au plus");
   // À la limite : accepté par le schéma (100 blocs, 400 liens).
-  const cent = [...blocs.slice(0, 99), sortie()];
+  const cent = [{ id: "b0", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, ...blocs.slice(1, 99), sortie()];
   const chaine = cent.slice(1).map((b, i) => ({ de: cent[i]!.id, vers: b.id }));
   const doublons = Array.from({ length: 400 - chaine.length }, () => chaine[0]!);
   const r = validerWorkflow(wf(cent, [...chaine, ...doublons]));
   if (!r.ok) throw new Error(r.erreur);
   expect(r.valide.ordre).toHaveLength(100);
+});
+
+const blocErreur = (brut: unknown): string | undefined => {
+  const r = validerWorkflow(brut);
+  if (r.ok) throw new Error("accepté à tort");
+  return r.bloc;
+};
+
+test("une erreur de paramètre nomme le bloc en cause", () => {
+  const brut = wf([{ id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t", seuil: 2 } }, sortie()], [{ de: "tri", vers: "s" }]);
+  expect(blocErreur(brut)).toBe("tri");
+  expect(blocErreur(wf([{ id: "x", type: "web.chercher" }, sortie()]))).toBe("x");
+  expect(blocErreur(wf([{ id: "c", type: "liste.garder", parametres: { nombre: 1, parElement: true } }, sortie()]))).toBe("c");
+  expect(blocErreur(wf([{ id: "d", type: "code", parametres: { source: "d.mjs" } }, { id: "d", type: "code", parametres: { source: "d.mjs" } }, sortie()]))).toBe("d");
+  expect(blocErreur(wf([sortie()], [{ de: "s", vers: "absent" }]))).toBe("s");
+  expect(blocErreur(wf([sortie()], [{ de: "absent", vers: "s" }]))).toBe("s");
+});
+
+test("un cycle nomme son premier bloc dans l'ordre du tableau", () => {
+  const blocs = [{ id: "b", type: "liste.garder", parametres: { nombre: 1 } }, { id: "a", type: "liste.garder", parametres: { nombre: 1 } }, sortie()];
+  expect(blocErreur(wf(blocs, [{ de: "a", vers: "b" }, { de: "b", vers: "a" }]))).toBe("b");
+});
+
+test("un bloc dont l'entrée est requise et sans prédécesseur est refusé", () => {
+  const brut = wf([{ id: "top", type: "liste.garder", parametres: { nombre: 3 } }, sortie()], [{ de: "top", vers: "s" }]);
+  expect(refus(brut)).toBe("Workflow invalide : top : entrée manquante (relie un bloc avant lui)");
+  expect(blocErreur(brut)).toBe("top");
+  const tri = wf([{ id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t" } }, sortie()], [{ de: "tri", vers: "s" }]);
+  expect(refus(tri)).toContain("tri : entrée manquante");
+});
+
+test("une sortie sans prédécesseur est refusée", () => {
+  expect(refus(wf([sortie()]))).toBe("Workflow invalide : s : entrée manquante (relie un bloc avant lui)");
+});
+
+test("source.page sans parElement n'a pas besoin d'entrée ; avec parElement, si", () => {
+  const avec = (parElement: boolean) =>
+    wf([{ id: "p", type: "source.page", parametres: { url: "https://x.fr", parElement } }, sortie()], [{ de: "p", vers: "s" }]);
+  expect(validerWorkflow(avec(false)).ok).toBe(true);
+  expect(refus(avec(true))).toContain("p : entrée manquante");
+});
+
+test("l'entrée manquante passe après la sortie unique et les cycles", () => {
+  expect(refus(wf([{ id: "top", type: "liste.garder", parametres: { nombre: 3 } }]))).toBe("Workflow invalide : aucune sortie");
+});
+
+test("le workflow implicite et les trois modèles livrés restent valides", () => {
+  expect(validerWorkflow(workflowImplicite()).ok).toBe(true);
+  for (const m of ["meteo", "actus-tech", "daily-dev"]) {
+    const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
+    const r = validerWorkflow(brut);
+    expect(r.ok, m + (r.ok ? "" : " : " + r.erreur)).toBe(true);
+  }
 });

@@ -3,6 +3,14 @@ import type { DefinitionBloc } from "./communs.js";
 
 export const definition: DefinitionBloc = {
   type: "source.flux",
+  libelle: "Lire des flux RSS",
+  famille: "Sources",
+  description: "Lit des flux RSS ou Atom et donne leurs articles.",
+  entree: "facultative",
+  champs: [
+    { nom: "urls", libelle: "Adresses des flux", requis: true, defaut: ["https://example.com/rss"], genre: "textes" },
+    { nom: "siErreur", libelle: "En cas d'erreur", requis: false, defaut: "sauter", genre: "choix", choix: ["sauter", "echouer"] },
+  ],
   parElement: "non",
   parametres: z
     .object({

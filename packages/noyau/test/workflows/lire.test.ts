@@ -15,14 +15,18 @@ beforeEach(async () => {
 });
 afterEach(() => rm(racine, { recursive: true, force: true }));
 
-const valide = { version: 1, blocs: [{ id: "s", type: "sortie", parametres: { vers: "widget" } }], liens: [] };
+const valide = {
+  version: 1,
+  blocs: [{ id: "a", type: "code", parametres: { source: "a.mjs" } }, { id: "s", type: "sortie", parametres: { vers: "widget" } }],
+  liens: [{ de: "a", vers: "s" }],
+};
 
 test("workflow.json l'emporte sur recolte.mjs", async () => {
   await writeFile(join(dossier, "workflow.json"), JSON.stringify(valide));
   await writeFile(join(dossier, "recolte.mjs"), "export default () => 1");
   const lu = await lireWorkflow(dossier);
   expect(lu?.origine).toBe("fichier");
-  expect(lu?.resultat.ok && lu.resultat.valide.ordre).toEqual(["s"]);
+  expect(lu?.resultat.ok && lu.resultat.valide.ordre).toEqual(["a", "s"]);
 });
 
 test("recolte.mjs seul donne le workflow implicite", async () => {

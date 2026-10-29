@@ -282,10 +282,11 @@ describe("executerWorkflow", () => {
     const workflow = {
       version: 1,
       blocs: [
+        { id: "amont", type: "code", parametres: { source: "amont.mjs" } },
         { id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "url" } },
         { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
       ],
-      liens: [{ de: "nouveaux", vers: "sortie" }],
+      liens: [{ de: "amont", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }],
     };
     const b = await banc(workflow, {}, {
       lancer: lanceurScripte([
@@ -299,11 +300,11 @@ describe("executerWorkflow", () => {
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [] }, memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"] } } });
     // Aucune trace de bloc reçue : un bloc jamais commencé reste pas-lancé.
-    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["pas-lance", "pas-lance"]);
+    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["pas-lance", "pas-lance", "pas-lance"]);
   });
 
   it("une mémoire de plus de 3 Mo est écartée avec une remarque au journal", async () => {
-    const b = await banc({ version: 1, blocs: [{ id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "url" } }, { id: "sortie", type: "sortie" , parametres: { vers: "widget" } }], liens: [{ de: "nouveaux", vers: "sortie" }] }, {}, {
+    const b = await banc({ version: 1, blocs: [{ id: "amont", type: "code", parametres: { source: "amont.mjs" } }, { id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "url" } }, { id: "sortie", type: "sortie" , parametres: { vers: "widget" } }], liens: [{ de: "amont", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }] }, {}, {
       lancer: lanceurScripte([
         { t: "memoire", memoire: { nouveaux: { type: "liste.nouveaux", valeur: "x".repeat(3.5 * 1024 * 1024) } } },
         { t: "fin", donnees: 1 },

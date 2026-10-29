@@ -1,8 +1,19 @@
 import { z } from "zod";
-import { Gabarit, ParametresParElement, type DefinitionBloc } from "./communs.js";
+import { CHAMP_PAR_ELEMENT, champsParElementSeulement, Gabarit, ParametresParElement, type DefinitionBloc } from "./communs.js";
 
 export const definition: DefinitionBloc = {
   type: "source.recuperer",
+  libelle: "Récupérer une adresse",
+  famille: "Sources",
+  description: "Récupère le contenu d'une adresse, en texte ou en JSON.",
+  entree: "parElement",
+  champs: [
+    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "https://example.com", genre: "gabarit" },
+    { nom: "format", libelle: "Format", requis: false, defaut: "texte", genre: "choix", choix: ["texte", "json"] },
+    CHAMP_PAR_ELEMENT,
+    ...champsParElementSeulement(),
+    { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "contenu", genre: "texte" },
+  ],
   parElement: "option",
   parametres: z
     .object({
