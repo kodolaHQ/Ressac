@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@webaios/noyau": "workspace:*",
+    "electron-chrome-extensions": "4.10.0",
+    "electron-chrome-web-store": "0.13.0",
     "node-pty": "1.1.0",
     "zod": "^4.6.7"
   },

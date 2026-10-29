@@ -1,3 +1,4 @@
+import "./garde-exceptions"; // en premier, avant toute dépendance
 import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
@@ -60,9 +61,6 @@ if (INVISIBLE) app.dock?.hide();
 // Arrêt demandé par le système ou le terminal (electron-vite qui relance, Ctrl-C) : la sortie normale, qui arrête
 // l'agent et l'IA locale (sinon Kev reste chargé en mémoire).
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());
-
-// Une exception oubliée ne doit ni figer l'app derrière une boîte de dialogue, ni la quitter.
-process.on("uncaughtException", (e) => console.error("[webaios] exception non rattrapée :", e));
 
 /** Fenêtres principales (avec l'interface WebAiOs), par id d'état. */
 const fenetres = new Map<IdFenetre, BrowserWindow>();
