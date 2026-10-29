@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "./temporaire.js";
-import { validerWorkflow } from "../../src/workflows/valider.js";
+import { CONTEXTE_PAR_DEFAUT, validerWorkflow, type ContexteValidation } from "../../src/workflows/valider.js";
 import type { MemoireBlocs } from "../../src/workflows/memoire.js";
 
 export const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
@@ -12,9 +12,12 @@ export const SCRIPT = join(MOTEUR, "recolteur.mjs");
 export type Appel = { t: "appel"; n: number; f: string; a: any };
 export type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
-/** Le workflow tel que le noyau l'envoie : validé, paramètres par défaut remplis, avec l'ordre. */
-export function workflowEnvoye(brut: unknown) {
-  const r = validerWorkflow(brut);
+/**
+ * Le workflow tel que le noyau l'envoie : validé (avec ce que le widget déclare, les règles d'avant sans lui),
+ * paramètres par défaut remplis, avec l'ordre.
+ */
+export function workflowEnvoye(brut: unknown, contexte: ContexteValidation = CONTEXTE_PAR_DEFAUT) {
+  const r = validerWorkflow(brut, contexte);
   if (!r.ok) throw new Error(r.erreur);
   return { blocs: r.valide.workflow.blocs, liens: r.valide.workflow.liens, ordre: r.valide.ordre };
 }
@@ -27,6 +30,10 @@ export async function lancer(o: {
   precedent?: unknown;
   repondre?: Repondeur;
   rejeu?: { relances: string[]; sorties: Record<string, unknown> };
+  /** Ce que le widget déclare (`web`, `dureeMaxMinutes`) : la validation du workflow envoyé. */
+  contexte?: ContexteValidation;
+  /** Clés ajoutées à la ligne `debut` (absentes sinon, comme pour un widget d'aujourd'hui). */
+  debut?: { progressif?: true; limiteMs?: number };
 }) {
   const dossier = await dossierTemporaire();
   await writeFile(join(dossier, "widget.json"), JSON.stringify({ config: { lu: "dans widget.json" } }));
@@ -59,8 +66,9 @@ export async function lancer(o: {
       precedent: o.precedent ?? null,
       maintenant: "2026-10-29T10:00:00.000Z",
       config: o.config ?? null,
-      workflow: workflowEnvoye(o.workflow),
+      workflow: workflowEnvoye(o.workflow, o.contexte),
       ...(o.rejeu ? { rejeu: o.rejeu } : {}),
+      ...o.debut,
     }) + "\n",
   );
   enfant.stdin.write(JSON.stringify({ t: "memoire", memoire: o.memoire ?? {} }) + "\n");

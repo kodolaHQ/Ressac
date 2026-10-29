@@ -7,6 +7,15 @@ const RECUPERER_MAX_OCTETS = 5 * 1024 * 1024;
 const RECUPERER_DELAI_MS = 20_000;
 const MAX_REDIRECTIONS = 5;
 
+/** Recherches web et lectures ouvertes (sans `domaines`) d'une exécution, au plus. */
+export const MAX_RECHERCHES = 30;
+export const MAX_LECTURES_OUVERTES = 100;
+// Les deux premiers sont recopiés dans docker/moteur/erreurs.mjs : l'élément n'est pas lancé, ce n'est pas un échec.
+export const PLAFOND_RECHERCHES = "Plafond de recherches atteint (30 par exécution)";
+export const RECHERCHES_ARRETEES = "Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution";
+export const TROP_DE_LECTURES = "Trop de lectures dans cette exécution (100)";
+export const RECHERCHE_INDISPONIBLE = "Recherche web indisponible";
+
 /** Un texte de `n` caractères au plus, « … » à la fin s'il est coupé. */
 export const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 /** Le message d'une exception, ou sa valeur en texte. */

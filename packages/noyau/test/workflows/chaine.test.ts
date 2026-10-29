@@ -11,7 +11,7 @@ for (const cas of CAS_CHAINE) {
   });
 }
 
-test("les blocs chaînables : source.page, source.recuperer, ia.rediger", () => {
+test("les blocs chaînables : source.page, source.recuperer, ia.rediger, web.chercher", () => {
   const chainables = [...REGISTRE_BLOCS.values()].filter((d) => d.chaine).map((d) => d.type).sort();
-  expect(chainables).toEqual(["ia.rediger", "source.page", "source.recuperer"]);
+  expect(chainables).toEqual(["ia.rediger", "source.page", "source.recuperer", "web.chercher"]);
 });

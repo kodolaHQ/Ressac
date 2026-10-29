@@ -64,7 +64,7 @@ test("l'entrée de chaque type", () => {
   const entrees = Object.fromEntries(catalogue.map((b) => [b.type, b.entree]));
   expect(entrees).toEqual({
     "source.page": "parElement", "source.flux": "facultative", "source.recuperer": "parElement",
-    "liste.nouveaux": "requise", "liste.dedoublonner": "requise", "liste.garder": "requise",
+    "web.chercher": "parElement", "liste.nouveaux": "requise", "liste.dedoublonner": "requise", "liste.garder": "requise",
     "ia.trier": "requise", "ia.rediger": "parElement", code: "facultative", sortie: "requise",
   });
 });
@@ -91,4 +91,21 @@ test("garderJours, auFilDeLEau et la borne de budgetSecondes dans le catalogue",
   expect(champ("liste.nouveaux", "garderJours")).toMatchObject({ libelle: "Oublier après (jours)", requis: false, genre: "nombre", min: 1, max: 365, entier: true });
   expect(champ("sortie", "auFilDeLEau")).toMatchObject({ libelle: "Publier au fil de l'eau", requis: false, defaut: false, genre: "case" });
   expect(de("source.page")).not.toHaveProperty("chaine");
+});
+
+test("web.chercher est dans la famille Sources, après Récupérer une adresse", () => {
+  const types = catalogue.map((b) => b.type);
+  expect(types.indexOf("web.chercher")).toBe(types.indexOf("source.recuperer") + 1);
+  expect(de("web.chercher")).toMatchObject({
+    libelle: "Chercher sur le web",
+    famille: "Sources",
+    description: "Cherche sur DuckDuckGo et rend les résultats (titre, adresse, extrait).",
+    parElement: "option",
+    entree: "parElement",
+  });
+  expect(de("web.chercher").champs.map((c) => c.nom)).toEqual(["requete", "nombre", "parElement", "siErreur", "budgetSecondes", "reutiliser", "garderJours", "champ"]);
+  expect(champ("web.chercher", "requete")).toMatchObject({ genre: "gabarit", requis: true });
+  expect(champ("web.chercher", "nombre")).toMatchObject({ genre: "nombre", requis: false, defaut: 8, min: 1, max: 20, entier: true });
+  expect(champ("web.chercher", "champ")).toMatchObject({ genre: "texte", requis: false, defaut: "recherche" });
+  expect(REGISTRE_BLOCS.get("web.chercher")!.chaine).toBe(true);
 });

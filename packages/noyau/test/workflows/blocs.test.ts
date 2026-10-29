@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
+import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES } from "../../src/workflows/acces.js";
 import { MOTEUR, bloc, chaine, lancer, sortie, type Appel } from "../aide/moteur.js";
 
 // Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
 const { BLOCS_LIVRES } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+const { MESSAGES_NON_LANCE } = await import(pathToFileURL(join(MOTEUR, "erreurs.mjs")).href);
 
 /** Un bloc `code` qui rend la liste donnée : l'entrée des blocs par élément. */
 const liste = (valeur: unknown) => ({
@@ -355,5 +357,13 @@ describe("ia.rediger", () => {
       repondre: () => ({ ok: "r" }),
     });
     expect(r.appels[0]!.a.prompt).toBe(avecCadre("Résume : {config.secret}"));
+  });
+});
+
+describe("web.chercher", () => {
+  it("MESSAGES_NON_LANCE égalent PLAFOND_RECHERCHES et RECHERCHES_ARRETEES", () => {
+    expect(MESSAGES_NON_LANCE).toEqual([PLAFOND_RECHERCHES, RECHERCHES_ARRETEES]);
+    expect(PLAFOND_RECHERCHES).toBe("Plafond de recherches atteint (30 par exécution)");
+    expect(RECHERCHES_ARRETEES).toBe("Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution");
   });
 });

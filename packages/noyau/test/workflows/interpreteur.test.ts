@@ -7,6 +7,8 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 import type { MemoireBlocs } from "../../src/workflows/memoire.js";
 import { workflowImplicite } from "../../src/workflows/valider.js";
 import { MOTEUR, SCRIPT, bloc, chaine, lancer, sortie } from "../aide/moteur.js";
+import { PLAFOND_RECHERCHES } from "../../src/workflows/acces.js";
+import { RECHERCHE_REFUSEE } from "../../src/workflows/duckduckgo.js";
 
 // Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
 const { executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
@@ -735,5 +737,112 @@ describe("interpréteur : blocs par élément", () => {
 
     const inconnu = await executer({ entree: 1, blocs: [{ id: "b", type: "test.absent" }, { id: "sortie", type: "sortie" }], registre: {} });
     expect(inconnu.erreur?.message).toBe("type inconnu dans le conteneur : test.absent");
+  });
+});
+
+describe("interpréteur : web.chercher", () => {
+  const WEB = { web: true, dureeMaxMinutes: null };
+  const annonces = [
+    { marque: "Peugeot", modele: "208 & co/é" },
+    { marque: "Renault", modele: "Clio" },
+    { marque: "Fiat", modele: "Panda" },
+  ];
+  const workflow = (parametres: Record<string, unknown> = {}) => ({
+    version: 1,
+    blocs: [
+      bloc("liste", "code", { source: "liste.mjs" }),
+      bloc("cherche", "web.chercher", { requete: "{marque} {modele} fiabilité", parElement: true, ...parametres }),
+      sortie,
+    ],
+    liens: chaine("liste", "cherche", "sortie"),
+  });
+  const fichiers = { "liste.mjs": `export default async () => (${JSON.stringify(annonces)});` };
+  const resultat = (requete: string) => [{ titre: "Avis " + requete, url: "https://avis.fr/1", extrait: "Bien", rang: 1 }];
+  const journalDe = (r: { lignes: any[] }, id: string) => r.lignes.filter((l) => l.t === "journal" && l.bloc === id).map((l) => l.texte);
+
+  it("web.chercher par élément range la liste sous recherche, requête remplie avec {marque} {modele} sans encodage", async () => {
+    const r = await lancer({
+      workflow: workflow({ nombre: 5 }),
+      fichiers,
+      contexte: WEB,
+      repondre: (a) => (a.f === "chercherWeb" ? { ok: resultat(a.a.requete) } : { erreur: "inattendu" }),
+    });
+    expect(r.appels.map((a) => [a.f, a.a]).sort()).toEqual(
+      [
+        ["chercherWeb", { requete: "Peugeot 208 & co/é fiabilité", nombre: 5 }],
+        ["chercherWeb", { requete: "Renault Clio fiabilité", nombre: 5 }],
+        ["chercherWeb", { requete: "Fiat Panda fiabilité", nombre: 5 }],
+      ].sort(),
+    );
+    // Remise en forme : titre, url, extrait en textes ; rien d'autre.
+    expect(r.terminal).toEqual({
+      t: "fin",
+      donnees: annonces.map((e) => ({ ...e, recherche: [{ titre: `Avis ${e.marque} ${e.modele} fiabilité`, url: "https://avis.fr/1", extrait: "Bien" }] })),
+    });
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "reussi" });
+  });
+
+  it("plafond atteint : les éléments restants sans champ, bloc partiel, même avec siErreur echouer", async () => {
+    let n = 0;
+    const r = await lancer({
+      workflow: workflow({ siErreur: "echouer" }),
+      fichiers,
+      contexte: WEB,
+      repondre: (a) => (++n === 1 ? { ok: resultat(a.a.requete) } : { erreur: PLAFOND_RECHERCHES }),
+    });
+    expect(r.terminal.t).toBe("fin");
+    const donnees = r.terminal.donnees as Record<string, unknown>[];
+    expect(donnees.filter((e) => "recherche" in e)).toHaveLength(1);
+    expect(donnees.filter((e) => !("recherche" in e))).toHaveLength(2);
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
+    const journal = journalDe(r, "cherche");
+    expect(journal.filter((t) => t.endsWith(` : ${PLAFOND_RECHERCHES}`))).toHaveLength(2);
+    expect(journal.every((t) => /^élément \d : /.test(t))).toBe(true);
+    // Le bloc sortie a bien tourné.
+    expect(r.finBloc("sortie")).toMatchObject({ statut: "reussi" });
+  });
+
+  it("RECHERCHE_REFUSEE sur un élément avec siErreur echouer : le bloc échoue", async () => {
+    const r = await lancer({
+      workflow: workflow({ siErreur: "echouer" }),
+      fichiers,
+      contexte: WEB,
+      repondre: (a) => (a.a.requete.startsWith("Renault") ? { erreur: RECHERCHE_REFUSEE } : { ok: resultat(a.a.requete) }),
+    });
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: RECHERCHE_REFUSEE });
+    expect(r.terminal).toEqual({ t: "echec", erreur: RECHERCHE_REFUSEE });
+  });
+
+  it("en mode simple, le plafond est une erreur ordinaire", async () => {
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [bloc("cherche", "web.chercher", { requete: "{config.sujet} actualité" }), sortie],
+        liens: chaine("cherche", "sortie"),
+      },
+      config: { sujet: "Rust" },
+      contexte: WEB,
+      repondre: () => ({ erreur: PLAFOND_RECHERCHES }),
+    });
+    expect(r.appels.map((a) => a.a)).toEqual([{ requete: "Rust actualité", nombre: 8 }]);
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: PLAFOND_RECHERCHES });
+    expect(r.terminal).toEqual({ t: "echec", erreur: PLAFOND_RECHERCHES });
+  });
+
+  it("rejeu depuis le bloc après web.chercher : aucun appel chercherWeb", async () => {
+    const recherches = annonces.map((e) => ({ ...e, recherche: [{ titre: "T", url: "https://avis.fr/1", extrait: "E" }] }));
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [...workflow().blocs.slice(0, 2), bloc("garder", "liste.garder", { nombre: 2 }), sortie],
+        liens: chaine("liste", "cherche", "garder", "sortie"),
+      },
+      fichiers,
+      contexte: WEB,
+      rejeu: { relances: ["garder", "sortie"], sorties: { cherche: recherches } },
+      repondre: () => ({ erreur: "aucun appel attendu" }),
+    });
+    expect(r.appels).toEqual([]);
+    expect(r.terminal).toEqual({ t: "fin", donnees: recherches.slice(0, 2) });
   });
 });

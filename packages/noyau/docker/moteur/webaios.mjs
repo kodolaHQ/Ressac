@@ -34,6 +34,7 @@ export function creerWebaios({ appeler, config, precedent, maintenant, journal }
     maintenant,
     lirePage: (url, options = {}) => appeler("lirePage", { url, compte: options.compte }),
     recuperer: (url, options = {}) => appeler("recuperer", { url, format: options.format ?? "texte" }),
+    chercherWeb: (requete, { nombre = 8 } = {}) => appeler("chercherWeb", { requete, nombre }),
     lireFlux: async (url) => analyserFlux(String(await appeler("recuperer", { url, format: "texte" }))),
     kev: (state, questions) => appeler("kev", { state, questions }),
     gemma: (prompt, options = {}) => appeler("gemma", { prompt, images: options.images, json: options.json }),

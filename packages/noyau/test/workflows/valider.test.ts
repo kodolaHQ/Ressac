@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { CONTEXTE_PAR_DEFAUT, validerWorkflow, workflowImplicite } from "../../src/index.js";
+import { CONTEXTE_PAR_DEFAUT, WEB_REQUIS, validerWorkflow, workflowImplicite } from "../../src/index.js";
 import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
 
 const sortie = (id = "s", extra: object = {}) => ({ id, type: "sortie", parametres: { vers: "widget", ...extra } });
@@ -52,7 +52,7 @@ test("un JSON non conforme au schéma est refusé", () => {
 });
 
 test("un type inconnu est refusé", () => {
-  expect(refus(wf([{ id: "x", type: "web.chercher" }, sortie()]))).toBe("Workflow invalide : type inconnu : web.chercher");
+  expect(refus(wf([{ id: "x", type: "web.inconnu" }, sortie()]))).toBe("Workflow invalide : type inconnu : web.inconnu");
 });
 
 test("un cycle est nommé", () => {
@@ -95,7 +95,7 @@ test("parElement est refusé sur un type qui ne l'accepte pas", () => {
 });
 
 test("chaque type du registre a un module et un schéma de paramètres", () => {
-  const types = ["source.page", "source.flux", "source.recuperer", "liste.nouveaux", "liste.dedoublonner", "liste.garder", "ia.trier", "ia.rediger", "code", "sortie"];
+  const types = ["source.page", "source.flux", "source.recuperer", "web.chercher", "liste.nouveaux", "liste.dedoublonner", "liste.garder", "ia.trier", "ia.rediger", "code", "sortie"];
   expect([...REGISTRE_BLOCS.keys()].sort()).toEqual([...types].sort());
   for (const t of types) expect(typeof REGISTRE_BLOCS.get(t)!.parametres.safeParse).toBe("function");
   expect(REGISTRE_BLOCS.get("ia.trier")!.parElement).toBe("toujours");
@@ -139,7 +139,7 @@ const blocErreur = (brut: unknown): string | undefined => {
 test("une erreur de paramètre nomme le bloc en cause", () => {
   const brut = wf([{ id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t", seuil: 2 } }, sortie()], [{ de: "tri", vers: "s" }]);
   expect(blocErreur(brut)).toBe("tri");
-  expect(blocErreur(wf([{ id: "x", type: "web.chercher" }, sortie()]))).toBe("x");
+  expect(blocErreur(wf([{ id: "x", type: "web.inconnu" }, sortie()]))).toBe("x");
   expect(blocErreur(wf([{ id: "c", type: "liste.garder", parametres: { nombre: 1, parElement: true } }, sortie()]))).toBe("c");
   expect(blocErreur(wf([{ id: "d", type: "code", parametres: { source: "d.mjs" } }, { id: "d", type: "code", parametres: { source: "d.mjs" } }, sortie()]))).toBe("d");
   expect(blocErreur(wf([sortie()], [{ de: "s", vers: "absent" }]))).toBe("s");
@@ -237,4 +237,27 @@ test("les trois modèles livrés et le workflow implicite restent valides, conte
     const r = validerWorkflow(brut, CONTEXTE_PAR_DEFAUT);
     expect(r.ok, m + (r.ok ? "" : " : " + r.erreur)).toBe(true);
   }
+});
+
+const avecRecherche = (parametres: Record<string, unknown> = {}) =>
+  wf(
+    [{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "w", type: "web.chercher", parametres: { requete: "{titre} avis", parElement: true, ...parametres } }, sortie()],
+    [{ de: "f", vers: "w" }, { de: "w", vers: "s" }],
+  );
+
+test('web.chercher sans web : « Workflow invalide : web.chercher : le widget doit déclarer "web": true », bloc en cause', () => {
+  expect(WEB_REQUIS).toBe('web.chercher : le widget doit déclarer "web": true');
+  const attendu = { ok: false, erreur: 'Workflow invalide : web.chercher : le widget doit déclarer "web": true', bloc: "w" };
+  expect(validerWorkflow(avecRecherche())).toEqual(attendu);
+  expect(validerWorkflow(avecRecherche(), { web: false, dureeMaxMinutes: 30 })).toEqual(attendu);
+});
+
+test("web.chercher avec web : valide, nombre 8 et champ recherche par défaut", () => {
+  const r = validerWorkflow(avecRecherche(), { web: true, dureeMaxMinutes: null });
+  if (!r.ok) throw new Error(r.erreur);
+  expect(r.valide.workflow.blocs[1]!.parametres).toEqual({ requete: "{titre} avis", nombre: 8, parElement: true, siErreur: "sauter", champ: "recherche" });
+  const web = { web: true, dureeMaxMinutes: null };
+  expect(validerWorkflow(avecRecherche({ nombre: 21 }), web)).toMatchObject({ ok: false, erreur: "Workflow invalide : w.nombre : 20 au plus", bloc: "w" });
+  expect(validerWorkflow(avecRecherche({ nombre: 0 }), web).ok).toBe(false);
+  expect(validerWorkflow(avecRecherche({ champ: "x".repeat(41) }), web).ok).toBe(false);
 });

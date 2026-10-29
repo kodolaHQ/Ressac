@@ -15,8 +15,11 @@
 //   - `remplir(gabarit, { url, texteMax })` remplit avec l'élément en cours (en mode simple : l'entrée) et la config ;
 //     une valeur absente lève ValeurAbsente : en mode simple la sortie est null, par élément l'élément reste sans
 //     champ ; dans les deux cas, une ligne de journal et pas d'erreur.
+//   - par élément, un ElementNonLance (erreurs.mjs) laisse l'élément sans champ et le bloc « partiel », sans jamais
+//     compter comme un échec ; en mode simple, c'est une erreur ordinaire.
 //   - `partiel(raison?)` : en mode simple, le bloc finira « partiel » (par exemple un flux sur plusieurs en échec).
 // La boucle par élément (deux à la fois, budget de temps, `siErreur`, `reutiliser`) est celle de l'interpréteur.
+import { ElementNonLance } from "./erreurs.mjs";
 import { ValeurAbsente, lireChemin, remplir } from "./gabarits.mjs";
 import { creerWebaios, formater } from "./webaios.mjs";
 import code from "./blocs/code.mjs";
@@ -29,12 +32,14 @@ import sortie from "./blocs/sortie.mjs";
 import sourceFlux from "./blocs/source-flux.mjs";
 import sourcePage from "./blocs/source-page.mjs";
 import sourceRecuperer from "./blocs/source-recuperer.mjs";
+import webChercher from "./blocs/web-chercher.mjs";
 
 /** Les blocs livrés avec le moteur, par type. Aucun moyen d'en charger d'autres depuis le conteneur. */
 export const BLOCS_LIVRES = Object.freeze({
   "source.page": sourcePage,
   "source.flux": sourceFlux,
   "source.recuperer": sourceRecuperer,
+  "web.chercher": webChercher,
   "liste.nouveaux": listeNouveaux,
   "liste.dedoublonner": listeDedoublonner,
   "liste.garder": listeGarder,
@@ -141,6 +146,7 @@ async function parElement(module, ctx, { echeance, horloge }) {
   let suivant = 0;
   let echecs = 0;
   let reussis = 0;
+  let refuses = 0;
   let premiereErreur = null;
   let erreurBloc = null;
 
@@ -176,6 +182,12 @@ async function parElement(module, ctx, { echeance, horloge }) {
           journal(`élément ${i + 1} : ${e.message}`);
           continue;
         }
+        if (e instanceof ElementNonLance) {
+          // Refusé par le noyau (plafond de recherches…) : non lancé, jamais un échec.
+          refuses++;
+          journal(`élément ${i + 1} : ${e.message}`);
+          continue;
+        }
         echecs++;
         premiereErreur ??= e;
         journal(`élément ${i + 1} : ${message(e)}`);
@@ -187,9 +199,9 @@ async function parElement(module, ctx, { echeance, horloge }) {
 
   if (erreurBloc) throw erreurBloc;
   // Pour un bloc qui le demande (ia.trier : sans aucune note, sa sortie vide ne veut rien dire), parmi les éléments
-  // lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés (temps) ou sans valeur
-  // de gabarit ne comptent pas comme réussis. Les autres blocs (qui enrichissent) laissent passer les éléments sans
-  // leur champ et finissent « partiel ».
+  // lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés (temps, refusés par le
+  // noyau) ou sans valeur de gabarit ne comptent pas comme réussis. Les autres blocs (qui enrichissent) laissent passer
+  // les éléments sans leur champ et finissent « partiel ».
   if (module.echecSiTousEchouent === true && echecs > 0 && reussis === 0) {
     throw new Error(`Tous les éléments ont échoué (${message(premiereErreur)})`);
   }
@@ -197,7 +209,7 @@ async function parElement(module, ctx, { echeance, horloge }) {
   if (nonLances > 0) journal(`temps écoulé : ${nonLances} élément(s) non lancé(s)`);
   const sortie = module.finaliser ? (await module.finaliser(resultat, ctx))?.sortie : resultat;
   return {
-    statut: echecs > 0 || nonLances > 0 ? "partiel" : "reussi",
+    statut: echecs > 0 || nonLances > 0 || refuses > 0 ? "partiel" : "reussi",
     sortie,
     ...(reutilises ? { memoire: { reutilises: borner(reutilises) } } : {}),
   };

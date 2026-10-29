@@ -17,6 +17,9 @@ export type ContexteValidation = { web: boolean; dureeMaxMinutes: number | null 
 /** Un widget sans `web` ni durée maximale : les règles d'avant. */
 export const CONTEXTE_PAR_DEFAUT: ContexteValidation = { web: false, dureeMaxMinutes: null };
 
+/** Refus d'un bloc `web.chercher` dans un widget qui ne déclare pas `"web": true`. */
+export const WEB_REQUIS = 'web.chercher : le widget doit déclarer "web": true';
+
 /** Le `budgetSecondes` d'un bloc sans durée maximale du widget. */
 const BUDGET_MAX_SECONDES = 170;
 
@@ -118,6 +121,7 @@ export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXT
   for (const b of workflow.blocs) {
     const definition = REGISTRE_BLOCS.get(b.type);
     if (!definition) return erreurWorkflow(`type inconnu : ${b.type}`, b.id);
+    if (b.type === "web.chercher" && !ctx.web) return erreurWorkflow(WEB_REQUIS, b.id);
     if (definition.parElement === "non" && "parElement" in b.parametres) {
       return erreurWorkflow(`${b.id}.parElement : le type ${b.type} ne travaille pas élément par élément`, b.id);
     }
