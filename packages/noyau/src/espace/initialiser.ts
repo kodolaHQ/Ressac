@@ -28,6 +28,7 @@ const ANCIENS_AGENTS = new Set([
   "9e3b4fb890a077d0e76df482d375ffa1aab5390f1d320d67599e77b7bc58730b",
   "3866a3fd951eb95c9fee1aeae273a9a7eb5ad1b0e09ad8ee85a2f0b3190a634c",
   "68b17b47ac5be1d551a6d4ee01f121095b1db3cef47a9893ad1f592293ef7497",
+  "0ccf0a48a1f4b2d39d954382532e0db7e1a84c77640a7eaed7c08dbbfdb88c90",
 ]);
 
 const empreinte = (contenu: Buffer) => createHash("sha256").update(contenu).digest("hex");

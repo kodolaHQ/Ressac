@@ -273,6 +273,23 @@ test("initialiser : un AGENTS.md identique au modèle du plan 8 est remplacé pa
   expect(apres).not.toContain("**Entrée d'un bloc** : `null` sans prédécesseur ;");
 });
 
+test("initialiser : un AGENTS.md identique au modèle du plan 9 est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle de la fin du plan 9 (f01722f) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-livres", "AGENTS-f01722f.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "0ccf0a48a1f4b2d39d954382532e0db7e1a84c77640a7eaed7c08dbbfdb88c90",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  for (const attendu of ["web.chercher", "auFilDeLEau", "dureeMaxMinutes", "garderJours", '"heures"', "chercherWeb"]) {
+    expect(apres).toContain(attendu);
+  }
+});
+
 // ——— Chaque version livrée du modèle AGENTS.md ———
 
 const AGENTS_LIVRES = join(import.meta.dirname, "agents-livres");
