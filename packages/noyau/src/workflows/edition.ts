@@ -4,7 +4,15 @@ import { ecrireAtomique } from "./executions.js";
 import { existe, lireBrutWorkflow } from "./lire.js";
 import { avecMemoire, ecrireMemoire, empreinteParametres, jsonCanonique, lireMemoire } from "./memoire.js";
 import { TAILLE_MAX_WORKFLOW } from "./schema.js";
-import { erreurWorkflow, validerWorkflow, workflowImplicite, type ResultatValidation, type WorkflowValide } from "./valider.js";
+import {
+  CONTEXTE_PAR_DEFAUT,
+  erreurWorkflow,
+  validerWorkflow,
+  workflowImplicite,
+  type ContexteValidation,
+  type ResultatValidation,
+  type WorkflowValide,
+} from "./valider.js";
 
 // Le constructeur ne fait que lire et écrire `workflow.json` et les `.mjs` comme du texte : rien n'est exécuté ici.
 
@@ -46,35 +54,46 @@ async function dossierExiste(dossier: string): Promise<boolean> {
 
 /**
  * Ce que le constructeur ouvre : `workflow.json` même invalide, sinon l'implicite d'un `recolte.mjs`, sinon null.
- * N'écrit rien.
+ * N'écrit rien. `ctx` : ce que le widget déclare (`contexteValidation`).
  */
-export async function lireBrouillon(dossierFichiers: string): Promise<LectureBrouillon | null> {
+export async function lireBrouillon(dossierFichiers: string, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): Promise<LectureBrouillon | null> {
   if (await existe(join(dossierFichiers, "workflow.json"))) {
     const lu = await lireBrutWorkflow(dossierFichiers);
     if ("erreur" in lu) return { origine: "fichier", brut: null, validation: resume(erreurWorkflow(lu.erreur)) };
-    return { origine: "fichier", brut: lu.brut, validation: resume(validerWorkflow(lu.brut)) };
+    return { origine: "fichier", brut: lu.brut, validation: resume(validerWorkflow(lu.brut, ctx)) };
   }
   if (await existe(join(dossierFichiers, "recolte.mjs"))) {
     const brut = workflowImplicite();
-    return { origine: "implicite", brut, validation: resume(validerWorkflow(brut)) };
+    return { origine: "implicite", brut, validation: resume(validerWorkflow(brut, ctx)) };
   }
   return null;
 }
 
-/** Le workflow valide en place : le fichier s'il est valide, sinon l'implicite d'un `recolte.mjs`, sinon aucun. */
-async function workflowActuel(dossier: string): Promise<WorkflowValide | null> {
-  const l = await lireBrouillon(dossier);
+/**
+ * Le workflow valide en place : le fichier s'il est valide, sinon l'implicite d'un `recolte.mjs`, sinon aucun. Validé
+ * avec le même contexte que le nouveau : sinon, pour un widget `web` ou long, l'ancien paraîtrait invalide (mémoire des
+ * blocs changés gardée, fichier identique réécrit).
+ */
+async function workflowActuel(dossier: string, ctx: ContexteValidation): Promise<WorkflowValide | null> {
+  const l = await lireBrouillon(dossier, ctx);
   if (!l || l.brut === null) return null;
-  const r = validerWorkflow(l.brut);
+  const r = validerWorkflow(l.brut, ctx);
   return r.ok ? r.valide : null;
 }
 
 /**
  * Enregistre `workflow.json` (écriture atomique) si le workflow est valide, si les fichiers de ses blocs `code`
- * existent et s'il diffère de l'actuel. Efface d'abord la mémoire des blocs dont les paramètres changent.
+ * existent et s'il diffère de l'actuel. Efface d'abord la mémoire des blocs dont les paramètres changent. `contexte` :
+ * ce que le widget déclare (`contexteValidation`), les règles d'avant sans lui.
  */
-export async function enregistrerWorkflow(o: { dossierFichiers: string; dossierDonnees: string; brut: unknown }): Promise<ResultatEnregistrement> {
-  const r = validerWorkflow(o.brut);
+export async function enregistrerWorkflow(o: {
+  dossierFichiers: string;
+  dossierDonnees: string;
+  brut: unknown;
+  contexte?: ContexteValidation;
+}): Promise<ResultatEnregistrement> {
+  const contexte = o.contexte ?? CONTEXTE_PAR_DEFAUT;
+  const r = validerWorkflow(o.brut, contexte);
   if (!r.ok) return { ok: false, erreur: r.erreur, ...(r.bloc === undefined ? {} : { bloc: r.bloc }) };
   if (!(await dossierExiste(o.dossierFichiers))) return { ok: false, erreur: WIDGET_INTROUVABLE };
 
@@ -91,7 +110,7 @@ export async function enregistrerWorkflow(o: { dossierFichiers: string; dossierD
     return { ok: false, erreur: "workflow.json sort du dossier du widget" };
   }
 
-  const avant = await workflowActuel(o.dossierFichiers);
+  const avant = await workflowActuel(o.dossierFichiers, contexte);
   if (avant && jsonCanonique(avant.workflow) === jsonCanonique(r.valide.workflow)) return { ok: true, ecrit: false, memoireEffacee: [] };
 
   // La mémoire des blocs changés part avant l'écriture du workflow : une exécution qui lit le nouveau workflow lit

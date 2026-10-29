@@ -11,5 +11,6 @@ export const definition: DefinitionBloc = {
     { nom: "nombre", libelle: "Nombre d'éléments", requis: true, defaut: 10, genre: "nombre", min: 1, max: 1000, entier: true },
   ],
   parElement: "non",
+  chaine: false,
   parametres: z.object({ nombre: z.number().int().min(1).max(1000) }).strict(),
 };

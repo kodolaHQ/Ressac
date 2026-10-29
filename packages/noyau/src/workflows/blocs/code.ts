@@ -12,6 +12,7 @@ export const definition: DefinitionBloc = {
     { nom: "appel", libelle: "Appel", requis: false, defaut: "entree", genre: "choix", choix: ["entree", "recolte"] },
   ],
   parElement: "non",
+  chaine: false,
   parametres: z
     .object({
       // Un nom de fichier du dossier du widget, rien d'autre : ni chemin, ni « .. ».

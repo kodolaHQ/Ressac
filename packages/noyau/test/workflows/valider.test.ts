@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { validerWorkflow, workflowImplicite } from "../../src/index.js";
+import { CONTEXTE_PAR_DEFAUT, validerWorkflow, workflowImplicite } from "../../src/index.js";
 import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
 
 const sortie = (id = "s", extra: object = {}) => ({ id, type: "sortie", parametres: { vers: "widget", ...extra } });
@@ -180,6 +180,61 @@ test("le workflow implicite et les trois modèles livrés restent valides", () =
   for (const m of ["meteo", "actus-tech", "daily-dev"]) {
     const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
     const r = validerWorkflow(brut);
+    expect(r.ok, m + (r.ok ? "" : " : " + r.erreur)).toBe(true);
+  }
+});
+
+const avecPage = (parametres: Record<string, unknown>) =>
+  wf(
+    [{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "p", type: "source.page", parametres: { url: "https://x.fr/{url}", parElement: true, ...parametres } }, sortie()],
+    [{ de: "f", vers: "p" }, { de: "p", vers: "s" }],
+  );
+
+test("budgetSecondes 600 refusé sans durée (170 au plus), accepté avec dureeMaxMinutes 30, 1900 refusé (1800 au plus)", () => {
+  expect(refus(avecPage({ budgetSecondes: 600 }))).toBe("Workflow invalide : p.budgetSecondes : 170 au plus");
+  expect(validerWorkflow(avecPage({ budgetSecondes: 170 })).ok).toBe(true);
+  const long = { web: false, dureeMaxMinutes: 30 };
+  expect(validerWorkflow(avecPage({ budgetSecondes: 600 }), long).ok).toBe(true);
+  const r = validerWorkflow(avecPage({ budgetSecondes: 1900 }), long);
+  expect(r).toEqual({ ok: false, erreur: "Workflow invalide : p.budgetSecondes : 1800 au plus", bloc: "p" });
+  expect(validerWorkflow(avecPage({ budgetSecondes: 3601 }), { web: false, dureeMaxMinutes: 60 }).ok).toBe(false);
+  expect(validerWorkflow(avecPage({ budgetSecondes: 600 }), CONTEXTE_PAR_DEFAUT).ok).toBe(false);
+  expect(CONTEXTE_PAR_DEFAUT).toEqual({ web: false, dureeMaxMinutes: null });
+});
+
+test("garderJours sans reutiliser refusé sur source.page, accepté sur liste.nouveaux", () => {
+  const r = validerWorkflow(avecPage({ garderJours: 7 }));
+  expect(r).toEqual({ ok: false, erreur: "Workflow invalide : p.garderJours : seulement avec reutiliser", bloc: "p" });
+  const avec = validerWorkflow(avecPage({ garderJours: 7, reutiliser: "url" }));
+  expect(avec.ok && avec.valide.workflow.blocs[1]!.parametres.garderJours).toBe(7);
+  const nouveaux = wf(
+    [{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "n", type: "liste.nouveaux", parametres: { cle: "url", garderJours: 30 } }, sortie()],
+    [{ de: "f", vers: "n" }, { de: "n", vers: "s" }],
+  );
+  const lu = validerWorkflow(nouveaux);
+  expect(lu.ok && lu.valide.workflow.blocs[1]!.parametres).toEqual({ cle: "url", garderJours: 30 });
+});
+
+test("garderJours 0 et 366 refusés", () => {
+  expect(refus(avecPage({ garderJours: 0, reutiliser: "url" }))).toBe("Workflow invalide : p.garderJours : au moins 1");
+  expect(refus(avecPage({ garderJours: 366, reutiliser: "url" }))).toBe("Workflow invalide : p.garderJours : 365 au plus");
+  expect(refus(avecPage({ garderJours: 1.5, reutiliser: "url" }))).toContain("p.garderJours");
+});
+
+test("sortie : auFilDeLEau facultatif, absent des paramètres validés quand il n'est pas écrit", () => {
+  const base = wf([{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, sortie()], [{ de: "f", vers: "s" }]);
+  const r = validerWorkflow(base);
+  expect(r.ok && r.valide.workflow.blocs[1]!.parametres).toEqual({ vers: "widget" });
+  const fil = validerWorkflow(wf([{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, sortie("s", { auFilDeLEau: true })], [{ de: "f", vers: "s" }]));
+  expect(fil.ok && fil.valide.workflow.blocs[1]!.parametres).toEqual({ vers: "widget", auFilDeLEau: true });
+  expect(refus(wf([sortie("s", { auFilDeLEau: "oui" })]))).toContain("s.auFilDeLEau");
+});
+
+test("les trois modèles livrés et le workflow implicite restent valides, contexte par défaut", () => {
+  expect(validerWorkflow(workflowImplicite(), CONTEXTE_PAR_DEFAUT).ok).toBe(true);
+  for (const m of ["meteo", "actus-tech", "daily-dev"]) {
+    const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
+    const r = validerWorkflow(brut, CONTEXTE_PAR_DEFAUT);
     expect(r.ok, m + (r.ok ? "" : " : " + r.erreur)).toBe(true);
   }
 });

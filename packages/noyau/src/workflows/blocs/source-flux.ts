@@ -12,6 +12,7 @@ export const definition: DefinitionBloc = {
     { nom: "siErreur", libelle: "En cas d'erreur", requis: false, defaut: "sauter", genre: "choix", choix: ["sauter", "echouer"] },
   ],
   parElement: "non",
+  chaine: false,
   parametres: z
     .object({
       urls: z.array(z.string().min(1).max(2000)).min(1).max(20),

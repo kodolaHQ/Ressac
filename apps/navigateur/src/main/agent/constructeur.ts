@@ -2,6 +2,7 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import {
   avertirWorkflow,
+  contexteValidation,
   DeclarationWidget,
   enregistrerCode,
   enregistrerWorkflow,
@@ -91,9 +92,9 @@ export async function lireDeclaration(chemins: CheminsEspace, id: string): Promi
   }
 }
 
-function avertissementsDe(brut: unknown, d: { sources: { compte: readonly string[]; publiques: readonly string[] }; config?: unknown }): Avertissement[] {
-  const r = validerWorkflow(brut);
-  return r.ok ? avertirWorkflow(r.valide.workflow, { sources: d.sources, config: d.config }) : [];
+function avertissementsDe(brut: unknown, d: DeclarationWidget): Avertissement[] {
+  const r = validerWorkflow(brut, contexteValidation(d));
+  return r.ok ? avertirWorkflow(r.valide.workflow, { sources: d.sources, config: d.config }, r.valide) : [];
 }
 
 /** Ce que le constructeur ouvre pour un widget ; null : widget inconnu (ou widget.json illisible), sans récolte, ou disque en erreur. N'écrit rien. */
@@ -101,7 +102,7 @@ export async function lireEdition(c: Contexte, id: string): Promise<EditionWorkf
   try {
     const d = await lireDeclaration(c.chemins, id);
     if (!("declaration" in d)) return null;
-    const l = await lireBrouillon(d.dossier);
+    const l = await lireBrouillon(d.dossier, contexteValidation(d.declaration));
     if (!l) return null;
     const decl = d.declaration;
     return {
@@ -121,7 +122,12 @@ export async function enregistrerEdition(c: Contexte, id: string, brut: unknown)
     const d = await lireDeclaration(c.chemins, id);
     if ("invalide" in d) return { ok: false, erreur: `widget.json invalide : ${d.invalide}`, avertissements: [] };
     if (!("declaration" in d)) return { ok: false, erreur: "Widget introuvable", avertissements: [] };
-    const r = await enregistrerWorkflow({ dossierFichiers: d.dossier, dossierDonnees: join(c.dossierWidgets, id), brut });
+    const r = await enregistrerWorkflow({
+      dossierFichiers: d.dossier,
+      dossierDonnees: join(c.dossierWidgets, id),
+      brut,
+      contexte: contexteValidation(d.declaration),
+    });
     return { ...r, avertissements: r.ok ? avertissementsDe(brut, d.declaration) : [] };
   } catch (e) {
     console.error(`[webaios] enregistrement du workflow du widget ${id} :`, e);

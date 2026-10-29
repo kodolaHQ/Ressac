@@ -1,5 +1,9 @@
 import { REGISTRE_BLOCS } from "./blocs/index.js";
+import { chaineAuFilDeLEau } from "./chaine.js";
 import type { Workflow } from "./schema.js";
+import type { WorkflowValide } from "./valider.js";
+
+export const AVERTISSEMENT_FIL_DE_L_EAU = "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément";
 
 export type Avertissement = { bloc: string; message: string };
 
@@ -16,11 +20,13 @@ function hoteDe(url: string): string | null {
 
 /**
  * Ce qui ne bloque pas l'enregistrement mais risque de faire échouer l'exécution : un domaine absent des sources
- * déclarées (seulement pour un widget avec compte) ou une clé `{config.…}` absente de la configuration du widget.
+ * déclarées (seulement pour un widget avec compte), une clé `{config.…}` absente de la configuration du widget et, avec
+ * `valide` (le même workflow validé), une sortie « au fil de l'eau » sans chaîne : elle n'aurait rien à publier.
  */
 export function avertirWorkflow(
   workflow: Workflow,
   ctx: { sources: { compte: readonly string[]; publiques: readonly string[] }; config: unknown },
+  valide?: WorkflowValide,
 ): Avertissement[] {
   const r: Avertissement[] = [];
   const aCompte = ctx.sources.compte.length > 0;
@@ -50,6 +56,12 @@ export function avertirWorkflow(
       }
     }
     for (const cle of manquantes) r.push({ bloc: b.id, message: `config.${cle} absent de la configuration du widget` });
+  }
+  if (valide) {
+    const sortie = valide.workflow.blocs.find((b) => b.id === valide.sortie.id);
+    if (sortie?.parametres.auFilDeLEau === true && chaineAuFilDeLEau(valide).length === 0) {
+      r.push({ bloc: valide.sortie.id, message: AVERTISSEMENT_FIL_DE_L_EAU });
+    }
   }
   return r;
 }

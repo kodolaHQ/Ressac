@@ -11,6 +11,7 @@ export const definition: DefinitionBloc = {
     { nom: "cles", libelle: "Clés", aide: "Chemins des valeurs qui identifient un élément.", requis: true, defaut: ["url"], genre: "textes" },
   ],
   parElement: "non",
+  chaine: false,
   parametres: z
     .object({ cles: z.array(z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide")).min(1).max(10) })
     .strict(),

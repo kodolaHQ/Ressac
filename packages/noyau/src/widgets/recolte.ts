@@ -24,7 +24,7 @@ import { avecMemoire, ecrireMemoire, lireMemoire } from "../workflows/memoire.js
 import { debutTropGros } from "../workflows/protocole.js";
 import { PROFONDEUR_REJEU, REJEU_TROP_GROS, planRejeu } from "../workflows/rejeu.js";
 import { PREFIXE_WORKFLOW_INVALIDE, type Proprietaire } from "../workflows/schema.js";
-import type { WorkflowValide } from "../workflows/valider.js";
+import type { ContexteValidation, WorkflowValide } from "../workflows/valider.js";
 
 // Déplacés dans le moteur des workflows ; réexportés pour les modules et tests qui les prennent ici.
 export { adresseLocale } from "../workflows/acces.js";
@@ -113,9 +113,14 @@ type WorkflowDuWidget =
   /** workflow.json à moitié écrit, bloc inconnu, cycle… (message du validateur, tronqué). */
   | { t: "invalide"; erreur: string };
 
+/** Ce que la déclaration du widget change aux règles de son workflow. */
+export function contexteValidation(d: DeclarationWidget): ContexteValidation {
+  return { web: d.sources.web, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null };
+}
+
 async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {
   if ("erreur" in widget) return { t: "illisible", erreur: widget.erreur };
-  const lu = await lireWorkflow(widget.dossier);
+  const lu = await lireWorkflow(widget.dossier, contexteValidation(widget.declaration));
   if (!lu) return { t: "absent" };
   if (!lu.resultat.ok) return { t: "invalide", erreur: tronquer(lu.resultat.erreur, ERREUR_MAX) };
   return { t: "ok", valide: lu.resultat.valide, declaration: widget.declaration };

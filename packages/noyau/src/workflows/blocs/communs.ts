@@ -12,6 +12,11 @@ export interface DefinitionBloc {
   entree: "requise" | "facultative" | "parElement";
   /** Les champs du formulaire du bloc : un par clé du schéma des paramètres. */
   champs: ChampFormulaire[];
+  /**
+   * Le bloc peut faire partie de la chaîne « au fil de l'eau » (quand `parElement` vaut true) : chaque élément le
+   * traverse seul jusqu'à la sortie. Interne au moteur, le catalogue ne l'expose pas.
+   */
+  chaine: boolean;
 }
 
 export type FamilleBloc = "Sources" | "Listes" | "IA" | "Logique/Code" | "Sortie";
@@ -36,8 +41,11 @@ export type ChampFormulaire = {
 export const ParametresParElement = {
   parElement: z.boolean().default(false),
   siErreur: z.enum(["sauter", "echouer"]).default("sauter"),
-  budgetSecondes: z.number().int().min(1).max(170).optional(),
+  // 170 s au plus sans durée maximale du widget, sa durée sinon : la borne selon le widget est dans validerWorkflow.
+  budgetSecondes: z.number().int().min(1).max(3600).optional(),
   reutiliser: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide").optional(),
+  /** Durée de vie d'un résultat réutilisé ; sans valeur, pour toujours. Seulement avec `reutiliser` (validerWorkflow). */
+  garderJours: z.number().int().min(1).max(365).optional(),
 };
 
 /** Texte d'un gabarit (`{chemin}`) : borné, jamais exécuté. */
@@ -56,7 +64,8 @@ export const CHAMP_PAR_ELEMENT: ChampFormulaire = {
 export function champsParElementSeulement(): ChampFormulaire[] {
   return [
     { nom: "siErreur", libelle: "En cas d'erreur", requis: false, defaut: "sauter", genre: "choix", choix: ["sauter", "echouer"], parElementSeulement: true },
-    { nom: "budgetSecondes", libelle: "Durée maximale (secondes)", requis: false, genre: "nombre", min: 1, max: 170, entier: true, parElementSeulement: true },
+    { nom: "budgetSecondes", libelle: "Durée maximale (secondes)", aide: "170 s au plus, ou la durée maximale de l'exécution", requis: false, genre: "nombre", min: 1, max: 3600, entier: true, parElementSeulement: true },
     { nom: "reutiliser", libelle: "Réutiliser un résultat précédent", aide: "Chemin de la clé qui identifie l'élément.", requis: false, genre: "texte", parElementSeulement: true },
+    { nom: "garderJours", libelle: "Garder (jours)", aide: "Sans valeur : pour toujours.", requis: false, genre: "nombre", min: 1, max: 365, entier: true, parElementSeulement: true },
   ];
 }

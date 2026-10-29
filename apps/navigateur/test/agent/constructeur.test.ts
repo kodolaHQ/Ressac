@@ -143,6 +143,29 @@ test("lireEdition : workflow.json invalide gardé tel quel, JSON coupé : brut n
   expect(e?.widget.config).toEqual({ ville: "Lyon" });
 });
 
+test("lireEdition et enregistrerEdition valident selon le widget (durée maximale) et signalent une sortie au fil de l'eau sans chaîne", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const { AVERTISSEMENT_FIL_DE_L_EAU } = await import("@webaios/noyau");
+  const { enregistrerEdition, lireEdition } = await import("../../src/main/agent/constructeur");
+  const m = await monter();
+  const flux = { id: "flux", type: "source.flux", position: { x: 0, y: 0 }, parametres: { urls: ["https://x.test/rss"] } };
+  const fiche = { id: "fiche", type: "source.page", position: { x: 1, y: 0 }, parametres: { url: "https://x.test/{url}", parElement: true, budgetSecondes: 600 } };
+  const fil = { id: "sortie", type: "sortie", position: { x: 2, y: 0 }, parametres: { auFilDeLEau: true } };
+  const long = { version: 1, blocs: [flux, fiche, fil], liens: [{ de: "flux", vers: "fiche" }, { de: "fiche", vers: "sortie" }] };
+  // Sans durée maximale déclarée : 170 s au plus.
+  expect(await enregistrerEdition(m.c, "meteo", long)).toMatchObject({ ok: false, bloc: "fiche", erreur: expect.stringContaining("fiche.budgetSecondes : 170 au plus") });
+
+  const decl = { nom: "Météo", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, recolte: { minutes: 60, dureeMaxMinutes: 30 } };
+  writeFileSync(m.join(m.dossier, "widget.json"), JSON.stringify(decl));
+  expect(await enregistrerEdition(m.c, "meteo", long)).toEqual({ ok: true, ecrit: true, memoireEffacee: [], avertissements: [] });
+  expect(await lireEdition(m.c, "meteo")).toMatchObject({ validation: { ok: true }, avertissements: [] });
+
+  const sansChaine = { version: 1, blocs: [flux, fil], liens: [{ de: "flux", vers: "sortie" }] };
+  const r = await enregistrerEdition(m.c, "meteo", sansChaine);
+  expect(r).toMatchObject({ ok: true, avertissements: [{ bloc: "sortie", message: AVERTISSEMENT_FIL_DE_L_EAU }] });
+  expect((await lireEdition(m.c, "meteo"))?.avertissements).toEqual([{ bloc: "sortie", message: AVERTISSEMENT_FIL_DE_L_EAU }]);
+});
+
 test("enregistrerEdition : widget inconnu et widget.json invalide refusés, widget.json du workflow intact", async () => {
   const { readFileSync, writeFileSync } = await import("node:fs");
   const { enregistrerEdition } = await import("../../src/main/agent/constructeur");

@@ -15,6 +15,7 @@ export const definition: DefinitionBloc = {
     { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "page", genre: "texte" },
   ],
   parElement: "option",
+  chaine: true,
   parametres: z
     .object({
       url: Gabarit,

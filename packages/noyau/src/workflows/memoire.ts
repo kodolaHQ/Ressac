@@ -27,9 +27,13 @@ function canonique(v: unknown): unknown {
 /** Texte JSON d'une valeur, clés triées récursivement : deux valeurs égales donnent le même texte. */
 export const jsonCanonique = (v: unknown): string => JSON.stringify(canonique(v));
 
-/** Empreinte (16 caractères) des paramètres d'un bloc : la mémoire d'un bloc ne vaut que pour ses réglages. */
+/**
+ * Empreinte (16 caractères) des paramètres d'un bloc : la mémoire d'un bloc ne vaut que pour ses réglages. `garderJours`
+ * n'en fait pas partie : changer la durée de vie des résultats retenus ne les efface pas.
+ */
 export function empreinteParametres(p: Record<string, unknown>): string {
-  return createHash("sha256").update(jsonCanonique(p)).digest("hex").slice(0, 16);
+  const { garderJours: _garderJours, ...reglages } = p;
+  return createHash("sha256").update(jsonCanonique(reglages)).digest("hex").slice(0, 16);
 }
 
 const verrous = new Map<string, Promise<unknown>>();

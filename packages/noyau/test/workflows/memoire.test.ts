@@ -36,3 +36,9 @@ test("l'empreinte survit à lireMemoire / ecrireMemoire (R5) ; une ancienne mém
   await ecrireMemoire(d, m);
   expect(await lireMemoire(d)).toEqual(m);
 });
+
+test("empreinteParametres ignore garderJours", () => {
+  expect(empreinteParametres({ cle: "url", garderJours: 7 })).toBe(empreinteParametres({ cle: "url" }));
+  expect(empreinteParametres({ cle: "url", garderJours: 7 })).toBe(empreinteParametres({ cle: "url", garderJours: 30 }));
+  expect(empreinteParametres({ cle: "titre", garderJours: 7 })).not.toBe(empreinteParametres({ cle: "url", garderJours: 7 }));
+});

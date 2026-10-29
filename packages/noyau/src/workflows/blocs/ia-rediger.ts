@@ -16,6 +16,7 @@ export const definition: DefinitionBloc = {
     ...champsParElementSeulement(),
   ],
   parElement: "option",
+  chaine: true,
   parametres: z
     .object({
       consigne: Gabarit,

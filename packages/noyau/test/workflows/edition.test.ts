@@ -215,3 +215,43 @@ test("lireCode / enregistrerCode refusent ../x.mjs, x.js, un lien sortant, plus 
   expect(await lireCode(fichiers, "nouveau.mjs")).toEqual({ texte: "export default 1" });
   expect((await readdir(fichiers)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
 });
+
+test("changer garderJours de liste.nouveaux n'efface pas sa mémoire ; changer cle l'efface", async () => {
+  const avecGarder = (cle: string, garderJours?: number) => {
+    const w = wf(cle);
+    if (garderJours !== undefined) w.blocs[1]!.parametres = { cle, garderJours } as never;
+    return w;
+  };
+  await enreg(avecGarder("url", 7));
+  const m = { n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url", garderJours: 7 }) } };
+  await ecrireMemoire(donnees, m);
+  expect(await enreg(avecGarder("url", 30))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
+  expect(await enreg(avecGarder("url"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
+  expect(await lireMemoire(donnees)).toEqual(m);
+  expect(await enreg(avecGarder("titre", 30))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
+  expect(await lireMemoire(donnees)).toEqual({});
+});
+
+test("le workflow en place est relu avec le contexte du widget : un widget long efface la mémoire et ne réécrit pas un fichier identique", async () => {
+  const contexte = { web: false, dureeMaxMinutes: 30 };
+  const long = (cle: string) => {
+    const w = wf(cle);
+    w.blocs.splice(1, 0, { id: "p", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://x.fr/{url}", parElement: true, budgetSecondes: 600 } } as never);
+    w.liens = [{ de: "a", vers: "p" }, { de: "p", vers: "n" }, { de: "n", vers: "s" }];
+    return w;
+  };
+  const enregLong = (brut: unknown) => enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte });
+  // Sans le contexte, ce workflow est refusé (600 s > 170 s).
+  expect(await enreg(long("url"))).toMatchObject({ ok: false, bloc: "p" });
+  expect(await enregLong(long("url"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
+  expect(await lireBrouillon(fichiers, contexte)).toMatchObject({ validation: { ok: true } });
+  expect(await lireBrouillon(fichiers)).toMatchObject({ validation: { ok: false } });
+
+  const passe = new Date("2020-01-01T00:00:00Z");
+  await utimes(join(fichiers, "workflow.json"), passe, passe);
+  expect(await enregLong(long("url"))).toEqual({ ok: true, ecrit: false, memoireEffacee: [] });
+  expect((await stat(join(fichiers, "workflow.json"))).mtime).toEqual(passe);
+
+  await ecrireMemoire(donnees, { n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) } });
+  expect(await enregLong(long("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
+});

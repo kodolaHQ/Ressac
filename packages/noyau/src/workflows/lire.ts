@@ -1,7 +1,7 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { TAILLE_MAX_WORKFLOW } from "./schema.js";
-import { erreurWorkflow, validerWorkflow, workflowImplicite, type ResultatValidation } from "./valider.js";
+import { CONTEXTE_PAR_DEFAUT, erreurWorkflow, validerWorkflow, workflowImplicite, type ContexteValidation, type ResultatValidation } from "./valider.js";
 
 export type WorkflowLu = { origine: "fichier" | "implicite"; resultat: ResultatValidation };
 
@@ -28,21 +28,22 @@ export async function lireBrutWorkflow(dossier: string): Promise<{ brut: unknown
   }
 }
 
-async function lireFichier(dossier: string): Promise<ResultatValidation> {
+async function lireFichier(dossier: string, ctx: ContexteValidation): Promise<ResultatValidation> {
   const lu = await lireBrutWorkflow(dossier);
-  return "erreur" in lu ? erreurWorkflow(lu.erreur) : validerWorkflow(lu.brut);
+  return "erreur" in lu ? erreurWorkflow(lu.erreur) : validerWorkflow(lu.brut, ctx);
 }
 
 /**
  * Le workflow d'un widget : `workflow.json` s'il existe, sinon le workflow implicite d'un
- * `recolte.mjs`, sinon null. Rien n'est exécuté ici : le fichier n'est lu que comme du JSON.
+ * `recolte.mjs`, sinon null. Rien n'est exécuté ici : le fichier n'est lu que comme du JSON. `ctx` : ce que le widget
+ * déclare (`contexteValidation`).
  */
-export async function lireWorkflow(dossierFichiers: string): Promise<WorkflowLu | null> {
+export async function lireWorkflow(dossierFichiers: string, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): Promise<WorkflowLu | null> {
   if (await existe(join(dossierFichiers, "workflow.json"))) {
-    return { origine: "fichier", resultat: await lireFichier(dossierFichiers) };
+    return { origine: "fichier", resultat: await lireFichier(dossierFichiers, ctx) };
   }
   if (await existe(join(dossierFichiers, "recolte.mjs"))) {
-    return { origine: "implicite", resultat: validerWorkflow(workflowImplicite()) };
+    return { origine: "implicite", resultat: validerWorkflow(workflowImplicite(), ctx) };
   }
   return null;
 }

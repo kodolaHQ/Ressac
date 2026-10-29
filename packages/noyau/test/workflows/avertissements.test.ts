@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { avertirWorkflow, type Workflow } from "../../src/index.js";
+import { AVERTISSEMENT_FIL_DE_L_EAU, avertirWorkflow, validerWorkflow, type Workflow } from "../../src/index.js";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown>) => ({ id, type, position: { x: 0, y: 0 }, parametres });
 const wf = (...blocs: ReturnType<typeof bloc>[]): Workflow => ({ version: 1, blocs, liens: [] });
@@ -43,4 +43,26 @@ test("{config.ville} sans ville dans la config est signalé, {config.ville} pré
   expect(sans).toEqual([{ bloc: "r", message: "config.ville absent de la configuration du widget" }]);
   expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: { ville: { nom: "Lyon" }, mot: "x" } })).toEqual([]);
   expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: null })).toHaveLength(2);
+});
+
+test("auFilDeLEau derrière liste.garder : AVERTISSEMENT_FIL_DE_L_EAU sur la sortie ; derrière une chaîne : aucun", () => {
+  const brut = (avant: ReturnType<typeof bloc>) => ({
+    version: 1,
+    blocs: [
+      bloc("f", "source.flux", { urls: ["https://x.fr/rss"] }),
+      bloc("top", "liste.garder", { nombre: 3 }),
+      avant,
+      bloc("s", "sortie", { vers: "widget", auFilDeLEau: true }),
+    ],
+    liens: [{ de: "f", vers: "top" }, { de: "top", vers: avant.id }, { de: avant.id, vers: "s" }],
+  });
+  const sans = { sources: { compte: [], publiques: [] }, config: {} };
+  const avertir = (b: unknown) => {
+    const r = validerWorkflow(b);
+    if (!r.ok) throw new Error(r.erreur);
+    return avertirWorkflow(r.valide.workflow, sans, r.valide);
+  };
+  expect(avertir(brut(bloc("g", "liste.garder", { nombre: 2 })))).toEqual([{ bloc: "s", message: AVERTISSEMENT_FIL_DE_L_EAU }]);
+  expect(avertir(brut(bloc("p", "source.page", { url: "https://x.fr/{url}", parElement: true })))).toEqual([]);
+  expect(AVERTISSEMENT_FIL_DE_L_EAU).toBe("rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
 });

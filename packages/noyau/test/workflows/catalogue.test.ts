@@ -81,3 +81,14 @@ test("les familles suivent l'ordre Sources, Listes, IA, Logique/Code, Sortie", (
   expect(rangs).toEqual([...rangs].sort((a, b) => a - b));
   expect(new Set(catalogue.map((b) => b.famille))).toEqual(new Set(ordre));
 });
+
+test("garderJours, auFilDeLEau et la borne de budgetSecondes dans le catalogue", () => {
+  for (const type of ["source.page", "source.recuperer", "ia.rediger"]) {
+    expect(champ(type, "garderJours"), type).toMatchObject({ libelle: "Garder (jours)", aide: "Sans valeur : pour toujours.", requis: false, genre: "nombre", min: 1, max: 365, entier: true, parElementSeulement: true });
+    expect(champ(type, "budgetSecondes"), type).toMatchObject({ max: 3600, aide: "170 s au plus, ou la durée maximale de l'exécution" });
+  }
+  expect(champ("ia.trier", "garderJours").parElementSeulement).toBeUndefined();
+  expect(champ("liste.nouveaux", "garderJours")).toMatchObject({ libelle: "Oublier après (jours)", requis: false, genre: "nombre", min: 1, max: 365, entier: true });
+  expect(champ("sortie", "auFilDeLEau")).toMatchObject({ libelle: "Publier au fil de l'eau", requis: false, defaut: false, genre: "case" });
+  expect(de("source.page")).not.toHaveProperty("chaine");
+});

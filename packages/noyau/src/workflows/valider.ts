@@ -11,6 +11,15 @@ export type WorkflowValide = {
   sortie: { id: string; vers: GenreSortie };
 };
 
+/** Ce que le widget déclare et qui change les règles : `sources.web` et `recolte.dureeMaxMinutes`. */
+export type ContexteValidation = { web: boolean; dureeMaxMinutes: number | null };
+
+/** Un widget sans `web` ni durée maximale : les règles d'avant. */
+export const CONTEXTE_PAR_DEFAUT: ContexteValidation = { web: false, dureeMaxMinutes: null };
+
+/** Le `budgetSecondes` d'un bloc sans durée maximale du widget. */
+const BUDGET_MAX_SECONDES = 170;
+
 /** `bloc` : l'id du bloc en cause, quand l'erreur en vise un. */
 export type ResultatValidation = { ok: true; valide: WorkflowValide } | { ok: false; erreur: string; bloc?: string };
 
@@ -95,7 +104,7 @@ function nommerCycle(restants: string[], predecesseurs: Record<string, string[]>
   return { texte: [...tourne, tourne[0]!].join(" → "), premier: tourne[0]! };
 }
 
-export function validerWorkflow(brut: unknown): ResultatValidation {
+export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): ResultatValidation {
   const lu = Workflow.safeParse(brut);
   if (!lu.success) return erreurWorkflow(premierProbleme(lu.error));
   const workflow = lu.data;
@@ -115,6 +124,14 @@ export function validerWorkflow(brut: unknown): ResultatValidation {
     const parametres = definition.parametres.safeParse(b.parametres);
     if (!parametres.success) return erreurWorkflow(premierProbleme(parametres.error, b.id), b.id);
     b.parametres = parametres.data as Record<string, unknown>;
+    const p = b.parametres;
+    const budgetMax = ctx.dureeMaxMinutes ? ctx.dureeMaxMinutes * 60 : BUDGET_MAX_SECONDES;
+    if (typeof p.budgetSecondes === "number" && p.budgetSecondes > budgetMax) {
+      return erreurWorkflow(`${b.id}.budgetSecondes : ${budgetMax} au plus`, b.id);
+    }
+    if (b.type !== "liste.nouveaux" && p.garderJours !== undefined && p.reutiliser === undefined) {
+      return erreurWorkflow(`${b.id}.garderJours : seulement avec reutiliser`, b.id);
+    }
   }
 
   const predecesseurs: Record<string, string[]> = Object.fromEntries(workflow.blocs.map((b) => [b.id, []]));

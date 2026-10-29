@@ -800,6 +800,31 @@ describe("executerRecolte, par le workflow du widget", () => {
     }
   });
 
+  it("le workflow est validé selon le widget : budgetSecondes 600 refusé sans durée maximale, accepté avec dureeMaxMinutes 30", async () => {
+    const LONG = {
+      version: 1,
+      blocs: [
+        { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
+        { id: "page", type: "source.page", parametres: { url: "https://app.daily.dev/", parElement: true, budgetSecondes: 600 } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      ],
+      liens: [{ de: "liste", vers: "page" }, { de: "page", vers: "sortie" }],
+    };
+    const fichiers = { "liste.mjs": "export default () => [{ id: 1 }];" };
+    const court = await preparer("court", "");
+    await enWorkflow(court, LONG, fichiers);
+    const refuse = await recolter(court, { pont: pontLecture() });
+    expect(refuse.etat.erreur).toBe("Workflow invalide : page.budgetSecondes : 170 au plus");
+    expect(court.commandes).toHaveLength(0);
+
+    const long = await preparer("long", "");
+    long.widget.declaration.recolte = { minutes: 60, dureeMaxMinutes: 30 };
+    await enWorkflow(long, LONG, fichiers);
+    const r = await recolter(long, { pont: pontLecture() });
+    expect(long.commandes).toHaveLength(1);
+    expect(r.etat.statut).toBe("ok");
+  });
+
   it("accord retiré pendant l'exécution : ni données, ni exécution, ni mémoire sur le disque à la fin", async () => {
     const ctx = await preparer("daily", "", sources);
     await enWorkflow(ctx, NOUVEAUX, {

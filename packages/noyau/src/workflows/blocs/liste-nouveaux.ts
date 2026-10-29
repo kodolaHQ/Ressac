@@ -9,7 +9,14 @@ export const definition: DefinitionBloc = {
   entree: "requise",
   champs: [
     { nom: "cle", libelle: "Clé", aide: "Chemin de la valeur qui identifie un élément.", requis: true, defaut: "url", genre: "texte" },
+    { nom: "garderJours", libelle: "Oublier après (jours)", aide: "Sans valeur : pour toujours.", requis: false, genre: "nombre", min: 1, max: 365, entier: true },
   ],
   parElement: "non",
-  parametres: z.object({ cle: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide") }).strict(),
+  chaine: false,
+  parametres: z
+    .object({
+      cle: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide"),
+      garderJours: z.number().int().min(1).max(365).optional(),
+    })
+    .strict(),
 };

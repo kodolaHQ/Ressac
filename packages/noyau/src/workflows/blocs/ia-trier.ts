@@ -19,6 +19,7 @@ export const definition: DefinitionBloc = {
     ...champsParElementSeulement().map(({ parElementSeulement: _marque, ...c }) => c),
   ],
   parElement: "toujours",
+  chaine: false,
   parametres: z
     .object({
       question: Gabarit,
