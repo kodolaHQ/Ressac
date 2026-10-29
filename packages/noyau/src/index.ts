@@ -33,3 +33,4 @@ export * from "./workflows/executions.js";
 export * from "./workflows/memoire.js";
 export * from "./workflows/edition.js";
 export * from "./workflows/avertissements.js";
+export * from "./workflows/rejeu.js";

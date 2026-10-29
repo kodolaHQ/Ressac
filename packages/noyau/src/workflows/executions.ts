@@ -7,13 +7,17 @@ import type { Proprietaire } from "./schema.js";
 export const SORTIE_MAX_OCTETS = 256 * 1024;
 export const EXECUTION_MAX_OCTETS = 4 * 1024 * 1024;
 export const EXECUTIONS_GARDEES = 20;
-export const ID_EXECUTION = /^[0-9TZ-]+$/;
+/** Les essais (rejeux du constructeur) ont leur propre quota : ils ne chassent jamais une vraie exécution. */
+export const ESSAIS_GARDES = 10;
+export const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
+const SUFFIXE_ESSAI = "-essai";
 
 export const TraceBloc = z.object({
   id: z.string(),
   type: z.string(),
   // « interrompu » : commencé, pas fini, quand WebAiOs s'est arrêté pendant l'exécution.
-  statut: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance"]),
+  // « repris » : sortie reprise de l'exécution d'origine d'un essai, sans être recopiée (`elements` l'est).
+  statut: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance", "repris"]),
   debut: z.string().nullable(),
   fin: z.string().nullable(),
   elements: z.number().nullable(),
@@ -28,7 +32,9 @@ export const Execution = z.object({
   version: z.literal(1),
   id: z.string(),
   proprietaire: z.object({ type: z.literal("widget"), id: z.string() }),
-  declencheur: z.enum(["planifiee", "manuelle", "agent"]),
+  declencheur: z.enum(["planifiee", "manuelle", "agent", "rejeu"]),
+  // Seulement pour un essai : le bloc de départ et l'exécution dont les sorties amont sont reprises.
+  essai: z.object({ depart: z.string(), origine: z.string() }).optional(),
   debut: z.string(),
   fin: z.string().nullable(),
   statut: z.enum(["reussie", "partielle", "echouee", "interrompue", "accord-requis"]),
@@ -38,13 +44,18 @@ export const Execution = z.object({
 });
 export type Execution = Omit<z.infer<typeof Execution>, "proprietaire"> & { proprietaire: Proprietaire };
 
-export type ResumeExecution = Pick<Execution, "id" | "declencheur" | "debut" | "fin" | "statut"> & {
+export type ResumeExecution = Pick<Execution, "id" | "declencheur" | "debut" | "fin" | "statut" | "essai"> & {
   blocs: { id: string; statut: TraceBloc["statut"]; elements: number | null }[];
 };
 
 /** Identifiant d'une exécution : son début ISO, sans « : » ni « . » (sûr comme nom de fichier). */
 export function idExecution(debutIso: string): string {
   return debutIso.replace(/[:.]/g, "-");
+}
+
+/** Identifiant d'un essai : celui de l'exécution qui porte le même début, suivi de « -essai ». */
+export function idEssai(debutIso: string): string {
+  return idExecution(debutIso) + SUFFIXE_ESSAI;
 }
 
 const dossierExecutions = (dossierDonnees: string) => join(dossierDonnees, "executions");
@@ -128,14 +139,18 @@ function bornerTexte(b: TraceBloc): TraceBloc {
   return { ...b, journal, ...(b.erreur === undefined ? {} : { erreur: coupe(b.erreur, ERREUR_MAX_OCTETS) }) };
 }
 
-/** Écrit une exécution (tronquée au besoin) et ne garde que les 20 plus récentes. */
+/** Écrit une exécution (tronquée au besoin) et ne garde que les 20 plus récentes vraies, et les 10 plus récents essais. */
 export async function ecrireExecution(dossierDonnees: string, e: Execution): Promise<void> {
   if (!ID_EXECUTION.test(e.id)) throw new Error(`id d'exécution invalide : ${e.id}`);
   const dossier = dossierExecutions(dossierDonnees);
   await ecrireAtomique(join(dossier, `${e.id}.json`), JSON.stringify(tronquer(e), null, 2));
-  const noms = (await nomsExecutions(dossier)).sort();
-  for (const nom of noms.slice(0, Math.max(0, noms.length - EXECUTIONS_GARDEES))) {
-    await rm(join(dossier, nom), { force: true });
+  const noms = await nomsExecutions(dossier);
+  for (const [groupe, gardees] of [
+    [noms.filter((n) => !n.endsWith(`${SUFFIXE_ESSAI}.json`)), EXECUTIONS_GARDEES],
+    [noms.filter((n) => n.endsWith(`${SUFFIXE_ESSAI}.json`)), ESSAIS_GARDES],
+  ] as const) {
+    const tries = [...groupe].sort();
+    for (const nom of tries.slice(0, Math.max(0, tries.length - gardees))) await rm(join(dossier, nom), { force: true });
   }
 }
 
@@ -163,6 +178,7 @@ function resumer(e: Execution): ResumeExecution {
   return {
     id: e.id,
     declencheur: e.declencheur,
+    ...(e.essai ? { essai: e.essai } : {}),
     debut: e.debut,
     fin: e.fin,
     statut: e.statut,

@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  EXECUTION_MAX_OCTETS, SORTIE_MAX_OCTETS, ecrireExecution, idExecution, listerExecutions, lireExecution,
+  EXECUTION_MAX_OCTETS, ESSAIS_GARDES, ID_EXECUTION, SORTIE_MAX_OCTETS, ecrireExecution, effacerExecutionsEtMemoire, idEssai, idExecution, listerExecutions, lireExecution,
   type Execution, type TraceBloc,
 } from "../../src/index.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -117,5 +117,66 @@ test("listerExecutions ne relit pas un fichier inchangé (même date, même tail
   expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["echouee"]);
   // Effacé : plus listé.
   await rm(chemin);
+  expect(await listerExecutions(d)).toEqual([]);
+});
+
+const essai = (debut: string): Execution => ({
+  ...execution(debut), id: idEssai(debut), declencheur: "rejeu", essai: { depart: "b", origine: idExecution(horodatage(0)) },
+});
+
+test("idEssai ajoute -essai à l'identifiant de l'exécution", () => {
+  expect(idEssai("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z-essai");
+});
+
+test("25 essais et 25 vraies exécutions : 10 essais et 20 vraies gardés", async () => {
+  const d = await dossierTemporaire();
+  for (let i = 0; i < 25; i++) {
+    await ecrireExecution(d, essai(horodatage(i)));
+    await ecrireExecution(d, execution(horodatage(i)));
+  }
+  const noms = (await readdir(join(d, "executions"))).sort();
+  expect(noms.filter((n) => n.endsWith("-essai.json"))).toHaveLength(ESSAIS_GARDES);
+  expect(noms.filter((n) => !n.endsWith("-essai.json"))).toHaveLength(20);
+  expect(noms).toContain(`${idEssai(horodatage(24))}.json`);
+  expect(noms).not.toContain(`${idEssai(horodatage(14))}.json`);
+  expect(noms).toContain(`${idExecution(horodatage(5))}.json`);
+});
+
+test("une série d'essais ne chasse aucune vraie exécution", async () => {
+  const d = await dossierTemporaire();
+  for (let i = 0; i < 20; i++) await ecrireExecution(d, execution(horodatage(i)));
+  for (let i = 20; i < 60; i++) await ecrireExecution(d, essai(horodatage(i)));
+  const noms = await readdir(join(d, "executions"));
+  expect(noms.filter((n) => !n.endsWith("-essai.json"))).toHaveLength(20);
+  expect(noms).toContain(`${idExecution(horodatage(0))}.json`);
+});
+
+test("listerExecutions marque les essais", async () => {
+  const d = await dossierTemporaire();
+  await ecrireExecution(d, execution(horodatage(1)));
+  await ecrireExecution(d, essai(horodatage(2)));
+  const liste = await listerExecutions(d);
+  expect(liste.find((r) => r.id === idEssai(horodatage(2)))!.essai).toEqual({ depart: "b", origine: idExecution(horodatage(0)) });
+  expect(liste.find((r) => r.id === idExecution(horodatage(1)))!.essai).toBeUndefined();
+});
+
+test("lireExecution accepte <horodatage>-essai et refuse ../x-essai", async () => {
+  const d = await dossierTemporaire();
+  await ecrireExecution(d, essai(horodatage(3)));
+  expect((await lireExecution(d, idEssai(horodatage(3))))!.declencheur).toBe("rejeu");
+  // Garde de régression (R21) : déjà vrai avant l'élargissement de ID_EXECUTION.
+  await writeFile(join(d, "x-essai.json"), "{}");
+  expect(await lireExecution(d, "../x-essai")).toBeNull();
+  expect(await lireExecution(d, "x-essai")).toBeNull();
+  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai")).toBe(true);
+  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai/../x")).toBe(false);
+  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai-essai")).toBe(false);
+});
+
+test("effacerExecutionsEtMemoire efface aussi les essais", async () => {
+  const d = await dossierTemporaire();
+  await ecrireExecution(d, essai(horodatage(3)));
+  await effacerExecutionsEtMemoire(d);
+  expect(await lireExecution(d, idEssai(horodatage(3)))).toBeNull();
   expect(await listerExecutions(d)).toEqual([]);
 });

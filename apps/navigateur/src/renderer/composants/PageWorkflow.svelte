@@ -72,7 +72,7 @@
   /** Éléments produits par chaque bloc à la dernière exécution. */
   const derniers = $derived(new Map((executions[0]?.blocs ?? []).map((b) => [b.id, b.elements])));
 
-  const DECLENCHEURS: Record<Execution["declencheur"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent" };
+  const DECLENCHEURS: Record<Execution["declencheur"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
   const STATUTS: Record<Execution["statut"], string> = {
     reussie: "Réussie",
     partielle: "Partielle",
@@ -86,6 +86,7 @@
     echoue: "Échoué",
     interrompu: "Interrompu",
     "pas-lance": "Pas lancé",
+    repris: "Repris",
   };
   /** Couleur de la pastille : la même échelle pour une exécution et pour un bloc. */
   const TEINTES: Record<string, "ok" | "moyen" | "echec" | "neutre"> = {
@@ -99,6 +100,7 @@
     interrompue: "echec",
     interrompu: "echec",
     "pas-lance": "neutre",
+    repris: "neutre",
   };
 
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });

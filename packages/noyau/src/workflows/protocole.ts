@@ -91,6 +91,19 @@ export function ligneDebut(o: { precedent: unknown; maintenant: string; config: 
   );
 }
 
+/**
+ * Octets de la ligne de début (avec, pour un rejeu, les `sorties` reprises) : le récolteur refuse une ligne de plus de
+ * `LIGNE_MAX_OCTETS`. À mesurer avant de lancer un essai, pour refuser sans rien écrire.
+ */
+export function octetsLigneDebut(o: Parameters<typeof ligneDebut>[0], sorties?: Record<string, unknown>): number {
+  const base = Buffer.byteLength(ligneDebut(o));
+  return sorties === undefined ? base : base + Buffer.byteLength(`,"sorties":${JSON.stringify(sorties)}`);
+}
+
+export function debutTropGros(o: Parameters<typeof ligneDebut>[0], sorties?: Record<string, unknown>): boolean {
+  return octetsLigneDebut(o, sorties) > LIGNE_MAX_OCTETS;
+}
+
 export function ligneMemoire(m: MemoireBlocs): string {
   return JSON.stringify({ t: "memoire", memoire: m }) + "\n";
 }
