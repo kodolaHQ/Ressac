@@ -32,3 +32,6 @@ export function compterNouveaux(precedent: unknown, donnees: unknown): number {
 export function texteNotification(n: number): string {
   return n === 1 ? "1 nouvel élément" : `${n} nouveaux éléments`;
 }
+
+/** Ce que montre la notification de fin d'une veille : `titre` = nom du widget, `texte` = `texteNotification(n)`. */
+export type NotificationWidget = { widget: string; titre: string; texte: string };

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
@@ -26,6 +26,7 @@ import { estInvisible } from "./contenus-invisibles";
 import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
+import { creerNotifieur } from "./notifications";
 import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
@@ -703,6 +704,20 @@ app.whenReady().then(async () => {
         DELAI_QUESTION_MS,
         signal,
       ),
+    // Fin d'une veille avec de nouveaux éléments : titre = nom du widget, texte = leur nombre. Un clic rouvre les
+    // fenêtres s'il n'y en a plus, puis met au premier plan la dernière utilisée, sans changer d'onglet.
+    notifier: creerNotifieur({
+      creer: (opts) => new Notification(opts),
+      auClic: () => {
+        if (!fenetreAgent()) rouvrirFenetres();
+        const id = fenetreAgent();
+        const f = id ? fenetres.get(id) : undefined;
+        if (!f || INVISIBLE) return;
+        if (f.isMinimized()) f.restore();
+        f.focus();
+      },
+      ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierTest: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
+    }),
   });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).
   rouvrirFenetres = () => {

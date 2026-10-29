@@ -14,6 +14,7 @@ import {
   type EtatDirect,
   type EtatIa,
   type Noyau,
+  type NotificationWidget,
   type OngletInfo,
   type OutilsApplications,
   type WorkflowOuvert,
@@ -105,6 +106,8 @@ export function demarrerAgent(o: {
   historique?: Historique;
   /** Session d'un profil de connexion, pour les lectures invisibles des widgets. */
   sessionProfil: (id: IdProfil) => Session;
+  /** Notification de fin d'une veille qui a de nouveaux éléments (voir notifications.ts). */
+  notifier?: (n: NotificationWidget) => void;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
@@ -139,7 +142,7 @@ export function demarrerAgent(o: {
   let desabonnerDirect: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);

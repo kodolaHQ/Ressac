@@ -22,6 +22,7 @@ import type { IaLocale } from "./ia/ia-locale.js";
 import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
 import { Menagement } from "./workflows/menagement.js";
 import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
+import type { NotificationWidget } from "./widgets/nouveautes.js";
 import { accordRequis } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
 
@@ -236,6 +237,8 @@ export async function creerNoyau(o: {
   adressesLocales?: boolean;
   /** Tests seulement : la base des recherches DuckDuckGo (une page enregistrée servie en local). */
   urlRecherche?: string;
+  /** Notification de fin d'une veille qui a de nouveaux éléments (le navigateur la montre, voir OptionsPlanificateur). */
+  notifier?: (n: NotificationWidget) => void;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -338,6 +341,7 @@ export async function creerNoyau(o: {
     // Un seul ménagement pour toutes les exécutions de ce noyau : une recherche à la fois, une lecture à la fois par hôte.
     menagement: new Menagement(),
     ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
+    ...(o.notifier ? { notifier: o.notifier } : {}),
   });
   await planificateur.demarrer();
   const pont = o.pont;

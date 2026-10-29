@@ -14,6 +14,7 @@ import { creneauCourant, heureDue, suiviApres, type IssueHeure, type SuiviHeures
 import type { TraceDirecte } from "../workflows/executer.js";
 import { lireExecution, type Execution } from "../workflows/executions.js";
 import type { Menagement } from "../workflows/menagement.js";
+import { texteNotification, type NotificationWidget } from "./nouveautes.js";
 import {
   ERREUR_ATELIER_ARRETE,
   ERREUR_INTERROMPUE,
@@ -118,6 +119,11 @@ export interface OptionsPlanificateur {
   pret?: Promise<unknown>;
   /** Attente bornée d'une récolte en cours à l'arrêt (15 s par défaut). */
   attenteArretMs?: number;
+  /**
+   * Fin d'une vraie exécution réussie d'un widget `recolte.notifier` qui a de nouveaux éléments. Le texte n'est que leur
+   * nombre : rien des données. Une erreur du rappel est journalisée, jamais propagée.
+   */
+  notifier?: (n: NotificationWidget) => void;
 }
 
 /**
@@ -533,8 +539,9 @@ export class PlanificateurWidgets {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
     let etat: EtatWidget;
     let execution: string | undefined;
+    let nouveaux: number | undefined;
     try {
-      ({ etat, execution } = await this.suivre(
+      ({ etat, execution, nouveaux } = await this.suivre(
         w.id,
         "execution",
         (surTrace, ia) => this.o.recolter({ ...this.optionsRecolte(w, surTrace, ia), declencheur }),
@@ -558,9 +565,20 @@ export class PlanificateurWidgets {
       this.o.surChange?.();
       return { resultat: { ...avant, ...(execution ? { execution } : {}) }, issue: "sans-effet" };
     }
+    if (etat.statut === "ok" && nouveaux !== undefined && nouveaux > 0) this.notifierFin(w, nouveaux);
     // Accord requis, atelier arrêté : l'exécution n'a pas vraiment eu lieu.
     const issue: IssueHeure = etat.statut === "ok" ? "reussie" : etat.statut === "erreur" ? "echec" : "sans-effet";
     return { resultat: { ...etat, ...(execution ? { execution } : {}) }, issue };
+  }
+
+  /** Notification de fin : titre = nom du widget, texte = nombre de nouveaux éléments, jamais rien des données. */
+  private notifierFin(w: WidgetLu, nouveaux: number): void {
+    if (!this.o.notifier || "erreur" in w || w.declaration.recolte?.notifier !== true) return;
+    try {
+      this.o.notifier({ widget: w.id, titre: w.declaration.nom, texte: texteNotification(nouveaux) });
+    } catch (e) {
+      console.error(`[webaios] notification du widget ${w.id} :`, e);
+    }
   }
 
   /**

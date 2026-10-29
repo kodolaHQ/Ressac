@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { PassThrough } from "node:stream";
@@ -25,6 +25,7 @@ import {
 import { Menagement } from "../../src/workflows/menagement.js";
 import { creneauCourant } from "../../src/widgets/heures.js";
 import { IA_ABANDONNEE } from "../../src/ia/repartiteur.js";
+import type { NotificationWidget } from "../../src/widgets/nouveautes.js";
 import { lireAccueil } from "../../src/accueil/lire.js";
 import type { CheminsEspace } from "../../src/chemins.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
@@ -1154,4 +1155,94 @@ test("un rappel surChange qui lève pendant la remise au démarrage ne bloque pa
     erreurs.mockRestore();
   }
   expect(recoltes.length).toBeGreaterThan(0);
+});
+
+describe("notification de fin de veille", () => {
+  /** Un widget « veille » qui notifie, et un notifier espion ; la récolte factice rend `nouveaux` (et `statut`). */
+  async function preparerVeille(o: { notifier?: boolean; nouveaux?: number; statut?: EtatWidget["statut"]; sansRappel?: boolean } = {}) {
+    const notifications: NotificationWidget[] = [];
+    const notifier = vi.fn((n: NotificationWidget) => void notifications.push(n));
+    const t = await preparer({ options: o.sansRappel ? {} : { notifier } });
+    await ecrireWidget(
+      t.c,
+      "veille",
+      declarationWidget(undefined, { nom: "Vélos d'occasion", recolte: { minutes: 60, ...(o.notifier === false ? {} : { notifier: true }) } }),
+      { "recolte.mjs": "export default () => 1" },
+    );
+    t.recolter.mockImplementation(async (r) => {
+      const statut = o.statut ?? "ok";
+      const etat: EtatWidget = { statut, derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), ...(statut === "erreur" ? { erreur: "boum" } : {}) };
+      if (statut === "ok") await ecrireDonnees(r.dossierWidgets, r.id, [{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
+      await ecrireEtatWidget(r.dossierWidgets, r.id, etat);
+      return { etat, ...(o.nouveaux !== undefined ? { nouveaux: o.nouveaux } : {}) };
+    });
+    return { ...t, notifier, notifications };
+  }
+
+  test("3 nouveaux éléments : une notification, titre = nom du widget, texte « 3 nouveaux éléments »", async () => {
+    const { p, notifications } = await preparerVeille({ nouveaux: 3 });
+    await p.recolterMaintenant("veille");
+    expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "3 nouveaux éléments" }]);
+  });
+
+  test("1 nouvel élément : texte au singulier", async () => {
+    const { p, notifications } = await preparerVeille({ nouveaux: 1 });
+    await p.recolterMaintenant("veille");
+    expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "1 nouvel élément" }]);
+  });
+
+  test("zéro nouveau, échec, essai, widget sans notifier : aucune", async () => {
+    const zero = await preparerVeille({ nouveaux: 0 });
+    await zero.p.recolterMaintenant("veille");
+    await zero.p.recolterMaintenant("veille", "planifiee");
+    expect(zero.notifier).not.toHaveBeenCalled();
+    await zero.p.arreter();
+
+    const echec = await preparerVeille({ nouveaux: 2, statut: "erreur" });
+    await echec.p.recolterMaintenant("veille");
+    expect(echec.notifier).not.toHaveBeenCalled();
+    await echec.p.arreter();
+
+    const essai = await preparerVeille({ nouveaux: 2 });
+    expect(await essai.p.rejouer("veille", "2026-10-28T09-00-00-000Z", "liste")).toMatchObject({ ok: true });
+    expect(essai.recolterEssai).toHaveBeenCalledTimes(1);
+    expect(essai.notifier).not.toHaveBeenCalled();
+    await essai.p.arreter();
+
+    // Le widget ne déclare pas `notifier` : même si la récolte rendait un compte, rien.
+    const sans = await preparerVeille({ nouveaux: 2, notifier: false });
+    await sans.p.recolterMaintenant("veille");
+    expect(sans.notifier).not.toHaveBeenCalled();
+    await sans.p.arreter();
+
+    // Aucun rappel donné au planificateur : la récolte finit comme avant.
+    const sansRappel = await preparerVeille({ nouveaux: 2, sansRappel: true });
+    expect((await sansRappel.p.recolterMaintenant("veille")).statut).toBe("ok");
+  });
+
+  test("le texte ne contient rien des données (titre d'annonce piégé)", async () => {
+    const { p, notifications, dossierWidgets } = await preparerVeille({ nouveaux: 1 });
+    await p.recolterMaintenant("veille");
+    expect(await lireDonnees(dossierWidgets, "veille")).toEqual([{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
+    expect(notifications).toHaveLength(1);
+    expect(JSON.stringify(notifications)).not.toMatch(/PIÈGE|x\.test/);
+    expect(notifications[0]!.texte).toBe("1 nouvel élément");
+  });
+
+  test("un notifier qui lève n'empêche pas l'exécution de finir", async () => {
+    const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { p, notifier, dossierWidgets } = await preparerVeille({ nouveaux: 3 });
+      notifier.mockImplementation(() => {
+        throw new Error("Notification impossible");
+      });
+      const etat = await p.recolterMaintenant("veille");
+      expect(notifier).toHaveBeenCalledTimes(1);
+      expect(etat.statut).toBe("ok");
+      expect((await lireEtatWidget(dossierWidgets, "veille")).statut).toBe("ok");
+      expect(erreurs).toHaveBeenCalledWith(expect.stringContaining("notification du widget veille"), expect.any(Error));
+    } finally {
+      erreurs.mockRestore();
+    }
+  });
 });
