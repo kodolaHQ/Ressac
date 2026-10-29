@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Proprietaire } from "./schema.js";
@@ -60,6 +60,10 @@ async function ecrireAtomique(cible: string, texte: string): Promise<void> {
   }
 }
 
+const LIGNE_MAX_OCTETS = 2 * 1024;
+const ERREUR_MAX_OCTETS = 2 * 1024;
+const LIGNES_MAX = 200;
+
 function coupe(texte: string, octets: number): string {
   let s = texte.slice(0, octets);
   while (Buffer.byteLength(s) > octets) s = s.slice(0, Math.floor(s.length * 0.9));
@@ -68,9 +72,11 @@ function coupe(texte: string, octets: number): string {
 
 // Filet de sécurité : une sortie trop grosse est gardée en texte (le début de son JSON) et marquée ; si le fichier
 // dépasse encore 4 Mo, les plus grosses sorties partent d'abord.
-function tronquer(e: Execution): Execution {
+function tronquer(entree: Execution): Execution {
+  const e: Execution = entree.erreur === undefined ? entree : { ...entree, erreur: coupe(entree.erreur, ERREUR_MAX_OCTETS) };
   const tailles: number[] = [];
-  const blocs = e.blocs.map((b, i) => {
+  const blocs = e.blocs.map((b0, i) => {
+    const b = bornerTexte(b0);
     tailles[i] = 0;
     if (b.sortie === undefined) return b;
     const texte = JSON.stringify(b.sortie) ?? "null";
@@ -93,7 +99,31 @@ function tronquer(e: Execution): Execution {
     tailles[pire] = 0;
     courant = { ...e, blocs };
   }
+  // Toujours trop gros : les journaux les plus longs sont remplacés par une ligne de remarque.
+  while (Buffer.byteLength(JSON.stringify(courant, null, 2)) > EXECUTION_MAX_OCTETS) {
+    let pire = -1;
+    let max = 0;
+    for (let i = 0; i < blocs.length; i++) {
+      const t = Buffer.byteLength(JSON.stringify(blocs[i]!.journal));
+      if (t > max) {
+        max = t;
+        pire = i;
+      }
+    }
+    if (pire < 0 || blocs[pire]!.journal.length <= 1) break;
+    blocs[pire] = { ...blocs[pire]!, journal: [`… ${blocs[pire]!.journal.length} lignes coupées`] };
+    courant = { ...e, blocs };
+  }
   return courant;
+}
+
+// Erreur et journal d'un bloc : lignes de 2 Ko au plus, 200 lignes au plus (les dernières sont gardées).
+function bornerTexte(b: TraceBloc): TraceBloc {
+  let journal = b.journal.map((l) => (Buffer.byteLength(l) > LIGNE_MAX_OCTETS ? coupe(l, LIGNE_MAX_OCTETS) : l));
+  if (journal.length > LIGNES_MAX) {
+    journal = [`… ${journal.length - LIGNES_MAX} lignes coupées`, ...journal.slice(-LIGNES_MAX)];
+  }
+  return { ...b, journal, ...(b.erreur === undefined ? {} : { erreur: coupe(b.erreur, ERREUR_MAX_OCTETS) }) };
 }
 
 /** Écrit une exécution (tronquée au besoin) et ne garde que les 20 plus récentes. */
@@ -118,7 +148,9 @@ async function nomsExecutions(dossier: string): Promise<string[]> {
 export async function lireExecution(dossierDonnees: string, id: string): Promise<Execution | null> {
   if (!ID_EXECUTION.test(id)) return null;
   try {
-    const lue = Execution.parse(JSON.parse(await readFile(join(dossierExecutions(dossierDonnees), `${id}.json`), "utf8")));
+    const chemin = join(dossierExecutions(dossierDonnees), `${id}.json`);
+    if ((await stat(chemin)).size > EXECUTION_MAX_OCTETS) return null;
+    const lue = Execution.parse(JSON.parse(await readFile(chemin, "utf8")));
     return lue as Execution;
   } catch {
     return null;

@@ -82,3 +82,19 @@ test("lireExecution refuse un id qui sort du dossier", async () => {
   expect(await lireExecution(d, idExecution(horodatage(0)))).toBeNull();
   expect(await readFile(join(d, "etat.json"), "utf8")).toBe("{}");
 });
+
+test("journaux et erreurs énormes sont bornés : le fichier reste sous 4 Mo", async () => {
+  const d = await dossierTemporaire();
+  const blocs = Array.from({ length: 100 }, (_, i) => ({
+    ...bloc(`b${i}`), erreur: "e".repeat(100 * 1024),
+    journal: Array.from({ length: 300 }, (_, j) => `${j} ` + "l".repeat(5000)),
+  }));
+  const e = { ...execution(horodatage(0), blocs), erreur: "E".repeat(1024 * 1024) };
+  await ecrireExecution(d, e);
+  expect((await stat(join(d, "executions", `${e.id}.json`))).size).toBeLessThanOrEqual(EXECUTION_MAX_OCTETS);
+  const lue = (await lireExecution(d, e.id))!;
+  expect(Buffer.byteLength(lue.erreur!)).toBeLessThanOrEqual(2048);
+  expect(Buffer.byteLength(lue.blocs[0]!.erreur!)).toBeLessThanOrEqual(2048);
+  expect(lue.blocs.every((b) => b.journal.length >= 1 && b.journal.length <= 201)).toBe(true);
+  expect(lue.blocs[0]!.journal.some((l) => l.includes("lignes coupées"))).toBe(true);
+});
