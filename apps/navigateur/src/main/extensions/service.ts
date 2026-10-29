@@ -111,6 +111,10 @@ export class ServiceExtensions {
   async noterVue(cle: string, profil: IdProfil, version: string): Promise<{ nouvelle: boolean; precedente?: string }> {
     const o = this.o;
     if (!o) throw new Error("Service des extensions non démarré");
+    // Un service worker MV3 redémarre à chaque réveil : le cas courant (déjà vue) n'écrit rien. `this.etat` suit chaque
+    // écriture du service, seul à écrire le registre pendant que l'application tourne.
+    const connue = this.etat.extensions[cle];
+    if (!connue || connue.vues[profil] === version) return { nouvelle: false };
     let resultat: { nouvelle: boolean; precedente?: string } = { nouvelle: false };
     this.etat = await modifierEtatExtensions(
       o.dossier,

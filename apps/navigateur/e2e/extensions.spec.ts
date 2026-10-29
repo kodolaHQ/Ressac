@@ -269,6 +269,7 @@ type Rapport = {
   browserEstChrome: boolean;
   commandes: string;
   ajout: string;
+  electron: string;
   journal: ({ e: "demarrage"; version: string } | { e: "installe"; raison: string; precedente: string | null })[];
   rulesets: string[];
 };
@@ -410,6 +411,64 @@ test("connectNative rend un port fermé avec « Messagerie native non prise en c
     expect(await lireSonde(app, fenetre, `${serveur.url}/a.html?natif`, "natif")).toEqual({ erreur: "Messagerie native non prise en charge" });
     await new Promise((ok) => setTimeout(ok, 1000));
     expect(existsSync(trace)).toBe(false);
+  } finally {
+    await fermer();
+  }
+});
+
+test("une extension ne peut pas appeler la bibliothèque au nom d'une autre (globalThis.electron reste visible)", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  const { id: autre } = installerStoreFactice(profil, "sonde", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    const r = (await lireSonde(app, fenetre, `${serveur.url}/a.html?rapport-usurpation&autre=${autre}`, "rapport")) as Rapport & { usurpation: boolean; soi: boolean };
+    // Mesure (constat ⚠️A de la revue) : le `delete globalThis.electron` de la bibliothèque n'a pas d'effet.
+    expect(r.electron).toBe("object");
+    // Mais l'id annoncé est lié à l'origine réelle : au nom de l'autre, refusé ; au sien, permis.
+    expect(r.usurpation).toBe(false);
+    expect(r.soi).toBe(true);
+  } finally {
+    await fermer();
+  }
+});
+
+test("un bloqueur purement déclaratif (ni fond ni page) bloque dès le premier chargement", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "bloqueur-statique", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    await ouvrirOnglet(fenetre, `${serveur.url}/pub.html?statique`);
+    await expect.poll(() => dansLaVue(app, "pub.html?statique", "document.title")).toMatch(/^pub /);
+    await expect.poll(() => charger(app, "pub.html?statique", `${serveur.url}/pub.html?statique`), { timeout: 10_000 }).toBe("pub bloquée");
+  } finally {
+    await fermer();
+  }
+});
+
+test("le ruleset du manifeste reste actif après que l'extension est retirée puis rechargée (profil coupé puis rallumé)", async () => {
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "sonde-correctifs", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    await ouvrirOnglet(fenetre, `${serveur.url}/pub.html?b1`);
+    await expect.poll(() => dansLaVue(app, "pub.html?b1", "document.title")).toMatch(/^pub /);
+    await expect.poll(() => charger(app, "pub.html?b1", `${serveur.url}/pub.html?b1`), { timeout: 10_000 }).toBe("pub bloquée");
+    // Ce que fait la synchronisation quand le profil est coupé puis rallumé : removeExtension, loadExtension, démarrage du fond.
+    const rechargee = await app.evaluate(async ({ session }) => {
+      const s = session.fromPartition("persist:webaios");
+      const ext = s.extensions.getAllExtensions().find((e) => e.name === "Sonde des correctifs")!;
+      s.extensions.removeExtension(ext.id);
+      await new Promise((ok) => setTimeout(ok, 300));
+      const nouvelle = await s.extensions.loadExtension(ext.path, { allowFileAccess: false });
+      // Comme `appliquerProfil` : un démarrage en échec n'est que journalisé (le fond démarre au premier événement).
+      await s.serviceWorkers.startWorkerForScope(nouvelle.url).catch(() => {});
+      return nouvelle.id === ext.id;
+    });
+    expect(rechargee).toBe(true);
+    await new Promise((ok) => setTimeout(ok, 1000));
+    await expect.poll(() => charger(app, "pub.html?b1", `${serveur.url}/pub.html?b1`), { timeout: 5_000 }).toBe("pub bloquée");
+    expect((await rapport(app, fenetre)).rulesets).toEqual(["regles"]);
   } finally {
     await fermer();
   }

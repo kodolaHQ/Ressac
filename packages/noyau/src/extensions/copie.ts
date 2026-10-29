@@ -260,6 +260,10 @@ function refusFichiers(fichiers: Map<string, Buffer>): string[] {
   return refus;
 }
 
+const FOND_MINIMAL_AGENT = `// Généré par WebAiOs : l'extension n'a pas de fond ; celui-ci, le garde seul, active ses rulesets et onInstalled.\nimportScripts(${JSON.stringify(GARDE_FOND)});\n`;
+const FOND_MINIMAL_STORE =
+  "// Généré par WebAiOs : l'extension n'a pas de fond ; celui-ci, vide, laisse le preload des correctifs activer ses rulesets\n// du manifeste et émettre onInstalled.\n";
+
 function fondGenere(original: string, module: boolean): string {
   const chemin = original.replace(/^(\.\/|\/)+/, "");
   const entete = "// Généré par WebAiOs : le garde, puis le service worker de l'extension.\n";
@@ -311,10 +315,15 @@ export async function preparerCopie(o: {
   manifeste.content_security_policy = { extension_pages: cspAgent(analyse.portee.reseau) };
   scriptsEnTete(manifeste, [CORRECTIFS_PAGE, GARDE_PAGE]);
   const fond = objet(manifeste.background);
-  let fondJs: string | null = null;
+  let fondJs: string;
   if (fond && typeof fond.service_worker === "string") {
     fondJs = fondGenere(fond.service_worker, fond.type === "module");
     manifeste.background = { ...fond, service_worker: FOND };
+  } else {
+    // Sans fond, rien n'activerait ses rulesets ni n'émettrait onInstalled (le preload des correctifs tourne dans le
+    // service worker) : un fond minimal, le garde seul, est déclaré.
+    fondJs = FOND_MINIMAL_AGENT;
+    manifeste.background = { service_worker: FOND };
   }
 
   const tmp = `${o.cible}.${randomUUID()}.tmp`;
@@ -330,7 +339,7 @@ export async function preparerCopie(o: {
       );
     }
     for (const g of GARDES) await copyFile(join(o.dossierGardes, g), join(tmp, g));
-    if (fondJs) await writeFile(join(tmp, FOND), fondJs);
+    await writeFile(join(tmp, FOND), fondJs);
     await writeFile(join(tmp, "manifest.json"), JSON.stringify(manifeste, null, 2));
     await remplacerDossier(tmp, o.cible);
   } catch (e) {
@@ -340,13 +349,22 @@ export async function preparerCopie(o: {
   return { analyse, empreinte };
 }
 
-/** Prépare une extension du Store décompressée : correctif `storage.sync` en tête de ses scripts de contenu (idempotent). */
+/**
+ * Prépare une extension du Store décompressée (idempotent) : correctif `storage.sync` en tête de ses scripts de contenu,
+ * et un fond minimal (`webaios-fond.js`, vide) si elle n'en a pas, pour ses rulesets du manifeste et `onInstalled`.
+ */
 export async function preparerStore(dossierVersion: string, dossierGardes: string): Promise<void> {
   const chemin = join(dossierVersion, "manifest.json");
   const manifeste = json(await readFile(chemin));
   if (!objet(manifeste)) throw new Error(`Manifeste illisible : ${chemin}`);
   await copyFile(join(dossierGardes, CORRECTIFS_PAGE), join(dossierVersion, CORRECTIFS_PAGE));
   scriptsEnTete(manifeste as Manifeste, [CORRECTIFS_PAGE]);
+  const m = manifeste as Manifeste;
+  const fond = objet(m.background);
+  if (!fond || fond.service_worker === FOND) {
+    await writeFile(join(dossierVersion, FOND), FOND_MINIMAL_STORE);
+    m.background = { service_worker: FOND };
+  }
   const tmp = `${chemin}.${randomUUID()}.tmp`;
   try {
     await writeFile(tmp, JSON.stringify(manifeste, null, 2));

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, expect, test, vi } from "vitest";
@@ -139,4 +139,15 @@ test("noterVue : la première fois d'une version dans un profil, elle est écrit
   expect(synchronisees).toHaveLength(syncAvant);
   // Une clé inconnue n'est jamais « nouvelle » (et rien n'est écrit pour elle).
   expect(await service.noterVue("agent:inconnue", "defaut", "1.0.0")).toEqual({ nouvelle: false });
+});
+
+test("noterVue : une version déjà vue n'écrit pas etat.json", async () => {
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:essai": entree("agent", ["defaut"]) } }));
+  const { service, pret } = demarrer();
+  await pret;
+  expect(await service.noterVue("agent:essai", "defaut", "1.0.0")).toEqual({ nouvelle: true });
+  // Le fichier retiré : une écriture le recréerait.
+  rmSync(join(dossier, "etat.json"));
+  expect(await service.noterVue("agent:essai", "defaut", "1.0.0")).toEqual({ nouvelle: false });
+  expect(existsSync(join(dossier, "etat.json"))).toBe(false);
 });

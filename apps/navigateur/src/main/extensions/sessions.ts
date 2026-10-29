@@ -11,20 +11,28 @@ export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
 
 /**
  * Ce que Chrome aurait fait au chargement, donné une fois par version et par profil : `installation` pour
- * `runtime.onInstalled`, et les rulesets statiques du manifeste à activer (seulement cette fois-là : un ruleset coupé
- * ensuite par l'extension reste coupé). `agent` : extension de l'agent.
+ * `runtime.onInstalled`, et l'état des rulesets statiques remis aux valeurs du manifeste (`rulesets` activés,
+ * `rulesetsInactifs` coupés), seulement cette fois-là : un ruleset coupé ensuite par l'extension reste coupé.
+ * `agent` : extension de l'agent.
  */
 export interface DemarrageExtension {
   installation: { reason: "install" | "update"; previousVersion?: string } | null;
   rulesets: string[];
+  rulesetsInactifs: string[];
   agent: boolean;
 }
 
-/** Les `rule_resources` du manifeste à `enabled: true`. */
-export function rulesetsDuManifeste(manifeste: unknown): string[] {
+/** Les ids des `rule_resources` du manifeste, à `enabled: true` (`actifs`) ou non (`inactifs`). */
+export function rulesetsDuManifeste(manifeste: unknown): { actifs: string[]; inactifs: string[] } {
   const r = (manifeste as { declarative_net_request?: { rule_resources?: unknown } } | null)?.declarative_net_request?.rule_resources;
-  if (!Array.isArray(r)) return [];
-  return r.filter((x): x is { id: string } => typeof x === "object" && x !== null && x.enabled === true && typeof x.id === "string").map((x) => x.id);
+  const actifs: string[] = [];
+  const inactifs: string[] = [];
+  if (!Array.isArray(r)) return { actifs, inactifs };
+  for (const x of r as unknown[]) {
+    if (typeof x !== "object" || x === null || typeof (x as { id?: unknown }).id !== "string") continue;
+    ((x as { enabled?: unknown }).enabled === true ? actifs : inactifs).push((x as { id: string }).id);
+  }
+  return { actifs, inactifs };
 }
 
 function cheminReel(chemin: string): string {
@@ -254,6 +262,11 @@ export class ExtensionsProfils {
     }
   }
 
+  /** L'instance ne répond plus sur le canal des pages (tests ; fin d'usage). */
+  detruire(): void {
+    instancesVivantes.delete(this);
+  }
+
   /**
    * Canal des pages : null si l'expéditeur n'est pas dans une session de cette instance ; lève si ce n'est pas une
    * page `chrome-extension://` d'une extension chargée dans sa session.
@@ -279,7 +292,7 @@ export class ExtensionsProfils {
    * page d'une extension qui a un fond ne reçoit jamais l'installation : c'est son fond qui la reçoit.
    */
   private async demarrage(profil: IdProfil, s: Session, id: string, contexte: "fond" | "page"): Promise<DemarrageExtension> {
-    const vide = (agent: boolean): DemarrageExtension => ({ installation: null, rulesets: [], agent });
+    const vide = (agent: boolean): DemarrageExtension => ({ installation: null, rulesets: [], rulesetsInactifs: [], agent });
     const ext = s.extensions.getExtension(id);
     const cle = ext ? this.cleDe(profil, ext) : undefined;
     if (!ext || !cle) return vide(false);
@@ -288,9 +301,11 @@ export class ExtensionsProfils {
     try {
       const vue = await this.o.noterVue(cle, profil, ext.version);
       if (!vue.nouvelle) return vide(agent);
+      const { actifs, inactifs } = rulesetsDuManifeste(ext.manifest);
       return {
         installation: vue.precedente ? { reason: "update", previousVersion: vue.precedente } : { reason: "install" },
-        rulesets: rulesetsDuManifeste(ext.manifest),
+        rulesets: actifs,
+        rulesetsInactifs: inactifs,
         agent,
       };
     } catch (erreur) {

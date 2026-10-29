@@ -97,7 +97,9 @@ rapporter("demarrage");
  * (`data-sync` de la page), et selon l'URL de la page demande au fond (réponse JSON dans `data-<demande>`) :
  * - `couper-regles` (`data-couper`) : coupe le ruleset statique « regles » (`updateEnabledRulesets`) ;
  * - `natif` (`data-natif`) : `connectNative("com.webaios.essai")`, et l'erreur reçue à la fermeture du port ;
- * - sinon (`data-rapport`) : `{ browserEstChrome, commandes, ajout, journal, rulesets }`.
+ * - sinon (`data-rapport`) : `{ browserEstChrome, commandes, ajout, electron, journal, rulesets }` (`electron` : le type de
+ *   `globalThis.electron` dans le fond, que la bibliothèque expose puis efface). Avec `?autre=<id>` dans l'URL :
+ *   `usurpation` / `soi`, un `tabs.query` passé par cet objet au nom de `<id>`, puis au sien, a-t-il abouti ?
  * Son ruleset statique « regles », activé dans le manifeste, bloque le script `/pub.js`.
  */
 const sondeCorrectifs = {
@@ -123,6 +125,7 @@ const observe = {
   browserEstChrome: typeof browser !== "undefined" && browser === chrome,
   commandes: typeof browser !== "undefined" && browser ? typeof browser.commands : "sans browser",
   ajout,
+  electron: typeof globalThis.electron,
 };
 let file = Promise.resolve();
 function noter(entree) {
@@ -136,10 +139,15 @@ function noter(entree) {
 chrome.runtime.onInstalled.addListener((d) => noter({ e: "installe", raison: d.reason, precedente: d.previousVersion ?? null }));
 noter({ e: "demarrage", version: chrome.runtime.getManifest().version });
 chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
-  if (m === "rapport") {
+  if (m && m.demande === "rapport") {
     file.then(async () => {
       const { journal = [] } = await chrome.storage.local.get("journal");
-      repondre({ ...observe, journal, rulesets: await chrome.declarativeNetRequest.getEnabledRulesets() });
+      // Usurpation : l'objet IPC de la bibliothèque appelé au nom d'une autre extension chargée (m.autre), puis au sien.
+      const e = globalThis.electron;
+      const essai = async (id) => (e && m.autre ? Array.isArray(await e.invokeExtension(id, "tabs.query", {}, {})) : null);
+      const usurpation = await essai(m.autre);
+      const soi = await essai(chrome.runtime.id);
+      repondre({ ...observe, journal, rulesets: await chrome.declarativeNetRequest.getEnabledRulesets(), usurpation, soi });
     });
     return true;
   }
@@ -169,8 +177,9 @@ chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
     racine.dataset.sync = "erreur : " + e.message;
   }
   const demande = location.search.includes("couper-regles") ? "couper" : location.search.includes("natif") ? "natif" : "rapport";
+  const message = demande === "rapport" ? { demande, autre: new URLSearchParams(location.search).get("autre") } : demande;
   try {
-    racine.dataset[demande] = JSON.stringify((await chrome.runtime.sendMessage(demande)) ?? null);
+    racine.dataset[demande] = JSON.stringify((await chrome.runtime.sendMessage(message)) ?? null);
   } catch (e) {
     racine.dataset[demande] = JSON.stringify({ exception: e.message });
   }
@@ -178,7 +187,19 @@ chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
 `,
 };
 
-export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs } as const;
+/** Bloqueur purement déclaratif : un ruleset statique activé dans le manifeste, ni fond ni page. */
+const bloqueurStatique = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Bloqueur statique de test",
+    version: "1.0.0",
+    permissions: ["declarativeNetRequest"],
+    declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
+  },
+  "regles.json": [{ id: 1, priority: 1, action: { type: "block" }, condition: { urlFilter: "/pub.js", resourceTypes: ["script"] } }],
+};
+
+export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 
 /**

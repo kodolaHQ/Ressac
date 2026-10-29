@@ -155,6 +155,17 @@ describe("preparerCopie", () => {
     expect(imports).toEqual(["./webaios-garde-fond.js", "./sw.js"]);
   });
 
+  it("sans fond : un service worker minimal webaios-fond.js (le garde seul) est déclaré, pour onInstalled et les rulesets", async () => {
+    const src = await source({ "manifest.json": manifesteBase() });
+    const c = await cible();
+    await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
+    const m = await lireJson(join(c, "manifest.json"));
+    expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
+    const fond = await readFile(join(c, "webaios-fond.js"), "utf8");
+    expect(fond).toContain('importScripts("webaios-garde-fond.js");');
+    expect([...fond.matchAll(/importScripts\(/g)]).toHaveLength(1);
+  });
+
   it("le garde de fond est préfixé à chaque page HTML (octets bruts, chemin absolu), les scripts existants restent après", async () => {
     const GARDE = '<script src="/webaios-garde-fond.js"></script>';
     const src = await source({
@@ -456,7 +467,7 @@ describe("preparerCopie", () => {
 
     const seconde = await source({ "manifest.json": manifesteBase({ version: "2.0" }), "b.js": "b" });
     await preparerCopie({ source: seconde, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
-    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", ...GARDES].sort());
+    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-fond.js", ...GARDES].sort());
     expect((await lireJson(join(c, "manifest.json"))).version).toBe("2.0");
     // Ni dossier temporaire ni ancienne copie laissés à côté.
     expect(await readdir(dirname(c))).toEqual(["essai"]);
@@ -487,13 +498,31 @@ describe("preparerStore", () => {
     await preparerStore(d, GARDES_PAR_DEFAUT);
     await preparerStore(d, GARDES_PAR_DEFAUT);
     expect(renommages.filter((v) => v === join(d, "manifest.json"))).toHaveLength(2);
-    expect((await readdir(d)).sort()).toEqual(["cs.js", "manifest.json", "webaios-correctifs-page.js"]);
+    expect((await readdir(d)).sort()).toEqual(["cs.js", "manifest.json", "webaios-correctifs-page.js", "webaios-fond.js"]);
     const m = await lireJson(join(d, "manifest.json"));
     expect(m.content_scripts[0].js).toEqual(["webaios-correctifs-page.js", "cs.js"]);
     expect(m.content_scripts[1].js).toBeUndefined();
     expect(await readFile(join(d, "webaios-correctifs-page.js"), "utf8")).toBe(
       await readFile(join(GARDES_PAR_DEFAUT, "webaios-correctifs-page.js"), "utf8"),
     );
+  });
+});
+
+describe("preparerStore : fond minimal", () => {
+  it("sans fond : un service worker minimal est déclaré (idempotent) ; avec un fond, rien ne change", async () => {
+    const d = await source({ "manifest.json": manifesteBase({ declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "r.json" }] } }), "r.json": "[]" });
+    await preparerStore(d, GARDES_PAR_DEFAUT);
+    await preparerStore(d, GARDES_PAR_DEFAUT);
+    const m = await lireJson(join(d, "manifest.json"));
+    expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
+    const fond = await readFile(join(d, "webaios-fond.js"), "utf8");
+    expect(fond).not.toContain("importScripts");
+    expect(fond.trim().length).toBeGreaterThan(0);
+
+    const avec = await source({ "manifest.json": manifesteBase({ background: { service_worker: "sw.js", type: "module" } }), "sw.js": "" });
+    await preparerStore(avec, GARDES_PAR_DEFAUT);
+    expect((await lireJson(join(avec, "manifest.json"))).background).toEqual({ service_worker: "sw.js", type: "module" });
+    expect(existsSync(join(avec, "webaios-fond.js"))).toBe(false);
   });
 });
 

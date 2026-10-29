@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { EntreeExtension, EtatExtensions } from "@webaios/noyau";
 import type { EtatNavigateur } from "../../src/commun/modele";
 
@@ -36,7 +36,10 @@ vi.mock("electron", () => {
       getMaxListeners: () => ecouteursApp.getMaxListeners(),
       setMaxListeners: (n: number) => ecouteursApp.setMaxListeners(n),
     },
-    ipcMain: { handle: (canal: string, f: (...a: unknown[]) => unknown) => void gestionnairesIpc.set(canal, f), on: () => {} },
+    ipcMain: {
+      handle: (canal: string, f: (...a: unknown[]) => unknown) => void gestionnairesIpc.set(canal, f),
+      on: (canal: string, f: (...a: unknown[]) => unknown) => void gestionnairesIpc.set(canal, f),
+    },
     session: { defaultSession: fausseSession("defaut-electron") },
     BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null, getFocusedWindow: () => null },
     BaseWindow: { getAllWindows: () => [] },
@@ -182,6 +185,13 @@ let fichierNotifications: string;
 /** Les versions vues par profil (`noterVue`), clé `<cle>|<profil>`. */
 let vuesNotees: Map<string, string>;
 
+/** Instances créées par le test en cours : détruites ensuite (le canal des pages ne les interroge plus). */
+let creees: InstanceType<typeof ExtensionsProfils>[] = [];
+afterEach(() => {
+  for (const p of creees) p.detruire();
+  creees = [];
+});
+
 function creer(
   o: {
     invisible?: boolean;
@@ -190,7 +200,7 @@ function creer(
     verifierHote?: (extension: Electron.Extension, url: string) => boolean;
   } = {},
 ) {
-  return new ExtensionsProfils({
+  const p = new ExtensionsProfils({
     preloadCorrectifs: "/out/preload/extensions.js",
     noterVue: async (cle, profil, version) => {
       const precedente = vuesNotees.get(`${cle}|${profil}`);
@@ -213,6 +223,8 @@ function creer(
     invisible: o.invisible ?? false,
     ...(o.notifications ? { fichierNotifications } : {}),
   });
+  creees.push(p);
+  return p;
 }
 
 /** Accès aux rouages de la bibliothèque (version figée 4.10.0) : son magasin et son routeur. */
@@ -583,15 +595,21 @@ test("démarrage du fond : installation et rulesets du manifeste la première fo
   s.manifestes.set(chemin2, manifeste("2.0.0"));
   await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"]) }));
   const id1 = [...s.charges.keys()][0]!;
-  expect(await demarrerFond(s, id1, 1)).toEqual({ installation: { reason: "install" }, rulesets: ["actif"], agent: false });
-  // Redémarrage du même service worker (ou de l'application) : ni onInstalled, ni rulesets réactivés.
-  expect(await demarrerFond(s, id1, 2)).toEqual({ installation: null, rulesets: [], agent: false });
+  expect(await demarrerFond(s, id1, 1)).toEqual({ installation: { reason: "install" }, rulesets: ["actif"], rulesetsInactifs: ["coupe"], agent: false });
+  // Redémarrage du même service worker (ou de l'application) : ni onInstalled, ni rulesets touchés.
+  expect(await demarrerFond(s, id1, 2)).toEqual({ installation: null, rulesets: [], rulesetsInactifs: [], agent: false });
   expect(vuesNotees.get(`store:${ID_A}|defaut`)).toBe("1.0.0");
 
   await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"], { version: "2.0.0" }) }));
   const id2 = [...s.charges.keys()][0]!;
-  expect(await demarrerFond(s, id2, 3)).toEqual({ installation: { reason: "update", previousVersion: "1.0.0" }, rulesets: ["actif"], agent: false });
-  expect(await demarrerFond(s, id2, 4)).toEqual({ installation: null, rulesets: [], agent: false });
+  // À la mise à jour, l'état des rulesets redevient exactement celui du manifeste.
+  expect(await demarrerFond(s, id2, 3)).toEqual({
+    installation: { reason: "update", previousVersion: "1.0.0" },
+    rulesets: ["actif"],
+    rulesetsInactifs: ["coupe"],
+    agent: false,
+  });
+  expect(await demarrerFond(s, id2, 4)).toEqual({ installation: null, rulesets: [], rulesetsInactifs: [], agent: false });
 });
 
 test("démarrage : une extension de l'agent est signalée comme telle ; un service worker hors extension n'a pas de gestionnaire", async () => {
@@ -618,14 +636,84 @@ test("démarrage depuis une page d'extension : expéditeur vérifié ; l'install
   // Comme `ipcMain.handle` : une exception du gestionnaire devient un refus de la promesse.
   const depuis = async (url: string, session: unknown = s) => page({ sender: { session }, senderFrame: { url } });
   // Avec un fond : le fond seul reçoit l'installation, la page jamais (elle ne la consomme pas).
-  expect(await depuis("chrome-extension://id-copies-fond/popup.html")).toEqual({ installation: null, rulesets: [], agent: true });
+  expect(await depuis("chrome-extension://id-copies-fond/popup.html")).toEqual({ installation: null, rulesets: [], rulesetsInactifs: [], agent: true });
   expect(await demarrerFond(s, "id-copies-fond", 1)).toMatchObject({ installation: { reason: "install" } });
   // Sans fond : la première page reçoit installation et rulesets.
   const idSansFond = `id-${ID_B}-1.0.0_0`;
-  expect(await depuis(`chrome-extension://${idSansFond}/options.html`)).toEqual({ installation: { reason: "install" }, rulesets: ["r"], agent: false });
-  expect(await depuis(`chrome-extension://${idSansFond}/options.html`)).toEqual({ installation: null, rulesets: [], agent: false });
+  expect(await depuis(`chrome-extension://${idSansFond}/options.html`)).toEqual({ installation: { reason: "install" }, rulesets: ["r"], rulesetsInactifs: [], agent: false });
+  expect(await depuis(`chrome-extension://${idSansFond}/options.html`)).toEqual({ installation: null, rulesets: [], rulesetsInactifs: [], agent: false });
   // Expéditeurs refusés : une page web, une extension non chargée, une autre session.
   await expect(depuis("https://site.invalid/")).rejects.toThrow(/refusé/);
   await expect(depuis(`chrome-extension://${"z".repeat(32)}/x.html`)).rejects.toThrow(/refusé/);
   await expect(depuis("chrome-extension://id-copies-fond/popup.html", fausseSession("ailleurs"))).rejects.toThrow(/refusé/);
+});
+
+/** Deux extensions chargées dans la session « defaut » : celle de l'agent (avec fond) et une du Store. */
+async function deuxExtensions() {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"]), [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  return { p, s, agent: "id-copies-fond", store: `id-${ID_A}-1.0.0_0` };
+}
+const page = (s: FausseSession, url: string) => ({ type: "frame", sender: { session: s, id: 1, once: () => {} }, senderFrame: { url } });
+const fond = (s: FausseSession, scope: string) => ({ type: "service-worker", session: s, serviceWorker: { scope } });
+const routeurIpc = (canal: string) => gestionnairesIpc.get(canal)!;
+
+test("crx-msg : l'id d'extension annoncé doit être celui de l'origine de l'expéditeur (page ou service worker)", async () => {
+  const { s, agent, store } = await deuxExtensions();
+  const msg = routeurIpc("crx-msg");
+  // Une page de l'agent qui se fait passer pour l'extension du Store : refusée, avant tout crochet ou contrôle de droit.
+  await expect((async () => msg(page(s, `chrome-extension://${agent}/popup.html`), store, "tabs.query", {}))()).rejects.toThrow(/Expéditeur refusé/);
+  await expect((async () => msg(fond(s, `chrome-extension://${agent}/`), store, "tabs.query", {}))()).rejects.toThrow(/Expéditeur refusé/);
+  // Sous son propre nom : permis.
+  expect(await msg(page(s, `chrome-extension://${agent}/popup.html`), agent, "tabs.query", {})).toEqual([]);
+  expect(await msg(fond(s, `chrome-extension://${store}/`), store, "tabs.query", {})).toEqual([]);
+});
+
+test("crx-msg : depuis une origine qui n'est pas une extension (script de contenu, page web), tout appel nommant une extension est refusé", async () => {
+  const { s, store } = await deuxExtensions();
+  const msg = routeurIpc("crx-msg");
+  for (const [nom, args] of [
+    ["tabs.query", [{}]],
+    ["tabs.create", [{ url: "https://x.invalid/" }]],
+    ["windows.getAll", [{}]],
+    ["contextMenus.create", [{ id: "m", title: "t" }]],
+    ["browserAction.setBadgeText", [{ text: "1" }]],
+    ["cookies.getAll", [{}]],
+    ["notifications.create", [{ type: "basic", title: "t", message: "m", iconUrl: "data:," }]],
+    ["webNavigation.getAllFrames", [{ tabId: 1 }]],
+    ["runtime.openOptionsPage", []],
+  ] as const) {
+    await expect((async () => msg(page(s, "https://site.invalid/"), store, nom, ...args))(), nom).rejects.toThrow(/Expéditeur refusé/);
+  }
+  // Cadre détruit (pas d'adresse) : refusé aussi.
+  await expect((async () => msg({ type: "frame", sender: { session: s }, senderFrame: null }, store, "tabs.query", {}))()).rejects.toThrow(/Expéditeur refusé/);
+});
+
+test("crx-add-listener / crx-remove-listener : un abonnement au nom d'une autre extension est ignoré", async () => {
+  const { s, agent, store } = await deuxExtensions();
+  const ajouter = routeurIpc("crx-add-listener");
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  const ecouteurs = () => (rouages(s).ctx.router as unknown as { listeners: Map<string, { extensionId: string }[]> }).listeners.get("tabs.onUpdated") ?? [];
+  ajouter(page(s, `chrome-extension://${agent}/popup.html`), store, "tabs.onUpdated");
+  ajouter(page(s, "https://site.invalid/"), store, "tabs.onUpdated");
+  expect(ecouteurs()).toEqual([]);
+  ajouter(fond(s, `chrome-extension://${store}/`), store, "tabs.onUpdated");
+  expect(ecouteurs().map((x) => x.extensionId)).toEqual([store]);
+  routeurIpc("crx-remove-listener")(fond(s, `chrome-extension://${agent}/`), store, "tabs.onUpdated");
+  expect(ecouteurs().map((x) => x.extensionId)).toEqual([store]);
+  expect(erreur).toHaveBeenCalled();
+  erreur.mockRestore();
+});
+
+test("detruire : l'instance ne répond plus sur le canal des pages", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"]) }));
+  const canal = gestionnairesIpc.get(CANAL_DEMARRAGE)!;
+  await expect((async () => canal({ sender: { session: s }, senderFrame: { url: "chrome-extension://id-copies-fond/p.html" } }))()).resolves.toBeTruthy();
+  p.detruire();
+  await expect((async () => canal({ sender: { session: s }, senderFrame: { url: "chrome-extension://id-copies-fond/p.html" } }))()).rejects.toThrow(/refusé/);
 });
