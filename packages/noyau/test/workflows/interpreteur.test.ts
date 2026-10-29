@@ -568,6 +568,22 @@ describe("interpréteur : blocs par élément", () => {
     expect(simple.journal("b")).toEqual(["valeur absente : config.ville"]);
   });
 
+  it("par élément : un repère facultatif {chemin?} absent donne une chaîne vide, présent il est rempli ; l'élément est traité", async () => {
+    const registre = {
+      "test.gabarit": { parElement: "option", traiterElement: async (ctx: any) => ctx.remplir("Avis de {titre} ; fiabilité : {fiabilite?}.").texte },
+    };
+    const r = await executer({
+      entree: [{ titre: "A", fiabilite: "bonne" }, { titre: "B" }],
+      blocs: [{ id: "b", type: "test.gabarit", parametres: { parElement: true, champ: "avis" } }, { id: "sortie", type: "sortie" }],
+      registre,
+    });
+    expect(r.resultat!.donnees).toEqual([
+      { titre: "A", fiabilite: "bonne", avis: "Avis de A ; fiabilité : bonne." },
+      { titre: "B", avis: "Avis de B ; fiabilité : ." },
+    ]);
+    expect(r.finBloc("b")).toMatchObject({ statut: "reussi" });
+  });
+
   it("budgetSecondes : passé le temps, plus aucun élément lancé, les suivants sans champ, bloc partiel", async () => {
     // Horloge simulée : chaque élément « dure » 300 ms, la fin de l'élément avance l'heure.
     let maintenant = 0;

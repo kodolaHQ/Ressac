@@ -55,8 +55,9 @@ export function avertirWorkflow(
     for (const c of champs) {
       const v = b.parametres[c.nom];
       if (typeof v !== "string") continue;
+      // Un repère facultatif (`{config.x?}`) n'a pas besoin de la valeur : il n'est jamais signalé.
       for (const m of v.matchAll(/\{config\.([A-Za-z0-9_]+)[^}]*\}/g)) {
-        if (!Object.hasOwn(config, m[1]!)) manquantes.add(m[1]!);
+        if (!m[0].endsWith("?}") && !Object.hasOwn(config, m[1]!)) manquantes.add(m[1]!);
       }
     }
     for (const cle of manquantes) r.push({ bloc: b.id, message: `config.${cle} absent de la configuration du widget` });

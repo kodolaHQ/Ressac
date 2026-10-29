@@ -43,6 +43,17 @@ describe("gabarits", () => {
     expect(remplir("{constructor}", { element, config })).toEqual({ absente: "constructor" });
   });
 
+  it("un repère facultatif {chemin?} absent, null ou vide donne une chaîne vide ; présent, il est rempli", () => {
+    expect(remplir("Avis.{fiabilite?} Fin", { element, config })).toEqual({ texte: "Avis. Fin" });
+    expect(remplir("[{rien?}][{vide?}][{config.ville?}]", { element, config })).toEqual({ texte: "[][][]" });
+    expect(remplir("{titre?} {a.b.1?} {config.interets?}", { element, config })).toEqual({ texte: "Salut deuxième Rust, Svelte" });
+    // Sans `?`, une valeur absente reste une absence, même à côté d'un repère facultatif.
+    expect(remplir("{inconnu?} {fiabilite}", { element, config })).toEqual({ absente: "fiabilite" });
+    // Encodé dans une URL comme les autres ; un seul {chemin?} est une URL entière.
+    expect(remplir("https://s.fr/?q={titre?}&r={rien?}", { element: { titre: "a b" }, config: null }, { url: true })).toEqual({ texte: "https://s.fr/?q=a%20b&r=" });
+    expect(remplir("{lien?}", { element: { lien: "https://x.fr/?a=1" }, config: null }, { url: true })).toEqual({ texte: "https://x.fr/?a=1" });
+  });
+
   it("un texte sans gabarit reste tel quel ; les accolades qui ne sont pas un chemin aussi", () => {
     expect(remplir("rien { ici } {a-b}", { element, config })).toEqual({ texte: "rien { ici } {a-b}" });
   });

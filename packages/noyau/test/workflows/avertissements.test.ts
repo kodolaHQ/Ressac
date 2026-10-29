@@ -75,3 +75,8 @@ test("web.chercher sans durée maximale déclarée : avertissement (pas une erre
   expect(avertirWorkflow(w, { ...sansCompte, dureeMaxMinutes: 30 })).toEqual([]);
   expect(avertirWorkflow(w, sansCompte)).toEqual([]);
 });
+
+test("{config.ville?} facultatif : jamais signalé, même absent de la configuration", () => {
+  const w = wf(bloc("r", "source.recuperer", { url: "https://hn.algolia.com/x?v={config.ville?}&q={config.mot}" }));
+  expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: {} })).toEqual([{ bloc: "r", message: "config.mot absent de la configuration du widget" }]);
+});
