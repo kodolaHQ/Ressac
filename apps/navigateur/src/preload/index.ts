@@ -67,6 +67,18 @@ const api: ApiWebaios = {
     couper: (id, droit) => ipcRenderer.send(CANAUX.accesCouper, { id, ...(droit ? { droit } : {}) }),
   },
   surAcces: (rappel) => ecouter(CANAUX.acces, rappel),
+  workflow: {
+    catalogue: () => ipcRenderer.invoke(CANAUX.workflowCatalogue),
+    lire: (id) => ipcRenderer.invoke(CANAUX.workflowLire, id),
+    enregistrer: (id, brouillon) => ipcRenderer.invoke(CANAUX.workflowEnregistrer, id, brouillon),
+    lireCode: (id, nom) => ipcRenderer.invoke(CANAUX.workflowLireCode, id, nom),
+    enregistrerCode: (id, nom, texte) => ipcRenderer.invoke(CANAUX.workflowEnregistrerCode, id, nom, texte),
+    rejouer: (id, execution, bloc) => ipcRenderer.invoke(CANAUX.workflowRejouer, id, execution, bloc),
+    lancer: (id) => ipcRenderer.invoke(CANAUX.workflowLancer, id),
+    selection: (id, bloc) => ipcRenderer.send(CANAUX.workflowSelection, { id, bloc }),
+    direct: () => ipcRenderer.invoke(CANAUX.workflowDirectLire),
+    surDirect: (rappel) => ecouter(CANAUX.workflowDirect, rappel),
+  },
   accueil: {
     lire: () => ipcRenderer.invoke(CANAUX.accueilLire),
     surChange: (rappel) => ecouter(CANAUX.accueilChange, () => rappel()),

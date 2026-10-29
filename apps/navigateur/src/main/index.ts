@@ -27,12 +27,13 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { attendreDroits, attendreReponse, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
-import { Atelier, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
+import { Atelier, catalogueBlocs, cheminsEspace, enregistrerCode, lireAccueil, lireCode, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, vueWorkflow, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
+import { enregistrerEdition, FileEcritures, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 
@@ -65,6 +66,8 @@ process.on("uncaughtException", (e) => console.error("[webaios] exception non ra
 /** Fenêtres principales (avec l'interface WebAiOs), par id d'état. */
 const fenetres = new Map<IdFenetre, BrowserWindow>();
 /** Boutons de la fenêtre (macOS) voulus visibles ou non par l'interface de chaque fenêtre (voir creerFenetre). */
+/** Le bloc sélectionné dans le constructeur de chaque fenêtre (pour l'outil `workflow_ouvert` de l'agent). */
+const selectionsConstructeur = new Map<IdFenetre, SelectionConstructeur>();
 const boutonsFenetre = new Map<IdFenetre, (visibles: boolean) => void>();
 
 /** Vrai dès que l'app quitte : les fenêtres qui se ferment alors restent dans la session, pour la restauration. */
@@ -142,6 +145,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   fenetre.on("closed", () => {
     fenetres.delete(id);
     boutonsFenetre.delete(id);
+    selectionsConstructeur.delete(id);
     void agent?.sessions.fermerFenetre(id);
     if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
     // Dernière fenêtre (gardée dans l'état) : ses pages se ferment, elles reviendront avec elle.
@@ -211,6 +215,8 @@ function fenetreDe(e: Pick<IpcMainEvent, "sender" | "senderFrame">): IdFenetre |
 let enregistreur: EnregistreurSession | undefined;
 let rouvrirFenetres = (): boolean => false;
 let agent: ServiceAgent | undefined;
+const fileEcritures = new FileEcritures();
+const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 let applications: ServiceApplications | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
@@ -448,6 +454,37 @@ app.whenReady().then(async () => {
       executions: async (id) => (agent ? executionsWidget(agent.dossierWidgets, id) : []),
       execution: async (id, execution) => (agent ? executionWidget(agent.dossierWidgets, id, execution) : null),
     },
+    workflow: {
+      catalogue: () => catalogueBlocs(),
+      lire: async (id) => (agent ? lireEdition({ chemins: agent.chemins, dossierWidgets: agent.dossierWidgets }, id) : null),
+      enregistrer: async (id, brouillon) =>
+        agent
+          ? fileEcritures.enSerie(id, () => enregistrerEdition({ chemins: agent!.chemins, dossierWidgets: agent!.dossierWidgets }, id, brouillon))
+          : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] },
+      lireCode: async (id, nom) => (agent ? lireCode(join(agent.chemins.widgets, id), nom) : { erreur: MESSAGE_AGENT_ARRETE }),
+      enregistrerCode: async (id, nom, texte) =>
+        agent ? fileEcritures.enSerie(id, () => enregistrerCode(join(agent!.chemins.widgets, id), nom, texte)) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE },
+      rejouer: async (id, execution, bloc) => {
+        const noyau = agent?.noyau();
+        return noyau ? noyau.rejouer(id, execution, bloc) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+      },
+      // Sans noyau : {} (l'interface ne sélectionne alors aucune exécution) ; une récolte qui échoue ne lève rien.
+      lancer: async (id) => {
+        const noyau = agent?.noyau();
+        if (!noyau) return {};
+        try {
+          const r = await noyau.recolterMaintenant(id, "manuelle");
+          return r.execution === undefined ? {} : { execution: r.execution };
+        } catch (e) {
+          console.error(`[webaios] exécution du widget ${id} :`, e);
+          return {};
+        }
+      },
+      selection: (f, widget, bloc) => {
+        selectionsConstructeur.set(f, { widget, bloc });
+      },
+      direct: async () => agent?.noyau()?.direct() ?? { courant: null, enAttente: [] },
+    },
     ia: {
       etat: () => etatIa(),
       installer: () => installerIa(),
@@ -621,6 +658,8 @@ app.whenReady().then(async () => {
     fenetres,
     fenetreActive: fenetreAgent,
     surAccueil: () => diffuser(CANAUX.accueilChange, null),
+    workflowOuvert: (f) => workflowOuvertDe(magasin.etat, selectionsConstructeur, f),
+    surDirect: (e) => diffuser(CANAUX.workflowDirect, e),
     dossierIa: join(dossier, "ia-locale"),
     surEtatIa: diffuserEtatIa,
     // Les pastilles suivent la politique d'accès ; une rafale de changements ne donne qu'une diffusion par 50 ms.

@@ -11,6 +11,7 @@ import {
   type Atelier,
   type CheminsEspace,
   type DroitDev,
+  type EtatDirect,
   type EtatIa,
   type Noyau,
   type OngletInfo,
@@ -96,8 +97,10 @@ export function demarrerAgent(o: {
   dossierProfilage: string;
   /** Dossier du profil du navigateur, hors de l'espace monté, où sont rangés données, états et accords des widgets. */
   dossierWidgets: string;
-  /** Le workflow ouvert dans le constructeur d'une fenêtre (outil MCP `workflow_ouvert`) ; fourni par la tâche 7. */
-  workflowOuvert?: (fenetre: IdFenetre) => WorkflowOuvert | null;
+  /** Le workflow ouvert dans le constructeur d'une fenêtre (outil MCP `workflow_ouvert`) : toujours fourni. */
+  workflowOuvert: (fenetre: IdFenetre) => WorkflowOuvert | null;
+  /** L'exécution (ou l'essai) en cours d'un widget a changé : diffusé aux constructeurs ouverts. */
+  surDirect: (e: EtatDirect) => void;
   /** Historique de navigation, cherché par l'agent (chercher_historique, lire_historique). */
   historique?: Historique;
   /** Session d'un profil de connexion, pour les lectures invisibles des widgets. */
@@ -133,12 +136,14 @@ export function demarrerAgent(o: {
     console.error("[webaios] surveillance de la page d'accueil impossible :", e);
   }
   let desabonnerAcces: (() => void) | undefined;
+  let desabonnerDirect: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);
+        desabonnerDirect = n.surDirect(o.surDirect);
         o.surAcces();
         o.surAccueil(); // l'espace vient peut-être d'être créé
         return n;
@@ -154,6 +159,8 @@ export function demarrerAgent(o: {
     noyau = null;
     desabonnerAcces?.();
     desabonnerAcces = undefined;
+    desabonnerDirect?.();
+    desabonnerDirect = undefined;
     o.surAcces(); // plus de noyau : plus aucune pastille
     await n?.arreter();
   };

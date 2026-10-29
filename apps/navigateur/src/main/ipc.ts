@@ -1,7 +1,7 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Placement, type ProfilPourAccord, type TailleTerminal, type VueWorkflow, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
+import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type VueWorkflow, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
-import type { DroitDev, Execution, ResumeExecution } from "@webaios/noyau";
+import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
@@ -64,6 +64,18 @@ export interface Gestionnaires {
     workflow(id: string): Promise<VueWorkflow | null>;
     executions(id: string): Promise<ResumeExecution[]>;
     execution(id: string, execution: string): Promise<Execution | null>;
+  };
+  /** Constructeur de workflows : ids, noms de code et brouillon déjà validés ici. */
+  workflow: {
+    catalogue(): CatalogueBloc[];
+    lire(id: string): Promise<EditionWorkflow | null>;
+    enregistrer(id: string, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }>;
+    lireCode(id: string, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
+    enregistrerCode(id: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    rejouer(id: string, execution: string, bloc: string): Promise<ResultatEssai>;
+    lancer(id: string): Promise<{ execution?: string }>;
+    selection(fenetreId: IdFenetre, id: string, bloc: string | null): void;
+    direct(): Promise<EtatDirect>;
   };
   /** IA locale : `installer` télécharge plusieurs gigaoctets, seulement sur un clic de l'utilisateur. */
   ia: { etat(): Promise<EtatIaAffiche>; installer(): Promise<{ ok: boolean; erreur?: string }> };
@@ -161,6 +173,36 @@ export function brancherIpc(g: Gestionnaires): void {
   repondre(CANAUX.accueilExecution, (id, execution) =>
     idWidgetValide(id) && SchemaIdExecution.safeParse(execution).success ? g.accueil.execution(id, execution as string) : null,
   );
+  // Constructeur : seulement l'interface d'une fenêtre principale (`repondre`/`recevoir`), chaque argument validé.
+  const echec = { ok: false as const, erreur: "Argument invalide" };
+  const widgetEtNom = (id: unknown, nom: unknown) => SchemaIdWidget.safeParse(id).success && SchemaNomCode.safeParse(nom).success;
+  repondre(CANAUX.workflowCatalogue, () => g.workflow.catalogue());
+  repondre(CANAUX.workflowLire, (id) => (idWidgetValide(id) ? g.workflow.lire(id) : null));
+  repondre(CANAUX.workflowEnregistrer, (id, brouillon) => {
+    const b = SchemaBrouillon.safeParse(brouillon);
+    return idWidgetValide(id) && b.success ? g.workflow.enregistrer(id, b.data) : { ...echec, avertissements: [] };
+  });
+  repondre(CANAUX.workflowLireCode, (id, nom) => (widgetEtNom(id, nom) ? g.workflow.lireCode(id as string, nom as string) : { erreur: "Argument invalide" }));
+  repondre(CANAUX.workflowEnregistrerCode, (id, nom, texte) => {
+    const t = SchemaCodeWorkflow.safeParse(texte);
+    return widgetEtNom(id, nom) && t.success ? g.workflow.enregistrerCode(id as string, nom as string, t.data) : echec;
+  });
+  repondre(CANAUX.workflowRejouer, (id, execution, bloc) =>
+    idWidgetValide(id) && SchemaIdExecution.safeParse(execution).success && SchemaBlocWorkflow.safeParse(bloc).success
+      ? g.workflow.rejouer(id, execution as string, bloc as string)
+      : { ok: false, erreur: "Argument invalide" },
+  );
+  repondre(CANAUX.workflowLancer, (id) => (idWidgetValide(id) ? g.workflow.lancer(id) : {}));
+  recevoir(
+    CANAUX.workflowSelection,
+    (v) => {
+      const o = v as { id?: unknown; bloc?: unknown } | null;
+      const bloc = o?.bloc === null ? null : SchemaBlocWorkflow.safeParse(o?.bloc).success ? (o?.bloc as string) : undefined;
+      return idWidgetValide(o?.id) && bloc !== undefined ? { id: o.id, bloc } : null;
+    },
+    ({ id, bloc }, f) => g.workflow.selection(f, id, bloc),
+  );
+  repondre(CANAUX.workflowDirectLire, () => g.workflow.direct());
   repondre(CANAUX.iaEtat, () => g.ia.etat());
   // Seule une fenêtre principale (un clic de l'utilisateur dans l'interface) lance l'installation.
   repondre(CANAUX.iaInstaller, () => g.ia.installer());

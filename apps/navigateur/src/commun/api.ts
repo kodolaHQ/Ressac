@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type DeclarationWidget, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution } from "@webaios/noyau";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
@@ -187,6 +187,22 @@ export interface ApiWebaios {
     /** Une exécution complète (blocs, sorties, journaux) ; null si elle n'existe plus ou si l'id est invalide. */
     execution(id: string, execution: string): Promise<Execution | null>;
   };
+  /** Constructeur visuel des workflows (page `webaios://workflow/<id>`). */
+  workflow: {
+    catalogue(): Promise<CatalogueBloc[]>;
+    /** null : widget inconnu ou sans récolte. */
+    lire(id: string): Promise<EditionWorkflow | null>;
+    enregistrer(id: string, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }>;
+    lireCode(id: string, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
+    enregistrerCode(id: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    rejouer(id: string, execution: string, bloc: string): Promise<ResultatEssai>;
+    /** Lance une vraie exécution maintenant ; rend son id (absent si l'agent est arrêté ou si la récolte n'a pas démarré). */
+    lancer(id: string): Promise<{ execution?: string }>;
+    /** Le bloc sélectionné dans le constructeur de cette fenêtre (pour workflow_ouvert). */
+    selection(id: string, bloc: string | null): void;
+    direct(): Promise<EtatDirect>;
+    surDirect(rappel: (e: EtatDirect) => void): () => void;
+  };
   /** IA locale (Kev et Gemma) des récoltes. */
   ia: {
     etat(): Promise<EtatIaAffiche>;
@@ -252,6 +268,38 @@ export type EtatPanneauAgent =
 const COLONNES_GRILLE = 12;
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 export const SchemaIdWidget = idWidget;
+
+/** Id d'un bloc de workflow (`^[a-z0-9-]{1,40}$`). */
+export const SchemaBlocWorkflow = z.string().regex(/^[a-z0-9-]{1,40}$/);
+/** Nom d'un fichier de code du widget : un `.mjs` à la racine de son dossier. */
+export const SchemaNomCode = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
+/** Texte d'un `.mjs` : 256 Ko au plus (en octets, comme à l'écriture). */
+export const SchemaCodeWorkflow = z.string().refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
+/**
+ * Brouillon du constructeur : borné mais pas forcément valide pour le moteur (c'est `enregistrerWorkflow` qui répond).
+ * Les paramètres restent libres : le moteur les valide.
+ */
+export const SchemaBrouillon = z.object({
+  version: z.literal(1),
+  blocs: z
+    .array(
+      z.object({
+        id: SchemaBlocWorkflow,
+        type: z.string().min(1).max(60),
+        nom: z.string().max(60).optional(),
+        position: z.object({ x: z.number().finite(), y: z.number().finite() }),
+        parametres: z.record(z.string(), z.unknown()),
+      }),
+    )
+    .max(100),
+  liens: z.array(z.object({ de: z.string().min(1).max(40), vers: z.string().min(1).max(40) })).max(400),
+});
+export type Brouillon = z.infer<typeof SchemaBrouillon>;
+
+export type EditionWorkflow = LectureBrouillon & {
+  avertissements: Avertissement[];
+  widget: { nom: string; compte: string[]; publiques: string[]; config: unknown };
+};
 /** Id d'une exécution : son début ISO sans « : » ni « . » (jamais un chemin). */
 export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
 const cote = z.number().int().min(1).max(COLONNES_GRILLE);
