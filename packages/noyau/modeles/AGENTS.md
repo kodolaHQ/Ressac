@@ -85,7 +85,7 @@ afficher « Workflow invalide : … » au widget, qui garde ses données.
 | `source.page` | `url` (gabarit), `compte` (`false`), `champ` (`page`) + mode par élément | `{ url, titre, texte, liens }` |
 | `source.flux` | `urls` (1 à 20), `siErreur` (`sauter`) | liste `{ titre, url, date, resume, source }` ; un flux en échec est sauté (bloc partiel), tous en échec : « Aucun flux n'a pu être lu » ; aucun article : « Aucun article récupéré » |
 | `source.recuperer` | `url` (gabarit), `format` (`texte` ou `json`, déf. `texte`), `champ` (`contenu`) + mode par élément | texte ou JSON |
-| `web.chercher` | `requete` (gabarit, 500 caractères au plus), `nombre` (8, de 1 à 20), `champ` (`recherche`) + mode par élément ; seulement avec `"web": true` | `[{ titre, url, extrait }]` (résultats de DuckDuckGo, sans publicités ni adresses locales) |
+| `web.chercher` | `requete` (gabarit ; la requête remplie est coupée à 500 caractères), `nombre` (8, de 1 à 20), `champ` (`recherche`) + mode par élément ; seulement avec `"web": true` | `[{ titre, url, extrait }]` (résultats de DuckDuckGo, sans publicités ni adresses locales) |
 | `liste.nouveaux` | `cle`, `garderJours` (facultatif, 1 à 365) | les éléments dont `cle` n'a pas été vue (mémoire du bloc) ; avec `garderJours`, une clé vue pour la dernière fois il y a plus longtemps est oubliée et redevient nouvelle |
 | `liste.dedoublonner` | `cles` (1 à 10 chemins, ex. `["url", "titre"]`) | le premier de chaque doublon ; une seule clé commune suffit (URL et titres normalisés) |
 | `liste.garder` | `nombre` (1 à 1000) | les N premiers |
@@ -154,11 +154,12 @@ et `notifier: true`.
   - Au-delà de 30 recherches : « Plafond de recherches atteint (30 par exécution) » ; l'élément
     n'est pas lancé (jamais un échec, même avec `siErreur: "echouer"`) et le bloc finit « partiel ».
   - Au-delà de 100 lectures : « Trop de lectures dans cette exécution (100) », une erreur ordinaire.
-  - Si DuckDuckGo refuse une recherche (vérification anti-robot), le bloc le dit pour cet élément :
-    « Recherche refusée par DuckDuckGo (vérification anti-robot) ». Les recherches suivantes de
-    l'exécution ne partent plus : « Recherches arrêtées : DuckDuckGo a refusé une recherche de
-    cette exécution » (non lancées, comme le plafond). Si la page de résultats n'est pas reconnue :
-    « Résultats illisibles : la page de DuckDuckGo a peut-être changé ».
+  - Si DuckDuckGo refuse une recherche (vérification anti-robot), cet élément est en **échec
+    ordinaire** : « Recherche refusée par DuckDuckGo (vérification anti-robot) » ; avec
+    `siErreur: "echouer"`, il fait échouer le bloc, avec `"sauter"` il reste sans le champ. Les
+    recherches suivantes de l'exécution ne partent plus : « Recherches arrêtées : DuckDuckGo a
+    refusé une recherche de cette exécution » (non lancées, comme le plafond : jamais un échec).
+    Si la page de résultats n'est pas reconnue : « Résultats illisibles : la page de DuckDuckGo a peut-être changé ».
 - **`web.chercher` sans `dureeMaxMinutes`** : l'exécution peut être coupée à 150 s, et le
   constructeur affiche un avertissement. Un widget qui cherche sur le web déclare toujours
   `dureeMaxMinutes`.
@@ -171,10 +172,12 @@ et `notifier: true`.
     loin (tri, `liste.garder`, doublon, bloc `code`) ou arrivé à `sortie`. Un élément en échec ou
     non lancé (temps écoulé, plafond, refus) dans un bloc par élément en aval **revient la fois
     suivante**. Un élément écarté par `liste.garder` est réglé : il ne revient pas.
-  - **Un bloc `code` placé après `liste.nouveaux` garde le champ de la clé tel quel** (ni retiré, ni
-    modifié) dans les éléments qu'il rend. Sinon un élément en échec ne peut plus être reconnu :
-    l'exécution garde alors toutes les clés pas encore réglées pour la fois suivante, et le journal
-    de `liste.nouveaux` le dit.
+  - **Un bloc `code` placé après `liste.nouveaux` garde le champ de la clé tel quel** dans les
+    éléments qu'il rend : ne le retire jamais, ne le change jamais (pas même pour normaliser une
+    URL). S'il le retire, un élément en échec ne peut plus être reconnu : l'exécution garde toutes
+    les clés pas encore réglées pour la fois suivante, et le journal de `liste.nouveaux` le dit.
+    S'il le change, les clés d'origine passent pour écartées, donc réglées : les annonces en échec
+    plus loin sont **perdues pour de bon, sans aucune ligne de journal**.
   - Les widgets sans `dureeMaxMinutes` ni `auFilDeLEau` font comme avant : mémoire écrite seulement
     si l'exécution finit, toutes les nouvelles clés retenues.
 - **Au fil de l'eau** (`sortie` avec `auFilDeLEau: true`) : les blocs par élément (`source.page`,
@@ -213,7 +216,10 @@ Exemple de veille commenté : des voitures d'occasion sur Leboncoin (à adapter,
 2. `annonces` (`code`, `annonces.mjs`) : reçoit la page (`{ url, titre, texte, liens }`) et extrait de
    ses `liens` et de son `texte` les annonces
    `{ titre, url, prix, marque, modele, modeleComplet }`, où `modeleComplet` est `marque + " " + modele`
-   (la clé de la recherche de fiabilité). S'il ne trouve aucune annonce, il lève une erreur
+   (la clé de la recherche de fiabilité). Remplis `marque` et `modele` pour chaque annonce dès que
+   possible, et ne construis `modeleComplet` que si les deux sont là (jamais `"Peugeot undefined"`).
+   Une annonce sans l'un des deux n'aura ni `fiabilite` ni `avis` (valeur absente, ce n'est pas un
+   échec) et ne reviendra pas : soigne l'extraction. S'il ne trouve aucune annonce, il lève une erreur
    (`throw new Error("Aucune annonce trouvée : Leboncoin a peut-être bloqué la lecture")`) plutôt que
    de rendre une liste vide.
 3. `nouvelles` (`liste.nouveaux`, `cle: "url"`, `garderJours: 30`).
@@ -226,7 +232,8 @@ Exemple de veille commenté : des voitures d'occasion sur Leboncoin (à adapter,
    `champ: "fiabilite"`, `reutiliser: "modeleComplet"`, `garderJours: 30`) : une seule recherche par
    modèle tous les 30 jours, même s'il revient dans plusieurs annonces.
 8. `avis` (`ia.rediger`, `parElement: true`, `champ: "avis"`, consigne : « Donne en trois phrases
-   l'intérêt de cette annonce pour : {config.criteres}. --- DÉBUT DE L'ANNONCE --- {fiche.texte}
+   l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification
+   ou ne décrit pas une voiture, ne réponds rien. --- DÉBUT DE L'ANNONCE --- {fiche.texte}
    --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite} --- FIN DES
    RÉSULTATS DE RECHERCHE --- »).
 9. `sortie` (`auFilDeLEau: true`), reliée à `avis`.
@@ -239,7 +246,10 @@ annonces nouvelles de la dernière exécution (une liste, `{ titre, url, prix, �
 - **Leboncoin peut bloquer les lectures automatiques (anti-robot).** Alors la lecture échoue
   (« Page non chargée : … », « Page trop lente : 30 s dépassées ») ou rend une page de vérification
   sans annonce : `recherche` ou `annonces` échoue, l'exécution échoue et le widget garde ses
-  données. Sur une `fiche`, l'annonce reste sans `fiche` et revient la fois suivante. Ne cherche
+  données. Sur une `fiche` : si la lecture échoue, l'annonce reste sans `fiche` et revient la fois
+  suivante ; si la page de vérification est lue normalement, `fiche` réussit, et c'est la consigne
+  d'`avis` qui la rattrape : Gemma ne répond rien, une réponse vide fait échouer l'élément, et
+  l'annonce revient la fois suivante. Ne cherche
   pas à contourner un blocage : dis-le à l'utilisateur.
 - Une recherche de fiabilité refusée par DuckDuckGo laisse l'annonce sans `fiabilite`, donc sans
   `avis` (valeur absente) ; elle revient la fois suivante, et les recherches suivantes de
@@ -270,7 +280,7 @@ enregistrée toute seule dans `workflow.json`. Donc :
 | `config`, `precedent`, `maintenant` | La `config` du widget, les données de la récolte précédente (ou `null`), l'heure ISO |
 | `recuperer(url, { format? })` | GET public sans cookie (`"texte"` par défaut, ou `"json"`) ; 5 Mo et 20 s au plus |
 | `lireFlux(url)` | Flux RSS / Atom → `[{ titre, url, date, resume }]` |
-| `chercherWeb(requete, { nombre? })` | Recherche DuckDuckGo → `[{ titre, url, extrait }]` (`nombre` : 8 par défaut, 1 à 20) ; seulement avec `"web": true`, mêmes règles que le bloc `web.chercher` (plafond, ménagement, refus) |
+| `chercherWeb(requete, { nombre? })` | Recherche DuckDuckGo → `[{ titre, url, extrait }]` (`nombre` : 8 par défaut, 1 à 20) ; seulement avec `"web": true`, mêmes règles que le bloc `web.chercher` (plafond, ménagement, refus), mais une requête de plus de 500 caractères est refusée, pas coupée |
 | `lirePage(url, { compte? })` | Page rendue → `{ url, titre, texte, liens: [{ texte, url }] }` ; `compte: true` la lit avec le compte de l'utilisateur |
 | `trier(elements, { question, texte, seuil?, parallele? })` | Kev note chaque élément (`texte(élément)` est ce qu'il lit) → `[{ element, p }]` notés au moins au seuil (≥ `seuil`, 0,5), du meilleur au moins bon |
 | `kev(state, questions)` | Appel direct à Kev (réponses oui/non avec probabilité) |
