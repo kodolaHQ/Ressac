@@ -24,6 +24,7 @@ export * from "./ia/repartiteur.js";
 export * from "./workflows/protocole.js";
 export * from "./widgets/accords.js";
 export * from "./widgets/planificateur.js";
+export * from "./widgets/heures.js";
 export { contexteValidation } from "./widgets/recolte.js";
 export { adresseLocale } from "./workflows/acces.js";
 export * from "./noyau.js";

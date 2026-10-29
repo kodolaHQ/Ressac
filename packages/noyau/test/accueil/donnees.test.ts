@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
+import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, modifierEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
 import { ecrireExecution, ecrireMemoire, listerExecutions, lireMemoire } from "../../src/index.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -62,4 +62,21 @@ test("ecrireEtatWidget garde le suivi des heures quand l'état écrit n'en a pas
   // Sans fichier d'état ni suivi : rien n'est inventé.
   await ecrireEtatWidget(d, "neuf", { statut: "ok", derniereMaj: null, derniereTentative: null });
   expect("heures" in (await lireEtatWidget(d, "neuf"))).toBe(false);
+});
+
+test("écritures de l'état d'un widget l'une après l'autre : une écriture sans suivi ne perd pas le suivi modifié en même temps", async () => {
+  const d = await dossierTemporaire();
+  await ecrireEtatWidget(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null });
+  for (let i = 0; i < 20; i++) {
+    const heures = { faite: `2026-10-29T07:${String(i).padStart(2, "0")}`, echecs: null };
+    await Promise.all([
+      ecrireEtatWidget(d, "w", { statut: "en-cours", derniereMaj: null, derniereTentative: null }),
+      modifierEtatWidget(d, "w", (e) => ({ ...e, heures })),
+      ecrireEtatWidget(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null }),
+    ]);
+    expect(await lireEtatWidget(d, "w")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null, heures });
+  }
+  // null : rien n'est écrit.
+  await expect(modifierEtatWidget(d, "w", () => null)).resolves.toBeNull();
+  expect((await lireEtatWidget(d, "w")).statut).toBe("ok");
 });

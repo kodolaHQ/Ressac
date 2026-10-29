@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
-import { ecrireEtatWidget, lireEtatWidget } from "../accueil/donnees.js";
+import { ecrireEtatWidget, lireEtatWidget, modifierEtatWidget } from "../accueil/donnees.js";
 import { lireAccueil } from "../accueil/lire.js";
 import type { EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
@@ -10,6 +10,7 @@ import type { IaLocale } from "../ia/ia-locale.js";
 import { creerRepartiteurIa } from "../ia/repartiteur.js";
 import type { PontNavigateur } from "../mcp/pont.js";
 import { lireAccords, retirerAccord } from "./accords.js";
+import { creneauCourant, heureDue, suiviApres, type IssueHeure, type SuiviHeures } from "./heures.js";
 import type { TraceDirecte } from "../workflows/executer.js";
 import { lireExecution, type Execution } from "../workflows/executions.js";
 import type { Menagement } from "../workflows/menagement.js";
@@ -64,16 +65,19 @@ const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime(
 
 /**
  * Le widget est-il à récolter maintenant ? Il faut une récolte (déclarée, et `workflow.json` ou `recolte.mjs` présent), un statut autre
- * qu'`accord-requis` (seul l'utilisateur débloque), et des données plus vieilles que `recolte.minutes` (ou absentes). Après une
- * erreur, on attend en plus 15 min depuis la dernière tentative. `en-cours` n'est relancé qu'au lancement (la récolte
- * précédente a été interrompue) : sinon, c'est la nôtre qui tourne.
+ * qu'`accord-requis` (seul l'utilisateur débloque), et soit des données plus vieilles que `recolte.minutes` (ou absentes), soit
+ * une heure fixe à faire (`heureDue`). Après une erreur, la fréquence attend en plus 15 min depuis la dernière
+ * tentative. `en-cours` n'est relancé qu'au lancement (la récolte précédente a été interrompue), et seulement s'il a une
+ * fréquence ou une heure à faire : sinon, c'est la nôtre qui tourne.
  */
 export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolean }): boolean {
   if ("erreur" in w || !w.aRecolte || !w.declaration.recolte) return false;
-  const { minutes } = w.declaration.recolte;
+  const { minutes, heures } = w.declaration.recolte;
   const { statut, derniereMaj, derniereTentative } = w.etat;
   if (statut === "accord-requis") return false;
-  if (statut === "en-cours") return o.auLancement;
+  const parHeure = heures !== undefined && heureDue(heures, w.etat.heures, derniereTentative, maintenant);
+  if (statut === "en-cours") return o.auLancement && (minutes !== undefined || parHeure);
+  if (parHeure) return true;
   if (minutes === undefined) return false; // heures fixes seules : jamais dû par la fréquence
   if (age(derniereMaj, maintenant) < minutes * MINUTE) return false;
   return statut !== "erreur" || age(derniereTentative, maintenant) >= REESSAI_ERREUR_MS;
@@ -139,6 +143,10 @@ export class PlanificateurWidgets {
   private readonly repartiteur: ReturnType<typeof creerRepartiteurIa> | null;
   /** Widgets des demandes en file, pas encore commencées (un par demande). */
   private attente: string[] = [];
+  /** Démarrage : l'atelier prêt et les états « en-cours » d'avant le lancement remis. Avant toute exécution. */
+  private demarrage: Promise<void> | null = null;
+  /** Widgets trouvés en-cours au démarrage (interrompus) et remis, pas encore relancés. */
+  private interrompus = new Set<string>();
 
   constructor(o: OptionsPlanificateur) {
     // `??` plutôt qu'un spread : une option passée explicitement à undefined garde sa valeur par défaut.
@@ -280,8 +288,42 @@ export class PlanificateurWidgets {
     });
   }
 
-  private async attendrePret(): Promise<void> {
-    await this.o.pret?.catch(() => {});
+  /** Toute exécution l'attend : rien ne tourne avant la fin du démarrage. */
+  private attendrePret(): Promise<void> {
+    this.demarrage ??= Promise.all([this.o.pret?.catch(() => {}), this.remettreInterrompus()]).then(() => {});
+    return this.demarrage;
+  }
+
+  /**
+   * Avant toute exécution, rien ne tourne : un état « en-cours » vient d'une exécution interrompue (arrêt brutal). Il est
+   * remis (statut ok, dates et suivi des heures gardés, plus de progression), qu'il soit relancé ou non : aucun « 7 / 12 »
+   * ne reste figé. La vérification du lancement le relance encore s'il est dû comme un widget en-cours (`du`).
+   */
+  private async remettreInterrompus(): Promise<void> {
+    const { dossierWidgets } = this.o;
+    const dossiers = await readdir(dossierWidgets, { withFileTypes: true }).catch(() => []);
+    let change = false;
+    for (const d of dossiers) {
+      if (!d.isDirectory() || !ID_WIDGET.test(d.name)) continue;
+      const remis = await modifierEtatWidget(dossierWidgets, d.name, (e) =>
+        e.statut === "en-cours"
+          ? { statut: "ok", derniereMaj: e.derniereMaj, derniereTentative: e.derniereTentative, ...(e.heures ? { heures: e.heures } : {}) }
+          : null,
+      ).catch((e) => {
+        console.error(`[webaios] état du widget ${d.name} :`, e);
+        return null;
+      });
+      if (!remis) continue;
+      this.interrompus.add(d.name);
+      change = true;
+    }
+    if (change) this.o.surChange?.();
+  }
+
+  /** `widgetDu`, où un widget remis au démarrage compte, au lancement, comme encore en-cours. */
+  private du(w: WidgetLu, o: { auLancement: boolean }): boolean {
+    const interrompu = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut === "ok";
+    return widgetDu(interrompu ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
   }
 
   private async verifierMaintenant(o: { auLancement: boolean }): Promise<string[]> {
@@ -290,7 +332,7 @@ export class PlanificateurWidgets {
     await this.enchainer("courte", () => this.oublierWidgetsDisparus());
     // Les longues d'abord : lancées sans être attendues, elles ne restent pas derrière les courtes de cette vérification.
     const dus = (await this.widgets())
-      .filter((w) => widgetDu(w, this.o.horloge(), o))
+      .filter((w) => this.du(w, o))
       .sort((a, b) => Number(voieDe(b) === "longue") - Number(voieDe(a) === "longue"));
     if (!dus.length) return [];
     const recoltes: string[] = [];
@@ -302,7 +344,7 @@ export class PlanificateurWidgets {
       // Relu sous le verrou : une récolte demandée entre-temps a pu le mettre à jour.
       const tache = this.seul(id, voie, async () => {
         const w = (await this.widgets()).find((x) => x.id === id);
-        if (!w || !widgetDu(w, this.o.horloge(), o) || this.arrete) return false;
+        if (!w || !this.du(w, o) || this.arrete) return false;
         // Passé dans l'autre voie depuis la lecture : la vérification suivante l'y lancera.
         if (voieDe(w) !== voie) return false;
         if (!(await this.atelierDemarre())) {
@@ -386,8 +428,8 @@ export class PlanificateurWidgets {
     if (comptee) this.compterLongue(id, 1);
     const precedente = this.parWidget.get(id) ?? Promise.resolve();
     const tache = precedente.then(async () => {
-      let v = voie === "a-choisir" ? await this.voieActuelle(id) : voie;
       try {
+        let v = voie === "a-choisir" ? await this.voieActuelle(id) : voie;
         for (;;) {
           if (comptee !== (v === "longue")) {
             comptee = v === "longue";
@@ -450,7 +492,34 @@ export class PlanificateurWidgets {
     };
   }
 
+  /**
+   * Une vraie exécution. Pour un widget à heures, son issue est notée dans le suivi, pour le créneau où elle a commencé
+   * (les essais ne passent jamais par ici).
+   */
   private async recolter(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }> {
+    const debut = this.o.horloge();
+    this.interrompus.delete(w.id);
+    const { resultat, issue } = await this.executer(w, declencheur);
+    const heures = "erreur" in w ? undefined : w.declaration.recolte?.heures;
+    if (!heures) return resultat;
+    const suivi = await this.noterHeure(w.id, creneauCourant(heures, debut), issue);
+    return suivi ? { ...resultat, heures: suivi } : resultat;
+  }
+
+  /** Écrit le suivi des heures sur l'état relu (rien avant la première heure du jour, ni pour une exécution sans effet). */
+  private async noterHeure(id: string, creneau: string | null, issue: IssueHeure): Promise<SuiviHeures | null> {
+    if (!creneau || issue === "sans-effet") return null;
+    try {
+      const etat = await modifierEtatWidget(this.o.dossierWidgets, id, (e) => ({ ...e, heures: suiviApres(e.heures, creneau, issue) }));
+      this.o.surChange?.();
+      return etat?.heures ?? null;
+    } catch (e) {
+      console.error(`[webaios] suivi des heures du widget ${id} :`, e);
+      return null;
+    }
+  }
+
+  private async executer(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<{ resultat: EtatWidget & { execution?: string }; issue: IssueHeure }> {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
     let etat: EtatWidget;
     let execution: string | undefined;
@@ -470,15 +539,17 @@ export class PlanificateurWidgets {
         : { statut: "erreur", derniereMaj: avant.derniereMaj, derniereTentative: this.o.horloge().toISOString(), erreur: ERREUR_RECOLTE_INTERNE, erreurNoyau: true };
       await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
       this.o.surChange?.();
-      return etat;
+      return { resultat: etat, issue: this.arrete ? "sans-effet" : "echec" };
     }
     // Arrêt du noyau pendant la récolte (sortie, changement de profil) : elle n'a pas échoué, elle reprendra plus tard.
     if (this.arrete && etat.statut === "erreur") {
       await ecrireEtatWidget(this.o.dossierWidgets, w.id, avant);
       this.o.surChange?.();
-      return { ...avant, ...(execution ? { execution } : {}) };
+      return { resultat: { ...avant, ...(execution ? { execution } : {}) }, issue: "sans-effet" };
     }
-    return { ...etat, ...(execution ? { execution } : {}) };
+    // Accord requis, atelier arrêté : l'exécution n'a pas vraiment eu lieu.
+    const issue: IssueHeure = etat.statut === "ok" ? "reussie" : etat.statut === "erreur" ? "echec" : "sans-effet";
+    return { resultat: { ...etat, ...(execution ? { execution } : {}) }, issue };
   }
 
   /**

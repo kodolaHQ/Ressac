@@ -50,10 +50,41 @@ export async function lireEtatWidget(dossierWidgets: string, id: string): Promis
   }
 }
 
-export async function ecrireEtatWidget(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
+/** Par widget, la dernière écriture de son état : la suivante l'attend (chacune relit ce qu'elle garde). */
+const ecrituresEtat = new Map<string, Promise<unknown>>();
+
+function sousVerrouEtat<T>(dossierWidgets: string, id: string, f: () => Promise<T>): Promise<T> {
+  const cle = join(dossierWidgets, id);
+  const tache = (ecrituresEtat.get(cle) ?? Promise.resolve()).then(f);
+  const fin = tache.catch(() => {});
+  ecrituresEtat.set(cle, fin);
+  void fin.then(() => {
+    if (ecrituresEtat.get(cle) === fin) ecrituresEtat.delete(cle);
+  });
+  return tache;
+}
+
+async function ecrireEtatSansVerrou(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
   // Le suivi des heures survit à toutes les écritures d'état (en-cours, erreur, accord, atelier arrêté).
   const final = etat.heures ? etat : { ...etat, ...(await heuresActuelles(dossierWidgets, id)) };
   await ecrireAtomique(join(dossierWidgets, id, "etat.json"), JSON.stringify(final, null, 2));
+}
+
+/** Les écritures de l'état d'un widget passent l'une après l'autre : aucune ne perd le suivi des heures d'une autre. */
+export function ecrireEtatWidget(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
+  return sousVerrouEtat(dossierWidgets, id, () => ecrireEtatSansVerrou(dossierWidgets, id, etat));
+}
+
+/**
+ * Relit l'état du widget et écrit ce que `f` en fait, sans qu'aucune autre écriture de son état ne passe entre les
+ * deux. `f` rend null : rien n'est écrit. Rend l'état écrit (ou null).
+ */
+export function modifierEtatWidget(dossierWidgets: string, id: string, f: (etat: EtatWidget) => EtatWidget | null): Promise<EtatWidget | null> {
+  return sousVerrouEtat(dossierWidgets, id, async () => {
+    const etat = f(await lireEtatWidget(dossierWidgets, id));
+    if (etat) await ecrireEtatSansVerrou(dossierWidgets, id, etat);
+    return etat;
+  });
 }
 
 async function heuresActuelles(dossierWidgets: string, id: string): Promise<Pick<EtatWidget, "heures">> {

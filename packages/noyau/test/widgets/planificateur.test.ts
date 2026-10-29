@@ -4,7 +4,7 @@ import { rm } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
-import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
+import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { EtatAtelier } from "../../src/conteneur/atelier.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
@@ -23,6 +23,7 @@ import {
   type OptionsPlanificateur,
 } from "../../src/widgets/planificateur.js";
 import { Menagement } from "../../src/workflows/menagement.js";
+import { creneauCourant } from "../../src/widgets/heures.js";
 import { IA_ABANDONNEE } from "../../src/ia/repartiteur.js";
 import { lireAccueil } from "../../src/accueil/lire.js";
 import type { CheminsEspace } from "../../src/chemins.js";
@@ -89,7 +90,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
   });
   const directs: EtatDirect[] = [];
   const atelier = { etat: async () => etatAtelier, commandeRecolte: () => ["docker"], supprimerRecolte: async (_id: string) => {} };
-  p = new PlanificateurWidgets({
+  const options = (): OptionsPlanificateur => ({
     chemins: c,
     dossierWidgets,
     moteur: "/moteur",
@@ -104,6 +105,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     surDirect: (e) => directs.push(structuredClone(e)),
     ...o.options,
   });
+  p = new PlanificateurWidgets(options());
   return {
     essais,
     recolterEssai,
@@ -117,6 +119,9 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     atelier,
     avancer: (ms: number) => (maintenant = new Date(maintenant.getTime() + ms)),
     fixerAtelier: (e: EtatAtelier) => (etatAtelier = e),
+    fixer: (d: Date) => (maintenant = d),
+    /** Un nouveau planificateur sur les mêmes dossiers (WebAiOs relancé) ; l'appelant a arrêté le précédent. */
+    relancer: () => (p = new PlanificateurWidgets(options())),
   };
 }
 
@@ -588,7 +593,8 @@ test("widgetDu : un widget à heures sans minutes n'est jamais dû par la fréqu
     id: "a",
     dossier: "/a",
     declaration: { ...declarationWidget(), description: "", sources: { compte: [], publiques: [], web: false }, recolte: { heures: ["07:00"] } },
-    etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null },
+    // L'heure du jour est déjà faite : seule la fréquence pourrait le rendre dû.
+    etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null, heures: { faite: creneauCourant(["07:00"], DEBUT), echecs: null } },
     donnees: null,
     exemple: null,
     aRecolte: true,
@@ -856,4 +862,221 @@ test("widget passé de 30 à 2 juste avant un essai : l'essai passe pendant la v
   expect(r.journal).not.toContain("fin veille-a");
   r.liberer("veille-a");
   await a;
+});
+
+// --- Heures fixes ---
+
+/** Heure locale du 29 octobre 2026 (ou du jour donné). */
+const le = (h: number, m: number, jour = 29) => new Date(2026, 9, jour, h, m);
+
+/** Un widget « matin » à heures fixes (et à fréquence si `minutes`). */
+async function ecrireMatin(c: CheminsEspace, recolte: { heures: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
+  await ecrireWidget(c, "matin", declarationWidget(undefined, { recolte, ...extra }), { "recolte.mjs": "export default () => 1" });
+}
+
+const duMatin = (recoltes: string[]) => recoltes.filter((x) => x === "matin").length;
+
+test("heures et minutes : les deux s'appliquent", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { minutes: 120, heures: ["07:00"] });
+  fixer(le(6, 0));
+  await p.verifier({ auLancement: true });
+  expect(duMatin(recoltes)).toBe(1); // par la fréquence (jamais récolté)
+  // Avant la première heure du jour : sans effet sur le suivi.
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toBeUndefined();
+  fixer(le(6, 30));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(1);
+  fixer(le(7, 0));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(2); // par l'heure, les données n'ont qu'une heure
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
+  for (const [h, m] of [[7, 1], [8, 59]] as const) {
+    fixer(le(h, m));
+    await p.verifier({ auLancement: false });
+  }
+  expect(duMatin(recoltes)).toBe(2);
+  fixer(le(9, 0));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(3); // par la fréquence, 2 h après 07:00
+});
+
+test("interrompue : rattrapée au lancement suivant le même jour", async () => {
+  const { p, c, recoltes, recolter, fixer, dossierWidgets, atelier, relancer } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00"] });
+  const base = recolter.getMockImplementation()!;
+  let tuer: (() => void) | undefined;
+  recolter.mockImplementation(async (o) => {
+    if (o.id !== "matin") return base(o);
+    recoltes.push(o.id);
+    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: le(7, 0).toISOString() });
+    await new Promise<void>((r) => (tuer = r));
+    return { etat: { statut: "erreur", derniereMaj: null, derniereTentative: le(7, 0).toISOString(), erreur: "Interrompue" } };
+  });
+  atelier.supprimerRecolte = async () => tuer?.();
+  fixer(le(7, 0));
+  const verif = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(duMatin(recoltes)).toBe(1));
+  await p.arreter();
+  await verif;
+  // Interrompue : sans effet sur le suivi, l'état d'avant est remis.
+  expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null });
+  recolter.mockImplementation(base);
+  fixer(le(7, 30));
+  const p2 = relancer();
+  await p2.verifier({ auLancement: true });
+  expect(duMatin(recoltes)).toBe(2);
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
+  fixer(le(7, 31));
+  await p2.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(2);
+});
+
+test("arrêt brutal (en-cours au lancement) : l'heure manquée est rattrapée une fois", async () => {
+  const { p, c, recoltes, recolter, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00", "12:00"] });
+  await ecrireEtatWidget(dossierWidgets, "matin", {
+    statut: "en-cours", derniereMaj: null, derniereTentative: le(12, 0).toISOString(), progression: { faits: 7, total: 12 },
+    heures: { faite: "2026-10-29T07:00", echecs: null },
+  });
+  fixer(le(14, 0));
+  await p.demarrer();
+  await vi.waitFor(() => expect(recolter.mock.settledResults.filter((r) => r.type === "fulfilled")).toHaveLength(2));
+  expect(duMatin(recoltes)).toBe(1);
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
+  fixer(le(14, 1));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(1);
+});
+
+test("en-cours au lancement d'un widget à heures déjà fait aujourd'hui : pas relancé, son état remis", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00"] });
+  const heures = { faite: "2026-10-29T07:00", echecs: null };
+  await ecrireEtatWidget(dossierWidgets, "matin", {
+    statut: "en-cours", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures,
+  });
+  fixer(le(9, 0));
+  await p.verifier({ auLancement: true });
+  expect(duMatin(recoltes)).toBe(0);
+  // Pas de « 7 / 12 » figé.
+  expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), heures });
+});
+
+test("en-cours au lancement pendant qu'un essai attend : l'état est remis avant toute exécution, le widget relancé ensuite", async () => {
+  const { p, recoltes, recolterEssai, dossierWidgets } = await preparer();
+  // Données fraîches : seul l'arrêt brutal le rend dû au lancement.
+  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), progression: { faits: 7, total: 12 } });
+  const fin = differe<ResultatEssai>();
+  const commence = differe<void>();
+  recolterEssai.mockImplementation(async () => {
+    commence.resoudre();
+    return fin.promesse;
+  });
+  const essai = p.rejouer("actus", "o", "liste");
+  await commence.promesse;
+  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual({ statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() });
+  const verification = p.verifier({ auLancement: true });
+  fin.resoudre({ ok: true, execution: "x-essai", statut: "reussie" });
+  await essai;
+  expect(await verification).toEqual(["actus"]);
+  expect(recoltes).toEqual(["actus"]);
+});
+
+test("un essai ne compte pas pour l'heure", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00"] });
+  fixer(le(7, 0));
+  expect(await p.rejouer("matin", "o", "liste")).toMatchObject({ ok: true });
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toBeUndefined();
+  fixer(le(7, 1));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(1);
+});
+
+test("Mac en veille par-dessus plusieurs heures : un seul rattrapage au réveil", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00", "09:00", "12:00"] });
+  fixer(le(6, 0));
+  await p.verifier({ auLancement: true });
+  expect(duMatin(recoltes)).toBe(0);
+  // Réveil à 15 h : 07:00, 09:00 et 12:00 manquées, une seule exécution.
+  for (let t = le(15, 0).getTime(); t <= le(23, 59).getTime(); t += 30 * MIN) {
+    fixer(new Date(t));
+    await p.verifier({ auLancement: false });
+  }
+  expect(duMatin(recoltes)).toBe(1);
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
+});
+
+test("minuit : l'heure manquée la veille n'est pas rattrapée, celle du lendemain l'est", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00", "22:00"] });
+  // 22:00 manquée le 29 (WebAiOs fermé) ; rouvert après minuit.
+  await ecrireEtatWidget(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: { faite: "2026-10-29T07:00", echecs: null } });
+  for (const [h, m] of [[0, 0], [0, 1], [3, 0], [6, 59]] as const) {
+    fixer(le(h, m, 30));
+    await p.verifier({ auLancement: h === 0 && m === 0 });
+  }
+  expect(duMatin(recoltes)).toBe(0);
+  fixer(le(7, 0, 30));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(1);
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-30T07:00", echecs: null });
+});
+
+test("échecs : réessayé 15 min après, 3 fois au plus, puis rien jusqu'à l'heure suivante", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer({ statut: "erreur" });
+  await ecrireMatin(c, { heures: ["07:00", "12:00"] });
+  const tentatives: string[] = [];
+  for (let t = le(7, 0).getTime(); t <= le(12, 0).getTime(); t += MIN) {
+    fixer(new Date(t));
+    const avant = duMatin(recoltes);
+    await p.verifier({ auLancement: false });
+    if (duMatin(recoltes) > avant) tentatives.push(`${new Date(t).getHours()}:${String(new Date(t).getMinutes()).padStart(2, "0")}`);
+  }
+  expect(tentatives).toEqual(["7:00", "7:15", "7:30", "7:45", "12:00"]);
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1 } });
+});
+
+test("une exécution manuelle avant la première heure n'efface pas le suivi de la veille ; une à 07:10 compte pour 07:00", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00"] });
+  const veille = { faite: "2026-10-28T07:00", echecs: null };
+  await ecrireEtatWidget(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: veille });
+  fixer(le(6, 50));
+  expect(await p.recolterMaintenant("matin")).toMatchObject({ statut: "ok" });
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(veille);
+  fixer(le(7, 10));
+  expect(await p.recolterMaintenant("matin", "agent")).toMatchObject({ statut: "ok", heures: { faite: "2026-10-29T07:00", echecs: null } });
+  fixer(le(7, 11));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(2);
+});
+
+test("le suivi des heures survit à un accord retiré puis redonné", async () => {
+  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  const sources = { compte: ["mail.example.com"], publiques: [] };
+  await ecrireMatin(c, { heures: ["07:00"] }, { sources });
+  await accorder(dossierWidgets, "matin", { domaines: ["mail.example.com"], publiques: [], profil: "defaut" });
+  fixer(le(7, 0));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(1);
+  const faite = { faite: "2026-10-29T07:00", echecs: null };
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
+  // Comme refuserAccord : données effacées, état en attente d'accord.
+  await supprimerDonnees(dossierWidgets, "matin");
+  const avant = await lireEtatWidget(dossierWidgets, "matin");
+  await ecrireEtatWidget(dossierWidgets, "matin", { statut: "accord-requis", derniereMaj: avant.derniereMaj, derniereTentative: avant.derniereTentative, erreur: "accord", erreurNoyau: true });
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
+  fixer(le(7, 5));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(1);
+  // Redonné : la récolte qui suit l'accord compte, et l'heure n'est pas refaite.
+  await accorder(dossierWidgets, "matin", { domaines: ["mail.example.com"], publiques: [], profil: "defaut" });
+  await p.recolterMaintenant("matin");
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
+  fixer(le(7, 30));
+  await p.verifier({ auLancement: false });
+  expect(duMatin(recoltes)).toBe(2);
 });
