@@ -264,3 +264,74 @@ test("le choix d'une exécution est gardé par widget dans la fenêtre (changer 
   oublierChoixExecutions(["v"]);
   expect(new Executions("w", f.source).voulue).toBeNull();
 });
+
+// Revue tâche 11.
+
+test("la lecture initiale du direct n'écrase pas un événement poussé plus récent", async () => {
+  const f = faux([resume("b")]);
+  const l = lanceurFaux(f);
+  let rendre: (e: EtatDirect) => void = () => {};
+  l.lanceur.direct = () => new Promise((ok) => (rendre = ok));
+  const x = new Executions("w", f.source, l.lanceur);
+  x.suivre();
+  l.emettre({ courant: null, enAttente: [] });
+  rendre(directDe("w"));
+  await attendreQue(() => false);
+  expect(x.occupe).toBe(false);
+  expect(x.enDirect).toBeNull();
+});
+
+test("Rejouer qui échoue en route (canal) : le refus le dit", async () => {
+  const f = faux([resume("b")]);
+  const l = lanceurFaux(f);
+  l.lanceur.rejouer = () => Promise.reject(new Error("canal fermé"));
+  const x = new Executions("w", f.source, l.lanceur);
+  await x.charger();
+  await x.rejouer("tri");
+  expect(x.refus).toBe("Rejeu impossible : canal fermé");
+  expect(x.occupe).toBe(false);
+});
+
+test("▶ Lancer qui échoue en route : rien de choisi de travers, plus occupé", async () => {
+  const f = faux([resume("b")]);
+  const l = lanceurFaux(f);
+  l.lanceur.lancer = () => Promise.reject(new Error("canal fermé"));
+  const erreur = console.error;
+  console.error = () => {};
+  try {
+    const x = new Executions("w", f.source, l.lanceur);
+    await x.charger();
+    await x.lancer();
+    expect(x.occupe).toBe(false);
+    expect(x.choisie?.id).toBe("b");
+  } finally {
+    console.error = erreur;
+  }
+});
+
+test("▶ Lancer qui rend la dernière vraie exécution : le choix par défaut reprend, les suivantes le suivent", async () => {
+  const f = faux([resume("b")]);
+  const l = lanceurFaux(f);
+  l.lanceur.lancer = async () => {
+    f.etat.liste = [resume("nouvelle"), ...f.etat.liste];
+    return { execution: "nouvelle" };
+  };
+  const x = new Executions("w", f.source, l.lanceur);
+  await x.charger();
+  await x.lancer();
+  expect(x.choisie?.id).toBe("nouvelle");
+  expect(x.voulue).toBeNull();
+  f.etat.liste = [resume("planifiee"), ...f.etat.liste];
+  await x.charger();
+  expect(x.choisie?.id).toBe("planifiee");
+});
+
+test("un choix fait par un autre constructeur du widget (onglet quitté pendant Lancer) est repris au rechargement", async () => {
+  const f = faux([resume("b"), resume("a")]);
+  const y = new Executions("w", f.source);
+  await y.charger();
+  const x = new Executions("w", f.source);
+  await x.choisir("a");
+  await y.charger();
+  expect(y.choisie?.id).toBe("a");
+});

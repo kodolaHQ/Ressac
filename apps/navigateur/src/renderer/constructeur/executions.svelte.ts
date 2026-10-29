@@ -5,6 +5,9 @@ export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execu
 /** « ▶ Lancer », « Rejouer depuis ce bloc » et le suivi en direct. */
 export type Lanceur = Pick<ApiWebaios["workflow"], "lancer" | "rejouer" | "direct" | "surDirect">;
 
+/** Le préfixe des refus du noyau, repris pour une demande qui échoue en route. */
+const PREFIXE_REJEU = "Rejeu impossible : ";
+
 const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Le choix de l'utilisateur, par widget et par fenêtre : changer d'onglet ne le perd pas. */
@@ -62,10 +65,15 @@ export class Executions {
   suivre(): () => void {
     if (!this.lanceur) return () => {};
     let fini = false;
-    const fin = this.lanceur.surDirect((e) => this.appliquerDirect(e));
+    // Un événement poussé est plus récent que la lecture initiale : celle-ci ne l'écrase jamais.
+    let recu = false;
+    const fin = this.lanceur.surDirect((e) => {
+      recu = true;
+      this.appliquerDirect(e);
+    });
     void this.lanceur
       .direct()
-      .then((e) => !fini && this.appliquerDirect(e))
+      .then((e) => !fini && !recu && this.appliquerDirect(e))
       .catch(() => {});
     return () => {
       fini = true;
@@ -90,6 +98,9 @@ export class Executions {
     const l = await this.source.executions(this.widget);
     if (n !== this.requeteListe) return;
     if (!memeJson(l, this.liste)) this.liste = l;
+    // Un autre constructeur de ce widget dans la fenêtre (onglet quitté pendant « Lancer ») a pu changer le choix.
+    const garde = choix.get(this.widget) ?? null;
+    if (garde !== this.voulue) this.voulue = garde;
     if (this.voulue !== null && !l.some((e) => e.id === this.voulue)) this.garder(null);
     if (!(await this.chargerDetail()) && relire) await this.chargerListe(false);
   }
@@ -106,18 +117,25 @@ export class Executions {
     else choix.set(this.widget, id);
   }
 
-  /** « ▶ Lancer » : une vraie exécution, choisie à sa fin ; sans id rendu (agent arrêté…), le choix reste. */
+  /**
+   * « ▶ Lancer » : une vraie exécution, choisie à sa fin ; sans id rendu (agent arrêté…), le choix reste. Si c'est la
+   * dernière vraie, le choix redevient celui par défaut : les exécutions suivantes le reprennent.
+   */
   async lancer(): Promise<void> {
     if (!this.lanceur || this.occupe) return;
     this.demande = true;
     this.refus = null;
+    let execution: string | undefined;
     try {
-      const r = await this.lanceur.lancer(this.widget);
-      if (r.execution !== undefined) this.garder(r.execution);
+      execution = (await this.lanceur.lancer(this.widget)).execution;
+      if (execution !== undefined) this.garder(execution);
+    } catch (e) {
+      console.error(`[webaios] exécution du widget ${this.widget} :`, e);
     } finally {
       this.demande = false;
     }
     await this.charger();
+    if (execution !== undefined && this.voulue === execution && this.liste.find((e) => !e.essai)?.id === execution) this.garder(null);
   }
 
   /** « Rejouer depuis ce bloc » avec les sorties amont de l'exécution choisie ; l'essai rendu est choisi. */
@@ -130,6 +148,8 @@ export class Executions {
       const r = await this.lanceur.rejouer(this.widget, origine.id, bloc);
       if (r.ok) this.garder(r.execution);
       else this.refus = r.erreur;
+    } catch (e) {
+      this.refus = PREFIXE_REJEU + ((e as Error)?.message || "erreur inattendue");
     } finally {
       this.demande = false;
     }

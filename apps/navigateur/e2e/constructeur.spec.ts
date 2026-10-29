@@ -794,6 +794,8 @@ test("Rejouer depuis tri après avoir changé le seuil : essai marqué, page non
   };
   expect(avant.donnees).not.toBeNull();
   const lectures = lecturesSite;
+  // La récolte au lancement a bien lu le faux site : son journal compte.
+  expect(lectures).toBeGreaterThan(0);
 
   await fenetre.getByTestId("rejouer").click();
   await expect.poll(() => readdirSync(dossierExecutionsDe(profil)).length, { timeout: 20_000 }).toBe(2);
@@ -807,6 +809,17 @@ test("Rejouer depuis tri après avoir changé le seuil : essai marqué, page non
   await fenetre.getByTestId("bouton-apercu").click();
   await expect(apercu(fenetre)).toHaveText('{"liens":["Nouveau modèle IA","Recette de cuisine"]}');
   await expect(fenetre.getByTestId("apercu-mention")).toHaveCount(0);
+
+  // La sortie de tri, dépliée sur l'essai, le reste quand l'essai est relu (choisir l'origine puis l'essai).
+  const sortieBloc = fenetre.getByTestId("sortie-bloc");
+  await sortieBloc.getByTestId("sortie-repliable").locator("summary").click();
+  await expect(sortieBloc.getByTestId("sortie-json")).toBeVisible();
+  await fenetre.getByTestId(`execution-${origine}`).click();
+  await expect(fenetre.getByTestId(`execution-${origine}`)).toHaveAttribute("aria-pressed", "true");
+  await expect(sortieBloc.getByTestId("sortie-json")).toHaveCount(0);
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await expect(sortieBloc.getByTestId("sortie-json")).toBeVisible();
 
   // La page n'a pas été relue ; ni les données, ni la mémoire, ni l'état du widget n'ont bougé.
   expect(lecturesSite).toBe(lectures);

@@ -54,3 +54,10 @@ test("aucune exécution : les données du widget comme sur l'accueil, sans menti
   expect(donneesApercu({ choisie: null, detail: null, liste: [], widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
   expect(donneesApercu({ choisie: null, detail: null, liste: [], widget: { donnees: null, exemple: { exemple: 1 } } })).toEqual({ donnees: { exemple: 1 }, mention: false });
 });
+
+test("dernière vraie exécution qui n'a pas abouti : les données du widget, avec la mention", () => {
+  const echouee = { ...resume("b"), statut: "echouee" as const };
+  expect(donneesApercu({ choisie: echouee, detail: detail("b", null), liste: [echouee, resume("a")], widget })).toEqual({ donnees: { vraies: 1 }, mention: true });
+  const partielle = { ...resume("b"), statut: "partielle" as const };
+  expect(donneesApercu({ choisie: partielle, detail: null, liste: [partielle], widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
+});
