@@ -5,7 +5,7 @@ import { memeOrigine } from "../applications/favicon";
 import type { Historique } from "../historique";
 import type { Magasin } from "../ipc";
 import { InspecteurCdp } from "../outils-dev/inspecteur";
-import { lirePageInvisible } from "./lecture-invisible";
+import { lireHtmlInvisible, lirePageInvisible } from "./lecture-invisible";
 
 const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
   id: o.id,
@@ -319,6 +319,13 @@ export class PontElectron implements PontNavigateur {
     const sessionProfil = this.o.sessionProfil;
     if (!sessionProfil) throw new Error("Lecture invisible indisponible");
     return lirePageInvisible(url, o, { etat: () => this.o.magasin.etat, sessionProfil });
+  }
+
+  /** Le HTML d'une page publique (session vidée avant la lecture, jamais un profil) : voir `lireHtmlInvisible`. */
+  async lireHtmlInvisible(url: string, o: { adressesLocales?: boolean }): Promise<{ url: string; html: string }> {
+    const sessionProfil = this.o.sessionProfil;
+    if (!sessionProfil) throw new Error("Lecture invisible indisponible");
+    return lireHtmlInvisible(url, o, { etat: () => this.o.magasin.etat, sessionProfil });
   }
 
   async demanderOutilsDev(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]> {

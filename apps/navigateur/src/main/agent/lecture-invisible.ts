@@ -11,6 +11,8 @@ const DELAI_LECTURE_FORCEE_MS = 26_000;
 const CALME_MS = 2_000;
 const MAX_TEXTE = 20_000;
 const MAX_LIENS = 400;
+/** Au plus 2 Mo de HTML rendus par `lireHtmlInvisible`. */
+export const HTML_MAX = 2 * 1024 * 1024;
 const LECTURES_SIMULTANEES = 2;
 /** Code Chromium d'une navigation remplacée par une autre (redirection par script, meta refresh) : pas un échec. */
 const ERR_ABORTED = -3;
@@ -127,16 +129,23 @@ function rendrePlace(): void {
   else enCours--;
 }
 
+/** Ce qu'une lecture lit dans la page : le script (monde isolé 999) et la mise en forme de ce qu'il rend. */
+interface Lecture<T> {
+  script: string;
+  forme: (url: string, brut: unknown) => T;
+}
+
 /**
- * Lit une page dans une fenêtre invisible, publique (`profil: null`) ou avec un profil de connexion qu'aucun espace
- * privé n'utilise (sinon ProfilRefuse, sans rien créer). Rien n'en est retenu : ni historique, ni onglet dans l'état.
- * Avec `domaines`, toute navigation du cadre principal hors de ces hôtes est annulée avant de partir, et la lecture échoue.
+ * Charge `url` dans une fenêtre invisible (session publique vidée si `profil` est null, sinon celle d'un profil de
+ * connexion qu'aucun espace privé n'utilise : sinon ProfilRefuse, sans rien créer) et la lit avec `lecture`. Une seule
+ * fonction de chargement pour toutes les lectures : mêmes gardes, mêmes deux places, même limite de 30 s.
  */
-export async function lirePageInvisible(
+async function lireFenetre<T>(
   url: string,
   o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean },
   deps: DepsLecture,
-): Promise<PageLue> {
+  lecture: Lecture<T>,
+): Promise<T> {
   const { profil, domaines } = o;
   const permise = (u: string) => urlPermise(u, domaines, o.adressesLocales === true);
   const verifierProfil = () => {
@@ -159,7 +168,7 @@ export async function lirePageInvisible(
     const f = (deps.creerFenetre ?? creerFenetre)(s);
     try {
       await neutraliserImpression(f.webContents);
-      const page = await lireDans(f.webContents, url, permise);
+      const page = await lireDans(f.webContents, url, permise, lecture);
       // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
       verifierProfil();
       return page;
@@ -176,6 +185,30 @@ export async function lirePageInvisible(
   } finally {
     rendrePlace();
   }
+}
+
+/**
+ * Lit une page dans une fenêtre invisible, publique (`profil: null`) ou avec un profil de connexion qu'aucun espace
+ * privé n'utilise (sinon ProfilRefuse, sans rien créer). Rien n'en est retenu : ni historique, ni onglet dans l'état.
+ * Avec `domaines`, toute navigation du cadre principal hors de ces hôtes est annulée avant de partir, et la lecture échoue.
+ */
+export function lirePageInvisible(
+  url: string,
+  o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean },
+  deps: DepsLecture,
+): Promise<PageLue> {
+  return lireFenetre(url, o, deps, { script: LECTURE, forme: (u, brut) => mettreEnForme(u, (brut ?? { titre: "", texte: "", liens: [] }) as PartiesLues) });
+}
+
+/**
+ * Le HTML d'une page publique (`document.documentElement.outerHTML`, coupé à 2 Mo) : toujours la session publique,
+ * vidée avant la lecture, jamais un profil. Lu dans le monde isolé 999 ; `url` est l'adresse finale (permise).
+ */
+export function lireHtmlInvisible(url: string, o: { adressesLocales?: boolean }, deps: DepsLecture): Promise<{ url: string; html: string }> {
+  return lireFenetre(url, { profil: null, ...(o.adressesLocales === true ? { adressesLocales: true } : {}) }, deps, {
+    script: LECTURE_HTML,
+    forme: (u, brut) => ({ url: u, html: typeof brut === "string" ? brut.slice(0, HTML_MAX) : "" }),
+  });
 }
 
 interface PartiesLues {
@@ -197,6 +230,9 @@ const LECTURE = `(() => {
   }
   return { titre: document.title, texte: (document.body?.innerText ?? "").slice(0, ${MAX_TEXTE}), liens };
 })()`;
+
+/** Le HTML entier de la page, lu dans le monde isolé 999. */
+const LECTURE_HTML = `(() => document.documentElement.outerHTML)()`;
 
 /** Remet en forme ce que le script a lu : la page a pu tout influencer, sauf les types et les bornes. */
 function mettreEnForme(url: string, p: PartiesLues): PageLue {
@@ -257,13 +293,13 @@ async function preparer(wc: WebContents): Promise<void> {
 }
 
 /** Charge `url`, attend la fin du chargement puis 2 s de calme (30 s au plus), lit la page. */
-function lireDans(wc: WebContents, url: string, permise: (u: string) => boolean): Promise<PageLue> {
-  return new Promise<PageLue>((resolve, reject) => {
+function lireDans<T>(wc: WebContents, url: string, permise: (u: string) => boolean, lecture: Lecture<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     let fini = false;
     let charge = false;
-    let lecture = false;
+    let enLecture = false;
     let calme: NodeJS.Timeout | undefined;
-    const finir = (r: { erreur: Error } | { page: PageLue }) => {
+    const finir = (r: { erreur: Error } | { page: T }) => {
       if (fini) return;
       fini = true;
       clearTimeout(calme);
@@ -313,17 +349,17 @@ function lireDans(wc: WebContents, url: string, permise: (u: string) => boolean)
     wc.on("render-process-gone", () => finir({ erreur: new Error("La page s'est arrêtée pendant la lecture") }));
 
     const lire = async () => {
-      if (fini || lecture || wc.isDestroyed()) return;
-      lecture = true;
+      if (fini || enLecture || wc.isDestroyed()) return;
+      enLecture = true;
       clearTimeout(calme);
       try {
         const avant = wc.getURL();
         if (!permise(avant)) return bloquer(avant);
-        const parties = (await wc.executeJavaScriptInIsolatedWorld(999, [{ code: LECTURE }])) as PartiesLues;
+        const brut = await wc.executeJavaScriptInIsolatedWorld(999, [{ code: lecture.script }]);
         // pushState/replaceState (application d'une page) a pu changer l'URL : elle doit rester permise.
         const apres = wc.isDestroyed() ? "" : wc.getURL();
         if (!permise(apres)) return bloquer(apres);
-        finir({ page: mettreEnForme(apres, parties ?? { titre: "", texte: "", liens: [] }) });
+        finir({ page: lecture.forme(apres, brut) });
       } catch (e) {
         finir({ erreur: e instanceof Error ? e : new Error(String(e)) });
       }

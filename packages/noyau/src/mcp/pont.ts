@@ -51,6 +51,12 @@ export interface PontNavigateur {
    */
   lirePageInvisible?(url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }): Promise<PageLue>;
   /**
+   * Le HTML d'une page publique (`document.documentElement.outerHTML`, 2 Mo au plus) : toujours la session publique,
+   * vidée avant la lecture, jamais un profil ni un compte. Mêmes gardes que `lirePageInvisible` (http(s), adresse
+   * locale refusée sauf `adressesLocales`), même limite de 30 s ; `url` est l'adresse finale, qui doit rester permise.
+   */
+  lireHtmlInvisible?(url: string, o: { adressesLocales?: boolean }): Promise<{ url: string; html: string }>;
+  /**
    * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
    * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
    * noyau arrêté), elle est retirée et la demande répond faux. Absent : la demande est refusée.

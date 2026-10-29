@@ -150,6 +150,7 @@ export class PontFactice implements PontNavigateur {
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
   lirePageInvisible?: (url: string, o: { profil: string | null; domaines?: string[]; adressesLocales?: boolean }) => Promise<PageLue>;
+  lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean }) => Promise<{ url: string; html: string }>;
   demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
@@ -158,7 +159,7 @@ export class PontFactice implements PontNavigateur {
    * qui répond ces droits. `bloquer` : profils et instantanés ne finissent qu'à l'abandon. `historique` fournit
    * l'historique : `chercher` renvoie `resultats` (au plus `limite`), `lire` la page de `textes` à cette URL, et
    * `erreur`, si donnée, fait échouer les deux. `lecture` fournit `lirePageInvisible` : la page de `pages` à cette URL
-   * (sinon une page vide), et ProfilRefuse pour un profil de `refuser`. `redirections` simule une redirection :
+   * (sinon une page vide), `lireHtmlInvisible` : le HTML de `html` à cette URL (sinon ""), et ProfilRefuse pour un profil de `refuser`. `redirections` simule une redirection :
    * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue. `donneesWidget` fournit la carte
    * « donnees-widget », qui répond cette valeur.
    */
@@ -171,7 +172,7 @@ export class PontFactice implements PontNavigateur {
       accorderDev?: DroitDev[];
       bloquer?: boolean;
       historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
-      lecture?: { pages: PageLue[]; refuser?: string[]; redirections?: Record<string, string> };
+      lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string> };
       donneesWidget?: boolean;
     },
   ) {
@@ -208,6 +209,10 @@ export class PontFactice implements PontNavigateur {
         const finale = lecture.redirections?.[url] ?? url;
         const p = lecture.pages.find((x) => x.url === finale);
         return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
+      };
+      this.lireHtmlInvisible = async (url, l) => {
+        this.noter("lireHtmlInvisible", url, { ...l });
+        return { url, html: lecture.html?.[url] ?? "" };
       };
     }
     const donneesWidget = o.donneesWidget;

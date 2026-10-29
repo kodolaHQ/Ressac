@@ -8,7 +8,7 @@ vi.mock("electron", () => ({
   BrowserWindow: vi.fn(),
 }));
 
-const { lirePageInvisible, profilsLisibles, urlPermise } = await import("../src/main/agent/lecture-invisible");
+const { lirePageInvisible, lireHtmlInvisible, profilsLisibles, urlPermise } = await import("../src/main/agent/lecture-invisible");
 
 const etat = (profils: string[], espaces: { profil: string; prive: boolean }[]) =>
   ({ profils: profils.map((id) => ({ id })), espaces: espaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as EtatNavigateur;
@@ -179,4 +179,43 @@ test("lirePageInvisible refuse une URL locale sans créer de vue, sauf adressesL
   const deps = { etat: () => etatLibre, sessionProfil: vi.fn(), sessionPublique: vi.fn(), creerFenetre: vi.fn() };
   await expect(lirePageInvisible("http://127.0.0.1:11434/", { profil: null }, deps)).rejects.toThrow();
   expect(deps.creerFenetre).not.toHaveBeenCalled();
+});
+
+test("lireHtmlInvisible vide la session publique puis lit le HTML de la page", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/final", async () => "<html><body>x</body></html>");
+  const ordre: string[] = [];
+  const deps = {
+    ...depsAvec(f),
+    sessionPublique: vi.fn(() => ({ clearStorageData: async () => void ordre.push("storage"), clearCache: async () => void ordre.push("cache") }) as never),
+    creerFenetre: vi.fn(() => (ordre.push("fenetre"), f) as never),
+  };
+  const r = lireHtmlInvisible("https://exemple.test/", {}, deps);
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toEqual({ url: "https://exemple.test/final", html: "<html><body>x</body></html>" });
+  expect(ordre).toEqual(["storage", "cache", "fenetre"]);
+  expect(deps.sessionProfil).not.toHaveBeenCalled();
+  const appel = wc.executeJavaScriptInIsolatedWorld.mock.calls[0] as unknown as [number, unknown];
+  expect(appel[0]).toBe(999);
+  expect(JSON.stringify(appel[1])).toContain("outerHTML");
+  expect(f.destroy).toHaveBeenCalled();
+});
+
+test("lireHtmlInvisible refuse une adresse locale sans créer de fenêtre", async () => {
+  const deps = { etat: () => etatLibre, sessionProfil: vi.fn(), sessionPublique: vi.fn(), creerFenetre: vi.fn() };
+  await expect(lireHtmlInvisible("http://127.0.0.1:11434/", {}, deps)).rejects.toThrow(/Adresse refusée/);
+  expect(deps.creerFenetre).not.toHaveBeenCalled();
+  expect(deps.sessionPublique).not.toHaveBeenCalled();
+});
+
+test("le HTML lu est coupé à 2 Mo", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/", async () => "a".repeat(2 * 1024 * 1024 + 500));
+  const r = lireHtmlInvisible("https://exemple.test/", {}, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect((await r).html).toHaveLength(2 * 1024 * 1024);
 });
