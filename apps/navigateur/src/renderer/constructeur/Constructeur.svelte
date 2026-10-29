@@ -6,9 +6,12 @@
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
   import Canevas from "./Canevas.svelte";
+  import { confirmerChangementDeBloc, garderAvantFermeture } from "./codes.svelte";
   import { creerEdition, suivreDisparitions } from "./edition.svelte";
+  import { Executions } from "./executions.svelte";
+  import OngletBloc from "./OngletBloc.svelte";
   import Palette from "./Palette.svelte";
-  import type { Pastille } from "./pastilles";
+  import { pastillesDe } from "./pastilles";
 
   /** Le constructeur du workflow du widget `id` (page `webaios://workflow/<id>`). */
   let { id }: { id: string } = $props();
@@ -17,9 +20,15 @@
   // svelte-ignore state_referenced_locally
   const edition = creerEdition(id, api.workflow);
   suivreDisparitions(api.accueil);
+  garderAvantFermeture();
+  // svelte-ignore state_referenced_locally
+  const executions = new Executions(id, api.accueil);
   let catalogue = $state.raw<CatalogueBloc[]>([]);
   const parType = $derived(new Map(catalogue.map((c) => [c.type, c])));
-  let pastilles = $state.raw<Record<string, Pastille>>({});
+  /** Éléments et statut de chaque bloc à l'exécution choisie (par défaut la dernière vraie, pas un essai). */
+  const pastilles = $derived(pastillesDe(executions.choisie, null));
+  /** Le bloc affiché dans l'onglet « Bloc ». */
+  let selection = $state<string | null>(null);
   let canevas = $state<ReturnType<typeof Canevas>>();
   let lancement = $state(false);
 
@@ -33,16 +42,19 @@
     return `Erreur d'enregistrement : ${e.erreur}`;
   });
 
-  /** Éléments et statut de chaque bloc à la dernière vraie exécution (pas un essai). */
-  let requetePastilles = 0;
-  async function chargerPastilles(): Promise<void> {
-    const n = ++requetePastilles;
-    const liste = await api.accueil.executions(id);
-    if (n !== requetePastilles) return;
-    const derniere = liste.find((e) => !e.essai);
-    const p = Object.fromEntries((derniere?.blocs ?? []).map((b) => [b.id, { statut: b.statut, elements: b.elements }]));
-    // Un changement de l'accueil qui ne touche pas ce widget ne redessine pas le canevas.
-    if (JSON.stringify(p) !== JSON.stringify(pastilles)) pastilles = p;
+  const chargerExecutions = () => void executions.charger().catch(() => {});
+
+  /** Un bloc sélectionné sur le canevas ; quitter un code non enregistré demande confirmation. */
+  function selectionner(bloc: string | null): void {
+    if (bloc === selection) return;
+    const courant = selection === null ? undefined : edition.brouillon?.blocs.find((b) => b.id === selection);
+    const source = courant?.type === "code" ? courant.parametres.source : undefined;
+    if (typeof source === "string" && !confirmerChangementDeBloc(id, source)) {
+      canevas?.selectionner(selection);
+      return;
+    }
+    selection = bloc;
+    api.workflow.selection(id, bloc);
   }
 
   $effect(() => untrack(() => {
@@ -50,10 +62,10 @@
     api.workflow.selection(id, null);
     void api.workflow.catalogue().then((c) => (catalogue = c));
     void edition.ouvrir();
-    void chargerPastilles().catch(() => {});
+    chargerExecutions();
     const fin = api.accueil.surChange(() => {
       void edition.relire();
-      void chargerPastilles().catch(() => {});
+      chargerExecutions();
     });
     return () => {
       fin();
@@ -84,7 +96,7 @@
       await api.workflow.lancer(id);
     } finally {
       lancement = false;
-      void chargerPastilles().catch(() => {});
+      chargerExecutions();
     }
   }
 
@@ -143,9 +155,15 @@
           {edition}
           catalogue={parType}
           {pastilles}
-          onselection={(bloc) => api.workflow.selection(id, bloc)}
+          onselection={selectionner}
           onajouter={(type, p) => ajouter(type, p)}
         />
+        <aside class="droite" aria-label="Bloc">
+          <div class="onglets-droite" role="tablist">
+            <button role="tab" aria-selected="true" class="actif">Bloc</button>
+          </div>
+          <OngletBloc widget={id} {edition} {executions} catalogue={parType} {selection} />
+        </aside>
       </div>
     </SvelteFlowProvider>
   {/if}
@@ -168,6 +186,10 @@
   .bandeau { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--fond-actif); font-size: 13px; }
   .bandeau span { flex: 1; }
   .corps { flex: 1; display: flex; min-height: 0; }
+  .droite { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--bord); background: var(--fond-barre); }
+  .onglets-droite { display: flex; gap: 2px; padding: 8px 12px 0; }
+  .onglets-droite button { padding: 4px 10px; border-radius: 6px; border: none; background: none; color: var(--texte-doux); }
+  .onglets-droite button.actif { background: var(--fond-actif); color: var(--texte); }
   .message { padding: 20px 24px; margin: 0; }
   .doux { color: var(--texte-doux); }
   .erreur { color: var(--en-erreur); white-space: pre-wrap; word-break: break-word; }

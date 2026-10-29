@@ -110,6 +110,11 @@
     return { x: p.x - DEMI.x, y: p.y - DEMI.y };
   }
 
+  /** Remet la sélection affichée sur `id` (un changement de bloc refusé par l'utilisateur). */
+  export function selectionner(id: string | null): void {
+    nodes = nodes.map((n) => (n.selected === (n.id === id) ? n : { ...n, selected: n.id === id }));
+  }
+
   export function ajusterVue(): void {
     void flow.fitView({ maxZoom: 1 });
   }

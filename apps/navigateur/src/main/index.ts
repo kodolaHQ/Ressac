@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, session, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, type IpcMainEvent } from "electron";
 import { join } from "node:path";
 import { ARG_FENETRE, CANAUX } from "../commun/canaux";
 import {
@@ -139,6 +139,21 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     clearTimeout(minuterieCadre);
     noterCadre(id, fenetre, magasin);
     enFermeture.add(fenetre);
+  });
+  // L'interface retient la fermeture quand du code du constructeur n'est pas enregistré (« beforeunload ») : L'utilisateur
+  // choisit. En quittant WebAiOs (⌘Q), la sortie est déjà engagée (agent arrêté) : la fenêtre se ferme sans demander.
+  fenetre.webContents.on("will-prevent-unload", (e) => {
+    if (enSortie) return void e.preventDefault();
+    const choix = dialog.showMessageBoxSync(fenetre, {
+      type: "question",
+      buttons: ["Fermer", "Rester"],
+      defaultId: 1,
+      cancelId: 1,
+      message: "Fermer la fenêtre ?",
+      detail: "Du code du constructeur de workflow n'est pas enregistré : il sera perdu.",
+    });
+    if (choix === 0) e.preventDefault();
+    else enFermeture.delete(fenetre);
   });
   // Fermer une fenêtre parmi d'autres la retire de la session (avec ses onglets) ; la dernière reste, pour la
   // restauration. Sur « closed » : un window.close() de la page détruit la fenêtre sans émettre « close ».

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icone from "./Icone.svelte";
   import type { EtatFenetre } from "../../commun/modele";
-  import { accesDe, api, etat } from "../etat.svelte";
+  import { accesDe, api, etat, fermerOnglet } from "../etat.svelte";
   import PastilleAcces from "./PastilleAcces.svelte";
   import IconeSite from "./IconeSite.svelte";
   import { ouvrirMenu } from "./menu.svelte";
@@ -47,12 +47,12 @@
         ondrop={(e) => deposer(e, index)}
         onclick={() => api.agir({ type: "activerOnglet", id })}
         onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.agir({ type: "activerOnglet", id })}
-        onauxclick={(e) => e.button === 1 && api.agir({ type: "fermerOnglet", id })}
+        onauxclick={(e) => e.button === 1 && fermerOnglet(id)}
         oncontextmenu={(e) =>
           ouvrirMenu(e, [
             { libelle: "Épingler", agir: () => api.agir({ type: "epinglerOnglet", id }) },
             { libelle: "Ajouter aux essentiels", agir: () => api.agir({ type: "ajouterEssentiel", id }) },
-            { libelle: "Fermer", agir: () => api.agir({ type: "fermerOnglet", id }) },
+            { libelle: "Fermer", agir: () => fermerOnglet(id) },
           ])}
       >
         {#if onglet.chargement}<span class="roue" aria-label="Chargement"></span>{:else}<IconeSite favicon={onglet.favicon} titre={onglet.titre} />{/if}
@@ -64,7 +64,7 @@
           aria-label="Fermer l'onglet"
           onclick={(e) => {
             e.stopPropagation();
-            api.agir({ type: "fermerOnglet", id });
+            fermerOnglet(id);
           }}><Icone nom="fermer" taille={12} /></button
         >
       </li>

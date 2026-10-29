@@ -106,17 +106,23 @@ export class Historique {
   courant: Brouillon;
   private passe: Brouillon[] = [];
   private futur: Brouillon[] = [];
+  /** Clé de fusion du dernier état fait : un état fait avec la même clé le remplace (frappes d'un même champ). */
+  private fusion: string | null = null;
   constructor(initial: Brouillon, private readonly max = 100) {
     this.courant = initial;
   }
-  faire(b: Brouillon): void {
+  faire(b: Brouillon, fusion?: string): void {
     if (b === this.courant || memeBrouillon(b, this.courant)) return;
-    this.passe.push(this.courant);
-    if (this.passe.length >= this.max) this.passe.shift();
+    if (fusion === undefined || fusion !== this.fusion || this.passe.length === 0) {
+      this.passe.push(this.courant);
+      if (this.passe.length >= this.max) this.passe.shift();
+    }
+    this.fusion = fusion ?? null;
     this.futur = [];
     this.courant = b;
   }
   annuler(): Brouillon | null {
+    this.fusion = null;
     const avant = this.passe.pop();
     if (!avant) return null;
     this.futur.push(this.courant);
@@ -124,6 +130,7 @@ export class Historique {
     return avant;
   }
   retablir(): Brouillon | null {
+    this.fusion = null;
     const apres = this.futur.pop();
     if (!apres) return null;
     this.passe.push(this.courant);
@@ -131,6 +138,7 @@ export class Historique {
     return apres;
   }
   reinitialiser(b: Brouillon): void {
+    this.fusion = null;
     this.courant = b;
     this.passe = [];
     this.futur = [];

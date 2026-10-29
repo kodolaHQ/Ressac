@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -466,5 +466,231 @@ test("l'agent réécrit workflow.json pendant un brouillon invalide : bandeau, �
   await attendre(500);
   expect(statSync(fichier).mtimeMs).toBe(avant);
   expect(seuilDe(fichier)).toBe(0.9);
+  await fermer();
+});
+
+// Tâche 10 : l'onglet « Bloc »
+
+const memoireDe = (profil: string) => join(dossierWidgets(profil), "veille", "memoire.json");
+
+test("changer le seuil d'ia.trier dans l'onglet Bloc réécrit workflow.json et efface la mémoire de ce bloc seulement", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  writeFileSync(
+    memoireDe(profil),
+    JSON.stringify({ version: 1, blocs: { tri: { type: "ia.trier", valeur: { vus: ["a"] } }, textes: { type: "code", valeur: { vus: ["b"] } } } }),
+  );
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  await ouvrirConstructeur(fenetre, "veille");
+  // Aucun bloc sélectionné : le panneau du widget, en lecture seule.
+  const panneau = fenetre.getByTestId("panneau-widget");
+  await expect(panneau).toContainText("Pour changer les sources ou la configuration, demande-le à l'agent.");
+  await expect(fenetre.getByTestId("widget-config")).toContainText(`"url": "${site.url}/liens"`);
+
+  await fenetre.getByTestId("noeud-tri").click();
+  const onglet = fenetre.getByTestId("onglet-bloc");
+  await expect(onglet.getByTestId("nom-bloc")).toHaveValue("Tri par Kev");
+  await expect(onglet.getByTestId("id-bloc")).toHaveText("tri");
+  await expect(onglet.getByTestId("champ-question")).toHaveValue("Parle d'IA ?");
+  // ia.trier note toujours élément par élément : ses champs « par élément » sont là, sans case parElement.
+  await expect(onglet.getByTestId("champ-siErreur")).toBeVisible();
+  await expect(onglet.getByTestId("champ-parElement")).toHaveCount(0);
+  // Sélectionner n'écrit rien.
+  await attendre(500);
+  expect(lireJson(fichier)).toEqual(WORKFLOW_VEILLE);
+
+  // Une saisie illisible en cours de frappe (« - ») n'efface ni le seuil ni la mémoire.
+  const seuil = onglet.getByTestId("champ-seuil");
+  await seuil.click();
+  await seuil.press("Meta+a");
+  await seuil.pressSequentially("-");
+  await attendre(700);
+  expect(seuilDe(fichier)).toBe(0.5);
+  expect(Object.keys(lireJson(memoireDe(profil)).blocs)).toEqual(["tri", "textes"]);
+  await seuil.fill("0.7");
+  await seuil.press("Tab");
+  await expect.poll(() => seuilDe(fichier)).toBe(0.7);
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  await expect.poll(() => Object.keys(lireJson(memoireDe(profil)).blocs)).toEqual(["textes"]);
+  // ⌘Z (hors du champ) revient au seuil d'avant en une seule fois.
+  await fenetre.getByTestId("constructeur").getByRole("heading", { name: "Veille" }).click();
+  await fenetre.keyboard.press("Meta+z");
+  await expect.poll(() => seuilDe(fichier)).toBe(0.5);
+  await fermer();
+});
+
+test("un gabarit {config.inconnu} affiche un avertissement et s'enregistre quand même", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  const fichier = join(dossierVeille(racine), "workflow.json");
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("noeud-tri").click();
+  const question = fenetre.getByTestId("champ-question");
+  await question.fill("{config.inconnu} ?");
+  // Enregistré après 400 ms sans frappe, sans perdre le focus.
+  await expect.poll(() => lireJson(fichier).blocs.find((b: { id: string }) => b.id === "tri").parametres.question).toBe("{config.inconnu} ?");
+  await expect(fenetre.getByTestId("avertissement-tri")).toContainText("config.inconnu absent de la configuration du widget");
+  await expect(fenetre.getByTestId("noeud-tri")).toHaveClass(/avertit/);
+  await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+  await fermer();
+});
+
+/** Remplace `confirm` de l'interface : rien ne s'affiche, les questions sont notées, la réponse est `reponse`. */
+async function repondreConfirm(fenetre: Page, reponse: boolean): Promise<void> {
+  await fenetre.evaluate((r) => {
+    const w = window as unknown as { questions?: string[]; confirm: (m?: string) => boolean };
+    w.questions ??= [];
+    w.confirm = (m?: string) => {
+      w.questions!.push(m ?? "");
+      return r;
+    };
+  }, reponse);
+}
+const questions = (fenetre: Page) => fenetre.evaluate(() => (window as unknown as { questions?: string[] }).questions ?? []);
+const fermetureRetenue = (fenetre: Page) =>
+  fenetre.evaluate(() => {
+    const e = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+
+test("le code d'un bloc code ne s'écrit qu'avec Enregistrer le code ; ⌘S aussi", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const { app, fenetre, fermer } = await lancerWidgets(racine, profil);
+  const code = join(dossierVeille(racine), "liens.mjs");
+  await ouvrirConstructeur(fenetre, "veille");
+  await fenetre.getByTestId("noeud-liens").click();
+  const editeur = fenetre.getByTestId("editeur-code");
+  await expect(editeur).toHaveValue("export default async (page) => page.liens;");
+  await expect(fenetre.getByTestId("code-non-enregistre")).toHaveCount(0);
+
+  await editeur.fill("export default async (page) => page.liens.slice(0, 1);");
+  await expect(fenetre.getByTestId("code-non-enregistre")).toHaveText("Code non enregistré");
+  await attendre(800);
+  expect(readFileSync(code, "utf8")).toBe("export default async (page) => page.liens;");
+  await fenetre.getByTestId("enregistrer-code").click();
+  await expect.poll(() => readFileSync(code, "utf8")).toBe("export default async (page) => page.liens.slice(0, 1);");
+  await expect(fenetre.getByTestId("code-non-enregistre")).toHaveCount(0);
+
+  await editeur.fill("export default async (page) => page.liens.slice(0, 2);");
+  await editeur.press("Meta+s");
+  await expect.poll(() => readFileSync(code, "utf8")).toBe("export default async (page) => page.liens.slice(0, 2);");
+  await expect(fenetre.getByTestId("code-non-enregistre")).toHaveCount(0);
+  // Le workflow n'a pas été touché.
+  expect(lireJson(join(dossierVeille(racine), "workflow.json"))).toEqual(WORKFLOW_VEILLE);
+
+  // Un brouillon : changer de bloc demande ; refusé, le bloc reste ; accepté, le brouillon est gardé pour le retour.
+  await editeur.fill("// brouillon");
+  expect(await fermetureRetenue(fenetre)).toBe(true);
+  await repondreConfirm(fenetre, false);
+  await fenetre.getByTestId("noeud-tri").click();
+  await attendre(300);
+  expect(await questions(fenetre)).toHaveLength(1);
+  await expect(fenetre.getByTestId("nom-bloc")).toHaveValue("Liens de la page");
+  await repondreConfirm(fenetre, true);
+  await fenetre.getByTestId("noeud-tri").click();
+  await expect(fenetre.getByTestId("nom-bloc")).toHaveValue("Tri par Kev");
+  await fenetre.getByTestId("noeud-liens").click();
+  await expect(fenetre.getByTestId("editeur-code")).toHaveValue("// brouillon");
+  await expect(fenetre.getByTestId("code-non-enregistre")).toBeVisible();
+
+  // L'agent écrit le fichier pendant le brouillon : bandeau, le brouillon reste affiché.
+  writeFileSync(code, "export default async (page) => page.liens; // agent");
+  await expect(fenetre.getByTestId("code-change")).toContainText("Le fichier a changé sur le disque");
+  await expect(fenetre.getByTestId("editeur-code")).toHaveValue("// brouillon");
+  await fenetre.getByTestId("garder-code").click();
+  await expect(fenetre.getByTestId("code-change")).toHaveCount(0);
+
+  // Fermer l'onglet (bouton ou ⌘W) demande aussi ; refusé, il reste ; accepté, il se ferme et le brouillon est abandonné.
+  const ongletConstructeur = fenetre.locator('[data-testid^="onglet-"]', { hasText: "Workflow — Veille" });
+  await repondreConfirm(fenetre, false);
+  await ongletConstructeur.getByRole("button", { name: "Fermer l'onglet" }).click();
+  await attendre(300);
+  await expect(ongletConstructeur).toHaveCount(1);
+  expect((await questions(fenetre)).at(-1)).toContain("liens.mjs");
+  const n = (await questions(fenetre)).length;
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("fermer-onglet")?.click());
+  await expect.poll(async () => (await questions(fenetre)).length).toBe(n + 1);
+  await expect(ongletConstructeur).toHaveCount(1);
+  await repondreConfirm(fenetre, true);
+  await ongletConstructeur.getByRole("button", { name: "Fermer l'onglet" }).click();
+  await expect(ongletConstructeur).toHaveCount(0);
+  expect(await fermetureRetenue(fenetre)).toBe(false);
+  expect(readFileSync(code, "utf8")).toBe("export default async (page) => page.liens; // agent");
+  await fermer();
+});
+
+test("une sortie qui contient <img src=x onerror=…> s'affiche en texte", async () => {
+  const racine = nouvelleRacine();
+  widgetVeille(racine);
+  const profil = nouveauProfil();
+  ecrireEtatWidget(profil, "veille");
+  const piege = '<img src=x onerror="window.piege=1">';
+  const debut = "2026-10-29T10:00:00.000Z";
+  const id = "2026-10-29T10-00-00-000Z";
+  const trace = (bloc: string, type: string, champs: Record<string, unknown>) => ({
+    id: bloc,
+    type,
+    statut: "reussi",
+    debut,
+    fin: "2026-10-29T10:00:01.500Z",
+    elements: null,
+    journal: [],
+    ...champs,
+  });
+  const dossier = join(dossierWidgets(profil), "veille", "executions");
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(
+    join(dossier, `${id}.json`),
+    JSON.stringify({
+      version: 1,
+      id,
+      proprietaire: { type: "widget", id: "veille" },
+      declencheur: "planifiee",
+      debut,
+      fin: "2026-10-29T10:00:02.000Z",
+      statut: "partielle",
+      blocs: [
+        trace("page", "source.page", { sortie: { titre: piege } }),
+        trace("liens", "code", { elements: 1, sortie: [{ texte: piege, url: "https://exemple.invalid/" }], journal: [piege] }),
+        trace("tri", "ia.trier", { statut: "echoue", erreur: piege }),
+        trace("textes", "code", { statut: "pas-lance", debut: null, fin: null }),
+        trace("sortie", "sortie", { statut: "pas-lance", debut: null, fin: null }),
+      ],
+    }),
+  );
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  await ouvrirConstructeur(fenetre, "veille");
+  const images = await fenetre.locator("img").count();
+  await expect(fenetre.getByTestId("pastille-liens")).toHaveText("1");
+
+  await fenetre.getByTestId("noeud-liens").click();
+  const sortie = fenetre.getByTestId("sortie-bloc");
+  await expect(sortie.getByTestId("statut-bloc")).toHaveText("réussi");
+  await expect(sortie).toContainText("1,5 s");
+  await sortie.getByText("Journal (1)").click();
+  await expect(sortie.getByTestId("journal-bloc")).toHaveText(piege);
+  // La sortie n'est mise en forme qu'une fois ouverte.
+  await expect(sortie.getByTestId("sortie-json")).toHaveCount(0);
+  await sortie.getByTestId("sortie-repliable").locator("summary").click();
+  await expect(sortie.getByTestId("sortie-json")).toContainText('"texte": "<img src=x onerror=');
+
+  await fenetre.getByTestId("noeud-tri").click();
+  await expect(fenetre.getByTestId("erreur-bloc")).toHaveText(piege);
+  // Les champs de la sortie amont (liens) et la configuration sont proposés aux gabarits.
+  await expect(fenetre.getByTestId("disponibles-texte")).toHaveText("Champs disponibles : {texte} {url} {config.url}");
+
+  expect(await fenetre.locator("img").count()).toBe(images);
+  expect(await fenetre.locator('img[src="x"]').count()).toBe(0);
+  expect(await fenetre.evaluate(() => (window as unknown as { piege?: number }).piege)).toBeUndefined();
   await fermer();
 });

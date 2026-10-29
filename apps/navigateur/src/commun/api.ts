@@ -84,8 +84,11 @@ export type Bornes = z.infer<typeof SchemaBornes>;
 export const SchemaBoutonsFenetre = z.object({ visibles: z.boolean() }).strict();
 
 export type Panneau = "historique" | "telechargements";
-/** Raccourcis du menu destinés à l'interface (la page web a souvent le focus). */
-export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "agent";
+/**
+ * Raccourcis du menu destinés à l'interface (la page web a souvent le focus). `fermerOnglet` : ⌘W sur le constructeur,
+ * qui demande d'abord si du code n'est pas enregistré.
+ */
+export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "agent" | "fermerOnglet";
 export interface ResultatRecherche {
   ongletId: IdOnglet;
   actif: number;

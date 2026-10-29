@@ -1,6 +1,6 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 import type { Action, CommandeOnglet, Panneau, Raccourci } from "../commun/api";
-import type { EtatNavigateur, IdFenetre, IdOnglet, MoteurRecherche } from "../commun/modele";
+import { widgetDeUrlWorkflow, type EtatNavigateur, type IdFenetre, type IdOnglet, type MoteurRecherche } from "../commun/modele";
 import { versNieme, versVoisin } from "./raccourcis";
 
 export interface CiblesMenu {
@@ -101,7 +101,9 @@ export function installerMenu(c: CiblesMenu): void {
           const f = c.fenetreActive();
           if (!f) return;
           const o = ongletActif(f);
-          if (o) c.fermerOnglet(o);
+          // Le constructeur n'a pas de page à qui demander : son interface confirme s'il reste du code non enregistré.
+          if (o && widgetDeUrlWorkflow(c.etat().onglets[o]?.url ?? "")) c.raccourci(f, "fermerOnglet");
+          else if (o) c.fermerOnglet(o);
           // Page vide : ⌘W ferme la fenêtre, seulement si aucun de ses espaces n'a d'onglet.
           else if (!Object.values(c.etat().onglets).some((x) => x.fenetreId === f)) c.fermerFenetre(f);
         }),

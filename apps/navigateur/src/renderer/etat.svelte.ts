@@ -1,5 +1,6 @@
 import type { ApiWebaios } from "../commun/api";
-import type { DemandeEnAttente, EtatFenetre, EtatNavigateur, Onglet, Telechargement } from "../commun/modele";
+import { widgetDeUrlWorkflow, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdOnglet, type Onglet, type Telechargement } from "../commun/modele";
+import { confirmerFermeture } from "./constructeur/codes.svelte";
 
 declare global {
   interface Window {
@@ -19,6 +20,20 @@ api.surEtat((e) => {
 /** L'état de la fenêtre qui affiche cette interface. */
 export function fenetreCourante(): EtatFenetre | undefined {
   return etat.valeur?.fenetres.find((f) => f.id === api.fenetreId);
+}
+
+/**
+ * Fermeture d'un onglet voulue par l'utilisateur (bouton, menu, clic du milieu, ⌘W) : le constructeur d'un widget avec du code
+ * non enregistré demande d'abord, sauf si un autre onglet de la fenêtre montre le même constructeur.
+ */
+export function fermerOnglet(id: IdOnglet): void {
+  const o = etat.valeur?.onglets[id];
+  const widget = o ? widgetDeUrlWorkflow(o.url) : null;
+  if (o && widget) {
+    const autre = Object.values(etat.valeur!.onglets).some((x) => x.id !== id && x.fenetreId === o.fenetreId && x.url === o.url);
+    if (!autre && !confirmerFermeture(widget)) return;
+  }
+  api.agir({ type: "fermerOnglet", id });
 }
 
 /** Téléchargements de la session, le plus récent en tête. */

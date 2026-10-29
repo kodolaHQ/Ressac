@@ -2,7 +2,7 @@ import { catalogueBlocs, validerWorkflow, workflowImplicite } from "@webaios/noy
 import { expect, test } from "vitest";
 import type { Brouillon, EditionWorkflow } from "../../src/commun/api";
 import { MODELE_CODE, parametresNeufs, placeLibre } from "../../src/renderer/constructeur/ajout";
-import { relier } from "../../src/renderer/constructeur/brouillon";
+import { regler, relier } from "../../src/renderer/constructeur/brouillon";
 import { creerEdition, Edition, EN_ATTENTE_DU_CHOIX, oublierEditions, type Depot } from "../../src/renderer/constructeur/edition.svelte";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres });
@@ -418,4 +418,26 @@ test("N2 : « Prendre sa version » avant la fin d'un enregistrement en vol aban
   await attendre();
   expect(f.ecritures).toHaveLength(1);
   expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
+});
+
+test("T10 : les frappes d'un même champ (même clé de fusion) font une seule entrée d'historique", async () => {
+  const f = faux(livre());
+  const e = await ouverte(f);
+  const seuil = (s: number) => (b: Brouillon) => regler(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
+  e.modifier(seuil(0.6), "tri/seuil/1");
+  await attendre();
+  e.modifier(seuil(0.7), "tri/seuil/1");
+  await attendre();
+  expect(f.ecritures.at(-1)!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBe(0.7);
+  // Une autre séance du même champ est une autre entrée.
+  e.modifier(seuil(0.8), "tri/seuil/2");
+  await attendre();
+  e.annuler();
+  expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBe(0.7);
+  e.annuler();
+  expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
+  // Après un annuler, la même clé ne fusionne plus avec l'état d'avant.
+  e.modifier(seuil(0.9), "tri/seuil/2");
+  e.annuler();
+  expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
 });

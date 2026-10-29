@@ -177,10 +177,11 @@ export class Edition {
 
   /**
    * Un geste de l'utilisateur : appliqué au brouillon, retenu dans l'historique, enregistré. Les positions affichées sont
-   * figées avec lui (un workflow sans disposition garde celle qu'on voit, sans saut ensuite).
+   * figées avec lui (un workflow sans disposition garde celle qu'on voit, sans saut ensuite). `fusion` : les gestes
+   * successifs de même clé (frappes d'un même champ) ne font qu'une entrée d'historique.
    */
-  modifier(f: (b: Brouillon) => Brouillon): void {
-    this.changer(f, false);
+  modifier(f: (b: Brouillon) => Brouillon, fusion?: string): void {
+    this.changer(f, false, fusion);
   }
 
   /** Fin d'un glisser : `positions` sont celles de tous les blocs affichés ; rien n'est écrit si aucune n'a bougé. */
@@ -195,14 +196,14 @@ export class Edition {
   }
 
   /** `figer` : les positions affichées seules suffisent à enregistrer (un glisser) ; sinon il faut que `f` change le brouillon. */
-  private changer(f: (b: Brouillon) => Brouillon, figer: boolean): void {
+  private changer(f: (b: Brouillon) => Brouillon, figer: boolean, fusion?: string): void {
     const avant = this.brouillon;
     if (!avant || !this.historique) return;
     const base = deplacer(avant, this.positions);
     const apres = f(base);
     if (!figer && (apres === base || memeBrouillon(apres, base))) return;
     if (apres === avant || memeBrouillon(apres, avant)) return;
-    this.historique.faire(apres);
+    this.historique.faire(apres, fusion);
     this.appliquer(apres);
   }
 

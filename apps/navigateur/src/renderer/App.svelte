@@ -12,7 +12,7 @@
   import { estDemandeAgent } from "./composants/modale.svelte";
   import type { Panneau } from "../commun/api";
   import { untrack } from "svelte";
-  import { acces, api, demandeDe, etat, fenetreCourante } from "./etat.svelte";
+  import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "./etat.svelte";
   import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../commun/modele";
   import { masquer, REVELATION_INITIALE, surZone, zoneGauche, zoneSortie, type ZoneGauche } from "../commun/revelation";
 
@@ -83,7 +83,9 @@
 
   $effect(() =>
     api.surRaccourci((r) => {
-      if (r === "adresse") adresse.focus++;
+      if (r === "fermerOnglet") {
+        if (ongletActif) fermerOnglet(ongletActif.id);
+      } else if (r === "adresse") adresse.focus++;
       else if (r === "agent") focusAgent.n++;
       else if (r === "rechercher") {
         recherche.ouverte = true;
