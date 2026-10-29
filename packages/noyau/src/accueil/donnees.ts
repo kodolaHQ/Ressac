@@ -51,5 +51,12 @@ export async function lireEtatWidget(dossierWidgets: string, id: string): Promis
 }
 
 export async function ecrireEtatWidget(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
-  await ecrireAtomique(join(dossierWidgets, id, "etat.json"), JSON.stringify(etat, null, 2));
+  // Le suivi des heures survit à toutes les écritures d'état (en-cours, erreur, accord, atelier arrêté).
+  const final = etat.heures ? etat : { ...etat, ...(await heuresActuelles(dossierWidgets, id)) };
+  await ecrireAtomique(join(dossierWidgets, id, "etat.json"), JSON.stringify(final, null, 2));
+}
+
+async function heuresActuelles(dossierWidgets: string, id: string): Promise<Pick<EtatWidget, "heures">> {
+  const { heures } = await lireEtatWidget(dossierWidgets, id);
+  return heures ? { heures } : {};
 }

@@ -163,7 +163,7 @@ test("en-cours est relancé au lancement seulement", () => {
   const w = {
     id: "a",
     dossier: "/a",
-    declaration: { ...declarationWidget(), description: "", sources: { compte: [], publiques: [] }, recolte: { minutes: 60 } },
+    declaration: { ...declarationWidget(), description: "", sources: { compte: [], publiques: [], web: false }, recolte: { minutes: 60 } },
     etat: { statut: "en-cours" as const, derniereMaj: null, derniereTentative: DEBUT.toISOString() },
     donnees: null,
     exemple: null,
@@ -530,4 +530,20 @@ test("atelier arrêté : rejouer refuse sans changer l'état", async () => {
   expect(recolterEssai).not.toHaveBeenCalled();
   expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(etat);
   expect(changements).not.toHaveBeenCalled();
+});
+
+test("widgetDu : un widget à heures sans minutes n'est jamais dû par la fréquence", () => {
+  const w = {
+    id: "a",
+    dossier: "/a",
+    declaration: { ...declarationWidget(), description: "", sources: { compte: [], publiques: [], web: false }, recolte: { heures: ["07:00"] } },
+    etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null },
+    donnees: null,
+    exemple: null,
+    aRecolte: true,
+    aWorkflow: false,
+    aAffichage: true,
+  };
+  expect(widgetDu(w, DEBUT, { auLancement: true })).toBe(false);
+  expect(widgetDu({ ...w, etat: { ...w.etat, statut: "erreur" as const } }, DEBUT, { auLancement: false })).toBe(false);
 });

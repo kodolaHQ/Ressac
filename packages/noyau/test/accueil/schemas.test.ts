@@ -1,0 +1,62 @@
+import { expect, test } from "vitest";
+import { DeclarationWidget, WEB_AVEC_COMPTE } from "../../src/accueil/schemas.js";
+import { lireAccueil } from "../../src/accueil/lire.js";
+import { cheminsEspace } from "../../src/chemins.js";
+import { mkdir } from "node:fs/promises";
+import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
+import { dossierTemporaire } from "../aide/temporaire.js";
+
+const base = declarationWidget();
+const avecRecolte = (recolte: unknown) => DeclarationWidget.safeParse({ ...base, recolte });
+
+test("web avec un compte est refusé avec WEB_AVEC_COMPTE ; lireAccueil montre le widget en erreur avec ce texte", async () => {
+  const r = DeclarationWidget.safeParse({ ...base, sources: { compte: ["mail.test"], publiques: [], web: true } });
+  expect(r.success).toBe(false);
+  if (!r.success) {
+    expect(r.error.issues[0]!.path).toEqual(["sources", "web"]);
+    expect(r.error.issues[0]!.message).toBe(WEB_AVEC_COMPTE);
+  }
+  const c = cheminsEspace(await dossierTemporaire());
+  await mkdir(c.widgets, { recursive: true });
+  await ecrireWidget(c, "w", declarationWidget(undefined, { sources: { compte: ["mail.test"], publiques: [], web: true } }));
+  const { widgets } = await lireAccueil(c, await dossierTemporaire());
+  const w = widgets[0]!;
+  expect("erreur" in w && w.erreur).toContain(WEB_AVEC_COMPTE);
+});
+
+test("web sans compte est accepté ; sans web, sources.web vaut false", () => {
+  const avec = DeclarationWidget.parse({ ...base, sources: { web: true } });
+  expect(avec.sources).toEqual({ compte: [], publiques: [], web: true });
+  expect(DeclarationWidget.parse(base).sources.web).toBe(false);
+  expect(DeclarationWidget.parse({ ...base, sources: { publiques: ["a.test"] } }).sources).toEqual({ compte: [], publiques: ["a.test"], web: false });
+});
+
+test("recolte accepte heures seules, minutes seules, les deux ; refuse ni l'un ni l'autre, formats et bornes invalides", () => {
+  expect(avecRecolte({ heures: ["07:00", "18:30"] }).success).toBe(true);
+  expect(avecRecolte({ minutes: 60 }).success).toBe(true);
+  expect(avecRecolte({ minutes: 60, heures: ["07:00"], dureeMaxMinutes: 30, notifier: true }).success).toBe(true);
+  const refus = avecRecolte({});
+  expect(refus.success).toBe(false);
+  if (!refus.success) expect(refus.error.issues[0]!.message).toBe("minutes ou heures attendu");
+  expect(avecRecolte({ dureeMaxMinutes: 5 }).success).toBe(false);
+  expect(avecRecolte({ heures: ["7:00"] }).success).toBe(false);
+  expect(avecRecolte({ heures: ["24:00"] }).success).toBe(false);
+  expect(avecRecolte({ heures: ["07:60"] }).success).toBe(false);
+  expect(avecRecolte({ heures: [] }).success).toBe(false);
+  expect(avecRecolte({ heures: ["01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00"] }).success).toBe(false);
+  expect(avecRecolte({ heures: ["06:00", "06:00"] }).success).toBe(false);
+  expect(avecRecolte({ minutes: 60, dureeMaxMinutes: 0 }).success).toBe(false);
+  expect(avecRecolte({ minutes: 60, dureeMaxMinutes: 61 }).success).toBe(false);
+  expect(avecRecolte({ minutes: 60, dureeMaxMinutes: 60 }).success).toBe(true);
+});
+
+test("le widget.json du Gmail (compte, publiques, recolte.minutes, sans web) se lit exactement comme avant", () => {
+  const gmail = { ...base, sources: { compte: ["mail.google.com"], publiques: ["fonts.gstatic.com"] }, recolte: { minutes: 30 } };
+  expect(DeclarationWidget.parse(gmail)).toEqual({
+    nom: base.nom,
+    description: base.description,
+    tailles: base.tailles,
+    recolte: { minutes: 30 },
+    sources: { compte: ["mail.google.com"], publiques: ["fonts.gstatic.com"], web: false },
+  });
+});

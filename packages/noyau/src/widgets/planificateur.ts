@@ -47,10 +47,12 @@ const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime(
  */
 export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolean }): boolean {
   if ("erreur" in w || !w.aRecolte || !w.declaration.recolte) return false;
+  const { minutes } = w.declaration.recolte;
   const { statut, derniereMaj, derniereTentative } = w.etat;
   if (statut === "accord-requis") return false;
   if (statut === "en-cours") return o.auLancement;
-  if (age(derniereMaj, maintenant) < w.declaration.recolte.minutes * MINUTE) return false;
+  if (minutes === undefined) return false; // heures fixes seules : jamais dû par la fréquence
+  if (age(derniereMaj, maintenant) < minutes * MINUTE) return false;
   return statut !== "erreur" || age(derniereTentative, maintenant) >= REESSAI_ERREUR_MS;
 }
 

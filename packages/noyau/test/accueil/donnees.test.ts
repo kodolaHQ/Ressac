@@ -47,3 +47,19 @@ test("supprimerDonnees efface aussi les exécutions et la mémoire, et garde eta
   expect(await lireMemoire(join(d, "w"))).toEqual({});
   expect(await listerExecutions(join(d, "w"))).toEqual([]);
 });
+
+test("ecrireEtatWidget garde le suivi des heures quand l'état écrit n'en a pas, et le remplace quand il en a un", async () => {
+  const d = await dossierTemporaire();
+  const heures = { faite: "2026-10-29T07:00", echecs: null };
+  await ecrireEtatWidget(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null, heures });
+  await ecrireEtatWidget(d, "w", { statut: "en-cours", derniereMaj: null, derniereTentative: "2026-10-29T08:00:00.000Z" });
+  expect((await lireEtatWidget(d, "w")).heures).toEqual(heures);
+  await ecrireEtatWidget(d, "w", { statut: "erreur", derniereMaj: null, derniereTentative: null, erreur: "x" });
+  expect((await lireEtatWidget(d, "w")).heures).toEqual(heures);
+  const autres = { faite: "2026-10-29T07:00", echecs: { heure: "2026-10-29T12:00", nombre: 2 } };
+  await ecrireEtatWidget(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: autres });
+  expect((await lireEtatWidget(d, "w")).heures).toEqual(autres);
+  // Sans fichier d'état ni suivi : rien n'est inventé.
+  await ecrireEtatWidget(d, "neuf", { statut: "ok", derniereMaj: null, derniereTentative: null });
+  expect("heures" in (await lireEtatWidget(d, "neuf"))).toBe(false);
+});
