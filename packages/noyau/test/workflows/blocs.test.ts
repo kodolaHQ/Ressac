@@ -308,8 +308,8 @@ describe("ia.rediger", () => {
     expect(journalDe(r, "resumes")).toEqual(["élément 2 : Gemma n'a rien répondu"]);
     const memoire = r.lignes.find((l) => l.t === "memoire").memoire;
     expect([...memoire.resumes.valeur.reutilises].sort()).toEqual([
-      ["https://a.fr/1", "résumé 1"],
-      ["https://a.fr/3", "ancien résumé"],
+      ["https://a.fr/1", "résumé 1", "2026-10-29T10:00:00.000Z"],
+      ["https://a.fr/3", "ancien résumé", "2026-10-29T10:00:00.000Z"],
     ]);
   });
 

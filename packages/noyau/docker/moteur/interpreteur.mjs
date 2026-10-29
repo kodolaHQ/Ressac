@@ -8,7 +8,8 @@
 //     async finaliser(liste, ctx),     // facultatif, par élément : rend { sortie } à partir de la liste enrichie
 //     echecSiTousEchouent: true,       // facultatif, par élément : le bloc échoue si aucun élément lancé n'a réussi
 //   }
-// ctx = { entree, parametres, config, memoire, webaios, journal, dossier, remplir, partiel, element? }
+// ctx = { entree, parametres, config, memoire, maintenant, webaios, journal, dossier, remplir, partiel, element? }
+//   - `maintenant` : l'heure ISO de `debut`, la date de ce que le bloc retient cette fois.
 //   - `memoire` : ce que le bloc a retenu la fois d'avant (null sinon) ; `executer` rend la nouvelle dans `memoire`.
 //     Par élément, la mémoire du bloc est celle de `reutiliser`, tenue par l'interpréteur.
 //   - `journal(texte)` : une ligne rattachée au bloc. `webaios.journal(...)` va en plus sur stderr.
@@ -28,7 +29,7 @@ import iaRediger from "./blocs/ia-rediger.mjs";
 import iaTrier from "./blocs/ia-trier.mjs";
 import listeDedoublonner from "./blocs/liste-dedoublonner.mjs";
 import listeGarder from "./blocs/liste-garder.mjs";
-import listeNouveaux from "./blocs/liste-nouveaux.mjs";
+import listeNouveaux, { JOUR_MS } from "./blocs/liste-nouveaux.mjs";
 import sortie from "./blocs/sortie.mjs";
 import sourceFlux from "./blocs/source-flux.mjs";
 import sourcePage from "./blocs/source-page.mjs";
@@ -76,9 +77,12 @@ function cleReutilisee(element, chemin) {
 
 const taille = (v) => Buffer.byteLength(JSON.stringify(v));
 
-/** Valeurs gardées par `reutiliser`, de la plus ancienne à la plus récente, bornées à REUTILISES_MAX_OCTETS. */
+/**
+ * Valeurs gardées par `reutiliser` (`[cle, valeur, dateIso]`), de la plus ancienne à la plus récente, bornées à
+ * REUTILISES_MAX_OCTETS.
+ */
 function borner(reutilises) {
-  const entrees = [...reutilises];
+  const entrees = [...reutilises].map(([cle, { valeur, date }]) => [cle, valeur, date]);
   const tailles = entrees.map((e) => taille(e) + 1);
   let total = tailles.reduce((a, b) => a + b, 0);
   let debut = 0;
@@ -118,9 +122,21 @@ function bornerMemoire(memoire) {
   return memoire;
 }
 
-function lireReutilises(memoire) {
+/**
+ * Valeurs de `reutiliser` lues de la mémoire : clé → { valeur, date }. Une ancienne paire `[cle, valeur]` (sans date) est
+ * datée de `maintenant` ; avec `garderJours`, une valeur calculée il y a plus longtemps est oubliée (elle sera recalculée).
+ */
+function lireReutilises(memoire, maintenant, garderJours) {
   const entrees = Array.isArray(memoire?.reutilises) ? memoire.reutilises : [];
-  return new Map(entrees.filter((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === "string"));
+  const limite = garderJours === undefined ? -Infinity : Date.parse(maintenant) - garderJours * JOUR_MS;
+  const reutilises = new Map();
+  for (const e of entrees) {
+    if (!Array.isArray(e) || (e.length !== 2 && e.length !== 3) || typeof e[0] !== "string") continue;
+    const date = typeof e[2] === "string" && !Number.isNaN(Date.parse(e[2])) ? e[2] : maintenant;
+    if (Date.parse(date) < limite) continue;
+    reutilises.set(e[0], { valeur: e[1], date });
+  }
+  return reutilises;
 }
 
 /** Boucle par élément : rend { statut, sortie, memoire? } ou lève l'erreur du bloc. */
@@ -130,11 +146,15 @@ async function parElement(module, ctx, { echeance, horloge }) {
   const { champ, reutiliser, budgetSecondes } = parametres;
   const siErreur = parametres.siErreur ?? "sauter";
   const limite = Math.min(echeance, budgetSecondes ? horloge() + budgetSecondes * 1000 : Infinity);
-  const reutilises = reutiliser ? lireReutilises(ctx.memoire) : null;
-  const ranger = (cle, valeur) => {
+  const reutilises = reutiliser ? lireReutilises(ctx.memoire, ctx.maintenant, parametres.garderJours) : null;
+  // Une valeur reprise garde la date de son calcul (sa fiabilité est revue après garderJours) mais devient la plus
+  // récente pour les plafonds de taille.
+  const ranger = (cle, entree) => {
     reutilises.delete(cle);
-    reutilises.set(cle, valeur);
+    reutilises.set(cle, entree);
   };
+  // Calculs en cours par clé de `reutiliser` : un élément de même clé attend celui-là plutôt que d'en lancer un second.
+  const enCours = new Map();
 
   // Un élément sans valeur cette fois (échec, non lancé, valeur absente) sort sans `champ`, même s'il en avait un :
   // une ancienne valeur ne passe jamais pour celle de ce bloc (ia.trier ne trie pas sur une ancienne note).
@@ -158,22 +178,43 @@ async function parElement(module, ctx, { echeance, horloge }) {
     if (!estObjet(element)) throw new Error("l'élément n'est pas un objet");
     const cle = reutilises ? cleReutilisee(element, reutiliser) : null;
     if (cle !== null && reutilises.has(cle)) {
-      const valeur = reutilises.get(cle);
-      ranger(cle, valeur);
-      resultat[i] = { ...element, [champ]: valeur };
+      const reprise = reutilises.get(cle);
+      ranger(cle, reprise);
+      resultat[i] = { ...element, [champ]: reprise.valeur };
       reussis++;
       return;
     }
+    if (cle !== null && enCours.has(cle)) {
+      // Le même calcul est en cours pour un autre élément : sa valeur, ou, s'il échoue, un calcul à soi.
+      try {
+        const valeur = await enCours.get(cle);
+        resultat[i] = { ...element, [champ]: valeur };
+        reussis++;
+        return;
+      } catch {
+        // Son erreur est comptée chez lui ; celui-ci tente à son tour.
+      }
+    }
     if (refusNoyau !== null) throw new ElementNonLance(refusNoyau);
-    const valeur = await module.traiterElement({
-      ...ctx,
-      element,
-      remplir: (gabarit, options) => remplirOuLever(gabarit, element, ctx.config, options),
-    });
-    if (valeur === undefined) throw new Error("aucune valeur rendue");
+    const calcul = (async () => {
+      const valeur = await module.traiterElement({
+        ...ctx,
+        element,
+        remplir: (gabarit, options) => remplirOuLever(gabarit, element, ctx.config, options),
+      });
+      if (valeur === undefined) throw new Error("aucune valeur rendue");
+      return valeur;
+    })();
+    if (cle !== null) enCours.set(cle, calcul);
+    let valeur;
+    try {
+      valeur = await calcul;
+    } finally {
+      if (cle !== null && enCours.get(cle) === calcul) enCours.delete(cle);
+    }
     resultat[i] = { ...element, [champ]: valeur };
     reussis++;
-    if (cle !== null) ranger(cle, valeur);
+    if (cle !== null) ranger(cle, { valeur, date: ctx.maintenant });
   }
 
   async function ouvrier() {
@@ -266,6 +307,7 @@ export async function executerWorkflow({
   }
   const sorties = new Map();
   const nouvelleMemoire = new Map();
+  const instant = maintenant ?? new Date().toISOString();
   let donnees = null;
 
   for (const id of workflow.ordre) {
@@ -284,6 +326,7 @@ export async function executerWorkflow({
       r = await executerBloc(bloc, entree, {
         blocs,
         config,
+        maintenant: instant,
         dossier,
         echeance,
         horloge,
@@ -335,6 +378,7 @@ async function executerBloc(bloc, entree, o) {
     parametres,
     config: o.config,
     memoire: o.memoire,
+    maintenant: o.maintenant,
     webaios: o.webaios,
     journal: o.journal,
     dossier: o.dossier,

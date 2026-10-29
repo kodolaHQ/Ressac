@@ -146,11 +146,12 @@ describe("interpréteur (dans le conteneur)", () => {
     const m = r.lignes.find((l) => l.t === "memoire").memoire.nv;
     expect(m.type).toBe("liste.nouveaux");
     expect(m.valeur).toHaveLength(5000);
+    const cles = m.valeur.map(([c]: [string, string]) => c);
     // Les clés vues cette fois sont les plus récentes ; les plus anciennes jamais revues sont oubliées.
-    expect(m.valeur.slice(-4)).toEqual(["k4999", "neuf", "k0", "autre"]);
-    expect(m.valeur).not.toContain("k1");
-    expect(m.valeur).not.toContain("k2");
-    expect(m.valeur).toContain("k3");
+    expect(cles.slice(-4)).toEqual(["k4999", "neuf", "k0", "autre"]);
+    expect(cles).not.toContain("k1");
+    expect(cles).not.toContain("k2");
+    expect(cles).toContain("k3");
   });
 
   it("liste.nouveaux : un doublon dans la même liste n'est pas nouveau ; une clé longue est gardée coupée à 500 caractères", async () => {
@@ -167,7 +168,11 @@ describe("interpréteur (dans le conteneur)", () => {
       },
     });
     expect(r.terminal.donnees).toEqual([{ url: "a", n: 1 }, { url: "b" }]);
-    expect(r.lignes.find((l) => l.t === "memoire").memoire.nv.valeur).toEqual(["a", "b", "u".repeat(500)]);
+    expect(r.lignes.find((l) => l.t === "memoire").memoire.nv.valeur).toEqual([
+      ["a", "2026-10-29T10:00:00.000Z"],
+      ["b", "2026-10-29T10:00:00.000Z"],
+      ["u".repeat(500), "2026-10-29T10:00:00.000Z"],
+    ]);
   });
 
   it("liste.dedoublonner : doublon sur l'une des clés normalisées (utm_, www., / final ; accents et casse du titre)", async () => {
@@ -233,7 +238,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(lignes.indexOf("memoire")).toBe(lignes.indexOf("fin") - 1);
     expect(r.lignes.find((l) => l.t === "memoire").memoire).toEqual({
       src: { type: "code", valeur: { garde: true } },
-      nv: { type: "liste.nouveaux", valeur: ["1", "2"] },
+      nv: { type: "liste.nouveaux", valeur: [["1", "2026-10-29T10:00:00.000Z"], ["2", "2026-10-29T10:00:00.000Z"]] },
     });
   });
 
@@ -666,10 +671,12 @@ describe("interpréteur : blocs par élément", () => {
       { url: "https://a.fr/2", resume: "résumé de https://a.fr/2" },
       { url: null, resume: "résumé de null" },
     ]);
-    // Les valeurs reprises ou calculées sont les plus récentes ; un élément sans clé n'est pas rangé.
+    // Les valeurs reprises ou calculées sont les plus récentes ; un élément sans clé n'est pas rangé. Les anciennes
+    // paires sans date sont datées de maintenant.
+    const m = "2026-10-29T10:00:00.000Z";
     expect(r.resultat!.memoire.b).toEqual({
       type: "test.resume",
-      valeur: { reutilises: [["https://vieux.fr/", "vieux"], ["https://a.fr/1", "déjà fait"], ["https://a.fr/2", "résumé de https://a.fr/2"]] },
+      valeur: { reutilises: [["https://vieux.fr/", "vieux", m], ["https://a.fr/1", "déjà fait", m], ["https://a.fr/2", "résumé de https://a.fr/2", m]] },
     });
   });
 
@@ -901,5 +908,160 @@ describe("interpréteur : web.chercher", () => {
     });
     expect(r.appels).toEqual([]);
     expect(r.terminal).toEqual({ t: "fin", donnees: recherches.slice(0, 2) });
+  });
+});
+
+describe("interpréteur : mémoire datée (garderJours)", () => {
+  const MAINTENANT = "2026-10-29T10:00:00.000Z";
+  const ilYa = (jours: number) => new Date(Date.parse(MAINTENANT) - jours * 86_400_000).toISOString();
+  const nouveaux = (entree: unknown[], memoire: unknown, parametres: Record<string, unknown> = {}) =>
+    listeNouveaux.executer({ entree, parametres: { cle: "url", ...parametres }, memoire, journal: () => {}, maintenant: MAINTENANT });
+
+  it("une clé vue il y a 31 jours avec garderJours 30 redevient nouvelle ; à 29 jours, non", async () => {
+    const r = await nouveaux([{ url: "vieille" }, { url: "recente" }], [["vieille", ilYa(31)], ["recente", ilYa(29)], ["oubliee", ilYa(31)]], {
+      garderJours: 30,
+    });
+    expect(r.sortie).toEqual([{ url: "vieille" }]);
+    expect(r.nouvelles).toEqual(["vieille"]);
+    // L'entrée trop vieille et jamais revue n'est pas réécrite ; les clés revues prennent la date du jour.
+    expect(r.memoire).toEqual([["vieille", MAINTENANT], ["recente", MAINTENANT]]);
+  });
+
+  it("sans garderJours, une clé de 400 jours reste vue", async () => {
+    const r = await nouveaux([{ url: "a" }, { url: "b" }], [["a", ilYa(400)], ["autre", ilYa(400)]]);
+    expect(r.sortie).toEqual([{ url: "b" }]);
+    expect(r.nouvelles).toEqual(["b"]);
+    expect(r.memoire).toEqual([["autre", ilYa(400)], ["a", MAINTENANT], ["b", MAINTENANT]]);
+  });
+
+  it("une clé revue prend la date du jour", async () => {
+    const r = await nouveaux([{ url: "a" }], [["a", ilYa(10)], ["b", ilYa(5)]], { garderJours: 30 });
+    expect(r.sortie).toEqual([]);
+    expect(r.nouvelles).toEqual([]);
+    expect(r.memoire).toEqual([["b", ilYa(5)], ["a", MAINTENANT]]);
+  });
+
+  it("ancienne mémoire en textes : lue comme vue, réécrite datée de maintenant", async () => {
+    const r = await nouveaux([{ url: "a" }, { url: "c" }], ["a", "b"], { garderJours: 1 });
+    expect(r.sortie).toEqual([{ url: "c" }]);
+    expect(r.memoire).toEqual([["b", MAINTENANT], ["a", MAINTENANT], ["c", MAINTENANT]]);
+  });
+
+  it("dans le conteneur, liste.nouveaux reçoit maintenant de la ligne debut et rend une mémoire datée", async () => {
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("nv", "liste.nouveaux", { cle: "url", garderJours: 30 }), sortie],
+        liens: chaine("src", "nv", "sortie"),
+      },
+      memoire: { nv: { type: "liste.nouveaux", valeur: [["a", ilYa(31)], ["b", ilYa(2)]] } },
+      fichiers: { "src.mjs": `export default async () => [{ url: "a" }, { url: "b" }];` },
+    });
+    expect(r.terminal.donnees).toEqual([{ url: "a" }]);
+    expect(r.lignes.find((l) => l.t === "memoire").memoire.nv.valeur).toEqual([["a", MAINTENANT], ["b", MAINTENANT]]);
+  });
+
+  const resume = (calcules: string[]) => ({
+    "test.resume": {
+      parElement: "toujours",
+      async traiterElement(ctx: any) {
+        calcules.push(String(ctx.element.url));
+        return `résumé de ${ctx.element.url}`;
+      },
+    },
+  });
+
+  it("reutiliser avec garderJours 30 : valeur de 31 jours recalculée, de 29 jours reprise sans appel et sa date gardée", async () => {
+    const calcules: string[] = [];
+    const r = await executer({
+      entree: [{ url: "vieille" }, { url: "recente" }],
+      memoire: {
+        b: { type: "test.resume", valeur: { reutilises: [["vieille", "ancien", ilYa(31)], ["recente", "gardé", ilYa(29)], ["oubliee", "x", ilYa(40)]] } },
+      },
+      blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url", garderJours: 30 } }, { id: "sortie", type: "sortie" }],
+      registre: resume(calcules),
+    });
+    expect(calcules).toEqual(["vieille"]);
+    expect(r.resultat!.donnees).toEqual([
+      { url: "vieille", resume: "résumé de vieille" },
+      { url: "recente", resume: "gardé" },
+    ]);
+    // L'entrée trop vieille jamais revue est oubliée ; la reprise ne rafraîchit pas la date.
+    expect([...(r.resultat!.memoire.b!.valeur as { reutilises: unknown[] }).reutilises].sort()).toEqual([
+      ["recente", "gardé", ilYa(29)],
+      ["vieille", "résumé de vieille", MAINTENANT],
+    ]);
+  });
+
+  it("sans garderJours, reutiliser reprend une valeur de 400 jours", async () => {
+    const calcules: string[] = [];
+    const r = await executer({
+      entree: [{ url: "a" }],
+      memoire: { b: { type: "test.resume", valeur: { reutilises: [["a", "très ancien", ilYa(400)]] } } },
+      blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url" } }, { id: "sortie", type: "sortie" }],
+      registre: resume(calcules),
+    });
+    expect(calcules).toEqual([]);
+    expect(r.resultat!.memoire.b!.valeur).toEqual({ reutilises: [["a", "très ancien", ilYa(400)]] });
+  });
+
+  it("anciennes paires [cle, valeur] de reutiliser reprises sans appel", async () => {
+    const calcules: string[] = [];
+    const r = await executer({
+      entree: [{ url: "a" }],
+      memoire: { b: { type: "test.resume", valeur: { reutilises: [["a", "ancien"], ["b", "autre"]] } } },
+      blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url", garderJours: 1 } }, { id: "sortie", type: "sortie" }],
+      registre: resume(calcules),
+    });
+    expect(calcules).toEqual([]);
+    expect(r.resultat!.donnees).toEqual([{ url: "a", resume: "ancien" }]);
+    expect(r.resultat!.memoire.b!.valeur).toEqual({ reutilises: [["b", "autre", MAINTENANT], ["a", "ancien", MAINTENANT]] });
+  });
+
+  it("reutiliser : deux éléments de même clé traités en même temps ne font qu'un appel", async () => {
+    let appels = 0;
+    const r = await executer({
+      entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }, { modele: "208", n: 3 }],
+      blocs: [{ id: "b", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele" } }, { id: "sortie", type: "sortie" }],
+      registre: {
+        "test.avis": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            appels++;
+            await attendre(20);
+            return `avis ${ctx.element.modele}`;
+          },
+        },
+      },
+    });
+    expect(appels).toBe(2);
+    expect(r.resultat!.donnees).toEqual([
+      { modele: "Clio", n: 1, avis: "avis Clio" },
+      { modele: "Clio", n: 2, avis: "avis Clio" },
+      { modele: "208", n: 3, avis: "avis 208" },
+    ]);
+    expect(r.finBloc("b")).toMatchObject({ statut: "reussi" });
+  });
+
+  it("reutiliser : si le calcul en cours de la même clé échoue, le second élément calcule lui-même", async () => {
+    const lances: number[] = [];
+    const r = await executer({
+      entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],
+      blocs: [{ id: "b", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele" } }, { id: "sortie", type: "sortie" }],
+      registre: {
+        "test.avis": {
+          parElement: "toujours",
+          async traiterElement(ctx: any) {
+            lances.push(ctx.element.n);
+            await attendre(10);
+            if (ctx.element.n === 1) throw new Error("raté");
+            return "avis";
+          },
+        },
+      },
+    });
+    expect(lances).toEqual([1, 2]);
+    expect(r.resultat!.donnees).toEqual([{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2, avis: "avis" }]);
+    expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
 });
