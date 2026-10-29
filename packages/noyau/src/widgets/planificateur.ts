@@ -9,7 +9,8 @@ import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
 import type { PontNavigateur } from "../mcp/pont.js";
 import { lireAccords, retirerAccord } from "./accords.js";
-import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, executerRecolte, type OptionsRecolte } from "./recolte.js";
+import type { Execution } from "../workflows/executions.js";
+import { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, executerRecolte, type OptionsRecolte, type ResultatRecolte } from "./recolte.js";
 
 export { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE };
 
@@ -22,7 +23,7 @@ const ID_WIDGET = /^[a-z0-9-]+$/;
 const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime() - Date.parse(iso) : Infinity);
 
 /**
- * Le widget est-il à récolter maintenant ? Il faut une récolte (déclarée et `recolte.mjs` présent), un statut autre
+ * Le widget est-il à récolter maintenant ? Il faut une récolte (déclarée, et `workflow.json` ou `recolte.mjs` présent), un statut autre
  * qu'`accord-requis` (seul l'utilisateur débloque), et des données plus vieilles que `recolte.minutes` (ou absentes). Après une
  * erreur, on attend en plus 15 min depuis la dernière tentative. `en-cours` n'est relancé qu'au lancement (la récolte
  * précédente a été interrompue) : sinon, c'est la nôtre qui tourne.
@@ -36,12 +37,13 @@ export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolea
   return statut !== "erreur" || age(derniereTentative, maintenant) >= REESSAI_ERREUR_MS;
 }
 
-export type Recolteuse = (o: OptionsRecolte) => Promise<{ etat: EtatWidget; donnees?: unknown }>;
+export type Recolteuse = (o: OptionsRecolte) => Promise<ResultatRecolte>;
 
 export interface OptionsPlanificateur {
   chemins: CheminsEspace;
   dossierWidgets: string;
-  recolteur: string;
+  /** Dossier du moteur des workflows (`docker/moteur`), monté en lecture seule dans le conteneur. */
+  moteur: string;
   atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
   pont: PontNavigateur;
   ia: Pick<IaLocale, "kev" | "gemma"> | null;
@@ -129,7 +131,7 @@ export class PlanificateurWidgets {
             return false;
           }
           if (this.arrete) return false;
-          await this.recolter(w);
+          await this.recolter(w, "planifiee");
           return true;
         }),
       );
@@ -201,21 +203,24 @@ export class PlanificateurWidgets {
     return etat;
   }
 
-  private async recolter(w: WidgetLu): Promise<EtatWidget> {
+  private async recolter(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }> {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
     let etat: EtatWidget;
+    let execution: string | undefined;
     try {
-      ({ etat } = await this.o.recolter({
+      ({ etat, execution } = await this.o.recolter({
         id: w.id,
         widget: w,
         dossierWidgets: this.o.dossierWidgets,
-        recolteur: this.o.recolteur,
+        moteur: this.o.moteur,
         atelier: this.o.atelier,
         ia: this.o.ia,
         pont: this.o.pont,
         horloge: this.o.horloge,
         ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
         ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
+        declencheur,
+        interrompue: () => this.arrete,
       }));
     } catch (e) {
       // La récolte a pu écrire en-cours avant d'échouer (disque, conteneur…) : le widget ne doit pas y rester. Le texte
@@ -232,13 +237,16 @@ export class PlanificateurWidgets {
     if (this.arrete && etat.statut === "erreur") {
       await ecrireEtatWidget(this.o.dossierWidgets, w.id, avant);
       this.o.surChange?.();
-      return avant;
+      return { ...avant, ...(execution ? { execution } : {}) };
     }
-    return etat;
+    return { ...etat, ...(execution ? { execution } : {}) };
   }
 
-  /** Récolte ce widget tout de suite (après la récolte en cours) et rend son nouvel état. */
-  async recolterMaintenant(id: string): Promise<EtatWidget> {
+  /**
+   * Récolte ce widget tout de suite (après la récolte en cours) et rend son nouvel état, avec l'id de l'exécution écrite
+   * (aucune si rien n'a tourné : atelier arrêté, noyau qui s'arrête, accord retiré pendant).
+   */
+  async recolterMaintenant(id: string, declencheur: Execution["declencheur"] = "manuelle"): Promise<EtatWidget & { execution?: string }> {
     await this.attendrePret();
     return this.enchainer(() =>
       this.enCours(id, async () => {
@@ -247,7 +255,7 @@ export class PlanificateurWidgets {
         if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
         if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
         if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
-        return this.recolter(w);
+        return this.recolter(w, declencheur);
       }),
     );
   }

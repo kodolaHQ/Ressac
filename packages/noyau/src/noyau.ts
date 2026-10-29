@@ -19,6 +19,7 @@ import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsW
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
+import type { Execution } from "./workflows/executions.js";
 import { PlanificateurWidgets } from "./widgets/planificateur.js";
 import { accordRequis } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
@@ -175,8 +176,8 @@ export interface Noyau {
   /** Widgets de la page d'accueil, avec leurs données et leur état (rangés hors de l'espace). */
   lireAccueil(): Promise<EtatAccueil>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
-  /** Récolte ce widget tout de suite, après la récolte en cours. */
-  recolterMaintenant(id: string): Promise<EtatWidget>;
+  /** Récolte ce widget tout de suite, après la récolte en cours (déclencheur : « manuelle » par défaut). */
+  recolterMaintenant(id: string, declencheur?: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }>;
   /** IA locale (Kev, Gemma) donnée par le navigateur ; null sans elle. */
   ia: IaLocale | null;
   /**
@@ -214,8 +215,8 @@ export async function creerNoyau(o: {
   dossierWidgets: string;
   /** IA locale pour les récoltes ; arrêtée avec le noyau. */
   ia?: IaLocale;
-  /** Récolteur, monté avec son dossier dans le conteneur de récolte (par défaut `<ressources>/docker/moteur/recolteur.mjs`). */
-  recolteur?: string;
+  /** Moteur des workflows, monté dans le conteneur de récolte (par défaut `<ressources>/docker/moteur`). */
+  moteur?: string;
   /** Appelé après chaque écriture de l'état ou des données d'un widget, et après un accord ou son retrait. */
   surChange?: () => void;
   /** Tests seulement : les récoltes peuvent lire des adresses locales (le serveur de test). */
@@ -253,7 +254,7 @@ export async function creerNoyau(o: {
       if ("erreur" in w) return { nom: id, compte: true, donnees: await lireDonnees(dossierWidgets, id) };
       return { nom: w.declaration.nom, compte: accord || w.declaration.sources.compte.length > 0, donnees: w.donnees };
     },
-    recolter: (id) => planificateur.recolterMaintenant(id),
+    recolter: (id) => planificateur.recolterMaintenant(id, "agent"),
   };
   // Le navigateur garde ses outils de développement d'un noyau à l'autre : celui-ci prend les siens, ce qui révoque ceux
   // d'un noyau précédent (ses appels en retard sont refusés, ses attachements tombent).
@@ -290,11 +291,11 @@ export async function creerNoyau(o: {
   });
   atelierPret.catch(() => {});
   let demarrage: Promise<EtatAtelier> | null = atelierPret;
-  const recolteur = o.recolteur ?? (o.ressources ? join(o.ressources, "docker", "moteur", "recolteur.mjs") : join(DOSSIER_DOCKER_PAR_DEFAUT, "moteur", "recolteur.mjs"));
+  const moteur = o.moteur ?? (o.ressources ? join(o.ressources, "docker", "moteur") : join(DOSSIER_DOCKER_PAR_DEFAUT, "moteur"));
   const planificateur = new PlanificateurWidgets({
     chemins,
     dossierWidgets,
-    recolteur,
+    moteur,
     atelier,
     pont: o.pont,
     ia: accesIa,
@@ -333,7 +334,7 @@ export async function creerNoyau(o: {
     },
     lireAccueil: () => lireAccueil(chemins, dossierWidgets),
     surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
-    recolterMaintenant: (id) => planificateur.recolterMaintenant(id),
+    recolterMaintenant: (id, declencheur) => planificateur.recolterMaintenant(id, declencheur),
     ia,
     async accorder({ id, profil: nomProfil, compte: montres, publiques: publiquesMontrees }) {
       const w = await widget(id);

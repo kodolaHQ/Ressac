@@ -60,7 +60,10 @@ export type WidgetLu =
       etat: EtatWidget;
       donnees: unknown | null;
       exemple: unknown | null;
+      /** Le widget a une récolte : `workflow.json` ou `recolte.mjs`. */
       aRecolte: boolean;
+      /** `workflow.json` présent (il l'emporte alors sur `recolte.mjs`). */
+      aWorkflow: boolean;
       aAffichage: boolean;
     }
   | { id: string; dossier: string; erreur: string };

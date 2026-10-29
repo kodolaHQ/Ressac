@@ -1,13 +1,16 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { cheminsEspace } from "../../src/chemins.js";
 import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget } from "../../src/accueil/donnees.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { EtatAtelier } from "../../src/conteneur/atelier.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { erreurDuNoyau, type OptionsRecolte } from "../../src/widgets/recolte.js";
+import { erreurDuNoyau, executerRecolte, type LanceurProcessus, type OptionsRecolte } from "../../src/widgets/recolte.js";
+import { ecrireExecution, listerExecutions } from "../../src/workflows/executions.js";
+import { ecrireMemoire } from "../../src/workflows/memoire.js";
 import { accorder, lireAccords } from "../../src/widgets/accords.js";
 import { ERREUR_RECOLTE_INTERNE, PlanificateurWidgets, widgetDu } from "../../src/widgets/planificateur.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
@@ -53,7 +56,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
   p = new PlanificateurWidgets({
     chemins: c,
     dossierWidgets,
-    recolteur: "/recolteur.mjs",
+    moteur: "/moteur",
     atelier,
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
@@ -89,11 +92,11 @@ test("un widget dû est récolté au démarrage puis selon sa fréquence (horlog
   expect(recoltes).toEqual(["actus", "actus"]);
 });
 
-test("la récolte reçoit le widget, le dossier des données, le récolteur et l'IA", async () => {
+test("la récolte reçoit le widget, le dossier des données, le moteur et l'IA", async () => {
   const { p, recolter, dossierWidgets, c } = await preparer();
   await p.verifier({ auLancement: true });
   const o = recolter.mock.calls[0]![0];
-  expect(o).toMatchObject({ id: "actus", dossierWidgets, recolteur: "/recolteur.mjs", ia: null });
+  expect(o).toMatchObject({ id: "actus", dossierWidgets, moteur: "/moteur", ia: null });
   expect(o.widget).toMatchObject({ id: "actus", dossier: join(c.widgets, "actus") });
   // surChange suit chaque écriture faite par la récolte.
   expect(o.surChange).toBeTypeOf("function");
@@ -154,6 +157,7 @@ test("en-cours est relancé au lancement seulement", () => {
     donnees: null,
     exemple: null,
     aRecolte: true,
+    aWorkflow: false,
     aAffichage: true,
   };
   expect(widgetDu(w, DEBUT, { auLancement: true })).toBe(true);
@@ -254,7 +258,7 @@ test("arreter : une récolte qui dépasse l'attente voit son conteneur supprimé
   p = new PlanificateurWidgets({
     chemins: c,
     dossierWidgets,
-    recolteur: "/recolteur.mjs",
+    moteur: "/moteur",
     atelier,
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
@@ -281,7 +285,7 @@ test("la première vérification attend que l'atelier soit prêt : pas d'« atel
   p = new PlanificateurWidgets({
     chemins: c,
     dossierWidgets,
-    recolteur: "/recolteur.mjs",
+    moteur: "/moteur",
     atelier,
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
@@ -341,4 +345,57 @@ test("à chaque vérification, accords et données d'un widget dont le dossier a
   await rm(c.widgets, { recursive: true, force: true });
   await p.verifier({ auLancement: false });
   expect(Object.keys(await lireAccords(dossierWidgets))).toEqual(["actus"]);
+});
+
+test("un widget avec workflow.json sans recolte.mjs est récolté quand il est dû", async () => {
+  const { p, c, recoltes } = await preparer();
+  await ecrireWidget(c, "flux", declarationWidget(undefined, { recolte: { minutes: 60 } }), {
+    "workflow.json": JSON.stringify({ version: 1, blocs: [{ id: "sortie", type: "sortie", parametres: { vers: "widget" } }] }),
+  });
+  expect((await p.verifier({ auLancement: true })).sort()).toEqual(["actus", "flux"]);
+  expect(recoltes.sort()).toEqual(["actus", "flux"]);
+});
+
+test("déclencheur : planifiee pour la vérification, manuelle par défaut pour recolterMaintenant, sinon celui demandé", async () => {
+  const { p, recolter } = await preparer();
+  await p.verifier({ auLancement: true });
+  await p.recolterMaintenant("actus");
+  await p.recolterMaintenant("actus", "agent");
+  expect(recolter.mock.calls.map(([o]) => o.declencheur)).toEqual(["planifiee", "manuelle", "agent"]);
+  expect(recolter.mock.calls[0]![0].interrompue).toBeTypeOf("function");
+});
+
+test("arrêt pendant l'exécution : exécution interrompue, état précédent restauré", async () => {
+  const { p, recolter, dossierWidgets, atelier } = await preparer();
+  const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await ecrireEtatWidget(dossierWidgets, "actus", avant);
+  let tuer!: () => void;
+  const lance = vi.fn();
+  // Un conteneur qui ne répond jamais : seul l'arrêt le termine.
+  const lancer: LanceurProcessus = () => {
+    lance();
+    const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
+    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => tuer(), fin };
+  };
+  recolter.mockImplementation((o) => executerRecolte({ ...o, lancer }));
+  atelier.supprimerRecolte = async () => tuer();
+  const verif = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(lance).toHaveBeenCalled());
+  await p.arreter();
+  await verif;
+  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
+  expect((await listerExecutions(join(dossierWidgets, "actus"))).map((e) => e.statut)).toEqual(["interrompue"]);
+});
+
+test("le dossier disparu efface aussi exécutions et mémoire", async () => {
+  const { p, dossierWidgets } = await preparer();
+  const dossier = join(dossierWidgets, "parti");
+  await ecrireDonnees(dossierWidgets, "parti", { secret: 1 });
+  await ecrireExecution(dossier, {
+    version: 1, id: "2026-10-27T08-00-00-000Z", proprietaire: { type: "widget", id: "parti" }, declencheur: "planifiee",
+    debut: "2026-10-27T08:00:00.000Z", fin: null, statut: "reussie", blocs: [],
+  });
+  await ecrireMemoire(dossier, { a: { type: "liste.nouveaux", valeur: [] } });
+  await p.verifier({ auLancement: false });
+  expect(existsSync(dossier)).toBe(false);
 });

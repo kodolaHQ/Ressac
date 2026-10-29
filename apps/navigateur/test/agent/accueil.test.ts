@@ -203,6 +203,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
         donnees: { t: 12 },
         exemple: { t: 0 },
         aRecolte: true,
+        aWorkflow: false,
         aAffichage: true,
       },
       {
@@ -218,6 +219,7 @@ test("versWidgetsAffiches : placement, src versionnée, données, exemple, état
         donnees: null,
         exemple: null,
         aRecolte: false,
+        aWorkflow: false,
         aAffichage: false,
       },
       { id: "casse", dossier: "/w/casse", erreur: "widget.json invalide : x" },

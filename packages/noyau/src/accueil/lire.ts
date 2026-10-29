@@ -29,6 +29,7 @@ async function lireWidget(c: CheminsEspace, dossierWidgets: string, id: string):
     // exemple.json absent ou abîmé : pas d'exemple.
   }
   const [donnees, etat] = await Promise.all([lireDonnees(dossierWidgets, id), lireEtatWidget(dossierWidgets, id)]);
+  const aWorkflow = existsSync(join(dossier, "workflow.json"));
   return {
     id,
     dossier,
@@ -36,7 +37,8 @@ async function lireWidget(c: CheminsEspace, dossierWidgets: string, id: string):
     etat,
     donnees,
     exemple,
-    aRecolte: existsSync(join(dossier, "recolte.mjs")),
+    aRecolte: aWorkflow || existsSync(join(dossier, "recolte.mjs")),
+    aWorkflow,
     aAffichage: existsSync(join(dossier, "affichage.html")),
   };
 }

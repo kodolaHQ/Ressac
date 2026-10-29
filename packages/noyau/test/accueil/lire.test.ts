@@ -111,6 +111,17 @@ test("exemple.json est lu ; aRecolte et aAffichage reflètent les fichiers prés
   expect("declaration" in complet && [complet.exemple, complet.aRecolte, complet.aAffichage]).toEqual([{ x: 1 }, true, true]);
 });
 
+test("aRecolte vrai avec workflow.json seul ; aWorkflow le dit", async () => {
+  const { c, dossierWidgets } = await espace();
+  await ecrireWidget(c, "flux", declarationWidget(), { "workflow.json": '{"version":1,"blocs":[]}' });
+  await ecrireWidget(c, "ancien", declarationWidget(), { "recolte.mjs": "export default async () => 1" });
+  const { widgets } = await lireAccueil(c, dossierWidgets);
+  const flux = widgets.find((w) => w.id === "flux")!;
+  const ancien = widgets.find((w) => w.id === "ancien")!;
+  expect("declaration" in flux && [flux.aRecolte, flux.aWorkflow]).toEqual([true, true]);
+  expect("declaration" in ancien && [ancien.aRecolte, ancien.aWorkflow]).toEqual([true, false]);
+});
+
 test("un widget.json qui est un lien symbolique hors du dossier est refusé", async () => {
   const { c, dossierWidgets } = await espace();
   const dehors = await dossierTemporaire();
