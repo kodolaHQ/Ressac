@@ -120,3 +120,16 @@ test("un créneau plus ancien que celui déjà fait n'est jamais refait (retour 
   // Une réussite pour un créneau plus ancien garde le plus récent.
   expect(suiviApres({ faite: "2026-10-29T07:00", echecs: null }, "2026-10-29T06:00", "reussie")).toEqual({ faite: "2026-10-29T07:00", echecs: null });
 });
+
+test("F4 : après un échec, une tentative sans effet plus récente (veille interrompue) repousse le réessai de 15 min", () => {
+  const heures = ["07:00"];
+  // Échec fini à 07:20 ; puis une tentative à 07:40, interrompue (sans effet sur le suivi).
+  const suivi: Suivi = { faite: null, echecs: { heure: "2026-10-29T07:00", nombre: 1, fin: le(7, 20).toISOString() } };
+  const tentative = le(7, 40).toISOString();
+  expect(heureDue(heures, suivi, tentative, le(7, 45))).toBe(false);
+  expect(heureDue(heures, suivi, tentative, le(7, 55))).toBe(true);
+  // Et l'inverse : une fin d'échec plus récente que la tentative (veille de 30 min) compte toujours.
+  const long: Suivi = { faite: null, echecs: { heure: "2026-10-29T07:00", nombre: 1, fin: le(7, 30).toISOString() } };
+  expect(heureDue(heures, long, le(7, 0).toISOString(), le(7, 40))).toBe(false);
+  expect(heureDue(heures, long, le(7, 0).toISOString(), le(7, 45))).toBe(true);
+});

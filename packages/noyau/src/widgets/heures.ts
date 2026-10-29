@@ -34,9 +34,11 @@ export function heureDue(heures: readonly string[], suivi: EtatWidget["heures"],
   if (!creneau || (suivi?.faite != null && suivi.faite >= creneau)) return false;
   if (suivi?.echecs?.heure !== creneau) return true;
   if (suivi.echecs.nombre > REESSAIS_HEURE_MAX) return false;
-  // Depuis la fin de l'échec (une veille peut durer 30 min) ; à défaut, depuis le début de la tentative.
-  const depuis = suivi.echecs.fin ?? derniereTentative;
-  return !depuis || maintenant.getTime() - Date.parse(depuis) >= REESSAI_HEURE_MS;
+  // Depuis le plus récent de la fin de l'échec (une veille peut durer 30 min) et de la dernière tentative (une tentative
+  // sans effet, interrompue, a pu suivre l'échec).
+  const reperes = [suivi.echecs.fin, derniereTentative].filter((x): x is string => !!x).map((x) => Date.parse(x));
+  if (!reperes.length) return true;
+  return maintenant.getTime() - Math.max(...reperes) >= REESSAI_HEURE_MS;
 }
 
 /**
