@@ -2,15 +2,13 @@
 // Canal unique avec le noyau : une ligne JSON par message sur stdin / stdout.
 // Usage : node recolteur.mjs <dossier du widget>
 //
-// Le noyau envoie `debut` ; avec un `workflow`, puis la ligne `memoire`, le workflow est exécuté par l'interpréteur
-// (traces `bloc` et `journal`, `memoire` juste avant `fin`). Sans `workflow`, `recolte.mjs` tourne comme avant les
-// workflows : `default(webaios)`, aucune trace.
+// Le noyau envoie `debut` (avec son `workflow` : pour un widget qui n'a que `recolte.mjs`, le workflow implicite
+// récolte → sortie), puis la ligne `memoire` ; le workflow est exécuté par l'interpréteur (traces `bloc` et
+// `journal`, `memoire` juste avant `fin`).
 import { createInterface } from "node:readline";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 import { LIMITE_GLOBALE_MS, executerWorkflow } from "./interpreteur.mjs";
-import { creerWebaios, formater } from "./webaios.mjs";
+import { formater } from "./webaios.mjs";
 
 const LIGNE_MAX = 4 * 1024 * 1024;
 const sortie = process.stdout;
@@ -91,43 +89,10 @@ function appeler(f, a) {
   });
 }
 
-/** Chemin d'avant les workflows : `recolte.mjs`, `default(webaios)`. */
-async function recolteSeule(dossier) {
-  let config = null;
-  if ("config" in debut) config = debut.config ?? null;
-  else {
-    // Ancien noyau : la config est lue dans widget.json.
-    try {
-      config = JSON.parse(await readFile(join(dossier, "widget.json"), "utf8")).config ?? null;
-    } catch {}
-  }
-  const webaios = creerWebaios({
-    appeler,
-    config,
-    precedent: debut.precedent ?? null,
-    maintenant: debut.maintenant ?? new Date().toISOString(),
-    journal: versErreur,
-  });
-  const module = await import(pathToFileURL(join(dossier, "recolte.mjs")).href);
-  const donnees = await module.default(webaios);
-  let json;
-  try {
-    json = JSON.stringify(donnees);
-  } catch {
-    json = undefined;
-  }
-  if (json === undefined) throw new Error("la récolte doit rendre du JSON");
-  return JSON.parse(json);
-}
-
 async function principal() {
   const dossier = resolve(process.argv[2] ?? "/widget");
   await debutRecu;
-  if (!debut.workflow) {
-    envoyer({ t: "fin", donnees: await recolteSeule(dossier) });
-    sortie.write("", () => process.exit(0));
-    return;
-  }
+  if (!debut.workflow) throw new Error("debut sans workflow");
   await memoireRecue;
   const r = await executerWorkflow({
     workflow: debut.workflow,

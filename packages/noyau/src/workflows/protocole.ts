@@ -40,8 +40,8 @@ export type MessageRecolteur = z.infer<typeof MessageRecolteur>;
 export type WorkflowEnvoye = { blocs: Bloc[]; liens: Lien[]; ordre: string[] };
 
 /**
- * Entrée standard du récolteur : la ligne initiale, puis (pour un workflow) la mémoire des blocs, puis les réponses.
- * Sans `workflow`, le récolteur lance `recolte.mjs` comme avant les workflows.
+ * Entrée standard du récolteur : la ligne initiale (toujours avec son workflow, implicite pour un `recolte.mjs` seul),
+ * puis la mémoire des blocs, puis les réponses.
  */
 export const MessageNoyau = z.union([
   z.object({
@@ -49,7 +49,7 @@ export const MessageNoyau = z.union([
     precedent: z.unknown(),
     maintenant: z.string(),
     config: z.unknown().optional(),
-    workflow: z.object({ blocs: z.array(z.unknown()), liens: z.array(z.unknown()), ordre: z.array(z.string()) }).optional(),
+    workflow: z.object({ blocs: z.array(z.unknown()), liens: z.array(z.unknown()), ordre: z.array(z.string()) }),
   }),
   z.object({ t: z.literal("memoire"), memoire: MemoireEnvoyee }),
   z.object({ t: z.literal("reponse"), n: z.number().int(), ok: z.unknown() }),
@@ -79,14 +79,14 @@ export function ligneReponse(n: number, resultat: { ok: unknown } | { erreur: st
   return JSON.stringify({ t: "reponse", n, ...resultat }) + "\n";
 }
 
-export function ligneDebut(o: { precedent: unknown; maintenant: string; config: unknown; workflow?: WorkflowEnvoye }): string {
+export function ligneDebut(o: { precedent: unknown; maintenant: string; config: unknown; workflow: WorkflowEnvoye }): string {
   return (
     JSON.stringify({
       t: "debut",
       precedent: o.precedent ?? null,
       maintenant: o.maintenant,
       config: o.config ?? null,
-      ...(o.workflow ? { workflow: o.workflow } : {}),
+      workflow: o.workflow,
     }) + "\n"
   );
 }

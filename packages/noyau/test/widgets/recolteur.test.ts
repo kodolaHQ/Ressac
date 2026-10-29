@@ -3,15 +3,17 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "../aide/temporaire.js";
+import { workflowImplicite } from "../../src/workflows/valider.js";
+import { workflowEnvoye } from "../aide/moteur.js";
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
 type Appel = { t: "appel"; n: number; f: string; a: any };
 type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
+/** Un widget qui n'a que `recolte.mjs` (comme le Gmail de l'utilisateur), lancé comme le noyau le fait. */
 async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), config: unknown = {}) {
   const dossier = await dossierTemporaire();
-  await writeFile(join(dossier, "widget.json"), JSON.stringify({ config }));
   await writeFile(join(dossier, "recolte.mjs"), code);
   const enfant = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
@@ -34,12 +36,15 @@ async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), 
       }
     }
   });
-  enfant.stdin.write(JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z" }) + "\n");
+  enfant.stdin.write(
+    JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z", config, workflow: workflowEnvoye(workflowImplicite()) }) + "\n",
+  );
+  enfant.stdin.write(JSON.stringify({ t: "memoire", memoire: {} }) + "\n");
   await fini;
   return { lignes, appels, stderr, terminal: lignes.find((l) => l.t === "fin" || l.t === "echec") };
 }
 
-describe("recolteur", () => {
+describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
   it("un recolte.mjs qui rend des données produit { t: fin }", async () => {
     const r = await lancer(
       `export default async (w) => ({ cfg: w.config, prec: w.precedent, quand: w.maintenant });`,
@@ -153,6 +158,9 @@ describe("recolteur", () => {
     const r = await lancer(`export default async (w) => { w.journal("bonjour", { a: 1 }); console.log("direct"); return 1; };`);
     expect(r.stderr).toContain("bonjour");
     expect(r.stderr).toContain("direct");
-    expect(r.lignes.map((l) => l.t)).toEqual(["fin"]);
+    // stdout ne porte que le protocole : les traces du bloc implicite, la mémoire, la fin.
+    expect(r.lignes.map((l) => l.t)).toEqual(["bloc", "journal", "bloc", "bloc", "bloc", "memoire", "fin"]);
+    expect(r.lignes.find((l) => l.t === "journal")).toEqual({ t: "journal", bloc: "recolte", texte: expect.stringContaining("bonjour") });
+    expect(r.terminal).toEqual({ t: "fin", donnees: 1 });
   });
 });

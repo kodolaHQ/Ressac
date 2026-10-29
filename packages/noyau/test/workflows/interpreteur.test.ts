@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import type { MemoireBlocs } from "../../src/workflows/memoire.js";
+import { workflowImplicite } from "../../src/workflows/valider.js";
 import { MOTEUR, SCRIPT, bloc, chaine, lancer, sortie } from "../aide/moteur.js";
 
 // Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
@@ -249,24 +250,28 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: 4 * 1024 * 1024 + 10 });
   });
 
-  it("sans workflow dans debut, recolte.mjs tourne exactement comme avant (aucune trace)", async () => {
+  it("un debut sans workflow est refusé : recolte.mjs ne tourne plus hors workflow", async () => {
     const dossier = await dossierTemporaire();
-    await writeFile(join(dossier, "widget.json"), JSON.stringify({ config: { lu: "widget.json" } }));
-    await writeFile(join(dossier, "recolte.mjs"), `export default async (w) => { w.journal("j"); return { cfg: w.config, prec: w.precedent }; };`);
-    const sortieDe = async (debut: Record<string, unknown>) => {
-      const enfant = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
-      let out = "";
-      enfant.stdout.on("data", (d) => (out += d));
-      const fini = new Promise<void>((ok) => enfant.on("close", () => ok()));
-      enfant.stdin.write(JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-29T10:00:00.000Z", ...debut }) + "\n");
-      await fini;
-      return out.trim().split("\n").map((l) => JSON.parse(l));
-    };
-    // Ancien noyau : la config est lue dans widget.json.
-    expect(await sortieDe({})).toEqual([{ t: "fin", donnees: { cfg: { lu: "widget.json" }, prec: { v: 1 } } }]);
-    // Noyau actuel : la config vient de debut (null si absente de la déclaration).
-    expect(await sortieDe({ config: { a: 1 } })).toEqual([{ t: "fin", donnees: { cfg: { a: 1 }, prec: { v: 1 } } }]);
-    expect(await sortieDe({ config: null })).toEqual([{ t: "fin", donnees: { cfg: null, prec: { v: 1 } } }]);
+    await writeFile(join(dossier, "recolte.mjs"), `export default async () => ({ lance: true });`);
+    const enfant = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    enfant.stdout.on("data", (d) => (out += d));
+    const fini = new Promise<number | null>((ok) => enfant.on("close", (c) => ok(c)));
+    enfant.stdin.write(JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-29T10:00:00.000Z", config: { a: 1 } }) + "\n");
+    expect(await fini).toBe(1);
+    expect(out.trim().split("\n").map((l) => JSON.parse(l))).toEqual([{ t: "echec", erreur: "debut sans workflow" }]);
+  });
+
+  it("le workflow implicite d'un recolte.mjs : default(webaios) avec la config de debut, journal sur stderr", async () => {
+    const r = await lancer({
+      workflow: workflowImplicite(),
+      config: { a: 1 },
+      precedent: { v: 1 },
+      fichiers: { "recolte.mjs": `export default async (w) => { w.journal("j"); return { cfg: w.config, prec: w.precedent, quand: w.maintenant }; };` },
+    });
+    expect(r.terminal).toEqual({ t: "fin", donnees: { cfg: { a: 1 }, prec: { v: 1 }, quand: "2026-10-29T10:00:00.000Z" } });
+    expect(r.finBloc("recolte")).toMatchObject({ statut: "reussi" });
+    expect(r.stderr).toContain("j");
   });
 });
 
