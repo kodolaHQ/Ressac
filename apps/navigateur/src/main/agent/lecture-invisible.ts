@@ -7,6 +7,8 @@ import { marquerInvisible } from "../contenus-invisibles";
 export const PARTITION_PUBLIQUE = "webaios-lecture-publique";
 const DELAI_TOTAL_MS = 30_000;
 const TROP_LENTE = "Page trop lente : 30 s dépassées";
+/** Sauts vers un autre site suivis au plus par une lecture ménagée (comme MAX_REDIRECTIONS de `recuperer`). */
+const MAX_SAUTS = 5;
 /** Une page chargée encore en mouvement 4 s avant la fin des 30 s est lue telle quelle, pour finir à temps. */
 const MARGE_LECTURE_FORCEE_MS = 4_000;
 const CALME_MS = 2_000;
@@ -193,10 +195,13 @@ async function lireFenetre<T>(
   let cible = url;
   /** Fin des 30 s, fixée au premier chargement : les redirections ménagées et leurs attentes y comptent. */
   let echeance: number | null = null;
-  for (let premiere = true; ; premiere = false) {
+  for (let sauts = 0; ; sauts++) {
+    const premiere = sauts === 0;
     let redirection: string;
     await prendrePlace(signal);
     try {
+      // L'échéance a pu passer pendant l'attente d'une place (après un saut) : aucune fenêtre pour rien.
+      if (echeance !== null && Date.now() >= echeance) throw new Error(TROP_LENTE);
       // L'état a pu changer pendant l'attente d'une place.
       verifierProfil();
       signal?.throwIfAborted();
@@ -238,6 +243,8 @@ async function lireFenetre<T>(
     }
     // Redirection vers un autre site (lecture ménagée) : son tour est attendu sans fenêtre ni place, sinon deux
     // lectures redirigées vers le site d'une troisième, qui attend une place, bloqueraient toutes les lectures.
+    // Une boucle entre sites (A ⇄ B) échoue vite, comme la limite de redirections de Chromium.
+    if (sauts >= MAX_SAUTS) throw new Error("Trop de redirections");
     await jusquAEcheance(o.changerHote!(new URL(redirection).hostname), echeance!, signal);
     cible = redirection;
   }
@@ -392,6 +399,7 @@ function lireDans<T>(
     let charge = false;
     let enLecture = false;
     const site = siteDe(url);
+    const heureForcee = echeance - MARGE_LECTURE_FORCEE_MS;
     let calme: NodeJS.Timeout | undefined;
     const finir = (r: { erreur: Error } | { page: T }) => {
       if (fini) return;
@@ -448,6 +456,8 @@ function lireDans<T>(
     });
     wc.on("did-finish-load", () => {
       charge = true;
+      // L'heure de la lecture forcée est déjà passée (page lente, ou saut commencé près de l'échéance) : lue telle quelle.
+      if (Date.now() >= heureForcee) return void lire();
       attendreCalme();
     });
     wc.on("did-fail-load", (_e, code, description, _url, principal) => {
@@ -473,7 +483,7 @@ function lireDans<T>(
     };
     const forcee = setTimeout(() => {
       if (charge) void lire();
-    }, Math.max(0, echeance - Date.now() - MARGE_LECTURE_FORCEE_MS));
+    }, Math.max(0, heureForcee - Date.now()));
     const limite = setTimeout(() => finir({ erreur: new Error(TROP_LENTE) }), Math.max(0, echeance - Date.now()));
     if (signal?.aborted) return abandonner();
     signal?.addEventListener("abort", abandonner, { once: true });

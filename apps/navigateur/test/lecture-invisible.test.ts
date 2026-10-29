@@ -503,3 +503,52 @@ test("sans changerHote (lecture non ménagée) : une redirection permise vers un
   await vi.advanceTimersByTimeAsync(2_000);
   await expect(r).resolves.toMatchObject({ url: "https://autre.test/" });
 });
+
+test("lecture ménagée : une boucle entre deux sites s'arrête au 6e saut, « Trop de redirections »", async () => {
+  vi.useFakeTimers();
+  const { liste, deps } = plusieursFenetres();
+  const changerHote = vi.fn(async () => {});
+  const r = lirePageInvisible("https://a.test/", { profil: null, changerHote }, deps);
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  for (let i = 0; i < 6; i++) {
+    const vers = i % 2 === 0 ? "https://b.test/" : "https://a.test/";
+    liste[i]!.wc.emit("will-redirect", { url: vers, isMainFrame: true, preventDefault: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+  }
+  await expect(r).rejects.toThrow("Trop de redirections");
+  // 5 sauts suivis (6 fenêtres), pas un de plus.
+  expect(liste).toHaveLength(6);
+  expect(changerHote).toHaveBeenCalledTimes(5);
+});
+
+test("une page qui finit de charger après l'heure de la lecture forcée est lue tout de suite", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(27_000);
+  wc.emit("did-finish-load");
+  wc.emit("did-start-loading"); // un cadre qui charge tard
+  await vi.advanceTimersByTimeAsync(0);
+  expect(wc.executeJavaScriptInIsolatedWorld).toHaveBeenCalled();
+  await expect(r).resolves.toMatchObject({ url: "https://exemple.test/" });
+});
+
+test("lecture ménagée : une place obtenue après l'échéance n'ouvre aucune fenêtre, « Page trop lente »", async () => {
+  vi.useFakeTimers();
+  const { liste, deps } = plusieursFenetres();
+  let ouvrir!: () => void;
+  const r = lirePageInvisible("https://exemple.test/", { profil: null, changerHote: () => new Promise<void>((ok) => (ouvrir = ok)) }, deps);
+  r.catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  liste[0]!.wc.emit("will-redirect", { url: "https://autre.test/", isMainFrame: true, preventDefault: vi.fn() });
+  await vi.advanceTimersByTimeAsync(20_000);
+  const places = await deuxPlacesPrises();
+  await vi.advanceTimersByTimeAsync(5_000);
+  ouvrir();
+  // L'échéance (30 s) passe pendant l'attente d'une place.
+  await vi.advanceTimersByTimeAsync(10_000);
+  await places.rendre();
+  await expect(r).rejects.toThrow("Page trop lente : 30 s dépassées");
+  expect(liste).toHaveLength(1);
+});
