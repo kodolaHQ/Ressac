@@ -233,6 +233,8 @@ export function demarrerAgent(o: {
       );
     },
     async arreter() {
+      // Une installation de l'IA locale en cours est annulée tout de suite (ia.fermer() attend ensuite son nettoyage, borné).
+      ia.annulerInstallation();
       // Les agents d'abord : leur arrêt passe par le conteneur, avant que l'app ne quitte.
       await sessions.toutArreter();
       await Promise.all([arreterAccueil?.(), arreterNoyau(await pret)]);

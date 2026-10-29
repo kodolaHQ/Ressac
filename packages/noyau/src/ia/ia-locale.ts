@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { cheminOutils, type Executeur } from "../conteneur/executeur.js";
+import { cheminOutils, oublierGroupe, retenirGroupe, tuerGroupe, type Executeur } from "../conteneur/executeur.js";
 
 export type EtatIa = "non-installee" | "arretee" | "demarrage" | "active" | "erreur";
 
@@ -27,6 +28,8 @@ export interface OptionsIaLocale {
   sondageMs?: number;
   /** Pas de contrôle de l'inactivité (5 s par défaut). */
   verifInactiviteMs?: number;
+  /** Attente maximale, à la fermeture, de la fin d'une installation annulée (3 s par défaut). */
+  delaiAnnulationMs?: number;
 }
 
 export const DEPOT_KEV = "https://github.com/jaredpalmer/kev.git";
@@ -41,18 +44,6 @@ const DELAI_GEMMA_MS = 120_000;
 /** Délai entre SIGTERM et SIGKILL quand Kev (son groupe) ne s'arrête pas. */
 const DELAI_KILL_MS = 5000;
 
-/** Groupes de processus encore vivants : tués de façon synchrone si le process Node sort sans les arrêter. */
-const groupesVivants = new Set<number>();
-let sortieBranchee = false;
-function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
-  try {
-    process.kill(-pid, signal);
-    return true;
-  } catch {
-    return false; // groupe déjà mort
-  }
-}
-
 /**
  * Lance la commande dans son propre groupe de processus (`uv run` lance un enfant Python : tuer uv seul le laisserait
  * orphelin). `arreter` envoie SIGTERM au groupe, puis SIGKILL après `delaiKillMs` s'il vit encore. Si le process Node
@@ -61,38 +52,30 @@ function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
 export function lancerProcessusIa(cmd: string, args: string[], o: { cwd: string; delaiKillMs?: number }): ProcessusIa {
   const enfant = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, PATH: cheminOutils() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
   const pid = enfant.pid;
-  if (pid !== undefined) {
-    groupesVivants.add(pid);
-    if (!sortieBranchee) {
-      sortieBranchee = true;
-      process.on("exit", () => {
-        for (const g of groupesVivants) tuerGroupe(g, "SIGKILL");
-      });
-    }
-  }
+  if (pid !== undefined) retenirGroupe(pid);
   let sorti = false;
   enfant.on("exit", () => {
     sorti = true;
-    if (pid !== undefined && !tuerGroupe(pid, 0)) groupesVivants.delete(pid);
+    if (pid !== undefined && !tuerGroupe(pid, 0)) oublierGroupe(pid);
   });
   return {
     arreter: () => {
       if (pid === undefined) return;
       if (!tuerGroupe(pid, "SIGTERM")) {
-        groupesVivants.delete(pid);
+        oublierGroupe(pid);
         return;
       }
       // Le groupe peut survivre au premier processus (un enfant qui ignore SIGTERM) : on vérifie le groupe, pas `sorti`.
       const minuterie = setTimeout(() => {
         tuerGroupe(pid, "SIGKILL");
-        groupesVivants.delete(pid);
+        oublierGroupe(pid);
       }, o.delaiKillMs ?? DELAI_KILL_MS);
       minuterie.unref();
       const verifier = setInterval(() => {
         if (sorti && !tuerGroupe(pid, 0)) {
           clearTimeout(minuterie);
           clearInterval(verifier);
-          groupesVivants.delete(pid);
+          oublierGroupe(pid);
         }
       }, 100);
       verifier.unref();
@@ -119,6 +102,9 @@ const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) =
 const attendre = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
 
 export const ERREUR_IA_FERMEE = "IA locale fermée";
+export const ERREUR_INSTALLATION_ANNULEE = "Installation annulée";
+/** Attente maximale de la fin d'une installation annulée quand l'app quitte. */
+const DELAI_ANNULATION_MS = 3000;
 
 /**
  * L'IA locale vue par un noyau. Une fois `fermer()` appelé (arrêt du noyau), ses appels sont refusés : une récolte en
@@ -140,6 +126,8 @@ export class IaLocale {
   private generation = 0;
   /** Fermée (le navigateur quitte) : plus rien ne démarre Kev ni n'appelle Ollama. */
   private fermee = false;
+  /** Installation en cours : son annulation et sa fin (réussie ou non). */
+  private installation?: { controleur: AbortController; fin: Promise<unknown> };
   // Modifiable : l'adresse de Kev, imposée par WEBAIOS_KEV_URL ou calculée depuis le port.
   private kevUrl: string;
   private readonly kevImposee: boolean;
@@ -188,28 +176,70 @@ export class IaLocale {
     return { kev, uv, ollama, gemma };
   }
 
-  async installer(progres: (ligne: string) => void): Promise<void> {
+  /** Dossier où Kev est cloné avant d'être renommé en `kev/` : un clone interrompu n'y laisse jamais un dépôt partiel. */
+  private get dossierClone() { return join(this.o.dossier, "kev.clone-en-cours"); }
+
+  /**
+   * Installe Kev et Gemma. Annulée par `annulerInstallation()` ou `fermer()` : la commande en cours est tuée (tout son
+   * groupe), aucune suivante ne part, un clone partiel est effacé, et la promesse est rejetée « Installation annulée ».
+   */
+  installer(progres: (ligne: string) => void): Promise<void> {
+    if (this.fermee) return Promise.reject(new Error(ERREUR_IA_FERMEE));
+    if (this.installation) return Promise.reject(new Error("Installation déjà en cours"));
+    const controleur = new AbortController();
+    const fin = this.installerAvec(controleur.signal, progres).finally(() => {
+      if (this.installation?.controleur === controleur) this.installation = undefined;
+    });
+    this.installation = { controleur, fin: fin.catch(() => {}) };
+    return fin;
+  }
+
+  /** Annule l'installation en cours, s'il y en a une (sans attendre sa fin). */
+  annulerInstallation(): void {
+    this.installation?.controleur.abort();
+  }
+
+  private async installerAvec(signal: AbortSignal, progres: (ligne: string) => void): Promise<void> {
+    const verifierAnnulation = () => {
+      if (signal.aborted) throw new Error(ERREUR_INSTALLATION_ANNULEE);
+    };
+    const executer = async (cmd: string, args: string[], delaiMs?: number) => {
+      verifierAnnulation();
+      const r = await this.o.executer(cmd, args, delaiMs ? { delaiMs, signal } : { signal });
+      verifierAnnulation();
+      return r;
+    };
     const lancer = async (cmd: string, args: string[], delaiMs?: number) => {
+      verifierAnnulation();
       progres(`$ ${[cmd, ...args].join(" ")}`);
-      const r = await this.o.executer(cmd, args, delaiMs ? { delaiMs } : undefined);
+      const r = await executer(cmd, args, delaiMs);
       for (const l of `${r.stdout}\n${r.stderr}`.split(/\r?\n/)) if (l.trim()) progres(l);
       return r;
     };
     // 1. uv
     if ((await lancer("uv", ["--version"], 10_000)).code !== 0) throw new Error("installe uv : brew install uv");
-    // 2. dépôt Kev au commit pinné
+    // 2. dépôt Kev au commit pinné, cloné à côté puis renommé. Le dossier de clonage n'appartient qu'à ce code : le reste
+    // d'un clone interrompu (app tuée avant d'avoir pu l'effacer) est effacé avant de recloner.
     if (!existsSync(join(this.dossierKev, ".git"))) {
-      const r = await lancer("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.dossierKev]);
-      if (r.code !== 0) throw new Error(`git clone a échoué : ${r.stderr.trim()}`);
+      await rm(this.dossierClone, { recursive: true, force: true });
+      try {
+        const r = await lancer("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.dossierClone]);
+        if (r.code !== 0) throw new Error(`git clone a échoué : ${r.stderr.trim()}`);
+        await rename(this.dossierClone, this.dossierKev);
+      } catch (e) {
+        await rm(this.dossierClone, { recursive: true, force: true }).catch(() => {});
+        throw e;
+      }
     }
-    const tete = await this.o.executer("git", ["-C", this.dossierKev, "rev-parse", "HEAD"]);
+    const tete = await executer("git", ["-C", this.dossierKev, "rev-parse", "HEAD"]);
     if (tete.code !== 0 || tete.stdout.trim() !== COMMIT_KEV) {
       throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${tete.stdout.trim() || tete.stderr.trim()}`);
     }
-    // 3. dépendances
+    // 3. dépendances (une synchronisation interrompue est reprise par la suivante, ou par `uv run` au démarrage de Kev)
     const sync = await lancer("uv", ["sync", "--extra", "serve", "--project", this.dossierKev]);
     if (sync.code !== 0) throw new Error(`uv sync a échoué : ${sync.stderr.trim()}`);
-    // 4. modèle Gemma
+    // 4. modèle Gemma. Tuer `ollama pull` coupe sa requête au serveur Ollama, qui arrête le téléchargement et garde ses
+    // morceaux pour la reprise : ils sont à Ollama (partagés avec l'utilisateur), on n'y touche pas.
     const tire = await lancer("ollama", ["pull", MODELE_GEMMA]);
     if (tire.code !== 0) throw new Error(`ollama pull a échoué : ${tire.stderr.trim()}`);
   }
@@ -271,6 +301,15 @@ export class IaLocale {
   /** Arrête Kev pour de bon : kev() et gemma() sont refusés ensuite (arreter(), lui, laisse relancer). */
   async fermer(): Promise<void> {
     this.fermee = true;
+    const installation = this.installation;
+    if (installation) {
+      // L'app quitte : l'installation est annulée ; son nettoyage est attendu, mais jamais plus que le délai.
+      installation.controleur.abort();
+      let minuterie: NodeJS.Timeout | undefined;
+      const delai = new Promise<void>((ok) => (minuterie = setTimeout(ok, this.o.delaiAnnulationMs ?? DELAI_ANNULATION_MS)));
+      await Promise.race([installation.fin, delai]);
+      clearTimeout(minuterie);
+    }
     await this.arreter();
   }
 

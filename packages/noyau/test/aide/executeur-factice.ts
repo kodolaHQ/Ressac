@@ -1,7 +1,7 @@
 import type { Executeur } from "../../src/conteneur/executeur.js";
 
 export type Reponse = { code: number; stdout?: string; stderr?: string };
-export interface Appel { commande: string; args: string[]; opts?: { delaiMs?: number } }
+export interface Appel { commande: string; args: string[]; opts?: Parameters<Executeur>[2] }
 
 /** Exécuteur scripté : la première règle dont le motif correspond à `commande args…` répond. */
 export function executeurFactice(regles: [RegExp, Reponse | (() => Reponse | Promise<Reponse>)][]) {

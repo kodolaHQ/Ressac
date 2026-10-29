@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { IaLocale, lancerProcessusIa, type ProcessusIa } from "../../src/ia/ia-locale.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
-import { executeurFactice } from "../aide/executeur-factice.js";
+import { executeurFactice, type Reponse } from "../aide/executeur-factice.js";
+import type { Executeur } from "../../src/conteneur/executeur.js";
 import { fauxKev, fauxOllama, urlInjoignable, type FauxServeur } from "../aide/faux-ia.js";
 
 const COMMIT = "6b719c3c3f367295f6ef336f4f751cf5ff970abc";
@@ -15,6 +17,11 @@ afterEach(async () => {
 });
 const garder = <T extends FauxServeur>(s: T) => (aFermer.push(s), s);
 const rapide = { sondageMs: 10, verifInactiviteMs: 10 };
+/** git clone factice réussi : crée le dépôt dans le dossier de clonage. */
+const clonage = (dossier: string) => async (): Promise<Reponse> => {
+  await mkdir(join(dossier, "kev.clone-en-cours", ".git"), { recursive: true });
+  return { code: 0 };
+};
 
 describe("IaLocale", () => {
   it("kev() transmet state et questions et rend answers", async () => {
@@ -228,6 +235,7 @@ describe("IaLocale", () => {
     const dossier = await dossierTemporaire();
     const { executer, appels } = executeurFactice([
       [/^uv --version/, { code: 0, stdout: "uv 0.5\n" }],
+      [/^git clone/, clonage(dossier)],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT + "\n" }],
       [/^ollama pull/, { code: 0, stdout: "pulling…\nsuccess\n" }],
     ]);
@@ -236,7 +244,10 @@ describe("IaLocale", () => {
     await ia.installer((l) => lignes.push(l));
     const cmds = appels.map((a) => [a.commande, ...a.args].join(" "));
     expect(cmds[0]).toBe("uv --version");
-    expect(cmds[1]).toBe(`git clone --depth 1 --branch kev-1.0 https://github.com/jaredpalmer/kev.git ${join(dossier, "kev")}`);
+    // Cloné à côté puis renommé : un clone interrompu ne laisse jamais un `kev/.git` à moitié rempli.
+    expect(cmds[1]).toBe(`git clone --depth 1 --branch kev-1.0 https://github.com/jaredpalmer/kev.git ${join(dossier, "kev.clone-en-cours")}`);
+    expect(existsSync(join(dossier, "kev", ".git"))).toBe(true);
+    expect(existsSync(join(dossier, "kev.clone-en-cours"))).toBe(false);
     expect(cmds.some((c) => c.includes("rev-parse HEAD"))).toBe(true);
     expect(cmds.findIndex((c) => c.startsWith("uv sync --extra serve"))).toBeGreaterThan(1);
     expect(cmds.at(-1)).toBe("ollama pull gemma4:e4b-mlx");
@@ -244,7 +255,6 @@ describe("IaLocale", () => {
     expect(appels.find((a) => a.args[0] === "sync")!.args).toEqual(["sync", "--extra", "serve", "--project", join(dossier, "kev")]);
 
     // reprise : le dépôt est déjà là, pas de nouveau clone
-    await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const second = executeurFactice([
       [/^uv --version/, { code: 0 }],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
@@ -258,9 +268,104 @@ describe("IaLocale", () => {
     const sansUv = executeurFactice([[/^uv --version/, { code: 127 }]]);
     await expect(new IaLocale({ dossier: await dossierTemporaire(), executer: sansUv.executer }).installer(() => {}))
       .rejects.toThrow("installe uv : brew install uv");
-    const mauvais = executeurFactice([[/rev-parse HEAD/, { code: 0, stdout: "deadbeef\n" }]]);
-    await expect(new IaLocale({ dossier: await dossierTemporaire(), executer: mauvais.executer }).installer(() => {}))
+    const dossier = await dossierTemporaire();
+    const mauvais = executeurFactice([[/^git clone/, clonage(dossier)], [/rev-parse HEAD/, { code: 0, stdout: "deadbeef\n" }]]);
+    await expect(new IaLocale({ dossier, executer: mauvais.executer }).installer(() => {}))
       .rejects.toThrow(/commit/);
+  });
+});
+
+describe("IaLocale : quitter annule l'installation", () => {
+  /** git clone factice qui reste en cours (fichiers partiels écrits) jusqu'à l'annulation ; `ignorer` : sourd au signal. */
+  function cloneSansFin(dossier: string, ignorer = false) {
+    const recus: (AbortSignal | undefined)[] = [];
+    let demarre!: () => void;
+    const enCours = new Promise<void>((ok) => (demarre = ok));
+    const executer: Executeur = async (commande, args, opts) => {
+      if (commande === "uv" && args[0] === "--version") return { code: 0, stdout: "uv 0.5", stderr: "" };
+      if (commande === "git" && args[0] === "clone") {
+        recus.push(opts?.signal);
+        await mkdir(join(args.at(-1)!, ".git"), { recursive: true });
+        await writeFile(join(args.at(-1)!, ".git", "pack-partiel"), "à moitié");
+        demarre();
+        return new Promise((ok) => {
+          if (!ignorer) opts?.signal?.addEventListener("abort", () => ok({ code: 143, stdout: "", stderr: "tué" }));
+        });
+      }
+      throw new Error(`appel inattendu : ${commande} ${args.join(" ")}`);
+    };
+    return { executer, recus, enCours };
+  }
+
+  it("fermer() pendant le clone : le processus reçoit l'annulation, rien d'autre n'est lancé, le clone partiel est effacé, puis une nouvelle installation repart proprement", async () => {
+    const dossier = await dossierTemporaire();
+    const faux = cloneSansFin(dossier);
+    const ia = new IaLocale({ dossier, executer: faux.executer });
+    const installation = ia.installer(() => {});
+    await faux.enCours;
+    await ia.fermer();
+    await expect(installation).rejects.toThrow("Installation annulée");
+    expect(faux.recus[0]?.aborted).toBe(true);
+    expect(existsSync(join(dossier, "kev"))).toBe(false);
+    expect(existsSync(join(dossier, "kev.clone-en-cours"))).toBe(false);
+    await expect(ia.installer(() => {})).rejects.toThrow("IA locale fermée");
+
+    // Lancement suivant : nouvelle IaLocale, l'installation reprend depuis le début.
+    const { executer, appels } = executeurFactice([
+      [/^git clone/, clonage(dossier)],
+      [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
+    ]);
+    await new IaLocale({ dossier, executer }).installer(() => {});
+    expect(appels.some((a) => a.commande === "git" && a.args[0] === "clone")).toBe(true);
+    expect(appels.at(-1)!.commande).toBe("ollama");
+    expect(existsSync(join(dossier, "kev", ".git"))).toBe(true);
+  });
+
+  it("chaque commande de l'installation reçoit le signal d'annulation (uv sync, ollama pull)", async () => {
+    const dossier = await dossierTemporaire();
+    await mkdir(join(dossier, "kev", ".git"), { recursive: true });
+    let pull: AbortSignal | undefined;
+    const faux = executeurFactice([
+      [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
+    ]);
+    const executer: Executeur = (c, a, o) => {
+      if (c === "ollama") {
+        pull = o?.signal;
+        return new Promise((ok) => o?.signal?.addEventListener("abort", () => ok({ code: 143, stdout: "", stderr: "" })));
+      }
+      return faux.executer(c, a, o);
+    };
+    const ia = new IaLocale({ dossier, executer });
+    const installation = ia.installer(() => {});
+    while (!pull) await new Promise((r) => setTimeout(r, 5));
+    expect(faux.appels.find((a) => a.args[0] === "sync")!.opts?.signal).toBe(pull);
+    await ia.fermer();
+    await expect(installation).rejects.toThrow("Installation annulée");
+    expect(pull.aborted).toBe(true);
+  });
+
+  it("fermer() n'attend pas au-delà du délai un processus qui ignore l'annulation ; le reste du clone est effacé au lancement suivant", async () => {
+    const dossier = await dossierTemporaire();
+    const faux = cloneSansFin(dossier, true);
+    const ia = new IaLocale({ dossier, executer: faux.executer, delaiAnnulationMs: 50 });
+    void ia.installer(() => {}).catch(() => {});
+    await faux.enCours;
+    const debut = Date.now();
+    await ia.fermer();
+    expect(Date.now() - debut).toBeLessThan(1000);
+    expect(existsSync(join(dossier, "kev.clone-en-cours", ".git"))).toBe(true); // le processus sourd tient encore ses fichiers
+
+    const vuAuClone: boolean[] = [];
+    const { executer } = executeurFactice([
+      [/^git clone/, async () => {
+        vuAuClone.push(existsSync(join(dossier, "kev.clone-en-cours")));
+        return clonage(dossier)();
+      }],
+      [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
+    ]);
+    await new IaLocale({ dossier, executer }).installer(() => {});
+    expect(vuAuClone).toEqual([false]); // le reste a été effacé avant de recloner
+    expect(existsSync(join(dossier, "kev", ".git", "pack-partiel"))).toBe(false);
   });
 });
 
