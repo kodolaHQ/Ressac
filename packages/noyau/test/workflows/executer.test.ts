@@ -372,6 +372,37 @@ describe("executerWorkflow", () => {
     expect(r.execution.statut).toBe("accord-requis");
   });
 
+  it("une fin écrite tôt par le code : exécution partielle, blocs suivants pas-lancé", async () => {
+    const b = await banc(chaine("a", "b"), {
+      "a.mjs": `export default async () => {
+        process.stdout.write(JSON.stringify({ t: "fin", donnees: "tôt" }) + "\\n");
+        await new Promise((ok) => setTimeout(ok, 50));
+        process.exit(0);
+      };`,
+      "b.mjs": `export default async (e) => e;`,
+    });
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "tôt" } });
+    expect(r.execution.statut).toBe("partielle");
+    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance", "pas-lance"]);
+  });
+
+  it("accord retiré entre deux lectures avec compte : arrêt accord-requis, pas de seconde lecture", async () => {
+    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [] }] } });
+    const b = await banc(
+      chaine("a"),
+      { "a.mjs": `export default async (e, w) => { await w.lirePage("https://app.daily.dev/", { compte: true }); return w.lirePage("https://app.daily.dev/", { compte: true }); };` },
+      { compte: ["app.daily.dev"], pont },
+    );
+    let lectures = 0;
+    b.ctx.accord = async () => (lectures++ === 0 ? { profil: "perso" } : null);
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.execution.statut).toBe("accord-requis");
+    expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(1);
+    expect(b.supprimes).toEqual(["essai"]);
+  });
+
   it("lirePage avec compte et accord : le pont reçoit le profil et les domaines déclarés", async () => {
     const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [] }] } });
     const b = await banc(chaine("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;` }, { compte: ["app.daily.dev"], accord: { profil: "perso" }, pont });

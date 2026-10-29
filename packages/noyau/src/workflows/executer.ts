@@ -141,7 +141,8 @@ export async function executerWorkflow(
     });
     const statut: Execution["statut"] =
       issue.t === "fin"
-        ? blocs.some((b) => b.statut === "partiel") ? "partielle" : "reussie"
+        ? // Un bloc partiel, ou qui n'a pas fini (une `fin` arrivée avant lui) : la sortie n'est pas complète.
+          blocs.every((b) => b.statut === "reussi") ? "reussie" : "partielle"
         : issue.t === "arret" && issue.statut === "accord-requis" ? "accord-requis" : "echouee";
     const execution: Execution = {
       version: 1,
