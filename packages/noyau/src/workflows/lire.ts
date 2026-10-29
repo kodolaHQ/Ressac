@@ -1,13 +1,14 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { TAILLE_MAX_WORKFLOW } from "./schema.js";
 import { erreurWorkflow, validerWorkflow, workflowImplicite, type ResultatValidation } from "./valider.js";
 
 export type WorkflowLu = { origine: "fichier" | "implicite"; resultat: ResultatValidation };
 
+/** Le nom existe dans le dossier, même en lien symbolique cassé (un workflow.json cassé est invalide, pas absent). */
 async function existe(chemin: string): Promise<boolean> {
   try {
-    await stat(chemin);
+    await lstat(chemin);
     return true;
   } catch {
     return false;
@@ -24,7 +25,8 @@ async function lireFichier(dossier: string): Promise<ResultatValidation> {
     }
     return validerWorkflow(JSON.parse(await readFile(reel, "utf8")));
   } catch (e) {
-    return erreurWorkflow(`workflow.json illisible (${(e as Error).message})`);
+    // Texte fixe : le message du système citerait des chemins du Mac.
+    return erreurWorkflow(e instanceof SyntaxError ? "workflow.json illisible (pas du JSON valide)" : "workflow.json illisible");
   }
 }
 

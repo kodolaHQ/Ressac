@@ -40,7 +40,7 @@ test("un workflow.json coupé en plein milieu donne une erreur claire", async ()
   await writeFile(join(dossier, "workflow.json"), '{ "version": 1, "blocs": [ { "id": "a", ');
   const lu = await lireWorkflow(dossier);
   expect(lu?.resultat.ok).toBe(false);
-  expect(erreurDe(lu?.resultat)).toMatch(/^Workflow invalide : workflow\.json illisible/);
+  expect(erreurDe(lu?.resultat)).toBe("Workflow invalide : workflow.json illisible (pas du JSON valide)");
 });
 
 test("un workflow.json de plus de 256 Ko est refusé", async () => {
@@ -55,4 +55,12 @@ test("un lien symbolique qui sort du dossier est refusé", async () => {
   await symlink(dehors, join(dossier, "workflow.json"));
   const lu = await lireWorkflow(dossier);
   expect(erreurDe(lu?.resultat)).toContain("sort du dossier du widget");
+});
+
+test("un workflow.json en lien symbolique cassé est invalide, sans repli sur recolte.mjs ni chemin dans le message", async () => {
+  await writeFile(join(dossier, "recolte.mjs"), "export default () => 1");
+  await symlink(join(dossier, "absent.json"), join(dossier, "workflow.json"));
+  const lu = await lireWorkflow(dossier);
+  expect(lu?.origine).toBe("fichier");
+  expect(erreurDe(lu?.resultat)).toBe("Workflow invalide : workflow.json illisible");
 });
