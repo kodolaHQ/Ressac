@@ -325,7 +325,12 @@ function creerServeurOutils(
         inputSchema: {},
       },
       async () => {
-        const ouvert = fenetre === null ? null : workflowOuvert(fenetre);
+        let ouvert: WorkflowOuvert | null = null;
+        try {
+          ouvert = fenetre === null ? null : workflowOuvert(fenetre);
+        } catch {
+          // Interface de la fenêtre indisponible : comme si rien n'était ouvert.
+        }
         return texte(ouvert ? JSON.stringify({ widget: ouvert.widget, bloc: ouvert.bloc }) : AUCUN_WORKFLOW_OUVERT);
       },
     );

@@ -37,9 +37,14 @@ export function cheminsEspace(racine?: string): CheminsEspace {
   };
 }
 
+/** Dossier des configs MCP propres aux sessions d'agent (à côté de `configMcp`). */
+export function dossierSessions(c: CheminsEspace): string {
+  return join(dirname(c.configMcp), "sessions");
+}
+
 /** Config MCP propre à la session d'agent d'une fenêtre (`<dossier de configMcp>/sessions/<session>.json`). */
 export function cheminConfigSession(c: CheminsEspace, session: string): string {
-  return join(dirname(c.configMcp), "sessions", `${session}.json`);
+  return join(dossierSessions(c), `${session}.json`);
 }
 
 /** Traduit un chemin de l'espace sur le Mac en chemin dans le conteneur. */

@@ -693,3 +693,14 @@ test("un jeton de session fermée est refusé (401)", async () => {
     },
   );
 });
+
+test("un fournisseur qui lève : AUCUN_WORKFLOW_OUVERT", async () => {
+  await avecWorkflowOuvert(
+    () => {
+      throw new Error("fenêtre détruite");
+    },
+    async ({ s, appeler }) => {
+      expect(await appeler(s.ouvrirSession("F1"))).toBe(AUCUN_WORKFLOW_OUVERT);
+    },
+  );
+});

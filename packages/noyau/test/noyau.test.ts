@@ -1,9 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { Atelier } from "../src/conteneur/atelier.js";
+import type { Executeur } from "../src/conteneur/executeur.js";
 import { cheminsEspace } from "../src/chemins.js";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { cp, mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { creerNoyau, ErreurAtelier, type Noyau } from "../src/noyau.js";
 import type { IaLocale } from "../src/ia/ia-locale.js";
 import { PlanificateurWidgets } from "../src/widgets/planificateur.js";
@@ -30,6 +31,14 @@ async function creerSansDocker() {
 }
 
 const lireMcp = async (n: Noyau) => JSON.parse(await readFile(n.chemins.configMcp, "utf8")).mcpServers.webaios;
+
+/** Atelier dont le « docker » est un faux script (il ne dort que pour un `exec -it`, une session ; tout autre appel échoue vite) : un pty de session ne touche jamais le vrai Docker. */
+async function atelierSansDocker(racine: string, executer: Executeur): Promise<Atelier> {
+  const faux = join(`${racine}-bin`, "docker");
+  await mkdir(dirname(faux), { recursive: true });
+  await writeFile(faux, '#!/bin/sh\ncase " $* " in *" -it "*) exec sleep 60;; *) exit 1;; esac\n', { mode: 0o755 });
+  return new Atelier({ chemins: cheminsEspace(racine), executer, docker: faux });
+}
 
 test("creerNoyau initialise l'espace et écrit mcp.json avec host.docker.internal", async () => {
   const n = await creerSansDocker();
@@ -119,7 +128,8 @@ test("au lancement, une fois le conteneur prêt, les agents d'une app précéden
   const { empreinteDockerfile } = await import("../src/conteneur/atelier.js");
   const executerAJour: typeof executer = (c, args, o) =>
     args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour });
+  const atelier = await atelierSansDocker(racine, executerAJour);
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
   await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).then((s) => s.arreter(), () => {});
   const execs = appels.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
   // Le nettoyage (toutes les sessions marquées) passe avant l'arrêt de la session ouverte ici.
@@ -296,7 +306,7 @@ test("noyau : rejouer passe par la file du planificateur ; surDirect suit la fil
   expect(vus).toHaveLength(avant);
 });
 
-// Docker « prêt » : la session n'a pas besoin d'un vrai pty pour vérifier la config écrite (le lancement échoue après).
+// Docker « prêt » (exécuteur factice) ; le pty de la session lance un faux binaire qui dort, jamais le vrai Docker.
 async function creerPret() {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([
@@ -306,7 +316,8 @@ async function creerPret() {
   const { empreinteDockerfile } = await import("../src/conteneur/atelier.js");
   const executerAJour: typeof executer = (c, args, o) =>
     args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour });
+  const atelier = await atelierSansDocker(racine, executerAJour);
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
   return noyau;
 }
 
@@ -334,4 +345,28 @@ test("au démarrage du noyau, les configs de session laissées par un plantage s
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   expect(existsSync(join(dossier, "reste.json"))).toBe(false);
+});
+
+test("arreter supprime la config d'une session encore ouverte", async () => {
+  const n = await creerPret();
+  const dossier = join(n.chemins.interne, "sessions");
+  const session = await n.ouvrirSessionAgent({ cols: 80, rows: 24, fenetre: "F1" });
+  const [fichier] = await readdir(dossier);
+  expect(existsSync(join(dossier, fichier!))).toBe(true);
+  const arret = n.arreter();
+  noyau = undefined;
+  await arret;
+  expect(existsSync(join(dossier, fichier!))).toBe(false);
+  await session.arreter();
+});
+
+test("une session dont le dossier est un lien symbolique est refusée, rien n'est écrit ailleurs", async () => {
+  const n = await creerPret();
+  const cible = await dossierTemporaire();
+  const dossier = join(n.chemins.interne, "sessions");
+  await mkdir(n.chemins.interne, { recursive: true });
+  await symlink(cible, dossier);
+  await expect(n.ouvrirSessionAgent({ cols: 80, rows: 24, fenetre: "F1" })).rejects.toThrow(/Dossier des sessions invalide/);
+  expect(await readdir(cible)).toEqual([]);
+  expect((await stat(cible)).isDirectory()).toBe(true);
 });

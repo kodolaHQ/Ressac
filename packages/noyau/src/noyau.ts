@@ -1,15 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join, posix } from "node:path";
-import { CHEMIN_CONTENEUR, cheminConfigSession, cheminDansConteneur, cheminsEspace, type CheminsEspace } from "./chemins.js";
+import { basename, join, posix } from "node:path";
+import { CHEMIN_CONTENEUR, cheminConfigSession, cheminDansConteneur, dossierSessions, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
 import { lireAccueil } from "./accueil/lire.js";
 import type { EtatAccueil, EtatWidget, WidgetLu } from "./accueil/schemas.js";
 import { ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "./accueil/donnees.js";
 import { surveillerAccueil } from "./accueil/surveiller.js";
 import { chargerProfils, construireCommande } from "./profils/profil.js";
-import { ecrireConfigMcp } from "./profils/config-mcp.js";
+import { ecrireConfigMcp, ecrireConfigSession } from "./profils/config-mcp.js";
 import { Atelier, DOSSIER_DOCKER_PAR_DEFAUT, type EtatAtelier } from "./conteneur/atelier.js";
 import { executeurParDefaut, type Executeur } from "./conteneur/executeur.js";
 import { SessionAgent } from "./pty/session.js";
@@ -288,7 +288,8 @@ export async function creerNoyau(o: {
   });
   try {
     // Configs de session laissées par un plantage : leurs jetons ne valent plus rien.
-    await rm(dirname(cheminConfigSession(chemins, "x")), { recursive: true, force: true });
+    // Un échec n'empêche pas de démarrer : des jetons morts sont inoffensifs.
+    await rm(dossierSessions(chemins), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
     await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
   } catch (e) {
     await serveur.arreter();
@@ -337,7 +338,7 @@ export async function creerNoyau(o: {
   const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
 
   // Nettoyages des sessions avec fenêtre encore ouvertes, faits aussi à l'arrêt du noyau.
-  const sessionsOuvertes = new Set<() => void>();
+  const sessionsOuvertes = new Set<() => Promise<void>>();
 
   return {
     chemins,
@@ -363,16 +364,16 @@ export async function creerNoyau(o: {
       // CLI de dev : la config principale).
       let jetonSession: string | undefined;
       const configSession = cheminConfigSession(chemins, id);
-      const nettoyer = () => {
-        if (jetonSession === undefined) return;
+      const nettoyer = (): Promise<void> => {
+        if (jetonSession === undefined) return Promise.resolve();
         serveur.fermerSession(jetonSession);
         jetonSession = undefined;
-        void rm(configSession, { force: true }).catch(() => {});
+        return rm(configSession, { force: true }).catch((e) => console.error("[webaios] suppression de la config de session :", e));
       };
       try {
         if (fenetre !== undefined) {
           jetonSession = serveur.ouvrirSession(fenetre);
-          await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton: jetonSession }, configSession);
+          await ecrireConfigSession(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton: jetonSession }, id);
         }
         const commande = construireCommande(profil, "interactif", {
           mcpConfig: cheminDansConteneur(fenetre !== undefined ? configSession : chemins.configMcp, chemins),
@@ -381,11 +382,11 @@ export async function creerNoyau(o: {
         sessionsOuvertes.add(nettoyer);
         session.surFin(() => {
           sessionsOuvertes.delete(nettoyer);
-          nettoyer();
+          void nettoyer();
         });
         return session;
       } catch (e) {
-        nettoyer();
+        await nettoyer();
         throw e;
       }
     },
@@ -432,7 +433,7 @@ export async function creerNoyau(o: {
     },
     async arreter() {
       suivi?.arreter();
-      for (const nettoyer of [...sessionsOuvertes]) nettoyer();
+      await Promise.all([...sessionsOuvertes].map((nettoyer) => nettoyer()));
       sessionsOuvertes.clear();
       // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
       politique.reinitialiser();
