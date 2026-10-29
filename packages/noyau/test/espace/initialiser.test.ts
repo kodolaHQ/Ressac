@@ -238,6 +238,22 @@ test("initialiser : un AGENTS.md identique au modèle du plan 7 (après f759653)
   expect(apres).not.toContain("disposition.json` donne l'ordre des blocs");
 });
 
+test("initialiser : un AGENTS.md identique au modèle d'avant les workflows est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle des widgets sans workflows : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-plan8.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "cf62b40d452d20d454d8d2b836a06c5acf9401b1017314c5f893a913ed37e1fd",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("workflow.json");
+  expect(apres).toContain("executions_widget");
+});
+
 // ——— Bascule des widgets de départ en workflows ———
 
 const LIVREES = join(import.meta.dirname, "recoltes-livrees");
