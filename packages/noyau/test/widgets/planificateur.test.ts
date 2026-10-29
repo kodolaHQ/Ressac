@@ -1246,3 +1246,14 @@ describe("notification de fin de veille", () => {
     }
   });
 });
+
+test("notification : le nom du widget est nettoyé (contrôles et caractères invisibles remplacés, sur une ligne)", async () => {
+  const notifications: NotificationWidget[] = [];
+  const { p, c, recolter } = await preparer({ options: { notifier: (n) => void notifications.push(n) } });
+  await ecrireWidget(c, "veille", declarationWidget(undefined, { nom: "‮Vélos\n\nd'occasion​\t ", recolte: { minutes: 60, notifier: true } }), {
+    "recolte.mjs": "export default () => 1",
+  });
+  recolter.mockImplementation(async () => ({ etat: { statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() }, nouveaux: 2 }));
+  await p.recolterMaintenant("veille");
+  expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "2 nouveaux éléments" }]);
+});

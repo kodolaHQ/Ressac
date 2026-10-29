@@ -717,6 +717,7 @@ app.whenReady().then(async () => {
         f.focus();
       },
       ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierTest: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
+      invisible: INVISIBLE,
     }),
   });
   // macOS, plus aucune fenêtre : la rouvrir telle qu'elle était (vrai si c'est le cas).

@@ -55,3 +55,9 @@ test("avec fichierTest : une ligne JSON écrite, rien de montré", () => {
     { titre: "Vélos d'occasion", texte: "1 nouvel élément" },
   ]);
 });
+
+test("invisible sans fichierTest : rien de montré ni d'écrit", () => {
+  const { creer } = fausses();
+  creerNotifieur({ creer, auClic: () => {}, invisible: true })(N);
+  expect(creer).not.toHaveBeenCalled();
+});

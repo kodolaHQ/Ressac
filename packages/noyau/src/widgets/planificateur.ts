@@ -575,7 +575,9 @@ export class PlanificateurWidgets {
   private notifierFin(w: WidgetLu, nouveaux: number): void {
     if (!this.o.notifier || "erreur" in w || w.declaration.recolte?.notifier !== true) return;
     try {
-      this.o.notifier({ widget: w.id, titre: w.declaration.nom, texte: texteNotification(nouveaux) });
+      // `nom` est écrit par l'agent : caractères de contrôle et invisibles remplacés, sur une seule ligne.
+      const titre = w.declaration.nom.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
+      this.o.notifier({ widget: w.id, titre, texte: texteNotification(nouveaux) });
     } catch (e) {
       console.error(`[webaios] notification du widget ${w.id} :`, e);
     }
