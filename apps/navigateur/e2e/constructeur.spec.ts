@@ -838,6 +838,24 @@ test("Rejouer depuis tri après avoir changé le seuil : essai marqué, page non
   await expect(liste).toHaveCount(0);
   await expect(fenetre.getByTestId(`execution-${origine}`)).toHaveAttribute("aria-pressed", "true");
   await expect(apercu(fenetre)).toHaveText('{"liens":["Nouveau modèle IA"]}');
+
+  // Rejouer deux fois de suite depuis tri, en partant de l'essai choisi : chaque fois un nouvel essai, jamais un refus,
+  // et ses sorties reprises viennent de la vraie exécution.
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await fenetre.getByTestId("noeud-tri").click();
+  for (const n of [3, 4]) {
+    await expect(fenetre.getByTestId("rejouer")).toBeEnabled();
+    await fenetre.getByTestId("rejouer").click();
+    await expect.poll(() => readdirSync(dossierExecutionsDe(profil)).length, { timeout: 20_000 }).toBe(n);
+    await expect(fenetre.getByTestId("refus-rejeu")).toHaveCount(0);
+    const dernier = readdirSync(dossierExecutionsDe(profil)).filter((f) => f.includes("-essai")).sort().at(-1)!.replace(/\.json$/, "");
+    await expect(fenetre.getByTestId(`execution-${dernier}`)).toHaveAttribute("aria-pressed", "true");
+    await expect(fenetre.getByTestId("pastille-tri")).toHaveText("2");
+    const e = JSON.parse(readFileSync(join(dossierExecutionsDe(profil), `${dernier}.json`), "utf8"));
+    expect(e.essai).toEqual({ depart: "tri", origine });
+  }
+  expect(lecturesSite).toBe(lectures);
   await fermer();
 });
 

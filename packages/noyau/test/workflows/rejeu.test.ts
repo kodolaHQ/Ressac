@@ -60,6 +60,53 @@ test("refus : sortie amont reprise (l'origine est elle-même un essai)", () => {
   );
 });
 
+test("refus : sortie amont reprise et origine de l'essai élaguée", () => {
+  const essai = { ...origine({ pages: { statut: "repris", sortie: undefined } }), id: "e1-essai", essai: { depart: "resumes", origine: "reel" } };
+  expect(erreur(planRejeu(valide, essai, "resumes", []))).toBe("Rejeu impossible : la sortie de « pages » manque dans cette exécution");
+});
+
+const essaiDe = (id: string, depuis: string, modifs: Record<string, Partial<TraceBloc>>): Execution => ({
+  ...origine(modifs), id, declencheur: "rejeu", essai: { depart: "resumes", origine: depuis },
+});
+const reprisSans = { statut: "repris", sortie: undefined } as const;
+
+test("rejouer depuis le même bloc en partant d'un essai reprend les sorties de son origine, qu'il nomme", () => {
+  const reel = { ...origine({ pages: { elements: 8, sortie: "p-reel" }, top: { elements: 15, sortie: "t-reel" } }), id: "reel" };
+  const essai = essaiDe("e1-essai", "reel", { pages: { ...reprisSans, elements: 8 }, top: { ...reprisSans, elements: 15 } });
+  const p = planRejeu(valide, essai, "resumes", [reel]);
+  if (!p.ok) throw new Error(p.erreur);
+  expect(p.relances).toEqual(["resumes", "articles", "sortie"]);
+  expect(p.sorties).toEqual({ pages: "p-reel", top: "t-reel" });
+  expect(p.repris).toEqual({ pages: 8, top: 15 });
+  expect(p.origine).toBe("reel");
+});
+
+test("un essai d'essai remonte la chaîne jusqu'à la vraie exécution", () => {
+  const reel = { ...origine({ top: { sortie: "t-reel" }, pages: { sortie: "p-reel" } }), id: "reel" };
+  const e1 = essaiDe("e1-essai", "reel", { top: reprisSans, pages: reprisSans });
+  const e2 = essaiDe("e2-essai", "e1-essai", { top: reprisSans, pages: reprisSans });
+  const p = planRejeu(valide, e2, "resumes", [e1, reel]);
+  if (!p.ok) throw new Error(p.erreur);
+  expect(p.sorties).toEqual({ pages: "p-reel", top: "t-reel" });
+  expect(p.origine).toBe("reel");
+});
+
+test("sorties mêlées (relancées par l'essai, reprises de son origine) : l'origine nommée est l'essai", () => {
+  const reel = { ...origine({ top: { sortie: "t-reel" } }), id: "reel" };
+  // L'essai est parti de « a-resumer » : top est repris, pages a tourné dans l'essai.
+  const e1 = essaiDe("e1-essai", "reel", { flux: reprisSans, uniques: reprisSans, tri: reprisSans, top: reprisSans, pages: { sortie: "p-essai" } });
+  const p = planRejeu(valide, e1, "resumes", [reel]);
+  if (!p.ok) throw new Error(p.erreur);
+  expect(p.sorties).toEqual({ pages: "p-essai", top: "t-reel" });
+  expect(p.origine).toBe("e1-essai");
+});
+
+test("refus : sortie reprise de l'origine de l'essai tronquée", () => {
+  const reel = { ...origine({ top: { sortieTronquee: true, sortie: "[{…" } }), id: "reel" };
+  const essai = essaiDe("e1-essai", "reel", { top: reprisSans, pages: reprisSans });
+  expect(erreur(planRejeu(valide, essai, "resumes", [reel]))).toBe("Rejeu impossible : la sortie de « top » a été tronquée dans cette exécution");
+});
+
 test("refus : sortie amont réussie mais sans sortie gardée", () => {
   expect(erreur(planRejeu(valide, origine({ pages: { sortie: undefined } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « pages » manque dans cette exécution",

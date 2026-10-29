@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 
 export const MEMOIRE_MAX_OCTETS = 3 * 1024 * 1024;
@@ -30,6 +30,23 @@ export const jsonCanonique = (v: unknown): string => JSON.stringify(canonique(v)
 /** Empreinte (16 caractères) des paramètres d'un bloc : la mémoire d'un bloc ne vaut que pour ses réglages. */
 export function empreinteParametres(p: Record<string, unknown>): string {
   return createHash("sha256").update(jsonCanonique(p)).digest("hex").slice(0, 16);
+}
+
+const verrous = new Map<string, Promise<unknown>>();
+
+/**
+ * Exécute `f` seul sur la mémoire de ce widget : l'écriture de la mémoire d'une exécution et l'effacement d'un
+ * enregistrement du constructeur passent l'un après l'autre (aucune lecture-modification-écriture n'en perd une autre).
+ */
+export function avecMemoire<T>(dossierDonnees: string, f: () => Promise<T>): Promise<T> {
+  const cle = resolve(dossierDonnees);
+  const suivante = (verrous.get(cle) ?? Promise.resolve()).catch(() => {}).then(f);
+  const fin = suivante.catch(() => {});
+  verrous.set(cle, fin);
+  void fin.then(() => {
+    if (verrous.get(cle) === fin) verrous.delete(cle);
+  });
+  return suivante;
 }
 
 /** Mémoire des blocs, ou vide si absente, abîmée ou trop grosse. */

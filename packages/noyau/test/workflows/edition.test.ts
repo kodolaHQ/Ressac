@@ -11,6 +11,7 @@ import {
   lireBrouillon,
   lireCode,
   lireMemoire,
+  avecMemoire,
   workflowImplicite,
 } from "../../src/index.js";
 
@@ -102,6 +103,43 @@ test("changer les paramètres d'un bloc efface sa mémoire, pas celle des autres
 
   expect(await enreg(wf("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
   expect(await lireMemoire(donnees)).toEqual({ a: m.a });
+});
+
+test("changer les paramètres efface aussi une mémoire d'avant les empreintes ; une entrée déjà aux nouveaux réglages reste", async () => {
+  await enreg(wf());
+  await ecrireMemoire(donnees, { n: { type: "liste.nouveaux", valeur: ["x"] }, a: { type: "code", valeur: 1 } });
+  expect(await enreg(wf("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
+  expect(await lireMemoire(donnees)).toEqual({ a: { type: "code", valeur: 1 } });
+
+  // Une exécution qui a déjà tourné avec les nouveaux réglages (entre l'écriture et l'effacement) garde sa mémoire.
+  const neuve = { n: { type: "liste.nouveaux", valeur: ["y"], empreinte: empreinteParametres({ cle: "id" }) } };
+  await ecrireMemoire(donnees, neuve);
+  expect(await enreg(wf("id"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
+  expect(await lireMemoire(donnees)).toEqual(neuve);
+});
+
+test("l'effacement attend le verrou de la mémoire (pris par les exécutions) et passe avant l'écriture du workflow", async () => {
+  await enreg(wf());
+  await ecrireMemoire(donnees, { n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) } });
+  let liberer!: () => void;
+  const relache = new Promise<void>((r) => (liberer = r));
+  // Une exécution partie avec les anciens réglages écrit sa mémoire pendant l'enregistrement.
+  const execution = avecMemoire(donnees, async () => {
+    await relache;
+    await ecrireMemoire(donnees, {
+      a: { type: "code", valeur: "fraiche" },
+      n: { type: "liste.nouveaux", valeur: ["x", "z"], empreinte: empreinteParametres({ cle: "url" }) },
+    });
+  });
+  const enregistrement = enreg(wf("titre"));
+  await new Promise((r) => setTimeout(r, 30));
+  // Rien n'est écrit tant que l'exécution tient la mémoire : ni l'effacement, ni le workflow.
+  expect(JSON.parse(await readFile(join(fichiers, "workflow.json"), "utf8")).blocs[1].parametres).toEqual({ cle: "url" });
+  liberer();
+  await execution;
+  expect(await enregistrement).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
+  // La mémoire fraîche de l'exécution reste ; celle du bloc changé part.
+  expect(await lireMemoire(donnees)).toEqual({ a: { type: "code", valeur: "fraiche" } });
 });
 
 test("rien à effacer : memoire.json n'est pas réécrit", async () => {

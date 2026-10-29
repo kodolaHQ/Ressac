@@ -20,9 +20,9 @@ import {
 } from "../workflows/executer.js";
 import { ecrireExecution, idEssai, idExecution, lireExecution, listerExecutions, type Execution, type TraceBloc } from "../workflows/executions.js";
 import { lireWorkflow } from "../workflows/lire.js";
-import { ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
+import { avecMemoire, ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
 import { debutTropGros } from "../workflows/protocole.js";
-import { REJEU_TROP_GROS, planRejeu } from "../workflows/rejeu.js";
+import { PROFONDEUR_REJEU, REJEU_TROP_GROS, planRejeu } from "../workflows/rejeu.js";
 import { PREFIXE_WORKFLOW_INVALIDE, type Proprietaire } from "../workflows/schema.js";
 import type { WorkflowValide } from "../workflows/valider.js";
 
@@ -338,7 +338,8 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     }
     if (await accordRetire()) return refusee();
     if (issue.memoire) {
-      if (!(await ecrireMemoire(dossierDonnees, issue.memoire))) {
+      const memoire = issue.memoire;
+      if (!(await avecMemoire(dossierDonnees, () => ecrireMemoire(dossierDonnees, memoire)))) {
         journal = ajouter(journal, MEMOIRE_NON_GARDEE);
         // Aussi dans l'exécution, au journal du bloc de sortie.
         execution.blocs.find((b) => b.id === valide.sortie.id)?.journal.push(MEMOIRE_NON_GARDEE);
@@ -395,7 +396,8 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
     return refus(accordRequis(declaration));
   }
 
-  const plan = planRejeu(valide, await lireExecution(dossierDonnees, o.origine), o.depart);
+  const [origine, anterieures] = await chaineOrigine(dossierDonnees, o.origine);
+  const plan = planRejeu(valide, origine, o.depart, anterieures);
   if (!plan.ok) return refus(plan.erreur);
   const precedent = await lireDonnees(dossierWidgets, id);
   const config = declaration.config ?? null;
@@ -434,12 +436,29 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
   if (avant) return avant;
 
   execution.id = idEssai(execution.debut);
-  execution.essai = { depart: o.depart, origine: o.origine };
+  execution.essai = { depart: o.depart, origine: plan.origine };
   if (issue.t !== "fin" && o.interrompue?.() === true && execution.statut !== "accord-requis") marquerInterrompue(execution);
   await ecrireExecution(dossierDonnees, execution);
   const apres = await retire();
   if (apres) return apres;
   return { ok: true, execution: execution.id, statut: execution.statut };
+}
+
+/**
+ * L'exécution d'origine d'un essai et, quand elle est elle-même un essai, la chaîne de ses origines (bornée) : leurs
+ * blocs `repris` y trouvent leur sortie. Une origine élaguée arrête la chaîne.
+ */
+async function chaineOrigine(dossierDonnees: string, id: string): Promise<[Execution | null, Execution[]]> {
+  const origine = await lireExecution(dossierDonnees, id);
+  const anterieures: Execution[] = [];
+  const vus = new Set([id]);
+  let e = origine;
+  while (e?.essai && anterieures.length < PROFONDEUR_REJEU - 1 && !vus.has(e.essai.origine)) {
+    vus.add(e.essai.origine);
+    e = await lireExecution(dossierDonnees, e.essai.origine);
+    if (e) anterieures.push(e);
+  }
+  return [origine, anterieures];
 }
 
 /** Le message d'un widget qui attend un nouvel accord : celui du moteur s'il s'est arrêté pour ça (profil refusé…). */

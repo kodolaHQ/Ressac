@@ -6,15 +6,21 @@ export const PREFIXE_REJEU = "Rejeu impossible : ";
 export const REJEU_TROP_GROS = `${PREFIXE_REJEU}les sorties à reprendre dépassent 4 Mo`;
 
 export type PlanRejeu =
-  | { ok: true; relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> }
+  | { ok: true; relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null>; origine: string }
   | { ok: false; erreur: string };
+
+/** Combien d'exécutions un rejeu remonte au plus pour trouver une sortie reprise (essai d'essai d'essai…). */
+export const PROFONDEUR_REJEU = 8;
 
 /**
  * Ce qu'un rejeu depuis `depart` relance (le bloc et tous ses descendants, dans l'ordre d'exécution) et ce qu'il
- * reprend de l'exécution d'origine (la sortie des prédécesseurs des blocs relancés qui ne le sont pas). Pur : aucune
- * lecture de fichier, la taille de ce qui est repris se mesure à part (`debutTropGros`).
+ * reprend de l'exécution d'origine (la sortie des prédécesseurs des blocs relancés qui ne le sont pas). Quand
+ * l'origine est un essai, ses blocs `repris` n'ont pas de sortie : elle se prend dans `anterieures`, la chaîne de ses
+ * origines (`anterieures[0]` est `origine.essai.origine`, et ainsi de suite). `origine` du plan nomme l'exécution d'où
+ * viennent toutes les sorties reprises quand il n'y en a qu'une, sinon l'origine donnée. Pur : aucune lecture de
+ * fichier, la taille de ce qui est repris se mesure à part (`debutTropGros`).
  */
-export function planRejeu(valide: WorkflowValide, origine: Execution | null, depart: string): PlanRejeu {
+export function planRejeu(valide: WorkflowValide, origine: Execution | null, depart: string, anterieures: Execution[] = []): PlanRejeu {
   const refus = (cause: string): PlanRejeu => ({ ok: false, erreur: PREFIXE_REJEU + cause });
   if (!origine) return refus("exécution introuvable");
   if (!valide.ordre.includes(depart)) return refus(`le bloc « ${depart} » n'est pas dans le workflow`);
@@ -31,13 +37,22 @@ export function planRejeu(valide: WorkflowValide, origine: Execution | null, dep
 
   const sorties: Record<string, unknown> = {};
   const repris: Record<string, number | null> = {};
+  const chaine = [origine, ...anterieures].slice(0, PROFONDEUR_REJEU);
+  const sources = new Set<string>();
   for (const id of valide.ordre.filter((b) => amont.has(b))) {
-    const trace = origine.blocs.find((b) => b.id === id);
+    let trace: Execution["blocs"][number] | undefined;
+    for (const e of chaine) {
+      trace = e.blocs.find((b) => b.id === id);
+      if (trace?.statut !== "repris" || !e.essai) {
+        if (trace) sources.add(e.id);
+        break;
+      }
+    }
     if (!trace || (trace.statut !== "reussi" && trace.statut !== "partiel")) return refus(`la sortie de « ${id} » manque dans cette exécution`);
     if (trace.sortieTronquee) return refus(`la sortie de « ${id} » a été tronquée dans cette exécution`);
     if (trace.sortie === undefined) return refus(`la sortie de « ${id} » manque dans cette exécution`);
     sorties[id] = trace.sortie;
     repris[id] = trace.elements;
   }
-  return { ok: true, relances, sorties, repris };
+  return { ok: true, relances, sorties, repris, origine: sources.size === 1 ? [...sources][0]! : origine.id };
 }

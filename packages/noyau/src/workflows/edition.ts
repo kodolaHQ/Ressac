@@ -2,7 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { ecrireAtomique } from "./executions.js";
 import { existe, lireBrutWorkflow } from "./lire.js";
-import { ecrireMemoire, empreinteParametres, jsonCanonique, lireMemoire } from "./memoire.js";
+import { avecMemoire, ecrireMemoire, empreinteParametres, jsonCanonique, lireMemoire } from "./memoire.js";
 import { TAILLE_MAX_WORKFLOW } from "./schema.js";
 import { erreurWorkflow, validerWorkflow, workflowImplicite, type ResultatValidation, type WorkflowValide } from "./valider.js";
 
@@ -71,7 +71,7 @@ async function workflowActuel(dossier: string): Promise<WorkflowValide | null> {
 
 /**
  * Enregistre `workflow.json` (écriture atomique) si le workflow est valide, si les fichiers de ses blocs `code`
- * existent et s'il diffère de l'actuel. Efface ensuite la mémoire des blocs dont les paramètres ont changé.
+ * existent et s'il diffère de l'actuel. Efface d'abord la mémoire des blocs dont les paramètres changent.
  */
 export async function enregistrerWorkflow(o: { dossierFichiers: string; dossierDonnees: string; brut: unknown }): Promise<ResultatEnregistrement> {
   const r = validerWorkflow(o.brut);
@@ -94,22 +94,30 @@ export async function enregistrerWorkflow(o: { dossierFichiers: string; dossierD
   const avant = await workflowActuel(o.dossierFichiers);
   if (avant && jsonCanonique(avant.workflow) === jsonCanonique(r.valide.workflow)) return { ok: true, ecrit: false, memoireEffacee: [] };
 
-  await ecrireAtomique(cible, texte);
+  // La mémoire des blocs changés part avant l'écriture du workflow : une exécution qui lit le nouveau workflow lit
+  // forcément la mémoire déjà effacée. Seules restent les entrées marquées des nouveaux réglages (une exécution qui a
+  // déjà tourné avec eux) ; une entrée sans empreinte (d'avant les empreintes) part aussi.
+  const memoireEffacee = avant
+    ? await avecMemoire(o.dossierDonnees, async () => {
+        const anciens = new Map(avant.workflow.blocs.map((b) => [b.id, b]));
+        const memoire = await lireMemoire(o.dossierDonnees);
+        const effaces: string[] = [];
+        for (const b of r.valide.workflow.blocs) {
+          const ancien = anciens.get(b.id);
+          const entree = memoire[b.id];
+          if (!ancien || ancien.type !== b.type || !entree) continue;
+          const nouvelle = empreinteParametres(b.parametres);
+          if (empreinteParametres(ancien.parametres) !== nouvelle && entree.empreinte !== nouvelle) {
+            delete memoire[b.id];
+            effaces.push(b.id);
+          }
+        }
+        if (effaces.length > 0) await ecrireMemoire(o.dossierDonnees, memoire);
+        return effaces;
+      })
+    : [];
 
-  const memoireEffacee: string[] = [];
-  if (avant) {
-    const anciens = new Map(avant.workflow.blocs.map((b) => [b.id, b]));
-    const memoire = await lireMemoire(o.dossierDonnees);
-    for (const b of r.valide.workflow.blocs) {
-      const ancien = anciens.get(b.id);
-      if (!ancien || ancien.type !== b.type || !(b.id in memoire)) continue;
-      if (empreinteParametres(ancien.parametres) !== empreinteParametres(b.parametres)) {
-        delete memoire[b.id];
-        memoireEffacee.push(b.id);
-      }
-    }
-    if (memoireEffacee.length > 0) await ecrireMemoire(o.dossierDonnees, memoire);
-  }
+  await ecrireAtomique(cible, texte);
   return { ok: true, ecrit: true, memoireEffacee };
 }
 

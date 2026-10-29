@@ -16,7 +16,7 @@ import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.
 import { erreurDuNoyau, executerEssai, executerRecolte, type LanceurProcessus } from "../../src/widgets/recolte.js";
 import { PROFIL_REFUSE } from "../../src/workflows/executer.js";
 import { ecrireExecution, idEssai, lireExecution, listerExecutions, type Execution } from "../../src/workflows/executions.js";
-import { ecrireMemoire, lireMemoire } from "../../src/workflows/memoire.js";
+import { avecMemoire, ecrireMemoire, lireMemoire } from "../../src/workflows/memoire.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 import { fauxKev, fauxOllama, type FauxServeur } from "../aide/faux-ia.js";
@@ -763,6 +763,25 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(r2.donnees).toEqual([{ id: 3 }]);
   });
 
+  it("la mémoire d'une exécution s'écrit sous le verrou de la mémoire du widget (celui de l'effacement du constructeur)", async () => {
+    const ctx = await preparer("flux", "");
+    await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }];` });
+    let liberer!: () => void;
+    const tenu = avecMemoire(donneesDe(ctx), () => new Promise<void>((r) => (liberer = r)));
+    let finie = false;
+    const r = recolter(ctx).then((x) => ((finie = true), x));
+    const donnees = join(donneesDe(ctx), "donnees.json");
+    for (let i = 0; i < 200 && !existsSync(donnees); i++) await new Promise((t) => setTimeout(t, 25));
+    expect(existsSync(donnees)).toBe(true);
+    await new Promise((t) => setTimeout(t, 100));
+    expect(finie).toBe(false);
+    expect(existsSync(join(donneesDe(ctx), "memoire.json"))).toBe(false);
+    liberer();
+    await tenu;
+    expect((await r).etat.statut).toBe("ok");
+    expect((await lireMemoire(donneesDe(ctx))).nouveaux?.type).toBe("liste.nouveaux");
+  });
+
   it("un workflow.json invalide : état erreur « Workflow invalide : … » marqué erreurNoyau, données gardées, aucun conteneur lancé, exécution échouée écrite", async () => {
     for (const workflow of ['{"version":1,"blocs":[', { version: 1, blocs: [{ id: "x", type: "inconnu" }] }]) {
       const ctx = await preparer("casse", "");
@@ -927,6 +946,27 @@ describe("executerEssai", () => {
     expect(await instantane(ctx)).toEqual(avant);
     // La vraie exécution est toujours là, à côté de l'essai.
     expect((await listerExecutions(donneesDe(ctx))).map((x) => x.id).sort()).toEqual([reel.execution, e.id].sort());
+  });
+
+  it("rejouer deux fois depuis le même bloc : le second essai part du premier et reprend les sorties de la vraie exécution", async () => {
+    const ctx = await preparer("flux", "");
+    await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
+    const reel = await executerRecolte(optionsDe(ctx));
+    await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("relancée"); };`);
+    const premier = await essai(ctx, reel.execution!, "nouveaux");
+    if (!premier.ok) throw new Error(premier.erreur);
+    const plusTard = new Date(MAINTENANT.getTime() + 60_000);
+    const second = await essai(ctx, premier.execution, "nouveaux", { horloge: () => plusTard });
+    expect(second).toEqual({ ok: true, execution: idEssai(plusTard.toISOString()), statut: "reussie" });
+    const e = (await lireExecution(donneesDe(ctx), idEssai(plusTard.toISOString())))!;
+    // L'origine nommée est celle d'où vient la sortie reprise : la vraie exécution.
+    expect(e.essai).toEqual({ depart: "nouveaux", origine: reel.execution });
+    expect(e.blocs.map((b) => [b.id, b.statut, b.elements])).toEqual([["liste", "repris", 2], ["nouveaux", "reussi", 2], ["sortie", "reussi", 2]]);
+    // Vraie exécution élaguée : le refus reste celui d'une sortie manquante.
+    await rm(join(donneesDe(ctx), "executions", `${reel.execution}.json`));
+    expect(await essai(ctx, premier.execution, "nouveaux", { horloge: () => new Date(plusTard.getTime() + 60_000) })).toEqual({
+      ok: false, erreur: "Rejeu impossible : la sortie de « liste » manque dans cette exécution",
+    });
   });
 
   it("un essai en échec n'écrit aucune erreur dans l'état du widget", async () => {
