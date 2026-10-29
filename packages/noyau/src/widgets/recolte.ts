@@ -19,7 +19,7 @@ import {
   lireMessageRecolteur,
   type MessageRecolteur,
   type PageLue,
-} from "./protocole.js";
+} from "../workflows/protocole.js";
 
 /** Le processus de la récolte (le client `docker run -i`) : son seul canal avec le noyau est stdin / stdout. */
 export interface ProcessusRecolte {
@@ -270,7 +270,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   }
 
   let arret: Arret | null = null;
-  let terminal: Exclude<MessageRecolteur, { t: "appel" }> | null = null;
+  let terminal: Extract<MessageRecolteur, { t: "fin" | "echec" }> | null = null;
   let journal = "";
   let enVol = 0;
   const arreter = (a: Arret) => {
@@ -281,7 +281,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
   const minuteur = setTimeout(() => arreter({ statut: "erreur", erreur: "Délai dépassé" }), o.delaiMs ?? DELAI_RECOLTE_MS);
 
   processus.stdin.on("error", () => {});
-  processus.stdin.write(ligneDebut(donneesPrecedentes, debut));
+  processus.stdin.write(ligneDebut({ precedent: donneesPrecedentes, maintenant: debut, config: declaration.config ?? null }));
   processus.stderr.setEncoding("utf8");
   processus.stderr.on("data", (d: string) => {
     journal = (journal + d).slice(-JOURNAL_MAX);
@@ -373,11 +373,13 @@ export async function executerRecolte(o: OptionsRecolte): Promise<{ etat: EtatWi
     if (arret || terminal || !ligne.trim()) return;
     const m = lireMessageRecolteur(ligne);
     if (!m) return; // Une ligne hors protocole (le widget a écrit sur stdout) est ignorée.
-    if (m.t !== "appel") {
+    // Les traces d'un workflow (bloc, journal, memoire) ne terminent rien ; seules fin et echec le font.
+    if (m.t === "fin" || m.t === "echec") {
       terminal = m;
       processus.stdin.end();
       return;
     }
+    if (m.t !== "appel") return;
     if (enVol >= MAX_APPELS_EN_VOL) return repondre(m.n, { erreur: "Trop d'appels en même temps" });
     enVol++;
     // Les appels sont traités dès leur arrivée, en parallèle ; chaque réponse porte le numéro de son appel.

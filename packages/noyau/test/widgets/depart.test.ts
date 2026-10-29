@@ -4,7 +4,7 @@ import { cp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "recolteur.mjs");
+const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 const MODELES = join(import.meta.dirname, "..", "..", "modeles", "widgets");
 
 type Appel = { t: "appel"; n: number; f: string; a: any };

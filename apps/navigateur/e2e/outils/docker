@@ -37,7 +37,12 @@ if (args[0] === "run" && args.includes("-i") && (args[args.indexOf("--name") + 1
     const [hote, conteneur] = args[++i].split(":");
     montages.set(conteneur, hote);
   }
-  const versHote = (c) => montages.get(c) ?? c;
+  // Un chemin sous un dossier monté (le moteur : /opt/webaios/moteur/recolteur.mjs) se retrouve par son préfixe.
+  const versHote = (c) => {
+    if (montages.has(c)) return montages.get(c);
+    for (const [conteneur, hote] of montages) if (c.startsWith(conteneur + "/")) return hote + c.slice(conteneur.length);
+    return c;
+  };
   const node = args.indexOf("node", args.indexOf("--name"));
   const [recolteur, widget] = args.slice(node + 1).map(versHote);
   const enfant = spawn(process.execPath, [recolteur, widget], { stdio: "inherit" });

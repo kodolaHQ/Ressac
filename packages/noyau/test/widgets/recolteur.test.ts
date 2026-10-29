@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "recolteur.mjs");
+const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
 type Appel = { t: "appel"; n: number; f: string; a: any };
 type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };

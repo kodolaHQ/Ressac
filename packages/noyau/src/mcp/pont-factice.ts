@@ -1,6 +1,6 @@
 import type { DroitDev } from "../acces/politique.js";
 import type { ProfilCpu } from "../outils-dev/resumes.js";
-import type { PageLue } from "../widgets/protocole.js";
+import type { PageLue } from "../workflows/protocole.js";
 import {
   OngletIntrouvable,
   OngletPrive,

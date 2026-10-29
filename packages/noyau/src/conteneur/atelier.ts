@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { dossierValide } from "../applications/manifeste.js";
 import { CHEMIN_CONTENEUR, type CheminsEspace } from "../chemins.js";
 import { executeurParDefaut, type Executeur } from "./executeur.js";
@@ -190,13 +190,15 @@ export class Atelier {
   }
 
   /**
-   * Récolte d'un widget, dans un conteneur jetable sans réseau : il ne voit que le dossier du widget et le récolteur,
-   * en lecture seule, et ne parle au noyau que par son entrée et sa sortie standard (`-i`).
+   * Récolte d'un widget, dans un conteneur jetable sans réseau : il ne voit que le dossier du widget et le dossier du
+   * moteur (celui du récolteur et de ses modules), en lecture seule, et ne parle au noyau que par son entrée et sa
+   * sortie standard (`-i`).
    */
   commandeRecolte(id: string, dossierWidget: string, recolteur: string): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     // « : » changerait le sens de -v (cible, options) : un tel chemin ne peut pas être monté sans risque.
     for (const c of [dossierWidget, recolteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
+    const moteur = dirname(recolteur);
     return [
       this.docker, "run", "-i", "--rm",
       "--name", nomRecolte(id),
@@ -204,12 +206,12 @@ export class Atelier {
       "--read-only",
       "--tmpfs", "/tmp",
       "-v", `${dossierWidget}:/widget:ro`,
-      "-v", `${recolteur}:/opt/webaios/recolteur.mjs:ro`,
+      "-v", `${moteur}:/opt/webaios/moteur:ro`,
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
       "timeout", "-k", "5", String(DELAI_RECOLTE_S),
-      "node", "/opt/webaios/recolteur.mjs", "/widget",
+      "node", `/opt/webaios/moteur/${basename(recolteur)}`, "/widget",
     ];
   }
 

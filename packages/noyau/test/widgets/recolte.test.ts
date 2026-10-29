@@ -18,7 +18,7 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 import { fauxKev, fauxOllama, type FauxServeur } from "../aide/faux-ia.js";
 
-const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "recolteur.mjs");
+const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 const MAINTENANT = new Date("2026-10-28T10:00:00.000Z");
 const horloge = () => MAINTENANT;
 
@@ -214,7 +214,7 @@ describe("executerRecolte", () => {
 
   it("commandeRecolte monte le widget en :ro, coupe le réseau (--network none) et ne monte rien d'autre de l'espace", async () => {
     const atelier = new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
-    const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/recolteur.mjs");
+    const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur/recolteur.mjs");
     expect(c).toEqual([
       "/usr/local/bin/docker", "run", "-i", "--rm",
       "--name", "webaios-recolte-meteo",
@@ -222,12 +222,12 @@ describe("executerRecolte", () => {
       "--read-only",
       "--tmpfs", "/tmp",
       "-v", "/Users/t/WebAiOs/accueil/widgets/meteo:/widget:ro",
-      "-v", "/app/docker/recolteur.mjs:/opt/webaios/recolteur.mjs:ro",
+      "-v", "/app/docker/moteur:/opt/webaios/moteur:ro",
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
       "timeout", "-k", "5", "180",
-      "node", "/opt/webaios/recolteur.mjs", "/widget",
+      "node", "/opt/webaios/moteur/recolteur.mjs", "/widget",
     ]);
     const volumes = c.flatMap((x, i) => (c[i - 1] === "-v" ? [x] : []));
     expect(volumes).toHaveLength(2);

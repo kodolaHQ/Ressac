@@ -214,7 +214,7 @@ export async function creerNoyau(o: {
   dossierWidgets: string;
   /** IA locale pour les récoltes ; arrêtée avec le noyau. */
   ia?: IaLocale;
-  /** Récolteur monté dans le conteneur de récolte (par défaut `<ressources>/docker/recolteur.mjs`). */
+  /** Récolteur, monté avec son dossier dans le conteneur de récolte (par défaut `<ressources>/docker/moteur/recolteur.mjs`). */
   recolteur?: string;
   /** Appelé après chaque écriture de l'état ou des données d'un widget, et après un accord ou son retrait. */
   surChange?: () => void;
@@ -290,7 +290,7 @@ export async function creerNoyau(o: {
   });
   atelierPret.catch(() => {});
   let demarrage: Promise<EtatAtelier> | null = atelierPret;
-  const recolteur = o.recolteur ?? (o.ressources ? join(o.ressources, "docker", "recolteur.mjs") : join(DOSSIER_DOCKER_PAR_DEFAUT, "recolteur.mjs"));
+  const recolteur = o.recolteur ?? (o.ressources ? join(o.ressources, "docker", "moteur", "recolteur.mjs") : join(DOSSIER_DOCKER_PAR_DEFAUT, "moteur", "recolteur.mjs"));
   const planificateur = new PlanificateurWidgets({
     chemins,
     dossierWidgets,
