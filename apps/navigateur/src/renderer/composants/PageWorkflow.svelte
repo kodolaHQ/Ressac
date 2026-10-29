@@ -63,7 +63,13 @@
     interrompue: "Interrompue",
     "accord-requis": "Accord requis",
   };
-  const STATUTS_BLOC: Record<TraceBloc["statut"], string> = { reussi: "Réussi", partiel: "Partiel", echoue: "Échoué", "pas-lance": "Pas lancé" };
+  const STATUTS_BLOC: Record<TraceBloc["statut"], string> = {
+    reussi: "Réussi",
+    partiel: "Partiel",
+    echoue: "Échoué",
+    interrompu: "Interrompu",
+    "pas-lance": "Pas lancé",
+  };
   /** Couleur de la pastille : la même échelle pour une exécution et pour un bloc. */
   const TEINTES: Record<string, "ok" | "moyen" | "echec" | "neutre"> = {
     reussie: "ok",
@@ -74,6 +80,7 @@
     echouee: "echec",
     echoue: "echec",
     interrompue: "echec",
+    interrompu: "echec",
     "pas-lance": "neutre",
   };
 

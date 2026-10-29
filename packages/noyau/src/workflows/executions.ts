@@ -12,7 +12,8 @@ export const ID_EXECUTION = /^[0-9TZ-]+$/;
 export const TraceBloc = z.object({
   id: z.string(),
   type: z.string(),
-  statut: z.enum(["reussi", "partiel", "echoue", "pas-lance"]),
+  // « interrompu » : commencé, pas fini, quand WebAiOs s'est arrêté pendant l'exécution.
+  statut: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance"]),
   debut: z.string().nullable(),
   fin: z.string().nullable(),
   elements: z.number().nullable(),

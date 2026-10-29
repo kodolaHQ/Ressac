@@ -51,6 +51,7 @@ export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire a
 export const ERREUR_ATELIER_ARRETE = "Mise à jour impossible : atelier arrêté";
 export const ERREUR_RECOLTE_INTERNE = "Mise à jour impossible : erreur interne du navigateur";
 export const ERREUR_SANS_WORKFLOW = "Ce widget n'a ni workflow.json ni recolte.mjs";
+export const ERREUR_INTERROMPUE = "Interrompue : WebAiOs s'est arrêté";
 const MEMOIRE_NON_GARDEE = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
 
 /** Messages d'erreur fixes écrits par le noyau ; tout autre texte d'erreur a pu être écrit par le widget. */
@@ -61,6 +62,7 @@ const ERREURS_FIXES = new Set([
   ERREUR_ATELIER_ARRETE,
   ERREUR_RECOLTE_INTERNE,
   ERREUR_SANS_WORKFLOW,
+  ERREUR_INTERROMPUE,
   // Ancien message, encore dans des états écrits avant les workflows.
   "Ce widget n'a pas de recolte.mjs",
   "Données trop grosses (2 Mo au plus)",
@@ -258,7 +260,13 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   }
 
   // Arrêt du noyau (sortie, changement de profil) : l'exécution n'a pas échoué, elle est interrompue.
-  if (o.interrompue?.() && execution.statut !== "accord-requis") execution.statut = "interrompue";
+  // Son erreur est celle du noyau (pas celle, sans objet, du conteneur tué) ; un bloc commencé sans fin est interrompu.
+  if (o.interrompue?.() && execution.statut !== "accord-requis") {
+    execution.statut = "interrompue";
+    execution.erreur = ERREUR_INTERROMPUE;
+    execution.erreurNoyau = true;
+    execution.blocs = execution.blocs.map((b) => (b.debut !== null && b.fin === null ? { ...b, statut: "interrompu" } : b));
+  }
   return issue.t === "arret"
     ? conclureSansDonnees(execution, { statut: issue.statut, erreur: issue.erreur, journal })
     : // La provenance vient du moteur : `erreurNoyau` absent, le texte a pu être écrit par le code du widget.

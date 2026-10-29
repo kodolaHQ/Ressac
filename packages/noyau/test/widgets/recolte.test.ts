@@ -854,6 +854,10 @@ describe("executerRecolte, par le workflow du widget", () => {
   it("interrompue à la fin : exécution interrompue", async () => {
     const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
     const r = await executerRecolte({ ...optionsDe(ctx), delaiMs: 300, interrompue: () => true });
-    expect((await executionDe(ctx, r.execution)).statut).toBe("interrompue");
+    const e = await executionDe(ctx, r.execution);
+    // Le message est celui du noyau (pas « Délai dépassé ») ; le bloc commencé est interrompu, la sortie jamais lancée.
+    expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
+    expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
+    expect(erreurDuNoyau(e.erreur!)).toBe(true);
   });
 });
