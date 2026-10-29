@@ -8,7 +8,7 @@ export const definition: DefinitionBloc = {
   description: "Lit le texte d'une page web.",
   entree: "parElement",
   champs: [
-    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "https://example.com", genre: "gabarit" },
+    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, genre: "gabarit" },
     { nom: "compte", libelle: "Avec mon compte", requis: false, defaut: false, genre: "case" },
     CHAMP_PAR_ELEMENT,
     ...champsParElementSeulement(),

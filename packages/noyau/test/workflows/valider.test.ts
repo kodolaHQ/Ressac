@@ -144,6 +144,7 @@ test("une erreur de paramètre nomme le bloc en cause", () => {
   expect(blocErreur(wf([{ id: "d", type: "code", parametres: { source: "d.mjs" } }, { id: "d", type: "code", parametres: { source: "d.mjs" } }, sortie()]))).toBe("d");
   expect(blocErreur(wf([sortie()], [{ de: "s", vers: "absent" }]))).toBe("s");
   expect(blocErreur(wf([sortie()], [{ de: "absent", vers: "s" }]))).toBe("s");
+  expect(blocErreur(wf([sortie()], [{ de: "a", vers: "b" }]))).toBeUndefined();
 });
 
 test("un cycle nomme son premier bloc dans l'ordre du tableau", () => {

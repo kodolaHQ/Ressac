@@ -8,7 +8,7 @@ export const definition: DefinitionBloc = {
   description: "Récupère le contenu d'une adresse, en texte ou en JSON.",
   entree: "parElement",
   champs: [
-    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "https://example.com", genre: "gabarit" },
+    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, genre: "gabarit" },
     { nom: "format", libelle: "Format", requis: false, defaut: "texte", genre: "choix", choix: ["texte", "json"] },
     CHAMP_PAR_ELEMENT,
     ...champsParElementSeulement(),

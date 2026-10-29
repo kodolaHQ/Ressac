@@ -38,7 +38,15 @@ test("les paramètres requis ont un défaut neutre pour pré-remplir la palette"
   expect(champ("liste.garder", "nombre").defaut).toBe(10);
   expect(champ("liste.nouveaux", "cle").defaut).toBe("url");
   expect(champ("liste.dedoublonner", "cles").defaut).toEqual(["url"]);
-  for (const b of catalogue) for (const c of b.champs) if (c.requis) expect(c.defaut, `${b.type}.${c.nom}`).toBeDefined();
+  // R23 : jamais d'adresse par défaut, le bloc reste invalide tant que l'adresse n'est pas saisie.
+  const adresses = ["source.page.url", "source.recuperer.url", "source.flux.urls"];
+  for (const b of catalogue) {
+    for (const c of b.champs) {
+      const nom = `${b.type}.${c.nom}`;
+      if (adresses.includes(nom)) expect(c.defaut, nom).toBeUndefined();
+      else if (c.requis) expect(c.defaut, nom).toBeDefined();
+    }
+  }
 });
 
 test("les champs communs du mode par élément sont marqués, sauf pour ia.trier", () => {

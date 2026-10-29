@@ -120,7 +120,10 @@ export function validerWorkflow(brut: unknown): ResultatValidation {
   const predecesseurs: Record<string, string[]> = Object.fromEntries(workflow.blocs.map((b) => [b.id, []]));
   for (const l of workflow.liens) {
     for (const bout of [l.de, l.vers]) {
-      if (!ids.has(bout)) return erreurWorkflow(`lien vers un bloc absent : ${bout}`, bout === l.de ? l.vers : l.de);
+      if (!ids.has(bout)) {
+        const autre = bout === l.de ? l.vers : l.de;
+        return erreurWorkflow(`lien vers un bloc absent : ${bout}`, ids.has(autre) ? autre : undefined);
+      }
     }
     if (!predecesseurs[l.vers]!.includes(l.de)) predecesseurs[l.vers]!.push(l.de);
   }

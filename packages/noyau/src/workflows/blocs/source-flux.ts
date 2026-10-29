@@ -8,7 +8,7 @@ export const definition: DefinitionBloc = {
   description: "Lit des flux RSS ou Atom et donne leurs articles.",
   entree: "facultative",
   champs: [
-    { nom: "urls", libelle: "Adresses des flux", requis: true, defaut: ["https://example.com/rss"], genre: "textes" },
+    { nom: "urls", libelle: "Adresses des flux", requis: true, genre: "textes" },
     { nom: "siErreur", libelle: "En cas d'erreur", requis: false, defaut: "sauter", genre: "choix", choix: ["sauter", "echouer"] },
   ],
   parElement: "non",
