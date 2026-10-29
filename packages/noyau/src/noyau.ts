@@ -19,7 +19,7 @@ import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsW
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
-import type { Execution } from "./workflows/executions.js";
+import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
 import { PlanificateurWidgets } from "./widgets/planificateur.js";
 import { accordRequis } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
@@ -255,6 +255,8 @@ export async function creerNoyau(o: {
       return { nom: w.declaration.nom, compte: accord || w.declaration.sources.compte.length > 0, donnees: w.donnees };
     },
     recolter: (id) => planificateur.recolterMaintenant(id, "agent"),
+    executions: (id) => listerExecutions(join(dossierWidgets, id)),
+    execution: (id, execution) => lireExecution(join(dossierWidgets, id), execution),
   };
   // Le navigateur garde ses outils de développement d'un noyau à l'autre : celui-ci prend les siens, ce qui révoque ceux
   // d'un noyau précédent (ses appels en retard sont refusés, ses attachements tombent).

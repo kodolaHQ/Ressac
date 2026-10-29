@@ -4,7 +4,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { demarrerServeurMcp, ERREUR_RESERVEE, genererJeton, type OutilsApplications, type OutilsWidgets } from "../../src/mcp/serveur.js";
+import { AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsApplications, type OutilsWidgets } from "../../src/mcp/serveur.js";
+import type { Execution } from "../../src/workflows/executions.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
 
@@ -356,6 +357,15 @@ test("sans applications : les outils n'existent pas", async () => {
 
 // --- Widgets ---
 
+function executionsFactices(id: string): Execution[] {
+  const base = { version: 1 as const, proprietaire: { type: "widget" as const, id }, declencheur: "manuelle" as const, debut: "2026-10-28T10:00:00.000Z", fin: "2026-10-28T10:00:07.000Z" };
+  const bloc = { id: "flux", type: "source.flux", statut: "reussi" as const, debut: base.debut, fin: base.fin, elements: 12 };
+  return [
+    { ...base, id: "2026-10-28T10-00-00-000Z", statut: "partielle", blocs: [{ ...bloc, sortie: [{ titre: "secret du compte" }], journal: ["journal secret"] }] },
+    { ...base, id: "2026-10-27T10-00-00-000Z", statut: "echouee", erreur: "erreur secrete", blocs: [{ ...bloc, statut: "echoue", erreur: "erreur secrete", journal: [] }] },
+  ];
+}
+
 /** Deux widgets : « meteo » (public) et « daily » (lit avec le compte de l'utilisateur). */
 function widgetsFactices() {
   const donnees: Record<string, unknown> = { meteo: { t: 12 }, daily: { articles: ["secret du compte"] } };
@@ -366,10 +376,16 @@ function widgetsFactices() {
       if (id === "daily") return { nom: "daily.dev", compte: true, donnees: donnees.daily };
       return null;
     },
-    async recolter(id): Promise<EtatWidget> {
+    async recolter(id): Promise<EtatWidget & { execution?: string }> {
       recoltes.push(id);
       if (id !== "meteo" && id !== "daily") throw new Error(`Widget inconnu : ${id}`);
-      return { statut: "ok", derniereMaj: "2026-10-28T10:00:00.000Z", derniereTentative: "2026-10-28T10:00:00.000Z", journal: `journal de ${id}` };
+      return { statut: "ok", derniereMaj: "2026-10-28T10:00:00.000Z", derniereTentative: "2026-10-28T10:00:00.000Z", journal: `journal de ${id}`, execution: "2026-10-28T10-00-00-000Z" };
+    },
+    async executions(id) {
+      return executionsFactices(id).map((e) => ({ id: e.id, declencheur: e.declencheur, debut: e.debut, fin: e.fin, statut: e.statut, blocs: e.blocs.map((b) => ({ id: b.id, statut: b.statut, elements: b.elements })) }));
+    },
+    async execution(id, execution) {
+      return executionsFactices(id).find((e) => e.id === execution) ?? null;
     },
   };
   return { outils, recoltes };
@@ -523,4 +539,71 @@ test("recolter_widget, widget avec compte sans accord : un texte du widget qui i
   // Marquée du noyau mais hors des messages fixes : réservée quand même.
   etat = { statut: "erreur", derniereMaj: null, derniereTentative: null, erreur: "SECRET", erreurNoyau: true };
   expect(await recolter()).not.toContain("SECRET");
+});
+
+// --- executions_widget ---
+
+test("executions_widget d'un widget sans compte rend durées, éléments, sorties et journaux", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils);
+  const liste = texte(await client.callTool({ name: "executions_widget", arguments: { id: "meteo" } }));
+  expect(liste).toContain(PREFIXE_DONNEES_WIDGET);
+  expect(liste).toContain('"elements": 12');
+  expect(liste).toContain('"fin": "2026-10-28T10:00:07.000Z"');
+  expect(liste).toContain('"statut": "partielle"');
+  const detail = texte(await client.callTool({ name: "executions_widget", arguments: { id: "meteo", execution: "2026-10-28T10-00-00-000Z" } }));
+  expect(detail).toContain(PREFIXE_DONNEES_WIDGET);
+  expect(detail).toContain("secret du compte");
+  expect(detail).toContain("journal secret");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("executions_widget d'un widget avec compte sans accord ne rend que { id, statut }, ni durée, ni éléments, ni statut par bloc, ni erreur", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils, { donneesWidget: true });
+  const t = texte(await client.callTool({ name: "executions_widget", arguments: { id: "daily" } }));
+  expect(t).toContain(AVIS_EXECUTIONS_CACHEES);
+  const corps = JSON.parse(t.slice(0, t.indexOf(AVIS_EXECUTIONS_CACHEES)));
+  // « partielle » est annoncée « reussie » : ce statut vient de traces que le code du widget pourrait forger.
+  expect(corps).toEqual([
+    { id: "2026-10-28T10-00-00-000Z", statut: "reussie" },
+    { id: "2026-10-27T10-00-00-000Z", statut: "echouee" },
+  ]);
+  expect(t).not.toContain("secret");
+  expect(t).not.toContain("elements");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("le détail d'une exécution d'un widget avec compte pose la carte ; refusée, seul le statut sort ; acceptée, tout sort et donnees_widget ne redemande pas", async () => {
+  const { outils } = widgetsFactices();
+  const args = { id: "daily", execution: "2026-10-28T10-00-00-000Z" };
+  await avecWidgets(outils, { donneesWidget: false });
+  let t = texte(await client.callTool({ name: "executions_widget", arguments: args }));
+  expect(cartesDonnees()).toHaveLength(1);
+  expect(JSON.parse(t)).toEqual({ id: args.execution, statut: "reussie" });
+  expect(t).not.toContain("secret");
+  await avecWidgets(outils, { donneesWidget: true });
+  t = texte(await client.callTool({ name: "executions_widget", arguments: args }));
+  expect(cartesDonnees()).toHaveLength(1);
+  expect(t).toContain(PREFIXE_DONNEES_WIDGET);
+  expect(t).toContain("secret du compte");
+  await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } });
+  const liste = texte(await client.callTool({ name: "executions_widget", arguments: { id: "daily" } }));
+  expect(liste).toContain('"elements": 12');
+  expect(cartesDonnees()).toHaveLength(1);
+});
+
+test("un id d'exécution invalide est refusé par le schéma", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils);
+  const r = await client.callTool({ name: "executions_widget", arguments: { id: "meteo", execution: "../donnees" } });
+  expect(r.isError).toBe(true);
+});
+
+test("recolter_widget indique l'exécution créée, même pour un widget avec compte sans accord", async () => {
+  const { outils } = widgetsFactices();
+  await avecWidgets(outils, { donneesWidget: true });
+  const t = texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
+  expect(t).toContain('"execution": "2026-10-28T10-00-00-000Z"');
+  expect(t).not.toContain("secret du compte");
 });
