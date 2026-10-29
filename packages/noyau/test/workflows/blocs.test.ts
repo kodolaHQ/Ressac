@@ -249,6 +249,12 @@ describe("ia.trier", () => {
     expect(echoue.finBloc("tri")).toMatchObject({ statut: "echoue", erreur: "Kev n'a pas rendu de note" });
     expect(echoue.terminal).toEqual({ t: "echec", erreur: "Kev n'a pas rendu de note" });
   });
+
+  it("ia.trier : Kev ne note aucun élément, le tri échoue même avec sauter", async () => {
+    const r = await lancer({ workflow: trier(), fichiers: liste(elements).fichiers, config: { interets: "Rust" }, repondre: () => ({ ok: {} }) });
+    expect(r.finBloc("tri")).toMatchObject({ statut: "echoue", erreur: "Tous les éléments ont échoué (Kev n'a pas rendu de note)" });
+    expect(r.terminal).toEqual({ t: "echec", erreur: "Tous les éléments ont échoué (Kev n'a pas rendu de note)" });
+  });
 });
 
 describe("ia.rediger", () => {
@@ -319,6 +325,21 @@ describe("ia.rediger", () => {
     expect(r.finBloc("redac").statut).toBe("partiel");
     expect(journalDe(r, "redac")).toEqual(["élément 1 : IA locale indisponible"]);
     expect(r.terminal.donnees).toEqual([{ titre: "un" }, { titre: "deux", texte: "ok" }]);
+  });
+
+  it("ia.rediger : Gemma en échec pour tous les éléments, le bloc finit partiel et les éléments passent sans texte", async () => {
+    const elements = [{ titre: "un" }, { titre: "deux" }];
+    const r = await lancer({
+      workflow: {
+        version: 1,
+        blocs: [liste(elements).bloc, bloc("redac", "ia.rediger", { consigne: "Résume : {titre}", parElement: true }), sortie],
+        liens: chaine("liste", "redac", "sortie"),
+      },
+      fichiers: liste(elements).fichiers,
+      repondre: () => ({ erreur: "IA locale indisponible" }),
+    });
+    expect(r.finBloc("redac").statut).toBe("partiel");
+    expect(r.terminal).toEqual({ t: "fin", donnees: elements });
   });
 
   it("ce que dit une page n'est jamais relu comme un gabarit", async () => {

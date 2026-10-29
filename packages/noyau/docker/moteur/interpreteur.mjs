@@ -6,6 +6,7 @@
 //     async executer(ctx),             // mode simple : rend { sortie, memoire? }
 //     async traiterElement(ctx),       // par élément : rend la valeur rangée sous `champ` dans ctx.element
 //     async finaliser(liste, ctx),     // facultatif, par élément : rend { sortie } à partir de la liste enrichie
+//     echecSiTousEchouent: true,       // facultatif, par élément : le bloc échoue si aucun élément lancé n'a réussi
 //   }
 // ctx = { entree, parametres, config, memoire, webaios, journal, dossier, remplir, partiel, element? }
 //   - `memoire` : ce que le bloc a retenu la fois d'avant (null sinon) ; `executer` rend la nouvelle dans `memoire`.
@@ -182,9 +183,11 @@ async function parElement(module, ctx, { echeance, horloge }) {
   await Promise.all(Array.from({ length: ELEMENTS_EN_PARALLELE }, ouvrier));
 
   if (erreurBloc) throw erreurBloc;
-  // Parmi les éléments lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés
-  // (temps) ou sans valeur de gabarit ne comptent pas comme réussis.
-  if (echecs > 0 && reussis === 0) {
+  // Pour un bloc qui le demande (ia.trier : sans aucune note, sa sortie vide ne veut rien dire), parmi les éléments
+  // lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés (temps) ou sans valeur
+  // de gabarit ne comptent pas comme réussis. Les autres blocs (qui enrichissent) laissent passer les éléments sans
+  // leur champ et finissent « partiel ».
+  if (module.echecSiTousEchouent === true && echecs > 0 && reussis === 0) {
     throw new Error(`Tous les éléments ont échoué (${message(premiereErreur)})`);
   }
   const nonLances = entree.length - suivant;

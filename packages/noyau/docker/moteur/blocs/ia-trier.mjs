@@ -4,6 +4,8 @@
 
 export default {
   parElement: "toujours",
+  // Aucune note du tout (Kev en panne) : le tri échoue clairement plutôt que de rendre une liste vide.
+  echecSiTousEchouent: true,
   async traiterElement({ parametres, remplir, webaios }) {
     const { texte: state } = remplir(parametres.texte);
     const { texte: instructions } = remplir(parametres.question);

@@ -402,8 +402,11 @@ describe("interpréteur : blocs par élément", () => {
     expect(echoue.traces.some((l) => l.id === "sortie")).toBe(false);
   });
 
-  it("par élément : tous les éléments en échec font échouer le bloc, même avec sauter ; une liste vide n'est pas un échec", async () => {
-    const registre = { "test.x": { parElement: "toujours", traiterElement: async () => { throw new Error("Kev indisponible"); } } };
+  it("par élément : tous les éléments en échec font échouer un bloc qui le demande, même avec sauter ; les autres finissent partiel ; une liste vide n'est pas un échec", async () => {
+    const registre = {
+      "test.x": { parElement: "toujours", echecSiTousEchouent: true, traiterElement: async () => { throw new Error("Kev indisponible"); } },
+      "test.enrichir": { parElement: "toujours", traiterElement: async () => { throw new Error("page illisible"); } },
+    };
     const tous = await executer({
       entree: liste(2),
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
@@ -411,6 +414,16 @@ describe("interpréteur : blocs par élément", () => {
     });
     expect(tous.finBloc("b")).toMatchObject({ statut: "echoue" });
     expect(tous.erreur?.message).toContain("Kev indisponible");
+
+    const enrichir = await executer({
+      entree: liste(2),
+      blocs: [{ id: "b", type: "test.enrichir", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
+      registre,
+    });
+    expect(enrichir.erreur).toBeNull();
+    expect(enrichir.finBloc("b")).toMatchObject({ statut: "partiel" });
+    expect(enrichir.resultat!.donnees).toEqual(liste(2));
+    expect(enrichir.journal("b").join("\n")).toContain("page illisible");
 
     const vide = await executer({
       entree: [],
@@ -507,6 +520,7 @@ describe("interpréteur : blocs par élément", () => {
     const registre = {
       "test.ko": {
         parElement: "toujours",
+        echecSiTousEchouent: true,
         async traiterElement(ctx: any) {
           ctx.remplir("{url}");
           await Promise.resolve();
