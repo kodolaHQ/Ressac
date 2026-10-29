@@ -150,7 +150,12 @@ async function fenetreInterface(app: ElectronApplication): Promise<Page> {
   throw new Error("la fenêtre de l'interface n'est pas apparue");
 }
 
-const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".pdf": "application/pdf", ".txt": "text/plain" };
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".js": "text/javascript; charset=utf-8",
+};
 
 /** Sert e2e/pages/* ; /telecharger/<nom> force le téléchargement, /cookie pose un cookie persistant. */
 export async function serveurTest(): Promise<{ url: string; fermer(): Promise<void> }> {

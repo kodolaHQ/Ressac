@@ -38,6 +38,8 @@ import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationC
 import { enregistrerCodeSur, enregistrerEdition, FileEcritures, lireCodeSur, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
+import { ExtensionsProfils } from "./extensions/sessions";
+import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 
 declare const __RESSOURCES_NOYAU__: string;
 
@@ -48,6 +50,9 @@ app.setPath("userData", cheminProfil());
 // Une seule instance par profil : deux processus écriraient la même session et le même historique.
 // (Le verrou d'Electron porte sur userData, d'où l'appel après setPath.)
 if (!app.requestSingleInstanceLock()) app.exit(0);
+// La bibliothèque d'extensions enregistre `crx:` (icônes des boutons) avec `bypassCSP` à son chargement ; cet appel-ci,
+// le seul autre, remplace le sien. Voulu : avec `bypassCSP`, les affichages des widgets pourraient charger ces icônes
+// malgré leur CSP. L'interface qui les montrera devra ajouter `crx:` à son `img-src`.
 enregistrerSchemaWidget([SCHEMA_ICONE]);
 // Aucune résolution de nom anticipée, nulle part (<link rel=dns-prefetch>, liens) : dans un affichage de widget, elle
 // ferait sortir des données dans une requête DNS, sans passer par la CSP ni par le proxy de l'interface. Les onglets y
@@ -235,6 +240,7 @@ let applications: ServiceApplications | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
+const serviceExtensions = new ServiceExtensions();
 
 app.whenReady().then(async () => {
   const dossier = app.getPath("userData");
@@ -330,6 +336,29 @@ app.whenReady().then(async () => {
     if (!p) permissions.set(id, (p = new Permissions({ fichier: fichierPermissions(dossier, id), demander })));
     return p;
   };
+  // Extensions : une instance de la bibliothèque par session de profil de connexion (jamais l'interface, la lecture
+  // publique, les icônes ni les applis), branchée sur les vues des onglets.
+  const extensions = new ExtensionsProfils({
+    dossier: join(dossier, "extensions"),
+    etat: () => magasin.etat,
+    premierPlan: () => fenetreAgent(),
+    ouvrirOnglet: (cible, url, actif) => ouvrirOngletPourExtension(magasin, vues)(cible, url, actif),
+    fenetreDe: (wc) => {
+      const id = vues.ongletDe(wc);
+      const o = id ? magasin.etat.onglets[id] : undefined;
+      return (o && fenetres.get(o.fenetreId)) ?? null;
+    },
+    activer: (wc) => {
+      const id = vues.ongletDe(wc);
+      if (id) magasin.agir({ type: "activerOnglet", id });
+    },
+    fermer: (wc) => {
+      const id = vues.ongletDe(wc);
+      if (id) vues.fermer(id);
+    },
+    invisible: INVISIBLE,
+    ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
+  });
   // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.
   const sessions = new SessionsProfils({
     dossier,
@@ -341,6 +370,7 @@ app.whenReady().then(async () => {
         item.cancel();
       });
       permissionsDe(id).brancher(s, (wc) => vues.ongletDe(wc));
+      extensions.brancher(s, id);
     },
     oublier: (id) => permissions.get(id)?.toutOublier(),
   });
@@ -355,6 +385,11 @@ app.whenReady().then(async () => {
     resultatRecherche: (id, r) => fenetres.get(id)?.webContents.send(CANAUX.resultatRecherche, r),
     // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
     pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),
+    extensions: {
+      creee: (wc, f) => extensions.ongletCree(wc, f),
+      activee: (wc) => extensions.ongletActive(wc),
+      detruite: (wc) => extensions.ongletDetruit(wc),
+    },
   });
   // Un onglet fermé (ou parti vers un autre site, pour les outils de développement) ne répondra jamais : ses questions
   // sont refusées. Une fenêtre d'appli (`app:<dossier>`) n'est pas dans l'état : on regarde ses fenêtres ouvertes.
@@ -575,6 +610,14 @@ app.whenReady().then(async () => {
   magasin.abonner((etat, avant) => {
     if (etat.reglages.moteur !== avant.reglages.moteur) installerMenu(cibles);
   });
+  // Avant les fenêtres : un bloqueur actif agit dès la première page. Une lecture ou un chargement trop lent ne retarde
+  // pas la fenêtre plus de 2 s (les extensions arrivent alors un peu après).
+  await Promise.race([
+    serviceExtensions
+      .demarrer({ dossier: join(dossier, "extensions"), profils: extensions, sessions, vues, magasin, dossierGardes: join(__RESSOURCES_NOYAU__, "extensions") })
+      .catch((e) => console.error("[extensions] démarrage :", e)),
+    new Promise((ok) => setTimeout(ok, 2000)),
+  ]);
   // Une fenêtre principale par EtatFenetre : ⌘N en ajoute une, sa fermeture la retire.
   const synchroniserFenetres = (etat: EtatNavigateur) => {
     for (const f of etat.fenetres) if (!fenetres.has(f.id) && !gardees.has(f.id)) creerFenetre(f.id, magasin, vues);

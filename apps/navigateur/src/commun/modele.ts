@@ -67,6 +67,12 @@ export interface Favori {
 export type IdProfil = string;
 /** Le profil de connexion d'avant les espaces configurables (partition `persist:webaios`). */
 export const PROFIL_DEFAUT: IdProfil = "defaut";
+
+const PARTITION_DEFAUT = "persist:webaios";
+/** Partition Electron d'un profil de connexion : celle de toujours pour le profil par défaut (aucune connexion perdue). */
+export function partitionDe(id: IdProfil): string {
+  return id === PROFIL_DEFAUT ? PARTITION_DEFAUT : `${PARTITION_DEFAUT}-${id}`;
+}
 export interface ProfilConnexion {
   id: IdProfil;
 }

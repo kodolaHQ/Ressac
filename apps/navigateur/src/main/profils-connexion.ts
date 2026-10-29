@@ -2,16 +2,12 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { session, type Session } from "electron";
-import { PROFIL_DEFAUT, profilsEnUsage, type EtatNavigateur, type IdProfil } from "../commun/modele";
+import { partitionDe, PROFIL_DEFAUT, profilsEnUsage, type EtatNavigateur, type IdProfil } from "../commun/modele";
 
-const PARTITION_DEFAUT = "persist:webaios";
+export { partitionDe };
+
 /** Les profils de connexion retirés de l'état et pas encore effacés du disque. */
 const FICHIER_A_EFFACER = "profils-a-effacer.json";
-
-/** Partition Electron d'un profil de connexion : celle de toujours pour le profil par défaut (aucune connexion perdue). */
-export function partitionDe(id: IdProfil): string {
-  return id === PROFIL_DEFAUT ? PARTITION_DEFAUT : `${PARTITION_DEFAUT}-${id}`;
-}
 
 /** Fichier des autorisations de sites d'un profil de connexion : `permissions.json` pour le profil par défaut. */
 export function fichierPermissions(dossier: string, id: IdProfil): string {

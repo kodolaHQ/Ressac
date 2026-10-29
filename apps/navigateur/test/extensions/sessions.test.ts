@@ -1,0 +1,354 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeEach, expect, test, vi } from "vitest";
+import type { EntreeExtension, EtatExtensions } from "@webaios/noyau";
+import type { EtatNavigateur } from "../../src/commun/modele";
+
+// La vraie bibliothèque electron-chrome-extensions (mise dans le graphe de vite, voir vitest.config.ts), sur un
+// `electron` leurré : seules les surfaces qu'elle touche à la construction et au chargement existent.
+// `vi.mock` passe avant les imports : ce qu'utilise le leurre est créé par `vi.hoisted`.
+const { EventEmitter } = await vi.hoisted(() => import("node:events"));
+type EventEmitter = import("node:events").EventEmitter;
+const { notificationsMontrees, ecouteursApp } = vi.hoisted(() => ({
+  notificationsMontrees: [] as unknown[],
+  ecouteursApp: new (require("node:events") as typeof import("node:events")).EventEmitter(),
+}));
+vi.mock("electron", () => {
+  class Notification extends EventEmitter {
+    constructor(o: unknown) {
+      super();
+      notificationsMontrees.push(o);
+    }
+    show() {}
+    close() {}
+    static isSupported() {
+      return true;
+    }
+  }
+  return {
+    app: { name: "WebAiOs", isReady: () => true, on: (n: string, f: (...a: unknown[]) => void) => ecouteursApp.on(n, f) },
+    ipcMain: { handle: () => {}, on: () => {} },
+    session: { defaultSession: fausseSession("defaut-electron") },
+    BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null, getFocusedWindow: () => null },
+    BaseWindow: { getAllWindows: () => [] },
+    webContents: { fromId: () => ({}) },
+    webFrameMain: { fromId: () => null },
+    Notification,
+    Menu: {},
+    MenuItem: class {},
+    protocol: {},
+    nativeImage: {},
+  };
+});
+
+/** Une fausse session : les extensions chargées, les service workers démarrés. */
+interface FausseSession {
+  nom: string;
+  charges: Map<string, { id: string; chemin: string }>;
+  chargements: { chemin: string; options: unknown }[];
+  retraits: string[];
+  demarres: string[];
+  echecs: Set<string>;
+  extensions: EventEmitter & Record<string, unknown>;
+  serviceWorkers: EventEmitter & Record<string, unknown>;
+  protocol: Record<string, unknown>;
+  cookies: EventEmitter;
+  registerPreloadScript(): void;
+  isPersistent(): boolean;
+}
+function fausseSession(nom: string): FausseSession {
+  const s = {
+    nom,
+    charges: new Map(),
+    chargements: [],
+    retraits: [],
+    demarres: [],
+    echecs: new Set<string>(),
+    registerPreloadScript() {},
+    isPersistent: () => true,
+    cookies: new EventEmitter(),
+    protocol: { isProtocolHandled: () => false, handle: () => {}, unhandle: () => {} },
+  } as unknown as FausseSession;
+  const extensions = Object.assign(new EventEmitter(), {
+    async loadExtension(chemin: string, options: unknown) {
+      s.chargements.push({ chemin, options });
+      if (s.echecs.has(chemin)) throw new Error(`Manifest file is missing or unreadable: ${chemin}`);
+      const id = `id-${chemin.split("/").slice(-2).join("-")}`;
+      const manifeste = chemin.includes("fond") ? { background: { service_worker: "fond.js" } } : {};
+      s.charges.set(id, { id, chemin });
+      return { id, url: `chrome-extension://${id}/`, manifest: manifeste, path: chemin, name: id, version: "1" };
+    },
+    removeExtension(id: string) {
+      s.retraits.push(id);
+      s.charges.delete(id);
+    },
+    getExtension: (id: string) => s.charges.get(id) ?? null,
+    getAllExtensions: () => [...s.charges.values()],
+  });
+  const serviceWorkers = Object.assign(new EventEmitter(), {
+    async startWorkerForScope(scope: string) {
+      s.demarres.push(scope);
+      return {};
+    },
+    getWorkerFromVersionID: () => undefined,
+  });
+  s.extensions = extensions as unknown as FausseSession["extensions"];
+  s.serviceWorkers = serviceWorkers as unknown as FausseSession["serviceWorkers"];
+  return s;
+}
+
+const { ElectronChromeExtensions } = await import("electron-chrome-extensions");
+const { ExtensionsProfils } = await import("../../src/main/extensions/sessions");
+
+const temporaires: string[] = [];
+afterAll(() => {
+  for (const d of temporaires) rmSync(d, { recursive: true, force: true });
+});
+
+const ID_A = "a".repeat(32);
+const ID_B = "b".repeat(32);
+
+function entree(source: "store" | "agent", profils: string[], plus: Partial<EntreeExtension> = {}): EntreeExtension {
+  return {
+    source,
+    idChrome: null,
+    nom: "essai",
+    version: "1.0.0",
+    accord: { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
+    profils,
+    epinglee: false,
+    modifieeLe: null,
+    desactivee: null,
+    majEnAttente: null,
+    vues: {},
+    ...plus,
+  };
+}
+const etatExt = (extensions: Record<string, EntreeExtension>, toutesCoupees = false): EtatExtensions => ({ version: 1, toutesCoupees, extensions });
+
+/** État du navigateur : une fenêtre `f1` dont `actif` est l'espace actif ; chaque espace a un profil (et peut être privé). */
+function etatNav(espaces: { id: string; profil: string; prive?: boolean }[], actif?: string): EtatNavigateur {
+  return {
+    version: 2,
+    espaces: espaces.map((e) => ({ id: e.id, nom: e.id, icone: "x", epingles: [], prive: e.prive ?? false, profil: e.profil })),
+    profils: [...new Set(espaces.map((e) => e.profil))].map((id) => ({ id })),
+    essentiels: [],
+    onglets: {},
+    fenetres: [
+      {
+        id: "f1",
+        espaceActif: actif ?? espaces[0]?.id ?? "",
+        ordre: Object.fromEntries(espaces.map((e) => [e.id, []])),
+        actif: Object.fromEntries(espaces.map((e) => [e.id, null])),
+        compact: false,
+        panneauAgentOuvert: false,
+        fermesRecemment: [],
+        cadre: null,
+      },
+    ],
+    reglages: { moteur: "google", profilAgent: "claude", largeurPanneauAgent: 420 },
+  } as EtatNavigateur;
+}
+
+let dossier: string;
+let etat: EtatNavigateur;
+let ouvertures: { cible: unknown; url: string; actif: boolean }[];
+let fichierNotifications: string;
+
+function creer(o: { invisible?: boolean; notifications?: boolean } = {}) {
+  return new ExtensionsProfils({
+    dossier,
+    etat: () => etat,
+    premierPlan: () => "f1",
+    ouvrirOnglet: async (cible, url, actif) => {
+      ouvertures.push({ cible, url, actif });
+      return null;
+    },
+    fenetreDe: () => null,
+    activer: () => {},
+    fermer: () => {},
+    invisible: o.invisible ?? false,
+    ...(o.notifications ? { fichierNotifications } : {}),
+  });
+}
+
+/** Accès aux rouages de la bibliothèque (version figée 4.10.0) : son magasin et son routeur. */
+type Rouages = {
+  ctx: {
+    store: { createTab(d: unknown): Promise<unknown>; impl: { createTab(d: unknown): Promise<unknown> } };
+    router: { getHandler(n: string): { callback(...a: unknown[]): Promise<unknown> } };
+  };
+};
+const rouages = (s: FausseSession) => ElectronChromeExtensions.fromSession(s as unknown as Electron.Session) as unknown as Rouages;
+
+beforeEach(() => {
+  dossier = mkdtempSync(join(tmpdir(), "webaios-ext-sessions-"));
+  temporaires.push(dossier);
+  fichierNotifications = join(dossier, "notifications.jsonl");
+  etat = etatNav([{ id: "e1", profil: "defaut" }]);
+  ouvertures = [];
+  notificationsMontrees.length = 0;
+});
+
+test("brancher crée une seule instance par session et ne charge rien sans entrée", async () => {
+  const p = creer();
+  const s = fausseSession("p1");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const instance = ElectronChromeExtensions.fromSession(s as unknown as Electron.Session);
+  expect(instance).toBeDefined();
+  // Une seconde fois : ni nouvelle instance, ni erreur (la bibliothèque lèverait pour une session déjà équipée).
+  expect(() => p.brancher(s as unknown as Electron.Session, "defaut")).not.toThrow();
+  expect(ElectronChromeExtensions.fromSession(s as unknown as Electron.Session)).toBe(instance);
+  await p.synchroniser(etatExt({}));
+  expect(s.chargements).toEqual([]);
+});
+
+test("synchroniser charge les clés actives du profil et retire celles qui ne le sont plus", async () => {
+  etat = etatNav([
+    { id: "e1", profil: "defaut" },
+    { id: "e2", profil: "autre" },
+  ]);
+  const p = creer();
+  const defaut = fausseSession("defaut");
+  const autre = fausseSession("autre");
+  p.brancher(defaut as unknown as Electron.Session, "defaut");
+  p.brancher(autre as unknown as Electron.Session, "autre");
+  const e1 = etatExt({
+    [`store:${ID_A}`]: entree("store", ["defaut"], { version: "2.1.0" }),
+    "agent:fond": entree("agent", ["defaut", "autre"]),
+    [`store:${ID_B}`]: entree("store", ["autre"]),
+    "agent:sans-accord": entree("agent", ["defaut"], { accord: null }),
+  });
+  await p.synchroniser(e1);
+  expect(defaut.chargements.map((c) => c.chemin).sort()).toEqual([join(dossier, "copies", "fond"), join(dossier, "store", ID_A, "2.1.0_0")].sort());
+  expect(defaut.chargements.every((c) => (c.options as { allowFileAccess: boolean }).allowFileAccess === false)).toBe(true);
+  expect(autre.chargements.map((c) => c.chemin).sort()).toEqual([join(dossier, "copies", "fond"), join(dossier, "store", ID_B, "1.0.0_0")].sort());
+  // Une extension avec un fond : son service worker est démarré (P16).
+  expect(defaut.demarres).toEqual([`chrome-extension://id-copies-fond/`]);
+
+  // L'agent quitte « defaut », le Store change de version : retiré, puis rechargé depuis la nouvelle version.
+  await p.synchroniser(
+    etatExt({
+      [`store:${ID_A}`]: entree("store", ["defaut"], { version: "2.2.0" }),
+      "agent:fond": entree("agent", ["autre"]),
+      [`store:${ID_B}`]: entree("store", ["autre"]),
+    }),
+  );
+  expect(defaut.retraits.sort()).toEqual(["id-copies-fond", `id-${ID_A}-2.1.0_0`].sort());
+  expect([...defaut.charges.values()].map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "2.2.0_0")]);
+  // Rien ne change dans « autre » : ni retrait, ni rechargement.
+  expect(autre.retraits).toEqual([]);
+  expect(autre.chargements).toHaveLength(2);
+});
+
+test("une extension de l'agent n'est jamais chargée dans le profil d'un espace privé ; celles du Store le sont", async () => {
+  etat = etatNav([{ id: "e1", profil: "defaut", prive: true }]);
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"]), [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  expect(s.chargements.map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "1.0.0_0")]);
+});
+
+test("toutesCoupees : tout est retiré", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const extensions = { "agent:fond": entree("agent", ["defaut"]), [`store:${ID_A}`]: entree("store", ["defaut"]) };
+  await p.synchroniser(etatExt(extensions));
+  expect(s.charges.size).toBe(2);
+  await p.synchroniser(etatExt(extensions, true));
+  expect(s.charges.size).toBe(0);
+  expect(s.retraits).toHaveLength(2);
+});
+
+test("un profil branché après la synchronisation reçoit aussitôt ses extensions", async () => {
+  const p = creer();
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await vi.waitFor(() => expect(s.chargements.map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "1.0.0_0")]));
+});
+
+test("un échec de chargement est gardé par clé, sans empêcher les autres ; il s'efface quand le chargement réussit", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  s.echecs.add(join(dossier, "copies", "casse"));
+  const extensions = { "agent:casse": entree("agent", ["defaut"]), [`store:${ID_A}`]: entree("store", ["defaut"]) };
+  await p.synchroniser(etatExt(extensions));
+  expect(p.erreursChargement().get("agent:casse")).toMatch(/Manifest file is missing/);
+  expect(s.charges.size).toBe(1);
+  s.echecs.clear();
+  await p.synchroniser(etatExt(extensions));
+  expect(p.erreursChargement().has("agent:casse")).toBe(false);
+  expect(s.charges.size).toBe(2);
+});
+
+test("createTab vers un profil sans espace : refusé", async () => {
+  const p = creer();
+  const s = fausseSession("orphelin");
+  p.brancher(s as unknown as Electron.Session, "orphelin");
+  await expect(rouages(s).ctx.store.impl.createTab({ url: "https://exemple.invalid/" })).rejects.toThrow(/Aucun espace/);
+  expect(ouvertures).toEqual([]);
+});
+
+test("createTab : l'espace actif s'il est du profil, sinon le premier espace du profil, jamais un espace d'un autre profil", async () => {
+  etat = etatNav(
+    [
+      { id: "autre-profil", profil: "autre" },
+      { id: "e1", profil: "defaut" },
+      { id: "e2", profil: "defaut" },
+    ],
+    "e2",
+  );
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const impl = rouages(s).ctx.store.impl;
+  await impl.createTab({ url: "https://exemple.invalid/1", active: false }).catch(() => {});
+  etat = { ...etat, fenetres: [{ ...etat.fenetres[0]!, espaceActif: "autre-profil" }] };
+  await impl.createTab({ url: "https://exemple.invalid/2" }).catch(() => {});
+  expect(ouvertures).toEqual([
+    { cible: { fenetreId: "f1", espaceId: "e2" }, url: "https://exemple.invalid/1", actif: false },
+    { cible: { fenetreId: "f1", espaceId: "e1" }, url: "https://exemple.invalid/2", actif: true },
+  ]);
+});
+
+test("notifications : détournées vers le fichier des tests, jamais montrées", async () => {
+  const p = creer({ notifications: true });
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const creerNotif = rouages(s).ctx.router.getHandler("notifications.create");
+  const extension = { id: "x".repeat(32), path: dossier, url: `chrome-extension://${"x".repeat(32)}/` };
+  const id = await creerNotif.callback({ extension }, "n1", { type: "basic", iconUrl: "data:,", title: "Titre", message: "Texte" });
+  expect(id).toBe("n1");
+  expect(notificationsMontrees).toEqual([]);
+  expect(readFileSync(fichierNotifications, "utf8").trim().split("\n").map((l) => JSON.parse(l))).toEqual([
+    { titre: "Titre", texte: "Texte", extension: "x".repeat(32) },
+  ]);
+});
+
+test("mode invisible sans fichier : les notifications sont jetées", async () => {
+  const p = creer({ invisible: true });
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const extension = { id: "x".repeat(32), path: dossier, url: `chrome-extension://${"x".repeat(32)}/` };
+  await rouages(s).ctx.router.getHandler("notifications.create").callback({ extension }, { type: "basic", iconUrl: "data:,", title: "T", message: "M" });
+  expect(notificationsMontrees).toEqual([]);
+  expect(existsSync(fichierNotifications)).toBe(false);
+});
+
+test("mode invisible : toute fenêtre créée ensuite reste cachée (show, showInactive, focus neutralisés)", () => {
+  creer({ invisible: true });
+  const montree = { show: vi.fn(), showInactive: vi.fn(), focus: vi.fn() };
+  const fenetre = { ...montree };
+  ecouteursApp.emit("browser-window-created", {}, fenetre);
+  fenetre.show();
+  fenetre.showInactive();
+  fenetre.focus();
+  expect(montree.show).not.toHaveBeenCalled();
+  expect(montree.showInactive).not.toHaveBeenCalled();
+  expect(montree.focus).not.toHaveBeenCalled();
+});

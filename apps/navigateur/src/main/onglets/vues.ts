@@ -94,6 +94,16 @@ export class GestionnaireVues {
       retenir?: (r: { url: string; espaceId: string; titre: string; texte: string }) => void;
       resultatRecherche?: (fenetreId: IdFenetre, r: { ongletId: IdOnglet; actif: number; total: number }) => void;
       pleinEcran?: (fenetreId: IdFenetre, actif: boolean) => void;
+      /**
+       * Les extensions voient les vues des onglets, et elles seules (jamais une popup de site, une lecture invisible ou
+       * une fenêtre d'appli) : `creee` à la création de chaque vue d'onglet, `activee` quand elle est attachée comme
+       * onglet actif de sa fenêtre, `detruite` avant sa fermeture.
+       */
+      extensions?: {
+        creee(wc: WebContents, fenetre: BrowserWindow): void;
+        activee(wc: WebContents): void;
+        detruite(wc: WebContents): void;
+      };
     },
   ) {}
 
@@ -131,6 +141,7 @@ export class GestionnaireVues {
         fenetre.contentView.addChildView(v);
         this.placer(f.id, v);
         this.attachees.set(f.id, cible);
+        this.o.extensions?.activee(v.webContents);
       }
     }
   }
@@ -140,15 +151,20 @@ export class GestionnaireVues {
    * zone de contenu de sa fenêtre, et chargée (15 s au plus).
    */
   async assurerVue(onglet: Onglet): Promise<WebContents> {
+    const wc = this.preparerVue(onglet);
+    await attendreChargement(wc, 15_000);
+    return wc;
+  }
+
+  /** Vue d'un onglet, créée sans être attachée s'il n'en a pas (à la taille de la zone de contenu), sans attendre sa page. */
+  preparerVue(onglet: Onglet): WebContents {
     if (!this.vues.has(onglet.id)) this.creerVue(onglet);
     const vue = this.vues.get(onglet.id)!;
     if (this.fenetreDe(onglet.id) === undefined) {
       const z = this.zones.get(onglet.fenetreId);
       vue.setBounds({ x: 0, y: 0, width: Math.round(z?.largeur || 1024), height: Math.round(z?.hauteur || 768) });
     }
-    const wc = vue.webContents;
-    await attendreChargement(wc, 15_000);
-    return wc;
+    return vue.webContents;
   }
 
   /** Texte et sélection, lus dans un monde isolé : la page ne peut pas falsifier ce que l'agent reçoit. */
@@ -284,6 +300,8 @@ export class GestionnaireVues {
     const wc = vue.webContents;
     this.vues.set(onglet.id, vue);
     this.sessions.set(onglet.id, session);
+    const fenetreOnglet = this.o.fenetres.get(onglet.fenetreId);
+    if (fenetreOnglet && !fenetreOnglet.isDestroyed()) this.o.extensions?.creee(wc, fenetreOnglet);
     const contexte = () => this.o.contexteHistorique?.(onglet.id) ?? null;
     brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, contexte);
     brancherBalayage(wc);
@@ -380,6 +398,9 @@ export class GestionnaireVues {
     // Page déjà fermée (onglet fermé par l'utilisateur, voir `fermer`) : la vue n'a plus de webContents. Lire
     // `isDestroyed()` dessus lèverait, et `synchroniser` s'arrêterait avant d'afficher l'onglet suivant.
     const wc = vue.webContents as WebContents | undefined;
-    if (wc && !wc.isDestroyed()) wc.close();
+    if (wc && !wc.isDestroyed()) {
+      this.o.extensions?.detruite(wc);
+      wc.close();
+    }
   }
 }
