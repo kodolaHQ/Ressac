@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { WebContents } from "electron";
 import {
@@ -9,11 +10,19 @@ import {
   type EtatExtensions,
   type IdProfil,
 } from "@webaios/noyau";
-import { aUneVue, profilsEnUsage, type EtatNavigateur } from "../../commun/modele";
+import type { CarteExtension } from "../../commun/extensions";
+import { aUneVue, profilsEnUsage, type Decision, type Demande, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
+import { attendreReponse } from "../agent/pont";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
+
+/**
+ * Pose une question dans une fenêtre (`poserQuestion` d'index.ts) : `fenetreId` absent, celle de l'agent (la fenêtre au
+ * premier plan, ou la dernière utilisée). Rend de quoi la retirer.
+ */
+export type PoserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Decision) => void) => () => void;
 
 /** Les profils de connexion utilisés par au moins un espace privé. */
 export function profilsPrives(etat: EtatNavigateur): Set<IdProfil> {
@@ -45,6 +54,7 @@ export class ServiceExtensions {
   private erreursPreparation = new Map<string, string>();
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
+  private poser: PoserQuestion | undefined;
   private o:
     | {
         dossier: string;
@@ -128,6 +138,40 @@ export class ServiceExtensions {
       () => profilsPrives(o.magasin.etat),
     );
     return resultat;
+  }
+
+  /**
+   * Branche les questions des fenêtres (après leur création). `carteTest` (e2e, `WEBAIOS_TEST_CARTE_EXTENSION`) : chemin
+   * d'un JSON `CarteExtension` posé tout de suite, sans délai ; la réponse est notée dans `<carteTest>.reponse`.
+   */
+  brancherQuestions(poser: PoserQuestion, o: { carteTest?: string } = {}): void {
+    this.poser = poser;
+    const chemin = o.carteTest;
+    if (!chemin) return;
+    void (async () => {
+      try {
+        const carte = JSON.parse(await readFile(chemin, "utf8")) as CarteExtension;
+        const accord = await this.demanderAccord(carte, {});
+        await writeFile(`${chemin}.reponse`, String(accord));
+      } catch (e) {
+        console.error("[extensions] carte de test :", e);
+      }
+    })();
+  }
+
+  /**
+   * La carte d'accord : vrai si l'utilisateur clique « Activer ». Sans `delaiMs` (demande venue d'un clic de l'utilisateur), elle
+   * attend ; l'agent passe `DELAI_QUESTION_MS`, au bout duquel elle tombe et vaut refus, comme un `signal` levé.
+   * Questions pas encore branchées : refus.
+   */
+  demanderAccord(c: CarteExtension, o: { fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal }): Promise<boolean> {
+    const poser = this.poser;
+    if (!poser) return Promise.resolve(false);
+    return attendreReponse(
+      (repondre) => poser({ permissions: ["extension"], origine: c.cle, extension: c, ...(o.fenetre ? { fenetreId: o.fenetre } : {}) }, repondre),
+      o.delaiMs ?? Infinity,
+      o.signal,
+    );
   }
 
   /** La dernière erreur de préparation ou de chargement de chaque clé. */

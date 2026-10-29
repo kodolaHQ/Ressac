@@ -15,6 +15,7 @@
     "lire-onglet": "lire un onglet",
     "outils-dev": "utiliser les outils de développement",
     "donnees-widget": "voir les données d'un widget",
+    extension: "activer une extension",
     autre: "une permission inconnue",
   };
 

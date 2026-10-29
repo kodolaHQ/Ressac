@@ -2,6 +2,7 @@
   import { onMount, tick, untrack } from "svelte";
   import { siteDe, type DemandeEnAttente, type IdOnglet } from "../../commun/modele";
   import { api } from "../etat.svelte";
+  import DemandeExtension from "./DemandeExtension.svelte";
   import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
   import FondFige from "./FondFige.svelte";
 
@@ -24,6 +25,7 @@
 
   const outilsDev = $derived(demande.permissions.includes("outils-dev"));
   const donneesWidget = $derived(demande.permissions.includes("donnees-widget"));
+  const extension = $derived(demande.permissions.includes("extension"));
   const site = $derived(siteDe(demande.origine));
 
   // Une seule ouverture pour toute la file : les demandes suivantes remplacent le contenu, la page reste cachée.
@@ -95,11 +97,27 @@
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
-    aria-label={outilsDev ? "Demande d'accès aux outils de développement" : donneesWidget ? "Demande d'accès aux données d'un widget" : "Demande d'autorisation"}
+    aria-label={outilsDev
+      ? "Demande d'accès aux outils de développement"
+      : donneesWidget
+        ? "Demande d'accès aux données d'un widget"
+        : extension
+          ? "Activer une extension"
+          : "Demande d'autorisation"}
   >
     {#key demande.id}
       {#if outilsDev}
         <DemandeOutilsDev {demande} />
+      {:else if extension}
+        {#if demande.extension}
+          <DemandeExtension {demande} carte={demande.extension} />
+        {:else}
+          <!-- Jamais posée sans carte ; si c'était le cas, rien ne s'active sans avoir été montré. -->
+          <div class="lecture">
+            <p>Demande d'extension illisible.</p>
+            <div class="actions"><button data-principal onclick={refuser}>Refuser</button></div>
+          </div>
+        {/if}
       {:else if donneesWidget}
         <div class="lecture" data-testid="demande-donnees-widget">
           <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>

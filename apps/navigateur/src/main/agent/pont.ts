@@ -95,6 +95,7 @@ export const DELAI_QUESTION_MS = 120_000;
 /**
  * Pose une question à l'utilisateur et attend sa réponse. `poser` affiche la question, reçoit de quoi y répondre, et
  * renvoie de quoi la retirer (appelé si le délai expire, ou si `signal` est levé : la réponse est alors un refus).
+ * `delaiMs` vaut `Infinity` pour une question sans délai.
  */
 export function attendreReponse(
   poser: (repondre: (d: Decision) => void) => () => void,
@@ -116,7 +117,8 @@ export function attendreReponse(
       retirer();
       repondre("refuser");
     };
-    const minuterie = setTimeout(abandon, delaiMs);
+    // `Infinity` : aucun délai (une question venue d'un clic de l'utilisateur attend sa réponse).
+    const minuterie = Number.isFinite(delaiMs) ? setTimeout(abandon, delaiMs) : undefined;
     const retirer = poser(repondre);
     signal?.addEventListener("abort", abandon, { once: true });
   });

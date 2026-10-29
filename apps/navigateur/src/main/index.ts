@@ -686,12 +686,16 @@ app.whenReady().then(async () => {
       cibles.raccourci(f, "agent");
     },
   });
-  /** Où s'affiche une question de l'agent : sa fenêtre, quel que soit l'onglet affiché. */
-  const poserQuestion = (champs: Omit<Demande, "ongletId" | "fenetreId">, repondre: (d: Decision, droits?: DroitDev[]) => void): (() => void) => {
+  /**
+   * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que
+   * soit l'onglet affiché.
+   */
+  const poserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Decision, droits?: DroitDev[]) => void): (() => void) => {
     const id = randomUUID();
-    const fenetreId = fenetreAgent();
+    const { fenetreId: demandee, ...reste } = champs;
+    const fenetreId = demandee && fenetres.has(demandee) ? demandee : fenetreAgent();
     questions.set(id, {
-      demande: { id, ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null, ...(fenetreId ? { fenetreId } : {}), ...champs },
+      demande: { id, ongletId: ongletActifDe(magasin.etat, fenetreId)?.id ?? null, ...(fenetreId ? { fenetreId } : {}), ...reste },
       repondre,
     });
     diffuser(CANAUX.permissions, enAttente());
@@ -700,6 +704,10 @@ app.whenReady().then(async () => {
       diffuser(CANAUX.permissions, enAttente());
     };
   };
+  // Les cartes d'accord des extensions passent par les mêmes questions (modale de la fenêtre).
+  serviceExtensions.brancherQuestions(poserQuestion, {
+    ...(process.env.WEBAIOS_TEST_CARTE_EXTENSION ? { carteTest: process.env.WEBAIOS_TEST_CARTE_EXTENSION } : {}),
+  });
   /** Une question de l'agent sur un onglet (lecture, outils de développement) : elle tombe avec l'onglet. */
   const poserQuestionAgent = (
     o: OngletInfo,

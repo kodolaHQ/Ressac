@@ -7,6 +7,12 @@ import type { DemandeEnAttente } from "../../commun/modele";
  */
 export const modale = $state<{ masquer: boolean; zone: Bornes | null }>({ masquer: false, zone: null });
 
-/** Les demandes de l'agent (lecture, outils de développement, données d'un widget) s'ouvrent en modale ; celles des sites restent un bandeau. */
+/**
+ * Les demandes de l'agent (lecture, outils de développement, données d'un widget) et les cartes d'accord des extensions
+ * s'ouvrent en modale ; celles des sites restent un bandeau.
+ */
 export const estDemandeAgent = (d: DemandeEnAttente) =>
-  d.permissions.includes("lire-onglet") || d.permissions.includes("outils-dev") || d.permissions.includes("donnees-widget");
+  d.permissions.includes("lire-onglet") ||
+  d.permissions.includes("outils-dev") ||
+  d.permissions.includes("donnees-widget") ||
+  d.permissions.includes("extension");

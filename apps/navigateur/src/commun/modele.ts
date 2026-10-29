@@ -1,4 +1,5 @@
 import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
+import type { CarteExtension } from "./extensions";
 
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
 export const URL_APPLICATIONS = "webaios://applications";
@@ -210,6 +211,8 @@ export type Permission =
   | "outils-dev"
   /** L'agent veut voir les données d'un widget lues avec le compte de l'utilisateur (pour la conversation en cours). */
   | "donnees-widget"
+  /** Activer (ou mettre à jour) une extension : la carte d'accord, venue d'un clic de l'utilisateur ou de l'agent. */
+  | "extension"
   | "autre";
 export type Decision = "autoriser" | "refuser";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
@@ -233,6 +236,8 @@ export interface Demande {
   raison?: string;
   /** « outils-dev » et « donnees-widget » : le nom de l'agent, affiché tel quel. */
   agent?: string;
+  /** « extension » : la carte d'accord, affichée en texte. */
+  extension?: CarteExtension;
 }
 export interface DemandeEnAttente extends Demande {
   id: string;
