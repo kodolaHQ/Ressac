@@ -2,6 +2,7 @@ import { appendFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { app, ipcMain, session as sessionsElectron, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
 import { ElectronChromeExtensions } from "electron-chrome-extensions";
+import { installChromeWebStore } from "electron-chrome-web-store";
 import { chargeesDans, lireCle, type EtatExtensions, type IdProfil } from "@webaios/noyau";
 import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
 import { connexionNative } from "./natif";
@@ -159,6 +160,11 @@ export class ExtensionsProfils {
       verifierUrl?(extension: Electron.Extension, url: string): boolean;
       /** `tabs.insertCSS` d'une extension dans un onglet à l'adresse `url` ; absent : permis. */
       verifierHote?(extension: Electron.Extension, url: string): boolean;
+      /**
+       * `beforeInstall` de la page du Chrome Web Store dans la session de ce profil (store.ts, `avantInstallation`) ;
+       * absent : la page du Store n'est pas équipée.
+       */
+      avantInstallationStore?(s: Session, profil: IdProfil): (details: { id: string; frame: Electron.WebFrameMain }) => Promise<{ action: "allow" | "deny" }>;
     },
   ) {
     instancesVivantes.add(this);
@@ -233,6 +239,14 @@ export class ExtensionsProfils {
     if (this.o.invisible || this.o.fichierNotifications) detournerNotifications(extensions, this.o.fichierNotifications);
     this.instances.set(profil, { session: s, extensions });
     this.chargees.set(profil, new Map());
+    // La page du Store dans ce profil : la bibliothèque ne charge rien (`loadExtensions: false`), ne met rien à jour, et
+    // n'installe jamais elle-même (`beforeInstall` ne rend `allow` que pour une extension déjà chargée par nous).
+    const avant = this.o.avantInstallationStore?.(s, profil);
+    if (avant) {
+      void installChromeWebStore({ session: s, extensionsPath: join(this.o.dossier, "store"), loadExtensions: false, autoUpdate: false, beforeInstall: avant }).catch(
+        (erreur: unknown) => console.error(`[extensions] page du Store non équipée dans le profil ${profil} :`, erreur),
+      );
+    }
     if (this.dernier) void this.synchroniser(this.dernier);
   }
 

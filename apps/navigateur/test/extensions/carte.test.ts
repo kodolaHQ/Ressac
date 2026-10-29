@@ -308,6 +308,18 @@ test("« Désactiver toutes les extensions » retire les cartes ouvertes ; tant 
   expect(posees).toHaveLength(1);
 });
 
+test("pendant la coupure, une carte demandée par un clic de l'utilisateur (pendantCoupure) est posée et ne tombe pas à l'écriture suivante ; une autre demande ne la rejoint pas", async () => {
+  const { service, posees } = await avecRegistre({}, true);
+  const ouverte = service.demanderAccord(CARTE, { pendantCoupure: true });
+  expect(posees).toHaveLength(1);
+  // Une demande identique sans `pendantCoupure` (l'agent) : refusée, sans rejoindre la carte.
+  await expect(service.demanderAccord(CARTE, {})).resolves.toMatchObject({ accepte: false });
+  await service.modifier((e) => ({ ...e, toutesCoupees: true }));
+  expect(posees[0]!.retiree).toBe(false);
+  posees[0]!.repondre("autoriser");
+  await expect(ouverte).resolves.toMatchObject({ accepte: true });
+});
+
 test("une carte dont l'espace n'existe plus n'est pas posée", async () => {
   const { service, posees } = await avecRegistre({});
   await expect(service.demanderAccord({ ...CARTE, espaceId: "disparu" }, {})).resolves.toMatchObject({ accepte: false });

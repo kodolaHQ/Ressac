@@ -1,0 +1,240 @@
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { webContents, type Session, type WebContents, type WebFrameMain } from "electron";
+import {
+  activer,
+  analyserManifeste,
+  cleExtension,
+  empreintePortee,
+  lireCle,
+  retirer,
+  type EtatExtensions,
+  type IdProfil,
+  type Portee,
+} from "@webaios/noyau";
+import { carteDe, SAISIE_INVALIDE, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
+import type { Espace, EtatNavigateur, IdFenetre } from "../../commun/modele";
+import { telechargerStore, urlCrx } from "./telechargement";
+
+export { SAISIE_INVALIDE };
+export const INSTALLATION_REFUSEE = "Installation refusée";
+
+const ID_CHROME = /^[a-p]{32}$/;
+
+/**
+ * L'id d'une extension du Store saisi par l'utilisateur : l'id seul, ou l'adresse de sa page
+ * (`https://chromewebstore.google.com/detail/<nom>/<id>`, ou l'ancienne `https://chrome.google.com/webstore/detail/…`) ;
+ * null pour toute autre saisie (autre site, autre page du Store, http).
+ */
+export function idDepuisSaisie(saisie: string): string | null {
+  const s = saisie.trim();
+  if (ID_CHROME.test(s)) return s;
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
+  const morceaux = u.pathname.split("/").filter(Boolean);
+  let reste: string[];
+  if (u.hostname === "chromewebstore.google.com" && morceaux[0] === "detail") reste = morceaux.slice(1);
+  else if (u.hostname === "chrome.google.com" && morceaux[0] === "webstore" && morceaux[1] === "detail") reste = morceaux.slice(2);
+  else return null;
+  // `<nom>/<id>` ou `<id>` seul : l'id est toujours le dernier segment.
+  if (reste.length < 1 || reste.length > 2) return null;
+  const id = reste[reste.length - 1]!;
+  return ID_CHROME.test(id) ? id : null;
+}
+
+/** Où l'extension est demandée : le profil de connexion, l'espace montré sur la carte, la fenêtre de la carte. */
+export interface ContexteInstallation {
+  profil: IdProfil;
+  espace: Espace;
+  fenetre: IdFenetre;
+}
+
+export type ResultatStore = { ok: true } | { ok: false; erreur: string };
+
+/** Ce dont l'installation a besoin du service des extensions (`ServiceExtensions.dependancesStore`). */
+export interface DependancesStore {
+  /** `<userData>/extensions`. */
+  dossier: string;
+  /** Adresse du CRX (tests : un faux Store local) ; par défaut `urlCrx`. */
+  urlCrx?: (id: string) => string;
+  etatNavigateur(): EtatNavigateur;
+  etatExtensions(): EtatExtensions;
+  /** Modifie le registre ; les sessions sont synchronisées avant qu'il ne rende. */
+  modifier(changer: (e: EtatExtensions, profilsPrives: ReadonlySet<IdProfil>) => EtatExtensions): Promise<EtatExtensions>;
+  demanderAccord(c: CarteExtension, o: { fenetre?: IdFenetre; pendantCoupure?: boolean }): Promise<ReponseAccord>;
+  /** `preparerStore` du noyau sur une version installée (lève si elle échoue). */
+  preparer(cle: string, dossierVersion: string): Promise<void>;
+}
+
+/** Une opération à la fois par extension (téléchargement, installation, désinstallation), par dossier. */
+const files = new Map<string, Promise<unknown>>();
+function uneAlaFois<T>(cle: string, f: () => Promise<T>): Promise<T> {
+  const suivante = (files.get(cle) ?? Promise.resolve()).catch(() => {}).then(f);
+  files.set(cle, suivante);
+  void suivante
+    .finally(() => {
+      if (files.get(cle) === suivante) files.delete(cle);
+    })
+    .catch(() => {});
+  return suivante;
+}
+
+async function lireManifeste(dossierVersion: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(join(dossierVersion, "manifest.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Accord écrit seulement si l'utilisateur a accepté exactement la portée qu'on enregistre. */
+function accordPour(r: ReponseAccord, portee: Portee): boolean {
+  return r.accepte && r.empreinte === empreintePortee(portee);
+}
+
+/**
+ * Installe une extension du Store pour l'espace de `o` : téléchargée et vérifiée dans `<dossier>/store-attente/`,
+ * analysée (un refus n'est jamais montré), la carte d'accord ; refusée, le dossier est retiré ; acceptée, déplacée sous
+ * `<dossier>/store/<id>/<version>_0`, préparée, puis inscrite au registre (accord = portée montrée, active dans ce
+ * profil) et les sessions synchronisées. Déjà installée : pas de téléchargement, la carte (même portée) puis activation
+ * dans ce profil. Pendant la coupure générale, la carte est montrée (clic de l'utilisateur) et l'extension installée et
+ * accordée, mais rien n'est chargé. Une à la fois par id.
+ */
+export function installerStore(id: string, o: ContexteInstallation, d: DependancesStore): Promise<ResultatStore> {
+  if (!ID_CHROME.test(id)) return Promise.resolve({ ok: false, erreur: SAISIE_INVALIDE });
+  return uneAlaFois(`${d.dossier}|${id}`, () => installer(id, o, d));
+}
+
+async function installer(id: string, o: ContexteInstallation, d: DependancesStore): Promise<ResultatStore> {
+  const cle = cleExtension("store", id);
+  const demander = (c: CarteExtension) => d.demanderAccord(c, { fenetre: o.fenetre, pendantCoupure: true });
+  const carte = (portee: { nom: string; version: string; portee: Portee; refus: string[]; avertissements: string[] }) =>
+    carteDe(portee, { cle, source: "store", espace: o.espace, etat: d.etatNavigateur() });
+
+  // Déjà installée (entrée au registre, version sur le disque) : rien à télécharger.
+  const connue = d.etatExtensions().extensions[cle];
+  const dossierConnu = connue ? join(d.dossier, "store", id, `${connue.version}_0`) : null;
+  if (connue && dossierConnu && existsSync(join(dossierConnu, "manifest.json"))) {
+    if (connue.accord && connue.profils.includes(o.profil)) return { ok: true };
+    const analyse = analyserManifeste(await lireManifeste(dossierConnu), { source: "store" });
+    if (analyse.refus.length > 0) return { ok: false, erreur: analyse.refus.join(" ; ") };
+    const r = await demander(carte(analyse));
+    if (!accordPour(r, analyse.portee)) return { ok: false, erreur: INSTALLATION_REFUSEE };
+    try {
+      await d.modifier((e, prives) => {
+        const x = e.extensions[cle];
+        if (!x) throw new Error("Extension retirée pendant la carte : installation annulée");
+        return activer({ ...e, extensions: { ...e.extensions, [cle]: { ...x, accord: analyse.portee } } }, cle, o.profil, prives);
+      });
+    } catch (e) {
+      return { ok: false, erreur: (e as Error).message };
+    }
+    return { ok: true };
+  }
+
+  // Un essai interrompu a pu laisser une version décompressée : le `rename` de la bibliothèque échouerait (ENOTEMPTY,
+  // rapporté en CRX_INVALIDE). L'attente de cet id ne sert qu'à cette installation, une à la fois.
+  const attente = join(d.dossier, "store-attente");
+  await rm(join(attente, id), { recursive: true, force: true });
+  let telecharge: string;
+  try {
+    telecharge = await telechargerStore(id, attente, (d.urlCrx ?? urlCrx)(id));
+  } catch (e) {
+    console.error(`[extensions] ${cle} non téléchargée :`, (e as Error).cause ?? e);
+    return { ok: false, erreur: (e as Error).message };
+  }
+  const nettoyer = () => rm(join(attente, id), { recursive: true, force: true });
+  try {
+    const analyse = analyserManifeste(await lireManifeste(telecharge), { source: "store" });
+    if (analyse.refus.length > 0) return { ok: false, erreur: analyse.refus.join(" ; ") };
+    const r = await demander(carte(analyse));
+    if (!accordPour(r, analyse.portee)) return { ok: false, erreur: INSTALLATION_REFUSEE };
+
+    const cible = join(d.dossier, "store", id, `${analyse.version}_0`);
+    await mkdir(join(d.dossier, "store", id), { recursive: true });
+    // Un dossier à ce nom ici n'est jamais chargé (déjà installée, on ne serait pas là) : reste d'une désinstallation
+    // interrompue, remplacé.
+    await rm(cible, { recursive: true, force: true });
+    await rename(telecharge, cible);
+    try {
+      await d.preparer(cle, cible);
+    } catch (e) {
+      await rm(cible, { recursive: true, force: true });
+      return { ok: false, erreur: `Extension non préparée : ${(e as Error).message}` };
+    }
+    await d.modifier((e) => {
+      const avant = e.extensions[cle];
+      const profils = avant ? [...new Set([...avant.profils, o.profil])] : [o.profil];
+      return {
+        ...e,
+        extensions: {
+          ...e.extensions,
+          [cle]: {
+            source: "store",
+            idChrome: id,
+            nom: analyse.nom,
+            version: analyse.version,
+            accord: analyse.portee,
+            profils,
+            epinglee: avant?.epinglee ?? false,
+            modifieeLe: null,
+            desactivee: null,
+            majEnAttente: null,
+            vues: avant?.vues ?? {},
+          },
+        },
+      };
+    });
+    return { ok: true };
+  } catch (e) {
+    console.error(`[extensions] ${cle} non installée :`, e);
+    return { ok: false, erreur: (e as Error).message };
+  } finally {
+    await nettoyer();
+  }
+}
+
+/**
+ * Désinstalle une extension : retirée du registre (les sessions la retirent avant que `modifier` ne rende), puis son
+ * dossier effacé (`store/<id>`, ou la copie de l'agent `copies/<dossier>`). Une à la fois avec ses installations.
+ */
+export function desinstallerStore(cle: string, d: DependancesStore): Promise<void> {
+  const lue = lireCle(cle);
+  if (!lue) return Promise.reject(new Error(`Clé d'extension invalide : ${cle}`));
+  return uneAlaFois(`${d.dossier}|${lue.id}`, async () => {
+    await d.modifier((e) => retirer(e, cle));
+    await rm(join(d.dossier, lue.source === "store" ? "store" : "copies", lue.id), { recursive: true, force: true });
+  });
+}
+
+/**
+ * `beforeInstall` de la bibliothèque du Store pour la session d'un profil : l'onglet de la page du Store (son espace et
+ * sa fenêtre) passe par notre installation ; `allow` seulement si elle a réussi ET que l'extension est chargée dans
+ * cette session (la bibliothèque la trouve alors chargée et ne fait rien de plus). Sinon `deny` : la bibliothèque ne
+ * charge ni ne télécharge jamais rien elle-même (coupure générale, carte refusée, onglet inconnu, autre profil).
+ */
+export function avantInstallation(o: {
+  profil: IdProfil;
+  session: Pick<Session, "extensions">;
+  contexteDe(wc: WebContents): ContexteInstallation | null;
+  installer(id: string, c: ContexteInstallation): Promise<ResultatStore>;
+}): (details: { id: string; frame: WebFrameMain }) => Promise<{ action: "allow" | "deny" }> {
+  return async (details) => {
+    try {
+      const wc = webContents.fromFrame(details.frame);
+      const c = wc ? o.contexteDe(wc) : null;
+      if (!c || c.profil !== o.profil) return { action: "deny" };
+      const r = await o.installer(details.id, c);
+      return r.ok && o.session.extensions.getExtension(details.id) ? { action: "allow" } : { action: "deny" };
+    } catch (e) {
+      console.error("[extensions] installation depuis la page du Store :", e);
+      return { action: "deny" };
+    }
+  };
+}

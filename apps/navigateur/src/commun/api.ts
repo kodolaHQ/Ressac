@@ -222,6 +222,15 @@ export interface ApiWebaios {
     surChange(rappel: () => void): () => void;
     agir(dossier: string, action: ActionApplication): void;
   };
+  extensions: {
+    /**
+     * Installe une extension du Chrome Web Store (adresse de sa page ou id) dans l'espace actif de cette fenêtre, après la
+     * carte d'accord. Saisie illisible : « Adresse ou identifiant du Chrome Web Store attendu ».
+     */
+    installerStore(saisie: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    /** Le registre des extensions a changé : relire. */
+    surChange(rappel: () => void): () => void;
+  };
 }
 
 /** Une appli telle que la page l'affiche : ce que dit le gestionnaire, et ce que le navigateur en a retenu. */

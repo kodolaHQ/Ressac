@@ -1,6 +1,9 @@
 import { accordRenforce, empreintePortee, libellesPortee, type AnalyseManifeste, type SourceExtension } from "@webaios/noyau";
 import type { Espace, EtatNavigateur } from "./modele";
 
+/** Réponse à une saisie qui n'est ni un id d'extension, ni l'adresse de sa page du Chrome Web Store. */
+export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
+
 /** Ce que montre la carte d'accord d'une extension (DemandeExtension.svelte) : tout y est affiché en texte. */
 export interface CarteExtension {
   cle: string;

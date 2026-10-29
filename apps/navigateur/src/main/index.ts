@@ -40,6 +40,7 @@ import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
+import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
 
 declare const __RESSOURCES_NOYAU__: string;
 
@@ -364,6 +365,19 @@ app.whenReady().then(async () => {
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     preloadCorrectifs: join(__dirname, "../preload/extensions.js"),
     noterVue: (cle, profil, version) => serviceExtensions.noterVue(cle, profil, version),
+    // La page du Chrome Web Store passe par notre installation (carte, téléchargement vérifié, préparation).
+    avantInstallationStore: (s, profil) =>
+      avantInstallation({
+        profil,
+        session: s,
+        contexteDe: (wc) => {
+          const id = vues.ongletDe(wc);
+          const o = id ? magasin.etat.onglets[id] : undefined;
+          const espace = o && magasin.etat.espaces.find((e) => e.id === o.espaceId);
+          return o && espace ? { profil: espace.profil, espace, fenetre: o.fenetreId } : null;
+        },
+        installer: (id, c) => serviceExtensions.installerStore(id, c),
+      }),
     // verifierUrl / verifierHote : branchés par la tâche 12 pour les extensions de l'agent ; absents, tout est permis.
   });
   // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.
@@ -406,7 +420,15 @@ app.whenReady().then(async () => {
   // Lancé ici, attendu plus bas (avant les fenêtres) : son abonnement au magasin, posé tout de suite, passe ainsi avant
   // celui des vues (un espace devenu privé perd ses extensions de l'agent avant que ses pages ne se chargent).
   const demarrageExtensions = serviceExtensions
-    .demarrer({ dossier: join(dossier, "extensions"), profils: extensions, sessions, vues, magasin, dossierGardes: join(__RESSOURCES_NOYAU__, "extensions") })
+    .demarrer({
+      dossier: join(dossier, "extensions"),
+      profils: extensions,
+      sessions,
+      vues,
+      magasin,
+      dossierGardes: join(__RESSOURCES_NOYAU__, "extensions"),
+      surChange: () => diffuser(CANAUX.extensionsChange, null),
+    })
     .catch((e) => console.error("[extensions] démarrage :", e));
   // Un onglet fermé (ou parti vers un autre site, pour les outils de développement) ne répondra jamais : ses questions
   // sont refusées. Une fenêtre d'appli (`app:<dossier>`) n'est pas dans l'état : on regarde ses fenêtres ouvertes.
@@ -556,6 +578,17 @@ app.whenReady().then(async () => {
     applications: {
       liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
       agir: (dossier, action, f) => applications?.agir(dossier, action, f),
+    },
+    extensions: {
+      // Dans l'espace actif de la fenêtre émettrice ; la carte s'ouvre dans cette fenêtre.
+      installerStore: async (saisie, fenetreId) => {
+        const id = idDepuisSaisie(saisie);
+        if (!id) return { ok: false, erreur: SAISIE_INVALIDE };
+        const f = magasin.etat.fenetres.find((x) => x.id === fenetreId);
+        const espace = f && magasin.etat.espaces.find((e) => e.id === f.espaceActif);
+        if (!espace) return { ok: false, erreur: "Aucun espace actif dans cette fenêtre" };
+        return serviceExtensions.installerStore(id, { profil: espace.profil, espace, fenetre: fenetreId });
+      },
     },
     acces: {
       etat: etatAcces,

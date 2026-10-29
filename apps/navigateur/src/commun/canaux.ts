@@ -63,6 +63,9 @@ export const CANAUX = {
   accesCouper: "webaios:acces-couper",
   pastilleTaille: "webaios:pastille-taille",
   apercuPage: "webaios:apercu-page",
+  extensionsInstallerStore: "webaios:extensions-installer-store",
+  /** Diffusé après chaque changement du registre des extensions (sans contenu : relire). */
+  extensionsChange: "webaios:extensions-change",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

@@ -104,6 +104,10 @@ const api: ApiWebaios = {
     surChange: (rappel) => ecouter(CANAUX.applicationsChange, () => rappel()),
     agir: (dossier, action) => ipcRenderer.send(CANAUX.applicationAction, { dossier, action }),
   },
+  extensions: {
+    installerStore: (saisie) => ipcRenderer.invoke(CANAUX.extensionsInstallerStore, saisie),
+    surChange: (rappel) => ecouter(CANAUX.extensionsChange, () => rappel()),
+  },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
     ipcRenderer.on(CANAUX.telechargements, ecouteur);

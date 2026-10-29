@@ -17,6 +17,7 @@ import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
+import { desinstallerStore, installerStore, type ContexteInstallation, type DependancesStore, type ResultatStore } from "./store";
 
 /**
  * Pose une question dans une fenêtre (`poserQuestion` d'index.ts) : `fenetreId` absent, celle de l'agent (la fenêtre au
@@ -31,6 +32,8 @@ interface CarteOuverte {
   retrait: AbortController;
   connue: boolean;
   attentes: number;
+  /** Posée pendant la coupure générale par un clic de l'utilisateur (installation du Store) : la coupure ne la fait pas tomber. */
+  pendantCoupure: boolean;
 }
 
 /** Deux demandes partagent une carte seulement si ce qu'elle montre est le même : clé, espace, mise à jour, renforcé, portée. */
@@ -77,6 +80,7 @@ export class ServiceExtensions {
         vues: GestionnaireVues;
         magasin: Magasin;
         dossierGardes: string;
+        surChange?: () => void;
       }
     | undefined;
 
@@ -89,6 +93,8 @@ export class ServiceExtensions {
     magasin: Magasin;
     /** Les gardes et correctifs livrés (`packages/noyau/extensions`). */
     dossierGardes: string;
+    /** Après chaque écriture du registre (`CANAUX.extensionsChange`). */
+    surChange?: () => void;
   }): Promise<void> {
     this.o = o;
     // Posé d'abord, de façon synchrone : il existe même si la lecture du registre échoue, et index.ts appelle `demarrer`
@@ -125,6 +131,7 @@ export class ServiceExtensions {
     this.etat = await modifierEtatExtensions(o.dossier, changer, () => profilsPrives(o.magasin.etat));
     this.perimerCartes();
     await this.appliquer();
+    o.surChange?.();
     return this.etat;
   }
 
@@ -152,6 +159,7 @@ export class ServiceExtensions {
       },
       () => profilsPrives(o.magasin.etat),
     );
+    if (resultat.nouvelle) o.surChange?.();
     return resultat;
   }
 
@@ -183,21 +191,33 @@ export class ServiceExtensions {
    * (`questionCaduque`), sa fenêtre fermée sans autre fenêtre (index.ts). Une demande identique (`signatureCarte`) rejoint
    * la carte affichée ; elle garde son délai et son signal, qui ne refusent qu'elle.
    */
-  demanderAccord(c: CarteExtension, o: { fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal }): Promise<ReponseAccord> {
+  demanderAccord(
+    c: CarteExtension,
+    o: { fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal; pendantCoupure?: boolean },
+  ): Promise<ReponseAccord> {
     const refus: ReponseAccord = { accepte: false, empreinte: c.empreinte };
     if (o.signal?.aborted) return Promise.resolve(refus);
+    const coupee = this.etat.toutesCoupees && o.pendantCoupure !== true;
     // Une carte identique déjà affichée : la demande la rejoint (même réponse). Sinon, une carte à part, en file comme
     // les autres questions.
     const signature = signatureCarte(c);
     let carte = this.cartes.get(signature);
+    if (carte && coupee) return Promise.resolve(refus);
     if (!carte) {
       const poser = this.poser;
-      if (!poser || this.etat.toutesCoupees) return Promise.resolve(refus);
+      if (!poser || coupee) return Promise.resolve(refus);
       const demande = { permissions: ["extension" as const], origine: c.cle, extension: c, ...(o.fenetre ? { fenetreId: o.fenetre } : {}) };
       // Déjà caduque (espace disparu, profil privé pour l'agent) : pas de carte.
       if (this.o && questionCaduque({ ...demande, id: "", ongletId: null }, this.o.magasin.etat)) return Promise.resolve(refus);
       const retrait = new AbortController();
-      const ouverte: CarteOuverte = { cle: c.cle, reponse: Promise.resolve(false), retrait, connue: c.cle in this.etat.extensions, attentes: 0 };
+      const ouverte: CarteOuverte = {
+        cle: c.cle,
+        reponse: Promise.resolve(false),
+        retrait,
+        connue: c.cle in this.etat.extensions,
+        attentes: 0,
+        pendantCoupure: o.pendantCoupure === true,
+      };
       // La carte elle-même n'a pas de délai : chaque demande a le sien (ci-dessous). Elle tombe quand plus personne ne
       // l'attend, ou par `perimerCartes`.
       ouverte.reponse = attendreReponse((repondre) => poser(demande, repondre), Infinity, retrait.signal).finally(() => {
@@ -239,10 +259,40 @@ export class ServiceExtensions {
   /** Après chaque écriture du registre : les cartes d'une extension retirée, ou toutes si tout est coupé, tombent. */
   private perimerCartes(): void {
     for (const [signature, carte] of this.cartes)
-      if (this.etat.toutesCoupees || (carte.connue && !(carte.cle in this.etat.extensions))) {
+      if ((this.etat.toutesCoupees && !carte.pendantCoupure) || (carte.connue && !(carte.cle in this.etat.extensions))) {
         this.cartes.delete(signature);
         carte.retrait.abort();
       }
+  }
+
+  /** Installe une extension du Store (voir `installerStore` de store.ts) : la carte, puis le registre et les sessions. */
+  installerStore(id: string, c: ContexteInstallation): Promise<ResultatStore> {
+    if (!this.o) return Promise.resolve({ ok: false, erreur: "Service des extensions non démarré" });
+    return installerStore(id, c, this.dependancesStore());
+  }
+
+  /** Retire une extension de toutes les sessions et du registre, et efface son dossier. */
+  desinstaller(cle: string): Promise<void> {
+    return desinstallerStore(cle, this.dependancesStore());
+  }
+
+  private dependancesStore(): DependancesStore {
+    const o = this.o;
+    if (!o) throw new Error("Service des extensions non démarré");
+    return {
+      dossier: o.dossier,
+      etatNavigateur: () => o.magasin.etat,
+      etatExtensions: () => this.etat,
+      modifier: (changer) => this.modifier(changer),
+      demanderAccord: (c, x) => this.demanderAccord(c, x),
+      // Avant le chargement : un bloqueur purement déclaratif bloque dès l'installation (fond minimal, rulesets).
+      // Un échec est rendu à l'installation (le dossier est retiré, rien n'est inscrit) ; une réussite efface l'erreur
+      // d'une préparation précédente de la même clé.
+      preparer: async (cle, chemin) => {
+        await preparerStore(chemin, o.dossierGardes);
+        this.erreursPreparation.delete(cle);
+      },
+    };
   }
 
   /** La dernière erreur de préparation ou de chargement de chaque clé. */
