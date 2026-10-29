@@ -120,6 +120,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     avancer: (ms: number) => (maintenant = new Date(maintenant.getTime() + ms)),
     fixerAtelier: (e: EtatAtelier) => (etatAtelier = e),
     fixer: (d: Date) => (maintenant = d),
+    horloge,
     /** Un nouveau planificateur sur les mêmes dossiers (WebAiOs relancé) ; l'appelant a arrêté le précédent. */
     relancer: () => (p = new PlanificateurWidgets(options())),
   };
@@ -1036,7 +1037,7 @@ test("échecs : réessayé 15 min après, 3 fois au plus, puis rien jusqu'à l'h
     if (duMatin(recoltes) > avant) tentatives.push(`${new Date(t).getHours()}:${String(new Date(t).getMinutes()).padStart(2, "0")}`);
   }
   expect(tentatives).toEqual(["7:00", "7:15", "7:30", "7:45", "12:00"]);
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1 } });
+  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1, fin: le(12, 0).toISOString() } });
 });
 
 test("une exécution manuelle avant la première heure n'efface pas le suivi de la veille ; une à 07:10 compte pour 07:00", async () => {
@@ -1079,4 +1080,78 @@ test("le suivi des heures survit à un accord retiré puis redonné", async () =
   fixer(le(7, 30));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(2);
+});
+
+test("veille en échec après 30 min : le réessai part au plus tôt 15 min après la fin de l'échec", async () => {
+  const { p, c, recolter, fixer, horloge, avancer, dossierWidgets } = await preparer({ statut: "erreur" });
+  await ecrireMatin(c, { heures: ["07:00", "12:00"] });
+  const base = recolter.getMockImplementation()!;
+  const departs: string[] = [];
+  recolter.mockImplementation(async (o) => {
+    if (o.id !== "matin") return base(o);
+    const debut = horloge();
+    departs.push(`${debut.getHours()}:${String(debut.getMinutes()).padStart(2, "0")}`);
+    // derniereTentative = le début, comme la vraie récolte ; l'échec arrive 30 min plus tard.
+    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: debut.toISOString() });
+    avancer(30 * MIN);
+    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" });
+    return { etat: { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" } };
+  });
+  fixer(le(7, 0));
+  while (horloge() < le(11, 59)) {
+    await p.verifier({ auLancement: false });
+    avancer(MIN);
+  }
+  expect(departs).toEqual(["7:00", "7:45", "8:30", "9:15"]);
+  const { heures } = await lireEtatWidget(dossierWidgets, "matin");
+  expect(heures?.echecs).toMatchObject({ heure: "2026-10-29T07:00", nombre: 4 });
+});
+
+test("arrêt brutal : l'état d'avant l'exécution (erreur) est remis ; arrêt propre : rien de l'exécution ne reste", async () => {
+  const { p, c, recolter, fixer, dossierWidgets, atelier, recoltes } = await preparer();
+  await ecrireMatin(c, { heures: ["07:00"] });
+  const heures = { faite: "2026-10-29T07:00", echecs: null };
+  await ecrireEtatWidget(dossierWidgets, "matin", {
+    statut: "en-cours", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures,
+    avant: { statut: "erreur", erreur: "Sélecteur introuvable", erreurNoyau: true },
+  });
+  fixer(le(9, 0));
+  await p.verifier({ auLancement: true });
+  expect(duMatin(recoltes)).toBe(0);
+  expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({
+    statut: "erreur", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), erreur: "Sélecteur introuvable", erreurNoyau: true, heures,
+  });
+  // Arrêt propre pendant une vraie récolte : l'état d'avant revient sans le champ avant.
+  const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await ecrireEtatWidget(dossierWidgets, "actus", avant);
+  let tuer!: () => void;
+  const lance = vi.fn();
+  const lancer: LanceurProcessus = () => {
+    lance();
+    const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
+    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => tuer(), fin };
+  };
+  recolter.mockImplementation((o) => executerRecolte({ ...o, lancer }));
+  atelier.supprimerRecolte = async () => tuer?.();
+  const maintenant = p.recolterMaintenant("actus");
+  await vi.waitFor(() => expect(lance).toHaveBeenCalled());
+  expect((await lireEtatWidget(dossierWidgets, "actus")).avant).toEqual({ statut: "ok" });
+  await p.arreter();
+  await maintenant;
+  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
+});
+
+test("un rappel surChange qui lève pendant la remise au démarrage ne bloque pas les exécutions", async () => {
+  const { dossierWidgets, recoltes, relancer, p: premier } = await preparer({ options: { surChange: () => { throw new Error("rappel"); } } });
+  await premier.arreter();
+  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
+  const p2 = relancer();
+  const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await p2.recolterMaintenant("actus").catch(() => {});
+    await expect(p2.verifier({ auLancement: true })).resolves.toEqual(expect.any(Array));
+  } finally {
+    erreurs.mockRestore();
+  }
+  expect(recoltes.length).toBeGreaterThan(0);
 });

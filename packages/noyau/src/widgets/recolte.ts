@@ -224,6 +224,12 @@ function marquerInterrompue(execution: Execution): void {
   execution.blocs = execution.blocs.map((b) => (b.debut !== null && b.fin === null ? { ...b, statut: "interrompu" } : b));
 }
 
+/** Statut et erreur d'avant une exécution (ceux d'avant la précédente, si elle-même n'a pas fini). */
+function etatAvantExecution(e: EtatWidget): NonNullable<EtatWidget["avant"]> {
+  if (e.statut === "en-cours") return e.avant ?? { statut: "ok" };
+  return { statut: e.statut, ...(e.erreur !== undefined ? { erreur: e.erreur } : {}), ...(e.erreurNoyau ? { erreurNoyau: true as const } : {}) };
+}
+
 /**
  * La récolte d'un widget : l'exécution de son workflow (`workflow.json`, ou `recolte.mjs` seul, en workflow implicite)
  * par le moteur, qui n'écrit rien. Ici, ce qui est gardé : `etat.json` (en-cours au début), et selon l'issue
@@ -239,7 +245,9 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
   const declencheur = o.declencheur ?? "planifiee";
   const precedent = await lireEtatWidget(dossierWidgets, id);
   const debut = horloge().toISOString();
-  await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut });
+  // L'état d'avant, gardé pendant l'exécution : remis au démarrage suivant si WebAiOs s'arrête brutalement.
+  const avant = etatAvantExecution(precedent);
+  await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, avant });
   o.surChange?.();
 
   /** `erreurWidget` : le texte de l'erreur vient du widget ou du conteneur (sinon, il est écrit par le noyau). */
@@ -337,7 +345,7 @@ export async function executerRecolte(o: OptionsRecolte): Promise<ResultatRecolt
     await ecrireDonnees(dossierWidgets, id, p.donnees);
     if (await fermerSiAccordRetire()) return;
     const progression = { faits: p.faits, total: p.total };
-    await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, progression });
+    await ecrireEtatWidget(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, progression, avant });
     if (await fermerSiAccordRetire()) return;
     o.surChange?.();
   };

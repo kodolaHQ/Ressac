@@ -1293,11 +1293,11 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     });
     expect(vus).toEqual([
       {
-        etat: { statut: "en-cours", derniereMaj: DERNIERE_MAJ, derniereTentative: MAINTENANT.toISOString(), progression: { faits: 1, total: 2 } },
+        etat: { statut: "en-cours", derniereMaj: DERNIERE_MAJ, derniereTentative: MAINTENANT.toISOString(), progression: { faits: 1, total: 2 }, avant: { statut: "ok" } },
         donnees: [A1],
       },
       {
-        etat: { statut: "en-cours", derniereMaj: DERNIERE_MAJ, derniereTentative: MAINTENANT.toISOString(), progression: { faits: 2, total: 2 } },
+        etat: { statut: "en-cours", derniereMaj: DERNIERE_MAJ, derniereTentative: MAINTENANT.toISOString(), progression: { faits: 2, total: 2 }, avant: { statut: "ok" } },
         donnees: [A1, A2],
       },
     ]);
@@ -1309,6 +1309,8 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     const etat = await lireEtatWidget(ctx.dossierWidgets, "veille");
     expect(etat.statut).toBe("ok");
     expect(etat.progression).toBeUndefined();
+    // L'état d'avant, gardé pendant l'exécution, ne survit pas à sa fin.
+    expect("avant" in etat).toBe(false);
     expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1", "2"]);
   });
 

@@ -101,3 +101,22 @@ test("suiviApres : sans-effet ne change rien ; un échec avant la première heur
   expect(suiviApres(undefined, null, "reussie")).toEqual({ faite: null, echecs: null });
   expect(suiviApres(undefined, "2026-10-29T07:00", "echec")).toEqual({ faite: null, echecs: { heure: "2026-10-29T07:00", nombre: 1 } });
 });
+
+test("échec d'une exécution longue : les 15 min comptent depuis sa fin", () => {
+  const heures = ["07:00"];
+  // Commencée à 07:00, en échec à 07:30.
+  const suivi = suiviApres(undefined, "2026-10-29T07:00", "echec", le(7, 30).toISOString());
+  expect(suivi).toEqual({ faite: null, echecs: { heure: "2026-10-29T07:00", nombre: 1, fin: le(7, 30).toISOString() } });
+  expect(heureDue(heures, suivi, le(7, 0).toISOString(), le(7, 30))).toBe(false);
+  expect(heureDue(heures, suivi, le(7, 0).toISOString(), le(7, 44))).toBe(false);
+  expect(heureDue(heures, suivi, le(7, 0).toISOString(), le(7, 45))).toBe(true);
+});
+
+test("un créneau plus ancien que celui déjà fait n'est jamais refait (retour à l'heure d'hiver, heure ajoutée plus tôt)", () => {
+  // 02:45 faite, l'horloge revient à 02:00 : le créneau 02:00 est déjà couvert.
+  expect(heureDue(["02:00", "02:45"], { faite: "2026-10-25T02:45", echecs: null }, null, new Date(2026, 9, 25, 2, 10))).toBe(false);
+  // 07:00 faite, 06:00 ajoutée en cours de journée.
+  expect(heureDue(["06:00", "07:00"], { faite: "2026-10-29T07:00", echecs: null }, null, le(6, 30))).toBe(false);
+  // Une réussite pour un créneau plus ancien garde le plus récent.
+  expect(suiviApres({ faite: "2026-10-29T07:00", echecs: null }, "2026-10-29T06:00", "reussie")).toEqual({ faite: "2026-10-29T07:00", echecs: null });
+});

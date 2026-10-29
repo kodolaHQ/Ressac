@@ -29,20 +29,28 @@ export function creneauCourant(heures: readonly string[], maintenant: Date): str
  */
 export function heureDue(heures: readonly string[], suivi: EtatWidget["heures"], derniereTentative: string | null, maintenant: Date): boolean {
   const creneau = creneauCourant(heures, maintenant);
-  if (!creneau || suivi?.faite === creneau) return false;
+  // « YYYY-MM-DDTHH:MM » se trie comme les dates : un créneau plus ancien que celui fait (retour à l'heure d'hiver,
+  // heure ajoutée plus tôt dans la journée) est déjà couvert.
+  if (!creneau || (suivi?.faite != null && suivi.faite >= creneau)) return false;
   if (suivi?.echecs?.heure !== creneau) return true;
   if (suivi.echecs.nombre > REESSAIS_HEURE_MAX) return false;
-  return !derniereTentative || maintenant.getTime() - Date.parse(derniereTentative) >= REESSAI_HEURE_MS;
+  // Depuis la fin de l'échec (une veille peut durer 30 min) ; à défaut, depuis le début de la tentative.
+  const depuis = suivi.echecs.fin ?? derniereTentative;
+  return !depuis || maintenant.getTime() - Date.parse(depuis) >= REESSAI_HEURE_MS;
 }
 
 /**
- * Le suivi après une vraie exécution commencée dans le créneau `creneau`. Sans créneau (avant la première heure du
- * jour), rien ne change : le suivi de la veille n'est pas effacé.
+ * Le suivi après une vraie exécution commencée dans le créneau `creneau` (et finie à `fin`, pour un échec). Sans
+ * créneau (avant la première heure du jour), rien ne change : le suivi de la veille n'est pas effacé.
  */
-export function suiviApres(suivi: EtatWidget["heures"], creneau: string | null, issue: IssueHeure): SuiviHeures {
+export function suiviApres(suivi: EtatWidget["heures"], creneau: string | null, issue: IssueHeure, fin?: string): SuiviHeures {
   const actuel: SuiviHeures = suivi ?? { faite: null, echecs: null };
   if (!creneau || issue === "sans-effet") return actuel;
-  if (issue === "reussie") return { faite: creneau, echecs: null };
+  if (issue === "reussie") {
+    // Le créneau le plus récent fait reste.
+    if (actuel.faite != null && actuel.faite >= creneau) return actuel;
+    return { faite: creneau, echecs: null };
+  }
   const nombre = actuel.echecs?.heure === creneau ? actuel.echecs.nombre + 1 : 1;
-  return { faite: actuel.faite, echecs: { heure: creneau, nombre } };
+  return { faite: actuel.faite, echecs: { heure: creneau, nombre, ...(fin ? { fin } : {}) } };
 }

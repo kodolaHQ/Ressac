@@ -296,8 +296,9 @@ export class PlanificateurWidgets {
 
   /**
    * Avant toute exécution, rien ne tourne : un état « en-cours » vient d'une exécution interrompue (arrêt brutal). Il est
-   * remis (statut ok, dates et suivi des heures gardés, plus de progression), qu'il soit relancé ou non : aucun « 7 / 12 »
-   * ne reste figé. La vérification du lancement le relance encore s'il est dû comme un widget en-cours (`du`).
+   * remis, qu'il soit relancé ou non (aucun « 7 / 12 » ne reste figé) : statut et erreur d'avant l'exécution (`avant`, ok
+   * à défaut ; jamais accord-requis, l'exécution a eu lieu après l'accord), dates et suivi des heures gardés, plus de
+   * progression. La vérification du lancement le relance encore s'il est dû comme un widget en-cours (`du`).
    */
   private async remettreInterrompus(): Promise<void> {
     const { dossierWidgets } = this.o;
@@ -305,11 +306,11 @@ export class PlanificateurWidgets {
     let change = false;
     for (const d of dossiers) {
       if (!d.isDirectory() || !ID_WIDGET.test(d.name)) continue;
-      const remis = await modifierEtatWidget(dossierWidgets, d.name, (e) =>
-        e.statut === "en-cours"
-          ? { statut: "ok", derniereMaj: e.derniereMaj, derniereTentative: e.derniereTentative, ...(e.heures ? { heures: e.heures } : {}) }
-          : null,
-      ).catch((e) => {
+      const remis = await modifierEtatWidget(dossierWidgets, d.name, (e) => {
+        if (e.statut !== "en-cours") return null;
+        const avant = e.avant && e.avant.statut !== "en-cours" && e.avant.statut !== "accord-requis" ? e.avant : { statut: "ok" as const };
+        return { ...avant, derniereMaj: e.derniereMaj, derniereTentative: e.derniereTentative, ...(e.heures ? { heures: e.heures } : {}) };
+      }).catch((e) => {
         console.error(`[webaios] état du widget ${d.name} :`, e);
         return null;
       });
@@ -317,12 +318,18 @@ export class PlanificateurWidgets {
       this.interrompus.add(d.name);
       change = true;
     }
-    if (change) this.o.surChange?.();
+    if (!change) return;
+    // Un rappel qui lève ne doit pas bloquer le démarrage (toutes les exécutions l'attendent).
+    try {
+      this.o.surChange?.();
+    } catch (e) {
+      console.error("[webaios] remise des états au démarrage :", e);
+    }
   }
 
   /** `widgetDu`, où un widget remis au démarrage compte, au lancement, comme encore en-cours. */
   private du(w: WidgetLu, o: { auLancement: boolean }): boolean {
-    const interrompu = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut === "ok";
+    const interrompu = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut !== "accord-requis";
     return widgetDu(interrompu ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
   }
 
@@ -499,18 +506,21 @@ export class PlanificateurWidgets {
   private async recolter(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }> {
     const debut = this.o.horloge();
     this.interrompus.delete(w.id);
-    const { resultat, issue } = await this.executer(w, declencheur);
+    const { resultat, issue } = await this.executer(w, declencheur, debut);
     const heures = "erreur" in w ? undefined : w.declaration.recolte?.heures;
     if (!heures) return resultat;
-    const suivi = await this.noterHeure(w.id, creneauCourant(heures, debut), issue);
+    const suivi = await this.noterHeure(w.id, creneauCourant(heures, debut), issue, this.o.horloge());
     return suivi ? { ...resultat, heures: suivi } : resultat;
   }
 
-  /** Écrit le suivi des heures sur l'état relu (rien avant la première heure du jour, ni pour une exécution sans effet). */
-  private async noterHeure(id: string, creneau: string | null, issue: IssueHeure): Promise<SuiviHeures | null> {
+  /**
+   * Écrit le suivi des heures sur l'état relu (rien avant la première heure du jour, ni pour une exécution sans effet).
+   * `fin` : la fin de l'exécution, d'où compte l'attente avant un réessai.
+   */
+  private async noterHeure(id: string, creneau: string | null, issue: IssueHeure, fin: Date): Promise<SuiviHeures | null> {
     if (!creneau || issue === "sans-effet") return null;
     try {
-      const etat = await modifierEtatWidget(this.o.dossierWidgets, id, (e) => ({ ...e, heures: suiviApres(e.heures, creneau, issue) }));
+      const etat = await modifierEtatWidget(this.o.dossierWidgets, id, (e) => ({ ...e, heures: suiviApres(e.heures, creneau, issue, fin.toISOString()) }));
       this.o.surChange?.();
       return etat?.heures ?? null;
     } catch (e) {
@@ -519,7 +529,7 @@ export class PlanificateurWidgets {
     }
   }
 
-  private async executer(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<{ resultat: EtatWidget & { execution?: string }; issue: IssueHeure }> {
+  private async executer(w: WidgetLu, declencheur: Execution["declencheur"], debut: Date): Promise<{ resultat: EtatWidget & { execution?: string }; issue: IssueHeure }> {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
     let etat: EtatWidget;
     let execution: string | undefined;
@@ -536,7 +546,8 @@ export class PlanificateurWidgets {
       console.error(`[webaios] récolte du widget ${w.id} :`, e);
       etat = this.arrete
         ? avant
-        : { statut: "erreur", derniereMaj: avant.derniereMaj, derniereTentative: this.o.horloge().toISOString(), erreur: ERREUR_RECOLTE_INTERNE, erreurNoyau: true };
+        : // `derniereTentative` est toujours le début de la tentative, comme dans la récolte.
+          { statut: "erreur", derniereMaj: avant.derniereMaj, derniereTentative: debut.toISOString(), erreur: ERREUR_RECOLTE_INTERNE, erreurNoyau: true };
       await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
       this.o.surChange?.();
       return { resultat: etat, issue: this.arrete ? "sans-effet" : "echec" };

@@ -61,8 +61,10 @@ export type Placement = z.infer<typeof Placement>;
 export const Disposition = z.object({ version: z.literal(2), widgets: z.array(Placement) });
 export type Disposition = z.infer<typeof Disposition>;
 
+const StatutWidget = z.enum(["ok", "en-cours", "erreur", "accord-requis", "atelier-arrete"]);
+
 export const EtatWidget = z.object({
-  statut: z.enum(["ok", "en-cours", "erreur", "accord-requis", "atelier-arrete"]),
+  statut: StatutWidget,
   derniereMaj: z.string().nullable(),
   derniereTentative: z.string().nullable(),
   erreur: z.string().optional(),
@@ -78,9 +80,15 @@ export const EtatWidget = z.object({
   heures: z
     .object({
       faite: z.string().nullable(),
-      echecs: z.object({ heure: z.string(), nombre: z.number().int().min(0) }).nullable(),
+      /** `fin` : la fin du dernier échec, d'où comptent les 15 min avant le réessai. */
+      echecs: z.object({ heure: z.string(), nombre: z.number().int().min(0), fin: z.string().optional() }).nullable(),
     })
     .optional(),
+  /**
+   * Pendant une exécution (statut en-cours) : l'état d'avant, remis au démarrage suivant si WebAiOs s'est arrêté
+   * brutalement. Jamais affiché ; absent hors d'une exécution.
+   */
+  avant: z.object({ statut: StatutWidget, erreur: z.string().optional(), erreurNoyau: z.literal(true).optional() }).optional(),
 });
 export type EtatWidget = z.infer<typeof EtatWidget>;
 
