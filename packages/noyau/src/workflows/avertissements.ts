@@ -8,6 +8,8 @@ export const AVERTISSEMENT_FIL_DE_L_EAU = "rien à publier au fil de l'eau : l'e
 /** Une recherche web prend vite plus que les 150 s d'une exécution ordinaire. */
 export const AVERTISSEMENT_WEB_SANS_DUREE = "sans dureeMaxMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer dureeMaxMinutes";
 
+export const AVERTISSEMENT_SAISIE = "{saisie} : l'action ne déclare pas de saisie";
+
 export type Avertissement = { bloc: string; message: string };
 
 /** L'hôte d'une adresse, sauf si la partie avant le chemin contient un gabarit (`{…}`) ou n'est pas http(s). */
@@ -29,7 +31,12 @@ function hoteDe(url: string): string | null {
  */
 export function avertirWorkflow(
   workflow: Workflow,
-  ctx: { sources: { compte: readonly string[]; publiques: readonly string[] }; config: unknown; dureeMaxMinutes?: number | null },
+  ctx: { sources: { compte: readonly string[]; publiques: readonly string[] }; config: unknown;
+    dureeMaxMinutes?: number | null;
+    /** Une action sans `saisie` ne reçoit rien dans `{saisie}`. */
+    proprietaire?: "widget" | "action";
+    saisie?: boolean;
+  },
   valide?: WorkflowValide,
 ): Avertissement[] {
   const r: Avertissement[] = [];
@@ -59,6 +66,13 @@ export function avertirWorkflow(
       for (const m of v.matchAll(/\{config\.([A-Za-z0-9_]+)[^}]*\}/g)) {
         if (!m[0].endsWith("?}") && !Object.hasOwn(config, m[1]!)) manquantes.add(m[1]!);
       }
+    }
+    if (ctx.proprietaire === "action" && ctx.saisie !== true) {
+      const aSaisie = champs.some((c) => {
+        const v = b.parametres[c.nom];
+        return typeof v === "string" && /\{saisie\??\}/.test(v);
+      });
+      if (aSaisie) r.push({ bloc: b.id, message: AVERTISSEMENT_SAISIE });
     }
     for (const cle of manquantes) r.push({ bloc: b.id, message: `config.${cle} absent de la configuration du widget` });
     if (b.type === "web.chercher" && ctx.dureeMaxMinutes === null) r.push({ bloc: b.id, message: AVERTISSEMENT_WEB_SANS_DUREE });

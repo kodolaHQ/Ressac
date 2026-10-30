@@ -6,6 +6,8 @@ import type { Proprietaire } from "./schema.js";
 
 export const SORTIE_MAX_OCTETS = 256 * 1024;
 export const EXECUTION_MAX_OCTETS = 4 * 1024 * 1024;
+/** Le motif d'une exécution d'action arrêtée par l'utilisateur. */
+export const ACTION_ARRETEE = "Arrêtée à ta demande";
 export const EXECUTIONS_GARDEES = 20;
 /** Les essais (rejeux du constructeur) ont leur propre quota : ils ne chassent jamais une vraie exécution. */
 export const ESSAIS_GARDES = 10;
@@ -31,7 +33,9 @@ export type TraceBloc = z.infer<typeof TraceBloc>;
 export const Execution = z.object({
   version: z.literal(1),
   id: z.string(),
-  proprietaire: z.object({ type: z.literal("widget"), id: z.string() }),
+  proprietaire: z.object({ type: z.enum(["widget", "action"]), id: z.string() }),
+  // La saisie d'une action lancée avec un texte (clio lyon).
+  saisie: z.string().max(200).optional(),
   declencheur: z.enum(["planifiee", "manuelle", "agent", "rejeu"]),
   // Seulement pour un essai : le bloc de départ et l'exécution dont les sorties amont sont reprises.
   essai: z.object({ depart: z.string(), origine: z.string() }).optional(),

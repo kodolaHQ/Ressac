@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-/** Où va la sortie d'un workflow. Pour l'instant, seulement le widget. */
-export const GENRES_SORTIE = ["widget"] as const;
+/** Où va la sortie d'un workflow : le widget, ou la page d'une action. */
+export const GENRES_SORTIE = ["widget", "page"] as const;
 export type GenreSortie = (typeof GENRES_SORTIE)[number];
 
-/** À qui appartient un workflow : pour l'instant, un widget. */
-export type Proprietaire = { type: "widget"; id: string };
+/** À qui appartient un workflow : un widget ou une action. */
+export type Proprietaire = { type: "widget"; id: string } | { type: "action"; id: string };
 
 export const PREFIXE_WORKFLOW_INVALIDE = "Workflow invalide : ";
 export const TAILLE_MAX_WORKFLOW = 256 * 1024;

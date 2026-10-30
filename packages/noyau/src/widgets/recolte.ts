@@ -127,7 +127,7 @@ type WorkflowDuWidget =
 
 /** Ce que la déclaration du widget change aux règles de son workflow. */
 export function contexteValidation(d: DeclarationWidget): ContexteValidation {
-  return { web: d.sources.web, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null };
+  return { web: d.sources.web, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null, proprietaire: "widget", saisie: false };
 }
 
 async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {

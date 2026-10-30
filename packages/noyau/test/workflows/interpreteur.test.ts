@@ -768,7 +768,7 @@ describe("interpréteur : blocs par élément", () => {
 });
 
 describe("interpréteur : web.chercher", () => {
-  const WEB = { web: true, dureeMaxMinutes: null };
+  const WEB = { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false };
   const annonces = [
     { marque: "Peugeot", modele: "208 & co/é" },
     { marque: "Renault", modele: "Clio" },

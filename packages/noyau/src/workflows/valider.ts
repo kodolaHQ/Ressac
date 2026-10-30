@@ -11,11 +11,18 @@ export type WorkflowValide = {
   sortie: { id: string; vers: GenreSortie };
 };
 
-/** Ce que le widget déclare et qui change les règles : `sources.web` et `recolte.dureeMaxMinutes`. */
-export type ContexteValidation = { web: boolean; dureeMaxMinutes: number | null };
+/**
+ * Ce que le propriétaire déclare et qui change les règles : `sources.web`, `recolte.dureeMaxMinutes`, son genre (une
+ * action rend une page, un widget non) et, pour une action, si elle déclare une `saisie`.
+ */
+export type ContexteValidation = { web: boolean; dureeMaxMinutes: number | null; proprietaire: "widget" | "action"; saisie: boolean };
 
 /** Un widget sans `web` ni durée maximale : les règles d'avant. */
-export const CONTEXTE_PAR_DEFAUT: ContexteValidation = { web: false, dureeMaxMinutes: null };
+export const CONTEXTE_PAR_DEFAUT: ContexteValidation = { web: false, dureeMaxMinutes: null, proprietaire: "widget", saisie: false };
+
+export const SORTIE_PAGE_REFUSEE = 'sortie : vers "page" seulement dans une action';
+export const SORTIE_PAGE_REQUISE = 'sortie : une action rend une page (vers: "page")';
+export const FIL_DE_L_EAU_ACTION = "sortie.auFilDeLEau : pas dans une action";
 
 /** Refus d'un bloc `web.chercher` dans un widget qui ne déclare pas `"web": true`. */
 export const WEB_REQUIS = 'web.chercher : le widget doit déclarer "web": true';
@@ -153,6 +160,13 @@ export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXT
   if (sorties.length === 0) return erreurWorkflow("aucune sortie");
   if (sorties.length > 1) return erreurWorkflow(`plusieurs sorties : ${sorties.map((b) => b.id).join(", ")}`);
 
+  const paramsSortie = sorties[0]!.parametres as { vers: GenreSortie; auFilDeLEau?: boolean };
+  if (ctx.proprietaire === "widget" && paramsSortie.vers === "page") return erreurWorkflow(SORTIE_PAGE_REFUSEE, sorties[0]!.id);
+  if (ctx.proprietaire === "action") {
+    if (paramsSortie.vers !== "page") return erreurWorkflow(SORTIE_PAGE_REQUISE, sorties[0]!.id);
+    if (paramsSortie.auFilDeLEau === true) return erreurWorkflow(FIL_DE_L_EAU_ACTION, sorties[0]!.id);
+  }
+
   // Tri de Kahn : à chaque tour, le premier bloc (dans l'ordre du tableau) dont tous les prédécesseurs sont placés.
   const ordre: string[] = [];
   const places = new Set<string>();
@@ -175,7 +189,7 @@ export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXT
     if (requise && predecesseurs[b.id]!.length === 0) return erreurWorkflow(`${b.id} : entrée manquante (relie un bloc avant lui)`, b.id);
   }
 
-  const vers = (sorties[0]!.parametres as { vers: GenreSortie }).vers;
+  const vers = paramsSortie.vers;
   return { ok: true, valide: { workflow, ordre, predecesseurs, sortie: { id: sorties[0]!.id, vers } } };
 }
 
