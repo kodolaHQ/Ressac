@@ -612,10 +612,13 @@ export class ExtensionsProfils {
     if (!id || typeof onglet !== "number" || !s.extensions.getExtension(id)) return false;
     const wc = tousLesWebContents.fromId(onglet);
     if (!wc || typeof wc.isDestroyed !== "function" || wc.isDestroyed() || wc.session !== s || estInvisible(wc)) return false;
+    const profil = [...this.instances].find(([, x]) => x.session === s)?.[0];
+    // Seconde barrière : une extension de l'agent n'agit jamais dans le profil d'un espace privé (même entre la fin de
+    // son chargement et son retrait).
+    if (this.accordAgent(id) !== undefined && (profil === undefined || profilPrive(this.o.etat(), profil))) return false;
     const vue = this.o.estOnglet?.(wc) ?? false;
     // Ses scripts vont y tourner (poignée de main, executeScript) : noté pour masquer la console de son service worker
     // à l'agent s'il ne peut pas lire cet onglet.
-    const profil = [...this.instances].find(([, x]) => x.session === s)?.[0];
     if (vue && profil !== undefined) this.o.aTourneDansOnglet?.(id, profil, this.lisibleParAgent(wc));
     // Ses scripts y tournent : l'onglet sera rechargé si elle est retirée d'un profil devenu privé.
     if (vue && this.accordAgent(id) !== undefined) {

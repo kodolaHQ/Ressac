@@ -1189,3 +1189,22 @@ test("B un effacement de stockage en cours ne retient pas les synchronisations (
   expect(fini).toBe(true);
   expect(s.charges.size).toBe(1);
 });
+
+test("C M4 estOnglet : jamais vrai pour une extension de l'agent quand le profil de la session est privé (seconde barrière)", async () => {
+  const s = fausseSession("defaut");
+  vuesParId.set(1, { isDestroyed: () => false, session: s });
+  try {
+    const p = creer({ estOnglet: () => true });
+    p.brancher(s as unknown as Electron.Session, "defaut");
+    await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }), [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+    const sess = s as unknown as Electron.Session;
+    expect(p.estOnglet(sess, "id-copies-fond", 1)).toBe(true);
+    // Le profil devient privé (entre le chargement et la vérification de `appliquerProfil`).
+    etat = etatNav([{ id: "e1", profil: "defaut", prive: true }]);
+    expect(p.estOnglet(sess, "id-copies-fond", 1)).toBe(false);
+    // Une extension du Store, si (la règle ne vise que l'agent).
+    expect(p.estOnglet(sess, `id-${ID_A}-1.0.0_0`, 1)).toBe(true);
+  } finally {
+    vuesParId.clear();
+  }
+});
