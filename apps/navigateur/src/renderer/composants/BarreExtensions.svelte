@@ -111,9 +111,10 @@
   /* Sans icône : la première lettre du titre (data-letter, posé par la bibliothèque). */
   :global(.action.no-icon)::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--fond-actif); color: var(--texte); font-size: 10px; text-transform: uppercase; }
   :global(.action .badge) { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }
-  .menu { all: unset; width: 24px; height: 24px; display: grid; place-content: center; border-radius: 5px; color: var(--texte-doux); }
+  .menu { all: unset; width: 28px; height: 28px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); font-size: 18px; }
   /* min-width: 0 : sans lui, un nom long (nowrap) élargirait le panneau, élément flexible de la ligne, hors de la barre. */
-  .panneau { flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-actif); }
+  /* no-drag : le panneau est dans la zone de glissement de la barre latérale, qui avalerait ses clics (macOS). */
+  .panneau { -webkit-app-region: no-drag; flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-actif); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
   .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texte); }

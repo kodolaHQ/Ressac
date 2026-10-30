@@ -452,6 +452,8 @@ test("le menu Extensions liste une extension non épinglée ; « Épingler » la
     await expect(ligne).toBeVisible();
     await expect(ligne.locator(`button[is="browser-action"][id="${id}"]`)).toHaveCount(1);
     await expect(barre.locator(`button[is="browser-action"][id="${id}"]`)).toHaveCount(0);
+    // Les clics de Playwright passent outre les zones de glissement de la fenêtre ; un vrai clic sur macOS, non.
+    expect(await panneau.evaluate((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region"))).toBe("no-drag");
     await ligne.getByRole("button", { name: "Épingler" }).click();
     await expect(barre.locator(`button[is="browser-action"][id="${id}"]`)).toHaveCount(1);
     await expect.poll(() => lireRegistre(profil).extensions[`store:${id}`]!.epinglee).toBe(true);
