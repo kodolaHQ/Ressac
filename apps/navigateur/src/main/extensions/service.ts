@@ -320,6 +320,11 @@ export class ServiceExtensions {
    * Note la version démarrée d'une extension dans un profil (`vues[profil]`, pour `onInstalled` et les rulesets du
    * manifeste). Lu et écrit dans la même modification sérialisée : deux démarrages simultanés n'ont qu'une seule
    * « première fois ». Les sessions ne sont pas resynchronisées (les vues ne changent pas ce qui est chargé).
+   *
+   * Invariant (avec `noterIdChrome`, `masquerId`, `aTourneDansOnglet`) : ces écritures passent par
+   * `modifierEtatExtensions` sans `perimerCartes` ni `verifierDeblocages`, parce qu'elles ne touchent aucun champ dont
+   * dépend une carte ou un déblocage (`accord`, `profils`, `modifieeLe`, `desactivee` ; `idChrome` se déduit du chemin
+   * de la copie et ne change donc pas). Une écriture qui toucherait l'un d'eux doit passer par `modifier`.
    */
   async noterVue(cle: string, profil: IdProfil, version: string): Promise<{ nouvelle: boolean; precedente?: string }> {
     const o = this.o;
