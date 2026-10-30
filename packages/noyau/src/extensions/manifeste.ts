@@ -251,6 +251,7 @@ export function libellesPortee(p: Portee, source: SourceExtension): string[] {
   };
   ajoute(has("scripting") || p.scriptsTousLesSites || !!p.scripts, "Modifier l'apparence et le contenu des pages");
   ajoute(p.permissions.some((x) => x.startsWith("declarativeNetRequest")), "Bloquer ou modifier des requêtes");
+  ajoute(has("declarativeNetRequestFeedback"), "Voir quelles requêtes de tous les onglets ses règles ont touchées");
   ajoute(has("storage", "unlimitedStorage"), "Garder ses réglages");
   ajoute(has("tabs"), "Voir la liste des onglets et leurs adresses");
   ajoute(has("notifications"), "Afficher des notifications");

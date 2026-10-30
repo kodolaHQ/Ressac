@@ -287,3 +287,11 @@ test("empreintePortee : stable quel que soit l'ordre des clés et des listes ; c
   // Une liste ne se confond pas avec une autre (frontières des éléments).
   expect(empreintePortee({ ...p, permissions: ["a,b"] })).not.toBe(empreintePortee({ ...p, permissions: ["a", "b"] }));
 });
+
+test("I1 declarativeNetRequestFeedback a son propre libellé", () => {
+  const a = analyserManifeste({ ...base, permissions: ["declarativeNetRequest", "declarativeNetRequestFeedback"] }, { source: "agent" });
+  expect(libellesPortee(a.portee, "agent")).toEqual([
+    "Bloquer ou modifier des requêtes",
+    "Voir quelles requêtes de tous les onglets ses règles ont touchées",
+  ]);
+});

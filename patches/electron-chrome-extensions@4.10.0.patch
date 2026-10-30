@@ -1,8 +1,30 @@
 diff --git a/dist/chrome-extension-api.preload.js b/dist/chrome-extension-api.preload.js
-index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..815847c05bee0adb9039ab4a23489ca246dfffb1 100644
+index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..57a03da50fcc18ff641c00ee69f525120cf041e1 100644
 --- a/dist/chrome-extension-api.preload.js
 +++ b/dist/chrome-extension-api.preload.js
-@@ -60,6 +60,15 @@
+@@ -21,9 +21,7 @@
+     }
+     listenerMap.set(name, listenerCount + 1);
+     import_electron.ipcRenderer.addListener(formatIpcName(name), function(event, ...args) {
+-      if (true) {
+-        console.log(name, "(result)", ...args);
+-      }
++      // WebAiOs : pas de journal de débogage (il écrirait chaque appel et chaque événement dans la console de l'extension).
+       callback(...args);
+     });
+   };
+@@ -44,9 +42,7 @@
+   var injectExtensionAPIs = () => {
+     const invokeExtension = async function(extensionId, fnName, options = {}, ...args) {
+       const callback = typeof args[args.length - 1] === "function" ? args.pop() : void 0;
+-      if (true) {
+-        console.log(fnName, args);
+-      }
++      // WebAiOs : pas de journal de débogage (il écrirait chaque appel et chaque événement dans la console de l'extension).
+       if (options.noop) {
+         console.warn(`${fnName} is not yet implemented.`);
+         if (callback) callback(options.defaultResponse);
+@@ -60,11 +56,18 @@
          result = await import_electron2.ipcRenderer.invoke("crx-msg", extensionId, fnName, ...args);
        } catch (e) {
          console.error(e);
@@ -17,8 +39,14 @@ index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..815847c05bee0adb9039ab4a23489ca2
 +        }
          result = void 0;
        }
-       if (true) {
-@@ -80,9 +89,9 @@
+-      if (true) {
+-        console.log(fnName, "(result)", result);
+-      }
++      // WebAiOs : pas de journal de débogage (il écrirait chaque appel et chaque événement dans la console de l'extension).
+       if (callback) {
+         callback(result);
+       } else {
+@@ -80,9 +83,9 @@
          receive(message);
        };
        import_electron2.ipcRenderer.on(`crx-native-msg-${connectionId}`, onMessage);
@@ -30,7 +58,7 @@ index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..815847c05bee0adb9039ab4a23489ca2
        });
        const send = (message) => {
          import_electron2.ipcRenderer.send(`crx-native-msg-${connectionId}`, message);
-@@ -104,7 +113,29 @@
+@@ -104,7 +107,29 @@
        const chrome = globalThis.chrome || {};
        const extensionId = chrome.runtime?.id;
        const manifest = extensionId && chrome.runtime.getManifest?.() || {};
@@ -61,7 +89,7 @@ index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..815847c05bee0adb9039ab4a23489ca2
        function imageData2base64(imageData) {
          const canvas = document.createElement("canvas");
          const ctx = canvas.getContext("2d");
-@@ -197,17 +228,35 @@
+@@ -197,17 +222,35 @@
            ;
            this.onMessage._emit(message);
          }
@@ -101,7 +129,7 @@ index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..815847c05bee0adb9039ab4a23489ca2
            }
          }
        }
-@@ -567,7 +616,12 @@
+@@ -567,7 +610,12 @@
          });
        });
        delete globalThis.electron;
@@ -115,7 +143,7 @@ index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..815847c05bee0adb9039ab4a23489ca2
      }
      if (!process.contextIsolated) {
        console.warn(`injectExtensionAPIs: context isolation disabled in ${location.href}`);
-@@ -591,7 +645,25 @@
+@@ -591,7 +639,25 @@
    };
  
    // src/preload.ts

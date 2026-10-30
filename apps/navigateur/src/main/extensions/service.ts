@@ -137,11 +137,14 @@ export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à 
 export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
 /**
  * Droits qui font voir à une extension les onglets ou la navigation (adresses, titres, cookies, historique…), même sans
- * y tourner, ou ce que l'utilisateur y copie (`clipboardRead`) : avec l'un d'eux, des hôtes ou tous les sites, la console de son
+ * y tourner, ce que l'utilisateur y copie (`clipboardRead`), ce qu'il y sélectionne et clique (`contextMenus` : la sélection et
+ * les adresses de la page arrivent avec le clic) ou les requêtes de ses onglets touchées par ses règles
+ * (`declarativeNetRequestFeedback`) : avec l'un d'eux, des hôtes ou tous les sites, la console de son
  * service worker et de ses pages est toujours masquée à l'agent (sauf déblocage). Ce qu'elle observe peut être gardé et
  * écrit plus tard : la décision ne dépend pas des onglets ouverts au moment du message.
  */
-export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks", "activeTab", "clipboardRead"];
+export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks", "activeTab", "clipboardRead", "contextMenus",
+  "declarativeNetRequestFeedback"];
 
 /** Ce que l'utilisateur a vu sur la carte de déblocage : le déblocage ne vaut que pour cela. */
 interface LienDeblocage {

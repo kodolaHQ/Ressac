@@ -159,7 +159,7 @@ test("console_extension : service worker et pages toujours masqués pour un droi
   const { texte } = await appeler("console_extension", { id: "cacheur" });
   expect(texte).toContain(CONSOLE_FOND_OBSERVE);
   expect(CONSOLE_FOND_OBSERVE).toBe(
-    "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, sites, tous les sites), demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.",
+    "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, declarativeNetRequestFeedback, sites, tous les sites), demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.",
   );
   expect(CONSOLE_FOND_OBSERVE.split(". ").length).toBe(1);
   // Elle ne dépend plus d'un onglet ouvert au moment du message.

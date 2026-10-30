@@ -15,7 +15,7 @@ export const DEMANDE_RETIREE = "Demande retirée avant la réponse de l'utilisat
 export const CONSOLE_FOND_MASQUEE =
   "Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire. Demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.";
 export const CONSOLE_FOND_OBSERVE =
-  "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, sites, tous les sites), demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.";
+  "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, declarativeNetRequestFeedback, sites, tous les sites), demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.";
 export const CONSOLE_DEBLOQUEE =
   "Console débloquée par l'utilisateur : rien n'est masqué. Referme-la (refermer_console) dès que la correction est finie.";
 /** Les messages des scripts de contenu venus d'onglets que l'agent ne peut pas lire, retirés. */
@@ -194,7 +194,8 @@ export function enregistrerOutilsExtensions(
         "Console de ton extension (service worker, pages, scripts de contenu) : horodatage (ms) · niveau · texte, à partir " +
         "de `depuis` (ms) si donné. Les messages venus d'onglets que tu ne peux pas lire sont masqués et comptés. La console " +
         "du service worker et des pages est toujours masquée si l'extension a un droit qui observe les onglets ou la navigation " +
-        "(tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, des sites ou tous les sites), et si elle a " +
+        "(tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, " +
+        "declarativeNetRequestFeedback, des sites ou tous les sites), et si elle a " +
         "tourné dans un onglet que tu ne peux pas lire (même après sa suppression). Jamais pour une extension du Store.",
       inputSchema: { id: ID_EXTENSION, depuis: z.number().optional() },
     },

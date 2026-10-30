@@ -1420,3 +1420,73 @@ test("une carte de l'agent retirée avant la réponse (l'espace devient privé) 
     await fermer();
   }
 });
+
+/** Simule un clic droit sur une sélection dans l'onglet de `fin` (sans menu à l'écran), puis clique l'entrée `libelle`. */
+const cliquerMenuExtension = (app: ElectronApplication, fin: string, selection: string, libelle: string) =>
+  app.evaluate(({ Menu, webContents }, [fin, selection, libelle]) => {
+    const wc = webContents.getAllWebContents().find((w) => w.getURL().endsWith(fin));
+    if (!wc) return "pas d'onglet";
+    let menu: Electron.Menu | null = null;
+    const popup = Menu.prototype.popup;
+    Menu.prototype.popup = function (this: Electron.Menu) {
+      menu = this;
+    };
+    try {
+      const url = wc.getURL();
+      wc.emit("context-menu", { preventDefault() {} }, {
+        x: 1, y: 1, selectionText: selection, pageURL: url, frameURL: url, linkURL: "", linkText: "", srcURL: "", titleText: "",
+        mediaType: "none", hasImageContents: false, isEditable: false, misspelledWord: "", dictionarySuggestions: [],
+        editFlags: {}, mediaFlags: {}, inputFieldType: "none", menuSourceType: "mouse", spellcheckEnabled: false,
+      });
+    } finally {
+      Menu.prototype.popup = popup;
+    }
+    const entree = (menu as Electron.Menu | null)?.items.find((i) => i.label.includes(libelle));
+    if (!entree) return "pas d'entrée";
+    entree.click();
+    return "cliqué";
+  }, [fin, selection, libelle] as const);
+
+test("I1 un menu contextuel (contextMenus) masque la console du fond ; un clic sur une sélection d'un onglet non partagé n'y laisse rien ; la bibliothèque n'écrit aucun événement en console", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "menu", {
+    "manifest.json": { manifest_version: 3, name: "Menu de l'agent", version: "1.0.0", permissions: ["contextMenus"], background: { service_worker: "fond.js" } },
+    "fond.js":
+      'chrome.contextMenus.removeAll(() => chrome.contextMenus.create({ id: "trad", title: "Traduire « %s »", contexts: ["selection"] }));\n' +
+      'chrome.contextMenus.onClicked.addListener((info) => console.log("clic:" + info.selectionText));\n' +
+      'console.log("menu prêt");\n',
+  });
+  ecrireExtensionAgent(racine, "calme", {
+    "manifest.json": { manifest_version: 3, name: "Calme de l'agent", version: "1.0.0", background: { service_worker: "fond.js" } },
+    "fond.js": 'chrome.tabs.onUpdated.addListener(() => console.log("maj vue"));\nchrome.tabs.onActivated.addListener(() => console.log("activé vu"));\n',
+  });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "menu", "Menu de l'agent")).toMatch(/^Activée/);
+    expect(await activerParLAgent(fenetre, racine, "calme", "Calme de l'agent")).toMatch(/^Activée/);
+    await expect.poll(() => consoleDe(racine, "menu"), { timeout: 15_000 }).toContain(OBSERVE);
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "document.readyState")).toBe("complete");
+    // Sans droit qui observe, sa console passe : ce qu'elle écrit arrive, et rien de la bibliothèque.
+    await expect.poll(() => consoleDe(racine, "calme"), { timeout: 15_000 }).toContain("maj vue");
+    expect(await consoleDe(racine, "calme")).not.toContain("(result)");
+    expect(await consoleDe(racine, "calme")).not.toContain("onUpdated");
+    await expect.poll(() => cliquerMenuExtension(app, "a.html", "secret bancaire", "Traduire"), { timeout: 15_000 }).toBe("cliqué");
+    // Masquée : ni son journal ni la sélection.
+    let texte = await consoleDe(racine, "menu");
+    expect(texte).toContain(OBSERVE);
+    expect(texte).not.toContain("secret bancaire");
+    // Débloquée : le clic est bien arrivé (preuve que le chemin a tourné), et la bibliothèque n'a rien écrit d'elle-même.
+    const appel = appelerOutil(racine, "debloquer_console", { id: "menu", raison: "r" });
+    await fenetre.getByTestId("demande-console-extension").getByRole("button", { name: "Débloquer" }).click({ timeout: 15_000 });
+    await appel;
+    await expect.poll(() => consoleDe(racine, "menu"), { timeout: 15_000 }).toContain("clic:secret bancaire");
+    texte = await consoleDe(racine, "menu");
+    expect(texte).not.toContain("(result)");
+    expect(texte).not.toContain("onClicked");
+    expect(texte.split("secret bancaire").length - 1).toBe(1);
+  } finally {
+    await fermer();
+  }
+});
