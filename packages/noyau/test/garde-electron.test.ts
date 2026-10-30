@@ -22,16 +22,18 @@ test("le noyau ne dépend pas d'electron", () => {
   }
 });
 
-test("src/workflows n'importe ni widgets/ ni accueil/", () => {
+test("src/workflows n'importe ni widgets/, accueil/, actions/ ni pages/", () => {
   const sources = fichiers(join(racine, "src", "workflows"));
   expect(sources.length).toBeGreaterThan(0);
   // `from "…"`, `import "…"` (effet de bord) et `import("…")` (dynamique).
-  const interdit = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.\.\/)+(widgets|accueil)\//;
+  const interdit = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.\.\/)+(widgets|accueil|actions|pages)\//;
   for (const exemple of [
     'import { x } from "../widgets/recolte.js";',
     'import "../accueil/donnees.js";',
     'const m = await import("../../widgets/recolte.js");',
     "await import( '../accueil/schemas.js')",
+    'import { x } from "../actions/donnees.js";',
+    'import { x } from "../pages/plan.js";',
   ]) {
     expect(exemple).toMatch(interdit);
   }

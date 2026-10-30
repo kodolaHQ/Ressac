@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminsEspace, contexteValidationAction, lireAction, lireActions, workflowDeLAction, SORTIE_PAGE_REQUISE } from "../../src/index.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -56,6 +56,17 @@ test("un dossier lien symbolique, caché ou au nom invalide est ignoré", async 
 test("action.json de plus de 64 Ko ou lien symbolique : erreur", async () => {
   const c = await espace();
   await poser(c, "grosse", JSON.stringify({ nom: "G", sources: {}, description: "x".repeat(70 * 1024) }));
+  const [a] = await lireActions(c);
+  expect(a && "erreur" in a).toBe(true);
+});
+
+test("action.json lien symbolique : erreur", async () => {
+  const c = await espace();
+  const d = await poser(c, "lien", { nom: "L", sources: {} });
+  const ailleurs = join(await dossierTemporaire(), "autre.json");
+  await writeFile(ailleurs, JSON.stringify({ nom: "A", sources: {} }));
+  await rm(join(d, "action.json"));
+  await symlink(ailleurs, join(d, "action.json"));
   const [a] = await lireActions(c);
   expect(a && "erreur" in a).toBe(true);
 });

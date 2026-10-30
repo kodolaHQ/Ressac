@@ -104,13 +104,16 @@ export async function supprimerDonneesAction(dossierActions: string, id: string)
 export async function oublierActionsDisparues(c: CheminsEspace, dossierActions: string): Promise<void> {
   let entrees;
   try {
+    // Dossier des actions introuvable (espace déplacé, volume démonté) : on ne sait rien, rien n'est effacé.
+    if (!(await stat(c.actions)).isDirectory()) return;
+    await readdir(c.actions);
     entrees = await readdir(dossierActions, { withFileTypes: true });
   } catch {
     return;
   }
   for (const e of entrees) {
     if (!e.isDirectory() || !ID_ACTION.test(e.name)) continue;
-    const presente = await lstat(join(c.actions, e.name)).then(() => true, () => false);
+    const presente = await lstat(join(c.actions, e.name)).then((s) => s.isDirectory(), () => false);
     if (presente) continue;
     await supprimerDonneesAction(dossierActions, e.name);
     await retirerAccord(dossierActions, e.name);

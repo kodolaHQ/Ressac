@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   TAILLE_MAX_DONNEES, accorder, cheminsEspace, dernierResultat, ecrireExecution, ecrireMemoire, ecrireResultat, idEssai, idExecution,
@@ -37,8 +37,11 @@ test("résultat écrit puis relu ; dernierResultat ignore les essais", async () 
 test("dernierResultat : la plus récente vraie exécution qui a un résultat", async () => {
   const d = await dossierTemporaire();
   const a = await ajouter(d, horodatage(0));
+  const b = await ajouter(d, horodatage(2), false, { v: "recent" });
+  expect((await dernierResultat(d, "a"))?.execution).toBe(b);
   await ecrireExecution(join(d, "a"), execution(horodatage(1))); // exécution sans résultat (échec)
-  expect((await dernierResultat(d, "a"))?.execution).toBe(a);
+  expect((await dernierResultat(d, "a"))?.execution).toBe(b);
+  expect(a).not.toBe(b);
   expect(await dernierResultat(await dossierTemporaire(), "a")).toBeNull();
 });
 
@@ -96,4 +99,26 @@ test("oublierActionsDisparues efface les données et l'accord d'une action dont 
   expect(existsSync(join(dossierActions, "disparue"))).toBe(false);
   expect(existsSync(join(dossierActions, "vivante", "resultats"))).toBe(true);
   expect(Object.keys(await lireAccords(dossierActions))).toEqual(["vivante"]);
+});
+
+test("oublierActionsDisparues : sans dossier d'actions (espace déplacé), données et accords restent", async () => {
+  const c = cheminsEspace(await dossierTemporaire()); // c.actions n'existe pas
+  const dossierActions = await dossierTemporaire();
+  const e = execution(horodatage(0));
+  await ecrireExecution(join(dossierActions, "x"), e);
+  await ecrireResultat(dossierActions, "x", resultat(e.id));
+  await accorder(dossierActions, "x", { domaines: ["gitlab.com"], publiques: [], profil: "p" });
+  await oublierActionsDisparues(c, dossierActions);
+  expect(existsSync(join(dossierActions, "x", "resultats"))).toBe(true);
+  expect(Object.keys(await lireAccords(dossierActions))).toEqual(["x"]);
+});
+
+test("oublierActionsDisparues : un lien symbolique nommé comme l'action n'est pas l'action", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const dossierActions = await dossierTemporaire();
+  await mkdir(c.actions, { recursive: true });
+  await symlink(await dossierTemporaire(), join(c.actions, "x"));
+  await ecrireExecution(join(dossierActions, "x"), execution(horodatage(0)));
+  await oublierActionsDisparues(c, dossierActions);
+  expect(existsSync(join(dossierActions, "x"))).toBe(false);
 });
