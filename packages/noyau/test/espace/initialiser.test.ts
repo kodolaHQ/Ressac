@@ -291,6 +291,32 @@ test("initialiser : un AGENTS.md identique au modèle du plan 9 est remplacé pa
   }
 });
 
+test("initialiser : un AGENTS.md identique au modèle du plan 13 est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle de la fin du plan 13 (bda1ce9) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(import.meta.dirname, "agents-livres", "AGENTS-bda1ce9.md"), "utf8");
+  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
+    "1efeabab021d5ba8f9298cd91ee5c8b76d0fe6f677f2426ddb195421d140629b",
+  );
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  for (const attendu of [
+    "/workspace/extensions/",
+    "webaios.json",
+    "demander_extension",
+    "console_extension",
+    "debloquer_console",
+    "refermer_console",
+    "activeTab",
+    "leboncoin.fr",
+  ]) {
+    expect(apres).toContain(attendu);
+  }
+});
+
 // ——— Chaque version livrée du modèle AGENTS.md ———
 
 const AGENTS_LIVRES = join(import.meta.dirname, "agents-livres");
