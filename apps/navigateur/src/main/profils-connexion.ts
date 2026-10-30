@@ -17,6 +17,8 @@ const DONNEES_EXTENSIONS = [
   "Extension State",
   "Extension Rules",
   "Extension Scripts",
+  // Règles dynamiques et de session de `declarativeNetRequest` (mesuré, tâche 17).
+  "DNR Extension Rules",
 ];
 
 /** Fichier des autorisations de sites d'un profil de connexion : `permissions.json` pour le profil par défaut. */

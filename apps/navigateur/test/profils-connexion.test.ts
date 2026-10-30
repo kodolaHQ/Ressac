@@ -156,7 +156,7 @@ test("effacer un profil efface ses données d'extensions et appelle oublier", as
     avantEffacer: async (id) => void ordre.push(`avant ${id} ${existsSync(join(stockage, "Local Extension Settings"))}`),
     oublier: (id) => void oublies.push(id),
   });
-  const extensions = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "Extension State", "Extension Rules", "Extension Scripts"];
+  const extensions = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "Extension State", "Extension Rules", "Extension Scripts", "DNR Extension Rules"];
   for (const d of [...extensions, "Local Storage", "Autre profil"]) mkdirSync(join(stockage, d), { recursive: true });
   // Le dossier d'un autre profil n'est jamais touché.
   mkdirSync(join(racineSessions, "webaios-xyz", "Local Extension Settings"), { recursive: true });
