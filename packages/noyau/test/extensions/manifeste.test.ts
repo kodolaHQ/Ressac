@@ -229,6 +229,21 @@ test("R3-3/R3-4 tous les sites, dans host_permissions et dans permissions", () =
   }
 });
 
+test("I3 tous les sites : ports, jokers de suffixe public, scripts", () => {
+  const tous = ["*://*:*/*", "https://*:443/*", "*://*:8080/*", "*://*.co.uk/*", "https://*.com.au/*", "*://*.gouv.fr:*/*",
+    "*://*.ac.jp/*", "*://*.com:443/*", "*://*.ne.jp/*", "*://*.or.jp/*", "*://*.edu.au/*", "*://*.gov.uk/*", "*://*.net.br/*", "*://*.org.uk/*"];
+  for (const m of tous) {
+    const h = analyserManifeste({ ...base, host_permissions: [m] }, { source: "agent" });
+    expect(h.portee.tousLesSites, `host_permissions ${m}`).toBe(true);
+    const s = analyserManifeste({ ...base, content_scripts: [{ matches: [m], js: ["a.js"] }] }, { source: "agent" });
+    expect(s.portee.scriptsTousLesSites, `content_scripts ${m}`).toBe(true);
+    expect(accordRenforce(s.portee, "agent"), `renforcé ${m}`).toBe(true);
+  }
+  for (const m of ["*://*.exemple.co.uk/*", "https://exemple.com:443/*", "*://*.exemple.com:*/*", "*://*.abc.uk/*", "*://*.co.fra/*"]) {
+    expect(analyserManifeste({ ...base, host_permissions: [m] }, { source: "agent" }).portee.tousLesSites, m).toBe(false);
+  }
+});
+
 test("R3-3 accord renforcé de bout en bout", () => {
   const renforce = (m: object) => {
     const a = analyserManifeste({ ...base, ...m }, { source: "agent" });

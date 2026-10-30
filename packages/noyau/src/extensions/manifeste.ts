@@ -31,13 +31,20 @@ const PERMISSIONS_REFUSEES_AGENT = [
   "proxy",
 ];
 const CLES_REFUSEES_AGENT = ["externally_connectable", "sandbox", "chrome_url_overrides", "devtools_page"];
-/** Vrai si le motif couvre tous les sites : <all_urls>, ou un hôte `*` ou `*.<un seul label>` (jokers de TLD compris). */
+/** Seconds niveaux courants sous un domaine de pays (`*.co.uk`, `*.com.au`, `*.gouv.fr`…) : leur joker vaut « tous les sites ». */
+const SECONDS_NIVEAUX = ["co", "com", "net", "org", "gov", "edu", "ac", "gouv", "ne", "or"];
+/**
+ * Vrai si le motif couvre tous les sites : <all_urls>, ou un hôte (port retiré, `*:*` compris) `*`, `*.<un seul label>`
+ * (jokers de TLD) ou `*.<second niveau courant>.<pays à 2 lettres>` (`*.co.uk`).
+ */
 export function motifTousLesSites(motif: string): boolean {
   if (motif === "<all_urls>") return true;
   const m = /^(\*|https?|wss?|ftp):\/\/([^/]*)(\/.*)?$/.exec(motif);
   if (!m) return false;
-  const hote = m[2]!;
-  return hote === "*" || /^\*\.[^.*]+$/.test(hote);
+  const hote = m[2]!.replace(/:[^:]*$/, "").toLowerCase();
+  if (hote === "*" || /^\*\.[^.*]+$/.test(hote)) return true;
+  const sld = /^\*\.([^.*]+)\.([a-z]{2})$/.exec(hote);
+  return !!sld && SECONDS_NIVEAUX.includes(sld[1]!);
 }
 const DOMAINE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
