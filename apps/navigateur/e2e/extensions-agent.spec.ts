@@ -172,6 +172,8 @@ test.beforeAll(async () => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" });
     res.end(`<title>${req.url}</title>ok`);
   });
+  // Une connexion TLS ouverte sans requête (preconnect) : le nom demandé (SNI) est noté, chemin « (connexion) ».
+  serveur.on("secureConnection", (t) => noter((t as unknown as { servername?: string }).servername, "(connexion)"));
   serveur.on("upgrade", (req, socket) => {
     noter(req.headers.host, req.url);
     socket.destroy();
@@ -189,7 +191,7 @@ test.afterAll(async () => {
 });
 
 const argsReseau = () => [
-  `--host-resolver-rules=${["accorde.test", "hote.test", "autre.test"].map((h) => `MAP ${h}:443 127.0.0.1:${https.port}`).join(", ")}`,
+  `--host-resolver-rules=${["accorde.test", "hote.test", "autre.test", "*.autre.test"].map((h) => `MAP ${h}:443 127.0.0.1:${https.port}`).join(", ")}`,
   "--ignore-certificate-errors",
 ];
 const coupsVers = (hote: string, chemin?: string) => https.coups.filter((c) => c.hote === hote && (chemin === undefined || c.chemin === chemin));
@@ -240,7 +242,8 @@ for (const h of ["accorde.test", "autre.test"]) {
   await essai("cookieRappel", () => new Promise((ok) => chrome.cookies.set({ url: "https://autre.test/", name: "fuite", value: "x" }, () => ok(chrome.runtime.lastError && chrome.runtime.lastError.message))));
   await chrome.storage.local.set({ resultats });
 })();
-// Ordres d'une page (ordre.html?<ordre>) : popup vers une adresse absolue, ou popup qui sonde ses cadres.
+// Ordres d'une page (ordre.html?<ordre>) : popup vers une adresse absolue, popup qui sonde ses cadres,
+// clients.openWindow ou runtime.setUninstallURL vers autre.test (la réponse rend le résultat).
 chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
   (async () => {
     if (m === "popup-fuite") {
@@ -249,11 +252,39 @@ chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
     } else if (m === "popup-cadres") {
       await chrome.action.setPopup({ popup: "cadre.html" });
       await chrome.action.openPopup();
+    } else if (m === "clients-fenetre") {
+      repondre(await clients.openWindow("https://autre.test/clients-fuite").then((f) => "ouverte " + String(f && f.url), (e) => "erreur " + (e && e.message)));
+      return;
+    } else if (m === "desinstallation") {
+      repondre(await chrome.runtime.setUninstallURL("https://autre.test/desinstall").then(() => "posee", (e) => "erreur " + (e && e.message)));
+      return;
     }
     repondre("fait");
   })().catch((e) => repondre(String(e && e.message)));
   return true;
 });
+`,
+  "liens.html":
+    '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="x-dns-prefetch-control" content="on"><title>attente</title><link rel="dns-prefetch" href="https://statique-dns.autre.test/"><link rel="preconnect" href="https://statique-preco.autre.test/"></head><body><script src="liens.js"></script></body></html>',
+  "liens.js": `const vu = {};
+const poser = (rel, hote, facon) => {
+  const l = document.createElement("link");
+  try {
+    if (facon === "attribut") { l.setAttribute("rel", rel); l.setAttribute("href", "https://" + hote + "/"); }
+    else if (facon === "liste") { l.relList.add(rel); l.href = "https://" + hote + "/"; }
+    else { l.rel = rel; l.href = "https://" + hote + "/"; }
+    document.head.appendChild(l);
+    vu[hote] = "pose";
+  } catch (e) { vu[hote] = String(e && e.message); }
+};
+poser("preconnect", "autre.test", "propriete");
+for (const rel of ["dns-prefetch", "preconnect", "prefetch", "prerender", "preload", "modulepreload"]) {
+  poser(rel, rel + ".autre.test", "propriete");
+  poser(rel, rel + "-attr.autre.test", "attribut");
+  poser(rel, rel + "-liste.autre.test", "liste");
+}
+poser("preconnect", "hote.test", "propriete");
+document.title = JSON.stringify(vu);
 `,
   "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
   "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
@@ -292,6 +323,20 @@ chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
   document.body.appendChild(doc);
   await new Promise((ok) => doc.addEventListener("load", ok, { once: true }));
   vu.srcdoc = await sonder(window[3], "srcdoc");
+  // contentWindow masqué sur l'élément : le cadre n'est atteint que par window[4], lu dans la même tâche.
+  const masque = document.createElement("iframe");
+  Object.defineProperty(masque, "contentWindow", { get: () => null });
+  Object.defineProperty(masque, "contentDocument", { get: () => null });
+  document.body.appendChild(masque);
+  vu.masqueTot = typeof window[4].RTCPeerConnection;
+  vu.masque = await sonder(window[4], "masque");
+  // Racine fantôme déclarative (setHTMLUnsafe), que attachShadow ne voit jamais.
+  const declare = document.body.appendChild(document.createElement("div"));
+  declare.setHTMLUnsafe('<div><template shadowrootmode="open"><iframe></iframe></template></div>');
+  const dansDeclare = declare.firstElementChild.shadowRoot.querySelector("iframe");
+  vu.declareTot = typeof dansDeclare.contentWindow.RTCPeerConnection;
+  vu.declare = await sonder(dansDeclare.contentWindow, "declare");
+  vu.nombre = window.length;
   vu.frames = typeof window[0];
   vu.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.action.type);
   document.title = JSON.stringify(vu);
@@ -511,16 +556,69 @@ test("dans sa popup, un cadre about:blank, srcdoc, imbriqué ou dans une racine 
     const titre = () =>
       app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().endsWith("/cadre.html"))?.getTitle() ?? null);
     await expect.poll(titre, { timeout: 10_000 }).toMatch(/^\{/);
-    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[] };
-    for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc"]) {
+    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[]; masqueTot: string; declareTot: string };
+    for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc", "masque", "declare"]) {
       expect(vu[cadre]!.protocole).toBe("about:");
       expect(vu[cadre]!.rtc).toBe("undefined");
       expect(vu[cadre]!.rtcEssai).not.toBe("creee");
       expect(vu[cadre]!.tabs).toBe("undefined");
       expect(vu[cadre]!.dnr).not.toBe("acceptee");
     }
+    expect(vu.masqueTot).toBe("undefined");
+    expect(vu.declareTot).toBe("undefined");
     // Aucune redirection posée : seule la règle block du démarrage.
     expect(vu.regles).toEqual(["block"]);
+  } finally {
+    await fermer();
+  }
+});
+
+// Mesuré (Electron 45, tâche 12 tour 2) : `<link rel=dns-prefetch|preconnect|prefetch|prerender|preload|modulepreload>`
+// d'une page de l'agent (statiques ou posés par script, `x-dns-prefetch-control: on`) ne font ni connexion ni
+// résolution DNS : preconnect n'émet que l'événement `preconnect` de la session (Electron ne connecte pas lui-même,
+// WebAiOs ne l'écoute pas), dns-prefetch rien ; les autres sont soumis à la CSP. Une page web témoin fait de même.
+// Si WebAiOs se met un jour à écouter `session.on("preconnect")`, ce test le dira.
+test("les liens dns-prefetch, preconnect, prefetch… d'une page de l'agent vers un domaine non accordé ne contactent rien, pas même le DNS", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const netlog = join(profil, "..", `netlog-${Date.now()}.json`);
+  const avant = https.coups.length;
+  const { app, fermer } = await lancer({ profil, racine, args: [...argsReseau(), `--log-net-log=${netlog}`] });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    const page = await ouvrirPage(app, `chrome-extension://${id}/liens.html`);
+    // Tous posés (aucun refus du DOM) : c'est le réseau qui ne part pas.
+    expect(Object.values(JSON.parse(page.titre) as Record<string, string>).every((v) => v === "pose")).toBe(true);
+  } finally {
+    await fermer();
+  }
+  expect(https.coups.slice(avant).filter((c) => c.hote.endsWith("autre.test"))).toEqual([]);
+  // Le journal réseau de Chromium ne nomme aucun hôte d'autre.test (ni résolution, ni connexion).
+  const noms = new Set(readFileSync(netlog, "utf8").match(/[a-z0-9.-]*autre\.test/g) ?? []);
+  expect([...noms]).toEqual([]);
+});
+
+test("clients.openWindow (service worker) et runtime.setUninstallURL vers un domaine non accordé n'ouvrent rien, désinstallation comprise", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    const fenetre = await ordonner(app, id!, "clients-fenetre");
+    expect(fenetre).toMatch(/^erreur /);
+    const desinstallation = await ordonner(app, id!, "desinstallation");
+    expect(desinstallation).toMatch(/^(posee|erreur .*)$/);
+    await app.evaluate(({ session }, id) => session.fromPartition("persist:webaios").extensions.removeExtension(id), id!);
+    await new Promise((ok) => setTimeout(ok, 1500));
+    // Aucune vue ouverte vers autre.test (l'onglet hote.test/onglet-permis du démarrage peut encore charger).
+    expect(await app.evaluate(({ webContents }) => webContents.getAllWebContents().filter((w) => w.getURL().includes("autre.test")).length)).toBe(0);
+    expect(coupsVers("autre.test", "/clients-fuite")).toEqual([]);
+    expect(coupsVers("autre.test", "/desinstall")).toEqual([]);
+    console.log(`[mesure] clients.openWindow : ${fenetre} ; setUninstallURL : ${desinstallation}`);
   } finally {
     await fermer();
   }

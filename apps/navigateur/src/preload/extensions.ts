@@ -89,73 +89,122 @@ function contexteExtension(): boolean {
  * Retire WebRTC du monde principal (pages des extensions de l'agent, et leurs cadres `about:`) : aucun envoi hors de
  * leur accord. Un cadre `about:blank` créé par la page a d'abord un document vide où ce preload n'a pas encore tourné :
  * chaque cadre de même origine en est privé dès qu'il apparaît (`load` synchrone d'un cadre vide, capté à la phase de
- * capture, y compris dans les racines fantômes) et dès que la page y accède (`contentWindow`, `contentDocument`).
- * Sérialisé par `executeInMainWorld` : tout est défini à l'intérieur.
+ * capture, y compris dans les racines fantômes), dès que la page y accède (`contentWindow`, `contentDocument`), et à
+ * chaque balayage des fenêtres filles `w[i]` (accès indexé, que la page ne peut pas masquer) : au chargement d'un cadre,
+ * à chaque accès et à chaque mutation du document. Tout ce dont il se sert est saisi avant que la page ne tourne
+ * (getters d'origine, `Reflect.apply`…) : masquer `contentWindow` sur l'élément ou remplacer les objets de base n'y
+ * change rien. Sérialisé par `executeInMainWorld` : tout est défini à l'intérieur.
  */
 function sansWebRtc(): void {
-  type Fenetre = Window & typeof globalThis & Record<string, unknown>;
+  type Fenetre = Window & typeof globalThis & Record<string | number, unknown>;
+  const appliquer = Reflect.apply;
+  const definir = Object.defineProperty;
+  const descripteur = Object.getOwnPropertyDescriptor;
+  const ensemble = new WeakSet<object>();
+  const WS = WeakSet.prototype;
+  const a = (o: object) => appliquer(WS.has, ensemble, [o]) as boolean;
+  const marquer = (o: object) => appliquer(WS.add, ensemble, [o]);
   const NOMS = ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"];
-  const equipees = new WeakSet<object>();
-  const equiper = (w: Fenetre | null | undefined): void => {
-    if (!w) return;
-    try {
-      // Par document : un cadre qui navigue (srcdoc) a un nouveau document derrière la même fenêtre.
-      const doc = w.document as Document | undefined;
-      if (doc) {
-        if (equipees.has(doc)) return;
-        equipees.add(doc);
+  const CLASSES = ["HTMLIFrameElement", "HTMLFrameElement", "HTMLObjectElement", "HTMLEmbedElement"];
+  const racine = globalThis as Fenetre;
+  // Getters d'origine de `contentWindow`, de toutes les fenêtres équipées (chaque cadre a ses propres classes).
+  const getters: Array<(this: unknown) => unknown> = [];
+
+  /** La fenêtre d'un élément cadre, par les getters d'origine (pas par la propriété, que la page peut masquer). */
+  const fenetreDe = (el: unknown): Fenetre | null => {
+    for (let i = 0; i < getters.length; i++) {
+      try {
+        return appliquer(getters[i]!, el, []) as Fenetre | null;
+      } catch {
+        // Pas de cette classe ou de cette fenêtre : getter suivant.
       }
-      for (const nom of NOMS) {
+    }
+    return null;
+  };
+
+  /** Les fenêtres filles `w[i]`, et les leurs. */
+  const balayer = (w: Fenetre): void => {
+    for (let i = 0; i < 1000; i++) {
+      let f: Fenetre | undefined;
+      try {
+        f = w[i] as Fenetre | undefined;
+      } catch {
+        return;
+      }
+      if (!f) return;
+      equiper(f);
+    }
+  };
+  const toutBalayer = () => {
+    try {
+      balayer(racine);
+    } catch {
+      // Rien de plus à faire.
+    }
+  };
+
+  function equiper(w: Fenetre | null | undefined): void {
+    if (!w) return;
+    let doc: Document | undefined;
+    try {
+      doc = w.document as Document | undefined;
+    } catch {
+      return; // Autre origine : inaccessible, donc inoffensive ici.
+    }
+    // Par document : un cadre qui navigue (srcdoc) a un nouveau document derrière la même fenêtre.
+    if (!doc || !a(doc)) {
+      if (doc) marquer(doc);
+      installer(w, doc);
+    }
+    balayer(w);
+  }
+
+  function installer(w: Fenetre, doc: Document | undefined): void {
+    try {
+      for (let i = 0; i < NOMS.length; i++) {
         try {
-          delete w[nom];
+          delete w[NOMS[i]!];
         } catch {
           // Non configurable : laissé (la politique WebRTC de la vue coupe l'UDP direct).
         }
       }
-      const capter = (racine: EventTarget) =>
-        racine.addEventListener(
-          "load",
-          (e) => {
-            const cible = e.target as { contentWindow?: Fenetre | null } | null;
-            if (cible && "contentWindow" in cible) {
-              try {
-                equiper(cible.contentWindow);
-              } catch {
-                // Autre origine : rien à faire.
-              }
-            }
-          },
-          true,
-        );
       if (!doc) return;
-      capter(doc);
-      const ombre = w.Element?.prototype.attachShadow;
-      if (ombre) {
-        Object.defineProperty(w.Element.prototype, "attachShadow", {
-          value: function (this: Element, o: ShadowRootInit) {
-            const r = ombre.call(this, o);
-            capter(r);
-            return r;
-          },
-          configurable: false,
-          writable: false,
-        });
-      }
-      for (const nomClasse of ["HTMLIFrameElement", "HTMLFrameElement", "HTMLObjectElement", "HTMLEmbedElement"]) {
-        const proto = (w[nomClasse] as { prototype?: object } | undefined)?.prototype;
+      const ET = w.EventTarget?.prototype;
+      const ecouter = ET?.addEventListener;
+      const surCharge = (e: Event) => {
+        let cible: unknown = null;
+        try {
+          cible = appliquer(descripteur(w.Event.prototype, "target")!.get!, e, []);
+        } catch {
+          cible = null;
+        }
+        if (cible) equiper(fenetreDe(cible));
+        toutBalayer();
+      };
+      const capter = (r: EventTarget) => {
+        if (ecouter) appliquer(ecouter, r, ["load", surCharge, true]);
+      };
+      // Les getters d'abord : `surCharge` s'en sert.
+      for (let i = 0; i < CLASSES.length; i++) {
+        const proto = (w[CLASSES[i]!] as { prototype?: object } | undefined)?.prototype;
         if (!proto) continue;
-        for (const prop of ["contentWindow", "contentDocument"]) {
-          const d = Object.getOwnPropertyDescriptor(proto, prop);
+        const props = ["contentWindow", "contentDocument"];
+        for (let j = 0; j < props.length; j++) {
+          const prop = props[j]!;
+          const d = descripteur(proto, prop);
           if (!d?.get) continue;
           const lire = d.get;
-          Object.defineProperty(proto, prop, {
+          if (prop === "contentWindow") getters[getters.length] = lire;
+          const fenetre = prop === "contentWindow";
+          definir(proto, prop, {
             get(this: object) {
-              const r = lire.call(this) as (Fenetre & { defaultView?: Fenetre }) | null;
+              const r = appliquer(lire, this, []) as (Fenetre & { defaultView?: Fenetre }) | null;
               try {
-                equiper(prop === "contentWindow" ? r : (r?.defaultView ?? null));
+                equiper(fenetre ? r : (r?.defaultView ?? null));
               } catch {
                 // Autre origine.
               }
+              toutBalayer();
               return r;
             },
             configurable: false,
@@ -163,19 +212,50 @@ function sansWebRtc(): void {
           });
         }
       }
+      capter(doc);
+      const ombre = w.Element?.prototype.attachShadow;
+      if (ombre) {
+        definir(w.Element.prototype, "attachShadow", {
+          value: function (this: Element, o: ShadowRootInit) {
+            const r = appliquer(ombre, this, [o]) as ShadowRoot;
+            capter(r);
+            return r;
+          },
+          configurable: false,
+          writable: false,
+        });
+      }
+      // Filet : chaque mutation du document (microtâche, avant chaque script du parseur) balaie les fenêtres filles.
+      const MO = w.MutationObserver;
+      if (MO) {
+        const mo = new MO(toutBalayer);
+        appliquer(MO.prototype.observe, mo, [doc, { childList: true, subtree: true }]);
+      }
     } catch {
       // Fenêtre d'une autre origine : inaccessible, donc inoffensive ici.
     }
-  };
-  equiper(globalThis as Fenetre);
+  }
+
+  equiper(racine);
 }
 
-/** Le protocole du cadre, lu dans le monde principal. */
-function protocoleDuCadre(): string | undefined {
+/**
+ * Un cadre `about:` dont l'origine (héritée du parent) est celle d'une extension, lu dans le monde principal. Les cadres
+ * `about:blank` des sites (des dizaines par page chez les régies) ne posent donc pas de question synchrone ; un site ne
+ * peut pas avoir une origine `chrome-extension://`.
+ */
+function cadreAboutDExtension(): boolean {
   try {
-    return contextBridge.executeInMainWorld({ func: () => (globalThis as { location?: { protocol?: string } }).location?.protocol }) as string | undefined;
+    return (
+      contextBridge.executeInMainWorld({
+        func: () => {
+          const g = globalThis as { location?: { protocol?: string }; origin?: unknown };
+          return g.location?.protocol === "about:" && typeof g.origin === "string" && g.origin.startsWith("chrome-extension://");
+        },
+      }) === true
+    );
   } catch {
-    return undefined;
+    return false;
   }
 }
 
@@ -183,7 +263,7 @@ function protocoleDuCadre(): string | undefined {
 // dans une page d'une extension de l'agent, il perd WebRTC comme elle (le processus principal juge par l'origine du
 // cadre). Les vues qui montrent ces pages font tourner ce preload dans leurs sous-cadres (`nodeIntegrationInSubFrames`,
 // sans Node : bac à sable).
-if (process.type === "renderer" && protocoleDuCadre() === "about:") {
+if (process.type === "renderer" && cadreAboutDExtension()) {
   try {
     if (ipcRenderer.sendSync("webaios:extension-agent") === true) contextBridge.executeInMainWorld({ func: sansWebRtc });
   } catch (e) {

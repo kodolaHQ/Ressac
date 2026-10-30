@@ -194,3 +194,15 @@ test("pages d'une extension de l'agent : RTCPeerConnection, webkitRTCPeerConnect
   await preloadWebaios("renderer", `chrome-extension://${"a".repeat(32)}/popup.html`);
   for (const n of noms) expect(n in globalThis).toBe(false);
 });
+
+test("cadre about: : la question synchrone n'est posée que si son origine est celle d'une extension", async () => {
+  vi.stubGlobal("origin", "https://site.invalid");
+  await preloadWebaios("renderer", "about:blank", null);
+  expect(agent.demandes).toBe(0);
+  vi.stubGlobal("origin", "null");
+  await preloadWebaios("renderer", "about:srcdoc", null);
+  expect(agent.demandes).toBe(0);
+  vi.stubGlobal("origin", `chrome-extension://${"a".repeat(32)}`);
+  await preloadWebaios("renderer", "about:blank", null);
+  expect(agent.demandes).toBe(1);
+});

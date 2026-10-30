@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runInNewContext } from "node:vm";
+import { createContext, runInContext, runInNewContext } from "node:vm";
 import { afterAll, expect, test, vi } from "vitest";
 import type { Portee } from "@webaios/noyau";
 
@@ -291,4 +291,46 @@ test("garde : les arguments sont figés une fois (copie), vérifiés et passés 
   };
   await chrome.scripting.executeScript({ target: cible as unknown as { tabId: number }, files: ["x.js"] });
   expect((appels.at(-1)![1][0] as { target: { tabId: number } }).target.tabId).toBe(4);
+});
+
+test("garde : remplacer Promise.prototype.then, Function.prototype.apply, Array.isArray et l'itérateur des listes après son chargement ne fait passer aucune redirection", async () => {
+  // Un contexte à part, avec ses propres objets de base : l'extension peut les modifier sans toucher ceux du test.
+  const recus: unknown[] = [];
+  const ctx = createContext({});
+  runInContext(
+    `globalThis.chrome = { runtime: {}, declarativeNetRequest: {
+       updateDynamicRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); },
+       updateSessionRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); } } };`,
+    Object.assign(ctx, { __noter: (x: string) => recus.push(JSON.parse(x)) }),
+  );
+  runInContext(readFileSync(cheminGarde, "utf8"), ctx);
+  const resultat = await runInContext(
+    `(async () => {
+      const redirection = { addRules: [{ id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} }] };
+      const vrai = Promise.prototype.then;
+      // (a) then : toute suite reçoit true.
+      Promise.prototype.then = function (ok, ko) { return vrai.call(this, ok && ((v) => ok(v === false || typeof v === "string" ? true : v)), ko); };
+      // (b) apply : l'original de l'API est volé et rappelé.
+      const vole = [];
+      const appliquer = Function.prototype.apply;
+      Function.prototype.apply = function (t, a) { vole.push(this); return appliquer.call(this, t, a); };
+      // (c) Array.isArray qui change d'avis, itérateur de liste vide.
+      let n = 0;
+      Array.isArray = () => n++ % 2 === 0;
+      Array.prototype[Symbol.iterator] = function* () {};
+      Object.keys = () => [];
+      let refus = "aucun";
+      try {
+        await chrome.declarativeNetRequest.updateDynamicRules(redirection);
+      } catch (e) {
+        refus = e.message;
+      }
+      Promise.prototype.then = vrai;
+      Function.prototype.apply = appliquer;
+      return { refus, voles: vole.length };
+    })()`,
+    ctx,
+  );
+  expect(recus).toEqual([]);
+  expect(resultat).toEqual({ refus: "Règle DNR refusée par WebAiOs (redirect)", voles: 0 });
 });

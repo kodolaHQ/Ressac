@@ -929,3 +929,21 @@ test("menu du bouton d'une extension de l'agent : une page d'options absolue hor
   expect(String(erreur.mock.calls[0]?.[0])).toContain("URL refusée par WebAiOs");
   erreur.mockRestore();
 });
+
+test("cookies.onChanged : une extension de l'agent ne reçoit que les changements de ses sites ; le Store reçoit tout", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  s.charges.set(ID_A, { id: ID_A, chemin: "store", url: `chrome-extension://${ID_A}/`, manifest: {}, path: "store", name: "store", version: "1" } as never);
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  s.charges.set(ID_A, { id: ID_A, chemin: "store", url: `chrome-extension://${ID_A}/`, manifest: {}, path: "store", name: "store", version: "1" } as never);
+  const routeur = rouages(s).ctx.router as unknown as { addListener(l: unknown, id: string, nom: string): void };
+  const recus: Record<string, unknown[]> = { agent: [], store: [] };
+  const hote = (nom: string) => ({ isDestroyed: () => false, send: (_c: string, info: { cookie: { domain: string } }) => recus[nom]!.push(info.cookie.domain), once: () => {}, on: () => {} });
+  routeur.addListener({ type: "frame", extensionId: "id-copies-fond", host: hote("agent") }, "id-copies-fond", "cookies.onChanged");
+  routeur.addListener({ type: "frame", extensionId: ID_A, host: hote("store") }, ID_A, "cookies.onChanged");
+  const changer = (domain: string) => s.cookies.emit("changed", {}, { name: "c", value: "secret", domain, path: "/", secure: true }, "explicit", false);
+  changer("autre.test");
+  changer(".www.hote.test");
+  expect(recus).toEqual({ agent: [".www.hote.test"], store: ["autre.test", ".www.hote.test"] });
+});
