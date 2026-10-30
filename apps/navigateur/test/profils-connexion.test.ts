@@ -147,8 +147,15 @@ test("un profil qu'un espace utilise n'est jamais effacé, même absent de la li
 
 test("effacer un profil efface ses données d'extensions et appelle oublier", async () => {
   const oublies: string[] = [];
-  const p = new SessionsProfils({ dossier, brancher: () => {}, oublier: (id) => void oublies.push(id) });
+  const ordre: string[] = [];
   const stockage = join(racineSessions, "webaios-abc");
+  const p = new SessionsProfils({
+    dossier,
+    brancher: () => {},
+    // Les extensions sont déchargées avant que leurs données ne soient effacées.
+    avantEffacer: async (id) => void ordre.push(`avant ${id} ${existsSync(join(stockage, "Local Extension Settings"))}`),
+    oublier: (id) => void oublies.push(id),
+  });
   const extensions = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "Extension State", "Extension Rules", "Extension Scripts"];
   for (const d of [...extensions, "Local Storage", "Autre profil"]) mkdirSync(join(stockage, d), { recursive: true });
   // Le dossier d'un autre profil n'est jamais touché.
@@ -160,5 +167,6 @@ test("effacer un profil efface ses données d'extensions et appelle oublier", as
   expect(existsSync(join(stockage, "Local Storage"))).toBe(true);
   expect(existsSync(join(racineSessions, "webaios-xyz", "Local Extension Settings"))).toBe(true);
   expect(oublies).toEqual(["abc"]);
+  expect(ordre).toEqual(["avant abc true"]);
   expect(effacees).toEqual(["persist:webaios-abc"]);
 });

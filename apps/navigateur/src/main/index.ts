@@ -409,11 +409,10 @@ app.whenReady().then(async () => {
         console.error(`[extensions] profil ${id} sans extensions :`, e);
       }
     },
-    oublier: (id) => {
-      permissions.get(id)?.toutOublier();
-      // Le profil quitte les extensions (profils actifs, versions vues) ; ses réglages d'extensions sont déjà effacés.
-      serviceExtensions.retirerProfil(id).catch((e) => console.error(`[extensions] profil ${id} non retiré du registre :`, e));
-    },
+    // Le profil quitte les extensions (profils actifs, versions vues) et elles sont déchargées, avant que leurs réglages
+    // ne soient effacés du disque.
+    avantEffacer: (id) => serviceExtensions.retirerProfil(id),
+    oublier: (id) => permissions.get(id)?.toutOublier(),
   });
   const vues = new GestionnaireVues({
     sessionDe: (o) => sessions.session(profilDOnglet(magasin.etat, o)),

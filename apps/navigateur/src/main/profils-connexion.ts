@@ -43,6 +43,11 @@ export class SessionsProfils {
       dossier: string;
       /** Branche une session neuve (téléchargements, autorisations) ; appelé une fois par profil. */
       brancher: (s: Session, id: IdProfil) => void;
+      /**
+       * Avant d'effacer les données d'un profil : ses extensions sont déchargées (le registre le retire). Attendu ; un
+       * échec laisse le profil sur la liste, pour le démarrage suivant.
+       */
+      avantEffacer?: (id: IdProfil) => Promise<void>;
       /** Un profil vient d'être effacé : ce qui en reste en mémoire (autorisations) doit l'être aussi. */
       oublier?: (id: IdProfil) => void;
     },
@@ -82,6 +87,7 @@ export class SessionsProfils {
   /** Vrai si tout le profil a été effacé ; une erreur le laisse sur la liste, pour le démarrage suivant. */
   private async effacer(id: IdProfil): Promise<boolean> {
     try {
+      await this.o.avantEffacer?.(id);
       const s = session.fromPartition(partitionDe(id));
       // Les réglages des extensions (storage.local, règles, scripts) ne font pas partie de ce que efface `clearStorageData`.
       if (s.storagePath) await Promise.all(DONNEES_EXTENSIONS.map((d) => rm(join(s.storagePath!, d), { recursive: true, force: true })));

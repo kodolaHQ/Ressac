@@ -309,7 +309,7 @@ test("cocher « Espace privé » montre l'avertissement et la liste des extensio
     await expect(modale.getByTestId("avertissement-extensions-prive")).toContainText(
       "Cet espace privé partage son profil avec « Lecture » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.",
     );
-    await expect(modale.getByTestId("extensions-desactivees")).toContainText(`En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : ${NOM_AGENT}.`);
+    await expect(modale.getByTestId("extensions-desactivees")).toContainText(`En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : ${NOM_AGENT}. Les onglets déjà ouverts les gardent jusqu'à leur rechargement.`);
     await modale.getByRole("button", { name: "Enregistrer" }).click();
     await expect.poll(() => registre(profil)["agent:cacheur"]!.profils).toEqual([]);
     await expect.poll(() => noms(app, "persist:webaios")).toEqual([]);
@@ -349,6 +349,25 @@ test("supprimer le dernier espace d'un profil retire ce profil des extensions", 
     await fenetre.evaluate(() => (window as unknown as { webaios: { agir(a: unknown): void } }).webaios.agir({ type: "supprimerEspace", id: "e3" }));
     await expect.poll(() => registre(profil)[cle]!.profils).toEqual(["defaut"]);
     expect(Object.keys(registre(profil)[cle]!.vues)).not.toContain("p2");
+  } finally {
+    await fermer();
+  }
+});
+
+test("supprimer le dernier espace d'un profil efface les réglages de ses extensions, dans le vrai dossier de sa session", async () => {
+  const profil = nouveauProfil();
+  ecrireSession(profil, [espaceDe("e1", "Perso", "🏠", "defaut"), espaceDe("e3", "Banque", "🏦", "p2")]);
+  // La sonde écrit dans chrome.storage.local à son démarrage : `Local Extension Settings` naît dans la session de p2.
+  installerStoreFactice(profil, "sonde", { profils: ["p2"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    const stockage = await app.evaluate(({ session }) => session.fromPartition("persist:webaios-p2").storagePath);
+    expect(stockage).toBeTruthy();
+    expect(stockage!.startsWith(profil)).toBe(true);
+    const reglages = join(stockage!, "Local Extension Settings");
+    await expect.poll(() => existsSync(reglages), { timeout: 15_000 }).toBe(true);
+    await fenetre.evaluate(() => (window as unknown as { webaios: { agir(a: unknown): void } }).webaios.agir({ type: "supprimerEspace", id: "e3" }));
+    await expect.poll(() => existsSync(reglages), { timeout: 15_000 }).toBe(false);
   } finally {
     await fermer();
   }

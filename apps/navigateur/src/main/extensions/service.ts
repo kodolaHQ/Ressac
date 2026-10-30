@@ -455,8 +455,11 @@ export class ServiceExtensions {
     }
     if (!x) return { ok: false, erreur: `Extension inconnue : ${cle}` };
     if (x.desactivee) return { ok: false, erreur: x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE };
+    // Revérifié dans l'écriture sérialisée : la coupure générale ou une désactivation ont pu arriver entre-temps.
     return ecrire((e, prives) => {
-      if (e.extensions[cle]?.desactivee) throw new Error(DESACTIVEE_PORTEE);
+      if (e.toutesCoupees) throw new Error(TOUTES_COUPEES_AGENT);
+      const d = e.extensions[cle]?.desactivee;
+      if (d) throw new Error(d.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE);
       return activer(e, cle, profil, prives);
     });
   }
