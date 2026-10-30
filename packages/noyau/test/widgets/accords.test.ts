@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DeclarationWidget } from "../../src/accueil/schemas.js";
+import { DeclarationAction } from "../../src/actions/schemas.js";
 import { accordValide, accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -57,5 +58,13 @@ describe("accords", () => {
     expect(accordValide(declaration(["app.daily.dev", "b.fr"], ["x.fr", "y.fr"]), accord)).toBe(false);
     expect(accordValide(declaration(["app.daily.dev", "b.fr"], []), accord)).toBe(false);
     expect(accordValide(declaration(["app.daily.dev", "b.fr"], ["x.fr"]), undefined)).toBe(false);
+  });
+
+  it("accordValide accepte toute déclaration qui a des sources (widget ou action)", () => {
+    const action = DeclarationAction.parse({ nom: "A", sources: { compte: ["gitlab.com"], publiques: ["x.fr"] } });
+    const accord = { domaines: ["gitlab.com"], publiques: ["x.fr"], profil: "p" };
+    expect(accordValide(action, accord)).toBe(true);
+    expect(accordValide(action, { ...accord, domaines: ["autre.fr"] })).toBe(false);
+    expect(accordValide(action)).toBe(false);
   });
 });

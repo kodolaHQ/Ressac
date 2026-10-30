@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { DeclarationWidget } from "../accueil/schemas.js";
 
 /**
  * Accord de l'utilisateur pour qu'un widget lise avec son compte : les domaines `compte` et `publiques` de la déclaration au
- * moment de l'accord, et le profil de connexion choisi. Rangé dans `<dossierWidgets>/accords.json`, hors de l'espace.
+ * moment de l'accord, et le profil de connexion choisi. Rangé dans `<dossierWidgets>/accords.json` (`<dossierActions>/accords.json` pour les actions), hors de l'espace.
  */
 export const Accord = z.object({
   domaines: z.array(z.string()),
@@ -84,8 +83,11 @@ const memes = (a: string[], b: string[]) => {
   return x.length === y.length && x.every((v, i) => v === y[i]);
 };
 
-/** L'accord vaut tant que la déclaration annonce exactement les mêmes domaines (`compte` et `publiques`). */
-export function accordValide(declaration: DeclarationWidget, accord?: Accord): accord is Accord {
+/**
+ * L'accord vaut tant que la déclaration (d'un widget ou d'une action) annonce exactement les mêmes domaines
+ * (`compte` et `publiques`).
+ */
+export function accordValide(declaration: { sources: { compte: string[]; publiques: string[] } }, accord?: Accord): accord is Accord {
   if (!accord) return false;
   return memes(declaration.sources.compte, accord.domaines) && memes(declaration.sources.publiques, accord.publiques);
 }

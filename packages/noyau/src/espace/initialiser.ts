@@ -232,5 +232,7 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
   }
   await mkdir(c.projets, { recursive: true });
   await mkdir(c.extensions, { recursive: true });
+  await mkdir(c.actions, { recursive: true });
+  await mkdir(c.composants, { recursive: true });
   return { crees };
 }

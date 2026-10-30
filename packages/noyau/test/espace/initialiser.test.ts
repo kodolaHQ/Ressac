@@ -32,6 +32,8 @@ test("crée l'espace complet dans un dossier vide", async () => {
   for (const f of attendus) expect(existsSync(join(c.racine, f)), f).toBe(true);
   expect(existsSync(c.projets)).toBe(true);
   expect(existsSync(c.extensions)).toBe(true);
+  expect(existsSync(c.actions)).toBe(true);
+  expect(existsSync(c.composants)).toBe(true);
   expect(crees.length).toBe(attendus.length);
 });
 

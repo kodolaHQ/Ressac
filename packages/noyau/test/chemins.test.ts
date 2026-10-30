@@ -36,3 +36,9 @@ test("cheminDansConteneur traduit un chemin de l'espace et refuse le reste", () 
 test("cheminsEspace().extensions vaut <racine>/extensions", () => {
   expect(cheminsEspace("/tmp/w").extensions).toBe("/tmp/w/extensions");
 });
+
+test("actions et composants sous la racine", () => {
+  const c = cheminsEspace("/tmp/w");
+  expect(c.actions).toBe("/tmp/w/actions");
+  expect(c.composants).toBe("/tmp/w/composants");
+});
