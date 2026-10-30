@@ -71,6 +71,8 @@ export class TamponOnglet {
   private readonly maxConsole: number;
   private readonly maxReseau: number;
   private readonly depuis: number;
+  /** Ids des requêtes d'extension écartées (les plus récentes) : leurs entrées de journal (échec, CORS) le sont aussi. */
+  private readonly requetesExtension = new Map<string, string>();
   /** Contextes d'exécution venus d'une extension (scripts de contenu, monde isolé) : rien de ce qu'ils disent n'est retenu. */
   private readonly contextesExtension = new Set<number>();
 
@@ -128,7 +130,10 @@ export class TamponOnglet {
       }
       case "Log.entryAdded": {
         const e = p.entry ?? {};
-        if (String(e.url ?? "").startsWith(ORIGINE_EXTENSION) || pileDExtension(e.stackTrace)) return;
+        // Le message CORS (source « javascript ») n'a ni id de requête ni pile, et porte l'adresse de la page : seule l'adresse
+        // demandée, citée dans son texte, le relie à la requête d'extension.
+        const texte = String(e.text ?? "");
+        if (this.requetesExtension.has(e.networkRequestId) || (e.category === "cors" && [...this.requetesExtension.values()].some((u) => u && texte.includes(`'${u}'`))) || String(e.url ?? "").startsWith(ORIGINE_EXTENSION) || pileDExtension(e.stackTrace)) return;
         const pile = textePile(e.stackTrace);
         this.ajouter({ horodatage: e.timestamp ?? Date.now(), niveau: NIVEAUX_JOURNAL[e.level] ?? "log", texte: String(e.text ?? ""), ...(pile ? { pile } : {}) });
         return;
@@ -139,8 +144,15 @@ export class TamponOnglet {
         if ([p.request?.url, p.documentURL, i.url].some((u) => String(u ?? "").startsWith(ORIGINE_EXTENSION)) || pileDExtension(i.stack)) {
           this.requetes.delete(p.requestId);
           this.debuts.delete(p.requestId);
+          this.requetesExtension.delete(p.requestId);
+          this.requetesExtension.set(p.requestId, String(p.request?.url ?? ""));
+          for (const id of this.requetesExtension.keys()) {
+            if (this.requetesExtension.size <= 1000) break;
+            this.requetesExtension.delete(id);
+          }
           return;
         }
+        this.requetesExtension.delete(p.requestId);
         // Une redirection garde l'id : la requête est remplacée par sa suite.
         this.requetes.delete(p.requestId);
         this.requetes.set(p.requestId, {

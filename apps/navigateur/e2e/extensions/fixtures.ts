@@ -300,8 +300,17 @@ const bavardStore = {
   "contenu.js": `document.addEventListener("declencher", () => {
   console.log("BAVARD-EXT");
   console.warn("BAVARD-EXT-AVERTISSEMENT");
-  fetch("/texte.html?depuis-extension").catch(() => {});
-  setTimeout(() => { throw new Error("BAVARD-EXT-EXCEPTION"); });
+  // Une requête qui réussit, une en 404 et une bloquée par CORS (autre origine) : toutes en échec ou non, rien ne doit filtrer jusqu'à l'agent.
+  const autre = location.href.replace("127.0.0.1", "localhost");
+  Promise.allSettled([
+    fetch("/texte.html?depuis-extension"),
+    fetch("/absent-depuis-extension.html"),
+    fetch(new URL("/texte.html?cors-depuis-extension", autre)),
+  ]).then(() => {
+    setTimeout(() => { throw new Error("BAVARD-EXT-EXCEPTION"); });
+    // Marqueur observable : tout ce qui précède est parti.
+    setTimeout(() => document.documentElement.setAttribute("data-bavard-fini", "1"), 300);
+  });
 });
 `,
 };

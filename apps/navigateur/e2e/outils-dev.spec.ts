@@ -507,12 +507,17 @@ test("lire_console et lire_reseau d'un onglet partagé ne montrent rien d'une ex
     await dansLaVue(app, "bavarde.html", "document.dispatchEvent(new CustomEvent('declencher'))");
     await expect.poll(() => outil(racine, "lire_console", { id }), { timeout: 10_000 }).toContain("PAGE-LOG");
     await expect.poll(() => outil(racine, "lire_reseau", { id }), { timeout: 10_000 }).toContain("depuis-page");
-    // Laisse à l'extension le temps de parler : sa console et sa requête sont déjà parties (même événement).
-    await new Promise((r) => setTimeout(r, 1000));
+    // L'extension pose un marqueur sur la page une fois ses requêtes finies et son exception levée.
+    await expect.poll(() => dansLaVue(app, "bavarde.html", "document.documentElement.getAttribute('data-bavard-fini')"), { timeout: 10_000 }).toBe("1");
+    await new Promise((r) => setTimeout(r, 300)); // les derniers événements du protocole
     const console_ = await outil(racine, "lire_console", { id });
     const reseau = await outil(racine, "lire_reseau", { id });
     expect(console_).not.toContain("BAVARD-EXT");
     expect(reseau).not.toContain("depuis-extension");
+    for (const trace of ["absent-depuis-extension", "cors-depuis-extension", "Failed to load resource", "CORS"]) {
+      expect(console_).not.toContain(trace);
+      expect(reseau).not.toContain(trace);
+    }
     expect(reseau).toContain("depuis-page");
   } finally {
     await fermer();

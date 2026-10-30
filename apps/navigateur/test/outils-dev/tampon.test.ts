@@ -218,4 +218,40 @@ describe("contextes d'extension", () => {
     logDans(t, 2, "de la page");
     expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
   });
+
+  test("l'entrée de journal d'une requête d'extension en échec n'apparaît pas ; celle d'une requête de page oui", () => {
+    const t = new TamponOnglet();
+    requete(t, "ext", { initiator: { type: "script", stack: { callFrames: [{ url: "chrome-extension://abc/c.js" }] } } }, "http://localhost:3000/absent");
+    requete(t, "pg", { initiator: { type: "script", stack: { callFrames: [{ url: "http://localhost:3000/" }] } } }, "http://localhost:3000/absent2");
+    t.evenement("Log.entryAdded", { entry: { source: "network", level: "error", text: "Failed to load resource: 404", url: "http://localhost:3000/absent", networkRequestId: "ext", timestamp: 1 } });
+    t.evenement("Log.entryAdded", { entry: { source: "network", level: "error", text: "Failed to load resource: 404 page", url: "http://localhost:3000/absent2", networkRequestId: "pg", timestamp: 2 } });
+    expect(t.console().map((m) => m.texte)).toEqual(["Failed to load resource: 404 page"]);
+  });
+
+  test("le message CORS d'une requête d'extension (sans id ni pile) n'apparaît pas ; celui d'une requête de page oui", () => {
+    const t = new TamponOnglet();
+    requete(t, "ext", { initiator: { type: "script", url: "chrome-extension://abc/c.js" } }, "http://localhost:3000/x");
+    const cors = (u: string) => `Access to fetch at '${u}' from origin 'http://127.0.0.1:1' has been blocked by CORS policy`;
+    t.evenement("Log.entryAdded", { entry: { category: "cors", source: "javascript", level: "error", text: cors("http://localhost:3000/x"), url: "http://127.0.0.1:1/", timestamp: 1 } });
+    t.evenement("Log.entryAdded", { entry: { category: "cors", source: "javascript", level: "error", text: cors("http://localhost:3000/y"), url: "http://127.0.0.1:1/", timestamp: 2 } });
+    expect(t.console().map((m) => m.texte)).toEqual([cors("http://localhost:3000/y")]);
+  });
+
+  test("les ids de requêtes d'extension retenus sont bornés : le plus ancien est oublié", () => {
+    const t = new TamponOnglet();
+    const ext = { initiator: { type: "script", url: "chrome-extension://abc/c.js" } };
+    for (let i = 0; i < 1001; i++) requete(t, `e${i}`, ext);
+    t.evenement("Log.entryAdded", { entry: { level: "error", text: "vieille", networkRequestId: "e0", timestamp: 1 } });
+    t.evenement("Log.entryAdded", { entry: { level: "error", text: "récente", networkRequestId: "e1000", timestamp: 2 } });
+    expect(t.console().map((m) => m.texte)).toEqual(["vieille"]);
+  });
+
+  test("console et exception sont filtrées par la pile seule, ou par l'url seule", () => {
+    const t = new TamponOnglet();
+    t.evenement("Runtime.consoleAPICalled", { type: "error", args: [chaine("pile-ext")], timestamp: 1, stackTrace: { callFrames: [{ url: "chrome-extension://abc/c.js" }] } });
+    t.evenement("Runtime.exceptionThrown", { timestamp: 2, exceptionDetails: { text: "Uncaught", exception: { type: "object", description: "Error: pile-ext" }, stackTrace: { callFrames: [{ url: "chrome-extension://abc/c.js" }] } } });
+    t.evenement("Runtime.exceptionThrown", { timestamp: 3, exceptionDetails: { text: "Uncaught", url: "chrome-extension://abc/c.js", exception: { type: "object", description: "Error: url-ext" } } });
+    log(t, "log", "page", 4);
+    expect(t.console().map((m) => m.texte)).toEqual(["page"]);
+  });
 });
