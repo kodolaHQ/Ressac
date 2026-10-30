@@ -400,7 +400,8 @@ const fenetresVisibles = (app: ElectronApplication) => app.evaluate(({ BrowserWi
 const textePopup = (app: ElectronApplication, id: string) =>
   app.evaluate(async ({ webContents }, id) => {
     const w = webContents.getAllWebContents().find((x) => !x.isDestroyed() && x.getURL().startsWith(`chrome-extension://${id}/popup.html`));
-    return w ? ((await w.executeJavaScript("document.getElementById('contenu')?.textContent ?? null")) as string | null) : null;
+    // Une popup qui vient de planter ou d'être détruite n'a plus de cadre : elle compte comme absente.
+    return w ? ((await w.executeJavaScript("document.getElementById('contenu')?.textContent ?? null").catch(() => null)) as string | null) : null;
   }, id);
 const menuApp = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
 const ouvrirPage = async (fenetre: Page) => {
