@@ -236,6 +236,8 @@ export class ExtensionsProfils {
    * avant que `loadExtension` ne rende), puis celui que Chromium a donné.
    */
   private idsAgent = new Map<string, string>();
+  /** Par id Chromium d'une extension de l'agent : les onglets où ses scripts ont été injectés (poignée de main). */
+  private ongletsAgent = new Map<string, Set<WebContents>>();
   /** Pendant nos propres appels à la bibliothèque, ses rappels `selectTab` / `removeTab` ne reviennent pas vers WebAiOs. */
   private echo = false;
 
@@ -543,7 +545,7 @@ export class ExtensionsProfils {
       const chargees = this.chargees.get(profil)!;
       for (const [cle, c] of chargees) {
         if (lireCle(cle)?.source !== "agent") continue;
-        this.retirer(session, profil, cle, c.id);
+        this.retirer(session, profil, cle, c.id, true);
         chargees.delete(cle);
       }
     }
@@ -606,6 +608,11 @@ export class ExtensionsProfils {
     // à l'agent s'il ne peut pas lire cet onglet.
     const profil = [...this.instances].find(([, x]) => x.session === s)?.[0];
     if (vue && profil !== undefined) this.o.aTourneDansOnglet?.(id, profil, this.lisibleParAgent(wc));
+    // Ses scripts y tournent : l'onglet sera rechargé si elle est retirée d'un profil devenu privé.
+    if (vue && this.accordAgent(id) !== undefined) {
+      if (!this.ongletsAgent.has(id)) this.ongletsAgent.set(id, new Set());
+      this.ongletsAgent.get(id)!.add(wc);
+    }
     return vue;
   }
 
@@ -807,7 +814,8 @@ export class ExtensionsProfils {
     for (const [cle, c] of chargees) {
       // Même dossier et même marque : rien à faire. Une copie de l'agent refaite (même dossier) a une nouvelle marque.
       if (voulues.get(cle) === c.chemin && marqueDe(e, cle) === c.marque) continue;
-      this.retirer(s, profil, cle, c.id);
+      // Retirée par la règle des profils privés : ses onglets sont rechargés (ses scripts y tournent encore).
+      this.retirer(s, profil, cle, c.id, prive && lireCle(cle)?.source === "agent");
       chargees.delete(cle);
     }
     for (const [cle, chemin] of voulues) {
@@ -820,7 +828,7 @@ export class ExtensionsProfils {
         if (this.echecs.get(cle)?.size === 0) this.echecs.delete(cle);
         // Le profil est devenu privé pendant le chargement : une extension de l'agent repart aussitôt.
         if (lireCle(cle)?.source === "agent" && profilPrive(this.o.etat(), profil)) {
-          this.retirer(s, profil, cle, ext.id);
+          this.retirer(s, profil, cle, ext.id, true);
           continue;
         }
         chargees.set(cle, { id: ext.id, chemin, marque: marqueDe(e, cle) });
@@ -846,11 +854,29 @@ export class ExtensionsProfils {
     }
   }
 
-  private retirer(s: Session, profil: IdProfil, cle: string, id: string): void {
+  /**
+   * Décharge `id` de la session. `recharger` (extension de l'agent retirée d'un profil devenu privé) : chaque onglet de
+   * cette session où ses scripts ont été injectés est rechargé, pour qu'ils s'y arrêtent.
+   */
+  private retirer(s: Session, profil: IdProfil, cle: string, id: string, recharger = false): void {
     try {
       s.extensions.removeExtension(id);
     } catch (erreur) {
       console.error(`[extensions] ${cle} non retirée du profil ${profil} :`, erreur);
     }
+    const onglets = this.ongletsAgent.get(id);
+    if (!onglets) return;
+    for (const wc of [...onglets]) {
+      if (wc.isDestroyed() || wc.session !== s) continue;
+      onglets.delete(wc);
+      if (!recharger) continue;
+      try {
+        wc.reload();
+      } catch (erreur) {
+        console.error(`[extensions] onglet non rechargé après le retrait de ${cle} :`, erreur);
+      }
+    }
+    for (const wc of [...onglets]) if (wc.isDestroyed()) onglets.delete(wc);
+    if (onglets.size === 0) this.ongletsAgent.delete(id);
   }
 }

@@ -177,7 +177,7 @@
             </p>
           {/if}
           {#if avertis.agentDesactivees.length > 0}
-            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {avertis.agentDesactivees.join(", ")}. Les onglets déjà ouverts les gardent jusqu'à leur rechargement.</p>
+            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {avertis.agentDesactivees.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
           {/if}
         </div>
       {/if}

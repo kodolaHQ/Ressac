@@ -1544,3 +1544,27 @@ test("I2 tous les fichiers de ses scripts de contenu partagent un même monde : 
     await fermer();
   }
 });
+
+test("A7 l'espace devient privé : les onglets ouverts où ses scripts tournent sont rechargés, le script s'arrête", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "tic", {
+    "manifest.json": { manifest_version: 3, name: "Tic de l'agent", version: "1.0.0", content_scripts: [{ matches: [HOTE], js: ["tic.js"] }] },
+    "tic.js": 'let n = 0;\nsetInterval(() => document.documentElement.setAttribute("data-tic", String(++n)), 100);\n',
+  });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "tic", "Tic de l'agent")).toMatch(/^Activée/);
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "Number(document.documentElement.getAttribute('data-tic'))"), { timeout: 15_000 }).toBeGreaterThan(2);
+    await dansLaVue(app, "a.html", "window.__avant = 1");
+    await reglerEspaceActifPrive(fenetre, true);
+    // Rechargé : la marque posée avant a disparu, et le script ne tourne plus.
+    await expect.poll(() => dansLaVue(app, "a.html", "window.__avant === undefined && document.readyState === 'complete'"), { timeout: 15_000 }).toBe(true);
+    await dansLaVue(app, "a.html", "window.__apres = 1");
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await dansLaVue(app, "a.html", "[window.__apres, document.documentElement.getAttribute('data-tic')]")).toEqual([1, null]);
+  } finally {
+    await fermer();
+  }
+});

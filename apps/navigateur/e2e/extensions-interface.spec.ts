@@ -315,7 +315,7 @@ test("cocher « Espace privé » montre l'avertissement et la liste des extensio
     await expect(modale.getByTestId("avertissement-extensions-prive")).toContainText(
       "Cet espace privé partage son profil avec « Lecture » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.",
     );
-    await expect(modale.getByTestId("extensions-desactivees")).toContainText(`En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : ${NOM_AGENT}. Les onglets déjà ouverts les gardent jusqu'à leur rechargement.`);
+    await expect(modale.getByTestId("extensions-desactivees")).toContainText(`En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : ${NOM_AGENT}. Les onglets ouverts où elles tournent seront rechargés.`);
     await modale.getByRole("button", { name: "Enregistrer" }).click();
     await expect.poll(() => registre(profil)["agent:cacheur"]!.profils).toEqual([]);
     await expect.poll(() => noms(app, "persist:webaios")).toEqual([]);
