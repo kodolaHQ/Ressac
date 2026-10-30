@@ -51,6 +51,8 @@
 </script>
 
 {#snippet bouton(a: BarreExtensions["actions"][number])}
+  <!-- alignment : la barre est à gauche, la popup part du bord gauche du bouton vers la droite (par défaut, la
+       bibliothèque l'aligne sur son bord droit, pour une barre d'outils à droite, et elle sortait de la fenêtre). -->
   <!-- svelte-ignore attribute_avoid_is -->
   <button
     is="browser-action"
@@ -58,6 +60,7 @@
     id={a.idChrome}
     partition={barre.partition}
     tab={barre.onglet ?? -1}
+    alignment="bottom right"
     data-testid="action-extension"
     data-cle={a.cle}
     aria-label={a.nom}

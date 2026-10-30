@@ -431,6 +431,17 @@ test("une extension épinglée a son bouton dans la barre ; un clic ouvre sa pop
     await bouton.click();
     await expect.poll(() => textePopup(app, id), { timeout: 10_000 }).toBe("Popup de test prête");
     expect(await fenetresVisibles(app)).toBe(0);
+    // La barre est à gauche : la popup part du bord gauche du bouton vers la droite, jamais hors de la fenêtre à gauche.
+    const gaucheBouton = await bouton.evaluate((b) => Math.floor(b.getBoundingClientRect().x));
+    // Cachée, la popup ne reçoit jamais sa taille préférée, qui déclenche son placement : elle est envoyée ici.
+    const ecart = await app.evaluate(({ BrowserWindow }, id) => {
+      const p = BrowserWindow.getAllWindows().find((f) => f.webContents.getURL().startsWith(`chrome-extension://${id}/popup.html`));
+      const parent = p?.getParentWindow();
+      if (!p || !parent) return null;
+      p.webContents.emit("preferred-size-changed", {}, { width: 300, height: 200 });
+      return p.getBounds().x - parent.getBounds().x;
+    }, id);
+    expect(ecart).toBe(gaucheBouton);
     // La console de la popup est notée (erreur) et lisible sur la page Extensions.
     const page = await ouvrirPage(fenetre);
     await expect(page.getByTestId("extension-page").filter({ hasText: "Bouton de test" })).toContainText("erreur de la popup");

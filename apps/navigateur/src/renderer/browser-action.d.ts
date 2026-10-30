@@ -7,6 +7,8 @@ declare module "svelte/elements" {
     partition?: string;
     /** Id de l'onglet (webContents) pour la bibliothèque ; -1 : l'onglet actif de la fenêtre courante. */
     tab?: number;
+    /** Placement de la popup : « right », son bord gauche sur celui du bouton ; « top », au-dessus. Défaut : en dessous, bord droit sur bord droit. */
+    alignment?: string;
   }
 }
 
