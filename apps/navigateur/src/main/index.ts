@@ -85,6 +85,15 @@ const enFermeture = new WeakSet<BrowserWindow>();
 const gardees = new Set<IdFenetre>();
 /** Dernière fenêtre principale passée au premier plan : celle que l'agent considère comme « active ». */
 let derniereFocalisee: IdFenetre | undefined;
+/**
+ * La fenêtre principale au premier plan, sinon la dernière focalisée, sinon la première. Au niveau du module : une
+ * extension peut l'appeler (`tabs.create`, `premierPlan`) dès que son service worker démarre, avant les fenêtres.
+ */
+function fenetreAgent(): IdFenetre | undefined {
+  const focus = BrowserWindow.getFocusedWindow();
+  for (const [id, f] of fenetres) if (f === focus) return id;
+  return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
+}
 /** Vrais clics dans l'interface de chaque fenêtre : seuls eux permettent à un widget d'ouvrir un lien. */
 const gestesWidgets = gardienGestes<IdFenetre>();
 
@@ -728,11 +737,6 @@ app.whenReady().then(async () => {
   // Une session d'une version précédente est réécrite à la version actuelle, même si rien ne change.
   enregistreur.planifier(magasin.etat);
   // Après les fenêtres : l'agent ne retarde jamais la navigation.
-  const fenetreAgent = (): IdFenetre | undefined => {
-    const focus = BrowserWindow.getFocusedWindow();
-    for (const [id, f] of fenetres) if (f === focus) return id;
-    return derniereFocalisee && fenetres.has(derniereFocalisee) ? derniereFocalisee : fenetres.keys().next().value;
-  };
   servirWidgets(() => agent?.chemins.widgets ?? null);
   // Un seul conteneur pour l'agent (quel que soit son profil) et les applis qu'il lance.
   const chemins = cheminsEspace();

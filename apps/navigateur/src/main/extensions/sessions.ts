@@ -202,6 +202,42 @@ function borne<T>(p: Promise<T>, etape: string, ms: number): Promise<T> {
   });
   return Promise.race([p, delai]).finally(() => clearTimeout(minuterie));
 }
+/** Entre deux essais de démarrage du service worker d'une extension qu'on vient de charger. */
+const PAUSE_DEMARRAGE_FOND_MS = 100;
+/** Les essais après un premier échec, au plus : au-delà, l'échec est journalisé (un fond qui lève échoue à chaque essai). */
+const ESSAIS_DEMARRAGE_FOND_MS = 2_000;
+/**
+ * Démarre le service worker d'une extension qu'on vient de charger ; le premier essai est attendu, borné par `ms`.
+ * Première installation (aucun enregistrement encore) : Chromium l'enregistre après que `loadExtension` a rendu, et
+ * `startWorkerForScope` rejette aussitôt « Failed to start service worker » (mesuré avec Electron 45 : rejet en moins
+ * d'1 ms, le fond démarre seul ~40 ms après, et un nouvel appel réussit). Après un tel échec, les essais continuent
+ * sans retenir la file des synchronisations (ni le démarrage de WebAiOs, qui l'attend avant d'ouvrir ses fenêtres),
+ * jusqu'à ce que le fond tourne ou que l'extension soit retirée ; seul un échec qui dure est journalisé (`echec`).
+ * Déjà enregistré (redémarrage, rechargement), le premier essai suffit.
+ */
+async function demarrerFond(s: Session, ext: Electron.Extension, ms: number, echec: (erreur: unknown) => void): Promise<void> {
+  const essai = () => borne(s.serviceWorkers.startWorkerForScope(ext.url), "Démarrage du fond", ms);
+  try {
+    await essai();
+    return;
+  } catch (erreur) {
+    if (/délai dépassé/.test((erreur as Error).message)) return echec(erreur);
+  }
+  const fin = Date.now() + ESSAIS_DEMARRAGE_FOND_MS;
+  void (async () => {
+    for (;;) {
+      await new Promise((ok) => setTimeout(ok, PAUSE_DEMARRAGE_FOND_MS));
+      if (!s.extensions.getExtension(ext.id)) return;
+      if (Object.values(s.serviceWorkers.getAllRunning()).some((w) => w.scope === ext.url)) return;
+      try {
+        await essai();
+        return;
+      } catch (erreur) {
+        if (Date.now() >= fin || /délai dépassé/.test((erreur as Error).message)) return echec(erreur);
+      }
+    }
+  })();
+}
 /** Vide `chrome.storage` depuis une page de l'extension ; rend le nombre de clés restées dans `local`. */
 const VIDER_STOCKAGE = `(async () => {
   for (const zone of ["local", "sync", "session"]) await chrome.storage[zone]?.clear();
@@ -873,7 +909,7 @@ export class ExtensionsProfils {
         if (lireCle(cle)?.source === "agent" && e.extensions[cle]?.idChrome !== ext.id) this.o.noterIdChrome?.(cle, ext.id);
         // Rien n'assure qu'un service worker MV3 démarre au chargement : ses règles et son onInstalled en dépendent.
         if ((ext.manifest as { background?: unknown }).background) {
-          await borne(s.serviceWorkers.startWorkerForScope(ext.url), "Démarrage du fond", this.o.delaiFondMs ?? DELAI_DEMARRAGE_FOND_MS).catch((erreur: unknown) =>
+          await demarrerFond(s, ext, this.o.delaiFondMs ?? DELAI_DEMARRAGE_FOND_MS, (erreur) =>
             console.error(`[extensions] fond de ${cle} non démarré :`, erreur),
           );
         }

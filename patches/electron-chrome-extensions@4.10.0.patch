@@ -171,7 +171,7 @@ index 67d3be4b5026069ec4ae73c1fc6e661f8a19098e..57a03da50fcc18ff641c00ee69f52512
    }
  })();
 diff --git a/dist/cjs/index.js b/dist/cjs/index.js
-index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444fd95679a 100644
+index a91ca8fd07194abb081e9bb35fad0060fefddf91..ebf24984a2cd83fdaa4c5bb60adeb5f8087541b6 100644
 --- a/dist/cjs/index.js
 +++ b/dist/cjs/index.js
 @@ -71,6 +71,81 @@ var validateExtensionUrl = (url, extension) => {
@@ -267,7 +267,18 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        }
      });
      const untypedWebContents = this.browserWindow.webContents;
-@@ -532,17 +609,15 @@ var BrowserActionAPI = class {
+@@ -410,6 +487,10 @@ var BrowserActionAPI = class {
+         if (event.type != "frame") return;
+         const observer = event.sender;
+         this.observers.add(observer);
++        // WebAiOs : un seul écouteur « destroyed » par observateur (la barre se réabonne à chaque relecture).
++        const ecoutes = this.observersEcoutes ??= /* @__PURE__ */ new WeakSet();
++        if (ecoutes.has(observer)) return;
++        ecoutes.add(observer);
+         observer.once?.("destroyed", () => {
+           this.observers.delete(observer);
+         });
+@@ -532,17 +613,15 @@ var BrowserActionAPI = class {
      } else if (typeof actionPopupValue !== "undefined") {
        popupPath = actionPopupValue;
      }
@@ -290,7 +301,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      return url;
    }
    // TODO: Make private for v4 major release.
-@@ -621,7 +696,7 @@ var BrowserActionAPI = class {
+@@ -621,7 +700,7 @@ var BrowserActionAPI = class {
      } else {
        d2(`dispatching onClicked for ${extensionId}`);
        const tabDetails = this.ctx.store.tabDetailsCache.get(tab.id);
@@ -299,7 +310,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      }
    }
    activateContextMenu(details) {
-@@ -639,7 +714,14 @@ var BrowserActionAPI = class {
+@@ -639,7 +718,14 @@ var BrowserActionAPI = class {
        label: extension.name,
        click: () => {
          const homePageUrl = manifest.homepage_url || `https://chrome.google.com/webstore/detail/${extension.id}`;
@@ -315,7 +326,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        }
      });
      appendSeparator();
-@@ -657,7 +739,14 @@ var BrowserActionAPI = class {
+@@ -657,7 +743,14 @@ var BrowserActionAPI = class {
        label: "Options",
        enabled: typeof optionsPageUrl === "string",
        click: () => {
@@ -331,7 +342,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        }
      });
      if (process.env.NODE_ENV === "development" && process.env.DEBUG) {
-@@ -768,23 +857,24 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -768,23 +861,24 @@ var _WindowsAPI = class _WindowsAPI {
    get(event, windowId) {
      const win = this.getWindowFromId(windowId);
      if (!win) return { id: _WindowsAPI.WINDOW_ID_NONE };
@@ -360,7 +371,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    async update(event, windowId, updateProperties = {}) {
      const win = this.getWindowFromId(windowId);
-@@ -806,7 +896,7 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -806,7 +900,7 @@ var _WindowsAPI = class _WindowsAPI {
          }
        }
      }
@@ -369,7 +380,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    async remove(event, windowId = _WindowsAPI.WINDOW_ID_CURRENT) {
      const win = this.getWindowFromId(windowId);
-@@ -819,7 +909,7 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -819,7 +913,7 @@ var _WindowsAPI = class _WindowsAPI {
      const window = this.ctx.store.getWindowById(windowId);
      if (!window) return;
      const windowDetails = this.getWindowDetails(window);
@@ -378,7 +389,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    onRemoved(windowId) {
      this.ctx.router.broadcastEvent("windows.onRemoved", windowId);
-@@ -833,7 +923,7 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -833,7 +927,7 @@ var _WindowsAPI = class _WindowsAPI {
      const window = this.ctx.store.getWindowById(windowId);
      if (!window) return;
      const windowDetails = this.createWindowDetails(window);
@@ -387,7 +398,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
  };
  _WindowsAPI.WINDOW_ID_NONE = -1;
-@@ -956,7 +1046,7 @@ var _TabsAPI = class _TabsAPI {
+@@ -956,7 +1050,7 @@ var _TabsAPI = class _TabsAPI {
    get(event, tabId) {
      const tab = this.ctx.store.getTabById(tabId);
      if (!tab) return { id: _TabsAPI.TAB_ID_NONE };
@@ -396,7 +407,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    getAllInWindow(event, windowId = _TabsAPI.WINDOW_ID_CURRENT) {
      if (windowId === _TabsAPI.WINDOW_ID_CURRENT) windowId = this.ctx.store.lastFocusedWindowId;
-@@ -966,31 +1056,33 @@ var _TabsAPI = class _TabsAPI {
+@@ -966,31 +1060,33 @@ var _TabsAPI = class _TabsAPI {
        if (!browserWindow || browserWindow.isDestroyed()) return;
        return browserWindow.id === windowId;
      });
@@ -435,7 +446,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        if (!tab) return false;
        if (isSet(info.active) && info.active !== tab.active) return false;
        if (isSet(info.pinned) && info.pinned !== tab.pinned) return false;
-@@ -1043,16 +1135,17 @@ var _TabsAPI = class _TabsAPI {
+@@ -1043,16 +1139,17 @@ var _TabsAPI = class _TabsAPI {
    async update(event, arg1, arg2) {
      let tabId = typeof arg1 === "number" ? arg1 : void 0;
      const updateProperties = (typeof arg1 === "object" ? arg1 : arg2) || {};
@@ -455,7 +466,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    remove(event, id) {
      const ids = Array.isArray(id) ? id : [id];
-@@ -1078,7 +1171,7 @@ var _TabsAPI = class _TabsAPI {
+@@ -1078,7 +1175,7 @@ var _TabsAPI = class _TabsAPI {
      const tab = this.ctx.store.getTabById(tabId);
      if (!tab) return;
      const tabDetails = this.getTabDetails(tab);
@@ -464,7 +475,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    onUpdated(tabId) {
      const tab = this.ctx.store.getTabById(tabId);
-@@ -1115,7 +1208,16 @@ var _TabsAPI = class _TabsAPI {
+@@ -1115,7 +1212,16 @@ var _TabsAPI = class _TabsAPI {
        didUpdate = true;
      }
      if (!didUpdate) return;
@@ -482,7 +493,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
    onRemoved(tabId) {
      const details = this.ctx.store.tabDetailsCache.has(tabId) ? this.ctx.store.tabDetailsCache.get(tabId) : null;
-@@ -1180,7 +1282,9 @@ var WebNavigationAPI = class {
+@@ -1180,7 +1286,9 @@ var WebNavigationAPI = class {
      this.ctx = ctx;
      this.sendNavigationEvent = (eventName, details) => {
        d5(`${eventName} [url: ${details.url}]`);
@@ -493,7 +504,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      };
      this.onCreatedNavigationTarget = (tab, { url, frame }) => {
        if (!frame) return;
-@@ -1287,8 +1391,8 @@ var WebNavigationAPI = class {
+@@ -1287,8 +1395,8 @@ var WebNavigationAPI = class {
        this.sendNavigationEvent("onCompleted", details);
      };
      const handle = this.ctx.router.apiHandler();
@@ -504,7 +515,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      this.ctx.store.on("tab-added", this.observeTab.bind(this));
    }
    observeTab(tab) {
-@@ -1723,7 +1827,7 @@ var ContextMenusAPI = class {
+@@ -1723,7 +1831,7 @@ var ContextMenusAPI = class {
        // TODO
        srcUrl: params?.srcURL
      };
@@ -513,7 +524,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
    }
  };
  
-@@ -1955,6 +2059,10 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
+@@ -1955,6 +2063,10 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
      this.ctx = ctx;
      this.hostMap = {};
      this.connectNative = async (event, connectionId, application) => {
@@ -524,7 +535,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        const host = new NativeMessagingHost(
          event.extension.id,
          event.sender,
-@@ -1968,6 +2076,9 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
+@@ -1968,6 +2080,9 @@ var RuntimeAPI = class extends import_node_events3.EventEmitter {
        this.hostMap[connectionId] = void 0;
      };
      this.sendNativeMessage = async (event, application, message) => {
@@ -534,7 +545,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        const connectionId = (0, import_node_crypto.randomUUID)();
        const host = new NativeMessagingHost(
          event.extension.id,
-@@ -2020,7 +2131,11 @@ var CookiesAPI = class {
+@@ -2020,7 +2135,11 @@ var CookiesAPI = class {
          cookie: createCookieDetails(cookie),
          removed
        };
@@ -547,7 +558,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      };
      const handle = this.ctx.router.apiHandler();
      handle("cookies.get", this.get.bind(this));
-@@ -2034,13 +2149,15 @@ var CookiesAPI = class {
+@@ -2034,13 +2153,15 @@ var CookiesAPI = class {
      return this.ctx.session.cookies;
    }
    async get(event, details) {
@@ -564,7 +575,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      const cookies = await this.cookies.get({
        url: details.url,
        name: details.name,
-@@ -2049,14 +2166,17 @@ var CookiesAPI = class {
+@@ -2049,14 +2170,17 @@ var CookiesAPI = class {
        secure: details.secure,
        session: details.session
      });
@@ -583,7 +594,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
      try {
        await this.cookies.remove(details.url, details.name);
      } catch {
-@@ -2271,6 +2391,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2271,6 +2395,7 @@ var RoutingDelegate = class _RoutingDelegate {
      this.sessionMap = /* @__PURE__ */ new WeakMap();
      this.workers = /* @__PURE__ */ new WeakSet();
      this.onRouterMessage = async (event, extensionId, handlerName, ...args) => {
@@ -591,7 +602,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        d8(`received '${handlerName}'`, args);
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        return observer?.onExtensionMessage(event, extensionId, handlerName, ...args);
-@@ -2282,6 +2403,12 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2282,6 +2407,12 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
      };
      this.onAddListener = (event, extensionId, eventName) => {
@@ -604,7 +615,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2294,6 +2421,12 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2294,6 +2425,12 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.addListener(listener, extensionId, eventName);
      };
      this.onRemoveListener = (event, extensionId, eventName) => {
@@ -617,7 +628,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2592,7 +2725,8 @@ var PermissionsAPI = class {
+@@ -2592,7 +2729,8 @@ var PermissionsAPI = class {
          ...extension.manifest.optional_permissions || []
        ]);
        if (request.permissions && !request.permissions.every((p) => declaredPermissions.has(p))) {
@@ -628,7 +639,7 @@ index a91ca8fd07194abb081e9bb35fad0060fefddf91..eaa83eb3bec8c350de88ca55cf715444
        const granted = await this.ctx.store.requestPermissions(extension, request);
        if (!granted) return false;
 diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
-index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd7330c808fd6 100644
+index 43929222572e4d6875cc192aca0750da79d8ff14..1c2467a455752cf85f951e40af08c66c3c2becf9 100644
 --- a/dist/esm/index.mjs
 +++ b/dist/esm/index.mjs
 @@ -34,6 +34,81 @@ var validateExtensionUrl = (url, extension) => {
@@ -724,7 +735,18 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        }
      });
      const untypedWebContents = this.browserWindow.webContents;
-@@ -495,17 +572,15 @@ var BrowserActionAPI = class {
+@@ -373,6 +450,10 @@ var BrowserActionAPI = class {
+         if (event.type != "frame") return;
+         const observer = event.sender;
+         this.observers.add(observer);
++        // WebAiOs : un seul écouteur « destroyed » par observateur (la barre se réabonne à chaque relecture).
++        const ecoutes = this.observersEcoutes ??= /* @__PURE__ */ new WeakSet();
++        if (ecoutes.has(observer)) return;
++        ecoutes.add(observer);
+         observer.once?.("destroyed", () => {
+           this.observers.delete(observer);
+         });
+@@ -495,17 +576,15 @@ var BrowserActionAPI = class {
      } else if (typeof actionPopupValue !== "undefined") {
        popupPath = actionPopupValue;
      }
@@ -747,7 +769,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      return url;
    }
    // TODO: Make private for v4 major release.
-@@ -584,7 +659,7 @@ var BrowserActionAPI = class {
+@@ -584,7 +663,7 @@ var BrowserActionAPI = class {
      } else {
        d2(`dispatching onClicked for ${extensionId}`);
        const tabDetails = this.ctx.store.tabDetailsCache.get(tab.id);
@@ -756,7 +778,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      }
    }
    activateContextMenu(details) {
-@@ -602,7 +677,14 @@ var BrowserActionAPI = class {
+@@ -602,7 +681,14 @@ var BrowserActionAPI = class {
        label: extension.name,
        click: () => {
          const homePageUrl = manifest.homepage_url || `https://chrome.google.com/webstore/detail/${extension.id}`;
@@ -772,7 +794,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        }
      });
      appendSeparator();
-@@ -620,7 +702,14 @@ var BrowserActionAPI = class {
+@@ -620,7 +706,14 @@ var BrowserActionAPI = class {
        label: "Options",
        enabled: typeof optionsPageUrl === "string",
        click: () => {
@@ -788,7 +810,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        }
      });
      if (process.env.NODE_ENV === "development" && process.env.DEBUG) {
-@@ -731,23 +820,24 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -731,23 +824,24 @@ var _WindowsAPI = class _WindowsAPI {
    get(event, windowId) {
      const win = this.getWindowFromId(windowId);
      if (!win) return { id: _WindowsAPI.WINDOW_ID_NONE };
@@ -817,7 +839,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    async update(event, windowId, updateProperties = {}) {
      const win = this.getWindowFromId(windowId);
-@@ -769,7 +859,7 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -769,7 +863,7 @@ var _WindowsAPI = class _WindowsAPI {
          }
        }
      }
@@ -826,7 +848,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    async remove(event, windowId = _WindowsAPI.WINDOW_ID_CURRENT) {
      const win = this.getWindowFromId(windowId);
-@@ -782,7 +872,7 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -782,7 +876,7 @@ var _WindowsAPI = class _WindowsAPI {
      const window = this.ctx.store.getWindowById(windowId);
      if (!window) return;
      const windowDetails = this.getWindowDetails(window);
@@ -835,7 +857,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    onRemoved(windowId) {
      this.ctx.router.broadcastEvent("windows.onRemoved", windowId);
-@@ -796,7 +886,7 @@ var _WindowsAPI = class _WindowsAPI {
+@@ -796,7 +890,7 @@ var _WindowsAPI = class _WindowsAPI {
      const window = this.ctx.store.getWindowById(windowId);
      if (!window) return;
      const windowDetails = this.createWindowDetails(window);
@@ -844,7 +866,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
  };
  _WindowsAPI.WINDOW_ID_NONE = -1;
-@@ -919,7 +1009,7 @@ var _TabsAPI = class _TabsAPI {
+@@ -919,7 +1013,7 @@ var _TabsAPI = class _TabsAPI {
    get(event, tabId) {
      const tab = this.ctx.store.getTabById(tabId);
      if (!tab) return { id: _TabsAPI.TAB_ID_NONE };
@@ -853,7 +875,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    getAllInWindow(event, windowId = _TabsAPI.WINDOW_ID_CURRENT) {
      if (windowId === _TabsAPI.WINDOW_ID_CURRENT) windowId = this.ctx.store.lastFocusedWindowId;
-@@ -929,31 +1019,33 @@ var _TabsAPI = class _TabsAPI {
+@@ -929,31 +1023,33 @@ var _TabsAPI = class _TabsAPI {
        if (!browserWindow || browserWindow.isDestroyed()) return;
        return browserWindow.id === windowId;
      });
@@ -892,7 +914,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        if (!tab) return false;
        if (isSet(info.active) && info.active !== tab.active) return false;
        if (isSet(info.pinned) && info.pinned !== tab.pinned) return false;
-@@ -1006,16 +1098,17 @@ var _TabsAPI = class _TabsAPI {
+@@ -1006,16 +1102,17 @@ var _TabsAPI = class _TabsAPI {
    async update(event, arg1, arg2) {
      let tabId = typeof arg1 === "number" ? arg1 : void 0;
      const updateProperties = (typeof arg1 === "object" ? arg1 : arg2) || {};
@@ -912,7 +934,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    remove(event, id) {
      const ids = Array.isArray(id) ? id : [id];
-@@ -1041,7 +1134,7 @@ var _TabsAPI = class _TabsAPI {
+@@ -1041,7 +1138,7 @@ var _TabsAPI = class _TabsAPI {
      const tab = this.ctx.store.getTabById(tabId);
      if (!tab) return;
      const tabDetails = this.getTabDetails(tab);
@@ -921,7 +943,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    onUpdated(tabId) {
      const tab = this.ctx.store.getTabById(tabId);
-@@ -1078,7 +1171,16 @@ var _TabsAPI = class _TabsAPI {
+@@ -1078,7 +1175,16 @@ var _TabsAPI = class _TabsAPI {
        didUpdate = true;
      }
      if (!didUpdate) return;
@@ -939,7 +961,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
    onRemoved(tabId) {
      const details = this.ctx.store.tabDetailsCache.has(tabId) ? this.ctx.store.tabDetailsCache.get(tabId) : null;
-@@ -1143,7 +1245,9 @@ var WebNavigationAPI = class {
+@@ -1143,7 +1249,9 @@ var WebNavigationAPI = class {
      this.ctx = ctx;
      this.sendNavigationEvent = (eventName, details) => {
        d5(`${eventName} [url: ${details.url}]`);
@@ -950,7 +972,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      };
      this.onCreatedNavigationTarget = (tab, { url, frame }) => {
        if (!frame) return;
-@@ -1250,8 +1354,8 @@ var WebNavigationAPI = class {
+@@ -1250,8 +1358,8 @@ var WebNavigationAPI = class {
        this.sendNavigationEvent("onCompleted", details);
      };
      const handle = this.ctx.router.apiHandler();
@@ -961,7 +983,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      this.ctx.store.on("tab-added", this.observeTab.bind(this));
    }
    observeTab(tab) {
-@@ -1686,7 +1790,7 @@ var ContextMenusAPI = class {
+@@ -1686,7 +1794,7 @@ var ContextMenusAPI = class {
        // TODO
        srcUrl: params?.srcURL
      };
@@ -970,7 +992,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
    }
  };
  
-@@ -1918,6 +2022,10 @@ var RuntimeAPI = class extends EventEmitter3 {
+@@ -1918,6 +2026,10 @@ var RuntimeAPI = class extends EventEmitter3 {
      this.ctx = ctx;
      this.hostMap = {};
      this.connectNative = async (event, connectionId, application) => {
@@ -981,7 +1003,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        const host = new NativeMessagingHost(
          event.extension.id,
          event.sender,
-@@ -1931,6 +2039,9 @@ var RuntimeAPI = class extends EventEmitter3 {
+@@ -1931,6 +2043,9 @@ var RuntimeAPI = class extends EventEmitter3 {
        this.hostMap[connectionId] = void 0;
      };
      this.sendNativeMessage = async (event, application, message) => {
@@ -991,7 +1013,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        const connectionId = randomUUID();
        const host = new NativeMessagingHost(
          event.extension.id,
-@@ -1983,7 +2094,11 @@ var CookiesAPI = class {
+@@ -1983,7 +2098,11 @@ var CookiesAPI = class {
          cookie: createCookieDetails(cookie),
          removed
        };
@@ -1004,7 +1026,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      };
      const handle = this.ctx.router.apiHandler();
      handle("cookies.get", this.get.bind(this));
-@@ -1997,13 +2112,15 @@ var CookiesAPI = class {
+@@ -1997,13 +2116,15 @@ var CookiesAPI = class {
      return this.ctx.session.cookies;
    }
    async get(event, details) {
@@ -1021,7 +1043,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      const cookies = await this.cookies.get({
        url: details.url,
        name: details.name,
-@@ -2012,14 +2129,17 @@ var CookiesAPI = class {
+@@ -2012,14 +2133,17 @@ var CookiesAPI = class {
        secure: details.secure,
        session: details.session
      });
@@ -1040,7 +1062,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
      try {
        await this.cookies.remove(details.url, details.name);
      } catch {
-@@ -2234,6 +2354,7 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2234,6 +2358,7 @@ var RoutingDelegate = class _RoutingDelegate {
      this.sessionMap = /* @__PURE__ */ new WeakMap();
      this.workers = /* @__PURE__ */ new WeakSet();
      this.onRouterMessage = async (event, extensionId, handlerName, ...args) => {
@@ -1048,7 +1070,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        d8(`received '${handlerName}'`, args);
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        return observer?.onExtensionMessage(event, extensionId, handlerName, ...args);
-@@ -2245,6 +2366,12 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2245,6 +2370,12 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.onExtensionMessage(event, void 0, handlerName, ...args);
      };
      this.onAddListener = (event, extensionId, eventName) => {
@@ -1061,7 +1083,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2257,6 +2384,12 @@ var RoutingDelegate = class _RoutingDelegate {
+@@ -2257,6 +2388,12 @@ var RoutingDelegate = class _RoutingDelegate {
        return observer?.addListener(listener, extensionId, eventName);
      };
      this.onRemoveListener = (event, extensionId, eventName) => {
@@ -1074,7 +1096,7 @@ index 43929222572e4d6875cc192aca0750da79d8ff14..0b68cabd8ced55e394d7f33d455cd733
        const observer = this.sessionMap.get(getSessionFromEvent(event));
        const listener = event.type === "frame" ? {
          type: event.type,
-@@ -2555,7 +2688,8 @@ var PermissionsAPI = class {
+@@ -2555,7 +2692,8 @@ var PermissionsAPI = class {
          ...extension.manifest.optional_permissions || []
        ]);
        if (request.permissions && !request.permissions.every((p) => declaredPermissions.has(p))) {

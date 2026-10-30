@@ -1602,3 +1602,97 @@ test("N1 désactivée (portée élargie) puis l'espace devient privé : l'onglet
     await fermer();
   }
 });
+
+// ——— Cas réel de l'utilisateur : « YouTube sans Shorts » (fond qui ne fait qu'un onInstalled, popup, CSS et JS à document_start) ———
+
+/** Comme l'extension écrite pour l'utilisateur, sur 127.0.0.1 : onInstalled pose les réglages par défaut, le script les lit. */
+const REGLAGES = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Réglages de l'agent",
+    version: "1.0.0",
+    permissions: ["storage"],
+    background: { service_worker: "service-worker.js" },
+    action: { default_title: "Réglages de l'agent", default_popup: "popup.html" },
+    content_scripts: [{ matches: [HOTE], css: ["masquer.css"], js: ["contenu.js"], run_at: "document_start" }],
+  },
+  "service-worker.js": `chrome.runtime.onInstalled.addListener(async () => {
+  const actuels = await chrome.storage.local.get(["masquer", "installations"]);
+  await chrome.storage.local.set({ masquer: actuels.masquer ?? true, installations: (actuels.installations ?? 0) + 1 });
+});
+`,
+  "masquer.css": "html.masquer #cache-moi { display: none !important; }\n",
+  "contenu.js": `document.documentElement.classList.add("masquer");
+chrome.storage.local.get(["masquer", "installations"]).then((r) => {
+  document.documentElement.dataset.reglages = JSON.stringify(r);
+});
+`,
+  "popup.html": '<!doctype html><html><body><input type="checkbox" id="masquer"><script src="popup.js"></script></body></html>',
+  "popup.js": 'chrome.storage.local.get(["masquer"]).then((r) => { document.getElementById("masquer").checked = r.masquer ?? true; });\n',
+};
+
+/** Note dans le processus principal ses `console.error` et ses avertissements de Node (rendus par `journalPrincipal`). */
+const ecouterPrincipal = (app: ElectronApplication) =>
+  app.evaluate(() => {
+    const g = globalThis as unknown as { __journalTest?: string[] };
+    if (g.__journalTest) return;
+    const journal: string[] = (g.__journalTest = []);
+    const erreur = console.error.bind(console);
+    console.error = (...a: unknown[]) => {
+      journal.push(a.map((x) => (x instanceof Error ? `${x.name}: ${x.message}` : String(x))).join(" "));
+      erreur(...a);
+    };
+    process.on("warning", (w) => journal.push(`${w.name}: ${w.message}`));
+  });
+const journalPrincipal = (app: ElectronApplication) =>
+  app.evaluate(() => (globalThis as unknown as { __journalTest?: string[] }).__journalTest ?? []);
+
+test("acceptée par la carte, son service worker démarre sans erreur et son onInstalled pose une fois ses réglages par défaut (relus par son script de contenu)", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "reglages", REGLAGES);
+  const { app, fenetre, fermer } = await lancer({ racine });
+  try {
+    await ecouterPrincipal(app);
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "reglages", "Réglages de l'agent")).toMatch(/^Activée/);
+    await expect.poll(() => fondsQuiTournent(app), { timeout: 15_000 }).toHaveLength(1);
+    await ouvrirOnglet(fenetre, `${serveur.url}/cache.html`);
+    await expect
+      .poll(() => dansLaVue(app, "cache.html", "document.documentElement.dataset.reglages ?? null"), { timeout: 15_000 })
+      .toBe(JSON.stringify({ installations: 1, masquer: true }));
+    expect(await dansLaVue(app, "cache.html", "getComputedStyle(document.getElementById('cache-moi')).display")).toBe("none");
+    // Le fond démarré au chargement, sans « fond de agent:reglages non démarré » (Failed to start service worker).
+    expect((await journalPrincipal(app)).filter((l) => l.includes("non démarré"))).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("avec une extension à bouton dans la barre, ouvrir et changer d'onglet n'ajoute pas un écouteur « destroyed » à l'interface à chaque fois (MaxListenersExceededWarning)", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "reglages", REGLAGES);
+  const { app, fenetre, fermer } = await lancer({ racine });
+  try {
+    await ecouterPrincipal(app);
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "reglages", "Réglages de l'agent")).toMatch(/^Activée/);
+    // La barre a lu l'extension (son menu la liste) et observe la partition.
+    await fenetre.getByTestId("menu-extensions").click();
+    await expect(fenetre.getByTestId("ligne-barre-extension")).toHaveCount(1, { timeout: 15_000 });
+    await fenetre.keyboard.press("Escape");
+    const ecouteurs = () =>
+      app.evaluate(({ webContents }) =>
+        webContents
+          .getAllWebContents()
+          .filter((wc) => wc.getURL().includes("/renderer/index.html"))
+          .map((wc) => wc.listenerCount("destroyed")),
+      );
+    const avant = await ecouteurs();
+    for (let i = 0; i < 12; i++) await ouvrirOnglet(fenetre, `${serveur.url}/a.html?${i}`);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await ecouteurs()).toEqual(avant);
+    expect((await journalPrincipal(app)).filter((l) => l.includes("MaxListeners"))).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
