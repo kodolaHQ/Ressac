@@ -28,6 +28,7 @@ const carte = (champs: Record<string, unknown> = {}) => ({
   espace: "Perso",
   espaceId: "e1",
   autresEspaces: [],
+  remplaceAussi: [],
   maj: null,
   empreinte: "0".repeat(64),
   ...champs,
@@ -62,8 +63,9 @@ const focusDansLaModale = (fenetre: Page) =>
   expect.poll(() => fenetre.evaluate(() => !!document.activeElement?.closest('[data-testid="modale-demande"]'))).toBe(true);
 
 test("la carte d'une extension de l'agent sans réseau dit « Elle ne peut rien envoyer vers internet. »", async () => {
-  const { fenetre, reponse, fermer } = await avecCarte(carte({ autresEspaces: ["Lecture"] }));
+  const { fenetre, reponse, fermer } = await avecCarte(carte({ autresEspaces: ["Lecture"], remplaceAussi: ["Travail", "Achats"] }));
   const c = fenetre.getByTestId(MODALE).getByTestId(CARTE);
+  await expect(c.getByTestId("carte-extension-remplace")).toHaveText("La nouvelle version remplacera aussi celle de « Travail », « Achats ».");
   await expect(c).toContainText("Activer « Essai » dans « Perso » ?");
   await expect(c).toContainText("Écrite par l'agent");
   await expect(c).toContainText("Ce qu'elle veut faire :");

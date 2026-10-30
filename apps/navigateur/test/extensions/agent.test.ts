@@ -354,3 +354,31 @@ test("déjà accordée et active, mais son dossier a disparu : demanderActivatio
   expect(r.ok === false && r.erreur).toContain(DOSSIER_ABSENT);
   expect(cartes).toEqual([]);
 });
+
+test("I5 demandée pour un autre profil avec une portée élargie : la carte nomme les espaces où elle tourne déjà ; refusée, rien ne change nulle part", async () => {
+  nav = etatNav();
+  (nav.espaces as unknown[]).push({ id: "e2", nom: "Perso", icone: "x", epingles: [], prive: false, profil: "p2" });
+  (nav.profils as unknown[]).push({ id: "p2" });
+  const service = await activee();
+  // Même portée, autre profil : la carte ne parle pas de remplacement.
+  ecrire("cacheur", { "cache.css": "v1b" });
+  reponse = "refuser";
+  expect((await service.demanderActivation("cacheur", { espace: nav.espaces[1]! })).ok).toBe(false);
+  expect(cartes[0]!.extension!.remplaceAussi).toEqual([]);
+  cartes = [];
+  // Portée élargie : la carte nomme « Travail ».
+  ecrire("cacheur", { "manifest.json": manifeste(["http://127.0.0.1/*", "https://exemple.com/*"]), "cache.css": "v2" });
+  expect((await service.demanderActivation("cacheur", { espace: nav.espaces[1]! })).ok).toBe(false);
+  expect(cartes[0]!.extension!.remplaceAussi).toEqual(["Travail"]);
+  let x = registre().extensions["agent:cacheur"]!;
+  expect(x.accord?.hotes).toEqual(["http://127.0.0.1/*"]);
+  expect(x.profils).toEqual(["defaut"]);
+  expect(copie("cacheur", "cache.css")).toBe("v1");
+  // Acceptée : la nouvelle version tourne dans les deux.
+  cartes = [];
+  reponse = "autoriser";
+  expect(await service.demanderActivation("cacheur", { espace: nav.espaces[1]! })).toEqual({ ok: true });
+  x = registre().extensions["agent:cacheur"]!;
+  expect(x.accord?.hotes).toEqual(["http://127.0.0.1/*", "https://exemple.com/*"]);
+  expect([...x.profils].sort()).toEqual(["defaut", "p2"]);
+});

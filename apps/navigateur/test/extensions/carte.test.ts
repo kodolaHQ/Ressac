@@ -77,6 +77,7 @@ test("carteDe : libellés, sites, réseau (null pour le Store) et mise à jour",
     espace: "Perso",
     espaceId: "e1",
     autresEspaces: ["Lecture", "Achats"],
+    remplaceAussi: [],
     maj: null,
     empreinte: empreintePortee(portee(p)),
   } satisfies CarteExtension);

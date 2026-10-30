@@ -49,6 +49,10 @@
     <p>Elle sera active aussi dans {noms(carte.autresEspaces)} (même profil).</p>
   {/if}
 
+  {#if carte.remplaceAussi.length > 0}
+    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {noms(carte.remplaceAussi)}.</p>
+  {/if}
+
   {#if carte.source === "agent"}
     {#if carte.reseau}
       <p>

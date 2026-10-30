@@ -394,6 +394,7 @@ const carteExtension = (espaceId: string, source: "store" | "agent", renforce = 
   espace: "Perso",
   espaceId,
   autresEspaces: [],
+  remplaceAussi: [],
   maj: null,
   empreinte: "0".repeat(64),
 });

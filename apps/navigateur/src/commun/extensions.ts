@@ -42,6 +42,11 @@ export interface CarteExtension {
   espaceId: string;
   /** Les autres espaces du même profil, où elle sera active aussi. */
   autresEspaces: string[];
+  /**
+   * Agent : les espaces (d'autres profils) où elle tourne déjà avec un accord plus étroit ; la nouvelle version, plus
+   * large, les remplacera aussi (« La nouvelle version remplacera aussi celle de … »).
+   */
+  remplaceAussi: string[];
   /** Mise à jour : la version installée. */
   maj: { de: string } | null;
   /** `empreintePortee` de la portée montrée : l'appelant n'écrit l'accord que pour une portée de même empreinte. */
@@ -59,7 +64,7 @@ export interface ReponseAccord {
 /** La carte d'accord d'une extension analysée, pour l'activer dans `espace` (pur). */
 export function carteDe(
   a: AnalyseManifeste,
-  o: { cle: string; source: SourceExtension; espace: Espace; etat: EtatNavigateur; maj?: { de: string } },
+  o: { cle: string; source: SourceExtension; espace: Espace; etat: EtatNavigateur; maj?: { de: string }; remplaceAussi?: string[] },
 ): CarteExtension {
   const p = a.portee;
   return {
@@ -76,6 +81,7 @@ export function carteDe(
     espace: o.espace.nom,
     espaceId: o.espace.id,
     autresEspaces: o.etat.espaces.filter((e) => e.profil === o.espace.profil && e.id !== o.espace.id).map((e) => e.nom),
+    remplaceAussi: [...(o.remplaceAussi ?? [])],
     maj: o.maj ? { de: o.maj.de } : null,
     empreinte: empreintePortee(p),
   };

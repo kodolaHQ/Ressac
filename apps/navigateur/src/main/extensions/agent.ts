@@ -249,7 +249,12 @@ async function activation(
   const p = await preparerAgent(id, d);
   if (!p.ok) return { ok: false, erreur: p.refus.map((r) => (r === DOSSIER_ABSENT ? dossierAbsent(id) : r)).join(" ; ") };
   const effacer = () => rm(p.staging, { recursive: true, force: true });
-  const carte = carteDe(p.analyse, { cle, source: "agent", espace: o.espace, etat: d.etatNavigateur() });
+  // Déjà active ailleurs avec un accord plus étroit : la copie et l'accord valent pour tous ses profils, la carte nomme
+  // donc aussi les espaces où elle tourne déjà (refusée, rien ne change nulle part).
+  const navCarte = d.etatNavigateur();
+  const autresProfils = connue?.accord && porteeElargie(connue.accord, p.analyse.portee) ? connue.profils.filter((x) => x !== profil) : [];
+  const remplaceAussi = navCarte.espaces.filter((e) => !e.prive && autresProfils.includes(e.profil)).map((e) => e.nom);
+  const carte = carteDe(p.analyse, { cle, source: "agent", espace: o.espace, etat: navCarte, remplaceAussi });
   const r = await d.demanderAccord(carte, {
     ...(o.fenetre ? { fenetre: o.fenetre } : {}),
     ...(o.delaiMs !== undefined ? { delaiMs: o.delaiMs } : {}),
