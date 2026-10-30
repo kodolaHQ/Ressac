@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import type { LigneExtensionEspace } from "../../commun/extensions";
   import type { IdFenetre, IdOnglet } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
+  import { avertissements } from "./extensionsEspace";
   import FondFige from "./FondFige.svelte";
   import { choixPerdConnexions, optionsProfil, PROFIL_A_CHOISIR } from "./profilsEspace";
   import { reglagesEspace } from "./reglagesEspace.svelte";
@@ -24,6 +26,35 @@
   const valide = $derived(brouillon.nom.trim() !== "" && brouillon.profil !== PROFIL_A_CHOISIR);
   const perdConnexions = $derived(choixPerdConnexions(espaces, brouillon.id, brouillon.profil));
 
+  // Extensions : les lignes vues depuis le profil enregistré de l'espace (un espace existant seulement).
+  let lignes = $state<LigneExtensionEspace[] | null>(null);
+  let erreurExtension = $state<string | null>(null);
+  const enregistre = $derived(espaces.find((e) => e.id === brouillon.id));
+  const profilChange = $derived(!!enregistre && brouillon.profil !== enregistre.profil);
+  const cleLignes = $derived(enregistre ? `${enregistre.id}|${enregistre.profil}|${enregistre.prive}|${espaces.map((e) => `${e.nom}:${e.profil}`).join(",")}` : "");
+  const avertis = $derived(
+    lignes && !nouveau
+      ? avertissements({ id: brouillon.id, prive: brouillon.prive, profil: brouillon.profil }, espaces, lignes)
+      : { privePartage: [], agentDesactivees: [] },
+  );
+  async function chargerLignes() {
+    if (brouillon.id !== null) lignes = await api.extensions.pourEspace(brouillon.id);
+  }
+  $effect(() => {
+    void cleLignes;
+    void chargerLignes();
+  });
+  async function basculer(l: LigneExtensionEspace, champ: HTMLInputElement) {
+    if (brouillon.id === null) return;
+    erreurExtension = null;
+    const r = await api.extensions.basculer(l.cle, brouillon.id, champ.checked);
+    if (!r.ok) erreurExtension = r.erreur;
+    await chargerLignes();
+    // L'interrupteur reprend ce que dit le registre (carte refusée, erreur).
+    const vue = lignes?.find((x) => x.cle === l.cle);
+    if (vue && champ.isConnected) champ.checked = vue.active;
+  }
+
   // Le choix ne désigne plus aucun profil (l'état a changé entre-temps) : un nouvel espace revient à « à choisir »,
   // un espace existant au premier proposé.
   $effect(() => {
@@ -38,7 +69,9 @@
   onMount(() => {
     const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     champNom.focus();
+    const finChange = api.extensions.surChange(() => void chargerLignes());
     return () => {
+      finChange();
       // Le focus revient où il était, s'il est encore dans l'interface, quand le reste n'est plus inerte.
       queueMicrotask(() => {
         if (avant?.isConnected && avant !== document.body) avant.focus();
@@ -117,6 +150,37 @@
         </p>
         {#if perdConnexions}<p class="note alerte" role="alert" data-testid="perte-connexions">Les connexions de cet espace seront perdues.</p>{/if}
       </div>
+      {#if !nouveau}
+        <div class="bloc" data-testid="extensions-espace">
+          <span class="libelle">Extensions</span>
+          {#if profilChange}
+            <p class="note">Enregistre d'abord le changement de profil pour régler ses extensions.</p>
+          {:else if lignes && lignes.length === 0}
+            <p class="note">Aucune extension installée.</p>
+          {:else if lignes}
+            {#each lignes as l (l.cle)}
+              <div class="extension" data-testid="extension-ligne" data-cle={l.cle}>
+                <label class="case">
+                  <input type="checkbox" role="switch" checked={l.active} disabled={l.grisee !== null} onchange={(e) => void basculer(l, e.currentTarget)} />
+                  <b>{l.nom}</b>
+                  <span class="source">{l.source === "agent" ? "écrite par l'agent" : "Chrome Web Store"}</span>
+                </label>
+                {#if l.active && l.aussiDans.length > 0}<p class="note">Active aussi dans « {l.aussiDans.join(", ")} » (même profil)</p>{/if}
+                {#if l.grisee}<p class="note">{l.grisee}</p>{/if}
+              </div>
+            {/each}
+          {/if}
+          {#if erreurExtension}<p class="note alerte" role="alert" data-testid="erreur-extension">{erreurExtension}</p>{/if}
+          {#if brouillon.prive && avertis.privePartage.length > 0}
+            <p class="note" data-testid="avertissement-extensions-prive">
+              Cet espace privé partage son profil avec « {avertis.privePartage.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
+            </p>
+          {/if}
+          {#if avertis.agentDesactivees.length > 0}
+            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {avertis.agentDesactivees.join(", ")}.</p>
+          {/if}
+        </div>
+      {/if}
       <div class="actions">
         <button type="button" onclick={fermer}>Annuler</button>
         <button type="submit" class="principal" disabled={!valide}>{nouveau ? "Créer" : "Enregistrer"}</button>
@@ -167,6 +231,8 @@
   .case { display: flex; align-items: center; gap: 6px; }
   .libelle { font-size: 11.5px; color: var(--texte-doux); }
   .note { margin: 0; font-size: 11.5px; color: var(--texte-doux); }
+  .extension { display: flex; flex-direction: column; gap: 2px; }
+  .source { font-size: 11px; color: var(--texte-doux); }
   .alerte { color: var(--texte); font-weight: 600; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }

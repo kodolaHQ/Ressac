@@ -1,19 +1,24 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { WebContents } from "electron";
 import {
+  activer,
   analyserManifeste,
+  appliquerProfilsPrives,
   chargeesDans,
+  desactiver,
+  ERREUR_PROFIL_PRIVE,
   empreintePortee,
   lireCle,
   lireEtatExtensions,
   modifierEtatExtensions,
   preparerStore,
+  retirerProfil,
   type EtatExtensions,
   type IdProfil,
 } from "@webaios/noyau";
-import { carteDe, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
-export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions";
+import { carteDe, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, type CarteExtension, type LigneExtensionEspace, type ReponseAccord } from "../../commun/extensions";
+export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE };
 import { aUneVue, profilsEnUsage, type Decision, type Demande, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
 import { attendreReponse, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
@@ -23,6 +28,7 @@ import {
   demanderActivation,
   demarrerAgents,
   preparerAgent,
+  TOUTES_COUPEES_AGENT,
   recharger,
   type DependancesAgent,
   type PreparationAgent,
@@ -43,6 +49,7 @@ import {
 import {
   accordPour,
   desinstallerStore,
+  enFileStore,
   installerStore,
   lireManifeste,
   retirerDuProfilStore,
@@ -116,6 +123,8 @@ export class ServiceExtensions {
   private agentsPrets = false;
   /** La vérification des mises à jour en cours : une seule à la fois. */
   private verification: Promise<void> | null = null;
+  /** Profils effacés avant le démarrage du service : retirés du registre dès qu'il est prêt. */
+  private profilsARetirer: IdProfil[] = [];
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
   private poser: PoserQuestion | undefined;
@@ -161,11 +170,17 @@ export class ServiceExtensions {
       const p = [...profilsPrives(etat)].sort().join("|");
       const u = [...profilsEnUsage(etat)].sort().join("|");
       if (p === prives && u === enUsage) return;
+      const devenusPrives = p !== prives;
       prives = p;
       enUsage = u;
       // Tout de suite, hors de la file : aucune page d'un espace privé ne se charge avec une extension de l'agent.
       o.profils.retirerAgentsPrives(etat);
-      if (this.pret) void this.appliquer();
+      if (!this.pret) return;
+      // Les profils privés changent (espace créé ou réglé, d'où que vienne l'action) : le registre est réécrit, et
+      // `modifierEtatExtensions` y retire les extensions de l'agent des profils privés (évalués dans l'écriture, sans
+      // comparer avec un état du registre peut-être en retard). Il resynchronise les sessions ; sinon, seulement elles.
+      if (devenusPrives) void this.modifier((e) => e).catch((e: unknown) => console.error("[extensions] profils privés non appliqués :", e));
+      else void this.appliquer();
     });
     try {
       this.etat = await lireEtatExtensions(o.dossier);
@@ -184,7 +199,23 @@ export class ServiceExtensions {
     }
     this.agentsPrets = true;
     this.pret = true;
-    await this.appliquer();
+    // Un état écrit avant ce démarrage (session éditée, profil effacé au lancement) : le registre est remis d'aplomb.
+    const aRetirer = this.profilsARetirer.splice(0);
+    if (aRetirer.length > 0 || appliquerProfilsPrives(this.etat, profilsPrives(o.magasin.etat)).retirees.length > 0)
+      await this.modifier((e) => aRetirer.reduce(retirerProfil, e));
+    else await this.appliquer();
+  }
+
+  /**
+   * Un profil de connexion a été effacé : il quitte toutes les extensions (profils actifs, versions vues). Avant le
+   * démarrage du service, noté pour après la lecture du registre.
+   */
+  async retirerProfil(profil: IdProfil): Promise<void> {
+    if (!this.o || !this.pret) {
+      this.profilsARetirer.push(profil);
+      return;
+    }
+    await this.modifier((e) => retirerProfil(e, profil));
   }
 
   /** Modifie le registre (profils privés évalués dans l'écriture), puis recharge les sessions. */
@@ -358,6 +389,76 @@ export class ServiceExtensions {
     if (!this.o || !this.pret) return Promise.resolve({ ok: false, erreur: "Service des extensions non démarré" });
     const d = this.dependancesAgent();
     return d ? demanderActivation(id, o, d) : Promise.resolve({ ok: false, erreur: SANS_DOSSIER_AGENT });
+  }
+
+  /**
+   * La section « Extensions » des réglages de `espaceId` : les extensions du registre et les dossiers de l'agent jamais
+   * accordés, vus depuis le profil de cet espace.
+   */
+  async pourEspace(espaceId: string): Promise<LigneExtensionEspace[]> {
+    const o = this.o;
+    const nav = o?.magasin.etat;
+    const espace = nav?.espaces.find((e) => e.id === espaceId);
+    if (!o || !nav || !espace) return [];
+    const autres = nav.espaces.filter((e) => e.id !== espace.id && e.profil === espace.profil).map((e) => e.nom);
+    const prive = profilPrive(nav, espace.profil);
+    const lignes: LigneExtensionEspace[] = Object.entries(this.etat.extensions).map(([cle, x]) => {
+      const active = x.profils.includes(espace.profil);
+      return {
+        cle,
+        nom: x.nom,
+        source: x.source,
+        active,
+        aussiDans: active ? autres : [],
+        grisee: x.source === "agent" && prive ? ERREUR_PROFIL_PRIVE : null,
+        profils: [...x.profils],
+      };
+    });
+    // Les dossiers que l'agent a écrits et que l'utilisateur n'a jamais accordés : seuls leurs noms, jamais leur contenu.
+    if (o.dossierAgent) {
+      const noms = await readdir(o.dossierAgent, { withFileTypes: true }).catch(() => []);
+      for (const d of noms) {
+        const cle = `agent:${d.name}`;
+        if (!d.isDirectory() || lireCle(cle) === null || cle in this.etat.extensions) continue;
+        lignes.push({ cle, nom: d.name, source: "agent", active: false, aussiDans: [], grisee: prive ? ERREUR_PROFIL_PRIVE : null, profils: [] });
+      }
+    }
+    return lignes.sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /**
+   * L'interrupteur d'une extension dans les réglages de `espaceId`. Désactiver et activer une extension du Store déjà
+   * accordée : tout de suite. Une extension de l'agent sans accord (ou désactivée pour une portée élargie) passe par sa
+   * carte (`demanderActivation`) ; dans un profil privé, elle est refusée.
+   */
+  async basculer(cle: string, espaceId: string, actif: boolean, fenetre?: IdFenetre): Promise<ResultatStore> {
+    const o = this.o;
+    const lue = lireCle(cle);
+    const espace = o?.magasin.etat.espaces.find((e) => e.id === espaceId);
+    if (!o || !this.pret || !lue) return { ok: false, erreur: "Service des extensions non démarré" };
+    if (!espace) return { ok: false, erreur: "Espace inconnu" };
+    const profil = espace.profil;
+    const ecrire = async (changer: (e: EtatExtensions, prives: ReadonlySet<IdProfil>) => EtatExtensions): Promise<ResultatStore> => {
+      try {
+        await (lue.source === "store" ? enFileStore(o.dossier, lue.id, () => this.modifier(changer)) : this.modifier(changer));
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, erreur: (e as Error).message };
+      }
+    };
+    if (!actif) return ecrire((e) => (cle in e.extensions ? desactiver(e, cle, profil) : e));
+    if (lue.source === "agent" && profilPrive(o.magasin.etat, profil)) return { ok: false, erreur: ERREUR_PROFIL_PRIVE };
+    if (this.etat.toutesCoupees) return { ok: false, erreur: TOUTES_COUPEES_AGENT };
+    const x = this.etat.extensions[cle];
+    if (lue.source === "agent" && !(x?.accord && x.desactivee === null)) {
+      return this.demanderActivation(lue.id, { espace, ...(fenetre ? { fenetre } : {}) });
+    }
+    if (!x) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    if (x.desactivee) return { ok: false, erreur: x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE };
+    return ecrire((e, prives) => {
+      if (e.extensions[cle]?.desactivee) throw new Error(DESACTIVEE_PORTEE);
+      return activer(e, cle, profil, prives);
+    });
   }
 
   /** Recharge l'extension de l'agent `id` depuis son dossier, sans carte si sa portée reste dans l'accord (agent.ts). */

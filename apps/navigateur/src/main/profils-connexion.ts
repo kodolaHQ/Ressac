@@ -9,6 +9,16 @@ export { partitionDe };
 /** Les profils de connexion retirés de l'état et pas encore effacés du disque. */
 const FICHIER_A_EFFACER = "profils-a-effacer.json";
 
+/** Ce que les extensions gardent sous le stockage d'un profil, et que `clearStorageData` n'efface pas. */
+const DONNEES_EXTENSIONS = [
+  "Local Extension Settings",
+  "Sync Extension Settings",
+  "Managed Extension Settings",
+  "Extension State",
+  "Extension Rules",
+  "Extension Scripts",
+];
+
 /** Fichier des autorisations de sites d'un profil de connexion : `permissions.json` pour le profil par défaut. */
 export function fichierPermissions(dossier: string, id: IdProfil): string {
   return join(dossier, id === PROFIL_DEFAUT ? "permissions.json" : `permissions-${id}.json`);
@@ -73,6 +83,8 @@ export class SessionsProfils {
   private async effacer(id: IdProfil): Promise<boolean> {
     try {
       const s = session.fromPartition(partitionDe(id));
+      // Les réglages des extensions (storage.local, règles, scripts) ne font pas partie de ce que efface `clearStorageData`.
+      if (s.storagePath) await Promise.all(DONNEES_EXTENSIONS.map((d) => rm(join(s.storagePath!, d), { recursive: true, force: true })));
       await s.clearStorageData();
       await s.clearCache();
       this.o.oublier?.(id);

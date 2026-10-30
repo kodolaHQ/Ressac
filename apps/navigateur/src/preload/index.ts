@@ -106,6 +106,8 @@ const api: ApiWebaios = {
   },
   extensions: {
     installerStore: (saisie) => ipcRenderer.invoke(CANAUX.extensionsInstallerStore, saisie),
+    pourEspace: (espaceId) => ipcRenderer.invoke(CANAUX.extensionsPourEspace, espaceId),
+    basculer: (cle, espaceId, actif) => ipcRenderer.invoke(CANAUX.extensionsBasculer, cle, espaceId, actif),
     surChange: (rappel) => ecouter(CANAUX.extensionsChange, () => rappel()),
   },
   surTelechargements(rappel) {

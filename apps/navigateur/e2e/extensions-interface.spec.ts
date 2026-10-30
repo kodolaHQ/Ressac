@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { lancer, nouveauProfil } from "./aide";
+import { dansLaVue, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
+import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
 
 // La carte d'accord des extensions, posée au démarrage par WEBAIOS_TEST_CARTE_EXTENSION (ni Store, ni agent) ; la
 // réponse de l'utilisateur est notée dans `<chemin>.reponse`. Tout reste invisible. La session est écrite avant le lancement :
@@ -175,4 +176,180 @@ test("une carte devenue caduque (espace supprimé) tombe et vaut refus", async (
   await expect.poll(reponse).toBe("false");
   await expect(fenetre.getByTestId(MODALE)).toHaveCount(0);
   await fermer();
+});
+
+// Les extensions dans les réglages d'un espace (tâche 14). Sessions écrites avant le lancement : « Perso » (e1) et
+// « Lecture » (e2) partagent le profil par défaut, « Banque » (e3) a le sien (p2).
+
+const ERREUR_PROFIL_PRIVE = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
+const HOTE = "http://127.0.0.1/*";
+const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const NOM_AGENT = "Cacheur de l'agent";
+
+let pages: Awaited<ReturnType<typeof serveurTest>>;
+test.beforeAll(async () => {
+  pages = await serveurTest();
+});
+test.afterAll(async () => {
+  await pages.fermer();
+});
+
+const espaceDe = (id: string, nom: string, icone: string, profil: string, prive = false) => ({ id, nom, icone, epingles: [], prive, profil });
+function ecrireSession(profil: string, espaces: ReturnType<typeof espaceDe>[], actif = "e1") {
+  const ordre = Object.fromEntries(espaces.map((e) => [e.id, []]));
+  const aucun = Object.fromEntries(espaces.map((e) => [e.id, null]));
+  writeFileSync(
+    join(profil, "session.json"),
+    JSON.stringify({
+      ...session,
+      espaces,
+      profils: [...new Set(espaces.map((e) => e.profil))].map((id) => ({ id })),
+      fenetres: [{ ...session.fenetres[0], espaceActif: actif, ordre, actif: aucun }],
+    }),
+  );
+}
+
+/** Pose l'extension de l'agent « cacheur » (accordée, active dans `profils`) : son dossier et son registre. */
+function poserAgent(profil: string, racine: string, profils: string[], fichiers: Record<string, string | object> = { "cache.css": "#cache-moi { display: none !important; }\n" }) {
+  ecrireExtensionAgent(racine, "cacheur", {
+    "manifest.json": { manifest_version: 3, name: NOM_AGENT, version: "1.0.0", content_scripts: [{ matches: [HOTE], css: ["cache.css"], ...(fichiers["vivant.js"] ? { js: ["vivant.js"] } : {}) }] },
+    ...fichiers,
+  });
+  const entree = { source: "agent", idChrome: null, nom: NOM_AGENT, version: "1.0.0", accord: ACCORD, profils, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
+  const dossier = join(profil, "extensions");
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:cacheur": entree } }));
+}
+
+type Entree = { profils: string[]; vues: Record<string, string> };
+const registre = (profil: string): Record<string, Entree> => JSON.parse(readFileSync(join(profil, "extensions", "etat.json"), "utf8")).extensions;
+const noms = (app: Awaited<ReturnType<typeof lancer>>["app"], partition: string) =>
+  app.evaluate(({ session }, p) => session.fromPartition(p).extensions.getAllExtensions().map((e) => e.name), partition);
+
+const modaleReglages = async (fenetre: Page, icone: string) => {
+  await fenetre.locator('[data-testid^="espace-"]', { hasText: icone }).click({ button: "right" });
+  await fenetre.getByRole("menuitem", { name: "Réglages" }).click();
+  const modale = fenetre.getByRole("dialog", { name: "Réglages de l'espace" });
+  await expect(modale).toBeVisible();
+  return modale;
+};
+const ligne = (modale: ReturnType<Page["getByRole"]>, nom: string) => modale.getByTestId("extension-ligne").filter({ hasText: nom });
+
+test("basculer une extension du Store dans la modale l'active pour le profil ; la ligne d'un autre espace du profil dit « Active aussi dans … »", async () => {
+  const profil = nouveauProfil();
+  ecrireSession(profil, [espaceDe("e1", "Perso", "🏠", "defaut"), espaceDe("e2", "Lecture", "📚", "defaut"), espaceDe("e3", "Banque", "🏦", "p2")]);
+  installerStoreFactice(profil, "bloqueur", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    const cle = Object.keys(registre(profil))[0]!;
+    let modale = await modaleReglages(fenetre, "🏦");
+    const interrupteur = ligne(modale, "Bloqueur de test").getByRole("switch");
+    await expect(modale.getByTestId("extensions-espace")).toBeVisible();
+    await expect(interrupteur).not.toBeChecked();
+    await interrupteur.click();
+    await expect(interrupteur).toBeChecked();
+    await expect.poll(() => registre(profil)[cle]!.profils.sort()).toEqual(["defaut", "p2"]);
+    await expect.poll(() => noms(app, "persist:webaios-p2")).toEqual(["Bloqueur de test"]);
+    await expect(ligne(modale, "Bloqueur de test")).not.toContainText("Active aussi dans");
+    await modale.getByRole("button", { name: "Annuler" }).click();
+
+    // Un autre espace du profil par défaut : l'extension y est active, et dit où elle tourne aussi.
+    modale = await modaleReglages(fenetre, "📚");
+    await expect(ligne(modale, "Bloqueur de test").getByRole("switch")).toBeChecked();
+    await expect(ligne(modale, "Bloqueur de test")).toContainText("Active aussi dans « Perso » (même profil)");
+    await modale.getByRole("button", { name: "Annuler" }).click();
+
+    // Désactivée pour Banque : retirée de son profil seulement.
+    modale = await modaleReglages(fenetre, "🏦");
+    await ligne(modale, "Bloqueur de test").getByRole("switch").click();
+    await expect.poll(() => registre(profil)[cle]!.profils).toEqual(["defaut"]);
+    await expect.poll(() => noms(app, "persist:webaios-p2")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("l'interrupteur d'une extension de l'agent est grisé dans un espace privé, avec ERREUR_PROFIL_PRIVE", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  ecrireSession(profil, [espaceDe("e1", "Perso", "🏠", "defaut", true)]);
+  poserAgent(profil, racine, ["defaut"]);
+  // Un dossier de l'agent jamais accordé est listé lui aussi, grisé de même.
+  ecrireExtensionAgent(racine, "jamais-accordee", { "manifest.json": { manifest_version: 3, name: "Jamais", version: "1.0.0" } });
+  const { fenetre, fermer } = await lancer({ profil, racine });
+  try {
+    const modale = await modaleReglages(fenetre, "🏠");
+    for (const nom of [NOM_AGENT, "jamais-accordee"]) {
+      await expect(ligne(modale, nom).getByRole("switch")).toBeDisabled();
+      await expect(ligne(modale, nom)).toContainText(ERREUR_PROFIL_PRIVE);
+    }
+    // Le processus principal refuse aussi, sans passer par l'interrupteur.
+    const r = await fenetre.evaluate(() => {
+      const w = window as unknown as { webaios: { extensions: { basculer(c: string, e: string, a: boolean): Promise<unknown> } } };
+      return w.webaios.extensions.basculer("agent:cacheur", "e1", true);
+    });
+    expect(r).toEqual({ ok: false, erreur: ERREUR_PROFIL_PRIVE });
+  } finally {
+    await fermer();
+  }
+});
+
+test("cocher « Espace privé » montre l'avertissement et la liste des extensions désactivées ; après Enregistrer, l'extension de l'agent n'est plus chargée", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  ecrireSession(profil, [espaceDe("e1", "Perso", "🏠", "defaut"), espaceDe("e2", "Lecture", "📚", "defaut")]);
+  poserAgent(profil, racine, ["defaut"]);
+  const { app, fenetre, fermer } = await lancer({ profil, racine });
+  try {
+    await expect.poll(() => noms(app, "persist:webaios"), { timeout: 15_000 }).toEqual([NOM_AGENT]);
+    const modale = await modaleReglages(fenetre, "🏠");
+    await expect(modale.getByTestId("avertissement-extensions-prive")).toHaveCount(0);
+    await expect(modale.getByTestId("extensions-desactivees")).toHaveCount(0);
+    await modale.getByLabel("Espace privé").check();
+    await expect(modale.getByTestId("avertissement-extensions-prive")).toContainText(
+      "Cet espace privé partage son profil avec « Lecture » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.",
+    );
+    await expect(modale.getByTestId("extensions-desactivees")).toContainText(`En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : ${NOM_AGENT}.`);
+    await modale.getByRole("button", { name: "Enregistrer" }).click();
+    await expect.poll(() => registre(profil)["agent:cacheur"]!.profils).toEqual([]);
+    await expect.poll(() => noms(app, "persist:webaios")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("créer un espace privé sur un profil partagé désactive l'extension de l'agent de ce profil", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  ecrireSession(profil, [espaceDe("e1", "Perso", "🏠", "defaut")]);
+  poserAgent(profil, racine, ["defaut"]);
+  const { app, fenetre, fermer } = await lancer({ profil, racine });
+  try {
+    await expect.poll(() => noms(app, "persist:webaios"), { timeout: 15_000 }).toEqual([NOM_AGENT]);
+    // Sans passer par la modale : l'action `creerEspace`, comme l'enverrait une autre fenêtre.
+    await fenetre.evaluate(() => {
+      const w = window as unknown as { webaios: { fenetreId: string; agir(a: unknown): void } };
+      w.webaios.agir({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: w.webaios.fenetreId });
+    });
+    await expect.poll(() => noms(app, "persist:webaios")).toEqual([]);
+    await expect.poll(() => registre(profil)["agent:cacheur"]!.profils).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("supprimer le dernier espace d'un profil retire ce profil des extensions", async () => {
+  const profil = nouveauProfil();
+  ecrireSession(profil, [espaceDe("e1", "Perso", "🏠", "defaut"), espaceDe("e3", "Banque", "🏦", "p2")]);
+  installerStoreFactice(profil, "bloqueur", { profils: ["defaut", "p2"] });
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    const cle = Object.keys(registre(profil))[0]!;
+    expect(registre(profil)[cle]!.profils.sort()).toEqual(["defaut", "p2"]);
+    await fenetre.evaluate(() => (window as unknown as { webaios: { agir(a: unknown): void } }).webaios.agir({ type: "supprimerEspace", id: "e3" }));
+    await expect.poll(() => registre(profil)[cle]!.profils).toEqual(["defaut"]);
+    expect(Object.keys(registre(profil)[cle]!.vues)).not.toContain("p2");
+  } finally {
+    await fermer();
+  }
 });

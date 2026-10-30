@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, selectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
-import { SAISIE_INVALIDE } from "../commun/extensions";
+import { SAISIE_INVALIDE, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -80,7 +80,11 @@ export interface Gestionnaires {
   ia: { etat(): Promise<EtatIaAffiche>; installer(): Promise<{ ok: boolean; erreur?: string }> };
   applications: { liste(): Promise<ListeApplications>; agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void };
   /** `saisie` validée ici comme chaîne bornée ; le gestionnaire la lit (`idDepuisSaisie`). */
-  extensions: { installerStore(saisie: string, fenetreId: IdFenetre): Promise<{ ok: true } | { ok: false; erreur: string }> };
+  extensions: {
+    installerStore(saisie: string, fenetreId: IdFenetre): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    pourEspace(espaceId: string): Promise<LigneExtensionEspace[]>;
+    basculer(cle: string, espaceId: string, actif: boolean, fenetreId: IdFenetre): Promise<{ ok: true } | { ok: false; erreur: string }>;
+  };
   acces: { etat(): EtatAcces; couper(id: IdOnglet, droit?: DroitDev): void };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
   pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
@@ -231,6 +235,15 @@ export function brancherIpc(g: Gestionnaires): void {
     if (!fenetreId) throw new Error("expéditeur inconnu");
     if (typeof saisie !== "string" || saisie.length > 2000) return { ok: false, erreur: SAISIE_INVALIDE };
     return g.extensions.installerStore(saisie, fenetreId);
+  });
+  const chaine = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
+  repondre(CANAUX.extensionsPourEspace, (espaceId) => (chaine(espaceId, 200) ? g.extensions.pourEspace(espaceId) : []));
+  // Un geste de l'utilisateur dans la modale d'une fenêtre : la carte d'une extension de l'agent s'ouvre dans cette fenêtre.
+  ipcMain.handle(CANAUX.extensionsBasculer, (e, cle: unknown, espaceId: unknown, actif: unknown) => {
+    const fenetreId = g.fenetreDe(e);
+    if (!fenetreId) throw new Error("expéditeur inconnu");
+    if (!chaine(cle, 200) || !chaine(espaceId, 200) || typeof actif !== "boolean") return { ok: false, erreur: "Demande invalide" };
+    return g.extensions.basculer(cle, espaceId, actif, fenetreId);
   });
   recevoir(CANAUX.applicationAction, zod(SchemaActionApplication), ({ dossier, action }, f) => g.applications.agir(dossier, action, f));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));

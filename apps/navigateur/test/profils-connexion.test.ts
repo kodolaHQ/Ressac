@@ -8,7 +8,9 @@ import type { EtatNavigateur } from "../src/commun/modele";
 const effacees: string[] = [];
 /** Partitions dont l'effacement échoue. */
 const echecs = new Set<string>();
-const sessions = new Map<string, { partition: string; clearStorageData(): Promise<void>; clearCache(): Promise<void> }>();
+const sessions = new Map<string, { partition: string; storagePath: string; clearStorageData(): Promise<void>; clearCache(): Promise<void> }>();
+/** Dossier racine des fausses sessions (posé par beforeEach) : le `storagePath` de chacune est `<racine>/Partitions/<nom>`. */
+let racineSessions = "";
 vi.mock("electron", () => ({
   session: {
     fromPartition(partition: string) {
@@ -16,6 +18,7 @@ vi.mock("electron", () => ({
       if (!s) {
         s = {
           partition,
+          storagePath: join(racineSessions, partition.replace("persist:", "")),
           clearStorageData: async () => {
             if (echecs.has(partition)) throw new Error("effacement impossible");
             effacees.push(partition);
@@ -38,6 +41,7 @@ const etat = (...ids: string[]) => ({ profils: ids.map((id) => ({ id })), espace
 
 beforeEach(() => {
   dossier = mkdtempSync(join(tmpdir(), "webaios-profils-"));
+  racineSessions = join(dossier, "Partitions");
   branchees = [];
   effacees.length = 0;
   echecs.clear();
@@ -138,5 +142,23 @@ test("un profil qu'un espace utilise n'est jamais effacé, même absent de la li
   await p.synchroniser(avecEspace);
   expect(effacees).toEqual([]);
   await p.synchroniser(etat("defaut"));
+  expect(effacees).toEqual(["persist:webaios-abc"]);
+});
+
+test("effacer un profil efface ses données d'extensions et appelle oublier", async () => {
+  const oublies: string[] = [];
+  const p = new SessionsProfils({ dossier, brancher: () => {}, oublier: (id) => void oublies.push(id) });
+  const stockage = join(racineSessions, "webaios-abc");
+  const extensions = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "Extension State", "Extension Rules", "Extension Scripts"];
+  for (const d of [...extensions, "Local Storage", "Autre profil"]) mkdirSync(join(stockage, d), { recursive: true });
+  // Le dossier d'un autre profil n'est jamais touché.
+  mkdirSync(join(racineSessions, "webaios-xyz", "Local Extension Settings"), { recursive: true });
+  await p.synchroniser(etat("defaut", "abc", "xyz"));
+  await p.synchroniser(etat("defaut", "xyz"));
+  for (const d of extensions) expect(existsSync(join(stockage, d)), d).toBe(false);
+  // Ce que `clearStorageData` (ici simulé) efface lui-même n'est pas l'affaire de ce ménage.
+  expect(existsSync(join(stockage, "Local Storage"))).toBe(true);
+  expect(existsSync(join(racineSessions, "webaios-xyz", "Local Extension Settings"))).toBe(true);
+  expect(oublies).toEqual(["abc"]);
   expect(effacees).toEqual(["persist:webaios-abc"]);
 });

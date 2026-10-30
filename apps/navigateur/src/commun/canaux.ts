@@ -64,6 +64,8 @@ export const CANAUX = {
   pastilleTaille: "webaios:pastille-taille",
   apercuPage: "webaios:apercu-page",
   extensionsInstallerStore: "webaios:extensions-installer-store",
+  extensionsPourEspace: "webaios:extensions-pour-espace",
+  extensionsBasculer: "webaios:extensions-basculer",
   /** Diffusé après chaque changement du registre des extensions (sans contenu : relire). */
   extensionsChange: "webaios:extensions-change",
 } as const;

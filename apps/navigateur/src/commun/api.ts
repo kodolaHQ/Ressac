@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution } from "@webaios/noyau";
+import type { LigneExtensionEspace } from "./extensions";
 import type { ZoneGauche } from "./revelation";
-import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
+import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
 export { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "./canaux";
 
@@ -228,6 +229,10 @@ export interface ApiWebaios {
      * carte d'accord. Saisie illisible : « Adresse ou identifiant du Chrome Web Store attendu ».
      */
     installerStore(saisie: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    /** Les extensions installées ou accordées, et les dossiers de l'agent jamais accordés, vus depuis cet espace. */
+    pourEspace(espaceId: IdEspace): Promise<LigneExtensionEspace[]>;
+    /** Active ou désactive une extension dans le profil de cet espace (l'agent sans accord passe par la carte). */
+    basculer(cle: string, espaceId: IdEspace, actif: boolean): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** Le registre des extensions a changé : relire. */
     surChange(rappel: () => void): () => void;
   };

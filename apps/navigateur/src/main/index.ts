@@ -409,7 +409,11 @@ app.whenReady().then(async () => {
         console.error(`[extensions] profil ${id} sans extensions :`, e);
       }
     },
-    oublier: (id) => permissions.get(id)?.toutOublier(),
+    oublier: (id) => {
+      permissions.get(id)?.toutOublier();
+      // Le profil quitte les extensions (profils actifs, versions vues) ; ses réglages d'extensions sont déjà effacés.
+      serviceExtensions.retirerProfil(id).catch((e) => console.error(`[extensions] profil ${id} non retiré du registre :`, e));
+    },
   });
   const vues = new GestionnaireVues({
     sessionDe: (o) => sessions.session(profilDOnglet(magasin.etat, o)),
@@ -604,6 +608,8 @@ app.whenReady().then(async () => {
         if (!espace) return { ok: false, erreur: "Aucun espace actif dans cette fenêtre" };
         return serviceExtensions.installerStore(id, { profil: espace.profil, espace, fenetre: fenetreId, depuisInterface: true });
       },
+      pourEspace: (espaceId) => serviceExtensions.pourEspace(espaceId),
+      basculer: (cle, espaceId, actif, fenetreId) => serviceExtensions.basculer(cle, espaceId, actif, fenetreId),
     },
     acces: {
       etat: etatAcces,

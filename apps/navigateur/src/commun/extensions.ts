@@ -7,6 +7,21 @@ export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store atten
 export const DESACTIVEE_PLANTAGES = "Désactivée : elle a planté 3 fois en une minute";
 export const DESACTIVEE_PORTEE = "Désactivée : elle demande plus de droits qu'accordé";
 
+/** Une ligne de la section « Extensions » des réglages d'un espace (tout y est affiché en texte). */
+export interface LigneExtensionEspace {
+  cle: string;
+  nom: string;
+  source: "store" | "agent";
+  /** Active dans le profil de cet espace. */
+  active: boolean;
+  /** Si active : les noms des autres espaces du même profil, où elle tourne aussi. */
+  aussiDans: string[];
+  /** Non null : l'interrupteur est désactivé, et cette phrase dit pourquoi. */
+  grisee: string | null;
+  /** Les profils où elle est active (pour prévenir de ce que change un espace privé). */
+  profils: string[];
+}
+
 /** Ce que montre la carte d'accord d'une extension (DemandeExtension.svelte) : tout y est affiché en texte. */
 export interface CarteExtension {
   cle: string;
