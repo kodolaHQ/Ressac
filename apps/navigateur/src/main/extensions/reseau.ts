@@ -105,6 +105,46 @@ export function hotePermisAgent(url: string, accord: Portee): boolean {
   return !!u && accord.hotes.some((m) => motifCouvre(m, u));
 }
 
+/** Ce qui fait voir à une extension l'adresse et le titre des onglets : ses droits nommés et ses hôtes. */
+export interface DroitsOnglets {
+  permissions: readonly string[];
+  hotes: readonly string[];
+  tousLesSites: boolean;
+}
+
+/**
+ * Les droits d'une extension sur les onglets : pour une extension de l'agent, son accord (null : aucun) ; sinon son
+ * manifeste (`host_permissions` en MV3, les motifs de `permissions` en MV2).
+ */
+export function droitsOnglets(extension: { manifest: unknown }, accord: Portee | null | undefined): DroitsOnglets {
+  if (accord === null) return { permissions: [], hotes: [], tousLesSites: false };
+  if (accord) return { permissions: accord.permissions, hotes: accord.hotes, tousLesSites: accord.tousLesSites };
+  const m = (extension.manifest ?? {}) as { permissions?: unknown; host_permissions?: unknown };
+  const chaines = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const estMotif = (x: string) => x === "<all_urls>" || x.includes("://");
+  const permissions = chaines(m.permissions);
+  return {
+    permissions: permissions.filter((x) => !estMotif(x)),
+    hotes: [...chaines(m.host_permissions), ...permissions.filter(estMotif)],
+    tousLesSites: false,
+  };
+}
+
+/**
+ * Comme Chrome : l'adresse, le titre et l'icône d'un onglet ne sont donnés à une extension (`tabs.query`, `tabs.get`,
+ * `tabs.onUpdated`, `windows.*`…) que si elle a le droit `tabs` ou un hôte qui couvre l'adresse de l'onglet ; ses
+ * propres pages, toujours.
+ */
+export function voitOnglet(url: string | undefined, droits: DroitsOnglets, idChrome: string): boolean {
+  if (droits.permissions.includes("tabs")) return true;
+  if (!url) return false;
+  if (idExtensionDe(url) === idChrome) return true;
+  const u = lire(url);
+  if (!u) return false;
+  if (droits.tousLesSites && (u.protocol === "http:" || u.protocol === "https:")) return true;
+  return droits.hotes.some((m) => motifCouvre(m, u));
+}
+
 /** L'id d'extension d'une origine ou d'une adresse `chrome-extension://<id>/…`, sinon null. */
 export function idExtensionDe(origine: string | undefined): string | null {
   if (!origine || !origine.startsWith("chrome-extension://")) return null;

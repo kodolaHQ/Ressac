@@ -1240,14 +1240,15 @@ export class ServiceExtensions {
   private lienDe(cle: string): LienDeblocage | null {
     const x = this.etat.extensions[cle];
     if (!x) return null;
-    return { idChrome: x.idChrome, profils: [...x.profils], marque: x.modifieeLe };
+    // Avant que Chromium ne l'ait donné, l'id de la copie (le même : il dérive du dossier).
+    return { idChrome: this.idChromeAgent(cle), profils: [...x.profils], marque: x.modifieeLe };
   }
 
   /** Vrai si `cle` n'est plus ce que la carte montrait : autre id, nouvelle copie, ou active dans un autre profil. */
   private lienRompu(cle: string, lien: LienDeblocage): boolean {
     const x = this.etat.extensions[cle];
     if (!x) return true;
-    return x.idChrome !== lien.idChrome || x.modifieeLe !== lien.marque || x.profils.some((p) => !lien.profils.includes(p));
+    return this.idChromeAgent(cle) !== lien.idChrome || x.modifieeLe !== lien.marque || x.profils.some((p) => !lien.profils.includes(p));
   }
 
   /** Pourquoi la console de `cle` ne peut pas (ou plus) être débloquée, ou null. */

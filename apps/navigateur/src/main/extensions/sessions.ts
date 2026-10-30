@@ -20,7 +20,7 @@ import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
 import { estInvisible } from "../contenus-invisibles";
 import { niveauConsole, type ConsolesExtensions } from "./consoles";
 import { connexionNative } from "./natif";
-import { hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPermiseAgent } from "./reseau";
+import { droitsOnglets, hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPermiseAgent, voitOnglet } from "./reseau";
 
 /** Canal du preload des correctifs (`src/preload/extensions.ts`) : service workers et pages `chrome-extension://`. */
 export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
@@ -190,6 +190,16 @@ function idPageExtension(wc: WebContents, url: string | undefined): { instance: 
  * extension de l'agent, une fois `chrome.storage` vidé par l'API (Chromium garde le magasin ouvert après le retrait).
  */
 const DOSSIERS_STOCKAGE = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "DNR Extension Rules", "Extension Rules"];
+/** Chaque étape de l'effacement du stockage, au plus : au-delà, elle échoue (la file des synchronisations continue). */
+export const DELAI_EFFACEMENT_MS = 10_000;
+/** `p`, ou une erreur « <étape> : délai dépassé » après `ms`. */
+function borne<T>(p: Promise<T>, etape: string, ms: number): Promise<T> {
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+  const delai = new Promise<never>((_, non) => {
+    minuterie = setTimeout(() => non(new Error(`${etape} : délai dépassé (${ms} ms)`)), ms);
+  });
+  return Promise.race([p, delai]).finally(() => clearTimeout(minuterie));
+}
 /** Vide `chrome.storage` depuis une page de l'extension ; rend le nombre de clés restées dans `local`. */
 const VIDER_STOCKAGE = `(async () => {
   for (const zone of ["local", "sync", "session"]) await chrome.storage[zone]?.clear();
@@ -283,6 +293,8 @@ export class ExtensionsProfils {
       lisibleParAgent?(wc: WebContents): boolean;
       /** Après chaque synchronisation des sessions (ce qui est chargé a pu changer : la barre relit). */
       apresSynchro?(): void;
+      /** Délai de chaque étape de l'effacement du stockage (`DELAI_EFFACEMENT_MS` par défaut ; tests). */
+      delaiEffacementMs?: number;
     },
   ) {
     instancesVivantes.add(this);
@@ -393,6 +405,8 @@ export class ExtensionsProfils {
         if (accord !== undefined && !(accord && hotePermisAgent(url, accord))) return false;
         return this.o.verifierHote?.(extension, url) ?? true;
       },
+      // Comme Chrome : l'adresse et le titre des onglets seulement avec « tabs » ou un hôte qui les couvre (Store compris).
+      voitOnglet: (extension, url) => voitOnglet(url, droitsOnglets(extension, this.accordAgent(extension.id)), extension.id),
       connectNative: connexionNative,
     });
     // Après ceux de la bibliothèque : `chrome` y est déjà complété.
@@ -465,22 +479,42 @@ export class ExtensionsProfils {
     return travail;
   }
 
+  /**
+   * Chaque étape est bornée (`delaiEffacementMs`) : au-delà, elle échoue, la vue est fermée et l'extension retirée
+   * (un chargement qui finit après le délai est retiré aussitôt), et la file des synchronisations continue.
+   */
   private async effacerStockageDans(s: Session, chemin: string): Promise<void> {
-    const ext = await s.extensions.loadExtension(chemin, { allowFileAccess: false });
+    const ms = this.o.delaiEffacementMs ?? DELAI_EFFACEMENT_MS;
+    const retirer = (id: string) => {
+      try {
+        s.extensions.removeExtension(id);
+      } catch (erreur) {
+        console.error(`[extensions] ${id} (effacement) non retirée :`, erreur);
+      }
+    };
+    const chargement = s.extensions.loadExtension(chemin, { allowFileAccess: false });
+    let ext: Electron.Extension;
+    try {
+      ext = await borne(chargement, "Chargement pour l'effacement", ms);
+    } catch (erreur) {
+      // Chargée plus tard : retirée aussitôt.
+      chargement.then((e) => retirer(e.id)).catch(() => undefined);
+      throw erreur;
+    }
     const id = ext.id;
     try {
       const vue = new WebContentsView({ webPreferences: { session: s, sandbox: true } });
       try {
-        await vue.webContents.loadURL(`chrome-extension://${id}/manifest.json`);
-        const restees: unknown = await vue.webContents.executeJavaScript(VIDER_STOCKAGE);
+        await borne(vue.webContents.loadURL(`chrome-extension://${id}/manifest.json`), "Page de l'effacement", ms);
+        const restees: unknown = await borne(vue.webContents.executeJavaScript(VIDER_STOCKAGE), "Vidage de chrome.storage", ms);
         if (restees !== 0) throw new Error(`chrome.storage.local de ${id} non vidé`);
       } finally {
         vue.webContents.close();
       }
     } finally {
-      s.extensions.removeExtension(id);
+      retirer(id);
     }
-    await s.clearStorageData({ origin: `chrome-extension://${id}` });
+    await borne(s.clearStorageData({ origin: `chrome-extension://${id}` }), "Effacement de l'origine", ms);
     const racine = s.storagePath;
     if (racine) for (const d of DOSSIERS_STOCKAGE) await rm(join(racine, d, id), { recursive: true, force: true });
   }

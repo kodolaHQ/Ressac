@@ -753,6 +753,23 @@ test("le déblocage est lié à ce que l'utilisateur a vu : la carte nomme les e
   expect(await debloquee()).toBe(false);
 });
 
+test("un déblocage accordé avant que Chromium n'ait donné son id : lié à l'id de la copie, il reste quand l'id arrive au registre", async () => {
+  const { service, outils } = await agentPourOutils();
+  const { idChromeDeDossier } = await import("../../src/main/extensions/reseau");
+  const id = idChromeDeDossier(join(dossier, "copies", "essai"));
+  const changer = (idChrome: string | null) =>
+    service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": { ...e.extensions["agent:essai"]!, idChrome } } }));
+  await changer(null);
+  expect(await outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" })).toEqual({ ok: true });
+  await changer(id);
+  expect((await outils.console("essai"))!.debloquee).toBe(true);
+  await service.epingler("agent:essai", true);
+  expect((await outils.console("essai"))!.debloquee).toBe(true);
+  // Un autre id : fin.
+  await changer("f".repeat(32));
+  expect((await outils.console("essai"))!.debloquee).toBe(false);
+});
+
 test("pendant la carte de déblocage, l'extension activée ailleurs ou rechargée (recréée) : la carte est retirée, rien n'est débloqué", async () => {
   const { service, outils } = await agentPourOutils();
   for (const changement of [

@@ -10,7 +10,14 @@ import type { EtatNavigateur } from "../../src/commun/modele";
 // `vi.mock` passe avant les imports : ce qu'utilise le leurre est créé par `vi.hoisted`.
 const { EventEmitter } = await vi.hoisted(() => import("node:events"));
 type EventEmitter = import("node:events").EventEmitter;
-const { notificationsMontrees, ecouteursApp, gestionnairesIpc, menus, vuesParId } = vi.hoisted(() => ({
+const { notificationsMontrees, ecouteursApp, gestionnairesIpc, menus, vuesParId, effacement } = vi.hoisted(() => ({
+  /** Les vues de l'effacement du stockage (`WebContentsView`) : ce qu'elles chargent et exécutent, et leur fermeture. */
+  effacement: {
+    charger: (_url: string): Promise<void> => Promise.resolve(),
+    executer: (_code: string): Promise<unknown> => Promise.resolve(0),
+    adresses: [] as string[],
+    fermees: 0,
+  },
   /** `webContents.fromId` : les vues posées par un test (sinon un objet vide). */
   vuesParId: new Map<number, unknown>(),
   notificationsMontrees: [] as unknown[],
@@ -65,6 +72,16 @@ vi.mock("electron", () => {
         Object.assign(this, o);
       }
     },
+    WebContentsView: class {
+      webContents = {
+        loadURL: (url: string) => {
+          effacement.adresses.push(url);
+          return effacement.charger(url);
+        },
+        executeJavaScript: (code: string) => effacement.executer(code),
+        close: () => void effacement.fermees++,
+      };
+    },
     protocol: {},
     nativeImage: {},
   };
@@ -109,6 +126,11 @@ function fausseSession(nom: string): FausseSession {
       (s as unknown as { preloads: unknown[] }).preloads.push(o);
     },
     isPersistent: () => true,
+    storagePath: null,
+    effacees: [] as unknown[],
+    async clearStorageData(o: unknown) {
+      (s as unknown as { effacees: unknown[] }).effacees.push(o);
+    },
     cookies: Object.assign(new EventEmitter(), {
       poses: [] as { url: string; name: string; domain?: string; secure?: boolean; path?: string }[],
       async set(d: { url: string; name: string }) {
@@ -237,6 +259,7 @@ function creer(
     lisibleParAgent?: (wc: Electron.WebContents) => boolean;
     consoles?: ConstructorParameters<typeof ExtensionsProfils>[0]["consoles"];
     aTourneDansOnglet?: ConstructorParameters<typeof ExtensionsProfils>[0]["aTourneDansOnglet"];
+    delaiEffacementMs?: number;
   } = {},
 ) {
   const p = new ExtensionsProfils({
@@ -253,6 +276,7 @@ function creer(
     ...(o.lisibleParAgent ? { lisibleParAgent: o.lisibleParAgent } : {}),
     ...(o.consoles ? { consoles: o.consoles } : {}),
     ...(o.aTourneDansOnglet ? { aTourneDansOnglet: o.aTourneDansOnglet } : {}),
+    ...(o.delaiEffacementMs ? { delaiEffacementMs: o.delaiEffacementMs } : {}),
     dossier,
     etat: () => etat,
     premierPlan: () => "f1",
@@ -1060,4 +1084,52 @@ test("console d'un onglet : un message dont la source est un fichier de l'extens
     { id: "id-copies-fond", texte: "caché", onglet: { lisible: false } },
     { id: "id-copies-fond", texte: "partagé", onglet: { lisible: true } },
   ]);
+});
+
+// ——— Effacement du stockage d'une extension de l'agent supprimée (borné dans le temps) ———
+
+test("effacerStockage : chargée, chrome.storage vidé depuis sa page, retirée, puis son origine effacée", async () => {
+  effacement.charger = () => Promise.resolve();
+  effacement.executer = () => Promise.resolve(0);
+  effacement.fermees = 0;
+  const p = creer({ delaiEffacementMs: 50 });
+  const s = fausseSession("p1") as FausseSession & { effacees: unknown[] };
+  await p.effacerStockage("/copies/essai", [s as never]);
+  const id = "id-copies-essai";
+  expect(s.chargements.map((c) => c.chemin)).toEqual(["/copies/essai"]);
+  expect(effacement.adresses.at(-1)).toBe(`chrome-extension://${id}/manifest.json`);
+  expect(effacement.fermees).toBe(1);
+  expect(s.retraits).toEqual([id]);
+  expect(s.effacees).toEqual([{ origin: `chrome-extension://${id}` }]);
+});
+
+test("effacerStockage : une étape qui ne rend jamais (chargement de la page, script) échoue après le délai ; la vue est fermée, l'extension retirée, la file continue", async () => {
+  for (const bloquer of ["charger", "executer"] as const) {
+    effacement.charger = () => Promise.resolve();
+    effacement.executer = () => Promise.resolve(0);
+    if (bloquer === "charger") effacement.charger = () => new Promise<void>(() => {});
+    else effacement.executer = () => new Promise<unknown>(() => {});
+    effacement.fermees = 0;
+    const p = creer({ delaiEffacementMs: 30 });
+    const s = fausseSession("p1");
+    await expect(p.effacerStockage("/copies/essai", [s as never])).rejects.toThrow(/délai/);
+    expect(effacement.fermees).toBe(1);
+    expect(s.retraits).toEqual(["id-copies-essai"]);
+    // La file des synchronisations n'est pas bloquée.
+    await p.synchroniser(etatExt({}));
+  }
+  effacement.charger = () => Promise.resolve();
+  effacement.executer = () => Promise.resolve(0);
+});
+
+test("effacerStockage : un chargement qui ne rend pas échoue après le délai ; s'il finit plus tard, l'extension est retirée aussitôt", async () => {
+  const p = creer({ delaiEffacementMs: 30 });
+  const s = fausseSession("p1");
+  let finir: () => void = () => {};
+  s.lent = new Promise((r) => (finir = r));
+  await expect(p.effacerStockage("/copies/essai", [s as never])).rejects.toThrow(/délai/);
+  expect(s.retraits).toEqual([]);
+  await p.synchroniser(etatExt({}));
+  finir();
+  await vi.waitFor(() => expect(s.retraits).toEqual(["id-copies-essai"]));
 });

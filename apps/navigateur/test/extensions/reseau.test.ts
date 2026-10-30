@@ -7,7 +7,7 @@ import type { Portee } from "@webaios/noyau";
 
 vi.mock("electron", () => ({ app: { on: () => {} } }));
 
-const { urlPermiseAgent, hotePermisAgent, motifCouvre, equiperPagesAgent, idChromeDeDossier } = await import(
+const { urlPermiseAgent, hotePermisAgent, motifCouvre, equiperPagesAgent, idChromeDeDossier, voitOnglet, droitsOnglets } = await import(
   "../../src/main/extensions/reseau"
 );
 
@@ -143,6 +143,38 @@ test("pages de l'agent : une vue sans gestionnaire (popup d'action) en reçoit u
 const temporaires: string[] = [];
 afterAll(() => {
   for (const d of temporaires) rmSync(d, { recursive: true, force: true });
+});
+
+test("voitOnglet (sémantique de Chrome) : adresse et titre d'un onglet seulement avec « tabs » ou un hôte qui couvre son adresse", () => {
+  const sans = { permissions: ["storage"], hotes: [], tousLesSites: false };
+  expect(voitOnglet("https://banque.test/compte", sans, ID)).toBe(false);
+  expect(voitOnglet("https://banque.test/compte", { ...sans, permissions: ["tabs"] }, ID)).toBe(true);
+  const hotes = { ...sans, hotes: ["https://*.hote.test/*"] };
+  expect(voitOnglet("https://a.hote.test/x", hotes, ID)).toBe(true);
+  expect(voitOnglet("https://banque.test/compte", hotes, ID)).toBe(false);
+  expect(voitOnglet("https://banque.test/", { ...sans, tousLesSites: true }, ID)).toBe(true);
+  expect(voitOnglet("https://banque.test/", { ...sans, hotes: ["<all_urls>"] }, ID)).toBe(true);
+  // Ses propres pages : oui ; celles d'une autre extension, ou une adresse illisible : non.
+  expect(voitOnglet(`chrome-extension://${ID}/page.html`, sans, ID)).toBe(true);
+  expect(voitOnglet(`chrome-extension://${AUTRE}/page.html`, sans, ID)).toBe(false);
+  expect(voitOnglet("webaios://accueil", sans, ID)).toBe(false);
+  expect(voitOnglet(undefined, sans, ID)).toBe(false);
+});
+
+test("droitsOnglets : accord d'une extension de l'agent (null : rien), sinon le manifeste (MV3 host_permissions, MV2 permissions)", () => {
+  expect(droitsOnglets({ manifest: { permissions: ["tabs"] } }, null)).toEqual({ permissions: [], hotes: [], tousLesSites: false });
+  expect(droitsOnglets({ manifest: { permissions: ["tabs"] } }, accord)).toEqual({ permissions: ["tabs"], hotes: accord.hotes, tousLesSites: false });
+  expect(droitsOnglets({ manifest: { permissions: ["storage", "tabs"], host_permissions: ["https://x.test/*"] } }, undefined)).toEqual({
+    permissions: ["storage", "tabs"],
+    hotes: ["https://x.test/*"],
+    tousLesSites: false,
+  });
+  expect(droitsOnglets({ manifest: { manifest_version: 2, permissions: ["storage", "<all_urls>", "http://y.test/*", 3] } }, undefined)).toEqual({
+    permissions: ["storage"],
+    hotes: ["<all_urls>", "http://y.test/*"],
+    tousLesSites: false,
+  });
+  expect(droitsOnglets({ manifest: {} }, undefined)).toEqual({ permissions: [], hotes: [], tousLesSites: false });
 });
 
 test("idChromeDeDossier : 32 lettres de a à p, stable, propre au chemin réel", () => {

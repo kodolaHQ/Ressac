@@ -1339,6 +1339,72 @@ r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.object
   }
 });
 
+/** Un service worker qui écrit ce qu'il voit des onglets (requêtes, événements, fenêtres, navigation). */
+const fondEspion = `
+const montrer = (t) => [t.url ?? null, t.title ?? null, t.favIconUrl ?? null, t.pendingUrl ?? null];
+setInterval(async () => {
+  console.log("query:" + JSON.stringify((await chrome.tabs.query({})).map(montrer)));
+  const fenetres = await chrome.windows.getAll({ populate: true });
+  console.log("fenetres:" + JSON.stringify(fenetres.flatMap((f) => (f.tabs ?? []).map(montrer))));
+}, 300);
+chrome.tabs.onUpdated.addListener((id, c, t) => console.log("maj:" + JSON.stringify([c, montrer(t)])));
+chrome.tabs.onCreated.addListener((t) => console.log("cree:" + JSON.stringify(montrer(t))));
+try {
+  chrome.webNavigation.onCompleted.addListener((d) => console.log("nav:" + d.url));
+} catch (e) {
+  console.log("nav absent");
+}
+`;
+
+test("une extension de l'agent sans « tabs » ni hôte ne voit ni l'adresse ni le titre des onglets (tabs.query, onUpdated, onCreated, windows populate), ni la navigation sans « webNavigation »", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "espion", {
+    "manifest.json": { manifest_version: 3, name: "Espion de l'agent", version: "1.0.0", background: { service_worker: "fond.js" } },
+    "fond.js": fondEspion,
+  });
+  const { fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "espion", "Espion de l'agent")).toMatch(/^Activée/);
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    // Sans droit qui observe, sa console n'est pas masquée : ce qu'elle écrit, l'agent le voit.
+    await expect.poll(() => consoleDe(racine, "espion"), { timeout: 15_000 }).toContain("query:[[null,null,null,null]");
+    await new Promise((r) => setTimeout(r, 1000));
+    const texte = await consoleDe(racine, "espion");
+    expect(texte).not.toContain("a.html");
+    expect(texte).not.toContain("Page A");
+    expect(texte).not.toContain("127.0.0.1");
+    expect(texte).not.toContain("nav:");
+  } finally {
+    await fermer();
+  }
+});
+
+test("avec un hôte, elle voit l'adresse et le titre des onglets de ce site seulement (débloquée pour le lire)", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "espion", {
+    "manifest.json": { manifest_version: 3, name: "Espion de l'agent", version: "1.0.0", host_permissions: [HOTE], background: { service_worker: "fond.js" } },
+    "fond.js": fondEspion,
+  });
+  const { fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "espion", "Espion de l'agent")).toMatch(/^Activée/);
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    await ouvrirOnglet(fenetre, `${serveur.url.replace("127.0.0.1", "localhost")}/b.html`);
+    const appel = appelerOutil(racine, "debloquer_console", { id: "espion", raison: "r" });
+    await fenetre.getByTestId("demande-console-extension").getByRole("button", { name: "Débloquer" }).click({ timeout: 15_000 });
+    await appel;
+    await expect.poll(() => consoleDe(racine, "espion"), { timeout: 15_000 }).toContain("/a.html");
+    await new Promise((r) => setTimeout(r, 1000));
+    const texte = await consoleDe(racine, "espion");
+    expect(texte).toContain(`"${serveur.url}/a.html"`);
+    expect(texte).not.toContain("localhost");
+  } finally {
+    await fermer();
+  }
+});
+
 test("une carte de l'agent retirée avant la réponse (l'espace devient privé) : « Demande retirée avant la réponse de l'utilisateur. »", async () => {
   const racine = nouvelleRacine();
   ecrireExtensionAgent(racine, "journal", JOURNAL);
