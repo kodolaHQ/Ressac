@@ -12,7 +12,7 @@
 // et garde webaios-garde-fond.js).
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { app, type WebContents } from "electron";
 import type { Portee } from "@webaios/noyau";
 
@@ -31,7 +31,12 @@ export function idChromeDeDossier(chemin: string): string {
   try {
     reel = realpathSync(chemin);
   } catch {
-    reel = resolve(chemin);
+    // Dossier absent (copie effacée) : le même id que s'il existait, tant que son parent existe.
+    try {
+      reel = join(realpathSync(dirname(resolve(chemin))), basename(chemin));
+    } catch {
+      reel = resolve(chemin);
+    }
   }
   const hex = createHash("sha256").update(reel).digest("hex").slice(0, 32);
   return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("");

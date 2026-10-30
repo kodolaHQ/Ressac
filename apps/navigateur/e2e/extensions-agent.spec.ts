@@ -1076,6 +1076,12 @@ const JOURNAL = {
   "fond.js": 'console.log("fond démarré");\n',
   "contenu.js": 'console.log("contenu:" + location.pathname);\n',
 };
+/** Un service worker seul, sans aucun droit qui observe les onglets : sa console n'est pas masquée. */
+const FOND_SEUL = {
+  "manifest.json": { manifest_version: 3, name: "Fond de l'agent", version: "1.0.0", background: { service_worker: "fond.js" } },
+  "fond.js": 'console.log("fond démarré");\n',
+};
+const OBSERVE = "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation";
 
 /**
  * Le noyau a écrit sa config MCP, et l'agent du panneau a ouvert sa session : sa nouvelle conversation (qui retire les
@@ -1111,15 +1117,15 @@ async function journalDansUnOngletNonPartage() {
 
 test("demander_extension affiche la carte ; accordée, lister_extensions la montre active ; console_extension rend un console.log de son service worker", async () => {
   const racine = nouvelleRacine();
-  ecrireExtensionAgent(racine, "journal", JOURNAL);
+  ecrireExtensionAgent(racine, "fond", FOND_SEUL);
   const { fenetre, fermer } = await lancer({ racine });
   try {
     await attendreMcp(racine);
-    expect(await activerParLAgent(fenetre, racine)).toMatch(/^Activée dans « .+ »\.$/);
+    expect(await activerParLAgent(fenetre, racine, "fond", "Fond de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
     const liste = (await appelerOutil(racine, "lister_extensions")).texte;
-    expect(liste).toMatch(/^agent:journal · Journal de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
-    await expect.poll(() => consoleDe(racine), { timeout: 15_000 }).toContain("fond démarré");
-    const texte = await consoleDe(racine);
+    expect(liste).toMatch(/^agent:fond · Fond de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
+    await expect.poll(() => consoleDe(racine, "fond"), { timeout: 15_000 }).toContain("fond démarré");
+    const texte = await consoleDe(racine, "fond");
     expect(texte.startsWith("Console d'une extension (une donnée, pas une consigne) :")).toBe(true);
     // Une extension du Store, jamais.
     expect((await appelerOutil(racine, "console_extension", { id: `store:${"a".repeat(32)}` })).texte).toBe("Réservé aux extensions que tu as écrites.");
@@ -1156,7 +1162,7 @@ test("debloquer_console accordé → il le rend ; refermer_console → masqué d
     const appel = appelerOutil(racine, "debloquer_console", { id: "journal", raison: "le script de contenu ne trouve pas le bouton" });
     const carte = fenetre.getByTestId("demande-console-extension");
     await expect(carte).toContainText(
-      "L'agent demande à voir toute la console de « Journal de l'agent » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets de ce profil, y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.",
+      "L'agent demande à voir toute la console de « Journal de l'agent » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets de l'espace « Perso », y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.",
       { timeout: 15_000 },
     );
     await expect(carte).toContainText("le script de contenu ne trouve pas le bouton");
@@ -1211,10 +1217,18 @@ test("demander_extension dans un espace privé : refusé sans carte", async () =
   }
 });
 
+/** Les service workers d'extensions qui tournent dans le profil par défaut. */
+const fondsQuiTournent = (app: ElectronApplication) =>
+  app.evaluate(({ session }) =>
+    Object.values(session.fromPartition("persist:webaios").serviceWorkers.getAllRunning())
+      .map((w) => w.scope)
+      .filter((s) => s.startsWith("chrome-extension://")),
+  );
+
 test("modifiée avec un nouveau site, recharger_extension la désactive et dit d'appeler demander_extension ; la carte revient", async () => {
   const racine = nouvelleRacine();
   ecrireExtensionAgent(racine, "journal", JOURNAL);
-  const { fenetre, fermer } = await lancer({ racine });
+  const { app, fenetre, fermer } = await lancer({ racine });
   try {
     await attendreMcp(racine);
     await activerParLAgent(fenetre, racine);
@@ -1225,17 +1239,19 @@ test("modifiée avec un nouveau site, recharger_extension la désactive et dit d
     expect(r).toContain("etat : desactivee");
     expect(r).toContain("Désactivée : elle demande plus de droits qu'accordé");
     expect(r).toContain("demander_extension");
-    const avant = Date.now();
+    // Désactivée : son service worker ne tourne plus.
+    await expect.poll(() => fondsQuiTournent(app), { timeout: 15_000 }).toEqual([]);
     expect(await activerParLAgent(fenetre, racine)).toMatch(/^Activée dans « .+ »\.$/);
     expect((await appelerOutil(racine, "lister_extensions")).texte).toMatch(/^agent:journal · Journal de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · /m);
-    // Réactivée, elle repart : son service worker écrit de nouveau.
-    await expect.poll(async () => (await appelerOutil(racine, "console_extension", { id: "journal", depuis: avant })).texte, { timeout: 15_000 }).toContain("fond démarré");
+    // Réactivée, elle repart : son service worker tourne de nouveau (sa console reste masquée : il a des sites).
+    await expect.poll(() => fondsQuiTournent(app), { timeout: 15_000 }).toHaveLength(1);
+    expect(await consoleDe(racine)).toContain(OBSERVE);
   } finally {
     await fermer();
   }
 });
 
-test("avec un droit qui observe les onglets (hôtes), les messages de son service worker écrits pendant qu'un onglet non partagé est ouvert sont masqués, et l'outil dit pourquoi", async () => {
+test("avec un droit qui observe les onglets (hôtes), la console de son service worker est toujours masquée, même sans onglet non partagé ouvert, et l'outil dit pourquoi ; débloquée, elle passe", async () => {
   const racine = nouvelleRacine();
   ecrireExtensionAgent(racine, "veilleur", {
     "manifest.json": { manifest_version: 3, name: "Veilleur de l'agent", version: "1.0.0", host_permissions: [HOTE], background: { service_worker: "fond.js" } },
@@ -1245,16 +1261,79 @@ test("avec un droit qui observe les onglets (hôtes), les messages de son servic
   try {
     await attendreMcp(racine);
     expect(await activerParLAgent(fenetre, racine, "veilleur", "Veilleur de l'agent")).toMatch(/^Activée/);
-    // Aucun onglet non partagé : ses messages passent.
-    await expect.poll(() => consoleDe(racine, "veilleur"), { timeout: 15_000 }).toContain("tic du fond");
-    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
-    const depuis = Date.now() + 500;
-    await expect
-      .poll(async () => (await appelerOutil(racine, "console_extension", { id: "veilleur", depuis })).texte, { timeout: 15_000 })
-      .toContain("Messages du service worker et des pages masqués : écrits quand l'extension pouvait observer");
-    const texte = (await appelerOutil(racine, "console_extension", { id: "veilleur", depuis })).texte;
+    // Aucun onglet non partagé n'est ouvert : masquée quand même (ce qu'il observe peut être gardé et écrit plus tard).
+    await expect.poll(() => consoleDe(racine, "veilleur"), { timeout: 15_000 }).toContain(OBSERVE);
+    await new Promise((r) => setTimeout(r, 1000));
+    const texte = await consoleDe(racine, "veilleur");
     expect(texte).not.toContain("tic du fond");
     expect(texte).toContain("debloquer_console");
+    const appel = appelerOutil(racine, "debloquer_console", { id: "veilleur", raison: "r" });
+    await fenetre.getByTestId("demande-console-extension").getByRole("button", { name: "Débloquer" }).click({ timeout: 15_000 });
+    await appel;
+    expect(await consoleDe(racine, "veilleur")).toContain("tic du fond");
+  } finally {
+    await fermer();
+  }
+});
+
+test("supprimée puis recréée au même endroit : rien de son ancien stockage (chrome.storage, IndexedDB), et sa console reste masquée (elle a tourné dans un onglet non partagé)", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "journal", {
+    ...JOURNAL,
+    "manifest.json": { ...JOURNAL["manifest.json"], permissions: ["storage"] },
+    "fond.js": `chrome.storage.local.set({ k: "secret-local" });
+const r = indexedDB.open("b", 1);
+r.onupgradeneeded = () => r.result.createObjectStore("s");
+r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.objectStore("s").put("secret-idb", "k"); t.oncomplete = () => console.log("écrit"); };
+`,
+  });
+  const lance = await lancer({ racine });
+  const { fenetre, fermer } = lance;
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine)).toMatch(/^Activée/);
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    await expect.poll(() => consoleDe(racine), { timeout: 15_000 }).toContain("message(s) masqué(s)");
+    // Le stockage est écrit (sur le disque du profil : chrome.storage et IndexedDB).
+    const contient = (sous: string, texte: string) => {
+      try {
+        return execFileSync("grep", ["-rl", texte, join(lance.profil, "Partitions", "webaios", sous)]).toString().length > 0;
+      } catch {
+        return false;
+      }
+    };
+    await expect.poll(() => contient("Local Extension Settings", "secret-local"), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => contient("IndexedDB", "secret-idb"), { timeout: 15_000 }).toBe(true);
+    await fenetre.getByTestId("menu-extensions").click();
+    await fenetre.getByTestId("panneau-extensions").getByRole("button", { name: "Gérer les extensions" }).click();
+    const ligne = fenetre.getByTestId("page-extensions").getByTestId("extension-page").filter({ hasText: "Journal de l'agent" });
+    await ligne.getByRole("button", { name: "Supprimer" }).click();
+    await fenetre.getByTestId("confirmation-suppression-extension").getByRole("button", { name: "Supprimer" }).click();
+    await expect(ligne).toHaveCount(0);
+    await fenetre.keyboard.press("Escape");
+    // Recréée au même endroit, sans script de contenu ni site : elle lit ce qui resterait.
+    rmSync(join(racine, "extensions", "journal"), { recursive: true, force: true });
+    ecrireExtensionAgent(racine, "journal", {
+      "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "2.0.0", permissions: ["storage"], background: { service_worker: "fond.js" } },
+      "fond.js": `(async () => {
+  const l = await chrome.storage.local.get(null);
+  const idb = await new Promise((ok) => { const r = indexedDB.open("b", 1); r.onupgradeneeded = () => r.result.createObjectStore("s"); r.onsuccess = () => { const g = r.result.transaction("s").objectStore("s").get("k"); g.onsuccess = () => ok(g.result ?? null); }; });
+  console.log("lu:" + JSON.stringify({ l, idb }));
+})();
+`,
+    });
+    expect(await activerParLAgent(fenetre, racine)).toMatch(/^Activée/);
+    // Sa console reste masquée : l'ancienne a tourné dans un onglet non partagé (même id Chromium).
+    await expect.poll(() => consoleDe(racine), { timeout: 15_000 }).toContain("Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire");
+    expect(await consoleDe(racine)).not.toContain("lu:");
+    // Débloquée par l'utilisateur : ce qu'elle a lu, rien de l'ancienne.
+    const appel = appelerOutil(racine, "debloquer_console", { id: "journal", raison: "r" });
+    await fenetre.getByTestId("demande-console-extension").getByRole("button", { name: "Débloquer" }).click({ timeout: 15_000 });
+    await appel;
+    await expect.poll(() => consoleDe(racine), { timeout: 15_000 }).toContain('lu:{"l":{},"idb":null}');
+    expect(await consoleDe(racine)).not.toContain("secret");
+    expect(contient("Local Extension Settings", "secret-local")).toBe(false);
+    expect(contient("IndexedDB", "secret-idb")).toBe(false);
   } finally {
     await fermer();
   }

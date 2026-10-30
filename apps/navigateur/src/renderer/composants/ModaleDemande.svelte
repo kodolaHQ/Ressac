@@ -30,6 +30,8 @@
   const consoleExtension = $derived(demande.permissions.includes("console-extension"));
   /** Nom de l'extension (manifeste) et raison de l'agent : des données, affichées en texte et bornées. */
   const nomExtension = $derived((demande.titre ?? demande.origine).slice(0, 60));
+  /** Les espaces que couvre le déblocage : des noms donnés par l'utilisateur, affichés en texte et bornés. */
+  const espacesExtension = $derived((demande.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
   const raisonAgent = $derived((demande.raison ?? "").slice(0, LONGUEUR_RAISON_DEBLOCAGE));
   const site = $derived(siteDe(demande.origine));
 
@@ -128,7 +130,7 @@
         {/if}
       {:else if consoleExtension}
         <div class="lecture" data-testid="demande-console-extension">
-          <p>{texteDeblocageConsole(nomExtension)}</p>
+          <p>{texteDeblocageConsole(nomExtension, espacesExtension)}</p>
           {#if raisonAgent}<p class="raison">Raison donnée par {demande.agent ?? "l'agent"} : « {raisonAgent} »</p>{/if}
           <div class="actions">
             <!-- Entrée refuse : montrer à l'agent ce qu'une extension lit sur des onglets non partagés demande un vrai clic. -->

@@ -61,6 +61,12 @@ export interface EtatExtensions {
   version: 1;
   toutesCoupees: boolean;
   extensions: Record<string, EntreeExtension>;
+  /**
+   * Ids Chromium des extensions de l'agent dont la console de service worker et de pages lui reste masquée (elles ont
+   * tourné dans un onglet qu'il ne peut pas lire). Survit à la suppression de l'entrée : une copie recréée au même
+   * endroit a le même id. Jamais vidé.
+   */
+  consolesMasquees?: string[];
 }
 
 const ID_STORE = /^[a-p]{32}$/;
@@ -183,7 +189,7 @@ async function lire(dossier: string): Promise<Lecture> {
     return { etat: vide(), abime: true, futur: false };
   }
   if (!brut || typeof brut !== "object" || Array.isArray(brut)) return { etat: vide(), abime: true, futur: false };
-  const b = brut as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown };
+  const b = brut as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown; consolesMasquees?: unknown };
   if (typeof b.version === "number" && b.version > 1) return { etat: vide(), abime: false, futur: true };
   if (b.version !== 1) return { etat: vide(), abime: true, futur: false };
   const extensions: Record<string, EntreeExtension> = {};
@@ -196,7 +202,10 @@ async function lire(dossier: string): Promise<Lecture> {
       else abime = true;
     }
   } else if (b.extensions !== undefined) abime = true;
-  return { etat: { version: 1, toutesCoupees: b.toutesCoupees === true, extensions }, abime, futur: false };
+  const masquees = Array.isArray(b.consolesMasquees) ? b.consolesMasquees.filter((x): x is string => typeof x === "string" && ID_STORE.test(x)) : [];
+  const etat: EtatExtensions = { version: 1, toutesCoupees: b.toutesCoupees === true, extensions };
+  if (masquees.length) etat.consolesMasquees = [...new Set(masquees)];
+  return { etat, abime, futur: false };
 }
 
 /**

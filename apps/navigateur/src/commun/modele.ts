@@ -238,6 +238,8 @@ export interface Demande {
   cible?: IdOnglet;
   /** « outils-dev » : les droits demandés par l'agent, pré-cochés. */
   droits?: DroitDev[];
+  /** « console-extension » : les espaces des profils où l'extension est active (ce que le déblocage couvre). */
+  espaces?: string[];
   /** « outils-dev », « console-extension » : la raison donnée par l'agent. */
   raison?: string;
   /** « outils-dev » et « donnees-widget » : le nom de l'agent, affiché tel quel. */

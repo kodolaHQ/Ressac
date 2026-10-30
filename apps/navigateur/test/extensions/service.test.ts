@@ -42,24 +42,39 @@ let branchees: string[];
 let retraitsPrives: EtatNavigateur[];
 let abonnes: ((e: EtatNavigateur) => void)[];
 let nav: EtatNavigateur;
-/** Profils qui ont un onglet que l'agent ne peut pas lire (option `ongletIllisible` du service). */
-let illisibles: Set<string>;
+/** Appels à `profils.effacerStockage` : le dossier, ce qu'il contenait alors, les sessions. */
+let effacements: { chemin: string; manifeste: unknown; sessions: unknown[]; registre: EtatExtensions }[];
+let effacementEchoue: boolean;
 
 const etatNav = (prive: boolean) =>
   ({ espaces: [{ id: "e1", profil: "defaut", prive }], profils: [{ id: "defaut" }], fenetres: [], onglets: {} }) as unknown as EtatNavigateur;
 
-function demarrer() {
+function demarrer(avecAgent = false) {
   const service = new ServiceExtensions();
   const magasin = { get etat() { return nav; }, abonner: (f: (e: EtatNavigateur) => void) => void abonnes.push(f) };
   const profils = {
     synchroniser: async (e: EtatExtensions) => void synchronisees.push(e),
     erreursChargement: () => new Map<string, string>(),
     retirerAgentsPrives: (e: EtatNavigateur) => void retraitsPrives.push(e),
+    effacerStockage: async (chemin: string, sessions: unknown[]) => {
+      effacements.push({
+        chemin,
+        manifeste: JSON.parse(readFileSync(join(chemin, "manifest.json"), "utf8")),
+        sessions,
+        registre: JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")),
+      });
+      if (effacementEchoue) throw new Error("échec simulé");
+    },
   };
-  const sessions = { session: (id: string) => void branchees.push(id) };
+  const sessions = {
+    session: (id: string) => {
+      branchees.push(id);
+      return { session: id };
+    },
+  };
   return {
     service,
-    pret: service.demarrer({ dossier, dossierGardes: gardes, magasin, profils, sessions, vues: {}, ongletIllisible: (p: ReadonlySet<string>) => [...p].some((x) => illisibles.has(x)) } as never),
+    pret: service.demarrer({ dossier, dossierGardes: gardes, ...(avecAgent ? { dossierAgent: join(dossier, "agent") } : {}), magasin, profils, sessions, vues: {} } as never),
   };
 }
 
@@ -69,12 +84,15 @@ beforeEach(() => {
   gardes = join(dossier, "gardes");
   mkdirSync(gardes);
   writeFileSync(join(gardes, "webaios-correctifs-page.js"), "// correctifs\n");
+  writeFileSync(join(gardes, "webaios-garde-page.js"), "// garde\n");
+  writeFileSync(join(gardes, "webaios-garde-fond.js"), "// garde\n");
   synchronisees = [];
   branchees = [];
   retraitsPrives = [];
   abonnes = [];
   nav = etatNav(false);
-  illisibles = new Set();
+  effacements = [];
+  effacementEchoue = false;
 });
 
 test("registre illisible : aucune extension chargée, et le démarrage ne lève pas", async () => {
@@ -515,7 +533,9 @@ async function agentPourOutils(o: { reponse?: "autoriser" | "refuser"; espaces?:
     fenetres: [{ id: "f1", espaceActif: "e1" }],
     onglets: {},
   } as unknown as EtatNavigateur;
-  const { service, pret } = demarrer();
+  mkdirSync(join(dossier, "agent", "essai"), { recursive: true });
+  writeFileSync(join(dossier, "agent", "essai", "manifest.json"), JSON.stringify({ manifest_version: 3, name: "essai", version: "1.0.0" }));
+  const { service, pret } = demarrer(true);
   await pret;
   const cartes: Record<string, unknown>[] = [];
   service.brancherQuestions((champs, repondre) => {
@@ -573,29 +593,90 @@ test("a tourné dans un onglet non lisible : noté au registre par profil, durab
   expect(registre().extensions["agent:essai"]).toBeUndefined();
 });
 
-test("un droit qui observe les onglets et un onglet non lisible dans un profil où elle est active : ses messages du service worker sont masqués", async () => {
+test("un droit qui observe les onglets ou la navigation : service worker et pages toujours masqués, décidé à la lecture ; sans ce droit, rien", async () => {
   const { service, outils, registre } = await agentPourOutils();
-  // Sans droit qui observe (accord vide) : rien n'est masqué même avec un onglet non lisible.
-  illisibles.add("defaut");
-  service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "sans droit" });
-  expect((await outils.console("essai"))!.messages.map((m) => m.texte)).toEqual(["sans droit"]);
-  // Avec des hôtes accordés.
-  for (const accord of [
-    { permissions: [], hotes: ["https://x.test/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
-    { permissions: ["tabs"], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
-    { permissions: ["cookies"], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
-  ]) {
-    await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": { ...e.extensions["agent:essai"]!, accord } } }));
-    service.consoles.oublier(AGENT_ID);
-    illisibles = new Set(["defaut"]);
-    service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "observé" });
-    illisibles = new Set(["secret"]); // un profil où elle n'est pas active
-    service.consoles.noter(AGENT_ID, { horodatage: 3, niveau: "log", texte: "libre" });
+  const avec = (accord: unknown) =>
+    service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": { ...e.extensions["agent:essai"]!, accord: accord as never } } }));
+  const vide = { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
+  service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "fond" });
+  service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "partagé" }, { lisible: true });
+  for (const accord of [vide, { ...vide, permissions: ["storage", "alarms", "notifications"] }]) {
+    await avec(accord);
+    expect(await outils.console("essai")).toMatchObject({ fondObserve: false, messages: [{ texte: "fond" }, { texte: "partagé" }] });
+  }
+  const observateurs = [
+    ...["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks", "activeTab", "clipboardRead"].map((p) => ({ ...vide, permissions: [p] })),
+    { ...vide, hotes: ["https://x.test/*"] },
+    { ...vide, tousLesSites: true },
+    { ...vide, scriptsTousLesSites: true },
+    null,
+  ];
+  for (const accord of observateurs) {
+    await avec(accord);
+    // Aucun onglet n'est ouvert, et les messages ont été écrits avant le droit : masqués quand même.
     const r = (await outils.console("essai"))!;
-    expect(r.messages.map((m) => m.texte)).toEqual(["libre"]);
+    expect(r.messages.map((m) => m.texte), JSON.stringify(accord)).toEqual(["partagé"]);
     expect(r.fondObserve).toBe(true);
+    expect((await outils.lister()).find((x) => x.cle === "agent:essai")!.erreurs).toEqual([]);
   }
   expect(registre().extensions["agent:essai"]!.consoleMasquee ?? []).toEqual([]);
+});
+
+test("a tourné dans un onglet non lisible : son id Chromium est gardé au registre après sa suppression ; recréée au même endroit, sa console reste masquée", async () => {
+  const { service, outils, registre } = await agentPourOutils();
+  mkdirSync(join(dossier, "copies", "essai"), { recursive: true });
+  await service.aTourneDansOnglet(AGENT_ID, "defaut", false);
+  expect(registre().consolesMasquees).toEqual([AGENT_ID]);
+  expect(await service.supprimer("agent:essai")).toEqual({ ok: true });
+  expect(registre().extensions["agent:essai"]).toBeUndefined();
+  expect(registre().consolesMasquees).toEqual([AGENT_ID]);
+  // Recréée (nouvelle entrée, même copie, même id Chromium) : rien au drapeau de l'entrée, masquée quand même.
+  await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": { ...entree("agent", ["defaut"]), idChrome: AGENT_ID } as never } }));
+  service.consoles.noter(AGENT_ID, { horodatage: 5, niveau: "log", texte: "lu dans l'ancien stockage" });
+  const r = (await outils.console("essai"))!;
+  expect(r.fondMasque).toBe(true);
+  expect(r.messages).toEqual([]);
+  // Avant que Chromium ne lui ait redonné son id : calculé depuis la copie.
+  const { idChromeDeDossier } = await import("../../src/main/extensions/reseau");
+  const idCopie = idChromeDeDossier(join(dossier, "copies", "essai"));
+  await service.modifier((e) => ({ ...e, consolesMasquees: [idCopie], extensions: { ...e.extensions, "agent:essai": { ...e.extensions["agent:essai"]!, idChrome: null } } }));
+  expect((await outils.console("essai"))!.fondMasque).toBe(true);
+});
+
+test("supprimer une extension de l'agent efface son stockage dans chaque profil : un manifeste neutre à la place de la copie, après le retrait du registre, puis la copie effacée", async () => {
+  const { service, registre } = await agentPourOutils();
+  mkdirSync(join(dossier, "copies", "essai"), { recursive: true });
+  writeFileSync(join(dossier, "copies", "essai", "fond.js"), "secret");
+  expect(await service.supprimer("agent:essai")).toEqual({ ok: true });
+  expect(effacements).toHaveLength(1);
+  const e = effacements[0]!;
+  expect(e.chemin).toBe(join(dossier, "copies", "essai"));
+  // Un manifeste sans code : rien de l'agent ne tourne pendant l'effacement.
+  expect(e.manifeste).toEqual({ manifest_version: 3, name: "WebAiOs — effacement", version: "1.0.0", permissions: ["storage"] });
+  expect(e.registre.extensions["agent:essai"]).toBeUndefined();
+  // Chaque profil connu, privé compris.
+  expect(e.sessions).toEqual([{ session: "defaut" }, { session: "secret" }]);
+  expect(existsSync(join(dossier, "copies", "essai"))).toBe(false);
+  expect(registre().consolesMasquees ?? []).toEqual([]);
+});
+
+test("l'effacement du stockage échoue : la suppression aboutit, et sa console est masquée pour de bon (id gardé au registre)", async () => {
+  const { service, registre } = await agentPourOutils();
+  mkdirSync(join(dossier, "copies", "essai"), { recursive: true });
+  effacementEchoue = true;
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(await service.supprimer("agent:essai")).toEqual({ ok: true });
+  erreur.mockRestore();
+  expect(registre().extensions["agent:essai"]).toBeUndefined();
+  // L'id qu'aura une copie recréée au même endroit (calculé depuis le dossier, même effacé).
+  const { idChromeDeDossier } = await import("../../src/main/extensions/reseau");
+  const id = idChromeDeDossier(join(dossier, "copies", "essai"));
+  expect(registre().consolesMasquees).toEqual([id]);
+  expect(existsSync(join(dossier, "copies", "essai"))).toBe(false);
+  // Recréée : masquée (avant même que Chromium ne lui redonne son id).
+  await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": entree("agent", ["defaut"]) as never } }));
+  const { outils } = { outils: service.outilsAgent({ fenetreAgent: () => "f1" }) };
+  expect((await outils.console("essai"))!.fondMasque).toBe(true);
 });
 
 test("une carte retirée avant la réponse de l'utilisateur : « retiree », pas « refusee »", async () => {
@@ -637,6 +718,88 @@ test("debloquer_console : la carte (Refuser par défaut côté interface) dit ce
   await outils.debloquerConsole("essai", "encore", { fenetre: null, agent: "Claude" });
   await outils.debloquerConsole("essai", "encore", { fenetre: null, agent: "Claude" });
   expect(cartes).toHaveLength(2);
+});
+
+test("le déblocage est lié à ce que l'utilisateur a vu : la carte nomme les espaces de ses profils ; activée dans un autre profil, rechargée (copie ou id changé), il prend fin", async () => {
+  const espaces = [
+    { id: "e1", nom: "Perso", profil: "defaut", prive: false },
+    { id: "e3", nom: "Lecture", profil: "defaut", prive: false },
+    { id: "e4", nom: "Travail", profil: "travail", prive: false },
+  ];
+  const { service, outils, cartes } = await agentPourOutils({ espaces });
+  const debloquer = () => outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" });
+  const debloquee = async () => (await outils.console("essai"))!.debloquee;
+  const changer = (f: (x: Record<string, unknown>) => Record<string, unknown>) =>
+    service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": f(e.extensions["agent:essai"] as never) as never } }));
+  expect(await debloquer()).toEqual({ ok: true });
+  expect(cartes[0]).toMatchObject({ espaces: ["Perso", "Lecture"] });
+  // Une écriture sans effet sur la portée (épinglée) : il reste.
+  await service.epingler("agent:essai", true);
+  expect(await debloquee()).toBe(true);
+  // Activée dans un autre profil : fin.
+  await changer((x) => ({ ...x, profils: ["defaut", "travail"] }));
+  expect(await debloquee()).toBe(false);
+  expect(await debloquer()).toEqual({ ok: true });
+  expect(cartes[1]).toMatchObject({ espaces: ["Perso", "Lecture", "Travail"] });
+  // Retirée d'un profil : il reste (rien de plus n'est montré).
+  await changer((x) => ({ ...x, profils: ["defaut"] }));
+  expect(await debloquee()).toBe(true);
+  // Rechargée : nouvelle copie (modifieeLe) → fin.
+  await changer((x) => ({ ...x, modifieeLe: "2026-10-30T10:00:00.000Z" }));
+  expect(await debloquee()).toBe(false);
+  // Nouvel id Chromium → fin.
+  expect(await debloquer()).toEqual({ ok: true });
+  await changer((x) => ({ ...x, idChrome: "f".repeat(32) }));
+  expect(await debloquee()).toBe(false);
+});
+
+test("pendant la carte de déblocage, l'extension activée ailleurs ou rechargée (recréée) : la carte est retirée, rien n'est débloqué", async () => {
+  const { service, outils } = await agentPourOutils();
+  for (const changement of [
+    (x: Record<string, unknown>) => ({ ...x, profils: ["defaut", "travail"] }),
+    (x: Record<string, unknown>) => ({ ...x, modifieeLe: "2026-10-30T11:00:00.000Z" }),
+  ]) {
+    let repondre: (d: "autoriser") => void = () => {};
+    service.brancherQuestions((_c, r) => {
+      repondre = r as never;
+      return () => {};
+    });
+    const appel = outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" });
+    await new Promise((r) => setTimeout(r, 0));
+    await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": changement(e.extensions["agent:essai"] as never) as never } }));
+    repondre("autoriser");
+    // La carte est retirée dès le changement : le « oui » arrivé ensuite ne débloque rien.
+    expect(await appel).toMatchObject({ ok: false, retiree: true });
+    expect((await outils.console("essai"))!.debloquee).toBe(false);
+  }
+});
+
+test("deux appels partagent la carte de déblocage : l'abandon de l'un ne la retire pas pour l'autre ; le dernier qui part la retire", async () => {
+  const { service, outils } = await agentPourOutils();
+  let repondre: (d: "autoriser") => void = () => {};
+  let retiree = false;
+  service.brancherQuestions((_c, r) => {
+    repondre = r as never;
+    return () => void (retiree = true);
+  });
+  const a = new AbortController();
+  const b = new AbortController();
+  const premier = outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude", signal: a.signal });
+  const second = outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude", signal: b.signal });
+  await new Promise((r) => setTimeout(r, 0));
+  a.abort();
+  expect(await premier).toMatchObject({ ok: false, retiree: true });
+  expect(retiree).toBe(false);
+  repondre("autoriser");
+  expect(await second).toEqual({ ok: true });
+  // Le dernier qui part retire la carte.
+  await outils.refermerConsole("essai");
+  const c = new AbortController();
+  const troisieme = outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude", signal: c.signal });
+  await new Promise((r) => setTimeout(r, 0));
+  c.abort();
+  expect(await troisieme).toMatchObject({ ok: false, retiree: true });
+  expect(retiree).toBe(true);
 });
 
 test("debloquer_console refusé : « refusee », rien ne change ; jamais pour le Store, ni une extension inactive", async () => {

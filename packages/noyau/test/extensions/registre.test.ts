@@ -152,6 +152,22 @@ describe("fichier etat.json", () => {
     expect(lu.extensions[A]!.accord?.scripts).toBe(true);
   });
 
+  it("consolesMasquees (ids Chromium masqués à l'agent) survit à retirer et à la relecture ; un id invalide est ignoré", async () => {
+    const dossier = await dossierTemporaire();
+    const id = "b".repeat(32);
+    await writeFile(
+      join(dossier, "etat.json"),
+      JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [A]: entree("agent") }, consolesMasquees: [id, "pas-un-id", 3] }),
+    );
+    const lu = await lireEtatExtensions(dossier);
+    expect(lu.consolesMasquees).toEqual([id]);
+    expect(retirer(lu, A).consolesMasquees).toEqual([id]);
+    await modifierEtatExtensions(dossier, (e) => retirer(e, A), () => aucun);
+    const relu = await lireEtatExtensions(dossier);
+    expect(relu.extensions).toEqual({});
+    expect(relu.consolesMasquees).toEqual([id]);
+  });
+
   const ecrit = (dossier: string, contenu: string) => writeFile(join(dossier, "etat.json"), contenu);
   const sauvegardes = async (dossier: string) => (await readdir(dossier)).filter((f) => f.startsWith("etat.json.abime-"));
   const ajout = (cle: string) => (e: EtatExtensions) => ({ ...e, extensions: { ...e.extensions, [cle]: entree("agent") } });

@@ -465,12 +465,6 @@ app.whenReady().then(async () => {
       // Ce qu'écrit l'agent (~/WebAiOs/extensions) : jamais un droit, seulement la source des copies accordées.
       dossierAgent: cheminsEspace().extensions,
       surChange: () => diffuser(CANAUX.extensionsChange, null),
-      // Un onglet de ces profils que l'agent ne peut pas lire (les pages internes de WebAiOs ne comptent pas).
-      ongletIllisible: (profils) =>
-        Object.values(magasin.etat.onglets).some((o) => {
-          const espace = magasin.etat.espaces.find((e) => e.id === o.espaceId);
-          return !!espace && profils.has(espace.profil) && !o.url.startsWith("webaios:") && !ongletLisibleParAgent(o.id);
-        }),
     })
     .catch((e) => console.error("[extensions] démarrage :", e));
   // Nos mises à jour du Store (jamais celles de la bibliothèque) : 60 s après le démarrage, puis toutes les 5 h.

@@ -62,6 +62,7 @@ import {
   type ResultatRechargement,
 } from "./agent";
 import { ConsolesExtensions, type FiltreAgent } from "./consoles";
+import { idChromeDeDossier } from "./reseau";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
 import {
   abandonnerMiseAJour,
@@ -135,10 +136,21 @@ export const CONSOLE_PROFIL_PRIVE = "Extension active dans le profil d'un espace
 export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
 export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
 /**
- * Droits qui font voir à une extension les onglets (adresses, titres, navigation, cookies, historique…) sans y tourner :
- * avec eux, et un onglet que l'agent ne peut pas lire dans un de ses profils, sa console de fond lui est masquée.
+ * Droits qui font voir à une extension les onglets ou la navigation (adresses, titres, cookies, historique…), même sans
+ * y tourner, ou ce que l'utilisateur y copie (`clipboardRead`) : avec l'un d'eux, des hôtes ou tous les sites, la console de son
+ * service worker et de ses pages est toujours masquée à l'agent (sauf déblocage). Ce qu'elle observe peut être gardé et
+ * écrit plus tard : la décision ne dépend pas des onglets ouverts au moment du message.
  */
-export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks"];
+export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks", "activeTab", "clipboardRead"];
+
+/** Ce que l'utilisateur a vu sur la carte de déblocage : le déblocage ne vaut que pour cela. */
+interface LienDeblocage {
+  idChrome: string | null;
+  /** Les profils où elle était active : l'activer dans un autre y met fin. */
+  profils: IdProfil[];
+  /** `modifieeLe` : une nouvelle copie (rechargée, recréée) y met fin. */
+  marque: string | null;
+}
 
 /**
  * La clé `agent:<dossier>` d'un id donné par l'agent (`<dossier>` ou `agent:<dossier>`). Toute autre clé (Store) lève
@@ -185,9 +197,9 @@ export class ServiceExtensions {
    * Extensions de l'agent dont l'utilisateur a débloqué la console pour l'agent : en mémoire seulement (quitter WebAiOs y met
    * fin), retirées par `refermerConsole`, et à chaque écriture du registre qui la retire, la désactive ou la coupe.
    */
-  private deblocages = new Set<string>();
-  /** Cartes de déblocage affichées, par clé : une seule à la fois, retirée si l'extension part du registre. */
-  private cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController }>();
+  private deblocages = new Map<string, LienDeblocage>();
+  /** Cartes de déblocage affichées, par clé : une seule à la fois, retirée si l'extension part du registre ou change. */
+  private cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: LienDeblocage; attentes: number }>();
   /** Écritures de `consoleMasquee` en cours, par `clé|profil` : une seule à la fois. */
   private masquagesEnCours = new Map<string, Promise<void>>();
   /**
@@ -196,7 +208,6 @@ export class ServiceExtensions {
    */
   readonly consoles = new ConsolesExtensions({
     surPlantages: (id) => void this.desactiverPlantages(id).catch((e: unknown) => console.error(`[extensions] ${id} non désactivée après ses plantages :`, e)),
-    observeIllisible: (id) => this.observeIllisible(id),
   });
   private o:
     | {
@@ -208,7 +219,6 @@ export class ServiceExtensions {
         dossierGardes: string;
         dossierAgent?: string;
         surChange?: () => void;
-        ongletIllisible?: (profils: ReadonlySet<IdProfil>) => boolean;
       }
     | undefined;
 
@@ -228,8 +238,6 @@ export class ServiceExtensions {
     dossierAgent?: string;
     /** Après chaque écriture du registre (`CANAUX.extensionsChange`). */
     surChange?: () => void;
-    /** Un de ces profils a-t-il un onglet que l'agent ne peut pas lire ? Absent : oui (console de l'agent masquée). */
-    ongletIllisible?: (profils: ReadonlySet<IdProfil>) => boolean;
   }): Promise<void> {
     this.o = o;
     // Posé d'abord, de façon synchrone : il existe même si la lecture du registre échoue, et index.ts appelle `demarrer`
@@ -565,7 +573,39 @@ export class ServiceExtensions {
         if (avant !== this.agentsBloques.has(cle) && this.pret) await this.appliquer();
         o.surChange?.();
       },
+      effacerStockage: (chemin) => this.effacerStockage(chemin),
     };
+  }
+
+  /**
+   * Efface le stockage de l'extension dont `chemin` est la copie (vidée, `MANIFESTE_EFFACEMENT` à sa place) dans la
+   * session de chaque profil connu, privés compris. En échec, son id Chromium est gardé au registre (`consolesMasquees`) :
+   * recréée au même endroit, sa console reste masquée à l'agent.
+   */
+  private async effacerStockage(chemin: string): Promise<void> {
+    const o = this.o;
+    if (!o) return;
+    const idChrome = idChromeDeDossier(chemin);
+    try {
+      if (!o.profils.effacerStockage) throw new Error("effacement du stockage non branché");
+      const profils = [...new Set([...o.magasin.etat.profils.map((p) => p.id), ...profilsEnUsage(o.magasin.etat)])];
+      await o.profils.effacerStockage(chemin, profils.map((p) => o.sessions.session(p)));
+    } catch (e) {
+      console.error(`[extensions] stockage de ${idChrome} non effacé (sa console reste masquée à l'agent) :`, e);
+      await this.masquerId(idChrome);
+    }
+  }
+
+  /** Garde `idChrome` dans `consolesMasquees` (jamais retiré). */
+  private async masquerId(idChrome: string): Promise<void> {
+    const o = this.o;
+    if (!o || this.etat.consolesMasquees?.includes(idChrome)) return;
+    this.etat = await modifierEtatExtensions(
+      o.dossier,
+      (e) => (e.consolesMasquees?.includes(idChrome) ? e : { ...e, consolesMasquees: [...(e.consolesMasquees ?? []), idChrome] }),
+      () => profilsPrives(o.magasin.etat),
+    );
+    o.surChange?.();
   }
 
   /**
@@ -1046,12 +1086,29 @@ export class ServiceExtensions {
     return this.recharger(cle.slice("agent:".length));
   }
 
-  /** Le filtre de la console de `cle` pour l'agent : déblocage, et drapeau « a tourné dans un onglet non lisible ». */
+  /**
+   * L'id Chromium de l'extension de l'agent `cle` : celui du registre, ou, avant que Chromium ne l'ait donné, celui de sa
+   * copie (le même : il dérive du dossier).
+   */
+  private idChromeAgent(cle: string): string | null {
+    const lue = lireCle(cle);
+    if (!lue || lue.source !== "agent") return null;
+    return this.etat.extensions[cle]?.idChrome ?? (this.o ? idChromeDeDossier(join(this.o.dossier, "copies", lue.id)) : null);
+  }
+
+  /**
+   * Le filtre de la console de `cle` pour l'agent : déblocage ; « a tourné dans un onglet non lisible » (drapeau de
+   * l'entrée, ou son id gardé au registre après une suppression) ; droit qui observe les onglets ou la navigation.
+   */
   private filtreAgent(cle: string, depuis?: number): FiltreAgent {
+    const x = this.etat.extensions[cle];
+    const id = this.idChromeAgent(cle);
+    const a = x?.accord;
     return {
       ...(depuis !== undefined ? { depuis } : {}),
       debloquee: this.deblocages.has(cle),
-      tourneIllisible: (this.etat.extensions[cle]?.consoleMasquee?.length ?? 0) > 0,
+      tourneIllisible: (x?.consoleMasquee?.length ?? 0) > 0 || (!!id && !!this.etat.consolesMasquees?.includes(id)),
+      observateur: !a || a.tousLesSites || a.scriptsTousLesSites || a.hotes.length > 0 || a.permissions.some((p) => DROITS_OBSERVATEURS.includes(p)),
     };
   }
 
@@ -1064,15 +1121,18 @@ export class ServiceExtensions {
     if (lisible || !o) return;
     const cle = this.cleDeId(idChrome);
     const x = cle ? this.etat.extensions[cle] : undefined;
-    if (!cle || x?.source !== "agent" || x.consoleMasquee?.includes(profil)) return;
+    if (!cle || x?.source !== "agent" || (x.consoleMasquee?.includes(profil) && this.etat.consolesMasquees?.includes(idChrome))) return;
     const enCours = `${cle}|${profil}`;
     if (this.masquagesEnCours.has(enCours)) return this.masquagesEnCours.get(enCours);
     const ecriture = modifierEtatExtensions(
       o.dossier,
       (e) => {
         const y = e.extensions[cle];
-        if (!y || y.consoleMasquee?.includes(profil)) return e;
-        return { ...e, extensions: { ...e.extensions, [cle]: { ...y, consoleMasquee: [...(y.consoleMasquee ?? []), profil] } } };
+        if (!y) return e;
+        // Gardé aussi par id Chromium : il survit à la suppression de l'entrée (recréée au même endroit, même id).
+        const masquees = e.consolesMasquees?.includes(idChrome) ? e.consolesMasquees : [...(e.consolesMasquees ?? []), idChrome];
+        const profils = y.consoleMasquee?.includes(profil) ? y.consoleMasquee : [...(y.consoleMasquee ?? []), profil];
+        return { ...e, consolesMasquees: masquees, extensions: { ...e.extensions, [cle]: { ...y, consoleMasquee: profils } } };
       },
       () => profilsPrives(o.magasin.etat),
     )
@@ -1085,37 +1145,23 @@ export class ServiceExtensions {
     return ecriture;
   }
 
-  /**
-   * Au moment d'un message de son service worker ou de ses pages : l'extension de l'agent a-t-elle un droit qui observe
-   * les onglets (`DROITS_OBSERVATEURS`, des hôtes, tous les sites) alors qu'un profil où elle est active a un onglet
-   * que l'agent ne peut pas lire ?
-   */
-  private observeIllisible(idChrome: string): boolean {
-    const cle = this.cleDeId(idChrome);
-    const x = cle ? this.etat.extensions[cle] : undefined;
-    if (!x || x.source !== "agent") return false;
-    const a = x.accord;
-    const observe = !a || a.tousLesSites || a.hotes.length > 0 || a.permissions.some((p) => DROITS_OBSERVATEURS.includes(p));
-    if (!observe || x.profils.length === 0) return false;
-    return this.o?.ongletIllisible?.(new Set(x.profils)) ?? true;
-  }
-
   /** `console_extension` : la console filtrée (débloquée : entière) ; null si l'extension n'est pas au registre. */
   private consolePourAgent(id: string, depuis?: number): ConsolePourAgent | null {
     const cle = cleAgentPour(id);
     const x = cle ? this.etat.extensions[cle] : undefined;
     if (!cle || !x) return null;
     if (this.dansUnProfilPrive(x.profils)) throw new Error(CONSOLE_PROFIL_PRIVE);
-    const idChrome = this.idChromeDe(cle);
+    const idChrome = this.idChromeAgent(cle);
     const f = this.filtreAgent(cle, depuis);
-    if (!idChrome) return { messages: [], masques: 0, fondMasque: !f.debloquee && f.tourneIllisible, fondObserve: false, debloquee: f.debloquee };
+    if (!idChrome) return { messages: [], masques: 0, fondMasque: !f.debloquee && f.tourneIllisible, fondObserve: !f.debloquee && f.observateur, debloquee: f.debloquee };
     return this.consoles.pourAgent(idChrome, f);
   }
 
   /**
    * `debloquer_console` : la carte de déblocage (même modale que les autres questions de l'agent, Refuser par défaut),
-   * pour une extension de l'agent active quelque part, jamais dans le profil d'un espace privé. Accordée : sa console
-   * n'est plus filtrée, jusqu'à `couperDeblocage` ou une écriture du registre qui y met fin (`verifierDeblocages`).
+   * pour une extension de l'agent active quelque part, jamais dans le profil d'un espace privé. Elle nomme les espaces
+   * des profils où l'extension est active. Accordée : sa console n'est plus filtrée, pour ce que la carte montrait
+   * (`LienDeblocage`), jusqu'à `couperDeblocage` ou une écriture du registre qui y met fin (`verifierDeblocages`).
    */
   private async debloquerConsole(
     id: string,
@@ -1135,16 +1181,21 @@ export class ServiceExtensions {
     if (!carte) {
       const f = this.fenetrePour(x.fenetre, fenetreAgent);
       const retrait = new AbortController();
+      const lien = this.lienDe(cle)!;
+      const nav = this.o?.magasin.etat;
       const champs = {
         permissions: ["console-extension" as const],
         origine: cle,
         titre: entree.nom,
         raison: raison.slice(0, LONGUEUR_RAISON_DEBLOCAGE),
         agent: x.agent,
+        espaces: (nav?.espaces ?? []).filter((e) => lien.profils.includes(e.profil) && !e.prive).map((e) => e.nom),
         ...(f ? { fenetreId: f.id } : {}),
       };
       const nouvelle = {
         retrait,
+        lien,
+        attentes: 0,
         reponse: attendreIssue((repondre) => poser(champs, repondre), DELAI_QUESTION_MS, retrait.signal).finally(() => {
           if (this.cartesDeblocage.get(cle) === nouvelle) this.cartesDeblocage.delete(cle);
         }),
@@ -1152,21 +1203,51 @@ export class ServiceExtensions {
       this.cartesDeblocage.set(cle, nouvelle);
       carte = nouvelle;
     }
-    const abandon = new Promise<Issue>((ok) => {
-      if (x.signal?.aborted) ok("retiree");
-      x.signal?.addEventListener("abort", () => {
-        carte.retrait.abort();
-        ok("retiree");
-      }, { once: true });
-    });
-    const issue = await Promise.race([carte.reponse, abandon]);
+    const ouverte = carte;
+    ouverte.attentes++;
+    // L'abandon de cet appel (nouvelle conversation) ne retire la carte que s'il est le dernier à l'attendre.
+    let abandonner: () => void = () => {};
+    const abandon = new Promise<Issue>((ok) => (abandonner = () => ok("retiree")));
+    let parti = false;
+    const partir = () => {
+      if (parti) return;
+      parti = true;
+      if (--ouverte.attentes === 0) ouverte.retrait.abort();
+      abandonner();
+    };
+    if (x.signal?.aborted) partir();
+    x.signal?.addEventListener("abort", partir, { once: true });
+    let issue: Issue;
+    try {
+      issue = await Promise.race([ouverte.reponse, abandon]);
+    } finally {
+      x.signal?.removeEventListener("abort", partir);
+      if (!parti) {
+        parti = true;
+        ouverte.attentes--;
+      }
+    }
     if (issue === "retiree") return { ok: false, erreur: DEMANDE_RETIREE, retiree: true };
     if (issue !== "autoriser") return { ok: false, erreur: "Déblocage refusé", refusee: true };
-    // L'état a pu changer pendant la carte : il est revu au « oui ».
-    if (!(cle in this.etat.extensions) || this.refusDeblocage(cle)) return { ok: false, erreur: DEBLOCAGE_CHANGE };
-    this.deblocages.add(cle);
+    // L'état a pu changer pendant la carte : il est revu au « oui », contre ce que la carte montrait.
+    if (this.refusDeblocage(cle) || this.lienRompu(cle, ouverte.lien)) return { ok: false, erreur: DEBLOCAGE_CHANGE };
+    this.deblocages.set(cle, ouverte.lien);
     this.o?.surChange?.();
     return { ok: true };
+  }
+
+  /** Ce qu'une carte de déblocage montrerait maintenant pour `cle` ; null si elle n'est pas au registre. */
+  private lienDe(cle: string): LienDeblocage | null {
+    const x = this.etat.extensions[cle];
+    if (!x) return null;
+    return { idChrome: x.idChrome, profils: [...x.profils], marque: x.modifieeLe };
+  }
+
+  /** Vrai si `cle` n'est plus ce que la carte montrait : autre id, nouvelle copie, ou active dans un autre profil. */
+  private lienRompu(cle: string, lien: LienDeblocage): boolean {
+    const x = this.etat.extensions[cle];
+    if (!x) return true;
+    return x.idChrome !== lien.idChrome || x.modifieeLe !== lien.marque || x.profils.some((p) => !lien.profils.includes(p));
   }
 
   /** Pourquoi la console de `cle` ne peut pas (ou plus) être débloquée, ou null. */
@@ -1178,15 +1259,18 @@ export class ServiceExtensions {
     return null;
   }
 
-  /** Après chaque écriture du registre : un déblocage dont l'extension est partie, désactivée ou coupée prend fin. */
+  /**
+   * Après chaque écriture du registre : un déblocage dont l'extension est partie, désactivée, coupée, activée dans un
+   * autre profil, rechargée (nouvelle copie) ou d'un autre id prend fin ; une carte dans ce cas est retirée.
+   */
   private verifierDeblocages(): void {
     let change = false;
-    for (const cle of [...this.deblocages])
-      if (this.refusDeblocage(cle)) {
+    for (const [cle, lien] of [...this.deblocages])
+      if (this.refusDeblocage(cle) || this.lienRompu(cle, lien)) {
         this.deblocages.delete(cle);
         change = true;
       }
-    for (const [cle, carte] of this.cartesDeblocage) if (this.refusDeblocage(cle)) carte.retrait.abort();
+    for (const [cle, carte] of this.cartesDeblocage) if (this.refusDeblocage(cle) || this.lienRompu(cle, carte.lien)) carte.retrait.abort();
     if (change) this.o?.surChange?.();
   }
 

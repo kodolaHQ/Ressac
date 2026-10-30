@@ -70,8 +70,8 @@ test("après le rappel, les plantages repartent de zéro ; oublier efface consol
 
 // ——— Tâche 17 : la console filtrée pour l'agent ———
 
-const nouvelle = (observe?: (id: string) => boolean) => new ConsolesExtensions({ surPlantages: () => {}, ...(observe ? { observeIllisible: observe } : {}) });
-const sans = { debloquee: false, tourneIllisible: false };
+const nouvelle = () => new ConsolesExtensions({ surPlantages: () => {} });
+const sans = { debloquee: false, tourneIllisible: false, observateur: false };
 
 test("pour l'agent : un message d'onglet lisible est gardé, un non lisible est masqué et compté", () => {
   const c = nouvelle();
@@ -99,29 +99,28 @@ test("pour l'agent : a tourné dans un onglet non lisible (drapeau du registre) 
   expect(c.erreursPourAgent(ID, { ...sans, tourneIllisible: true })).toEqual([]);
 });
 
-test("pour l'agent : un message du service worker écrit pendant qu'il observait un onglet non lisible est masqué, et dit pourquoi", () => {
-  let observe = true;
-  const c = nouvelle(() => observe);
-  c.noter(ID, { horodatage: 1, niveau: "log", texte: "observé" });
-  observe = false;
-  c.noter(ID, { horodatage: 2, niveau: "log", texte: "libre" });
-  // Les messages des scripts de contenu ne passent pas par l'observation : leur onglet décide.
-  observe = true;
+test("pour l'agent : avec un droit qui observe (décidé à la lecture), service worker et pages toujours masqués, même sans message ; les onglets lisibles passent", () => {
+  const c = nouvelle();
+  // Aucun message : la raison est dite quand même (l'agent sait pourquoi il ne verra rien).
+  expect(c.pourAgent(ID, { ...sans, observateur: true })).toMatchObject({ messages: [], fondObserve: true, fondMasque: false });
+  c.noter(ID, { horodatage: 1, niveau: "log", texte: "fond" });
+  c.noter(ID, { horodatage: 2, niveau: "error", texte: "fond erreur" });
   c.noter(ID, { horodatage: 3, niveau: "log", texte: "partagé" }, { lisible: true });
-  const r = c.pourAgent(ID, sans);
-  expect(r.messages.map((m) => m.texte)).toEqual(["libre", "partagé"]);
-  expect(r).toMatchObject({ fondMasque: false, fondObserve: true });
-  // Hors de la période : rien à dire.
-  expect(c.pourAgent(ID, { ...sans, depuis: 2 })).toMatchObject({ fondObserve: false });
+  const r = c.pourAgent(ID, { ...sans, observateur: true });
+  expect(r.messages.map((m) => m.texte)).toEqual(["partagé"]);
+  expect(r).toMatchObject({ fondObserve: true, fondMasque: false });
+  expect(c.erreursPourAgent(ID, { ...sans, observateur: true })).toEqual([]);
+  // Le même historique, lu sans le droit : tout passe (rien n'est décidé à l'écriture).
+  expect(c.pourAgent(ID, sans).messages.map((m) => m.texte)).toEqual(["fond", "fond erreur", "partagé"]);
 });
 
 test("débloquée : rien n'est masqué ni compté", () => {
-  const c = nouvelle(() => true);
+  const c = nouvelle();
   c.noter(ID, { horodatage: 1, niveau: "error", texte: "fond" });
   c.noter(ID, { horodatage: 2, niveau: "log", texte: "caché" }, { lisible: false });
-  const r = c.pourAgent(ID, { debloquee: true, tourneIllisible: true });
+  const r = c.pourAgent(ID, { debloquee: true, tourneIllisible: true, observateur: true });
   expect(r).toMatchObject({ masques: 0, fondMasque: false, fondObserve: false, debloquee: true });
   expect(r.messages.map((m) => m.texte)).toEqual(["fond", "caché"]);
-  expect(c.erreursPourAgent(ID, { debloquee: true, tourneIllisible: true })).toEqual(["fond"]);
+  expect(c.erreursPourAgent(ID, { debloquee: true, tourneIllisible: true, observateur: true })).toEqual(["fond"]);
   expect(Object.keys(r.messages[1]!).sort()).toEqual(["horodatage", "niveau", "texte"]);
 });

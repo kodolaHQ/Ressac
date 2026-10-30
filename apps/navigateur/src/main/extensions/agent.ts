@@ -51,7 +51,19 @@ export interface DependancesAgent {
    * (dossier absent). Rend quand les sessions ont suivi.
    */
   noterErreur(cle: string, erreur: string | null, bloquee?: boolean): Promise<void>;
+  /**
+   * Après la suppression d'une extension de l'agent, déchargée partout : `chemin` (sa copie) ne contient plus que
+   * `MANIFESTE_EFFACEMENT`, au même endroit, donc avec le même id Chromium ; son stockage est effacé dans chaque profil.
+   * Ne lève pas (un échec est traité par le service).
+   */
+  effacerStockage?(chemin: string): Promise<void>;
 }
+
+/**
+ * Le manifeste posé à la place de la copie d'une extension supprimée, le temps d'effacer son stockage : même dossier,
+ * même id Chromium, aucun code (ni service worker ni script), seulement `storage` pour atteindre `chrome.storage`.
+ */
+export const MANIFESTE_EFFACEMENT = { manifest_version: 3, name: "WebAiOs — effacement", version: "1.0.0", permissions: ["storage"] };
 
 export type PreparationAgent =
   | { ok: true; analyse: AnalyseManifeste; empreinte: string; staging: string }
@@ -311,7 +323,7 @@ async function activation(
 
 /**
  * « Supprimer » une extension de l'agent (page Extensions) : son entrée (accord compris) quitte le registre, elle est
- * déchargée partout, puis sa copie est effacée. Le dossier de l'agent (`~/WebAiOs/extensions/<id>`) reste : une nouvelle
+ * déchargée partout, puis sa copie est effacée et son stockage aussi, dans chaque profil (`effacerStockage`). Le dossier de l'agent (`~/WebAiOs/extensions/<id>`) reste : une nouvelle
  * activation repassera par la carte.
  */
 export function supprimerAgent(id: string, d: DependancesAgent): Promise<void> {
@@ -321,6 +333,17 @@ export function supprimerAgent(id: string, d: DependancesAgent): Promise<void> {
     await d.modifier((e) => (cle in e.extensions ? retirer(e, cle) : e));
     await rm(copie(d.dossier, id), { recursive: true, force: true });
     await rm(attente(d.dossier, id), { recursive: true, force: true });
+    if (d.effacerStockage) {
+      // Recréée au même endroit, elle aurait le même id, donc le stockage de l'ancienne (ce qu'elle a pu y garder).
+      const chemin = copie(d.dossier, id);
+      try {
+        await mkdir(chemin, { recursive: true });
+        await writeFile(join(chemin, "manifest.json"), JSON.stringify(MANIFESTE_EFFACEMENT));
+        await d.effacerStockage(chemin);
+      } finally {
+        await rm(chemin, { recursive: true, force: true });
+      }
+    }
     await d.noterErreur(cle, null);
   });
 }

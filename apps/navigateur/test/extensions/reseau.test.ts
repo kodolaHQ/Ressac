@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContext, runInContext, runInNewContext } from "node:vm";
@@ -152,6 +152,19 @@ test("idChromeDeDossier : 32 lettres de a à p, stable, propre au chemin réel",
   expect(id).toMatch(/^[a-p]{32}$/);
   expect(idChromeDeDossier(d + "/")).toBe(id);
   expect(idChromeDeDossier(join(d, "x"))).not.toBe(id);
+});
+
+test("idChromeDeDossier d'un dossier effacé (parent par un lien, comme /var → /private/var) : le même que quand il existait", () => {
+  const d = mkdtempSync(join(tmpdir(), "webaios-id-"));
+  temporaires.push(d);
+  const lien = `${d}-lien`;
+  temporaires.push(lien);
+  symlinkSync(d, lien);
+  const copie = join(lien, "copie");
+  mkdirSync(copie);
+  const id = idChromeDeDossier(copie);
+  rmSync(copie, { recursive: true });
+  expect(idChromeDeDossier(copie)).toBe(id);
 });
 
 // --- Le garde (packages/noyau/extensions/webaios-garde-fond.js), exécuté dans un contexte à part.

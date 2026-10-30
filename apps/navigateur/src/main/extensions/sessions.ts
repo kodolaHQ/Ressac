@@ -1,10 +1,12 @@
 import { appendFileSync, realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   app,
   ipcMain,
   session as sessionsElectron,
   webContents as tousLesWebContents,
+  WebContentsView,
   type BrowserWindow,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -181,6 +183,18 @@ function idPageExtension(wc: WebContents, url: string | undefined): { instance: 
   for (const instance of instancesVivantes) if (instance.aLaSession(s) && s.extensions.getExtension(id)) return { instance, id };
   return null;
 }
+
+/**
+ * Dossiers par id d'extension sous `storagePath` d'une session (mesuré avec Electron 45) : `chrome.storage.local` et
+ * `.sync` (le même magasin), les autres magasins de réglages, les règles DNR dynamiques. Effacés à la suppression d'une
+ * extension de l'agent, une fois `chrome.storage` vidé par l'API (Chromium garde le magasin ouvert après le retrait).
+ */
+const DOSSIERS_STOCKAGE = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "DNR Extension Rules", "Extension Rules"];
+/** Vide `chrome.storage` depuis une page de l'extension ; rend le nombre de clés restées dans `local`. */
+const VIDER_STOCKAGE = `(async () => {
+  for (const zone of ["local", "sync", "session"]) await chrome.storage[zone]?.clear();
+  return Object.keys(await chrome.storage.local.get(null)).length;
+})()`;
 
 /** Service workers dont le canal de démarrage est posé. */
 const workersEcoutes = new WeakSet<object>();
@@ -435,6 +449,40 @@ export class ExtensionsProfils {
       );
     }
     if (this.dernier) void this.synchroniser(this.dernier);
+  }
+
+  /**
+   * Efface le stockage de l'extension dont `chemin` est le dossier (le manifeste sans code posé à la place d'une copie
+   * de l'agent supprimée : même id Chromium) dans chacune de `sessions`, dans la file des synchronisations : chargée,
+   * `chrome.storage` vidé depuis une de ses pages (jamais montrée), retirée, puis le reste de son origine
+   * (`clearStorageData` : IndexedDB, service worker…) et ses dossiers sous `storagePath`. Lève au premier échec.
+   */
+  effacerStockage(chemin: string, sessions: readonly Session[]): Promise<void> {
+    const travail = this.file.then(async () => {
+      for (const s of new Set(sessions)) await this.effacerStockageDans(s, chemin);
+    });
+    this.file = travail.catch(() => undefined);
+    return travail;
+  }
+
+  private async effacerStockageDans(s: Session, chemin: string): Promise<void> {
+    const ext = await s.extensions.loadExtension(chemin, { allowFileAccess: false });
+    const id = ext.id;
+    try {
+      const vue = new WebContentsView({ webPreferences: { session: s, sandbox: true } });
+      try {
+        await vue.webContents.loadURL(`chrome-extension://${id}/manifest.json`);
+        const restees: unknown = await vue.webContents.executeJavaScript(VIDER_STOCKAGE);
+        if (restees !== 0) throw new Error(`chrome.storage.local de ${id} non vidé`);
+      } finally {
+        vue.webContents.close();
+      }
+    } finally {
+      s.extensions.removeExtension(id);
+    }
+    await s.clearStorageData({ origin: `chrome-extension://${id}` });
+    const racine = s.storagePath;
+    if (racine) for (const d of DOSSIERS_STOCKAGE) await rm(join(racine, d, id), { recursive: true, force: true });
   }
 
   /** Charge et retire les extensions de chaque session branchée selon l'état ; un appel à la fois. */
