@@ -8,7 +8,9 @@
 //     async finaliser(liste, ctx),     // facultatif, par élément : rend { sortie } à partir de la liste enrichie
 //     echecSiTousEchouent: true,       // facultatif, par élément : le bloc échoue si aucun élément lancé n'a réussi
 //   }
-// ctx = { entree, parametres, config, memoire, maintenant, webaios, journal, dossier, remplir, partiel, element? }
+// ctx = { entree, parametres, config, memoire, maintenant, webaios, journal, dossier, remplir, partiel, element?, saisie? }
+//   - `saisie` (action lancée avec un texte seulement) : ce texte ; aussi `webaios.saisie` pour le code de l'agent, et
+//     `{saisie}` dans les gabarits.
 //   - `maintenant` : l'heure ISO de `debut`, la date de ce que le bloc retient cette fois.
 //   - `memoire` : ce que le bloc a retenu la fois d'avant (null sinon) ; `executer` rend la nouvelle dans `memoire`.
 //     Par élément, la mémoire du bloc est celle de `reutiliser`, tenue par l'interpréteur.
@@ -59,6 +61,8 @@ export const LIMITE_GLOBALE_MS = 150_000;
 export const ECART_MEMOIRE_MS = 30_000;
 /** Au fil de l'eau : une ligne `publication` au plus par cet écart (recopié de src/workflows/executer.ts). */
 export const ECART_PUBLICATIONS_MS = 5000;
+/** Action : une ligne `avancement` par bloc au plus par cet écart, la dernière toujours (recopié de src/workflows/executer.ts). */
+export const ECART_AVANCEMENT_MS = 1000;
 /**
  * Au fil de l'eau : une publication plus grosse (en JSON) n'est pas envoyée, le noyau l'ignorerait (recopié de
  * TAILLE_MAX_DONNEES, src/workflows/protocole.ts).
@@ -267,7 +271,7 @@ function creerEtape(module, ctx, exposerMemoire) {
       const valeur = await module.traiterElement({
         ...ctx,
         element,
-        remplir: (gabarit, options) => remplirOuLever(gabarit, element, ctx.config, options),
+        remplir: (gabarit, options) => remplirOuLever(gabarit, element, ctx, options),
       });
       if (valeur === undefined) throw new Error("aucune valeur rendue");
       return valeur;
@@ -291,13 +295,39 @@ function creerEtape(module, ctx, exposerMemoire) {
 const limiteDe = (parametres, echeance, depuis) =>
   Math.min(echeance, parametres.budgetSecondes ? depuis + parametres.budgetSecondes * 1000 : Infinity);
 
+/**
+ * L'avancement d'un bloc par élément (action) : `envoyer(faits, total)` après un élément au plus toutes les
+ * ECART_AVANCEMENT_MS, et toujours pour le dernier (`faits = total`) ; `terminer()` envoie le compte final s'il n'est pas
+ * encore parti (éléments non lancés, bloc arrêté par une erreur).
+ */
+function creerAvancement(total, horloge, envoyer) {
+  let faits = 0;
+  let envoyes = 0;
+  let dernier = null;
+  const envoi = () => {
+    dernier = horloge();
+    envoyes = faits;
+    envoyer(faits, total);
+  };
+  return {
+    element() {
+      faits++;
+      if (faits === total || dernier === null || horloge() - dernier >= ECART_AVANCEMENT_MS) envoi();
+    },
+    terminer() {
+      if (faits !== envoyes) envoi();
+    },
+  };
+}
+
 /** Boucle par élément : rend { statut, sortie, memoire?, enEchec } ou lève l'erreur du bloc. */
-async function parElement(module, ctx, { echeance, horloge, apresElement, exposerMemoire }) {
+async function parElement(module, ctx, { echeance, horloge, apresElement, exposerMemoire, surAvancement }) {
   const { entree } = ctx;
   if (!Array.isArray(entree)) throw new Error("liste attendue en entrée");
   const limite = limiteDe(ctx.parametres, echeance, horloge());
   const etape = creerEtape(module, ctx, exposerMemoire);
   const resultat = entree.map(etape.sansChamp);
+  const avancement = surAvancement ? creerAvancement(entree.length, horloge, surAvancement) : null;
   let suivant = 0;
 
   async function ouvrier() {
@@ -306,11 +336,13 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
       try {
         resultat[i] = await etape.passer(i, entree[i]);
       } finally {
+        avancement?.element();
         apresElement?.();
       }
     }
   }
   await Promise.all(Array.from({ length: ELEMENTS_EN_PARALLELE }, ouvrier));
+  avancement?.terminer();
 
   if (etape.erreurBloc) throw etape.erreurBloc;
   // Pour un bloc qui le demande (ia.trier : sans aucune note, sa sortie vide ne veut rien dire), parmi les éléments
@@ -331,8 +363,9 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
   };
 }
 
-function remplirOuLever(gabarit, element, config, options) {
-  const r = remplir(gabarit, { element, config }, options);
+/** `ctx` : la configuration et, pour une action, la saisie. */
+function remplirOuLever(gabarit, element, { config, saisie }, options) {
+  const r = remplir(gabarit, { element, config, saisie }, options);
   if ("absente" in r) throw new ValeurAbsente(r.absente);
   return r;
 }
@@ -375,7 +408,11 @@ export async function executerWorkflow({
   versErreur = (texte) => process.stderr.write(texte + "\n"),
   rejeu = null,
   progressif = false,
+  // Action seulement : le texte tapé au lancement, et l'avancement des blocs par élément.
+  saisie = undefined,
+  avancement = false,
 }) {
+  if (typeof saisie !== "string") saisie = undefined;
   const relances = rejeu ? new Set(Array.isArray(rejeu.relances) ? rejeu.relances : []) : null;
   const reprises = rejeu && estObjet(rejeu.sorties) ? rejeu.sorties : {};
   if (rejeu) memoire = {};
@@ -489,6 +526,7 @@ export async function executerWorkflow({
   const optionsBloc = (id, bloc, journal) => ({
     blocs,
     config,
+    saisie,
     maintenant: instant,
     dossier,
     echeance,
@@ -500,6 +538,7 @@ export async function executerWorkflow({
       config,
       precedent,
       maintenant,
+      saisie,
       journal: (...a) => {
         const texte = formater(...a);
         versErreur(texte);
@@ -696,6 +735,7 @@ export async function executerWorkflow({
       r = await executerBloc(bloc, entree, {
         ...optionsBloc(id, bloc, journal),
         ...(enProgression ? { apresElement: verifierMemoire, exposerMemoire: (lire) => memoireEnCours.set(id, lire) } : {}),
+        ...(avancement === true ? { surAvancement: (faits, total) => tracer({ t: "bloc", id, etape: "avancement", faits, total }) } : {}),
       });
     } catch (e) {
       tracer({ t: "bloc", id, etape: "fin", statut: "echoue", erreur: tronquer(message(e), TEXTE_TRACE_MAX) });
@@ -832,7 +872,8 @@ function contexteBloc(bloc, entree, o) {
     webaios: o.webaios,
     journal: o.journal,
     dossier: o.dossier,
-    remplir: (gabarit, options) => remplirOuLever(gabarit, entree, o.config, options),
+    ...(o.saisie !== undefined ? { saisie: o.saisie } : {}),
+    remplir: (gabarit, options) => remplirOuLever(gabarit, entree, o, options),
     partiel: (raison) => {
       partiel = true;
       if (raison) o.journal(raison);
@@ -863,6 +904,7 @@ async function executerBloc(bloc, entree, o) {
       horloge: o.horloge,
       apresElement: o.apresElement,
       exposerMemoire: o.exposerMemoire,
+      surAvancement: o.surAvancement,
     });
   }
   else {

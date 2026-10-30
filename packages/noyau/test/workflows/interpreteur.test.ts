@@ -383,6 +383,10 @@ async function executer(o: {
   horloge?: () => number;
   rejeu?: { relances: string[]; sorties: Record<string, unknown> };
   progressif?: boolean;
+  avancement?: boolean;
+  saisie?: string;
+  /** Appelé à chaque ligne envoyée, au moment où elle part. */
+  espion?: (m: any) => void;
 }) {
   const traces: any[] = [];
   const workflow = {
@@ -406,12 +410,17 @@ async function executer(o: {
       precedent: null,
       dossier: "/nulle-part",
       appeler: async () => null,
-      tracer: (m: unknown) => traces.push(m),
+      tracer: (m: unknown) => {
+        o.espion?.(m);
+        traces.push(m);
+      },
       blocs: registre,
       ...(o.echeance !== undefined ? { echeance: o.echeance } : {}),
       ...(o.horloge ? { horloge: o.horloge } : {}),
       ...(o.rejeu ? { rejeu: o.rejeu } : {}),
       ...(o.progressif !== undefined ? { progressif: o.progressif } : {}),
+      ...(o.avancement !== undefined ? { avancement: o.avancement } : {}),
+      ...(o.saisie !== undefined ? { saisie: o.saisie } : {}),
     });
   } catch (e) {
     erreur = e as Error;
@@ -427,6 +436,93 @@ async function executer(o: {
 
 const attendre = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 const liste = (n: number) => Array.from({ length: n }, (_, i) => ({ n: i }));
+
+describe("interpréteur : saisie et avancement (actions)", () => {
+  /** Un bloc par élément dont chaque élément prend 300 ms sur l'horloge factice. */
+  const lent = (horloge: { t: number }) => ({
+    "test.lent": {
+      parElement: "toujours",
+      async traiterElement(ctx: any) {
+        await attendre(1);
+        horloge.t += 300;
+        return ctx.element.n;
+      },
+    },
+  });
+
+  it("avec avancement, un bloc par élément sur 12 éléments envoie des avancement espacés et le dernier 12/12", async () => {
+    const horloge = { t: 0 };
+    const heures: number[] = [];
+    const r = await executer({
+      entree: liste(12),
+      blocs: [{ id: "b", type: "test.lent", parametres: { champ: "v" } }, { id: "sortie", type: "sortie" }],
+      registre: lent(horloge),
+      horloge: () => horloge.t,
+      avancement: true,
+      espion: (m) => {
+        if (m.etape === "avancement") heures.push(horloge.t);
+      },
+    });
+    expect(r.erreur).toBeNull();
+    const avancements = r.traces.filter((l) => l.etape === "avancement");
+    expect(avancements.every((l) => l.t === "bloc" && l.id === "b" && l.total === 12)).toBe(true);
+    expect(avancements.at(-1)).toEqual({ t: "bloc", id: "b", etape: "avancement", faits: 12, total: 12 });
+    // Espacés d'au moins ECART_AVANCEMENT_MS, sauf le dernier, toujours envoyé.
+    for (let i = 1; i < heures.length - 1; i++) expect(heures[i]! - heures[i - 1]!).toBeGreaterThanOrEqual(1000);
+    expect(avancements.length).toBeGreaterThanOrEqual(2);
+    expect(avancements.length).toBeLessThan(12);
+    const faits = avancements.map((l) => l.faits);
+    expect([...faits].sort((a, b) => a - b)).toEqual(faits);
+    // Entre le début et la fin du bloc.
+    const indice = (f: (l: any) => boolean) => r.traces.findIndex(f);
+    expect(indice((l) => l.etape === "avancement")).toBeGreaterThan(indice((l) => l.id === "b" && l.etape === "debut"));
+    expect(r.traces.findLastIndex((l) => l.etape === "avancement")).toBeLessThan(indice((l) => l.id === "b" && l.etape === "fin"));
+  });
+
+  it("sans avancement, aucune ligne avancement", async () => {
+    const horloge = { t: 0 };
+    const r = await executer({
+      entree: liste(12),
+      blocs: [{ id: "b", type: "test.lent", parametres: { champ: "v" } }, { id: "sortie", type: "sortie" }],
+      registre: lent(horloge),
+      horloge: () => horloge.t,
+    });
+    expect(r.erreur).toBeNull();
+    expect(r.traces.some((l) => l.etape === "avancement")).toBe(false);
+  });
+
+  it("ctx.saisie est donné au code", async () => {
+    const workflow = {
+      version: 1,
+      blocs: [bloc("lire", "source.page", { url: "https://www.leboncoin.fr/recherche?text={saisie}" }), bloc("c", "code", { source: "c.mjs" }), sortie],
+      liens: chaine("lire", "c", "sortie"),
+    };
+    const fichiers = { "c.mjs": `export default async (entree, w) => ({ saisie: w.saisie ?? null, aLaCle: "saisie" in w });` };
+    const repondre = (a: any) => ({ ok: { url: a.a.url, titre: "", texte: "", liens: [] } });
+    const r = await lancer({ workflow, fichiers, repondre, debut: { saisie: "clio lyon" } });
+    expect(r.terminal).toEqual({ t: "fin", donnees: { saisie: "clio lyon", aLaCle: true } });
+    expect(r.appels[0]!.a.url).toBe("https://www.leboncoin.fr/recherche?text=clio%20lyon");
+    // Un bloc du moteur la reçoit aussi dans son ctx.
+    let vue: unknown;
+    await executer({
+      entree: null,
+      blocs: [{ id: "b", type: "test.voir" }, { id: "sortie", type: "sortie" }],
+      registre: { "test.voir": { parElement: "non", executer: async (ctx: any) => ((vue = ctx.saisie), { sortie: null }) } },
+      saisie: "clio lyon",
+    });
+    expect(vue).toBe("clio lyon");
+    // Un widget (sans saisie) : rien de nouveau dans webaios.
+    const widget = await lancer({ workflow: { ...workflow, blocs: [bloc("lire", "code", { source: "c.mjs" }), bloc("c", "code", { source: "c.mjs" }), sortie] }, fichiers });
+    expect(widget.terminal).toEqual({ t: "fin", donnees: { saisie: null, aLaCle: false } });
+  });
+
+  it("ECART_AVANCEMENT_MS égal dans interpreteur.mjs et executer.ts", async () => {
+    const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+    const { ECART_AVANCEMENT_MS } = await import("../../src/workflows/executer.js");
+    expect(ECART_AVANCEMENT_MS).toBe(1000);
+    expect(interpreteur.ECART_AVANCEMENT_MS).toBe(ECART_AVANCEMENT_MS);
+  });
+});
 
 describe("interpréteur : blocs par élément", () => {
   it("par élément : deux éléments à la fois, résultat sous champ, ordre gardé", async () => {

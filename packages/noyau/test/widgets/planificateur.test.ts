@@ -522,6 +522,25 @@ test("deux rejouer demandés coup sur coup s'exécutent l'un après l'autre", as
   expect(await b).toMatchObject({ execution: "e1-essai" });
 });
 
+test("une trace avancement ou lecture ne change pas le suivi en direct d'un widget", async () => {
+  const { p, recolterEssai, directs } = await preparer();
+  const vus: { avant: EtatDirect; apres: EtatDirect; signales: number }[] = [];
+  recolterEssai.mockImplementation(async (o) => {
+    o.surTrace!({ bloc: "liste", etape: "debut" });
+    const avant = structuredClone(p.direct());
+    const signales = directs.length;
+    o.surTrace!({ bloc: "liste", etape: "avancement", faits: 2, total: 5 });
+    o.surTrace!({ bloc: "liste", etape: "lecture", hote: "gitlab.com" });
+    o.surTrace!({ bloc: "autre", etape: "lecture", hote: "gitlab.com" });
+    vus.push({ avant, apres: structuredClone(p.direct()), signales: directs.length - signales });
+    return { ok: true, execution: idEssai(DEBUT.toISOString()), statut: "reussie" };
+  });
+  await p.rejouer("actus", "o", "liste");
+  expect(vus[0]!.apres).toEqual(vus[0]!.avant);
+  expect(vus[0]!.apres.courants[0]!.blocs).toEqual({ liste: { statut: "en-cours", elements: null } });
+  expect(vus[0]!.signales).toBe(0);
+});
+
 test("direct() montre le widget en cours, son genre et ses blocs au fil des traces, puis plus rien", async () => {
   const { p, recolterEssai, directs, dossierWidgets } = await preparer();
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });

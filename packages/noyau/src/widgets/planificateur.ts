@@ -213,7 +213,8 @@ export class PlanificateurWidgets {
     this.enDirect = [...this.enDirect, suivi];
     this.signalerDirect();
     const surTrace = (t: TraceDirecte) => {
-      if (!this.enDirect.includes(suivi)) return;
+      // Les traces `avancement` et `lecture` (pour les actions) ne changent rien au suivi d'un widget.
+      if (!this.enDirect.includes(suivi) || (t.etape !== "debut" && t.etape !== "fin")) return;
       suivi.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
       this.signalerDirect();
     };

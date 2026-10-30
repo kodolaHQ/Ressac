@@ -21,7 +21,7 @@ import {
 import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, URL_DUCKDUCKGO, extraireResultats, urlRecherche } from "./duckduckgo.js";
 import { chaineAuFilDeLEau } from "./chaine.js";
 import { Menagement, type ChangerHote } from "./menagement.js";
-import { SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
+import { ACTION_ARRETEE, SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
 import { MEMOIRE_MAX_OCTETS, empreinteParametres, type MemoireBlocs } from "./memoire.js";
 import {
   ArgsChercherWeb,
@@ -74,6 +74,15 @@ export const ECART_MEMOIRE_MS = 30_000;
  * son horloge, la marge couvre l'écart entre les deux horloges et le temps de transport.
  */
 const ECART_PUBLICATIONS_TOLERE_MS = ECART_PUBLICATIONS_MS - 1000;
+/** Action : écart entre deux lignes `avancement` d'un même bloc (la dernière, `faits = total`, part toujours). */
+export const ECART_AVANCEMENT_MS = 1000;
+/**
+ * Une ligne `avancement` arrivée moins de 500 ms après la précédente relayée du même bloc est ignorée (sauf la dernière) :
+ * la marge couvre l'écart entre les horloges et le temps de transport, un code qui en écrirait sans cesse est borné.
+ */
+const ECART_AVANCEMENT_TOLERE_MS = ECART_AVANCEMENT_MS / 2;
+/** L'hôte annoncé par la trace `lecture` d'une recherche web. */
+const HOTE_RECHERCHE = "duckduckgo.com";
 
 /**
  * Les délais d'une exécution. Sans `dureeMaxMinutes` : ceux d'aujourd'hui (conteneur 180 s, noyau 200 s, aucune limite
@@ -126,15 +135,26 @@ export interface ContexteWorkflow {
   rejeu?: { relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> };
   /** `recolte.dureeMaxMinutes` du widget : règle les délais et rend l'exécution progressive (hors essai). */
   dureeMaxMinutes?: number;
+  /** Action seulement : le texte tapé au lancement, envoyé dans `debut` et recopié dans l'exécution. */
+  saisie?: string;
+  /** Action seulement : les blocs par élément envoient leur avancement (relayé en trace `avancement`). */
+  avancement?: true;
+  /** Action seulement : levé, l'exécution est arrêtée (conteneur tué) et conclut « interrompue » (ACTION_ARRETEE). */
+  signal?: AbortSignal;
 }
 
 /** Une publication au fil de l'eau : les éléments déjà terminés, `faits` sur `total`. */
 export type Publication = { donnees: unknown; faits: number; total: number };
 
-/** Une trace acceptée (dans l'ordre), relayée en direct au constructeur. */
+/**
+ * Une trace acceptée (dans l'ordre), relayée en direct au constructeur. `avancement` : venue du conteneur (action
+ * seulement) ; `lecture` : émise par le noyau à chaque lecture acceptée, rattachée au dernier bloc commencé et pas fini.
+ */
 export type TraceDirecte =
   | { bloc: string; etape: "debut" }
-  | { bloc: string; etape: "fin"; statut: "reussi" | "partiel" | "echoue"; elements: number | null };
+  | { bloc: string; etape: "fin"; statut: "reussi" | "partiel" | "echoue"; elements: number | null }
+  | { bloc: string; etape: "avancement"; faits: number; total: number }
+  | { bloc: string; etape: "lecture"; hote: string };
 
 export interface InfraWorkflow {
   /** Dossier du moteur sur le Mac (`docker/moteur`), monté en lecture seule. */
@@ -234,12 +254,14 @@ export async function executerWorkflow(
   }
   let journal = "";
   let remarque: string | null = null;
+  // Arrêtée par le signal de l'appelant (« Arrêter » d'une action) : l'exécution est « interrompue ».
+  let arreteeParSignal = false;
 
   const conclure = (issue: IssueWorkflow) => {
     const blocs: TraceBloc[] = [...traces.values()].map(({ commence, fini, coupees, ...t }) => {
       const b: TraceBloc = { ...t };
-      // Commencé sans fin : le conteneur s'est arrêté pendant le bloc.
-      if (commence && !fini) b.statut = "echoue";
+      // Commencé sans fin : le conteneur s'est arrêté pendant le bloc (ou a été arrêté à la demande).
+      if (commence && !fini) b.statut = arreteeParSignal ? "interrompu" : "echoue";
       if (coupees > 0) b.journal = [`… ${coupees} lignes coupées`, ...t.journal];
       return b;
     });
@@ -248,7 +270,11 @@ export async function executerWorkflow(
         ? // Un bloc partiel, ou qui n'a pas fini (une `fin` arrivée avant lui) : la sortie n'est pas complète. Pour un
           // essai, seuls les blocs relancés comptent.
           blocs.every((b) => b.statut === "reussi" || (relances !== null && !relances.has(b.id))) ? "reussie" : "partielle"
-        : issue.t === "arret" && issue.statut === "accord-requis" ? "accord-requis" : "echouee";
+        : issue.t === "arret" && issue.statut === "accord-requis"
+          ? "accord-requis"
+          : issue.t === "arret" && arreteeParSignal
+            ? "interrompue"
+            : "echouee";
     const execution: Execution = {
       version: 1,
       id: idExecution(debut),
@@ -259,6 +285,7 @@ export async function executerWorkflow(
       statut,
       blocs,
     };
+    if (ctx.saisie !== undefined) execution.saisie = ctx.saisie;
     if (issue.t !== "fin") {
       execution.erreur = issue.erreur;
       if (issue.t === "arret" || !issue.erreurDuCode) execution.erreurNoyau = true;
@@ -293,15 +320,23 @@ export async function executerWorkflow(
     ...(rejeu ? { rejeu: { relances: rejeu.relances, sorties: rejeu.sorties } } : {}),
     ...(delais.limiteMs !== undefined ? { limiteMs: delais.limiteMs } : {}),
     ...(progressif ? { progressif: true as const } : {}),
+    ...(ctx.saisie !== undefined ? { saisie: ctx.saisie } : {}),
+    ...(ctx.avancement ? { avancement: true as const } : {}),
   });
   // Filet : l'appelant mesure avant (`debutTropGros`) pour refuser sans rien écrire ; le récolteur refuserait la ligne.
   if (rejeu && Buffer.byteLength(debutLigne) > LIGNE_MAX_OCTETS) {
     return conclure({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
   }
 
+  // Arrêtée avant même de partir : rien n'est lancé.
+  if (ctx.signal?.aborted) {
+    arreteeParSignal = true;
+    return conclure({ t: "arret", statut: "erreur", erreur: ACTION_ARRETEE });
+  }
+
   let processus: ProcessusRecolte;
   try {
-    const [cmd, ...argv] = infra.atelier.commandeRecolte(ctx.proprietaire.id, ctx.dossierFichiers, infra.moteur, delais.conteneurS);
+    const [cmd, ...argv] = infra.atelier.commandeRecolte(ctx.proprietaire, ctx.dossierFichiers, infra.moteur, delais.conteneurS);
     processus = (infra.lancer ?? lancerParDefaut)(cmd!, argv);
   } catch (e) {
     return conclure({ t: "arret", statut: "erreur", erreur: `Récolte impossible à lancer : ${message(e)}` });
@@ -359,6 +394,12 @@ export async function executerWorkflow(
     processus.tuer();
   };
   const minuteur = setTimeout(() => arreter({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? delais.noyauMs);
+  const surSignal = () => {
+    if (arret) return;
+    arreteeParSignal = true;
+    arreter({ statut: "erreur", erreur: ACTION_ARRETEE });
+  };
+  ctx.signal?.addEventListener("abort", surSignal, { once: true });
 
   processus.stdin.on("error", () => {});
   processus.stdin.write(debutLigne);
@@ -403,6 +444,7 @@ export async function executerWorkflow(
     if (!lire) throw new Error("Lecture de pages indisponible");
     if (!compte) {
       const u = verifierUrl(url, domainesPublics, adressesLocales);
+      signalerLecture(u);
       const page = await lectureOuverte(u, (changerHote) => lire(u.href, { ...avecDomaines(null, domainesPublics), ...defilement, ...(changerHote ? { changerHote } : {}) }));
       return verifierPage(page, domainesPublics, adressesLocales);
     }
@@ -414,6 +456,7 @@ export async function executerWorkflow(
       return SANS_REPONSE;
     }
     if (arret) return SANS_REPONSE;
+    signalerLecture(u);
     try {
       const page = await lire(u.href, { ...avecDomaines(accord.profil, ctx.sources.compte), ...defilement });
       return verifierPage(page, ctx.sources.compte, adressesLocales);
@@ -440,6 +483,7 @@ export async function executerWorkflow(
     const lireHtml = infra.pont.lireHtmlInvisible?.bind(infra.pont);
     if (!lireHtml) throw new Error(RECHERCHE_INDISPONIBLE);
     recherches++;
+    signalerLecture(HOTE_RECHERCHE);
     const r = await menagement.rechercher(
       async () => {
         const { html } = await lireHtml(urlRecherche(requete, infra.urlRecherche ?? URL_DUCKDUCKGO), {
@@ -469,8 +513,9 @@ export async function executerWorkflow(
         return lirePage(a);
       case "recuperer": {
         const { url, format } = args(ArgsRecuperer, a, "recuperer");
-        if (!web) return recuperer(url, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal);
         const u = verifierUrl(url, domainesPublics, adressesLocales);
+        signalerLecture(u);
+        if (!web) return recuperer(url, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal);
         return lectureOuverte(u, (changerHote) => recuperer(u.href, format ?? "texte", domainesPublics, adressesLocales, finExecution.signal, changerHote));
       }
       case "chercherWeb":
@@ -508,6 +553,14 @@ export async function executerWorkflow(
       // Le relais en direct n'arrête jamais l'exécution.
     }
   };
+  /** Une lecture acceptée (hôte de l'URL, ou celui de la recherche web), sur le dernier bloc commencé et pas fini. */
+  function signalerLecture(cible: URL | string) {
+    const bloc = ouverts.at(-1);
+    const hote = typeof cible === "string" ? cible : cible.hostname.toLowerCase().replace(/\.+$/, "");
+    if (bloc) relayer({ bloc: bloc.id, etape: "lecture", hote });
+  }
+  /** Par bloc : l'heure de la dernière ligne `avancement` relayée. */
+  const avancementRelayeA = new Map<string, number>();
   const traiterTrace = (m: Exclude<MessageRecolteur, { t: "appel" | "fin" | "echec" }>) => {
     if (m.t === "memoire") {
       // Un essai ne garde aucune mémoire : ce que le conteneur en dit est ignoré.
@@ -568,6 +621,16 @@ export async function executerWorkflow(
     }
     const t = traces.get(m.id);
     if (!t) return;
+    if (m.etape === "avancement") {
+      // Seulement si l'appelant l'a demandé, pour un bloc en cours, espacées (la dernière toujours).
+      if (!ctx.avancement || !ouverts.includes(t)) return;
+      const maintenant = horloge().getTime();
+      const avant = avancementRelayeA.get(m.id);
+      if (m.faits < m.total && avant !== undefined && maintenant - avant < ECART_AVANCEMENT_TOLERE_MS) return;
+      avancementRelayeA.set(m.id, maintenant);
+      relayer({ bloc: m.id, etape: "avancement", faits: m.faits, total: m.total });
+      return;
+    }
     if (m.etape === "debut") {
       if (attendu[suivant] !== m.id) return;
       // Un bloc déjà ouvert : seul le bloc suivant de la chaîne peut commencer, avant toute fin.
@@ -650,6 +713,7 @@ export async function executerWorkflow(
 
   const code = await processus.fin;
   clearTimeout(minuteur);
+  ctx.signal?.removeEventListener("abort", surSignal);
   finExecution.abort(new Error("Exécution finie"));
   // La sortie finale est écrite après la dernière publication.
   await relais;
@@ -659,7 +723,7 @@ export async function executerWorkflow(
   const arretFinal = arret as Arret | null;
   if (arretFinal) {
     // Tuer le client docker laisse le conteneur tourner : on le supprime.
-    await infra.atelier.supprimerRecolte(ctx.proprietaire.id).catch(() => {});
+    await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
     return conclure(avecMemoire({ t: "arret", ...arretFinal }));
   }
   if (fin?.t === "fin" && code === 0) {

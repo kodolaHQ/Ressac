@@ -33,7 +33,7 @@ export async function lancer(o: {
   /** Ce que le widget déclare (`web`, `dureeMaxMinutes`) : la validation du workflow envoyé. */
   contexte?: ContexteValidation;
   /** Clés ajoutées à la ligne `debut` (absentes sinon, comme pour un widget d'aujourd'hui). */
-  debut?: { progressif?: true; limiteMs?: number };
+  debut?: { progressif?: true; limiteMs?: number; saisie?: string; avancement?: true };
 }) {
   const dossier = await dossierTemporaire();
   await writeFile(join(dossier, "widget.json"), JSON.stringify({ config: { lu: "dans widget.json" } }));

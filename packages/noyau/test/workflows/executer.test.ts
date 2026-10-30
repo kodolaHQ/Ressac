@@ -33,6 +33,9 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 import { Atelier } from "../../src/conteneur/atelier.js";
 import { cheminsEspace } from "../../src/chemins.js";
 import { chaineAuFilDeLEau } from "../../src/workflows/chaine.js";
+import { ACTION_ARRETEE } from "../../src/workflows/executions.js";
+import type { Proprietaire } from "../../src/workflows/schema.js";
+import type { TraceDirecte } from "../../src/workflows/executer.js";
 
 const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
 const SCRIPT = join(MOTEUR, "recolteur.mjs");
@@ -79,6 +82,9 @@ const chaine = (...ids: string[]) => ({
   liens: [...ids, "sortie"].slice(1).map((vers, i) => ({ de: [...ids, "sortie"][i]!, vers })),
 });
 
+/** Le propriétaire tel que le banc le note : l'id d'un widget (comme avant), `action:<id>` pour une action. */
+const nomDe = (p: string | Proprietaire) => (typeof p === "string" ? p : p.type === "widget" ? p.id : `action:${p.id}`);
+
 interface Banc {
   ctx: ContexteWorkflow;
   infra: InfraWorkflow;
@@ -119,9 +125,9 @@ async function banc(
     infra: {
       moteur: MOTEUR,
       atelier: {
-        commandeRecolte: (id, d, m) => ["docker", "run", id, d, m],
-        supprimerRecolte: async (id) => {
-          b.supprimes.push(id);
+        commandeRecolte: (p, d, m) => ["docker", "run", nomDe(p), d, m],
+        supprimerRecolte: async (p) => {
+          b.supprimes.push(nomDe(p));
         },
       },
       lancer:
@@ -1602,5 +1608,172 @@ describe("executerWorkflow : veille (durée, chaîne, publications, mémoire en 
     expect(ECART_MEMOIRE_MS).toBe(30_000);
     expect(interpreteur.ECART_PUBLICATIONS_MS).toBe(ECART_PUBLICATIONS_MS);
     expect(interpreteur.ECART_MEMOIRE_MS).toBe(ECART_MEMOIRE_MS);
+  });
+});
+
+describe("executerWorkflow : saisie, avancement, lectures et arrêt (actions)", () => {
+  /** Un faux conteneur : écrit ses lignes, puis attend d'être tué (`bloque`) ou sort avec 0. `recu` : ce qu'il reçoit. */
+  const lanceurLignes = (lignes: unknown[], o: { recu?: string[]; bloque?: boolean; tue?: () => void } = {}): LanceurProcessus => () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    stdin.on("data", (d: Buffer) => o.recu?.push(d.toString()));
+    let tuer = () => {};
+    const fin = new Promise<number | null>((ok) => {
+      tuer = () => {
+        o.tue?.();
+        stdout.end();
+        stderr.end();
+        ok(null);
+      };
+      setImmediate(() => {
+        for (const l of lignes) stdout.write(JSON.stringify(l) + "\n");
+        if (o.bloque) return;
+        stdout.end();
+        stderr.end();
+        setImmediate(() => ok(0));
+      });
+    });
+    return { stdin, stdout, stderr, tuer: () => tuer(), fin };
+  };
+
+  it("la ligne debut d'un widget est identique à avant (instantané)", async () => {
+    const recu: string[] = [];
+    const b = await banc(chaine("a"), {}, { lancer: lanceurLignes([{ t: "fin", donnees: null }], { recu }) });
+    await executerWorkflow(b.ctx, b.infra);
+    const workflow = JSON.stringify({ blocs: b.ctx.valide.workflow.blocs, liens: b.ctx.valide.workflow.liens, ordre: ["a", "sortie"] });
+    expect(recu.join("").split("\n")[0]).toBe(
+      `{"t":"debut","precedent":null,"maintenant":"2026-10-29T10:00:00.000Z","config":{"interets":"rust"},"workflow":${workflow}}`,
+    );
+  });
+
+  it("une action envoie saisie et avancement dans debut", async () => {
+    const recu: string[] = [];
+    const proprietaires: unknown[] = [];
+    const b = await banc(chaine("a"), {}, { lancer: lanceurLignes([{ t: "fin", donnees: [] }], { recu }) });
+    b.ctx.proprietaire = { type: "action", id: "leboncoin" };
+    b.ctx.saisie = "clio lyon";
+    b.ctx.avancement = true;
+    b.infra.atelier.commandeRecolte = (p, d, m) => (proprietaires.push(p), ["docker", "run", nomDe(p), d, m]);
+    const r = await executerWorkflow(b.ctx, b.infra);
+    const debut = JSON.parse(recu.join("").split("\n")[0]!);
+    expect(debut).toMatchObject({ t: "debut", saisie: "clio lyon", avancement: true });
+    expect(r.execution).toMatchObject({ proprietaire: { type: "action", id: "leboncoin" }, saisie: "clio lyon" });
+    // L'atelier reçoit le propriétaire entier : le conteneur d'une action a son propre nom.
+    expect(proprietaires).toEqual([{ type: "action", id: "leboncoin" }]);
+  });
+
+  it("un lirePage de https://gitlab.com/x émet lecture « gitlab.com » sur le bloc en cours", async () => {
+    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [{ url: "https://gitlab.com/x", titre: "X", texte: "", liens: [] }] } });
+    const b = await banc(
+      chaine("a", "b"),
+      {
+        "a.mjs": `export default async () => 1;`,
+        "b.mjs": `export default async (e, w) => (await w.lirePage("https://gitlab.com/x")).titre;`,
+      },
+      { pont },
+    );
+    b.ctx.proprietaire = { type: "action", id: "gitlab" };
+    const relayees: TraceDirecte[] = [];
+    b.infra.surTrace = (t) => relayees.push(t);
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "X" } });
+    expect(relayees).toEqual([
+      { bloc: "a", etape: "debut" },
+      { bloc: "a", etape: "fin", statut: "reussi", elements: null },
+      { bloc: "b", etape: "debut" },
+      { bloc: "b", etape: "lecture", hote: "gitlab.com" },
+      { bloc: "b", etape: "fin", statut: "reussi", elements: null },
+      { bloc: "sortie", etape: "debut" },
+      { bloc: "sortie", etape: "fin", statut: "reussi", elements: null },
+    ]);
+  });
+
+  it("une lecture refusée (domaine non déclaré) n'émet pas de lecture", async () => {
+    const b = await banc(chaine("a"), { "a.mjs": `export default async (e, w) => { try { await w.lirePage("https://tiers.example/"); } catch { return "refusée"; } };` }, { compte: ["gitlab.com"], publiques: [] });
+    const relayees: TraceDirecte[] = [];
+    b.infra.surTrace = (t) => relayees.push(t);
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "refusée" } });
+    expect(relayees.some((t) => t.etape === "lecture")).toBe(false);
+  });
+
+  it("signal levé : conteneur tué, statut interrompue, erreur ACTION_ARRETEE, erreurNoyau", async () => {
+    let tue = 0;
+    const arret = new AbortController();
+    const b = await banc(chaine("a"), {}, { lancer: lanceurLignes([{ t: "bloc", id: "a", etape: "debut" }], { bloque: true, tue: () => tue++ }) });
+    b.ctx.proprietaire = { type: "action", id: "gitlab" };
+    b.ctx.signal = arret.signal;
+    b.infra.surTrace = (t) => {
+      if (t.etape === "debut") setImmediate(() => arret.abort());
+    };
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(tue).toBe(1);
+    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: ACTION_ARRETEE });
+    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
+    expect(r.execution.blocs[0]!.statut).toBe("interrompu");
+    expect(b.supprimes).toEqual(["action:gitlab"]);
+  });
+
+  it("un signal déjà levé : rien n'est lancé, exécution interrompue", async () => {
+    const arret = new AbortController();
+    arret.abort();
+    const b = await banc(chaine("a"));
+    b.ctx.signal = arret.signal;
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(b.commandes).toEqual([]);
+    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
+  });
+
+  it("une ligne avancement avec faits > total est rejetée", async () => {
+    const b = await banc(chaine("a"), {}, {
+      lancer: lanceurLignes([
+        { t: "bloc", id: "a", etape: "debut" },
+        { t: "bloc", id: "a", etape: "avancement", faits: 3, total: 2 },
+        { t: "bloc", id: "a", etape: "avancement", faits: -1, total: 2 },
+        { t: "bloc", id: "sortie", etape: "avancement", faits: 1, total: 2 },
+        { t: "bloc", id: "a", etape: "avancement", faits: 2, total: 2 },
+        { t: "bloc", id: "a", etape: "fin", statut: "reussi", sortie: [1, 2] },
+        { t: "bloc", id: "a", etape: "avancement", faits: 2, total: 2 },
+        { t: "bloc", id: "sortie", etape: "debut" },
+        { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: [1, 2] },
+        { t: "fin", donnees: [1, 2] },
+      ]),
+    });
+    b.ctx.avancement = true;
+    const relayees: TraceDirecte[] = [];
+    b.infra.surTrace = (t) => relayees.push(t);
+    await executerWorkflow(b.ctx, b.infra);
+    // Seule celle du bloc en cours, avec faits ≤ total, passe ; une avancement hors de son bloc est ignorée.
+    expect(relayees.filter((t) => t.etape === "avancement")).toEqual([{ bloc: "a", etape: "avancement", faits: 2, total: 2 }]);
+  });
+
+  it("avancement : au plus un par ECART_AVANCEMENT_MS et par bloc, le dernier (faits = total) toujours ; ignoré sans avancement", async () => {
+    let t = 0;
+    const lignes = [
+      { t: "bloc", id: "a", etape: "debut" },
+      ...[1, 2, 3, 4].map((faits) => ({ t: "bloc", id: "a", etape: "avancement", faits, total: 4 })),
+      { t: "bloc", id: "a", etape: "fin", statut: "reussi", sortie: [] },
+      { t: "bloc", id: "sortie", etape: "debut" },
+      { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: [] },
+      { t: "fin", donnees: [] },
+    ];
+    const avec = await banc(chaine("a"), {}, { lancer: lanceurLignes(lignes) });
+    avec.ctx.avancement = true;
+    // 300 ms entre deux lignes reçues.
+    avec.infra.horloge = () => new Date(MAINTENANT.getTime() + (t += 300));
+    const relayees: TraceDirecte[] = [];
+    avec.infra.surTrace = (x) => relayees.push(x);
+    await executerWorkflow(avec.ctx, avec.infra);
+    const faits = relayees.flatMap((x) => (x.etape === "avancement" ? [x.faits] : []));
+    expect(faits[0]).toBe(1);
+    expect(faits.at(-1)).toBe(4);
+    expect(faits.length).toBeLessThan(4);
+
+    const sans = await banc(chaine("a"), {}, { lancer: lanceurLignes(lignes) });
+    const relayees2: TraceDirecte[] = [];
+    sans.infra.surTrace = (x) => relayees2.push(x);
+    await executerWorkflow(sans.ctx, sans.infra);
+    expect(relayees2.some((x) => x.etape === "avancement")).toBe(false);
   });
 });

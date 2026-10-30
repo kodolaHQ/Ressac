@@ -110,6 +110,9 @@ async function principal() {
     rejeu: debut.rejeu ?? null,
     // Exécution longue ou au fil de l'eau : mémoire envoyée en cours de route (lignes `memoire`) et avant `echec`.
     progressif: debut.progressif === true,
+    // Action seulement : la saisie (gabarits, `ctx.saisie`, `webaios.saisie`) et l'avancement des blocs par élément.
+    saisie: typeof debut.saisie === "string" ? debut.saisie : undefined,
+    avancement: debut.avancement === true,
   });
   // Un essai (rejeu) ne rend aucune mémoire : le noyau n'en garde pas.
   if (!debut.rejeu) {

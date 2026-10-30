@@ -6,9 +6,9 @@ export const formater = (...a) => a.map((x) => (typeof x === "string" ? x : JSON
 
 /**
  * `appeler(f, a)` envoie un appel au noyau et attend sa réponse ; `journal(...a)` reçoit les lignes de
- * `webaios.journal`.
+ * `webaios.journal` ; `saisie` (action seulement) devient `webaios.saisie`.
  */
-export function creerWebaios({ appeler, config, precedent, maintenant, journal }) {
+export function creerWebaios({ appeler, config, precedent, maintenant, journal, saisie }) {
   async function trier(elements, { question, texte, seuil = 0.5, parallele = 8 } = {}) {
     const liste = [...elements];
     const notes = new Array(liste.length);
@@ -32,6 +32,8 @@ export function creerWebaios({ appeler, config, precedent, maintenant, journal }
     config,
     precedent,
     maintenant,
+    // Action lancée avec un texte seulement : absente pour un widget.
+    ...(typeof saisie === "string" ? { saisie } : {}),
     lirePage: (url, options = {}) => appeler("lirePage", { url, compte: options.compte, defiler: options.defiler }),
     recuperer: (url, options = {}) => appeler("recuperer", { url, format: options.format ?? "texte" }),
     chercherWeb: (requete, { nombre = 8 } = {}) => appeler("chercherWeb", { requete, nombre }),

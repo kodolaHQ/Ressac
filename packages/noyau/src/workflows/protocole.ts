@@ -33,6 +33,10 @@ export const MessageRecolteur = z.union([
     sortieTropGrosse: z.literal(true).optional(),
     erreur: z.string().optional(),
   }),
+  // Action seulement (`avancement` dans `debut`) : un bloc par élément en est à `faits` éléments sur `total`.
+  z
+    .object({ t: z.literal("bloc"), id: z.string(), etape: z.literal("avancement"), faits: z.number().int().min(0), total: z.number().int().min(0) })
+    .refine((m) => m.faits <= m.total),
   z.object({ t: z.literal("journal"), bloc: z.string(), texte: z.string() }),
   z.object({ t: z.literal("memoire"), memoire: MemoireEnvoyee }),
   z.object({ t: z.literal("publication"), donnees: z.unknown(), faits: z.number().int().min(0), total: z.number().int().min(0) }),
@@ -61,6 +65,8 @@ export const MessageNoyau = z.union([
     rejeu: z.object({ relances: z.array(z.string()), sorties: z.record(z.string(), z.unknown()) }).optional(),
     limiteMs: z.number().int().positive().optional(),
     progressif: z.literal(true).optional(),
+    saisie: z.string().optional(),
+    avancement: z.literal(true).optional(),
   }),
   z.object({ t: z.literal("memoire"), memoire: MemoireEnvoyee }),
   z.object({ t: z.literal("reponse"), n: z.number().int(), ok: z.unknown() }),
@@ -104,11 +110,15 @@ export type OptionsDebut = {
   limiteMs?: number;
   /** Mémoire envoyée en cours de route, publications au fil de l'eau. */
   progressif?: true;
+  /** Action seulement : le texte tapé au lancement (`{saisie}` des gabarits, `ctx.saisie`). */
+  saisie?: string;
+  /** Action seulement : les blocs par élément envoient leur avancement. */
+  avancement?: true;
 };
 
 /**
- * La ligne `debut` ; les clés `rejeu`, `limiteMs` et `progressif` n'y sont que si elles sont données (la ligne d'un
- * widget sans les nouveaux champs ne change pas).
+ * La ligne `debut` ; les clés `rejeu`, `limiteMs`, `progressif`, `saisie` et `avancement` n'y sont que si elles sont
+ * données (la ligne d'un widget sans les nouveaux champs ne change pas).
  */
 export function ligneDebut(o: OptionsDebut): string {
   return (
@@ -121,6 +131,8 @@ export function ligneDebut(o: OptionsDebut): string {
       ...(o.rejeu ? { rejeu: { relances: o.rejeu.relances, sorties: o.rejeu.sorties } } : {}),
       ...(o.limiteMs !== undefined ? { limiteMs: o.limiteMs } : {}),
       ...(o.progressif ? { progressif: true } : {}),
+      ...(o.saisie !== undefined ? { saisie: o.saisie } : {}),
+      ...(o.avancement ? { avancement: true } : {}),
     }) + "\n"
   );
 }
