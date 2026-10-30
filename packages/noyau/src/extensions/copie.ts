@@ -14,7 +14,7 @@ import {
   type FileHandle,
 } from "node:fs/promises";
 import { basename, dirname, join, posix } from "node:path";
-import { analyserManifeste, type AnalyseManifeste } from "./manifeste.js";
+import { analyserManifeste, fichiersMessages, type AnalyseManifeste } from "./manifeste.js";
 
 /** Dossier des gardes livrés avec le noyau ; un navigateur qui embarque le noyau peut en fournir un autre. */
 export const GARDES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "extensions");
@@ -59,6 +59,45 @@ function json(contenu: Buffer | undefined): unknown {
   if (!contenu) return undefined;
   try {
     return JSON.parse(contenu.toString("utf8").replace(/^﻿/, ""));
+  } catch {
+    return undefined;
+  }
+}
+
+/** Un catalogue `messages.json`, au plus (ceux des extensions courantes font quelques dizaines de Ko). */
+export const TAILLE_MAX_MESSAGES = 1024 * 1024;
+
+/**
+ * Les catalogues de `fichiersMessages(manifeste)` lus dans le dossier d'une extension installée (Store, copie de
+ * l'agent), dans le même ordre ; `undefined` pour un catalogue absent, illisible, trop lourd (`TAILLE_MAX_MESSAGES`), ou
+ * atteint par un lien (`_locales`, le dossier de la locale ou le fichier : aucun n'est suivi).
+ */
+export async function lireMessages(dossier: string, manifeste: unknown): Promise<unknown[]> {
+  return Promise.all(fichiersMessages(manifeste).map((rel) => lireCatalogue(dossier, rel)));
+}
+
+async function lireCatalogue(dossier: string, rel: string): Promise<unknown> {
+  try {
+    const morceaux = rel.split("/");
+    for (let i = 1; i < morceaux.length; i++) {
+      if (!(await lstat(join(dossier, ...morceaux.slice(0, i)))).isDirectory()) return undefined;
+    }
+    const fh = await open(join(dossier, ...morceaux), DRAPEAUX_LECTURE);
+    try {
+      const info = await fh.stat();
+      if (!info.isFile() || info.size > TAILLE_MAX_MESSAGES) return undefined;
+      const tampon = Buffer.alloc(TAILLE_MAX_MESSAGES + 1);
+      let lu = 0;
+      for (;;) {
+        const { bytesRead } = await fh.read(tampon, lu, tampon.length - lu, null);
+        if (bytesRead === 0) break;
+        lu += bytesRead;
+        if (lu > TAILLE_MAX_MESSAGES) return undefined;
+      }
+      return json(tampon.subarray(0, lu));
+    } finally {
+      await fh.close();
+    }
   } catch {
     return undefined;
   }
@@ -368,7 +407,8 @@ export async function preparerCopie(o: {
   const brut = json(fichiers.get("manifest.json"));
   const webaiosBrut = fichiers.get("webaios.json");
   const webaios = webaiosBrut === undefined ? undefined : (json(webaiosBrut) ?? "illisible");
-  const analyse = analyserManifeste(brut, { source: "agent", webaios, regles: reglesDe(brut, fichiers) });
+  const messages = fichiersMessages(brut).map((f) => json(fichiers.get(f)));
+  const analyse = analyserManifeste(brut, { source: "agent", webaios, regles: reglesDe(brut, fichiers), messages });
   analyse.refus = [...refusDossier, ...refusFichiers(fichiers), ...analyse.refus];
   const empreinte = empreinteDe(fichiers);
   const lue = racine ? { racine } : {};

@@ -8,6 +8,7 @@ import {
   FICHIERS_MAX,
   GARDES_PAR_DEFAUT,
   cspAgent,
+  lireMessages,
   preparerCopie,
   preparerStore,
 } from "../../src/extensions/copie.js";
@@ -639,5 +640,38 @@ describe("webaios-correctifs-page.js", () => {
     expect(Object.getOwnPropertyDescriptor(chrome.storage, "sync")?.configurable).toBe(true);
     runInNewContext(code, ctx);
     expect(chrome.storage.sync).toBe(local);
+  });
+});
+
+describe("noms localisés (_locales)", () => {
+  const manifesteLocalise = { manifest_version: 3, name: "__MSG_extName__", version: "1.0", default_locale: "en" };
+
+  it("preparerCopie résout le nom de l'agent depuis _locales (fr d'abord)", async () => {
+    const src = await source({
+      "manifest.json": manifesteLocalise,
+      "_locales/en/messages.json": { extName: { message: "Name" } },
+      "_locales/fr/messages.json": { extname: { message: "Nom" } },
+    });
+    const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
+    expect(analyse.nom).toBe("Nom");
+  });
+
+  it("lireMessages lit fr, fr_FR puis default_locale ; un fichier absent, illisible, lien ou trop lourd compte comme absent", async () => {
+    const d = await source({
+      "manifest.json": manifesteLocalise,
+      "_locales/en/messages.json": { extName: { message: "Name" } },
+      "_locales/fr_FR/messages.json": "{ pas du json",
+    });
+    expect(await lireMessages(d, manifesteLocalise)).toEqual([undefined, undefined, { extName: { message: "Name" } }]);
+    const ailleurs = await source({ "messages.json": { extName: { message: "Piège" } } });
+    await mkdir(join(d, "_locales", "fr"), { recursive: true });
+    await symlink(join(ailleurs, "messages.json"), join(d, "_locales", "fr", "messages.json"));
+    expect((await lireMessages(d, manifesteLocalise))[0]).toBeUndefined();
+    // Un dossier de locale lié ailleurs : non suivi.
+    await rm(join(d, "_locales", "en"), { recursive: true });
+    await symlink(ailleurs, join(d, "_locales", "en"));
+    expect((await lireMessages(d, manifesteLocalise))[2]).toBeUndefined();
+    await writeFile(join(d, "_locales", "fr_FR", "messages.json"), JSON.stringify({ extName: { message: "x".repeat(2 * 1024 * 1024) } }));
+    expect((await lireMessages(d, manifesteLocalise))[1]).toBeUndefined();
   });
 });

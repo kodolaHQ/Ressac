@@ -315,7 +315,26 @@ const bavardStore = {
 `,
 };
 
+/** Nom français de `localisee` : long, pour la largeur des lignes du panneau des extensions. */
+export const NOM_LOCALISE = "Bloqueur au nom localisé, vraiment très long, qui ne tient jamais dans la barre latérale";
+/** Comme uBlock Origin Lite : nom `__MSG_extName__`, `default_locale` en, catalogues en et fr (clé d'une autre casse). */
+const localisee = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "__MSG_extName__",
+    description: "__MSG_extShortDesc__",
+    default_locale: "en",
+    version: "1.0.0",
+    permissions: ["storage"],
+    action: { default_icon: { "16": "icone.png" } },
+  },
+  "icone.png": PNG_1PX,
+  "_locales/en/messages.json": { extName: { message: "Localized blocker" }, extShortDesc: { message: "Blocks" } },
+  "_locales/fr/messages.json": { EXTNAME: { message: NOM_LOCALISE }, extShortDesc: { message: "Bloque" } },
+};
+
 export const EXTENSIONS_TEST = {
+  localisee,
   "bavard-store": bavardStore,
   bouton, "marqueur-store": marqueurStore, bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;

@@ -3,6 +3,7 @@ import {
   accordRenforce,
   analyserManifeste,
   empreintePortee,
+  fichiersMessages,
   libellesPortee,
   porteeElargie,
   type Portee,
@@ -139,7 +140,21 @@ test("manifeste illisible ou sans name/version : un refus", () => {
   expect(analyserManifeste({ manifest_version: 3 }, { source: "store" }).refus).toHaveLength(2);
 });
 
-test("nom __MSG_x__ remplacé par l'id du message", () => {
+test("nom __MSG_x__ résolu par les messages (clé sans casse) : fr d'abord, puis fr_FR, puis default_locale", () => {
+  const m = { ...base, name: "__MSG_extName__", default_locale: "en" };
+  expect(fichiersMessages(m)).toEqual(["_locales/fr/messages.json", "_locales/fr_FR/messages.json", "_locales/en/messages.json"]);
+  const fr = { autre: { message: "x" } };
+  const frFR = { EXTNAME: { message: "Nom fr_FR" } };
+  const en = { extName: { message: "Nom en" } };
+  expect(analyserManifeste(m, { source: "store", messages: [fr, frFR, en] }).nom).toBe("Nom fr_FR");
+  expect(analyserManifeste(m, { source: "store", messages: [fr, undefined, en] }).nom).toBe("Nom en");
+  expect(analyserManifeste(m, { source: "agent", messages: [{ extname: { message: "Nom fr" } }, en] }).nom).toBe("Nom fr");
+  // default_locale absent ou douteux (chemin) : seulement fr et fr_FR.
+  expect(fichiersMessages({ ...base, default_locale: "../x" })).toEqual(["_locales/fr/messages.json", "_locales/fr_FR/messages.json"]);
+  expect(fichiersMessages({ ...base, default_locale: "fr" })).toEqual(["_locales/fr/messages.json", "_locales/fr_FR/messages.json"]);
+});
+
+test("nom __MSG_x__ sans message : l'id du message", () => {
   expect(analyserManifeste({ ...base, name: "__MSG_appName__" }, { source: "store" }).nom).toBe("appName");
 });
 

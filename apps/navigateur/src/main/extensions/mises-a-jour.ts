@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { analyserManifeste, cleExtension, empreintePortee, porteeElargie, type EtatExtensions, type IdProfil, type Portee } from "@webaios/noyau";
-import { enFileStore, lireManifeste } from "./store";
+import { cleExtension, empreintePortee, porteeElargie, type EtatExtensions, type IdProfil, type Portee } from "@webaios/noyau";
+import { analyserDossierStore, enFileStore } from "./store";
 import { telechargerStore } from "./telechargement";
 
 /** Entre deux vérifications des mises à jour du Store. */
@@ -224,7 +224,7 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
     } catch (e) {
       return echec((e as Error).message, (e as Error).cause ?? e);
     }
-    const analyse = analyserManifeste(await lireManifeste(telecharge), { source: "store" });
+    const analyse = await analyserDossierStore(telecharge);
     if (analyse.refus.length > 0) return echec(analyse.refus.join(" ; "));
     // Comme Chrome : le fichier doit être la version annoncée (sinon, ni une version plus basse ni une boucle de
     // téléchargements ne remplacent ce qui est installé ou en attente).

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dansLaVue, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 import { construireCrx } from "./extensions/crx";
-import { ecrireExtension, ecrireExtensionAgent, EXTENSIONS_TEST, installerStoreFactice } from "./extensions/fixtures";
+import { ecrireExtension, ecrireExtensionAgent, EXTENSIONS_TEST, installerStoreFactice, NOM_LOCALISE } from "./extensions/fixtures";
 
 // La carte d'accord des extensions, posée au démarrage par WEBAIOS_TEST_CARTE_EXTENSION (ni Store, ni agent) ; la
 // réponse de l'utilisateur est notée dans `<chemin>.reponse`. Tout reste invisible. La session est écrite avant le lancement :
@@ -660,6 +660,62 @@ test("l'entrée « Extensions » du menu de l'application ouvre la page", async 
     expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("extensions")?.accelerator ?? null)).toBe(null);
     await menuApp(app, "extensions");
     await expect(fenetre.getByTestId("page-extensions")).toHaveCount(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("un nom __MSG_extName__ (Store) s'affiche résolu par _locales/fr ; l'entrée écrite avant (« extName ») est corrigée au démarrage", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  const { id } = installerStoreFactice(profil, "localisee", { profils: ["defaut"] });
+  // Comme le registre de l'utilisateur : le nom tel que l'ancienne analyse l'écrivait.
+  const fichier = join(profil, "extensions", "etat.json");
+  const etat = JSON.parse(readFileSync(fichier, "utf8"));
+  etat.extensions[`store:${id}`].nom = "extName";
+  writeFileSync(fichier, JSON.stringify(etat));
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    await expect.poll(() => lireRegistre(profil).extensions[`store:${id}`]!.nom, { timeout: 15_000 }).toBe(NOM_LOCALISE);
+    await fenetre.getByTestId("menu-extensions").click();
+    const panneau = fenetre.getByTestId("panneau-extensions");
+    await expect(panneau.getByTestId("ligne-barre-extension")).toContainText(NOM_LOCALISE);
+    await expect(panneau).not.toContainText("extName");
+  } finally {
+    await fermer();
+  }
+});
+
+test("dans le panneau des extensions, un nom long est tronqué : le bouton « Épingler » reste entier dans le panneau, et le panneau dans la barre latérale", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  installerStoreFactice(profil, "localisee", { profils: ["defaut"] });
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    await fenetre.getByTestId("menu-extensions").click();
+    const panneau = fenetre.getByTestId("panneau-extensions");
+    const ligne = panneau.getByTestId("ligne-barre-extension");
+    await expect(ligne).toContainText(NOM_LOCALISE);
+    const bouton = ligne.getByRole("button", { name: "Épingler" });
+    const [p, b, l] = await Promise.all([panneau.boundingBox(), bouton.boundingBox(), ligne.boundingBox()]);
+    expect(p && b && l).toBeTruthy();
+    const dedans = (x: { x: number; y: number; width: number; height: number }, c: typeof x) =>
+      x.x >= c.x - 0.5 && x.x + x.width <= c.x + c.width + 0.5;
+    expect(dedans(b!, p!)).toBe(true);
+    expect(dedans(l!, p!)).toBe(true);
+    expect(dedans(b!, (await fenetre.getByTestId("barre-laterale").boundingBox())!)).toBe(true);
+    // Le bouton garde sa largeur (son texte entier), le nom est tronqué (points de suspension).
+    expect(await bouton.evaluate((e) => e.scrollWidth <= e.clientWidth + 0.5)).toBe(true);
+    const nom = ligne.locator(".nom");
+    expect(await nom.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
+    // Le panneau ne dépasse ni son conteneur ni la barre latérale (largeur par défaut).
+    const laterale = await fenetre.getByTestId("barre-laterale").boundingBox();
+    expect(dedans(p!, laterale!)).toBe(true);
+    expect(await panneau.evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      const c = e.parentElement!.getBoundingClientRect();
+      return r.left >= c.left - 0.5 && r.right <= c.right + 0.5 && e.parentElement!.scrollWidth <= e.parentElement!.clientWidth + 0.5;
+    })).toBe(true);
   } finally {
     await fermer();
   }

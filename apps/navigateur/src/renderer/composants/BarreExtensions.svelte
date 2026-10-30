@@ -112,11 +112,14 @@
   :global(.action.no-icon)::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--fond-actif); color: var(--texte); font-size: 10px; text-transform: uppercase; }
   :global(.action .badge) { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }
   .menu { all: unset; width: 24px; height: 24px; display: grid; place-content: center; border-radius: 5px; color: var(--texte-doux); }
-  .panneau { flex-basis: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-actif); }
+  /* min-width: 0 : sans lui, un nom long (nowrap) élargirait le panneau, élément flexible de la ligne, hors de la barre. */
+  .panneau { flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; padding: 4px; border: 1px solid var(--bord); border-radius: 8px; background: var(--fond-actif); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
   .nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texte); }
   .lien, .gerer { all: unset; padding: 2px 6px; border-radius: 5px; color: var(--texte-doux); font-size: 12px; }
+  /* Après « all: unset » : le bouton garde son texte entier, c'est le nom qui cède. */
+  .lien { flex: none; white-space: nowrap; }
   .lien:hover, .gerer:hover { background: var(--fond-survol); color: var(--texte); }
   .gerer { display: block; margin-top: 2px; }
   .vide { margin: 4px; color: var(--texte-doux); font-size: 12px; }

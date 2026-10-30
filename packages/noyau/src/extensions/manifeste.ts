@@ -122,9 +122,49 @@ function analyserReseau(webaios: unknown, refus: string[]): string[] {
   return uniquesTries(valides);
 }
 
+/** Les locales consultées pour une interface en français, avant la `default_locale` du manifeste. */
+const LOCALES_PREFEREES = ["fr", "fr_FR"];
+/** Une locale de `_locales/` (`en`, `pt_BR`, `es_419`) : jamais un chemin. */
+const LOCALE = /^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$/;
+
+/**
+ * Les catalogues de messages à lire pour résoudre `__MSG_…__` (chemins relatifs au dossier de l'extension), dans
+ * l'ordre où on les consulte : `fr`, `fr_FR`, puis `default_locale` (si c'est une locale, et pas déjà listée).
+ */
+export function fichiersMessages(brut: unknown): string[] {
+  const m = objet(brut);
+  const defaut = m && typeof m.default_locale === "string" && LOCALE.test(m.default_locale) ? [m.default_locale] : [];
+  return [...new Set([...LOCALES_PREFEREES, ...defaut])].map((l) => `_locales/${l}/messages.json`);
+}
+
+/**
+ * `__MSG_cle__` remplacé par le message du premier catalogue qui a la clé (sans tenir compte de la casse, comme Chrome) ;
+ * une clé introuvable reste telle quelle. `catalogues` : le contenu des `messages.json` dans l'ordre de `fichiersMessages`.
+ */
+export function resoudreMessages(texte: string, catalogues: readonly unknown[]): string {
+  return texte.replace(/__MSG_([A-Za-z0-9_@]+)__/g, (tout, cle: string) => {
+    const voulue = cle.toLowerCase();
+    for (const c of catalogues) {
+      const o = objet(c);
+      if (!o) continue;
+      for (const [k, v] of Object.entries(o)) {
+        const message = k.toLowerCase() === voulue ? objet(v)?.message : undefined;
+        if (typeof message === "string") return message;
+      }
+    }
+    return tout;
+  });
+}
+
 export function analyserManifeste(
   brut: unknown,
-  o: { source: SourceExtension; webaios?: unknown; regles?: Record<string, unknown> },
+  o: {
+    source: SourceExtension;
+    webaios?: unknown;
+    regles?: Record<string, unknown>;
+    /** Le contenu des catalogues de `fichiersMessages` (absent ou illisible : `undefined`), pour un nom `__MSG_…__`. */
+    messages?: readonly unknown[];
+  },
 ): AnalyseManifeste {
   const m = objet(brut);
   if (!m) {
@@ -144,8 +184,10 @@ export function analyserManifeste(
   const version = typeof m.version === "string" ? m.version : "";
   if (!nomBrut) refus.push("Manifeste sans « name »");
   if (!version) refus.push("Manifeste sans « version »");
-  const msg = /^__MSG_(.+)__$/.exec(nomBrut);
-  const nom = msg ? msg[1]! : nomBrut;
+  // Sans message pour la clé : l'id du message plutôt que `__MSG_…__`.
+  const resolu = resoudreMessages(nomBrut, o.messages ?? []);
+  const msg = /^__MSG_(.+)__$/.exec(resolu);
+  const nom = msg ? msg[1]! : resolu;
 
   if (m.manifest_version !== 3) refus.push("Seules les extensions Manifest V3 sont prises en charge");
 

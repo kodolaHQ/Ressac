@@ -15,6 +15,7 @@ import {
   empreintePortee,
   lireCle,
   lireEtatExtensions,
+  lireMessages,
   modifierEtatExtensions,
   preparerStore,
   retirerProfil,
@@ -82,6 +83,7 @@ import {
   enFileStore,
   fileStoreOccupee,
   installerStore,
+  analyserDossierStore,
   lireManifeste,
   retirerDuProfilStore,
   type ContexteInstallation,
@@ -276,6 +278,7 @@ export class ServiceExtensions {
       console.error("[extensions] registre illisible, aucune extension chargée :", e);
       return;
     }
+    await this.relireNoms().catch((e: unknown) => console.error("[extensions] noms localisés non relus :", e));
     await this.preparerStore();
     if (o.dossierAgent) {
       // Les extensions du Store d'abord (les copies de l'agent peuvent être longues à refaire), sans celles de l'agent...
@@ -293,6 +296,38 @@ export class ServiceExtensions {
     else await this.appliquer();
     // Repère des tests (mode invisible) : le démarrage est fini, la première synchronisation complète faite.
     if (process.env.WEBAIOS_INVISIBLE === "1") (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes = true;
+  }
+
+  /**
+   * Au démarrage : le nom d'une extension dont le manifeste dit `__MSG_…__` est relu de ses `_locales` (fr, fr_FR, puis
+   * `default_locale`), depuis la version installée (Store) ou la copie (agent). Les entrées écrites avant cette
+   * résolution portent l'id du message (« extName »). Comme `noterVue`, sans `perimerCartes` ni `verifierDeblocages` :
+   * le nom ne compte dans aucune carte ni aucun déblocage.
+   */
+  private async relireNoms(): Promise<void> {
+    const o = this.o;
+    if (!o) return;
+    const noms = new Map<string, string>();
+    for (const [cle, x] of Object.entries(this.etat.extensions)) {
+      const lue = lireCle(cle);
+      if (!lue) continue;
+      const chemin = lue.source === "store" ? join(o.dossier, "store", lue.id, `${x.version}_0`) : join(o.dossier, "copies", lue.id);
+      const brut = await lireManifeste(chemin);
+      const nomBrut = (brut as { name?: unknown } | null)?.name;
+      if (typeof nomBrut !== "string" || !nomBrut.includes("__MSG_")) continue;
+      const nom = analyserManifeste(brut, { source: x.source, messages: await lireMessages(chemin, brut) }).nom;
+      if (nom && nom !== x.nom) noms.set(cle, nom);
+    }
+    if (noms.size === 0) return;
+    this.etat = await modifierEtatExtensions(
+      o.dossier,
+      (e) => {
+        const extensions = { ...e.extensions };
+        for (const [cle, nom] of noms) if (extensions[cle]) extensions[cle] = { ...extensions[cle], nom };
+        return { ...e, extensions };
+      },
+      () => profilsPrives(o.magasin.etat),
+    );
   }
 
   /**
@@ -777,7 +812,7 @@ export class ServiceExtensions {
     const m = x?.majEnAttente;
     if (!o || !x || !m || lue?.source !== "store") return "echec";
     const d = this.dependancesMaj();
-    const analyse = analyserManifeste(await lireManifeste(join(o.dossier, "store", lue.id, `${m.version}_0`)), { source: "store" });
+    const analyse = await analyserDossierStore(join(o.dossier, "store", lue.id, `${m.version}_0`));
     if (analyse.refus.length > 0 || analyse.version !== m.version || empreintePortee(analyse.portee) !== empreintePortee(m.portee)) {
       await abandonnerMiseAJour(cle, m.version, d);
       d.noterErreur(cle, `Mise à jour ${m.version} illisible : elle sera téléchargée de nouveau`);

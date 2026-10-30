@@ -9,7 +9,9 @@ import {
   desactiver,
   empreintePortee,
   lireCle,
+  lireMessages,
   retirer,
+  type AnalyseManifeste,
   type EntreeExtension,
   type EtatExtensions,
   type IdProfil,
@@ -116,6 +118,15 @@ export async function lireManifeste(dossierVersion: string): Promise<unknown> {
   }
 }
 
+/**
+ * Le manifeste d'une version du Store analysé, son nom `__MSG_…__` résolu par ses `_locales` (fr, fr_FR, puis
+ * `default_locale` ; lus sans suivre de lien, taille bornée).
+ */
+export async function analyserDossierStore(dossierVersion: string): Promise<AnalyseManifeste> {
+  const brut = await lireManifeste(dossierVersion);
+  return analyserManifeste(brut, { source: "store", messages: await lireMessages(dossierVersion, brut) });
+}
+
 /** Accord écrit seulement si l'utilisateur a accepté exactement la portée qu'on enregistre. */
 export function accordPour(r: ReponseAccord, portee: Portee): boolean {
   return r.accepte && r.empreinte === empreintePortee(portee);
@@ -150,7 +161,7 @@ async function installer(id: string, o: ContexteInstallation, d: DependancesStor
     const desactivee = statutDesactivee(connue.desactivee);
     if (desactivee) return desactivee;
     if (connue.accord && connue.profils.includes(o.profil)) return { ok: true };
-    const analyse = analyserManifeste(await lireManifeste(dossierConnu), { source: "store" });
+    const analyse = await analyserDossierStore(dossierConnu);
     if (analyse.refus.length > 0) return { ok: false, erreur: analyse.refus.join(" ; ") };
     const r = await demander(carte(analyse));
     if (!accordPour(r, analyse.portee)) return { ok: false, erreur: INSTALLATION_REFUSEE };
@@ -179,7 +190,7 @@ async function installer(id: string, o: ContexteInstallation, d: DependancesStor
   }
   const nettoyer = () => rm(join(attente, id), { recursive: true, force: true });
   try {
-    const analyse = analyserManifeste(await lireManifeste(telecharge), { source: "store" });
+    const analyse = await analyserDossierStore(telecharge);
     if (analyse.refus.length > 0) return { ok: false, erreur: analyse.refus.join(" ; ") };
     const r = await demander(carte(analyse));
     if (!accordPour(r, analyse.portee)) return { ok: false, erreur: INSTALLATION_REFUSEE };
