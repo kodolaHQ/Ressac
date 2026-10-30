@@ -569,7 +569,8 @@ test("« Désactiver toutes les extensions » : plus rien de chargé, et toujour
       const page = await ouvrirPage(l.fenetre);
       await expect(page.getByTestId("couper-extensions")).toBeChecked();
       await expect(page.getByTestId("extension-page")).toHaveCount(2);
-      await new Promise((ok) => setTimeout(ok, 1000));
+      // Le service a fini de démarrer (première synchronisation faite) : l'absence se vérifie après, pas sur un délai.
+      await expect.poll(() => l.app.evaluate(() => (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes === true), { timeout: 15_000 }).toBe(true);
       expect(await chargees(l.app)).toEqual([]);
       // Réactivées : les deux repartent.
       await page.getByTestId("couper-extensions").click();

@@ -287,6 +287,8 @@ export class ServiceExtensions {
     if (aRetirer.length > 0 || appliquerProfilsPrives(this.etat, profilsPrives(o.magasin.etat)).retirees.length > 0)
       await this.modifier((e) => aRetirer.reduce(retirerProfil, e));
     else await this.appliquer();
+    // Repère des tests (mode invisible) : le démarrage est fini, la première synchronisation complète faite.
+    if (process.env.WEBAIOS_INVISIBLE === "1") (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes = true;
   }
 
   /**

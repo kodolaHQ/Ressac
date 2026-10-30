@@ -229,12 +229,12 @@ test("un tabs.create({ active: true }) de la sonde ne fait jamais changer la fen
     await expect
       .poll(async () => (ouvert = Object.values((await lireEtat(fenetre)).onglets).find((o) => o.url.includes("ouverte-active"))), { timeout: 10_000 })
       .toBeTruthy();
-    // L'activation demandée (onActivated) a eu le temps d'arriver.
-    await new Promise((r) => setTimeout(r, 500));
+    // L'activation demandée (onActivated) est arrivée : l'onglet est l'actif de son espace…
+    await expect.poll(async () => (await lireEtat(fenetre)).fenetres[0]!.actif[espaceA]).toBe(ouvert!.id);
     const etat = await lireEtat(fenetre);
     expect(ouvert!.espaceId).toBe(espaceA);
+    // … sans faire changer d'espace.
     expect(etat.fenetres[0]!.espaceActif).toBe(espaceB);
-    expect(etat.fenetres[0]!.actif[espaceA]).toBe(ouvert!.id);
   } finally {
     await fermer();
   }
