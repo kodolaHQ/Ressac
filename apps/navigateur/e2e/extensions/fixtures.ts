@@ -247,7 +247,21 @@ const sondeTableaux = {
 `,
 };
 
-export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
+/**
+ * Extension du Store dont le script de contenu marque les pages de hote.test : `data-store-vu` sur `<html>` et « STORE-VU »
+ * dans le texte. Les scripts du Store tournent aussi dans les lectures invisibles avec compte (accepté par la spec).
+ */
+const marqueurStore = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Marqueur du Store",
+    version: "1.0.0",
+    content_scripts: [{ matches: ["https://hote.test/*"], js: ["contenu.js"], run_at: "document_end" }],
+  },
+  "contenu.js": `document.documentElement.setAttribute("data-store-vu", "1");\ndocument.body.append(" STORE-VU ");\n`,
+};
+
+export const EXTENSIONS_TEST = { "marqueur-store": marqueurStore, bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 
 /**

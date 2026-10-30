@@ -15,6 +15,7 @@ import { ElectronChromeExtensions } from "electron-chrome-extensions";
 import { installChromeWebStore } from "electron-chrome-web-store";
 import { chargeesDans, lireCle, type EtatExtensions, type IdProfil, type Portee } from "@webaios/noyau";
 import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
+import { estInvisible } from "../contenus-invisibles";
 import { connexionNative } from "./natif";
 import { hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPermiseAgent } from "./reseau";
 
@@ -28,6 +29,12 @@ export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
 export const CANAL_URL_PERMISE = "webaios:extension-url-permise";
 export const CANAL_HOTE_PERMIS = "webaios:extension-hote-permis";
 export const CANAL_AGENT = "webaios:extension-agent";
+/**
+ * Canal du garde des extensions de l'agent : « cet id (`sender.tab.id`, celui que la bibliothèque donne aux onglets) est-il
+ * une vue d'onglet ? ». La garde de page retient les scripts de contenu tant que la réponse n'est pas oui, et
+ * `scripting.executeScript` refuse une autre cible : une lecture invisible n'est jamais un onglet.
+ */
+export const CANAL_ONGLET = "webaios:extension-onglet";
 
 /**
  * Ce que Chrome aurait fait au chargement, donné une fois par version et par profil : `installation` pour
@@ -220,6 +227,8 @@ export class ExtensionsProfils {
       verifierUrl?(extension: Electron.Extension, url: string): boolean;
       /** `tabs.insertCSS` d'une extension dans un onglet à l'adresse `url` ; absent : permis. */
       verifierHote?(extension: Electron.Extension, url: string): boolean;
+      /** Une vue d'onglet de WebAiOs (`vues.ongletDe`) ; absent : aucune vue n'en est un. */
+      estOnglet?(wc: WebContents): boolean;
       /**
        * `beforeInstall` de la page du Chrome Web Store dans la session de ce profil (store.ts, `avantInstallation`) ;
        * absent : la page du Store n'est pas équipée.
@@ -249,6 +258,10 @@ export class ExtensionsProfils {
       ipcMain.handle(CANAL_HOTE_PERMIS, (e, onglet: unknown) => {
         const x = instanceDeLExpediteur(e);
         return !!x && x.hotePermis(e.sender.session, idDeLaPage(e), onglet);
+      });
+      ipcMain.handle(CANAL_ONGLET, (e, onglet: unknown) => {
+        const x = instanceDeLExpediteur(e);
+        return !!x && x.estOnglet(e.sender.session, idDeLaPage(e), onglet);
       });
       ipcMain.on(CANAL_AGENT, (e: IpcMainEvent) => {
         const id = idDuCadre(e);
@@ -318,6 +331,7 @@ export class ExtensionsProfils {
       worker.ipc.handle(CANAL_DEMARRAGE, () => this.demarrage(profil, s, id, "fond"));
       worker.ipc.handle(CANAL_URL_PERMISE, (_e, url: unknown) => this.urlPermise(s, id, url));
       worker.ipc.handle(CANAL_HOTE_PERMIS, (_e, onglet: unknown) => this.hotePermis(s, id, onglet));
+      worker.ipc.handle(CANAL_ONGLET, (_e, onglet: unknown) => this.estOnglet(s, id, onglet));
     });
     // Aucun `session.webRequest` ici : il couperait tout declarativeNetRequest de la session (reseau.ts, branche B).
     // Lève si c'est impossible : le profil n'est alors pas enregistré, et aucune extension n'y sera jamais chargée.
@@ -413,6 +427,17 @@ export class ExtensionsProfils {
     const wc = tousLesWebContents.fromId(onglet);
     if (!accord || !wc || wc.isDestroyed() || wc.session !== s) return false;
     return hotePermisAgent(wc.getURL(), accord);
+  }
+
+  /**
+   * `globalThis.__webaios.estOnglet` : l'id est-il une vue d'onglet (jamais une lecture invisible), dans la session de
+   * l'extension `id` qui demande (chargée dans cette session) ?
+   */
+  estOnglet(s: Session, id: string | null, onglet: unknown): boolean {
+    if (!id || typeof onglet !== "number" || !s.extensions.getExtension(id)) return false;
+    const wc = tousLesWebContents.fromId(onglet);
+    if (!wc || typeof wc.isDestroyed !== "function" || wc.isDestroyed() || wc.session !== s || estInvisible(wc)) return false;
+    return this.o.estOnglet?.(wc) ?? false;
   }
 
   /** La session d'un expéditeur est-elle équipée par cette instance ? */

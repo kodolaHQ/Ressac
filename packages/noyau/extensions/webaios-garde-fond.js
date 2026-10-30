@@ -5,8 +5,16 @@
 // - Règles DNR dynamiques et de session : `redirect`, `modifyHeaders`, `regexSubstitution`, `transform` refusés.
 // - `tabs.create`, `tabs.update`, `windows.create` : l'adresse est d'abord soumise au processus principal
 //   (`globalThis.__webaios.urlPermise`, posé par le preload des correctifs), qui vérifie de nouveau à l'ouverture.
-// - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS` : l'onglet visé doit être un site des
-//   hôtes accordés (`__webaios.hotePermis`) ; ces appels natifs n'ont pas d'autre point de contrôle.
+// - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS` : l'onglet visé doit être une vue
+//   d'onglet (`__webaios.estOnglet` : jamais une lecture invisible) et un site des hôtes accordés (`__webaios.hotePermis`) ;
+//   ces appels natifs n'ont pas d'autre point de contrôle. `target.documentIds` est refusé (le garde ne saurait pas quel
+//   onglet est visé), `world: "MAIN"` aussi (hors de portée de la garde de page). `executeScript` injecte d'abord
+//   `webaios-correctifs-page.js`, `webaios-garde-page.js` et `webaios-portee.js` ; avec `func`, ces fichiers d'abord,
+//   puis la fonction dans les documents qui les ont reçus (`documentIds` rendus par le premier appel).
+// - `scripting.registerContentScripts` / `updateContentScripts` : les mêmes fichiers d'abord, puis le double enveloppé de
+//   chaque fichier (`webaios-env/<chemin>`, écrit par la copie) : retenu par la garde de page hors d'un onglet.
+// - `runtime.onMessage` : répond à `{ webaios: "contexte" }` (la garde de page) par `{ onglet }` ; les écouteurs de
+//   l'extension ne voient jamais ce message (ils ne peuvent pas répondre à la place du garde).
 // - WebRTC retiré.
 // Les fonctions d'origine ne sont gardées nulle part où l'extension pourrait les reprendre, et les propriétés
 // remplacées ne sont plus ni réécrivables ni supprimables. Les arguments sont figés (copie) avant d'être vérifiés.
@@ -42,6 +50,16 @@
   // Saisis maintenant : l'extension ne peut plus les remplacer ensuite pour le garde.
   const urlPermiseNatif = w && typeof w.urlPermise === "function" ? w.urlPermise : null;
   const hotePermisNatif = w && typeof w.hotePermis === "function" ? w.hotePermis : null;
+  const estOngletNatif = w && typeof w.estOnglet === "function" ? w.estOnglet : null;
+  const WM = WeakMap;
+  const wmGet = WeakMap.prototype.get;
+  const wmSet = WeakMap.prototype.set;
+  const prototypeDe = Object.getPrototypeOf;
+  const ProtoObjet = Object.prototype;
+  const minuscules = String.prototype.toLowerCase;
+  const debut = String.prototype.startsWith;
+  const indice = String.prototype.indexOf;
+  const decouper = String.prototype.split;
 
   const figer = (objet, nom, valeur) => {
     try {
@@ -132,7 +150,7 @@
    * Appelle `f` si `verifier(args)` rend vrai (ou une promesse de vrai), sinon refuse avec `message(args)` ; promesse ou
    * rappel, comme l'appel d'origine. Les arguments sont copiés une seule fois : la copie est vérifiée puis passée à l'API.
    */
-  const garder = (f, cible, verifier, message, prefixe = "Arguments refusés par WebAiOs") =>
+  const garder = (f, cible, verifier, message, prefixe = "Arguments refusés par WebAiOs", o = {}) =>
     function (...tous) {
       // Le rappel éventuel : le dernier argument, s'il est une fonction.
       let n = tous.length;
@@ -142,12 +160,21 @@
       try {
         args = copier(tous, 0, []);
         args.length = n;
+        // Adaptation des arguments copiés (fichiers de la garde en tête…) ; une erreur est un refus.
+        if (o.preparer) o.preparer(args);
       } catch (e) {
         return refuser(`${prefixe} (${e && e.message})`, rappel);
       }
       const appeler = () => {
-        if (rappel) args[args.length] = rappel;
-        return appliquer(f, cible, args);
+        if (!o.appel) {
+          if (rappel) args[args.length] = rappel;
+          return appliquer(f, cible, args);
+        }
+        // Appel composé (promesses) : le rappel reçoit son résultat, ou le refus avec lastError.
+        const r = o.appel(args);
+        if (!rappel) return r;
+        ensuite(r, (v) => rappel(v), (e) => refuser(`${e && e.message}`, rappel));
+        return undefined;
       };
       return new P((ok, ko) => {
         const echec = (e) => {
@@ -166,7 +193,7 @@
           verdict,
           (permis) => {
             if (permis !== true) {
-              echec(message(args));
+              echec(typeof permis === "string" ? permis : message(args));
               return;
             }
             let r;
@@ -199,6 +226,7 @@
     });
   const urlPermise = (url) => demander(urlPermiseNatif, `${url}`);
   const hotePermis = (onglet) => demander(hotePermisNatif, onglet);
+  const estOnglet = (onglet) => demander(estOngletNatif, onglet);
   /** Toutes les promesses de vrai, l'une après l'autre (sans `Promise.all`, remplaçable). */
   const toutes = (liste) =>
     new P((ok) => {
@@ -287,11 +315,25 @@
   }
 
   // --- Scripts et styles posés dans un onglet
+  const ONGLET_REFUSE = "Onglet refusé par WebAiOs";
+  const GARDES_PAGE = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
   const requete = tabs && typeof tabs.query === "function" ? tabs.query : null;
-  /** L'onglet visé et permis : celui donné, sinon l'onglet actif de la fenêtre courante (comme Chrome). */
+  /** Vrai si l'onglet `id` est une vue d'onglet (jamais une lecture invisible) d'un site accordé ; sinon le refus. */
+  const verdictOnglet = (id) =>
+    new P((ok) => {
+      ensuite(
+        estOnglet(id),
+        (onglet) => {
+          if (!onglet) return ok(ONGLET_REFUSE);
+          ensuite(hotePermis(id), (v) => ok(v ? true : SITE_REFUSE), () => ok(SITE_REFUSE));
+        },
+        () => ok(ONGLET_REFUSE),
+      );
+    });
+  /** L'onglet visé : celui donné, sinon l'onglet actif de la fenêtre courante (comme Chrome). */
   const ongletPermis = (id) =>
     new P((ok) => {
-      if (typeof id === "number") return ensuite(hotePermis(id), ok, () => ok(false));
+      if (typeof id === "number") return ensuite(verdictOnglet(id), ok, () => ok(false));
       if (!requete) return ok(false);
       let r;
       try {
@@ -304,31 +346,220 @@
         (liste) => {
           const actif = liste && liste[0];
           if (!actif || typeof actif.id !== "number") return ok(false);
-          ensuite(hotePermis(actif.id), ok, () => ok(false));
+          ensuite(verdictOnglet(actif.id), ok, () => ok(false));
         },
         () => ok(false),
       );
     });
-  const NOMS_SCRIPTS = ["executeScript", "insertCSS"];
+  /** Les fichiers de la garde, puis `liste` (copie dense). */
+  const gardesPuis = (liste) => {
+    const r = [];
+    for (let i = 0; i < GARDES_PAGE.length; i++) r[r.length] = GARDES_PAGE[i];
+    for (let i = 0; i < liste.length; i++) r[r.length] = liste[i];
+    return r;
+  };
+  /** Le double enveloppé d'un fichier de l'extension (`webaios-env/<chemin>`) ; lève si le chemin sort de l'extension. */
+  const enveloppe = (p) => {
+    const refus = () => new Erreur(`fichier refusé : ${typeof p === "string" ? p : typeof p}`);
+    if (typeof p !== "string" || appliquer(indice, p, ["\\"]) >= 0) throw refus();
+    const morceaux = appliquer(decouper, p, ["/"]);
+    let chemin = "";
+    for (let i = 0; i < morceaux.length; i++) {
+      const m = morceaux[i];
+      if (m === "" || m === ".") continue;
+      if (m === "..") throw refus();
+      if (chemin === "" && appliquer(debut, appliquer(minuscules, m, []), ["webaios-"])) throw refus();
+      chemin = chemin === "" ? m : `${chemin}/${m}`;
+    }
+    if (chemin === "") throw refus();
+    return `webaios-env/${chemin}`;
+  };
+  const mondeIsole = (d) => {
+    if (d.world !== undefined && d.world !== "ISOLATED") throw new Erreur(`world ${d.world}`);
+  };
+  /** Les détails copiés de executeScript / insertCSS : une cible avec un onglet, jamais documentIds. */
+  const ciblePropre = (args) => {
+    const d = args[0];
+    if (d === null || typeof d !== "object") throw new Erreur("détails absents");
+    const t = d.target;
+    if (t === null || typeof t !== "object") throw new Erreur("cible absente");
+    if (t.documentIds !== undefined) throw new Erreur("documentIds");
+    mondeIsole(d);
+    return d;
+  };
+  const verifierCible = (args) => (typeof args[0].target.tabId === "number" ? ongletPermis(args[0].target.tabId) : SITE_REFUSE);
+  /** Les ids des documents rendus par executeScript (tous, ou null). */
+  const documentsDe = (resultats) => {
+    if (!estListe(resultats)) return null;
+    const n = lirePropre(resultats, "length");
+    if (typeof n !== "number" || n === 0 || n > MAX_LISTE) return null;
+    const ids = [];
+    for (let i = 0; i < n; i++) {
+      const r = lirePropre(resultats, `${i}`);
+      const id = r !== null && typeof r === "object" ? lirePropre(r, "documentId") : TROU;
+      if (typeof id !== "string") return null;
+      ids[ids.length] = id;
+    }
+    return ids;
+  };
   const scripting = c.scripting;
   if (scripting) {
-    for (let i = 0; i < NOMS_SCRIPTS.length; i++) {
-      const f = scripting[NOMS_SCRIPTS[i]];
+    const executer = scripting.executeScript;
+    if (typeof executer === "function") {
+      figer(
+        scripting,
+        "executeScript",
+        garder(executer, scripting, verifierCible, () => SITE_REFUSE, undefined, {
+          preparer: (args) => {
+            const d = ciblePropre(args);
+            if (estListe(d.files)) d.files = gardesPuis(d.files);
+          },
+          appel: (args) => {
+            const d = args[0];
+            if (d.func === undefined) return appliquer(executer, scripting, [d]);
+            // La garde d'abord, puis la fonction dans les documents qui l'ont reçue (une navigation entre les deux
+            // ne la fait pas tourner ailleurs) ; sans documentId rendu, la même cible.
+            const premier = creer(null);
+            premier.target = d.target;
+            premier.files = gardesPuis([]);
+            if (d.injectImmediately !== undefined) premier.injectImmediately = d.injectImmediately;
+            return new P((ok, ko) => {
+              let r;
+              try {
+                r = appliquer(executer, scripting, [premier]);
+              } catch (e) {
+                return ko(e);
+              }
+              ensuite(
+                r,
+                (resultats) => {
+                  const ids = documentsDe(resultats);
+                  if (ids) {
+                    const t = creer(null);
+                    t.tabId = d.target.tabId;
+                    t.documentIds = ids;
+                    d.target = t;
+                  }
+                  let r2;
+                  try {
+                    r2 = appliquer(executer, scripting, [d]);
+                  } catch (e) {
+                    return ko(e);
+                  }
+                  ensuite(r2, ok, ko);
+                },
+                ko,
+              );
+            });
+          },
+        }),
+      );
+    }
+    const NOMS_CSS = ["insertCSS", "removeCSS"];
+    for (let i = 0; i < NOMS_CSS.length; i++) {
+      const f = scripting[NOMS_CSS[i]];
+      if (typeof f !== "function") continue;
+      figer(scripting, NOMS_CSS[i], garder(f, scripting, verifierCible, () => SITE_REFUSE, undefined, { preparer: ciblePropre }));
+    }
+    const NOMS_ENREGISTRES = ["registerContentScripts", "updateContentScripts"];
+    for (let i = 0; i < NOMS_ENREGISTRES.length; i++) {
+      const f = scripting[NOMS_ENREGISTRES[i]];
       if (typeof f !== "function") continue;
       figer(
         scripting,
-        NOMS_SCRIPTS[i],
-        garder(f, scripting, (args) => !!(args[0] && args[0].target) && ongletPermis(args[0].target.tabId), () => SITE_REFUSE),
+        NOMS_ENREGISTRES[i],
+        garder(f, scripting, () => true, () => SITE_REFUSE, undefined, {
+          preparer: (args) => {
+            const liste = args[0];
+            if (!estListe(liste)) throw new Erreur("liste de scripts attendue");
+            for (let j = 0; j < liste.length; j++) {
+              const s = liste[j];
+              if (s === null || typeof s !== "object") throw new Erreur("script illisible");
+              mondeIsole(s);
+              if (!estListe(s.js)) continue;
+              const js = [];
+              for (let k = 0; k < s.js.length; k++) js[js.length] = enveloppe(s.js[k]);
+              s.js = gardesPuis(js);
+            }
+          },
+        }),
       );
     }
     figer(c, "scripting", scripting);
   }
   if (tabs) {
+    const NOMS_SCRIPTS = ["executeScript", "insertCSS"];
     for (let i = 0; i < NOMS_SCRIPTS.length; i++) {
       const f = tabs[NOMS_SCRIPTS[i]];
       if (typeof f !== "function") continue;
       figer(tabs, NOMS_SCRIPTS[i], garder(f, tabs, (args) => ongletPermis(typeof args[0] === "number" ? args[0] : undefined), () => SITE_REFUSE));
     }
     figer(c, "tabs", tabs);
+  }
+
+  // --- Contexte des scripts de contenu (garde de page)
+  const runtime = c.runtime;
+  const onMessage = runtime && runtime.onMessage;
+  if (onMessage && typeof onMessage.addListener === "function") {
+    const estContexte = (m) => {
+      if (m === null || typeof m !== "object") return false;
+      const d = descripteur(m, "webaios");
+      return !!d && descripteur(d, "value") !== undefined && d.value === "contexte";
+    };
+    // Le premier écouteur : posé avant tout script de l'extension.
+    appliquer(onMessage.addListener, onMessage, [
+      (m, expediteur, repondre) => {
+        if (!estContexte(m)) return undefined;
+        const onglet = expediteur !== null && typeof expediteur === "object" ? lirePropre(expediteur, "tab") : TROU;
+        const id = onglet !== null && typeof onglet === "object" ? lirePropre(onglet, "id") : TROU;
+        const reponse = (v) => {
+          try {
+            repondre({ onglet: v === true });
+          } catch {
+            // Le script de contenu est parti.
+          }
+        };
+        ensuite(typeof id === "number" ? estOnglet(id) : false, reponse, () => reponse(false));
+        return true;
+      },
+    ]);
+    // Les écouteurs de l'extension, enveloppés : ce message ne leur parvient pas. Les méthodes d'un événement sont sur son
+    // prototype : chaque porteur de la chaîne est remplacé (seul `onMessage` est filtré, les autres événements passent).
+    const enveloppes = new WM();
+    const envelopper = (f) => {
+      let e = appliquer(wmGet, enveloppes, [f]);
+      if (!e) {
+        e = function (m, expediteur, repondre) {
+          if (estContexte(m)) return undefined;
+          return appliquer(f, this, [m, expediteur, repondre]);
+        };
+        appliquer(wmSet, enveloppes, [f, e]);
+      }
+      return e;
+    };
+    const NOMS_EVENEMENT = ["addListener", "removeListener", "hasListener"];
+    const porteurs = [];
+    for (let o = onMessage, n = 0; o !== null && o !== ProtoObjet && n < 16; o = prototypeDe(o), n++) porteurs[porteurs.length] = o;
+    for (let i = porteurs.length - 1; i >= 0; i--) {
+      const o = porteurs[i];
+      for (let j = 0; j < NOMS_EVENEMENT.length; j++) {
+        const nom = NOMS_EVENEMENT[j];
+        const d = descripteur(o, nom);
+        const natif = d && descripteur(d, "value") ? d.value : undefined;
+        if (typeof natif !== "function") continue;
+        figer(o, nom, function (f) {
+          if (this !== onMessage || typeof f !== "function") return appliquer(natif, this, [f]);
+          return appliquer(natif, this, [nom === "addListener" ? envelopper(f) : appliquer(wmGet, enveloppes, [f]) || f]);
+        });
+      }
+    }
+    // Sur l'événement lui-même aussi : la méthode trouvée par la chaîne, enveloppée.
+    for (let j = 0; j < NOMS_EVENEMENT.length; j++) {
+      const nom = NOMS_EVENEMENT[j];
+      if (descripteur(onMessage, nom)) continue;
+      const natif = onMessage[nom];
+      if (typeof natif === "function") figer(onMessage, nom, natif);
+    }
+    figer(runtime, "onMessage", onMessage);
   }
 })();

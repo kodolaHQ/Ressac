@@ -5,7 +5,7 @@ import { createServer as serveurHttps } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { dansLaVue, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
+import { dansLaVue, dossierWidgets, ecrireEtatWidget, ecrireWidget, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
 
 // Extensions de l'agent (`<racine>/extensions/<id>/`, le ~/WebAiOs du test). Sans point d'entrée avant les tâches 14 et 17
@@ -169,7 +169,12 @@ test.beforeAll(async () => {
   const serveur = serveurHttps({ key: readFileSync(cle), cert: readFileSync(cert) }, (req, res) => {
     noter(req.headers.host, req.url);
     req.resume();
+    const chemin = (req.url ?? "").split("?")[0];
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+    // Les pages des scripts de contenu (tâche 13) : un formulaire avec mot de passe, une page lue lentement.
+    if (chemin === "/formulaire") return res.end(PAGE_FORMULAIRE);
+    if (chemin === "/lecture") return res.end(PAGE_LECTURE);
+    if (chemin === "/lent.png") return void setTimeout(() => res.end(""), 6000);
     res.end(`<title>${req.url}</title>ok`);
   });
   // Une connexion TLS ouverte sans requête (preconnect) : le nom demandé (SNI) est noté, chemin « (connexion) ».
@@ -737,6 +742,278 @@ test("clients.openWindow (service worker) et runtime.setUninstallURL vers un dom
     expect(coupsVers("autre.test", "/clients-fuite")).toEqual([]);
     expect(coupsVers("autre.test", "/desinstall")).toEqual([]);
     console.log(`[mesure] clients.openWindow : ${fenetre} ; setUninstallURL : ${desinstallation}`);
+  } finally {
+    await fermer();
+  }
+});
+
+// --- Scripts de contenu de l'agent (tâche 13) : mots de passe, lectures invisibles, réseau.
+
+/** Un formulaire rempli par la page elle-même (comme un gestionnaire de mots de passe). */
+const PAGE_FORMULAIRE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
+<form id="f" action="/envoi"><input type="text" id="texte" name="texte"><input type="password" id="mdp" name="mdp"></form>
+<script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";</script>
+</body></html>`;
+/** Une page lue par un widget avec compte : son image retarde la fin du chargement (la lecture dure ~6 s). */
+const PAGE_LECTURE = `<!doctype html><html><head><meta charset="utf-8"><title>lecture</title></head><body><p>Texte lu</p><img src="/lent.png"></body></html>`;
+
+/**
+ * L'extension « garde » de l'agent : un script de contenu en deux fichiers sur hote.test (`outils.js` déclare `noter`,
+ * `contenu.js` s'en sert : un seul périmètre). Il lit les champs, écoute le clavier, envoie vers hote.test (la page),
+ * accorde.test (`reseau`) et autre.test (rien), puis marque `<html data-agent-vu>` et ajoute « AGENT-VU » au texte. Ce
+ * qu'il voit est dans `data-agent` (JSON). Son fond essaie de répondre lui-même « onglet » à la garde, et exécute les
+ * ordres de `ordre.html?<ordre>` (executeScript).
+ */
+const EXTENSION_GARDE = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Garde de l'agent",
+    version: "1.0.0",
+    permissions: ["scripting", "tabs"],
+    host_permissions: ["https://hote.test/*"],
+    background: { service_worker: "fond.js" },
+    content_scripts: [{ matches: ["https://hote.test/*"], js: ["outils.js", "contenu.js"], run_at: "document_end" }],
+  },
+  "webaios.json": { reseau: ["accorde.test"] },
+  "outils.js": `function noter(cle, valeur) {
+  const r = JSON.parse(document.documentElement.getAttribute("data-agent") || "{}");
+  r[cle] = valeur;
+  document.documentElement.setAttribute("data-agent", JSON.stringify(r));
+}
+`,
+  "contenu.js": `const mdp = document.getElementById("mdp");
+const champ = document.getElementById("texte");
+if (mdp) {
+  noter("mdp", mdp.value);
+  noter("texte", champ.value);
+  const fd = new FormData(document.getElementById("f"));
+  noter("formMdp", fd.get("mdp"));
+  noter("formTexte", fd.get("texte"));
+  console.log("agent:" + JSON.stringify({ mdp: mdp.value, texte: champ.value }));
+  const touches = [];
+  const voir = (x) => { touches.push(x); noter("touches", touches); };
+  document.addEventListener("keydown", (e) => voir(e.target.id + ":" + e.key), true);
+  window.addEventListener("keypress", (e) => voir("keypress:" + e.target.id));
+  mdp.onkeyup = (e) => voir("onkeyup:" + e.key);
+  champ.onkeyup = (e) => voir("onkeyup-texte:" + e.key);
+  for (const el of [champ, mdp]) el.addEventListener("input", { handleEvent: (e) => voir("input:" + e.target.id) });
+  noter("ecoute", true);
+  const essais = {};
+  const essayer = (nom, f) => {
+    try {
+      const r = f();
+      essais[nom] = "parti";
+      if (r && typeof r.then === "function") r.then(() => {}, (e) => { essais[nom] = String(e && e.message); noter("reseau", essais); });
+    } catch (e) {
+      essais[nom] = String(e && e.message);
+    }
+  };
+  for (const h of ["hote.test", "accorde.test", "autre.test"]) {
+    essayer("fetch-" + h, () => fetch("https://" + h + "/cs-fetch"));
+    essayer("image-" + h, () => { new Image().src = "https://" + h + "/cs-image"; });
+  }
+  essayer("xhr-autre", () => { const x = new XMLHttpRequest(); x.open("GET", "https://autre.test/cs-xhr"); x.send(); });
+  essayer("beacon-autre", () => { if (!navigator.sendBeacon("https://autre.test/cs-beacon", "x")) throw new Error("refusé"); });
+  essayer("ws-autre", () => new WebSocket("wss://autre.test/cs-ws"));
+  essayer("source-autre", () => new EventSource("https://autre.test/cs-source"));
+  essayer("attribut-autre", () => document.createElement("img").setAttribute("src", "https://autre.test/cs-attribut"));
+  essayer("lien-autre", () => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://autre.test/cs-lien"; document.head.appendChild(l); });
+  essayer("ouvrir-autre", () => { if (window.open("https://autre.test/cs-ouvre") === null) throw new Error("null"); });
+  noter("reseau", essais);
+}
+document.documentElement.setAttribute("data-agent-vu", "1");
+document.body.append(" AGENT-VU ");
+`,
+  "injecte.js": `document.getElementById("mdp").value + "|" + document.getElementById("texte").value;\n`,
+  "fond.js": `// Il tente de répondre « onglet » à la garde de page à sa place : le garde du fond ne le lui laisse pas voir.
+chrome.runtime.onMessage.addListener((m, _e, repondre) => {
+  if (m && m.webaios === "contexte") repondre({ onglet: true });
+});
+// Et par la méthode du prototype de l'événement, prise à part.
+let porteur = chrome.runtime.onMessage;
+while (porteur && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(porteur) || {}, "addListener")) porteur = Object.getPrototypeOf(porteur);
+const ajouterNatif = porteur ? Object.getPrototypeOf(porteur).addListener : chrome.runtime.onMessage.addListener;
+ajouterNatif.call(chrome.runtime.onMessage, (m, _e, repondre) => {
+  if (m && m.webaios === "contexte") repondre({ onglet: true });
+});
+// Où sont les méthodes de l'événement, et sont-elles celles du garde (non configurables) ?
+const porteurs = [];
+for (let o = chrome.runtime.onMessage; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+  const d = Object.getOwnPropertyDescriptor(o, "addListener");
+  porteurs.push(d ? (d.configurable ? "configurable" : "figee") : "-");
+}
+chrome.runtime.onMessage.addListener((m, _e, repondre) => {
+  if (typeof m !== "string") return;
+  (async () => {
+    if (m.startsWith("executer:")) {
+      const tabId = Number(m.slice("executer:".length));
+      return chrome.scripting.executeScript({ target: { tabId }, func: () => document.documentElement.getAttribute("data-agent-vu") })
+        .then((r) => "ok " + JSON.stringify(r.map((x) => x.result)), (e) => "erreur " + e.message);
+    }
+    if (m === "executer-onglet") {
+      const [onglet] = await chrome.tabs.query({ url: "https://hote.test/formulaire*" });
+      const fichiers = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, files: ["injecte.js"] });
+      const fonction = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, func: () => document.getElementById("mdp").value + "|" + document.getElementById("texte").value });
+      return JSON.stringify({ fichiers: fichiers.map((x) => x.result), fonction: fonction.map((x) => x.result), documentId: typeof fonction[0].documentId });
+    }
+    if (m === "porteurs") return JSON.stringify({ porteurs, priseAPartEstCelleDuGarde: ajouterNatif === chrome.runtime.onMessage.addListener });
+    return "inconnu";
+  })().then(repondre, (e) => repondre("erreur " + (e && e.message)));
+  return true;
+});
+`,
+  "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
+  "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
+`,
+};
+const ACCORD_GARDE = {
+  permissions: ["scripting", "tabs"],
+  hotes: ["https://hote.test/*"],
+  reseau: ["accorde.test"],
+  tousLesSites: false,
+  scriptsTousLesSites: false,
+  scripts: true,
+};
+
+function poserGarde(profil: string, racine: string): void {
+  ecrireExtensionAgent(racine, "garde", EXTENSION_GARDE);
+  mkdirSync(join(profil, "extensions"), { recursive: true });
+  writeFileSync(
+    join(profil, "extensions", "etat.json"),
+    JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:garde": { ...entree(ACCORD_GARDE), nom: "Garde de l'agent" } } }),
+  );
+}
+
+/** Ce que le script de contenu de l'agent a noté dans la vue dont l'URL contient `morceau` (null : rien). */
+const vuParAgent = async (app: ElectronApplication, morceau: string) => {
+  const brut = await dansLaVue(app, morceau, "document.documentElement.getAttribute('data-agent')");
+  return typeof brut === "string" ? (JSON.parse(brut) as Record<string, unknown>) : null;
+};
+
+test("sur une page locale, la valeur d'un champ de mot de passe rempli est vide pour le script de l'agent, celle d'un champ texte non ; aucun keydown d'un champ de mot de passe ne lui parvient ; executeScript y passe d'abord par la garde", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserGarde(profil, racine);
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Garde de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    await ouvrirOnglet(fenetre, "https://hote.test/formulaire");
+    await expect.poll(async () => (await vuParAgent(app, "hote.test/formulaire"))?.ecoute, { timeout: 15_000 }).toBe(true);
+    const vu = (await vuParAgent(app, "hote.test/formulaire"))!;
+    // La page, elle, voit bien sa valeur.
+    expect(await dansLaVue(app, "hote.test/formulaire", "document.getElementById('mdp').value")).toBe("secret");
+    expect(vu).toMatchObject({ mdp: "", texte: "visible", formMdp: null, formTexte: "visible" });
+    // Le clavier, simulé par la page : ce qui vise le champ texte arrive, rien de ce qui vise le mot de passe.
+    await dansLaVue(
+      app,
+      "hote.test/formulaire",
+      `(() => {
+        const ev = (el, type, key) => el.dispatchEvent(type === "input" ? new InputEvent("input", { bubbles: true, data: key }) : new KeyboardEvent(type, { key, bubbles: true }));
+        const t = document.getElementById("texte"), m = document.getElementById("mdp");
+        ev(t, "keydown", "a"); ev(t, "keypress", "a"); ev(t, "input", "a"); ev(t, "keyup", "a");
+        ev(m, "keydown", "b"); ev(m, "keypress", "b"); ev(m, "input", "b"); ev(m, "keyup", "b");
+      })()`,
+    );
+    await expect.poll(async () => (await vuParAgent(app, "hote.test/formulaire"))?.touches).toEqual(["texte:a", "keypress:texte", "input:texte", "onkeyup-texte:a"]);
+    await new Promise((ok) => setTimeout(ok, 300));
+    expect((await vuParAgent(app, "hote.test/formulaire"))?.touches).toEqual(["texte:a", "keypress:texte", "input:texte", "onkeyup-texte:a"]);
+    // executeScript depuis le fond : fichiers et fonction tournent après la garde.
+    const r = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?executer-onglet`);
+    console.log(`[mesure] executeScript dans un onglet : ${r.titre}`);
+    expect(JSON.parse(r.titre)).toMatchObject({ fichiers: ["|visible"], fonction: ["|visible"] });
+  } finally {
+    await fermer();
+  }
+});
+
+test("fetch et new Image().src vers un domaine non accordé depuis le script de contenu : aucune requête reçue par le serveur ; vers le site de la page et vers reseau : reçue", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserGarde(profil, racine);
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    await expect.poll(async () => idChargee(app, "Garde de l'agent"), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    await ouvrirOnglet(fenetre, "https://hote.test/formulaire?reseau");
+    await expect.poll(() => coupsVers("hote.test", "/cs-fetch").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(() => coupsVers("hote.test", "/cs-image").length).toBeGreaterThan(0);
+    await expect.poll(() => coupsVers("accorde.test", "/cs-fetch").length).toBeGreaterThan(0);
+    await new Promise((ok) => setTimeout(ok, 1500));
+    const vu = (await vuParAgent(app, "hote.test/formulaire?reseau"))!;
+    console.log(`[mesure] réseau du script de contenu : ${JSON.stringify(vu.reseau)}`);
+    for (const chemin of ["/cs-fetch", "/cs-image", "/cs-xhr", "/cs-beacon", "/cs-ws", "/cs-source", "/cs-attribut", "/cs-lien", "/cs-ouvre"]) {
+      expect(coupsVers("autre.test", chemin), chemin).toEqual([]);
+    }
+    expect(vu.reseau).toMatchObject({
+      "fetch-autre.test": "URL refusée par WebAiOs",
+      "image-autre.test": "URL refusée par WebAiOs",
+      "xhr-autre": "URL refusée par WebAiOs",
+      "beacon-autre": "refusé",
+      "ws-autre": "URL refusée par WebAiOs",
+      "source-autre": "URL refusée par WebAiOs",
+      "attribut-autre": "URL refusée par WebAiOs",
+      "lien-autre": "URL refusée par WebAiOs",
+      "ouvrir-autre": "null",
+      "fetch-hote.test": "parti",
+      "image-hote.test": "parti",
+      "fetch-accorde.test": "parti",
+    });
+  } finally {
+    await fermer();
+  }
+});
+
+test("dans une lecture invisible avec compte du même profil, data-agent-vu est absent et executeScript vers elle est refusé ; une extension Store de test y agit (accepté) ; dans un onglet du même profil, data-agent-vu est présent", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserGarde(profil, racine);
+  installerStoreFactice(profil, "marqueur-store", { profils: ["defaut"] });
+  ecrireWidget(racine, "lecteur", {
+    nom: "Lecteur",
+    recolte: { minutes: 60 },
+    sources: { compte: ["hote.test"], publiques: [] },
+    code: `export default async (webaios) => { const p = await webaios.lirePage("https://hote.test/lecture", { compte: true }); return { titre: p.titre, texte: p.texte }; };`,
+    affichage: '<!doctype html><meta charset="utf-8"><p>lecteur</p>',
+    exemple: { exemple: "lecteur" },
+  });
+  // Déjà à jour : la lecture n'a lieu qu'à la demande, une fois les extensions chargées.
+  ecrireEtatWidget(profil, "lecteur");
+  writeFileSync(join(dossierWidgets(profil), "accords.json"), JSON.stringify({ lecteur: { domaines: ["hote.test"], publiques: [], profil: "defaut" } }));
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Garde de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    await expect.poll(async () => idChargee(app, "Marqueur du Store"), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    const w = fenetre.getByTestId("widget-lecteur");
+    await w.getByRole("button", { name: "Options du widget" }).click();
+    await w.getByRole("menuitem", { name: "Mettre à jour maintenant" }).click();
+    // La fenêtre invisible de la lecture : le script du Store y a tourné (accepté), celui de l'agent non.
+    const marques = () =>
+      dansLaVue(app, "hote.test/lecture", "[document.documentElement.getAttribute('data-store-vu'), document.documentElement.getAttribute('data-agent-vu')].join()");
+    await expect.poll(marques, { timeout: 15_000 }).toBe("1,");
+    const idLecture = await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((x) => x.getURL().includes("hote.test/lecture"))?.id ?? null);
+    expect(idLecture).not.toBeNull();
+    const ordre = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?executer:${idLecture}`);
+    expect(ordre.titre).toBe("erreur Onglet refusé par WebAiOs");
+    // La lecture était encore là : le refus vient de la garde, pas d'une fenêtre déjà fermée.
+    expect(await app.evaluate(({ webContents }, id) => webContents.fromId(id)?.getURL() ?? null, idLecture!)).toBe("https://hote.test/lecture");
+    // Toujours rien de l'agent, une seconde plus tard (la garde a reçu sa réponse).
+    expect(await marques()).toBe("1,");
+    console.log(`[mesure] chrome.runtime.onMessage.addListener, de l'événement vers ses prototypes : ${(await ouvrirPage(app, `chrome-extension://${id}/ordre.html?porteurs`)).titre}`);
+
+    const fichier = join(dossierWidgets(profil), "lecteur", "donnees.json");
+    await expect.poll(() => existsSync(fichier), { timeout: 30_000 }).toBe(true);
+    const lu = JSON.parse(readFileSync(fichier, "utf8")) as { titre: string; texte: string };
+    expect(lu.titre).toBe("lecture");
+    expect(lu.texte).toContain("STORE-VU");
+    expect(lu.texte).not.toContain("AGENT-VU");
+    // Témoin : dans un onglet du même profil, le script de l'agent tourne.
+    await ouvrirOnglet(fenetre, "https://hote.test/lecture?onglet");
+    await expect
+      .poll(() => dansLaVue(app, "hote.test/lecture?onglet", "[document.documentElement.getAttribute('data-store-vu'), document.documentElement.getAttribute('data-agent-vu')].join()"), {
+        timeout: 15_000,
+      })
+      .toBe("1,1");
   } finally {
     await fermer();
   }

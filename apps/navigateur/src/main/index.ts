@@ -364,6 +364,8 @@ app.whenReady().then(async () => {
       const id = vues.ongletDe(wc);
       if (id) vues.fermer(id);
     },
+    // Une vue d'onglet (ou sa popup) ; les lectures invisibles n'en sont jamais (ExtensionsProfils.estOnglet le revérifie).
+    estOnglet: (wc) => vues.ongletDe(wc) !== null && !estInvisible(wc),
     invisible: INVISIBLE,
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     preloadCorrectifs: join(__dirname, "../preload/extensions.js"),

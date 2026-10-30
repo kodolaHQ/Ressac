@@ -30,6 +30,10 @@ const GARDE_PAGE = "webaios-garde-page.js";
 const GARDE_FOND = "webaios-garde-fond.js";
 const FOND = "webaios-fond.js";
 const GARDES = [CORRECTIFS_PAGE, GARDE_PAGE, GARDE_FOND];
+/** La portée de la copie (`reseau`, `hotes`) pour la garde de page : injectée par executeScript et registerContentScripts. */
+const PORTEE = "webaios-portee.js";
+/** Doubles enveloppés (`__webaiosApres`) de chaque fichier .js, pour `scripting.registerContentScripts`. */
+const ENVELOPPES = "webaios-env";
 
 /** CSP d'une copie de l'agent : `connect-src` ne s'ouvre qu'aux domaines de `reseau`, en https et en wss (WebSocket). */
 export function cspAgent(reseau: readonly string[]): string {
@@ -208,6 +212,42 @@ function scriptsEnTete(manifeste: Manifeste, enTete: string[]): void {
   }
 }
 
+/** Les fichiers de l'agent dans une seule fonction retenue par la garde (`__webaiosApres`), BOM retirés, un seul périmètre. */
+function envelopper(contenus: Buffer[]): Buffer {
+  const morceaux: Buffer[] = [Buffer.from("globalThis.__webaiosApres(() => {\n")];
+  contenus.forEach((c, i) => {
+    if (i > 0) morceaux.push(Buffer.from("\n;\n"));
+    morceaux.push(c.subarray(0, 3).equals(BOM) ? c.subarray(3) : c);
+  });
+  morceaux.push(Buffer.from("\n});\n"));
+  return Buffer.concat(morceaux);
+}
+
+/**
+ * Chaque entrée `content_scripts[i]` qui a du `js` ne charge plus qu'un fichier, `webaios-cs-<i>.js` (correctifs, garde,
+ * portée, puis ses fichiers dans une seule fonction, écrit à la copie). Refus : un fichier absent (`world: "MAIN"`, hors
+ * de portée de la garde, est déjà refusé par l'analyse du manifeste).
+ */
+function regrouperScripts(manifeste: Manifeste, fichiers: Map<string, Buffer>): { entrees: Map<number, string[]>; refus: string[] } {
+  const entrees = new Map<number, string[]>();
+  const refus: string[] = [];
+  if (!Array.isArray(manifeste.content_scripts)) return { entrees, refus };
+  manifeste.content_scripts = manifeste.content_scripts.map((cs, i) => {
+    const c = objet(cs);
+    if (!c) return cs;
+    if (!Array.isArray(c.js) || c.js.length === 0) return cs;
+    const chemins: string[] = [];
+    for (const brut of c.js as unknown[]) {
+      const chemin = typeof brut === "string" ? posix.normalize(brut.replace(/^\/+/, "")) : "";
+      if (!chemin || chemin.startsWith("../") || !fichiers.has(chemin)) refus.push(`Script de contenu introuvable : ${String(brut)}`);
+      else chemins.push(chemin);
+    }
+    entrees.set(i, chemins);
+    return { ...c, js: [`webaios-cs-${i}.js`] };
+  });
+  return { entrees, refus };
+}
+
 const BALISE_GARDE = Buffer.from(`<script src="/${GARDE_FOND}"></script>`);
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
@@ -256,7 +296,9 @@ function refusFichiers(fichiers: Map<string, Buffer>): string[] {
   const refus: string[] = [];
   const reserves = new Set([FOND, ...GARDES]);
   for (const [chemin, contenu] of fichiers) {
-    if (reserves.has(chemin.normalize("NFC").toLowerCase())) refus.push(`Nom de fichier réservé à WebAiOs : ${chemin}`);
+    // Tout nom de premier niveau en « webaios- » : gardes, scripts regroupés (webaios-cs-<i>.js), portée, doubles.
+    const premier = chemin.split("/")[0]!.normalize("NFC").toLowerCase();
+    if (reserves.has(premier) || premier.startsWith("webaios-")) refus.push(`Nom de fichier réservé à WebAiOs : ${chemin}`);
     const document = DOCUMENTS_REFUSES.exec(chemin);
     if (document) refus.push(`Type de fichier refusé (.${document[1]!.toLowerCase()}) : ${chemin}`);
     if (/\.svg$/i.test(chemin)) {
@@ -324,7 +366,12 @@ export async function preparerCopie(o: {
   delete manifeste.key;
   delete manifeste.update_url;
   manifeste.content_security_policy = { extension_pages: cspAgent(analyse.portee.reseau) };
-  scriptsEnTete(manifeste, [CORRECTIFS_PAGE, GARDE_PAGE]);
+  const portee = `globalThis.__webaiosPortee(${JSON.stringify({ reseau: analyse.portee.reseau, hotes: analyse.portee.hotes })});`;
+  const regroupes = regrouperScripts(manifeste, fichiers);
+  if (regroupes.refus.length > 0) {
+    analyse.refus = [...analyse.refus, ...regroupes.refus];
+    return { analyse, empreinte, ...lue };
+  }
   const fond = objet(manifeste.background);
   let fondJs: string;
   if (fond && typeof fond.service_worker === "string") {
@@ -350,6 +397,23 @@ export async function preparerCopie(o: {
       );
     }
     for (const g of GARDES) await copyFile(join(o.dossierGardes, g), join(tmp, g));
+    const enTete = Buffer.concat([
+      Buffer.from("// Généré par WebAiOs : correctifs, garde de page, portée, puis les scripts de l'agent (retenus hors d'un onglet).\n"),
+      await readFile(join(o.dossierGardes, CORRECTIFS_PAGE)),
+      Buffer.from("\n;\n"),
+      await readFile(join(o.dossierGardes, GARDE_PAGE)),
+      Buffer.from(`\n;\n${portee}\n`),
+    ]);
+    for (const [i, scripts] of regroupes.entrees) {
+      await writeFile(join(tmp, `webaios-cs-${i}.js`), Buffer.concat([enTete, envelopper(scripts.map((c) => fichiers.get(c)!))]));
+    }
+    await writeFile(join(tmp, PORTEE), `${portee}\n`);
+    for (const [chemin, contenu] of fichiers) {
+      if (!/\.js$/i.test(chemin)) continue;
+      const destination = join(tmp, ENVELOPPES, chemin);
+      await mkdir(dirname(destination), { recursive: true });
+      await writeFile(destination, envelopper([contenu]));
+    }
     await writeFile(join(tmp, FOND), fondJs);
     await writeFile(join(tmp, "manifest.json"), JSON.stringify(manifeste, null, 2));
     await remplacerDossier(tmp, o.cible);

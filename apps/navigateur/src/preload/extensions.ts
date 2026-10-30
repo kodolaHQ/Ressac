@@ -372,6 +372,8 @@ if (dansExtension) {
     contextBridge.exposeInMainWorld("__webaios", {
       urlPermise: (url: unknown): Promise<boolean> => ipcRenderer.invoke("webaios:extension-url-permise", String(url)),
       hotePermis: (onglet: unknown): Promise<boolean> => ipcRenderer.invoke("webaios:extension-hote-permis", Number(onglet)),
+      // Une vue d'onglet, jamais une lecture invisible (garde de page des scripts de contenu, executeScript).
+      estOnglet: (onglet: unknown): Promise<boolean> => ipcRenderer.invoke("webaios:extension-onglet", Number(onglet)),
     });
   } catch (e) {
     console.error("[webaios] garde des extensions :", e);

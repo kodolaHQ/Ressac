@@ -10,7 +10,9 @@ import type { EtatNavigateur } from "../../src/commun/modele";
 // `vi.mock` passe avant les imports : ce qu'utilise le leurre est créé par `vi.hoisted`.
 const { EventEmitter } = await vi.hoisted(() => import("node:events"));
 type EventEmitter = import("node:events").EventEmitter;
-const { notificationsMontrees, ecouteursApp, gestionnairesIpc, menus } = vi.hoisted(() => ({
+const { notificationsMontrees, ecouteursApp, gestionnairesIpc, menus, vuesParId } = vi.hoisted(() => ({
+  /** `webContents.fromId` : les vues posées par un test (sinon un objet vide). */
+  vuesParId: new Map<number, unknown>(),
   notificationsMontrees: [] as unknown[],
   menus: [] as { items: { label?: string; click?: () => void }[] }[],
   /** `ipcMain.handle` : canal → gestionnaire (le dernier posé). */
@@ -44,7 +46,7 @@ vi.mock("electron", () => {
     session: { defaultSession: fausseSession("defaut-electron") },
     BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null, getFocusedWindow: () => null },
     BaseWindow: { getAllWindows: () => [] },
-    webContents: { fromId: () => ({}) },
+    webContents: { fromId: (id: number) => vuesParId.get(id) ?? {} },
     webFrameMain: { fromId: () => null },
     Notification,
     // Le menu d'un bouton d'extension : ses entrées sont gardées (`menus`), jamais montrées.
@@ -157,7 +159,7 @@ function fausseSession(nom: string): FausseSession {
 }
 
 const { ElectronChromeExtensions } = await import("electron-chrome-extensions");
-const { detournerNotifications, ExtensionsProfils, CANAL_DEMARRAGE } = await import("../../src/main/extensions/sessions");
+const { detournerNotifications, ExtensionsProfils, CANAL_DEMARRAGE, CANAL_ONGLET } = await import("../../src/main/extensions/sessions");
 const { connexionNative } = await import("../../src/main/extensions/natif");
 
 const temporaires: string[] = [];
@@ -231,6 +233,7 @@ function creer(
     notifications?: boolean;
     verifierUrl?: (extension: Electron.Extension, url: string) => boolean;
     verifierHote?: (extension: Electron.Extension, url: string) => boolean;
+    estOnglet?: (wc: Electron.WebContents) => boolean;
   } = {},
 ) {
   const p = new ExtensionsProfils({
@@ -243,6 +246,7 @@ function creer(
     },
     ...(o.verifierUrl ? { verifierUrl: o.verifierUrl } : {}),
     ...(o.verifierHote ? { verifierHote: o.verifierHote } : {}),
+    ...(o.estOnglet ? { estOnglet: o.estOnglet } : {}),
     dossier,
     etat: () => etat,
     premierPlan: () => "f1",
@@ -812,6 +816,51 @@ test("accordAgent : connu avant la fin du chargement (id calculé du dossier de 
   // Une entrée de l'agent dont l'idChrome est noté au registre, sans accord.
   await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }), "agent:nue": entree("agent", [], { accord: null, idChrome: "c".repeat(32) }) }));
   expect(p.accordAgent("c".repeat(32))).toBeNull();
+});
+
+test("estOnglet : vrai seulement pour une vue d'onglet de la session de l'extension, jamais une lecture invisible ; canal du service worker compris", async () => {
+  const { marquerInvisible } = await import("../../src/main/contenus-invisibles");
+  const s = fausseSession("defaut");
+  const autre = fausseSession("autre");
+  const vue = (session: FausseSession) => ({ isDestroyed: () => false, session });
+  const onglet = vue(s);
+  const lecture = vue(s);
+  marquerInvisible(lecture as unknown as Electron.WebContents);
+  const ailleurs = vue(autre);
+  const popupExtension = vue(s);
+  [onglet, lecture, ailleurs, popupExtension].forEach((v, i) => vuesParId.set(i + 1, v));
+  try {
+    // La lecture invisible et l'onglet d'un autre profil seraient des vues d'onglet pour `vues.ongletDe` : c'est
+    // l'invisibilité et la session qui les écartent.
+    const p = creer({ estOnglet: (wc) => wc !== (popupExtension as unknown) });
+    p.brancher(s as unknown as Electron.Session, "defaut");
+    await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+    const sess = s as unknown as Electron.Session;
+    expect(p.estOnglet(sess, "id-copies-fond", 1)).toBe(true);
+    expect(p.estOnglet(sess, "id-copies-fond", 2)).toBe(false);
+    expect(p.estOnglet(sess, "id-copies-fond", 3)).toBe(false);
+    expect(p.estOnglet(sess, "id-copies-fond", 4)).toBe(false);
+    expect(p.estOnglet(sess, "id-copies-fond", 99)).toBe(false);
+    expect(p.estOnglet(sess, "id-copies-fond", "1")).toBe(false);
+    expect(p.estOnglet(sess, "inconnue", 1)).toBe(false);
+    expect(p.estOnglet(sess, null, 1)).toBe(false);
+    // Le service worker de l'extension demande par son propre canal.
+    const gestionnaires = new Map<string, (...a: unknown[]) => unknown>();
+    s.workers.set(5, { scope: "chrome-extension://id-copies-fond/", ipc: { handle: (c: string, f: (...a: unknown[]) => unknown) => void gestionnaires.set(c, f), on: () => {} } });
+    s.serviceWorkers.emit("running-status-changed", { runningStatus: "starting", versionId: 5 });
+    const f = gestionnaires.get(CANAL_ONGLET)!;
+    expect(f({}, 1)).toBe(true);
+    expect(f({}, 2)).toBe(false);
+    // Sans option : rien n'est un onglet.
+    const q = creer();
+    const s2 = fausseSession("defaut");
+    q.brancher(s2 as unknown as Electron.Session, "defaut");
+    await q.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+    vuesParId.set(6, vue(s2));
+    expect(q.estOnglet(s2 as unknown as Electron.Session, "id-copies-fond", 6)).toBe(false);
+  } finally {
+    vuesParId.clear();
+  }
 });
 
 test("extension de l'agent : tabs.create, tabs.update, windows.create hors de son accord rejettent « URL refusée par WebAiOs » ; tabs.insertCSS hors de ses hôtes « Site refusé par WebAiOs »", async () => {
