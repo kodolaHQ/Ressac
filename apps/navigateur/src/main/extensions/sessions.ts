@@ -192,6 +192,8 @@ function idPageExtension(wc: WebContents, url: string | undefined): { instance: 
 const DOSSIERS_STOCKAGE = ["Local Extension Settings", "Sync Extension Settings", "Managed Extension Settings", "DNR Extension Rules", "Extension Rules"];
 /** Chaque étape de l'effacement du stockage, au plus : au-delà, elle échoue (la file des synchronisations continue). */
 export const DELAI_EFFACEMENT_MS = 10_000;
+/** Démarrage du service worker d'une extension qu'on vient de charger, au plus : au-delà, la synchronisation continue. */
+export const DELAI_DEMARRAGE_FOND_MS = 10_000;
 /** `p`, ou une erreur « <étape> : délai dépassé » après `ms`. */
 function borne<T>(p: Promise<T>, etape: string, ms: number): Promise<T> {
   let minuterie: ReturnType<typeof setTimeout> | undefined;
@@ -229,6 +231,8 @@ export class ExtensionsProfils {
   private sansPlantages = new Map<string, number>();
   private dernier: EtatExtensions | undefined;
   private file: Promise<void> = Promise.resolve();
+  /** Les effacements de stockage, un à la fois, hors de la file des synchronisations (ils ne la retiennent pas). */
+  private fileEffacements: Promise<void> = Promise.resolve();
   /** Par profil : clé → dossier voulu (posé avant le chargement : un service worker peut démarrer pendant celui-ci). */
   private voulues = new Map<IdProfil, Map<string, string>>();
   /**
@@ -301,6 +305,8 @@ export class ExtensionsProfils {
       apresSynchro?(): void;
       /** Délai de chaque étape de l'effacement du stockage (`DELAI_EFFACEMENT_MS` par défaut ; tests). */
       delaiEffacementMs?: number;
+      /** Démarrage du service worker au chargement, au plus (`DELAI_DEMARRAGE_FOND_MS` ; tests). */
+      delaiFondMs?: number;
     },
   ) {
     instancesVivantes.add(this);
@@ -473,15 +479,18 @@ export class ExtensionsProfils {
 
   /**
    * Efface le stockage de l'extension dont `chemin` est le dossier (le manifeste sans code posé à la place d'une copie
-   * de l'agent supprimée : même id Chromium) dans chacune de `sessions`, dans la file des synchronisations : chargée,
+   * de l'agent supprimée : même id Chromium) dans chacune de `sessions`, dans sa propre file (jamais dans celle des
+   * synchronisations, qu'il ne retient pas) : chargée,
    * `chrome.storage` vidé depuis une de ses pages (jamais montrée), retirée, puis le reste de son origine
    * (`clearStorageData` : IndexedDB, service worker…) et ses dossiers sous `storagePath`. Lève au premier échec.
    */
   effacerStockage(chemin: string, sessions: readonly Session[]): Promise<void> {
-    const travail = this.file.then(async () => {
+    // L'entrée a déjà quitté le registre et seul le talon est à ce chemin : aucune synchronisation ne le charge, l'effacement
+    // n'a pas à attendre (ni à retenir) la coupure générale ou les autres changements.
+    const travail = this.fileEffacements.then(async () => {
       for (const s of new Set(sessions)) await this.effacerStockageDans(s, chemin);
     });
-    this.file = travail.catch(() => undefined);
+    this.fileEffacements = travail.catch(() => undefined);
     return travail;
   }
 
@@ -836,7 +845,9 @@ export class ExtensionsProfils {
         if (lireCle(cle)?.source === "agent" && e.extensions[cle]?.idChrome !== ext.id) this.o.noterIdChrome?.(cle, ext.id);
         // Rien n'assure qu'un service worker MV3 démarre au chargement : ses règles et son onInstalled en dépendent.
         if ((ext.manifest as { background?: unknown }).background) {
-          await s.serviceWorkers.startWorkerForScope(ext.url).catch((erreur: unknown) => console.error(`[extensions] fond de ${cle} non démarré :`, erreur));
+          await borne(s.serviceWorkers.startWorkerForScope(ext.url), "Démarrage du fond", this.o.delaiFondMs ?? DELAI_DEMARRAGE_FOND_MS).catch((erreur: unknown) =>
+            console.error(`[extensions] fond de ${cle} non démarré :`, erreur),
+          );
         }
       } catch (erreur) {
         this.erreurs.set(cle, (erreur as Error).message);

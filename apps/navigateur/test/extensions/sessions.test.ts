@@ -260,6 +260,7 @@ function creer(
     consoles?: ConstructorParameters<typeof ExtensionsProfils>[0]["consoles"];
     aTourneDansOnglet?: ConstructorParameters<typeof ExtensionsProfils>[0]["aTourneDansOnglet"];
     delaiEffacementMs?: number;
+    delaiFondMs?: number;
   } = {},
 ) {
   const p = new ExtensionsProfils({
@@ -277,6 +278,7 @@ function creer(
     ...(o.consoles ? { consoles: o.consoles } : {}),
     ...(o.aTourneDansOnglet ? { aTourneDansOnglet: o.aTourneDansOnglet } : {}),
     ...(o.delaiEffacementMs ? { delaiEffacementMs: o.delaiEffacementMs } : {}),
+    ...(o.delaiFondMs ? { delaiFondMs: o.delaiFondMs } : {}),
     dossier,
     etat: () => etat,
     premierPlan: () => "f1",
@@ -1158,4 +1160,32 @@ test("I6 un échec de chargement compte au plus un plantage par synchronisation,
   // Plus voulue dans les profils ratés : plus rien de raté.
   await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"], { version: "1" }) }));
   expect(p.chargementRate(`store:${ID_A}`)).toBeNull();
+});
+
+test("B un service worker qui ne démarre jamais ne retient pas la file des synchronisations (délai borné)", async () => {
+  const p = creer({ delaiFondMs: 50 });
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  (s.serviceWorkers as unknown as { startWorkerForScope: () => Promise<unknown> }).startWorkerForScope = () => new Promise(() => {});
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"]) }));
+  const fini = await Promise.race([p.synchroniser(etatExt({})).then(() => true), new Promise((ok) => setTimeout(() => ok(false), 1000))]);
+  journal.mockRestore();
+  expect(fini).toBe(true);
+  expect(s.charges.size).toBe(0);
+});
+
+test("B un effacement de stockage en cours ne retient pas les synchronisations (file séparée)", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const autre = fausseSession("autre");
+  autre.lent = new Promise(() => {});
+  void p.effacerStockage(join(dossier, "copies", "x"), [autre as unknown as Electron.Session]).catch(() => undefined);
+  const fini = await Promise.race([
+    p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"]) })).then(() => true),
+    new Promise((ok) => setTimeout(() => ok(false), 1000)),
+  ]);
+  expect(fini).toBe(true);
+  expect(s.charges.size).toBe(1);
 });
