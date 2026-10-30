@@ -752,7 +752,9 @@ test("clients.openWindow (service worker) et runtime.setUninstallURL vers un dom
 /** Un formulaire rempli par la page elle-même (comme un gestionnaire de mots de passe). */
 const PAGE_FORMULAIRE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
 <form id="f" action="/envoi"><input type="text" id="texte" name="texte"><input type="password" id="mdp" name="mdp"></form>
-<script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";</script>
+<script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";
+// Comme React : la valeur recopiée dans l'attribut \`value\`.
+document.getElementById("texte").setAttribute("value", "visible"); document.getElementById("mdp").setAttribute("value", "secret");</script>
 </body></html>`;
 /** Une page lue par un widget avec compte : son image retarde la fin du chargement (la lecture dure ~6 s). */
 const PAGE_LECTURE = `<!doctype html><html><head><meta charset="utf-8"><title>lecture</title></head><body><p>Texte lu</p><img src="/lent.png"></body></html>`;
@@ -866,6 +868,19 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
       const fonction = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, func: () => document.getElementById("mdp").value + "|" + document.getElementById("texte").value });
       return JSON.stringify({ fichiers: fichiers.map((x) => x.result), fonction: fonction.map((x) => x.result), documentId: typeof fonction[0].documentId });
     }
+    if (m === "attributs-onglet") {
+      const [onglet] = await chrome.tabs.query({ url: "https://hote.test/formulaire*" });
+      const r = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, func: () => {
+        const lire = (el) => {
+          const n = el.getAttributeNode("value");
+          return [el.getAttribute("value"), el.getAttributeNS(null, "value"), n && n.value, n && n.nodeValue, n && n.textContent,
+            el.attributes.value && el.attributes.value.value, el.attributes.getNamedItem("value").nodeValue,
+            Array.from(el.attributes).map((a) => a.value + "/" + a.nodeValue + "/" + a.textContent).join(","), el.defaultValue];
+        };
+        return JSON.stringify({ mdp: lire(document.getElementById("mdp")), texte: lire(document.getElementById("texte")) });
+      } });
+      return r[0].result;
+    }
     if (m === "porteurs") return JSON.stringify({ porteurs, priseAPartEstCelleDuGarde: ajouterNatif === chrome.runtime.onMessage.addListener });
     return "inconnu";
   })().then(repondre, (e) => repondre("erreur " + (e && e.message)));
@@ -932,6 +947,14 @@ test("sur une page locale, la valeur d'un champ de mot de passe rempli est vide 
     const r = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?executer-onglet`);
     console.log(`[mesure] executeScript dans un onglet : ${r.titre}`);
     expect(JSON.parse(r.titre)).toMatchObject({ fichiers: ["|visible"], fonction: ["|visible"] });
+    // I4 : la valeur recopiée dans l'attribut (React) n'est pas lisible non plus.
+    const a = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?attributs-onglet`);
+    const lu = JSON.parse(a.titre) as { mdp: unknown[]; texte: unknown[] };
+    expect(a.titre).not.toContain("secret");
+    expect(lu.mdp.slice(0, 7)).toEqual(Array(7).fill(""));
+    expect(lu.mdp[8]).toBe("");
+    expect(lu.texte.slice(0, 7)).toEqual(Array(7).fill("visible"));
+    expect(lu.texte[8]).toBe("visible");
   } finally {
     await fermer();
   }
@@ -1486,6 +1509,37 @@ test("I1 un menu contextuel (contextMenus) masque la console du fond ; un clic s
     expect(texte).not.toContain("(result)");
     expect(texte).not.toContain("onClicked");
     expect(texte.split("secret bancaire").length - 1).toBe(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("I2 tous les fichiers de ses scripts de contenu partagent un même monde : une var d'une entrée se lit dans une autre, un const redéclaré lève", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "monde", {
+    "manifest.json": {
+      manifest_version: 3,
+      name: "Monde de l'agent",
+      version: "1.0.0",
+      content_scripts: [
+        { matches: [HOTE], js: ["a.js"] },
+        { matches: [HOTE], js: ["b.js"] },
+        { matches: [HOTE], js: ["c.js"] },
+      ],
+    },
+    "a.js": 'var partage = "de a";\nconst doublon = 1;\n',
+    "b.js": 'console.log("b voit:" + partage);\n',
+    "c.js": 'const doublon = 2;\nconsole.log("c fini");\n',
+  });
+  const { fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "monde", "Monde de l'agent")).toMatch(/^Activée/);
+    // Un onglet ouvert par l'agent : il le lit, les messages des scripts de contenu y passent.
+    await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/b.html` });
+    await expect.poll(() => consoleDe(racine, "monde"), { timeout: 15_000 }).toContain("b voit:de a");
+    await expect.poll(() => consoleDe(racine, "monde"), { timeout: 15_000 }).toContain("already been declared");
+    expect(await consoleDe(racine, "monde")).not.toContain("c fini");
   } finally {
     await fermer();
   }

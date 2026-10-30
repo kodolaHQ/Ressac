@@ -432,19 +432,24 @@ l'accord de l'utilisateur.** Les extensions du Store ne sont pas les tiennes : t
   de ressource distante dans les pages de l'extension, popup comprise).
 - **L'accord de l'utilisateur porte sur trois choses** : les droits (permissions), les sites
   (`host_permissions` et `matches` des scripts de contenu) et le réseau (`reseau`). Une extension dont
-  les scripts couvrent tous les sites (`<all_urls>`, `*://*/*`…) demande un accord renforcé : évite-le,
-  ne demande que les sites utiles.
+  les scripts couvrent tous les sites (`<all_urls>`, `*://*/*`, un hôte `*` avec ou sans port comme
+  `*://*:*/*`, un joker de suffixe comme `*://*.com/*` ou `*://*.co.uk/*`) demande un accord renforcé :
+  évite-le, ne demande que les sites utiles.
 - Après une modification, `recharger_extension` : **sans droit, site ni domaine de plus**, elle repart
   sans rien demander ; **avec un de plus**, elle est désactivée et il faut appeler de nouveau
   `demander_extension` (L'utilisateur revoit la carte). Une copie refusée ne change rien : lis le détail.
 
 **Refusé (la copie n'est pas faite)** : `manifest_version` autre que 3 ; permissions `downloads`,
 `webRequest`, `webRequestBlocking`, `nativeMessaging`, `debugger`, `proxy` ; clés
-`externally_connectable`, `sandbox`, `chrome_url_overrides` ; une règle `declarativeNetRequest`
-d'action `redirect` ou `modifyHeaders`, ou avec `regexSubstitution` ou `transform`, en statique **et**
-par `updateDynamicRules` / `updateSessionRules` (refusé avec un message ; `block`, `allow` et
-`upgradeScheme` passent) ; un script de contenu en `world: "MAIN"`. WebRTC (`RTCPeerConnection`…)
-est absent.
+`externally_connectable`, `sandbox`, `chrome_url_overrides`, `devtools_page` ; `optional_permissions` et
+`optional_host_permissions` non vides (déclare ces droits dans `permissions` et `host_permissions`) ;
+`background.scripts` et `background.page` (seul `background.service_worker` est permis) ; une règle
+`declarativeNetRequest` d'action `redirect` ou `modifyHeaders`, ou avec `regexSubstitution` ou
+`transform`, en statique **et** par `updateDynamicRules` / `updateSessionRules` (refusé avec un message ;
+`block`, `allow` et `upgradeScheme` passent) ; un script de contenu en `world: "MAIN"` ; des fichiers
+`.xhtml`, `.xht`, `.xml`, `.xsl`, `.xslt`, `.mht`, `.mhtml`, `.svgz` ; un SVG qui contient `script`,
+`foreignObject`, `javascript:`, `<!ENTITY` ou un attribut `on…=` ; une page HTML en UTF-16 ou UTF-32.
+WebRTC (`RTCPeerConnection`…) est absent.
 
 **Ce qui marche, ce qui manque**
 
@@ -463,17 +468,22 @@ est absent.
 - **Scripts de contenu** : ils démarrent après un aller-retour vers ton service worker (WebAiOs lui
   demande si l'onglet est un vrai onglet de l'utilisateur), donc **`document_start` arrive plus tard
   qu'annoncé** : ne compte pas dessus. Si le service worker ne répond pas, les scripts sont abandonnés
-  après 20 essais (~5 s) et la console de la page le dit. Les fichiers d'une même entrée
-  `content_scripts` partagent leurs variables de haut niveau ; **deux entrées ne les partagent pas** :
-  passe par `globalThis`.
+  après 20 essais (~5 s) et la console de la page le dit.
+- **Tous les fichiers de tes scripts de contenu tournent dans un même monde isolé**, par page : ceux de
+  toutes les entrées `content_scripts`, de `registerContentScripts` et de `executeScript`. Ils partagent
+  leurs déclarations de haut niveau : une `var` ou une `function` d'un fichier se voit dans les autres, et
+  un même nom `const`, `let` ou `class` déclaré dans deux fichiers lève « Identifier … has already been
+  declared » (le second fichier ne tourne pas du tout ; un `executeScript` relancé sur le même fichier
+  lève aussi). Enveloppe chaque fichier dans une fonction (`(() => { … })();`) et range ce que tu
+  partages sous un seul nom, `globalThis.<nom de ton extension>`.
 - Les fichiers donnés à `scripting.*`, `tabs.executeScript` ou `registerContentScripts` sont des chemins
   exacts `.js` / `.css` de l'extension, tels que copiés (`a.js`, pas `./a.js` ni `/a.js`) ; ni `.mjs`,
   ni fichier créé à l'exécution, ni fichier de WebAiOs. `target.documentIds` est refusé.
 
 **Mots de passe, pages, limites : des règles, pas des défis**
 
-- Les gardes de WebAiOs (valeur d'un champ mot de passe rendue vide, événements clavier et `formdata`
-  coupés, réseau des scripts de contenu limité à la page, à `reseau` et aux sites accordés, lecture
+- Les gardes de WebAiOs (valeur d'un champ mot de passe rendue vide, ainsi que son attribut `value`
+  et `defaultValue`, événements clavier et `formdata` coupés, réseau des scripts de contenu limité à la page, à `reseau` et aux sites accordés, lecture
   invisible) ne sont qu'une **dissuasion**. **Ne lis jamais, et ne cherche jamais à lire, un champ de
   mot de passe.** N'utilise jamais une extension dans un espace privé : les extensions de l'agent n'y
   tournent pas (donne à l'espace son propre profil, ou dis-le à l'utilisateur).
@@ -481,7 +491,9 @@ est absent.
 - **Limites connues, que tu ne dois jamais utiliser.** Des contournements existent, listés par les
   relectures : un `<script>` en ligne ou un attribut `on…` qui passe dans le monde de la page, un Worker
   `blob:`, `RTCPeerConnection` depuis un script de contenu, `href.baseVal` des SVG, `pattern` et
-  `validity` d'un champ, des racines fantômes fermées, un cadre `about:blank`, et ce que la garde ne
+  `validity` d'un champ, des racines fantômes fermées, un cadre `about:blank`, la valeur d'un mot de
+  passe recopiée dans l'attribut `value` (React) lue par `outerHTML` / `innerHTML` d'un ancêtre ou par un
+  sélecteur d'attribut (`[value^="a"]`), et ce que la garde ne
   ferme pas : `innerHTML`, `insertAdjacentHTML`, CSS `url()`, redirections d'un site permis (un script
   de contenu peut faire charger une ressource à la page). Ce sont des garde-fous, pas un bac à sable :
   ces trous sont dits pour que tu t'en abstiennes, jamais pour que tu les essaies.
@@ -495,8 +507,9 @@ est absent.
 - `console_extension` montre le service worker, les pages de l'extension et ses scripts de contenu.
   Les messages venus d'onglets que tu ne peux pas lire sont masqués et comptés. La console du service
   worker et des pages est **toujours masquée** si l'extension a un droit qui observe les onglets ou la
-  navigation (`tabs`, `webNavigation`, `cookies`, `history`, `sessions`, `bookmarks`, des sites, tous les
-  sites) ou si elle a un jour tourné dans un onglet que tu ne peux pas lire (marque permanente, même
+  navigation ou ce que l'utilisateur y fait (`tabs`, `webNavigation`, `cookies`, `history`, `topSites`,
+  `sessions`, `bookmarks`, `activeTab`, `clipboardRead`, `contextMenus` : un clic sur ton entrée apporte
+  la sélection et l'adresse de la page, `declarativeNetRequestFeedback`, des sites, tous les sites) ou si elle a un jour tourné dans un onglet que tu ne peux pas lire (marque permanente, même
   après un rechargement).
 - Pour déboguer quand elle est masquée : `debloquer_console(id, raison)` montre ta raison (200
   caractères au plus) à l'utilisateur dans une carte. Accordé, rien n'est plus masqué **jusqu'à ce que l'utilisateur
