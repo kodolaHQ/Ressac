@@ -52,7 +52,9 @@
 
 {#snippet bouton(a: BarreExtensions["actions"][number])}
   <!-- alignment : la barre est à gauche, la popup part du bord gauche du bouton vers la droite (par défaut, la
-       bibliothèque l'aligne sur son bord droit, pour une barre d'outils à droite, et elle sortait de la fenêtre). -->
+       bibliothèque l'aligne sur son bord droit, pour une barre d'outils à droite, et elle sortait de la fenêtre).
+       Grisé sans page web affichée (fenêtre vide, page interne) : la popup n'aurait aucun onglet, ou viserait un onglet
+       caché. -->
   <!-- svelte-ignore attribute_avoid_is -->
   <button
     is="browser-action"
@@ -61,6 +63,7 @@
     partition={barre.partition}
     tab={barre.onglet ?? -1}
     alignment="bottom right"
+    disabled={barre.onglet === null}
     data-testid="action-extension"
     data-cle={a.cle}
     aria-label={a.nom}
@@ -110,7 +113,8 @@
 <style>
   .extensions { display: flex; align-items: center; gap: 2px; flex: none; -webkit-app-region: no-drag; }
   .action { all: unset; position: relative; width: 24px; height: 24px; flex: none; border-radius: 5px; background-position: center; background-repeat: no-repeat; background-size: 16px; }
-  .action:hover, .menu:hover { background-color: var(--fond-survol); }
+  .action:hover:not(:disabled), .menu:hover { background-color: var(--fond-survol); }
+  .action:disabled { opacity: 0.4; }
   /* Sans icône : la première lettre du titre (data-letter, posé par la bibliothèque). */
   :global(.action.no-icon)::after { content: attr(data-letter); position: absolute; inset: 4px; display: grid; place-content: center; border-radius: 4px; background: var(--fond-actif); color: var(--texte); font-size: 10px; text-transform: uppercase; }
   :global(.action .badge) { position: absolute; right: 0; bottom: 0; padding: 0 2px; border-radius: 2px; font-size: 9px; line-height: 12px; pointer-events: none; }

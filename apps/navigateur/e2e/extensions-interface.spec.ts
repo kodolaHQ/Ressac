@@ -450,6 +450,35 @@ test("une extension épinglée a son bouton dans la barre ; un clic ouvre sa pop
   }
 });
 
+test("sans page web affichée (fenêtre vide, page interne), le bouton d'une extension est grisé : pas de popup, ni sur un onglet caché, ni d'erreur", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  const { id } = installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  changerEntree(profil, `store:${id}`, { epinglee: true });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  const erreurs: string[] = [];
+  app.process().stderr?.on("data", (d) => erreurs.push(String(d)));
+  try {
+    const bouton = fenetre.getByTestId("barre-extensions").locator(`button[is="browser-action"][id="${id}"]`);
+    // Fenêtre vide : la bibliothèque n'a aucun onglet à donner à la popup (« Unable to get active tab »).
+    await expect(bouton).toBeDisabled();
+    await bouton.click({ force: true });
+    // Page interne devant un onglet web : la popup viserait cet onglet, caché.
+    await ouvrirOnglet(fenetre, `${pages.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "document.readyState")).toBe("complete");
+    await expect(bouton).toBeEnabled();
+    await ouvrirPage(fenetre);
+    await fenetre.getByTestId("menu-extensions").click();
+    await expect(bouton).toBeDisabled();
+    await bouton.click({ force: true });
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await textePopup(app, id)).toBeNull();
+    expect(erreurs.join("")).not.toContain("Unable to get active tab");
+  } finally {
+    await fermer();
+  }
+});
+
 test("le menu Extensions liste une extension non épinglée ; « Épingler » la met dans la barre", async () => {
   const profil = nouveauProfil();
   writeFileSync(join(profil, "session.json"), JSON.stringify(session));
