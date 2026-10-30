@@ -9,7 +9,7 @@
 //   hôtes accordés (`__webaios.hotePermis`) ; ces appels natifs n'ont pas d'autre point de contrôle.
 // - WebRTC retiré.
 // Les fonctions d'origine ne sont gardées nulle part où l'extension pourrait les reprendre, et les propriétés
-// remplacées ne sont plus ni réécrivables ni supprimables.
+// remplacées ne sont plus ni réécrivables ni supprimables. Les arguments sont figés (copie) avant d'être vérifiés.
 (() => {
   const g = globalThis;
   for (const nom of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
@@ -52,10 +52,35 @@
   /** Sépare le rappel éventuel (dernier argument fonction) des arguments. */
   const separer = (args) => (typeof args[args.length - 1] === "function" ? [args.slice(0, -1), args[args.length - 1]] : [args, undefined]);
 
-  /** Appelle `f` si `verifier()` rend vrai, sinon refuse avec `message` ; promesse ou rappel, comme l'appel d'origine. */
+  /**
+   * Copie profonde lue une seule fois : objets et listes recopiés (chaque propriété lue une fois, accesseurs compris),
+   * fonctions et valeurs simples gardées (`scripting.executeScript({ func })`). Un cycle ou une profondeur > 32 : refus.
+   */
+  const copier = (v, profondeur = 0, vus = new Set()) => {
+    if (v === null || (typeof v !== "object" && typeof v !== "function")) return v;
+    if (typeof v === "function") return v;
+    if (profondeur > 32 || vus.has(v)) throw new Error("arguments trop imbriqués");
+    vus.add(v);
+    const copie = Array.isArray(v) ? [] : {};
+    for (const cle of Object.keys(v)) copie[cle] = copier(v[cle], profondeur + 1, vus);
+    vus.delete(v);
+    return copie;
+  };
+
+  /**
+   * Appelle `f` si `verifier()` rend vrai, sinon refuse avec `message` ; promesse ou rappel, comme l'appel d'origine.
+   * Les arguments sont copiés une seule fois (`copier`) : la copie est vérifiée puis passée à l'API, et un accesseur qui
+   * changerait de réponse entre les deux lectures n'a plus de prise.
+   */
   const garder = (f, cible, verifier, message) =>
     function (...tous) {
-      const [args, rappel] = separer(tous);
+      const [originaux, rappel] = separer(tous);
+      let args;
+      try {
+        args = copier(originaux);
+      } catch (e) {
+        return refuser(`Arguments refusés par WebAiOs (${e && e.message ? e.message : e})`, rappel);
+      }
       const suite = Promise.resolve()
         .then(() => verifier(args))
         .then((ok) => (ok ? true : message(args)));

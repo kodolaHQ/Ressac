@@ -91,13 +91,13 @@ describe("preparerCopie", () => {
     );
   });
 
-  it("avec webaios.json { reseau: [\"api.exemple.com\"] } : connect-src contient https://api.exemple.com, webaios.json absent de la copie", async () => {
+  it("avec webaios.json { reseau: [\"api.exemple.com\"] } : connect-src contient https:// et wss://api.exemple.com, webaios.json absent de la copie", async () => {
     const src = await source({ "manifest.json": manifesteBase(), "webaios.json": { reseau: ["api.exemple.com"] } });
     const c = await cible();
     const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     expect(analyse.portee.reseau).toEqual(["api.exemple.com"]);
     const m = await lireJson(join(c, "manifest.json"));
-    expect(m.content_security_policy.extension_pages).toContain("connect-src 'self' https://api.exemple.com;");
+    expect(m.content_security_policy.extension_pages).toContain("connect-src 'self' https://api.exemple.com wss://api.exemple.com;");
     expect(existsSync(join(c, "webaios.json"))).toBe(false);
   });
 

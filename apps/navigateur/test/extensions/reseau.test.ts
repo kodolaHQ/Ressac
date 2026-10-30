@@ -268,3 +268,27 @@ test("garde : sans __webaios (preload absent), toute adresse et tout onglet sont
   await expect(c.tabs.create({ url: "https://www.hote.test/" })).rejects.toThrow("URL refusée par WebAiOs");
   await expect(c.scripting.executeScript({ target: { tabId: 4 } })).rejects.toThrow("Site refusé par WebAiOs");
 });
+
+test("garde : les arguments sont figés une fois (copie), vérifiés et passés tels quels : un accesseur qui change d'avis ne fait pas passer une redirection", async () => {
+  const { chrome, appels } = contexteGarde({ onglets: [4] });
+  let lectures = 0;
+  const options = {
+    get addRules() {
+      return lectures++ === 0 ? [] : [{ id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} }];
+    },
+  };
+  await chrome.declarativeNetRequest.updateDynamicRules(options).catch(() => {});
+  // Ce qu'a reçu l'API native : la copie vérifiée (sans redirection), jamais l'objet d'origine.
+  for (const [, [recu]] of appels) {
+    expect(recu).not.toBe(options);
+    expect(JSON.stringify(recu)).not.toContain("redirect");
+  }
+  let lu = 0;
+  const cible = {
+    get tabId() {
+      return lu++ === 0 ? 4 : 5;
+    },
+  };
+  await chrome.scripting.executeScript({ target: cible as unknown as { tabId: number }, files: ["x.js"] });
+  expect((appels.at(-1)![1][0] as { target: { tabId: number } }).target.tabId).toBe(4);
+});

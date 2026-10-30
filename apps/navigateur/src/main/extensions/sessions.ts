@@ -140,6 +140,21 @@ function idDeLaPage(e: IpcMainEvent | IpcMainInvokeEvent): string | null {
   return idExtensionDe(url);
 }
 
+/**
+ * Comme `idDeLaPage`, mais un cadre `about:blank` / `about:srcdoc` compte pour l'extension dont il a l'origine (celle de
+ * la page qui l'a créé).
+ */
+function idDuCadre(e: IpcMainEvent): string | null {
+  const id = idDeLaPage(e);
+  if (id) return id;
+  try {
+    const f = e.senderFrame;
+    return f && f.url.startsWith("about:") ? idExtensionDe(f.origin) : null;
+  } catch {
+    return null;
+  }
+}
+
 function instanceDeLExpediteur(e: IpcMainInvokeEvent): ExtensionsProfils | undefined {
   for (const x of instancesVivantes) if (x.aLaSession(e.sender.session)) return x;
   return undefined;
@@ -236,7 +251,7 @@ export class ExtensionsProfils {
         return !!x && x.hotePermis(e.sender.session, idDeLaPage(e), onglet);
       });
       ipcMain.on(CANAL_AGENT, (e: IpcMainEvent) => {
-        const id = idDeLaPage(e);
+        const id = idDuCadre(e);
         e.returnValue = !!id && [...instancesVivantes].some((x) => x.accordAgent(id) !== undefined);
       });
     }

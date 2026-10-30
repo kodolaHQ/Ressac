@@ -205,7 +205,7 @@ const EXTENSION_RESEAU = {
     manifest_version: 3,
     name: "Réseau de l'agent",
     version: "1.0.0",
-    permissions: ["declarativeNetRequest", "storage", "tabs"],
+    permissions: ["cookies", "declarativeNetRequest", "storage", "tabs"],
     host_permissions: ["https://hote.test/*"],
     background: { service_worker: "fond.js" },
     action: { default_popup: "page.html" },
@@ -235,7 +235,67 @@ for (const h of ["accorde.test", "autre.test"]) {
   await essai("dnrRegles", () => chrome.declarativeNetRequest.getDynamicRules().then((r) => r.map((x) => x.action.type)));
   await essai("permissionsDownloads", () => chrome.permissions.request({ permissions: ["downloads"] }));
   await essai("rtc", () => typeof globalThis.RTCPeerConnection);
+  await essai("cookieRefuse", () => chrome.cookies.set({ url: "https://autre.test/", name: "fuite", value: "secret" }).then(() => "pose"));
+  await essai("cookiePermis", () => chrome.cookies.set({ url: "https://hote.test/", name: "reglage", value: "1" }).then((c) => c && c.name));
+  await essai("cookieRappel", () => new Promise((ok) => chrome.cookies.set({ url: "https://autre.test/", name: "fuite", value: "x" }, () => ok(chrome.runtime.lastError && chrome.runtime.lastError.message))));
   await chrome.storage.local.set({ resultats });
+})();
+// Ordres d'une page (ordre.html?<ordre>) : popup vers une adresse absolue, ou popup qui sonde ses cadres.
+chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
+  (async () => {
+    if (m === "popup-fuite") {
+      await chrome.action.setPopup({ popup: "https://autre.test/popup-fuite" });
+      await chrome.action.openPopup().catch(() => {});
+    } else if (m === "popup-cadres") {
+      await chrome.action.setPopup({ popup: "cadre.html" });
+      await chrome.action.openPopup();
+    }
+    repondre("fait");
+  })().catch((e) => repondre(String(e && e.message)));
+  return true;
+});
+`,
+  "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
+  "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
+`,
+  "cadre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="cadre.js"></script></body></html>',
+  "cadre.js": `(async () => {
+ try {
+  const sonder = async (w, nom) => {
+    const c = w.chrome;
+    const d = c && c.declarativeNetRequest && Object.getOwnPropertyDescriptor(c.declarativeNetRequest, "updateDynamicRules");
+    let dnr;
+    try {
+      await c.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [7], addRules: [{ id: 7, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/fuite-" + nom } }, condition: { urlFilter: "/rien-cadre", resourceTypes: ["xmlhttprequest"] } }] });
+      dnr = "acceptee";
+    } catch (e) { dnr = String(e && e.message); }
+    let rtc;
+    try { new w.RTCPeerConnection(); rtc = "creee"; } catch (e) { rtc = String(e && e.message); }
+    return { chrome: typeof c, tabs: typeof (c && c.tabs), dnrFige: d ? d.configurable === false : null, dnr, rtc: typeof w.RTCPeerConnection, rtcEssai: rtc, webaios: typeof w.__webaios, protocole: w.location.protocol };
+  };
+  const vu = {};
+  const vide = document.body.appendChild(document.createElement("iframe"));
+  vu.blank = await sonder(vide.contentWindow, "blank");
+  document.body.appendChild(document.createElement("iframe"));
+  vu.index = await sonder(window[1], "index");
+  const hote = document.body.appendChild(document.createElement("div")).attachShadow({ mode: "open" });
+  hote.appendChild(document.createElement("iframe"));
+  vu.ombre = await sonder(hote.querySelector("iframe").contentWindow, "ombre");
+  const imbrique = document.body.appendChild(document.createElement("iframe"));
+  imbrique.srcdoc = "<p>x</p>";
+  vu.srcdocTot = await sonder(window[2], "srcdocTot");
+  await new Promise((ok) => imbrique.addEventListener("load", ok, { once: true }));
+  window[2].document.body.appendChild(window[2].document.createElement("iframe"));
+  vu.petit = await sonder(window[2][0], "petit");
+  const doc = document.createElement("iframe");
+  doc.srcdoc = "<p>x</p>";
+  document.body.appendChild(doc);
+  await new Promise((ok) => doc.addEventListener("load", ok, { once: true }));
+  vu.srcdoc = await sonder(window[3], "srcdoc");
+  vu.frames = typeof window[0];
+  vu.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.action.type);
+  document.title = JSON.stringify(vu);
+ } catch (e) { document.title = "erreur " + e.stack; }
 })();
 `,
   "page.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="page.js"></script></body></html>',
@@ -252,7 +312,7 @@ setTimeout(() => { location.href = "https://autre.test/page-navigue"; }, 300);
 };
 
 const ACCORD_RESEAU = {
-  permissions: ["declarativeNetRequest", "storage", "tabs"],
+  permissions: ["cookies", "declarativeNetRequest", "storage", "tabs"],
   hotes: ["https://hote.test/*"],
   reseau: ["accorde.test"],
   tousLesSites: false,
@@ -276,7 +336,10 @@ const idChargee = (app: ElectronApplication, nom: string) =>
 /** Ouvre une page de l'extension dans une fenêtre cachée de la session du profil (comme sa popup) ; rend son titre. */
 const ouvrirPage = (app: ElectronApplication, url: string) =>
   app.evaluate(async ({ BrowserWindow, session }, url) => {
-    const f = new BrowserWindow({ show: false, webPreferences: { session: session.fromPartition("persist:webaios"), sandbox: true, contextIsolation: true } });
+    const f = new BrowserWindow({
+      show: false,
+      webPreferences: { session: session.fromPartition("persist:webaios"), sandbox: true, contextIsolation: true, nodeIntegrationInSubFrames: true },
+    });
     await f.webContents.loadURL(url);
     await new Promise((ok) => setTimeout(ok, 1500));
     const r = { titre: f.webContents.getTitle(), url: f.webContents.getURL(), fenetres: BrowserWindow.getAllWindows().length };
@@ -296,8 +359,7 @@ const resultatsFond = (app: ElectronApplication, id: string) =>
     }
   }, id);
 
-// WebSocket : la CSP `https://accorde.test` ne couvre pas `wss://accorde.test` dans Chromium (mesuré) ; un WebSocket vers
-// le domaine accordé est donc refusé aussi. Seul « rien vers autre.test » est vérifié pour lui.
+// WebSocket : la CSP de la copie porte `https://` et `wss://` de chaque domaine accordé (R12-B).
 test("le service worker ne peut rien envoyer vers un domaine non accordé (fetch, WebSocket) ; vers le domaine accordé, oui", async () => {
   const profil = nouveauProfil();
   const racine = nouvelleRacine();
@@ -305,6 +367,7 @@ test("le service worker ne peut rien envoyer vers un domaine non accordé (fetch
   const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
   try {
     await expect.poll(() => coupsVers("accorde.test", "/sw-fetch").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(() => coupsVers("accorde.test", "/sw-ws").length).toBeGreaterThan(0);
     await new Promise((ok) => setTimeout(ok, 1000));
     expect(coupsVers("autre.test", "/sw-fetch")).toEqual([]);
     expect(coupsVers("autre.test", "/sw-ws")).toEqual([]);
@@ -327,6 +390,7 @@ test("sa popup et ses pages non plus (fetch, sendBeacon, WebSocket, navigation, 
     expect(page.url).toBe(`chrome-extension://${id}/page.html`);
     await expect.poll(() => coupsVers("accorde.test", "/page-fetch").length).toBeGreaterThan(0);
     await expect.poll(() => coupsVers("accorde.test", "/page-beacon").length).toBeGreaterThan(0);
+    await expect.poll(() => coupsVers("accorde.test", "/page-ws").length).toBeGreaterThan(0);
     for (const chemin of ["/page-fetch", "/page-beacon", "/page-ws", "/page-navigue"]) expect(coupsVers("autre.test", chemin)).toEqual([]);
     expect(coupsVers("hote.test", "/page-ouvre")).toEqual([]);
   } finally {
@@ -355,7 +419,13 @@ test("tabs.create vers un domaine non accordé est refusé ; vers un site de ses
       dnrRegles: { ok: ["block"] },
       permissionsDownloads: { ok: false },
       rtc: { ok: "undefined" },
+      cookieRefuse: { erreur: "Site refusé par WebAiOs" },
+      cookiePermis: { ok: "reglage" },
+      cookieRappel: { ok: "Site refusé par WebAiOs" },
     });
+    // Aucun cookie posé pour autre.test.
+    const cookies = await app.evaluate(({ session }) => session.fromPartition("persist:webaios").cookies.get({ url: "https://autre.test/" }));
+    expect(cookies).toEqual([]);
     // L'onglet permis s'est ouvert sur hote.test ; rien n'a atteint autre.test.
     await expect.poll(() => coupsVers("hote.test", "/onglet-permis").length).toBeGreaterThan(0);
     expect(coupsVers("autre.test", "/onglet-refuse")).toEqual([]);
@@ -393,6 +463,64 @@ test("avec une extension de l'agent chargée, une extension du Store bloque enco
     await expect.poll(recharger, { timeout: 10_000 }).toBe("pub bloquée");
     // L'extension de l'agent n'a rien envoyé hors de son accord pendant ce temps.
     expect(coupsVers("autre.test", "/sw-fetch")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+/** Une page de l'extension donne un ordre à son service worker (ordre.html?<ordre>) ; rend sa réponse. */
+const ordonner = async (app: ElectronApplication, id: string, ordre: string) => {
+  const r = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?${ordre}`);
+  return r.titre;
+};
+
+test("chrome.action.setPopup vers une adresse absolue puis openPopup : rien n'est chargé (le serveur ne reçoit rien)", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    // Un onglet actif dans la fenêtre : openPopup a où s'ancrer.
+    await ouvrirOnglet(fenetre, "https://hote.test/ancre");
+    await expect.poll(() => coupsVers("hote.test", "/ancre").length).toBeGreaterThan(0);
+    expect(await ordonner(app, id!, "popup-fuite")).toBe("fait");
+    await new Promise((ok) => setTimeout(ok, 1500));
+    expect(coupsVers("autre.test", "/popup-fuite")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+// Mesuré (Electron 45) : un cadre about:blank ou srcdoc d'une page d'extension a l'origine de la page mais aucune API
+// d'extension (`chrome` sans tabs ni declarativeNetRequest) ; il a en revanche RTCPeerConnection. Le preload des
+// correctifs, qui tourne dans les sous-cadres des popups et des onglets, l'en prive (voir task-12-report, fix round 1).
+test("dans sa popup, un cadre about:blank, srcdoc, imbriqué ou dans une racine fantôme n'a ni RTCPeerConnection ni le moyen de poser une redirection DNR", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    await ouvrirOnglet(fenetre, "https://hote.test/ancre-cadres");
+    await expect.poll(() => coupsVers("hote.test", "/ancre-cadres").length).toBeGreaterThan(0);
+    expect(await ordonner(app, id!, "popup-cadres")).toBe("fait");
+    // La popup de la bibliothèque (fenêtre cachée en test) sur cadre.html : son titre est le rapport.
+    const titre = () =>
+      app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().endsWith("/cadre.html"))?.getTitle() ?? null);
+    await expect.poll(titre, { timeout: 10_000 }).toMatch(/^\{/);
+    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[] };
+    for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc"]) {
+      expect(vu[cadre]!.protocole).toBe("about:");
+      expect(vu[cadre]!.rtc).toBe("undefined");
+      expect(vu[cadre]!.rtcEssai).not.toBe("creee");
+      expect(vu[cadre]!.tabs).toBe("undefined");
+      expect(vu[cadre]!.dnr).not.toBe("acceptee");
+    }
+    // Aucune redirection posée : seule la règle block du démarrage.
+    expect(vu.regles).toEqual(["block"]);
   } finally {
     await fermer();
   }

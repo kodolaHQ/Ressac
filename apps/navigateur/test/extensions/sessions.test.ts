@@ -85,7 +85,7 @@ interface FausseSession {
   extensions: EventEmitter & Record<string, unknown>;
   serviceWorkers: EventEmitter & Record<string, unknown>;
   protocol: Record<string, unknown>;
-  cookies: EventEmitter;
+  cookies: EventEmitter & { poses: { url: string; name: string; domain?: string }[] };
   preloads: unknown[];
   /** `webRequest.onBeforeRequest` posés. */
   ecouteursRequetes: { filtre: unknown; f: (d: unknown, r: (x: unknown) => void) => void }[];
@@ -107,7 +107,17 @@ function fausseSession(nom: string): FausseSession {
       (s as unknown as { preloads: unknown[] }).preloads.push(o);
     },
     isPersistent: () => true,
-    cookies: new EventEmitter(),
+    cookies: Object.assign(new EventEmitter(), {
+      poses: [] as { url: string; name: string; domain?: string; secure?: boolean; path?: string }[],
+      async set(d: { url: string; name: string }) {
+        (s as unknown as FausseSession).cookies.poses.push(d);
+      },
+      async get(f: { url?: string }) {
+        const tous = (s as unknown as FausseSession).cookies.poses.map((c) => ({ ...c, domain: c.domain ?? new URL(c.url).hostname, path: "/", secure: true }));
+        return f.url ? tous.filter((c) => new URL(f.url!).hostname === c.domain) : tous;
+      },
+      async remove() {},
+    }),
     protocol: { isProtocolHandled: () => false, handle: () => {}, unhandle: () => {} },
     ecouteursRequetes: [],
     webRequest: {
@@ -848,5 +858,74 @@ test("menu du bouton d'une extension de l'agent : son site (homepage_url) hors a
   (s.charges.get("id-copies-fond") as unknown as { manifest: unknown }).manifest = { homepage_url: "https://www.hote.test/" };
   menu().click!();
   await vi.waitFor(() => expect(ouvertures.map((o) => o.url)).toEqual(["https://www.hote.test/"]));
+  erreur.mockRestore();
+});
+
+// --- Revue de la tâche 12 : popup, cookies, page d'options
+
+test("popup : seulement une page de l'extension elle-même ; setPopup ou default_popup vers une adresse absolue ne donne aucune popup", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const chemin = join(dossier, "copies", "fond");
+  s.manifestes.set(chemin, { action: { default_popup: "https://autre.test/defaut" } });
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  const lib = ElectronChromeExtensions.fromSession(s as unknown as Electron.Session) as unknown as {
+    api: { browserAction: { getPopupUrl(id: string, onglet?: number): string | undefined } };
+  };
+  const extension = appelante("id-copies-fond");
+  expect(lib.api.browserAction.getPopupUrl("id-copies-fond")).toBeUndefined();
+  const routeur = rouages(s).ctx.router;
+  await routeur.getHandler("browserAction.setPopup").callback({ extension }, { popup: "https://autre.test/?d=secret" });
+  expect(lib.api.browserAction.getPopupUrl("id-copies-fond")).toBeUndefined();
+  await routeur.getHandler("browserAction.setPopup").callback({ extension }, { popup: `chrome-extension://${ID_B}/page.html` });
+  expect(lib.api.browserAction.getPopupUrl("id-copies-fond")).toBeUndefined();
+  await routeur.getHandler("browserAction.setPopup").callback({ extension }, { popup: "page.html" });
+  expect(lib.api.browserAction.getPopupUrl("id-copies-fond")).toBe("chrome-extension://id-copies-fond/page.html");
+  erreur.mockRestore();
+});
+
+test("cookies d'une extension de l'agent : set, get, remove hors de ses hôtes refusés (« Site refusé par WebAiOs ») ; getAll ne rend que ses sites ; Store inchangé", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  const routeur = rouages(s).ctx.router;
+  const agent = appelante("id-copies-fond");
+  await expect(routeur.getHandler("cookies.set").callback({ extension: agent }, { url: "https://autre.test/", name: "d", value: "secret" })).rejects.toThrow(
+    "Site refusé par WebAiOs",
+  );
+  await expect(routeur.getHandler("cookies.set").callback({ extension: agent }, { url: "https://www.hote.test/", domain: ".test", name: "d", value: "x" })).rejects.toThrow(
+    "Site refusé par WebAiOs",
+  );
+  expect(s.cookies.poses).toEqual([]);
+  await expect(routeur.getHandler("cookies.get").callback({ extension: agent }, { url: "https://autre.test/", name: "d" })).rejects.toThrow("Site refusé par WebAiOs");
+  await expect(routeur.getHandler("cookies.remove").callback({ extension: agent }, { url: "https://autre.test/", name: "d" })).rejects.toThrow("Site refusé par WebAiOs");
+  await routeur.getHandler("cookies.set").callback({ extension: agent }, { url: "https://www.hote.test/", name: "r", value: "1" });
+  // Le Store pose où il veut (sa portée a été montrée à l'utilisateur).
+  const store = appelante(ID_A);
+  await routeur.getHandler("cookies.set").callback({ extension: store }, { url: "https://autre.test/", name: "s", value: "1" });
+  const noms = (l: unknown) => (l as { name: string }[]).map((c) => c.name);
+  expect(noms(await routeur.getHandler("cookies.getAll").callback({ extension: agent }, {}))).toEqual(["r"]);
+  expect(noms(await routeur.getHandler("cookies.getAll").callback({ extension: store }, {}))).toEqual(["r", "s"]);
+});
+
+test("menu du bouton d'une extension de l'agent : une page d'options absolue hors accord n'est pas ouverte", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  s.manifestes.set(join(dossier, "copies", "fond"), { options_page: "https://autre.test/options?d=1" });
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  menus.length = 0;
+  (ElectronChromeExtensions.fromSession(s as unknown as Electron.Session) as unknown as { api: { browserAction: { activateContextMenu(d: unknown): void } } }).api.browserAction.activateContextMenu({
+    extensionId: "id-copies-fond",
+    anchorRect: { x: 0, y: 0, width: 1, height: 1 },
+  });
+  menus[0]!.items.find((i) => i.label === "Options")!.click!();
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(ouvertures).toEqual([]);
+  expect(String(erreur.mock.calls[0]?.[0])).toContain("URL refusée par WebAiOs");
   erreur.mockRestore();
 });

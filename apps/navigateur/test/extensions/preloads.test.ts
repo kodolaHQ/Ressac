@@ -81,6 +81,19 @@ test("bibliothèque : un refus de WebAiOs rejette l'appel avec son message (prom
   await expect(tabs.create({ url: "https://autre.test/" })).resolves.toBeUndefined();
 });
 
+test("bibliothèque : avec un rappel, un refus de WebAiOs pose chrome.runtime.lastError avec son message pendant le rappel, puis l'efface", async () => {
+  const chrome = { runtime: { id: "a".repeat(32), getManifest: () => ({ manifest_version: 3 }) }, i18n: { getMessage: () => "" } } as Record<string, unknown>;
+  preloadBibliotheque(chrome, `chrome-extension://${"a".repeat(32)}/fond.js`, async () => {
+    throw new Error("Error invoking remote method 'crx-msg': Error: Site refusé par WebAiOs");
+  });
+  const cookies = chrome.cookies as { set(d: unknown, rappel: (r: unknown) => void): void };
+  const vu = await new Promise((ok) =>
+    cookies.set({ url: "https://autre.test/" }, (r) => ok([r, (chrome.runtime as { lastError?: { message: string } }).lastError?.message])),
+  );
+  expect(vu).toEqual([undefined, "Site refusé par WebAiOs"]);
+  expect((chrome.runtime as { lastError?: unknown }).lastError).toBeUndefined();
+});
+
 test("bibliothèque : dans le service worker d'un site web (sans id d'extension), aucun alias browser", () => {
   const ctx = preloadBibliotheque({}, "https://site.invalid/sw.js");
   expect(ctx.browser).toBeUndefined();

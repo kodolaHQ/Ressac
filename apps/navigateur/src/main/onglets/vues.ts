@@ -15,9 +15,13 @@ const LONGUEUR_TEXTE = 100_000;
 /** Largeur maximale de la capture qui sert de fond flouté aux modales (px) : légère, le flou efface le détail. */
 const LARGEUR_APERCU = 1024;
 
-/** Préférences de toute page web : bac à sable, aucun preload. */
+/**
+ * Préférences de toute page web : bac à sable, aucun preload propre. Les preloads de la session (extensions, sur les
+ * profils de connexion) tournent aussi dans les sous-cadres (`nodeIntegrationInSubFrames`, sans Node : bac à sable) :
+ * un cadre `about:` d'une page d'extension de l'agent doit perdre WebRTC comme elle (extensions/reseau.ts).
+ */
 export function preferencesWeb(session: Session) {
-  return { session, sandbox: true, contextIsolation: true, nodeIntegration: false };
+  return { session, sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true };
 }
 
 /**

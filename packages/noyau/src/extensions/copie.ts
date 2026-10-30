@@ -31,10 +31,11 @@ const GARDE_FOND = "webaios-garde-fond.js";
 const FOND = "webaios-fond.js";
 const GARDES = [CORRECTIFS_PAGE, GARDE_PAGE, GARDE_FOND];
 
+/** CSP d'une copie de l'agent : `connect-src` ne s'ouvre qu'aux domaines de `reseau`, en https et en wss (WebSocket). */
 export function cspAgent(reseau: readonly string[]): string {
   return (
     "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'self'" +
-    reseau.map((d) => " https://" + d).join("") +
+    reseau.map((d) => ` https://${d} wss://${d}`).join("") +
     "; img-src 'self' data:; style-src 'self' 'unsafe-inline'; form-action 'none'; frame-ancestors 'self'"
   );
 }
