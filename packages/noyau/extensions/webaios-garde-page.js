@@ -1,45 +1,58 @@
 // WebAiOs : garde des scripts de contenu des extensions de l'agent (mots de passe, contexte, réseau). Tâche 13 du plan 12.
 //
-// Tourne dans le monde isolé de l'extension, avant ses scripts : en tête de chaque `webaios-cs-<i>.js` (écrit par la
-// copie contrôlée : correctifs, cette garde, la portée, puis les fichiers de l'agent dans `__webaiosApres(() => { … })`),
-// et en premier fichier de `scripting.executeScript` / `registerContentScripts` (webaios-garde-fond.js). Posée une
-// seule fois par monde : les suivantes ne font rien.
+// Tourne dans le monde isolé de l'extension, avant ses scripts. Un script de contenu de l'agent (manifeste ou
+// `scripting.registerContentScripts`) ne déclare que des fichiers de WebAiOs : `webaios-correctifs-page.js`, cette garde,
+// `webaios-portee.js` (la portée accordée), puis un repère par fichier de l'agent (`webaios-fichiers/<n>.js`, qui appelle
+// `__webaiosFichier(n)`). La garde demande ensuite au fond : `chrome.runtime.sendMessage({ webaios: "contexte",
+// fichiers })`. Le garde du fond demande au processus principal si l'expéditeur est une vue d'onglet (jamais une lecture
+// invisible) ; seulement alors, il injecte ces fichiers, CSS puis JS, dans le document exact qui a demandé, par
+// `scripting` (dans ce même monde, après cette garde). Rien de l'agent n'est collé dans un fichier de WebAiOs : il n'y a
+// pas d'enveloppe à fermer. Conséquence : `run_at` devient « après la réponse » (un aller-retour vers le fond), et sans
+// réponse après 20 essais, l'abandon est écrit dans la console. La garde est posée une seule fois par monde ;
+// `executeScript` la met aussi en tête de ses fichiers.
 //
 // - Mots de passe : le getter `value` de `HTMLInputElement.prototype` rend "" pour un `input[type=password]` ;
 //   `new FormData(form)` en retire ces champs (par leur nom : un autre champ du même nom part aussi) ; un écouteur
 //   `keydown`, `keypress`, `keyup`, `input`, `beforeinput`, `paste`, `composition*`, `textInput` (par
 //   `addEventListener` ou par `on…`) ne reçoit pas un événement dont la cible est un champ de mot de passe ; `formdata`
 //   n'est jamais transmis.
-// - Contexte : `chrome.runtime.sendMessage({ webaios: "contexte" })`, auquel répond le garde du fond (le processus
-//   principal dit si l'onglet est une vue d'onglet, jamais une lecture invisible). Tant que la réponse n'est pas
-//   `{ onglet: true }`, les fonctions passées à `__webaiosApres` (les scripts de l'agent) sont retenues ; jamais
-//   appelées sinon.
 // - Réseau (spec §6.2, garde-fous raisonnables) : `fetch`, `XMLHttpRequest.open`, `WebSocket`, `EventSource`,
 //   `navigator.sendBeacon`, `window.open`, les setters `src`, `href`, `srcset`, `action`, `formAction` (et `data`,
 //   `poster`, `ping`, `imageSrcset`), `setAttribute` / `setAttributeNS` et `Attr.value` de ces attributs refusent une
-//   adresse dont l'hôte n'est ni celui de la page, ni dans `reseau`, ni couvert par `hotes` (la portée accordée, posée
-//   par `__webaiosPortee`). `javascript:` et les autres schémas sont refusés ; `data:`, `blob:`, `about:` et les
-//   fichiers de l'extension passent (rien ne sort).
+//   adresse dont l'hôte n'est ni celui de la page, ni dans `reseau`, ni couvert par `hotes` (comparés sur l'hôte
+//   seulement : `<all_urls>` ouvre tout). `javascript:` et les autres schémas sont refusés ; `data:`, `blob:`, `about:`
+//   et les fichiers de l'extension passent.
 //
 // Ce qui reste ouvert (dissuasion, pas garantie) :
-// - le script peut changer le type du champ (`type`, `setAttribute`, `cloneNode` puis changer le type du double) et lire
-//   ensuite sa valeur ; il peut passer par un autre cadre (le monde isolé d'un cadre `about:blank` qu'il crée n'a pas
-//   cette garde) ;
-// - `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` (balisage avec `src`), `url()` en CSS (`style`,
-//   feuilles), `location` (navigation de la page vers une adresse qui porte des données), modifier par le DOM un
-//   élément de la page déjà présent sans passer par ces setters, `Node.nodeValue` / `textContent` d'un `Attr`, une
-//   redirection servie par un site permis.
+// - code dans le monde de la page : un `<script>` en ligne inséré (`createElement("script")`, `textContent`, `append`),
+//   ou un attribut `on…` posé par `setAttribute`, tourne sans aucune garde (lit les mots de passe, envoie où la CSP de
+//   la page le permet) ; le refus de `world: "MAIN"` se contourne ainsi ;
+// - un `Worker` créé depuis un `blob:` : son `fetch` n'a pas de garde ;
+// - `RTCPeerConnection` du monde isolé, avec des `iceServers` (STUN/TURN vers n'importe quel hôte) ;
+// - `SVGAElement.href.baseVal`, `SVGImageElement.href.baseVal` (adresse posée sans setter gardé) ;
+// - balisage avec adresse : `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` ; `url()` en CSS (`style`,
+//   feuilles) ; `location` (navigation de la page vers une adresse qui porte des données) ; modifier par le DOM un
+//   élément de la page déjà présent sans passer par ces setters ; `Node.nodeValue` / `textContent` d'un `Attr` ; une
+//   redirection servie par un site permis (celui de la page compris) ;
+// - mots de passe : changer le type du champ (`type`, `setAttribute`, `cloneNode` puis changer le type du double) et
+//   lire ensuite sa valeur ; l'oracle `pattern` + `validity.patternMismatch`, caractère par caractère, sans changer le
+//   type ; les touches d'un champ dans une racine fantôme fermée (cible, `composedPath()[0]` et champ actif s'arrêtent à
+//   l'hôte) ;
+// - un autre cadre : le monde isolé d'un cadre `about:blank` créé par le script n'a pas cette garde, et ses prototypes
+//   d'origine s'appliquent aux éléments de la page.
 // Ce qui protège vraiment est l'ensemble : cette garde, `webRequest` refusé, le réseau fermé de ses pages et de son fond
-// (CSP de la copie), jamais dans un profil privé, jamais dans une lecture invisible.
+// (CSP de la copie), jamais dans un profil privé, jamais dans une lecture invisible (ni JS ni CSS de l'agent n'y sont
+// injectés).
 //
 // Le script de l'agent tourne ensuite dans le même monde et peut modifier les objets de base : tout ce dont la garde se
-// sert est saisi au chargement, les appels passent par `Reflect.apply`, les boucles sont indexées, les propriétés
-// remplacées ne sont ni réécrivables ni supprimables, et les descripteurs n'ont pas de prototype.
+// sert est saisi au chargement, les appels passent par `Reflect.apply`, les boucles sont indexées (aucun `split`, qui
+// consulte `Symbol.split`), les propriétés remplacées ne sont ni réécrivables ni supprimables, et les descripteurs n'ont
+// pas de prototype.
 (() => {
   const g = globalThis;
   const descripteur = Object.getOwnPropertyDescriptor;
   // Déjà posée dans ce monde (autre entrée, executeScript) : propriété propre, qu'un élément nommé de la page ne fait pas.
-  if (descripteur(g, "__webaiosApres")) return;
+  if (descripteur(g, "__webaiosFichier")) return;
   const appliquer = Reflect.apply;
   const construire = Reflect.construct;
   const definir = Object.defineProperty;
@@ -50,7 +63,6 @@
   const P = typeof Promise === "function" ? Promise : null;
   const minuterie = typeof g.setTimeout === "function" ? g.setTimeout : null;
   const journal = g.console && typeof g.console.error === "function" ? g.console.error : null;
-  const signaler = typeof g.reportError === "function" ? g.reportError : null;
   const WM = typeof WeakMap === "function" ? WeakMap : null;
   const wmGet = WM && WM.prototype.get;
   const wmSet = WM && WM.prototype.set;
@@ -66,32 +78,13 @@
   const debut = String.prototype.startsWith;
   const tranche = String.prototype.slice;
   const indice = String.prototype.indexOf;
-  const decouper = String.prototype.split;
   const texte = (v) => `${v}`;
 
   const URL_REFUSEE = "URL refusée par WebAiOs";
-  const rapporter = (e) => {
-    try {
-      if (signaler) appliquer(signaler, g, [e]);
-      else if (journal) appliquer(journal, g.console, [e]);
-    } catch {
-      // Rien de plus à faire.
-    }
-  };
 
   // --- Portée et contexte
 
   let portee = null;
-  /** null : pas encore de réponse ; true : un onglet ; false : jamais (lecture invisible, autre vue). */
-  let verdict = null;
-  const enAttente = [];
-  const lancer = (f) => {
-    try {
-      appliquer(f, undefined, []);
-    } catch (e) {
-      rapporter(e);
-    }
-  };
   const figerSur = (objet, nom, valeur) => {
     try {
       definir(objet, nom, { __proto__: null, value: valeur, writable: false, configurable: false, enumerable: false });
@@ -119,40 +112,80 @@
     const hotes = descripteur(p, "hotes");
     portee = { __proto__: null, reseau: chaines(reseau && reseau.value), hotes: chaines(hotes && hotes.value) };
   });
-  figerSur(g, "__webaiosApres", (f) => {
-    if (typeof f !== "function") return;
-    if (verdict === true) lancer(f);
-    else if (verdict === null) enAttente[enAttente.length] = f;
-  });
-
   const c = g.chrome;
   const runtime = c && c.runtime;
   const envoyer = runtime && typeof runtime.sendMessage === "function" ? runtime.sendMessage : null;
   const idExtension = runtime && typeof runtime.id === "string" ? runtime.id : "";
-  let essais = 0;
-  const demander = () => {
-    if (!envoyer) return;
-    essais++;
-    try {
-      appliquer(envoyer, runtime, [
-        { __proto__: null, webaios: "contexte" },
-        (r) => {
-          if (verdict !== null) return;
-          const d = r !== null && typeof r === "object" ? descripteur(r, "onglet") : undefined;
-          if (d && "value" in d) {
-            verdict = d.value === true;
-            if (verdict) for (let i = 0; i < enAttente.length; i++) lancer(enAttente[i]);
-            enAttente.length = 0;
-            return;
-          }
-          // Pas de réponse (fond qui démarre) : redemandé un peu plus tard, quelques fois.
-          if (essais < 20 && minuterie) appliquer(minuterie, g, [demander, 250]);
-        },
-      ]);
-    } catch {
-      if (essais < 20 && minuterie) appliquer(minuterie, g, [demander, 250]);
-    }
+  /** Le message de `chrome.runtime.lastError` pendant le rappel (lu en propriété propre), ou null. */
+  const derniereErreur = () => {
+    const d = runtime ? descripteur(runtime, "lastError") : undefined;
+    const e = d && "value" in d ? d.value : d && typeof d.get === "function" ? appliquer(d.get, runtime, []) : undefined;
+    if (e === undefined || e === null) return null;
+    const m = typeof e === "object" ? descripteur(e, "message") : undefined;
+    return m && typeof m.value === "string" ? m.value : "erreur inconnue";
   };
+
+  // Les repères (`webaios-fichiers/<n>.js`) déposent l'indice de chaque fichier de l'agent ; une fois la tâche finie, la
+  // garde demande au fond de les injecter. Les demandes partent l'une après l'autre (l'ordre des fichiers est gardé).
+  const aDemander = [];
+  let prevu = false;
+  let enCours = false;
+  const ESSAIS_MAX = 20;
+  const suivante = () => {
+    if (enCours || aDemander.length === 0) return;
+    if (!envoyer) {
+      if (journal) appliquer(journal, g.console, ["[webaios] scripts de l'agent non lancés : chrome.runtime.sendMessage absent"]);
+      aDemander.length = 0;
+      return;
+    }
+    enCours = true;
+    const lot = [];
+    for (let i = 0; i < aDemander.length; i++) lot[lot.length] = aDemander[i];
+    aDemander.length = 0;
+    let essais = 0;
+    const finir = () => {
+      enCours = false;
+      suivante();
+    };
+    const essayer = () => {
+      essais++;
+      const relancer = (raison) => {
+        if (essais < ESSAIS_MAX && minuterie) {
+          appliquer(minuterie, g, [essayer, 250]);
+          return;
+        }
+        if (journal) appliquer(journal, g.console, [`[webaios] scripts de l'agent non lancés après ${essais} essais : ${raison}`]);
+        finir();
+      };
+      try {
+        appliquer(envoyer, runtime, [
+          { __proto__: null, webaios: "contexte", fichiers: lot },
+          (r) => {
+            // Lu pendant le rappel : sinon Chromium écrit « Unchecked runtime.lastError ».
+            const erreur = derniereErreur();
+            const d = r !== null && typeof r === "object" ? descripteur(r, "onglet") : undefined;
+            if (d && "value" in d) return finir();
+            relancer(erreur || "pas de réponse du fond");
+          },
+        ]);
+      } catch (e) {
+        relancer(`${e && e.message}`);
+      }
+    };
+    essayer();
+  };
+  figerSur(g, "__webaiosFichier", (n) => {
+    if (typeof n !== "number") return;
+    aDemander[aDemander.length] = n;
+    if (prevu) return;
+    prevu = true;
+    const partir = () => {
+      prevu = false;
+      suivante();
+    };
+    if (minuterie) appliquer(minuterie, g, [partir, 0]);
+    else partir();
+  });
 
   // --- Adresses
 
@@ -216,10 +249,19 @@
     if (schema === "chrome-extension:") return !!idExtension && appliquer(urlHote, u, []) === idExtension;
     return false;
   };
-  /** Chaque morceau d'un `srcset` / `ping` (coupé aux espaces et aux virgules : plus strict que le navigateur). */
+  /**
+   * Chaque morceau d'un `srcset` / `ping`, coupé aux blancs et aux virgules (plus strict que le navigateur). Parcours par
+   * caractère : `split` consulterait `Symbol.split`, que le script de l'agent peut poser.
+   */
+  const SEPARATEURS = { __proto__: null, " ": 1, "\t": 1, "\n": 1, "\r": 1, "\f": 1, ",": 1 };
   const listePermise = (valeur) => {
-    const morceaux = appliquer(decouper, valeur, [/[\s,]+/]);
-    for (let i = 0; i < morceaux.length; i++) if (morceaux[i] && !permise(morceaux[i], false)) return false;
+    const n = valeur.length;
+    let depart = 0;
+    for (let i = 0; i <= n; i++) {
+      if (i < n && !SEPARATEURS[valeur[i]]) continue;
+      if (i > depart && !permise(appliquer(tranche, valeur, [depart, i]), false)) return false;
+      depart = i + 1;
+    }
     return true;
   };
   const ATTRIBUTS = { __proto__: null, src: 1, href: 1, "xlink:href": 1, action: 1, formaction: 1, data: 1, poster: 1, background: 1, srcset: 2, imagesrcset: 2, ping: 2 };
@@ -550,5 +592,4 @@
       configurable: false,
     });
   }
-  demander();
 })();

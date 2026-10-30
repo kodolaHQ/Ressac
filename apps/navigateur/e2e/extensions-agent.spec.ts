@@ -772,9 +772,16 @@ const EXTENSION_GARDE = {
     permissions: ["scripting", "tabs"],
     host_permissions: ["https://hote.test/*"],
     background: { service_worker: "fond.js" },
-    content_scripts: [{ matches: ["https://hote.test/*"], js: ["outils.js", "contenu.js"], run_at: "document_end" }],
+    content_scripts: [
+      { matches: ["https://hote.test/*"], js: ["outils.js", "contenu.js"], run_at: "document_end" },
+      { matches: ["https://hote.test/*"], js: ["evade.js"], css: ["fuite.css"], run_at: "document_start" },
+    ],
   },
   "webaios.json": { reseau: ["accorde.test"] },
+  // Écrit pour sortir d'une enveloppe textuelle (`});` … `(() => {`) : ne tourne nulle part, ni avant la réponse du fond.
+  "evade.js": '});\ndocument.documentElement.setAttribute("data-evade", "1");\nglobalThis.__webaiosApres(() => {\n',
+  // Une feuille de l'agent qui charge une image d'autre.test : jamais demandée depuis une lecture invisible.
+  "fuite.css": "html { background-image: url(https://autre.test/cs-css); }\n",
   "outils.js": `function noter(cle, valeur) {
   const r = JSON.parse(document.documentElement.getAttribute("data-agent") || "{}");
   r[cle] = valeur;
@@ -984,6 +991,9 @@ test("dans une lecture invisible avec compte du même profil, data-agent-vu est 
     let id: string | null = null;
     await expect.poll(async () => (id = await idChargee(app, "Garde de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
     await expect.poll(async () => idChargee(app, "Marqueur du Store"), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    // Les tests précédents du fichier (même serveur) ont déjà chargé la feuille dans des onglets : on compte d'ici.
+    const cssAvant = coupsVers("autre.test", "/cs-css").length;
+    const cssLus = () => coupsVers("autre.test", "/cs-css").length - cssAvant;
     const w = fenetre.getByTestId("widget-lecteur");
     await w.getByRole("button", { name: "Options du widget" }).click();
     await w.getByRole("menuitem", { name: "Mettre à jour maintenant" }).click();
@@ -991,14 +1001,17 @@ test("dans une lecture invisible avec compte du même profil, data-agent-vu est 
     const marques = () =>
       dansLaVue(app, "hote.test/lecture", "[document.documentElement.getAttribute('data-store-vu'), document.documentElement.getAttribute('data-agent-vu')].join()");
     await expect.poll(marques, { timeout: 15_000 }).toBe("1,");
+    const evade = () => dansLaVue(app, "hote.test/lecture", "document.documentElement.getAttribute('data-evade')");
     const idLecture = await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((x) => x.getURL().includes("hote.test/lecture"))?.id ?? null);
     expect(idLecture).not.toBeNull();
     const ordre = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?executer:${idLecture}`);
     expect(ordre.titre).toBe("erreur Onglet refusé par WebAiOs");
     // La lecture était encore là : le refus vient de la garde, pas d'une fenêtre déjà fermée.
     expect(await app.evaluate(({ webContents }, id) => webContents.fromId(id)?.getURL() ?? null, idLecture!)).toBe("https://hote.test/lecture");
-    // Toujours rien de l'agent, une seconde plus tard (la garde a reçu sa réponse).
+    // Toujours rien de l'agent, une seconde plus tard (la garde a reçu sa réponse) : ni son JS, ni son CSS.
     expect(await marques()).toBe("1,");
+    expect(await evade()).toBeNull();
+    expect(cssLus()).toBe(0);
     console.log(`[mesure] chrome.runtime.onMessage.addListener, de l'événement vers ses prototypes : ${(await ouvrirPage(app, `chrome-extension://${id}/ordre.html?porteurs`)).titre}`);
 
     const fichier = join(dossierWidgets(profil), "lecteur", "donnees.json");
@@ -1007,6 +1020,7 @@ test("dans une lecture invisible avec compte du même profil, data-agent-vu est 
     expect(lu.titre).toBe("lecture");
     expect(lu.texte).toContain("STORE-VU");
     expect(lu.texte).not.toContain("AGENT-VU");
+    expect(cssLus()).toBe(0);
     // Témoin : dans un onglet du même profil, le script de l'agent tourne.
     await ouvrirOnglet(fenetre, "https://hote.test/lecture?onglet");
     await expect
@@ -1014,6 +1028,9 @@ test("dans une lecture invisible avec compte du même profil, data-agent-vu est 
         timeout: 15_000,
       })
       .toBe("1,1");
+    // Dans l'onglet, la feuille de l'agent est posée (après la réponse) ; le fichier d'évasion n'y tourne pas plus.
+    await expect.poll(cssLus, { timeout: 15_000 }).toBeGreaterThan(0);
+    expect(await dansLaVue(app, "hote.test/lecture?onglet", "document.documentElement.getAttribute('data-evade')")).toBeNull();
   } finally {
     await fermer();
   }

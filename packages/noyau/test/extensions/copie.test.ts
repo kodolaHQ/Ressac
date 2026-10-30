@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { link, mkdir, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { dirname, join } from "node:path";
 import {
@@ -111,78 +111,107 @@ describe("preparerCopie", () => {
     expect(m.name).toBe("Essai");
   });
 
-  it("une entrée de deux fichiers devient webaios-cs-0.js : correctifs, garde, portée, puis les deux fichiers dans une seule fonction ; une fonction déclarée dans le premier est appelable du second", async () => {
+  it("une entrée de content_scripts ne déclare que des fichiers de WebAiOs (correctifs, garde, portée, un repère par fichier de l'agent, CSS d'abord) ; les fichiers de l'agent restent tels quels, la table est en tête du garde de fond", async () => {
+    // evade.js fermerait une enveloppe textuelle : il n'est plus jamais collé dans un autre fichier.
+    const evade = "});\ndocument.documentElement.setAttribute('data-evade', '1');\nglobalThis.__webaiosApres(() => {\n";
     const src = await source({
       "manifest.json": manifesteBase({
         host_permissions: ["https://h.example/*"],
         content_scripts: [
-          { matches: ["https://a.example/*"], js: ["a.js", "./b.js"], css: ["s.css"], run_at: "document_start" },
-          { matches: ["https://b.example/*"], js: ["c/d.js"] },
+          { matches: ["https://a.example/*"], js: ["a.js", "b.js"], css: ["s.css"], run_at: "document_start" },
+          { matches: ["https://b.example/*"], js: ["c/d.js", "evade.js"] },
           { matches: ["https://b.example/*"], css: ["s.css"] },
         ],
       }),
       "webaios.json": { reseau: ["api.exemple.com"] },
-      "a.js": "function double(x) { return 2 * x; } // sans fin de ligne",
-      "b.js": "\uFEFFglobalThis.resultat = double(21);",
+      "a.js": "function double(x) { return 2 * x; }",
+      "b.js": "globalThis.resultat = double(21);",
       "c/d.js": "3",
+      "evade.js": evade,
       "s.css": "p{}",
+      "lisez-moi.txt": "x",
     });
     const c = await cible();
     const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     expect(analyse.refus).toEqual([]);
     const m = await lireJson(join(c, "manifest.json"));
-    expect(m.content_scripts[0]).toEqual({ matches: ["https://a.example/*"], js: ["webaios-cs-0.js"], css: ["s.css"], run_at: "document_start" });
-    expect(m.content_scripts[1].js).toEqual(["webaios-cs-1.js"]);
-    expect(m.content_scripts[2].js).toBeUndefined();
-    expect(existsSync(join(c, "webaios-cs-2.js"))).toBe(false);
+    // Table : chaque fichier .js et .css de l'agent, triés ; un repère chacun.
+    const table = [["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["evade.js", "js"], ["s.css", "css"]];
+    const tete = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
+    const reperes = (...n: number[]) => n.map((i) => `webaios-fichiers/${i}.js`);
+    expect(m.content_scripts).toEqual([
+      { matches: ["https://a.example/*"], js: [...tete, ...reperes(4, 0, 1)], run_at: "document_start" },
+      { matches: ["https://b.example/*"], js: [...tete, ...reperes(2, 3)] },
+      { matches: ["https://b.example/*"], js: [...tete, ...reperes(4)] },
+    ]);
+    for (let i = 0; i < table.length; i++) {
+      expect(await readFile(join(c, `webaios-fichiers/${i}.js`), "utf8")).toBe(`globalThis.__webaiosFichier(${i});\n`);
+    }
+    expect(existsSync(join(c, "webaios-fichiers/5.js"))).toBe(false);
+    // Les fichiers de l'agent : intacts, jamais enveloppés ni regroupés.
+    expect(await readFile(join(c, "evade.js"), "utf8")).toBe(evade);
+    expect(existsSync(join(c, "webaios-env"))).toBe(false);
+    expect(existsSync(join(c, "webaios-cs-0.js"))).toBe(false);
+    // Le fond les injecte par scripting, dans les sites des scripts de contenu.
+    expect(m.permissions).toEqual(["scripting"]);
+    expect(m.host_permissions).toEqual(["https://h.example/*", "https://a.example/*", "https://b.example/*"]);
+    const fond = await readFile(join(c, "webaios-garde-fond.js"), "utf8");
+    expect(fond.startsWith(`const __webaiosFichiers = ${JSON.stringify(table)};\n`)).toBe(true);
+    expect(fond.endsWith(await readFile(join(GARDES_PAR_DEFAUT, "webaios-garde-fond.js"), "utf8"))).toBe(true);
+    expect(await readFile(join(c, "webaios-portee.js"), "utf8")).toBe(
+      `globalThis.__webaiosPortee(${JSON.stringify({ reseau: ["api.exemple.com"], hotes: analyse.portee.hotes })});\n`,
+    );
     for (const g of GARDES) expect(existsSync(join(c, g)), g).toBe(true);
-    // Les fichiers de l'agent restent aussi à leur place (executeScript, pages).
-    expect(await readFile(join(c, "c/d.js"), "utf8")).toBe("3");
-
-    const correctifs = await readFile(join(GARDES_PAR_DEFAUT, "webaios-correctifs-page.js"), "utf8");
-    const garde = await readFile(join(GARDES_PAR_DEFAUT, "webaios-garde-page.js"), "utf8");
-    const portee = `globalThis.__webaiosPortee(${JSON.stringify({ reseau: ["api.exemple.com"], hotes: analyse.portee.hotes })});`;
-    expect(analyse.portee.hotes).toEqual(["https://a.example/*", "https://b.example/*", "https://h.example/*"]);
-    const cs0 = await readFile(join(c, "webaios-cs-0.js"), "utf8");
-    const positions = [correctifs, garde, portee, "globalThis.__webaiosApres(() => {", "function double", "globalThis.resultat"].map((x) => cs0.indexOf(x));
-    expect(positions.every((p) => p >= 0)).toBe(true);
-    expect([...positions].sort((x, y) => x - y)).toEqual(positions);
-    expect(cs0).not.toContain("\uFEFF");
-    expect(cs0.trimEnd().endsWith("});")).toBe(true);
-    // La portée seule, pour executeScript et registerContentScripts.
-    expect(await readFile(join(c, "webaios-portee.js"), "utf8")).toBe(portee + "\n");
-
-    // Exécuté dans un contexte à part, sans DOM : retenu tant que le contexte n'a pas répondu { onglet: true }.
-    const lancer = (reponse: unknown) => {
-      let repondre: ((r: unknown) => void) | undefined;
-      const messages: unknown[] = [];
-      const ctx: Record<string, unknown> = {
-        chrome: { runtime: { id: "x", sendMessage: (m: unknown, rappel: (r: unknown) => void) => { messages.push(m); repondre = rappel; } } },
-        console,
-        setTimeout,
-      };
-      ctx.globalThis = ctx;
-      runInNewContext(cs0, ctx);
-      expect(ctx.resultat).toBeUndefined();
-      repondre!(reponse);
-      return { ctx, messages };
-    };
-    const oui = lancer({ onglet: true });
-    expect(oui.messages).toEqual([{ webaios: "contexte" }]);
-    expect(oui.ctx.resultat).toBe(42);
-    // Dans ce périmètre : `double` n'est pas une variable globale.
-    expect(oui.ctx.double).toBeUndefined();
-    expect(lancer({ onglet: false }).ctx.resultat).toBeUndefined();
-    expect(lancer(undefined).ctx.resultat).toBeUndefined();
   });
 
-  it("chaque fichier .js a son double enveloppé dans webaios-env/ (registerContentScripts)", async () => {
-    const src = await source({ "manifest.json": manifesteBase(), "a.js": "globalThis.vu = 1;", "c/d.js": "3", "p.css": "p{}" });
+  it("dans un monde sans DOM, les fichiers d'une entrée ne font que demander le contexte, repères dans l'ordre ; rien de l'agent ne tourne ; sans réponse, lastError est lu et l'abandon est écrit", async () => {
+    const src = await source({
+      "manifest.json": manifesteBase({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js", "b.js"], css: ["s.css"] }] }),
+      "a.js": "globalThis.vu = 1;",
+      "b.js": "globalThis.vu = 2;",
+      "s.css": "p{}",
+    });
     const c = await cible();
     await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
-    expect(await readFile(join(c, "webaios-env/a.js"), "utf8")).toBe("globalThis.__webaiosApres(() => {\nglobalThis.vu = 1;\n});\n");
-    expect(await readFile(join(c, "webaios-env/c/d.js"), "utf8")).toBe("globalThis.__webaiosApres(() => {\n3\n});\n");
-    expect(existsSync(join(c, "webaios-env/p.css"))).toBe(false);
+    const m = await lireJson(join(c, "manifest.json"));
+    const lancer = (repondre: (msg: unknown, rappel: (r: unknown) => void, runtime: Record<string, unknown>) => void) => {
+      const minuteries: (() => void)[] = [];
+      const erreurs: unknown[][] = [];
+      const runtime: Record<string, unknown> = {
+        id: "x",
+        sendMessage: (msg: unknown, rappel: (r: unknown) => void) => repondre(msg, rappel, runtime),
+      };
+      const ctx: Record<string, unknown> = {
+        chrome: { runtime },
+        console: { error: (...a: unknown[]) => erreurs.push(a), log: () => {} },
+        setTimeout: (f: () => void) => void minuteries.push(f),
+      };
+      ctx.globalThis = ctx;
+      for (const f of m.content_scripts[0].js as string[]) runInNewContext(readFileSync(join(c, f), "utf8"), ctx);
+      expect(ctx.vu).toBeUndefined();
+      // Les minuteries une à une : la demande part après les repères, les relances ensuite.
+      for (let i = 0; i < 100 && minuteries.length > 0; i++) minuteries.shift()!();
+      return { ctx, erreurs };
+    };
+    const messages: unknown[] = [];
+    const oui = lancer((msg, rappel) => {
+      messages.push(msg);
+      rappel({ onglet: true });
+    });
+    expect(messages).toEqual([{ webaios: "contexte", fichiers: [2, 0, 1] }]);
+    expect(oui.ctx.vu).toBeUndefined();
+    expect(oui.erreurs).toEqual([]);
+    // Pas de réponse : lastError lu, relances, puis abandon écrit avec la raison.
+    let essais = 0;
+    const non = lancer((_msg, rappel, runtime) => {
+      essais++;
+      runtime.lastError = { message: "Could not establish connection. Receiving end does not exist." };
+      rappel(undefined);
+      delete runtime.lastError;
+    });
+    expect(essais).toBe(20);
+    expect(non.erreurs).toHaveLength(1);
+    expect(non.erreurs[0]!.map(String).join(" ")).toContain("Could not establish connection");
   });
 
   it("un script de contenu dans le monde de la page (world: MAIN) est refusé (analyse) ; un script introuvable aussi", async () => {
@@ -415,7 +444,7 @@ describe("preparerCopie", () => {
   });
 
   it("un nom de fichier réservé à WebAiOs est refusé, quelle que soit la casse", async () => {
-    for (const nom of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-cs-0.js", "webaios-portee.js", "Webaios-Env/a.js"]) {
+    for (const nom of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-fichiers/0.js", "webaios-portee.js", "Webaios-Env/a.js"]) {
       const src = await source({ "manifest.json": manifesteBase(), [nom]: "1" });
       const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
       expect(analyse.refus.some((r) => r.includes(nom)), nom).toBe(true);
@@ -538,7 +567,7 @@ describe("preparerCopie", () => {
 
     const seconde = await source({ "manifest.json": manifesteBase({ version: "2.0" }), "b.js": "b" });
     await preparerCopie({ source: seconde, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
-    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-env", "webaios-fond.js", "webaios-portee.js", ...GARDES].sort());
+    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-fichiers", "webaios-fond.js", "webaios-portee.js", ...GARDES].sort());
     expect((await lireJson(join(c, "manifest.json"))).version).toBe("2.0");
     // Ni dossier temporaire ni ancienne copie laissés à côté.
     expect(await readdir(dirname(c))).toEqual(["essai"]);

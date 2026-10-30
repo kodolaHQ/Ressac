@@ -1,6 +1,6 @@
 // WebAiOs : garde du service worker et des pages des extensions de l'agent (DNR, scripting, tabs, contexte).
 // Chargé avant le script d'origine par webaios-fond.js et en premier script de chaque page HTML (script classique ou
-// module : aucune déclaration au niveau du fichier). Tâche 12 du plan 12 (la tâche 13 y ajoute la garde des cadres).
+// module : aucune déclaration au niveau du fichier, sauf la table `__webaiosFichiers` que la copie écrit en tête). Tâche 12 du plan 12 (la tâche 13 y ajoute la garde des cadres).
 //
 // - Règles DNR dynamiques et de session : `redirect`, `modifyHeaders`, `regexSubstitution`, `transform` refusés.
 // - `tabs.create`, `tabs.update`, `windows.create` : l'adresse est d'abord soumise au processus principal
@@ -8,13 +8,19 @@
 // - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS` : l'onglet visé doit être une vue
 //   d'onglet (`__webaios.estOnglet` : jamais une lecture invisible) et un site des hôtes accordés (`__webaios.hotePermis`) ;
 //   ces appels natifs n'ont pas d'autre point de contrôle. `target.documentIds` est refusé (le garde ne saurait pas quel
-//   onglet est visé), `world: "MAIN"` aussi (hors de portée de la garde de page). `executeScript` injecte d'abord
+//   onglet est visé), `world: "MAIN"` aussi (hors de portée de la garde de page). Les fichiers nommés doivent être, à
+//   l'octet près, des fichiers de l'agent listés par la copie (`__webaiosFichiers`, écrit en tête de ce fichier) : ni
+//   `..`, ni chemin absolu, ni fichier de WebAiOs. `executeScript` (et `tabs.executeScript`) injecte d'abord
 //   `webaios-correctifs-page.js`, `webaios-garde-page.js` et `webaios-portee.js` ; avec `func`, ces fichiers d'abord,
-//   puis la fonction dans les documents qui les ont reçus (`documentIds` rendus par le premier appel).
-// - `scripting.registerContentScripts` / `updateContentScripts` : les mêmes fichiers d'abord, puis le double enveloppé de
-//   chaque fichier (`webaios-env/<chemin>`, écrit par la copie) : retenu par la garde de page hors d'un onglet.
-// - `runtime.onMessage` : répond à `{ webaios: "contexte" }` (la garde de page) par `{ onglet }` ; les écouteurs de
-//   l'extension ne voient jamais ce message (ils ne peuvent pas répondre à la place du garde).
+//   puis la fonction dans les documents qui les ont reçus (`documentIds` rendus par le premier appel ; un id manquant :
+//   refus, sans repli).
+// - `scripting.registerContentScripts` / `updateContentScripts` : comme les entrées du manifeste copié, n'enregistrent
+//   que les gardes puis des repères (`webaios-fichiers/<n>.js`, CSS d'abord) ; `getRegisteredContentScripts` rend les
+//   fichiers de l'agent, et une mise à jour d'un seul de `js` / `css` reprend l'autre de l'enregistrement actuel.
+// - `runtime.onMessage` : répond à `{ webaios: "contexte", fichiers }` (la garde de page) par `{ onglet }` ; si c'est un
+//   onglet, injecte d'abord, par les fonctions natives saisies, le CSS puis le JS (gardes en tête) de ces repères dans le
+//   document exact de l'expéditeur (`documentIds`, sinon son cadre). Les écouteurs de l'extension ne voient jamais ce
+//   message (ils ne peuvent pas répondre à la place du garde).
 // - WebRTC retiré.
 // Les fonctions d'origine ne sont gardées nulle part où l'extension pourrait les reprendre, et les propriétés
 // remplacées ne sont plus ni réécrivables ni supprimables. Les arguments sont figés (copie) avant d'être vérifiés.
@@ -56,10 +62,6 @@
   const wmSet = WeakMap.prototype.set;
   const prototypeDe = Object.getPrototypeOf;
   const ProtoObjet = Object.prototype;
-  const minuscules = String.prototype.toLowerCase;
-  const debut = String.prototype.startsWith;
-  const indice = String.prototype.indexOf;
-  const decouper = String.prototype.split;
 
   const figer = (objet, nom, valeur) => {
     try {
@@ -317,6 +319,40 @@
   // --- Scripts et styles posés dans un onglet
   const ONGLET_REFUSE = "Onglet refusé par WebAiOs";
   const GARDES_PAGE = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
+  const REPERES = "webaios-fichiers/";
+  // La table écrite par la copie en tête de ce fichier : chaque .js et .css de l'agent, l'indice est son repère. Les
+  // chemins sont comparés tels quels à cette liste (clé dans un objet sans prototype) : aucun découpage, aucune
+  // normalisation par une méthode que l'extension pourrait remplacer. Sans table (hors copie), aucun fichier n'est permis.
+  // eslint-disable-next-line no-undef
+  const tableBrute = typeof __webaiosFichiers !== "undefined" && estListe(__webaiosFichiers) ? __webaiosFichiers : [];
+  const table = [];
+  const indices = creer(null);
+  const reperes = creer(null);
+  for (let i = 0; i < tableBrute.length; i++) {
+    const e = tableBrute[i];
+    if (!estListe(e) || typeof e[0] !== "string" || (e[1] !== "js" && e[1] !== "css")) continue;
+    const n = table.length;
+    table[n] = { __proto__: null, chemin: e[0], genre: e[1] };
+    indices[`${e[1]}:${e[0]}`] = n;
+    reperes[`${REPERES}${n}.js`] = n;
+  }
+  const estGardePage = (p) => p === GARDES_PAGE[0] || p === GARDES_PAGE[1] || p === GARDES_PAGE[2];
+  /** L'indice d'un fichier de la table, de ce genre ; lève « fichier refusé : … » sinon. */
+  const indiceDe = (genre, p) => {
+    const n = typeof p === "string" ? indices[`${genre}:${p}`] : undefined;
+    if (typeof n !== "number") throw new Erreur(`fichier refusé : ${typeof p === "string" ? p : typeof p}`);
+    return n;
+  };
+  /** Les chemins d'une liste (copiée), vérifiés contre la table. */
+  const fichiersPermis = (genre, liste) => {
+    if (!estListe(liste)) throw new Erreur("liste de fichiers attendue");
+    const r = [];
+    for (let i = 0; i < liste.length; i++) {
+      indiceDe(genre, liste[i]);
+      r[r.length] = liste[i];
+    }
+    return r;
+  };
   const requete = tabs && typeof tabs.query === "function" ? tabs.query : null;
   /** Vrai si l'onglet `id` est une vue d'onglet (jamais une lecture invisible) d'un site accordé ; sinon le refus. */
   const verdictOnglet = (id) =>
@@ -358,22 +394,6 @@
     for (let i = 0; i < liste.length; i++) r[r.length] = liste[i];
     return r;
   };
-  /** Le double enveloppé d'un fichier de l'extension (`webaios-env/<chemin>`) ; lève si le chemin sort de l'extension. */
-  const enveloppe = (p) => {
-    const refus = () => new Erreur(`fichier refusé : ${typeof p === "string" ? p : typeof p}`);
-    if (typeof p !== "string" || appliquer(indice, p, ["\\"]) >= 0) throw refus();
-    const morceaux = appliquer(decouper, p, ["/"]);
-    let chemin = "";
-    for (let i = 0; i < morceaux.length; i++) {
-      const m = morceaux[i];
-      if (m === "" || m === ".") continue;
-      if (m === "..") throw refus();
-      if (chemin === "" && appliquer(debut, appliquer(minuscules, m, []), ["webaios-"])) throw refus();
-      chemin = chemin === "" ? m : `${chemin}/${m}`;
-    }
-    if (chemin === "") throw refus();
-    return `webaios-env/${chemin}`;
-  };
   const mondeIsole = (d) => {
     if (d.world !== undefined && d.world !== "ISOLATED") throw new Erreur(`world ${d.world}`);
   };
@@ -388,7 +408,7 @@
     return d;
   };
   const verifierCible = (args) => (typeof args[0].target.tabId === "number" ? ongletPermis(args[0].target.tabId) : SITE_REFUSE);
-  /** Les ids des documents rendus par executeScript (tous, ou null). */
+  /** Les ids des documents rendus par executeScript : tous, ou null (un seul manque suffit). */
   const documentsDe = (resultats) => {
     if (!estListe(resultats)) return null;
     const n = lirePropre(resultats, "length");
@@ -402,23 +422,48 @@
     }
     return ids;
   };
+  /** Les repères (CSS puis JS) d'un script enregistré, après les gardes. */
+  const reperesDe = (css, js) => {
+    const r = [];
+    for (let i = 0; i < css.length; i++) r[r.length] = `${REPERES}${indiceDe("css", css[i])}.js`;
+    for (let i = 0; i < js.length; i++) r[r.length] = `${REPERES}${indiceDe("js", js[i])}.js`;
+    return gardesPuis(r);
+  };
+  /** Ce que l'agent avait enregistré (`js`, `css`) d'après la liste réelle (gardes et repères), lue en propre. */
+  const decoder = (liste) => {
+    const vu = { __proto__: null, js: [], css: [] };
+    if (!estListe(liste)) return vu;
+    const n = lirePropre(liste, "length");
+    for (let i = 0; typeof n === "number" && i < n && i < MAX_LISTE; i++) {
+      const p = lirePropre(liste, `${i}`);
+      if (typeof p !== "string" || estGardePage(p)) continue;
+      const k = reperes[p];
+      if (typeof k !== "number") continue;
+      const e = table[k];
+      vu[e.genre][vu[e.genre].length] = e.chemin;
+    }
+    return vu;
+  };
   const scripting = c.scripting;
+  // Saisis avant d'être remplacés : le fond s'en sert pour injecter les fichiers des scripts de contenu.
+  const executerNatif = scripting && typeof scripting.executeScript === "function" ? scripting.executeScript : null;
+  const cssNatif = scripting && typeof scripting.insertCSS === "function" ? scripting.insertCSS : null;
   if (scripting) {
-    const executer = scripting.executeScript;
-    if (typeof executer === "function") {
+    if (executerNatif) {
+      const executer = executerNatif;
       figer(
         scripting,
         "executeScript",
         garder(executer, scripting, verifierCible, () => SITE_REFUSE, undefined, {
           preparer: (args) => {
             const d = ciblePropre(args);
-            if (estListe(d.files)) d.files = gardesPuis(d.files);
+            if (d.files !== undefined) d.files = gardesPuis(fichiersPermis("js", d.files));
           },
           appel: (args) => {
             const d = args[0];
             if (d.func === undefined) return appliquer(executer, scripting, [d]);
             // La garde d'abord, puis la fonction dans les documents qui l'ont reçue (une navigation entre les deux
-            // ne la fait pas tourner ailleurs) ; sans documentId rendu, la même cible.
+            // ne la fait pas tourner ailleurs) ; un document sans id : refus.
             const premier = creer(null);
             premier.target = d.target;
             premier.files = gardesPuis([]);
@@ -434,12 +479,11 @@
                 r,
                 (resultats) => {
                   const ids = documentsDe(resultats);
-                  if (ids) {
-                    const t = creer(null);
-                    t.tabId = d.target.tabId;
-                    t.documentIds = ids;
-                    d.target = t;
-                  }
+                  if (!ids) return ko(new Erreur("Arguments refusés par WebAiOs (documentId absent)"));
+                  const t = creer(null);
+                  t.tabId = d.target.tabId;
+                  t.documentIds = ids;
+                  d.target = t;
                   let r2;
                   try {
                     r2 = appliquer(executer, scripting, [d]);
@@ -459,41 +503,179 @@
     for (let i = 0; i < NOMS_CSS.length; i++) {
       const f = scripting[NOMS_CSS[i]];
       if (typeof f !== "function") continue;
-      figer(scripting, NOMS_CSS[i], garder(f, scripting, verifierCible, () => SITE_REFUSE, undefined, { preparer: ciblePropre }));
-    }
-    const NOMS_ENREGISTRES = ["registerContentScripts", "updateContentScripts"];
-    for (let i = 0; i < NOMS_ENREGISTRES.length; i++) {
-      const f = scripting[NOMS_ENREGISTRES[i]];
-      if (typeof f !== "function") continue;
       figer(
         scripting,
-        NOMS_ENREGISTRES[i],
-        garder(f, scripting, () => true, () => SITE_REFUSE, undefined, {
+        NOMS_CSS[i],
+        garder(f, scripting, verifierCible, () => SITE_REFUSE, undefined, {
           preparer: (args) => {
+            const d = ciblePropre(args);
+            if (d.files !== undefined) d.files = fichiersPermis("css", d.files);
+          },
+        }),
+      );
+    }
+    /** Un script enregistré : jamais dans le monde de la page ; ses fichiers, vérifiés, deviennent gardes + repères. */
+    const scriptsCopies = (args) => {
+      const liste = args[0];
+      if (!estListe(liste)) throw new Erreur("liste de scripts attendue");
+      for (let j = 0; j < liste.length; j++) {
+        const s = liste[j];
+        if (s === null || typeof s !== "object") throw new Erreur("script illisible");
+        mondeIsole(s);
+        if (s.js !== undefined) fichiersPermis("js", s.js);
+        if (s.css !== undefined) fichiersPermis("css", s.css);
+      }
+      return liste;
+    };
+    const reecrire = (s, actuel) => {
+      if (s.js === undefined && s.css === undefined) return;
+      s.js = reperesDe(s.css !== undefined ? s.css : actuel.css, s.js !== undefined ? s.js : actuel.js);
+      delete s.css;
+    };
+    const VIDE = { __proto__: null, js: [], css: [] };
+    const enregistrer = scripting.registerContentScripts;
+    if (typeof enregistrer === "function") {
+      figer(
+        scripting,
+        "registerContentScripts",
+        garder(enregistrer, scripting, () => true, () => SITE_REFUSE, undefined, {
+          preparer: (args) => {
+            const liste = scriptsCopies(args);
+            for (let j = 0; j < liste.length; j++) reecrire(liste[j], VIDE);
+          },
+        }),
+      );
+    }
+    const lireEnregistres = scripting.getRegisteredContentScripts;
+    const mettreAJour = scripting.updateContentScripts;
+    if (typeof mettreAJour === "function") {
+      figer(
+        scripting,
+        "updateContentScripts",
+        garder(mettreAJour, scripting, () => true, () => SITE_REFUSE, undefined, {
+          preparer: scriptsCopies,
+          // Un seul de `js` / `css` donné : l'autre est repris de l'enregistrement actuel (il est fait de repères).
+          appel: (args) => {
             const liste = args[0];
-            if (!estListe(liste)) throw new Erreur("liste de scripts attendue");
+            const ids = [];
             for (let j = 0; j < liste.length; j++) {
               const s = liste[j];
-              if (s === null || typeof s !== "object") throw new Erreur("script illisible");
-              mondeIsole(s);
-              if (!estListe(s.js)) continue;
-              const js = [];
-              for (let k = 0; k < s.js.length; k++) js[js.length] = enveloppe(s.js[k]);
-              s.js = gardesPuis(js);
+              if ((s.js === undefined) !== (s.css === undefined)) ids[ids.length] = s.id;
             }
+            const finir = (actuels) => {
+              for (let j = 0; j < liste.length; j++) reecrire(liste[j], actuels[`${liste[j].id}`] || VIDE);
+              return appliquer(mettreAJour, scripting, [liste]);
+            };
+            if (ids.length === 0 || typeof lireEnregistres !== "function") return finir(creer(null));
+            return new P((ok, ko) => {
+              ensuite(
+                appliquer(lireEnregistres, scripting, [{ ids }]),
+                (lus) => {
+                  const actuels = creer(null);
+                  const n = estListe(lus) ? lirePropre(lus, "length") : 0;
+                  for (let i = 0; typeof n === "number" && i < n && i < MAX_LISTE; i++) {
+                    const x = lirePropre(lus, `${i}`);
+                    const id = x !== null && typeof x === "object" ? lirePropre(x, "id") : TROU;
+                    if (typeof id === "string") actuels[id] = decoder(lirePropre(x, "js"));
+                  }
+                  let r;
+                  try {
+                    r = finir(actuels);
+                  } catch (e) {
+                    return ko(e);
+                  }
+                  ensuite(r, ok, ko);
+                },
+                ko,
+              );
+            });
           },
+        }),
+      );
+    }
+    if (typeof lireEnregistres === "function") {
+      // Rend les fichiers de l'agent (et non les gardes et les repères) : l'aller-retour vers updateContentScripts passe.
+      figer(
+        scripting,
+        "getRegisteredContentScripts",
+        garder(lireEnregistres, scripting, () => true, () => SITE_REFUSE, undefined, {
+          appel: (args) =>
+            new P((ok, ko) => {
+              ensuite(
+                appliquer(lireEnregistres, scripting, args.length > 0 && args[0] !== undefined ? [args[0]] : []),
+                (lus) => {
+                  const r = [];
+                  const n = estListe(lus) ? lirePropre(lus, "length") : 0;
+                  for (let i = 0; typeof n === "number" && i < n && i < MAX_LISTE; i++) {
+                    const x = lirePropre(lus, `${i}`);
+                    if (x === null || typeof x !== "object") continue;
+                    const y = {};
+                    const k = cles(x);
+                    for (let j = 0; j < k.length; j++) if (k[j] !== "js" && k[j] !== "css") poser(y, k[j], lirePropre(x, k[j]));
+                    const vu = decoder(lirePropre(x, "js"));
+                    if (vu.js.length > 0) poser(y, "js", vu.js);
+                    if (vu.css.length > 0) poser(y, "css", vu.css);
+                    r[r.length] = y;
+                  }
+                  ok(r);
+                },
+                ko,
+              );
+            }),
         }),
       );
     }
     figer(c, "scripting", scripting);
   }
   if (tabs) {
-    const NOMS_SCRIPTS = ["executeScript", "insertCSS"];
-    for (let i = 0; i < NOMS_SCRIPTS.length; i++) {
-      const f = tabs[NOMS_SCRIPTS[i]];
-      if (typeof f !== "function") continue;
-      figer(tabs, NOMS_SCRIPTS[i], garder(f, tabs, (args) => ongletPermis(typeof args[0] === "number" ? args[0] : undefined), () => SITE_REFUSE));
+    // MV2 (absentes en MV3) : l'onglet est vérifié ; executeScript passe d'abord les gardes de page dans les mêmes
+    // cadres, et n'accepte qu'un fichier de la table.
+    const detailsDe = (args) => (typeof args[0] === "number" || args[0] === undefined || args[0] === null ? args[1] : args[0]);
+    const verifierOnglet = (args) => ongletPermis(typeof args[0] === "number" ? args[0] : undefined);
+    const executerOnglet = tabs.executeScript;
+    if (typeof executerOnglet === "function") {
+      figer(
+        tabs,
+        "executeScript",
+        garder(executerOnglet, tabs, verifierOnglet, () => SITE_REFUSE, undefined, {
+          preparer: (args) => {
+            const d = detailsDe(args);
+            if (d === null || typeof d !== "object") throw new Erreur("détails absents");
+            if (d.file !== undefined) indiceDe("js", d.file);
+          },
+          appel: (args) =>
+            new P((ok, ko) => {
+              const d = detailsDe(args);
+              let i = 0;
+              const suivant = () => {
+                if (i >= GARDES_PAGE.length) {
+                  let r;
+                  try {
+                    r = appliquer(executerOnglet, tabs, args);
+                  } catch (e) {
+                    return ko(e);
+                  }
+                  return ensuite(r, ok, ko);
+                }
+                const g = creer(null);
+                g.file = GARDES_PAGE[i++];
+                const k = cles(d);
+                for (let j = 0; j < k.length; j++) if (k[j] !== "file" && k[j] !== "code") g[k[j]] = d[k[j]];
+                let r;
+                try {
+                  r = appliquer(executerOnglet, tabs, typeof args[0] === "number" ? [args[0], g] : [g]);
+                } catch (e) {
+                  return ko(e);
+                }
+                ensuite(r, suivant, ko);
+              };
+              suivant();
+            }),
+        }),
+      );
     }
+    const cssOnglet = tabs.insertCSS;
+    if (typeof cssOnglet === "function") figer(tabs, "insertCSS", garder(cssOnglet, tabs, verifierOnglet, () => SITE_REFUSE));
     figer(c, "tabs", tabs);
   }
 
@@ -510,8 +692,6 @@
     appliquer(onMessage.addListener, onMessage, [
       (m, expediteur, repondre) => {
         if (!estContexte(m)) return undefined;
-        const onglet = expediteur !== null && typeof expediteur === "object" ? lirePropre(expediteur, "tab") : TROU;
-        const id = onglet !== null && typeof onglet === "object" ? lirePropre(onglet, "id") : TROU;
         const reponse = (v) => {
           try {
             repondre({ onglet: v === true });
@@ -519,7 +699,78 @@
             // Le script de contenu est parti.
           }
         };
-        ensuite(typeof id === "number" ? estOnglet(id) : false, reponse, () => reponse(false));
+        const refuser = () => {
+          reponse(false);
+          return false;
+        };
+        const exp = expediteur !== null && typeof expediteur === "object" ? expediteur : creer(null);
+        const onglet = lirePropre(exp, "tab");
+        const id = onglet !== null && typeof onglet === "object" ? lirePropre(onglet, "id") : TROU;
+        // Les repères demandés : des indices de la table, CSS et JS séparés dans leur ordre.
+        const css = [];
+        const js = [];
+        const demandes = lirePropre(m, "fichiers");
+        if (demandes !== TROU && demandes !== undefined) {
+          let liste;
+          try {
+            liste = copier(demandes, 0, []);
+          } catch {
+            liste = null;
+          }
+          if (!estListe(liste)) return refuser();
+          for (let i = 0; i < liste.length; i++) {
+            const n = liste[i];
+            const e = typeof n === "number" ? table[n] : undefined;
+            if (!e) return refuser();
+            const l = e.genre === "css" ? css : js;
+            l[l.length] = e.chemin;
+          }
+        }
+        if (typeof id !== "number") return refuser();
+        // Le document exact qui a demandé (sinon son cadre) : une navigation entre-temps n'y reçoit rien sans garde.
+        const documentId = lirePropre(exp, "documentId");
+        const cadre = lirePropre(exp, "frameId");
+        const cible = creer(null);
+        cible.tabId = id;
+        if (typeof documentId === "string") cible.documentIds = [documentId];
+        else if (typeof cadre === "number") cible.frameIds = [cadre];
+        else if (css.length + js.length > 0) return refuser();
+        const injecter = () =>
+          new P((ok) => {
+            const ko = (e) => {
+              appliquer(journal, console, ["[webaios] fichiers des scripts de contenu non injectés :", e]);
+              ok(true);
+            };
+            const scripts = () => {
+              if (js.length === 0 || !executerNatif) return ok(true);
+              const d = creer(null);
+              d.target = cible;
+              d.files = gardesPuis(js);
+              d.injectImmediately = true;
+              try {
+                ensuite(appliquer(executerNatif, scripting, [d]), () => ok(true), ko);
+              } catch (e) {
+                ko(e);
+              }
+            };
+            if (css.length === 0 || !cssNatif) return scripts();
+            const d = creer(null);
+            d.target = cible;
+            d.files = css;
+            try {
+              ensuite(appliquer(cssNatif, scripting, [d]), scripts, ko);
+            } catch (e) {
+              ko(e);
+            }
+          });
+        ensuite(
+          estOnglet(id),
+          (v) => {
+            if (v !== true) return reponse(false);
+            ensuite(injecter(), () => reponse(true), () => reponse(true));
+          },
+          () => reponse(false),
+        );
         return true;
       },
     ]);
