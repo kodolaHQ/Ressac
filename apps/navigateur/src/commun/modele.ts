@@ -215,6 +215,8 @@ export type Permission =
   | "donnees-widget"
   /** Activer (ou mettre à jour) une extension : la carte d'accord, venue d'un clic de l'utilisateur ou de l'agent. */
   | "extension"
+  /** L'agent veut voir toute la console d'une de ses extensions (déblocage temporaire, jusqu'à ce qu'il ait fini). */
+  | "console-extension"
   | "autre";
 export type Decision = "autoriser" | "refuser";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
@@ -224,7 +226,7 @@ export interface Demande {
   permissions: Permission[];
   /** « ouvrir-application » : le lien à confier à une autre application (mailto:, zoommtg:…). */
   lien?: string;
-  /** « lire-onglet » : titre de l'onglet visé ; « donnees-widget » : nom du widget, affiché tel quel. */
+  /** « lire-onglet » : titre de l'onglet visé ; « donnees-widget », « console-extension » : nom du widget ou de l'extension, affiché tel quel. */
   titre?: string;
   /** « donnees-widget » : l'id du widget dont l'agent veut voir les données. */
   widget?: string;
@@ -234,7 +236,7 @@ export interface Demande {
   cible?: IdOnglet;
   /** « outils-dev » : les droits demandés par l'agent, pré-cochés. */
   droits?: DroitDev[];
-  /** « outils-dev » : la raison donnée par l'agent. */
+  /** « outils-dev », « console-extension » : la raison donnée par l'agent. */
   raison?: string;
   /** « outils-dev » et « donnees-widget » : le nom de l'agent, affiché tel quel. */
   agent?: string;

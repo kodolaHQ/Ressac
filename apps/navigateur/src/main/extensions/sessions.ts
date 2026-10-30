@@ -259,7 +259,12 @@ export class ExtensionsProfils {
        * Consoles des extensions (service workers et pages `chrome-extension://`) et plantages (pages d'extension disparues
        * hors `clean-exit`, échecs de `loadExtension`), par id Chromium.
        */
-      consoles?: Pick<ConsolesExtensions, "noter" | "plantage">;
+      consoles?: Pick<ConsolesExtensions, "noter" | "plantage" | "aTourneDansOnglet">;
+      /**
+       * L'agent peut-il lire cette vue d'onglet (onglet partagé, espace non privé : la règle de ses outils de lecture) ?
+       * Absent : jamais (tout ce qui vient d'un onglet lui est masqué).
+       */
+      lisibleParAgent?(wc: WebContents): boolean;
       /** Après chaque synchronisation des sessions (ce qui est chargé a pu changer : la barre relit). */
       apresSynchro?(): void;
     },
@@ -295,6 +300,8 @@ export class ExtensionsProfils {
       pagesEcoutees = true;
       // Les pages `chrome-extension://` (popups, options, pages ouvertes en onglet) d'une session de profil : leur console
       // et leurs plantages. Un seul écouteur par processus ; l'instance est celle de la session de la page.
+      // Les scripts de contenu écrivent dans la console de l'onglet : un message dont la source est un fichier d'une
+      // extension chargée dans la session est le sien, noté avec l'onglet d'où il vient (console filtrée de l'agent).
       app.on("web-contents-created", (_e, wc) => {
         wc.on("console-message", (ev) => {
           let url: string | undefined;
@@ -303,8 +310,11 @@ export class ExtensionsProfils {
           } catch {
             url = undefined;
           }
+          const m = { horodatage: Date.now(), niveau: niveauConsole(ev.level), texte: String(ev.message) };
           const id = idPageExtension(wc, url);
-          if (id) id.instance.noterConsole(id.id, { horodatage: Date.now(), niveau: niveauConsole(ev.level), texte: String(ev.message) });
+          if (id) return id.instance.noterConsole(id.id, m);
+          const script = idPageExtension(wc, typeof ev.sourceId === "string" ? ev.sourceId : undefined);
+          if (script) script.instance.noterConsoleOnglet(script.id, m, wc);
         });
       });
       app.on("render-process-gone", (_e, wc, details) => {
@@ -373,9 +383,13 @@ export class ExtensionsProfils {
     s.registerPreloadScript({ id: "webaios-extensions-fond", type: "service-worker", filePath: this.o.preloadCorrectifs });
     s.registerPreloadScript({ id: "webaios-extensions-page", type: "frame", filePath: this.o.preloadCorrectifs });
     // Comme le routeur de la bibliothèque : les IPC d'un service worker arrivent sur son propre `ipc`.
+    // Portée de chaque version démarrée : pendant l'évaluation du script de premier niveau, `getInfoFromVersionID` ne
+    // connaît pas encore la version (mesuré), et sa console serait perdue.
+    const portees = new Map<number, string>();
     s.serviceWorkers.on("running-status-changed", ({ runningStatus, versionId }) => {
       if (runningStatus !== "starting") return;
       const worker = s.serviceWorkers.getWorkerFromVersionID(versionId);
+      if (worker?.scope.startsWith("chrome-extension://")) portees.set(versionId, worker.scope);
       if (!worker || workersEcoutes.has(worker) || !worker.scope.startsWith("chrome-extension://")) return;
       workersEcoutes.add(worker);
       const id = new URL(worker.scope).host;
@@ -390,7 +404,7 @@ export class ExtensionsProfils {
       try {
         scope = s.serviceWorkers.getInfoFromVersionID(d.versionId)?.scope;
       } catch {
-        scope = undefined;
+        scope = portees.get(d.versionId);
       }
       const id = idExtensionDe(scope);
       if (id) this.o.consoles?.noter(id, { horodatage: Date.now(), niveau: niveauConsole(d.level), texte: String(d.message) });
@@ -499,7 +513,20 @@ export class ExtensionsProfils {
     if (!id || typeof onglet !== "number" || !s.extensions.getExtension(id)) return false;
     const wc = tousLesWebContents.fromId(onglet);
     if (!wc || typeof wc.isDestroyed !== "function" || wc.isDestroyed() || wc.session !== s || estInvisible(wc)) return false;
-    return this.o.estOnglet?.(wc) ?? false;
+    const vue = this.o.estOnglet?.(wc) ?? false;
+    // Ses scripts vont y tourner (poignée de main, executeScript) : noté pour masquer la console de son service worker
+    // à l'agent s'il ne peut pas lire cet onglet.
+    if (vue) this.o.consoles?.aTourneDansOnglet(id, this.lisibleParAgent(wc));
+    return vue;
+  }
+
+  /** Une vue d'onglet (jamais une lecture invisible) que l'agent peut lire. */
+  private lisibleParAgent(wc: WebContents): boolean {
+    try {
+      return !estInvisible(wc) && (this.o.estOnglet?.(wc) ?? false) && (this.o.lisibleParAgent?.(wc) ?? false);
+    } catch {
+      return false;
+    }
   }
 
   /** La session d'un expéditeur est-elle équipée par cette instance ? */
@@ -574,6 +601,11 @@ export class ExtensionsProfils {
   /** Un message de la console d'une page de l'extension `id` (écouteur des pages, un par processus). */
   noterConsole(id: string, m: MessageConsole): void {
     this.o.consoles?.noter(id, m);
+  }
+
+  /** Un message d'un script de contenu de l'extension `id` dans la vue `wc` (écouteur des pages, un par processus). */
+  noterConsoleOnglet(id: string, m: MessageConsole, wc: WebContents): void {
+    this.o.consoles?.noter(id, m, { lisible: this.lisibleParAgent(wc) });
   }
 
   /** Une page de l'extension `id` a planté (écouteur des pages, un par processus). */

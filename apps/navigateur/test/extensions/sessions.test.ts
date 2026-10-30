@@ -234,6 +234,8 @@ function creer(
     verifierUrl?: (extension: Electron.Extension, url: string) => boolean;
     verifierHote?: (extension: Electron.Extension, url: string) => boolean;
     estOnglet?: (wc: Electron.WebContents) => boolean;
+    lisibleParAgent?: (wc: Electron.WebContents) => boolean;
+    consoles?: ConstructorParameters<typeof ExtensionsProfils>[0]["consoles"];
   } = {},
 ) {
   const p = new ExtensionsProfils({
@@ -247,6 +249,8 @@ function creer(
     ...(o.verifierUrl ? { verifierUrl: o.verifierUrl } : {}),
     ...(o.verifierHote ? { verifierHote: o.verifierHote } : {}),
     ...(o.estOnglet ? { estOnglet: o.estOnglet } : {}),
+    ...(o.lisibleParAgent ? { lisibleParAgent: o.lisibleParAgent } : {}),
+    ...(o.consoles ? { consoles: o.consoles } : {}),
     dossier,
     etat: () => etat,
     premierPlan: () => "f1",
@@ -995,4 +999,63 @@ test("cookies.onChanged : une extension de l'agent ne reçoit que les changement
   changer("autre.test");
   changer(".www.hote.test");
   expect(recus).toEqual({ agent: [".www.hote.test"], store: ["autre.test", ".www.hote.test"] });
+});
+
+// ——— Tâche 17 : console filtrée ———
+
+test("estOnglet note où l'extension a tourné : dans un onglet lisible par l'agent ou non", async () => {
+  const s = fausseSession("defaut");
+  const vue = () => ({ isDestroyed: () => false, session: s });
+  const lisible = vue();
+  const cache = vue();
+  vuesParId.set(1, lisible);
+  vuesParId.set(2, cache);
+  const notes: [string, boolean][] = [];
+  try {
+    const p = creer({
+      estOnglet: () => true,
+      lisibleParAgent: (wc) => wc === (lisible as unknown),
+      consoles: { noter: () => {}, plantage: () => {}, aTourneDansOnglet: (id, l) => void notes.push([id, l]) },
+    });
+    p.brancher(s as unknown as Electron.Session, "defaut");
+    await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+    const sess = s as unknown as Electron.Session;
+    expect(p.estOnglet(sess, "id-copies-fond", 1)).toBe(true);
+    expect(p.estOnglet(sess, "id-copies-fond", 2)).toBe(true);
+    // Pas un onglet : rien n'est noté.
+    expect(p.estOnglet(sess, "id-copies-fond", 99)).toBe(false);
+    expect(notes).toEqual([
+      ["id-copies-fond", true],
+      ["id-copies-fond", false],
+    ]);
+  } finally {
+    vuesParId.clear();
+  }
+});
+
+test("console d'un onglet : un message dont la source est un fichier de l'extension est noté avec la lisibilité de l'onglet ; celui de la page, non", async () => {
+  const s = fausseSession("defaut");
+  const notes: { id: string; texte: string; onglet?: { lisible: boolean } }[] = [];
+  let lisible = false;
+  const p = creer({
+    estOnglet: () => true,
+    lisibleParAgent: () => lisible,
+    consoles: { noter: (id, m, onglet) => void notes.push({ id, texte: m.texte, ...(onglet ? { onglet } : {}) }), plantage: () => {}, aTourneDansOnglet: () => {} },
+  });
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  const wc = Object.assign(new EventEmitter(), { session: s, isDestroyed: () => false, getType: () => "window", getURL: () => "https://site.test/" });
+  ecouteursApp.emit("web-contents-created", {}, wc);
+  const message = (texte: string, sourceId: string) =>
+    wc.emit("console-message", { message: texte, level: "info", sourceId, lineNumber: 1, frame: { url: "https://site.test/" } });
+  message("caché", "chrome-extension://id-copies-fond/contenu.js");
+  lisible = true;
+  message("partagé", "chrome-extension://id-copies-fond/contenu.js");
+  message("de la page", "https://site.test/app.js");
+  // Une extension qui n'est pas chargée dans cette session : ignorée.
+  message("inconnue", "chrome-extension://inconnue/contenu.js");
+  expect(notes).toEqual([
+    { id: "id-copies-fond", texte: "caché", onglet: { lisible: false } },
+    { id: "id-copies-fond", texte: "partagé", onglet: { lisible: true } },
+  ]);
 });

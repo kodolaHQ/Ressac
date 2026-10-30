@@ -18,13 +18,20 @@ import {
   modifierEtatExtensions,
   preparerStore,
   retirerProfil,
+  RESERVE_AGENT,
+  type ConsolePourAgent,
+  type ExtensionPourAgent,
   type EtatExtensions,
   type IdProfil,
+  type OutilsExtensions,
+  type ResultatConsoleExtension,
+  type ResultatDemandeExtension,
 } from "@webaios/noyau";
 import {
   carteDe,
   DESACTIVEE_PLANTAGES,
   DESACTIVEE_PORTEE,
+  LONGUEUR_RAISON_DEBLOCAGE,
   nonPrisEnCharge,
   type BarreExtensions,
   type CarteExtension,
@@ -35,11 +42,12 @@ import {
 import type { ResultatExtension } from "../../commun/api";
 export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE };
 import { aUneVue, partitionDe, profilsEnUsage, type Decision, type Demande, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
-import { attendreReponse, questionCaduque } from "../agent/pont";
+import { attendreReponse, DELAI_QUESTION_MS, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import {
+  ACTIVATION_REFUSEE,
   demanderActivation,
   demarrerAgents,
   preparerAgent,
@@ -120,6 +128,20 @@ export const REVOIR_PENDANT_COUPURE = "Les extensions sont toutes désactivées 
 export const RIEN_A_REVOIR = "Rien à revoir pour cette extension";
 /** Erreurs de console montrées sur la page Extensions, au plus (les dernières). */
 const ERREURS_CONSOLE_PAGE = 20;
+/** Déblocage de la console refusé : l'extension tourne dans le profil d'un espace privé (impossible par construction). */
+export const CONSOLE_PROFIL_PRIVE = "Extension active dans le profil d'un espace privé : sa console n'est jamais montrée à l'agent";
+export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
+export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
+
+/**
+ * La clé `agent:<dossier>` d'un id donné par l'agent (`<dossier>` ou `agent:<dossier>`). Toute autre clé (Store) lève
+ * `RESERVE_AGENT` : deuxième barrière derrière les outils du noyau. Un id illisible rend null.
+ */
+function cleAgentPour(id: string): string | null {
+  if (id.includes(":") && !id.startsWith("agent:")) throw new Error(RESERVE_AGENT);
+  const cle = id.startsWith("agent:") ? id : `agent:${id}`;
+  return lireCle(cle)?.source === "agent" ? cle : null;
+}
 
 /**
  * Relie le registre des extensions (`<userData>/extensions/etat.json`) aux sessions des profils : au démarrage, il lit
@@ -152,6 +174,13 @@ export class ServiceExtensions {
   private poser: PoserQuestion | undefined;
   /** Les cartes d'accord affichées, par clé. `connue` : l'extension était dans le registre quand la carte a été posée. */
   private cartes = new Map<string /* signatureCarte */, CarteOuverte>();
+  /**
+   * Extensions de l'agent dont l'utilisateur a débloqué la console pour l'agent : en mémoire seulement (quitter WebAiOs y met
+   * fin), retirées par `refermerConsole`, et à chaque écriture du registre qui la retire, la désactive ou la coupe.
+   */
+  private deblocages = new Set<string>();
+  /** Cartes de déblocage affichées, par clé : une seule à la fois, retirée si l'extension part du registre. */
+  private cartesDeblocage = new Map<string, { reponse: Promise<boolean>; retrait: AbortController }>();
   /**
    * Consoles et plantages des extensions (branchés par `ExtensionsProfils`) : au `PLANTAGES_MAX`-ième plantage en
    * `FENETRE_PLANTAGES_MS`, l'extension est désactivée partout (`DESACTIVEE_PLANTAGES`).
@@ -253,6 +282,7 @@ export class ServiceExtensions {
     if (!o) throw new Error("Service des extensions non démarré");
     this.etat = await modifierEtatExtensions(o.dossier, changer, () => profilsPrives(o.magasin.etat));
     this.perimerCartes();
+    this.verifierDeblocages();
     // Pendant le démarrage (extensions de l'agent recopiées), le premier chargement vient ensuite.
     if (this.pret) await this.appliquer();
     o.surChange?.();
@@ -760,6 +790,7 @@ export class ServiceExtensions {
         majEnAttente: x.majEnAttente?.version ?? null,
         nonPrisEnCharge: nonPrisEnCharge(manifeste),
         epinglee: x.epinglee,
+        consoleDebloquee: this.deblocages.has(cle),
       });
     }
     return lignes.sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
@@ -896,6 +927,204 @@ export class ServiceExtensions {
     });
     if (!r.ok) throw new Error(r.erreur);
     console.warn(`[extensions] ${cle} désactivée : ${DESACTIVEE_PLANTAGES}`);
+  }
+
+  // ——— L'agent (outils MCP) : lister, demander, recharger, console filtrée, déblocage ———
+
+  /** Les outils MCP des extensions, pour le noyau. `fenetreAgent` : la fenêtre d'une demande venue du jeton principal. */
+  outilsAgent(o: { fenetreAgent: () => IdFenetre | undefined }): OutilsExtensions {
+    return {
+      lister: async () => this.listePourAgent(),
+      demander: (id, x) => this.demanderPourAgent(id, x, o.fenetreAgent),
+      recharger: (id) => this.rechargerPourAgent(id),
+      console: async (id, depuis) => this.consolePourAgent(id, depuis),
+      debloquerConsole: (id, raison, x) => this.debloquerConsole(id, raison, x, o.fenetreAgent),
+      refermerConsole: async (id) => {
+        const cle = cleAgentPour(id);
+        if (!cle) return { ok: false, erreur: `Extension inconnue : ${id}` };
+        this.couperDeblocage(cle);
+        return { ok: true };
+      },
+    };
+  }
+
+  /** La fenêtre d'une demande de l'agent : la sienne si elle est ouverte, sinon celle au premier plan. */
+  private fenetrePour(fenetre: string | null, fenetreAgent: () => IdFenetre | undefined) {
+    const nav = this.o?.magasin.etat;
+    return nav?.fenetres.find((f) => f.id === fenetre) ?? nav?.fenetres.find((f) => f.id === fenetreAgent()) ?? nav?.fenetres[0];
+  }
+
+  /** Les profils d'une entrée qu'utilise un espace privé. */
+  private dansUnProfilPrive(profils: readonly IdProfil[]): boolean {
+    const prives = this.o ? profilsPrives(this.o.magasin.etat) : new Set<IdProfil>();
+    return profils.some((p) => prives.has(p));
+  }
+
+  /**
+   * Chaque extension du registre : les espaces non privés où elle est active (nommés), les privés (comptés). Erreurs :
+   * celles du service, la désactivation, et pour l'agent les erreurs de sa console filtrées ; jamais la console du Store.
+   */
+  private listePourAgent(): ExtensionPourAgent[] {
+    const nav = this.o?.magasin.etat;
+    if (!nav) return [];
+    return Object.entries(this.etat.extensions)
+      .map(([cle, x]): ExtensionPourAgent => {
+        const espaces = nav.espaces.filter((e) => x.profils.includes(e.profil));
+        const erreurs: string[] = [];
+        for (const table of [this.erreursPreparation, this.erreursMaj, this.erreursAgent, this.o?.profils.erreursChargement() ?? new Map<string, string>()]) {
+          const e = table.get(cle);
+          if (e) erreurs.push(e);
+        }
+        if (x.desactivee) erreurs.push(x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE);
+        const id = x.source === "agent" ? this.idChromeDe(cle) : null;
+        if (id && !this.dansUnProfilPrive(x.profils)) erreurs.push(...this.consoles.erreursPourAgent(id, this.deblocages.has(cle)).slice(-ERREURS_CONSOLE_PAGE));
+        return {
+          cle,
+          source: x.source,
+          nom: x.nom,
+          version: x.version,
+          espaces: espaces.filter((e) => !e.prive).map((e) => e.nom),
+          espacesPrives: espaces.filter((e) => e.prive).length,
+          erreurs,
+        };
+      })
+      .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /**
+   * `demander_extension` : l'espace nommé (id ou nom, jamais un espace privé), sinon l'espace actif de la fenêtre de
+   * l'agent ; la carte (`demanderActivation`, délai des questions de l'agent). « Activation refusée » est le refus de
+   * L'utilisateur (ou une carte retirée).
+   */
+  private async demanderPourAgent(
+    id: string,
+    x: { espace?: string; fenetre: string | null; signal?: AbortSignal },
+    fenetreAgent: () => IdFenetre | undefined,
+  ): Promise<ResultatDemandeExtension> {
+    const nav = this.o?.magasin.etat;
+    if (!nav) return { ok: false, erreur: "Service des extensions non démarré" };
+    const dossier = cleAgentPour(id)?.slice("agent:".length);
+    if (!dossier) return { ok: false, erreur: `Identifiant d'extension invalide : ${id}` };
+    const f = this.fenetrePour(x.fenetre, fenetreAgent);
+    let espace: Espace | undefined;
+    if (x.espace !== undefined) {
+      const ouverts = nav.espaces.filter((e) => !e.prive);
+      espace = ouverts.find((e) => e.id === x.espace) ?? ouverts.find((e) => e.nom.toLowerCase() === x.espace!.toLowerCase());
+      if (!espace) return { ok: false, erreur: `Espace inconnu : ${x.espace}` };
+    } else espace = nav.espaces.find((e) => e.id === f?.espaceActif);
+    if (!espace) return { ok: false, erreur: "Aucun espace actif" };
+    const r = await this.demanderActivation(dossier, {
+      espace,
+      ...(f ? { fenetre: f.id } : {}),
+      delaiMs: DELAI_QUESTION_MS,
+      ...(x.signal ? { signal: x.signal } : {}),
+    });
+    if (r.ok) return { ok: true, espace: espace.nom };
+    return r.erreur === ACTIVATION_REFUSEE ? { ok: false, erreur: r.erreur, refusee: true } : r;
+  }
+
+  /** `recharger_extension` : rechargée, le drapeau de sa console (onglet non lisible) retombe. */
+  private async rechargerPourAgent(id: string): Promise<ResultatRechargement> {
+    const cle = cleAgentPour(id);
+    if (!cle) return { etat: "refusee", detail: [`Identifiant d'extension invalide : ${id}`] };
+    const r = await this.recharger(cle.slice("agent:".length));
+    const idChrome = this.idChromeDe(cle);
+    if (r.etat === "rechargee" && idChrome) this.consoles.recharge(idChrome);
+    return r;
+  }
+
+  /** `console_extension` : la console filtrée (débloquée : entière) ; null si l'extension n'est pas au registre. */
+  private consolePourAgent(id: string, depuis?: number): ConsolePourAgent | null {
+    const cle = cleAgentPour(id);
+    const x = cle ? this.etat.extensions[cle] : undefined;
+    if (!cle || !x) return null;
+    if (this.dansUnProfilPrive(x.profils)) throw new Error(CONSOLE_PROFIL_PRIVE);
+    const idChrome = this.idChromeDe(cle);
+    const debloquee = this.deblocages.has(cle);
+    if (!idChrome) return { messages: [], masques: 0, fondMasque: false, debloquee };
+    return this.consoles.pourAgent(idChrome, { ...(depuis !== undefined ? { depuis } : {}), debloquee });
+  }
+
+  /**
+   * `debloquer_console` : la carte de déblocage (même modale que les autres questions de l'agent, Refuser par défaut),
+   * pour une extension de l'agent active quelque part, jamais dans le profil d'un espace privé. Accordée : sa console
+   * n'est plus filtrée, jusqu'à `couperDeblocage` ou une écriture du registre qui y met fin (`verifierDeblocages`).
+   */
+  private async debloquerConsole(
+    id: string,
+    raison: string,
+    x: { fenetre: string | null; agent: string; signal?: AbortSignal },
+    fenetreAgent: () => IdFenetre | undefined,
+  ): Promise<ResultatConsoleExtension> {
+    const cle = cleAgentPour(id);
+    const entree = cle ? this.etat.extensions[cle] : undefined;
+    if (!cle || !entree) return { ok: false, erreur: `Extension inconnue : ${id}` };
+    const refus = this.refusDeblocage(cle);
+    if (refus) return { ok: false, erreur: refus };
+    if (this.deblocages.has(cle)) return { ok: true };
+    const poser = this.poser;
+    if (!poser) return { ok: false, erreur: "Questions pas encore branchées" };
+    let carte = this.cartesDeblocage.get(cle);
+    if (!carte) {
+      const f = this.fenetrePour(x.fenetre, fenetreAgent);
+      const retrait = new AbortController();
+      const champs = {
+        permissions: ["console-extension" as const],
+        origine: cle,
+        titre: entree.nom,
+        raison: raison.slice(0, LONGUEUR_RAISON_DEBLOCAGE),
+        agent: x.agent,
+        ...(f ? { fenetreId: f.id } : {}),
+      };
+      const nouvelle = {
+        retrait,
+        reponse: attendreReponse((repondre) => poser(champs, repondre), DELAI_QUESTION_MS, retrait.signal).finally(() => {
+          if (this.cartesDeblocage.get(cle) === nouvelle) this.cartesDeblocage.delete(cle);
+        }),
+      };
+      this.cartesDeblocage.set(cle, nouvelle);
+      carte = nouvelle;
+    }
+    const abandon = new Promise<boolean>((ok) => {
+      if (x.signal?.aborted) ok(false);
+      x.signal?.addEventListener("abort", () => {
+        carte.retrait.abort();
+        ok(false);
+      }, { once: true });
+    });
+    if (!(await Promise.race([carte.reponse, abandon]))) return { ok: false, erreur: "Déblocage refusé", refusee: true };
+    // L'état a pu changer pendant la carte : il est revu au « oui ».
+    if (!(cle in this.etat.extensions) || this.refusDeblocage(cle)) return { ok: false, erreur: DEBLOCAGE_CHANGE };
+    this.deblocages.add(cle);
+    this.o?.surChange?.();
+    return { ok: true };
+  }
+
+  /** Pourquoi la console de `cle` ne peut pas (ou plus) être débloquée, ou null. */
+  private refusDeblocage(cle: string): string | null {
+    const x = this.etat.extensions[cle];
+    if (!x || x.source !== "agent") return `Extension inconnue : ${cle}`;
+    if (this.dansUnProfilPrive(x.profils)) return CONSOLE_PROFIL_PRIVE;
+    if (this.etat.toutesCoupees || x.desactivee || x.profils.length === 0) return DEBLOCAGE_INACTIVE;
+    return null;
+  }
+
+  /** Après chaque écriture du registre : un déblocage dont l'extension est partie, désactivée ou coupée prend fin. */
+  private verifierDeblocages(): void {
+    let change = false;
+    for (const cle of [...this.deblocages])
+      if (this.refusDeblocage(cle)) {
+        this.deblocages.delete(cle);
+        change = true;
+      }
+    for (const [cle, carte] of this.cartesDeblocage) if (this.refusDeblocage(cle)) carte.retrait.abort();
+    if (change) this.o?.surChange?.();
+  }
+
+  /** « Couper le déblocage » (page Extensions) ou `refermer_console` : la console de `cle` est de nouveau filtrée. */
+  couperDeblocage(cle: string): ResultatExtension {
+    if (this.deblocages.delete(cle)) this.o?.surChange?.();
+    return { ok: true };
   }
 
   /** L'état du registre tel que chargé. */

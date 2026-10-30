@@ -254,6 +254,8 @@ export interface ApiWebaios {
     revoir(cle: string): Promise<ResultatExtension>;
     /** Une extension désactivée pour ses plantages repart (là où elle était active). */
     reactiver(cle: string): Promise<ResultatExtension>;
+    /** « Couper le déblocage » de la console d'une extension de l'agent. */
+    couperDeblocage(cle: string): Promise<ResultatExtension>;
   };
 }
 

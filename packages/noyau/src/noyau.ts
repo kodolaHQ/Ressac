@@ -15,6 +15,7 @@ import { executeurParDefaut, type Executeur } from "./conteneur/executeur.js";
 import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
+import type { OutilsExtensions } from "./mcp/extensions.js";
 import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
@@ -239,6 +240,8 @@ export async function creerNoyau(o: {
   urlRecherche?: string;
   /** Notification de fin d'une veille qui a de nouveaux éléments (le navigateur la montre, voir OptionsPlanificateur). */
   notifier?: (n: NotificationWidget) => void;
+  /** Outils MCP des extensions (fournis par le navigateur). */
+  extensions?: OutilsExtensions;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -291,6 +294,7 @@ export async function creerNoyau(o: {
     ...(o.applications ? { applications: o.applications } : {}),
     widgets: outilsWidgets,
     ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}),
+    ...(o.extensions ? { extensions: o.extensions } : {}),
   });
   try {
     // Configs de session laissées par un plantage : leurs jetons ne valent plus rien.

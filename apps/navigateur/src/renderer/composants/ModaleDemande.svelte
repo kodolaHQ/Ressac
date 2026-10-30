@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
+  import { LONGUEUR_RAISON_DEBLOCAGE, texteDeblocageConsole } from "../../commun/extensions-messages";
   import { siteDe, type DemandeEnAttente, type IdOnglet } from "../../commun/modele";
   import { api } from "../etat.svelte";
   import DemandeExtension from "./DemandeExtension.svelte";
@@ -26,6 +27,10 @@
   const outilsDev = $derived(demande.permissions.includes("outils-dev"));
   const donneesWidget = $derived(demande.permissions.includes("donnees-widget"));
   const extension = $derived(demande.permissions.includes("extension"));
+  const consoleExtension = $derived(demande.permissions.includes("console-extension"));
+  /** Nom de l'extension (manifeste) et raison de l'agent : des données, affichées en texte et bornées. */
+  const nomExtension = $derived((demande.titre ?? demande.origine).slice(0, 60));
+  const raisonAgent = $derived((demande.raison ?? "").slice(0, LONGUEUR_RAISON_DEBLOCAGE));
   const site = $derived(siteDe(demande.origine));
 
   // Une seule ouverture pour toute la file : les demandes suivantes remplacent le contenu, la page reste cachée.
@@ -104,7 +109,9 @@
         ? "Demande d'accès aux données d'un widget"
         : extension
           ? "Activer une extension"
-          : "Demande d'autorisation"}
+          : consoleExtension
+            ? "Débloquer la console d'une extension"
+            : "Demande d'autorisation"}
   >
     {#key demande.id}
       {#if outilsDev}
@@ -119,6 +126,16 @@
             <div class="actions"><button data-principal onclick={refuser}>Refuser</button></div>
           </div>
         {/if}
+      {:else if consoleExtension}
+        <div class="lecture" data-testid="demande-console-extension">
+          <p>{texteDeblocageConsole(nomExtension)}</p>
+          {#if raisonAgent}<p class="raison">Raison donnée par {demande.agent ?? "l'agent"} : « {raisonAgent} »</p>{/if}
+          <div class="actions">
+            <!-- Entrée refuse : montrer à l'agent ce qu'une extension lit sur des onglets non partagés demande un vrai clic. -->
+            <button data-principal onclick={refuser}>Refuser</button>
+            <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Débloquer</button>
+          </div>
+        </div>
       {:else if donneesWidget}
         <div class="lecture" data-testid="demande-donnees-widget">
           <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
@@ -166,6 +183,7 @@
     .carte { transition: none; transform: none; }
   }
   .lecture p { margin: 0 0 12px; font-size: 14px; overflow-wrap: anywhere; }
+  .lecture p.raison { font-size: 13px; color: var(--texte-doux, inherit); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
   button { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-weight: 600; font-size: 12.5px; }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

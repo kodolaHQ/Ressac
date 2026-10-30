@@ -19,6 +19,7 @@ export * from "./mcp/serveur.js";
 export * from "./outils-dev/resumes.js";
 export * from "./outils-dev/suivi.js";
 export * from "./mcp/outils-dev.js";
+export * from "./mcp/extensions.js";
 export * from "./ia/ia-locale.js";
 export * from "./ia/repartiteur.js";
 export * from "./workflows/protocole.js";

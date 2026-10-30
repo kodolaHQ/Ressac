@@ -16,6 +16,7 @@
     "outils-dev": "utiliser les outils de développement",
     "donnees-widget": "voir les données d'un widget",
     extension: "activer une extension",
+    "console-extension": "voir toute la console d'une extension",
     autre: "une permission inconnue",
   };
 

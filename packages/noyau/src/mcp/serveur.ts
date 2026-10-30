@@ -10,6 +10,7 @@ import { ID_EXECUTION, type Execution, type ResumeExecution } from "../workflows
 import { erreurDuNoyau } from "../widgets/recolte.js";
 import type { DroitDev, PolitiqueAcces } from "../acces/politique.js";
 import { enregistrerOutilsDev, type FichiersProfils } from "./outils-dev.js";
+import { enregistrerOutilsExtensions, type OutilsExtensions } from "./extensions.js";
 import { OngletIntrouvable, OngletPrive, TEXTE_PRIVE, type OngletInfo, type OutilsDevNavigateur, type PontNavigateur, type ResultatHistorique } from "./pont.js";
 
 export const TEXTE_REFUS = "Accès refusé par l'utilisateur à cet onglet.";
@@ -149,6 +150,7 @@ function creerServeurOutils(
   widgets?: OptionsWidgets,
   fenetre: string | null = null,
   workflowOuvert?: (fenetre: string) => WorkflowOuvert | null,
+  extensions?: OutilsExtensions,
 ): McpServer {
   const serveur = new McpServer({ name: "webaios", version: "0.1.0" });
 
@@ -316,6 +318,7 @@ function creerServeurOutils(
   }
 
   if (widgets) enregistrerOutilsWidgets(serveur, pont, politique, widgets, proteger);
+  if (extensions) enregistrerOutilsExtensions(serveur, { outils: extensions, agent: dev?.agent ?? "L'agent", fenetre, politique });
   if (workflowOuvert) {
     serveur.registerTool(
       "workflow_ouvert",
@@ -553,6 +556,8 @@ export async function demarrerServeurMcp(o: {
   widgets?: OutilsWidgets;
   /** Le workflow ouvert dans le constructeur d'une fenêtre ; sans lui, l'outil `workflow_ouvert` n'existe pas. */
   workflowOuvert?: (fenetre: string) => WorkflowOuvert | null;
+  /** Outils des extensions (lister, demander, recharger, console) ; sans lui, aucun outil d'extension. */
+  extensions?: OutilsExtensions;
 }): Promise<{ port: number; urlConteneur: string; ouvrirSession(fenetre: string): string; fermerSession(jeton: string): void; arreter(): Promise<void> }> {
   const attendu = Buffer.from(o.jeton);
   // Jetons de session : un par agent de fenêtre. Remarque de sécurité : leurs fichiers de config sont lisibles par les
@@ -573,7 +578,7 @@ export async function demarrerServeurMcp(o: {
     if (fenetre === undefined) return res.writeHead(401).end();
     if (new URL(req.url ?? "/", "http://x").pathname !== "/mcp") return res.writeHead(404).end();
     // Mode sans état : un serveur et un transport neufs par requête.
-    const serveur = creerServeurOutils(o.pont, o.politique, demandes, o.applications, o.delaiOngletAppMs, dev, widgets, fenetre, o.workflowOuvert);
+    const serveur = creerServeurOutils(o.pont, o.politique, demandes, o.applications, o.delaiOngletAppMs, dev, widgets, fenetre, o.workflowOuvert, o.extensions);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

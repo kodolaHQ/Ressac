@@ -482,3 +482,148 @@ test("supprimer une extension de l'agent : entrée et copie effacées, le dossie
   expect(existsSync(join(dossier, "copies", "essai"))).toBe(false);
   expect(existsSync(join(agent, "essai", "manifest.json"))).toBe(true);
 });
+
+// ——— Tâche 17 : outils de l'agent, console filtrée, déblocage ———
+
+const AGENT_ID = "e".repeat(32);
+
+/** Une extension de l'agent `agent:essai` (id Chromium AGENT_ID) active dans « Perso », et ses outils pour l'agent. */
+async function agentPourOutils(o: { reponse?: "autoriser" | "refuser"; espaces?: { id: string; nom: string; profil: string; prive: boolean }[] } = {}) {
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "Bloqueur", version: "1.0.0" }));
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({
+      version: 1,
+      toutesCoupees: false,
+      extensions: {
+        "agent:essai": { ...entree("agent", ["defaut"]), idChrome: AGENT_ID },
+        [`store:${ID}`]: { ...entree("store", ["defaut", "secret"]), nom: "Bloqueur" },
+      },
+    }),
+  );
+  nav = {
+    espaces: o.espaces ?? [
+      { id: "e1", nom: "Perso", profil: "defaut", prive: false },
+      { id: "e2", nom: "Banque", profil: "secret", prive: true },
+    ],
+    profils: [{ id: "defaut" }, { id: "secret" }],
+    fenetres: [{ id: "f1", espaceActif: "e1" }],
+    onglets: {},
+  } as unknown as EtatNavigateur;
+  const { service, pret } = demarrer();
+  await pret;
+  const cartes: Record<string, unknown>[] = [];
+  service.brancherQuestions((champs, repondre) => {
+    cartes.push(champs as Record<string, unknown>);
+    setTimeout(() => repondre(o.reponse ?? "autoriser"));
+    return () => {};
+  });
+  const outils = service.outilsAgent({ fenetreAgent: () => "f1" });
+  const registre = () => JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")) as EtatExtensions;
+  return { service, outils, cartes, registre };
+}
+
+test("lister pour l'agent : espaces non privés nommés, privés comptés ; erreurs de console filtrées pour l'agent, jamais celles du Store", async () => {
+  const { service, outils } = await agentPourOutils();
+  service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "error", texte: "visible" }, { lisible: true });
+  service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "error", texte: "secret d'onglet" }, { lisible: false });
+  service.consoles.noter(ID, { horodatage: 3, niveau: "error", texte: "console du Store" });
+  const liste = await outils.lister();
+  expect(liste.find((x) => x.cle === "agent:essai")).toEqual({ cle: "agent:essai", source: "agent", nom: "essai", version: "1.0.0", espaces: ["Perso"], espacesPrives: 0, erreurs: ["visible"] });
+  expect(liste.find((x) => x.cle === `store:${ID}`)).toEqual({ cle: `store:${ID}`, source: "store", nom: "Bloqueur", version: "1.0.0", espaces: ["Perso"], espacesPrives: 1, erreurs: [] });
+  expect(JSON.stringify(liste)).not.toContain("Banque");
+});
+
+test("console pour l'agent : filtrée ; deuxième barrière pour le Store ; inconnue → null", async () => {
+  const { service, outils } = await agentPourOutils();
+  service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "caché" }, { lisible: false });
+  service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "fond" });
+  expect(await outils.console("essai")).toEqual({ messages: [{ horodatage: 2, niveau: "log", texte: "fond" }], masques: 1, fondMasque: false, debloquee: false });
+  expect(await outils.console("agent:essai", 2)).toMatchObject({ masques: 0 });
+  await expect(outils.console(`store:${ID}`)).rejects.toThrow("Réservé aux extensions que tu as écrites.");
+  expect(await outils.console("absente")).toBeNull();
+});
+
+test("recharger remet à zéro le drapeau du service worker (rechargée seulement)", async () => {
+  const { service } = await agentPourOutils();
+  service.consoles.aTourneDansOnglet(AGENT_ID, false);
+  // Sans dossier de l'agent, le rechargement est refusé : le drapeau reste.
+  const outils = service.outilsAgent({ fenetreAgent: () => "f1" });
+  expect((await outils.recharger("essai")).etat).toBe("refusee");
+  expect((await outils.console("essai"))!.fondMasque).toBe(true);
+});
+
+test("debloquer_console : la carte (Refuser par défaut côté interface) dit ce que l'agent verra ; accordé, plus rien n'est masqué ; refermer le referme", async () => {
+  const { service, outils, cartes } = await agentPourOutils();
+  service.consoles.aTourneDansOnglet(AGENT_ID, false);
+  service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "caché" }, { lisible: false });
+  service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "fond" });
+  expect(await outils.debloquerConsole("essai", "le bouton ne répond pas", { fenetre: null, agent: "Claude" })).toEqual({ ok: true });
+  expect(cartes).toHaveLength(1);
+  expect(cartes[0]).toMatchObject({ permissions: ["console-extension"], origine: "agent:essai", titre: "essai", raison: "le bouton ne répond pas", agent: "Claude", fenetreId: "f1" });
+  expect(await outils.console("essai")).toMatchObject({ masques: 0, fondMasque: false, debloquee: true, messages: [{ texte: "caché" }, { texte: "fond" }] });
+  expect((await service.liste()).find((l) => l.cle === "agent:essai")!.consoleDebloquee).toBe(true);
+  // En mémoire seulement : rien au registre.
+  expect(readFileSync(join(dossier, "etat.json"), "utf8")).not.toMatch(/debloqu/i);
+  // Fin 1 : l'agent la referme.
+  expect(await outils.refermerConsole("essai")).toEqual({ ok: true });
+  expect(await outils.console("essai")).toMatchObject({ masques: 1, fondMasque: true, debloquee: false });
+  // Déjà débloquée : pas de nouvelle carte.
+  await outils.debloquerConsole("essai", "encore", { fenetre: null, agent: "Claude" });
+  await outils.debloquerConsole("essai", "encore", { fenetre: null, agent: "Claude" });
+  expect(cartes).toHaveLength(2);
+});
+
+test("debloquer_console refusé : « refusee », rien ne change ; jamais pour le Store, ni une extension inactive", async () => {
+  const { outils, cartes } = await agentPourOutils({ reponse: "refuser" });
+  expect(await outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" })).toMatchObject({ ok: false, refusee: true });
+  expect((await outils.console("essai"))!.debloquee).toBe(false);
+  await expect(outils.debloquerConsole(`store:${ID}`, "r", { fenetre: null, agent: "Claude" })).rejects.toThrow("Réservé aux extensions que tu as écrites.");
+  expect(cartes).toHaveLength(1);
+});
+
+test("fins du déblocage : L'utilisateur le coupe (page), l'extension est désactivée, supprimée ; un nouveau service (WebAiOs relancé) n'en a aucun", async () => {
+  const { service, outils } = await agentPourOutils();
+  const debloquer = () => outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" });
+  const debloquee = async () => (await outils.console("essai"))?.debloquee;
+  // Fin 2 : « Couper le déblocage » sur la page Extensions.
+  await debloquer();
+  expect(await service.couperDeblocage("agent:essai")).toEqual({ ok: true });
+  expect(await debloquee()).toBe(false);
+  // Fin 3 : désactivée partout.
+  await debloquer();
+  expect(await debloquee()).toBe(true);
+  await service.desactiverPartout("agent:essai");
+  expect(await debloquee()).toBe(false);
+  // Réactivée par un registre réécrit, puis coupure générale : fin aussi.
+  // Fin 4 : relance de WebAiOs (en mémoire seulement).
+  const autre = await agentPourOutils();
+  expect((await autre.outils.console("essai"))!.debloquee).toBe(false);
+  await autre.outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" });
+  // Fin 5 : supprimée.
+  expect(await autre.service.supprimer("agent:essai")).toEqual({ ok: true });
+  expect(await autre.outils.console("essai")).toBeNull();
+  expect((await autre.service.liste()).find((l) => l.cle === "agent:essai")).toBeUndefined();
+});
+
+test("fin du déblocage par la coupure générale ; et jamais si l'extension est active dans le profil d'un espace privé", async () => {
+  const { service, outils } = await agentPourOutils();
+  await outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" });
+  await service.toutCouper(true);
+  expect((await outils.console("essai"))!.debloquee).toBe(false);
+  await service.toutCouper(false);
+  // Un registre (impossible par construction) où elle est active dans un profil privé : refusé sans carte.
+  const prive = await agentPourOutils({ espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: true }] });
+  const r = await prive.outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" });
+  expect(r.ok).toBe(false);
+  expect(prive.cartes).toEqual([]);
+});
+
+test("demander pour l'agent : espace par nom ; un espace privé ou inconnu est refusé sans carte ; le refus de l'utilisateur est signalé", async () => {
+  const { outils, cartes } = await agentPourOutils();
+  expect(await outils.demander("essai", { espace: "Banque", fenetre: null, agent: "Claude" })).toEqual({ ok: false, erreur: "Espace inconnu : Banque" });
+  expect(await outils.demander("essai", { espace: "Nulle part", fenetre: null, agent: "Claude" })).toEqual({ ok: false, erreur: "Espace inconnu : Nulle part" });
+  expect(cartes).toEqual([]);
+});

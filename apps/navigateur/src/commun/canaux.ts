@@ -75,6 +75,7 @@ export const CANAUX = {
   extensionsToutCouper: "webaios:extensions-tout-couper",
   extensionsRevoir: "webaios:extensions-revoir",
   extensionsReactiver: "webaios:extensions-reactiver",
+  extensionsCouperDeblocage: "webaios:extensions-couper-deblocage",
   /** Diffusé après chaque changement du registre des extensions (sans contenu : relire). */
   extensionsChange: "webaios:extensions-change",
 } as const;

@@ -93,6 +93,8 @@ export interface Gestionnaires {
     toutCouper(oui: boolean): Promise<ResultatExtension>;
     revoir(cle: string, fenetreId: IdFenetre): Promise<ResultatExtension>;
     reactiver(cle: string): Promise<ResultatExtension>;
+    /** « Couper le déblocage » : la console de l'extension est de nouveau filtrée pour l'agent. */
+    couperDeblocage(cle: string): Promise<ResultatExtension>;
   };
   acces: { etat(): EtatAcces; couper(id: IdOnglet, droit?: DroitDev): void };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
@@ -275,6 +277,7 @@ export function brancherIpc(g: Gestionnaires): void {
   geste(CANAUX.extensionsSupprimer, (cle) => g.extensions.supprimer(cle));
   geste(CANAUX.extensionsRevoir, (cle, f) => g.extensions.revoir(cle, f));
   geste(CANAUX.extensionsReactiver, (cle) => g.extensions.reactiver(cle));
+  geste(CANAUX.extensionsCouperDeblocage, (cle) => g.extensions.couperDeblocage(cle));
   ipcMain.handle(CANAUX.extensionsToutCouper, (e, oui: unknown) => {
     if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
     return typeof oui === "boolean" ? g.extensions.toutCouper(oui) : invalide;

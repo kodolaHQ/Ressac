@@ -119,6 +119,7 @@ const api: ApiWebaios = {
     toutCouper: (oui) => ipcRenderer.invoke(CANAUX.extensionsToutCouper, oui),
     revoir: (cle) => ipcRenderer.invoke(CANAUX.extensionsRevoir, cle),
     reactiver: (cle) => ipcRenderer.invoke(CANAUX.extensionsReactiver, cle),
+    couperDeblocage: (cle) => ipcRenderer.invoke(CANAUX.extensionsCouperDeblocage, cle),
   },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);

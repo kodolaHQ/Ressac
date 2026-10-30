@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LigneExtension } from "../../commun/extensions";
-  import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions-messages";
+  import { CONSOLE_DEBLOQUEE_PAGE, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions-messages";
   import type { ResultatExtension } from "../../commun/api";
   import { api } from "../etat.svelte";
 
@@ -85,6 +85,7 @@
           <span class="doux">{l.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"} · {l.version}</span>
         </div>
         {#if l.desactivee}<p class="alerte">{l.desactivee}</p>{/if}
+        {#if l.consoleDebloquee}<p class="alerte" data-testid="console-debloquee">{CONSOLE_DEBLOQUEE_PAGE}</p>{/if}
         {#if l.majEnAttente}<p class="doux">Mise à jour {l.majEnAttente} en attente de ton accord.</p>{/if}
         <p>Droits : {l.droits.length ? l.droits.join(" · ") : "aucun"}</p>
         <p>Sites : {l.tousLesSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
@@ -112,6 +113,7 @@
             <button onclick={() => void faire(api.extensions.revoir(l.cle))}>Revoir l'accord</button>
           {/if}
           {#if l.desactivee === DESACTIVEE_PLANTAGES}<button onclick={() => void faire(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
+          {#if l.consoleDebloquee}<button onclick={() => void faire(api.extensions.couperDeblocage(l.cle))}>Couper le déblocage</button>{/if}
           <button disabled={l.espaces.length === 0} onclick={() => void faire(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
           <button onclick={() => (aSupprimer = l)}>Supprimer</button>
           <button aria-expanded={!!details[l.cle]} onclick={() => (details[l.cle] = !details[l.cle])}>Détails</button>

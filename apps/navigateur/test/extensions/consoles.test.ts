@@ -67,3 +67,80 @@ test("après le rappel, les plantages repartent de zéro ; oublier efface consol
   c.plantage(ID, 5);
   expect(appels).toHaveLength(1);
 });
+
+// ——— Tâche 17 : la console filtrée pour l'agent ———
+
+const nouvelle = () => new ConsolesExtensions({ surPlantages: () => {} });
+
+test("pour l'agent : un message d'onglet lisible est gardé, un non lisible est masqué et compté", () => {
+  const c = nouvelle();
+  c.noter(ID, { horodatage: 1, niveau: "log", texte: "fond" });
+  c.noter(ID, { horodatage: 2, niveau: "log", texte: "onglet partagé" }, { lisible: true });
+  c.noter(ID, { horodatage: 3, niveau: "error", texte: "secret" }, { lisible: false });
+  c.noter(ID, { horodatage: 4, niveau: "log", texte: "secret 2" }, { lisible: false });
+  const r = c.pourAgent(ID, { debloquee: false });
+  expect(r.messages.map((m) => m.texte)).toEqual(["fond", "onglet partagé"]);
+  expect(r).toMatchObject({ masques: 2, fondMasque: false, debloquee: false });
+  // `depuis` : seuls les messages de la période comptent, masqués compris.
+  expect(c.pourAgent(ID, { depuis: 4, debloquee: false })).toMatchObject({ messages: [], masques: 1 });
+  // Les erreurs pour l'agent suivent le même filtre ; celles de la page (L'utilisateur), non.
+  expect(c.erreursPourAgent(ID, false)).toEqual([]);
+  expect(c.erreurs(ID)).toEqual(["secret"]);
+  // Les messages de l'utilisateur (page Extensions) restent tous là.
+  expect(c.messages(ID)).toHaveLength(4);
+});
+
+test("pour l'agent : après avoir tourné dans un onglet non lisible, service worker et pages sont masqués ; un onglet lisible ne masque rien", () => {
+  const c = nouvelle();
+  c.noter(ID, { horodatage: 1, niveau: "log", texte: "avant" });
+  c.aTourneDansOnglet(ID, true);
+  expect(c.pourAgent(ID, { debloquee: false })).toMatchObject({ fondMasque: false, messages: [{ texte: "avant" }] });
+  c.aTourneDansOnglet(ID, false);
+  c.noter(ID, { horodatage: 2, niveau: "error", texte: "lu dans l'onglet" });
+  c.noter(ID, { horodatage: 3, niveau: "log", texte: "partagé" }, { lisible: true });
+  const r = c.pourAgent(ID, { debloquee: false });
+  expect(r.fondMasque).toBe(true);
+  expect(r.messages.map((m) => m.texte)).toEqual(["partagé"]);
+  expect(c.erreursPourAgent(ID, false)).toEqual([]);
+  // Une autre extension n'est pas touchée.
+  c.noter(AUTRE, { horodatage: 1, niveau: "log", texte: "autre" });
+  expect(c.pourAgent(AUTRE, { debloquee: false })).toMatchObject({ fondMasque: false, messages: [{ texte: "autre" }] });
+});
+
+test("le rechargement remet le drapeau à zéro : les messages du service worker d'avant restent invisibles, les nouveaux se lisent", () => {
+  const c = nouvelle();
+  c.aTourneDansOnglet(ID, false);
+  c.noter(ID, { horodatage: 1, niveau: "log", texte: "pollué" });
+  c.noter(ID, { horodatage: 2, niveau: "log", texte: "onglet caché" }, { lisible: false });
+  c.recharge(ID);
+  c.noter(ID, { horodatage: 3, niveau: "log", texte: "propre" });
+  const r = c.pourAgent(ID, { debloquee: false });
+  expect(r.fondMasque).toBe(false);
+  expect(r.messages.map((m) => m.texte)).toEqual(["propre"]);
+  // Le message d'onglet garde son étiquette (toujours masqué et compté).
+  expect(r.masques).toBe(1);
+  // Un rechargement sans drapeau ne retire rien.
+  c.recharge(ID);
+  expect(c.pourAgent(ID, { debloquee: false }).messages.map((m) => m.texte)).toEqual(["propre"]);
+});
+
+test("débloquée : rien n'est masqué ni compté", () => {
+  const c = nouvelle();
+  c.aTourneDansOnglet(ID, false);
+  c.noter(ID, { horodatage: 1, niveau: "error", texte: "fond" });
+  c.noter(ID, { horodatage: 2, niveau: "log", texte: "caché" }, { lisible: false });
+  const r = c.pourAgent(ID, { debloquee: true });
+  expect(r).toMatchObject({ masques: 0, fondMasque: false, debloquee: true });
+  expect(r.messages.map((m) => m.texte)).toEqual(["fond", "caché"]);
+  expect(c.erreursPourAgent(ID, true)).toEqual(["fond"]);
+  // Les messages rendus sont des copies sans étiquette.
+  expect(Object.keys(r.messages[1]!).sort()).toEqual(["horodatage", "niveau", "texte"]);
+});
+
+test("oublier efface aussi le drapeau", () => {
+  const c = nouvelle();
+  c.aTourneDansOnglet(ID, false);
+  c.oublier(ID);
+  c.noter(ID, { horodatage: 1, niveau: "log", texte: "neuf" });
+  expect(c.pourAgent(ID, { debloquee: false })).toMatchObject({ fondMasque: false, messages: [{ texte: "neuf" }] });
+});

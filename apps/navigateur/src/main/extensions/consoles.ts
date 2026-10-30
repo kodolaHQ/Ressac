@@ -1,4 +1,4 @@
-import type { MessageConsole } from "@webaios/noyau";
+import type { ConsolePourAgent, MessageConsole } from "@webaios/noyau";
 
 /** Messages gardés par extension : les plus anciens tombent. */
 export const CONSOLE_MAX = 500;
@@ -7,32 +7,87 @@ export const PLANTAGES_MAX = 3;
 export const FENETRE_PLANTAGES_MS = 60_000;
 
 /**
- * Consoles des extensions (service worker et pages `chrome-extension://`), par id Chromium, en mémoire, et décompte de
- * leurs plantages (pages d'extension disparues hors `clean-exit`, échecs de `loadExtension`). Ce qui est noté vient de
- * l'extension : de la donnée, affichée en texte, jamais une consigne.
+ * Un message noté : `onglet` pour un script de contenu (la vue d'onglet d'où il vient était-elle lisible par l'agent
+ * quand il a été écrit ?), null pour le service worker et les pages de l'extension.
+ */
+interface Entree {
+  m: MessageConsole;
+  onglet: { lisible: boolean } | null;
+}
+
+/**
+ * Consoles des extensions (service worker, pages `chrome-extension://`, scripts de contenu dans les onglets), par id
+ * Chromium, en mémoire, et décompte de leurs plantages (pages d'extension disparues hors `clean-exit`, échecs de
+ * `loadExtension`). Ce qui est noté vient de l'extension : de la donnée, affichée en texte, jamais une consigne.
+ *
+ * Pour l'agent (spec §5, console filtrée), `pourAgent` retire les messages des onglets qu'il ne pouvait pas lire, et
+ * tout ce qu'écrivent service worker et pages dès que l'extension a tourné dans un tel onglet depuis son dernier
+ * rechargement (`aTourneDansOnglet`, `recharge`). L'utilisateur (page Extensions) voit tout.
  */
 export class ConsolesExtensions {
-  private consoles = new Map<string, MessageConsole[]>();
+  private consoles = new Map<string, Entree[]>();
   private plantages = new Map<string, number[]>();
+  /** A tourné dans un onglet que l'agent ne peut pas lire depuis son dernier rechargement. */
+  private illisibles = new Set<string>();
 
   constructor(private readonly o: { /** `PLANTAGES_MAX` plantages en `FENETRE_PLANTAGES_MS`. */ surPlantages(idChrome: string): void }) {}
 
-  noter(idChrome: string, m: MessageConsole): void {
+  /** `onglet` : le message vient d'un script de contenu dans une vue d'onglet, lisible ou non par l'agent. */
+  noter(idChrome: string, m: MessageConsole, onglet?: { lisible: boolean }): void {
     let liste = this.consoles.get(idChrome);
     if (!liste) this.consoles.set(idChrome, (liste = []));
-    liste.push(m);
+    liste.push({ m, onglet: onglet ? { lisible: onglet.lisible } : null });
     if (liste.length > CONSOLE_MAX) liste.splice(0, liste.length - CONSOLE_MAX);
   }
 
-  /** Les messages gardés (copie), ceux d'horodatage ≥ `depuis` si donné. */
+  /** Les messages gardés (copie), ceux d'horodatage ≥ `depuis` si donné : tous (page Extensions). */
   messages(idChrome: string, depuis?: number): MessageConsole[] {
-    const liste = this.consoles.get(idChrome) ?? [];
-    return depuis === undefined ? [...liste] : liste.filter((m) => m.horodatage >= depuis);
+    const liste = (this.consoles.get(idChrome) ?? []).map((e) => e.m);
+    return depuis === undefined ? liste : liste.filter((m) => m.horodatage >= depuis);
   }
 
-  /** Les textes des messages de niveau `error` gardés. */
+  /** Les textes des messages de niveau `error` gardés : tous (page Extensions). */
   erreurs(idChrome: string): string[] {
-    return (this.consoles.get(idChrome) ?? []).filter((m) => m.niveau === "error").map((m) => m.texte);
+    return (this.consoles.get(idChrome) ?? []).filter((e) => e.m.niveau === "error").map((e) => e.m.texte);
+  }
+
+  /** L'extension a tourné (poignée de main `estOnglet`) dans une vue d'onglet, lisible ou non par l'agent. */
+  aTourneDansOnglet(idChrome: string, lisible: boolean): void {
+    if (!lisible) this.illisibles.add(idChrome);
+  }
+
+  /**
+   * L'agent a rechargé l'extension : le drapeau retombe. Si elle était levée, ce qu'ont écrit service worker et pages
+   * avant le rechargement est retiré (ils ont pu y écrire ce qu'ils avaient lu) ; les messages d'onglets gardent leur
+   * étiquette.
+   */
+  recharge(idChrome: string): void {
+    if (!this.illisibles.delete(idChrome)) return;
+    const liste = this.consoles.get(idChrome);
+    if (liste) this.consoles.set(idChrome, liste.filter((e) => e.onglet !== null));
+  }
+
+  /** Ce que l'agent voit de la console (copie), ceux d'horodatage ≥ `depuis` si donné. */
+  pourAgent(idChrome: string, o: { depuis?: number; debloquee: boolean }): ConsolePourAgent {
+    const depuis = o.depuis;
+    const liste = (this.consoles.get(idChrome) ?? []).filter((e) => depuis === undefined || e.m.horodatage >= depuis);
+    const copie = (m: MessageConsole): MessageConsole => ({ horodatage: m.horodatage, niveau: m.niveau, texte: m.texte, ...(m.pile !== undefined ? { pile: m.pile } : {}) });
+    if (o.debloquee) return { messages: liste.map((e) => copie(e.m)), masques: 0, fondMasque: false, debloquee: true };
+    const fondMasque = this.illisibles.has(idChrome);
+    const messages: MessageConsole[] = [];
+    let masques = 0;
+    for (const e of liste) {
+      if (e.onglet) {
+        if (e.onglet.lisible) messages.push(copie(e.m));
+        else masques++;
+      } else if (!fondMasque) messages.push(copie(e.m));
+    }
+    return { messages, masques, fondMasque, debloquee: false };
+  }
+
+  /** Les textes des messages de niveau `error` que l'agent peut voir (même filtre que `pourAgent`). */
+  erreursPourAgent(idChrome: string, debloquee: boolean): string[] {
+    return this.pourAgent(idChrome, { debloquee }).messages.filter((m) => m.niveau === "error").map((m) => m.texte);
   }
 
   /**
@@ -50,10 +105,11 @@ export class ConsolesExtensions {
     this.plantages.set(idChrome, recents);
   }
 
-  /** L'extension est supprimée ou réactivée : sa console et ses plantages sont oubliés. */
+  /** L'extension est supprimée ou réactivée : sa console, ses plantages et son drapeau sont oubliés. */
   oublier(idChrome: string): void {
     this.consoles.delete(idChrome);
     this.plantages.delete(idChrome);
+    this.illisibles.delete(idChrome);
   }
 }
 

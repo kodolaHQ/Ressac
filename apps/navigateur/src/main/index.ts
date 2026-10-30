@@ -28,7 +28,7 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { creerNotifieur } from "./notifications";
-import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
 import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
@@ -367,6 +367,13 @@ app.whenReady().then(async () => {
     },
     // Une vue d'onglet (ou sa popup) ; les lectures invisibles n'en sont jamais (ExtensionsProfils.estOnglet le revérifie).
     estOnglet: (wc) => vues.ongletDe(wc) !== null && !estInvisible(wc),
+    // Console filtrée (spec §5) : l'agent lit-il cet onglet ? La règle de ses outils de lecture (lire_onglet) : onglet
+    // visible (ni page interne, ni espace privé) et partagé (politique d'accès du noyau). Sans noyau : non.
+    lisibleParAgent: (wc) => {
+      const id = vues.ongletDe(wc);
+      const info = id ? infosOnglets(magasin.etat).find((x) => x.id === id) : undefined;
+      return !!info && agent?.noyau()?.politique.peutLire(info) === true;
+    },
     invisible: INVISIBLE,
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     preloadCorrectifs: join(__dirname, "../preload/extensions.js"),
@@ -623,6 +630,7 @@ app.whenReady().then(async () => {
       toutCouper: (oui) => serviceExtensions.toutCouper(oui),
       revoir: (cle, fenetreId) => serviceExtensions.revoir(cle, fenetreId),
       reactiver: (cle) => serviceExtensions.reactiver(cle),
+      couperDeblocage: async (cle) => serviceExtensions.couperDeblocage(cle),
     },
     acces: {
       etat: etatAcces,
@@ -801,6 +809,8 @@ app.whenReady().then(async () => {
     plus: Pick<Demande, "permissions" | "droits" | "raison" | "agent">,
   ): (() => void) => poserQuestion({ cible: o.id, origine: origineDe(o.url), titre: o.titre, ...plus }, repondre);
   agent = demarrerAgent({
+    // Outils MCP des extensions : lister, demander (carte d'accord), recharger, console filtrée et son déblocage.
+    extensions: serviceExtensions.outilsAgent({ fenetreAgent }),
     atelier,
     historique,
     // Profils bruts des sites tiers : dans le profil du navigateur, jamais dans l'espace que l'agent lit.

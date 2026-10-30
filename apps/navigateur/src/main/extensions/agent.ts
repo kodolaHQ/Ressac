@@ -20,6 +20,8 @@ import { accordPour } from "./store";
 export const DOSSIER_ABSENT = "Dossier absent";
 export const ACTIVATION_REFUSEE = "Activation refusée";
 export const TOUTES_COUPEES_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
+/** L'erreur rendue à l'agent quand le dossier de son extension n'existe plus. */
+export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
 export const SANS_ACCORD = "Extension sans accord : demande d'abord son activation";
 
 /**
@@ -222,10 +224,15 @@ async function activation(
   const connue = d.etatExtensions().extensions[cle];
   // Plantages : c'est l'utilisateur qui la réactive, depuis la page des extensions.
   if (connue?.desactivee?.raison === "plantages") return { ok: false, erreur: DESACTIVEE_PLANTAGES };
-  if (connue?.accord && !connue.desactivee && connue.profils.includes(profil)) return { ok: true };
+  if (connue?.accord && !connue.desactivee && connue.profils.includes(profil)) {
+    // Déjà accordée et active : rien n'est redemandé, mais une extension dont le dossier a disparu n'est plus chargée.
+    const chemin = await reperesDuChemin(d.dossierAgent, id);
+    if (typeof chemin === "string") return { ok: false, erreur: chemin === DOSSIER_ABSENT ? dossierAbsent(id) : chemin };
+    return { ok: true };
+  }
 
   const p = await preparerAgent(id, d);
-  if (!p.ok) return { ok: false, erreur: p.refus.join(" ; ") };
+  if (!p.ok) return { ok: false, erreur: p.refus.map((r) => (r === DOSSIER_ABSENT ? dossierAbsent(id) : r)).join(" ; ") };
   const effacer = () => rm(p.staging, { recursive: true, force: true });
   const carte = carteDe(p.analyse, { cle, source: "agent", espace: o.espace, etat: d.etatNavigateur() });
   const r = await d.demanderAccord(carte, {

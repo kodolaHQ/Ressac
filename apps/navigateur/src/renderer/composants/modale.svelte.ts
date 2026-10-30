@@ -15,4 +15,5 @@ export const estDemandeAgent = (d: DemandeEnAttente) =>
   d.permissions.includes("lire-onglet") ||
   d.permissions.includes("outils-dev") ||
   d.permissions.includes("donnees-widget") ||
-  d.permissions.includes("extension");
+  d.permissions.includes("extension") ||
+  d.permissions.includes("console-extension");

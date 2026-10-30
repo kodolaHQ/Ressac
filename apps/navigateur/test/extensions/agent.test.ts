@@ -340,3 +340,17 @@ test("dossier absent puis revenu avec un manifeste refusé : l'ancienne copie ac
   expect(chargees()).toEqual(["agent:cacheur"]);
   expect(copie("cacheur", "cache.css")).toBe("v1");
 });
+
+// ——— Tâche 17 (report de la tâche 11) ———
+
+test("déjà accordée et active, mais son dossier a disparu : demanderActivation rend « Dossier absent », jamais ok", async () => {
+  await activee();
+  rmSync(join(agent, "cacheur"), { recursive: true });
+  const { service, pret } = demarrer();
+  await pret;
+  cartes = [];
+  const r = await service.demanderActivation("cacheur", { espace: espace() });
+  expect(r.ok).toBe(false);
+  expect(r.ok === false && r.erreur).toContain(DOSSIER_ABSENT);
+  expect(cartes).toEqual([]);
+});

@@ -5,7 +5,7 @@ import type { Espace, EtatNavigateur } from "./modele";
 export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
 
 // Dans un module sans dépendance au noyau : l'interface les importe (le noyau n'entre pas dans son bundle).
-export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "./extensions-messages";
+export { CONSOLE_DEBLOQUEE_PAGE, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, LONGUEUR_RAISON_DEBLOCAGE, texteDeblocageConsole } from "./extensions-messages";
 
 /** Une ligne de la section « Extensions » des réglages d'un espace (tout y est affiché en texte). */
 export interface LigneExtensionEspace {
@@ -102,6 +102,8 @@ export interface LigneExtension {
   /** Droits et clés du manifeste que WebAiOs ne prend pas en charge. */
   nonPrisEnCharge: string[];
   epinglee: boolean;
+  /** Agent : L'utilisateur a débloqué sa console pour l'agent (en mémoire, jusqu'à ce que l'un d'eux la referme). */
+  consoleDebloquee: boolean;
 }
 
 /** La barre d'une fenêtre : les extensions chargées dans le profil de son espace actif. */
