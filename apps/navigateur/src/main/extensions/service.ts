@@ -446,6 +446,18 @@ export class ServiceExtensions {
     });
   }
 
+  /**
+   * Les cartes d'accord ouvertes pour `cle` tombent (« retirée ») : « Supprimer » ou `recharger_extension` ne restent pas
+   * en file derrière une carte que l'utilisateur a laissée ouverte (elle tient la file de l'extension).
+   */
+  private retirerCartesDe(cle: string): void {
+    for (const [signature, carte] of this.cartes)
+      if (carte.cle === cle) {
+        this.cartes.delete(signature);
+        carte.retrait.abort();
+      }
+  }
+
   /** Après chaque écriture du registre : les cartes d'une extension retirée, ou toutes si tout est coupé, tombent. */
   private perimerCartes(): void {
     for (const [signature, carte] of this.cartes)
@@ -563,6 +575,14 @@ export class ServiceExtensions {
   recharger(id: string): Promise<ResultatRechargement> {
     if (!this.o || !this.pret) return Promise.resolve({ etat: "refusee", detail: ["Service des extensions non démarré"] });
     const d = this.dependancesAgent();
+    // Une carte laissée ouverte pour elle tient sa file : elle tombe d'abord (un id illisible est refusé plus loin).
+    let cle: string | null = null;
+    try {
+      cle = cleAgentPour(id);
+    } catch {
+      cle = null;
+    }
+    if (cle) this.retirerCartesDe(cle);
     return d ? recharger(id, d) : Promise.resolve({ etat: "refusee", detail: [SANS_DOSSIER_AGENT] });
   }
 
@@ -934,6 +954,7 @@ export class ServiceExtensions {
     const lue = lireCle(cle);
     if (!o || !this.pret) return { ok: false, erreur: "Service des extensions non démarré" };
     if (!lue || !(cle in this.etat.extensions)) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    this.retirerCartesDe(cle);
     const id = this.idChromeDe(cle);
     try {
       if (lue.source === "store") await this.desinstaller(cle);

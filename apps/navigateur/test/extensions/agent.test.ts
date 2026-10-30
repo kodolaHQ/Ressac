@@ -67,7 +67,8 @@ function demarrer() {
     cartes.push({ ...champs, ongletId: null });
     pendantLaCarte();
     const r = reponse;
-    setTimeout(() => repondre(r));
+    // « sans réponse » : L'utilisateur laisse la carte ouverte.
+    if ((r as string) !== "sans réponse") setTimeout(() => repondre(r));
     return () => {};
   });
   return { service, pret };
@@ -381,4 +382,20 @@ test("I5 demandée pour un autre profil avec une portée élargie : la carte nom
   x = registre().extensions["agent:cacheur"]!;
   expect(x.accord?.hotes).toEqual(["http://127.0.0.1/*", "https://exemple.com/*"]);
   expect([...x.profils].sort()).toEqual(["defaut", "p2"]);
+});
+
+test("C M5 une carte de l'agent laissée ouverte ne retient ni « Supprimer » ni recharger_extension : elle est retirée", async () => {
+  const service = await activee();
+  ecrire("cacheur", { "manifest.json": manifeste(["http://127.0.0.1/*", "https://exemple.com/*"]), "cache.css": "v2" });
+  expect((await service.recharger("cacheur")).etat).toBe("desactivee");
+  reponse = "sans réponse" as Decision;
+  const demande = service.demanderActivation("cacheur", { espace: espace() });
+  await expect.poll(() => cartes.length).toBe(1);
+  const avant = <T,>(p: Promise<T>) => Promise.race([p, new Promise<"bloqué">((ok) => setTimeout(() => ok("bloqué"), 2000))]);
+  expect(await avant(service.recharger("cacheur"))).not.toBe("bloqué");
+  expect((await avant(demande)) as { ok: boolean }).toMatchObject({ ok: false });
+  const seconde = service.demanderActivation("cacheur", { espace: espace() });
+  await expect.poll(() => cartes.length).toBe(2);
+  expect(await avant(service.supprimer("agent:cacheur"))).toEqual({ ok: true });
+  expect((await avant(seconde)) as { ok: boolean }).toMatchObject({ ok: false });
 });
