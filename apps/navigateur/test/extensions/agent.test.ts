@@ -285,3 +285,58 @@ test("démarrage : un etat.json posé dans le dossier de l'agent n'a aucun effet
   expect(chargees()).toEqual([]);
   expect(existsSync(join(dossier, "copies", "cacheur"))).toBe(false);
 });
+
+test("démarrage : les extensions du Store se chargent d'abord, celles de l'agent ensuite", async () => {
+  await activee();
+  synchronisees = [];
+  await demarrer().pret;
+  // Un premier chargement sans l'agent (avant qu'il ne soit prêt), puis un second qui l'ajoute.
+  expect(synchronisees.length).toBeGreaterThanOrEqual(2);
+  expect(Object.keys(synchronisees[0]!.extensions)).not.toContain("agent:cacheur");
+  expect(Object.keys(synchronisees.at(-1)!.extensions)).toContain("agent:cacheur");
+});
+
+test("une erreur d'écriture de l'empreinte est un refus : pas d'exception, pas de copie d'attente", async () => {
+  // L'agent pose un dossier là où la copie écrit son empreinte.
+  mkdirSync(join(agent, "piege", "webaios-source.sha256"), { recursive: true });
+  writeFileSync(join(agent, "piege", "webaios-source.sha256", "x"), "x");
+  writeFileSync(join(agent, "piege", "manifest.json"), JSON.stringify(manifeste(["http://127.0.0.1/*"])));
+  writeFileSync(join(agent, "piege", "cache.css"), "x");
+  const { service, pret } = demarrer();
+  await pret;
+  const r = await service.demanderActivation("piege", { espace: espace() });
+  expect(r.ok).toBe(false);
+  expect(cartes).toEqual([]);
+  expect(readdirSync(join(dossier, "copies"))).toEqual([]);
+  const p = await service.preparerAgent("piege");
+  expect(p.ok).toBe(false);
+  expect(readdirSync(join(dossier, "copies"))).toEqual([]);
+});
+
+test("sans dossier de l'agent : des refus au format habituel, jamais une exception", async () => {
+  const service = new ServiceExtensions();
+  const magasin = { get etat() { return nav; }, abonner: () => {} };
+  const profils = { synchroniser: async () => {}, erreursChargement: () => new Map<string, string>(), retirerAgentsPrives: () => {} };
+  await service.demarrer({ dossier, dossierGardes: GARDES_PAR_DEFAUT, magasin, profils, sessions: { session: () => {} }, vues: {} } as never);
+  expect((await service.demanderActivation("cacheur", { espace: espace() })).ok).toBe(false);
+  expect((await service.recharger("cacheur")).etat).toBe("refusee");
+  expect((await service.preparerAgent("cacheur")).ok).toBe(false);
+});
+
+test("dossier absent puis revenu avec un manifeste refusé : l'ancienne copie accordée repart, l'erreur est le refus", async () => {
+  // Comportement voulu : comme pour toute extension chargée, un refus au rechargement laisse en place la copie accordée.
+  await activee();
+  rmSync(join(agent, "cacheur"), { recursive: true });
+  synchronisees = [];
+  const { service, pret } = demarrer();
+  await pret;
+  expect(service.erreurs().get("agent:cacheur")).toBe(DOSSIER_ABSENT);
+  expect(chargees()).toEqual([]);
+
+  ecrire("cacheur", { "manifest.json": { ...manifeste(["http://127.0.0.1/*"]), permissions: ["debugger"] }, "cache.css": "v2" });
+  const r = await service.recharger("cacheur");
+  expect(r.etat).toBe("refusee");
+  expect(service.erreurs().get("agent:cacheur")).toContain("debugger");
+  expect(chargees()).toEqual(["agent:cacheur"]);
+  expect(copie("cacheur", "cache.css")).toBe("v1");
+});

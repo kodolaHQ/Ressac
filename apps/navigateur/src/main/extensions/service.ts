@@ -90,6 +90,8 @@ export function ouvrirOngletPourExtension(magasin: Magasin, vues: GestionnaireVu
   };
 }
 
+const SANS_DOSSIER_AGENT = "Pas de dossier pour les extensions de l'agent";
+
 /**
  * Relie le registre des extensions (`<userData>/extensions/etat.json`) aux sessions des profils : au démarrage, il lit
  * le registre, prépare les extensions du Store et charge ce qui est actif ; ensuite, après chaque modification du
@@ -110,6 +112,8 @@ export class ServiceExtensions {
   private erreursAgent = new Map<string, string>();
   /** Extensions de l'agent qui ne sont plus chargées tant que leur erreur reste (dossier absent). */
   private agentsBloques = new Set<string>();
+  /** Faux jusqu'à la fin de `demarrerAgents` : `appliquer` laisse alors de côté les extensions de l'agent. */
+  private agentsPrets = false;
   /** La vérification des mises à jour en cours : une seule à la fois. */
   private verification: Promise<void> | null = null;
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
@@ -171,8 +175,14 @@ export class ServiceExtensions {
       return;
     }
     await this.preparerStore();
-    // Avant le premier chargement : chaque copie de l'agent est refaite depuis son dossier (ou déchargée, ou désactivée).
-    if (o.dossierAgent) await demarrerAgents(this.dependancesAgent());
+    if (o.dossierAgent) {
+      // Les extensions du Store d'abord (les copies de l'agent peuvent être longues à refaire), sans celles de l'agent...
+      await this.appliquer();
+      // ... puis chaque copie de l'agent est refaite depuis son dossier (ou déchargée, ou désactivée).
+      const d = this.dependancesAgent();
+      if (d) await demarrerAgents(d);
+    }
+    this.agentsPrets = true;
     this.pret = true;
     await this.appliquer();
   }
@@ -339,24 +349,28 @@ export class ServiceExtensions {
 
   /** Prépare la copie d'attente d'une extension de l'agent (voir `preparerAgent` d'agent.ts). */
   preparerAgent(id: string): Promise<PreparationAgent> {
-    return preparerAgent(id, this.dependancesAgent());
+    const d = this.dependancesAgent();
+    return Promise.resolve(d ? preparerAgent(id, d) : { ok: false as const, refus: [SANS_DOSSIER_AGENT] });
   }
 
   /** L'agent demande d'activer son extension `id` dans un espace : la carte de la copie préparée (agent.ts). */
   demanderActivation(id: string, o: { espace: Espace; fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal }): Promise<ResultatActivation> {
     if (!this.o || !this.pret) return Promise.resolve({ ok: false, erreur: "Service des extensions non démarré" });
-    return demanderActivation(id, o, this.dependancesAgent());
+    const d = this.dependancesAgent();
+    return d ? demanderActivation(id, o, d) : Promise.resolve({ ok: false, erreur: SANS_DOSSIER_AGENT });
   }
 
   /** Recharge l'extension de l'agent `id` depuis son dossier, sans carte si sa portée reste dans l'accord (agent.ts). */
   recharger(id: string): Promise<ResultatRechargement> {
     if (!this.o || !this.pret) return Promise.resolve({ etat: "refusee", detail: ["Service des extensions non démarré"] });
-    return recharger(id, this.dependancesAgent());
+    const d = this.dependancesAgent();
+    return d ? recharger(id, d) : Promise.resolve({ etat: "refusee", detail: [SANS_DOSSIER_AGENT] });
   }
 
-  private dependancesAgent(): DependancesAgent {
+  /** Null sans dossier de l'agent (les appelants rendent un refus). */
+  private dependancesAgent(): DependancesAgent | null {
     const o = this.o;
-    if (!o?.dossierAgent) throw new Error("Service des extensions non démarré");
+    if (!o?.dossierAgent) return null;
     return {
       dossier: o.dossier,
       dossierAgent: o.dossierAgent,
@@ -589,7 +603,7 @@ export class ServiceExtensions {
     const e: EtatExtensions = {
       ...this.etat,
       extensions: Object.fromEntries(
-        Object.entries(this.etat.extensions).filter(([cle]) => !this.erreursPreparation.has(cle) && !this.agentsBloques.has(cle)),
+        Object.entries(this.etat.extensions).filter(([cle]) => !this.erreursPreparation.has(cle) && !this.agentsBloques.has(cle) && (this.agentsPrets || !cle.startsWith("agent:"))),
       ),
     };
     for (const profil of profilsEnUsage(nav)) if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);

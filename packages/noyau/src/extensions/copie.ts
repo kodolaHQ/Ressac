@@ -61,6 +61,13 @@ const LIENS = new Set(["ELOOP", "EMLINK", "ENOTDIR"]);
 // O_NOFOLLOW : un lien à la place du fichier fait échouer l'ouverture ; O_NONBLOCK : un tube ne bloque pas.
 const DRAPEAUX_LECTURE = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
+/** Le dossier source réellement lu (chemin résolu, dev/ino) : l'appelant vérifie que c'est celui qu'il a contrôlé. */
+export interface RacineLue {
+  chemin: string;
+  dev: number;
+  ino: number;
+}
+
 interface Repere {
   chemin: string;
   dev: number;
@@ -74,7 +81,7 @@ interface Repere {
  * fichier spécial, un remplacement pendant la lecture, ou un dépassement des limites donne un refus (le parcours
  * s'arrête).
  */
-async function lireDossier(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[] }> {
+async function lireDossier(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[]; racine?: RacineLue }> {
   const fichiers = new Map<string, Buffer>();
   const racine = join(await realpath(dirname(source)), basename(source));
   let taille = 0;
@@ -153,15 +160,17 @@ async function lireDossier(source: string): Promise<{ fichiers: Map<string, Buff
       await verifierDossiers(chaine);
     }
   };
+  let lue: RacineLue | undefined;
   try {
     const info = await lstat(racine);
     if (!info.isDirectory()) refuser("Le dossier de l'extension n'est pas un dossier");
+    lue = { chemin: racine, dev: info.dev, ino: info.ino };
     await parcourir([{ chemin: "", dev: info.dev, ino: info.ino }]);
   } catch (e) {
-    if (e instanceof RefusLecture) return { fichiers, refus: [e.message] };
+    if (e instanceof RefusLecture) return { fichiers, refus: [e.message], ...(lue ? { racine: lue } : {}) };
     throw e;
   }
-  return { fichiers, refus: [] };
+  return { fichiers, refus: [], racine: lue };
 }
 
 function empreinteDe(fichiers: Map<string, Buffer>): string {
@@ -299,15 +308,16 @@ export async function preparerCopie(o: {
   source: string;
   cible: string;
   dossierGardes: string;
-}): Promise<{ analyse: AnalyseManifeste; empreinte: string }> {
-  const { fichiers, refus: refusDossier } = await lireDossier(o.source);
+}): Promise<{ analyse: AnalyseManifeste; empreinte: string; racine?: RacineLue }> {
+  const { fichiers, refus: refusDossier, racine } = await lireDossier(o.source);
   const brut = json(fichiers.get("manifest.json"));
   const webaiosBrut = fichiers.get("webaios.json");
   const webaios = webaiosBrut === undefined ? undefined : (json(webaiosBrut) ?? "illisible");
   const analyse = analyserManifeste(brut, { source: "agent", webaios, regles: reglesDe(brut, fichiers) });
   analyse.refus = [...refusDossier, ...refusFichiers(fichiers), ...analyse.refus];
   const empreinte = empreinteDe(fichiers);
-  if (analyse.refus.length > 0) return { analyse, empreinte };
+  const lue = racine ? { racine } : {};
+  if (analyse.refus.length > 0) return { analyse, empreinte, ...lue };
 
   const manifeste = { ...(brut as Manifeste) };
   delete manifeste.key;
@@ -346,7 +356,7 @@ export async function preparerCopie(o: {
     await rm(tmp, { recursive: true, force: true });
     throw e;
   }
-  return { analyse, empreinte };
+  return { analyse, empreinte, ...lue };
 }
 
 /**

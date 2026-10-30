@@ -128,7 +128,7 @@ export async function preparerAgent(id: string, d: DependancesAgent): Promise<Pr
   } catch (e) {
     return { ok: false, refus: [`Dossier illisible : ${(e as Error).message}`] };
   }
-  let r: { analyse: AnalyseManifeste; empreinte: string };
+  let r: { analyse: AnalyseManifeste; empreinte: string; racine?: { chemin: string; dev: number; ino: number } };
   try {
     await mkdir(join(d.dossier, "copies"), { recursive: true });
     r = await preparerCopie({ source: join(d.dossierAgent, id), cible: staging, dossierGardes: d.dossierGardes });
@@ -143,11 +143,22 @@ export async function preparerAgent(id: string, d: DependancesAgent): Promise<Pr
     await rm(staging, { recursive: true, force: true });
     return { ok: false, refus: [typeof apres === "string" ? apres : "Dossier remplacé pendant la copie"] };
   }
+  // Le dossier réellement lu est celui qu'on a contrôlé avant (une seule bascule d'`extensions` en lien, puis remis).
+  const lu = avant[1]!;
+  if (r.racine && (r.racine.chemin !== join(reelAvant, id) || r.racine.dev !== lu.dev || r.racine.ino !== lu.ino)) {
+    await rm(staging, { recursive: true, force: true });
+    return { ok: false, refus: ["Dossier remplacé pendant la copie"] };
+  }
   if (r.analyse.refus.length > 0) {
     await rm(staging, { recursive: true, force: true });
     return { ok: false, refus: r.analyse.refus };
   }
-  await writeFile(join(staging, FICHIER_EMPREINTE), r.empreinte);
+  try {
+    await writeFile(join(staging, FICHIER_EMPREINTE), r.empreinte);
+  } catch (e) {
+    await rm(staging, { recursive: true, force: true });
+    return { ok: false, refus: [`Copie impossible : ${(e as Error).message}`] };
+  }
   return { ok: true, analyse: r.analyse, empreinte: r.empreinte, staging };
 }
 
@@ -304,6 +315,8 @@ async function rechargement(id: string, cle: string, d: DependancesAgent, demarr
   if (!d.etatExtensions().extensions[cle]?.accord) return { etat: "refusee", detail: [SANS_ACCORD] };
   const p = await preparerAgent(id, d);
   if (!p.ok) {
+    // « Dossier absent » seul bloque le chargement. Tout autre refus (dossier revenu avec un manifeste refusé, par
+    // exemple) laisse l'ancienne copie, accordée, chargée : l'erreur gardée est le refus, comme pour toute extension.
     const absent = p.refus.includes(DOSSIER_ABSENT);
     await d.noterErreur(cle, p.refus.join(" ; "), absent);
     return { etat: "refusee", detail: p.refus };
