@@ -244,9 +244,20 @@ const donneesVeille = (profil: string): Annonce[] | null => {
 const executions = (profil: string, id = "voitures") => {
   const dossier = join(dossierWidgets(profil), id, "executions");
   if (!existsSync(dossier)) return [];
+  type Execution = { statut: string; declencheur: string; blocs: { id: string; statut: string; journal: string[] }[] };
+  // Un fichier temporaire (`.tmp`) peut être renommé entre la liste et la lecture : seuls les fichiers finis comptent,
+  // et un fichier disparu entre-temps est ignoré.
   return readdirSync(dossier)
+    .filter((f) => !f.endsWith(".tmp"))
     .sort()
-    .map((f) => lireJson(join(dossier, f)) as { statut: string; declencheur: string; blocs: { id: string; statut: string; journal: string[] }[] });
+    .flatMap((f) => {
+      try {
+        return [lireJson(join(dossier, f)) as Execution];
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw e;
+      }
+    });
 };
 const statutBloc = (e: { blocs: { id: string; statut: string }[] }, id: string) => e.blocs.find((b) => b.id === id)?.statut;
 const urlAnnonce = (n: number) => `${site.url}/annonce/${n}`;

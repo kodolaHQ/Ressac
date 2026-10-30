@@ -149,6 +149,7 @@ test("registre illisible : l'abonnement aux profils privés est quand même pos�
 
 test("noterVue : la première fois d'une version dans un profil, elle est écrite au registre ; ensuite, rien de nouveau", async () => {
   writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:essai": entree("agent", ["defaut"]) } }));
+  nav = { ...etatNav(false), profils: [{ id: "defaut" }, { id: "autre" }] } as unknown as EtatNavigateur;
   const { service, pret } = demarrer();
   await pret;
   const syncAvant = synchronisees.length;
@@ -889,4 +890,12 @@ test("B T10-7 verifierMisesAJour : une extension dont la file est tenue (carte d
   await service.verifierMisesAJour({ fetch: fauxFetch });
   journal.mockRestore();
   expect(service.erreurs().get(`store:${ID}`)).toMatch(/Chrome Web Store/);
+});
+
+test("B noterVue pour un profil retiré entre-temps (service worker qui démarre tard) : rien n'est écrit pour lui", async () => {
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:essai": entree("agent", ["defaut"]) } }));
+  const { service, pret } = demarrer();
+  await pret;
+  expect(await service.noterVue("agent:essai", "efface", "1.0.0")).toEqual({ nouvelle: false });
+  expect(service.etatExtensions().extensions["agent:essai"]!.vues).toEqual({});
 });

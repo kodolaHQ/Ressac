@@ -328,13 +328,16 @@ export class ServiceExtensions {
     // écriture du service, seul à écrire le registre pendant que l'application tourne.
     const connue = this.etat.extensions[cle];
     if (!connue || connue.vues[profil] === version) return { nouvelle: false };
+    // Un service worker qui démarre après le retrait de son profil ne remet pas une vue pour ce profil.
+    const enUsage = () => profilsEnUsage(o.magasin.etat).has(profil);
+    if (!enUsage()) return { nouvelle: false };
     let resultat: { nouvelle: boolean; precedente?: string } = { nouvelle: false };
     this.etat = await modifierEtatExtensions(
       o.dossier,
       (e) => {
         const x = e.extensions[cle];
         const precedente = x?.vues[profil];
-        if (!x || precedente === version) return e;
+        if (!x || precedente === version || !enUsage()) return e;
         resultat = precedente ? { nouvelle: true, precedente } : { nouvelle: true };
         return { ...e, extensions: { ...e.extensions, [cle]: { ...x, vues: { ...x.vues, [profil]: version } } } };
       },

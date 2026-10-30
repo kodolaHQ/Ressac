@@ -1413,11 +1413,13 @@ test("avec un hôte, elle voit l'adresse et le titre des onglets de ce site seul
   try {
     await attendreMcp(racine);
     expect(await activerParLAgent(fenetre, racine, "espion", "Espion de l'agent")).toMatch(/^Activée/);
-    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
-    await ouvrirOnglet(fenetre, `${serveur.url.replace("127.0.0.1", "localhost")}/b.html`);
     const appel = appelerOutil(racine, "debloquer_console", { id: "espion", raison: "r" });
     await fenetre.getByTestId("demande-console-extension").getByRole("button", { name: "Débloquer" }).click({ timeout: 15_000 });
     await appel;
+    // Démarrage à froid : son service worker tourne (il écrit) avant que les onglets ne s'ouvrent.
+    await expect.poll(() => consoleDe(racine, "espion"), { timeout: 20_000 }).toContain("query:");
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    await ouvrirOnglet(fenetre, `${serveur.url.replace("127.0.0.1", "localhost")}/b.html`);
     await expect.poll(() => consoleDe(racine, "espion"), { timeout: 15_000 }).toContain("/a.html");
     await new Promise((r) => setTimeout(r, 1000));
     const texte = await consoleDe(racine, "espion");
