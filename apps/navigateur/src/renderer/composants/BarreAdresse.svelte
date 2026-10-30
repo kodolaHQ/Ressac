@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BarreExtensions from "./BarreExtensions.svelte";
   import PastilleAcces from "./PastilleAcces.svelte";
   import Icone from "./Icone.svelte";
   import type { EtatFenetre, Visite } from "../../commun/modele";
@@ -88,6 +89,7 @@
     aria-pressed={fenetre.compact}
     onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}><Icone nom="barre" /></button>
 </div>
+<div class="ligne">
 <form onsubmit={valider}>
   <input
     bind:this={champ}
@@ -135,6 +137,8 @@
     </ul>
   {/if}
 </form>
+<BarreExtensions {fenetre} />
+</div>
 
 <style>
   .navigation { display: flex; gap: 2px; padding: 0 2px 6px 70px; -webkit-app-region: drag; }
@@ -143,7 +147,8 @@
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
   .navigation .compact[aria-pressed="true"] { color: var(--accent); }
-  form { position: relative; }
+  .ligne { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  form { position: relative; flex: 1; min-width: 0; }
   .acces { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
   .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
   .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--texte); }

@@ -13,9 +13,10 @@ import {
 } from "electron";
 import { ElectronChromeExtensions } from "electron-chrome-extensions";
 import { installChromeWebStore } from "electron-chrome-web-store";
-import { chargeesDans, lireCle, type EtatExtensions, type IdProfil, type Portee } from "@webaios/noyau";
+import { chargeesDans, lireCle, type EtatExtensions, type IdProfil, type MessageConsole, type Portee } from "@webaios/noyau";
 import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
 import { estInvisible } from "../contenus-invisibles";
+import { niveauConsole, type ConsolesExtensions } from "./consoles";
 import { connexionNative } from "./natif";
 import { hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPermiseAgent } from "./reseau";
 
@@ -131,6 +132,7 @@ export function detournerNotifications(extensions: ElectronChromeExtensions, fic
 }
 
 let fenetresNeutralisees = false;
+let pagesEcoutees = false;
 let protocoleCrx = false;
 /** Les instances vivantes : le canal des pages (`ipcMain`, un seul par processus) cherche celle de la session. */
 const instancesVivantes = new Set<ExtensionsProfils>();
@@ -166,6 +168,20 @@ function instanceDeLExpediteur(e: IpcMainInvokeEvent): ExtensionsProfils | undef
   for (const x of instancesVivantes) if (x.aLaSession(e.sender.session)) return x;
   return undefined;
 }
+/** L'extension (chargée dans une session d'une instance vivante) dont `wc` affiche une page, ou null. */
+function idPageExtension(wc: WebContents, url: string | undefined): { instance: ExtensionsProfils; id: string } | null {
+  const id = idExtensionDe(url);
+  if (!id) return null;
+  let s: Session;
+  try {
+    s = wc.session;
+  } catch {
+    return null;
+  }
+  for (const instance of instancesVivantes) if (instance.aLaSession(s) && s.extensions.getExtension(id)) return { instance, id };
+  return null;
+}
+
 /** Service workers dont le canal de démarrage est posé. */
 const workersEcoutes = new WeakSet<object>();
 /** Sessions équipées par la bibliothèque dans ce processus (chacune ajoute un écouteur à `app`). */
@@ -239,6 +255,13 @@ export class ExtensionsProfils {
        * l'héberge (la bibliothèque choisit le gestionnaire par la session de l'expéditeur IPC) : lève si refusé.
        */
       desinstallerDepuisStore?(id: string, profil: IdProfil): Promise<void>;
+      /**
+       * Consoles des extensions (service workers et pages `chrome-extension://`) et plantages (pages d'extension disparues
+       * hors `clean-exit`, échecs de `loadExtension`), par id Chromium.
+       */
+      consoles?: Pick<ConsolesExtensions, "noter" | "plantage">;
+      /** Après chaque synchronisation des sessions (ce qui est chargé a pu changer : la barre relit). */
+      apresSynchro?(): void;
     },
   ) {
     instancesVivantes.add(this);
@@ -266,6 +289,34 @@ export class ExtensionsProfils {
       ipcMain.on(CANAL_AGENT, (e: IpcMainEvent) => {
         const id = idDuCadre(e);
         e.returnValue = !!id && [...instancesVivantes].some((x) => x.accordAgent(id) !== undefined);
+      });
+    }
+    if (o.consoles && !pagesEcoutees) {
+      pagesEcoutees = true;
+      // Les pages `chrome-extension://` (popups, options, pages ouvertes en onglet) d'une session de profil : leur console
+      // et leurs plantages. Un seul écouteur par processus ; l'instance est celle de la session de la page.
+      app.on("web-contents-created", (_e, wc) => {
+        wc.on("console-message", (ev) => {
+          let url: string | undefined;
+          try {
+            url = ev.frame?.url ?? wc.getURL();
+          } catch {
+            url = undefined;
+          }
+          const id = idPageExtension(wc, url);
+          if (id) id.instance.noterConsole(id.id, { horodatage: Date.now(), niveau: niveauConsole(ev.level), texte: String(ev.message) });
+        });
+      });
+      app.on("render-process-gone", (_e, wc, details) => {
+        if (details.reason === "clean-exit") return;
+        let url: string | undefined;
+        try {
+          url = wc.getURL();
+        } catch {
+          url = undefined;
+        }
+        const id = idPageExtension(wc, url);
+        if (id) id.instance.noterPlantage(id.id, Date.now());
       });
     }
     // Les popups d'action, et toute autre fenêtre, restent cachées pendant les tests (yeux de l'utilisateur).
@@ -332,6 +383,17 @@ export class ExtensionsProfils {
       worker.ipc.handle(CANAL_URL_PERMISE, (_e, url: unknown) => this.urlPermise(s, id, url));
       worker.ipc.handle(CANAL_HOTE_PERMIS, (_e, onglet: unknown) => this.hotePermis(s, id, onglet));
       worker.ipc.handle(CANAL_ONGLET, (_e, onglet: unknown) => this.estOnglet(s, id, onglet));
+    });
+    // La console des service workers des extensions (portée `chrome-extension://<id>/`).
+    s.serviceWorkers.on("console-message", (_e, d) => {
+      let scope: string | undefined;
+      try {
+        scope = s.serviceWorkers.getInfoFromVersionID(d.versionId)?.scope;
+      } catch {
+        scope = undefined;
+      }
+      const id = idExtensionDe(scope);
+      if (id) this.o.consoles?.noter(id, { horodatage: Date.now(), niveau: niveauConsole(d.level), texte: String(d.message) });
     });
     // Aucun `session.webRequest` ici : il couperait tout declarativeNetRequest de la session (reseau.ts, branche B).
     // Lève si c'est impossible : le profil n'est alors pas enregistré, et aucune extension n'y sera jamais chargée.
@@ -509,6 +571,26 @@ export class ExtensionsProfils {
     return undefined;
   }
 
+  /** Un message de la console d'une page de l'extension `id` (écouteur des pages, un par processus). */
+  noterConsole(id: string, m: MessageConsole): void {
+    this.o.consoles?.noter(id, m);
+  }
+
+  /** Une page de l'extension `id` a planté (écouteur des pages, un par processus). */
+  noterPlantage(id: string, horodatage: number): void {
+    this.o.consoles?.plantage(id, horodatage);
+  }
+
+  /** Les extensions chargées dans la session de ce profil : clé et id Chromium. */
+  chargeesProfil(profil: IdProfil): { cle: string; id: string }[] {
+    return [...(this.chargees.get(profil) ?? [])].map(([cle, c]) => ({ cle, id: c.id }));
+  }
+
+  /** La clé d'une copie de l'agent par son id Chromium (chargée, ou en cours de chargement), ou undefined. */
+  cleAgent(id: string): string | undefined {
+    return this.idsAgent.get(id);
+  }
+
   /** La dernière erreur de chargement de chaque clé (effacée quand elle se charge). */
   erreursChargement(): Map<string, string> {
     return new Map(this.erreurs);
@@ -562,6 +644,7 @@ export class ExtensionsProfils {
     if (!e) return;
     const etat = this.o.etat();
     await Promise.all([...this.instances].map(([profil, { session }]) => this.appliquerProfil(e, profil, session, profilPrive(etat, profil))));
+    this.o.apresSynchro?.();
   }
 
   private async appliquerProfil(e: EtatExtensions, profil: IdProfil, s: Session, prive: boolean): Promise<void> {
@@ -599,6 +682,9 @@ export class ExtensionsProfils {
       } catch (erreur) {
         this.erreurs.set(cle, (erreur as Error).message);
         console.error(`[extensions] ${cle} non chargée dans le profil ${profil} :`, erreur);
+        // Un échec de chargement compte comme un plantage : trois en une minute, et elle est désactivée.
+        const lue = lireCle(cle);
+        if (lue) this.o.consoles?.plantage(lue.source === "store" ? lue.id : idChromeDeDossier(chemin), Date.now());
       }
     }
   }

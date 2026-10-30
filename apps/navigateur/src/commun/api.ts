@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution } from "@webaios/noyau";
-import type { LigneExtensionEspace } from "./extensions";
+import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
@@ -64,6 +64,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
   /** Active la page Applications de l'espace actif, ou l'ouvre. */
   z.object({ type: z.literal("ouvrirApplications"), fenetreId: id }),
+  /** Active la page Extensions de cette fenêtre, ou l'ouvre (comme Applications). */
+  z.object({ type: z.literal("ouvrirExtensions"), fenetreId: id }),
   /** Active la page « Voir le workflow » du widget `id` dans cette fenêtre, ou l'ouvre. */
   z.object({ type: z.literal("ouvrirWorkflow"), fenetreId: id, id: z.string().regex(/^[a-z0-9-]+$/).max(100), nom: z.string().max(60) }),
   /** Ouverture et fermeture automatiques du panneau par la page d'accueil (pas une action de l'utilisateur). */
@@ -233,10 +235,29 @@ export interface ApiWebaios {
     pourEspace(espaceId: IdEspace): Promise<LigneExtensionEspace[]>;
     /** Active ou désactive une extension dans le profil de cet espace (l'agent sans accord passe par la carte). */
     basculer(cle: string, espaceId: IdEspace, actif: boolean): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** Le registre des extensions a changé : relire. */
+    /** Le registre des extensions a changé (ou leurs erreurs) : relire. */
     surChange(rappel: () => void): () => void;
+    /** Toutes les extensions du registre (page Extensions). */
+    liste(): Promise<LigneExtension[]>;
+    /** « Désactiver toutes les extensions » est-il en vigueur ? */
+    coupees(): Promise<boolean>;
+    /** Les extensions chargées dans le profil de l'espace actif de cette fenêtre. */
+    barre(): Promise<BarreExtensions>;
+    epingler(cle: string, oui: boolean): Promise<ResultatExtension>;
+    /** Retirée de tous les profils (l'accord reste). */
+    desactiverPartout(cle: string): Promise<ResultatExtension>;
+    /** Store : désinstallée ; agent : accord et copie effacés (le dossier de l'agent reste). */
+    supprimer(cle: string): Promise<ResultatExtension>;
+    /** « Désactiver toutes les extensions » : rien n'est chargé tant que c'est vrai, même après un redémarrage. */
+    toutCouper(oui: boolean): Promise<ResultatExtension>;
+    /** La carte de la mise à jour en attente (Store) ou de la portée élargie (agent), dans cette fenêtre. */
+    revoir(cle: string): Promise<ResultatExtension>;
+    /** Une extension désactivée pour ses plantages repart (là où elle était active). */
+    reactiver(cle: string): Promise<ResultatExtension>;
   };
 }
+
+export type ResultatExtension = { ok: true } | { ok: false; erreur: string };
 
 /** Une appli telle que la page l'affiche : ce que dit le gestionnaire, et ce que le navigateur en a retenu. */
 export type ApplicationAffichee = Application & { favicon?: string; dernierLancement?: string };

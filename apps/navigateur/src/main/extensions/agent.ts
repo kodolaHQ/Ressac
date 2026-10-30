@@ -7,6 +7,7 @@ import {
   ERREUR_PROFIL_PRIVE,
   porteeElargie,
   preparerCopie,
+  retirer,
   type AnalyseManifeste,
   type EntreeExtension,
   type EtatExtensions,
@@ -296,6 +297,22 @@ async function activation(
   await pose.valider();
   await d.noterErreur(cle, null);
   return { ok: true };
+}
+
+/**
+ * « Supprimer » une extension de l'agent (page Extensions) : son entrée (accord compris) quitte le registre, elle est
+ * déchargée partout, puis sa copie est effacée. Le dossier de l'agent (`~/WebAiOs/extensions/<id>`) reste : une nouvelle
+ * activation repassera par la carte.
+ */
+export function supprimerAgent(id: string, d: DependancesAgent): Promise<void> {
+  const cle = cleAgent(id);
+  if (!cle) return Promise.reject(new Error(`Identifiant d'extension invalide : ${id}`));
+  return enFile(`${d.dossier}|${cle}`, async () => {
+    await d.modifier((e) => (cle in e.extensions ? retirer(e, cle) : e));
+    await rm(copie(d.dossier, id), { recursive: true, force: true });
+    await rm(attente(d.dossier, id), { recursive: true, force: true });
+    await d.noterErreur(cle, null);
+  });
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   LARGEUR_AGENT_MAX,
   LARGEUR_AGENT_MIN,
   URL_APPLICATIONS,
+  URL_EXTENSIONS,
   urlWorkflow,
   type EtatFenetre,
   type EtatNavigateur,
@@ -380,6 +381,8 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
     // Une seule page Applications par fenêtre : on y revient (dans son espace) plutôt que d'en ouvrir une deuxième.
     case "ouvrirApplications":
       return ouvrirPageInterne(d, genId, a.fenetreId, URL_APPLICATIONS, "Applications");
+    case "ouvrirExtensions":
+      return ouvrirPageInterne(d, genId, a.fenetreId, URL_EXTENSIONS, "Extensions");
     // De même, une seule page « Voir le workflow » par widget et par fenêtre.
     case "ouvrirWorkflow":
       return ouvrirPageInterne(d, genId, a.fenetreId, urlWorkflow(a.id), `Workflow — ${a.nom}`);

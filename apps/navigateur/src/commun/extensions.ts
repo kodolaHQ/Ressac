@@ -4,8 +4,8 @@ import type { Espace, EtatNavigateur } from "./modele";
 /** Réponse à une saisie qui n'est ni un id d'extension, ni l'adresse de sa page du Chrome Web Store. */
 export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
 
-export const DESACTIVEE_PLANTAGES = "Désactivée : elle a planté 3 fois en une minute";
-export const DESACTIVEE_PORTEE = "Désactivée : elle demande plus de droits qu'accordé";
+// Dans un module sans dépendance au noyau : l'interface les importe (le noyau n'entre pas dans son bundle).
+export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "./extensions-messages";
 
 /** Une ligne de la section « Extensions » des réglages d'un espace (tout y est affiché en texte). */
 export interface LigneExtensionEspace {
@@ -77,4 +77,55 @@ export function carteDe(
     maj: o.maj ? { de: o.maj.de } : null,
     empreinte: empreintePortee(p),
   };
+}
+
+/** Une ligne de la page Extensions (tout y est affiché en texte : c'est de la donnée venue d'un manifeste ou d'une console). */
+export interface LigneExtension {
+  cle: string;
+  nom: string;
+  source: SourceExtension;
+  version: string;
+  /** Libellés de la portée accordée (`libellesPortee`). */
+  droits: string[];
+  sites: string[];
+  tousLesSites: boolean;
+  /** Les espaces dont le profil l'a active. */
+  espaces: { nom: string; profil: string }[];
+  /** Erreurs de préparation, de chargement, de mise à jour, et erreurs de sa console. */
+  erreurs: string[];
+  /** Agent : dernière copie rechargée (ISO). */
+  modifieeLe: string | null;
+  /** Le message de sa désactivation (`DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`), ou null. */
+  desactivee: string | null;
+  /** Store : la version d'une mise à jour qui attend l'accord de l'utilisateur. */
+  majEnAttente: string | null;
+  /** Droits et clés du manifeste que WebAiOs ne prend pas en charge. */
+  nonPrisEnCharge: string[];
+  epinglee: boolean;
+}
+
+/** La barre d'une fenêtre : les extensions chargées dans le profil de son espace actif. */
+export interface BarreExtensions {
+  /** Partition de la session du profil (attribut `partition` des `<button is="browser-action">`). */
+  partition: string;
+  /** Id de l'onglet affiché pour la bibliothèque (son `webContents.id`), ou null. */
+  onglet: number | null;
+  actions: { cle: string; idChrome: string; nom: string; epinglee: boolean }[];
+}
+
+/** Droits du manifeste que WebAiOs ne prend pas en charge (Electron ou WebAiOs ne les fournissent pas). */
+const DROITS_NON_PRIS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
+/** Clés du manifeste sans effet dans WebAiOs, et le nom montré. */
+const CLES_NON_PRISES: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
+
+/** Ce que le manifeste demande et que WebAiOs ne prend pas en charge, dans l'ordre des listes, sans doublon (pur). */
+export function nonPrisEnCharge(manifeste: unknown): string[] {
+  if (typeof manifeste !== "object" || manifeste === null) return [];
+  const m = manifeste as Record<string, unknown>;
+  const droits = new Set<string>();
+  for (const champ of ["permissions", "optional_permissions"])
+    if (Array.isArray(m[champ])) for (const d of m[champ] as unknown[]) if (typeof d === "string") droits.add(d);
+  const r: string[] = DROITS_NON_PRIS.filter((d) => droits.has(d));
+  for (const [cle, nom] of Object.entries(CLES_NON_PRISES)) if (Object.hasOwn(m, cle) && !r.includes(nom)) r.push(nom);
+  return r;
 }

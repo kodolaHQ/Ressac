@@ -156,6 +156,7 @@ export function installerMenu(c: CiblesMenu): void {
           }),
         ),
         entree("applications", "Applications", "CmdOrCtrl+Shift+A", dansFenetre((f) => c.agir({ type: "ouvrirApplications", fenetreId: f }))),
+        entree("extensions", "Extensions", undefined, dansFenetre((f) => c.agir({ type: "ouvrirExtensions", fenetreId: f }))),
         { type: "separator" },
         entree("outils-page", "Outils de développement de la page", "Alt+CmdOrCtrl+I", appliOu("outils", surOnglet("outils"))),
         ...(app.isPackaged ? [] : [entree("outils-interface", "Outils de développement de l'interface", undefined, dansFenetre((f) => c.outilsInterface(f)))]),

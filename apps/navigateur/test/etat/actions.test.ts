@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
-import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, URL_APPLICATIONS, urlWorkflow, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
+import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, aUneVue, URL_APPLICATIONS, URL_EXTENSIONS, urlWorkflow, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -586,6 +586,29 @@ test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
   expect(pages()).toHaveLength(1);
   expect(fen().espaceActif).toBe(P);
   expect(actif()).toBe(page.id);
+});
+
+test("ouvrirExtensions ouvre ou active la page, comme ouvrirApplications", () => {
+  expect(URL_EXTENSIONS).toBe("webaios://extensions");
+  expect(aUneVue(URL_EXTENSIONS)).toBe(false);
+  ouvrir("https://a.test/");
+  ag({ type: "ouvrirExtensions", fenetreId: F });
+  const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_EXTENSIONS);
+  expect(pages()).toHaveLength(1);
+  const page = pages()[0]!;
+  expect(page).toMatchObject({ titre: "Extensions", espaceId: P });
+  expect(actif()).toBe(page.id);
+  const avant = e;
+  ag({ type: "ouvrirExtensions", fenetreId: F });
+  expect(e).toBe(avant);
+  ouvrir("https://b.test/");
+  ag({ type: "ouvrirExtensions", fenetreId: F });
+  expect(pages()).toHaveLength(1);
+  expect(actif()).toBe(page.id);
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  ag({ type: "ouvrirExtensions", fenetreId: F });
+  expect(pages()).toHaveLength(1);
+  expect(fen().espaceActif).toBe(P);
 });
 
 test("ouvrirWorkflow ouvre un onglet webaios://workflow/<id> titré, puis y revient au lieu d'en ouvrir un second", () => {

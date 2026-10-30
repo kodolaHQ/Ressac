@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, selectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet } from "../commun/api";
-import { SAISIE_INVALIDE, type LigneExtensionEspace } from "../commun/extensions";
+import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, selectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
+import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -84,6 +84,15 @@ export interface Gestionnaires {
     installerStore(saisie: string, fenetreId: IdFenetre): Promise<{ ok: true } | { ok: false; erreur: string }>;
     pourEspace(espaceId: string): Promise<LigneExtensionEspace[]>;
     basculer(cle: string, espaceId: string, actif: boolean, fenetreId: IdFenetre): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    liste(): Promise<LigneExtension[]>;
+    coupees(): boolean;
+    barre(fenetreId: IdFenetre): Promise<BarreExtensions>;
+    epingler(cle: string, oui: boolean): Promise<ResultatExtension>;
+    desactiverPartout(cle: string): Promise<ResultatExtension>;
+    supprimer(cle: string): Promise<ResultatExtension>;
+    toutCouper(oui: boolean): Promise<ResultatExtension>;
+    revoir(cle: string, fenetreId: IdFenetre): Promise<ResultatExtension>;
+    reactiver(cle: string): Promise<ResultatExtension>;
   };
   acces: { etat(): EtatAcces; couper(id: IdOnglet, droit?: DroitDev): void };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
@@ -244,6 +253,31 @@ export function brancherIpc(g: Gestionnaires): void {
     if (!fenetreId) throw new Error("expéditeur inconnu");
     if (!chaine(cle, 200) || !chaine(espaceId, 200) || typeof actif !== "boolean") return { ok: false, erreur: "Demande invalide" };
     return g.extensions.basculer(cle, espaceId, actif, fenetreId);
+  });
+  // La page Extensions et la barre : seulement l'interface d'une fenêtre principale (un geste de l'utilisateur), clés bornées.
+  const invalide = { ok: false as const, erreur: "Demande invalide" };
+  const geste = (canal: string, traiter: (cle: string, fenetreId: IdFenetre, oui: boolean) => Promise<ResultatExtension>, avecOui = false) =>
+    ipcMain.handle(canal, (e, cle: unknown, oui: unknown) => {
+      const fenetreId = g.fenetreDe(e);
+      if (!fenetreId) throw new Error("expéditeur inconnu");
+      if (!chaine(cle, 200) || (avecOui && typeof oui !== "boolean")) return invalide;
+      return traiter(cle, fenetreId, oui === true);
+    });
+  repondre(CANAUX.extensionsListe, () => g.extensions.liste());
+  repondre(CANAUX.extensionsCoupees, () => g.extensions.coupees());
+  ipcMain.handle(CANAUX.extensionsBarre, (e) => {
+    const fenetreId = g.fenetreDe(e);
+    if (!fenetreId) throw new Error("expéditeur inconnu");
+    return g.extensions.barre(fenetreId);
+  });
+  geste(CANAUX.extensionsEpingler, (cle, _f, oui) => g.extensions.epingler(cle, oui), true);
+  geste(CANAUX.extensionsDesactiverPartout, (cle) => g.extensions.desactiverPartout(cle));
+  geste(CANAUX.extensionsSupprimer, (cle) => g.extensions.supprimer(cle));
+  geste(CANAUX.extensionsRevoir, (cle, f) => g.extensions.revoir(cle, f));
+  geste(CANAUX.extensionsReactiver, (cle) => g.extensions.reactiver(cle));
+  ipcMain.handle(CANAUX.extensionsToutCouper, (e, oui: unknown) => {
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+    return typeof oui === "boolean" ? g.extensions.toutCouper(oui) : invalide;
   });
   recevoir(CANAUX.applicationAction, zod(SchemaActionApplication), ({ dossier, action }, f) => g.applications.agir(dossier, action, f));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));

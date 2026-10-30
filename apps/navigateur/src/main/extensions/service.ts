@@ -6,7 +6,11 @@ import {
   analyserManifeste,
   appliquerProfilsPrives,
   chargeesDans,
+  couperTout,
   desactiver,
+  desactiverPartout,
+  epingler,
+  libellesPortee,
   ERREUR_PROFIL_PRIVE,
   empreintePortee,
   lireCle,
@@ -17,9 +21,20 @@ import {
   type EtatExtensions,
   type IdProfil,
 } from "@webaios/noyau";
-import { carteDe, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, type CarteExtension, type LigneExtensionEspace, type ReponseAccord } from "../../commun/extensions";
+import {
+  carteDe,
+  DESACTIVEE_PLANTAGES,
+  DESACTIVEE_PORTEE,
+  nonPrisEnCharge,
+  type BarreExtensions,
+  type CarteExtension,
+  type LigneExtension,
+  type LigneExtensionEspace,
+  type ReponseAccord,
+} from "../../commun/extensions";
+import type { ResultatExtension } from "../../commun/api";
 export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE };
-import { aUneVue, profilsEnUsage, type Decision, type Demande, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
+import { aUneVue, partitionDe, profilsEnUsage, type Decision, type Demande, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
 import { attendreReponse, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
@@ -30,11 +45,13 @@ import {
   preparerAgent,
   TOUTES_COUPEES_AGENT,
   recharger,
+  supprimerAgent,
   type DependancesAgent,
   type PreparationAgent,
   type ResultatActivation,
   type ResultatRechargement,
 } from "./agent";
+import { ConsolesExtensions } from "./consoles";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
 import {
   abandonnerMiseAJour,
@@ -98,6 +115,11 @@ export function ouvrirOngletPourExtension(magasin: Magasin, vues: GestionnaireVu
 }
 
 const SANS_DOSSIER_AGENT = "Pas de dossier pour les extensions de l'agent";
+/** « Revoir » pendant la coupure générale : aucune carte n'est montrée, la mise à jour (ou l'accord) attend. */
+export const REVOIR_PENDANT_COUPURE = "Les extensions sont toutes désactivées : réactive-les pour revoir cette extension";
+export const RIEN_A_REVOIR = "Rien à revoir pour cette extension";
+/** Erreurs de console montrées sur la page Extensions, au plus (les dernières). */
+const ERREURS_CONSOLE_PAGE = 20;
 
 /**
  * Relie le registre des extensions (`<userData>/extensions/etat.json`) aux sessions des profils : au démarrage, il lit
@@ -130,6 +152,13 @@ export class ServiceExtensions {
   private poser: PoserQuestion | undefined;
   /** Les cartes d'accord affichées, par clé. `connue` : l'extension était dans le registre quand la carte a été posée. */
   private cartes = new Map<string /* signatureCarte */, CarteOuverte>();
+  /**
+   * Consoles et plantages des extensions (branchés par `ExtensionsProfils`) : au `PLANTAGES_MAX`-ième plantage en
+   * `FENETRE_PLANTAGES_MS`, l'extension est désactivée partout (`DESACTIVEE_PLANTAGES`).
+   */
+  readonly consoles = new ConsolesExtensions({
+    surPlantages: (id) => void this.desactiverPlantages(id).catch((e: unknown) => console.error(`[extensions] ${id} non désactivée après ses plantages :`, e)),
+  });
   private o:
     | {
         dossier: string;
@@ -672,6 +701,201 @@ export class ServiceExtensions {
         this.o?.surChange?.();
       },
     };
+  }
+
+  /** La clé d'une extension par son id Chromium (Store : son id ; agent : l'id de sa copie), ou null. */
+  private cleDeId(idChrome: string): string | null {
+    const store = `store:${idChrome}`;
+    if (store in this.etat.extensions) return store;
+    const agent = this.o?.profils.cleAgent?.(idChrome) ?? Object.entries(this.etat.extensions).find(([c, x]) => x.source === "agent" && x.idChrome === idChrome)?.[0];
+    return agent && agent in this.etat.extensions ? agent : null;
+  }
+
+  /** L'id Chromium d'une clé (Store : son id ; agent : celui de sa copie, null avant le premier chargement). */
+  private idChromeDe(cle: string): string | null {
+    const lue = lireCle(cle);
+    if (!lue) return null;
+    return lue.source === "store" ? lue.id : (this.etat.extensions[cle]?.idChrome ?? null);
+  }
+
+  /** Les erreurs d'une clé : préparation, mise à jour, agent, chargement, puis les dernières erreurs de sa console. */
+  private erreursDe(cle: string): string[] {
+    const r: string[] = [];
+    for (const table of [this.erreursPreparation, this.erreursMaj, this.erreursAgent, this.o?.profils.erreursChargement() ?? new Map<string, string>()]) {
+      const e = table.get(cle);
+      if (e) r.push(e);
+    }
+    const id = this.idChromeDe(cle);
+    if (id) r.push(...this.consoles.erreurs(id).slice(-ERREURS_CONSOLE_PAGE));
+    return r;
+  }
+
+  /** La page Extensions : une ligne par extension du registre (Store et agent), triée par nom. */
+  async liste(): Promise<LigneExtension[]> {
+    const o = this.o;
+    if (!o) return [];
+    const nav = o.magasin.etat;
+    const lignes: LigneExtension[] = [];
+    for (const [cle, x] of Object.entries(this.etat.extensions)) {
+      const lue = lireCle(cle);
+      if (!lue) continue;
+      const chemin = lue.source === "store" ? join(o.dossier, "store", lue.id, `${x.version}_0`) : join(o.dossier, "copies", lue.id);
+      const manifeste = await lireManifeste(chemin);
+      // La portée accordée ; sans accord (jamais le cas d'une entrée chargée), celle du manifeste sur le disque.
+      const portee = x.accord ?? analyserManifeste(manifeste, { source: x.source }).portee;
+      lignes.push({
+        cle,
+        nom: x.nom,
+        source: x.source,
+        version: x.version,
+        droits: libellesPortee(portee, x.source),
+        sites: [...portee.hotes],
+        tousLesSites: portee.tousLesSites,
+        espaces: nav.espaces
+          .filter((e) => x.profils.includes(e.profil) && !(x.source === "agent" && profilPrive(nav, e.profil)))
+          .map((e) => ({ nom: e.nom, profil: e.profil })),
+        erreurs: this.erreursDe(cle),
+        modifieeLe: x.modifieeLe,
+        desactivee: x.desactivee ? (x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE) : null,
+        majEnAttente: x.majEnAttente?.version ?? null,
+        nonPrisEnCharge: nonPrisEnCharge(manifeste),
+        epinglee: x.epinglee,
+      });
+    }
+    return lignes.sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /** La barre de `fenetre` : les extensions chargées dans le profil de son espace actif, et l'onglet qu'elle affiche. */
+  barre(fenetre: IdFenetre): BarreExtensions {
+    const o = this.o;
+    const nav = o?.magasin.etat;
+    const f = nav?.fenetres.find((x) => x.id === fenetre);
+    const espace = f && nav?.espaces.find((e) => e.id === f.espaceActif);
+    if (!o || !f || !espace) return { partition: "", onglet: null, actions: [] };
+    const ongletId = f.actif[f.espaceActif];
+    const wc = ongletId ? o.vues.vue(ongletId) : null;
+    return {
+      partition: partitionDe(espace.profil),
+      onglet: wc && !wc.isDestroyed() ? wc.id : null,
+      actions: o.profils
+        .chargeesProfil(espace.profil)
+        .map(({ cle, id }) => ({ cle, idChrome: id, nom: this.etat.extensions[cle]?.nom ?? id, epinglee: this.etat.extensions[cle]?.epinglee === true }))
+        .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle)),
+    };
+  }
+
+  /** Écrit le registre pour une clé connue (dans la file de l'extension pour le Store) ; une erreur est rendue en texte. */
+  private async ecrireCle(cle: string, changer: (e: EtatExtensions, prives: ReadonlySet<IdProfil>) => EtatExtensions): Promise<ResultatExtension> {
+    const o = this.o;
+    const lue = lireCle(cle);
+    if (!o || !this.pret) return { ok: false, erreur: "Service des extensions non démarré" };
+    if (!lue || !(cle in this.etat.extensions)) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    try {
+      const ecrire = () => this.modifier((e, prives) => (cle in e.extensions ? changer(e, prives) : e));
+      await (lue.source === "store" ? enFileStore(o.dossier, lue.id, ecrire) : ecrire());
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erreur: (e as Error).message };
+    }
+  }
+
+  epingler(cle: string, oui: boolean): Promise<ResultatExtension> {
+    return this.ecrireCle(cle, (e) => epingler(e, cle, oui));
+  }
+
+  /** « Désactiver partout » : retirée de tous les profils ; l'accord reste (la réactiver dans un espace suffit). */
+  desactiverPartout(cle: string): Promise<ResultatExtension> {
+    return this.ecrireCle(cle, (e) => desactiverPartout(e, cle));
+  }
+
+  /** « Réactiver » une extension désactivée pour ses plantages : elle repart dans les profils où elle était active. */
+  async reactiver(cle: string): Promise<ResultatExtension> {
+    const r = await this.ecrireCle(cle, (e) => {
+      const x = e.extensions[cle]!;
+      return x.desactivee?.raison === "plantages" ? { ...e, extensions: { ...e.extensions, [cle]: { ...x, desactivee: null } } } : e;
+    });
+    const id = this.idChromeDe(cle);
+    if (r.ok && id) this.consoles.oublier(id);
+    return r;
+  }
+
+  /**
+   * « Supprimer » : une extension du Store est désinstallée (déchargée partout, `store/<id>` effacé) ; une extension de
+   * l'agent perd son accord et sa copie, son dossier dans `~/WebAiOs/extensions` reste.
+   */
+  async supprimer(cle: string): Promise<ResultatExtension> {
+    const o = this.o;
+    const lue = lireCle(cle);
+    if (!o || !this.pret) return { ok: false, erreur: "Service des extensions non démarré" };
+    if (!lue || !(cle in this.etat.extensions)) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    const id = this.idChromeDe(cle);
+    try {
+      if (lue.source === "store") await this.desinstaller(cle);
+      else {
+        const d = this.dependancesAgent();
+        // Sans dossier de l'agent (jamais en usage normal) : l'entrée et la copie partent quand même.
+        await (d ? supprimerAgent(lue.id, d) : this.desinstaller(cle));
+      }
+    } catch (e) {
+      return { ok: false, erreur: (e as Error).message };
+    }
+    if (id) this.consoles.oublier(id);
+    return { ok: true };
+  }
+
+  /**
+   * « Désactiver toutes les extensions » : `toutesCoupees` écrit au registre (il survit à un redémarrage) ; tout est
+   * déchargé, et ni une installation, ni un rechargement, ni une mise à jour n'y chargent rien tant que c'est vrai.
+   */
+  async toutCouper(oui: boolean): Promise<ResultatExtension> {
+    if (!this.o || !this.pret) return { ok: false, erreur: "Service des extensions non démarré" };
+    try {
+      await this.modifier((e) => couperTout(e, oui));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erreur: (e as Error).message };
+    }
+  }
+
+  /**
+   * « Revoir la mise à jour » (Store, `majEnAttente`) ou « Revoir l'accord » (agent désactivée pour une portée élargie) :
+   * la carte, dans `fenetre`. Pendant la coupure générale, aucune carte : la mise à jour reste en attente.
+   */
+  async revoir(cle: string, fenetre?: IdFenetre): Promise<ResultatExtension> {
+    const o = this.o;
+    const x = this.etat.extensions[cle];
+    const lue = lireCle(cle);
+    if (!o || !this.pret) return { ok: false, erreur: "Service des extensions non démarré" };
+    if (!x || !lue) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    if (this.etat.toutesCoupees) return { ok: false, erreur: REVOIR_PENDANT_COUPURE };
+    if (lue.source === "store" && x.majEnAttente) {
+      const r = await this.revoirMiseAJour(cle, fenetre);
+      if (r === "appliquee") return { ok: true };
+      return { ok: false, erreur: r === "en-attente" ? "Mise à jour refusée : elle reste en attente" : (this.erreursMaj.get(cle) ?? "Mise à jour impossible") };
+    }
+    if (lue.source === "agent" && x.desactivee?.raison === "portee-elargie") {
+      const nav = o.magasin.etat;
+      const actif = nav.fenetres.find((f) => f.id === fenetre)?.espaceActif;
+      const espace =
+        nav.espaces.find((e) => e.id === actif && x.profils.includes(e.profil)) ??
+        nav.espaces.find((e) => x.profils.includes(e.profil) && !profilPrive(nav, e.profil)) ??
+        nav.espaces.find((e) => e.id === actif);
+      if (!espace) return { ok: false, erreur: "Aucun espace où la revoir" };
+      return this.demanderActivation(lue.id, { espace, ...(fenetre ? { fenetre } : {}) });
+    }
+    return { ok: false, erreur: RIEN_A_REVOIR };
+  }
+
+  /** `PLANTAGES_MAX` plantages en `FENETRE_PLANTAGES_MS` : désactivée partout (`DESACTIVEE_PLANTAGES`), signalée sur la page. */
+  private async desactiverPlantages(idChrome: string): Promise<void> {
+    const cle = this.cleDeId(idChrome);
+    if (!cle || !this.pret) return;
+    const r = await this.ecrireCle(cle, (e) => {
+      const x = e.extensions[cle]!;
+      return x.desactivee ? e : { ...e, extensions: { ...e.extensions, [cle]: { ...x, desactivee: { raison: "plantages" as const, le: new Date().toISOString() } } } };
+    });
+    if (!r.ok) throw new Error(r.erreur);
+    console.warn(`[extensions] ${cle} désactivée : ${DESACTIVEE_PLANTAGES}`);
   }
 
   /** L'état du registre tel que chargé. */

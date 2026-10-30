@@ -66,6 +66,15 @@ export const CANAUX = {
   extensionsInstallerStore: "webaios:extensions-installer-store",
   extensionsPourEspace: "webaios:extensions-pour-espace",
   extensionsBasculer: "webaios:extensions-basculer",
+  extensionsListe: "webaios:extensions-liste",
+  extensionsCoupees: "webaios:extensions-coupees",
+  extensionsBarre: "webaios:extensions-barre",
+  extensionsEpingler: "webaios:extensions-epingler",
+  extensionsDesactiverPartout: "webaios:extensions-desactiver-partout",
+  extensionsSupprimer: "webaios:extensions-supprimer",
+  extensionsToutCouper: "webaios:extensions-tout-couper",
+  extensionsRevoir: "webaios:extensions-revoir",
+  extensionsReactiver: "webaios:extensions-reactiver",
   /** Diffusé après chaque changement du registre des extensions (sans contenu : relire). */
   extensionsChange: "webaios:extensions-change",
 } as const;

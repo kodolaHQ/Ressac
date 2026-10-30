@@ -4,14 +4,17 @@ import { dirname, join } from "node:path";
 import { createPublicKey, type KeyObject } from "node:crypto";
 import { construireCrx } from "./crx";
 
-/** Écrit une extension : chaque fichier par chemin relatif (un objet est écrit en JSON). */
+/** Écrit une extension : chaque fichier par chemin relatif (un Buffer tel quel, un objet en JSON). */
 export function ecrireExtension(dossier: string, f: Record<string, string | object>): void {
   for (const [nom, contenu] of Object.entries(f)) {
     const chemin = join(dossier, nom);
     mkdirSync(dirname(chemin), { recursive: true });
-    writeFileSync(chemin, typeof contenu === "string" ? contenu : JSON.stringify(contenu, null, 2));
+    writeFileSync(chemin, typeof contenu === "string" || Buffer.isBuffer(contenu) ? contenu : JSON.stringify(contenu, null, 2));
   }
 }
+
+/** Une image PNG de 1×1 pixel (icône des extensions de test). */
+const PNG_1PX = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==", "base64");
 
 /** Bloque `/pub.js` (script ou page) par une règle DNR dynamique posée au démarrage de son service worker. */
 const bloqueur = {
@@ -261,7 +264,30 @@ const marqueurStore = {
   "contenu.js": `document.documentElement.setAttribute("data-store-vu", "1");\ndocument.body.append(" STORE-VU ");\n`,
 };
 
-export const EXTENSIONS_TEST = { "marqueur-store": marqueurStore, bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
+/**
+ * Extension à bouton : icône (`icone.png`), popup qui écrit « Popup de test prête » dans sa page, et une entrée
+ * « Entrée de test » du menu du clic droit sur les pages (posée par son service worker). Elle demande aussi `activeTab`,
+ * que WebAiOs ne prend pas en charge.
+ */
+const bouton = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Bouton de test",
+    version: "2.1.0",
+    permissions: ["contextMenus", "activeTab", "storage"],
+    action: { default_title: "Bouton de test", default_popup: "popup.html", default_icon: { "16": "icone.png", "32": "icone.png" } },
+    icons: { "16": "icone.png", "32": "icone.png" },
+    background: { service_worker: "fond.js" },
+  },
+  "icone.png": PNG_1PX,
+  "popup.html": '<!doctype html><html><head><meta charset="utf-8"><title>Popup</title></head><body><p id="contenu">…</p><script src="popup.js"></script></body></html>',
+  "popup.js": `document.getElementById("contenu").textContent = "Popup de test prête";\nconsole.error("erreur de la popup");\n`,
+  "fond.js": `chrome.contextMenus.removeAll(() => chrome.contextMenus.create({ id: "essai", title: "Entrée de test", contexts: ["page"] }));
+`,
+};
+
+export const EXTENSIONS_TEST = {
+  bouton, "marqueur-store": marqueurStore, bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 
 /**

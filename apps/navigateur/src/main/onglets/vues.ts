@@ -1,4 +1,5 @@
-import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type Session, type WebContents } from "electron";
+import { BrowserWindow, clipboard, dialog, Menu, WebContentsView, type MenuItem, type Session, type WebContents } from "electron";
+import { ElectronChromeExtensions } from "electron-chrome-extensions";
 import type { Action, Bornes, CommandeOnglet } from "../../commun/api";
 import { aUneVue, type EtatNavigateur, type IdFenetre, type IdOnglet, type Onglet } from "../../commun/modele";
 import { zoneGauche, zoneSortie, type ZoneGauche } from "../../commun/revelation";
@@ -346,8 +347,15 @@ export class GestionnaireVues {
         remplacerMot: (mot) => wc.replaceMisspelling(mot),
         inspecter: (x, y) => wc.inspectElement(x, y),
       });
+      // Les entrées des extensions chargées dans la session de l'onglet (`chrome.contextMenus`), après un séparateur.
+      let extensions: MenuItem[] = [];
+      try {
+        extensions = ElectronChromeExtensions.fromSession(wc.session)?.getContextMenuItems(wc, params) ?? [];
+      } catch (e) {
+        console.error("[extensions] entrées du menu contextuel :", e);
+      }
       const fenetre = this.o.fenetres.get(onglet.fenetreId);
-      Menu.buildFromTemplate(entrees).popup(fenetre && !fenetre.isDestroyed() ? { window: fenetre } : {});
+      Menu.buildFromTemplate(extensions.length > 0 ? [...entrees, { type: "separator" }, ...extensions] : entrees).popup(fenetre && !fenetre.isDestroyed() ? { window: fenetre } : {});
     });
     wc.on("found-in-page", (_e, r) => {
       this.o.resultatRecherche?.(onglet.fenetreId, { ongletId: onglet.id, actif: r.activeMatchOrdinal, total: r.matches });

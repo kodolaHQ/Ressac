@@ -395,3 +395,90 @@ test("une mise à jour appliquée, préparée, remplace la version qui n'avait p
   expect(service.erreurs().has(cle)).toBe(false);
   expect(synchronisees.at(-1)!.extensions[cle]!.version).toBe("1.1.0");
 });
+
+// ——— Tâche 15 : page Extensions, coupure générale, plantages ———
+
+test("liste : une ligne par extension, avec droits, espaces, désactivation et « Non pris en charge »", async () => {
+  const { service } = await storeInstalle(["defaut"]);
+  writeFileSync(join(dossier, "store", ID, "1.0.0_0", "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0", permissions: ["activeTab", "storage"] }));
+  nav = { ...nav, espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: false }] } as unknown as EtatNavigateur;
+  const lignes = await service.liste();
+  const store = lignes.find((l) => l.cle === `store:${ID}`)!;
+  expect(store).toMatchObject({ source: "store", version: "1.0.0", espaces: [{ nom: "Perso", profil: "defaut" }], desactivee: null, majEnAttente: null, nonPrisEnCharge: ["activeTab"] });
+  expect(lignes.map((l) => l.cle).sort()).toEqual(["agent:essai", `store:${ID}`]);
+});
+
+test("toutCouper : toutesCoupees écrit, plus rien de synchronisé ; puis rallumé", async () => {
+  const { service } = await storeInstalle(["defaut"]);
+  expect(await service.toutCouper(true)).toEqual({ ok: true });
+  expect(JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")).toutesCoupees).toBe(true);
+  expect(synchronisees.at(-1)!.toutesCoupees).toBe(true);
+  expect(await service.toutCouper(false)).toEqual({ ok: true });
+  expect(synchronisees.at(-1)!.toutesCoupees).toBe(false);
+});
+
+test("revoir pendant la coupure : aucune carte, la mise à jour reste en attente ; après, la carte est montrée", async () => {
+  const { service, cartes, registre } = await majEnAttente({ questions: (repondre) => repondre("autoriser") });
+  await service.toutCouper(true);
+  const { REVOIR_PENDANT_COUPURE } = await import("../../src/main/extensions/service");
+  expect(await service.revoir(`store:${ID}`, "f1")).toEqual({ ok: false, erreur: REVOIR_PENDANT_COUPURE });
+  expect(cartes).toEqual([]);
+  expect(registre()).toMatchObject({ version: "1.0.0", majEnAttente: { version: "2.0.0" } });
+  await service.toutCouper(false);
+  expect(await service.revoir(`store:${ID}`, "f1")).toEqual({ ok: true });
+  expect(cartes).toHaveLength(1);
+  expect(registre()).toMatchObject({ version: "2.0.0", majEnAttente: null });
+});
+
+test("revoir sans rien à revoir : refusé sans carte", async () => {
+  const { service } = await storeInstalle(["defaut"]);
+  const { RIEN_A_REVOIR } = await import("../../src/main/extensions/service");
+  expect(await service.revoir(`store:${ID}`)).toEqual({ ok: false, erreur: RIEN_A_REVOIR });
+});
+
+test("épingler, désactiver partout : écrits au registre", async () => {
+  const { service, registre } = await storeInstalle(["defaut"]);
+  expect(await service.epingler(`store:${ID}`, true)).toEqual({ ok: true });
+  expect((registre()[`store:${ID}`] as unknown as { epinglee: boolean }).epinglee).toBe(true);
+  expect(await service.desactiverPartout(`store:${ID}`)).toEqual({ ok: true });
+  expect(registre()[`store:${ID}`]!.profils).toEqual([]);
+  expect(await service.epingler("store:" + "e".repeat(32), true)).toMatchObject({ ok: false });
+});
+
+test("3 plantages en une minute : désactivée partout (plantages), plus synchronisée ; « Réactiver » la relance", async () => {
+  const { service, registre } = await storeInstalle(["defaut"]);
+  const avertir = vi.spyOn(console, "warn").mockImplementation(() => {});
+  for (const t of [0, 1000, 2000]) service.consoles.plantage(ID, t);
+  await vi.waitFor(() => expect((registre()[`store:${ID}`] as unknown as { desactivee: { raison: string } | null }).desactivee?.raison).toBe("plantages"));
+  avertir.mockRestore();
+  expect(synchronisees.at(-1)!.extensions[`store:${ID}`]!.desactivee?.raison).toBe("plantages");
+  const ligne = (await service.liste()).find((l) => l.cle === `store:${ID}`)!;
+  expect(ligne.desactivee).toBe("Désactivée : elle a planté 3 fois en une minute");
+  expect(await service.reactiver(`store:${ID}`)).toEqual({ ok: true });
+  expect((registre()[`store:${ID}`] as unknown as { desactivee: unknown }).desactivee).toBe(null);
+});
+
+test("supprimer une extension du Store : registre et store/<id> effacés", async () => {
+  const { service, registre } = await storeInstalle(["defaut"]);
+  expect(await service.supprimer(`store:${ID}`)).toEqual({ ok: true });
+  expect(registre()[`store:${ID}`]).toBeUndefined();
+  expect(existsSync(join(dossier, "store", ID))).toBe(false);
+});
+
+test("supprimer une extension de l'agent : entrée et copie effacées, le dossier de l'agent reste", async () => {
+  const agent = join(dossier, "agent");
+  mkdirSync(join(agent, "essai"), { recursive: true });
+  writeFileSync(join(agent, "essai", "manifest.json"), JSON.stringify({ manifest_version: 3, name: "essai", version: "1.0.0" }));
+  mkdirSync(join(dossier, "copies", "essai"), { recursive: true });
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:essai": entree("agent", ["defaut"]) } }));
+  const service = new ServiceExtensions();
+  const magasin = { get etat() { return nav; }, abonner: (f: (e: EtatNavigateur) => void) => void abonnes.push(f) };
+  const profils = { synchroniser: async (e: EtatExtensions) => void synchronisees.push(e), erreursChargement: () => new Map(), retirerAgentsPrives: () => {} };
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  await service.demarrer({ dossier, dossierGardes: gardes, dossierAgent: agent, magasin, profils, sessions: { session: () => {} }, vues: {} } as never);
+  erreur.mockRestore();
+  expect(await service.supprimer("agent:essai")).toEqual({ ok: true });
+  expect(JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")).extensions["agent:essai"]).toBeUndefined();
+  expect(existsSync(join(dossier, "copies", "essai"))).toBe(false);
+  expect(existsSync(join(agent, "essai", "manifest.json"))).toBe(true);
+});

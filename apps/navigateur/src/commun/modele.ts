@@ -3,6 +3,8 @@ import type { CarteExtension } from "./extensions";
 
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
 export const URL_APPLICATIONS = "webaios://applications";
+/** Page interne des extensions (Store et agent), affichée par l'interface. */
+export const URL_EXTENSIONS = "webaios://extensions";
 /** Page interne « Voir le workflow » d'un widget : `webaios://workflow/<id du widget>`. */
 export const PREFIXE_WORKFLOW = "webaios://workflow/";
 export const urlWorkflow = (id: string) => PREFIXE_WORKFLOW + id;

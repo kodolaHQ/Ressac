@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { injectBrowserAction } from "electron-chrome-extensions/browser-action";
 import type { ApiPastille, ApiWebaios } from "../commun/api";
 import { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "../commun/canaux";
 import { MOTIF_INDICES_RESEAU } from "../commun/indices-reseau";
@@ -109,6 +110,15 @@ const api: ApiWebaios = {
     pourEspace: (espaceId) => ipcRenderer.invoke(CANAUX.extensionsPourEspace, espaceId),
     basculer: (cle, espaceId, actif) => ipcRenderer.invoke(CANAUX.extensionsBasculer, cle, espaceId, actif),
     surChange: (rappel) => ecouter(CANAUX.extensionsChange, () => rappel()),
+    liste: () => ipcRenderer.invoke(CANAUX.extensionsListe),
+    coupees: () => ipcRenderer.invoke(CANAUX.extensionsCoupees),
+    barre: () => ipcRenderer.invoke(CANAUX.extensionsBarre),
+    epingler: (cle, oui) => ipcRenderer.invoke(CANAUX.extensionsEpingler, cle, oui),
+    desactiverPartout: (cle) => ipcRenderer.invoke(CANAUX.extensionsDesactiverPartout, cle),
+    supprimer: (cle) => ipcRenderer.invoke(CANAUX.extensionsSupprimer, cle),
+    toutCouper: (oui) => ipcRenderer.invoke(CANAUX.extensionsToutCouper, oui),
+    revoir: (cle) => ipcRenderer.invoke(CANAUX.extensionsRevoir, cle),
+    reactiver: (cle) => ipcRenderer.invoke(CANAUX.extensionsReactiver, cle),
   },
   surTelechargements(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
@@ -132,8 +142,12 @@ const pastille: ApiPastille = {
  * Seul le cadre principal reçoit l'API ; un cadre n'en voit rien.
  */
 const cadrePrincipal = process.isMainFrame !== false && window.top === window;
+const estPastille = process.argv.some((a) => a.startsWith(ARG_PASTILLE));
 if (cadrePrincipal) {
-  contextBridge.exposeInMainWorld("webaios", process.argv.some((a) => a.startsWith(ARG_PASTILLE)) ? pastille : api);
+  contextBridge.exposeInMainWorld("webaios", estPastille ? pastille : api);
+  // Les boutons des extensions (`<button is="browser-action">`, BarreExtensions.svelte) : l'interface d'une fenêtre
+  // principale seulement, jamais un cadre (affichage de widget) ni la pastille d'une appli.
+  if (!estPastille) injectBrowserAction();
 } else {
   // Tout autre cadre de l'interface est l'affichage d'un widget ou un cadre qu'il a créé : ni WebRTC, ni indice réseau
   // (voir garde-widget.ts), posé avant le premier script de la page.

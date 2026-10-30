@@ -18,7 +18,12 @@ export default defineConfig({
   // Deux preloads, sans morceau partagé (un preload en bac à sable ne peut charger que lui-même) : celui de
   // l'interface, et celui des correctifs des extensions (enregistré sur les sessions des profils).
   preload: {
-    build: { rollupOptions: { input: { index: resolve(__dirname, "src/preload/index.ts"), extensions: resolve(__dirname, "src/preload/extensions.ts") } } },
+    // `electron-chrome-extensions/browser-action` (boutons des extensions) entre dans le preload de l'interface : un preload
+    // en bac à sable ne peut rien charger d'autre que lui-même.
+    build: {
+      externalizeDeps: { exclude: ["electron-chrome-extensions"] },
+      rollupOptions: { input: { index: resolve(__dirname, "src/preload/index.ts"), extensions: resolve(__dirname, "src/preload/extensions.ts") } },
+    },
   },
   // Deux pages : l'interface d'une fenêtre, et la pastille d'accès posée sur les fenêtres d'appli.
   renderer: {

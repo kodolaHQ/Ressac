@@ -1,8 +1,12 @@
-import { expect, test, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dansLaVue, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
-import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
+import { construireCrx } from "./extensions/crx";
+import { ecrireExtension, ecrireExtensionAgent, EXTENSIONS_TEST, installerStoreFactice } from "./extensions/fixtures";
 
 // La carte d'accord des extensions, posée au démarrage par WEBAIOS_TEST_CARTE_EXTENSION (ni Store, ni agent) ; la
 // réponse de l'utilisateur est notée dans `<chemin>.reponse`. Tout reste invisible. La session est écrite avant le lancement :
@@ -368,6 +372,290 @@ test("supprimer le dernier espace d'un profil efface les réglages de ses extens
     await expect.poll(() => existsSync(reglages), { timeout: 15_000 }).toBe(true);
     await fenetre.evaluate(() => (window as unknown as { webaios: { agir(a: unknown): void } }).webaios.agir({ type: "supprimerEspace", id: "e3" }));
     await expect.poll(() => existsSync(reglages), { timeout: 15_000 }).toBe(false);
+  } finally {
+    await fermer();
+  }
+});
+
+// ─── Tâche 15 : la barre, la page Extensions, la coupure générale, les plantages ───────────────────────────────────
+// Tout reste invisible : la popup d'une extension est une fenêtre cachée (ExtensionsProfils neutralise `show` en tests),
+// et le menu du clic droit n'est jamais montré (`Menu.buildFromTemplate` intercepté, `popup` remplacé).
+
+const DESACTIVEE_PLANTAGES = "Désactivée : elle a planté 3 fois en une minute";
+
+type Etat = { toutesCoupees: boolean; extensions: Record<string, Record<string, unknown>> };
+const lireRegistre = (profil: string): Etat => JSON.parse(readFileSync(join(profil, "extensions", "etat.json"), "utf8"));
+function changerEntree(profil: string, cle: string, champs: Record<string, unknown>) {
+  const e = lireRegistre(profil);
+  e.extensions[cle] = { ...e.extensions[cle], ...champs };
+  writeFileSync(join(profil, "extensions", "etat.json"), JSON.stringify(e, null, 2));
+}
+const chargees = (app: ElectronApplication, partition = "persist:webaios") =>
+  app.evaluate(({ session }, p) => session.fromPartition(p).extensions.getAllExtensions().map((e) => e.name).sort(), partition);
+/** Aucune fenêtre n'est visible à l'écran (interface, popups d'extension). */
+const fenetresVisibles = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((f) => f.isVisible()).length);
+/** Le texte de la popup de l'extension `id` (webContents chrome-extension://<id>/popup.html), ou null. */
+const textePopup = (app: ElectronApplication, id: string) =>
+  app.evaluate(async ({ webContents }, id) => {
+    const w = webContents.getAllWebContents().find((x) => !x.isDestroyed() && x.getURL().startsWith(`chrome-extension://${id}/popup.html`));
+    return w ? ((await w.executeJavaScript("document.getElementById('contenu')?.textContent ?? null")) as string | null) : null;
+  }, id);
+const menuApp = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
+const ouvrirPage = async (fenetre: Page) => {
+  await fenetre.getByTestId("menu-extensions").click();
+  await fenetre.getByTestId("panneau-extensions").getByRole("button", { name: "Gérer les extensions" }).click();
+  const page = fenetre.getByTestId("page-extensions");
+  await expect(page).toBeVisible();
+  return page;
+};
+
+test("une extension épinglée a son bouton dans la barre ; un clic ouvre sa popup (cachée), qui rend son contenu", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  const { id } = installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  changerEntree(profil, `store:${id}`, { epinglee: true });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    await ouvrirOnglet(fenetre, `${pages.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "document.readyState")).toBe("complete");
+    const bouton = fenetre.getByTestId("barre-extensions").locator(`button[is="browser-action"][id="${id}"]`);
+    await expect(bouton).toHaveCount(1);
+    await expect(bouton).toHaveAttribute("partition", "persist:webaios");
+    // L'icône (crx://extension-icon/…) a bien été chargée par l'interface : la CSP la laisse passer.
+    await expect.poll(() => bouton.evaluate((b) => (b as HTMLElement).style.backgroundImage)).toContain("crx://extension-icon/");
+    await expect(bouton).not.toHaveClass(/no-icon/);
+    await expect(bouton).toHaveAttribute("title", "Bouton de test");
+    await bouton.click();
+    await expect.poll(() => textePopup(app, id), { timeout: 10_000 }).toBe("Popup de test prête");
+    expect(await fenetresVisibles(app)).toBe(0);
+    // La console de la popup est notée (erreur) et lisible sur la page Extensions.
+    const page = await ouvrirPage(fenetre);
+    await expect(page.getByTestId("extension-page").filter({ hasText: "Bouton de test" })).toContainText("erreur de la popup");
+  } finally {
+    await fermer();
+  }
+});
+
+test("le menu Extensions liste une extension non épinglée ; « Épingler » la met dans la barre", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  const { id } = installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    const barre = fenetre.getByTestId("barre-extensions");
+    await fenetre.getByTestId("menu-extensions").click();
+    const panneau = fenetre.getByTestId("panneau-extensions");
+    const ligne = panneau.getByTestId("ligne-barre-extension").filter({ hasText: "Bouton de test" });
+    await expect(ligne).toBeVisible();
+    await expect(ligne.locator(`button[is="browser-action"][id="${id}"]`)).toHaveCount(1);
+    await expect(barre.locator(`button[is="browser-action"][id="${id}"]`)).toHaveCount(0);
+    await ligne.getByRole("button", { name: "Épingler" }).click();
+    await expect(barre.locator(`button[is="browser-action"][id="${id}"]`)).toHaveCount(1);
+    await expect.poll(() => lireRegistre(profil).extensions[`store:${id}`]!.epinglee).toBe(true);
+    await expect(panneau.getByTestId("ligne-barre-extension").filter({ hasText: "Bouton de test" }).getByRole("button", { name: "Détacher" })).toBeVisible();
+  } finally {
+    await fermer();
+  }
+});
+
+test("l'entrée de menu contextuel d'une extension apparaît au clic droit sur une page", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    // Le menu construit est retenu, et jamais montré.
+    await app.evaluate(({ Menu }) => {
+      const g = globalThis as unknown as { menusConstruits: string[][] };
+      g.menusConstruits = [];
+      const original = Menu.buildFromTemplate.bind(Menu);
+      Menu.buildFromTemplate = (modele) => {
+        const menu = original(modele);
+        g.menusConstruits.push(menu.items.map((x) => (x.type === "separator" ? "---" : x.label)));
+        menu.popup = () => {};
+        return menu;
+      };
+    });
+    await ouvrirOnglet(fenetre, `${pages.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "document.readyState")).toBe("complete");
+    const derniers = () => app.evaluate(() => (globalThis as unknown as { menusConstruits: string[][] }).menusConstruits.at(-1) ?? null);
+    // Le menu de la bibliothèque arrive quand son service worker a posé l'entrée : clic droit renouvelé.
+    await expect
+      .poll(async () => {
+        await app.evaluate(({ webContents }) => {
+          const w = webContents.getAllWebContents().find((x) => x.getURL().includes("/a.html"));
+          for (const type of ["mouseDown", "mouseUp"] as const) w?.sendInputEvent({ type, x: 20, y: 20, button: "right", clickCount: 1 });
+        });
+        return derniers();
+      }, { timeout: 10_000 })
+      .toEqual(expect.arrayContaining(["---", "Entrée de test"]));
+    const menu = (await derniers())!;
+    expect(menu.indexOf("Entrée de test")).toBeGreaterThan(menu.indexOf("---"));
+    expect(await fenetresVisibles(app)).toBe(0);
+  } finally {
+    await fermer();
+  }
+});
+
+test("la page liste source, version, droits, espaces et « Non pris en charge : activeTab »", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  const { fenetre, fermer } = await lancer({ profil });
+  try {
+    const page = await ouvrirPage(fenetre);
+    const ligne = page.getByTestId("extension-page").filter({ hasText: "Bouton de test" });
+    await expect(ligne).toContainText("Chrome Web Store");
+    await expect(ligne).toContainText("2.1.0");
+    await expect(ligne).toContainText("Ajouter des entrées au menu du clic droit");
+    await expect(ligne).toContainText("Garder ses réglages");
+    await expect(ligne).toContainText("« Perso » (profil defaut)");
+    await expect(ligne).toContainText("« Lecture » (profil defaut)");
+    await expect(ligne).toContainText("Non pris en charge : activeTab");
+    await ligne.getByRole("button", { name: "Détails" }).click();
+    await expect(ligne.getByTestId("details-extension")).toBeVisible();
+  } finally {
+    await fermer();
+  }
+});
+
+/** Faux Store : sert `/<id>.crx` (jamais le vrai Store). */
+async function fauxStore(crx: Buffer, id: string) {
+  const serveur = createServer((req, res) => {
+    if (req.url === `/${id}.crx`) res.writeHead(200, { "content-type": "application/x-chrome-extension" }).end(crx);
+    else res.writeHead(404).end();
+  });
+  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  return { url: `http://127.0.0.1:${(serveur.address() as AddressInfo).port}`, fermer: () => new Promise<void>((ok) => serveur.close(() => ok())) };
+}
+
+test("« Désactiver toutes les extensions » : plus rien de chargé, et toujours rien après redémarrage ; installer une extension pendant la coupure ne la charge pas", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  const source = mkdtempSync(join(tmpdir(), "webaios-coupure-"));
+  ecrireExtension(source, EXTENSIONS_TEST.bloqueur);
+  const { crx, id: idBloqueur } = construireCrx(source, {});
+  rmSync(source, { recursive: true, force: true });
+  const store = await fauxStore(crx, idBloqueur);
+  try {
+    let l = await lancer({ profil, env: { WEBAIOS_TEST_STORE_URL: store.url } });
+    try {
+      await expect.poll(() => chargees(l.app)).toEqual(["Bouton de test"]);
+      const page = await ouvrirPage(l.fenetre);
+      await page.getByTestId("couper-extensions").click();
+      await expect(page.getByTestId("couper-extensions")).toBeChecked();
+      await expect.poll(() => chargees(l.app)).toEqual([]);
+      expect(lireRegistre(profil).toutesCoupees).toBe(true);
+      await expect(l.fenetre.getByTestId("barre-extensions").locator('button[is="browser-action"]')).toHaveCount(0);
+
+      // Installée pendant la coupure (clic de l'utilisateur sur la page) : accord noté, rien de chargé.
+      await page.getByTestId("ajout-store").fill(idBloqueur);
+      await page.getByRole("button", { name: "Ajouter" }).click();
+      const c = l.fenetre.getByTestId("modale-demande").getByTestId("demande-extension");
+      await expect(c).toContainText("Bloqueur de test");
+      await c.getByRole("button", { name: "Activer" }).click();
+      await expect.poll(() => Object.keys(lireRegistre(profil).extensions)).toContain(`store:${idBloqueur}`);
+      await expect(page.getByTestId("extension-page").filter({ hasText: "Bloqueur de test" })).toBeVisible();
+      expect(await chargees(l.app)).toEqual([]);
+    } finally {
+      await l.fermer();
+    }
+    // Après un redémarrage : toujours rien, et l'interrupteur reste coché.
+    l = await lancer({ profil, env: { WEBAIOS_TEST_STORE_URL: store.url } });
+    try {
+      const page = await ouvrirPage(l.fenetre);
+      await expect(page.getByTestId("couper-extensions")).toBeChecked();
+      await expect(page.getByTestId("extension-page")).toHaveCount(2);
+      await new Promise((ok) => setTimeout(ok, 1000));
+      expect(await chargees(l.app)).toEqual([]);
+      // Réactivées : les deux repartent.
+      await page.getByTestId("couper-extensions").click();
+      await expect.poll(() => chargees(l.app)).toEqual(["Bloqueur de test", "Bouton de test"]);
+    } finally {
+      await l.fermer();
+    }
+  } finally {
+    await store.fermer();
+  }
+});
+
+test("« Supprimer » une extension du Store vide store/<id>", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  const { id } = installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    await expect.poll(() => chargees(app)).toEqual(["Bouton de test"]);
+    const page = await ouvrirPage(fenetre);
+    const ligne = page.getByTestId("extension-page").filter({ hasText: "Bouton de test" });
+    await ligne.getByRole("button", { name: "Supprimer" }).click();
+    await fenetre.getByTestId("confirmation-suppression-extension").getByRole("button", { name: "Supprimer" }).click();
+    await expect(ligne).toHaveCount(0);
+    await expect.poll(() => existsSync(join(profil, "extensions", "store", id))).toBe(false);
+    expect(lireRegistre(profil).extensions[`store:${id}`]).toBeUndefined();
+    expect(await chargees(app)).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("une extension dont la popup plante 3 fois est désactivée avec DESACTIVEE_PLANTAGES", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), JSON.stringify(session));
+  const { id } = installerStoreFactice(profil, "bouton", { profils: ["defaut"] });
+  changerEntree(profil, `store:${id}`, { epinglee: true });
+  const { app, fenetre, fermer } = await lancer({ profil });
+  try {
+    await ouvrirOnglet(fenetre, `${pages.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "document.readyState")).toBe("complete");
+    const bouton = fenetre.getByTestId("barre-extensions").locator(`button[is="browser-action"][id="${id}"]`);
+    const fermerPopup = () =>
+      app.evaluate(({ BrowserWindow }, id) => {
+        for (const f of BrowserWindow.getAllWindows()) if (f.webContents.getURL().startsWith(`chrome-extension://${id}/`)) f.destroy();
+      }, id);
+    // Ouvrir et fermer la popup n'est pas un plantage.
+    for (let i = 0; i < 3; i++) {
+      await bouton.click();
+      await expect.poll(() => textePopup(app, id)).toBe("Popup de test prête");
+      await fermerPopup();
+      await expect.poll(() => textePopup(app, id)).toBe(null);
+    }
+    expect(lireRegistre(profil).extensions[`store:${id}`]!.desactivee).toBe(null);
+    // Trois plantages de la popup en moins d'une minute.
+    for (let i = 0; i < 3; i++) {
+      await bouton.click();
+      await expect.poll(() => textePopup(app, id)).toBe("Popup de test prête");
+      await app.evaluate(({ webContents }, id) => {
+        webContents.getAllWebContents().find((x) => x.getURL().startsWith(`chrome-extension://${id}/popup.html`))?.forcefullyCrashRenderer();
+      }, id);
+      if (i < 2) {
+        await fermerPopup();
+        await expect.poll(() => textePopup(app, id)).toBe(null);
+      }
+    }
+    await expect.poll(() => (lireRegistre(profil).extensions[`store:${id}`]!.desactivee as { raison: string } | null)?.raison).toBe("plantages");
+    await expect.poll(() => chargees(app)).toEqual([]);
+    expect(await fenetresVisibles(app)).toBe(0);
+    const page = await ouvrirPage(fenetre);
+    const ligne = page.getByTestId("extension-page").filter({ hasText: "Bouton de test" });
+    await expect(ligne).toContainText(DESACTIVEE_PLANTAGES);
+    // « Réactiver » : elle repart.
+    await ligne.getByRole("button", { name: "Réactiver" }).click();
+    await expect.poll(() => chargees(app)).toEqual(["Bouton de test"]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("l'entrée « Extensions » du menu de l'application ouvre la page", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  try {
+    await menuApp(app, "extensions");
+    await expect(fenetre.getByTestId("page-extensions")).toBeVisible();
+    expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("extensions")?.accelerator ?? null)).toBe(null);
+    await menuApp(app, "extensions");
+    await expect(fenetre.getByTestId("page-extensions")).toHaveCount(1);
   } finally {
     await fermer();
   }

@@ -54,7 +54,8 @@ app.setPath("userData", cheminProfil());
 if (!app.requestSingleInstanceLock()) app.exit(0);
 // La bibliothèque d'extensions enregistre `crx:` (icônes des boutons) avec `bypassCSP` à son chargement ; cet appel-ci,
 // le seul autre, remplace le sien. Voulu : avec `bypassCSP`, les affichages des widgets pourraient charger ces icônes
-// malgré leur CSP. L'interface qui les montrera devra ajouter `crx:` à son `img-src`.
+// malgré leur CSP. L'interface a `crx:` dans son `img-src` (index.html) : sans privilège, l'icône s'y charge quand même
+// (vérifié par e2e/extensions-interface.spec.ts).
 enregistrerSchemaWidget([SCHEMA_ICONE]);
 // Aucune résolution de nom anticipée, nulle part (<link rel=dns-prefetch>, liens) : dans un affichage de widget, elle
 // ferait sortir des données dans une requête DNS, sans passer par la CSP ni par le proxy de l'interface. Les onglets y
@@ -387,6 +388,10 @@ app.whenReady().then(async () => {
     // « Retirer de Chrome » sur la page du Store : notre désinstallation (registre, tous les profils), jamais celle de la
     // bibliothèque.
     desinstallerDepuisStore: (id, profil) => serviceExtensions.desinstallerDepuisStore(id, profil),
+    // Consoles et plantages en boucle (désactivée partout au troisième en une minute).
+    consoles: serviceExtensions.consoles,
+    // Ce qui est chargé a pu changer : la barre et la page Extensions relisent.
+    apresSynchro: () => diffuser(CANAUX.extensionsChange, null),
     // verifierUrl / verifierHote : les extensions de l'agent sont vérifiées par `ExtensionsProfils` (reseau.ts).
   });
   // Pages des extensions de l'agent : navigations, ouvertures et WebRTC (reseau.ts).
@@ -609,6 +614,15 @@ app.whenReady().then(async () => {
       },
       pourEspace: (espaceId) => serviceExtensions.pourEspace(espaceId),
       basculer: (cle, espaceId, actif, fenetreId) => serviceExtensions.basculer(cle, espaceId, actif, fenetreId),
+      liste: () => serviceExtensions.liste(),
+      coupees: () => serviceExtensions.etatExtensions().toutesCoupees,
+      barre: async (fenetreId) => serviceExtensions.barre(fenetreId),
+      epingler: (cle, oui) => serviceExtensions.epingler(cle, oui),
+      desactiverPartout: (cle) => serviceExtensions.desactiverPartout(cle),
+      supprimer: (cle) => serviceExtensions.supprimer(cle),
+      toutCouper: (oui) => serviceExtensions.toutCouper(oui),
+      revoir: (cle, fenetreId) => serviceExtensions.revoir(cle, fenetreId),
+      reactiver: (cle) => serviceExtensions.reactiver(cle),
     },
     acces: {
       etat: etatAcces,

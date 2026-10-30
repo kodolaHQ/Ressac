@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { URL_APPLICATIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
   import Applications from "./Applications.svelte";
+  import Extensions from "./Extensions.svelte";
   import Constructeur from "../constructeur/Constructeur.svelte";
   import { acces, api, demandeDe } from "../etat.svelte";
   import { estDemandeAgent, modale } from "./modale.svelte";
@@ -56,6 +57,8 @@
     <PageVide {fenetre} />
   {:else if onglet?.url === URL_APPLICATIONS}
     <Applications />
+  {:else if onglet?.url === URL_EXTENSIONS}
+    <Extensions />
   {:else if widgetWorkflow}
     {#key widgetWorkflow}<Constructeur id={widgetWorkflow} />{/key}
   {:else if onglet?.erreur}
