@@ -293,6 +293,74 @@ test("garde : les arguments sont figés une fois (copie), vérifiés et passés 
   expect((appels.at(-1)![1][0] as { target: { tabId: number } }).target.tabId).toBe(4);
 });
 
+test("garde : Object.prototype.get ou .value ajoutés après son chargement ne cassent ni la copie, ni le refus avec lastError", async () => {
+  const recus: unknown[] = [];
+  const ctx = createContext({});
+  runInContext(
+    `globalThis.chrome = { runtime: {}, declarativeNetRequest: {
+       updateDynamicRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); },
+       updateSessionRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); } } };`,
+    Object.assign(ctx, { __noter: (x: string) => recus.push(JSON.parse(x)) }),
+  );
+  runInContext(readFileSync(cheminGarde, "utf8"), ctx);
+  const resultat = await runInContext(
+    `(async () => {
+      Object.prototype.get = function () { return "pollue"; };
+      Object.prototype.value = "pollue";
+      const r = {};
+      try { await chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 2, action: { type: "block" } }] }); r.block = "acceptee"; } catch (e) { r.block = e.message; }
+      r.rappel = await new Promise((ok) => chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 1, action: { type: "redirect" } }] }, () => ok(chrome.runtime.lastError && chrome.runtime.lastError.message)));
+      delete Object.prototype.get;
+      delete Object.prototype.value;
+      return r;
+    })()`,
+    ctx,
+  );
+  expect(resultat).toEqual({ block: "acceptee", rappel: "Règle DNR refusée par WebAiOs (redirect)" });
+  expect(recus).toEqual([{ addRules: [{ id: 2, action: { type: "block" } }] }]);
+});
+
+test("garde : une liste à trous est refusée (un accesseur sur Array.prototype[0] n'est jamais lu) ; une liste dense est recopiée sans trou", async () => {
+  const recus: unknown[] = [];
+  const ctx = createContext({});
+  runInContext(
+    `globalThis.chrome = { runtime: {}, declarativeNetRequest: {
+       updateDynamicRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); },
+       updateSessionRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); } },
+       tabs: { create(o) { __noter(JSON.stringify(o)); return Promise.resolve({ id: 1 }); } } };`,
+    Object.assign(ctx, { __noter: (x: string) => recus.push(JSON.parse(x)) }),
+  );
+  runInContext(readFileSync(cheminGarde, "utf8"), ctx);
+  const resultat = await runInContext(
+    `(async () => {
+      const block = { id: 2, priority: 1, action: { type: "block" }, condition: {} };
+      const redirect = { id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} };
+      let lus = 0;
+      Object.defineProperty(Array.prototype, "0", { get() { lus++; return lus > 1 ? redirect : block; }, configurable: true });
+      const trous = [];
+      trous[1] = block;
+      const r = {};
+      try { await chrome.declarativeNetRequest.updateDynamicRules({ addRules: trous }); r.dnr = "acceptee"; } catch (e) { r.dnr = e.message; }
+      try { await chrome.declarativeNetRequest.updateSessionRules({ addRules: new Array(6000) }); r.long = "acceptee"; } catch (e) { r.long = e.message; }
+      const autres = [];
+      autres[2] = "x";
+      try { await chrome.tabs.create({ url: undefined, liste: autres }); r.tabs = "acceptee"; } catch (e) { r.tabs = e.message; }
+      delete Array.prototype[0];
+      await chrome.declarativeNetRequest.updateDynamicRules({ addRules: [block, block] });
+      r.lus = lus;
+      return r;
+    })()`,
+    ctx,
+  );
+  expect(resultat).toEqual({
+    dnr: "Règle DNR refusée par WebAiOs (tableau à trous)",
+    long: "Règle DNR refusée par WebAiOs (tableau trop long)",
+    tabs: "Arguments refusés par WebAiOs (tableau à trous)",
+    lus: 0,
+  });
+  expect(recus).toEqual([{ addRules: [{ id: 2, priority: 1, action: { type: "block" }, condition: {} }, { id: 2, priority: 1, action: { type: "block" }, condition: {} }] }]);
+});
+
 test("garde : remplacer Promise.prototype.then, Function.prototype.apply, Array.isArray et l'itérateur des listes après son chargement ne fait passer aucune redirection", async () => {
   // Un contexte à part, avec ses propres objets de base : l'extension peut les modifier sans toucher ceux du test.
   const recus: unknown[] = [];

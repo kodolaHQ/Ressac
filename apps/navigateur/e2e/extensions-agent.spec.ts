@@ -286,6 +286,37 @@ for (const rel of ["dns-prefetch", "preconnect", "prefetch", "prerender", "prelo
 poser("preconnect", "hote.test", "propriete");
 document.title = JSON.stringify(vu);
 `,
+  "ecrit.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ecrit.js"></script></body></html>',
+  "ecrit.js": `const vu = {};
+const avant = window.length;
+document.write('<div id="hote-ecrit"><template shadowrootmode="open"><iframe></iframe></template></div><iframe></iframe>');
+vu.longueur = window.length - avant;
+vu.indexes = [];
+for (let i = 0; i < window.length; i++) vu.indexes.push(typeof window[i].RTCPeerConnection);
+const hote = document.getElementById("hote-ecrit");
+vu.ombre = hote && hote.shadowRoot ? "ouverte" : "absente";
+document.title = JSON.stringify(vu);
+`,
+  "tableaux.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="tableaux.js"></script></body></html>',
+  "tableaux.js": `(async () => {
+  const regle = (id) => ({ id, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/trou" } }, condition: { urlFilter: "/rien-" + id, resourceTypes: ["xmlhttprequest"] } });
+  let lus = 0;
+  Object.defineProperty(Array.prototype, "0", { get() { lus++; return regle(9); }, configurable: true });
+  const trous = [];
+  trous[1] = { id: 8, priority: 1, action: { type: "block" }, condition: { urlFilter: "/rien-8", resourceTypes: ["xmlhttprequest"] } };
+  let r;
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({ addRules: trous });
+    r = { acceptee: true };
+  } catch (e) {
+    r = { erreur: String(e && e.message) };
+  }
+  delete Array.prototype[0];
+  r.lus = lus;
+  r.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((x) => x.action.type);
+  document.title = JSON.stringify(r);
+})();
+`,
   "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
   "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
 `,
@@ -336,6 +367,27 @@ document.title = JSON.stringify(vu);
   const dansDeclare = declare.firstElementChild.shadowRoot.querySelector("iframe");
   vu.declareTot = typeof dansDeclare.contentWindow.RTCPeerConnection;
   vu.declare = await sonder(dansDeclare.contentWindow, "declare");
+  // Même tâche, accès indexé seulement : racine déclarative (setHTMLUnsafe), cadre en clair par setHTMLUnsafe et par
+  // innerHTML. Puis toutes les fenêtres filles.
+  const avantDeclare = window.length;
+  document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="open"><iframe></iframe></template></div><iframe></iframe>');
+  vu.declareLongueur = window.length - avantDeclare;
+  vu.declareIndexes = [];
+  for (let i = avantDeclare; i < window.length; i++) vu.declareIndexes.push(typeof window[i].RTCPeerConnection);
+  const avantInterieur = window.length;
+  document.body.appendChild(document.createElement("div")).innerHTML = "<iframe></iframe>";
+  vu.interieur = window.length > avantInterieur ? typeof window[avantInterieur].RTCPeerConnection : "absent";
+  // Par son nom : window.open("", nom) rend un cadre existant sans ouvrir de fenêtre, même dans une racine fermée.
+  document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="closed"><iframe name="nomme-ombre"></iframe></template></div><iframe name="nomme-clair"></iframe>');
+  for (const nom of ["nomme-ombre", "nomme-clair"]) {
+    let f = null;
+    try { f = window.open("", nom); } catch (e) { f = null; }
+    let rtc = "absent";
+    try { rtc = f ? typeof f.RTCPeerConnection : "absent"; } catch (e) { rtc = "inaccessible"; }
+    vu[nom] = rtc;
+  }
+  vu.tousIndexes = [];
+  for (let i = 0; i < window.length; i++) vu.tousIndexes.push(typeof window[i].RTCPeerConnection);
   vu.nombre = window.length;
   vu.frames = typeof window[0];
   vu.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.action.type);
@@ -556,7 +608,7 @@ test("dans sa popup, un cadre about:blank, srcdoc, imbriqué ou dans une racine 
     const titre = () =>
       app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().endsWith("/cadre.html"))?.getTitle() ?? null);
     await expect.poll(titre, { timeout: 10_000 }).toMatch(/^\{/);
-    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[]; masqueTot: string; declareTot: string };
+    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[]; masqueTot: string; declareTot: string; declareLongueur: number; declareIndexes: string[]; interieur: string; tousIndexes: string[]; nombre: number; "nomme-ombre": string; "nomme-clair": string };
     for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc", "masque", "declare"]) {
       expect(vu[cadre]!.protocole).toBe("about:");
       expect(vu[cadre]!.rtc).toBe("undefined");
@@ -565,9 +617,59 @@ test("dans sa popup, un cadre about:blank, srcdoc, imbriqué ou dans une racine 
       expect(vu[cadre]!.dnr).not.toBe("acceptee");
     }
     expect(vu.masqueTot).toBe("undefined");
+    expect(vu.declareLongueur).toBeGreaterThan(0);
+    expect(vu.declareIndexes.every((t) => t === "undefined")).toBe(true);
+    expect(vu.interieur).toBe("undefined");
+    console.log(`[mesure] window.open("", nom) : ombre ${vu["nomme-ombre"]}, clair ${vu["nomme-clair"]}`);
+    for (const nom of ["nomme-ombre", "nomme-clair"] as const) expect(vu[nom]).toBe("undefined");
+    expect(vu.tousIndexes.length).toBe(vu.nombre);
+    expect(vu.tousIndexes.every((t) => t === "undefined")).toBe(true);
+    console.log(`[mesure] setHTMLUnsafe : +${vu.declareLongueur} fenêtre(s) indexée(s) ; ${vu.nombre} en tout`);
     expect(vu.declareTot).toBe("undefined");
     // Aucune redirection posée : seule la règle block du démarrage.
     expect(vu.regles).toEqual(["block"]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("document.write d'un cadre (en clair et dans une racine fantôme déclarative) pendant le chargement : aucune fenêtre fille n'a RTCPeerConnection dans la même tâche", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    const page = await ouvrirPage(app, `chrome-extension://${id}/ecrit.html`);
+    const vu = JSON.parse(page.titre) as { longueur: number; indexes: string[]; ombre: string };
+    console.log(`[mesure] document.write : ${page.titre}`);
+    expect(vu.ombre).toBe("ouverte");
+    expect(vu.longueur).toBeGreaterThan(0);
+    expect(vu.indexes.every((t) => t === "undefined")).toBe(true);
+  } finally {
+    await fermer();
+  }
+});
+
+// Mesuré : l'API native lit un trou de la liste à travers Array.prototype (extension du Store, sans garde) ; une
+// extension de l'agent voit sa liste à trous refusée, sans que l'accesseur du prototype soit lu.
+test("updateDynamicRules avec une liste à trous : Chromium lit le trou dans Array.prototype ; le garde de l'agent la refuse", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { id: idStore } = installerStoreFactice(profil, "sonde-tableaux", { profils: ["defaut"] });
+  const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    await expect.poll(() => idChargee(app, "Sonde tableaux du Store"), { timeout: 15_000 }).toBe(idStore);
+    const store = await ouvrirPage(app, `chrome-extension://${idStore}/tableaux.html`);
+    console.log(`[mesure] Store, liste à trous : ${store.titre}`);
+    const agent = await ouvrirPage(app, `chrome-extension://${id}/tableaux.html`);
+    expect(JSON.parse(agent.titre)).toEqual({ erreur: "Règle DNR refusée par WebAiOs (tableau à trous)", lus: 0, regles: ["block"] });
+    // Chromium lit le trou par le prototype : la règle 9 (accesseur) est posée à côté de la 8.
+    expect(JSON.parse(store.titre)).toMatchObject({ ids: [8, 9] });
   } finally {
     await fermer();
   }

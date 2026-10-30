@@ -7,13 +7,15 @@ import { afterEach, expect, test, vi } from "vitest";
 // un `electron` leurré, sans isolation de contexte : son script du monde principal tourne directement), et celui des
 // correctifs de WebAiOs (src/preload/extensions.ts, importé avec un `electron` leurré).
 
-const { invocations, executions, exposes, agent } = vi.hoisted(() => ({
+const { invocations, executions, exposes, agent, monde } = vi.hoisted(() => ({
   invocations: [] as unknown[][],
   executions: [] as { func: (...a: unknown[]) => unknown; args: unknown[] }[],
   /** `contextBridge.exposeInMainWorld` : nom → objet. */
   exposes: new Map<string, Record<string, (...a: unknown[]) => unknown>>(),
   /** Réponse du processus principal à « page d'une extension de l'agent ? » (`sendSync`). */
   agent: { oui: false, demandes: 0 },
+  /** Vrai pendant une exécution dans le monde principal (`executeInMainWorld` sans arguments). */
+  monde: { principal: false },
 }));
 vi.mock("electron", () => ({
   ipcRenderer: {
@@ -31,7 +33,14 @@ vi.mock("electron", () => ({
   contextBridge: {
     exposeInMainWorld: (nom: string, o: Record<string, (...a: unknown[]) => unknown>) => void exposes.set(nom, o),
     executeInMainWorld: (o: { func: (...a: unknown[]) => unknown; args?: unknown[] }) => {
-      if (!o.args) return o.func();
+      if (!o.args) {
+        monde.principal = true;
+        try {
+          return o.func();
+        } finally {
+          monde.principal = false;
+        }
+      }
       executions.push(o as { func: (...a: unknown[]) => unknown; args: unknown[] });
       return undefined;
     },
@@ -193,6 +202,25 @@ test("pages d'une extension de l'agent : RTCPeerConnection, webkitRTCPeerConnect
   agent.oui = true;
   await preloadWebaios("renderer", `chrome-extension://${"a".repeat(32)}/popup.html`);
   for (const n of noms) expect(n in globalThis).toBe(false);
+});
+
+test("cadre about: : l'origine est lue dans le monde du preload, au démarrage ; celle que la page pose dans le monde principal ne compte pas", async () => {
+  const origine = (principal: string, preload: string) =>
+    Object.defineProperty(globalThis, "origin", { get: () => (monde.principal ? principal : preload), configurable: true });
+  const avant = Object.getOwnPropertyDescriptor(globalThis, "origin");
+  try {
+    // La page (parent de même origine) a posé une origine d'extension dans le monde principal du cadre d'un site.
+    origine(`chrome-extension://${"a".repeat(32)}`, "https://site.invalid");
+    await preloadWebaios("renderer", "about:blank", null);
+    expect(agent.demandes).toBe(0);
+    // Dans une page de l'agent, le parent a masqué l'origine du cadre : la question est posée quand même.
+    origine("https://site.invalid", `chrome-extension://${"a".repeat(32)}`);
+    await preloadWebaios("renderer", "about:blank", null);
+    expect(agent.demandes).toBe(1);
+  } finally {
+    if (avant) Object.defineProperty(globalThis, "origin", avant);
+    else delete (globalThis as { origin?: unknown }).origin;
+  }
 });
 
 test("cadre about: : la question synchrone n'est posée que si son origine est celle d'une extension", async () => {

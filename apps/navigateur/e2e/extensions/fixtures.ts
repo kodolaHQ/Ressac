@@ -214,7 +214,40 @@ const sondeReseauStore = {
   "fond.js": `fetch("https://autre.test/store-fetch").catch(() => {});\n`,
 };
 
-export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore } as const;
+/**
+ * Extension du Store (sans garde de WebAiOs) dont la page `tableaux.html` pose une règle DNR dans une liste à trous,
+ * avec un accesseur sur `Array.prototype[0]` : montre si l'API native lit le trou à travers le prototype. Le titre de la
+ * page rend les ids des règles posées (JSON) ou l'erreur.
+ */
+const sondeTableaux = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Sonde tableaux du Store",
+    version: "1.0.0",
+    permissions: ["declarativeNetRequest"],
+  },
+  "tableaux.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="tableaux.js"></script></body></html>',
+  "tableaux.js": `(async () => {
+  const regle = (id) => ({ id, priority: 1, action: { type: "block" }, condition: { urlFilter: "/rien-" + id, resourceTypes: ["xmlhttprequest"] } });
+  let lus = 0;
+  Object.defineProperty(Array.prototype, "0", { get() { lus++; return regle(9); }, configurable: true });
+  const trous = [];
+  trous[1] = regle(8);
+  let r;
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({ addRules: trous });
+    delete Array.prototype[0];
+    r = { ids: (await chrome.declarativeNetRequest.getDynamicRules()).map((x) => x.id).sort(), lus };
+  } catch (e) {
+    delete Array.prototype[0];
+    r = { erreur: String(e && e.message), lus };
+  }
+  document.title = JSON.stringify(r);
+})();
+`,
+};
+
+export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 
 /**

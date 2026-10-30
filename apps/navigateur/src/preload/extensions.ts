@@ -171,10 +171,12 @@ function sansWebRtc(): void {
       if (!doc) return;
       const ET = w.EventTarget?.prototype;
       const ecouter = ET?.addEventListener;
+      // Saisi à l'installation : la page ne peut plus remplacer `Event.prototype` pour cette lecture.
+      const lireCible = descripteur(w.Event.prototype, "target")?.get;
       const surCharge = (e: Event) => {
         let cible: unknown = null;
         try {
-          cible = appliquer(descripteur(w.Event.prototype, "target")!.get!, e, []);
+          cible = lireCible ? appliquer(lireCible, e, []) : null;
         } catch {
           cible = null;
         }
@@ -209,7 +211,8 @@ function sansWebRtc(): void {
             },
             configurable: false,
             enumerable: d.enumerable ?? false,
-          });
+            __proto__: null,
+          } as PropertyDescriptor);
         }
       }
       capter(doc);
@@ -223,13 +226,66 @@ function sansWebRtc(): void {
           },
           configurable: false,
           writable: false,
-        });
+          __proto__: null,
+        } as PropertyDescriptor);
       }
+      // Ce qui peut créer un cadre hors de portée du `load` capté (racine fantôme déclarative, que attachShadow ne voit
+      // pas ; flux du parseur) : balayage dans la même tâche, juste après l'original. `innerHTML`/`outerHTML` ne créent
+      // pas de racine déclarative : leurs cadres passent par le `load` capté (mesuré, e2e des cadres).
+      const balayerApres = (proto: object | undefined, nom: string) => {
+        const d = proto && descripteur(proto, nom);
+        const original = d ? descripteur(d, "value")?.value : undefined;
+        if (typeof original !== "function") return;
+        definir(proto, nom, {
+          value: function (this: unknown, ...args: unknown[]) {
+            try {
+              return appliquer(original as (...a: unknown[]) => unknown, this, args);
+            } finally {
+              toutBalayer();
+            }
+          },
+          configurable: false,
+          writable: false,
+          enumerable: d!.enumerable ?? false,
+          __proto__: null,
+        } as PropertyDescriptor);
+      };
+      // `window.open("", nom)` rend un cadre existant par son nom, même dans une racine fantôme déclarative fermée
+      // (mesuré) : la fenêtre rendue est équipée avant d'être rendue.
+      try {
+        const d = descripteur(w, "open") ?? descripteur(w.Window?.prototype ?? {}, "open");
+        const ouvrir = d ? descripteur(d, "value")?.value : undefined;
+        if (typeof ouvrir === "function") {
+          definir(w, "open", {
+            value: function (this: unknown, ...args: unknown[]) {
+              const r = appliquer(ouvrir as (...a: unknown[]) => unknown, this, args) as Fenetre | null;
+              try {
+                equiper(r);
+              } catch {
+                // Autre origine.
+              }
+              toutBalayer();
+              return r;
+            },
+            configurable: false,
+            writable: false,
+            enumerable: d!.enumerable ?? true,
+            __proto__: null,
+          } as PropertyDescriptor);
+        }
+      } catch {
+        // `open` non remplaçable : laissé.
+      }
+      balayerApres(w.Element?.prototype, "setHTMLUnsafe");
+      balayerApres(w.Element?.prototype, "insertAdjacentHTML");
+      balayerApres(w.ShadowRoot?.prototype, "setHTMLUnsafe");
+      balayerApres(w.Document?.prototype, "write");
+      balayerApres(w.Document?.prototype, "writeln");
       // Filet : chaque mutation du document (microtâche, avant chaque script du parseur) balaie les fenêtres filles.
       const MO = w.MutationObserver;
       if (MO) {
         const mo = new MO(toutBalayer);
-        appliquer(MO.prototype.observe, mo, [doc, { childList: true, subtree: true }]);
+        appliquer(MO.prototype.observe, mo, [doc, { childList: true, subtree: true, __proto__: null }]);
       }
     } catch {
       // Fenêtre d'une autre origine : inaccessible, donc inoffensive ici.
@@ -240,20 +296,18 @@ function sansWebRtc(): void {
 }
 
 /**
- * Un cadre `about:` dont l'origine (héritée du parent) est celle d'une extension, lu dans le monde principal. Les cadres
- * `about:blank` des sites (des dizaines par page chez les régies) ne posent donc pas de question synchrone ; un site ne
- * peut pas avoir une origine `chrome-extension://`.
+ * Un cadre `about:` dont l'origine (héritée du parent) est celle d'une extension. Lu ici, dans le monde du preload
+ * (isolé), dès son démarrage : la page ne peut rien y poser, alors que `origin` est remplaçable dans le monde principal
+ * (un parent de même origine pourrait le changer sur la fenêtre du cadre). Les cadres `about:blank` des sites (des
+ * dizaines par page chez les régies) ne posent donc pas de question synchrone ; un site ne peut pas avoir une origine
+ * `chrome-extension://`.
  */
 function cadreAboutDExtension(): boolean {
   try {
-    return (
-      contextBridge.executeInMainWorld({
-        func: () => {
-          const g = globalThis as { location?: { protocol?: string }; origin?: unknown };
-          return g.location?.protocol === "about:" && typeof g.origin === "string" && g.origin.startsWith("chrome-extension://");
-        },
-      }) === true
-    );
+    const g = globalThis as { location?: { protocol?: string }; origin?: unknown };
+    const protocole = g.location?.protocol;
+    const origine = g.origin;
+    return protocole === "about:" && typeof origine === "string" && origine.startsWith("chrome-extension://");
   } catch {
     return false;
   }

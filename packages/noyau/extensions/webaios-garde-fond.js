@@ -45,7 +45,7 @@
 
   const figer = (objet, nom, valeur) => {
     try {
-      definir(objet, nom, { value: valeur, writable: false, configurable: false, enumerable: true });
+      definir(objet, nom, { __proto__: null, value: valeur, writable: false, configurable: false, enumerable: true });
     } catch (e) {
       appliquer(journal, console, [`[webaios] garde non posé sur ${nom} :`, e]);
     }
@@ -70,7 +70,7 @@
     const runtime = c.runtime;
     const avant = runtime && descripteur(runtime, "lastError");
     try {
-      if (runtime) definir(runtime, "lastError", { value: { message }, configurable: true, enumerable: true, writable: true });
+      if (runtime) definir(runtime, "lastError", { __proto__: null, value: { message }, configurable: true, enumerable: true, writable: true });
       rappel();
     } finally {
       if (runtime) {
@@ -81,21 +81,48 @@
     return undefined;
   };
 
+  const MAX_LISTE = 5000;
+  /** Une propriété propre lue une seule fois par son descripteur (jamais par le prototype) ; absente : `trou`. */
+  const TROU = creer(null);
+  const lirePropre = (v, k) => {
+    const d = descripteur(v, k);
+    if (!d) return TROU;
+    // Les champs du descripteur lus comme propres : `Object.prototype.value` ou `.get` ajoutés n'y changent rien.
+    const valeur = descripteur(d, "value");
+    if (valeur) return valeur.value;
+    const lire = descripteur(d, "get");
+    return lire && typeof lire.value === "function" ? appliquer(lire.value, v, []) : undefined;
+  };
+  const poser = (copie, k, valeur) =>
+    definir(copie, k, { __proto__: null, value: valeur, writable: true, enumerable: true, configurable: true });
   /**
-   * Copie profonde lue une seule fois : objets (sans prototype, rien n'y est hérité) et listes recopiés, chaque propriété
-   * lue une fois, accesseurs compris ; fonctions et valeurs simples gardées (`scripting.executeScript({ func })`). Un
-   * cycle ou une profondeur > 32 : refus.
+   * Copie profonde lue une seule fois : objets recopiés sans prototype (rien n'y est hérité) ; listes recopiées denses
+   * (`length` lu une fois, au plus 5000 éléments, chacun lu par son descripteur propre : une liste à trous est refusée,
+   * puisque l'API native lirait le trou dans `Array.prototype`) ; fonctions et valeurs simples gardées
+   * (`scripting.executeScript({ func })`). Un cycle ou une profondeur > 32 : refus.
    */
   const copier = (v, profondeur, chemin) => {
     if (v === null || typeof v !== "object") return v;
     if (profondeur > 32) throw new Erreur("arguments trop imbriqués");
     for (let i = 0; i < chemin.length; i++) if (chemin[i] === v) throw new Erreur("arguments en boucle");
     chemin[chemin.length] = v;
-    const liste = estListe(v);
-    const copie = liste ? [] : creer(null);
-    const k = cles(v);
-    for (let i = 0; i < k.length; i++) {
-      definir(copie, k[i], { value: copier(v[k[i]], profondeur + 1, chemin), writable: true, enumerable: true, configurable: true });
+    let copie;
+    if (estListe(v)) {
+      const n = lirePropre(v, "length");
+      if (typeof n !== "number" || n > MAX_LISTE) throw new Erreur("tableau trop long");
+      copie = [];
+      for (let i = 0; i < n; i++) {
+        const e = lirePropre(v, `${i}`);
+        if (e === TROU) throw new Erreur("tableau à trous");
+        poser(copie, i, copier(e, profondeur + 1, chemin));
+      }
+    } else {
+      copie = creer(null);
+      const k = cles(v);
+      for (let i = 0; i < k.length; i++) {
+        const e = lirePropre(v, k[i]);
+        if (e !== TROU) poser(copie, k[i], copier(e, profondeur + 1, chemin));
+      }
     }
     chemin.length = chemin.length - 1;
     return copie;
@@ -105,7 +132,7 @@
    * Appelle `f` si `verifier(args)` rend vrai (ou une promesse de vrai), sinon refuse avec `message(args)` ; promesse ou
    * rappel, comme l'appel d'origine. Les arguments sont copiés une seule fois : la copie est vérifiée puis passée à l'API.
    */
-  const garder = (f, cible, verifier, message) =>
+  const garder = (f, cible, verifier, message, prefixe = "Arguments refusés par WebAiOs") =>
     function (...tous) {
       // Le rappel éventuel : le dernier argument, s'il est une fonction.
       let n = tous.length;
@@ -116,7 +143,7 @@
         args = copier(tous, 0, []);
         args.length = n;
       } catch (e) {
-        return refuser(`Arguments refusés par WebAiOs (${e && e.message})`, rappel);
+        return refuser(`${prefixe} (${e && e.message})`, rappel);
       }
       const appeler = () => {
         if (rappel) args[args.length] = rappel;
@@ -211,6 +238,7 @@
           dnr,
           (args) => actionRefusee(args[0]) === null,
           (args) => `Règle DNR refusée par WebAiOs (${actionRefusee(args[0])})`,
+          "Règle DNR refusée par WebAiOs",
         ),
       );
     }
