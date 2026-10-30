@@ -122,3 +122,14 @@ test("oublierActionsDisparues : un lien symbolique nommé comme l'action n'est p
   await oublierActionsDisparues(c, dossierActions);
   expect(existsSync(join(dossierActions, "x"))).toBe(false);
 });
+
+test("un plan bien formé est relu ; un plan mal formé fait rejeter le résultat", async () => {
+  const d = await dossierTemporaire();
+  const id = idExecution(horodatage(0));
+  const plan = { blocs: [{ composant: "titre", props: { texte: "x" } }] };
+  await ecrireExecution(join(d, "a"), execution(horodatage(0)));
+  await ecrireResultat(d, "a", { ...resultat(id), plan });
+  expect((await lireResultat(d, "a", id))?.plan).toEqual(plan);
+  await ecrireResultat(d, "a", { ...resultat(id), plan: { blocs: [{ composant: "Pas Bon", props: {} }] } as never });
+  expect(await lireResultat(d, "a", id)).toBeNull();
+});

@@ -3,6 +3,7 @@ export * from "./espace/initialiser.js";
 export * from "./accueil/schemas.js";
 export * from "./accueil/lire.js";
 export * from "./accueil/donnees.js";
+export * from "./pages/plan.js";
 export * from "./accueil/surveiller.js";
 export * from "./applications/manifeste.js";
 export * from "./applications/gestionnaire.js";

@@ -6,10 +6,8 @@ import { TAILLE_MAX_DONNEES } from "../workflows/protocole.js";
 import { ecrireAtomique, ID_EXECUTION, listerExecutions } from "../workflows/executions.js";
 import { avecMemoire, effacerExecutionsEtMemoire } from "../workflows/memoire.js";
 import { retirerAccord } from "../widgets/accords.js";
+import { PlanPage } from "../pages/plan.js";
 import { ID_ACTION } from "./schemas.js";
-
-/** Le plan de page de Gemma, tel que rangé : le schéma et la validation sont ceux de `pages/plan.ts`. */
-export type PlanPage = { blocs: unknown[] };
 
 /** Ce qu'une exécution d'action a rendu : ses résultats, la mise en page choisie pour eux et comment elle l'a été. */
 export type ResultatAction = {
@@ -31,7 +29,7 @@ const FichierResultat = z.object({
   execution: z.string(),
   saisie: z.string().nullable(),
   resultats: z.unknown(),
-  plan: z.unknown().nullable(),
+  plan: PlanPage.nullable(),
   secours: z.boolean(),
   vide: z.boolean(),
 });
@@ -68,7 +66,7 @@ export async function lireResultat(dossierActions: string, id: string, execution
   try {
     const chemin = join(dossierResultats(join(dossierActions, id)), `${execution}.json`);
     if ((await stat(chemin)).size > RESULTAT_MAX_OCTETS) return null;
-    return FichierResultat.parse(JSON.parse(await readFile(chemin, "utf8"))) as ResultatAction;
+    return FichierResultat.parse(JSON.parse(await readFile(chemin, "utf8"))) satisfies ResultatAction;
   } catch {
     return null;
   }
