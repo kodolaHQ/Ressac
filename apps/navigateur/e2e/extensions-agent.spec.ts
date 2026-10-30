@@ -782,7 +782,9 @@ const EXTENSION_GARDE = {
   "evade.js": '});\ndocument.documentElement.setAttribute("data-evade", "1");\nglobalThis.__webaiosApres(() => {\n',
   // Une feuille de l'agent qui charge une image d'autre.test : jamais demandée depuis une lecture invisible.
   "fuite.css": "html { background-image: url(https://autre.test/cs-css); }\n",
-  "outils.js": `function noter(cle, valeur) {
+  // Sans déclaration lexicale : relancé dans le même monde, il compterait chaque passage (contenu.js, lui, lèverait sur ses `const`).
+  "outils.js": `document.documentElement.setAttribute("data-agent-compte", String(Number(document.documentElement.getAttribute("data-agent-compte") || 0) + 1));
+function noter(cle, valeur) {
   const r = JSON.parse(document.documentElement.getAttribute("data-agent") || "{}");
   r[cle] = valeur;
   document.documentElement.setAttribute("data-agent", JSON.stringify(r));
@@ -831,6 +833,7 @@ if (mdp) {
 document.documentElement.setAttribute("data-agent-vu", "1");
 document.body.append(" AGENT-VU ");
 `,
+  "vide.html": '<!doctype html><html><head><meta charset="utf-8"><title>vide</title></head><body>page de l\'agent</body></html>',
   "injecte.js": `document.getElementById("mdp").value + "|" + document.getElementById("texte").value;\n`,
   "fond.js": `// Il tente de répondre « onglet » à la garde de page à sa place : le garde du fond ne le lui laisse pas voir.
 chrome.runtime.onMessage.addListener((m, _e, repondre) => {
@@ -929,6 +932,29 @@ test("sur une page locale, la valeur d'un champ de mot de passe rempli est vide 
     const r = await ouvrirPage(app, `chrome-extension://${id}/ordre.html?executer-onglet`);
     console.log(`[mesure] executeScript dans un onglet : ${r.titre}`);
     expect(JSON.parse(r.titre)).toMatchObject({ fichiers: ["|visible"], fonction: ["|visible"] });
+  } finally {
+    await fermer();
+  }
+});
+
+test("avec une page de l'agent ouverte (popup, options), son script de contenu ne tourne qu'une fois dans un onglet", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserGarde(profil, racine);
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Garde de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    // Une page de l'extension, gardée ouverte (fenêtre cachée) pendant le chargement de l'onglet.
+    await app.evaluate(async ({ BrowserWindow, session }, url) => {
+      const f = new BrowserWindow({ show: false, webPreferences: { session: session.fromPartition("persist:webaios"), sandbox: true, contextIsolation: true } });
+      await f.webContents.loadURL(url);
+      return f.webContents.executeJavaScript("JSON.stringify({ scripting: typeof chrome.scripting, exec: typeof (chrome.scripting && chrome.scripting.executeScript), webaios: typeof globalThis.__webaios, estOnglet: typeof (globalThis.__webaios && globalThis.__webaios.estOnglet), sw: typeof ServiceWorkerGlobalScope })");
+    }, `chrome-extension://${id}/vide.html`).then((x) => console.log(`[mesure] page de l'agent : ${x}`));
+    await ouvrirOnglet(fenetre, "https://hote.test/formulaire?compte");
+    await expect.poll(() => dansLaVue(app, "hote.test/formulaire?compte", "document.documentElement.getAttribute('data-agent-compte')"), { timeout: 15_000 }).toBe("1");
+    await new Promise((ok) => setTimeout(ok, 1500));
+    expect(await dansLaVue(app, "hote.test/formulaire?compte", "document.documentElement.getAttribute('data-agent-compte')")).toBe("1");
   } finally {
     await fermer();
   }

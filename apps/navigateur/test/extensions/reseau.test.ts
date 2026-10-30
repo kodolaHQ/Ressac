@@ -161,7 +161,11 @@ const cheminGarde = join(import.meta.dirname, "..", "..", "..", "..", "packages"
 /** La table que la copie met en tête du garde de fond : les fichiers .js et .css de l'agent (l'indice est le repère). */
 const TABLE = `const __webaiosFichiers = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
 
-function contexteGarde(permises: { urls?: string[]; onglets?: number[]; nonOnglets?: number[] } = {}, scripting: Record<string, unknown> = {}) {
+function contexteGarde(
+  permises: { urls?: string[]; onglets?: number[]; nonOnglets?: number[] } = {},
+  scripting: Record<string, unknown> = {},
+  o: { page?: boolean } = {},
+) {
   const appels: [string, unknown[]][] = [];
   const api = (nom: string) =>
     vi.fn((...a: unknown[]) => {
@@ -224,6 +228,8 @@ function contexteGarde(permises: { urls?: string[]; onglets?: number[]; nonOngle
     Array,
     String,
   };
+  // Une page de l'extension (popup, options) a un document ; le service worker, non.
+  if (o.page) ctx.document = {};
   ctx.globalThis = ctx;
   runInNewContext(TABLE + readFileSync(cheminGarde, "utf8"), ctx);
   return { ctx, chrome, appels, ecouteurs, emettre, enregistres };
@@ -568,6 +574,26 @@ test("garde : à la demande du contexte, le fond injecte les fichiers des repèr
   expect(await emettre({ webaios: "contexte", fichiers: [99] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ onglet: false });
   expect(await emettre({ webaios: "contexte", fichiers: ["0"] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ onglet: false });
   expect(await emettre({ webaios: "contexte", fichiers: [0] }, {})).toEqual({ onglet: false });
+  expect(appels).toEqual([]);
+});
+
+test("garde : dans une page de l'agent (popup, options), le contexte n'est ni répondu ni injecté : seul le service worker le fait ; les écouteurs de l'agent ne le voient pas non plus", async () => {
+  const { chrome, appels, emettre } = contexteGarde({}, {}, { page: true });
+  const vus: unknown[] = [];
+  (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void vus.push(m));
+  expect(await emettre({ webaios: "contexte", fichiers: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
+  expect(await emettre({ webaios: "contexte" }, { tab: { id: 4 } })).toBe("aucune réponse");
+  expect(appels).toEqual([]);
+  expect(vus).toEqual([]);
+});
+
+test("garde : un indice hors de la table (prototypes empoisonnés, négatif, fractionnaire) n'injecte jamais rien", async () => {
+  const { ctx, appels, emettre } = contexteGarde();
+  // Dans le monde du garde : ce que `table[n]` lirait par la chaîne de prototypes pour un n hors de la table.
+  runInContext('const faux = { genre: "js", chemin: "hors-liste.js" }; ({}).__proto__[999] = faux; [].__proto__[5] = faux; ({}).__proto__["-1"] = faux; ({}).__proto__["1.5"] = faux;', ctx as object);
+  for (const n of [999, 5, -1, 1.5]) {
+    expect(await emettre({ webaios: "contexte", fichiers: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ onglet: false });
+  }
   expect(appels).toEqual([]);
 });
 

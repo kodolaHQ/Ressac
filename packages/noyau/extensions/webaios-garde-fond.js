@@ -17,8 +17,8 @@
 // - `scripting.registerContentScripts` / `updateContentScripts` : comme les entrées du manifeste copié, n'enregistrent
 //   que les gardes puis des repères (`webaios-fichiers/<n>.js`, CSS d'abord) ; `getRegisteredContentScripts` rend les
 //   fichiers de l'agent, et une mise à jour d'un seul de `js` / `css` reprend l'autre de l'enregistrement actuel.
-// - `runtime.onMessage` : répond à `{ webaios: "contexte", fichiers }` (la garde de page) par `{ onglet }` ; si c'est un
-//   onglet, injecte d'abord, par les fonctions natives saisies, le CSS puis le JS (gardes en tête) de ces repères dans le
+// - `runtime.onMessage` : dans le service worker seulement (une page ouverte de l'extension injecterait une seconde
+//   fois), répond à `{ webaios: "contexte", fichiers }` (la garde de page) par `{ onglet }` ; si c'est un onglet, injecte d'abord, par les fonctions natives saisies, le CSS puis le JS (gardes en tête) de ces repères dans le
 //   document exact de l'expéditeur (`documentIds`, sinon son cadre). Les écouteurs de l'extension ne voient jamais ce
 //   message (ils ne peuvent pas répondre à la place du garde).
 // - WebRTC retiré.
@@ -62,6 +62,11 @@
   const wmSet = WeakMap.prototype.set;
   const prototypeDe = Object.getPrototypeOf;
   const ProtoObjet = Object.prototype;
+  const entier = Number.isInteger;
+  // Le service worker seul répond à la garde de page et injecte : une page de l'extension ouverte (popup, options)
+  // recevrait aussi le message, et injecterait une seconde fois. Saisi avant tout script de l'extension.
+  const SWGS = g.ServiceWorkerGlobalScope;
+  const estFond = typeof SWGS === "function" ? g instanceof SWGS : typeof g.document === "undefined";
 
   const figer = (objet, nom, valeur) => {
     try {
@@ -325,13 +330,17 @@
   // normalisation par une méthode que l'extension pourrait remplacer. Sans table (hors copie), aucun fichier n'est permis.
   // eslint-disable-next-line no-undef
   const tableBrute = typeof __webaiosFichiers !== "undefined" && estListe(__webaiosFichiers) ? __webaiosFichiers : [];
-  const table = [];
+  // Sans prototype, et lue seulement pour un entier dans ses bornes : un indice hors de la table ne lit jamais
+  // `Object.prototype` ni `Array.prototype` (que l'extension peut remplir).
+  const table = creer(null);
+  let tailleTable = 0;
+  const entreeDe = (n) => (typeof n === "number" && entier(n) && n >= 0 && n < tailleTable ? table[n] : undefined);
   const indices = creer(null);
   const reperes = creer(null);
   for (let i = 0; i < tableBrute.length; i++) {
     const e = tableBrute[i];
     if (!estListe(e) || typeof e[0] !== "string" || (e[1] !== "js" && e[1] !== "css")) continue;
-    const n = table.length;
+    const n = tailleTable++;
     table[n] = { __proto__: null, chemin: e[0], genre: e[1] };
     indices[`${e[1]}:${e[0]}`] = n;
     reperes[`${REPERES}${n}.js`] = n;
@@ -439,7 +448,8 @@
       if (typeof p !== "string" || estGardePage(p)) continue;
       const k = reperes[p];
       if (typeof k !== "number") continue;
-      const e = table[k];
+      const e = entreeDe(k);
+      if (!e) continue;
       vu[e.genre][vu[e.genre].length] = e.chemin;
     }
     return vu;
@@ -688,8 +698,9 @@
       const d = descripteur(m, "webaios");
       return !!d && descripteur(d, "value") !== undefined && d.value === "contexte";
     };
-    // Le premier écouteur : posé avant tout script de l'extension.
-    appliquer(onMessage.addListener, onMessage, [
+    // Le premier écouteur : posé avant tout script de l'extension, dans le service worker seulement. Dans une page, le
+    // message est seulement caché aux écouteurs de l'extension (ci-dessous), sans réponse.
+    if (estFond) appliquer(onMessage.addListener, onMessage, [
       (m, expediteur, repondre) => {
         if (!estContexte(m)) return undefined;
         const reponse = (v) => {
@@ -720,7 +731,7 @@
           if (!estListe(liste)) return refuser();
           for (let i = 0; i < liste.length; i++) {
             const n = liste[i];
-            const e = typeof n === "number" ? table[n] : undefined;
+            const e = entreeDe(n);
             if (!e) return refuser();
             const l = e.genre === "css" ? css : js;
             l[l.length] = e.chemin;
