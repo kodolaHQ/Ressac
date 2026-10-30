@@ -276,6 +276,35 @@ function sansWebRtc(): void {
       } catch {
         // `open` non remplaçable : laissé.
       }
+      // `document.open(url, nom, options)` (trois arguments) suit les étapes de window.open sans passer par
+      // `window.open` : il rend aussi le cadre nommé d'une racine déclarative fermée (mesuré). Même traitement ; la
+      // forme à zéro, un ou deux arguments (réouverture du document) passe telle quelle.
+      try {
+        const proto = w.Document?.prototype;
+        const d = proto && descripteur(proto, "open");
+        const ouvrirDoc = d ? descripteur(d, "value")?.value : undefined;
+        if (typeof ouvrirDoc === "function") {
+          definir(proto, "open", {
+            value: function (this: unknown, ...args: unknown[]) {
+              const r = appliquer(ouvrirDoc as (...a: unknown[]) => unknown, this, args);
+              if (args.length < 3) return r;
+              try {
+                equiper(r as Fenetre | null);
+              } catch {
+                // Autre origine.
+              }
+              toutBalayer();
+              return r;
+            },
+            configurable: false,
+            writable: false,
+            enumerable: d!.enumerable ?? true,
+            __proto__: null,
+          } as PropertyDescriptor);
+        }
+      } catch {
+        // `open` non remplaçable : laissé.
+      }
       balayerApres(w.Element?.prototype, "setHTMLUnsafe");
       balayerApres(w.Element?.prototype, "insertAdjacentHTML");
       balayerApres(w.ShadowRoot?.prototype, "setHTMLUnsafe");

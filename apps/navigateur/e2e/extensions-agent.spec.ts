@@ -386,6 +386,18 @@ document.title = JSON.stringify(vu);
     try { rtc = f ? typeof f.RTCPeerConnection : "absent"; } catch (e) { rtc = "inaccessible"; }
     vu[nom] = rtc;
   }
+  // Par son nom, sans window.open : document.open(url, nom, options) (forme à trois arguments), l'accès nommé
+  // (window[nom], frames[nom]). Chaque cadre nommé est neuf, dans une racine déclarative fermée.
+  const parNom = (nom, prendre) => {
+    document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="closed"><iframe name="' + nom + '"></iframe></template></div>');
+    let f = null;
+    try { f = prendre(nom); } catch (e) { f = null; }
+    try { return f ? typeof f.RTCPeerConnection : "absent"; } catch (e) { return "inaccessible"; }
+  };
+  vu["docOpen-ombre"] = parNom("doc-ouvre-ombre", (nom) => document.open("", nom, ""));
+  vu["nomme-index"] = parNom("nomme-index", (nom) => window[nom]);
+  vu["nomme-frames"] = parNom("nomme-frames", (nom) => window.frames[nom]);
+  vu.docOpenDeux = (() => { const d = document.implementation.createHTMLDocument(""); try { return d.open("text/html", "") === d ? "document" : "autre"; } catch (e) { return "erreur"; } })();
   vu.tousIndexes = [];
   for (let i = 0; i < window.length; i++) vu.tousIndexes.push(typeof window[i].RTCPeerConnection);
   vu.nombre = window.length;
@@ -608,7 +620,7 @@ test("dans sa popup, un cadre about:blank, srcdoc, imbriqué ou dans une racine 
     const titre = () =>
       app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().endsWith("/cadre.html"))?.getTitle() ?? null);
     await expect.poll(titre, { timeout: 10_000 }).toMatch(/^\{/);
-    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[]; masqueTot: string; declareTot: string; declareLongueur: number; declareIndexes: string[]; interieur: string; tousIndexes: string[]; nombre: number; "nomme-ombre": string; "nomme-clair": string };
+    const vu = JSON.parse((await titre())!) as Record<string, { rtc: string; rtcEssai: string; dnr: string; tabs: string; protocole: string }> & { regles: string[]; masqueTot: string; declareTot: string; declareLongueur: number; declareIndexes: string[]; interieur: string; tousIndexes: string[]; nombre: number; "nomme-ombre": string; "nomme-clair": string; "docOpen-ombre": string; "nomme-index": string; "nomme-frames": string; docOpenDeux: string };
     for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc", "masque", "declare"]) {
       expect(vu[cadre]!.protocole).toBe("about:");
       expect(vu[cadre]!.rtc).toBe("undefined");
@@ -622,6 +634,10 @@ test("dans sa popup, un cadre about:blank, srcdoc, imbriqué ou dans une racine 
     expect(vu.interieur).toBe("undefined");
     console.log(`[mesure] window.open("", nom) : ombre ${vu["nomme-ombre"]}, clair ${vu["nomme-clair"]}`);
     for (const nom of ["nomme-ombre", "nomme-clair"] as const) expect(vu[nom]).toBe("undefined");
+    console.log(`[mesure] document.open("", nom, "") : ${vu["docOpen-ombre"]} ; window[nom] : ${vu["nomme-index"]} ; frames[nom] : ${vu["nomme-frames"]} ; document.open à deux arguments : ${vu.docOpenDeux}`);
+    expect(vu["docOpen-ombre"]).toBe("undefined");
+    expect(vu.docOpenDeux).toBe("document");
+    for (const nom of ["nomme-index", "nomme-frames"] as const) expect(["undefined", "absent"]).toContain(vu[nom]);
     expect(vu.tousIndexes.length).toBe(vu.nombre);
     expect(vu.tousIndexes.every((t) => t === "undefined")).toBe(true);
     console.log(`[mesure] setHTMLUnsafe : +${vu.declareLongueur} fenêtre(s) indexée(s) ; ${vu.nombre} en tout`);
