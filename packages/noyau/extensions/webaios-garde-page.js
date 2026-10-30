@@ -11,7 +11,9 @@
 // réponse après 20 essais, l'abandon est écrit dans la console. La garde est posée une seule fois par monde ;
 // `executeScript` la met aussi en tête de ses fichiers.
 //
-// - Mots de passe : le getter `value` de `HTMLInputElement.prototype` rend "" pour un `input[type=password]` ;
+// - Mots de passe : le getter `value` de `HTMLInputElement.prototype` rend "" pour un `input[type=password]`, comme
+//   `defaultValue`, `getAttribute("value")`, `getAttributeNS(null, "value")` et l'`Attr` `value` du champ (`value`,
+//   `nodeValue`, `textContent`, par `getAttributeNode` ou `attributes`) ;
 //   `new FormData(form)` en retire ces champs (par leur nom : un autre champ du même nom part aussi) ; un écouteur
 //   `keydown`, `keypress`, `keyup`, `input`, `beforeinput`, `paste`, `composition*`, `textInput` (par
 //   `addEventListener` ou par `on…`) ne reçoit pas un événement dont la cible est un champ de mot de passe ; `formdata`
@@ -34,7 +36,9 @@
 //   feuilles) ; `location` (navigation de la page vers une adresse qui porte des données) ; modifier par le DOM un
 //   élément de la page déjà présent sans passer par ces setters ; `Node.nodeValue` / `textContent` d'un `Attr` ; une
 //   redirection servie par un site permis (celui de la page compris) ;
-// - mots de passe : changer le type du champ (`type`, `setAttribute`, `cloneNode` puis changer le type du double) et
+// - mots de passe : la valeur recopiée dans l'attribut `value` (React) se lit par la sérialisation (`outerHTML`,
+//   `innerHTML` d'un ancêtre, `XMLSerializer`) et par les sélecteurs d'attribut (`matches('[value^="a"]')`,
+//   `querySelector`) ; changer le type du champ (`type`, `setAttribute`, `cloneNode` puis changer le type du double) et
 //   lire ensuite sa valeur ; l'oracle `pattern` + `validity.patternMismatch`, caractère par caractère, sans changer le
 //   type ; les touches d'un champ dans une racine fantôme fermée (cible, `composedPath()[0]` et champ actif s'arrêtent à
 //   l'hôte) ;
@@ -296,6 +300,68 @@
         set: d.set,
         enumerable: d.enumerable,
         configurable: false,
+      });
+    }
+  }
+
+  // La valeur recopiée dans l'attribut `value` (React, d'autres) : `getAttribute`, `getAttributeNS`, l'`Attr` (`value`,
+  // `nodeValue`, `textContent`, par `getAttributeNode` ou `attributes`) et `defaultValue` rendent "" pour un champ de mot
+  // de passe. Restent ouverts : la sérialisation (`outerHTML`, `innerHTML` d'un ancêtre) et les sélecteurs d'attribut
+  // (`matches('[value^="a"]')`, `querySelector`).
+  const AttrP = g.Attr && g.Attr.prototype;
+  const nomDAttr = AttrP && lireDe(AttrP, "name");
+  const proprioDAttr = AttrP && lireDe(AttrP, "ownerElement");
+  const estValeur = (nom) => typeof nom === "string" && appliquer(minuscules, nom, []) === "value";
+  /** Vrai si `a` est l'attribut `value` d'un champ de mot de passe (faux pour tout ce qui n'est pas un `Attr`). */
+  const attrMasque = (a) => {
+    if (!nomDAttr || !proprioDAttr || a === null || typeof a !== "object") return false;
+    try {
+      return estValeur(appliquer(nomDAttr, a, [])) && estMotDePasse(appliquer(proprioDAttr, a, []));
+    } catch {
+      return false;
+    }
+  };
+  const masquerGetter = (proto, nom, masque) => {
+    const d = proto && descripteur(proto, nom);
+    if (!d || typeof d.get !== "function") return;
+    const lire = d.get;
+    try {
+      definir(proto, nom, {
+        __proto__: null,
+        get: function () {
+          const v = appliquer(lire, this, []);
+          return masque(this) ? "" : v;
+        },
+        set: d.set,
+        enumerable: d.enumerable,
+        configurable: false,
+      });
+    } catch (e) {
+      if (journal) appliquer(journal, g.console, [`[webaios] garde de page non posée sur ${nom} :`, e]);
+    }
+  };
+  if (HIE && typeDe) masquerGetter(HIE.prototype, "defaultValue", estMotDePasse);
+  if (g.Node) {
+    masquerGetter(g.Node.prototype, "nodeValue", attrMasque);
+    masquerGetter(g.Node.prototype, "textContent", attrMasque);
+  }
+  const ElP = g.Element && g.Element.prototype;
+  if (ElP && typeDe) {
+    const lireAttr = ElP.getAttribute;
+    const lireAttrNS = ElP.getAttributeNS;
+    if (typeof lireAttr === "function") {
+      figerSur(ElP, "getAttribute", function getAttribute(nom) {
+        // Le nom est converti une seule fois : un objet dont `toString` change ne passe pas entre les deux lectures.
+        const n = texte(nom);
+        const v = appliquer(lireAttr, this, [n]);
+        return v !== null && estMotDePasse(this) && estValeur(n) ? "" : v;
+      });
+    }
+    if (typeof lireAttrNS === "function") {
+      figerSur(ElP, "getAttributeNS", function getAttributeNS(ns, nom) {
+        const n = texte(nom);
+        const v = appliquer(lireAttrNS, this, [ns, n]);
+        return v !== null && estMotDePasse(this) && estValeur(n) ? "" : v;
       });
     }
   }
@@ -580,9 +646,17 @@
   const nomAttr = Attr && lireDe(Attr.prototype, "name");
   if (dValeur && typeof dValeur.set === "function" && nomAttr) {
     const ecrire = dValeur.set;
+    const lireValeur = dValeur.get;
     definir(Attr.prototype, "value", {
       __proto__: null,
-      get: dValeur.get,
+      // Mots de passe : l'attribut `value` d'un champ de mot de passe se lit vide (voir plus haut).
+      get:
+        typeof lireValeur === "function"
+          ? function () {
+              const v = appliquer(lireValeur, this, []);
+              return attrMasque(this) ? "" : v;
+            }
+          : lireValeur,
       set: function (v) {
         const s = texte(v);
         if (!attributPermis(appliquer(nomAttr, this, []), s)) throw refusee();
