@@ -870,3 +870,23 @@ test("demander pour l'agent : espace par nom ; un espace privé ou inconnu est r
   expect(await outils.demander("essai", { espace: "Nulle part", fenetre: null, agent: "Claude" })).toEqual({ ok: false, erreur: "Espace inconnu : Nulle part" });
   expect(cartes).toEqual([]);
 });
+
+test("B T10-7 verifierMisesAJour : une extension dont la file est tenue (carte d'installation ouverte) est sautée, la vérification finit", async () => {
+  const { enFileStore } = await import("../../src/main/extensions/store");
+  const { service } = await storeInstalle(["defaut"]);
+  const fauxFetch = (async () =>
+    new Response(
+      `)]}'\n${JSON.stringify({ response: { app: [{ appid: ID, updatecheck: { status: "ok", urls: { url: [{ codebase: "http://127.0.0.1:1/x.crx" }] }, manifest: { version: "1.1.0" } } }] } })}`,
+    )) as typeof fetch;
+  let liberer!: () => void;
+  const tenue = enFileStore(dossier, ID, () => new Promise<void>((ok) => (liberer = ok)));
+  const journal = vi.spyOn(console, "error").mockImplementation(() => {});
+  const fini = await Promise.race([service.verifierMisesAJour({ fetch: fauxFetch }).then(() => true), new Promise((ok) => setTimeout(() => ok(false), 2000))]);
+  expect(fini).toBe(true);
+  expect(service.erreurs().has(`store:${ID}`)).toBe(false);
+  liberer();
+  await tenue;
+  await service.verifierMisesAJour({ fetch: fauxFetch });
+  journal.mockRestore();
+  expect(service.erreurs().get(`store:${ID}`)).toMatch(/Chrome Web Store/);
+});

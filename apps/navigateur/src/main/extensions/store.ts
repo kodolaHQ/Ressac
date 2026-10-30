@@ -92,6 +92,11 @@ export function enFileStore<T>(dossier: string, id: string, f: () => Promise<T>)
   return uneAlaFois(`${dossier}|${id}`, f);
 }
 
+/** Vrai si la file de l'extension `id` est tenue (une installation, une carte, une mise à jour en cours). */
+export function fileStoreOccupee(dossier: string, id: string): boolean {
+  return files.has(`${dossier}|${id}`);
+}
+
 function uneAlaFois<T>(cle: string, f: () => Promise<T>): Promise<T> {
   const suivante = (files.get(cle) ?? Promise.resolve()).catch(() => {}).then(f);
   files.set(cle, suivante);

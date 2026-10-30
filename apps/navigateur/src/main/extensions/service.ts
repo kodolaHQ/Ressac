@@ -78,6 +78,7 @@ import {
   accordPour,
   desinstallerStore,
   enFileStore,
+  fileStoreOccupee,
   installerStore,
   lireManifeste,
   retirerDuProfilStore,
@@ -685,6 +686,11 @@ export class ServiceExtensions {
     const verification = (async () => {
       const majs = await chercherMisesAJour(entrees, { fetch: o.fetch ?? fetch, ...(o.url ? { url: o.url } : {}) });
       for (const maj of majs) {
+        // Sa file est tenue (une carte d'installation ouverte, par exemple) : elle seule attend la prochaine vérification.
+        if (fileStoreOccupee(d.dossier, maj.id)) {
+          console.info(`[extensions] mise à jour store:${maj.id} remise à la prochaine vérification (opération en cours)`);
+          continue;
+        }
         const r = await appliquerMiseAJour(maj, d);
         if (r !== "echec") console.info(`[extensions] mise à jour store:${maj.id} ${maj.version} : ${r}`);
       }
