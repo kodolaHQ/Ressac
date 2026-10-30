@@ -1483,7 +1483,7 @@ test("I1 un menu contextuel (contextMenus) masque la console du fond ; un clic s
   });
   ecrireExtensionAgent(racine, "calme", {
     "manifest.json": { manifest_version: 3, name: "Calme de l'agent", version: "1.0.0", background: { service_worker: "fond.js" } },
-    "fond.js": 'chrome.tabs.onUpdated.addListener(() => console.log("maj vue"));\nchrome.tabs.onActivated.addListener(() => console.log("activé vu"));\n',
+    "fond.js": 'chrome.tabs.onUpdated.addListener(() => console.log("maj vue"));\nchrome.tabs.onActivated.addListener(() => console.log("activé vu"));\nconsole.log("calme prêt");\n',
   });
   const { app, fenetre, fermer } = await lancer({ racine });
   try {
@@ -1491,6 +1491,8 @@ test("I1 un menu contextuel (contextMenus) masque la console du fond ; un clic s
     expect(await activerParLAgent(fenetre, racine, "menu", "Menu de l'agent")).toMatch(/^Activée/);
     expect(await activerParLAgent(fenetre, racine, "calme", "Calme de l'agent")).toMatch(/^Activée/);
     await expect.poll(() => consoleDe(racine, "menu"), { timeout: 15_000 }).toContain(OBSERVE);
+    // Son service worker tourne (ses écouteurs sont posés) avant que l'onglet ne s'ouvre.
+    await expect.poll(() => consoleDe(racine, "calme"), { timeout: 20_000 }).toContain("calme prêt");
     await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
     await expect.poll(() => dansLaVue(app, "a.html", "document.readyState")).toBe("complete");
     // Sans droit qui observe, sa console passe : ce qu'elle écrit arrive, et rien de la bibliothèque.
