@@ -1,8 +1,12 @@
 import { expect, test, type ElectronApplication } from "@playwright/test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as serveurHttps } from "node:https";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AddressInfo } from "node:net";
 import { dansLaVue, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
-import { ecrireExtensionAgent } from "./extensions/fixtures";
+import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
 
 // Extensions de l'agent (`<racine>/extensions/<id>/`, le ~/WebAiOs du test). Sans point d'entrée avant les tâches 14 et 17
 // (P10), l'accord est posé au registre du profil avant le lancement, et chaque effet vérifié par un redémarrage. Les
@@ -141,4 +145,255 @@ test("modifiée avec un nouveau site : désactivée, plus chargée, l'accord gar
   const x = lireEntree(profil)!;
   expect(x.desactivee?.raison).toBe("portee-elargie");
   expect(x.accord).toEqual(ACCORD);
+});
+
+// --- Réseau des extensions de l'agent (tâche 12)
+//
+// Un serveur https local (certificat fait par le test) répond pour trois noms : accorde.test (dans `reseau` de
+// l'extension), hote.test (dans ses hôtes), autre.test (ni l'un ni l'autre). Chromium les résout vers ce serveur
+// (`--host-resolver-rules`, port 443 → port du serveur : la CSP `https://accorde.test` vise le port 443) et accepte son
+// certificat (`--ignore-certificate-errors`). Le serveur note chaque requête (hôte et chemin) : c'est la preuve.
+
+type Coup = { hote: string; chemin: string };
+let https: { port: number; coups: Coup[]; fermer(): Promise<void> };
+let dossierCertificat: string;
+
+test.beforeAll(async () => {
+  dossierCertificat = mkdtempSync(join(tmpdir(), "webaios-cert-"));
+  const [cle, cert] = [join(dossierCertificat, "cle.pem"), join(dossierCertificat, "cert.pem")];
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", cle, "-out", cert, "-days", "2", "-subj", "/CN=accorde.test"], {
+    stdio: "ignore",
+  });
+  const coups: Coup[] = [];
+  const noter = (hote: string | undefined, url: string | undefined) => coups.push({ hote: (hote ?? "").split(":")[0]!, chemin: (url ?? "").split("?")[0]! });
+  const serveur = serveurHttps({ key: readFileSync(cle), cert: readFileSync(cert) }, (req, res) => {
+    noter(req.headers.host, req.url);
+    req.resume();
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+    res.end(`<title>${req.url}</title>ok`);
+  });
+  serveur.on("upgrade", (req, socket) => {
+    noter(req.headers.host, req.url);
+    socket.destroy();
+  });
+  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  https = {
+    port: (serveur.address() as AddressInfo).port,
+    coups,
+    fermer: () => new Promise((ok) => serveur.close(() => ok())),
+  };
+});
+test.afterAll(async () => {
+  await https.fermer();
+  rmSync(dossierCertificat, { recursive: true, force: true });
+});
+
+const argsReseau = () => [
+  `--host-resolver-rules=${["accorde.test", "hote.test", "autre.test"].map((h) => `MAP ${h}:443 127.0.0.1:${https.port}`).join(", ")}`,
+  "--ignore-certificate-errors",
+];
+const coupsVers = (hote: string, chemin?: string) => https.coups.filter((c) => c.hote === hote && (chemin === undefined || c.chemin === chemin));
+
+/**
+ * L'extension « réseau » de l'agent : `reseau` accorde.test, hôtes https://hote.test/*. Au démarrage, son service
+ * worker envoie vers accorde.test et autre.test (fetch, WebSocket), puis essaie les API gardées et note ce qu'il
+ * obtient dans `storage.local` (`resultats`). Sa page (`page.html`, aussi sa popup) fait de même pour fetch, sendBeacon,
+ * WebSocket, WebRTC, navigation et ouverture de fenêtre, et écrit ce qu'elle voit dans `document.title` (JSON).
+ */
+const EXTENSION_RESEAU = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Réseau de l'agent",
+    version: "1.0.0",
+    permissions: ["declarativeNetRequest", "storage", "tabs"],
+    host_permissions: ["https://hote.test/*"],
+    background: { service_worker: "fond.js" },
+    action: { default_popup: "page.html" },
+  },
+  "webaios.json": { reseau: ["accorde.test"] },
+  "fond.js": `const resultats = {};
+const essai = async (nom, f) => {
+  try {
+    resultats[nom] = { ok: await f() ?? null };
+  } catch (e) {
+    resultats[nom] = { erreur: String(e && e.message) };
+  }
+};
+for (const h of ["accorde.test", "autre.test"]) {
+  fetch("https://" + h + "/sw-fetch").catch(() => {});
+  try { new WebSocket("wss://" + h + "/sw-ws").onerror = () => {}; } catch {}
+}
+(async () => {
+  await essai("ongletRefuse", () => chrome.tabs.create({ url: "https://autre.test/onglet-refuse" }).then((t) => t && t.id));
+  await essai("ongletDonnees", () => chrome.tabs.create({ url: "data:text/html,x" }).then((t) => t && t.id));
+  await essai("ongletPermis", () => chrome.tabs.create({ url: "https://hote.test/onglet-permis", active: false }).then((t) => typeof (t && t.id)));
+  await essai("fenetreRefusee", () => chrome.windows.create({ url: "https://autre.test/fenetre-refusee" }).then(() => "ouverte"));
+  const regle = (id, action) => ({ removeRuleIds: [id], addRules: [{ id, priority: 1, action, condition: { urlFilter: "/rien-" + id, resourceTypes: ["xmlhttprequest"] } }] });
+  await essai("dnrRedirect", () => chrome.declarativeNetRequest.updateDynamicRules(regle(1, { type: "redirect", redirect: { url: "https://autre.test/" } })).then(() => "acceptee"));
+  await essai("dnrEntetes", () => chrome.declarativeNetRequest.updateSessionRules(regle(2, { type: "modifyHeaders", requestHeaders: [{ header: "x", operation: "set", value: "y" }] })).then(() => "acceptee"));
+  await essai("dnrBlock", () => chrome.declarativeNetRequest.updateDynamicRules(regle(3, { type: "block" })).then(() => "acceptee"));
+  await essai("dnrRegles", () => chrome.declarativeNetRequest.getDynamicRules().then((r) => r.map((x) => x.action.type)));
+  await essai("permissionsDownloads", () => chrome.permissions.request({ permissions: ["downloads"] }));
+  await essai("rtc", () => typeof globalThis.RTCPeerConnection);
+  await chrome.storage.local.set({ resultats });
+})();
+`,
+  "page.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="page.js"></script></body></html>',
+  "page.js": `const vu = { rtc: typeof RTCPeerConnection, rtcWebkit: typeof webkitRTCPeerConnection, canal: typeof RTCDataChannel };
+for (const h of ["accorde.test", "autre.test"]) {
+  fetch("https://" + h + "/page-fetch").catch(() => {});
+  try { navigator.sendBeacon("https://" + h + "/page-beacon", "x"); } catch {}
+  try { new WebSocket("wss://" + h + "/page-ws").onerror = () => {}; } catch {}
+}
+try { vu.ouverture = String(window.open("https://hote.test/page-ouvre")); } catch (e) { vu.ouverture = "erreur"; }
+document.title = JSON.stringify(vu);
+setTimeout(() => { location.href = "https://autre.test/page-navigue"; }, 300);
+`,
+};
+
+const ACCORD_RESEAU = {
+  permissions: ["declarativeNetRequest", "storage", "tabs"],
+  hotes: ["https://hote.test/*"],
+  reseau: ["accorde.test"],
+  tousLesSites: false,
+  scriptsTousLesSites: false,
+  scripts: false,
+};
+
+function poserReseau(profil: string, racine: string): void {
+  ecrireExtensionAgent(racine, "reseau", EXTENSION_RESEAU);
+  mkdirSync(join(profil, "extensions"), { recursive: true });
+  writeFileSync(
+    join(profil, "extensions", "etat.json"),
+    JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:reseau": { ...entree(ACCORD_RESEAU), nom: "Réseau de l'agent" } } }),
+  );
+}
+
+/** L'id Chromium de l'extension chargée sous ce nom dans le profil par défaut. */
+const idChargee = (app: ElectronApplication, nom: string) =>
+  app.evaluate(({ session }, nom) => session.fromPartition("persist:webaios").extensions.getAllExtensions().find((e) => e.name === nom)?.id ?? null, nom);
+
+/** Ouvre une page de l'extension dans une fenêtre cachée de la session du profil (comme sa popup) ; rend son titre. */
+const ouvrirPage = (app: ElectronApplication, url: string) =>
+  app.evaluate(async ({ BrowserWindow, session }, url) => {
+    const f = new BrowserWindow({ show: false, webPreferences: { session: session.fromPartition("persist:webaios"), sandbox: true, contextIsolation: true } });
+    await f.webContents.loadURL(url);
+    await new Promise((ok) => setTimeout(ok, 1500));
+    const r = { titre: f.webContents.getTitle(), url: f.webContents.getURL(), fenetres: BrowserWindow.getAllWindows().length };
+    f.destroy();
+    return r;
+  }, url);
+
+/** Les résultats notés par le service worker (`storage.local`), lus depuis une page de l'extension. */
+const resultatsFond = (app: ElectronApplication, id: string) =>
+  app.evaluate(async ({ BrowserWindow, session }, id) => {
+    const f = new BrowserWindow({ show: false, webPreferences: { session: session.fromPartition("persist:webaios"), sandbox: true, contextIsolation: true } });
+    try {
+      await f.webContents.loadURL(`chrome-extension://${id}/page.html`);
+      return await f.webContents.executeJavaScript("chrome.storage.local.get('resultats').then((r) => r.resultats ?? null)");
+    } finally {
+      f.destroy();
+    }
+  }, id);
+
+// WebSocket : la CSP `https://accorde.test` ne couvre pas `wss://accorde.test` dans Chromium (mesuré) ; un WebSocket vers
+// le domaine accordé est donc refusé aussi. Seul « rien vers autre.test » est vérifié pour lui.
+test("le service worker ne peut rien envoyer vers un domaine non accordé (fetch, WebSocket) ; vers le domaine accordé, oui", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    await expect.poll(() => coupsVers("accorde.test", "/sw-fetch").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await new Promise((ok) => setTimeout(ok, 1000));
+    expect(coupsVers("autre.test", "/sw-fetch")).toEqual([]);
+    expect(coupsVers("autre.test", "/sw-ws")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("sa popup et ses pages non plus (fetch, sendBeacon, WebSocket, navigation, window.open) ; RTCPeerConnection est absent de ses pages", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    const page = await ouvrirPage(app, `chrome-extension://${id}/page.html`);
+    expect(JSON.parse(page.titre)).toEqual({ rtc: "undefined", rtcWebkit: "undefined", canal: "undefined", ouverture: "null" });
+    // La navigation vers autre.test a été refusée : la page est restée la sienne.
+    expect(page.url).toBe(`chrome-extension://${id}/page.html`);
+    await expect.poll(() => coupsVers("accorde.test", "/page-fetch").length).toBeGreaterThan(0);
+    await expect.poll(() => coupsVers("accorde.test", "/page-beacon").length).toBeGreaterThan(0);
+    for (const chemin of ["/page-fetch", "/page-beacon", "/page-ws", "/page-navigue"]) expect(coupsVers("autre.test", chemin)).toEqual([]);
+    expect(coupsVers("hote.test", "/page-ouvre")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("tabs.create vers un domaine non accordé est refusé ; vers un site de ses hôtes, ouvert ; updateDynamicRules avec redirect est refusé, avec block accepté ; chrome.permissions.request({ permissions: [\"downloads\"] }) rend false", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  const { app, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    let id: string | null = null;
+    await expect.poll(async () => (id = await idChargee(app, "Réseau de l'agent")), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    let r: Record<string, unknown> | null = null;
+    await expect.poll(async () => (r = await resultatsFond(app, id!)), { timeout: 15_000 }).not.toBeNull();
+    expect(r).toEqual({
+      ongletRefuse: { erreur: "URL refusée par WebAiOs" },
+      ongletDonnees: { erreur: "URL refusée par WebAiOs" },
+      ongletPermis: { ok: "number" },
+      fenetreRefusee: { erreur: "URL refusée par WebAiOs" },
+      dnrRedirect: { erreur: "Règle DNR refusée par WebAiOs (redirect)" },
+      dnrEntetes: { erreur: "Règle DNR refusée par WebAiOs (modifyHeaders)" },
+      dnrBlock: { ok: "acceptee" },
+      dnrRegles: { ok: ["block"] },
+      permissionsDownloads: { ok: false },
+      rtc: { ok: "undefined" },
+    });
+    // L'onglet permis s'est ouvert sur hote.test ; rien n'a atteint autre.test.
+    await expect.poll(() => coupsVers("hote.test", "/onglet-permis").length).toBeGreaterThan(0);
+    expect(coupsVers("autre.test", "/onglet-refuse")).toEqual([]);
+    expect(coupsVers("autre.test", "/fenetre-refusee")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+// Branche B (reseau.ts) : aucun session.webRequest, qui couperait le declarativeNetRequest de toute la session. Ce test
+// remplace « l'écouteur ne coupe pas le chrome.webRequest d'une extension Store » (chrome.webRequest ne se déclenche
+// jamais dans Electron 45, tâche 1) : ce qui est observable, c'est qu'une extension de l'agent chargée ne gêne ni le
+// blocage d'une extension du Store, ni ses requêtes, ni les pages du profil.
+test("avec une extension de l'agent chargée, une extension du Store bloque encore (DNR) et envoie où elle veut ; les pages se chargent", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  poserReseau(profil, racine);
+  installerStoreFactice(profil, "sonde-reseau-store", { profils: ["defaut"] });
+  installerStoreFactice(profil, "bloqueur-statique", { profils: ["defaut"] });
+  const { app, fenetre, fermer } = await lancer({ profil, racine, args: argsReseau() });
+  try {
+    await expect.poll(async () => idChargee(app, "Réseau de l'agent"), { timeout: 15_000 }).toMatch(/^[a-p]{32}$/);
+    await expect.poll(() => coupsVers("autre.test", "/store-fetch").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await ouvrirOnglet(fenetre, "https://autre.test/onglet-site");
+    await expect.poll(() => coupsVers("autre.test", "/onglet-site").length).toBeGreaterThan(0);
+    await ouvrirOnglet(fenetre, `${serveur.url}/pub.html?avec-agent`);
+    await expect.poll(() => dansLaVue(app, "pub.html?avec-agent", "document.title")).toMatch(/^pub /);
+    // Rechargée jusqu'à ce que le ruleset du manifeste soit activé (au démarrage de son fond minimal).
+    const recharger = () =>
+      app.evaluate(async ({ webContents }) => {
+        const w = webContents.getAllWebContents().find((x) => x.getURL().includes("pub.html?avec-agent"));
+        await w?.loadURL(w.getURL()).catch(() => {});
+        return w?.getTitle();
+      });
+    await expect.poll(recharger, { timeout: 10_000 }).toBe("pub bloquée");
+    // L'extension de l'agent n'a rien envoyé hors de son accord pendant ce temps.
+    expect(coupsVers("autre.test", "/sw-fetch")).toEqual([]);
+  } finally {
+    await fermer();
+  }
 });

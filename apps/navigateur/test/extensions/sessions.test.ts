@@ -10,8 +10,9 @@ import type { EtatNavigateur } from "../../src/commun/modele";
 // `vi.mock` passe avant les imports : ce qu'utilise le leurre est créé par `vi.hoisted`.
 const { EventEmitter } = await vi.hoisted(() => import("node:events"));
 type EventEmitter = import("node:events").EventEmitter;
-const { notificationsMontrees, ecouteursApp, gestionnairesIpc } = vi.hoisted(() => ({
+const { notificationsMontrees, ecouteursApp, gestionnairesIpc, menus } = vi.hoisted(() => ({
   notificationsMontrees: [] as unknown[],
+  menus: [] as { items: { label?: string; click?: () => void }[] }[],
   /** `ipcMain.handle` : canal → gestionnaire (le dernier posé). */
   gestionnairesIpc: new Map<string, (...a: unknown[]) => unknown>(),
   ecouteursApp: new (require("node:events") as typeof import("node:events")).EventEmitter(),
@@ -46,8 +47,22 @@ vi.mock("electron", () => {
     webContents: { fromId: () => ({}) },
     webFrameMain: { fromId: () => null },
     Notification,
-    Menu: {},
-    MenuItem: class {},
+    // Le menu d'un bouton d'extension : ses entrées sont gardées (`menus`), jamais montrées.
+    Menu: class {
+      items: { label?: string; click?: () => void }[] = [];
+      constructor() {
+        menus.push(this as { items: { label?: string; click?: () => void }[] });
+      }
+      append(i: { label?: string; click?: () => void }) {
+        this.items.push(i);
+      }
+      popup() {}
+    },
+    MenuItem: class {
+      constructor(o: object) {
+        Object.assign(this, o);
+      }
+    },
     protocol: {},
     nativeImage: {},
   };
@@ -72,6 +87,8 @@ interface FausseSession {
   protocol: Record<string, unknown>;
   cookies: EventEmitter;
   preloads: unknown[];
+  /** `webRequest.onBeforeRequest` posés. */
+  ecouteursRequetes: { filtre: unknown; f: (d: unknown, r: (x: unknown) => void) => void }[];
   registerPreloadScript(o: unknown): void;
   isPersistent(): boolean;
 }
@@ -92,6 +109,12 @@ function fausseSession(nom: string): FausseSession {
     isPersistent: () => true,
     cookies: new EventEmitter(),
     protocol: { isProtocolHandled: () => false, handle: () => {}, unhandle: () => {} },
+    ecouteursRequetes: [],
+    webRequest: {
+      onBeforeRequest(filtre: unknown, f: (d: unknown, r: (x: unknown) => void) => void) {
+        (s as unknown as FausseSession).ecouteursRequetes.push({ filtre, f });
+      },
+    },
   } as unknown as FausseSession;
   const extensions = Object.assign(new EventEmitter(), {
     async loadExtension(chemin: string, options: unknown) {
@@ -748,4 +771,82 @@ test("detruire : l'instance ne répond plus sur le canal des pages", async () =>
   await expect((async () => canal({ sender: { session: s }, senderFrame: { url: "chrome-extension://id-copies-fond/p.html" } }))()).resolves.toBeTruthy();
   p.detruire();
   await expect((async () => canal({ sender: { session: s }, senderFrame: { url: "chrome-extension://id-copies-fond/p.html" } }))()).rejects.toThrow(/refusé/);
+});
+
+// --- Réseau des extensions de l'agent (tâche 12)
+
+const ACCORD_AGENT = { permissions: ["tabs"], hotes: ["https://*.hote.test/*"], reseau: ["api.accorde.test"], tousLesSites: false, scriptsTousLesSites: false };
+
+test("aucun session.webRequest sur une session de profil (il couperait tout declarativeNetRequest, branche B)", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }), [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  expect(s.ecouteursRequetes).toEqual([]);
+});
+
+test("accordAgent : connu avant la fin du chargement (id calculé du dossier de la copie), puis par l'id de Chromium ; null sans accord ; undefined hors agent", async () => {
+  const { idChromeDeDossier } = await import("../../src/main/extensions/reseau");
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  let liberer!: () => void;
+  s.lent = new Promise((ok) => (liberer = ok));
+  const fin = p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }), "agent:nue": entree("agent", ["defaut"], { accord: null }) }));
+  await vi.waitFor(() => expect(s.chargements).toHaveLength(1));
+  expect(p.accordAgent(idChromeDeDossier(join(dossier, "copies", "fond")))).toEqual(ACCORD_AGENT);
+  liberer();
+  await fin;
+  expect(p.accordAgent("id-copies-fond")).toEqual(ACCORD_AGENT);
+  expect(p.accordAgent(`id-store-${ID_A}-1.0.0_0`)).toBeUndefined();
+  // Une entrée de l'agent dont l'idChrome est noté au registre, sans accord.
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }), "agent:nue": entree("agent", [], { accord: null, idChrome: "c".repeat(32) }) }));
+  expect(p.accordAgent("c".repeat(32))).toBeNull();
+});
+
+test("extension de l'agent : tabs.create, tabs.update, windows.create hors de son accord rejettent « URL refusée par WebAiOs » ; tabs.insertCSS hors de ses hôtes « Site refusé par WebAiOs »", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  const routeur = rouages(s).ctx.router;
+  const extension = appelante("id-copies-fond");
+  await expect(routeur.getHandler("tabs.create").callback({ extension }, { url: "https://autre.test/" })).rejects.toThrow("URL refusée par WebAiOs");
+  await expect(routeur.getHandler("tabs.update").callback({ extension }, 1, { url: "data:text/html,x" })).rejects.toThrow("URL refusée par WebAiOs");
+  await expect(routeur.getHandler("windows.create").callback({ extension }, { url: "https://autre.test/" })).rejects.toThrow("URL refusée par WebAiOs");
+  expect(ouvertures).toEqual([]);
+  await routeur.getHandler("tabs.create").callback({ extension }, { url: "https://www.hote.test/" }).catch(() => {});
+  await routeur.getHandler("tabs.create").callback({ extension }, { url: "page.html" }).catch(() => {});
+  expect(ouvertures.map((o) => o.url)).toEqual(["https://www.hote.test/", "chrome-extension://id-copies-fond/page.html"]);
+  const onglet = { id: 7, isDestroyed: () => false, getURL: () => "https://autre.test/", insertCSS: vi.fn() };
+  rouages(s).ctx.store.tabs.add(onglet);
+  await expect(routeur.getHandler("tabs.insertCSS").callback({ extension }, 7, { code: "p{}" })).rejects.toThrow("Site refusé par WebAiOs");
+  expect(onglet.insertCSS).not.toHaveBeenCalled();
+});
+
+test("menu du bouton d'une extension de l'agent : son site (homepage_url) hors accord n'est pas ouvert ; dans l'accord, si", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const chemin = join(dossier, "copies", "fond");
+  s.manifestes.set(chemin, { homepage_url: "https://autre.test/?fuite=1" });
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  const menu = () => {
+    menus.length = 0;
+    (ElectronChromeExtensions.fromSession(s as unknown as Electron.Session) as unknown as { api: { browserAction: { activateContextMenu(d: unknown): void } } }).api.browserAction.activateContextMenu({
+      extensionId: "id-copies-fond",
+      anchorRect: { x: 0, y: 0, width: 1, height: 1 },
+    });
+    return menus[0]!.items[0]!;
+  };
+  menu().click!();
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(ouvertures).toEqual([]);
+  expect(String(erreur.mock.calls[0]?.[0])).toContain("URL refusée par WebAiOs");
+  s.manifestes.set(chemin, { homepage_url: "https://www.hote.test/" });
+  (s.charges.get("id-copies-fond") as unknown as { manifest: unknown }).manifest = { homepage_url: "https://www.hote.test/" };
+  menu().click!();
+  await vi.waitFor(() => expect(ouvertures.map((o) => o.url)).toEqual(["https://www.hote.test/"]));
+  erreur.mockRestore();
 });

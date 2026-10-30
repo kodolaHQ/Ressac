@@ -38,6 +38,7 @@ import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationC
 import { enregistrerCodeSur, enregistrerEdition, FileEcritures, lireCodeSur, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
+import { brancherPagesAgent } from "./extensions/reseau";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
@@ -384,8 +385,10 @@ app.whenReady().then(async () => {
     // « Retirer de Chrome » sur la page du Store : notre désinstallation (registre, tous les profils), jamais celle de la
     // bibliothèque.
     desinstallerDepuisStore: (id, profil) => serviceExtensions.desinstallerDepuisStore(id, profil),
-    // verifierUrl / verifierHote : branchés par la tâche 12 pour les extensions de l'agent ; absents, tout est permis.
+    // verifierUrl / verifierHote : les extensions de l'agent sont vérifiées par `ExtensionsProfils` (reseau.ts).
   });
+  // Pages des extensions de l'agent : navigations, ouvertures et WebRTC (reseau.ts).
+  brancherPagesAgent((id) => extensions.accordAgent(id));
   // Chaque session de profil de connexion a ses téléchargements et ses autorisations, comme l'avait la session unique.
   const sessions = new SessionsProfils({
     dossier,

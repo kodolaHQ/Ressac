@@ -1,14 +1,33 @@
 import { appendFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { app, ipcMain, session as sessionsElectron, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
+import {
+  app,
+  ipcMain,
+  session as sessionsElectron,
+  webContents as tousLesWebContents,
+  type BrowserWindow,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type Session,
+  type WebContents,
+} from "electron";
 import { ElectronChromeExtensions } from "electron-chrome-extensions";
 import { installChromeWebStore } from "electron-chrome-web-store";
-import { chargeesDans, lireCle, type EtatExtensions, type IdProfil } from "@webaios/noyau";
+import { chargeesDans, lireCle, type EtatExtensions, type IdProfil, type Portee } from "@webaios/noyau";
 import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
 import { connexionNative } from "./natif";
+import { hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPermiseAgent } from "./reseau";
 
 /** Canal du preload des correctifs (`src/preload/extensions.ts`) : service workers et pages `chrome-extension://`. */
 export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
+/**
+ * Canaux du garde des extensions de l'agent (`globalThis.__webaios` exposé par le preload des correctifs) : une adresse
+ * à ouvrir (`tabs.create`, `tabs.update`, `windows.create`), un onglet où agir (`scripting`, `tabs.insertCSS`), et
+ * (synchrone, pages seulement) « cette page est-elle celle d'une extension de l'agent ? ».
+ */
+export const CANAL_URL_PERMISE = "webaios:extension-url-permise";
+export const CANAL_HOTE_PERMIS = "webaios:extension-hote-permis";
+export const CANAL_AGENT = "webaios:extension-agent";
 
 /**
  * Ce que Chrome aurait fait au chargement, donné une fois par version et par profil : `installation` pour
@@ -109,6 +128,22 @@ let protocoleCrx = false;
 /** Les instances vivantes : le canal des pages (`ipcMain`, un seul par processus) cherche celle de la session. */
 const instancesVivantes = new Set<ExtensionsProfils>();
 let canalPagesPose = false;
+
+/** L'id d'extension de la page qui envoie (adresse de son cadre), ou null. */
+function idDeLaPage(e: IpcMainEvent | IpcMainInvokeEvent): string | null {
+  let url: string | undefined;
+  try {
+    url = e.senderFrame?.url;
+  } catch {
+    url = undefined;
+  }
+  return idExtensionDe(url);
+}
+
+function instanceDeLExpediteur(e: IpcMainInvokeEvent): ExtensionsProfils | undefined {
+  for (const x of instancesVivantes) if (x.aLaSession(e.sender.session)) return x;
+  return undefined;
+}
 /** Service workers dont le canal de démarrage est posé. */
 const workersEcoutes = new WeakSet<object>();
 /** Sessions équipées par la bibliothèque dans ce processus (chacune ajoute un écouteur à `app`). */
@@ -130,6 +165,11 @@ export class ExtensionsProfils {
   private file: Promise<void> = Promise.resolve();
   /** Par profil : clé → dossier voulu (posé avant le chargement : un service worker peut démarrer pendant celui-ci). */
   private voulues = new Map<IdProfil, Map<string, string>>();
+  /**
+   * Ids Chromium des copies de l'agent → clé : calculé depuis le dossier avant chargement (le service worker peut appeler
+   * avant que `loadExtension` ne rende), puis celui que Chromium a donné.
+   */
+  private idsAgent = new Map<string, string>();
   /** Pendant nos propres appels à la bibliothèque, ses rappels `selectTab` / `removeTab` ne reviennent pas vers WebAiOs. */
   private echo = false;
 
@@ -187,6 +227,18 @@ export class ExtensionsProfils {
         }
         throw new Error("Expéditeur refusé : pas une page d'extension chargée");
       });
+      ipcMain.handle(CANAL_URL_PERMISE, (e, url: unknown) => {
+        const x = instanceDeLExpediteur(e);
+        return !!x && x.urlPermise(e.sender.session, idDeLaPage(e), url);
+      });
+      ipcMain.handle(CANAL_HOTE_PERMIS, (e, onglet: unknown) => {
+        const x = instanceDeLExpediteur(e);
+        return !!x && x.hotePermis(e.sender.session, idDeLaPage(e), onglet);
+      });
+      ipcMain.on(CANAL_AGENT, (e: IpcMainEvent) => {
+        const id = idDeLaPage(e);
+        e.returnValue = !!id && [...instancesVivantes].some((x) => x.accordAgent(id) !== undefined);
+      });
     }
     // Les popups d'action, et toute autre fenêtre, restent cachées pendant les tests (yeux de l'utilisateur).
     if (o.invisible && !fenetresNeutralisees) {
@@ -229,8 +281,13 @@ export class ExtensionsProfils {
       removeWindow: () => {},
       requestPermissions: async () => false,
       // Crochets du correctif de la bibliothèque (patches/electron-chrome-extensions@4.10.0.patch).
-      verifierUrl: (extension, url) => this.o.verifierUrl?.(extension, url) ?? true,
-      verifierHote: (extension, url) => this.o.verifierHote?.(extension, url) ?? true,
+      // Une extension de l'agent : seulement ce que son accord permet (reseau.ts) ; puis ce que WebAiOs ajoute.
+      verifierUrl: (extension, url) => this.urlPermiseA(extension.id, url) && (this.o.verifierUrl?.(extension, url) ?? true),
+      verifierHote: (extension, url) => {
+        const accord = this.accordAgent(extension.id);
+        if (accord !== undefined && !(accord && hotePermisAgent(url, accord))) return false;
+        return this.o.verifierHote?.(extension, url) ?? true;
+      },
       connectNative: connexionNative,
     });
     // Après ceux de la bibliothèque : `chrome` y est déjà complété.
@@ -244,7 +301,10 @@ export class ExtensionsProfils {
       workersEcoutes.add(worker);
       const id = new URL(worker.scope).host;
       worker.ipc.handle(CANAL_DEMARRAGE, () => this.demarrage(profil, s, id, "fond"));
+      worker.ipc.handle(CANAL_URL_PERMISE, (_e, url: unknown) => this.urlPermise(s, id, url));
+      worker.ipc.handle(CANAL_HOTE_PERMIS, (_e, onglet: unknown) => this.hotePermis(s, id, onglet));
     });
+    // Aucun `session.webRequest` ici : il couperait tout declarativeNetRequest de la session (reseau.ts, branche B).
     // Lève si c'est impossible : le profil n'est alors pas enregistré, et aucune extension n'y sera jamais chargée.
     if (this.o.invisible || this.o.fichierNotifications) detournerNotifications(extensions, this.o.fichierNotifications);
     this.instances.set(profil, { session: s, extensions });
@@ -294,6 +354,56 @@ export class ExtensionsProfils {
         chargees.delete(cle);
       }
     }
+  }
+
+  /**
+   * L'accord d'une extension de l'agent par son id Chromium (copie chargée, en cours de chargement, ou notée au
+   * registre) ; null : de l'agent, sans accord (ou retirée du registre) ; undefined : pas une extension de l'agent.
+   */
+  accordAgent(id: string): Portee | null | undefined {
+    const e = this.dernier;
+    const cle =
+      this.idsAgent.get(id) ?? Object.entries(e?.extensions ?? {}).find(([c, x]) => x.idChrome === id && lireCle(c)?.source === "agent")?.[0];
+    if (!cle) return undefined;
+    return e?.extensions[cle]?.accord ?? null;
+  }
+
+  /**
+   * `globalThis.__webaios.urlPermise` : une adresse (relative : dans l'extension) que l'extension `id` de cette session
+   * peut ouvrir. Une extension du Store : toujours (sa CSP et la bibliothèque décident).
+   */
+  urlPermise(s: Session, id: string | null, url: unknown): boolean {
+    if (!id || typeof url !== "string" || !s.extensions.getExtension(id)) return false;
+    return this.urlPermiseA(id, url);
+  }
+
+  /** Une adresse (relative : dans l'extension) que l'extension `id` peut ouvrir ; Store : toujours. */
+  private urlPermiseA(id: string, url: string): boolean {
+    const accord = this.accordAgent(id);
+    if (accord === undefined) return true;
+    let absolue: string;
+    try {
+      absolue = new URL(url, `chrome-extension://${id}/`).href;
+    } catch {
+      return false;
+    }
+    return !!accord && urlPermiseAgent(absolue, accord, id);
+  }
+
+  /** `globalThis.__webaios.hotePermis` : l'onglet `onglet` (id de la bibliothèque) est-il un site des hôtes accordés ? */
+  hotePermis(s: Session, id: string | null, onglet: unknown): boolean {
+    if (!id || typeof onglet !== "number" || !s.extensions.getExtension(id)) return false;
+    const accord = this.accordAgent(id);
+    if (accord === undefined) return true;
+    const wc = tousLesWebContents.fromId(onglet);
+    if (!accord || !wc || wc.isDestroyed() || wc.session !== s) return false;
+    return hotePermisAgent(wc.getURL(), accord);
+  }
+
+  /** La session d'un expéditeur est-elle équipée par cette instance ? */
+  aLaSession(s: Session): boolean {
+    for (const x of this.instances.values()) if (x.session === s) return true;
+    return false;
   }
 
   /** L'instance ne répond plus sur le canal des pages (tests ; fin d'usage). */
@@ -430,6 +540,7 @@ export class ExtensionsProfils {
     }
     for (const [cle, chemin] of voulues) {
       if (chargees.has(cle)) continue;
+      if (lireCle(cle)?.source === "agent") this.idsAgent.set(idChromeDeDossier(chemin), cle);
       try {
         const ext = await s.extensions.loadExtension(chemin, { allowFileAccess: false });
         this.erreurs.delete(cle);
@@ -439,6 +550,7 @@ export class ExtensionsProfils {
           continue;
         }
         chargees.set(cle, { id: ext.id, chemin, marque: marqueDe(e, cle) });
+        if (lireCle(cle)?.source === "agent") this.idsAgent.set(ext.id, cle);
         if (lireCle(cle)?.source === "agent" && e.extensions[cle]?.idChrome !== ext.id) this.o.noterIdChrome?.(cle, ext.id);
         // Rien n'assure qu'un service worker MV3 démarre au chargement : ses règles et son onInstalled en dépendent.
         if ((ext.manifest as { background?: unknown }).background) {

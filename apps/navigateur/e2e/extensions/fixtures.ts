@@ -199,7 +199,22 @@ const bloqueurStatique = {
   "regles.json": [{ id: 1, priority: 1, action: { type: "block" }, condition: { urlFilter: "/pub.js", resourceTypes: ["script"] } }],
 };
 
-export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique } as const;
+/**
+ * Extension du Store qui envoie, au démarrage de son service worker, un fetch vers https://autre.test/store-fetch (un
+ * domaine qu'aucune extension de l'agent n'a reçu) : l'écouteur de l'initiateur ne la concerne pas.
+ */
+const sondeReseauStore = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Sonde réseau du Store",
+    version: "1.0.0",
+    permissions: ["webRequest"],
+    background: { service_worker: "fond.js" },
+  },
+  "fond.js": `fetch("https://autre.test/store-fetch").catch(() => {});\n`,
+};
+
+export const EXTENSIONS_TEST = { bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 
 /**
