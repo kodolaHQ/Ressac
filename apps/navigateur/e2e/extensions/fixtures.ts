@@ -286,7 +286,28 @@ const bouton = {
 `,
 };
 
+/**
+ * Extension du Store dont le script de contenu (monde isolé) répond à l'événement DOM `declencher` des pages locales
+ * (127.0.0.1) : console.log « BAVARD-EXT », une exception, et un fetch de `/texte.html?depuis-extension`.
+ */
+const bavardStore = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Bavard du Store",
+    version: "1.0.0",
+    content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["contenu.js"], run_at: "document_end" }],
+  },
+  "contenu.js": `document.addEventListener("declencher", () => {
+  console.log("BAVARD-EXT");
+  console.warn("BAVARD-EXT-AVERTISSEMENT");
+  fetch("/texte.html?depuis-extension").catch(() => {});
+  setTimeout(() => { throw new Error("BAVARD-EXT-EXCEPTION"); });
+});
+`,
+};
+
 export const EXTENSIONS_TEST = {
+  "bavard-store": bavardStore,
   bouton, "marqueur-store": marqueurStore, bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;
 export type ExtensionTest = keyof typeof EXTENSIONS_TEST;
 

@@ -10,6 +10,15 @@ interface ObjetDistant {
 
 interface Pile {
   callFrames?: { functionName?: string; url?: string; lineNumber?: number; columnNumber?: number }[];
+  parent?: Pile;
+}
+
+const ORIGINE_EXTENSION = "chrome-extension://";
+
+/** Une pile (parentes comprises) a un cadre dans un script d'extension. */
+function pileDExtension(p: Pile | undefined): boolean {
+  for (let n = 0; p && n < 50; p = p.parent, n++) if (p.callFrames?.some((c) => c.url?.startsWith(ORIGINE_EXTENSION))) return true;
+  return false;
 }
 
 /** Texte d'une valeur distante : la chaîne telle quelle, le JSON d'une valeur sérialisée, sinon sa description. */
@@ -62,6 +71,8 @@ export class TamponOnglet {
   private readonly maxConsole: number;
   private readonly maxReseau: number;
   private readonly depuis: number;
+  /** Contextes d'exécution venus d'une extension (scripts de contenu, monde isolé) : rien de ce qu'ils disent n'est retenu. */
+  private readonly contextesExtension = new Set<number>();
 
   /** `depuis` : heure de l'attachement (ms) ; les messages plus anciens, rejoués par le protocole, sont écartés. */
   constructor(o: { maxConsole?: number; maxReseau?: number; depuis?: number } = {}) {
@@ -79,7 +90,21 @@ export class TamponOnglet {
   evenement(methode: string, params: unknown): void {
     const p = (params ?? {}) as Record<string, any>; // forme libre du protocole
     switch (methode) {
+      case "Runtime.executionContextCreated": {
+        const c = p.context ?? {};
+        if (typeof c.id !== "number") return;
+        if (String(c.origin ?? "").startsWith(ORIGINE_EXTENSION)) this.contextesExtension.add(c.id);
+        else this.contextesExtension.delete(c.id); // l'id est reparti de zéro avec un autre contexte
+        return;
+      }
+      case "Runtime.executionContextDestroyed":
+        this.contextesExtension.delete(p.executionContextId);
+        return;
+      case "Runtime.executionContextsCleared":
+        this.contextesExtension.clear();
+        return;
       case "Runtime.consoleAPICalled": {
+        if (this.contextesExtension.has(p.executionContextId) || pileDExtension(p.stackTrace)) return;
         const pile = p.type === "error" || p.type === "assert" || p.type === "trace" ? textePile(p.stackTrace) : undefined;
         this.ajouter({
           horodatage: p.timestamp ?? Date.now(),
@@ -91,6 +116,7 @@ export class TamponOnglet {
       }
       case "Runtime.exceptionThrown": {
         const d = p.exceptionDetails ?? {};
+        if (this.contextesExtension.has(d.executionContextId) || String(d.url ?? "").startsWith(ORIGINE_EXTENSION) || pileDExtension(d.stackTrace)) return;
         const description: string | undefined = d.exception?.description;
         // `text` dit comment elle est survenue (« Uncaught », « Uncaught (in promise) »), comme dans la console de Chrome.
         const valeur = description?.split("\n")[0] ?? (d.exception ? texteObjet(d.exception) : "");
@@ -102,11 +128,19 @@ export class TamponOnglet {
       }
       case "Log.entryAdded": {
         const e = p.entry ?? {};
+        if (String(e.url ?? "").startsWith(ORIGINE_EXTENSION) || pileDExtension(e.stackTrace)) return;
         const pile = textePile(e.stackTrace);
         this.ajouter({ horodatage: e.timestamp ?? Date.now(), niveau: NIVEAUX_JOURNAL[e.level] ?? "log", texte: String(e.text ?? ""), ...(pile ? { pile } : {}) });
         return;
       }
       case "Network.requestWillBeSent": {
+        // Ni la requête d'une extension (son URL, son document, son initiateur ou une pile parente), ni ce qui suit (sans entrée, ses événements sont ignorés).
+        const i = p.initiator ?? {};
+        if ([p.request?.url, p.documentURL, i.url].some((u) => String(u ?? "").startsWith(ORIGINE_EXTENSION)) || pileDExtension(i.stack)) {
+          this.requetes.delete(p.requestId);
+          this.debuts.delete(p.requestId);
+          return;
+        }
         // Une redirection garde l'id : la requête est remplacée par sa suite.
         this.requetes.delete(p.requestId);
         this.requetes.set(p.requestId, {

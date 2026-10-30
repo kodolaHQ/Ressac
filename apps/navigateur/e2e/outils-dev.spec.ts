@@ -1,7 +1,8 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, dansLaVue, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
+import { installerStoreFactice } from "./extensions/fixtures";
+import { appelerOutil, nouveauProfil, dansLaVue, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurTest } from "./aide";
 
 /** Ports d'essai, jamais ceux des vraies applis de l'utilisateur ; délai court avant « En erreur ». */
 const ENV = { WEBAIOS_PORTS_APPS: "15285-15289", WEBAIOS_DELAI_APP_MS: "3000" };
@@ -482,4 +483,39 @@ test("fenêtre d'appli : la pastille ⚡ est affichée ; Couper l'accès la reti
   await fenetre.getByTestId(CARTE).getByRole("button", { name: "Refuser" }).click();
   expect(await appel).toBe(REFUS);
   await fermer();
+});
+
+test("lire_console et lire_reseau d'un onglet partagé ne montrent rien d'une extension Store de test qui écrit dans la console et fait une requête depuis son script de contenu", async () => {
+  const serveur = await serveurTest();
+  const profil = nouveauProfil();
+  installerStoreFactice(profil, "bavard-store", { profils: ["defaut"] });
+  const { app, fenetre, racine, fermer } = await lancer({ profil });
+  try {
+    await expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
+    await expect.poll(() => existsSync(join(racine, "faux-agent-pid")), { timeout: 10_000 }).toBe(true);
+    await expect
+      .poll(() => app.evaluate(({ session }) => session.fromPartition("persist:webaios").extensions.getAllExtensions().map((e) => e.name), undefined), { timeout: 15_000 })
+      .toContain("Bavard du Store");
+    await ouvrirOnglet(fenetre, `${serveur.url}/bavarde.html`);
+    await expect.poll(() => dansLaVue(app, "bavarde.html", "document.title")).toBe("Bavarde");
+    const titre = fenetre.locator('[data-testid^="onglet-"]', { hasText: "Bavarde" });
+    await expect(titre).toHaveCount(1);
+    const id = (await titre.getAttribute("data-testid"))!.slice("onglet-".length);
+    await accorder(fenetre, racine, id, ["console", "reseau"]);
+    // L'agent est attaché (premier appel après l'accord) ; l'événement déclenche la page et le script de l'extension.
+    await outil(racine, "lire_console", { id });
+    await dansLaVue(app, "bavarde.html", "document.dispatchEvent(new CustomEvent('declencher'))");
+    await expect.poll(() => outil(racine, "lire_console", { id }), { timeout: 10_000 }).toContain("PAGE-LOG");
+    await expect.poll(() => outil(racine, "lire_reseau", { id }), { timeout: 10_000 }).toContain("depuis-page");
+    // Laisse à l'extension le temps de parler : sa console et sa requête sont déjà parties (même événement).
+    await new Promise((r) => setTimeout(r, 1000));
+    const console_ = await outil(racine, "lire_console", { id });
+    const reseau = await outil(racine, "lire_reseau", { id });
+    expect(console_).not.toContain("BAVARD-EXT");
+    expect(reseau).not.toContain("depuis-extension");
+    expect(reseau).toContain("depuis-page");
+  } finally {
+    await fermer();
+    await serveur.fermer();
+  }
 });

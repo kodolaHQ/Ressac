@@ -160,3 +160,62 @@ test("les plafonds se règlent", () => {
   for (let i = 0; i < 3; i++) log(t, "log", `m${i}`);
   expect(t.console().map((m) => m.texte)).toEqual(["m1", "m2"]);
 });
+
+describe("contextes d'extension", () => {
+  const contexte = (t: TamponOnglet, id: number, origin: string) =>
+    t.evenement("Runtime.executionContextCreated", { context: { id, origin, name: "x" } });
+  const logDans = (t: TamponOnglet, id: number, texte: string) =>
+    t.evenement("Runtime.consoleAPICalled", { type: "log", args: [chaine(texte)], timestamp: 1000, executionContextId: id });
+
+  test("un console.log d'un contexte chrome-extension:// n'apparaît pas ; celui de la page oui", () => {
+    const t = new TamponOnglet();
+    contexte(t, 1, "http://localhost:3000");
+    contexte(t, 2, "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
+    logDans(t, 2, "de l'extension");
+    logDans(t, 1, "de la page");
+    expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
+  });
+
+  test("une exception d'un script d'extension n'apparaît pas", () => {
+    const t = new TamponOnglet();
+    contexte(t, 2, "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
+    t.evenement("Runtime.exceptionThrown", { timestamp: 1, exceptionDetails: { text: "Uncaught", executionContextId: 2, exception: { type: "object", description: "Error: ext" } } });
+    t.evenement("Runtime.exceptionThrown", { timestamp: 2, exceptionDetails: { text: "Uncaught", executionContextId: 1, exception: { type: "object", description: "Error: page" } } });
+    t.evenement("Log.entryAdded", { entry: { level: "error", text: "ext", url: "chrome-extension://abc/contenu.js", timestamp: 3 } });
+    expect(t.console().map((m) => m.texte)).toEqual(["Uncaught Error: page"]);
+  });
+
+  test("un contexte détruit est oublié", () => {
+    const t = new TamponOnglet();
+    contexte(t, 2, "chrome-extension://abc");
+    t.evenement("Runtime.executionContextDestroyed", { executionContextId: 2 });
+    logDans(t, 2, "visible");
+    expect(t.console()).toHaveLength(1);
+  });
+
+  const requete = (t: TamponOnglet, requestId: string, extra: Record<string, unknown> = {}, url = "http://localhost:3000/api") =>
+    t.evenement("Network.requestWillBeSent", { requestId, timestamp: 1, wallTime: 1, request: { url, method: "GET", headers: {} }, ...extra });
+
+  test("une requête dont la pile d'initiateur vient d'une extension n'apparaît pas, ni sa réponse", () => {
+    const t = new TamponOnglet();
+    requete(t, "a", {
+      initiator: { type: "script", stack: { callFrames: [{ url: "http://localhost:3000/" }], parent: { callFrames: [{ url: "chrome-extension://abc/contenu.js" }] } } },
+    });
+    t.evenement("Network.responseReceived", { requestId: "a", response: { status: 200 } });
+    t.evenement("Network.loadingFinished", { requestId: "a", timestamp: 2, encodedDataLength: 1 });
+    requete(t, "b", { initiator: { type: "script", url: "chrome-extension://abc/x.js" } });
+    requete(t, "c", { documentURL: "chrome-extension://abc/page.html" });
+    requete(t, "d", {}, "chrome-extension://abc/x.txt");
+    requete(t, "page", { initiator: { type: "script", stack: { callFrames: [{ url: "http://localhost:3000/" }] } } });
+    expect(t.reseau().map((r) => r.id)).toEqual(["page"]);
+  });
+
+  test("après executionContextsCleared, un nouveau contexte de même id venu de la page est retenu", () => {
+    const t = new TamponOnglet();
+    contexte(t, 2, "chrome-extension://abc");
+    t.evenement("Runtime.executionContextsCleared", {});
+    contexte(t, 2, "http://localhost:3000");
+    logDans(t, 2, "de la page");
+    expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
+  });
+});
