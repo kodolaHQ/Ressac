@@ -121,6 +121,36 @@ export interface DependancesMiseAJour {
   chargementRate(cle: string): string | null;
   /** Pendant `f`, un échec de chargement de `cle` ne compte pas comme un plantage. */
   sansPlantage<T>(cle: string, f: () => Promise<T>): Promise<T>;
+  /** Après une écriture : `cle` est chargée dans au moins un profil. */
+  chargee(cle: string): boolean;
+  /**
+   * La nouvelle version est inscrite mais rien ne la charge (coupure générale, inactive) : l'essai est remis au premier
+   * chargement (`resoudreEssai` après chaque synchronisation) ; l'ancienne version reste jusque-là.
+   */
+  differer(cle: string, essai: EssaiMiseAJour): void;
+}
+
+/** Une mise à jour inscrite dont le chargement n'a pas encore été essayé : de quoi revenir à `avant`. */
+export interface EssaiMiseAJour {
+  avant: { version: string; nom: string; accord: Portee | null };
+  nouvelle: { version: string; portee: Portee; chemin: string };
+  /** Le dossier de l'ancienne version, effacé une fois la nouvelle chargée. */
+  ancienne: string;
+}
+
+/**
+ * Après une synchronisation, l'essai différé de `cle` : la nouvelle version a été chargée → l'ancienne s'efface ; elle
+ * n'a pas pu l'être → l'ancienne revient (`retablirSiNonChargee`) ; toujours rien de chargé → `"en-cours"`. Une version
+ * inscrite qui n'est plus la nouvelle (désinstallée, autre mise à jour) clôt l'essai sans rien toucher. À appeler dans la
+ * file de l'extension.
+ */
+export async function resoudreEssai(cle: string, essai: EssaiMiseAJour, d: DependancesMiseAJour): Promise<"en-cours" | "fini"> {
+  const y = d.etatExtensions().extensions[cle];
+  if (!y || y.version !== essai.nouvelle.version) return "fini";
+  if (await retablirSiNonChargee(cle, essai.avant, essai.nouvelle, d)) return "fini";
+  if (!d.chargee(cle)) return "en-cours";
+  if (essai.ancienne !== essai.nouvelle.chemin) await rm(essai.ancienne, { recursive: true, force: true });
+  return "fini";
 }
 
 /**
@@ -251,6 +281,11 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
       if (attenteAvant && attenteAvant !== nouvelle) await rm(attenteAvant, { recursive: true, force: true });
       return "en-attente";
     }
+    // Rien ne la charge maintenant : l'ancienne version reste jusqu'au premier chargement (et y revient s'il échoue).
+    if (!elargie && !suiteRatee && avant && ancienne && !d.chargee(cle)) {
+      d.differer(cle, { avant, nouvelle: { version: analyse.version, portee: analyse.portee, chemin: nouvelle }, ancienne });
+      ancienne = null;
+    }
     // Les sessions ont rechargé (ou gardé) ce qu'il faut : l'ancienne version et une attente abandonnée s'effacent.
     // Sessions pas synchronisées : l'ancienne version, peut-être encore chargée, reste.
     for (const reste of [suiteRatee ? null : ancienne, attenteAvant]) if (reste && reste !== nouvelle) await rm(reste, { recursive: true, force: true });
@@ -310,6 +345,10 @@ export function accepterMiseAJour(
       return "echec";
     }
     if (retiree) return "en-attente";
+    if (!suiteRatee && avant && ancienne && !d.chargee(cle)) {
+      d.differer(cle, { avant, nouvelle: { version: attendue.version, portee: attendue.portee, chemin: nouvelle }, ancienne });
+      ancienne = null;
+    }
     if (ancienne && ancienne !== nouvelle && !suiteRatee) await rm(ancienne, { recursive: true, force: true });
     d.noterErreur(cle, null);
     return "appliquee";

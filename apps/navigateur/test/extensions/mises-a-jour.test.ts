@@ -11,7 +11,7 @@ import { construireCrx } from "../../e2e/extensions/crx";
 // La bibliothèque du Store importe `electron` à son chargement (voir telechargement.test.ts).
 vi.mock("electron", () => ({ app: {}, net: {}, session: {}, BrowserWindow: vi.fn(), ipcMain: {}, nativeImage: {}, powerMonitor: {}, webContents: {} }));
 
-const { accepterMiseAJour, appliquerMiseAJour, chercherMisesAJour, comparerVersions, INTERVALLE_MAJ_MS, URL_MISES_A_JOUR } = await import("../../src/main/extensions/mises-a-jour");
+const { accepterMiseAJour, appliquerMiseAJour, resoudreEssai, chercherMisesAJour, comparerVersions, INTERVALLE_MAJ_MS, URL_MISES_A_JOUR } = await import("../../src/main/extensions/mises-a-jour");
 const { CRX_INVALIDE, ERREUR_STORE } = await import("../../src/main/extensions/telechargement");
 
 const temporaires: string[] = [];
@@ -195,6 +195,9 @@ let erreurs: Map<string, string>;
 /** Ce que rendent les sessions après la dernière écriture : l'erreur d'un chargement raté, ou null. */
 let rate: (cle: string) => string | null;
 let essais: string[];
+/** Chargée dans au moins un profil après la dernière écriture. */
+let chargee: (cle: string) => boolean;
+let differes: { cle: string; essai: unknown }[];
 
 beforeEach(() => {
   dossier = temporaire("webaios-maj-dossier-");
@@ -204,6 +207,8 @@ beforeEach(() => {
   erreurs = new Map();
   rate = () => null;
   essais = [];
+  chargee = () => true;
+  differes = [];
 });
 
 const dependances = () => ({
@@ -216,6 +221,8 @@ const dependances = () => ({
   preparer: async (cle: string, chemin: string) => void preparees.push(`${cle}:${chemin}`),
   noterErreur: (cle: string, erreur: string | null) => void (erreur === null ? erreurs.delete(cle) : erreurs.set(cle, erreur)),
   chargementRate: (cle: string) => rate(cle),
+  chargee: (cle: string) => chargee(cle),
+  differer: (cle: string, essai: unknown) => void differes.push({ cle, essai }),
   sansPlantage: async <T>(cle: string, f: () => Promise<T>) => {
     essais.push(cle);
     return f();
@@ -479,4 +486,38 @@ test("I6 acceptée depuis l'attente, elle ne se charge pas : l'ancienne version 
   expect(x.majEnAttente?.version).toBe("1.1.0");
   expect(existsSync(join(ancienne, "manifest.json"))).toBe(true);
   expect(erreurs.get(k)).toContain("non chargée");
+});
+
+test("N2 appliquée pendant que rien ne la charge (coupure, inactive) : l'ancienne version reste jusqu'au premier chargement ; ratée alors, elle revient", async () => {
+  const cle = nouvelleCle();
+  const { id, ancienne } = installer(cle);
+  const { url } = publier(cle, { version: "1.1.0" });
+  const k = `store:${id}`;
+  chargee = () => false;
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, dependances())).toBe("appliquee");
+  expect(etat.extensions[k]!.version).toBe("1.1.0");
+  expect(existsSync(join(ancienne, "manifest.json"))).toBe(true);
+  expect(differes).toHaveLength(1);
+  const essai = differes[0]!.essai as Parameters<typeof resoudreEssai>[1];
+  // Toujours rien de chargé : en cours.
+  expect(await resoudreEssai(k, essai, dependances())).toBe("en-cours");
+  // Réactivée, la 1.1.0 ne se charge pas : la 1.0.0 revient, la 1.1.0 attend avec l'erreur.
+  rate = (c) => (c === k && etat.extensions[k]?.version === "1.1.0" ? "Manifest invalide" : null);
+  expect(await resoudreEssai(k, essai, dependances())).toBe("fini");
+  expect(etat.extensions[k]).toMatchObject({ version: "1.0.0", majEnAttente: { version: "1.1.0" } });
+  expect(existsSync(join(ancienne, "manifest.json"))).toBe(true);
+  expect(erreurs.get(k)).toContain("non chargée (la version 1.0.0 reste)");
+});
+
+test("N2 appliquée pendant que rien ne la charge, puis chargée : l'ancienne version est effacée", async () => {
+  const cle = nouvelleCle();
+  const { id, ancienne } = installer(cle);
+  const { url } = publier(cle, { version: "1.1.0" });
+  chargee = () => false;
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, dependances())).toBe("appliquee");
+  const essai = differes[0]!.essai as Parameters<typeof resoudreEssai>[1];
+  chargee = () => true;
+  expect(await resoudreEssai(`store:${id}`, essai, dependances())).toBe("fini");
+  expect(existsSync(ancienne)).toBe(false);
+  expect(etat.extensions[`store:${id}`]!.version).toBe("1.1.0");
 });

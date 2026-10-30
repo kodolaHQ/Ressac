@@ -1572,3 +1572,33 @@ test("A7 l'espace devient privé : les onglets ouverts où ses scripts tournent 
     await fermer();
   }
 });
+
+test("N1 désactivée (portée élargie) puis l'espace devient privé : l'onglet où son script tourne encore est rechargé", async () => {
+  const racine = nouvelleRacine();
+  const tic = (matches: string[]) => ({
+    "manifest.json": { manifest_version: 3, name: "Tic de l'agent", version: "1.0.0", content_scripts: [{ matches, js: ["tic.js"] }] },
+    "tic.js": 'let n = 0;\nsetInterval(() => document.documentElement.setAttribute("data-tic", String(++n)), 100);\n',
+  });
+  ecrireExtensionAgent(racine, "tic", tic([HOTE]));
+  const { app, fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "tic", "Tic de l'agent")).toMatch(/^Activée/);
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    await expect.poll(() => dansLaVue(app, "a.html", "Number(document.documentElement.getAttribute('data-tic'))"), { timeout: 15_000 }).toBeGreaterThan(2);
+    // Un site de plus : désactivée (retirée sans rechargement), son script tourne encore dans l'onglet.
+    ecrireExtensionAgent(racine, "tic", tic([HOTE, "https://exemple.com/*"]));
+    expect((await appelerOutil(racine, "recharger_extension", { id: "tic" })).texte).toContain("desactivee");
+    await expect.poll(() => extensionsDuProfil(app)).not.toContain("Tic de l'agent");
+    const avant = Number(await dansLaVue(app, "a.html", "document.documentElement.getAttribute('data-tic')"));
+    await expect.poll(() => dansLaVue(app, "a.html", "Number(document.documentElement.getAttribute('data-tic'))")).toBeGreaterThan(avant);
+    await dansLaVue(app, "a.html", "window.__avant = 1");
+    await reglerEspaceActifPrive(fenetre, true);
+    await expect.poll(() => dansLaVue(app, "a.html", "window.__avant === undefined && document.readyState === 'complete'"), { timeout: 15_000 }).toBe(true);
+    await dansLaVue(app, "a.html", "window.__apres = 1");
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await dansLaVue(app, "a.html", "[window.__apres, document.documentElement.getAttribute('data-tic')]")).toEqual([1, null]);
+  } finally {
+    await fermer();
+  }
+});

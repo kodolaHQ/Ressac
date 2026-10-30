@@ -68,6 +68,8 @@ import {
   abandonnerMiseAJour,
   accepterMiseAJour,
   appliquerMiseAJour,
+  resoudreEssai,
+  type EssaiMiseAJour,
   chercherMisesAJour,
   INTERVALLE_MAJ_MS,
   PREMIERE_MAJ_MS,
@@ -194,6 +196,8 @@ export class ServiceExtensions {
   private profilsARetirer: IdProfil[] = [];
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
+  /** Mises à jour inscrites que rien ne chargeait encore : résolues après chaque synchronisation (`resoudreEssai`). */
+  private essaisMaj = new Map<string, { essai: EssaiMiseAJour; liberer: () => void }>();
   private poser: PoserQuestion | undefined;
   /** Les cartes d'accord affichées, par clé. `connue` : l'extension était dans le registre quand la carte a été posée. */
   private cartes = new Map<string /* signatureCarte */, CarteOuverte>();
@@ -819,6 +823,11 @@ export class ServiceExtensions {
       },
       chargementRate: (cle) => this.o?.profils.chargementRate?.(cle) ?? null,
       sansPlantage: (cle, f) => this.o?.profils.sansPlantage?.(cle, f) ?? f(),
+      chargee: (cle) => this.o?.profils.chargeeQuelquePart?.(cle) ?? true,
+      differer: (cle, essai) => {
+        this.essaisMaj.get(cle)?.liberer();
+        this.essaisMaj.set(cle, { essai, liberer: this.o?.profils.marquerEssai?.(cle) ?? (() => {}) });
+      },
       noterErreur: (cle, erreur) => {
         if ((this.erreursMaj.get(cle) ?? null) === erreur) return;
         if (erreur === null) this.erreursMaj.delete(cle);
@@ -1361,5 +1370,24 @@ export class ServiceExtensions {
     };
     for (const profil of profilsEnUsage(nav)) if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);
     await o.profils.synchroniser(e);
+    this.resoudreEssais();
+  }
+
+  /** Après une synchronisation : chaque mise à jour différée est résolue dans la file de son extension (sans l'attendre). */
+  private resoudreEssais(): void {
+    const o = this.o;
+    if (!o) return;
+    for (const [cle, entree] of this.essaisMaj) {
+      const id = lireCle(cle)?.id;
+      if (!id) continue;
+      void enFileStore(o.dossier, id, () => (this.essaisMaj.get(cle) === entree ? resoudreEssai(cle, entree.essai, this.dependancesMaj()) : Promise.resolve("fini" as const)))
+        .then((r) => {
+          if (r === "fini" && this.essaisMaj.get(cle) === entree) {
+            this.essaisMaj.delete(cle);
+            entree.liberer();
+          }
+        })
+        .catch((e: unknown) => console.error(`[extensions] essai de la mise à jour de ${cle} :`, e));
+    }
   }
 }

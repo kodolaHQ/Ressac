@@ -1208,3 +1208,35 @@ test("C M4 estOnglet : jamais vrai pour une extension de l'agent quand le profil
     vuesParId.clear();
   }
 });
+
+test("N1/N6 onglets suivis : gardés après un retrait sans rechargement, oubliés à la navigation et à la destruction ; rechargés quand le profil devient privé", async () => {
+  const s = fausseSession("defaut");
+  const onglet = () => Object.assign(new EventEmitter(), { isDestroyed: () => false, session: s, reload: vi.fn() });
+  const [reste, navigue, detruit] = [onglet(), onglet(), onglet()];
+  [reste, navigue, detruit].forEach((v, i) => vuesParId.set(i + 1, v));
+  try {
+    const p = creer({ estOnglet: () => true });
+    p.brancher(s as unknown as Electron.Session, "defaut");
+    const ext = { "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) };
+    await p.synchroniser(etatExt(ext));
+    const sess = s as unknown as Electron.Session;
+    for (const n of [1, 2, 3]) expect(p.estOnglet(sess, "id-copies-fond", n)).toBe(true);
+    // Désactivée : retirée sans rechargement, les onglets restent suivis.
+    await p.synchroniser(etatExt({}));
+    navigue.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+    detruit.emit("destroyed");
+    // Une navigation dans un cadre ou dans le même document ne compte pas.
+    reste.emit("did-start-navigation", { isMainFrame: false, isSameDocument: false });
+    reste.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true });
+    etat = etatNav([{ id: "e1", profil: "defaut", prive: true }]);
+    p.retirerAgentsPrives(etat);
+    expect(reste.reload).toHaveBeenCalledTimes(1);
+    expect(navigue.reload).not.toHaveBeenCalled();
+    expect(detruit.reload).not.toHaveBeenCalled();
+    // Rechargé : oublié (pas de second rechargement).
+    await p.synchroniser(etatExt({}));
+    expect(reste.reload).toHaveBeenCalledTimes(1);
+  } finally {
+    vuesParId.clear();
+  }
+});
