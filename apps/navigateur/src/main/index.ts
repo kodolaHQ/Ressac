@@ -7,6 +7,7 @@ import {
   profilsChanges,
   profilDOnglet,
   type Decision,
+  type Issue,
   type Demande,
   type DemandeEnAttente,
   type EtatAcces,
@@ -329,12 +330,13 @@ app.whenReady().then(async () => {
     shell,
   });
   // Questions d'autorisation en attente d'une réponse de l'utilisateur (bandeau de l'onglet concerné).
-  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Decision, droits?: DroitDev[]) => void }>();
+  const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
   const enAttente = () => [...questions.values()].map((q) => q.demande);
   const demander = (d: Demande) =>
     new Promise<Decision>((repondre) => {
       const id = randomUUID();
-      questions.set(id, { demande: { ...d, id }, repondre });
+      // Une question de site retirée vaut refus.
+      questions.set(id, { demande: { ...d, id }, repondre: (r) => repondre(r === "autoriser" ? "autoriser" : "refuser") });
       diffuser(CANAUX.permissions, enAttente());
     });
   /** Autorisations des sites, une instance par profil de connexion. */
@@ -343,6 +345,11 @@ app.whenReady().then(async () => {
     let p = permissions.get(id);
     if (!p) permissions.set(id, (p = new Permissions({ fichier: fichierPermissions(dossier, id), demander })));
     return p;
+  };
+  /** La règle des outils de lecture de l'agent (lire_onglet) : onglet visible (ni page interne, ni espace privé) et partagé. */
+  const ongletLisibleParAgent = (id: string): boolean => {
+    const info = infosOnglets(magasin.etat).find((x) => x.id === id);
+    return !!info && agent?.noyau()?.politique.peutLire(info) === true;
   };
   // Extensions : une instance de la bibliothèque par session de profil de connexion (jamais l'interface, la lecture
   // publique, les icônes ni les applis), branchée sur les vues des onglets.
@@ -371,9 +378,11 @@ app.whenReady().then(async () => {
     // visible (ni page interne, ni espace privé) et partagé (politique d'accès du noyau). Sans noyau : non.
     lisibleParAgent: (wc) => {
       const id = vues.ongletDe(wc);
-      const info = id ? infosOnglets(magasin.etat).find((x) => x.id === id) : undefined;
-      return !!info && agent?.noyau()?.politique.peutLire(info) === true;
+      return !!id && ongletLisibleParAgent(id);
     },
+    // Noté au registre (durable) : sa console de service worker et de pages reste masquée à l'agent.
+    aTourneDansOnglet: (id, profil, lisible) =>
+      void serviceExtensions.aTourneDansOnglet(id, profil, lisible).catch((e) => console.error(`[extensions] ${id} : onglet non lisible non noté :`, e)),
     invisible: INVISIBLE,
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierNotifications: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     preloadCorrectifs: join(__dirname, "../preload/extensions.js"),
@@ -456,6 +465,12 @@ app.whenReady().then(async () => {
       // Ce qu'écrit l'agent (~/WebAiOs/extensions) : jamais un droit, seulement la source des copies accordées.
       dossierAgent: cheminsEspace().extensions,
       surChange: () => diffuser(CANAUX.extensionsChange, null),
+      // Un onglet de ces profils que l'agent ne peut pas lire (les pages internes de WebAiOs ne comptent pas).
+      ongletIllisible: (profils) =>
+        Object.values(magasin.etat.onglets).some((o) => {
+          const espace = magasin.etat.espaces.find((e) => e.id === o.espaceId);
+          return !!espace && profils.has(espace.profil) && !o.url.startsWith("webaios:") && !ongletLisibleParAgent(o.id);
+        }),
     })
     .catch((e) => console.error("[extensions] démarrage :", e));
   // Nos mises à jour du Store (jamais celles de la bibliothèque) : 60 s après le démarrage, puis toutes les 5 h.
@@ -470,7 +485,8 @@ app.whenReady().then(async () => {
       const appliCaduque = d.cible?.startsWith("app:") && (!appli || origineDe(appli.url) !== d.origine);
       if (appliCaduque || questionCaduque(d, magasin.etat)) {
         questions.delete(id);
-        q.repondre("refuser");
+        // Tombée sans réponse de l'utilisateur : retirée, pas refusée (les cartes de l'agent le disent).
+        q.repondre("retiree");
         change = true;
       }
     }
@@ -768,7 +784,7 @@ app.whenReady().then(async () => {
    * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que
    * soit l'onglet affiché.
    */
-  const poserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Decision, droits?: DroitDev[]) => void): (() => void) => {
+  const poserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Issue, droits?: DroitDev[]) => void): (() => void) => {
     const id = randomUUID();
     const { fenetreId: demandee, ...reste } = champs;
     const fenetreId = demandee && fenetres.has(demandee) ? demandee : fenetreAgent();
@@ -792,7 +808,7 @@ app.whenReady().then(async () => {
       if (autre) q.demande = { ...q.demande, fenetreId: autre, ongletId: ongletActifDe(magasin.etat, autre)?.id ?? null };
       else {
         questions.delete(id);
-        q.repondre("refuser");
+        q.repondre("retiree");
       }
     }
     if (change) diffuser(CANAUX.permissions, enAttente());
@@ -805,7 +821,7 @@ app.whenReady().then(async () => {
   /** Une question de l'agent sur un onglet (lecture, outils de développement) : elle tombe avec l'onglet. */
   const poserQuestionAgent = (
     o: OngletInfo,
-    repondre: (d: Decision, droits?: DroitDev[]) => void,
+    repondre: (d: Issue, droits?: DroitDev[]) => void,
     plus: Pick<Demande, "permissions" | "droits" | "raison" | "agent">,
   ): (() => void) => poserQuestion({ cible: o.id, origine: origineDe(o.url), titre: o.titre, ...plus }, repondre);
   agent = demarrerAgent({

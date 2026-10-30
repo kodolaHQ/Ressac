@@ -1142,6 +1142,9 @@ test("console_extension ne rend pas le console.log d'un script de contenu dans u
     texte = await consoleDe(racine);
     expect(texte).not.toContain("contenu:/a.html");
     expect(texte).toMatch(/^1 message\(s\) masqué\(s\)/m);
+    // Le rechargement ne remet pas le masquage à zéro (son stockage a pu garder ce qu'il a lu).
+    expect((await appelerOutil(racine, "recharger_extension", { id: "journal" })).texte).toContain("etat : rechargee");
+    expect(await consoleDe(racine)).toContain("Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire.");
   } finally {
     await fermer();
   }
@@ -1227,6 +1230,47 @@ test("modifiée avec un nouveau site, recharger_extension la désactive et dit d
     expect((await appelerOutil(racine, "lister_extensions")).texte).toMatch(/^agent:journal · Journal de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · /m);
     // Réactivée, elle repart : son service worker écrit de nouveau.
     await expect.poll(async () => (await appelerOutil(racine, "console_extension", { id: "journal", depuis: avant })).texte, { timeout: 15_000 }).toContain("fond démarré");
+  } finally {
+    await fermer();
+  }
+});
+
+test("avec un droit qui observe les onglets (hôtes), les messages de son service worker écrits pendant qu'un onglet non partagé est ouvert sont masqués, et l'outil dit pourquoi", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "veilleur", {
+    "manifest.json": { manifest_version: 3, name: "Veilleur de l'agent", version: "1.0.0", host_permissions: [HOTE], background: { service_worker: "fond.js" } },
+    "fond.js": 'setInterval(() => console.log("tic du fond"), 300);\n',
+  });
+  const { fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    expect(await activerParLAgent(fenetre, racine, "veilleur", "Veilleur de l'agent")).toMatch(/^Activée/);
+    // Aucun onglet non partagé : ses messages passent.
+    await expect.poll(() => consoleDe(racine, "veilleur"), { timeout: 15_000 }).toContain("tic du fond");
+    await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+    const depuis = Date.now() + 500;
+    await expect
+      .poll(async () => (await appelerOutil(racine, "console_extension", { id: "veilleur", depuis })).texte, { timeout: 15_000 })
+      .toContain("Messages du service worker et des pages masqués : écrits quand l'extension pouvait observer");
+    const texte = (await appelerOutil(racine, "console_extension", { id: "veilleur", depuis })).texte;
+    expect(texte).not.toContain("tic du fond");
+    expect(texte).toContain("debloquer_console");
+  } finally {
+    await fermer();
+  }
+});
+
+test("une carte de l'agent retirée avant la réponse (l'espace devient privé) : « Demande retirée avant la réponse de l'utilisateur. »", async () => {
+  const racine = nouvelleRacine();
+  ecrireExtensionAgent(racine, "journal", JOURNAL);
+  const { fenetre, fermer } = await lancer({ racine });
+  try {
+    await attendreMcp(racine);
+    const appel = appelerOutil(racine, "demander_extension", { id: "journal" });
+    await expect(fenetre.getByTestId("modale-demande")).toContainText("Journal de l'agent", { timeout: 15_000 });
+    await reglerEspaceActifPrive(fenetre, true);
+    expect((await appel).texte).toBe("Demande retirée avant la réponse de l'utilisateur.");
+    await expect(fenetre.getByTestId("modale-demande")).toHaveCount(0);
   } finally {
     await fermer();
   }

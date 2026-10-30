@@ -236,6 +236,7 @@ function creer(
     estOnglet?: (wc: Electron.WebContents) => boolean;
     lisibleParAgent?: (wc: Electron.WebContents) => boolean;
     consoles?: ConstructorParameters<typeof ExtensionsProfils>[0]["consoles"];
+    aTourneDansOnglet?: ConstructorParameters<typeof ExtensionsProfils>[0]["aTourneDansOnglet"];
   } = {},
 ) {
   const p = new ExtensionsProfils({
@@ -251,6 +252,7 @@ function creer(
     ...(o.estOnglet ? { estOnglet: o.estOnglet } : {}),
     ...(o.lisibleParAgent ? { lisibleParAgent: o.lisibleParAgent } : {}),
     ...(o.consoles ? { consoles: o.consoles } : {}),
+    ...(o.aTourneDansOnglet ? { aTourneDansOnglet: o.aTourneDansOnglet } : {}),
     dossier,
     etat: () => etat,
     premierPlan: () => "f1",
@@ -1010,12 +1012,12 @@ test("estOnglet note où l'extension a tourné : dans un onglet lisible par l'ag
   const cache = vue();
   vuesParId.set(1, lisible);
   vuesParId.set(2, cache);
-  const notes: [string, boolean][] = [];
+  const notes: [string, string, boolean][] = [];
   try {
     const p = creer({
       estOnglet: () => true,
       lisibleParAgent: (wc) => wc === (lisible as unknown),
-      consoles: { noter: () => {}, plantage: () => {}, aTourneDansOnglet: (id, l) => void notes.push([id, l]) },
+      aTourneDansOnglet: (id, profil, l) => void notes.push([id, profil, l]),
     });
     p.brancher(s as unknown as Electron.Session, "defaut");
     await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));
@@ -1025,8 +1027,8 @@ test("estOnglet note où l'extension a tourné : dans un onglet lisible par l'ag
     // Pas un onglet : rien n'est noté.
     expect(p.estOnglet(sess, "id-copies-fond", 99)).toBe(false);
     expect(notes).toEqual([
-      ["id-copies-fond", true],
-      ["id-copies-fond", false],
+      ["id-copies-fond", "defaut", true],
+      ["id-copies-fond", "defaut", false],
     ]);
   } finally {
     vuesParId.clear();
@@ -1040,7 +1042,7 @@ test("console d'un onglet : un message dont la source est un fichier de l'extens
   const p = creer({
     estOnglet: () => true,
     lisibleParAgent: () => lisible,
-    consoles: { noter: (id, m, onglet) => void notes.push({ id, texte: m.texte, ...(onglet ? { onglet } : {}) }), plantage: () => {}, aTourneDansOnglet: () => {} },
+    consoles: { noter: (id, m, onglet) => void notes.push({ id, texte: m.texte, ...(onglet ? { onglet } : {}) }), plantage: () => {} },
   });
   p.brancher(s as unknown as Electron.Session, "defaut");
   await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { accord: ACCORD_AGENT }) }));

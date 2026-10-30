@@ -29,6 +29,7 @@ const EntreeSchema = z.object({
   desactivee: z.object({ raison: z.enum(["portee-elargie", "plantages"]), le: z.string() }).nullable(),
   majEnAttente: z.object({ version: z.string(), portee: SchemaPortee, chemin: z.string() }).nullable(),
   vues: z.record(z.string(), z.string()),
+  consoleMasquee: z.array(z.string()).optional(),
 });
 
 export interface EntreeExtension {
@@ -49,6 +50,11 @@ export interface EntreeExtension {
   majEnAttente: { version: string; portee: Portee; chemin: string } | null;
   /** Dernière version démarrée dans chaque profil. */
   vues: Record<IdProfil, string>;
+  /**
+   * Agent : profils où elle a tourné dans un onglet que l'agent ne peut pas lire. Sa console de service worker et de
+   * pages lui reste masquée ; jamais remis à zéro (son stockage a pu garder ce qu'elle y a lu), effacé avec l'entrée.
+   */
+  consoleMasquee?: IdProfil[];
 }
 
 export interface EtatExtensions {

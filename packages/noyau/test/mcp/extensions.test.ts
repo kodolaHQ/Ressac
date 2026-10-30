@@ -6,6 +6,8 @@ import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { demarrerServeurMcp, genererJeton } from "../../src/mcp/serveur.js";
 import {
   CONSOLE_FOND_MASQUEE,
+  CONSOLE_FOND_OBSERVE,
+  DEMANDE_RETIREE,
   LONGUEUR_RAISON_CONSOLE,
   PREFIXE_CONSOLE_EXTENSION,
   REFUSEE_PAR_UTILISATEUR,
@@ -26,7 +28,7 @@ class FauxOutils implements OutilsExtensions {
   liste: ExtensionPourAgent[] = [];
   reponseDemande: Awaited<ReturnType<OutilsExtensions["demander"]>> = { ok: true, espace: "Perso" };
   reponseDeblocage: Awaited<ReturnType<OutilsExtensions["debloquerConsole"]>> = { ok: true };
-  laConsole: ConsolePourAgent | null = { messages: [], masques: 0, fondMasque: false, debloquee: false };
+  laConsole: ConsolePourAgent | null = { messages: [], masques: 0, fondMasque: false, fondObserve: false, debloquee: false };
   async lister() {
     this.appels.push({ methode: "lister", args: [] });
     return this.liste;
@@ -133,6 +135,7 @@ test("console_extension : messages préfixés, masqués comptés, service worker
     messages: [{ horodatage: 1000, niveau: "log", texte: "bonjour" }],
     masques: 3,
     fondMasque: true,
+    fondObserve: false,
     debloquee: false,
   };
   const { texte } = await appeler("console_extension", { id: "cacheur", depuis: 500 });
@@ -144,8 +147,35 @@ test("console_extension : messages préfixés, masqués comptés, service worker
   expect(masquesOnglets(3)).toBe("3 message(s) masqué(s) : venus d'onglets que tu ne peux pas lire");
   expect(texte).toContain(CONSOLE_FOND_MASQUEE);
   expect(CONSOLE_FOND_MASQUEE).toBe(
-    "Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire depuis son dernier rechargement. Demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.",
+    "Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire. Demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.",
   );
+  expect(texte).not.toContain(CONSOLE_FOND_OBSERVE);
+});
+
+test("console_extension : service worker masqué parce qu'il peut observer des onglets non lisibles — dit en une phrase, avec debloquer_console", async () => {
+  await demarrer();
+  outils.laConsole = { messages: [], masques: 0, fondMasque: false, fondObserve: true, debloquee: false };
+  const { texte } = await appeler("console_extension", { id: "cacheur" });
+  expect(texte).toContain(CONSOLE_FOND_OBSERVE);
+  expect(CONSOLE_FOND_OBSERVE).toContain("debloquer_console");
+  expect(CONSOLE_FOND_OBSERVE.split(". ").length).toBeLessThanOrEqual(2);
+});
+
+test("une carte retirée avant la réponse : « Demande retirée avant la réponse de l'utilisateur. », pas un refus", async () => {
+  await demarrer();
+  expect(DEMANDE_RETIREE).toBe("Demande retirée avant la réponse de l'utilisateur.");
+  outils.reponseDemande = { ok: false, erreur: "x", retiree: true };
+  expect(await appeler("demander_extension", { id: "cacheur" })).toEqual({ texte: DEMANDE_RETIREE, erreur: false });
+  outils.reponseDeblocage = { ok: false, erreur: "x", retiree: true };
+  expect(await appeler("debloquer_console", { id: "cacheur", raison: "r" })).toEqual({ texte: DEMANDE_RETIREE, erreur: false });
+});
+
+test("recharger_extension ne promet plus de remettre la console à zéro", async () => {
+  await demarrer();
+  const outil = (await client!.listTools()).tools.find((t) => t.name === "recharger_extension")!;
+  expect(outil.description).not.toMatch(/masquage|remet/i);
+  const c = (await client!.listTools()).tools.find((t) => t.name === "console_extension")!;
+  expect(c.description).not.toMatch(/rechargement/);
 });
 
 test("console_extension d'une extension inconnue : une erreur lisible", async () => {

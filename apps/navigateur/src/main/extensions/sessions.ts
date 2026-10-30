@@ -259,7 +259,9 @@ export class ExtensionsProfils {
        * Consoles des extensions (service workers et pages `chrome-extension://`) et plantages (pages d'extension disparues
        * hors `clean-exit`, échecs de `loadExtension`), par id Chromium.
        */
-      consoles?: Pick<ConsolesExtensions, "noter" | "plantage" | "aTourneDansOnglet">;
+      consoles?: Pick<ConsolesExtensions, "noter" | "plantage">;
+      /** L'extension `idChrome` va tourner dans une vue d'onglet de `profil`, lisible ou non par l'agent. */
+      aTourneDansOnglet?(idChrome: string, profil: IdProfil, lisible: boolean): void;
       /**
        * L'agent peut-il lire cette vue d'onglet (onglet partagé, espace non privé : la règle de ses outils de lecture) ?
        * Absent : jamais (tout ce qui vient d'un onglet lui est masqué).
@@ -516,7 +518,8 @@ export class ExtensionsProfils {
     const vue = this.o.estOnglet?.(wc) ?? false;
     // Ses scripts vont y tourner (poignée de main, executeScript) : noté pour masquer la console de son service worker
     // à l'agent s'il ne peut pas lire cet onglet.
-    if (vue) this.o.consoles?.aTourneDansOnglet(id, this.lisibleParAgent(wc));
+    const profil = [...this.instances].find(([, x]) => x.session === s)?.[0];
+    if (vue && profil !== undefined) this.o.aTourneDansOnglet?.(id, profil, this.lisibleParAgent(wc));
     return vue;
   }
 

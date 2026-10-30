@@ -8,11 +8,21 @@ export const FENETRE_PLANTAGES_MS = 60_000;
 
 /**
  * Un message noté : `onglet` pour un script de contenu (la vue d'onglet d'où il vient était-elle lisible par l'agent
- * quand il a été écrit ?), null pour le service worker et les pages de l'extension.
+ * quand il a été écrit ?), null pour le service worker et les pages de l'extension ; `observe` : écrit par ceux-ci
+ * pendant que l'extension pouvait observer un onglet que l'agent ne peut pas lire.
  */
 interface Entree {
   m: MessageConsole;
   onglet: { lisible: boolean } | null;
+  observe: boolean;
+}
+
+/** Ce que l'agent peut voir d'une console : le registre (drapeau « a tourné ») et le déblocage décident avec elle. */
+export interface FiltreAgent {
+  depuis?: number;
+  debloquee: boolean;
+  /** L'extension a tourné dans un onglet que l'agent ne peut pas lire (drapeau du registre, jamais remis à zéro). */
+  tourneIllisible: boolean;
 }
 
 /**
@@ -20,23 +30,39 @@ interface Entree {
  * Chromium, en mémoire, et décompte de leurs plantages (pages d'extension disparues hors `clean-exit`, échecs de
  * `loadExtension`). Ce qui est noté vient de l'extension : de la donnée, affichée en texte, jamais une consigne.
  *
- * Pour l'agent (spec §5, console filtrée), `pourAgent` retire les messages des onglets qu'il ne pouvait pas lire, et
- * tout ce qu'écrivent service worker et pages dès que l'extension a tourné dans un tel onglet depuis son dernier
- * rechargement (`aTourneDansOnglet`, `recharge`). L'utilisateur (page Extensions) voit tout.
+ * Pour l'agent (spec §5, console filtrée), `pourAgent` retire les messages des onglets qu'il ne pouvait pas lire ; ceux
+ * du service worker et des pages, tous si l'extension a tourné dans un tel onglet (`tourneIllisible`), et ceux écrits
+ * pendant qu'elle pouvait en observer un (`observeIllisible`, noté à l'écriture). L'utilisateur (page Extensions) voit tout.
  */
 export class ConsolesExtensions {
   private consoles = new Map<string, Entree[]>();
   private plantages = new Map<string, number[]>();
-  /** A tourné dans un onglet que l'agent ne peut pas lire depuis son dernier rechargement. */
-  private illisibles = new Set<string>();
 
-  constructor(private readonly o: { /** `PLANTAGES_MAX` plantages en `FENETRE_PLANTAGES_MS`. */ surPlantages(idChrome: string): void }) {}
+  constructor(
+    private readonly o: {
+      /** `PLANTAGES_MAX` plantages en `FENETRE_PLANTAGES_MS`. */
+      surPlantages(idChrome: string): void;
+      /**
+       * Au moment d'un message du service worker ou d'une page : l'extension a-t-elle un droit qui observe les onglets
+       * alors qu'un profil où elle est active en a un que l'agent ne peut pas lire ? Absent : non.
+       */
+      observeIllisible?(idChrome: string): boolean;
+    },
+  ) {}
 
   /** `onglet` : le message vient d'un script de contenu dans une vue d'onglet, lisible ou non par l'agent. */
   noter(idChrome: string, m: MessageConsole, onglet?: { lisible: boolean }): void {
     let liste = this.consoles.get(idChrome);
     if (!liste) this.consoles.set(idChrome, (liste = []));
-    liste.push({ m, onglet: onglet ? { lisible: onglet.lisible } : null });
+    let observe = false;
+    if (!onglet) {
+      try {
+        observe = this.o.observeIllisible?.(idChrome) ?? false;
+      } catch {
+        observe = true;
+      }
+    }
+    liste.push({ m, onglet: onglet ? { lisible: onglet.lisible } : null, observe });
     if (liste.length > CONSOLE_MAX) liste.splice(0, liste.length - CONSOLE_MAX);
   }
 
@@ -51,44 +77,32 @@ export class ConsolesExtensions {
     return (this.consoles.get(idChrome) ?? []).filter((e) => e.m.niveau === "error").map((e) => e.m.texte);
   }
 
-  /** L'extension a tourné (poignée de main `estOnglet`) dans une vue d'onglet, lisible ou non par l'agent. */
-  aTourneDansOnglet(idChrome: string, lisible: boolean): void {
-    if (!lisible) this.illisibles.add(idChrome);
-  }
-
-  /**
-   * L'agent a rechargé l'extension : le drapeau retombe. Si elle était levée, ce qu'ont écrit service worker et pages
-   * avant le rechargement est retiré (ils ont pu y écrire ce qu'ils avaient lu) ; les messages d'onglets gardent leur
-   * étiquette.
-   */
-  recharge(idChrome: string): void {
-    if (!this.illisibles.delete(idChrome)) return;
-    const liste = this.consoles.get(idChrome);
-    if (liste) this.consoles.set(idChrome, liste.filter((e) => e.onglet !== null));
-  }
-
   /** Ce que l'agent voit de la console (copie), ceux d'horodatage ≥ `depuis` si donné. */
-  pourAgent(idChrome: string, o: { depuis?: number; debloquee: boolean }): ConsolePourAgent {
-    const depuis = o.depuis;
+  pourAgent(idChrome: string, f: FiltreAgent): ConsolePourAgent {
+    const depuis = f.depuis;
     const liste = (this.consoles.get(idChrome) ?? []).filter((e) => depuis === undefined || e.m.horodatage >= depuis);
     const copie = (m: MessageConsole): MessageConsole => ({ horodatage: m.horodatage, niveau: m.niveau, texte: m.texte, ...(m.pile !== undefined ? { pile: m.pile } : {}) });
-    if (o.debloquee) return { messages: liste.map((e) => copie(e.m)), masques: 0, fondMasque: false, debloquee: true };
-    const fondMasque = this.illisibles.has(idChrome);
+    if (f.debloquee) return { messages: liste.map((e) => copie(e.m)), masques: 0, fondMasque: false, fondObserve: false, debloquee: true };
+    const fondMasque = f.tourneIllisible;
     const messages: MessageConsole[] = [];
     let masques = 0;
+    let fondObserve = false;
     for (const e of liste) {
       if (e.onglet) {
         if (e.onglet.lisible) messages.push(copie(e.m));
         else masques++;
-      } else if (!fondMasque) messages.push(copie(e.m));
+      } else if (fondMasque) continue;
+      else if (e.observe) fondObserve = true;
+      else messages.push(copie(e.m));
     }
-    return { messages, masques, fondMasque, debloquee: false };
+    return { messages, masques, fondMasque, fondObserve, debloquee: false };
   }
 
   /** Les textes des messages de niveau `error` que l'agent peut voir (même filtre que `pourAgent`). */
-  erreursPourAgent(idChrome: string, debloquee: boolean): string[] {
-    return this.pourAgent(idChrome, { debloquee }).messages.filter((m) => m.niveau === "error").map((m) => m.texte);
+  erreursPourAgent(idChrome: string, f: FiltreAgent): string[] {
+    return this.pourAgent(idChrome, f).messages.filter((m) => m.niveau === "error").map((m) => m.texte);
   }
+
 
   /**
    * Un plantage à `horodatage` (ms) : au `PLANTAGES_MAX`-ième dans `FENETRE_PLANTAGES_MS` (bornes comprises), le rappel
@@ -105,11 +119,10 @@ export class ConsolesExtensions {
     this.plantages.set(idChrome, recents);
   }
 
-  /** L'extension est supprimée ou réactivée : sa console, ses plantages et son drapeau sont oubliés. */
+  /** L'extension est supprimée ou réactivée : sa console et ses plantages sont oubliés. */
   oublier(idChrome: string): void {
     this.consoles.delete(idChrome);
     this.plantages.delete(idChrome);
-    this.illisibles.delete(idChrome);
   }
 }
 

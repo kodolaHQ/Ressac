@@ -52,6 +52,8 @@ export interface CarteExtension {
 export interface ReponseAccord {
   accepte: boolean;
   empreinte: string;
+  /** La carte est tombée (ou n'a pas été montrée) sans réponse de l'utilisateur. */
+  retiree?: boolean;
 }
 
 /** La carte d'accord d'une extension analysée, pour l'activer dans `espace` (pur). */

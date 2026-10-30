@@ -219,6 +219,8 @@ export type Permission =
   | "console-extension"
   | "autre";
 export type Decision = "autoriser" | "refuser";
+/** L'issue d'une question : la décision de l'utilisateur, ou « retiree » si elle est tombée sans sa réponse (délai, caduque…). */
+export type Issue = Decision | "retiree";
 /** Une question posée à l'utilisateur : une ou deux permissions (caméra et micro ensemble), une seule réponse. */
 export interface Demande {
   ongletId: IdOnglet | null;

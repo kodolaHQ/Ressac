@@ -19,6 +19,7 @@ import {
   preparerStore,
   retirerProfil,
   RESERVE_AGENT,
+  DEMANDE_RETIREE,
   type ConsolePourAgent,
   type ExtensionPourAgent,
   type EtatExtensions,
@@ -41,13 +42,14 @@ import {
 } from "../../commun/extensions";
 import type { ResultatExtension } from "../../commun/api";
 export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE };
-import { aUneVue, partitionDe, profilsEnUsage, type Decision, type Demande, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
-import { attendreReponse, DELAI_QUESTION_MS, questionCaduque } from "../agent/pont";
+import { aUneVue, partitionDe, profilsEnUsage, type Demande, type Issue, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
+import { attendreIssue, DELAI_QUESTION_MS, questionCaduque } from "../agent/pont";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
 import type { SessionsProfils } from "../profils-connexion";
 import {
   ACTIVATION_REFUSEE,
+  ACTIVATION_RETIREE,
   demanderActivation,
   demarrerAgents,
   preparerAgent,
@@ -59,7 +61,7 @@ import {
   type ResultatActivation,
   type ResultatRechargement,
 } from "./agent";
-import { ConsolesExtensions } from "./consoles";
+import { ConsolesExtensions, type FiltreAgent } from "./consoles";
 import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
 import {
   abandonnerMiseAJour,
@@ -87,12 +89,12 @@ import {
  * Pose une question dans une fenêtre (`poserQuestion` d'index.ts) : `fenetreId` absent, celle de l'agent (la fenêtre au
  * premier plan, ou la dernière utilisée). Rend de quoi la retirer.
  */
-export type PoserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Decision) => void) => () => void;
+export type PoserQuestion = (champs: Omit<Demande, "ongletId">, repondre: (d: Issue) => void) => () => void;
 
 /** Une carte affichée : `attentes` demandes l'attendent ; `connue` : l'extension était dans le registre à sa pose. */
 interface CarteOuverte {
   cle: string;
-  reponse: Promise<boolean>;
+  reponse: Promise<Issue>;
   retrait: AbortController;
   connue: boolean;
   attentes: number;
@@ -132,6 +134,11 @@ const ERREURS_CONSOLE_PAGE = 20;
 export const CONSOLE_PROFIL_PRIVE = "Extension active dans le profil d'un espace privé : sa console n'est jamais montrée à l'agent";
 export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
 export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
+/**
+ * Droits qui font voir à une extension les onglets (adresses, titres, navigation, cookies, historique…) sans y tourner :
+ * avec eux, et un onglet que l'agent ne peut pas lire dans un de ses profils, sa console de fond lui est masquée.
+ */
+export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks"];
 
 /**
  * La clé `agent:<dossier>` d'un id donné par l'agent (`<dossier>` ou `agent:<dossier>`). Toute autre clé (Store) lève
@@ -180,13 +187,16 @@ export class ServiceExtensions {
    */
   private deblocages = new Set<string>();
   /** Cartes de déblocage affichées, par clé : une seule à la fois, retirée si l'extension part du registre. */
-  private cartesDeblocage = new Map<string, { reponse: Promise<boolean>; retrait: AbortController }>();
+  private cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController }>();
+  /** Écritures de `consoleMasquee` en cours, par `clé|profil` : une seule à la fois. */
+  private masquagesEnCours = new Map<string, Promise<void>>();
   /**
    * Consoles et plantages des extensions (branchés par `ExtensionsProfils`) : au `PLANTAGES_MAX`-ième plantage en
    * `FENETRE_PLANTAGES_MS`, l'extension est désactivée partout (`DESACTIVEE_PLANTAGES`).
    */
   readonly consoles = new ConsolesExtensions({
     surPlantages: (id) => void this.desactiverPlantages(id).catch((e: unknown) => console.error(`[extensions] ${id} non désactivée après ses plantages :`, e)),
+    observeIllisible: (id) => this.observeIllisible(id),
   });
   private o:
     | {
@@ -198,6 +208,7 @@ export class ServiceExtensions {
         dossierGardes: string;
         dossierAgent?: string;
         surChange?: () => void;
+        ongletIllisible?: (profils: ReadonlySet<IdProfil>) => boolean;
       }
     | undefined;
 
@@ -217,6 +228,8 @@ export class ServiceExtensions {
     dossierAgent?: string;
     /** Après chaque écriture du registre (`CANAUX.extensionsChange`). */
     surChange?: () => void;
+    /** Un de ces profils a-t-il un onglet que l'agent ne peut pas lire ? Absent : oui (console de l'agent masquée). */
+    ongletIllisible?: (profils: ReadonlySet<IdProfil>) => boolean;
   }): Promise<void> {
     this.o = o;
     // Posé d'abord, de façon synchrone : il existe même si la lecture du registre échoue, et index.ts appelle `demarrer`
@@ -349,7 +362,8 @@ export class ServiceExtensions {
     c: CarteExtension,
     o: { fenetre?: IdFenetre; delaiMs?: number; signal?: AbortSignal; pendantCoupure?: boolean },
   ): Promise<ReponseAccord> {
-    const refus: ReponseAccord = { accepte: false, empreinte: c.empreinte };
+    // Aucune carte montrée, ou tombée sans réponse de l'utilisateur : « retirée », jamais un refus de sa part.
+    const refus: ReponseAccord = { accepte: false, empreinte: c.empreinte, retiree: true };
     if (o.signal?.aborted) return Promise.resolve(refus);
     const coupee = this.etat.toutesCoupees && o.pendantCoupure !== true;
     // Une carte identique déjà affichée : la demande la rejoint (même réponse). Sinon, une carte à part, en file comme
@@ -366,7 +380,7 @@ export class ServiceExtensions {
       const retrait = new AbortController();
       const ouverte: CarteOuverte = {
         cle: c.cle,
-        reponse: Promise.resolve(false),
+        reponse: Promise.resolve<Issue>("retiree"),
         retrait,
         connue: c.cle in this.etat.extensions,
         attentes: 0,
@@ -374,7 +388,7 @@ export class ServiceExtensions {
       };
       // La carte elle-même n'a pas de délai : chaque demande a le sien (ci-dessous). Elle tombe quand plus personne ne
       // l'attend, ou par `perimerCartes`.
-      ouverte.reponse = attendreReponse((repondre) => poser(demande, repondre), Infinity, retrait.signal).finally(() => {
+      ouverte.reponse = attendreIssue((repondre) => poser(demande, repondre), Infinity, retrait.signal).finally(() => {
         if (this.cartes.get(signature) === ouverte) this.cartes.delete(signature);
       });
       this.cartes.set(signature, ouverte);
@@ -388,16 +402,16 @@ export class ServiceExtensions {
     carte.attentes++;
     return new Promise((ok) => {
       let finie = false;
-      const finir = (accepte: boolean) => {
+      const finir = (issue: Issue) => {
         if (finie) return;
         finie = true;
         clearTimeout(minuterie);
         o.signal?.removeEventListener("abort", partir);
-        ok({ accepte, empreinte });
+        ok({ accepte: issue === "autoriser", empreinte, ...(issue === "retiree" ? { retiree: true } : {}) });
       };
       const partir = () => {
         if (finie) return;
-        finir(false);
+        finir("retiree");
         if (--carte.attentes === 0) {
           // Retirée de la table tout de suite : une nouvelle demande pose une nouvelle carte, elle ne rejoint pas celle-ci.
           if (this.cartes.get(signature) === carte) this.cartes.delete(signature);
@@ -977,7 +991,7 @@ export class ServiceExtensions {
         }
         if (x.desactivee) erreurs.push(x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE);
         const id = x.source === "agent" ? this.idChromeDe(cle) : null;
-        if (id && !this.dansUnProfilPrive(x.profils)) erreurs.push(...this.consoles.erreursPourAgent(id, this.deblocages.has(cle)).slice(-ERREURS_CONSOLE_PAGE));
+        if (id && !this.dansUnProfilPrive(x.profils)) erreurs.push(...this.consoles.erreursPourAgent(id, this.filtreAgent(cle)).slice(-ERREURS_CONSOLE_PAGE));
         return {
           cle,
           source: x.source,
@@ -1020,17 +1034,70 @@ export class ServiceExtensions {
       ...(x.signal ? { signal: x.signal } : {}),
     });
     if (r.ok) return { ok: true, espace: espace.nom };
-    return r.erreur === ACTIVATION_REFUSEE ? { ok: false, erreur: r.erreur, refusee: true } : r;
+    if (r.erreur === ACTIVATION_REFUSEE) return { ok: false, erreur: r.erreur, refusee: true };
+    if (r.erreur === ACTIVATION_RETIREE) return { ok: false, erreur: r.erreur, retiree: true };
+    return r;
   }
 
-  /** `recharger_extension` : rechargée, le drapeau de sa console (onglet non lisible) retombe. */
-  private async rechargerPourAgent(id: string): Promise<ResultatRechargement> {
+  /** `recharger_extension` (le masquage de sa console ne change pas : il ne retombe jamais). */
+  private rechargerPourAgent(id: string): Promise<ResultatRechargement> {
     const cle = cleAgentPour(id);
-    if (!cle) return { etat: "refusee", detail: [`Identifiant d'extension invalide : ${id}`] };
-    const r = await this.recharger(cle.slice("agent:".length));
-    const idChrome = this.idChromeDe(cle);
-    if (r.etat === "rechargee" && idChrome) this.consoles.recharge(idChrome);
-    return r;
+    if (!cle) return Promise.resolve({ etat: "refusee", detail: [`Identifiant d'extension invalide : ${id}`] });
+    return this.recharger(cle.slice("agent:".length));
+  }
+
+  /** Le filtre de la console de `cle` pour l'agent : déblocage, et drapeau « a tourné dans un onglet non lisible ». */
+  private filtreAgent(cle: string, depuis?: number): FiltreAgent {
+    return {
+      ...(depuis !== undefined ? { depuis } : {}),
+      debloquee: this.deblocages.has(cle),
+      tourneIllisible: (this.etat.extensions[cle]?.consoleMasquee?.length ?? 0) > 0,
+    };
+  }
+
+  /**
+   * Une extension de l'agent va tourner dans une vue d'onglet de `profil` que l'agent ne peut pas lire : noté au
+   * registre (`consoleMasquee`), une fois par profil. Rien pour un onglet lisible ni pour le Store.
+   */
+  async aTourneDansOnglet(idChrome: string, profil: IdProfil, lisible: boolean): Promise<void> {
+    const o = this.o;
+    if (lisible || !o) return;
+    const cle = this.cleDeId(idChrome);
+    const x = cle ? this.etat.extensions[cle] : undefined;
+    if (!cle || x?.source !== "agent" || x.consoleMasquee?.includes(profil)) return;
+    const enCours = `${cle}|${profil}`;
+    if (this.masquagesEnCours.has(enCours)) return this.masquagesEnCours.get(enCours);
+    const ecriture = modifierEtatExtensions(
+      o.dossier,
+      (e) => {
+        const y = e.extensions[cle];
+        if (!y || y.consoleMasquee?.includes(profil)) return e;
+        return { ...e, extensions: { ...e.extensions, [cle]: { ...y, consoleMasquee: [...(y.consoleMasquee ?? []), profil] } } };
+      },
+      () => profilsPrives(o.magasin.etat),
+    )
+      .then((e) => {
+        this.etat = e;
+        o.surChange?.();
+      })
+      .finally(() => this.masquagesEnCours.delete(enCours));
+    this.masquagesEnCours.set(enCours, ecriture);
+    return ecriture;
+  }
+
+  /**
+   * Au moment d'un message de son service worker ou de ses pages : l'extension de l'agent a-t-elle un droit qui observe
+   * les onglets (`DROITS_OBSERVATEURS`, des hôtes, tous les sites) alors qu'un profil où elle est active a un onglet
+   * que l'agent ne peut pas lire ?
+   */
+  private observeIllisible(idChrome: string): boolean {
+    const cle = this.cleDeId(idChrome);
+    const x = cle ? this.etat.extensions[cle] : undefined;
+    if (!x || x.source !== "agent") return false;
+    const a = x.accord;
+    const observe = !a || a.tousLesSites || a.hotes.length > 0 || a.permissions.some((p) => DROITS_OBSERVATEURS.includes(p));
+    if (!observe || x.profils.length === 0) return false;
+    return this.o?.ongletIllisible?.(new Set(x.profils)) ?? true;
   }
 
   /** `console_extension` : la console filtrée (débloquée : entière) ; null si l'extension n'est pas au registre. */
@@ -1040,9 +1107,9 @@ export class ServiceExtensions {
     if (!cle || !x) return null;
     if (this.dansUnProfilPrive(x.profils)) throw new Error(CONSOLE_PROFIL_PRIVE);
     const idChrome = this.idChromeDe(cle);
-    const debloquee = this.deblocages.has(cle);
-    if (!idChrome) return { messages: [], masques: 0, fondMasque: false, debloquee };
-    return this.consoles.pourAgent(idChrome, { ...(depuis !== undefined ? { depuis } : {}), debloquee });
+    const f = this.filtreAgent(cle, depuis);
+    if (!idChrome) return { messages: [], masques: 0, fondMasque: !f.debloquee && f.tourneIllisible, fondObserve: false, debloquee: f.debloquee };
+    return this.consoles.pourAgent(idChrome, f);
   }
 
   /**
@@ -1078,21 +1145,23 @@ export class ServiceExtensions {
       };
       const nouvelle = {
         retrait,
-        reponse: attendreReponse((repondre) => poser(champs, repondre), DELAI_QUESTION_MS, retrait.signal).finally(() => {
+        reponse: attendreIssue((repondre) => poser(champs, repondre), DELAI_QUESTION_MS, retrait.signal).finally(() => {
           if (this.cartesDeblocage.get(cle) === nouvelle) this.cartesDeblocage.delete(cle);
         }),
       };
       this.cartesDeblocage.set(cle, nouvelle);
       carte = nouvelle;
     }
-    const abandon = new Promise<boolean>((ok) => {
-      if (x.signal?.aborted) ok(false);
+    const abandon = new Promise<Issue>((ok) => {
+      if (x.signal?.aborted) ok("retiree");
       x.signal?.addEventListener("abort", () => {
         carte.retrait.abort();
-        ok(false);
+        ok("retiree");
       }, { once: true });
     });
-    if (!(await Promise.race([carte.reponse, abandon]))) return { ok: false, erreur: "Déblocage refusé", refusee: true };
+    const issue = await Promise.race([carte.reponse, abandon]);
+    if (issue === "retiree") return { ok: false, erreur: DEMANDE_RETIREE, retiree: true };
+    if (issue !== "autoriser") return { ok: false, erreur: "Déblocage refusé", refusee: true };
     // L'état a pu changer pendant la carte : il est revu au « oui ».
     if (!(cle in this.etat.extensions) || this.refusDeblocage(cle)) return { ok: false, erreur: DEBLOCAGE_CHANGE };
     this.deblocages.add(cle);

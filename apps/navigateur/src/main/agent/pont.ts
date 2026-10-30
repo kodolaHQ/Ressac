@@ -1,6 +1,6 @@
 import type { Session, WebContents } from "electron";
 import { OngletIntrouvable, OngletPrive, type DroitDev, type HistoriqueNavigateur, type OngletInfo, type OptionsLecturePage, type OutilsDevNavigateur, type PageLue, type PontNavigateur } from "@webaios/noyau";
-import { ongletPrive, type Decision, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../commun/modele";
+import { ongletPrive, type Decision, type DemandeEnAttente, type Issue, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
 import type { Historique } from "../historique";
 import type { Magasin } from "../ipc";
@@ -114,24 +114,36 @@ export const DELAI_QUESTION_MS = 120_000;
  * `delaiMs` vaut `Infinity` pour une question sans délai.
  */
 export function attendreReponse(
-  poser: (repondre: (d: Decision) => void) => () => void,
+  poser: (repondre: (d: Issue) => void) => () => void,
   delaiMs = DELAI_QUESTION_MS,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  if (signal?.aborted) return Promise.resolve(false);
+  return attendreIssue(poser, delaiMs, signal).then((d) => d === "autoriser");
+}
+
+/**
+ * Comme `attendreReponse`, mais dit si la question est tombée sans réponse de l'utilisateur (« retiree » : délai, `signal`,
+ * ou retirée par celui qui l'a posée).
+ */
+export function attendreIssue(
+  poser: (repondre: (d: Issue) => void) => () => void,
+  delaiMs = DELAI_QUESTION_MS,
+  signal?: AbortSignal,
+): Promise<Issue> {
+  if (signal?.aborted) return Promise.resolve("retiree");
   return new Promise((ok) => {
     let finie = false;
-    const repondre = (d: Decision) => {
+    const repondre = (d: Issue) => {
       if (finie) return;
       finie = true;
       clearTimeout(minuterie);
       signal?.removeEventListener("abort", abandon);
-      ok(d === "autoriser");
+      ok(d);
     };
     const abandon = () => {
       if (finie) return;
       retirer();
-      repondre("refuser");
+      repondre("retiree");
     };
     // `Infinity` : aucun délai (une question venue d'un clic de l'utilisateur attend sa réponse).
     const minuterie = Number.isFinite(delaiMs) ? setTimeout(abandon, delaiMs) : undefined;
@@ -145,14 +157,14 @@ export function attendreReponse(
  * `[]` s'il refuse, si le délai expire ou si `signal` est levé (la carte est alors retirée).
  */
 export function attendreDroits(
-  poser: (repondre: (d: Decision, droits?: DroitDev[]) => void) => () => void,
+  poser: (repondre: (d: Issue, droits?: DroitDev[]) => void) => () => void,
   delaiMs = DELAI_QUESTION_MS,
   signal?: AbortSignal,
 ): Promise<DroitDev[]> {
   if (signal?.aborted) return Promise.resolve([]);
   return new Promise((ok) => {
     let finie = false;
-    const repondre = (d: Decision, droits: DroitDev[] = []) => {
+    const repondre = (d: Issue, droits: DroitDev[] = []) => {
       if (finie) return;
       finie = true;
       clearTimeout(minuterie);

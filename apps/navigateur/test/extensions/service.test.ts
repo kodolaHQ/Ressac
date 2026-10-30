@@ -42,6 +42,8 @@ let branchees: string[];
 let retraitsPrives: EtatNavigateur[];
 let abonnes: ((e: EtatNavigateur) => void)[];
 let nav: EtatNavigateur;
+/** Profils qui ont un onglet que l'agent ne peut pas lire (option `ongletIllisible` du service). */
+let illisibles: Set<string>;
 
 const etatNav = (prive: boolean) =>
   ({ espaces: [{ id: "e1", profil: "defaut", prive }], profils: [{ id: "defaut" }], fenetres: [], onglets: {} }) as unknown as EtatNavigateur;
@@ -57,7 +59,7 @@ function demarrer() {
   const sessions = { session: (id: string) => void branchees.push(id) };
   return {
     service,
-    pret: service.demarrer({ dossier, dossierGardes: gardes, magasin, profils, sessions, vues: {} } as never),
+    pret: service.demarrer({ dossier, dossierGardes: gardes, magasin, profils, sessions, vues: {}, ongletIllisible: (p: ReadonlySet<string>) => [...p].some((x) => illisibles.has(x)) } as never),
   };
 }
 
@@ -72,6 +74,7 @@ beforeEach(() => {
   retraitsPrives = [];
   abonnes = [];
   nav = etatNav(false);
+  illisibles = new Set();
 });
 
 test("registre illisible : aucune extension chargée, et le démarrage ne lève pas", async () => {
@@ -540,24 +543,84 @@ test("console pour l'agent : filtrée ; deuxième barrière pour le Store ; inco
   const { service, outils } = await agentPourOutils();
   service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "caché" }, { lisible: false });
   service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "fond" });
-  expect(await outils.console("essai")).toEqual({ messages: [{ horodatage: 2, niveau: "log", texte: "fond" }], masques: 1, fondMasque: false, debloquee: false });
+  expect(await outils.console("essai")).toEqual({ messages: [{ horodatage: 2, niveau: "log", texte: "fond" }], masques: 1, fondMasque: false, fondObserve: false, debloquee: false });
   expect(await outils.console("agent:essai", 2)).toMatchObject({ masques: 0 });
   await expect(outils.console(`store:${ID}`)).rejects.toThrow("Réservé aux extensions que tu as écrites.");
   expect(await outils.console("absente")).toBeNull();
 });
 
-test("recharger remet à zéro le drapeau du service worker (rechargée seulement)", async () => {
-  const { service } = await agentPourOutils();
-  service.consoles.aTourneDansOnglet(AGENT_ID, false);
-  // Sans dossier de l'agent, le rechargement est refusé : le drapeau reste.
-  const outils = service.outilsAgent({ fenetreAgent: () => "f1" });
-  expect((await outils.recharger("essai")).etat).toBe("refusee");
+test("a tourné dans un onglet non lisible : noté au registre par profil, durable (relance), jamais remis à zéro ; effacé avec l'extension", async () => {
+  const { service, outils, registre } = await agentPourOutils();
+  await service.aTourneDansOnglet(AGENT_ID, "defaut", true);
+  expect(registre().extensions["agent:essai"]!.consoleMasquee ?? []).toEqual([]);
+  expect((await outils.console("essai"))!.fondMasque).toBe(false);
+  await service.aTourneDansOnglet(AGENT_ID, "defaut", false);
+  await service.aTourneDansOnglet(AGENT_ID, "defaut", false);
+  expect(registre().extensions["agent:essai"]!.consoleMasquee).toEqual(["defaut"]);
   expect((await outils.console("essai"))!.fondMasque).toBe(true);
+  // Une extension du Store : rien n'est écrit.
+  await service.aTourneDansOnglet(ID, "defaut", false);
+  expect(registre().extensions[`store:${ID}`]!.consoleMasquee ?? []).toEqual([]);
+  // recharger ne remet rien à zéro.
+  await outils.recharger("essai");
+  expect((await outils.console("essai"))!.fondMasque).toBe(true);
+  // Relancé : toujours là (registre).
+  const { service: relance, pret } = demarrer();
+  await pret;
+  const o2 = relance.outilsAgent({ fenetreAgent: () => "f1" });
+  expect((await o2.console("essai"))!.fondMasque).toBe(true);
+  expect(await relance.supprimer("agent:essai")).toEqual({ ok: true });
+  expect(registre().extensions["agent:essai"]).toBeUndefined();
+});
+
+test("un droit qui observe les onglets et un onglet non lisible dans un profil où elle est active : ses messages du service worker sont masqués", async () => {
+  const { service, outils, registre } = await agentPourOutils();
+  // Sans droit qui observe (accord vide) : rien n'est masqué même avec un onglet non lisible.
+  illisibles.add("defaut");
+  service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "sans droit" });
+  expect((await outils.console("essai"))!.messages.map((m) => m.texte)).toEqual(["sans droit"]);
+  // Avec des hôtes accordés.
+  for (const accord of [
+    { permissions: [], hotes: ["https://x.test/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
+    { permissions: ["tabs"], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
+    { permissions: ["cookies"], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false },
+  ]) {
+    await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, "agent:essai": { ...e.extensions["agent:essai"]!, accord } } }));
+    service.consoles.oublier(AGENT_ID);
+    illisibles = new Set(["defaut"]);
+    service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "observé" });
+    illisibles = new Set(["secret"]); // un profil où elle n'est pas active
+    service.consoles.noter(AGENT_ID, { horodatage: 3, niveau: "log", texte: "libre" });
+    const r = (await outils.console("essai"))!;
+    expect(r.messages.map((m) => m.texte)).toEqual(["libre"]);
+    expect(r.fondObserve).toBe(true);
+  }
+  expect(registre().extensions["agent:essai"]!.consoleMasquee ?? []).toEqual([]);
+});
+
+test("une carte retirée avant la réponse de l'utilisateur : « retiree », pas « refusee »", async () => {
+  const { service, outils } = await agentPourOutils();
+  // Retirée par celui qui l'a posée (caduque, fenêtre fermée).
+  service.brancherQuestions((_champs, repondre) => {
+    setTimeout(() => repondre("retiree"));
+    return () => {};
+  });
+  expect(await outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude" })).toMatchObject({ ok: false, retiree: true });
+  // Le signal (nouvelle conversation) tombe pendant la carte.
+  service.brancherQuestions(() => () => {});
+  const retrait = new AbortController();
+  const r = outils.debloquerConsole("essai", "r", { fenetre: null, agent: "Claude", signal: retrait.signal });
+  retrait.abort();
+  expect(await r).toMatchObject({ ok: false, retiree: true });
+  // demanderAccord : retirée par le délai.
+  const { REVOIR_PENDANT_COUPURE: _ } = await import("../../src/main/extensions/service");
+  const carte = { cle: "agent:essai", espaceId: "e1", maj: null, renforce: false, empreinte: "x" } as never;
+  expect(await service.demanderAccord(carte, { delaiMs: 5 })).toMatchObject({ accepte: false, retiree: true });
 });
 
 test("debloquer_console : la carte (Refuser par défaut côté interface) dit ce que l'agent verra ; accordé, plus rien n'est masqué ; refermer le referme", async () => {
   const { service, outils, cartes } = await agentPourOutils();
-  service.consoles.aTourneDansOnglet(AGENT_ID, false);
+  await service.aTourneDansOnglet(AGENT_ID, "defaut", false);
   service.consoles.noter(AGENT_ID, { horodatage: 1, niveau: "log", texte: "caché" }, { lisible: false });
   service.consoles.noter(AGENT_ID, { horodatage: 2, niveau: "log", texte: "fond" });
   expect(await outils.debloquerConsole("essai", "le bouton ne répond pas", { fenetre: null, agent: "Claude" })).toEqual({ ok: true });

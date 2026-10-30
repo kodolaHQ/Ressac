@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   activer,
   cleExtension,
+  DEMANDE_RETIREE,
   ERREUR_PROFIL_PRIVE,
   porteeElargie,
   preparerCopie,
@@ -19,6 +20,8 @@ import { accordPour } from "./store";
 
 export const DOSSIER_ABSENT = "Dossier absent";
 export const ACTIVATION_REFUSEE = "Activation refusée";
+/** La carte est tombée sans réponse de l'utilisateur (délai, retirée) : pas un refus. */
+export const ACTIVATION_RETIREE = DEMANDE_RETIREE;
 export const TOUTES_COUPEES_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
 /** L'erreur rendue à l'agent quand le dossier de son extension n'existe plus. */
 export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
@@ -242,7 +245,7 @@ async function activation(
   });
   if (!accordPour(r, p.analyse.portee)) {
     await effacer();
-    return { ok: false, erreur: ACTIVATION_REFUSEE };
+    return { ok: false, erreur: r.retiree ? ACTIVATION_RETIREE : ACTIVATION_REFUSEE };
   }
   // L'état a pu changer pendant la carte : il est revu au « oui ».
   const nav = d.etatNavigateur();
