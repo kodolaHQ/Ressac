@@ -11,7 +11,7 @@ import { construireCrx } from "../../e2e/extensions/crx";
 // La bibliothèque du Store importe `electron` à son chargement (voir telechargement.test.ts).
 vi.mock("electron", () => ({ app: {}, net: {}, session: {}, BrowserWindow: vi.fn(), ipcMain: {}, nativeImage: {}, powerMonitor: {}, webContents: {} }));
 
-const { appliquerMiseAJour, chercherMisesAJour, comparerVersions, INTERVALLE_MAJ_MS, URL_MISES_A_JOUR } = await import("../../src/main/extensions/mises-a-jour");
+const { accepterMiseAJour, appliquerMiseAJour, chercherMisesAJour, comparerVersions, INTERVALLE_MAJ_MS, URL_MISES_A_JOUR } = await import("../../src/main/extensions/mises-a-jour");
 const { CRX_INVALIDE, ERREUR_STORE } = await import("../../src/main/extensions/telechargement");
 
 const temporaires: string[] = [];
@@ -192,6 +192,9 @@ let etat: EtatExtensions;
 let modifications: number;
 let preparees: string[];
 let erreurs: Map<string, string>;
+/** Ce que rendent les sessions après la dernière écriture : l'erreur d'un chargement raté, ou null. */
+let rate: (cle: string) => string | null;
+let essais: string[];
 
 beforeEach(() => {
   dossier = temporaire("webaios-maj-dossier-");
@@ -199,6 +202,8 @@ beforeEach(() => {
   modifications = 0;
   preparees = [];
   erreurs = new Map();
+  rate = () => null;
+  essais = [];
 });
 
 const dependances = () => ({
@@ -210,6 +215,11 @@ const dependances = () => ({
   },
   preparer: async (cle: string, chemin: string) => void preparees.push(`${cle}:${chemin}`),
   noterErreur: (cle: string, erreur: string | null) => void (erreur === null ? erreurs.delete(cle) : erreurs.set(cle, erreur)),
+  chargementRate: (cle: string) => rate(cle),
+  sansPlantage: async <T>(cle: string, f: () => Promise<T>) => {
+    essais.push(cle);
+    return f();
+  },
 });
 
 /** Version 1.0.0 installée (dossier sous store/, registre), accord = sa portée, active dans « defaut ». */
@@ -430,4 +440,43 @@ test("l'écriture du registre elle-même échoue : rien ne reste, rien ne change
   expect(JSON.stringify(etat)).toBe(avant);
   expect(erreurs.get(`store:${id}`)).toContain("disque plein");
   expect(contenu(join(dossier, "store", id))).toEqual(["1.0.0_0"]);
+});
+
+test("I6 la nouvelle version ne se charge pas : l'ancienne est rechargée et gardée, la mise à jour reste en attente avec l'erreur, sans plantage compté", async () => {
+  const cle = nouvelleCle();
+  const { id, ancienne } = installer(cle);
+  const { url } = publier(cle, { version: "1.1.0" });
+  const k = `store:${id}`;
+  // Les sessions ratent la 1.1.0 (et chargent la 1.0.0).
+  rate = (c) => (c === k && etat.extensions[k]?.version === "1.1.0" ? "Manifest invalide" : null);
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, dependances())).toBe("en-attente");
+  const x = etat.extensions[k]!;
+  expect(x.version).toBe("1.0.0");
+  expect(x.majEnAttente?.version).toBe("1.1.0");
+  expect(existsSync(join(ancienne, "manifest.json"))).toBe(true);
+  expect(existsSync(join(dossier, "store", id, "1.1.0_0", "manifest.json"))).toBe(true);
+  expect(erreurs.get(k)).toBe("Mise à jour 1.1.0 non chargée (la version 1.0.0 reste) : Manifest invalide");
+  expect(essais).toEqual([k]);
+  expect(modifications).toBe(2);
+  // La vérification suivante ne la retélécharge pas et ne réécrit rien.
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, dependances())).toBe("en-attente");
+  expect(modifications).toBe(2);
+});
+
+test("I6 acceptée depuis l'attente, elle ne se charge pas : l'ancienne version et son accord reviennent", async () => {
+  const cle = nouvelleCle();
+  const { id, ancienne } = installer(cle);
+  const { url } = publier(cle, { version: "1.1.0", host_permissions: ["https://exemple.com/*"] });
+  const k = `store:${id}`;
+  expect(await appliquerMiseAJour({ id, version: "1.1.0", url }, dependances())).toBe("en-attente");
+  const accordAvant = etat.extensions[k]!.accord;
+  const m = etat.extensions[k]!.majEnAttente!;
+  rate = (c) => (c === k && etat.extensions[k]?.version === "1.1.0" ? "Manifest invalide" : null);
+  expect(await accepterMiseAJour(k, { version: "1.1.0", nom: etat.extensions[k]!.nom, portee: m.portee }, dependances())).toBe("en-attente");
+  const x = etat.extensions[k]!;
+  expect(x.version).toBe("1.0.0");
+  expect(x.accord).toEqual(accordAvant);
+  expect(x.majEnAttente?.version).toBe("1.1.0");
+  expect(existsSync(join(ancienne, "manifest.json"))).toBe(true);
+  expect(erreurs.get(k)).toContain("non chargée");
 });

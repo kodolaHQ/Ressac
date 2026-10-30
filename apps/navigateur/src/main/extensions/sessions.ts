@@ -223,6 +223,10 @@ export class ExtensionsProfils {
   /** Par profil : clé → extension chargée (id Chromium, dossier, `marqueDe` au chargement). */
   private chargees = new Map<IdProfil, Map<string, { id: string; chemin: string; marque: string }>>();
   private erreurs = new Map<string, string>();
+  /** Par clé : les profils où son dernier chargement voulu a échoué, avec l'erreur. */
+  private echecs = new Map<string, Map<IdProfil, string>>();
+  /** Clés dont un échec de chargement ne compte pas comme un plantage (mise à jour en essai), avec leur nombre d'essais. */
+  private sansPlantages = new Map<string, number>();
   private dernier: EtatExtensions | undefined;
   private file: Promise<void> = Promise.resolve();
   /** Par profil : clé → dossier voulu (posé avant le chargement : un service worker peut démarrer pendant celui-ci). */
@@ -708,6 +712,27 @@ export class ExtensionsProfils {
     return this.idsAgent.get(id);
   }
 
+  /**
+   * L'erreur d'un chargement raté de `cle` dans un profil où elle est voulue (dernière synchronisation de ce profil), ou
+   * null : chargée (ou pas voulue) partout.
+   */
+  chargementRate(cle: string): string | null {
+    const m = this.echecs.get(cle);
+    return m && m.size > 0 ? [...m.values()][0]! : null;
+  }
+
+  /** Pendant `f`, un échec de chargement de `cle` ne compte pas comme un plantage (mise à jour du Store en essai). */
+  async sansPlantage<T>(cle: string, f: () => Promise<T>): Promise<T> {
+    this.sansPlantages.set(cle, (this.sansPlantages.get(cle) ?? 0) + 1);
+    try {
+      return await f();
+    } finally {
+      const n = (this.sansPlantages.get(cle) ?? 1) - 1;
+      if (n > 0) this.sansPlantages.set(cle, n);
+      else this.sansPlantages.delete(cle);
+    }
+  }
+
   /** La dernière erreur de chargement de chaque clé (effacée quand elle se charge). */
   erreursChargement(): Map<string, string> {
     return new Map(this.erreurs);
@@ -760,11 +785,13 @@ export class ExtensionsProfils {
     const e = this.dernier;
     if (!e) return;
     const etat = this.o.etat();
-    await Promise.all([...this.instances].map(([profil, { session }]) => this.appliquerProfil(e, profil, session, profilPrive(etat, profil))));
+    // Un échec de chargement compte au plus un plantage par synchronisation, quel que soit le nombre de profils.
+    const comptees = new Set<string>();
+    await Promise.all([...this.instances].map(([profil, { session }]) => this.appliquerProfil(e, profil, session, profilPrive(etat, profil), comptees)));
     this.o.apresSynchro?.();
   }
 
-  private async appliquerProfil(e: EtatExtensions, profil: IdProfil, s: Session, prive: boolean): Promise<void> {
+  private async appliquerProfil(e: EtatExtensions, profil: IdProfil, s: Session, prive: boolean, comptees: Set<string>): Promise<void> {
     const chargees = this.chargees.get(profil)!;
     const voulues = new Map<string, string>();
     for (const cle of chargeesDans(e, profil, prive)) {
@@ -772,6 +799,11 @@ export class ExtensionsProfils {
       if (chemin) voulues.set(cle, chemin);
     }
     this.voulues.set(profil, voulues);
+    // Plus voulue dans ce profil : son échec d'avant n'y compte plus.
+    for (const [cle, m] of this.echecs) {
+      if (!voulues.has(cle)) m.delete(profil);
+      if (m.size === 0) this.echecs.delete(cle);
+    }
     for (const [cle, c] of chargees) {
       // Même dossier et même marque : rien à faire. Une copie de l'agent refaite (même dossier) a une nouvelle marque.
       if (voulues.get(cle) === c.chemin && marqueDe(e, cle) === c.marque) continue;
@@ -784,6 +816,8 @@ export class ExtensionsProfils {
       try {
         const ext = await s.extensions.loadExtension(chemin, { allowFileAccess: false });
         this.erreurs.delete(cle);
+        this.echecs.get(cle)?.delete(profil);
+        if (this.echecs.get(cle)?.size === 0) this.echecs.delete(cle);
         // Le profil est devenu privé pendant le chargement : une extension de l'agent repart aussitôt.
         if (lireCle(cle)?.source === "agent" && profilPrive(this.o.etat(), profil)) {
           this.retirer(s, profil, cle, ext.id);
@@ -798,10 +832,16 @@ export class ExtensionsProfils {
         }
       } catch (erreur) {
         this.erreurs.set(cle, (erreur as Error).message);
+        if (!this.echecs.has(cle)) this.echecs.set(cle, new Map());
+        this.echecs.get(cle)!.set(profil, (erreur as Error).message);
         console.error(`[extensions] ${cle} non chargée dans le profil ${profil} :`, erreur);
-        // Un échec de chargement compte comme un plantage : trois en une minute, et elle est désactivée.
+        // Un échec de chargement compte comme un plantage (une fois par synchronisation) : trois en une minute, et elle est
+        // désactivée. Pas pendant l'essai d'une mise à jour (l'ancienne version est rechargée).
         const lue = lireCle(cle);
-        if (lue) this.o.consoles?.plantage(lue.source === "store" ? lue.id : idChromeDeDossier(chemin), Date.now());
+        if (lue && !comptees.has(cle) && !this.sansPlantages.has(cle)) {
+          comptees.add(cle);
+          this.o.consoles?.plantage(lue.source === "store" ? lue.id : idChromeDeDossier(chemin), Date.now());
+        }
       }
     }
   }

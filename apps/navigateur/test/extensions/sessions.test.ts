@@ -1133,3 +1133,29 @@ test("effacerStockage : un chargement qui ne rend pas échoue après le délai ;
   finir();
   await vi.waitFor(() => expect(s.retraits).toEqual(["id-copies-essai"]));
 });
+
+test("I6 un échec de chargement compte au plus un plantage par synchronisation, quel que soit le nombre de profils ; chargementRate le dit ; sansPlantage n'en compte aucun", async () => {
+  etat = etatNav([{ id: "e1", profil: "defaut" }, { id: "e2", profil: "p2" }, { id: "e3", profil: "p3" }]);
+  const plantages: string[] = [];
+  const p = creer({ consoles: { noter: () => {}, plantage: (id: string) => void plantages.push(id) } as never });
+  const sessions = ["defaut", "p2", "p3"].map((n) => {
+    const s = fausseSession(n);
+    p.brancher(s as unknown as Electron.Session, n);
+    return s;
+  });
+  const chemin = join(dossier, "store", ID_A, "1_0");
+  for (const s of sessions) s.echecs.add(chemin);
+  const extensions = { [`store:${ID_A}`]: entree("store", ["defaut", "p2", "p3"], { version: "1" }) };
+  await p.synchroniser(etatExt(extensions));
+  expect(plantages).toEqual([ID_A]);
+  expect(p.chargementRate(`store:${ID_A}`)).toMatch(/Manifest file is missing/);
+  await p.sansPlantage(`store:${ID_A}`, () => p.synchroniser(etatExt({ ...extensions })));
+  expect(plantages).toEqual([ID_A]);
+  // Chargée dans un profil, ratée dans un autre : encore « ratée ».
+  sessions[0]!.echecs.clear();
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut", "p2", "p3"], { version: "1" }) }));
+  expect(p.chargementRate(`store:${ID_A}`)).not.toBeNull();
+  // Plus voulue dans les profils ratés : plus rien de raté.
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"], { version: "1" }) }));
+  expect(p.chargementRate(`store:${ID_A}`)).toBeNull();
+});

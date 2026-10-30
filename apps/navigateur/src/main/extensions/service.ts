@@ -781,6 +781,8 @@ export class ServiceExtensions {
         const version = /([^/\\]+)_0$/.exec(chemin)?.[1];
         if (version) this.prepareesMaj.set(cle, version);
       },
+      chargementRate: (cle) => this.o?.profils.chargementRate?.(cle) ?? null,
+      sansPlantage: (cle, f) => this.o?.profils.sansPlantage?.(cle, f) ?? f(),
       noterErreur: (cle, erreur) => {
         if ((this.erreursMaj.get(cle) ?? null) === erreur) return;
         if (erreur === null) this.erreursMaj.delete(cle);

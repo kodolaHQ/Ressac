@@ -117,6 +117,36 @@ export interface DependancesMiseAJour {
   preparer(cle: string, dossierVersion: string): Promise<void>;
   /** L'erreur de la dernière mise à jour de `cle` (pour la page) ; null : effacée. */
   noterErreur(cle: string, erreur: string | null): void;
+  /** Après une écriture : l'erreur si `cle` n'a pas pu être chargée dans un profil où elle est active, sinon null. */
+  chargementRate(cle: string): string | null;
+  /** Pendant `f`, un échec de chargement de `cle` ne compte pas comme un plantage. */
+  sansPlantage<T>(cle: string, f: () => Promise<T>): Promise<T>;
+}
+
+/**
+ * La version `nouvelle` vient d'être inscrite : si une session n'a pas pu la charger, l'ancienne (`avant`, toujours sur
+ * le disque) est réinscrite (les sessions la rechargent) et la nouvelle reste en attente (`majEnAttente`), avec l'erreur
+ * notée. Rend vrai si elle a été retirée ainsi.
+ */
+async function retablirSiNonChargee(
+  cle: string,
+  avant: { version: string; nom: string; accord: Portee | null },
+  nouvelle: { version: string; portee: Portee; chemin: string },
+  d: DependancesMiseAJour,
+): Promise<boolean> {
+  const rate = d.chargementRate(cle);
+  if (!rate) return false;
+  console.error(`[extensions] ${cle} ${nouvelle.version} non chargée, la version ${avant.version} revient :`, rate);
+  await d.modifier((e) => {
+    const y = e.extensions[cle];
+    if (!y || y.version !== nouvelle.version) return e;
+    return {
+      ...e,
+      extensions: { ...e.extensions, [cle]: { ...y, nom: avant.nom, version: avant.version, accord: avant.accord, majEnAttente: { ...nouvelle } } },
+    };
+  });
+  d.noterErreur(cle, `Mise à jour ${nouvelle.version} non chargée (la version ${avant.version} reste) : ${rate}`);
+  return true;
 }
 
 const dossierVersion = (dossier: string, id: string, version: string) => join(dossier, "store", id, `${version}_0`);
@@ -125,7 +155,9 @@ const dossierVersion = (dossier: string, id: string, version: string) => join(do
  * Applique une mise à jour trouvée par `chercherMisesAJour`, dans la file de l'extension (avec ses installations et
  * désinstallations) : téléchargée et vérifiée dans `store-attente/`, déplacée sous `store/<id>/<version>_0`, préparée,
  * analysée. Portée non élargie par rapport à l'accord : `version` remplacée au registre (les sessions où elle est
- * chargée la rechargent pendant cette écriture), puis l'ancienne version effacée ; `"appliquee"`. Élargie : `majEnAttente`
+ * chargée la rechargent pendant cette écriture), puis l'ancienne version effacée ; `"appliquee"`. Une session n'a pas pu
+ * la charger : l'ancienne version est réinscrite (rechargée), la nouvelle reste en attente avec l'erreur, aucun plantage
+ * n'est compté ; `"en-attente"`. Élargie : `majEnAttente`
  * (l'ancienne reste chargée et active) ; `"en-attente"`. Échec (Store, CRX, préparation, refus) : rien ne change, rien ne
  * reste, l'erreur est notée ; `"echec"`. Pendant la coupure générale, les fichiers sont remplacés et rien n'est chargé.
  * Extension retirée entre-temps, ou déjà à cette version : `"echec"` sans erreur ni téléchargement.
@@ -189,24 +221,36 @@ async function appliquer(maj: MiseAJour, d: DependancesMiseAJour): Promise<Resul
       return !!y && (y.version === analyse.version || y.majEnAttente?.version === analyse.version);
     };
     let suiteRatee = false;
-    await d.modifier((e) => {
-      const y = e.extensions[cle];
-      if (!y) throw new Error("extension retirée pendant la mise à jour");
-      // Comparée à l'accord écrit au moment même de l'écriture.
-      elargie = !y.accord || porteeElargie(y.accord, analyse.portee);
-      attenteAvant = y.majEnAttente ? dossierVersion(d.dossier, maj.id, y.majEnAttente.version) : null;
-      if (elargie) {
-        return { ...e, extensions: { ...e.extensions, [cle]: { ...y, majEnAttente: { version: analyse.version, portee: analyse.portee, chemin: nouvelle } } } };
-      }
-      ancienne = dossierVersion(d.dossier, maj.id, y.version);
-      return { ...e, extensions: { ...e.extensions, [cle]: { ...y, nom: analyse.nom, version: analyse.version, majEnAttente: null } } };
-    }).catch((e: unknown) => {
-      // Le registre a pu être écrit avant l'erreur (sessions, cartes, avis) : la version qu'il nomme reste alors.
-      if (!inscrite()) throw e;
-      suiteRatee = true;
-      console.error(`[extensions] mise à jour de ${cle} inscrite, mais la suite a échoué :`, e);
+    let avant = null as { version: string; nom: string; accord: Portee | null } | null;
+    const retiree = await d.sansPlantage(cle, async () => {
+      await d.modifier((e) => {
+        const y = e.extensions[cle];
+        if (!y) throw new Error("extension retirée pendant la mise à jour");
+        avant = { version: y.version, nom: y.nom, accord: y.accord };
+        // Comparée à l'accord écrit au moment même de l'écriture.
+        elargie = !y.accord || porteeElargie(y.accord, analyse.portee);
+        attenteAvant = y.majEnAttente ? dossierVersion(d.dossier, maj.id, y.majEnAttente.version) : null;
+        if (elargie) {
+          return { ...e, extensions: { ...e.extensions, [cle]: { ...y, majEnAttente: { version: analyse.version, portee: analyse.portee, chemin: nouvelle } } } };
+        }
+        ancienne = dossierVersion(d.dossier, maj.id, y.version);
+        return { ...e, extensions: { ...e.extensions, [cle]: { ...y, nom: analyse.nom, version: analyse.version, majEnAttente: null } } };
+      }).catch((e: unknown) => {
+        // Le registre a pu être écrit avant l'erreur (sessions, cartes, avis) : la version qu'il nomme reste alors.
+        if (!inscrite()) throw e;
+        suiteRatee = true;
+        console.error(`[extensions] mise à jour de ${cle} inscrite, mais la suite a échoué :`, e);
+      });
+      // Pas chargée : l'ancienne version revient, la nouvelle attend (aucun plantage compté pour cet essai).
+      return !elargie && !suiteRatee && avant
+        ? retablirSiNonChargee(cle, avant, { version: analyse.version, portee: analyse.portee, chemin: nouvelle }, d)
+        : false;
     });
     cible = null; // inscrite : elle reste.
+    if (retiree) {
+      if (attenteAvant && attenteAvant !== nouvelle) await rm(attenteAvant, { recursive: true, force: true });
+      return "en-attente";
+    }
     // Les sessions ont rechargé (ou gardé) ce qu'il faut : l'ancienne version et une attente abandonnée s'effacent.
     // Sessions pas synchronisées : l'ancienne version, peut-être encore chargée, reste.
     for (const reste of [suiteRatee ? null : ancienne, attenteAvant]) if (reste && reste !== nouvelle) await rm(reste, { recursive: true, force: true });
@@ -236,26 +280,36 @@ export function accepterMiseAJour(
     const nouvelle = dossierVersion(d.dossier, id, attendue.version);
     let ancienne = null as string | null;
     let suiteRatee = false;
+    let avant = null as { version: string; nom: string; accord: Portee | null } | null;
+    let retiree = false;
     try {
       if (!existsSync(join(nouvelle, "manifest.json"))) throw new Error("fichiers de la mise à jour absents");
-      await d.modifier((e) => {
-        const y = e.extensions[cle];
-        const m = y?.majEnAttente;
-        if (!y || !m || m.version !== attendue.version || empreintePortee(m.portee) !== empreintePortee(attendue.portee))
-          throw new Error("la mise à jour en attente a changé");
-        ancienne = dossierVersion(d.dossier, id, y.version);
-        return { ...e, extensions: { ...e.extensions, [cle]: { ...y, nom: attendue.nom, version: m.version, accord: m.portee, majEnAttente: null } } };
-      }).catch((e: unknown) => {
-        // Écrit avant l'erreur (sessions, cartes, avis) : appliquée, mais l'ancienne, peut-être encore chargée, reste.
-        if (d.etatExtensions().extensions[cle]?.version !== attendue.version) throw e;
-        suiteRatee = true;
-        console.error(`[extensions] mise à jour de ${cle} inscrite, mais la suite a échoué :`, e);
+      retiree = await d.sansPlantage(cle, async () => {
+        await d.modifier((e) => {
+          const y = e.extensions[cle];
+          const m = y?.majEnAttente;
+          if (!y || !m || m.version !== attendue.version || empreintePortee(m.portee) !== empreintePortee(attendue.portee))
+            throw new Error("la mise à jour en attente a changé");
+          ancienne = dossierVersion(d.dossier, id, y.version);
+          avant = { version: y.version, nom: y.nom, accord: y.accord };
+          return { ...e, extensions: { ...e.extensions, [cle]: { ...y, nom: attendue.nom, version: m.version, accord: m.portee, majEnAttente: null } } };
+        }).catch((e: unknown) => {
+          // Écrit avant l'erreur (sessions, cartes, avis) : appliquée, mais l'ancienne, peut-être encore chargée, reste.
+          if (d.etatExtensions().extensions[cle]?.version !== attendue.version) throw e;
+          suiteRatee = true;
+          console.error(`[extensions] mise à jour de ${cle} inscrite, mais la suite a échoué :`, e);
+        });
+        // Pas chargée : l'ancienne version et son accord reviennent, la nouvelle attend de nouveau.
+        return !suiteRatee && avant
+          ? retablirSiNonChargee(cle, avant, { version: attendue.version, portee: attendue.portee, chemin: nouvelle }, d)
+          : false;
       });
     } catch (e) {
       console.error(`[extensions] mise à jour de ${cle} non appliquée :`, e);
       d.noterErreur(cle, `Mise à jour ${attendue.version} non installée : ${(e as Error).message}`);
       return "echec";
     }
+    if (retiree) return "en-attente";
     if (ancienne && ancienne !== nouvelle && !suiteRatee) await rm(ancienne, { recursive: true, force: true });
     d.noterErreur(cle, null);
     return "appliquee";
