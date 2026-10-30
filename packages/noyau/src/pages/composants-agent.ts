@@ -9,6 +9,7 @@ import { COMPOSANTS_INTEGRES, type DefinitionComposant } from "./catalogue.js";
 export const COMPOSANT_HTML_MAX = 256 * 1024;
 const JSON_MAX = 64 * 1024;
 const ERREUR_MAX = 300;
+export const NOM_PROPRIETE = /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/;
 const NOM = /^[a-z0-9-]{1,40}$/;
 
 export const DeclarationComposant = z
@@ -17,7 +18,7 @@ export const DeclarationComposant = z
     description: z.string().min(1).max(300),
     proprietes: z
       .record(
-        z.string(),
+        z.string().regex(NOM_PROPRIETE),
         z.object({
           genre: z.enum(["reference", "champ", "texte", "nombre", "case"]),
           description: z.string().min(1).max(200),
@@ -55,6 +56,11 @@ async function lireUn(dossier: string, nom: string): Promise<DefinitionComposant
     brut = JSON.parse(json.texte);
   } catch {
     return "composant.json illisible (pas du JSON valide)";
+  }
+  // zod ignore en silence une clé « __proto__ » : on regarde les clés brutes avant.
+  const props = (brut as { proprietes?: unknown } | null)?.proprietes;
+  if (props && typeof props === "object" && Object.keys(props).some((k) => !NOM_PROPRIETE.test(k))) {
+    return "composant.json invalide : proprietes : nom de propriété non valide";
   }
   const r = DeclarationComposant.safeParse(brut);
   if (!r.success) {

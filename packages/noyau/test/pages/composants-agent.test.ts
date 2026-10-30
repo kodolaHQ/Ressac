@@ -63,6 +63,24 @@ describe("lireComposantsAgent", () => {
     expect(r.invalides).toEqual([{ nom: "a-casse", erreur: "composant.json illisible (pas du JSON valide)" }]);
   });
 
+  it("noms de propriété __proto__, avec saut de ligne, 13 propriétés, composant.json lien symbolique : invalides", async () => {
+    const prop = { genre: "texte", description: "x" };
+    await ecrire("proto", '{"nom":"proto","description":"d","proprietes":{"__proto__":{"genre":"texte","description":"x"}}}', "<p></p>");
+    await ecrire("saut", decl("saut", { proprietes: { "a\nb": prop } }), "<p></p>");
+    const treize = Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`p${i}`, prop]));
+    await ecrire("treize", decl("treize", { proprietes: treize }), "<p></p>");
+    await ecrire("lj", null, "<p></p>");
+    await writeFile(join(dossier, "lj", "reel.json"), decl("lj"));
+    await symlink(join(dossier, "lj", "reel.json"), join(dossier, "lj", "composant.json"));
+    const r = await lireComposantsAgent(dossier);
+    expect(r.valides).toEqual([]);
+    const e = Object.fromEntries(r.invalides.map((i) => [i.nom, i.erreur]));
+    expect(e["proto"]).toMatch(/composant\.json invalide/);
+    expect(e["saut"]).toMatch(/composant\.json invalide/);
+    expect(e["treize"]).toMatch(/12 propriétés/);
+    expect(e["lj"]).toBe("composant.json n'est pas un fichier ordinaire");
+  });
+
   it("dossier introuvable : rien", async () => {
     expect(await lireComposantsAgent(join(dossier, "absent"))).toEqual({ valides: [], invalides: [] });
   });

@@ -1,6 +1,6 @@
 // Le catalogue des composants intégrés : ce que Gemma peut poser dans une page, et avec quelles propriétés. Pur.
 
-export type GenrePropriete = "reference" | "champ" | "texte" | "nombre" | "case" | "choix" | "colonnes";
+export type GenrePropriete = "reference" | "champ" | "texte" | "nombre" | "case" | "choix" | "colonnes" | "chiffres";
 export type Propriete = { genre: GenrePropriete; description: string; requis: boolean; choix?: string[]; max?: number };
 export type DefinitionComposant = { nom: string; description: string; proprietes: Record<string, Propriete>; origine: "integre" | "agent" };
 
@@ -30,7 +30,7 @@ export const COMPOSANTS_INTEGRES: DefinitionComposant[] = [
     libelle: p("texte", "Ce que mesure le chiffre", true, { max: 60 }),
   }),
   integre("chiffres", "Plusieurs chiffres côte à côte (6 au plus).", {
-    chiffres: p("colonnes", "Liste de { valeur: référence, libelle: texte }", true, { max: 6 }),
+    chiffres: p("chiffres", "Liste de { valeur: référence, libelle: texte ≤ 60 }", true, { max: 6 }),
   }),
   integre("liste", "Une liste de lignes ; une référence finissant par regrouper donne une section par valeur.", {
     elements: p("reference", "La liste", true),
@@ -64,7 +64,8 @@ export const COMPOSANTS_INTEGRES: DefinitionComposant[] = [
   integre("lien", "Un lien vers une adresse lue dans les résultats.", {
     objet: p("reference", "L'objet qui porte l'adresse", true),
     url: p("champ", "Champ de l'adresse", true),
-    texte: p("texte", "Texte du lien, ou nom d'un champ", false, { max: 80 }),
+    texte: p("texte", "Texte du lien", false, { max: 80 }),
+    champTexte: p("champ", "Champ de l'objet qui donne le texte du lien (l'emporte sur texte si les deux sont donnés)"),
   }),
   integre("groupe", "Un groupe de blocs sous un titre (blocs).", {
     titre: p("texte", "Le titre", true, { max: 80 }),
@@ -73,15 +74,28 @@ export const COMPOSANTS_INTEGRES: DefinitionComposant[] = [
   integre("colonnes", "Deux colonnes de blocs (gauche, droite).", {}),
 ];
 
+const FORMES: Partial<Record<GenrePropriete, string>> = {
+  colonnes: "colonnes [{champ, libelle}]",
+  chiffres: "chiffres [{valeur: référence, libelle}]",
+};
+/** Règles « l'un ou l'autre » que les propriétés seules ne disent pas. */
+const REGLES: Record<string, string> = {
+  paragraphe: "texte OU valeur.",
+  etiquettes: "valeurs OU elements + champ.",
+  lien: "texte OU champTexte (champTexte l'emporte).",
+};
+
 /** Le catalogue pour Gemma : une ligne par composant. */
 export function catalogueTexte(defs: DefinitionComposant[]): string {
   return defs
     .map((d) => {
       const props = Object.entries(d.proprietes).map(([nom, pr]) => {
-        const detail = pr.choix ? `${pr.genre} ${pr.choix.join("/")}` : pr.genre;
-        return `${nom} (${detail}${pr.requis ? ", requis" : ""})`;
+        const base = pr.choix ? `${pr.genre} ${pr.choix.join("/")}` : (FORMES[pr.genre] ?? pr.genre);
+        const max = pr.max !== undefined ? ` ≤${pr.max}` : "";
+        return `${nom} (${base}${max}${pr.requis ? ", requis" : ""})`;
       });
-      return `${d.nom} : ${d.description}${props.length ? ` Propriétés : ${props.join(", ")}.` : ""}`;
+      const regle = d.origine === "integre" && REGLES[d.nom] ? ` ${REGLES[d.nom]}` : "";
+      return `${d.nom} : ${d.description}${props.length ? ` Propriétés : ${props.join(", ")}.` : ""}${regle}`;
     })
     .join("\n");
 }
