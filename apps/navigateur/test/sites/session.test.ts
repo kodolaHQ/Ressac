@@ -26,6 +26,8 @@ vi.mock("electron", () => ({
           registerPreloadScript: (p: unknown) => f.preloads.push(p),
           clearStorageData: async () => void f.efface.push("stockage"),
           clearCache: async () => void f.efface.push("cache"),
+          clearAuthCache: async () => void f.efface.push("authentification"),
+          closeAllConnections: async () => void f.efface.push("connexions"),
         });
         sessions.set(partition, s);
       }
@@ -105,9 +107,9 @@ test("preferencesSite : celles d'un onglet, vidéos lancées sans geste", () => 
   });
 });
 
-test("effacerSessionSite : stockage puis cache, de la seule partition de l'appli", async () => {
+test("effacerSessionSite : connexions fermées, puis stockage, cache et identifiants HTTP, de la seule partition de l'appli", async () => {
   sessionSite("youtube");
   await effacerSessionSite("vidola");
-  expect(fausse("vidola").efface).toEqual(["stockage", "cache"]);
+  expect(fausse("vidola").efface).toEqual(["connexions", "stockage", "cache", "authentification"]);
   expect(fausse("youtube").efface).toEqual([]);
 });

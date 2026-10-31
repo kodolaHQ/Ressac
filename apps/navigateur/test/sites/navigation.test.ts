@@ -42,3 +42,35 @@ test("erreurs de réseau qui déclenchent le suivi de l'adresse", () => {
   expect(erreurDeReseau(-202)).toBe(false); // certificat
   expect(erreurDeReseau(0)).toBe(false);
 });
+
+test("identifiants dans l'adresse : toujours bloqués, même vers le site", () => {
+  for (const url of ["https://u:p@www.vidola-a.example/", "https://u@vidola-a.example/", "https://:p@accounts.google.com/"]) {
+    expect(decisionNavigation(url, c)).toBe("bloquer");
+    expect(decisionOuverture(url, c)).toBe("bloquer");
+  }
+});
+
+test("http : jamais hors mode test, même vers le site", () => {
+  expect(decisionNavigation("http://www.vidola-a.example/", c)).toBe("bloquer");
+  expect(decisionOuverture("http://www.vidola-a.example/", c)).toBe("bloquer");
+  expect(decisionNavigation("http://accounts.google.com/", c)).toBe("bloquer");
+});
+
+test("adresses locales : refusées hors mode test, même si une liste les contient", () => {
+  const locales: ContexteNavigation = { domaines: ["vidola-a.localhost", "127.0.0.1", "nas.local"], connexion: ["192.168.1.1"] };
+  for (const url of ["https://vidola-a.localhost/", "http://vidola-a.localhost/", "https://127.0.0.1/", "https://nas.local/", "https://192.168.1.1/"]) {
+    expect(decisionNavigation(url, locales)).toBe("bloquer");
+    expect(decisionOuverture(url, locales)).toBe("bloquer");
+  }
+});
+
+test("mode test : http d'un hôte local permis ; http d'un hôte public toujours refusé", () => {
+  const t: ContexteNavigation = { domaines: ["vidola-a.localhost", "vidola-a.example"], connexion: ["connexion.localhost"], adressesLocales: true };
+  expect(decisionNavigation("http://vidola-a.localhost:4321/x", t)).toBe("suivre");
+  expect(decisionOuverture("http://www.vidola-a.localhost:4321/x", t)).toBe("dans-l-appli");
+  expect(decisionOuverture("http://connexion.localhost:4321/", t)).toBe("petite-fenetre");
+  expect(decisionNavigation("https://vidola-a.example/", t)).toBe("suivre");
+  expect(decisionNavigation("http://vidola-a.example/", t)).toBe("bloquer");
+  expect(decisionOuverture("http://pub.localhost:4321/", t)).toBe("bloquer");
+  expect(decisionNavigation("http://u:p@vidola-a.localhost:4321/", t)).toBe("bloquer");
+});
