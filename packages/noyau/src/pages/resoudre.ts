@@ -51,6 +51,16 @@ function texte(v: unknown): string {
   return "";
 }
 
+/** Comme `texte`, mais un objet ou une liste d'objets est montré en JSON compact, borné. */
+function texteCompact(v: unknown): string {
+  if (v === null || primitif(v) || (Array.isArray(v) && v.every(primitif))) return texte(v);
+  try {
+    return couper(JSON.stringify(v) ?? "");
+  } catch {
+    return "";
+  }
+}
+
 /** Toutes les chaînes des résultats (les valeurs, pas les clés), à toute profondeur. */
 export function chainesDe(resultats: unknown): Set<string> {
   const chaines = new Set<string>();
@@ -185,7 +195,7 @@ function integre(nom: string, p: Record<string, unknown>, ctx: Contexte): Record
     case "titre":
       return { texte: litteral(p, "texte", true) };
     case "paragraphe":
-      return { texte: a(p, "valeur") ? texte(valeurDe(p.valeur, ctx).valeur) : litteral(p, "texte", true) };
+      return { texte: a(p, "valeur") ? texteCompact(valeurDe(p.valeur, ctx).valeur) : litteral(p, "texte", true) };
     case "encadre": {
       let elements: string[] | null = null;
       let autres = 0;

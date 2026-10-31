@@ -115,7 +115,9 @@ function verifierProps(def: DefinitionComposant, brutes: Record<string, unknown>
     try {
       switch (pr.genre) {
         case "reference": {
-          const r = verifierReference(v, integre ? ATTENDU[`${def.nom}.${nom}`] : undefined, resultats);
+          // « $ » donné à un paragraphe : tous les résultats en texte compact, la mise en page de dernier recours.
+          const attendu = integre && !(def.nom === "paragraphe" && v === "$") ? ATTENDU[`${def.nom}.${nom}`] : undefined;
+          const r = verifierReference(v, attendu, resultats);
           props[nom] = r.texte;
           valeurs[nom] = r;
           reference = true;

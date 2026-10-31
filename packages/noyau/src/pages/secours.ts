@@ -87,16 +87,24 @@ function blocsObjet(o: Dict): BlocPlan[] {
       if (Object.keys(v).some((k) => cleValide(k) && simple(v[k]))) blocs.push(bloc("champs", { objet: cle }));
     }
   }
+  // Des clés qu'une référence ne sait pas écrire : leurs champs simples se lisent par l'objet entier.
+  const reference = () => blocs.some((b) => b.composant !== "titre");
+  if (Object.keys(o).some((k) => !cleValide(k) && simple(o[k]))) blocs.push(bloc("champs", { objet: "$" }));
+  if (!reference()) blocs.push(DERNIER_RECOURS);
   return blocs;
 }
+
+/** Le dernier recours : tous les résultats en un texte borné. Référence "$", donc toujours valide. */
+const DERNIER_RECOURS = bloc("paragraphe", { valeur: "$" });
+export const miseEnPageDernierRecours = (): PlanPage => ({ blocs: [{ ...DERNIER_RECOURS, props: { ...DERNIER_RECOURS.props } }] });
 
 export function miseEnPageSecours(resultats: unknown): PlanPage {
   if (Array.isArray(resultats)) {
     const b = blocListe(resultats, "$");
-    return { blocs: b ? [b] : [] };
+    return b ? { blocs: [b] } : miseEnPageDernierRecours();
   }
   if (estObjet(resultats)) return { blocs: blocsObjet(resultats) };
   if (typeof resultats === "number") return { blocs: [bloc("chiffre", { valeur: "$", libelle: "Résultat" })] };
   if (simple(resultats)) return { blocs: [bloc("paragraphe", { valeur: "$" })] };
-  return { blocs: [] };
+  return miseEnPageDernierRecours();
 }

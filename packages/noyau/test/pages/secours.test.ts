@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resoudrePage } from "../../src/pages/resoudre.js";
 import { COMPOSANTS_INTEGRES } from "../../src/pages/catalogue.js";
 import { miseEnPageSecours } from "../../src/pages/secours.js";
 import { validerPlan } from "../../src/pages/valider.js";
@@ -68,5 +69,37 @@ describe("miseEnPageSecours", () => {
       expect(v.ok, JSON.stringify(r).slice(0, 60)).toBe(true);
       if (v.ok) expect(v.ecartes).toEqual([]);
     }
+  });
+});
+
+describe("secours : jamais de page vide quand il y a des résultats", () => {
+  const cas: [string, unknown][] = [
+    ["clé non écrivable", { "clé-x": 1 }],
+    ["liste sous une clé non écrivable", { "a-b": [{ "x-y": 1 }] }],
+    ["objets de liste sans champ simple écrivable", [{ "x-y": 1 }, { "z-w": "t" }]],
+    ["imbrication profonde", { a: { b: { c: 1 } } }],
+    ["liste de listes", [[1, 2], [3]]],
+  ];
+  for (const [nom, r] of cas) {
+    it(`${nom} : valide et visible`, () => {
+      const plan = miseEnPageSecours(r);
+      expect(plan.blocs.some((b) => b.composant !== "titre")).toBe(true);
+      expect(validerPlan(plan, { catalogue: COMPOSANTS_INTEGRES, resultats: r }).ok).toBe(true);
+      const page = resoudrePage(plan, r, { compte: false, catalogue: COMPOSANTS_INTEGRES, secours: true });
+      const visible = page.blocs.some((b) => {
+        const p = (b as { props?: Record<string, unknown> }).props ?? {};
+        if (b.composant === "paragraphe") return typeof p.texte === "string" && p.texte.length > 0;
+        if (b.composant === "champs") return Array.isArray(p.champs) && p.champs.length > 0;
+        return b.composant !== "titre" && b.composant !== "erreur";
+      });
+      expect(visible).toBe(true);
+    });
+  }
+
+  it("un paragraphe de dernier recours borne le texte", () => {
+    const r = { a: { b: "x".repeat(10_000) } };
+    const page = resoudrePage(miseEnPageSecours(r), r, { compte: false, catalogue: COMPOSANTS_INTEGRES, secours: true });
+    const t = (page.blocs[0] as unknown as { props: { texte: string } }).props.texte;
+    expect(t.length).toBeLessThanOrEqual(2000);
   });
 });

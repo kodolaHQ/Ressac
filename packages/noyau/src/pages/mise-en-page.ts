@@ -2,7 +2,7 @@ import { apercuResultats, resultatsVides } from "./apercu.js";
 import type { DefinitionComposant } from "./catalogue.js";
 import { catalogueTexte } from "./catalogue.js";
 import type { PlanPage } from "./plan.js";
-import { miseEnPageSecours } from "./secours.js";
+import { miseEnPageDernierRecours, miseEnPageSecours } from "./secours.js";
 import { validerPlan } from "./valider.js";
 
 // La mise en page d'une action : Gemma choisit des composants et les remplit par référence, WebAiOs valide. Une seconde
@@ -69,9 +69,11 @@ export async function mettreEnPage(o: {
   signal?: AbortSignal; delaiMs?: number;
 }): Promise<MiseEnPage> {
   if (resultatsVides(o.resultats)) return { plan: null, secours: false, vide: true, essais: 0 };
-  const secours = (raison: string, essais: 0 | 1 | 2): MiseEnPage => ({
-    plan: miseEnPageSecours(o.resultats), secours: true, vide: false, essais, raison,
-  });
+  const secours = (raison: string, essais: 0 | 1 | 2): MiseEnPage => {
+    let plan = miseEnPageSecours(o.resultats);
+    if (!validerPlan(plan, { catalogue: o.catalogue, resultats: o.resultats }).ok) plan = miseEnPageDernierRecours();
+    return { plan, secours: true, vide: false, essais, raison };
+  };
   if (!o.ia) return secours(RAISON_SANS_IA, 0);
   if (o.signal?.aborted) return secours(RAISON_ARRET, 0);
 
