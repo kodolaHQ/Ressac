@@ -3,7 +3,20 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive } from "./aide";
+import {
+  dossierActions,
+  dossierWidgets,
+  ecrireAction,
+  ecrireComposant,
+  ecrireDisposition,
+  ecrireEtatWidget,
+  ecrireWidget,
+  lancer,
+  nouveauProfil,
+  nouvelleRacine,
+  ouvrirOnglet,
+  reglerEspaceActifPrive,
+} from "./aide";
 
 // Les actions de bout en bout (plan 14). La page d'une action est servie depuis un résultat écrit par le test dans
 // `<profil>/actions/<id>/…` (exécution et résultat), sans conteneur ni Gemma : rouvrir une page ne relance rien.
@@ -13,16 +26,14 @@ const EXECUTION = "2026-10-31T08-00-00-000Z";
 type Bloc = { composant: string; props: Record<string, unknown>; blocs?: Bloc[]; gauche?: Bloc[]; droite?: Bloc[] };
 
 /** Une action (`~/WebAiOs/actions/<id>/action.json`) et sa dernière exécution, avec son résultat, dans le profil. */
-function ecrireAction(
+function ecrireActionAvecResultat(
   racine: string,
   profil: string,
   id: string,
   o: { nom: string; compte?: string[]; resultats: unknown; blocs: Bloc[]; secours?: boolean },
 ): void {
-  const dossier = join(racine, "actions", id);
-  mkdirSync(dossier, { recursive: true });
-  writeFileSync(join(dossier, "action.json"), JSON.stringify({ nom: o.nom, sources: { compte: o.compte ?? [], publiques: [] } }));
-  const donnees = join(profil, "actions", id);
+  ecrireAction(racine, id, { nom: o.nom, sources: { compte: o.compte ?? [] } });
+  const donnees = join(dossierActions(profil), id);
   mkdirSync(join(donnees, "executions"), { recursive: true });
   mkdirSync(join(donnees, "resultats"), { recursive: true });
   const debut = "2026-10-31T08:00:00.000Z";
@@ -43,17 +54,6 @@ function ecrireAction(
     join(donnees, "resultats", `${EXECUTION}.json`),
     JSON.stringify({ version: 1, execution: EXECUTION, saisie: null, resultats: o.resultats, plan: { blocs: o.blocs }, secours: o.secours ?? false, vide: false }),
   );
-}
-
-/** Un composant de l'agent (`~/WebAiOs/composants/<nom>/`). */
-function ecrireComposant(racine: string, nom: string, html: string): void {
-  const dossier = join(racine, "composants", nom);
-  mkdirSync(dossier, { recursive: true });
-  writeFileSync(
-    join(dossier, "composant.json"),
-    JSON.stringify({ nom, description: "Barres des priorités", proprietes: { valeurs: { genre: "reference", description: "Les tâches", requis: true } } }),
-  );
-  writeFileSync(join(dossier, "composant.html"), html);
 }
 
 /** Attend que le noyau serve la page, puis l'ouvre dans un onglet (rien n'est lancé). */
@@ -102,7 +102,7 @@ const RESULTATS_DEMO = { taches: TACHES, resume: { ouvertes: 2, semaine: "44", s
 test("chaque composant intégré s'affiche (data-testid=\"bloc-<nom>\")", async () => {
   const racine = nouvelleRacine();
   const profil = nouveauProfil();
-  ecrireAction(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO, secours: true });
+  ecrireActionAvecResultat(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO, secours: true });
   const { fenetre, fermer } = await lancer({ racine, profil });
   try {
     await fenetre.emulateMedia({ colorScheme: "dark" });
@@ -131,7 +131,7 @@ test("chaque composant intégré s'affiche (data-testid=\"bloc-<nom>\")", async 
 test("un titre « <b>gras</b> » s'affiche en texte", async () => {
   const racine = nouvelleRacine();
   const profil = nouveauProfil();
-  ecrireAction(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO });
+  ecrireActionAvecResultat(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO });
   const { fenetre, fermer } = await lancer({ racine, profil });
   try {
     await ouvrirPage(fenetre, "demo", "Démo");
@@ -147,7 +147,7 @@ test("un titre « <b>gras</b> » s'affiche en texte", async () => {
 test("cliquer l'en-tête Priorité trie le tableau", async () => {
   const racine = nouvelleRacine();
   const profil = nouveauProfil();
-  ecrireAction(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO });
+  ecrireActionAvecResultat(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO });
   const { fenetre, fermer } = await lancer({ racine, profil });
   try {
     await ouvrirPage(fenetre, "demo", "Démo");
@@ -170,7 +170,7 @@ test("cliquer l'en-tête Priorité trie le tableau", async () => {
 test("un lien sans url n'est pas cliquable ; un lien permis ouvre un onglet", async () => {
   const racine = nouvelleRacine();
   const profil = nouveauProfil();
-  ecrireAction(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO });
+  ecrireActionAvecResultat(racine, profil, "demo", { nom: "Démo", resultats: RESULTATS_DEMO, blocs: BLOCS_DEMO });
   const { app, fenetre, fermer } = await lancer({ racine, profil });
   try {
     await ouvrirPage(fenetre, "demo", "Démo");
@@ -197,7 +197,7 @@ test("action avec compte : l'image est un emplacement neutre et aucune requête 
   const image = `https://127.0.0.1:${(serveur.address() as AddressInfo).port}/photo.png`;
   const racine = nouvelleRacine();
   const profil = nouveauProfil();
-  ecrireAction(racine, profil, "courrier", {
+  ecrireActionAvecResultat(racine, profil, "courrier", {
     nom: "Courrier",
     compte: ["mail.exemple.fr"],
     resultats: { messages: [{ sujet: "Bonjour", photo: image }] },
@@ -232,8 +232,12 @@ const BARRES = `<!doctype html><meta charset="utf-8"><body style="margin:0"><p i
 test("composant de l'agent : sa hauteur suit son message ; un composant absent montre « Composant indisponible : … » et le reste de la page s'affiche", async () => {
   const racine = nouvelleRacine();
   const profil = nouveauProfil();
-  ecrireComposant(racine, "barres", BARRES);
-  ecrireAction(racine, profil, "graphe", {
+  ecrireComposant(racine, "barres", {
+    description: "Barres des priorités",
+    proprietes: { valeurs: { genre: "reference", description: "Les tâches", requis: true } },
+    html: BARRES,
+  });
+  ecrireActionAvecResultat(racine, profil, "graphe", {
     nom: "Graphe",
     resultats: { taches: TACHES },
     blocs: [
@@ -300,8 +304,31 @@ async function ecouter(gerer: (req: IncomingMessage, res: ServerResponse, corps:
   };
 }
 
-/** Réglages des faux serveurs, remis à chaque test (les tests d'un fichier tournent l'un après l'autre). */
-const reglages = { lenteurSiteMs: 0, lenteurGemmaMs: 0 };
+type TicketGitlab = { n: number; titre: string; projet: string; priorite: string };
+const TICKETS_GITLAB: TicketGitlab[] = [
+  { n: 1, titre: "Connexion impossible", projet: "api", priorite: "urgent" },
+  { n: 2, titre: "Facture en double", projet: "facturation", priorite: "normale" },
+  { n: 3, titre: "Fuite mémoire du worker", projet: "api", priorite: "urgent" },
+  { n: 4, titre: "Coquille sur l'accueil", projet: "site", priorite: "basse" },
+  { n: 5, titre: "Export CSV lent", projet: "facturation", priorite: "normale" },
+];
+const ANNONCES_LBC = [
+  { n: 1, titre: "Renault Clio 4", prix: 7200, ville: "Lyon" },
+  { n: 2, titre: "Renault Clio 3", prix: 4900, ville: "Villeurbanne" },
+];
+const photoAnnonce = (n: number) => `https://img.leboncoin.exemple/photos/${n}.jpg`;
+
+/**
+ * Réglages des faux serveurs, remis à chaque test (les tests d'un fichier tournent l'un après l'autre). `plan` : ce que
+ * rend le faux Gemma à une demande de mise en page (un objet, envoyé en JSON ; un texte, tel quel) ; à toute autre
+ * consigne (un bloc `ia.rediger` d'un widget), il répond « Bonne affaire. ».
+ */
+const reglages: { lenteurSiteMs: number; lenteurGemmaMs: number; plan: unknown; tickets: TicketGitlab[] } = {
+  lenteurSiteMs: 0,
+  lenteurGemmaMs: 0,
+  plan: null,
+  tickets: [],
+};
 /** Le plan que rend le faux Gemma : un titre, puis la liste des pages lues. */
 const PLAN_GEMMA = {
   blocs: [
@@ -310,23 +337,44 @@ const PLAN_GEMMA = {
   ],
 };
 
+/** Les pages fixes du site de test (tâche 18) : les tickets « GitLab », la recherche « Leboncoin », celles des widgets. */
+const PAGES_DU_SITE: Record<string, () => string> = {
+  "/gitlab/tickets": () =>
+    `<title>Tickets</title><h1>Tableau de bord</h1><ul>${reglages.tickets
+      .map((t) => `<li><a href="/gitlab/ticket/${t.n}">#${t.n} ${t.titre} [${t.priorite}] (${t.projet})</a></li>`)
+      .join("")}</ul><a href="/gitlab/aide">Aide</a>`,
+  // Chaque photo est un lien (`source.page` ne rend que le texte et les liens d'une page) vers une adresse https.
+  "/leboncoin/recherche": () =>
+    `<title>Annonces</title><ul>${ANNONCES_LBC.map(
+      (a) => `<li><a href="https://www.leboncoin.exemple/ad/${a.n}">${a.titre} – ${a.prix} – ${a.ville}</a> <a href="${photoAnnonce(a.n)}">Photo</a></li>`,
+    ).join("")}</ul>`,
+  "/court": () => "<title>Court</title>",
+  "/veille": () => `<title>Veille</title><ul><li><a href="/annonce/1">Vélo de course</a></li><li><a href="/annonce/2">Vélo pliant</a></li></ul>`,
+};
+
+/** Le début de la consigne de mise en page (pages/mise-en-page.ts). */
+const DEBUT_MISE_EN_PAGE = "Tu mets en page le résultat d'une action pour l'utilisateur.";
+
 let site: Serveur;
 let ollama: Serveur & { prompts: string[] };
 
 test.beforeAll(async () => {
   site = await ecouter((req, res) => {
-    const n = /^\/lent\/(\d+)$/.exec(new URL(req.url ?? "/", "http://x").pathname)?.[1];
+    const chemin = new URL(req.url ?? "/", "http://x").pathname;
+    const page = PAGES_DU_SITE[chemin];
+    if (page) return void setTimeout(() => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(page()), chemin.startsWith("/gitlab/") ? reglages.lenteurSiteMs : 0);
+    const n = /^\/lent\/(\d+)$/.exec(chemin)?.[1];
     if (!n) return void res.writeHead(404).end();
     setTimeout(() => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<title>Page ${n}</title><p>Texte ${n}</p>`), reglages.lenteurSiteMs);
   });
   const prompts: string[] = [];
   const serveur = await ecouter((req, res, corps) => {
     if (req.url !== "/api/chat") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}');
-    prompts.push(String((JSON.parse(corps) as { messages: { content: string }[] }).messages[0]?.content));
-    setTimeout(
-      () => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ message: { content: JSON.stringify(PLAN_GEMMA) } })),
-      reglages.lenteurGemmaMs,
-    );
+    const prompt = String((JSON.parse(corps) as { messages: { content: string }[] }).messages[0]?.content);
+    prompts.push(prompt);
+    const plan = reglages.plan ?? PLAN_GEMMA;
+    const contenu = !prompt.startsWith(DEBUT_MISE_EN_PAGE) ? "Bonne affaire." : typeof plan === "string" ? plan : JSON.stringify(plan);
+    setTimeout(() => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ message: { content: contenu } })), reglages.lenteurGemmaMs);
   });
   ollama = Object.assign(serveur, { prompts });
 });
@@ -336,6 +384,8 @@ test.afterAll(async () => {
 test.beforeEach(() => {
   reglages.lenteurSiteMs = 0;
   reglages.lenteurGemmaMs = 0;
+  reglages.plan = null;
+  reglages.tickets = TICKETS_GITLAB;
 });
 
 const lancerActions = (racine: string, profil: string) =>
@@ -347,19 +397,23 @@ function ecrireActionExecutable(
   id: string,
   o: { nom: string; code: string; compte?: string[]; saisie?: string; motsCles?: string[]; blocs?: { id: string; type: string; parametres: Record<string, unknown> }[] },
 ): void {
-  const dossier = join(racine, "actions", id);
-  mkdirSync(dossier, { recursive: true });
-  writeFileSync(
-    join(dossier, "action.json"),
-    JSON.stringify({ nom: o.nom, sources: { compte: o.compte ?? [], publiques: [] }, ...(o.motsCles ? { motsCles: o.motsCles } : {}), ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}) }),
-  );
   const blocs = [{ id: "liste", type: "code", parametres: { source: "liste.mjs" } }, ...(o.blocs ?? []), { id: "sortie", type: "sortie", parametres: { vers: "page" } }];
-  writeFileSync(
-    join(dossier, "workflow.json"),
-    JSON.stringify({ version: 1, blocs, liens: blocs.slice(1).map((b, i) => ({ de: blocs[i]!.id, vers: b.id })) }),
-  );
-  writeFileSync(join(dossier, "liste.mjs"), o.code);
+  ecrireAction(racine, id, {
+    nom: o.nom,
+    sources: { compte: o.compte ?? [] },
+    ...(o.motsCles ? { motsCles: o.motsCles } : {}),
+    ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}),
+    workflow: enChaine(blocs),
+    fichiers: { "liste.mjs": o.code },
+  });
 }
+
+/** Un workflow dont les blocs s'enchaînent dans l'ordre du tableau. */
+const enChaine = (blocs: { id: string; type: string; parametres: Record<string, unknown> }[]) => ({
+  version: 1,
+  blocs,
+  liens: blocs.slice(1).map((b, i) => ({ de: blocs[i]!.id, vers: b.id })),
+});
 
 /** Trois pages du site lent, lues une par une (un bloc par élément) : « Lecture de 127.0.0.1… » puis « 3 / 3 ». */
 function ecrireActionPages(racine: string, id = "pages", nom = "Pages"): void {
@@ -372,7 +426,7 @@ function ecrireActionPages(racine: string, id = "pages", nom = "Pages"): void {
 
 /** Exécutions finies écrites sur disque pour cette action (sans les fichiers temporaires). */
 const executionsSurDisque = (profil: string, id: string) => {
-  const dossier = join(profil, "actions", id, "executions");
+  const dossier = join(dossierActions(profil), id, "executions");
   return existsSync(dossier) ? readdirSync(dossier).filter((f) => f.endsWith(".json")).sort() : [];
 };
 
@@ -478,7 +532,7 @@ test("relancer pendant l'exécution n'en démarre pas une seconde (une seule ex�
 
 /** Une exécution finie et son résultat (un titre), écrits sur disque. */
 function ecrireResultat(profil: string, id: string, execution: string, debut: string, titre: string, saisie: string | null = null): void {
-  const donnees = join(profil, "actions", id);
+  const donnees = join(dossierActions(profil), id);
   mkdirSync(join(donnees, "executions"), { recursive: true });
   mkdirSync(join(donnees, "resultats"), { recursive: true });
   writeFileSync(
@@ -936,7 +990,7 @@ test("Supprimer : le dossier part dans actions/.corbeille, l'accord et les résu
   ecrireActionExecutable(racine, "compte", { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
   ecrireResultat(profil, "compte", EXECUTION, HIER, "Secret");
   ecrireDeuxActions(racine, profil);
-  writeFileSync(join(profil, "actions", "accords.json"), JSON.stringify({ compte: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+  writeFileSync(join(dossierActions(profil), "accords.json"), JSON.stringify({ compte: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
   const { fenetre, fermer } = await lancerActions(racine, profil);
   try {
     await attendreNoyau(fenetre);
@@ -956,8 +1010,8 @@ test("Supprimer : le dossier part dans actions/.corbeille, l'accord et les résu
     await expect(fenetre.getByTestId("ligne-action-compte")).toHaveCount(0);
     expect(readdirSync(join(racine, "actions", ".corbeille")).some((f) => f.startsWith("compte-"))).toBe(true);
     expect(existsSync(join(racine, "actions", "compte"))).toBe(false);
-    expect(existsSync(join(profil, "actions", "compte"))).toBe(false);
-    expect(readFileSync(join(profil, "actions", "accords.json"), "utf8")).not.toContain("compte");
+    expect(existsSync(join(dossierActions(profil), "compte"))).toBe(false);
+    expect(readFileSync(join(dossierActions(profil), "accords.json"), "utf8")).not.toContain("compte");
     await expect(fenetre.getByTestId("ligne-action-tickets")).toBeVisible();
   } finally {
     await fermer();
@@ -969,7 +1023,7 @@ test("Retirer l'accord : le bouton disparaît, résultats effacés", async () =>
   const profil = nouveauProfil();
   ecrireActionExecutable(racine, "compte", { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
   ecrireResultat(profil, "compte", EXECUTION, HIER, "Secret");
-  writeFileSync(join(profil, "actions", "accords.json"), JSON.stringify({ compte: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+  writeFileSync(join(dossierActions(profil), "accords.json"), JSON.stringify({ compte: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
   const { fenetre, fermer } = await lancerActions(racine, profil);
   try {
     await attendreNoyau(fenetre);
@@ -978,12 +1032,12 @@ test("Retirer l'accord : le bouton disparaît, résultats effacés", async () =>
     // Annuler garde l'accord et les résultats.
     await fenetre.getByTestId("annuler-suppression-action").click();
     await expect(fenetre.getByTestId("retirer-accord-compte")).toBeVisible();
-    expect(existsSync(join(profil, "actions", "compte", "resultats", `${EXECUTION}.json`))).toBe(true);
+    expect(existsSync(join(dossierActions(profil), "compte", "resultats", `${EXECUTION}.json`))).toBe(true);
     await fenetre.getByTestId("retirer-accord-compte").click();
     await fenetre.getByTestId("confirmer-suppression-action").click();
     await expect(fenetre.getByTestId("retirer-accord-compte")).toHaveCount(0);
     await expect(fenetre.getByTestId("dernier-compte")).toContainText("Jamais lancée");
-    expect(existsSync(join(profil, "actions", "compte", "resultats", `${EXECUTION}.json`))).toBe(false);
+    expect(existsSync(join(dossierActions(profil), "compte", "resultats", `${EXECUTION}.json`))).toBe(false);
   } finally {
     await fermer();
   }
@@ -1018,5 +1072,517 @@ test("aucune action : le message d'invitation ; espace privé : ACTIONS_EN_ESPAC
     await expect(fenetre.getByTestId("page-actions")).toHaveCount(0);
   } finally {
     await fermer();
+  }
+});
+
+// --- De bout en bout (tâche 18) ---------------------------------------------------------------------------------------
+// Les actions d'AGENTS.md (« Deux exemples d'actions »), avec le code d'extraction que l'agent écrirait. Les tickets
+// « GitLab » sont lus avec le compte (profil de test, accord déjà donné) ; les photos « Leboncoin » viennent d'une
+// session interceptée (aucun réseau).
+
+/** `extraire.mjs` des tickets : lit les liens du tableau de bord (« #1 Titre [priorité] (projet) »). */
+const EXTRAIRE_TICKETS = `export default async (page) => {
+  const tickets = [];
+  for (const l of page.liens) {
+    const m = /^#(\\d+) (.+) \\[([\\w-]+)\\] \\(([\\w-]+)\\)$/.exec(l.texte.trim());
+    if (m) tickets.push({ titre: m[2], projet: m[4], priorite: m[3], url: l.url });
+  }
+  return { tickets };
+};
+`;
+const MISE_EN_PAGE_TICKETS = "un chiffre clé, les tickets par priorité, les trois plus urgents en encadré";
+const ID_TICKETS = "tickets-gitlab";
+
+/** L'action « Tickets GitLab » d'AGENTS.md : `source.page` avec le compte → `extraire` → page ; l'accord est donné. */
+function ecrireActionTickets(racine: string, profil: string): void {
+  ecrireAction(racine, ID_TICKETS, {
+    nom: "Tickets GitLab",
+    motsCles: ["gitlab", "tickets"],
+    sources: { compte: ["127.0.0.1"] },
+    miseEnPage: MISE_EN_PAGE_TICKETS,
+    workflow: enChaine([
+      { id: "tickets", type: "source.page", parametres: { url: `${site.url}/gitlab/tickets`, compte: true } },
+      { id: "extraire", type: "code", parametres: { source: "extraire.mjs" } },
+      { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+    ]),
+    fichiers: { "extraire.mjs": EXTRAIRE_TICKETS },
+  });
+  accorder(profil, ID_TICKETS);
+}
+
+/** L'accord de l'utilisateur pour lire 127.0.0.1 avec son compte (profil par défaut, celui du test). */
+function accorder(profil: string, id: string): void {
+  mkdirSync(dossierActions(profil), { recursive: true });
+  writeFileSync(join(dossierActions(profil), "accords.json"), JSON.stringify({ [id]: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+}
+
+/** Le plan que Gemma rend pour les tickets : un chiffre clé, l'encadré des plus urgents, le tableau par priorité. */
+const PLAN_TICKETS = {
+  blocs: [
+    { composant: "chiffre", props: { valeur: "compter(filtrer(tickets, priorite = urgent))", libelle: "Tickets urgents" } },
+    { composant: "encadre", props: { niveau: "attention", titre: "À traiter d'abord", elements: "garder(filtrer(tickets, priorite = urgent), 3)", champ: "titre" } },
+    {
+      composant: "tableau",
+      props: { elements: "regrouper(tickets, priorite)", colonnes: [{ champ: "titre", libelle: "Ticket" }, { champ: "projet", libelle: "Projet" }], lien: "url" },
+    },
+  ],
+};
+
+/** Ce qu'affiche la page des tickets (un chiffre, l'encadré, une section du tableau par priorité). */
+async function attendrePageTickets(fenetre: Page): Promise<void> {
+  const page = fenetre.getByTestId("rendu-page");
+  await expect(page).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("bloc-chiffre")).toContainText("2");
+  await expect(page.getByTestId("bloc-chiffre")).toContainText("Tickets urgents");
+  const encadre = page.getByTestId("bloc-encadre");
+  await expect(encadre).toContainText("À traiter d'abord");
+  await expect(encadre).toContainText("Connexion impossible");
+  await expect(encadre).toContainText("Fuite mémoire du worker");
+  await expect(encadre).not.toContainText("Facture en double");
+  const tableau = page.getByTestId("bloc-tableau");
+  await expect(tableau.locator('th[scope="rowgroup"]')).toHaveText(["urgent", "normale", "basse"]);
+  await expect(tableau.locator("tbody").nth(1)).toContainText("Facture en double");
+  await expect(tableau.locator("tbody").nth(1)).toContainText("Export CSV lent");
+  await expect(page.getByTestId("mention-secours")).toHaveCount(0);
+}
+
+/** Les consignes de mise en page reçues par le faux Gemma depuis l'indice `depuis`. */
+const promptsMiseEnPage = (depuis: number) => ollama.prompts.slice(depuis).filter((p) => p.startsWith(DEBUT_MISE_EN_PAGE));
+
+const lireJsonFichier = (chemin: string) => JSON.parse(readFileSync(chemin, "utf8"));
+const statutsSurDisque = (profil: string, id: string) =>
+  executionsSurDisque(profil, id).map((f) => (lireJsonFichier(join(dossierActions(profil), id, "executions", f)) as { statut: string }).statut);
+
+test("réussite de la spec : taper « git », valider, voir l'avancement puis un chiffre clé, un tableau par priorité et un encadré « à traiter d'abord »", async () => {
+  test.setTimeout(120_000);
+  reglages.lenteurSiteMs = 1500;
+  reglages.plan = PLAN_TICKETS;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionTickets(racine, profil);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const depuis = ollama.prompts.length;
+    await fenetre.getByTestId("nouvel-onglet").click();
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("git");
+    await expect(fenetre.getByTestId("suggestions-actions")).toContainText("Tickets GitLab");
+    await saisie.press("ArrowDown");
+    await saisie.press("Enter");
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect(fenetre.getByTestId("avancement-action").getByText("Lecture de 127.0.0.1…")).toBeVisible({ timeout: 30_000 });
+    await attendrePageTickets(fenetre);
+    await expect(fenetre.getByTestId("avancement-action")).toHaveCount(0);
+    // Une seule consigne de mise en page : les résultats (bornés) et la consigne de l'action, entre leurs marques.
+    const prompts = promptsMiseEnPage(depuis);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Connexion impossible");
+    expect(prompts[0]).toContain(`<<<CONSIGNE\n${MISE_EN_PAGE_TICKETS}\nCONSIGNE>>>`);
+    expect(statutsSurDisque(profil, ID_TICKETS)).toEqual(["reussie"]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("le lendemain, sans ticket : « Aucun résultat », aucun prompt ; le résultat d'hier se rouvre sans relancer", async () => {
+  test.setTimeout(120_000);
+  reglages.plan = PLAN_TICKETS;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionTickets(racine, profil);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirAction(fenetre, ID_TICKETS, "Tickets GitLab");
+    await fenetre.getByTestId("relancer-action").click();
+    await attendrePageTickets(fenetre);
+    const [hier] = executionsSurDisque(profil, ID_TICKETS).map((f) => f.replace(/\.json$/, ""));
+
+    // Le lendemain, plus aucun ticket : la page le dit, sans rien demander à Gemma.
+    reglages.tickets = [];
+    const depuis = ollama.prompts.length;
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("aucun-resultat")).toHaveText("Aucun résultat", { timeout: 60_000 });
+    expect(executionsSurDisque(profil, ID_TICKETS)).toHaveLength(2);
+    expect(ollama.prompts.length).toBe(depuis);
+
+    // Le résultat d'hier, rouvert depuis les résultats précédents : rien n'est relancé, Gemma n'est pas rappelée.
+    await fenetre.getByTestId("resultats-precedents").click();
+    await fenetre.getByTestId(`resultat-${hier}`).click();
+    await attendrePageTickets(fenetre);
+    await fenetre.waitForTimeout(500);
+    expect(ollama.prompts.length).toBe(depuis);
+    expect(executionsSurDisque(profil, ID_TICKETS)).toHaveLength(2);
+  } finally {
+    await fermer();
+  }
+});
+
+/** Une image PNG d'un pixel. */
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+/**
+ * Les images des résultats sont cherchées dans la session `webaios-icones` : toute adresse https y est servie par le test
+ * (un pixel) et notée. Aucune requête ne part sur le réseau.
+ */
+const intercepterImages = (app: AppElectron) =>
+  app.evaluate(({ session }, png) => {
+    const g = globalThis as unknown as { images: string[] };
+    g.images = [];
+    session.fromPartition("webaios-icones").protocol.handle("https", (req) => {
+      g.images.push(req.url);
+      return new Response(Buffer.from(png, "base64"), { headers: { "Content-Type": "image/png" } });
+    });
+  }, PNG);
+const imagesDemandees = (app: AppElectron) => app.evaluate(() => (globalThis as unknown as { images: string[] }).images);
+
+/** `extraire.mjs` des annonces : chaque annonce et sa photo (un lien de la page), le prix en nombre. */
+const EXTRAIRE_ANNONCES = `export default async (page) => {
+  const photos = new Map();
+  for (const l of page.liens) {
+    const p = /\\/photos\\/(\\d+)\\.jpg$/.exec(l.url);
+    if (p) photos.set(p[1], l.url);
+  }
+  const annonces = [];
+  for (const l of page.liens) {
+    const m = /\\/ad\\/(\\d+)$/.exec(l.url);
+    if (!m) continue;
+    const [titre, prix, ville] = l.texte.split(" – ");
+    annonces.push({ titre, prix: Number(prix), ville, url: l.url, ...(photos.has(m[1]) ? { photo: photos.get(m[1]) } : {}) });
+  }
+  return { annonces };
+};
+`;
+
+test("Leboncoin « leboncoin clio lyon » : la saisie arrive dans l'URL lue, cartes avec photos chargées par webaios-image", async () => {
+  test.setTimeout(120_000);
+  reglages.plan = {
+    blocs: [{ composant: "cartes", props: { elements: "trier(annonces, prix)", titre: "titre", sousTitre: "ville", valeur: "prix", image: "photo", lien: "url" } }],
+  };
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireAction(racine, "annonces-leboncoin", {
+    nom: "Annonces Leboncoin",
+    saisie: { libelle: "Recherche" },
+    sources: { web: true },
+    miseEnPage: "des cartes avec le prix et la ville, les moins chères en premier",
+    workflow: enChaine([
+      { id: "recherche", type: "source.page", parametres: { url: `${site.url}/leboncoin/recherche?text={saisie}` } },
+      { id: "extraire", type: "code", parametres: { source: "extraire.mjs" } },
+      { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+    ]),
+    fichiers: { "extraire.mjs": EXTRAIRE_ANNONCES },
+  });
+  const { app, fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await intercepterImages(app);
+    const depuis = site.journal.length;
+    await fenetre.getByTestId("nouvel-onglet").click();
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("leboncoin clio lyon");
+    await expect(fenetre.getByTestId("suggestions-actions")).toContainText("Annonces Leboncoin");
+    await saisie.press("ArrowDown");
+    await saisie.press("Enter");
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    const cartes = fenetre.getByTestId("bloc-cartes");
+    await expect(cartes).toBeVisible({ timeout: 60_000 });
+    // La saisie, encodée, dans l'adresse lue ; et gardée dans l'en-tête.
+    expect(site.journal.slice(depuis)).toContain("/leboncoin/recherche?text=clio%20lyon");
+    await expect(fenetre.getByTestId("saisie-action")).toHaveValue("clio lyon");
+    // Les moins chères en premier, chacune avec sa photo, chargée par webaios-image.
+    await expect(cartes.locator(".pa-carte .titre")).toHaveText(["Renault Clio 3", "Renault Clio 4"]);
+    const images = cartes.locator("img");
+    await expect(images).toHaveCount(2);
+    for (const src of await images.evaluateAll((l) => l.map((i) => (i as HTMLImageElement).src))) expect(src).toMatch(/^webaios-image:/);
+    await expect
+      .poll(() => images.evaluateAll((l) => l.map((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth)))
+      .toEqual([1, 1]);
+    await expect(cartes.getByTestId("image-neutre")).toHaveCount(0);
+    expect((await imagesDemandees(app)).sort()).toEqual([photoAnnonce(1), photoAnnonce(2)]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Gemma rend du JSON invalide deux fois : page de secours avec « mise en page simple »", async () => {
+  test.setTimeout(90_000);
+  reglages.plan = "Voici la page : { blocs: [titre";
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "taches", {
+    nom: "Tâches",
+    code: `export default async () => ({ taches: [{ nom: "Alpha", etat: "ouvert" }, { nom: "Bravo", etat: "fermé" }] });`,
+  });
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const depuis = ollama.prompts.length;
+    await ouvrirAction(fenetre, "taches", "Tâches");
+    await fenetre.getByTestId("relancer-action").click();
+    const page = fenetre.getByTestId("rendu-page");
+    await expect(page).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("mention-secours")).toHaveText("mise en page simple");
+    await expect(page).toContainText("Alpha");
+    await expect(page).toContainText("Bravo");
+    // Deux tentatives, la seconde avec la raison du refus.
+    const prompts = promptsMiseEnPage(depuis);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("la réponse n'est pas du JSON valide");
+    expect(statutsSurDisque(profil, "taches")).toEqual(["reussie"]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("plan hostile (lien composé vers le serveur de test avec une donnée, image d'une action avec compte, HTML dans un titre) : aucune requête n'atteint le serveur avec la donnée, lien inerte, image neutre, titre en texte", async () => {
+  test.setTimeout(90_000);
+  const SECRET = "jeton-du-compte-4242";
+  const fuite = `${site.url}/tiers?d=${SECRET}`;
+  const titre = `<img src=${site.url}/tiers?d=titre>Tickets`;
+  reglages.plan = {
+    blocs: [
+      { composant: "titre", props: { texte: titre } },
+      // Une adresse composée par Gemma : un champ n'est qu'un nom, ce bloc est écarté.
+      { composant: "lien", props: { objet: "compte", url: `"${site.url}/tiers?d=" + jeton`, texte: "Ouvrir" } },
+      // Un champ qui ne contient pas d'adresse : le lien reste du texte.
+      { composant: "lien", props: { objet: "compte", url: "jeton", texte: "Voir le jeton" } },
+      // Une adresse des résultats vers le serveur de test (locale) : inerte. L'image d'une action avec compte : neutre.
+      { composant: "cartes", props: { elements: "tickets", titre: "titre", image: "photo", lien: "fuite" } },
+    ],
+  };
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "hostile", {
+    nom: "Hostile",
+    compte: ["127.0.0.1"],
+    code: `export default async () => ({
+      compte: { jeton: ${JSON.stringify(SECRET)} },
+      tickets: [{ titre: "Connexion impossible", photo: "https://img.exemple.org/avatar.png", fuite: ${JSON.stringify(fuite)} }],
+    });`,
+  });
+  accorder(profil, "hostile");
+  const { app, fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await intercepterImages(app);
+    const depuis = site.journal.length;
+    await ouvrirAction(fenetre, "hostile", "Hostile");
+    await fenetre.getByTestId("relancer-action").click();
+    const page = fenetre.getByTestId("rendu-page");
+    await expect(page).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("mention-secours")).toHaveCount(0);
+    // Le titre en texte, sans élément HTML.
+    await expect(page.getByTestId("bloc-titre")).toHaveText(titre);
+    await expect(page.locator("img")).toHaveCount(0);
+    // Le lien composé est écarté ; l'autre n'est que du texte ; la carte n'a ni lien ni image.
+    await expect(page.getByTestId("bloc-lien")).toHaveCount(1);
+    await expect(page.getByTestId("bloc-lien")).toHaveText("Voir le jeton");
+    await expect(page.locator("a, button.pa-lien")).toHaveCount(0);
+    const cartes = page.getByTestId("bloc-cartes");
+    await expect(cartes).toContainText("Connexion impossible");
+    await expect(cartes.getByTestId("image-neutre")).toBeVisible();
+    await cartes.getByText("Connexion impossible").click();
+    await fenetre.waitForTimeout(1000);
+    // Rien n'est parti : ni vers le serveur de test, ni vers l'adresse de l'image, et aucun onglet ouvert vers la fuite.
+    expect(site.journal.slice(depuis).filter((c) => c.includes("/tiers") || c.includes(SECRET))).toEqual([]);
+    expect(await imagesDemandees(app)).toEqual([]);
+    const urls = await app.evaluate(({ webContents }) => webContents.getAllWebContents().map((w) => w.getURL()));
+    expect(urls.filter((u) => u.includes("/tiers"))).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("trois actions lancées : la troisième dit « En attente : deux actions tournent déjà », puis tourne", async () => {
+  test.setTimeout(150_000);
+  reglages.lenteurSiteMs = 3000;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  for (const id of ["un", "deux", "trois"]) ecrireActionPages(racine, id, `Pages ${id}`);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    // Les deux premières, lancées comme le ferait l'agent ou la page « Actions » (sans attendre leur fin).
+    await fenetre.evaluate(() => {
+      void window.webaios.actions.lancer("un", null);
+      void window.webaios.actions.lancer("deux", null);
+    });
+    await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.direct().then((d) => d.courantes.length)), { timeout: 30_000 }).toBe(2);
+    await ouvrirAction(fenetre, "trois", "Pages trois");
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("en-attente")).toHaveText("En attente : deux actions tournent déjà", { timeout: 30_000 });
+    const etat = await fenetre.evaluate(() => window.webaios.actions.direct());
+    expect(etat.enAttente.map((a) => a.action)).toEqual(["trois"]);
+    expect(etat.courantes.map((a) => a.action).sort()).toEqual(["deux", "un"]);
+    // Une place se libère : la troisième tourne, puis montre sa page.
+    await expect(fenetre.getByTestId("en-attente")).toHaveCount(0, { timeout: 60_000 });
+    await expect(fenetre.getByTestId("rendu-page")).toBeVisible({ timeout: 60_000 });
+    await expect(fenetre.getByTestId("bloc-liste")).toContainText("Page 3");
+    for (const id of ["un", "deux", "trois"]) await expect.poll(() => statutsSurDisque(profil, id), { timeout: 60_000 }).toEqual(["reussie"]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("restauration de session avec un onglet d'action : le dernier résultat s'affiche, aucune exécution lancée", async () => {
+  test.setTimeout(90_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "annonces", { nom: "Annonces", code: "export default async () => ({ titre: 'Nouveau' });" });
+  ecrireResultat(profil, "annonces", EXECUTION, "2026-10-31T08:00:00.000Z", "Résultat gardé");
+  const depuis = ollama.prompts.length;
+  const premier = await lancerActions(racine, profil);
+  await attendreNoyau(premier.fenetre);
+  await ouvrirAction(premier.fenetre, "annonces", "Annonces");
+  await expect(premier.fenetre.getByTestId("bloc-titre")).toHaveText("Résultat gardé");
+  await premier.fermer();
+
+  const second = await lancerActions(racine, profil);
+  try {
+    await expect(second.fenetre.getByTestId("page-action")).toBeVisible({ timeout: 30_000 });
+    await expect(second.fenetre.getByTestId("bloc-titre")).toHaveText("Résultat gardé", { timeout: 30_000 });
+    await expect(second.fenetre.getByTestId("avancement-action")).toHaveCount(0);
+    await second.fenetre.waitForTimeout(1000);
+    expect(executionsSurDisque(profil, "annonces")).toEqual([`${EXECUTION}.json`]);
+    expect(await second.fenetre.evaluate(() => window.webaios.actions.direct())).toEqual({ courantes: [], enAttente: [] });
+    expect(ollama.prompts.length).toBe(depuis);
+  } finally {
+    await second.fermer();
+  }
+});
+
+/** Un affichage de widget qui écrit les données reçues (JSON) et son statut. */
+const AFFICHAGE_WIDGET = `<!doctype html><meta charset="utf-8">
+<pre id="donnees"></pre><span id="statut"></span>
+<script>
+  addEventListener("message", (e) => {
+    if (e.source !== parent || !e.data || e.data.type !== "widget") return;
+    document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
+    document.getElementById("statut").textContent = e.data.etat.statut;
+  });
+</script>`;
+
+const donneesWidget = (fenetre: Page, id: string) => fenetre.frameLocator(`[data-testid="widget-${id}"] iframe`).locator("#donnees");
+async function mettreAJourWidget(fenetre: Page, id: string): Promise<void> {
+  const w = fenetre.getByTestId(`widget-${id}`);
+  await w.getByRole("button", { name: "Options du widget" }).click();
+  await w.getByRole("menuitem", { name: "Mettre à jour maintenant" }).click();
+}
+const executionsWidget = (profil: string, id: string) => {
+  const dossier = join(dossierWidgets(profil), id, "executions");
+  return existsSync(dossier) ? readdirSync(dossier).filter((f) => f.endsWith(".json")) : [];
+};
+const executionsLuesWidget = (profil: string, id: string) =>
+  executionsWidget(profil, id)
+    .sort()
+    .map((f) => lireJsonFichier(join(dossierWidgets(profil), id, "executions", f)) as { statut: string; proprietaire: unknown });
+
+test("le widget Gmail (compte, recolte.mjs) et une veille se mettent à jour comme avant pendant qu'une action tourne", async () => {
+  test.setTimeout(150_000);
+  reglages.lenteurSiteMs = 8000;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  // Le widget Gmail de l'utilisateur : un compte, une récolte écrite à la main (recolte.mjs), aucun workflow.
+  ecrireWidget(racine, "gmail", {
+    nom: "Gmail",
+    recolte: { minutes: 60 },
+    sources: { compte: ["127.0.0.1"], publiques: [] },
+    config: { url: `${site.url}/court` },
+    code: "export default async (webaios) => ({ titre: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
+    affichage: AFFICHAGE_WIDGET,
+    exemple: { exemple: "gmail" },
+  });
+  // Une veille : la liste, les nouveautés, un avis de Gemma par annonce, montrées au fil de l'eau.
+  ecrireWidget(racine, "veille", {
+    nom: "Veille vélos",
+    recolte: { heures: ["07:00"], dureeMaxMinutes: 30 },
+    workflow: {
+      version: 1,
+      blocs: [
+        { id: "recherche", type: "source.page", parametres: { url: `${site.url}/veille` } },
+        { id: "annonces", type: "code", parametres: { source: "annonces.mjs" } },
+        { id: "nouvelles", type: "liste.nouveaux", parametres: { cle: "url" } },
+        { id: "avis", type: "ia.rediger", parametres: { parElement: true, champ: "avis", consigne: "Avis sur l'annonce : --- DÉBUT --- {titre} --- FIN ---" } },
+        { id: "sortie", type: "sortie", parametres: { vers: "widget", auFilDeLEau: true } },
+      ],
+      liens: [
+        { de: "recherche", vers: "annonces" },
+        { de: "annonces", vers: "nouvelles" },
+        { de: "nouvelles", vers: "avis" },
+        { de: "avis", vers: "sortie" },
+      ],
+    },
+    fichiers: { "annonces.mjs": "export default async (page) => page.liens.filter((l) => l.url.includes('/annonce/')).map((l) => ({ titre: l.texte, url: l.url }));" },
+    affichage: AFFICHAGE_WIDGET,
+    exemple: [],
+  });
+  ecrireDisposition(racine, [
+    { id: "gmail", x: 0, y: 0, l: 4, h: 3 },
+    { id: "veille", x: 4, y: 0, l: 6, h: 5 },
+  ]);
+  ecrireEtatWidget(profil, "gmail");
+  const maintenant = new Date().toISOString();
+  ecrireEtatWidget(profil, "veille", { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant, heures: { faite: "9999-12-31T23:59", echecs: null } });
+  writeFileSync(join(dossierWidgets(profil), "accords.json"), JSON.stringify({ gmail: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+  ecrireActionPages(racine);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await expect(donneesWidget(fenetre, "gmail")).toHaveText('{"exemple":"gmail"}');
+    await attendreNoyau(fenetre);
+    await fenetre.evaluate(() => void window.webaios.actions.lancer("pages", null));
+    const actionsCourantes = () => fenetre.evaluate(() => window.webaios.actions.direct().then((d) => d.courantes.map((c) => c.action)));
+    await expect.poll(actionsCourantes, { timeout: 30_000 }).toEqual(["pages"]);
+
+    await mettreAJourWidget(fenetre, "gmail");
+    await mettreAJourWidget(fenetre, "veille");
+    await expect(donneesWidget(fenetre, "gmail")).toHaveText('{"titre":"Court"}', { timeout: 30_000 });
+    await expect.poll(() => executionsLuesWidget(profil, "veille").map((e) => e.statut), { timeout: 30_000 }).toEqual(["reussie"]);
+    const veille = JSON.parse((await donneesWidget(fenetre, "veille").textContent()) ?? "null") as { titre: string; avis: string }[];
+    expect(veille.map((a) => [a.titre, a.avis])).toEqual([
+      ["Vélo de course", "Bonne affaire."],
+      ["Vélo pliant", "Bonne affaire."],
+    ]);
+    // L'action tournait toujours pendant ces deux mises à jour.
+    expect(await actionsCourantes()).toEqual(["pages"]);
+    // Les exécutions des widgets sont restées celles d'un widget.
+    expect(executionsLuesWidget(profil, "gmail").map((e) => e.statut)).toEqual(["reussie"]);
+    for (const id of ["gmail", "veille"]) expect(executionsLuesWidget(profil, id)[0]!.proprietaire).toEqual({ type: "widget", id });
+    expect(lireJsonFichier(join(dossierWidgets(profil), "gmail", "etat.json")).statut).toBe("ok");
+    await expect.poll(() => statutsSurDisque(profil, "pages"), { timeout: 60_000 }).toEqual(["reussie"]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("quitter pendant une action : à la relance, son exécution est « interrompue » dans les résultats précédents", async () => {
+  test.setTimeout(120_000);
+  reglages.lenteurSiteMs = 6000;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionPages(racine);
+  const premier = await lancerActions(racine, profil);
+  await attendreNoyau(premier.fenetre);
+  await ouvrirAction(premier.fenetre, "pages", "Pages");
+  await premier.fenetre.getByTestId("relancer-action").click();
+  await expect(premier.fenetre.getByTestId("avancement-action").getByText("Lecture de 127.0.0.1…")).toBeVisible({ timeout: 30_000 });
+  await premier.fermer();
+  // L'exécution est écrite « interrompue » à l'arrêt ; aucun résultat n'est gardé pour elle.
+  expect(statutsSurDisque(profil, "pages")).toEqual(["interrompue"]);
+  const [execution] = executionsSurDisque(profil, "pages").map((f) => f.replace(/\.json$/, ""));
+  expect(existsSync(join(dossierActions(profil), "pages", "resultats", `${execution}.json`))).toBe(false);
+
+  reglages.lenteurSiteMs = 0;
+  const second = await lancerActions(racine, profil);
+  try {
+    // L'onglet de l'action est restauré : il montre l'exécution interrompue, sans la relancer.
+    await expect(second.fenetre.getByTestId("page-action")).toBeVisible({ timeout: 30_000 });
+    await second.fenetre.getByTestId("resultats-precedents").click();
+    await expect(second.fenetre.getByTestId(`resultat-${execution}`)).toContainText("interrompue");
+    await second.fenetre.waitForTimeout(500);
+    expect(statutsSurDisque(profil, "pages")).toEqual(["interrompue"]);
+  } finally {
+    await second.fermer();
   }
 });

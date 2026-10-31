@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminOutils, oublierGroupe, retenirGroupe, tuerGroupe, type Executeur } from "../conteneur/executeur.js";
-import { IA_ABANDONNEE } from "./repartiteur.js";
+import { GEMMA_JSON_INVALIDE, IA_ABANDONNEE } from "./repartiteur.js";
 
 export type EtatIa = "non-installee" | "arretee" | "demarrage" | "active" | "erreur";
 
@@ -319,7 +319,7 @@ export class IaLocale {
     try {
       return JSON.parse(contenu);
     } catch {
-      throw new Error("Gemma n'a pas rendu du JSON valide");
+      throw new Error(GEMMA_JSON_INVALIDE);
     }
   }
 

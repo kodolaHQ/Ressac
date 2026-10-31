@@ -4,6 +4,8 @@ import type { IaLocale } from "./ia-locale.js";
 export const IA_SIMULTANES = 4;
 /** Refus d'un appel d'une exécution terminée (abandonnée, tuée, arrêt du noyau) : il ne part plus vers l'IA. */
 export const IA_ABANDONNEE = "Appel à l'IA abandonné : l'exécution est terminée";
+/** Gemma appelée avec `json: true` a répondu un texte qui n'est pas du JSON (la mise en page retente alors une fois). */
+export const GEMMA_JSON_INVALIDE = "Gemma n'a pas rendu du JSON valide";
 
 type AccesIa = Pick<IaLocale, "kev" | "gemma">;
 /** `auDemarrage` : appelé quand l'appel part vraiment vers l'IA. `signal` levé en file : refusé sans partir ; en vol : transmis. */

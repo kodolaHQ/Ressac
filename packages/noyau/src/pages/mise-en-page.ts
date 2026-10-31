@@ -1,3 +1,4 @@
+import { GEMMA_JSON_INVALIDE } from "../ia/repartiteur.js";
 import { apercuResultats, resultatsVides } from "./apercu.js";
 import type { DefinitionComposant } from "./catalogue.js";
 import { catalogueTexte } from "./catalogue.js";
@@ -101,7 +102,12 @@ export async function mettreEnPage(o: {
       let reponse: unknown;
       try {
         reponse = await ia.gemma({ prompt, json: true }, { auDemarrage, signal: ctl.signal });
-      } catch {
+      } catch (e) {
+        // L'IA locale lève une réponse qui n'est pas du JSON (`json: true`) : une réponse à côté, pas une panne.
+        if (!ctl.signal.aborted && e instanceof Error && e.message === GEMMA_JSON_INVALIDE) {
+          erreurs = [NON_JSON];
+          continue;
+        }
         return { echec: RAISON_ECHEC };
       }
       const lu = lireJson(reponse);

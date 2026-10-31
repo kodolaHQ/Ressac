@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GEMMA_JSON_INVALIDE } from "../../src/ia/repartiteur.js";
 import { COMPOSANTS_INTEGRES } from "../../src/pages/catalogue.js";
 import { DELAI_MISE_EN_PAGE_MS, mettreEnPage, promptMiseEnPage, type AccesGemma } from "../../src/pages/mise-en-page.js";
 
@@ -55,6 +56,21 @@ describe("mettreEnPage", () => {
     expect(r).toMatchObject({ essais: 2, secours: false });
     expect(appels[1]!.prompt).toContain("pas du JSON");
     expect(appels[0]!.prompt).not.toContain("pas du JSON");
+  });
+
+  it("l'IA locale lève « JSON invalide » (json: true) puis rend un plan : essais 2, la seconde consigne contient la raison", async () => {
+    const appels: Appel[] = [];
+    const r = await lancer(faux([() => Promise.reject(new Error(GEMMA_JSON_INVALIDE)), () => planValide], appels));
+    expect(r).toMatchObject({ essais: 2, secours: false });
+    expect(appels[1]!.prompt).toContain("pas du JSON");
+  });
+
+  it("l'IA locale lève « JSON invalide » deux fois : secours après deux essais", async () => {
+    const appels: Appel[] = [];
+    const lever = () => Promise.reject(new Error(GEMMA_JSON_INVALIDE));
+    const r = await lancer(faux([lever, lever], appels));
+    expect(r).toMatchObject({ secours: true, essais: 2 });
+    expect(appels).toHaveLength(2);
   });
 
   it("plan invalide puis valide : les raisons de validerPlan sont dans la seconde consigne", async () => {

@@ -73,6 +73,58 @@ export function ecrireEtatWidget(profil: string, id: string, etat?: Record<strin
   );
 }
 
+/** Données, exécutions, résultats et accords des actions, rangés hors de l'espace : `<profil>/actions/`. */
+export const dossierActions = (profil: string) => join(profil, "actions");
+
+/** Une action de test : les clés d'`action.json` (`sources` complété par défaut), son workflow et ses autres fichiers. */
+export interface ActionTest {
+  nom: string;
+  description?: string;
+  motsCles?: string[];
+  saisie?: { libelle: string };
+  /** `web` n'est écrit que s'il est donné. */
+  sources?: { compte?: string[]; publiques?: string[]; web?: boolean };
+  miseEnPage?: string;
+  dureeMaxMinutes?: number;
+  /** Contenu de `workflow.json` (un objet, écrit en JSON ; une chaîne, écrite telle quelle). */
+  workflow?: unknown;
+  /** Les `.mjs` des blocs `code`, par nom. */
+  fichiers?: Record<string, string>;
+}
+
+/** Écrit une action dans `actions/<id>/` de l'espace (ses données sont dans le profil, voir `dossierActions`). */
+export function ecrireAction(racine: string, id: string, a: ActionTest): void {
+  const dossier = join(racine, "actions", id);
+  mkdirSync(dossier, { recursive: true });
+  const { workflow, fichiers, sources, ...cles } = a;
+  const declaration = {
+    ...cles,
+    sources: {
+      compte: sources?.compte ?? [],
+      publiques: sources?.publiques ?? [],
+      ...(sources?.web !== undefined ? { web: sources.web } : {}),
+    },
+  };
+  writeFileSync(join(dossier, "action.json"), JSON.stringify(declaration));
+  if (workflow !== undefined) writeFileSync(join(dossier, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));
+  for (const [nom, contenu] of Object.entries(fichiers ?? {})) writeFileSync(join(dossier, nom), contenu);
+}
+
+/** Un composant de l'agent de test : `composant.json` (sans `nom`, pris du dossier) et `composant.html`. */
+export interface ComposantTest {
+  description: string;
+  proprietes: Record<string, { genre: string; description: string; requis?: boolean }>;
+  html: string;
+}
+
+/** Écrit un composant de l'agent dans `composants/<nom>/` de l'espace. */
+export function ecrireComposant(racine: string, nom: string, c: ComposantTest): void {
+  const dossier = join(racine, "composants", nom);
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(join(dossier, "composant.json"), JSON.stringify({ nom, description: c.description, proprietes: c.proprietes }));
+  writeFileSync(join(dossier, "composant.html"), c.html);
+}
+
 /** Chaque fichier d'un dossier (sous-dossiers compris), avec sa date de modification : « chemin:mtime », triés. */
 export function lireMtimes(dossier: string): string[] {
   if (!existsSync(dossier)) return [];
