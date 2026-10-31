@@ -3,6 +3,15 @@ import { join } from "node:path";
 import { ecrireAtomique } from "../workflows/executions.js";
 import { ID_SITE } from "./schemas.js";
 
+/** Premier nom `<base>.bak`, `<base>.1.bak`… qui n'existe pas encore (une sauvegarde n'en écrase jamais une autre). */
+async function nomLibre(base: string): Promise<string | null> {
+  for (let i = 0; i < 100; i++) {
+    const nom = i === 0 ? `${base}.bak` : `${base}.${i}.bak`;
+    if (!(await stat(nom).then(() => true, () => false))) return nom;
+  }
+  return null;
+}
+
 export const TAILLE_MEMOIRE_SITE = 256 * 1024;
 export const POSITIONS_MAX = 500;
 export const CLE_MAX = 200;
@@ -114,7 +123,8 @@ export class MemoireSite {
         if (version === 1) m.charger(brut as Record<string, unknown>);
         else if (brut && typeof brut === "object" && !Array.isArray(brut) && "version" in brut) {
           const n = /^[A-Za-z0-9]{1,10}$/.test(String(version)) ? String(version) : "x";
-          await rename(chemin, `${chemin}.v${n}.bak`).catch(() => {});
+          const libre = await nomLibre(`${chemin}.v${n}`);
+          if (libre) await rename(chemin, libre).catch(() => {});
         }
       }
     } catch {

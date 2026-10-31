@@ -288,3 +288,16 @@ test("version inconnue : lue vide, sauvegardée en .bak, pas écrasée", async (
   expect(JSON.parse(await readFile(fichier(d), "utf8")).version).toBe(1);
   expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(futur);
 });
+
+test("version inconnue deux fois : la première sauvegarde .bak n'est pas écrasée", async () => {
+  const d = await dossierTemporaire();
+  await mkdir(join(d, "s"), { recursive: true });
+  const un = JSON.stringify({ version: 2, n: 1 });
+  const deux = JSON.stringify({ version: 2, n: 2 });
+  await writeFile(fichier(d), un);
+  await ouvrir(d);
+  await writeFile(fichier(d), deux);
+  await ouvrir(d);
+  expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(un);
+  expect(await readFile(join(d, "s", "memoire.json.v2.1.bak"), "utf8")).toBe(deux);
+});
