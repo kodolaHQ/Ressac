@@ -29,8 +29,8 @@ const pont = new Proxy(factice, {
   },
 }) as PontNavigateur;
 
-// Données des widgets : hors de l'espace, dans un dossier temporaire (pas de profil de navigateur ici).
-const noyau = await creerNoyau({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets") });
+// Données des widgets et des actions : hors de l'espace, dans un dossier temporaire (pas de profil de navigateur ici).
+const noyau = await creerNoyau({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets"), dossierActions: join(tmpdir(), "webaios-dev-actions") });
 journal = join(noyau.chemins.interne, "dev-pont.log");
 console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : tail -f ${journal}\nCtrl-] pour quitter.\n`);
 

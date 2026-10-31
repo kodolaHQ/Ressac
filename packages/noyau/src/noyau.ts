@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join, posix } from "node:path";
+import { basename, join, posix } from "node:path";
 import { CHEMIN_CONTENEUR, cheminConfigSession, cheminDansConteneur, dossierSessions, cheminsEspace, type CheminsEspace } from "./chemins.js";
 import { initialiserEspace } from "./espace/initialiser.js";
 import { lireAccueil } from "./accueil/lire.js";
@@ -21,7 +21,7 @@ import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
 import { creerRepartiteurIa } from "./ia/repartiteur.js";
-import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
+import { ID_EXECUTION, listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
 import { MENAGEMENT_PAR_DEFAUT } from "./workflows/executer.js";
 import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
 import type { NotificationWidget } from "./widgets/nouveautes.js";
@@ -272,9 +272,9 @@ export async function creerNoyau(o: {
   dossierWidgets: string;
   /**
    * Dossier des exécutions, résultats, mémoire et accords des actions, hors de l'espace (le navigateur donne
-   * `<profil>/actions`). Par défaut, le frère `actions` de `dossierWidgets`.
+   * `<profil>/actions`).
    */
-  dossierActions?: string;
+  dossierActions: string;
   /** IA locale pour les récoltes ; arrêtée avec le noyau. */
   ia?: IaLocale;
   /** Moteur des workflows, monté dans le conteneur de récolte (par défaut `<ressources>/docker/moteur`). */
@@ -302,7 +302,7 @@ export async function creerNoyau(o: {
 
   const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
   const { dossierWidgets } = o;
-  const dossierActions = o.dossierActions ?? join(dirname(dossierWidgets), "actions");
+  const { dossierActions } = o;
   // Une action supprimée (ou mise à la corbeille) depuis le dernier lancement : ses données et son accord partent.
   await oublierActionsDisparues(chemins, dossierActions).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
   const ia = o.ia ?? null;
@@ -437,8 +437,9 @@ export async function creerNoyau(o: {
       return () => void abonnesActions.delete(rappel);
     },
     executions: async (id) => (ID_ACTION.test(id) ? listerExecutions(join(dossierActions, id)) : []),
-    execution: async (id, execution) => (ID_ACTION.test(id) ? lireExecution(join(dossierActions, id), execution) : null),
+    execution: async (id, execution) => (ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? lireExecution(join(dossierActions, id), execution) : null),
     async page(id, execution) {
+      if (execution !== null && !ID_EXECUTION.test(execution)) return null;
       const action = await lireAction(chemins, id);
       if (!action) return null;
       const r = execution === null ? await dernierResultat(dossierActions, id) : await lireResultat(dossierActions, id, execution);

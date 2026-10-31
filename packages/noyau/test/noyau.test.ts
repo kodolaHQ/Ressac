@@ -403,6 +403,8 @@ test("noyau.actions : page(id, null) rend le dernier résultat résolu ; page d'
   expect(await n.actions.page("gitlab", e.id)).toEqual(p);
   expect(await n.actions.page("gitlab", "2020-01-01T00-00-00-000Z")).toBeNull();
   expect(await n.actions.page("absente", null)).toBeNull();
+  expect(await n.actions.page("gitlab", "../x")).toBeNull();
+  expect(await n.actions.execution("gitlab", "../x")).toBeNull();
   expect((await n.actions.lister()).map((a) => a.id)).toEqual(["gitlab"]);
   expect((await n.actions.executions("gitlab")).map((x) => x.id)).toEqual([e.id]);
   expect(await n.actions.execution("gitlab", e.id)).toMatchObject({ id: e.id });

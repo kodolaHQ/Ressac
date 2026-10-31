@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { cheminsEspace, type CheminsEspace } from "../../src/chemins.js";
@@ -282,6 +282,45 @@ describe("executerAction", () => {
     expect(r.statut).toBe("invalide");
     expect(r.erreur).toBe(ACTION_INCONNUE);
     expect(await listerExecutions(join(b.dossierActions, "public"))).toEqual([]);
+  });
+
+  it("dossier des actions introuvable un moment pendant l'exécution : rien n'est écrit, l'historique reste", async () => {
+    const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`);
+    const premiere = await executerAction(options(b, "public"));
+    expect(premiere.statut).toBe("reussie");
+    const avantMemoire = await lireMemoire(join(b.dossierActions, "public"));
+    // Pendant la mise en page de la seconde, le dossier des actions disparaît (volume démonté, renommé…).
+    const ailleurs = `${b.c.actions}-ailleurs`;
+    const ia = fauxGemma(async () => {
+      await rename(b.c.actions, ailleurs);
+      return PLAN;
+    });
+    const r = await executerAction(options(b, "public", { ia }));
+    await rename(ailleurs, b.c.actions);
+    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_INCONNUE });
+    expect((await listerExecutions(join(b.dossierActions, "public"))).map((e) => e.id)).toEqual([premiere.execution]);
+    expect((await dernierResultat(b.dossierActions, "public"))?.execution).toBe(premiere.execution);
+    expect(await lireMemoire(join(b.dossierActions, "public"))).toEqual(avantMemoire);
+  });
+
+  it("arrêt du noyau pendant la mise en page : exécution interrompue, sans résultat", async () => {
+    const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const arret = new AbortController();
+    let quitte = false;
+    const ia = fauxGemma(
+      (o) =>
+        new Promise((_ok, ko) => {
+          o?.signal?.addEventListener("abort", () => ko(new Error("abandon")));
+          setImmediate(() => {
+            quitte = true;
+            arret.abort();
+          });
+        }),
+    );
+    const r = await executerAction(options(b, "simple", { ia, signal: arret.signal, interrompue: () => quitte }));
+    expect(r).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
+    expect(await lireExecution(join(b.dossierActions, "simple"), r.execution!)).toMatchObject({ statut: "interrompue" });
+    expect(await lireResultat(b.dossierActions, "simple", r.execution!)).toBeNull();
   });
 
   it("signal levé pendant le workflow : interrompue, ACTION_ARRETEE ; pendant la mise en page : reussie avec plan de secours", async () => {

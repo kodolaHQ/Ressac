@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
 import type { Atelier } from "../conteneur/atelier.js";
@@ -19,7 +20,7 @@ import {
   type LanceurProcessus,
   type TraceDirecte,
 } from "../workflows/executer.js";
-import { ecrireExecution, idEssai, type Execution } from "../workflows/executions.js";
+import { ID_EXECUTION, ecrireExecution, idEssai, type Execution } from "../workflows/executions.js";
 import type { Menagement } from "../workflows/menagement.js";
 import { avecMemoire, ecrireMemoire, lireMemoire } from "../workflows/memoire.js";
 import { debutTropGros } from "../workflows/protocole.js";
@@ -191,14 +192,25 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
 
   const accordRetire = async () => declaration.sources.compte.length > 0 && !accordValide(declaration, (await lireAccords(dossierActions))[id]);
   const presente = async () => (await lireAction(chemins, id)) !== null;
-  /** Ce qui a été lu avec le compte part avec l'accord ; une action disparue ne garde rien. */
+  // Ce que cette exécution a écrit : seul ce qui peut être repris si l'action a disparu entre-temps.
+  let executionEcrite = false;
+  let resultatEcrit = false;
+  const garderExecution = async () => {
+    await ecrireExecution(dossierDonnees, execution);
+    executionEcrite = true;
+  };
+  /**
+   * Ce qui a été lu avec le compte part avec l'accord (tout l'historique). Une action introuvable (supprimée, ou dossier
+   * des actions démonté un moment, illisible…) ne garde rien de cette exécution, mais son historique reste : l'effacer
+   * revient à `oublierActionsDisparues`, au démarrage, qui sait reconnaître un dossier des actions absent.
+   */
   const perdue = async (): Promise<ResultatLancement | null> => {
     if (await accordRetire()) {
       await supprimerDonneesAction(dossierActions, id);
       return { statut: "accord-requis", erreur: messageRefus(issue, declaration), erreurNoyau: true };
     }
     if (!(await presente())) {
-      await supprimerDonneesAction(dossierActions, id).catch(() => {});
+      await oublierCetteExecution(dossierDonnees, execution.id, { execution: executionEcrite, resultat: resultatEcrit });
       return refus(ACTION_INCONNUE);
     }
     return null;
@@ -215,7 +227,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
 
   if (issue.t !== "fin") {
     if (o.interrompue?.() === true && execution.statut !== "accord-requis") marquerInterrompue(execution);
-    await ecrireExecution(dossierDonnees, execution);
+    await garderExecution();
     return (await perdue()) ?? conclusion();
   }
 
@@ -232,17 +244,25 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   });
   const pendant = await perdue();
   if (pendant) return pendant;
+  // WebAiOs s'arrête pendant la mise en page : l'exécution est interrompue, sans résultat ni mémoire. (« Arrêter » de
+  // L'utilisateur, lui, garde le résultat avec la mise en page de secours.)
+  if (o.interrompue?.() === true) {
+    marquerInterrompue(execution);
+    await garderExecution();
+    return (await perdue()) ?? conclusion();
+  }
 
-  await ecrireExecution(dossierDonnees, execution);
+  await garderExecution();
   try {
     await ecrireResultat(dossierActions, id, { version: 1, execution: execution.id, saisie, resultats, plan: page.plan, secours: page.secours, vide: page.vide });
+    resultatEcrit = true;
   } catch (e) {
     // Trop gros (ou disque) : l'exécution échoue côté noyau, sans résultat.
     console.error(`[webaios] résultat de l'action ${id} :`, message(e));
     execution.statut = "echouee";
     execution.erreur = RESULTAT_TROP_GROS;
     execution.erreurNoyau = true;
-    await ecrireExecution(dossierDonnees, execution);
+    await garderExecution();
     return (await perdue()) ?? conclusion();
   }
   const apresResultat = await perdue();
@@ -252,10 +272,17 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
     const gardee = await avecMemoire(dossierDonnees, async () => (await accordRetire()) || (await ecrireMemoire(dossierDonnees, issue.memoire!)));
     if (!gardee) {
       execution.blocs.find((b) => b.id === valide.sortie.id)?.journal.push(MEMOIRE_NON_GARDEE);
-      await ecrireExecution(dossierDonnees, execution);
+      await garderExecution();
     }
   }
   return (await perdue()) ?? conclusion();
+}
+
+/** Retire l'exécution et le résultat écrits par cette exécution seulement (mêmes chemins que `executions.ts` et `donnees.ts`). */
+async function oublierCetteExecution(dossierDonnees: string, execution: string, ecrits: { execution: boolean; resultat: boolean }): Promise<void> {
+  if (!ID_EXECUTION.test(execution)) return;
+  if (ecrits.resultat) await rm(join(dossierDonnees, "resultats", `${execution}.json`), { force: true }).catch(() => {});
+  if (ecrits.execution) await rm(join(dossierDonnees, "executions", `${execution}.json`), { force: true }).catch(() => {});
 }
 
 /** Le message d'une action qui attend un nouvel accord : celui du moteur s'il s'est arrêté pour ça (profil refusé…). */

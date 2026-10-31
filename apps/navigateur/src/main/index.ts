@@ -831,6 +831,8 @@ app.whenReady().then(async () => {
     dossierProfilage: join(dossier, "profilage"),
     // Données récoltées et accords des widgets : hors de l'espace, que l'agent lit.
     dossierWidgets: join(dossier, "widgets"),
+    // Exécutions, résultats et accords des actions : hors de l'espace aussi, à côté de ceux des widgets.
+    dossierActions: join(dossier, "actions"),
     // Lectures invisibles des widgets avec un compte : la session du profil de connexion (non privé, vérifié au pont).
     sessionProfil: (id) => sessions.session(id),
     applications: applications.gestionnaire,
