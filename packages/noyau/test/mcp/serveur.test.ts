@@ -4,9 +4,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
+import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, ERREUR_RESERVEE_ACTION, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
 import type { Execution } from "../../src/workflows/executions.js";
-import { saisieRequise, type ResultatLancement } from "../../src/actions/executer.js";
+import { ACTION_INCONNUE, ACTION_SANS_WORKFLOW, RESULTAT_TROP_GROS, saisieRequise, type ResultatLancement } from "../../src/actions/executer.js";
+import { ERREUR_ACTION_INTERNE } from "../../src/actions/file.js";
+import { ACTION_ARRETEE } from "../../src/workflows/executions.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
 
@@ -772,18 +774,33 @@ test("lancer_action sur une action sans compte : statut reussie et id d'exécuti
   expect(cartesDonnees()).toHaveLength(0);
 });
 
-test("lancer_action avec compte et erreur écrite par le code : ERREUR_RESERVEE ; erreur du noyau : montrée", async () => {
+test("lancer_action avec compte et erreur écrite par le code : ERREUR_RESERVEE_ACTION ; erreur du noyau : montrée", async () => {
   const { outils, fixer } = actionsFactices();
   await avecActions(outils);
   fixer({ statut: "echouee", erreur: "SECRET du compte" });
   let t = texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }));
   expect(t).not.toContain("SECRET");
-  expect(t).toContain(ERREUR_RESERVEE);
+  expect(t).toContain(ERREUR_RESERVEE_ACTION);
+  expect(t).not.toContain("donnees_widget");
   fixer({ statut: "echouee", erreur: "SECRET du compte", erreurNoyau: true });
   expect(texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }))).not.toContain("SECRET");
   fixer({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : mail.test", erreurNoyau: true });
   t = texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }));
   expect(t).toContain("Accord requis pour lire avec ton compte : mail.test");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("lancer_action avec compte : les messages fixes des actions passent, pas un texte identique écrit par le code", async () => {
+  const { outils, fixer } = actionsFactices();
+  await avecActions(outils);
+  for (const erreur of [ACTION_SANS_WORKFLOW, ACTION_ARRETEE, RESULTAT_TROP_GROS, ERREUR_ACTION_INTERNE, ACTION_INCONNUE]) {
+    fixer({ statut: "echouee", erreur, erreurNoyau: true });
+    expect(JSON.parse(texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }))).erreur).toBe(erreur);
+    // Sans `erreurNoyau`, le même texte a pu être écrit par le code de l'action : réservé.
+    fixer({ statut: "echouee", erreur });
+    expect(JSON.parse(texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }))).erreur).toBe(ERREUR_RESERVEE_ACTION);
+  }
+  expect(ERREUR_RESERVEE_ACTION).not.toBe(ERREUR_RESERVEE);
   expect(cartesDonnees()).toHaveLength(0);
 });
 

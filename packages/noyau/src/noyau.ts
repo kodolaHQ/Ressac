@@ -465,8 +465,10 @@ export async function creerNoyau(o: {
       const r = execution === null ? await dernierResultat(dossierActions, id) : await lireResultat(dossierActions, id, execution);
       const e = await lireExecution(join(dossierActions, id), r?.execution ?? execution ?? "");
       if (!e) return null;
-      // Illisible : compte comme lisant avec le compte (le plus prudent).
-      const compte = "erreur" in action || action.declaration.sources.compte.length > 0;
+      // Illisible, ou un accord encore enregistré (réécrite sans compte, ses résultats ont pu être lus avec) : compte comme
+      // lisant avec le compte (le plus prudent, comme les outils MCP et les images). Accords illisibles : de même.
+      const accords = await lireAccords(dossierActions).catch(() => null);
+      const compte = "erreur" in action || action.declaration.sources.compte.length > 0 || !accords || Object.hasOwn(accords, id);
       const catalogue = [...COMPOSANTS_INTEGRES, ...(await lireComposantsAgent(chemins.composants)).valides];
       return {
         execution: e.id,

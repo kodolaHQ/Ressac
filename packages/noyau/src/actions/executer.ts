@@ -273,7 +273,12 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   if (apresResultat) return apresResultat;
 
   if (!plan && issue.memoire) {
-    const gardee = await avecMemoire(dossierDonnees, async () => (await accordRetire()) || (await ecrireMemoire(dossierDonnees, issue.memoire!)));
+    // Relu sous le verrou de la mémoire : une suppression qui s'est glissée depuis ne la laisse pas écrite (l'effacement
+    // des données de l'action passe par ce même verrou).
+    const gardee = await avecMemoire(
+      dossierDonnees,
+      async () => (await accordRetire()) || !(await presente()) || (await ecrireMemoire(dossierDonnees, issue.memoire!)),
+    );
     if (!gardee) {
       execution.blocs.find((b) => b.id === valide.sortie.id)?.journal.push(MEMOIRE_NON_GARDEE);
       await garderExecution();

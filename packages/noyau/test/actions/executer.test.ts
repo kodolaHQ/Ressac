@@ -8,7 +8,7 @@ import { cheminsEspace, type CheminsEspace } from "../../src/chemins.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { accorder, retirerAccord } from "../../src/widgets/accords.js";
 import { ACTION_ARRETEE, lireExecution, listerExecutions } from "../../src/workflows/executions.js";
-import { lireMemoire } from "../../src/workflows/memoire.js";
+import { avecMemoire, lireMemoire } from "../../src/workflows/memoire.js";
 import type { LanceurProcessus, TraceDirecte } from "../../src/workflows/executer.js";
 import type { AccesIaExecution } from "../../src/ia/repartiteur.js";
 import { dernierResultat, lireResultat } from "../../src/actions/donnees.js";
@@ -255,6 +255,33 @@ describe("executerAction", () => {
     const echec = await executerAction(options(b, "memo", { lancer: lanceurLignes([{ t: "memoire", memoire: { lire: { type: "code", valeur: { vu: 2 } } } }, { t: "echec", erreur: "cassé" }]) }));
     expect(echec.statut).toBe("echouee");
     expect((await lireMemoire(join(b.dossierActions, "memo"))).lire).toMatchObject({ valeur: { vu: 1 } });
+  });
+
+  it("action supprimée juste avant l'écriture de la mémoire : la mémoire n'est pas écrite", async () => {
+    const b = await preparer("memo", { nom: "M", sources: {} }, `export default async () => 1;`);
+    const lignes = [
+      { t: "bloc", id: "lire", etape: "debut" },
+      { t: "bloc", id: "lire", etape: "fin", statut: "reussi", sortie: { tickets: [{ titre: "a" }] } },
+      { t: "memoire", memoire: { lire: { type: "code", valeur: { vu: 1 } } } },
+      { t: "bloc", id: "sortie", etape: "debut" },
+      { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: { tickets: [{ titre: "a" }] } },
+      { t: "fin", donnees: { tickets: [{ titre: "a" }] } },
+    ];
+    const dossierDonnees = join(b.dossierActions, "memo");
+    // La mémoire est tenue (comme pendant l'effacement de ses données) : l'exécution attend son tour pour l'écrire.
+    let relacher!: () => void;
+    const tenue = avecMemoire(dossierDonnees, () => new Promise<void>((ok) => (relacher = ok)));
+    const fin = executerAction(options(b, "memo", { lancer: lanceurLignes(lignes) }));
+    await attendreQue(() => existsSync(join(dossierDonnees, "resultats")));
+    // Le temps que la relecture qui suit le résultat passe : l'action est encore là.
+    await new Promise((ok) => setTimeout(ok, 200));
+    await rm(b.dossier, { recursive: true, force: true });
+    relacher();
+    await tenue;
+    const r = await fin;
+    expect(r.erreur).toBe(ACTION_INCONNUE);
+    expect(await lireMemoire(dossierDonnees)).toEqual({});
+    expect(await listerExecutions(dossierDonnees)).toEqual([]);
   });
 
   it("accord retiré pendant l'exécution : rien ne reste", async () => {

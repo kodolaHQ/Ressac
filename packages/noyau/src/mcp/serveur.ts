@@ -6,9 +6,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Application } from "../applications/gestionnaire.js";
 import type { EtatWidget } from "../accueil/schemas.js";
-import { ID_EXECUTION, type Execution, type ResumeExecution } from "../workflows/executions.js";
+import { ACTION_ARRETEE, ID_EXECUTION, type Execution, type ResumeExecution } from "../workflows/executions.js";
 import { erreurDuNoyau } from "../widgets/recolte.js";
-import { saisieRequise, type ResultatLancement } from "../actions/executer.js";
+import { ACTION_INCONNUE, ACTION_SANS_WORKFLOW, RESULTAT_TROP_GROS, saisieRequise, type ResultatLancement } from "../actions/executer.js";
+import { ERREUR_ACTION_INTERNE } from "../actions/file.js";
 import type { PlanPage } from "../pages/plan.js";
 import type { DroitDev, PolitiqueAcces } from "../acces/politique.js";
 import { enregistrerOutilsDev, type FichiersProfils } from "./outils-dev.js";
@@ -130,6 +131,11 @@ export const AVIS_EXECUTIONS_CACHEES =
   "Ce widget lit avec le compte de l'utilisateur : seul le statut des exécutions est montré. Demander le détail d'une exécution lui pose la question (même accord que donnees_widget).";
 /** Remplace, sans accord, l'erreur d'un widget avec compte qui n'est pas un message fixe du noyau. */
 export const ERREUR_RESERVEE = "La récolte a échoué (détail réservé : demande-le avec donnees_widget)";
+/** Remplace, sans accord, l'erreur d'une action avec compte qui n'est pas un message fixe du noyau. */
+export const ERREUR_RESERVEE_ACTION = "L'action a échoué (détail réservé : demande-le avec executions_action)";
+/** Messages fixes écrits par le noyau pour une action, en plus de ceux des widgets (`erreurDuNoyau`). */
+const ERREURS_FIXES_ACTIONS = new Set([ACTION_ARRETEE, ACTION_SANS_WORKFLOW, RESULTAT_TROP_GROS, ERREUR_ACTION_INTERNE, ACTION_INCONNUE]);
+const erreurDuNoyauAction = (erreur: string) => ERREURS_FIXES_ACTIONS.has(erreur) || erreurDuNoyau(erreur);
 const ID_WIDGET = z.string().regex(/^[a-z0-9-]+$/, "id de widget : minuscules, chiffres et tirets");
 
 /** Temps laissé à la fenêtre d'une application pour apparaître après le lancement. */
@@ -627,7 +633,7 @@ function enregistrerOutilsActions(
         ...(fin.execution ? { execution: fin.execution } : {}),
         // Une erreur de l'action peut être faite de ce que le compte a montré : seul un message fixe du noyau sort sans accord.
         ...(fin.erreur
-          ? { erreur: montrer || (fin.erreurNoyau === true && erreurDuNoyau(fin.erreur)) ? fin.erreur : ERREUR_RESERVEE }
+          ? { erreur: montrer || (fin.erreurNoyau === true && erreurDuNoyauAction(fin.erreur)) ? fin.erreur : ERREUR_RESERVEE_ACTION }
           : {}),
       };
       return texte(json(r));

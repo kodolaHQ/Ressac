@@ -411,6 +411,20 @@ test("noyau.actions : page(id, null) rend le dernier résultat résolu ; page d'
   expect(n.actions.direct()).toEqual({ courantes: [], enAttente: [] });
 });
 
+test("noyau.actions : page() d'une action réécrite sans compte mais encore accordée compte comme lisant avec le compte", async () => {
+  const { n, dossierActions } = await creerAvecActions(async (racine, dossierActions) => {
+    const dossier = join(cheminsEspace(racine).actions, "gitlab");
+    await mkdir(dossier, { recursive: true });
+    await writeFile(join(dossier, "action.json"), JSON.stringify({ nom: "GitLab", sources: { web: true } }));
+    await accorderAccord(dossierActions, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+  });
+  const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
+  await ecrireExecution(join(dossierActions, "gitlab"), e);
+  const plan = { blocs: [{ composant: "liste", props: { elements: "tickets", titre: "titre", image: "image" } }] };
+  await ecrireResultat(dossierActions, "gitlab", { version: 1, execution: e.id, saisie: null, resultats: { tickets: [{ titre: "A", image: "https://img.test/a.png" }] }, plan, secours: false, vide: false });
+  expect(await n.actions.page("gitlab", null)).toMatchObject({ execution: e.id, compte: true });
+});
+
 test("noyau.actions : au démarrage, les données d'une action disparue sont effacées", async () => {
   const { dossierActions } = await creerAvecActions(async (racine, dossierActions) => {
     await mkdir(cheminsEspace(racine).actions, { recursive: true });
