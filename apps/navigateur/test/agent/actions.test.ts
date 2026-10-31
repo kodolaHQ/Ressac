@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  accorder,
   cheminsEspace,
   ecrireExecution,
   ecrireResultat,
@@ -94,9 +95,9 @@ test("urlImage : webaios-image://<id>/<exécution>?u=<url encodée>", () => {
 
 /** Un faux fetch qui note chaque demande. */
 function faussesRequetes(reponse: (url: string) => Response = () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } })) {
-  const demandes: { url: string; credentials: string }[] = [];
-  const chercher = async (url: string, init: { credentials: "omit"; signal: AbortSignal }) => {
-    demandes.push({ url, credentials: init.credentials });
+  const demandes: { url: string; credentials: string; redirect?: string }[] = [];
+  const chercher = async (url: string, init: { credentials: "omit"; signal: AbortSignal; redirect: "manual" }) => {
+    demandes.push({ url, credentials: init.credentials, redirect: init.redirect });
     return reponse(url);
   };
   return { demandes, chercher };
@@ -111,7 +112,7 @@ test("repondreImage : une adresse https présente telle quelle dans les résulta
   expect(r.status).toBe(200);
   expect(r.headers.get("content-type")).toBe("image/jpeg");
   expect([...new Uint8Array(await r.arrayBuffer())]).toEqual([1, 2, 3]);
-  expect(demandes).toEqual([{ url: image, credentials: "omit" }]);
+  expect(demandes).toEqual([{ url: image, credentials: "omit", redirect: "manual" }]);
 });
 
 test("repondreImage refuse (404, aucune requête) : compte, http, adresse absente ou composée, exécution inconnue, adresse locale", async () => {
@@ -160,6 +161,49 @@ test("repondreImage refuse une réponse qui n'est pas une image, un échec ou un
   for (const u of [html, gros, absent]) expect((await repondreImage(o, urlImage("publique", ex, u))).status, u).toBe(404);
   const echec = { ...o, chercher: async () => Promise.reject(new Error("réseau")) };
   expect((await repondreImage(echec, urlImage("publique", ex, html))).status).toBe(404);
+});
+
+test("repondreImage suit au plus 3 redirections, chacune vers une adresse https publique ; sinon 404 sans aller plus loin", async () => {
+  const { c, dossierActions } = espace({ publique: { nom: "Publique", sources: { web: true } } });
+  const image = "https://img.test/a.jpg";
+  const ex = await executer(dossierActions, "publique", { photo: image });
+  const redirection = (location: string) => new Response(null, { status: 302, headers: { location } });
+  const essayer = async (sauts: Record<string, Response | (() => Response)>) => {
+    const { demandes, chercher } = faussesRequetes((url) => {
+      const r = sauts[url];
+      if (r) return typeof r === "function" ? r() : r;
+      return new Response(new Uint8Array([7]), { headers: { "content-type": "image/png" } });
+    });
+    const r = await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), chercher }, urlImage("publique", ex, image));
+    return { statut: r.status, demandes: demandes.map((d) => d.url), redirections: demandes.map((d) => d.redirect) };
+  };
+  // https → https publique (relative comprise) : suivie, l'image finale est servie.
+  const suivie = await essayer({ [image]: redirection("https://cdn.test/b.jpg"), "https://cdn.test/b.jpg": redirection("/c.jpg") });
+  expect(suivie).toEqual({ statut: 200, demandes: [image, "https://cdn.test/b.jpg", "https://cdn.test/c.jpg"], redirections: ["manual", "manual", "manual"] });
+  // Vers le réseau local, la machine ou en http : refusée, sans requête vers la cible.
+  for (const cible of ["http://192.168.1.2/", "https://192.168.1.2/a.png", "https://127.0.0.1:5280/a.png", "http://img.test/a.jpg", "javascript:alert(1)"]) {
+    expect(await essayer({ [image]: redirection(cible) }), cible).toEqual({ statut: 404, demandes: [image], redirections: ["manual"] });
+  }
+  // Sans Location : refusée.
+  expect((await essayer({ [image]: new Response(null, { status: 302 }) })).statut).toBe(404);
+  // 3 sauts : suivis ; 4 : refusés, la quatrième cible n'est jamais demandée.
+  const chaine = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [i === 0 ? image : `https://cdn.test/${i}.jpg`, redirection(`https://cdn.test/${i + 1}.jpg`)]));
+  expect((await essayer(chaine(3))).statut).toBe(200);
+  const quatre = await essayer(chaine(4));
+  expect(quatre.statut).toBe(404);
+  expect(quatre.demandes).toEqual([image, "https://cdn.test/1.jpg", "https://cdn.test/2.jpg", "https://cdn.test/3.jpg"]);
+  // La réponse finale doit toujours être une image.
+  expect((await essayer({ [image]: redirection("https://cdn.test/p"), "https://cdn.test/p": new Response("<p>", { headers: { "content-type": "text/html" } }) })).statut).toBe(404);
+});
+
+test("repondreImage refuse une action qui a un accord du compte, même si sa déclaration n'a plus de compte", async () => {
+  const { c, dossierActions } = espace({ reecrite: { nom: "Réécrite", sources: { web: true } } });
+  const image = "https://img.test/a.jpg";
+  const ex = await executer(dossierActions, "reecrite", { photo: image });
+  await accorder(dossierActions, "reecrite", { domaines: ["gitlab.com"], publiques: [], profil: "defaut" });
+  const { demandes, chercher } = faussesRequetes();
+  expect((await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), chercher }, urlImage("reecrite", ex, image))).status).toBe(404);
+  expect(demandes).toEqual([]);
 });
 
 test("repondreComposant sert composant.html avec CSP_WIDGET, sans résolution de noms ; refuse tout autre chemin", async () => {
