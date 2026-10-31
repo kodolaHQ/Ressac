@@ -1,10 +1,25 @@
+import { domainToASCII } from "node:url";
 import { adresseLocale } from "../workflows/acces.js";
 import type { DeclarationSite, Retouche } from "./schemas.js";
 
 /** Domaines de l'appli, jamais dans site.json : l'actuel, et les anciens qu'il faut encore reconnaître. */
 export type EtatAdresse = { actuel: string; anciens: string[]; depuis: string | null };
 
-const nettoyer = (h: string) => h.toLowerCase().replace(/\.+$/, "");
+const HOTE_VALIDE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+/** Minuscules, point final retiré, Unicode converti en ASCII (punycode) ; "" si le nom est invalide. */
+const nettoyer = (h: string) => {
+  const b = h.toLowerCase().replace(/\.+$/, "");
+  if (/[\/@:?#\s%\\*\[\]]/.test(b)) return "";
+  const a = /^[a-z0-9.-]*$/.test(b) ? b : domainToASCII(b);
+  return HOTE_VALIDE.test(a) ? a : "";
+};
+
+/** https, ou (tests) http d'un hôte local ; jamais d'identifiants. */
+function schemaAccepte(u: URL, adressesLocales: boolean): boolean {
+  if (u.username || u.password) return false;
+  if (u.protocol === "https:") return true;
+  return u.protocol === "http:" && adressesLocales && adresseLocale(u.hostname);
+}
 
 /** Exact ou sous-domaine, sans casse, point final retiré. */
 export function hoteDansSite(hote: string, domaines: readonly string[]): boolean {
@@ -63,6 +78,10 @@ export function adresseSurDomaine(
 ): string | null {
   const base = analyser(depart);
   if (!base) return null;
+  // Un `actuel` invalide laisse l'hôte du départ.
+  const n = nettoyer(actuel);
+  const valide = HOTE_VALIDE.test(n) && (o.adressesLocales || !adresseLocale(n));
+  const hoteSortie = valide ? n : base.hostname;
   let u: URL;
   if (adresse.startsWith("/")) {
     if (adresse.startsWith("//") || adresse.startsWith("/\\")) return null;
@@ -71,25 +90,52 @@ export function adresseSurDomaine(
     u = r;
   } else {
     const r = analyser(adresse);
-    if (!r || !hoteDansSite(r.hostname, domaines)) return null;
-    if (r.username || r.password) return null;
-    if (r.protocol !== "https:" && !(o.adressesLocales && r.protocol === "http:")) return null;
+    if (!r || !hoteDansSite(r.hostname, domaines) || !schemaAccepte(r, o.adressesLocales)) return null;
     u = r;
   }
   const sortie = analyser(`${base.protocol}//${base.host}${u.pathname}${u.search}${u.hash}`);
   if (!sortie) return null;
-  sortie.hostname = actuel;
-  if (sortie.protocol !== "https:" && !(o.adressesLocales && sortie.protocol === "http:")) return null;
+  sortie.hostname = hoteSortie;
+  if (!schemaAccepte(sortie, o.adressesLocales)) return null;
   return sortie.href;
 }
 
-/** Joker `*` (toute suite de caractères), ancré aux deux bouts, sensible à la casse sauf l'hôte d'une adresse complète. */
+/**
+ * Appariement glob itératif (deux pointeurs, O(n·m), sans retour arrière exponentiel). `*` = toute suite de caractères
+ * hors `interdits`.
+ */
+function glob(motif: string, texte: string, interdits = ""): boolean {
+  let m = 0, t = 0, etoile = -1, reprise = 0;
+  while (t < texte.length) {
+    if (m < motif.length && motif[m] === "*") {
+      etoile = m++;
+      reprise = t;
+    } else if (m < motif.length && motif[m] === texte[t]) {
+      m++;
+      t++;
+    } else if (etoile >= 0 && !interdits.includes(texte[reprise]!)) {
+      m = etoile + 1;
+      t = ++reprise;
+    } else return false;
+  }
+  while (m < motif.length && motif[m] === "*") m++;
+  return m === motif.length;
+}
+
+/**
+ * Joker `*` ancré aux deux bouts. Chemin : sensible à la casse. Adresse complète : schéma, hôte et chemin comparés
+ * séparément ; un `*` de l'hôte ne passe jamais `/ ? # @ :` ; une URL avec identifiants est refusée.
+ */
 export function correspondMotif(motif: string, texte: string): boolean {
-  const hote = (s: string) => s.replace(/^([a-z][a-z0-9+.-]*:\/\/)([^/]*)/i, (_, p: string, h: string) => p.toLowerCase() + h.toLowerCase());
-  const m = hote(motif);
-  const t = hote(texte);
-  const re = new RegExp(`^${m.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "s");
-  return re.test(t);
+  const complet = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(motif);
+  if (!complet) return glob(motif, texte);
+  const u = analyser(texte);
+  if (!u || u.username || u.password) return false;
+  const [, schema, hote, reste] = complet as unknown as [string, string, string, string];
+  if (u.protocol !== `${schema.toLowerCase()}:`) return false;
+  const hoteTexte = (nettoyer(u.hostname) || u.hostname) + (u.port ? `:${u.port}` : "");
+  if (!glob(hote.toLowerCase(), hoteTexte, "/?#@:")) return false;
+  return glob(reste === "" ? "/" : reste, u.pathname + u.search);
 }
 
 /** Les retouches qui s'appliquent à un cadre : principal par chemin, sous-cadre par motif d'adresse complète. */
@@ -97,7 +143,10 @@ export function retouchesPour(
   d: DeclarationSite,
   cadre: { url: string; principal: boolean },
   domaines: readonly string[],
+  o: { adressesLocales: boolean } = { adressesLocales: false },
 ): Retouche[] {
+  const u = analyser(cadre.url);
+  if (!u || !schemaAccepte(u, o.adressesLocales)) return [];
   if (cadre.principal) {
     const rel = adresseRelative(cadre.url, domaines);
     if (rel === null) return [];
@@ -108,26 +157,26 @@ export function retouchesPour(
 
 /**
  * La nouvelle adresse d'un site d'après les liens de sa page de référence (hostile) : le premier lien https dont l'hôte
- * contient le motif, hors page de référence et ses sous-domaines, hors adresses locales. Rend son origine.
+ * contient le motif, hors page de référence, ses sous-domaines et son domaine parent (mêmes deux derniers libellés),
+ * hors adresses locales. `hostname` est propre (ni port ni point final) ; `port` n'existe qu'en mode test.
  */
 export function trouverAdresse(
   liens: readonly string[],
   o: { page: string; motif: string; adressesLocales: boolean },
-): string | null {
+): { hostname: string; origine: string; port: string | null } | null {
   const page = analyser(o.page);
   const motif = o.motif.toLowerCase();
   if (!page || !motif) return null;
+  const deux = (h: string) => h.split(".").slice(-2).join(".");
   const hotePage = nettoyer(page.hostname);
   for (const lien of liens) {
     const u = analyser(lien);
-    if (!u || u.username || u.password) continue;
+    if (!u || !schemaAccepte(u, o.adressesLocales)) continue;
     const h = nettoyer(u.hostname);
-    if (!h.includes(motif) || hoteDansSite(h, [hotePage])) continue;
-    const local = adresseLocale(h);
-    if (u.protocol === "https:") {
-      if (local && !o.adressesLocales) continue;
-    } else if (!(u.protocol === "http:" && o.adressesLocales && local)) continue;
-    return `${u.protocol}//${u.host}/`;
+    if (!h || !HOTE_VALIDE.test(h) || !h.includes(motif) || deux(h) === deux(hotePage)) continue;
+    if (adresseLocale(h) && !o.adressesLocales) continue;
+    const port = o.adressesLocales && u.port ? u.port : null;
+    return { hostname: h, origine: `${u.protocol}//${h}${port ? `:${port}` : ""}/`, port };
   }
   return null;
 }
