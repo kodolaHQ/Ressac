@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { IA_ABANDONNEE } from "../../src/ia/repartiteur.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -6,7 +7,7 @@ import { IaLocale, lancerProcessusIa, type ProcessusIa } from "../../src/ia/ia-l
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice, type Reponse } from "../aide/executeur-factice.js";
 import type { Executeur } from "../../src/conteneur/executeur.js";
-import { fauxKev, fauxOllama, urlInjoignable, type FauxServeur } from "../aide/faux-ia.js";
+import { fauxKev, fauxOllama, fauxOllamaMuet, urlInjoignable, type FauxServeur } from "../aide/faux-ia.js";
 
 const COMMIT = "6b719c3c3f367295f6ef336f4f751cf5ff970abc";
 const aFermer: FauxServeur[] = [];
@@ -52,6 +53,32 @@ describe("IaLocale", () => {
     expect(c.messages[0]).toMatchObject({ role: "user", content: "salut", images: ["QUJD"] });
     expect(await ia.gemma({ prompt: "x" })).toBe('{"a":1}');
     expect(ollama.requetes[1]!.corps.format).toBeUndefined();
+  });
+
+  it("gemma avec un signal levé abandonne la requête vers Ollama (faux serveur)", async () => {
+    const ollama = garder(await fauxOllamaMuet());
+    const { executer } = executeurFactice([]);
+    const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, ollamaUrl: ollama.url });
+    const controleur = new AbortController();
+    const appel = ia.gemma({ prompt: "x", json: true, signal: controleur.signal });
+    await vi.waitFor(() => expect(ollama.requetes).toHaveLength(1));
+    controleur.abort();
+    await expect(appel).rejects.toThrow(IA_ABANDONNEE);
+    await vi.waitFor(() => expect(ollama.coupees()).toBe(1));
+    // Déjà levé : rien ne part.
+    await expect(ia.gemma({ prompt: "y", signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
+    expect(ollama.requetes).toHaveLength(1);
+  });
+
+  it("kev avec un signal levé abandonne la requête vers Kev", async () => {
+    const kev = garder(await fauxOllamaMuet());
+    const { executer } = executeurFactice([]);
+    const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, kevUrl: kev.url });
+    aArreter.push(ia);
+    const controleur = new AbortController();
+    controleur.abort();
+    await expect(ia.kev({ state: "", questions: {} }, { signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
+    expect(kev.requetes).toHaveLength(0);
   });
 
   it("Ollama injoignable : erreur « Ollama n'est pas lancé »", async () => {

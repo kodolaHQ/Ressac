@@ -151,6 +151,17 @@ test("la récolte reçoit le widget, le dossier des données, le moteur et l'IA"
   expect(o.surChange).toBeTypeOf("function");
 });
 
+test("avec un répartiteur donné, les récoltes l'utilisent", async () => {
+  const cles: string[] = [];
+  const acces = { kev: vi.fn(), gemma: vi.fn(), oublier: vi.fn() };
+  const repartiteur = { pour: (cle: string) => (cles.push(cle), acces) };
+  const { p, recolter } = await preparer({ options: { repartiteur } });
+  await p.verifier({ auLancement: true });
+  expect(recolter.mock.calls[0]![0].ia).toBe(acces);
+  expect(cles).toEqual([`actus:${DEBUT.toISOString()}`]);
+  expect(acces.oublier).toHaveBeenCalledTimes(1);
+});
+
 test("le ménagement et la base des recherches sont transmis à chaque récolte et à chaque essai ; absents, rien n'est transmis", async () => {
   const menagement = new Menagement();
   const { p, recolter, recolterEssai } = await preparer({ options: { menagement, urlRecherche: "http://127.0.0.1:9/html/" } });

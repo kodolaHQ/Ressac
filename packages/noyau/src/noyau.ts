@@ -20,6 +20,7 @@ import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsW
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
+import { creerRepartiteurIa } from "./ia/repartiteur.js";
 import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
 import { MENAGEMENT_PAR_DEFAUT } from "./workflows/executer.js";
 import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
@@ -256,6 +257,8 @@ export async function creerNoyau(o: {
   const ia = o.ia ?? null;
   // Accès propre à ce noyau, fermé avec lui : une récolte encore en vol à l'arrêt ne relance pas Kev.
   const accesIa = ia?.acces() ?? null;
+  // Un seul répartiteur pour les widgets et les actions : les appels d'une action passent avant ceux des widgets.
+  const repartiteurIa = accesIa ? creerRepartiteurIa(accesIa) : null;
   const signaler = () => {
     try {
       o.surChange?.();
@@ -328,6 +331,7 @@ export async function creerNoyau(o: {
     atelier,
     pont: o.pont,
     ia: accesIa,
+    ...(repartiteurIa ? { repartiteur: repartiteurIa } : {}),
     surChange: signaler,
     surDirect(e) {
       for (const rappel of abonnesDirect) {

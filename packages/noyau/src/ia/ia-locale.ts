@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { cheminOutils, oublierGroupe, retenirGroupe, tuerGroupe, type Executeur } from "../conteneur/executeur.js";
+import { IA_ABANDONNEE } from "./repartiteur.js";
 
 export type EtatIa = "non-installee" | "arretee" | "demarrage" | "active" | "erreur";
 
@@ -98,6 +99,13 @@ export function lancerProcessusIa(cmd: string, args: string[], o: { cwd: string;
 }
 
 const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) => lancerProcessusIa(cmd, args, o);
+
+/** Le délai de l'appel, et le signal de l'appelant s'il y en a un. */
+const delaiEt = (ms: number, signal?: AbortSignal) => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
+/** Le signal de l'appelant est levé : l'appel est abandonné (sinon l'erreur d'origine). */
+const verifierAbandon = (signal?: AbortSignal) => {
+  if (signal?.aborted) throw new Error(IA_ABANDONNEE);
+};
 
 const attendre = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
 
@@ -244,9 +252,11 @@ export class IaLocale {
     if (tire.code !== 0) throw new Error(`ollama pull a échoué : ${tire.stderr.trim()}`);
   }
 
-  async kev(corps: { state: unknown; questions: Record<string, unknown> }): Promise<unknown> {
+  async kev(corps: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
     if (this.fermee) throw new Error(ERREUR_IA_FERMEE);
+    verifierAbandon(o.signal);
     await this.assurerKev();
+    verifierAbandon(o.signal);
     this.dernierUsage = this.horloge();
     let r: Response;
     try {
@@ -254,18 +264,25 @@ export class IaLocale {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(corps),
-        signal: AbortSignal.timeout(DELAI_KEV_MS),
+        signal: delaiEt(DELAI_KEV_MS, o.signal),
       });
     } catch (e) {
+      verifierAbandon(o.signal);
       throw new Error(`Kev ne répond pas : ${(e as Error).message}`);
     }
     if (!r.ok) throw new Error(`Kev a répondu ${r.status}`);
     this.dernierUsage = this.horloge();
-    return ((await r.json()) as { answers: unknown }).answers;
+    try {
+      return ((await r.json()) as { answers: unknown }).answers;
+    } catch (e) {
+      verifierAbandon(o.signal);
+      throw e;
+    }
   }
 
-  async gemma(o: { prompt: string; images?: string[]; json?: boolean }): Promise<string | unknown> {
+  async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal }): Promise<string | unknown> {
     if (this.fermee) throw new Error(ERREUR_IA_FERMEE);
+    verifierAbandon(o.signal);
     const message: Record<string, unknown> = { role: "user", content: o.prompt };
     if (o.images?.length) message.images = o.images;
     const corps: Record<string, unknown> = {
@@ -283,13 +300,21 @@ export class IaLocale {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(corps),
-        signal: AbortSignal.timeout(DELAI_GEMMA_MS),
+        signal: delaiEt(DELAI_GEMMA_MS, o.signal),
       });
     } catch {
+      verifierAbandon(o.signal);
       throw new Error("Ollama n'est pas lancé");
     }
     if (!r.ok) throw new Error(`Ollama a répondu ${r.status}`);
-    const contenu = ((await r.json()) as { message?: { content?: string } }).message?.content ?? "";
+    let reponse: { message?: { content?: string } };
+    try {
+      reponse = (await r.json()) as { message?: { content?: string } };
+    } catch (e) {
+      verifierAbandon(o.signal);
+      throw e;
+    }
+    const contenu = reponse.message?.content ?? "";
     if (!o.json) return contenu;
     try {
       return JSON.parse(contenu);
@@ -318,7 +343,7 @@ export class IaLocale {
     let ferme = false;
     // Vérifié avant l'appel : kev() lance Kev de façon synchrone, avant sa première attente ; fermer() l'arrête ensuite.
     return {
-      kev: (corps) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.kev(corps)),
+      kev: (corps, o) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.kev(corps, o)),
       gemma: (o) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.gemma(o)),
       fermer: async () => {
         ferme = true;

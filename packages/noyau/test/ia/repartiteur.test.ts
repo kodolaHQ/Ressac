@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { creerRepartiteurIa, IA_ABANDONNEE, IA_SIMULTANES } from "../../src/ia/repartiteur.js";
 
 /** Une IA factice : chaque appel attend qu'on le termine de l'extérieur. */
@@ -122,4 +122,95 @@ test("oublier : les appels en file de l'exécution sont refusés sans partir, co
   await f.finirPremier();
   expect(await b1).toBe("gemma b1");
   expect(f.journal).toEqual(["gemma a1", "gemma b1"]);
+});
+
+test("4 en vol, 2 widgets en file, puis une action prioritaire : la place libérée va à l'action", async () => {
+  const f = iaFactice();
+  const r = creerRepartiteurIa(f.ia);
+  const appels: Promise<unknown>[] = [];
+  for (let i = 0; i < 4; i++) appels.push(r.pour(`w${i}`).gemma({ prompt: `w${i}` }));
+  appels.push(r.pour("w4").gemma({ prompt: "w4" }), r.pour("w5").gemma({ prompt: "w5" }));
+  await attendre();
+  appels.push(r.pour("action:a", { prioritaire: true }).gemma({ prompt: "a1" }));
+  await attendre();
+  expect(f.journal).toEqual(["gemma w0", "gemma w1", "gemma w2", "gemma w3"]);
+  await f.finirPremier();
+  expect(f.journal[4]).toBe("gemma a1");
+  while (f.enCours.length) await f.finirPremier();
+  await Promise.all(appels);
+  expect(f.journal.slice(5)).toEqual(["gemma w4", "gemma w5"]);
+});
+
+test("sans prioritaire, l'ordre est celui d'aujourd'hui (tests existants inchangés)", async () => {
+  const f = iaFactice();
+  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const appels = [r.pour("x").gemma({ prompt: "x1" }), r.pour("a").gemma({ prompt: "a1" }), r.pour("a").gemma({ prompt: "a2" }), r.pour("b").gemma({ prompt: "b1" }), r.pour("c").gemma({ prompt: "c1" })];
+  await attendre();
+  while (f.enCours.length) await f.finirPremier();
+  await Promise.all(appels);
+  expect(f.journal).toEqual(["gemma x1", "gemma a1", "gemma b1", "gemma c1", "gemma a2"]);
+});
+
+test("deux actions prioritaires se partagent les places à tour de rôle", async () => {
+  const f = iaFactice();
+  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const w = r.pour("widget");
+  const a = r.pour("action:a", { prioritaire: true });
+  const b = r.pour("action:b", { prioritaire: true });
+  const appels = [w.kev({ state: "w1", questions: {} }), w.kev({ state: "w2", questions: {} })];
+  await attendre();
+  appels.push(a.kev({ state: "a1", questions: {} }), a.kev({ state: "a2", questions: {} }), b.kev({ state: "b1", questions: {} }), b.kev({ state: "b2", questions: {} }));
+  await attendre();
+  while (f.enCours.length) await f.finirPremier();
+  await Promise.all(appels);
+  // w1 était déjà en vol : il n'est jamais interrompu.
+  expect(f.journal).toEqual(["kev w1", "kev a1", "kev b1", "kev a2", "kev b2", "kev w2"]);
+});
+
+test("auDemarrage appelé au départ réel, pas à la mise en file", async () => {
+  const f = iaFactice();
+  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const premier = r.pour("a").gemma({ prompt: "1" });
+  const demarre = vi.fn();
+  const second = r.pour("b", { prioritaire: true }).gemma({ prompt: "2" }, { auDemarrage: demarre });
+  await attendre();
+  expect(demarre).not.toHaveBeenCalled();
+  await f.finirPremier();
+  expect(demarre).toHaveBeenCalledTimes(1);
+  expect(f.journal).toEqual(["gemma 1", "gemma 2"]);
+  await f.finirPremier();
+  await Promise.all([premier, second]);
+});
+
+test("signal levé en file : refus IA_ABANDONNEE, l'IA n'est pas appelée", async () => {
+  const f = iaFactice();
+  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const premier = r.pour("a").gemma({ prompt: "1" });
+  const controleur = new AbortController();
+  const demarre = vi.fn();
+  const enFile = r.pour("b", { prioritaire: true }).gemma({ prompt: "2" }, { signal: controleur.signal, auDemarrage: demarre });
+  const apres = r.pour("c").gemma({ prompt: "3" });
+  await attendre();
+  const refus = expect(enFile).rejects.toThrow(IA_ABANDONNEE);
+  controleur.abort();
+  await refus;
+  // Déjà levé : refusé tout de suite.
+  await expect(r.pour("b").kev({ state: 0, questions: {} }, { signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
+  await f.finirPremier();
+  await f.finirPremier();
+  await Promise.all([premier, apres]);
+  expect(f.journal).toEqual(["gemma 1", "gemma 3"]);
+  expect(demarre).not.toHaveBeenCalled();
+});
+
+test("signal levé en vol : transmis à l'IA", async () => {
+  const recus: (AbortSignal | undefined)[] = [];
+  const r = creerRepartiteurIa({
+    kev: async (_c: unknown, o?: { signal?: AbortSignal }) => (recus.push(o?.signal), "k"),
+    gemma: async (g: { prompt: string; signal?: AbortSignal }) => (recus.push(g.signal), "g"),
+  });
+  const controleur = new AbortController();
+  await r.pour("a").kev({ state: 1, questions: {} }, { signal: controleur.signal });
+  await r.pour("a").gemma({ prompt: "x" }, { signal: controleur.signal });
+  expect(recus).toEqual([controleur.signal, controleur.signal]);
 });
