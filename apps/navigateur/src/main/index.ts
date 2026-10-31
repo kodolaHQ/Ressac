@@ -543,6 +543,7 @@ app.whenReady().then(async () => {
     noyau: () => agent?.noyau() ?? null,
     chemins: () => agent?.chemins ?? null,
     dossierActions,
+    surChange: () => diffuser(CANAUX.actionsChange, null),
   });
   const constructeurActions = creerConstructeurActions({
     etat: () => magasin.etat,

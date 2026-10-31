@@ -206,8 +206,25 @@ export function creerServiceActions(o: {
   chemins: () => CheminsEspace | null;
   dossierActions: string;
   maintenant?: () => number;
+  /** Un lancement refusé sans exécution écrite vient d'être noté : les pages des actions se relisent. */
+  surChange?: () => void;
 }): ServiceActions {
   const maintenant = o.maintenant ?? Date.now;
+  /**
+   * Par action, le dernier lancement refusé sans rien écrire (atelier arrêté, workflow.json absent ou invalide…) : la
+   * page ne peut pas le relire sur le disque, `liste` le lui donne tant qu'aucune exécution plus récente n'existe.
+   */
+  const refusLancement = new Map<string, { erreur: string; quand: string }>();
+  const suivreLancement = (id: string, fin: Promise<ResultatLancement>): Promise<ResultatLancement> => {
+    refusLancement.delete(id);
+    return fin.then((r) => {
+      if (!r.execution) {
+        refusLancement.set(id, { erreur: r.erreur ?? "L'action n'a pas pu être lancée", quand: new Date(maintenant()).toISOString() });
+        o.surChange?.();
+      }
+      return r;
+    });
+  };
   const prive = (f: IdFenetre) => espaceActifPrive(o.etat(), f);
   const refus = { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
   const lire = async (id: string) => {
@@ -221,7 +238,10 @@ export function creerServiceActions(o: {
     async liste(f) {
       const c = o.chemins();
       if (prive(f) || !c) return [];
-      return lireActionsAffichees(c, o.dossierActions);
+      return (await lireActionsAffichees(c, o.dossierActions)).map((a) => {
+        const r = refusLancement.get(a.id);
+        return r && (!a.dernier || a.dernier.debut < r.quand) ? { ...a, refus: r.erreur } : a;
+      });
     },
     async ouvrir(f, id, saisie) {
       if (prive(f)) return refus;
@@ -237,16 +257,16 @@ export function creerServiceActions(o: {
       if (tourne) return { ok: true };
       // Saisie requise et absente : la page s'ouvre avec son champ à remplir, rien n'est lancé.
       if (!("erreur" in a) && a.declaration.saisie && !saisie?.trim()) return { ok: true };
-      noyau.actions
-        .lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" })
-        .fin.catch((e) => console.error(`[webaios] action ${id} :`, e));
+      suivreLancement(id, noyau.actions.lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" }).fin).catch((e) =>
+        console.error(`[webaios] action ${id} :`, e),
+      );
       return { ok: true };
     },
     async lancer(f, id, saisie) {
       if (prive(f)) return { statut: "invalide", erreur: ACTIONS_EN_ESPACE_PRIVE };
       const noyau = o.noyau();
       if (!noyau) return { statut: "invalide", erreur: MESSAGE_SANS_NOYAU };
-      return noyau.actions.lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" }).fin;
+      return suivreLancement(id, noyau.actions.lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" }).fin);
     },
     arreter(f, id) {
       if (!prive(f)) o.noyau()?.actions.arreter(id);
@@ -298,13 +318,19 @@ export function creerServiceActions(o: {
     },
     async refuserAccord(f, id) {
       if (prive(f)) return;
-      await o.noyau()?.actions.refuserAccord(id);
+      const noyau = o.noyau();
+      // Une exécution en cours garderait sa place dans la file et sa priorité sur l'IA jusqu'à sa fin.
+      noyau?.actions.arreter(id);
+      await noyau?.actions.refuserAccord(id);
     },
     async supprimer(f, id) {
       if (prive(f)) return refus;
       const c = o.chemins();
       if (!c) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
       if (!(await lire(id))) return { ok: false, erreur: ACTION_INCONNUE };
+      // Arrêtée d'abord : sinon elle tournerait jusqu'à sa durée maximale, sans que rien ne permette plus de l'arrêter.
+      o.noyau()?.actions.arreter(id);
+      refusLancement.delete(id);
       const oublier = async (x: string) => {
         const noyau = o.noyau();
         if (noyau) return noyau.actions.refuserAccord(x);

@@ -431,6 +431,8 @@ const executionsSurDisque = (profil: string, id: string) => {
 };
 
 const SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
+/** Le message du noyau pour une action sans workflow.json (actions/executer.ts). */
+const ACTION_SANS_WORKFLOW = "Cette action n'a pas de workflow.json";
 /** Attend que le noyau serve les actions (une action inconnue est alors refusée comme telle). */
 async function attendreNoyau(fenetre: Page): Promise<void> {
   await expect
@@ -606,6 +608,53 @@ test("workflow en échec : le message s'affiche", async () => {
     await fenetre.getByTestId("relancer-action").click();
     await expect(fenetre.getByTestId("erreur-action")).toContainText("Site indisponible", { timeout: 30_000 });
     expect(ollama.prompts.length).toBe(prompts);
+  } finally {
+    await fermer();
+  }
+});
+
+test("lancement refusé sans exécution écrite (pas de workflow.json) : « Relancer » comme une suggestion montrent l'erreur", async () => {
+  test.setTimeout(60_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireAction(racine, "sans-workflow", { nom: "Sans workflow" });
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    // Comme le choix d'une suggestion ou « Lancer » de la page Actions : la page s'ouvre, le lancement part du process principal.
+    expect(await fenetre.evaluate(() => window.webaios.actions.ouvrir("sans-workflow", null))).toEqual({ ok: true });
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect(fenetre.getByTestId("erreur-action")).toHaveText(ACTION_SANS_WORKFLOW, { timeout: 30_000 });
+    await expect(fenetre.getByTestId("pas-de-resultat")).toHaveCount(0);
+    // Rechargée, la page le montre encore (rien n'est écrit sur le disque).
+    await fenetre.reload();
+    await expect(fenetre.getByTestId("erreur-action")).toHaveText(ACTION_SANS_WORKFLOW, { timeout: 30_000 });
+    // « Relancer » depuis la page : de même.
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("erreur-action")).toHaveText(ACTION_SANS_WORKFLOW);
+    expect(executionsSurDisque(profil, "sans-workflow")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("atelier arrêté (Docker absent) : « Relancer » montre l'erreur au lieu de rien", async () => {
+  test.setTimeout(60_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionPages(racine);
+  const { fenetre, fermer } = await lancer({
+    racine,
+    profil,
+    env: { WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_KEV_URL: ollama.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1", FAUX_DOCKER_ABSENT: "1" },
+  });
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirAction(fenetre, "pages", "Pages");
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("erreur-action")).toHaveText("Mise à jour impossible : atelier arrêté", { timeout: 30_000 });
+    await expect(fenetre.getByTestId("pas-de-resultat")).toHaveCount(0);
+    expect(executionsSurDisque(profil, "pages")).toEqual([]);
   } finally {
     await fermer();
   }
@@ -1132,7 +1181,7 @@ const PLAN_TICKETS = {
 async function attendrePageTickets(fenetre: Page): Promise<void> {
   const page = fenetre.getByTestId("rendu-page");
   await expect(page).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByTestId("bloc-chiffre")).toContainText("2");
+  await expect(page.getByTestId("bloc-chiffre").locator(".valeur")).toHaveText("2");
   await expect(page.getByTestId("bloc-chiffre")).toContainText("Tickets urgents");
   const encadre = page.getByTestId("bloc-encadre");
   await expect(encadre).toContainText("À traiter d'abord");

@@ -52,4 +52,6 @@ export type ActionAffichee = {
   dernier: { execution: string; debut: string; statut: Execution["statut"] } | null;
   /** `action.json` illisible ou invalide. */
   erreur?: string;
+  /** Le dernier lancement a été refusé sans rien écrire (atelier arrêté, workflow.json absent…) : son message. */
+  refus?: string;
 };

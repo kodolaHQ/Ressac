@@ -101,6 +101,8 @@
   const enAttente = $derived(direct.enAttente.some((a) => a.action === id));
   const tourne = $derived(courante !== null || enAttente);
   const besoinAccord = $derived(!!action && action.compte.length > 0 && !action.accord);
+  /** L'issue d'un lancement refusé sans rien écrire : celle de cette page, sinon celle d'une suggestion ou de « Lancer ». */
+  const erreurAffichee = $derived(erreurLancement ?? action?.refus ?? null);
   // Une exécution vient de finir (vue par direct) : son résultat est relu.
   let tournait = false;
   $effect(() => {
@@ -114,7 +116,8 @@
     lancement = true;
     try {
       const r = await api.actions.lancer(id, action.saisie ? saisie : null);
-      if (r.statut === "invalide" || (r.statut === "accord-requis" && !r.execution)) {
+      // Rien d'écrit (atelier arrêté, workflow.json absent ou invalide, accord requis…) : la page ne pourrait pas le relire.
+      if (!r.execution) {
         erreurLancement = r.erreur ?? "L'action n'a pas pu être lancée";
         carteOuverte = true;
       } else if (execution !== null && r.execution && r.execution !== execution) {
@@ -174,8 +177,8 @@
           <button onclick={() => (carteOuverte = true)}>Autoriser…</button>
         </div>
       {/if}
-      {#if erreurLancement}
-        <p class="message erreur" data-testid="erreur-action">{erreurLancement}</p>
+      {#if erreurAffichee}
+        <p class="message erreur" data-testid="erreur-action">{erreurAffichee}</p>
       {:else if derniereSansResultat?.erreur ?? lue?.erreur}
         <p class="message erreur" data-testid="erreur-action">{derniereSansResultat?.erreur ?? lue?.erreur}</p>
       {/if}
@@ -186,7 +189,7 @@
             <button data-testid="voir-dernier-resultat" onclick={() => choisir(precedentes![0]!.id)}>Voir le dernier résultat</button>
           {/if}
         </div>
-      {:else if lue === null && !derniereSansResultat && !action.saisie && !besoinAccord && !erreurLancement}
+      {:else if lue === null && !derniereSansResultat && !action.saisie && !besoinAccord && !erreurAffichee}
         <p class="message" data-testid="pas-de-resultat">Pas encore de résultat</p>
       {:else if lue?.page?.vide}
         <p class="message" data-testid="aucun-resultat">{AUCUN_RESULTAT}</p>

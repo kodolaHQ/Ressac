@@ -14,6 +14,7 @@ import {
   type EtatActions,
   type Execution,
   type LancementAction,
+  type ResultatLancement,
 } from "@webaios/noyau";
 import type { Action } from "../../src/commun/api";
 import { actionDeUrl, cibleDeUrlWorkflow, PREFIXE_WORKFLOW_ACTION, URL_ACTIONS, urlAction, widgetDeUrlWorkflow, type EtatNavigateur } from "../../src/commun/modele";
@@ -322,25 +323,30 @@ test("lireActionsAffichees : déclaration, accord, dernier résultat (pas un ess
 // --- Le service : refus en espace privé, ouverture et lancement ---
 
 /** Un faux noyau des actions : note les lancements et arrêts. */
-function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }) {
+function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue: ResultatLancement = { statut: "reussie", execution: "x" }) {
   const lances: { id: string; saisie?: string }[] = [];
   const arretes: string[] = [];
+  /** Arrêts et retraits d'accord, dans l'ordre. */
+  const appels: string[] = [];
   const actions = {
     lancer: (id: string, o: { saisie?: string }): LancementAction => {
       lances.push({ id, ...(o.saisie !== undefined ? { saisie: o.saisie } : {}) });
-      return { deja: false, fin: Promise.resolve({ statut: "reussie", execution: "x" }) };
+      return { deja: false, fin: Promise.resolve(issue) };
     },
-    arreter: (id: string) => void arretes.push(id),
+    arreter: (id: string) => {
+      arretes.push(id);
+      appels.push(`arreter:${id}`);
+    },
     direct: () => direct,
     page: async () => ({ execution: "x", debut: DEBUT, fin: DEBUT, saisie: null, statut: "reussie" as const, page: null, compte: false }),
     executions: async () => [],
     accorder: async () => {},
-    refuserAccord: async () => {},
+    refuserAccord: async (id: string) => void appels.push(`refuserAccord:${id}`),
   } as unknown as ActionsNoyau;
-  return { lances, arretes, noyau: { actions } };
+  return { lances, arretes, appels, noyau: { actions } };
 }
 
-function service(o: { prive?: boolean; direct?: EtatActions } = {}) {
+function service(o: { prive?: boolean; direct?: EtatActions; issue?: ResultatLancement } = {}) {
   let n = 0;
   const genId = () => `g${++n}`;
   let etat: EtatNavigateur = etatInitial(genId);
@@ -350,7 +356,8 @@ function service(o: { prive?: boolean; direct?: EtatActions } = {}) {
     gitlab: { nom: "GitLab", sources: { compte: ["gitlab.com"] } },
     leboncoin: { nom: "Leboncoin", saisie: { libelle: "Recherche" }, sources: { web: true } },
   });
-  const faux = fauxNoyau(o.direct);
+  const faux = fauxNoyau(o.direct, o.issue);
+  let changes = 0;
   const agies: Action[] = [];
   let horloge = 10_000;
   const agir = (a: Action) => {
@@ -364,8 +371,9 @@ function service(o: { prive?: boolean; direct?: EtatActions } = {}) {
     chemins: () => c,
     dossierActions,
     maintenant: () => horloge,
+    surChange: () => void changes++,
   });
-  return { s, F, c, dossierActions, agies, agir, ...faux, etat: () => etat, avancer: (ms: number) => (horloge += ms) };
+  return { s, F, c, dossierActions, agies, agir, ...faux, etat: () => etat, avancer: (ms: number) => (horloge += ms), changes: () => changes };
 }
 
 test("dans un espace privé, chaque appel des actions est refusé", async () => {
@@ -447,4 +455,42 @@ test("voirWorkflow ouvre le constructeur sur l'action ; lancer et arrêter passe
   s.arreter(F, "leboncoin");
   expect(lances).toEqual([{ id: "leboncoin", saisie: "clio" }]);
   expect(arretes).toEqual(["leboncoin"]);
+});
+
+test("ouvrir : un lancement refusé sans exécution écrite (atelier arrêté…) est montré par la liste, jusqu'à une exécution plus récente", async () => {
+  const issue: ResultatLancement = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
+  const { s, F, dossierActions, changes, avancer } = service({ issue });
+  expect(await s.ouvrir(F, "gitlab", null)).toEqual({ ok: true });
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(changes()).toBe(1);
+  expect((await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBe("Docker n'est pas démarré");
+  expect((await s.liste(F)).find((a) => a.id === "leboncoin")?.refus).toBeUndefined();
+  // Une exécution écrite depuis (lancée par l'agent…) : le refus ne compte plus.
+  avancer(1000);
+  await executer(dossierActions, "gitlab", { a: 1 });
+  expect((await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
+});
+
+test("lancer (Relancer) note aussi un refus sans exécution ; une issue avec exécution n'en laisse pas", async () => {
+  const { s, F, changes } = service({ issue: { statut: "invalide", erreur: "Cette action n'a pas de workflow.json", erreurNoyau: true } });
+  await s.ouvrir(F, "gitlab", null);
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect((await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBe("Cette action n'a pas de workflow.json");
+  const r = await s.lancer(F, "gitlab", null);
+  expect(r.erreur).toBe("Cette action n'a pas de workflow.json");
+  expect(changes()).toBe(2);
+  const ok = service();
+  await ok.s.ouvrir(ok.F, "gitlab", null);
+  await new Promise((fin) => setTimeout(fin, 0));
+  expect((await ok.s.liste(ok.F)).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
+  expect(ok.changes()).toBe(0);
+});
+
+test("supprimer et retirer l'accord arrêtent d'abord l'action qui tourne", async () => {
+  const { s, F, appels } = service();
+  await s.refuserAccord(F, "gitlab");
+  expect(appels).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
+  appels.length = 0;
+  expect(await s.supprimer(F, "gitlab")).toEqual({ ok: true });
+  expect(appels).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
 });
