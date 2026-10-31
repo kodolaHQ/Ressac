@@ -870,7 +870,13 @@ app.whenReady().then(async () => {
     // conversation en cours et retire la carte (signal) quand une nouvelle commence.
     demanderDonneesWidget: (w, signal) =>
       attendreReponse(
-        (repondre) => poserQuestion({ origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent }, repondre),
+        (repondre) =>
+          poserQuestion(
+            w.genre === "action"
+              ? { origine: `webaios://action/${w.id}`, permissions: ["donnees-widget"], titre: w.nom, action: w.id, agent: w.agent }
+              : { origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent },
+            repondre,
+          ),
         DELAI_QUESTION_MS,
         signal,
       ),

@@ -232,6 +232,8 @@ export interface Demande {
   titre?: string;
   /** « donnees-widget » : l'id du widget dont l'agent veut voir les données. */
   widget?: string;
+  /** « donnees-widget » : l'id de l'action dont l'agent veut voir les résultats (au lieu d'un widget). */
+  action?: string;
   /** « lire-onglet » : la question ne s'affiche que dans cette fenêtre (sinon, selon `ongletId`). */
   fenetreId?: IdFenetre;
   /** « lire-onglet » et « outils-dev » : l'onglet visé ; s'il est fermé, la question est refusée. */

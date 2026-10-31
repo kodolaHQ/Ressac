@@ -229,7 +229,7 @@ export class PontElectron implements PontNavigateur {
       /** Carte de consentement des outils de développement ; absente, tout est refusé. */
       demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
       /** Carte « donnees-widget » ; absente, tout est refusé. */
-      demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
+      demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
       applications: FenetresPourAgent;
       /** Historique de navigation ; absent, l'agent n'a pas d'outils d'historique. */
       historique?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">;
@@ -363,7 +363,7 @@ export class PontElectron implements PontNavigateur {
   }
 
   /** L'agent veut voir les données d'un widget lu avec le compte de l'utilisateur ; le noyau retient l'accord pour la conversation. */
-  async demanderDonneesWidget(o: { id: string; nom: string; agent: string }, signal?: AbortSignal): Promise<boolean> {
+  async demanderDonneesWidget(o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal): Promise<boolean> {
     return (await this.o.demanderDonneesWidget?.(o, signal)) ?? false;
   }
 }

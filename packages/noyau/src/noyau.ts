@@ -16,7 +16,7 @@ import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
 import type { OutilsExtensions } from "./mcp/extensions.js";
-import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
@@ -338,6 +338,25 @@ export async function creerNoyau(o: {
   const proprietaire = o.pont.outilsDev?.proprietaire?.();
   const outilsDev = proprietaire ?? o.pont.outilsDev;
   const jeton = genererJeton();
+  // Lues par l'agent via ses outils MCP. Une action illisible, ou qui a un accord enregistré, compte comme lisant avec le
+  // compte de l'utilisateur. `actions` est défini plus bas : ces fonctions ne servent qu'une fois le serveur lancé.
+  const outilsActions: OutilsActions = {
+    async lire(id) {
+      const a = await lireAction(chemins, id);
+      if (!a) return null;
+      const accord = (await lireAccords(dossierActions))[id] !== undefined;
+      if ("erreur" in a) return { nom: id, compte: true, saisie: null };
+      return { nom: a.declaration.nom, compte: accord || a.declaration.sources.compte.length > 0, saisie: a.declaration.saisie?.libelle ?? null };
+    },
+    lancer: (id, saisie) => actions.lancer(id, { ...(saisie !== undefined ? { saisie } : {}), declencheur: "agent" }).fin,
+    executions: (id) => actions.executions(id),
+    async execution(id, execution) {
+      const e = await actions.execution(id, execution);
+      if (!e) return null;
+      const r = await lireResultat(dossierActions, id, execution);
+      return { ...e, plan: r?.plan ?? null };
+    },
+  };
   const serveur = await demarrerServeurMcp({
     pont: o.pont,
     politique,
@@ -347,6 +366,7 @@ export async function creerNoyau(o: {
     ...(outilsDev ? { outilsDev } : {}),
     ...(o.applications ? { applications: o.applications } : {}),
     widgets: outilsWidgets,
+    actions: outilsActions,
     ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}),
     ...(o.extensions ? { extensions: o.extensions } : {}),
   });

@@ -80,7 +80,7 @@ export function demarrerAgent(o: {
   /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
   /** Carte « donnees-widget » : l'agent veut voir les données d'un widget lu avec le compte de l'utilisateur (voir index.ts). */
-  demanderDonneesWidget: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
+  demanderDonneesWidget: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
   /** Carte de consentement des outils de développement (voir index.ts). */
   demanderOutilsDev: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
   /** L'accès de l'agent à un onglet a changé (politique du noyau). */

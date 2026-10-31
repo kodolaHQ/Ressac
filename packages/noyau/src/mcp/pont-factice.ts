@@ -154,7 +154,7 @@ export class PontFactice implements PontNavigateur {
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Lectures suspendues en cours, par URL : `relacher` les laisse finir. */
   private readonly suspendues = new Map<string, (() => void)[]>();
-  demanderDonneesWidget?: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
+  demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
