@@ -4,11 +4,11 @@ import type { CheminsEspace } from "../chemins.js";
 
 const REGROUPEMENT_MS = 150;
 
-/** Appelle `rappel` après chaque rafale de changements dans `accueil/`. Renvoie la fonction d'arrêt. */
-export function surveillerAccueil(c: CheminsEspace, rappel: () => void): () => Promise<void> {
-  mkdirSync(c.accueil, { recursive: true });
+/** Appelle `rappel` après chaque rafale de changements dans ces dossiers (créés s'ils manquent). Renvoie l'arrêt. */
+function surveiller(dossiers: string[], rappel: () => void): () => Promise<void> {
+  for (const d of dossiers) mkdirSync(d, { recursive: true });
   let minuterie: NodeJS.Timeout | undefined;
-  const observateur = watch(c.accueil, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
+  const observateur = watch(dossiers, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
   observateur.on("all", () => {
     clearTimeout(minuterie);
     minuterie = setTimeout(rappel, REGROUPEMENT_MS);
@@ -17,4 +17,14 @@ export function surveillerAccueil(c: CheminsEspace, rappel: () => void): () => P
     clearTimeout(minuterie);
     await observateur.close();
   };
+}
+
+/** Appelle `rappel` après chaque rafale de changements dans `accueil/`. Renvoie la fonction d'arrêt. */
+export function surveillerAccueil(c: CheminsEspace, rappel: () => void): () => Promise<void> {
+  return surveiller([c.accueil], rappel);
+}
+
+/** Appelle `rappel` après chaque rafale de changements dans `actions/` ou `composants/`. Renvoie la fonction d'arrêt. */
+export function surveillerActions(c: CheminsEspace, rappel: () => void): () => Promise<void> {
+  return surveiller([c.actions, c.composants], rappel);
 }

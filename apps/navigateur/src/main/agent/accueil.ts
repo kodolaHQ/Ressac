@@ -7,6 +7,7 @@ import { lireExecution, listerExecutions, placerManquants, type CheminsEspace, t
 import { SchemaIdExecution, SchemaIdWidget, SchemaPlacements, type Placement, type ProfilPourAccord, type WidgetAffiche } from "../../commun/api";
 import type { EtatNavigateur, IdFenetre } from "../../commun/modele";
 import { contientIndiceReseau } from "../../commun/indices-reseau";
+import { composantDuCadre, SCHEMA_COMPOSANT } from "../../commun/actions";
 import { profilsLisibles, urlPermise } from "./lecture-invisible";
 
 export const SCHEMA_WIDGET = "webaios-widget";
@@ -111,16 +112,24 @@ export function widgetDuCadre(url: string): string | null {
 }
 
 /**
- * Un cadre de l'interface peut aller vers `cible` : seulement l'affichage d'un widget et, s'il en montre déjà un, celui
- * du même widget (rechargement quand l'agent le réécrit). Un cadre neuf (`""`, `about:blank`) ou resté sur la page
+ * Un cadre de l'interface peut aller vers `cible` : seulement l'affichage d'un widget (ou un composant de l'agent) et,
+ * s'il en montre déjà un, celui du même widget (ou du même composant) : rechargement quand l'agent le réécrit. Un cadre neuf (`""`, `about:blank`) ou resté sur la page
  * d'erreur de Chromium (après une navigation bloquée, sans script) charge un affichage : seule l'interface, qui garde
  * un cadre par widget, change sa source.
  */
 export function navigationCadrePermise(actuelle: string, cible: string): boolean {
-  const vers = widgetDuCadre(cible);
+  const vers = identiteCadre(cible);
   if (!vers) return false;
   if (actuelle === "" || actuelle === "about:blank" || actuelle.startsWith("chrome-error:")) return true;
-  return widgetDuCadre(actuelle) === vers;
+  return identiteCadre(actuelle) === vers;
+}
+
+/** Ce que montre un cadre de l'interface : l'affichage d'un widget ou un composant de l'agent (page d'une action). */
+function identiteCadre(url: string): string | null {
+  const widget = widgetDuCadre(url);
+  if (widget) return `widget:${widget}`;
+  const composant = composantDuCadre(url);
+  return composant ? `composant:${composant}` : null;
 }
 
 /**
@@ -130,26 +139,41 @@ export function navigationCadrePermise(actuelle: string, cible: string): boolean
  */
 export async function lireAffichage(widgets: string, url: string): Promise<string | null> {
   const chemin = cheminAffichage(widgets, url);
-  if (!chemin) return null;
+  return chemin ? lireConfine(widgets, chemin) : null;
+}
+
+/**
+ * Le fichier `chemin` (`<racine>/<dossier>/<fichier>`), ou null s'il n'existe pas, dépasse `max` octets, ou si un lien
+ * symbolique le fait sortir : `racine` ne doit pas être un lien, le dossier doit rester dedans, et le fichier dans le dossier.
+ */
+export async function lireConfine(racine: string, chemin: string, max?: number): Promise<string | null> {
   try {
-    if ((await lstat(widgets)).isSymbolicLink()) return null;
-    const racine = await realpath(widgets);
+    if ((await lstat(racine)).isSymbolicLink()) return null;
+    const reelle = await realpath(racine);
     const [dossier, reel] = await Promise.all([realpath(join(chemin, "..")), realpath(chemin)]);
-    if (!dossier.startsWith(racine + sep) || !reel.startsWith(dossier + sep)) return null;
+    if (!dossier.startsWith(reelle + sep) || !reel.startsWith(dossier + sep)) return null;
+    if (max !== undefined && (await stat(reel)).size > max) return null;
     return await readFile(reel, "utf8");
   } catch {
     return null;
   }
 }
 
-/** Réponse du schéma `webaios-widget:` ; `widgets` : dossier des widgets, null tant que le noyau n'est pas prêt. */
-export async function repondreWidget(widgets: string | null, url: string): Promise<Response> {
-  const html = widgets ? await lireAffichage(widgets, url) : null;
+/**
+ * Un document qui exécute du code de l'agent dans un cadre de l'interface (affichage de widget, composant) : CSP sans
+ * réseau, et refusé s'il contient un indice réseau. null : 404.
+ */
+export function reponseAffichage(html: string | null): Response {
   if (html === null) return new Response("", { status: 404 });
   return new Response(contientIndiceReseau(html) ? AFFICHAGE_REFUSE : html, {
     // X-DNS-Prefetch-Control : la résolution des liens reste coupée, même si le document essaie de la rallumer.
     headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP_WIDGET, "X-DNS-Prefetch-Control": "off" },
   });
+}
+
+/** Réponse du schéma `webaios-widget:` ; `widgets` : dossier des widgets, null tant que le noyau n'est pas prêt. */
+export async function repondreWidget(widgets: string | null, url: string): Promise<Response> {
+  return reponseAffichage(widgets ? await lireAffichage(widgets, url) : null);
 }
 
 /**
@@ -175,10 +199,11 @@ export function urlOuvrable(url: string): boolean {
 
 /**
  * Permissions demandées dans la session de l'interface : seule sa propre page (le cadre principal) en a ; un affichage
- * de widget, ou tout autre cadre, n'a rien (ni caméra, ni notifications, ni presse-papiers…).
+ * de widget, un composant de l'agent, ou tout autre cadre, n'a rien (ni caméra, ni notifications, ni presse-papiers…).
  */
 export function permissionInterface(d: { requestingUrl?: string; isMainFrame?: boolean }): boolean {
-  return d.isMainFrame === true && !(d.requestingUrl ?? "").startsWith(`${SCHEMA_WIDGET}:`);
+  const url = d.requestingUrl ?? "";
+  return d.isMainFrame === true && !url.startsWith(`${SCHEMA_WIDGET}:`) && !url.startsWith(`${SCHEMA_COMPOSANT}:`);
 }
 
 /**

@@ -1,8 +1,8 @@
 import { beforeEach, expect, test } from "vitest";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
-import type { Action } from "../../src/commun/api";
-import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, aUneVue, URL_APPLICATIONS, URL_EXTENSIONS, urlWorkflow, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
+import { SchemaAction, type Action } from "../../src/commun/api";
+import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, aUneVue, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, urlAction, urlWorkflow, type EtatNavigateur, type Onglet } from "../../src/commun/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -640,6 +640,80 @@ test("ouvrirWorkflow ouvre un onglet webaios://workflow/<id> titré, puis y revi
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo de Lyon" });
   expect(pages()).toHaveLength(1);
   expect(pages()[0]).toMatchObject({ id: page.id, titre: "Workflow — Météo de Lyon" });
+});
+
+test("ouvrirAction ouvre un onglet webaios://action/<id> titré du nom, puis y revient au lieu d'en ouvrir un second", () => {
+  ouvrir("https://a.test/");
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  const pages = () => Object.values(e.onglets).filter((o) => o.url.startsWith("webaios://action/gitlab"));
+  expect(pages()).toHaveLength(1);
+  const page = pages()[0]!;
+  expect(page).toMatchObject({ url: urlAction("gitlab"), titre: "GitLab", espaceId: P });
+  expect(actif()).toBe(page.id);
+  const avant = e;
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  expect(e).toBe(avant);
+  ouvrir("https://b.test/");
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  expect(pages()).toHaveLength(1);
+  expect(actif()).toBe(page.id);
+  // Une autre action : sa propre page.
+  ag({ type: "ouvrirAction", fenetreId: F, id: "meteo", nom: "Météo" });
+  expect(Object.values(e.onglets).filter((o) => o.url === urlAction("meteo"))).toHaveLength(1);
+});
+
+test("ouvrirAction retrouve l'onglet de l'action dans un autre espace de la fenêtre ; avec execution, change son URL", () => {
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  const page = Object.keys(e.onglets).at(-1)!;
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  expect(fen().espaceActif).not.toBe(P);
+  const ex = "2026-10-31T10-00-00-000Z";
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab", execution: ex });
+  expect(Object.keys(e.onglets)).toHaveLength(1);
+  expect(fen().espaceActif).toBe(P);
+  expect(actif()).toBe(page);
+  expect(e.onglets[page]).toMatchObject({ url: urlAction("gitlab", ex), titre: "GitLab" });
+  // L'onglet montre une exécution précise : il reste celui de l'action (même id), le nom suit.
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "Mes tickets" });
+  expect(Object.keys(e.onglets)).toHaveLength(1);
+  expect(e.onglets[page]).toMatchObject({ url: urlAction("gitlab", ex), titre: "Mes tickets" });
+  // Exécution invalide : refusée par le schéma, jamais une URL.
+  expect(SchemaAction.safeParse({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab", execution: "../etat" }).success).toBe(false);
+  expect(SchemaAction.safeParse({ type: "ouvrirAction", fenetreId: F, id: "../x", nom: "GitLab" }).success).toBe(false);
+});
+
+test("ouvrirAction n'ouvre ni ne retrouve rien dans un espace privé", () => {
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  const page = Object.keys(e.onglets).at(-1)!;
+  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
+  const banque = fen().espaceActif;
+  // L'onglet de l'espace non privé est retrouvé ; la fenêtre y retourne.
+  ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  expect(fen().espaceActif).toBe(P);
+  expect(actif()).toBe(page);
+  // Aucun onglet ailleurs : rien n'est ouvert dans l'espace privé.
+  ag({ type: "activerEspace", fenetreId: F, id: banque });
+  const avant = e;
+  ag({ type: "ouvrirAction", fenetreId: F, id: "meteo", nom: "Météo" });
+  expect(e).toBe(avant);
+});
+
+test("ouvrirActions ouvre la page unique « Actions », puis y revient", () => {
+  ag({ type: "ouvrirActions", fenetreId: F });
+  const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_ACTIONS);
+  expect(pages()).toHaveLength(1);
+  expect(pages()[0]).toMatchObject({ titre: "Actions" });
+  ouvrir("https://b.test/");
+  ag({ type: "ouvrirActions", fenetreId: F });
+  expect(pages()).toHaveLength(1);
+  expect(actif()).toBe(pages()[0]!.id);
+});
+
+test("ouvrirWorkflow d'une action ouvre webaios://workflow/action/<id>", () => {
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "gitlab", nom: "GitLab", proprietaire: "action" });
+  expect(Object.values(e.onglets)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", titre: "Workflow — GitLab" });
+  ag({ type: "ouvrirWorkflow", fenetreId: F, id: "gitlab", nom: "GitLab" });
+  expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["webaios://workflow/action/gitlab", urlWorkflow("gitlab")]);
 });
 
 test("profilsEnUsage et profilsChanges : par identifiant, espaces compris", () => {

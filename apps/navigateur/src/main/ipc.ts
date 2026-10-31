@@ -1,11 +1,12 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, selectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
+import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, selectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
 import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
+import type { ServiceActions } from "./agent/actions";
 
 type Abonne = (etat: EtatNavigateur, precedent: EtatNavigateur) => void;
 
@@ -76,6 +77,8 @@ export interface Gestionnaires {
     selection(fenetreId: IdFenetre, id: string, bloc: string | null): void;
     direct(): Promise<EtatDirect>;
   };
+  /** Actions : ids, saisies et adresses validés ici ; le service refuse tout appel d'une fenêtre en espace privé. */
+  actions: ServiceActions;
   /** IA locale : `installer` télécharge plusieurs gigaoctets, seulement sur un clic de l'utilisateur. */
   ia: { etat(): Promise<EtatIaAffiche>; installer(): Promise<{ ok: boolean; erreur?: string }> };
   applications: { liste(): Promise<ListeApplications>; agir(dossier: string, action: ActionApplication, fenetreId: IdFenetre): void };
@@ -214,6 +217,41 @@ export function brancherIpc(g: Gestionnaires): void {
     ({ id, bloc }, f) => g.workflow.selection(f, id, bloc),
   );
   repondre(CANAUX.workflowDirectLire, () => g.workflow.direct());
+  // Actions : seulement l'interface d'une fenêtre principale, qui est nommée au service (refus en espace privé).
+  const repondreFenetre = (canal: string, traiter: (fenetreId: IdFenetre, ...args: unknown[]) => unknown) =>
+    ipcMain.handle(canal, (e, ...args: unknown[]) => {
+      const fenetreId = g.fenetreDe(e);
+      if (!fenetreId) throw new Error("expéditeur inconnu");
+      return traiter(fenetreId, ...args);
+    });
+  const idAction = (v: unknown): v is string => SchemaIdAction.safeParse(v).success;
+  const saisieAction = (v: unknown): v is string | null => SchemaSaisieAction.safeParse(v).success;
+  const executionAction = (v: unknown): v is string => SchemaIdExecution.safeParse(v).success;
+  const actionInvalide = { ok: false as const, erreur: "Demande invalide" };
+  repondreFenetre(CANAUX.actionsListe, (f) => g.actions.liste(f));
+  repondreFenetre(CANAUX.actionsOuvrir, (f, id, saisie) => (idAction(id) && saisieAction(saisie) ? g.actions.ouvrir(f, id, saisie) : actionInvalide));
+  repondreFenetre(CANAUX.actionsLancer, (f, id, saisie) =>
+    idAction(id) && saisieAction(saisie) ? g.actions.lancer(f, id, saisie) : { statut: "invalide", erreur: "Demande invalide" },
+  );
+  repondreFenetre(CANAUX.actionsArreter, (f, id) => void (idAction(id) && g.actions.arreter(f, id)));
+  repondreFenetre(CANAUX.actionsPage, (f, id, execution) =>
+    idAction(id) && (execution === null || executionAction(execution)) ? g.actions.page(f, id, execution) : null,
+  );
+  repondreFenetre(CANAUX.actionsExecutions, (f, id) => (idAction(id) ? g.actions.executions(f, id) : []));
+  repondreFenetre(CANAUX.actionsDirectLire, (f) => g.actions.direct(f));
+  repondreFenetre(CANAUX.actionsOuvrirLien, (f, id, execution, url) =>
+    idAction(id) && executionAction(execution) && typeof url === "string" && url.length > 0 && url.length <= 8192
+      ? g.actions.ouvrirLien(f, id, execution, url)
+      : undefined,
+  );
+  repondreFenetre(CANAUX.actionsProfils, (f) => g.actions.profilsPourAccord(f));
+  repondreFenetre(CANAUX.actionsAccorder, (f, brut) => {
+    const r = SchemaAccord.safeParse(brut);
+    return r.success && idAction(r.data.id) ? g.actions.accorder(f, r.data) : { ok: false, erreur: "Demande d'accord invalide" };
+  });
+  repondreFenetre(CANAUX.actionsRefuserAccord, (f, id) => (idAction(id) ? g.actions.refuserAccord(f, id) : undefined));
+  repondreFenetre(CANAUX.actionsSupprimer, (f, id) => (idAction(id) ? g.actions.supprimer(f, id) : actionInvalide));
+  repondreFenetre(CANAUX.actionsVoirWorkflow, (f, id) => (idAction(id) ? g.actions.voirWorkflow(f, id) : undefined));
   repondre(CANAUX.iaEtat, () => g.ia.etat());
   // Seule une fenêtre principale (un clic de l'utilisateur dans l'interface) lance l'installation.
   repondre(CANAUX.iaInstaller, () => g.ia.installer());
