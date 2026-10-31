@@ -31,7 +31,19 @@ export async function lireEtatAdresse(dossierSites: string, id: string): Promise
   }
 }
 
+const ANCIENS_MAX = 100;
 const files = new Map<string, Promise<unknown>>();
+
+/** Une opération à la fois par appli (changement d'adresse, suppression). */
+function enFile<T>(cle: string, travail: () => Promise<T>): Promise<T> {
+  const precedente = files.get(cle) ?? Promise.resolve();
+  const suivante = precedente.catch(() => {}).then(travail);
+  files.set(cle, suivante);
+  void suivante.finally(() => {
+    if (files.get(cle) === suivante) files.delete(cle);
+  }).catch(() => {});
+  return suivante;
+}
 
 /**
  * Le site a changé de domaine : `nouveau` devient l'actuel, l'ancien actuel (à défaut l'hôte de l'adresse déclarée)
@@ -40,8 +52,7 @@ const files = new Map<string, Promise<unknown>>();
 export function changerAdresse(dossierSites: string, id: string, d: DeclarationSite, nouveau: string): Promise<EtatAdresse> {
   verifierId(id);
   const cle = fichierAdresse(dossierSites, id);
-  const precedente = files.get(cle) ?? Promise.resolve();
-  const suivante = precedente.catch(() => {}).then(async () => {
+  return enFile(join(dossierSites, id), async () => {
     const [propre] = domainesEffectifs({ ...d, domaines: [] }, { actuel: nouveau, anciens: [], depuis: null });
     if (!propre) throw new Error(`domaine invalide : ${nouveau}`);
     const courant = await lireEtatAdresse(dossierSites, id);
@@ -56,24 +67,18 @@ export function changerAdresse(dossierSites: string, id: string, d: DeclarationS
     if (propre === actuel) return courant ?? { actuel, anciens, depuis: null };
     const etat: EtatAdresse = {
       actuel: propre,
-      anciens: [...new Set([...anciens, actuel])].filter((x) => x && x !== propre),
+      anciens: [...new Set([...anciens, actuel])].filter((x) => x && x !== propre).slice(-ANCIENS_MAX),
       depuis: new Date().toISOString(),
     };
     await ecrireAtomique(cle, JSON.stringify(etat, null, 2));
     return etat;
   });
-  files.set(cle, suivante);
-  void suivante.finally(() => {
-    if (files.get(cle) === suivante) files.delete(cle);
-  }).catch(() => {});
-  return suivante;
 }
 
 /** Oublie ce que WebAiOs retient d'une appli : mémoire, adresse (sous `<profil>/sites/<id>/`) et accord. */
 export async function supprimerDonneesSite(profil: string, id: string): Promise<void> {
   verifierId(id);
   const dossierSites = join(profil, "sites");
-  await rm(join(dossierSites, id, "memoire.json"), { force: true });
-  await rm(fichierAdresse(dossierSites, id), { force: true });
+  await enFile(join(dossierSites, id), () => rm(join(dossierSites, id), { recursive: true, force: true }));
   await retirerAccordSite(profil, id);
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   accordCouvre, accordNecessaire, accorderSite, droitsDe, lireAccordsSites, retirerAccordSite,
@@ -51,4 +51,29 @@ test("retirerAccordSite puis lireAccordsSites : absent ; fichier dans le profil,
   await retirerAccordSite(p, "a");
   expect(Object.keys(await lireAccordsSites(p))).toEqual(["b"]);
   await expect(accorderSite(p, "../x", base)).rejects.toThrow();
+});
+
+test("ids constructor, toString, __proto__ : aucun accord, rien ne lève", async () => {
+  const p = await dossierTemporaire();
+  const a = await lireAccordsSites(p);
+  for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    expect(a[id]).toBeUndefined();
+    expect(() => accordCouvre(a[id] ?? null, base)).not.toThrow();
+  }
+  await accorderSite(p, "constructor", base);
+  await writeFile(join(p, "sites-accords.json"), JSON.stringify({ constructor: droitsDe(base) }));
+  expect((await lireAccordsSites(p))["constructor"]).toEqual(droitsDe(base));
+  expect((await lireAccordsSites(p))["toString"]).toBeUndefined();
+});
+
+test("lecture en panne (pas absent ni abîmé) : l'écriture échoue sans effacer les autres accords", async () => {
+  const p = await dossierTemporaire();
+  await accorderSite(p, "a", base);
+  await rm(join(p, "sites-accords.json"));
+  await mkdir(join(p, "sites-accords.json")); // lire un dossier : EISDIR
+  await expect(accorderSite(p, "b", base)).rejects.toThrow();
+  await rm(join(p, "sites-accords.json"), { recursive: true });
+  await writeFile(join(p, "sites-accords.json"), "{abîmé");
+  await accorderSite(p, "c", base); // abîmé : repart de zéro
+  expect(Object.keys(await lireAccordsSites(p))).toEqual(["c"]);
 });

@@ -62,3 +62,30 @@ test("supprimerDonneesSite efface mémoire, adresse et accord de ce seul site", 
   await writeFile(join(ds, "x"), "");
   await expect(supprimerDonneesSite(p, "../b")).rejects.toThrow();
 });
+
+test("supprimerDonneesSite retire tout le dossier, .bak compris", async () => {
+  const p = await dossierTemporaire();
+  const ds = join(p, "sites");
+  await mkdir(join(ds, "a"), { recursive: true });
+  await writeFile(join(ds, "a", "memoire.json.bak"), "x");
+  await supprimerDonneesSite(p, "a");
+  expect(await existe(join(ds, "a"))).toBe(false);
+});
+
+test("changerAdresse garde les 100 anciens les plus récents", async () => {
+  const d = await dossierTemporaire();
+  let e = await changerAdresse(d, "w", decl, "s0.example");
+  for (let i = 1; i <= 105; i++) e = await changerAdresse(d, "w", decl, `s${i}.example`);
+  expect(e.anciens).toHaveLength(100);
+  expect(e.anciens.at(-1)).toBe("s104.example");
+  expect(await lireEtatAdresse(d, "w")).toEqual(e);
+});
+
+test("une suppression ordonnée après un changerAdresse en vol laisse le site effacé", async () => {
+  const p = await dossierTemporaire();
+  const ds = join(p, "sites");
+  const c = changerAdresse(ds, "w", decl, "vidola-b.example");
+  await supprimerDonneesSite(p, "w");
+  await c;
+  expect(await lireEtatAdresse(ds, "w")).toBeNull();
+});

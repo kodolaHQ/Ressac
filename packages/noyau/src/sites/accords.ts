@@ -56,22 +56,27 @@ export function accordCouvre(a: DroitsSite | null, d: DeclarationSite): boolean 
   );
 }
 
-/** Les accords valides ; un fichier absent ou abîmé vaut aucun accord. */
-export async function lireAccordsSites(profil: string): Promise<Record<string, DroitsSite>> {
+/** Sans prototype : un id comme « constructor » ou « __proto__ » n'a pas d'accord et ne lève rien. */
+async function lire(profil: string, strict: boolean): Promise<Record<string, DroitsSite>> {
+  const accords: Record<string, DroitsSite> = Object.create(null);
   let brut: unknown;
   try {
     brut = JSON.parse(await readFile(fichierAccordsSites(profil), "utf8"));
-  } catch {
-    return {};
+  } catch (e) {
+    // absent ou abîmé : aucun accord ; toute autre panne (EMFILE, EACCES…) fait échouer une écriture
+    if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    return accords;
   }
-  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return {};
-  const accords: Record<string, DroitsSite> = {};
+  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return accords;
   for (const [id, valeur] of Object.entries(brut)) {
     const r = DroitsSite.safeParse(valeur);
     if (ID_SITE.test(id) && r.success) accords[id] = r.data;
   }
   return accords;
 }
+
+/** Les accords valides ; un fichier absent ou abîmé vaut aucun accord. */
+export const lireAccordsSites = (profil: string): Promise<Record<string, DroitsSite>> => lire(profil, false);
 
 /** Une écriture à la fois par fichier : deux accords simultanés ne s'effacent pas. */
 const files = new Map<string, Promise<unknown>>();
@@ -80,9 +85,9 @@ function modifier(profil: string, changer: (a: Record<string, DroitsSite>) => vo
   const cle = fichierAccordsSites(profil);
   const precedente = files.get(cle) ?? Promise.resolve();
   const suivante = precedente.catch(() => {}).then(async () => {
-    const accords = await lireAccordsSites(profil);
+    const accords = await lire(profil, true);
     changer(accords);
-    await ecrireAtomique(cle, JSON.stringify(accords, null, 2));
+    await ecrireAtomique(cle, JSON.stringify({ ...accords }, null, 2));
   });
   files.set(cle, suivante);
   void suivante.finally(() => {
