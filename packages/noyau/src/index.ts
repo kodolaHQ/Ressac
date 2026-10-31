@@ -51,5 +51,5 @@ export * from "./actions/file.js";
 export * from "./extensions/manifeste.js";
 export * from "./extensions/registre.js";
 export * from "./extensions/copie.js";
-export { chainesDe } from "./pages/resoudre.js";
+export { AUCUN_RESULTAT, chainesDe, MENTION_SECOURS, type BlocRendu, type Image as ImagePage, type Lien as LienPage, type PageRendue } from "./pages/resoudre.js";
 export { COMPOSANT_HTML_MAX } from "./pages/composants-agent.js";

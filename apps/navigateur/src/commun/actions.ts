@@ -5,6 +5,9 @@ export const ACTIONS_EN_ESPACE_PRIVE = "Les actions ne sont pas disponibles dans
 export const EN_ATTENTE = "En attente : deux actions tournent déjà";
 export const MISE_EN_PAGE = "Mise en page…";
 export const lectureDe = (hote: string) => `Lecture de ${hote}…`;
+/** Recopiés du noyau (pages/resoudre.ts ; un test vérifie l'égalité) : l'interface n'en importe que des types. */
+export const MENTION_SECOURS = "mise en page simple";
+export const AUCUN_RESULTAT = "Aucun résultat";
 
 /** Images des résultats d'une action, cherchées par le process principal (voir main/agent/actions.ts). */
 export const SCHEMA_IMAGE = "webaios-image";

@@ -22,6 +22,10 @@
   /* Modales : le voile qui assombrit la fenêtre, l'ombre de la carte. */
   --voile: rgb(0 0 0 / 0.45);
   --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.5);
+  /* Encadrés de la page d'une action : info, avis, attention. */
+  --info-fond: #2d6cdf2e;
+  --avis-fond: #8b7cf62e;
+  --attention-fond: #e0a23a2e;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -45,6 +49,9 @@
   --acces-couper-survol: #9a3412;
     --voile: rgb(20 20 30 / 0.32);
     --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.22);
+    --info-fond: #2d6cdf1a;
+    --avis-fond: #8b7cf61f;
+    --attention-fond: #c27f1224;
     color-scheme: light;
   }
 }

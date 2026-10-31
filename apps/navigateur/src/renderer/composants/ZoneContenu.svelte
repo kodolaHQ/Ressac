@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { actionDeUrl, URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import RenduPage from "../action/RenduPage.svelte";
   import Applications from "./Applications.svelte";
   import Extensions from "./Extensions.svelte";
   import Constructeur from "../constructeur/Constructeur.svelte";
@@ -23,6 +24,11 @@
   // Les questions des sites ; celles de l'agent s'ouvrent en modale (App.svelte).
   const demande = $derived(demandeDe(fenetre, onglet));
   const widgetWorkflow = $derived(onglet ? widgetDeUrlWorkflow(onglet.url) : null);
+  // Page d'une action, en lecture seule (rien n'est lancé) ; relue quand une action ou un dernier résultat change.
+  // Provisoire : la vraie page de l'action (PageAction, plan 14 tâche 13) la remplace.
+  const pageAction = $derived(onglet ? actionDeUrl(onglet.url) : null);
+  let versionActions = $state(0);
+  $effect(() => api.actions.surChange(() => versionActions++));
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
@@ -61,6 +67,14 @@
     <Extensions />
   {:else if widgetWorkflow}
     {#key widgetWorkflow}<Constructeur id={widgetWorkflow} />{/key}
+  {:else if pageAction}
+    {#key `${pageAction.id}/${pageAction.execution}/${versionActions}`}
+      {#await api.actions.page(pageAction.id, pageAction.execution) then lue}
+        {#if lue?.page}
+          <div class="defile"><RenduPage page={lue.page} action={pageAction.id} execution={lue.execution} /></div>
+        {/if}
+      {/await}
+    {/key}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>
@@ -79,6 +93,7 @@
 <style>
   .contenu { background: var(--fond); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .surface { flex: 1; position: relative; min-height: 0; }
+  .defile { position: absolute; inset: 0; overflow: auto; }
   .detail { color: var(--texte-doux); font-size: 12px; word-break: break-all; }
   .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
 </style>
