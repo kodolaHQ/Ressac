@@ -1,0 +1,456 @@
+import { BrowserWindow, WebContentsView, type WebContents } from "electron";
+import { join } from "node:path";
+import type { DeclarationSite } from "@webaios/noyau";
+import { ARG_SITE, CANAUX } from "../../commun/canaux";
+import { HAUTEUR_BARRE_SITE, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
+import { faviconEnDonnees } from "../applications/favicon";
+import { cadreVisible } from "../applications/fenetres";
+import type { MemoireApplications } from "../applications/service";
+import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "./navigation";
+import { preferencesSite, sessionSite } from "./session";
+
+/** Tests automatiques : aucune fenêtre à l'écran. */
+const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
+
+/** Petite fenêtre d'un domaine de connexion (OAuth…), comme celle d'un onglet. */
+const PETITE_FENETRE = { largeur: 500, hauteur: 650 };
+
+/** Ce qu'il faut pour ouvrir une appli de site : sa déclaration lue, ses domaines effectifs et son adresse de départ. */
+export type SiteOuvrable = {
+  id: string;
+  declaration: DeclarationSite;
+  aAccueil: boolean;
+  domaines: string[];
+  depart: string;
+  accordRequis: boolean;
+};
+
+interface Ouverte {
+  site: SiteOuvrable;
+  fenetre: BrowserWindow;
+  vue: WebContentsView;
+  affichee: EtatFenetreSite["vue"];
+  /** L'adresse de départ a-t-elle déjà été chargée (« Entrer dans le site » ne la recharge qu'une fois) ? */
+  chargee: boolean;
+  avis: AvisBarre | null;
+  /** Le dernier lien bloqué : il reste ici, l'interface n'en voit que le domaine. */
+  bloquee: string | null;
+  /** La dernière adresse chargée par WebAiOs (`aller`), pour le suivi de l'adresse. */
+  voulue: string | null;
+  pleinEcran: boolean;
+  /** Petites fenêtres de connexion ouvertes par la page : fermées avec l'appli. */
+  petites: Set<BrowserWindow>;
+}
+
+/** L'hôte d'une adresse http(s), sinon null (about:blank, javascript:, adresse illisible). */
+function hoteHttp(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+const uniques = (l: string[]) => [...new Set(l)];
+
+/** Ce que la carte d'accord montre (tâche suivante) : les droits demandés par la déclaration. */
+function demandeAccord(d: DeclarationSite): DemandeAccordSite {
+  return {
+    nom: d.nom,
+    domaines: [...d.domaines],
+    connexion: [...d.connexion],
+    cadres: uniques(d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres))),
+    reprise: d.reprise,
+    fichiers: uniques(d.retouches.flatMap((r) => [...r.js, ...r.css])),
+    correspond: uniques(d.retouches.flatMap((r) => r.correspond)),
+  };
+}
+
+/**
+ * Une fenêtre par appli de site ouverte : sa page est l'interface `site.html` (session par défaut, la barre), et le site
+ * est dans une `WebContentsView` de la session `persist:site-<id>` posée sous la barre. Le site ne quitte jamais ses
+ * domaines (ni ceux de sa connexion) : un lien, une redirection ou une ouverture ailleurs est bloqué et mentionné dans
+ * la barre, et ne s'ouvre dans un onglet que sur un clic de l'utilisateur.
+ */
+export class FenetresSites {
+  private readonly ouvertesParId = new Map<string, Ouverte>();
+
+  constructor(
+    private readonly o: {
+      /** Cadre de fenêtre et favicon de chaque appli (`<profil>/sites.json`). */
+      memoire: MemoireApplications;
+      adressesLocales: boolean;
+      /** Un onglet dans la fenêtre principale (« Ouvrir dans un onglet », seulement sur un clic de l'utilisateur). */
+      ouvrirOnglet: (url: string) => void;
+      /** La fenêtre est fermée, par l'utilisateur ou par le programme. */
+      surFermee?: (id: string) => void;
+      /** L'appli a montré son favicon (adresse `data:`), déjà retenu. */
+      surFavicon?: (id: string) => void;
+    },
+  ) {}
+
+  /** Ouvre la fenêtre de l'appli, ou la remet devant sans la recharger (sa déclaration et ses domaines sont repris). */
+  ouvrir(s: SiteOuvrable): void {
+    const deja = this.ouvertesParId.get(s.id);
+    if (deja && !deja.fenetre.isDestroyed()) {
+      deja.site = s;
+      this.montrer(s.id);
+      this.diffuserEtat(deja);
+      return;
+    }
+    const o = this.creer(s);
+    if (s.accordRequis) o.affichee = "accord";
+    else if (s.aAccueil) o.affichee = "accueil";
+    else {
+      o.affichee = "site";
+      this.aller(s.id, s.depart);
+    }
+    this.placer(o);
+    if (!INVISIBLE) o.fenetre.show();
+  }
+
+  /** Remet devant la fenêtre de l'appli, sans la recharger ; faux si elle n'est pas ouverte. */
+  montrer(id: string): boolean {
+    const o = this.ouvertesParId.get(id);
+    if (!o || o.fenetre.isDestroyed()) return false;
+    if (!INVISIBLE) {
+      if (o.fenetre.isMinimized()) o.fenetre.restore();
+      o.fenetre.show();
+      o.fenetre.focus();
+    }
+    return true;
+  }
+
+  private creer(s: SiteOuvrable): Ouverte {
+    const { id } = s;
+    const f = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      ...cadreVisible(this.o.memoire.lire(id).cadre),
+      minWidth: 360,
+      minHeight: 240,
+      show: false,
+      // Tests : macOS montrerait la fenêtre pour la passer en plein écran ; la page et la vue y passent quand même.
+      fullscreenable: !INVISIBLE,
+      title: s.declaration.nom,
+      backgroundColor: "#1e1e22",
+      // macOS : les boutons de la fenêtre sont dans la barre, centrés sur ses 36 px.
+      ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 12, y: 11 } } : {}),
+      webPreferences: {
+        preload: join(__dirname, "../preload/index.js"),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        additionalArguments: [`${ARG_SITE}${id}`],
+      },
+    });
+    const vue = new WebContentsView({ webPreferences: preferencesSite(sessionSite(id)) });
+    vue.setBackgroundColor("#ffffff");
+    vue.setVisible(false);
+    f.contentView.addChildView(vue);
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, pleinEcran: false, petites: new Set() };
+    this.ouvertesParId.set(id, o);
+
+    // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
+    f.on("page-title-updated", (e) => e.preventDefault());
+    f.on("resize", () => this.placer(o));
+    const noterCadre = () => this.noterCadre(id, f);
+    f.on("resize", noterCadre);
+    f.on("move", noterCadre);
+    f.on("close", noterCadre);
+    f.on("closed", () => {
+      for (const p of o.petites) if (!p.isDestroyed()) p.destroy();
+      if (!vue.webContents.isDestroyed()) vue.webContents.close();
+      if (this.ouvertesParId.get(id) === o) this.ouvertesParId.delete(id);
+      this.o.surFermee?.(id);
+    });
+
+    // L'interface ne quitte jamais sa page et n'ouvre rien.
+    const ui = f.webContents;
+    ui.on("will-navigate", (e) => e.preventDefault());
+    ui.on("will-frame-navigate", (e) => {
+      if (!e.isMainFrame) e.preventDefault();
+    });
+    ui.setWindowOpenHandler(() => ({ action: "deny" }));
+    if (process.env.ELECTRON_RENDERER_URL) void ui.loadURL(`${process.env.ELECTRON_RENDERER_URL}/site.html?id=${encodeURIComponent(id)}`).catch(() => {});
+    else void ui.loadFile(join(__dirname, "../renderer/site.html"), { query: { id } }).catch(() => {});
+
+    this.equiperVue(o);
+    return o;
+  }
+
+  private contexte(o: Ouverte): ContexteNavigation {
+    return { domaines: o.site.domaines, connexion: o.site.declaration.connexion, adressesLocales: this.o.adressesLocales };
+  }
+
+  private equiperVue(o: Ouverte): void {
+    const { id } = o.site;
+    const wc = o.vue.webContents;
+    const diffuser = () => this.diffuserEtat(o);
+    // Le code du site n'a pas été relu : son « beforeunload » n'empêche jamais de fermer l'appli.
+    wc.on("will-prevent-unload", (e) => e.preventDefault());
+    wc.on("did-navigate", () => {
+      // Une nouvelle page : la mention d'un lien bloqué sur la précédente tombe.
+      if (o.avis?.genre === "lien-bloque") {
+        o.avis = null;
+        o.bloquee = null;
+      }
+      diffuser();
+    });
+    wc.on("did-navigate-in-page", (_e, _url, principal) => {
+      if (principal) diffuser();
+    });
+    wc.on("did-stop-loading", diffuser);
+    wc.on("page-favicon-updated", (_e, favicons) => {
+      const url = favicons[0];
+      if (!url) return;
+      void faviconEnDonnees((u, init) => wc.session.fetch(u, init), url, wc.getURL()).then((d) => {
+        if (!d || this.o.memoire.lire(id).favicon === d) return;
+        this.o.memoire.noter(id, { favicon: d });
+        this.o.surFavicon?.(id);
+      });
+    });
+
+    // Page principale seulement : un sous-cadre (lecteur, publicité) va où il veut, il ne change pas la page.
+    const garder = (e: Electron.Event, url: string) => {
+      if (decisionNavigation(url, this.contexte(o)) === "suivre") return;
+      e.preventDefault();
+      this.bloquer(o, url);
+    };
+    wc.on("will-frame-navigate", (e) => {
+      if (e.isMainFrame) garder(e, e.url);
+    });
+    wc.on("will-redirect", (e) => {
+      if (e.isMainFrame) garder(e, e.url);
+    });
+
+    wc.setWindowOpenHandler(({ url }) => {
+      const d = decisionOuverture(url, this.contexte(o));
+      if (d === "dans-l-appli") {
+        // `target=_blank` vers le site : la vue de l'appli y va, aucune fenêtre ne s'ouvre.
+        setImmediate(() => {
+          if (!wc.isDestroyed()) void wc.loadURL(url).catch(() => {});
+        });
+        return { action: "deny" };
+      }
+      if (d === "petite-fenetre") {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: PETITE_FENETRE.largeur,
+            height: PETITE_FENETRE.hauteur,
+            show: !INVISIBLE,
+            autoHideMenuBar: true,
+            webPreferences: preferencesSite(wc.session),
+          },
+        };
+      }
+      this.bloquer(o, url);
+      return { action: "deny" };
+    });
+    wc.on("did-create-window", (petite) => this.equiperPetite(o, petite));
+
+    // Plein écran d'un élément (vidéo) : la vue prend toute la fenêtre, par-dessus la barre ; à la sortie, la barre revient.
+    wc.on("enter-html-full-screen", () => {
+      o.pleinEcran = true;
+      this.placer(o);
+    });
+    wc.on("leave-html-full-screen", () => {
+      o.pleinEcran = false;
+      this.placer(o);
+    });
+  }
+
+  /** Une petite fenêtre de connexion : même session, bornée au site et à sa connexion, sans rien ouvrir d'autre. */
+  private equiperPetite(o: Ouverte, petite: BrowserWindow): void {
+    o.petites.add(petite);
+    petite.on("closed", () => o.petites.delete(petite));
+    const wc = petite.webContents;
+    wc.on("will-prevent-unload", (e) => e.preventDefault());
+    const garder = (e: Electron.Event, url: string) => {
+      if (decisionNavigation(url, this.contexte(o)) !== "suivre") e.preventDefault();
+    };
+    wc.on("will-frame-navigate", (e) => {
+      if (e.isMainFrame) garder(e, e.url);
+    });
+    wc.on("will-redirect", (e) => {
+      if (e.isMainFrame) garder(e, e.url);
+    });
+    wc.setWindowOpenHandler(() => ({ action: "deny" }));
+  }
+
+  /** Bloqué : l'URL reste ici (pour « Ouvrir dans un onglet »), la barre ne montre que son domaine. */
+  private bloquer(o: Ouverte, url: string): void {
+    const domaine = hoteHttp(url);
+    // about:blank, javascript: : refusé sans rien proposer (il n'y a rien à ouvrir dans un onglet).
+    if (!domaine) return;
+    o.bloquee = url;
+    if (o.avis?.genre === "lien-bloque" && o.avis.domaine === domaine) return;
+    o.avis = { genre: "lien-bloque", domaine };
+    this.diffuserEtat(o);
+  }
+
+  /** La vue du site sous la barre (toute la fenêtre en plein écran), visible seulement en vue « site ». */
+  private placer(o: Ouverte): void {
+    if (o.fenetre.isDestroyed()) return;
+    const [largeur = 0, hauteur = 0] = o.fenetre.getContentSize();
+    const haut = o.pleinEcran ? 0 : HAUTEUR_BARRE_SITE;
+    o.vue.setBounds({ x: 0, y: haut, width: largeur, height: Math.max(0, hauteur - haut) });
+    o.vue.setVisible(o.affichee === "site");
+  }
+
+  private diffuserEtat(o: Ouverte): void {
+    const e = this.etatDe(o);
+    if (!o.fenetre.isDestroyed() && !o.fenetre.webContents.isDestroyed()) o.fenetre.webContents.send(CANAUX.siteEtatChange, e);
+  }
+
+  private etatDe(o: Ouverte): EtatFenetreSite {
+    const wc = o.vue.webContents;
+    const vivante = !wc.isDestroyed();
+    const url = vivante ? wc.getURL() : "";
+    return {
+      id: o.site.id,
+      nom: o.site.declaration.nom,
+      vue: o.affichee,
+      aAccueil: o.site.aAccueil,
+      domaine: hoteHttp(url) ?? hoteHttp(o.site.depart) ?? "",
+      peutReculer: vivante && wc.navigationHistory.canGoBack(),
+      peutAvancer: vivante && wc.navigationHistory.canGoForward(),
+      suivi: o.site.declaration.suiviAdresse !== undefined,
+      avis: o.avis,
+      accord: o.affichee === "accord" ? demandeAccord(o.site.declaration) : null,
+    };
+  }
+
+  etat(id: string): EtatFenetreSite | null {
+    const o = this.ouverte(id);
+    return o ? this.etatDe(o) : null;
+  }
+
+  private ouverte(id: string): Ouverte | undefined {
+    const o = this.ouvertesParId.get(id);
+    return o && !o.fenetre.isDestroyed() ? o : undefined;
+  }
+
+  /** L'appli dont `sender` est l'interface (`site.html`) ; undefined pour tout autre expéditeur. */
+  idDeInterface(sender: WebContents): string | undefined {
+    for (const [id, o] of this.ouvertesParId) if (!o.fenetre.isDestroyed() && o.fenetre.webContents === sender) return id;
+    return undefined;
+  }
+
+  /** La vue du site (celle que l'agent lit, capture et pilote). */
+  vueSite(id: string): WebContents | undefined {
+    const wc = this.ouverte(id)?.vue.webContents;
+    return wc && !wc.isDestroyed() ? wc : undefined;
+  }
+
+  /** L'adresse est-elle sur les domaines de l'appli ouverte (jamais ceux de sa connexion) ? */
+  adressePermise(id: string, url: string): boolean {
+    const o = this.ouverte(id);
+    return !!o && decisionOuverture(url, this.contexte(o)) === "dans-l-appli";
+  }
+
+  ouvertes(): { id: string; nom: string; url: string }[] {
+    return [...this.ouvertesParId.values()]
+      .filter((o) => !o.fenetre.isDestroyed())
+      .map((o) => ({ id: o.site.id, nom: o.site.declaration.nom, url: (!o.vue.webContents.isDestroyed() && o.vue.webContents.getURL()) || o.site.depart }));
+  }
+
+  /** « Entrer dans le site » : l'adresse de départ la première fois, la page où il était ensuite. */
+  entrer(id: string): void {
+    const o = this.ouverte(id);
+    if (!o || o.affichee === "accord") return;
+    o.affichee = "site";
+    if (!o.chargee) this.aller(id, o.site.depart);
+    this.placer(o);
+    this.diffuserEtat(o);
+  }
+
+  /** ⌂ : l'écran d'accueil ; la page du site reste chargée, cachée dessous. */
+  accueil(id: string): void {
+    const o = this.ouverte(id);
+    if (!o || !o.site.aAccueil || o.affichee === "accord") return;
+    o.affichee = "accueil";
+    this.placer(o);
+    this.diffuserEtat(o);
+  }
+
+  precedent(id: string): void {
+    const o = this.ouverte(id);
+    if (o?.affichee === "site" && o.vue.webContents.navigationHistory.canGoBack()) o.vue.webContents.navigationHistory.goBack();
+  }
+
+  suivant(id: string): void {
+    const o = this.ouverte(id);
+    if (o?.affichee === "site" && o.vue.webContents.navigationHistory.canGoForward()) o.vue.webContents.navigationHistory.goForward();
+  }
+
+  recharger(id: string): void {
+    const o = this.ouverte(id);
+    if (o?.affichee === "site" && o.chargee) o.vue.webContents.reload();
+  }
+
+  /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans la fenêtre principale ; la mention tombe. */
+  ouvrirBloque(id: string): void {
+    const o = this.ouverte(id);
+    if (!o?.bloquee) return;
+    const url = o.bloquee;
+    o.bloquee = null;
+    if (o.avis?.genre === "lien-bloque") o.avis = null;
+    this.diffuserEtat(o);
+    this.o.ouvrirOnglet(url);
+  }
+
+  /** Chargement voulu par WebAiOs (départ, adresse de l'accueil, suivi) : noté pour le suivi de l'adresse. */
+  aller(id: string, url: string): void {
+    const o = this.ouverte(id);
+    if (!o) return;
+    o.chargee = true;
+    o.voulue = url;
+    void o.vue.webContents.loadURL(url).catch(() => {
+      // Site injoignable, ou chargement remplacé aussitôt : did-fail-load le dit (suivi de l'adresse).
+    });
+  }
+
+  /** La mention de la barre (lien bloqué, adresse changée…) ; null l'efface. */
+  avis(id: string, a: AvisBarre | null): void {
+    const o = this.ouverte(id);
+    if (!o) return;
+    o.avis = a;
+    if (a?.genre !== "lien-bloque") o.bloquee = null;
+    this.diffuserEtat(o);
+  }
+
+  /** Taille et position retenues aussitôt (la mémoire écrit en différé). */
+  private noterCadre(id: string, f: BrowserWindow): void {
+    if (f.isDestroyed() || f.isFullScreen() || f.isMinimized()) return;
+    const { x, y, width, height } = f.getNormalBounds();
+    this.o.memoire.noter(id, { cadre: { x, y, largeur: width, hauteur: height } });
+  }
+
+  /**
+   * Fermeture voulue par le programme (suppression, sortie) : cadre noté, fenêtre détruite sans demander à la page.
+   * Rendue quand la vue du site est détruite (sa session peut alors être effacée).
+   */
+  fermer(id: string): Promise<void> {
+    const o = this.ouvertesParId.get(id);
+    if (!o || o.fenetre.isDestroyed()) return Promise.resolve();
+    const wc = o.vue.webContents;
+    const detruite = wc.isDestroyed() ? Promise.resolve() : new Promise<void>((ok) => wc.once("destroyed", () => ok()));
+    this.noterCadre(id, o.fenetre);
+    o.fenetre.destroy();
+    return detruite;
+  }
+
+  /** ⌘R, ⌥⌘I ou ⌘W sur la fenêtre d'appli de site au premier plan ; vrai si c'en est une. */
+  surPremierPlan(action: "recharger" | "outils" | "fermer"): boolean {
+    const focus = BrowserWindow.getFocusedWindow();
+    const o = [...this.ouvertesParId.values()].find((x) => x.fenetre === focus && !x.fenetre.isDestroyed());
+    if (!o) return false;
+    if (action === "recharger") this.recharger(o.site.id);
+    else if (action === "outils") o.vue.webContents.toggleDevTools();
+    else o.fenetre.close();
+    return true;
+  }
+}

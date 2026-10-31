@@ -34,6 +34,7 @@ import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, lireAction, retire
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
+import { demarrerSites, type ServiceSites } from "./sites/service";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { creerServiceActions, espaceActifPrive, repondreComposant, repondreImage, SCHEMA_COMPOSANT, SCHEMA_IMAGE } from "./agent/actions";
@@ -263,6 +264,7 @@ let agent: ServiceAgent | undefined;
 const fileEcritures = new FileEcritures();
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 let applications: ServiceApplications | undefined;
+let sites: ServiceSites | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
@@ -695,6 +697,15 @@ app.whenReady().then(async () => {
       liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
       agir: (dossier, action, f) => applications?.agir(dossier, action, f),
     },
+    sites: {
+      liste: async () => (await sites?.liste()) ?? [],
+      agir: (id, action, f) => void sites?.agir(id, action, f).catch((e) => console.error(`[sites] ${id} : ${action} impossible :`, e)),
+    },
+    site: {
+      idDe: (sender) => sites?.fenetres.idDeInterface(sender),
+      etat: (id) => sites?.fenetres.etat(id) ?? null,
+      geste: (id, g) => sites?.fenetres[g](id),
+    },
     extensions: {
       // Dans l'espace actif de la fenêtre émettrice ; la carte s'ouvre dans cette fenêtre.
       installerStore: async (saisie, fenetreId) => {
@@ -781,7 +792,7 @@ app.whenReady().then(async () => {
     fermerOnglet: (id) => vues.fermer(id),
     rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
-    surApplication: (action) => applications?.fenetres.surPremierPlan(action) ?? false,
+    surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
   };
   installerMenu(cibles);
   // La coche du moteur de recherche suit l'état.
@@ -808,21 +819,23 @@ app.whenReady().then(async () => {
   // Un seul conteneur pour l'agent (quel que soit son profil) et les applis qu'il lance.
   const chemins = cheminsEspace();
   const atelier = new Atelier({ chemins, dossierDocker: join(__RESSOURCES_NOYAU__, "docker") });
+  // Lien sortant d'une appli (ou d'une appli de site, sur un clic de l'utilisateur) : un onglet dans la fenêtre principale
+  // active, mise au premier plan.
+  const ouvrirDansOnglet = (url: string) => {
+    if (!fenetreAgent()) rouvrirFenetres();
+    const id = fenetreAgent();
+    if (!id) return;
+    magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url });
+    const f = fenetres.get(id);
+    if (!f || INVISIBLE) return;
+    if (f.isMinimized()) f.restore();
+    f.focus();
+  };
   applications = demarrerApplications({
     chemins,
     atelier,
     dossierProfil: dossier,
-    // Lien sortant d'une appli : un onglet dans la fenêtre principale active, mise au premier plan.
-    ouvrirOnglet: (url) => {
-      if (!fenetreAgent()) rouvrirFenetres();
-      const id = fenetreAgent();
-      if (!id) return;
-      magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url });
-      const f = fenetres.get(id);
-      if (!f || INVISIBLE) return;
-      if (f.isMinimized()) f.restore();
-      f.focus();
-    },
+    ouvrirOnglet: ouvrirDansOnglet,
     // La page Applications relit la liste.
     diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
@@ -844,6 +857,22 @@ app.whenReady().then(async () => {
       agent?.preRemplir(f, texte, acces);
       cibles.raccourci(f, "agent");
     },
+  });
+  // Les applis de site : leurs fenêtres n'attendent ni Docker ni l'agent.
+  sites = demarrerSites({
+    chemins,
+    dossierProfil: dossier,
+    preloadSite: join(__dirname, "../preload/site.js"),
+    adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
+    ouvrirOnglet: (url) => {
+      if (/^https?:\/\//.test(url)) ouvrirDansOnglet(url);
+    },
+    deboguer: (f, texte) => {
+      agent?.preRemplir(f, texte);
+      cibles.raccourci(f, "agent");
+    },
+    // La section « Sites » de la page Applications relit la liste.
+    diffuser: () => diffuser(CANAUX.sitesChange, null),
   });
   /**
    * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que
@@ -1003,7 +1032,7 @@ app.on("before-quit", (e) => {
   if (magasinGlobal) for (const [id, f] of fenetres) noterCadre(id, f, magasinGlobal);
   // Les applis s'arrêtent (et leurs fenêtres se ferment) avant l'écriture de la session.
   const enregistrement = enregistreur;
-  const ecriture = Promise.allSettled([applications?.arreter()]).then(() => enregistrement.vider());
+  const ecriture = Promise.allSettled([applications?.arreter(), sites?.arreter()]).then(() => enregistrement.vider());
   void Promise.allSettled([agent?.arreter(), ecriture]).finally(() => {
     sessionEcrite = true;
     app.quit();

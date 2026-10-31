@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
+import type { ActionSite, EtatFenetreSite, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
-export { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "./canaux";
+export { ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "./canaux";
 
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
@@ -290,6 +291,13 @@ export interface ApiWebaios {
     surChange(rappel: () => void): () => void;
     agir(dossier: string, action: ActionApplication): void;
   };
+  /** Section « Sites » de la page Applications : les applis de site de l'espace de l'agent. */
+  sites: {
+    liste(): Promise<SiteAffiche[]>;
+    /** Une appli de site est apparue, a changé, s'est ouverte ou fermée : relire. */
+    surChange(rappel: () => void): () => void;
+    agir(id: string, action: ActionSite): void;
+  };
   extensions: {
     /**
      * Installe une extension du Chrome Web Store (adresse de sa page ou id) dans l'espace actif de cette fenêtre, après la
@@ -344,6 +352,12 @@ export const SchemaActionApplication = z
   })
   .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
+
+/** Une action sur une appli de site : son id suit `ID_SITE` (jamais un chemin). */
+export const SchemaActionSite = z.object({
+  id: z.string().regex(ID_SITE),
+  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer"]),
+});
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
 /** `droits` : la sélection de l'utilisateur sur la carte des outils de développement (n'importe quel sous-ensemble des quatre droits). */
@@ -527,3 +541,21 @@ export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
   /** Demande au process principal d'agrandir (bulle ouverte) ou de rétrécir la vue de la pastille. */
   pastilleTaille(ouverte: boolean): void;
 };
+
+/**
+ * L'unique API de l'interface d'une fenêtre d'appli de site (`site.html`). Le process principal reconnaît l'appli à
+ * l'expéditeur, jamais à ce que l'interface dit.
+ */
+export interface ApiSite {
+  etat(): Promise<EtatFenetreSite | null>;
+  surEtat(rappel: (e: EtatFenetreSite) => void): () => void;
+  /** « Entrer dans le site » : la vue du site, chargée sur l'adresse de départ la première fois seulement. */
+  entrer(): void;
+  /** ⌂ : retour à l'écran d'accueil, la page du site reste chargée dessous. */
+  accueil(): void;
+  precedent(): void;
+  suivant(): void;
+  recharger(): void;
+  /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans un onglet de la fenêtre principale. */
+  ouvrirBloque(): void;
+}

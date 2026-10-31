@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      Interface d'une fenêtre d'appli de site : la barre. Elle ne charge rien du web (le site est dans une vue à part,
+      de sa propre session) et n'a aucun cadre.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'none'" />
+    <title>Appli de site</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./site/main.ts"></script>
+  </body>
+</html>

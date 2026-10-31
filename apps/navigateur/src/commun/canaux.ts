@@ -96,8 +96,25 @@ export const CANAUX = {
   actionsVoirWorkflow: "webaios:actions-voir-workflow",
   /** Diffusé après chaque changement du registre des extensions (sans contenu : relire). */
   extensionsChange: "webaios:extensions-change",
+  /** Interface d'une fenêtre d'appli de site (`site.html`) : son état, et les gestes de sa barre. */
+  siteEtat: "webaios:site-etat",
+  /** Diffusé à l'interface de la fenêtre d'une appli de site quand son état change. */
+  siteEtatChange: "webaios:site-etat-change",
+  siteEntrer: "webaios:site-entrer",
+  siteAccueil: "webaios:site-accueil",
+  sitePrecedent: "webaios:site-precedent",
+  siteSuivant: "webaios:site-suivant",
+  siteRecharger: "webaios:site-recharger",
+  siteOuvrirBloque: "webaios:site-ouvrir-bloque",
+  /** Page Applications (fenêtre principale) : les applis de site. */
+  sitesListe: "webaios:sites-liste",
+  /** Diffusé quand une appli de site apparaît, change, s'ouvre ou se ferme (sans contenu : relire). */
+  sitesChange: "webaios:sites-change",
+  sitesAction: "webaios:sites-action",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";
 /** Argument de la pastille d'une fenêtre d'appli : `app:<dossier>`, l'unique id dont elle montre l'accès. */
 export const ARG_PASTILLE = "--webaios-pastille=";
+/** Argument de l'interface d'une fenêtre d'appli de site : l'id de l'appli (le process principal ne s'y fie jamais). */
+export const ARG_SITE = "--webaios-site=";
