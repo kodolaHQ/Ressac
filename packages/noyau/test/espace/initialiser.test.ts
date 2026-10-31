@@ -357,6 +357,21 @@ test("chaque version commitée du modèle AGENTS.md est dans agents-livres", asy
   }
 });
 
+test("un AGENTS.md identique au modèle 28a1cac est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant les actions (28a1cac) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-28a1cac.md"), "utf8");
+  expect(sha256(ancien)).toBe("5f67ab38d6cb781fb6d823744d7c2198f33b74c734326f4b75dac7f3b88ca6b3");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  for (const motif of ["action.json", 'vers: "page"', "{saisie}", "miseEnPage", "composant.json", "lancer_action", "<svg"]) {
+    expect(apres, motif).toContain(motif);
+  }
+});
+
 // ——— Bascule des widgets de départ en workflows ———
 
 const LIVREES = join(import.meta.dirname, "recoltes-livrees");
