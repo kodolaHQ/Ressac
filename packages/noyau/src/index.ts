@@ -6,6 +6,8 @@ export * from "./accueil/donnees.js";
 export * from "./pages/plan.js";
 export * from "./accueil/surveiller.js";
 export * from "./applications/manifeste.js";
+export * from "./sites/schemas.js";
+export * from "./sites/lire.js";
 export * from "./applications/gestionnaire.js";
 export * from "./profils/profil.js";
 export * from "./profils/config-mcp.js";

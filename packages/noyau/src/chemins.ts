@@ -23,6 +23,8 @@ export interface CheminsEspace {
   actions: string;
   /** Composants de page écrits par l'agent (`<dossier>/composant.json`). */
   composants: string;
+  /** Applis de site écrites par l'agent (`<id>/site.json`, `accueil/`, `retouches/`) ; WebAiOs n'y écrit jamais. */
+  sites: string;
 }
 
 export function cheminsEspace(racine?: string): CheminsEspace {
@@ -43,6 +45,7 @@ export function cheminsEspace(racine?: string): CheminsEspace {
     extensions: join(r, "extensions"),
     actions: join(r, "actions"),
     composants: join(r, "composants"),
+    sites: join(r, "sites"),
   };
 }
 

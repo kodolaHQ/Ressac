@@ -42,3 +42,7 @@ test("actions et composants sous la racine", () => {
   expect(c.actions).toBe("/tmp/w/actions");
   expect(c.composants).toBe("/tmp/w/composants");
 });
+
+test("sites sous la racine", () => {
+  expect(cheminsEspace("/tmp/w").sites).toBe("/tmp/w/sites");
+});

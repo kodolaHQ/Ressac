@@ -34,6 +34,7 @@ test("crée l'espace complet dans un dossier vide", async () => {
   expect(existsSync(c.projets)).toBe(true);
   expect(existsSync(c.extensions)).toBe(true);
   expect(existsSync(c.actions)).toBe(true);
+  expect(existsSync(c.sites)).toBe(true);
   expect(existsSync(c.composants)).toBe(true);
   expect(crees.length).toBe(attendus.length);
 });
