@@ -215,10 +215,16 @@ export function creerServiceActions(o: {
    * page ne peut pas le relire sur le disque, `liste` le lui donne tant qu'aucune exécution plus récente n'existe.
    */
   const refusLancement = new Map<string, { erreur: string; quand: string }>();
+  /** Lancements suivis, par action : une suppression les oublie, leur fin ne note plus rien (action recréée sous le même id). */
+  const lancementsSuivis = new Map<string, Set<Promise<ResultatLancement>>>();
   const suivreLancement = (id: string, fin: Promise<ResultatLancement>): Promise<ResultatLancement> => {
     refusLancement.delete(id);
+    const suivis = lancementsSuivis.get(id) ?? new Set();
+    lancementsSuivis.set(id, suivis.add(fin));
     return fin.then((r) => {
-      if (!r.execution) {
+      const suivi = lancementsSuivis.get(id)?.delete(fin) ?? false;
+      if (lancementsSuivis.get(id)?.size === 0) lancementsSuivis.delete(id);
+      if (suivi && !r.execution) {
         refusLancement.set(id, { erreur: r.erreur ?? "L'action n'a pas pu être lancée", quand: new Date(maintenant()).toISOString() });
         o.surChange?.();
       }
@@ -331,6 +337,7 @@ export function creerServiceActions(o: {
       // Arrêtée d'abord : sinon elle tournerait jusqu'à sa durée maximale, sans que rien ne permette plus de l'arrêter.
       o.noyau()?.actions.arreter(id);
       refusLancement.delete(id);
+      lancementsSuivis.delete(id);
       const oublier = async (x: string) => {
         const noyau = o.noyau();
         if (noyau) return noyau.actions.refuserAccord(x);

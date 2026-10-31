@@ -323,7 +323,7 @@ test("lireActionsAffichees : déclaration, accord, dernier résultat (pas un ess
 // --- Le service : refus en espace privé, ouverture et lancement ---
 
 /** Un faux noyau des actions : note les lancements et arrêts. */
-function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue: ResultatLancement = { statut: "reussie", execution: "x" }) {
+function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue: ResultatLancement | Promise<ResultatLancement> = { statut: "reussie", execution: "x" }) {
   const lances: { id: string; saisie?: string }[] = [];
   const arretes: string[] = [];
   /** Arrêts et retraits d'accord, dans l'ordre. */
@@ -346,7 +346,7 @@ function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue
   return { lances, arretes, appels, noyau: { actions } };
 }
 
-function service(o: { prive?: boolean; direct?: EtatActions; issue?: ResultatLancement } = {}) {
+function service(o: { prive?: boolean; direct?: EtatActions; issue?: ResultatLancement | Promise<ResultatLancement> } = {}) {
   let n = 0;
   const genId = () => `g${++n}`;
   let etat: EtatNavigateur = etatInitial(genId);
@@ -493,4 +493,16 @@ test("supprimer et retirer l'accord arrêtent d'abord l'action qui tourne", asyn
   appels.length = 0;
   expect(await s.supprimer(F, "gitlab")).toEqual({ ok: true });
   expect(appels).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
+});
+
+test("supprimer pendant un lancement : l'exécution arrêtée qui finit sans rien écrire ne laisse pas de refus à une action recréée", async () => {
+  let finir!: (r: ResultatLancement) => void;
+  const issue = new Promise<ResultatLancement>((ok) => (finir = ok));
+  const { s, F, changes } = service({ issue });
+  await s.ouvrir(F, "gitlab", null);
+  expect(await s.supprimer(F, "gitlab")).toEqual({ ok: true });
+  finir({ statut: "echouee", erreur: "Action inconnue", erreurNoyau: true });
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(changes()).toBe(0);
+  expect((await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
 });
