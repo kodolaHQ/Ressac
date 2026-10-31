@@ -47,6 +47,10 @@ describe("adresseSurDomaine", () => {
   const dom = ["vidola-a.example", "vidola-b.example"];
   const depart = "https://vidola-b.example/accueil";
   const o = { adressesLocales: false };
+  it("un actuel en écriture numérique d'une adresse locale garde l'hôte du départ", () => {
+    expect(adresseSurDomaine("/x", "0x7f.1", dom, depart, o)).toBe("https://vidola-b.example/x");
+    expect(adresseSurDomaine("/x", "2130706433", dom, depart, o)).toBe("https://vidola-b.example/x");
+  });
   it("relative rendue sur le domaine actuel", () => {
     expect(adresseSurDomaine("/serie/x", "vidola-b.example", dom, depart, o)).toBe("https://vidola-b.example/serie/x");
   });

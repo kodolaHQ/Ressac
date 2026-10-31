@@ -96,6 +96,8 @@ export function adresseSurDomaine(
   const sortie = analyser(`${base.protocol}//${base.host}${u.pathname}${u.search}${u.hash}`);
   if (!sortie) return null;
   sortie.hostname = hoteSortie;
+  // `actuel` en écriture numérique (0x7f.1, 2130706433) n'est normalisé qu'ici : revérifié, sinon l'hôte du départ.
+  if (!o.adressesLocales && adresseLocale(sortie.hostname)) sortie.hostname = base.hostname;
   if (!schemaAccepte(sortie, o.adressesLocales)) return null;
   return sortie.href;
 }
