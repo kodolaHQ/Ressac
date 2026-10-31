@@ -57,3 +57,5 @@ export * from "./extensions/registre.js";
 export * from "./extensions/copie.js";
 export { AUCUN_RESULTAT, chainesDe, MENTION_SECOURS, type BlocRendu, type Image as ImagePage, type Lien as LienPage, type PageRendue } from "./pages/resoudre.js";
 export { COMPOSANT_HTML_MAX } from "./pages/composants-agent.js";
+export * from "./sites/accords.js";
+export * from "./sites/suivi.js";
