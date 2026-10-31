@@ -12,7 +12,7 @@ import { lireMemoire } from "../../src/workflows/memoire.js";
 import type { LanceurProcessus, TraceDirecte } from "../../src/workflows/executer.js";
 import type { AccesIaExecution } from "../../src/ia/repartiteur.js";
 import { dernierResultat, lireResultat } from "../../src/actions/donnees.js";
-import { ACTION_INCONNUE, accordRequisAction, executerAction, saisieRequise, type OptionsAction } from "../../src/actions/executer.js";
+import { ACTION_INCONNUE, accordRequisAction, executerAction, saisieRequise, type OptionsAction, type TraceAction } from "../../src/actions/executer.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -370,9 +370,11 @@ describe("executerAction", () => {
 
   it("les traces du workflow sont relayées", async () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
-    const traces: TraceDirecte[] = [];
+    const traces: TraceAction[] = [];
     await executerAction(options(b, "simple", { surTrace: (t) => traces.push(t) }));
-    expect(traces).toContainEqual({ bloc: "lire", etape: "debut" });
+    expect(traces).toContainEqual({ bloc: "lire", etape: "debut", type: "code" });
+    // Chaque trace porte le type du bloc : la page de l'action montre son libellé du catalogue.
+    expect(traces.every((t) => t.type === (t.bloc === "lire" ? "code" : "sortie"))).toBe(true);
   });
 
   it("essai : exécution -essai, résultat écrit, ni mémoire ni dernier résultat changés", async () => {

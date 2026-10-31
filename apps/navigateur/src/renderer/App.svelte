@@ -13,7 +13,7 @@
   import type { Panneau } from "../commun/api";
   import { tick, untrack } from "svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "./etat.svelte";
-  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, widgetDeUrlWorkflow } from "../commun/modele";
+  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, cibleDeUrlWorkflow } from "../commun/modele";
   import { masquer, REVELATION_INITIALE, surZone, zoneGauche, zoneSortie, type ZoneGauche } from "../commun/revelation";
 
   const MASQUAGE_MS = 300;
@@ -25,7 +25,7 @@
     return id ? etat.valeur?.onglets[id] : undefined;
   });
   /** L'onglet actif est un constructeur (affiché, ou sous l'historique / les téléchargements). */
-  const ongletConstructeur = $derived(!!ongletActif && widgetDeUrlWorkflow(ongletActif.url) !== null);
+  const ongletConstructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
 
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant
   // toujours l'interface, la barre « révélée » reprend sa colonne le temps du survol. La position de la souris vient

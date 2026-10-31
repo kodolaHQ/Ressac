@@ -2,13 +2,15 @@
   import "@xyflow/svelte/dist/style.css";
   import { SvelteFlowProvider } from "@xyflow/svelte";
   import { untrack } from "svelte";
-  import type { CatalogueBloc } from "@webaios/noyau";
+  import type { CatalogueBloc, Proprietaire } from "@webaios/noyau";
   import { focusAgent } from "../composants/agent.svelte";
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
+  import ApercuAction from "./ApercuAction.svelte";
   import ApercuWidget from "./ApercuWidget.svelte";
   import BarreExecutions from "./BarreExecutions.svelte";
   import Canevas from "./Canevas.svelte";
+  import { cleCible, depotDe, lanceurDe, sourceExecutionsDe } from "./cible";
   import { confirmerChangementDeBloc, garderAvantFermeture } from "./codes.svelte";
   import { creerEdition, suivreDisparitions } from "./edition.svelte";
   import { Executions } from "./executions.svelte";
@@ -18,16 +20,26 @@
   import Palette from "./Palette.svelte";
   import { pastillesDe } from "./pastilles";
 
-  /** Le constructeur du workflow du widget `id` (page `webaios://workflow/<id>`). */
-  let { id }: { id: string } = $props();
-
-  // Gardée par fenêtre et par widget : changer d'onglet ne perd ni un brouillon invalide ni l'historique.
+  /**
+   * Le constructeur du workflow d'un widget (page `webaios://workflow/<id>`) ou d'une action
+   * (`webaios://workflow/action/<id>`) : même canevas ; une action a son panneau, sa saisie au lancement et l'aperçu de
+   * sa page.
+   */
+  let { cible }: { cible: Proprietaire } = $props();
   // svelte-ignore state_referenced_locally
-  const edition = creerEdition(id, api.workflow);
+  const estAction = cible.type === "action";
+  /** La clé de ce workflow dans les états de la fenêtre (éditions, codes, exécution choisie). */
+  // svelte-ignore state_referenced_locally
+  const id = cleCible(cible);
+
+  // Gardée par fenêtre et par workflow : changer d'onglet ne perd ni un brouillon invalide ni l'historique.
+  const edition = creerEdition(id, depotDe(api.workflow));
   suivreDisparitions(api.accueil);
   garderAvantFermeture();
   // svelte-ignore state_referenced_locally
-  const executions = new Executions(id, api.accueil, api.workflow);
+  const executions = new Executions(id, sourceExecutionsDe(api, cible), lanceurDe(api, cible));
+  /** Ce qui change sur le disque : l'accueil pour un widget, les actions pour une action. */
+  const surChange = estAction ? api.actions.surChange : api.accueil.surChange;
   let catalogue = $state.raw<CatalogueBloc[]>([]);
   const parType = $derived(new Map(catalogue.map((c) => [c.type, c])));
   /**
@@ -48,7 +60,9 @@
     if (focusAgent.n !== demandesAgent) ongletDroit = "agent";
   });
 
-  const nom = $derived(edition.widget?.nom ?? id);
+  const nom = $derived(edition.widget?.nom ?? edition.action?.nom ?? cible.id);
+  /** La saisie demandée par « ▶ Lancer » (action avec une saisie) : la petite fenêtre est ouverte. */
+  let demande = $state<{ libelle: string; valeur: string } | null>(null);
   const aSortie = $derived(edition.brouillon?.blocs.some((b) => b.type === "sortie") ?? false);
   const idSortie = $derived(edition.brouillon?.blocs.find((b) => b.type === "sortie")?.id);
   const etat = $derived.by(() => {
@@ -71,24 +85,24 @@
       return;
     }
     selection = bloc;
-    api.workflow.selection(id, bloc);
+    api.workflow.selection(cible, bloc);
   }
 
   $effect(() => untrack(() => {
     // Aucun bloc n'est signalé à l'agent tant que l'utilisateur n'en a pas choisi un ici.
-    api.workflow.selection(id, null);
+    api.workflow.selection(cible, null);
     void api.workflow.catalogue().then((c) => (catalogue = c));
     void edition.ouvrir();
     chargerExecutions();
     const finDirect = executions.suivre();
-    const fin = api.accueil.surChange(() => {
+    const fin = surChange(() => {
       void edition.relire();
       chargerExecutions();
     });
     return () => {
       fin();
       finDirect();
-      api.workflow.selection(id, null);
+      api.workflow.selection(cible, null);
     };
   }));
 
@@ -109,7 +123,31 @@
     void edition.ajouter(c, p);
   }
 
-  const lancer = () => void executions.lancer().catch(() => {});
+  /** « ▶ Lancer » : une action qui a une saisie la demande d'abord ; vide, rien ne part. */
+  function lancer(): void {
+    const saisie = edition.action?.saisie;
+    if (saisie) demande = { libelle: saisie.libelle, valeur: "" };
+    else void executions.lancer().catch(() => {});
+  }
+
+  function confirmerLancement(e: SubmitEvent): void {
+    e.preventDefault();
+    const valeur = demande?.valeur.trim();
+    if (!valeur) return;
+    demande = null;
+    void executions.lancer(valeur).catch(() => {});
+  }
+
+  function toucheDemande(e: KeyboardEvent): void {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    demande = null;
+  }
+
+  /** Le champ prend le clavier à l'ouverture de la petite fenêtre. */
+  function focaliser(n: HTMLInputElement): void {
+    n.focus();
+  }
 
   function reorganiser(): void {
     edition.reorganiser();
@@ -132,7 +170,7 @@
       >{etat}</span
     >
     <div class="actions">
-      <button data-testid="bouton-apercu" aria-pressed={apercuOuvert} onclick={() => (apercuOuvert = !apercuOuvert)}>Aperçu du widget</button>
+      <button data-testid="bouton-apercu" aria-pressed={apercuOuvert} onclick={() => (apercuOuvert = !apercuOuvert)}>{estAction ? "Aperçu de la page" : "Aperçu du widget"}</button>
       <button data-testid="reorganiser" disabled={!edition.brouillon} onclick={reorganiser}>Réorganiser</button>
       <button class="lancer" data-testid="lancer" disabled={!edition.disqueValide || executions.occupe || edition.etatEnregistrement === "en-cours"} onclick={lancer}>
         {executions.occupe ? "Exécution…" : "▶ Lancer"}
@@ -180,7 +218,9 @@
     <!-- Sans canevas, l'agent reste là : c'est à lui de réparer ou d'écrire le workflow. -->
     <div class="corps">
       {#if edition.chargement === "introuvable"}
-        <p class="doux message">Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs).</p>
+        <p class="doux message">
+          {estAction ? "Cette action n'a pas de workflow (workflow.json), ou action.json est illisible." : "Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs)."}
+        </p>
       {:else}
         <p class="erreur message" data-testid="workflow-illisible">{edition.chargement.illisible}</p>
       {/if}
@@ -190,7 +230,7 @@
     <SvelteFlowProvider>
       <div class="corps">
         {#if vue === "executions"}<ListeExecutions {executions} onchoisie={() => (vue = "workflow")} />{/if}
-        <Palette {catalogue} {aSortie} web={edition.widget?.web ?? false} onajouter={(type) => ajouter(type)} />
+        <Palette {catalogue} {aSortie} web={edition.widget?.web ?? edition.action?.web ?? false} onajouter={(type) => ajouter(type)} />
         <div class="zone-canevas">
           <Canevas
             bind:this={canevas}
@@ -200,7 +240,9 @@
             onselection={selectionner}
             onajouter={(type, p) => ajouter(type, p)}
           />
-          {#if apercuOuvert}<ApercuWidget {id} {executions} />{/if}
+          {#if apercuOuvert}
+            {#if cible.type === "action"}<ApercuAction id={cible.id} {executions} />{:else}<ApercuWidget id={cible.id} {executions} />{/if}
+          {/if}
         </div>
         {@render volet(true)}
       </div>
@@ -209,10 +251,27 @@
       {/if}
     </SvelteFlowProvider>
   {/if}
+
+  {#if demande}
+    <div class="voile">
+      <div class="demande" data-testid="demande-saisie" role="dialog" aria-modal="true" aria-label="Lancer l'action">
+        <form onsubmit={confirmerLancement}>
+          <label>
+            <span>{demande.libelle}</span>
+            <input data-testid="saisie-lancer" maxlength="200" bind:value={demande.valeur} onkeydown={toucheDemande} use:focaliser />
+          </label>
+          <div class="boutons">
+            <button type="button" onclick={() => (demande = null)}>Annuler</button>
+            <button type="submit" class="lancer" data-testid="confirmer-lancer" disabled={!demande.valeur.trim()}>▶ Lancer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
-  .constructeur { height: 100%; display: flex; flex-direction: column; color: var(--texte); min-height: 0; }
+  .constructeur { position: relative; height: 100%; display: flex; flex-direction: column; color: var(--texte); min-height: 0; }
   header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--bord); flex-wrap: wrap; }
   h1 { margin: 0; font-size: 16px; font-weight: 600; }
   .onglets { display: flex; gap: 2px; }
@@ -241,4 +300,13 @@
   .corps > .message { flex: 1; min-width: 0; }
   .doux { color: var(--texte-doux); }
   .erreur { color: var(--en-erreur); white-space: pre-wrap; word-break: break-word; }
+  .voile { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; background: rgba(0, 0, 0, 0.25); }
+  .demande form { display: flex; flex-direction: column; gap: 12px; }
+  .demande { width: 340px; max-width: calc(100% - 32px); padding: 16px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); box-shadow: var(--ombre-modale); font-size: 13px; }
+  .demande label { display: flex; flex-direction: column; gap: 6px; }
+  .demande input { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); font: inherit; }
+  .boutons { display: flex; justify-content: flex-end; gap: 8px; }
+  .boutons button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); }
+  .boutons button:disabled { opacity: 0.5; }
+  .boutons .lancer { border-color: var(--accent); background: var(--accent); color: white; }
 </style>

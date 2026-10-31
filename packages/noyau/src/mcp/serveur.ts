@@ -21,8 +21,11 @@ export const RIEN_RETENU = "Rien de retenu pour cette page.";
 export const RIEN_TROUVE = "Rien trouvé dans l'historique.";
 export const AUCUN_WORKFLOW_OUVERT = "Aucun workflow ouvert au premier plan dans le constructeur de cette fenêtre.";
 
-/** Le workflow ouvert au premier plan dans le constructeur d'une fenêtre, et son bloc sélectionné (identifiants seulement). */
-export type WorkflowOuvert = { widget: string; bloc: string | null };
+/**
+ * Le workflow ouvert au premier plan dans le constructeur d'une fenêtre (celui d'un widget ou d'une action), et son bloc
+ * sélectionné (identifiants seulement).
+ */
+export type WorkflowOuvert = { widget: string; bloc: string | null } | { action: string; bloc: string | null };
 const LIMITE_HISTORIQUE = { defaut: 20, max: 50 };
 const LIBELLE_NON_PARTAGE = "onglet non partagé";
 
@@ -387,7 +390,7 @@ function creerServeurOutils(
       "workflow_ouvert",
       {
         description:
-          "Le workflow que l'utilisateur a ouvert au premier plan dans le constructeur de ta fenêtre, et le bloc sélectionné (identifiants seulement). Sert à comprendre « ce bloc », « ce workflow ».",
+          "Le workflow que l'utilisateur a ouvert au premier plan dans le constructeur de ta fenêtre (`widget` ou `action`), et le bloc sélectionné (identifiants seulement). Sert à comprendre « ce bloc », « ce workflow ».",
         inputSchema: {},
       },
       async () => {
@@ -397,7 +400,8 @@ function creerServeurOutils(
         } catch {
           // Interface de la fenêtre indisponible : comme si rien n'était ouvert.
         }
-        return texte(ouvert ? JSON.stringify({ widget: ouvert.widget, bloc: ouvert.bloc }) : AUCUN_WORKFLOW_OUVERT);
+        if (!ouvert) return texte(AUCUN_WORKFLOW_OUVERT);
+        return texte(JSON.stringify("widget" in ouvert ? { widget: ouvert.widget, bloc: ouvert.bloc } : { action: ouvert.action, bloc: ouvert.bloc }));
       },
     );
   }

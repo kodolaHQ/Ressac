@@ -2,10 +2,12 @@
   import { untrack } from "svelte";
   import type { DirectAction } from "@webaios/noyau";
   import { EN_ATTENTE, lectureDe, MISE_EN_PAGE } from "../../commun/actions";
+  import { api } from "../etat.svelte";
 
   /**
    * L'avancement d'une exécution de l'action, vu par `direct()` : une ligne par bloc commencé (« Lecture de … » pour un
-   * bloc qui lit, le compteur « 7 / 12 » d'un bloc par élément), puis « Mise en page… » ; en file : « En attente ».
+   * bloc qui lit, sinon le libellé du catalogue de son type ; le compteur « 7 / 12 » d'un bloc par élément), puis
+   * « Mise en page… » ; en file : « En attente ».
    * `courante` null et `enAttente` faux : rien à montrer.
    */
   let { courante, enAttente, arreter }: { courante: DirectAction | null; enAttente: boolean; arreter: () => void } = $props();
@@ -22,6 +24,17 @@
     }
   });
   const lignes = $derived(Object.entries(courante?.blocs ?? {}).map(([id, b]) => ({ id, ...b, compte: b.total !== undefined ? { faits: b.faits ?? 0, total: b.total } : comptes[id] })));
+  /** Le libellé du catalogue de chaque type de bloc ; l'id du bloc tant qu'il n'est pas lu (ou type inconnu). */
+  let libelles = $state.raw<ReadonlyMap<string, string>>(new Map());
+  $effect(() =>
+    untrack(() => {
+      void api.workflow
+        .catalogue()
+        .then((c) => (libelles = new Map(c.map((b) => [b.type, b.libelle]))))
+        .catch(() => {});
+    }),
+  );
+  const libelle = (l: (typeof lignes)[number]) => (l.statut === "en-cours" && l.hote ? lectureDe(l.hote) : ((l.type && libelles.get(l.type)) ?? l.id));
   const MARQUES = { "en-cours": "…", reussi: "✓", partiel: "≈", echoue: "✗" } as const;
 </script>
 
@@ -34,7 +47,7 @@
       {#each lignes as l (l.id)}
         <li class={l.statut} data-testid="ligne-bloc">
           <span class="marque" aria-hidden="true">{MARQUES[l.statut]}</span>
-          <span class="libelle">{l.statut === "en-cours" && l.hote ? lectureDe(l.hote) : l.id}</span>
+          <span class="libelle">{libelle(l)}</span>
           {#if l.compte}<span class="compteur" data-testid="compteur-bloc">{l.compte.faits} / {l.compte.total}</span>{/if}
         </li>
       {/each}

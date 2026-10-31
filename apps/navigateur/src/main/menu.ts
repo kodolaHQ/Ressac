@@ -1,6 +1,6 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 import type { Action, CommandeOnglet, Panneau, Raccourci } from "../commun/api";
-import { widgetDeUrlWorkflow, type EtatNavigateur, type IdFenetre, type IdOnglet, type MoteurRecherche } from "../commun/modele";
+import { cibleDeUrlWorkflow, type EtatNavigateur, type IdFenetre, type IdOnglet, type MoteurRecherche } from "../commun/modele";
 import { versNieme, versVoisin } from "./raccourcis";
 
 export interface CiblesMenu {
@@ -102,7 +102,7 @@ export function installerMenu(c: CiblesMenu): void {
           if (!f) return;
           const o = ongletActif(f);
           // Le constructeur n'a pas de page à qui demander : son interface confirme s'il reste du code non enregistré.
-          if (o && widgetDeUrlWorkflow(c.etat().onglets[o]?.url ?? "")) c.raccourci(f, "fermerOnglet");
+          if (o && cibleDeUrlWorkflow(c.etat().onglets[o]?.url ?? "")) c.raccourci(f, "fermerOnglet");
           else if (o) c.fermerOnglet(o);
           // Page vide : ⌘W ferme la fenêtre, seulement si aucun de ses espaces n'a d'onglet.
           else if (!Object.values(c.etat().onglets).some((x) => x.fenetreId === f)) c.fermerFenetre(f);
@@ -149,7 +149,7 @@ export function installerMenu(c: CiblesMenu): void {
             // Dans le constructeur, l'agent a son onglet « Agent » : ⌘J l'y montre, sans toucher au panneau latéral
             // (ni pré-remplir de contexte : l'agent sait ce qui est ouvert par `workflow_ouvert`).
             const o = ongletActif(f);
-            if (o && widgetDeUrlWorkflow(c.etat().onglets[o]?.url ?? "")) return c.raccourci(f, "agent");
+            if (o && cibleDeUrlWorkflow(c.etat().onglets[o]?.url ?? "")) return c.raccourci(f, "agent");
             c.agir({ type: "basculerPanneauAgent", fenetreId: f });
             // Ouvert depuis une page web : le clavier doit quitter la page pour le terminal.
             if (c.etat().fenetres.find((x) => x.id === f)?.panneauAgentOuvert) c.raccourci(f, "agent");

@@ -414,6 +414,8 @@ test("pendant l'exécution, « Lecture de 127.0.0.1… » puis « 3 / 3 » puis 
     await fenetre.getByTestId("relancer-action").click();
     const avancement = fenetre.getByTestId("avancement-action");
     await expect(avancement.getByText("Lecture de 127.0.0.1…")).toBeVisible({ timeout: 30_000 });
+    // Un bloc qui ne lit pas de page : le libellé du catalogue (« Code »), jamais son id (« liste »).
+    await expect(avancement.getByTestId("ligne-bloc").first().locator(".libelle")).toHaveText("Code");
     await expect(avancement.getByTestId("compteur-bloc")).toHaveText("3 / 3", { timeout: 30_000 });
     await expect(avancement.getByTestId("mise-en-page")).toHaveText("Mise en page…", { timeout: 30_000 });
     await expect(fenetre.getByTestId("rendu-page")).toBeVisible({ timeout: 30_000 });

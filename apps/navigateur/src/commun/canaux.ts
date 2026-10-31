@@ -84,6 +84,7 @@ export const CANAUX = {
   actionsArreter: "webaios:actions-arreter",
   actionsPage: "webaios:actions-page",
   actionsExecutions: "webaios:actions-executions",
+  actionsExecution: "webaios:actions-execution",
   /** Diffusé aux fenêtres dont l'espace actif n'est pas privé : les actions qui tournent ou attendent. */
   actionsDirect: "webaios:actions-direct",
   actionsDirectLire: "webaios:actions-direct-lire",

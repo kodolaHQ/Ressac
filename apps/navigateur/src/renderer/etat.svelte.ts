@@ -1,5 +1,6 @@
 import type { ApiWebaios } from "../commun/api";
-import { widgetDeUrlWorkflow, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdOnglet, type Onglet, type Telechargement } from "../commun/modele";
+import { cibleDeUrlWorkflow, type DemandeEnAttente, type EtatFenetre, type EtatNavigateur, type IdOnglet, type Onglet, type Telechargement } from "../commun/modele";
+import { cleCible } from "./constructeur/cible";
 import { confirmerFermeture, garderCodesDe } from "./constructeur/codes.svelte";
 
 declare global {
@@ -17,7 +18,10 @@ api.surEtat((e) => {
   etat.valeur = e;
   // Le code non enregistré d'un constructeur dont l'onglet est parti, par n'importe quel chemin, est abandonné.
   garderCodesDe(
-    Object.values(e.onglets).flatMap((o) => (o.fenetreId === api.fenetreId ? (widgetDeUrlWorkflow(o.url) ?? []) : [])),
+    Object.values(e.onglets).flatMap((o) => {
+      const cible = o.fenetreId === api.fenetreId ? cibleDeUrlWorkflow(o.url) : null;
+      return cible ? [cleCible(cible)] : [];
+    }),
   );
 });
 
@@ -32,10 +36,10 @@ export function fenetreCourante(): EtatFenetre | undefined {
  */
 export function fermerOnglet(id: IdOnglet): void {
   const o = etat.valeur?.onglets[id];
-  const widget = o ? widgetDeUrlWorkflow(o.url) : null;
-  if (o && widget) {
+  const cible = o ? cibleDeUrlWorkflow(o.url) : null;
+  if (o && cible) {
     const autre = Object.values(etat.valeur!.onglets).some((x) => x.id !== id && x.fenetreId === o.fenetreId && x.url === o.url);
-    if (!autre && !confirmerFermeture(widget)) return;
+    if (!autre && !confirmerFermeture(cleCible(cible))) return;
   }
   api.agir({ type: "fermerOnglet", id });
 }

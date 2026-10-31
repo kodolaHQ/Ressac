@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Panneau } from "../../commun/api";
-  import { URL_ACTIONS, URL_APPLICATIONS, widgetDeUrlWorkflow, type EtatFenetre } from "../../commun/modele";
+  import { URL_ACTIONS, URL_APPLICATIONS, cibleDeUrlWorkflow, type EtatFenetre } from "../../commun/modele";
   import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
@@ -34,7 +34,7 @@
   });
   const lienActif = $derived(ongletActif?.lien?.id);
   // Dans le constructeur, l'agent a son onglet « Agent » : ✦ l'y montre (comme ⌘J), le panneau latéral n'y paraît pas.
-  const constructeur = $derived(!!ongletActif && widgetDeUrlWorkflow(ongletActif.url) !== null);
+  const constructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
 </script>
 
 <aside class="barre" data-testid="barre-laterale" hidden={cachee}>

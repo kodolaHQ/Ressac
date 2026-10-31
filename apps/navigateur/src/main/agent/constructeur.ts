@@ -1,28 +1,32 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import {
+  ACTION_INCONNUE,
   avertirWorkflow,
   contexteValidation,
+  contexteValidationAction,
   DeclarationWidget,
   enregistrerCode,
   enregistrerWorkflow,
   lireBrouillon,
+  lireAction,
   lireCode,
   validerWorkflow,
+  type DeclarationAction,
   type Avertissement,
   type CheminsEspace,
   type ResultatEnregistrement,
   type WorkflowOuvert,
 } from "@webaios/noyau";
-import { widgetDeUrlWorkflow, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
-import type { EditionWorkflow } from "../../commun/api";
+import { cibleDeUrlWorkflow, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
+import type { EditionWorkflow, SelectionConstructeur } from "../../commun/api";
 
-/** Le bloc sélectionné dans le constructeur d'une fenêtre. */
-export type SelectionConstructeur = { widget: string; bloc: string | null };
+export type { SelectionConstructeur };
 
 /**
  * Ce que l'agent peut savoir du constructeur d'une fenêtre : seulement si l'onglet affiché est `webaios://workflow/<widget>`
- * (page interne, donc invisible autrement) ; le bloc seulement si la sélection vise ce widget.
+ * ou `webaios://workflow/action/<action>` (page interne, donc invisible autrement) ; le bloc seulement si la sélection
+ * vise ce workflow-là (un widget et une action du même nom sont deux workflows).
  */
 export function workflowOuvertDe(
   etat: EtatNavigateur,
@@ -32,10 +36,11 @@ export function workflowOuvertDe(
   const f = etat.fenetres.find((x) => x.id === fenetre);
   const id = f?.actif[f.espaceActif];
   const url = id ? etat.onglets[id]?.url : undefined;
-  const widget = url ? widgetDeUrlWorkflow(url) : null;
-  if (!widget) return null;
+  const cible = url ? cibleDeUrlWorkflow(url) : null;
+  if (!cible) return null;
   const s = selections.get(fenetre);
-  return { widget, bloc: s && s.widget === widget ? s.bloc : null };
+  if (cible.type === "widget") return { widget: cible.id, bloc: s && "widget" in s && s.widget === cible.id ? s.bloc : null };
+  return { action: cible.id, bloc: s && "action" in s && s.action === cible.id ? s.bloc : null };
 }
 
 /** Écritures d'un même widget l'une après l'autre (enregistrements et codes), widgets différents en parallèle. */
@@ -64,12 +69,21 @@ const MESSAGE_ILLISIBLE = "Écriture impossible";
  * une écriture vers un fichier du Mac.
  */
 export async function dossierWidgetSur(chemins: CheminsEspace, id: string): Promise<string | null> {
+  return dossierConfine(chemins.widgets, id);
+}
+
+/** Le dossier d'une action, avec les mêmes gardes que celui d'un widget (dans `~/WebAiOs/actions`, jamais un lien). */
+export async function dossierActionSur(chemins: CheminsEspace, id: string): Promise<string | null> {
+  return dossierConfine(chemins.actions, id);
+}
+
+async function dossierConfine(parent: string, id: string): Promise<string | null> {
   try {
-    if ((await lstat(chemins.widgets)).isSymbolicLink()) return null;
-    const dossier = join(chemins.widgets, id);
+    if ((await lstat(parent)).isSymbolicLink()) return null;
+    const dossier = join(parent, id);
     const l = await lstat(dossier);
     if (l.isSymbolicLink() || !l.isDirectory()) return null;
-    const [racine, reel] = await Promise.all([realpath(chemins.widgets), realpath(dossier)]);
+    const [racine, reel] = await Promise.all([realpath(parent), realpath(dossier)]);
     return reel.startsWith(racine + sep) ? dossier : null;
   } catch {
     return null;
@@ -159,6 +173,96 @@ export async function enregistrerCodeSur(chemins: CheminsEspace, id: string, nom
     return await enregistrerCode(dossier, nom, texte);
   } catch (e) {
     console.error(`[webaios] code du widget ${id} :`, e);
+    return { ok: false, erreur: MESSAGE_ILLISIBLE };
+  }
+}
+
+// --- Le workflow d'une action (`webaios://workflow/action/<id>`) ---
+
+type ContexteAction = { chemins: CheminsEspace; dossierActions: string };
+
+/** `action.json` lu, et le dossier de l'action (confiné) ; null : action inconnue ; `erreur` : déclaration illisible. */
+async function declarationAction(chemins: CheminsEspace, id: string): Promise<{ declaration: DeclarationAction; dossier: string } | { erreur: string } | null> {
+  const dossier = await dossierActionSur(chemins, id);
+  const a = dossier ? await lireAction(chemins, id) : null;
+  if (!dossier || !a) return null;
+  return "erreur" in a ? { erreur: a.erreur } : { declaration: a.declaration, dossier };
+}
+
+function avertissementsAction(brut: unknown, d: DeclarationAction): Avertissement[] {
+  const r = validerWorkflow(brut, contexteValidationAction(d));
+  if (!r.ok) return [];
+  return avertirWorkflow(
+    r.valide.workflow,
+    { sources: d.sources, config: null, dureeMaxMinutes: d.dureeMaxMinutes ?? null, proprietaire: "action", saisie: d.saisie !== undefined },
+    r.valide,
+  );
+}
+
+/**
+ * Ce que le constructeur ouvre pour une action : son `workflow.json` seulement (aucun workflow implicite), validé selon
+ * `action.json` (sortie vers la page, `{saisie}`…). null : action inconnue, `action.json` illisible, sans workflow, ou
+ * disque en erreur. N'écrit rien.
+ */
+export async function lireEditionAction(c: ContexteAction, id: string): Promise<EditionWorkflow | null> {
+  try {
+    const d = await declarationAction(c.chemins, id);
+    if (!d || "erreur" in d) return null;
+    const decl = d.declaration;
+    const l = await lireBrouillon(d.dossier, contexteValidationAction(decl));
+    if (!l || l.origine !== "fichier") return null;
+    return {
+      ...l,
+      avertissements: l.brut === null ? [] : avertissementsAction(l.brut, decl),
+      action: {
+        nom: decl.nom,
+        compte: decl.sources.compte,
+        publiques: decl.sources.publiques,
+        web: decl.sources.web,
+        saisie: decl.saisie ?? null,
+        miseEnPage: decl.miseEnPage ?? null,
+        dureeMaxMinutes: decl.dureeMaxMinutes ?? null,
+      },
+    };
+  } catch (e) {
+    console.error(`[webaios] lecture du workflow de l'action ${id} :`, e);
+    return null;
+  }
+}
+
+/** Enregistre le brouillon de l'action (mémoire de ses blocs changés effacée hors de l'espace) ; `action.json` n'est jamais écrit. */
+export async function enregistrerEditionAction(c: ContexteAction, id: string, brut: unknown): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }> {
+  try {
+    const d = await declarationAction(c.chemins, id);
+    if (!d) return { ok: false, erreur: ACTION_INCONNUE, avertissements: [] };
+    if ("erreur" in d) return { ok: false, erreur: d.erreur, avertissements: [] };
+    const r = await enregistrerWorkflow({
+      dossierFichiers: d.dossier,
+      dossierDonnees: join(c.dossierActions, id),
+      brut,
+      contexte: contexteValidationAction(d.declaration),
+    });
+    return { ...r, avertissements: r.ok ? avertissementsAction(brut, d.declaration) : [] };
+  } catch (e) {
+    console.error(`[webaios] enregistrement du workflow de l'action ${id} :`, e);
+    return { ok: false, erreur: MESSAGE_ILLISIBLE, avertissements: [] };
+  }
+}
+
+export async function lireCodeAction(chemins: CheminsEspace, id: string, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }> {
+  const dossier = await dossierActionSur(chemins, id);
+  if (!dossier) return { erreur: ACTION_INCONNUE };
+  return lireCode(dossier, nom);
+}
+
+/** À appeler dans `enSerie` : le dossier est revérifié juste avant d'écrire. */
+export async function enregistrerCodeAction(chemins: CheminsEspace, id: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
+  const dossier = await dossierActionSur(chemins, id);
+  if (!dossier) return { ok: false, erreur: ACTION_INCONNUE };
+  try {
+    return await enregistrerCode(dossier, nom, texte);
+  } catch (e) {
+    console.error(`[webaios] code de l'action ${id} :`, e);
     return { ok: false, erreur: MESSAGE_ILLISIBLE };
   }
 }

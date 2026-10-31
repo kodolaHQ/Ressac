@@ -226,6 +226,20 @@ describe("FileActions", () => {
     expect(directs.at(-1)).toEqual({ courantes: [], enAttente: [] });
   });
 
+  it("le type du bloc relayé par la trace passe dans direct()", async () => {
+    const r = retenues();
+    const { f } = await preparer({ executer: r.executer });
+    const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
+    await attendreQue(() => r.lancees.length === 1);
+    const o = r.lancees[0]!;
+    o.surTrace({ bloc: "trier", etape: "debut", type: "ia.trier" });
+    expect(f.direct().courantes[0]!.blocs.trier).toEqual({ statut: "en-cours", elements: null, type: "ia.trier" });
+    o.surTrace({ bloc: "trier", etape: "fin", statut: "reussi", elements: 2, type: "ia.trier" });
+    expect(f.direct().courantes[0]!.blocs.trier).toEqual({ statut: "reussi", elements: 2, type: "ia.trier" });
+    r.liberer("a");
+    await a.fin;
+  });
+
   it("arreterTout : exécution écrite interrompue", async () => {
     const c0 = cheminsEspace(await dossierTemporaire());
     const dossier = join(c0.actions, "public");

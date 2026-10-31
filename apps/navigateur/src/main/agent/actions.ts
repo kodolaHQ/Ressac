@@ -18,6 +18,7 @@ import {
   type ActionsNoyau,
   type CheminsEspace,
   type EtatActions,
+  type Execution,
   type PageAction,
   type ResultatLancement,
   type ResumeExecution,
@@ -183,6 +184,8 @@ export interface ServiceActions {
   arreter(f: IdFenetre, id: string): void;
   page(f: IdFenetre, id: string, execution: string | null): Promise<PageAction | null>;
   executions(f: IdFenetre, id: string): Promise<ResumeExecution[]>;
+  /** Une exécution complète, pour le constructeur de l'action. */
+  execution(f: IdFenetre, id: string, execution: string): Promise<Execution | null>;
   direct(f: IdFenetre): Promise<EtatActions>;
   ouvrirLien(f: IdFenetre, id: string, execution: string, url: string): Promise<void>;
   profilsPourAccord(f: IdFenetre): ProfilPourAccord[];
@@ -257,6 +260,11 @@ export function creerServiceActions(o: {
       const noyau = o.noyau();
       if (noyau) return noyau.actions.executions(id);
       return ID_ACTION.test(id) ? listerExecutions(join(o.dossierActions, id)) : [];
+    },
+    async execution(f, id, execution) {
+      if (prive(f) || !ID_ACTION.test(id) || !ID_EXECUTION.test(execution)) return null;
+      const noyau = o.noyau();
+      return noyau ? noyau.actions.execution(id, execution) : lireExecution(join(o.dossierActions, id), execution);
     },
     async direct(f) {
       if (prive(f)) return AUCUNE_ACTION;

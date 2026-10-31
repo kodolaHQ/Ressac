@@ -3,10 +3,10 @@ import type { Atelier } from "../conteneur/atelier.js";
 import type { RepartiteurIa } from "../ia/repartiteur.js";
 import type { PontNavigateur } from "../mcp/pont.js";
 import { ERREUR_ATELIER_ARRETE, ERREUR_INTERROMPUE } from "../widgets/recolte.js";
-import type { LanceurProcessus, TraceDirecte } from "../workflows/executer.js";
+import type { LanceurProcessus } from "../workflows/executer.js";
 import { ACTION_ARRETEE, type Execution } from "../workflows/executions.js";
 import type { Menagement } from "../workflows/menagement.js";
-import { couperSaisie, executerAction, type OptionsAction, type ResultatLancement } from "./executer.js";
+import { couperSaisie, executerAction, type OptionsAction, type ResultatLancement, type TraceAction } from "./executer.js";
 
 /** Actions différentes qui tournent en même temps, au plus. */
 export const ACTIONS_SIMULTANEES = 2;
@@ -20,7 +20,8 @@ export type DirectAction = {
   saisie: string | null;
   essai: boolean;
   etape: "workflow" | "mise-en-page";
-  blocs: Record<string, { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null; faits?: number; total?: number; hote?: string }>;
+  /** `type` : celui du bloc dans le workflow (son libellé est celui du catalogue). */
+  blocs: Record<string, { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null; faits?: number; total?: number; hote?: string; type?: string }>;
 };
 export type EtatActions = { courantes: DirectAction[]; enAttente: { action: string; depuis: string }[] };
 /** `deja` : l'action tournait (ou attendait) déjà ; `fin` est celle de cette exécution-là. */
@@ -203,13 +204,14 @@ export class FileActions {
     if ((await this.o.atelier.etat().catch(() => "absent")) !== "demarre") {
       return { statut: "echouee", erreur: ERREUR_ATELIER_ARRETE, erreurNoyau: true };
     }
-    const surTrace = (t: TraceDirecte) => {
+    const surTrace = (t: TraceAction) => {
       if (d.direct !== suivi) return;
       const b = suivi.blocs[t.bloc];
       if (t.etape === "debut") suivi.blocs[t.bloc] = { statut: "en-cours", elements: null };
       else if (t.etape === "fin") suivi.blocs[t.bloc] = { statut: t.statut, elements: t.elements };
       else if (t.etape === "avancement") suivi.blocs[t.bloc] = { ...(b ?? { statut: "en-cours", elements: null }), faits: t.faits, total: t.total };
       else suivi.blocs[t.bloc] = { ...(b ?? { statut: "en-cours", elements: null }), hote: t.hote };
+      if (t.type !== undefined) suivi.blocs[t.bloc]!.type = t.type;
       this.signalerDirect();
     };
     const surEtape = (e: "mise-en-page") => {

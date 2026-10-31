@@ -1,8 +1,8 @@
 import { SvelteMap } from "svelte/reactivity";
-import type { ApiWebaios } from "../../commun/api";
 import { MODELE_CODE } from "./ajout";
+import type { Depot } from "./edition.svelte";
 
-export type DepotCode = Pick<ApiWebaios["workflow"], "lireCode" | "enregistrerCode">;
+export type DepotCode = Pick<Depot, "lireCode" | "enregistrerCode">;
 
 /** `base` : le texte du disque quand le brouillon a commencé (null : fichier absent), pour voir un changement de l'agent. */
 type BrouillonCode = { texte: string; base: string | null };

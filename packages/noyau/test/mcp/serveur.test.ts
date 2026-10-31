@@ -654,6 +654,15 @@ test("workflow_ouvert rend le widget et le bloc de la fenêtre de la session", a
   );
 });
 
+test("workflow_ouvert rend l'action et le bloc quand le constructeur montre une action", async () => {
+  await avecWorkflowOuvert(
+    (f) => (f === "F1" ? { action: "gitlab", bloc: "lire" } : null),
+    async ({ s, appeler }) => {
+      expect(JSON.parse(await appeler(s.ouvrirSession("F1")))).toEqual({ action: "gitlab", bloc: "lire" });
+    },
+  );
+});
+
 test("deux sessions de deux fenêtres voient chacune le leur", async () => {
   const ouverts: Record<string, WorkflowOuvert> = { F1: { widget: "a", bloc: null }, F2: { widget: "b", bloc: "x" } };
   await avecWorkflowOuvert(

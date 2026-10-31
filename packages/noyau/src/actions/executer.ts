@@ -42,6 +42,9 @@ export const SAISIE_MAX = 200;
 /** L'issue d'un lancement : `invalide` quand rien n'a tourné (action inconnue, workflow invalide, saisie absente…). */
 export type ResultatLancement = { statut: Execution["statut"] | "invalide"; execution?: string; erreur?: string; erreurNoyau?: true };
 
+/** Une trace du workflow d'une action, avec le type de son bloc (la page montre son libellé du catalogue). */
+export type TraceAction = TraceDirecte & { type?: string };
+
 export interface OptionsAction {
   id: string;
   chemins: CheminsEspace;
@@ -58,7 +61,7 @@ export interface OptionsAction {
   declencheur: Execution["declencheur"];
   /** « Arrêter » : levé pendant le workflow, l'exécution est interrompue ; pendant la mise en page, celle de secours. */
   signal: AbortSignal;
-  surTrace(t: TraceDirecte): void;
+  surTrace(t: TraceAction): void;
   surEtape(e: "mise-en-page"): void;
   /** Un essai du constructeur : rejoue depuis `depart` avec les sorties amont de l'exécution `origine`. */
   essai?: { origine: string; depart: string };
@@ -111,6 +114,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   const { declaration } = action;
   const dossierDonnees = join(dossierActions, id);
   const proprietaire: Proprietaire = { type: "action", id };
+  const typesBlocs = new Map(valide.workflow.blocs.map((b) => [b.id, b.type]));
 
   // Un essai reprend les sorties amont d'une exécution : sa saisie aussi, à défaut d'une nouvelle.
   const rejeu = o.essai ? await chaineOrigine(dossierDonnees, o.essai.origine) : null;
@@ -178,7 +182,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
       ia: o.ia,
       pont: o.pont,
       horloge,
-      surTrace: o.surTrace,
+      surTrace: (t) => o.surTrace({ ...t, ...(typesBlocs.has(t.bloc) ? { type: typesBlocs.get(t.bloc)! } : {}) }),
       ...(o.adressesLocales ? { adressesLocales: true } : {}),
       ...(o.menagement ? { menagement: o.menagement } : {}),
       ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),

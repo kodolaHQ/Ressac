@@ -1,9 +1,18 @@
-import type { DirectWidget, EtatDirect, Execution, ResumeExecution } from "@webaios/noyau";
+import type { DirectWidget, EtatDirect, Execution, ResultatEssai, ResumeExecution } from "@webaios/noyau";
 import type { ApiWebaios } from "../../commun/api";
+import { estCleAction } from "./cible";
 
 export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execution">;
-/** « ▶ Lancer », « Rejouer depuis ce bloc » et le suivi en direct. */
-export type Lanceur = Pick<ApiWebaios["workflow"], "lancer" | "rejouer" | "direct" | "surDirect">;
+/**
+ * « ▶ Lancer », « Rejouer depuis ce bloc » et le suivi en direct, adressés par la clé du workflow (`cleCible`). `lancer`
+ * rend le refus d'une action (`erreur`) ; celui d'un widget n'en rend jamais.
+ */
+export type Lanceur = {
+  lancer(cle: string, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
+  rejouer(cle: string, execution: string, bloc: string): Promise<ResultatEssai>;
+  direct(): Promise<EtatDirect>;
+  surDirect(rappel: (e: EtatDirect) => void): () => void;
+};
 
 /** Le préfixe des refus du noyau, repris pour une demande qui échoue en route. */
 const PREFIXE_REJEU = "Rejeu impossible : ";
@@ -13,10 +22,10 @@ const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
 /** Le choix de l'utilisateur, par widget et par fenêtre : changer d'onglet ne le perd pas. */
 const choix = new Map<string, string>();
 
-/** Oublie le choix des widgets qui ne sont plus sur l'accueil. */
+/** Oublie le choix des widgets qui ne sont plus sur l'accueil (celui d'une action, clé `action:<id>`, reste). */
 export function oublierChoixExecutions(presents: Iterable<string>): void {
   const ids = new Set(presents);
-  for (const id of [...choix.keys()]) if (!ids.has(id)) choix.delete(id);
+  for (const id of [...choix.keys()]) if (!ids.has(id) && !estCleAction(id)) choix.delete(id);
 }
 
 /**
@@ -34,7 +43,7 @@ export class Executions {
   introuvable = $state(false);
   /** Ce qui tourne en ce moment (tous widgets confondus, une exécution par voie) et ce qui attend dans les files. */
   direct = $state.raw<EtatDirect>({ courants: [], enAttente: [] });
-  /** Le dernier refus de « Rejouer », en texte. */
+  /** Le dernier refus de « Rejouer » (ou de « Lancer » pour une action), en texte. */
   refus = $state<string | null>(null);
   /** Une demande « Lancer » ou « Rejouer » de ce constructeur n'a pas encore répondu. */
   private demande = $state(false);
@@ -118,17 +127,20 @@ export class Executions {
   }
 
   /**
-   * « ▶ Lancer » : une vraie exécution, choisie à sa fin ; sans id rendu (agent arrêté…), le choix reste. Si c'est la
+   * « ▶ Lancer » (avec la saisie d'une action) : une vraie exécution, choisie à sa fin ; sans id rendu (agent arrêté,
+   * refus d'une action, montré), le choix reste. Si c'est la
    * dernière vraie, le choix redevient celui par défaut : les exécutions suivantes le reprennent.
    */
-  async lancer(): Promise<void> {
+  async lancer(saisie?: string | null): Promise<void> {
     if (!this.lanceur || this.occupe) return;
     this.demande = true;
     this.refus = null;
     let execution: string | undefined;
     try {
-      execution = (await this.lanceur.lancer(this.widget)).execution;
+      const r = saisie === undefined ? await this.lanceur.lancer(this.widget) : await this.lanceur.lancer(this.widget, saisie);
+      execution = r.execution;
       if (execution !== undefined) this.garder(execution);
+      else if (r.erreur) this.refus = r.erreur;
     } catch (e) {
       console.error(`[webaios] exécution du widget ${this.widget} :`, e);
     } finally {
