@@ -664,3 +664,28 @@ test("fermer l'onglet pendant l'exécution : le résultat apparaît dans les ré
     await fermer();
   }
 });
+
+test("une exécution qui n'existe plus : « Ce résultat n'existe plus » et le dernier résultat à un clic ; une action inconnue le dit", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "annonces", { nom: "Annonces", code: "export default async () => ({});" });
+  const DERNIERE = "2026-10-31T08-00-00-000Z";
+  ecrireResultat(profil, "annonces", DERNIERE, "2026-10-31T08:00:00.000Z", "Dernier");
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const prompts = ollama.prompts.length;
+    await ouvrirAction(fenetre, "annonces", "Annonces", "2026-10-01T08-00-00-000Z");
+    await expect(fenetre.getByTestId("resultat-disparu")).toContainText("Ce résultat n'existe plus");
+    await expect(fenetre.getByTestId("rendu-page")).toHaveCount(0);
+    await fenetre.getByTestId("voir-dernier-resultat").click();
+    await expect(fenetre.getByTestId("bloc-titre")).toHaveText("Dernier");
+    await expect(fenetre.getByTestId("resultat-disparu")).toHaveCount(0);
+    await ouvrirOnglet(fenetre, "webaios://action/inconnue");
+    await expect(fenetre.getByTestId("erreur-action")).toHaveText("Action inconnue");
+    expect(ollama.prompts.length).toBe(prompts);
+    expect(executionsSurDisque(profil, "annonces")).toEqual([`${DERNIERE}.json`]);
+  } finally {
+    await fermer();
+  }
+});

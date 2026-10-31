@@ -1,6 +1,6 @@
-import { AUCUN_RESULTAT as AUCUN_RESULTAT_NOYAU, MENTION_SECOURS as MENTION_SECOURS_NOYAU } from "@webaios/noyau";
+import { ACTION_INCONNUE as ACTION_INCONNUE_NOYAU, AUCUN_RESULTAT as AUCUN_RESULTAT_NOYAU, MENTION_SECOURS as MENTION_SECOURS_NOYAU } from "@webaios/noyau";
 import { expect, test } from "vitest";
-import { AUCUN_RESULTAT, MENTION_SECOURS } from "../../src/commun/actions";
+import { ACTION_INCONNUE, AUCUN_RESULTAT, MENTION_SECOURS } from "../../src/commun/actions";
 import { trierLignes } from "../../src/renderer/action/tri";
 
 const lignes = (...v: string[]) => v.map((x) => ({ c: x }));
@@ -32,5 +32,6 @@ test("ne modifie pas la liste donnée", () => {
 
 test("les messages de la page sont ceux du noyau", () => {
   expect(MENTION_SECOURS).toBe(MENTION_SECOURS_NOYAU);
+  expect(ACTION_INCONNUE).toBe(ACTION_INCONNUE_NOYAU);
   expect(AUCUN_RESULTAT).toBe(AUCUN_RESULTAT_NOYAU);
 });

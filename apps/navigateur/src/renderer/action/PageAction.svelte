@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { EtatActions, PageAction, ResumeExecution } from "@webaios/noyau";
-  import { AUCUN_RESULTAT, type ActionAffichee } from "../../commun/actions";
+  import { ACTION_INCONNUE, AUCUN_RESULTAT, RESULTAT_DISPARU, type ActionAffichee } from "../../commun/actions";
   import CarteAccordCompte from "../composants/CarteAccordCompte.svelte";
   import { api } from "../etat.svelte";
   import AvancementAction from "./AvancementAction.svelte";
@@ -36,6 +36,10 @@
 
   let generation = 0;
   let relecture: ReturnType<typeof setTimeout> | undefined;
+  /** Relectures faites (au plus RELECTURES_MAX) ; plus aucune une fois que le noyau a servi une page. */
+  let relectures = 0;
+  let noyauPret = false;
+  const RELECTURES_MAX = 15;
   let demontee = false;
   async function charger() {
     const g = ++generation;
@@ -61,7 +65,12 @@
       }
       // Au démarrage (session restaurée), l'agent n'est peut-être pas prêt : l'action ou ses résultats ne sont pas encore
       // servis alors que des exécutions sont sur le disque. Relu un peu plus tard (lecture seule, rien n'est lancé).
-      if (action === null || (gardees.length > 0 && !page && !sansResultat)) relecture = setTimeout(() => void charger(), 2000);
+      if (page || sansResultat) noyauPret = true;
+      const incomplet = action === null || (gardees.length > 0 && !page && !sansResultat);
+      if (incomplet && !noyauPret && relectures < RELECTURES_MAX) {
+        relectures++;
+        relecture = setTimeout(() => void charger(), 2000);
+      }
     } catch (e) {
       console.error(`[webaios] page de l'action ${id} :`, e);
     }
@@ -141,7 +150,7 @@
 
 <div class="defile" data-testid="page-action">
   {#if action === null}
-    <p class="message erreur" data-testid="erreur-action">Action inconnue</p>
+    <p class="message erreur" data-testid="erreur-action">{ACTION_INCONNUE}</p>
   {:else if action}
     <EnTeteAction
       nom={action.nom}
@@ -170,7 +179,14 @@
       {:else if derniereSansResultat?.erreur ?? lue?.erreur}
         <p class="message erreur" data-testid="erreur-action">{derniereSansResultat?.erreur ?? lue?.erreur}</p>
       {/if}
-      {#if lue === null && !derniereSansResultat && !action.saisie && !besoinAccord && !erreurLancement}
+      {#if lue === null && execution !== null}
+        <div class="message disparu" data-testid="resultat-disparu">
+          <p>{RESULTAT_DISPARU}</p>
+          {#if precedentes && precedentes.length > 0}
+            <button data-testid="voir-dernier-resultat" onclick={() => choisir(precedentes![0]!.id)}>Voir le dernier résultat</button>
+          {/if}
+        </div>
+      {:else if lue === null && !derniereSansResultat && !action.saisie && !besoinAccord && !erreurLancement}
         <p class="message" data-testid="pas-de-resultat">Pas encore de résultat</p>
       {:else if lue?.page?.vide}
         <p class="message" data-testid="aucun-resultat">{AUCUN_RESULTAT}</p>
@@ -196,6 +212,9 @@
   .defile { position: absolute; inset: 0; overflow: auto; }
   .message { max-width: 960px; box-sizing: border-box; margin: 16px auto 0; padding: 0 24px; color: var(--texte-doux); font-size: 14px; }
   .erreur { color: var(--en-erreur); overflow-wrap: anywhere; }
+  .disparu { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .disparu p { margin: 0; }
+  .disparu button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }
   .accord { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .accord p { margin: 0; color: var(--texte); }
   .accord button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }

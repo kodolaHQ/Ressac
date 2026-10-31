@@ -8,6 +8,10 @@ export const lectureDe = (hote: string) => `Lecture de ${hote}…`;
 /** Recopiés du noyau (pages/resoudre.ts ; un test vérifie l'égalité) : l'interface n'en importe que des types. */
 export const MENTION_SECOURS = "mise en page simple";
 export const AUCUN_RESULTAT = "Aucun résultat";
+/** Recopié du noyau (actions/executer.ts ; même test d'égalité). */
+export const ACTION_INCONNUE = "Action inconnue";
+/** Une page `webaios://action/<id>/<exécution>` dont l'exécution a été effacée (ou n'a jamais existé). */
+export const RESULTAT_DISPARU = "Ce résultat n'existe plus";
 
 /** Images des résultats d'une action, cherchées par le process principal (voir main/agent/actions.ts). */
 export const SCHEMA_IMAGE = "webaios-image";
