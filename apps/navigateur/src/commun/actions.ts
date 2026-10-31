@@ -38,6 +38,8 @@ export type ActionAffichee = {
   saisie: { libelle: string } | null;
   /** Domaines lus avec le compte de l'utilisateur (vide : sources publiques seulement). */
   compte: string[];
+  /** Sites publics que l'action contacte (montrés sur la carte d'accord du compte). */
+  publiques: string[];
   /** L'accord du compte est donné. */
   accord: boolean;
   /** La plus récente vraie exécution (pas un essai). */

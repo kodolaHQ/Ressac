@@ -150,7 +150,7 @@ export async function lireActionsAffichees(c: CheminsEspace, dossierActions: str
     lues.map(async (a): Promise<ActionAffichee> => {
       const derniere = (await listerExecutions(join(dossierActions, a.id))).find((e) => !e.essai && !e.id.endsWith("-essai"));
       const dernier = derniere ? { execution: derniere.id, debut: derniere.debut, statut: derniere.statut } : null;
-      if ("erreur" in a) return { id: a.id, nom: a.id, description: "", motsCles: [], saisie: null, compte: [], accord: false, dernier, erreur: a.erreur };
+      if ("erreur" in a) return { id: a.id, nom: a.id, description: "", motsCles: [], saisie: null, compte: [], publiques: [], accord: false, dernier, erreur: a.erreur };
       const d = a.declaration;
       return {
         id: a.id,
@@ -159,6 +159,7 @@ export async function lireActionsAffichees(c: CheminsEspace, dossierActions: str
         motsCles: d.motsCles,
         saisie: d.saisie ?? null,
         compte: d.sources.compte,
+        publiques: d.sources.publiques,
         accord: Object.hasOwn(accords, a.id),
         dernier,
       };

@@ -209,6 +209,8 @@ describe("executerAction", () => {
     // Le code de l'agent a reçu la saisie (envoyée dans debut).
     expect(res?.resultats).toEqual({ annonces: [{ titre: "clio lyon" }] });
     expect(res?.saisie).toBe("clio lyon");
+    // Le résumé aussi la porte (menu des résultats précédents de la page de l'action).
+    expect((await listerExecutions(join(b.dossierActions, "leboncoin")))[0]?.saisie).toBe("clio lyon");
   });
 
   it("une saisie trop longue est coupée à 200 caractères", async () => {

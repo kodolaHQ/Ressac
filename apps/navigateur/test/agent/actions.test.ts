@@ -315,8 +315,8 @@ test("lireActionsAffichees : déclaration, accord, dernier résultat (pas un ess
   expect(liste.map((a) => a.id)).toEqual(["cassee", "gitlab", "leboncoin"]);
   expect(liste[0]).toMatchObject({ id: "cassee", nom: "cassee", motsCles: [], saisie: null, compte: [], accord: false, dernier: null });
   expect(liste[0]!.erreur).toBeTruthy();
-  expect(liste[1]).toEqual({ id: "gitlab", nom: "GitLab", description: "Mes tickets", motsCles: ["tickets"], saisie: null, compte: ["gitlab.com"], accord: false, dernier: null });
-  expect(liste[2]).toEqual({ id: "leboncoin", nom: "Leboncoin", description: "", motsCles: [], saisie: { libelle: "Recherche" }, compte: [], accord: false, dernier: { execution: ex, debut: DEBUT, statut: "reussie" } });
+  expect(liste[1]).toEqual({ id: "gitlab", nom: "GitLab", description: "Mes tickets", motsCles: ["tickets"], saisie: null, compte: ["gitlab.com"], publiques: [], accord: false, dernier: null });
+  expect(liste[2]).toEqual({ id: "leboncoin", nom: "Leboncoin", description: "", motsCles: [], saisie: { libelle: "Recherche" }, compte: [], publiques: [], accord: false, dernier: { execution: ex, debut: DEBUT, statut: "reussie" } });
 });
 
 // --- Le service : refus en espace privé, ouverture et lancement ---

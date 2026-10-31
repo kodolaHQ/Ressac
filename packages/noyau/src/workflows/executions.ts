@@ -48,7 +48,7 @@ export const Execution = z.object({
 });
 export type Execution = Omit<z.infer<typeof Execution>, "proprietaire"> & { proprietaire: Proprietaire };
 
-export type ResumeExecution = Pick<Execution, "id" | "declencheur" | "debut" | "fin" | "statut" | "essai"> & {
+export type ResumeExecution = Pick<Execution, "id" | "declencheur" | "debut" | "fin" | "statut" | "essai" | "saisie"> & {
   blocs: { id: string; statut: TraceBloc["statut"]; elements: number | null }[];
 };
 
@@ -183,6 +183,7 @@ function resumer(e: Execution): ResumeExecution {
     id: e.id,
     declencheur: e.declencheur,
     ...(e.essai ? { essai: e.essai } : {}),
+    ...(e.saisie !== undefined ? { saisie: e.saisie } : {}),
     debut: e.debut,
     fin: e.fin,
     statut: e.statut,

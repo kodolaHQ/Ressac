@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { lancer, nouveauProfil, nouvelleRacine } from "./aide";
+import { lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive } from "./aide";
 
 // Les actions de bout en bout (plan 14). La page d'une action est servie depuis un résultat écrit par le test dans
 // `<profil>/actions/<id>/…` (exécution et résultat), sans conteneur ni Gemma : rouvrir une page ne relance rien.
@@ -265,6 +265,401 @@ test("composant de l'agent : sa hauteur suit son message ; un composant absent m
     await expect(fenetre.getByTestId("bloc-erreur")).toHaveText("Composant indisponible : absent");
     await expect(fenetre.getByText("Après le composant.")).toBeVisible();
     await expect(fenetre.getByTestId("bloc-titre")).toHaveText("Priorités");
+  } finally {
+    await fermer();
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// La page de l'action (tâche 13) : de vraies exécutions, avec le faux docker (le moteur tourne sur le Mac), un site lent
+// servi en local et un faux Ollama (Gemma) qui note chaque consigne. Rouvrir une page ne lance rien.
+
+interface Serveur {
+  url: string;
+  journal: string[];
+  fermer(): Promise<void>;
+}
+
+async function ecouter(gerer: (req: IncomingMessage, res: ServerResponse, corps: string) => void): Promise<Serveur> {
+  const journal: string[] = [];
+  const serveur = createServer((req, res) => {
+    journal.push(req.url ?? "/");
+    let corps = "";
+    req.on("data", (d) => (corps += d));
+    req.on("end", () => gerer(req, res, corps));
+  });
+  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  return {
+    url: `http://127.0.0.1:${(serveur.address() as AddressInfo).port}`,
+    journal,
+    fermer: () =>
+      new Promise((ok) => {
+        serveur.closeAllConnections();
+        serveur.close(() => ok());
+      }),
+  };
+}
+
+/** Réglages des faux serveurs, remis à chaque test (les tests d'un fichier tournent l'un après l'autre). */
+const reglages = { lenteurSiteMs: 0, lenteurGemmaMs: 0 };
+/** Le plan que rend le faux Gemma : un titre, puis la liste des pages lues. */
+const PLAN_GEMMA = {
+  blocs: [
+    { composant: "titre", props: { texte: "Pages lues" } },
+    { composant: "liste", props: { elements: "$", titre: "page.titre" } },
+  ],
+};
+
+let site: Serveur;
+let ollama: Serveur & { prompts: string[] };
+
+test.beforeAll(async () => {
+  site = await ecouter((req, res) => {
+    const n = /^\/lent\/(\d+)$/.exec(new URL(req.url ?? "/", "http://x").pathname)?.[1];
+    if (!n) return void res.writeHead(404).end();
+    setTimeout(() => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<title>Page ${n}</title><p>Texte ${n}</p>`), reglages.lenteurSiteMs);
+  });
+  const prompts: string[] = [];
+  const serveur = await ecouter((req, res, corps) => {
+    if (req.url !== "/api/chat") return void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}');
+    prompts.push(String((JSON.parse(corps) as { messages: { content: string }[] }).messages[0]?.content));
+    setTimeout(
+      () => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ message: { content: JSON.stringify(PLAN_GEMMA) } })),
+      reglages.lenteurGemmaMs,
+    );
+  });
+  ollama = Object.assign(serveur, { prompts });
+});
+test.afterAll(async () => {
+  await Promise.all([site, ollama].map((s) => s?.fermer()));
+});
+test.beforeEach(() => {
+  reglages.lenteurSiteMs = 0;
+  reglages.lenteurGemmaMs = 0;
+});
+
+const lancerActions = (racine: string, profil: string) =>
+  lancer({ racine, profil, env: { WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_KEV_URL: ollama.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+
+/** Une action exécutable : `action.json`, `workflow.json` (un bloc `code`, des blocs entre, puis la sortie vers la page). */
+function ecrireActionExecutable(
+  racine: string,
+  id: string,
+  o: { nom: string; code: string; compte?: string[]; saisie?: string; blocs?: { id: string; type: string; parametres: Record<string, unknown> }[] },
+): void {
+  const dossier = join(racine, "actions", id);
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(
+    join(dossier, "action.json"),
+    JSON.stringify({ nom: o.nom, sources: { compte: o.compte ?? [], publiques: [] }, ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}) }),
+  );
+  const blocs = [{ id: "liste", type: "code", parametres: { source: "liste.mjs" } }, ...(o.blocs ?? []), { id: "sortie", type: "sortie", parametres: { vers: "page" } }];
+  writeFileSync(
+    join(dossier, "workflow.json"),
+    JSON.stringify({ version: 1, blocs, liens: blocs.slice(1).map((b, i) => ({ de: blocs[i]!.id, vers: b.id })) }),
+  );
+  writeFileSync(join(dossier, "liste.mjs"), o.code);
+}
+
+/** Trois pages du site lent, lues une par une (un bloc par élément) : « Lecture de 127.0.0.1… » puis « 3 / 3 ». */
+function ecrireActionPages(racine: string, id = "pages", nom = "Pages"): void {
+  ecrireActionExecutable(racine, id, {
+    nom,
+    code: `export default async () => [1, 2, 3].map((n) => ({ url: "${site.url}/lent/" + n }));`,
+    blocs: [{ id: "lecture", type: "source.page", parametres: { url: "{url}", parElement: true, champ: "page" } }],
+  });
+}
+
+/** Exécutions finies écrites sur disque pour cette action (sans les fichiers temporaires). */
+const executionsSurDisque = (profil: string, id: string) => {
+  const dossier = join(profil, "actions", id, "executions");
+  return existsSync(dossier) ? readdirSync(dossier).filter((f) => f.endsWith(".json")).sort() : [];
+};
+
+const SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
+/** Attend que le noyau serve les actions (une action inconnue est alors refusée comme telle). */
+async function attendreNoyau(fenetre: Page): Promise<void> {
+  await expect
+    .poll(() => fenetre.evaluate((m) => window.webaios.actions.lancer("inconnue-du-test", null).then((r) => r.erreur !== m), SANS_NOYAU), { timeout: 30_000 })
+    .toBe(true);
+}
+
+/** Ouvre la page de l'action (le dernier résultat, ou `execution`) sans rien lancer. */
+async function ouvrirAction(fenetre: Page, id: string, nom: string, execution?: string): Promise<void> {
+  await fenetre.evaluate(
+    ([id, nom, execution]) =>
+      window.webaios.agir({ type: "ouvrirAction", fenetreId: window.webaios.fenetreId, id, nom, ...(execution ? { execution } : {}) }),
+    [id, nom, execution] as const,
+  );
+  await expect(fenetre.getByTestId("page-action")).toBeVisible();
+}
+
+test("pendant l'exécution, « Lecture de 127.0.0.1… » puis « 3 / 3 » puis « Mise en page… », puis la page", async () => {
+  test.setTimeout(90_000);
+  reglages.lenteurSiteMs = 1500;
+  reglages.lenteurGemmaMs = 2500;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionPages(racine);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const prompts = ollama.prompts.length;
+    await ouvrirAction(fenetre, "pages", "Pages");
+    // Ouvrir la page ne lance rien.
+    await expect(fenetre.getByTestId("pas-de-resultat")).toHaveText("Pas encore de résultat");
+    await expect(fenetre.getByTestId("nom-action")).toHaveText("Pages");
+    await fenetre.waitForTimeout(500);
+    expect(executionsSurDisque(profil, "pages")).toEqual([]);
+    await fenetre.getByTestId("relancer-action").click();
+    const avancement = fenetre.getByTestId("avancement-action");
+    await expect(avancement.getByText("Lecture de 127.0.0.1…")).toBeVisible({ timeout: 30_000 });
+    await expect(avancement.getByTestId("compteur-bloc")).toHaveText("3 / 3", { timeout: 30_000 });
+    await expect(avancement.getByTestId("mise-en-page")).toHaveText("Mise en page…", { timeout: 30_000 });
+    await expect(fenetre.getByTestId("rendu-page")).toBeVisible({ timeout: 30_000 });
+    await expect(fenetre.getByTestId("bloc-titre")).toHaveText("Pages lues");
+    await expect(fenetre.getByTestId("bloc-liste")).toContainText("Page 2");
+    await expect(avancement).toHaveCount(0);
+    await expect(fenetre.getByTestId("heure-resultat")).not.toBeEmpty();
+    expect(ollama.prompts.length).toBe(prompts + 1);
+    expect(executionsSurDisque(profil, "pages")).toHaveLength(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Arrêter : la page dit « Arrêtée à ta demande »", async () => {
+  test.setTimeout(90_000);
+  reglages.lenteurSiteMs = 4000;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionPages(racine);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirAction(fenetre, "pages", "Pages");
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("avancement-action").getByText("Lecture de 127.0.0.1…")).toBeVisible({ timeout: 30_000 });
+    await fenetre.getByTestId("arreter-action").click();
+    await expect(fenetre.getByTestId("erreur-action")).toHaveText("Arrêtée à ta demande", { timeout: 30_000 });
+    await expect(fenetre.getByTestId("avancement-action")).toHaveCount(0);
+  } finally {
+    await fermer();
+  }
+});
+
+test("relancer pendant l'exécution n'en démarre pas une seconde (une seule exécution écrite)", async () => {
+  test.setTimeout(90_000);
+  reglages.lenteurSiteMs = 1500;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionPages(racine);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirAction(fenetre, "pages", "Pages");
+    const relancer = fenetre.getByTestId("relancer-action");
+    await relancer.click();
+    await expect(fenetre.getByTestId("avancement-action")).toBeVisible({ timeout: 30_000 });
+    // Le bouton est grisé pendant l'exécution ; un lancement de plus (l'agent, une autre fenêtre) rend la même exécution.
+    await expect(relancer).toBeDisabled();
+    const [a, b] = await fenetre.evaluate(() => Promise.all([window.webaios.actions.lancer("pages", null), window.webaios.actions.lancer("pages", null)]));
+    expect(a.execution).toBeTruthy();
+    expect(b.execution).toBe(a.execution);
+    await expect(fenetre.getByTestId("rendu-page")).toBeVisible({ timeout: 30_000 });
+    await expect(relancer).toBeEnabled();
+    expect(executionsSurDisque(profil, "pages")).toHaveLength(1);
+  } finally {
+    await fermer();
+  }
+});
+
+/** Une exécution finie et son résultat (un titre), écrits sur disque. */
+function ecrireResultat(profil: string, id: string, execution: string, debut: string, titre: string, saisie: string | null = null): void {
+  const donnees = join(profil, "actions", id);
+  mkdirSync(join(donnees, "executions"), { recursive: true });
+  mkdirSync(join(donnees, "resultats"), { recursive: true });
+  writeFileSync(
+    join(donnees, "executions", `${execution}.json`),
+    JSON.stringify({
+      version: 1,
+      id: execution,
+      proprietaire: { type: "action", id },
+      declencheur: "manuelle",
+      debut,
+      fin: debut,
+      statut: "reussie",
+      ...(saisie ? { saisie } : {}),
+      blocs: [],
+    }),
+  );
+  writeFileSync(
+    join(donnees, "resultats", `${execution}.json`),
+    JSON.stringify({
+      version: 1,
+      execution,
+      saisie,
+      resultats: { titre },
+      plan: { blocs: [{ composant: "titre", props: { texte: titre } }] },
+      secours: false,
+      vide: false,
+    }),
+  );
+}
+
+test("menu des résultats précédents : rouvrir l'exécution d'hier ne lance rien (aucun prompt de plus au faux Ollama)", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "annonces", { nom: "Annonces", saisie: "Recherche", code: "export default async () => ({});" });
+  const HIER = "2026-10-30T08-00-00-000Z";
+  const AUJOURDHUI = "2026-10-31T08-00-00-000Z";
+  ecrireResultat(profil, "annonces", HIER, "2026-10-30T08:00:00.000Z", "Hier", "clio lyon");
+  ecrireResultat(profil, "annonces", AUJOURDHUI, "2026-10-31T08:00:00.000Z", "Aujourd'hui", "208 paris");
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const prompts = ollama.prompts.length;
+    await ouvrirAction(fenetre, "annonces", "Annonces");
+    await expect(fenetre.getByTestId("bloc-titre")).toHaveText("Aujourd'hui");
+    await expect(fenetre.getByTestId("saisie-action")).toHaveValue("208 paris");
+    await fenetre.getByTestId("resultats-precedents").click();
+    const hier = fenetre.getByTestId(`resultat-${HIER}`);
+    await expect(hier).toContainText("clio lyon");
+    await expect(hier).toContainText("réussie");
+    await hier.click();
+    await expect(fenetre.getByTestId("bloc-titre")).toHaveText("Hier");
+    await expect(fenetre.getByTestId("saisie-action")).toHaveValue("clio lyon");
+    await fenetre.waitForTimeout(500);
+    expect(ollama.prompts.length).toBe(prompts);
+    expect(executionsSurDisque(profil, "annonces")).toEqual([`${HIER}.json`, `${AUJOURDHUI}.json`]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("workflow en échec : le message s'affiche", async () => {
+  test.setTimeout(60_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "cassee", { nom: "Cassée", code: `export default async () => { throw new Error("Site indisponible"); };` });
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const prompts = ollama.prompts.length;
+    await ouvrirAction(fenetre, "cassee", "Cassée");
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("erreur-action")).toContainText("Site indisponible", { timeout: 30_000 });
+    expect(ollama.prompts.length).toBe(prompts);
+  } finally {
+    await fermer();
+  }
+});
+
+test("résultats vides : « Aucun résultat », aucun prompt", async () => {
+  test.setTimeout(60_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "vide", { nom: "Vide", code: "export default async () => ({ tickets: [] });" });
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const prompts = ollama.prompts.length;
+    await ouvrirAction(fenetre, "vide", "Vide");
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("aucun-resultat")).toHaveText("Aucun résultat", { timeout: 30_000 });
+    expect(ollama.prompts.length).toBe(prompts);
+    expect(executionsSurDisque(profil, "vide")).toHaveLength(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("action avec compte sans accord : la carte, puis l'exécution après accord", async () => {
+  test.setTimeout(60_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "courrier", {
+    nom: "Courrier",
+    compte: ["127.0.0.1"],
+    code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });`,
+  });
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirAction(fenetre, "courrier", "Courrier");
+    const carte = fenetre.getByTestId("carte-accord");
+    await expect(carte.getByRole("heading")).toHaveText("Autoriser l'action « Courrier » à lire avec ton compte");
+    await expect(carte.getByTestId("accord-compte")).toHaveText("Cette action veut lire 127.0.0.1 avec ton compte, connecté avec le profil choisi.");
+    await expect(carte.getByRole("radio", { checked: true })).toHaveValue("defaut");
+    // Rien n'est lancé tant que l'utilisateur n'a pas accordé.
+    await fenetre.waitForTimeout(500);
+    expect(executionsSurDisque(profil, "courrier")).toEqual([]);
+    await carte.getByRole("button", { name: "Autoriser" }).click();
+    await expect(carte).toHaveCount(0);
+    await expect(fenetre.getByTestId("rendu-page")).toBeVisible({ timeout: 30_000 });
+    await expect(fenetre.getByTestId("rendu-page")).toContainText("Bonjour");
+    expect(executionsSurDisque(profil, "courrier")).toHaveLength(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("onglet webaios://action/x dans un espace privé : ACTIONS_EN_ESPACE_PRIVE, rien de lancé", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "x", { nom: "X", code: "export default async () => ({ a: 1 });" });
+  ecrireResultat(profil, "x", "2026-10-31T08-00-00-000Z", "2026-10-31T08:00:00.000Z", "Secret");
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    const prompts = ollama.prompts.length;
+    await reglerEspaceActifPrive(fenetre, true);
+    await ouvrirOnglet(fenetre, "webaios://action/x");
+    await expect(fenetre.getByTestId("action-espace-prive")).toHaveText("Les actions ne sont pas disponibles dans un espace privé");
+    await expect(fenetre.getByTestId("page-action")).toHaveCount(0);
+    await expect(fenetre.getByText("Secret")).toHaveCount(0);
+    await fenetre.waitForTimeout(500);
+    expect(executionsSurDisque(profil, "x")).toEqual(["2026-10-31T08-00-00-000Z.json"]);
+    expect(ollama.prompts.length).toBe(prompts);
+  } finally {
+    await fermer();
+  }
+});
+
+test("fermer l'onglet pendant l'exécution : le résultat apparaît dans les résultats précédents", async () => {
+  test.setTimeout(90_000);
+  reglages.lenteurSiteMs = 1500;
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionPages(racine);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirAction(fenetre, "pages", "Pages");
+    await fenetre.getByTestId("relancer-action").click();
+    await expect(fenetre.getByTestId("avancement-action")).toBeVisible({ timeout: 30_000 });
+    // Fermer l'onglet n'arrête pas l'exécution.
+    await fenetre.evaluate(
+      () =>
+        new Promise<void>((ok) => {
+          const fin = window.webaios.surEtat((e) => {
+            setTimeout(() => fin());
+            const id = Object.values(e.onglets).find((o) => o.url.startsWith("webaios://action/pages"))!.id;
+            window.webaios.agir({ type: "fermerOnglet", id });
+            ok();
+          });
+        }),
+    );
+    await expect(fenetre.getByTestId("page-action")).toHaveCount(0);
+    await expect.poll(() => executionsSurDisque(profil, "pages").length, { timeout: 60_000 }).toBe(1);
+    const execution = executionsSurDisque(profil, "pages")[0]!.replace(/\.json$/, "");
+    await expect
+      .poll(() => fenetre.evaluate(() => window.webaios.actions.direct().then((d) => d.courantes.length)), { timeout: 30_000 })
+      .toBe(0);
+    await ouvrirAction(fenetre, "pages", "Pages");
+    await expect(fenetre.getByTestId("rendu-page")).toBeVisible();
+    await fenetre.getByTestId("resultats-precedents").click();
+    await expect(fenetre.getByTestId(`resultat-${execution}`)).toContainText("réussie");
   } finally {
     await fermer();
   }

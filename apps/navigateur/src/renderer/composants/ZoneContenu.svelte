@@ -1,10 +1,11 @@
 <script lang="ts">
   import { actionDeUrl, URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
-  import RenduPage from "../action/RenduPage.svelte";
+  import { ACTIONS_EN_ESPACE_PRIVE } from "../../commun/actions";
+  import PageAction from "../action/PageAction.svelte";
   import Applications from "./Applications.svelte";
   import Extensions from "./Extensions.svelte";
   import Constructeur from "../constructeur/Constructeur.svelte";
-  import { acces, api, demandeDe } from "../etat.svelte";
+  import { acces, api, demandeDe, etat } from "../etat.svelte";
   import { estDemandeAgent, modale } from "./modale.svelte";
   import DemandePermission from "./DemandePermission.svelte";
   import { recherche } from "./recherche.svelte";
@@ -24,11 +25,14 @@
   // Les questions des sites ; celles de l'agent s'ouvrent en modale (App.svelte).
   const demande = $derived(demandeDe(fenetre, onglet));
   const widgetWorkflow = $derived(onglet ? widgetDeUrlWorkflow(onglet.url) : null);
-  // Page d'une action, en lecture seule (rien n'est lancé) ; relue quand une action ou un dernier résultat change.
-  // Provisoire : la vraie page de l'action (PageAction, plan 14 tâche 13) la remplace.
+  // Page d'une action : l'ouvrir ne lance rien. Refusée quand l'espace de l'onglet (ou celui affiché) est privé ; un
+  // espace introuvable compte comme privé.
   const pageAction = $derived(onglet ? actionDeUrl(onglet.url) : null);
-  let versionActions = $state(0);
-  $effect(() => api.actions.surChange(() => versionActions++));
+  const actionEnPrive = $derived.by(() => {
+    const espaces = etat.valeur?.espaces ?? [];
+    const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
+    return prive(fenetre?.espaceActif) || prive(onglet?.espaceId);
+  });
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
@@ -68,13 +72,11 @@
   {:else if widgetWorkflow}
     {#key widgetWorkflow}<Constructeur id={widgetWorkflow} />{/key}
   {:else if pageAction}
-    {#key `${pageAction.id}/${pageAction.execution}/${versionActions}`}
-      {#await api.actions.page(pageAction.id, pageAction.execution) then lue}
-        {#if lue?.page}
-          <div class="defile"><RenduPage page={lue.page} action={pageAction.id} execution={lue.execution} /></div>
-        {/if}
-      {/await}
-    {/key}
+    {#if actionEnPrive}
+      <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+    {:else}
+      {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
+    {/if}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>
@@ -93,7 +95,6 @@
 <style>
   .contenu { background: var(--fond); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .surface { flex: 1; position: relative; min-height: 0; }
-  .defile { position: absolute; inset: 0; overflow: auto; }
   .detail { color: var(--texte-doux); font-size: 12px; word-break: break-all; }
   .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
 </style>
