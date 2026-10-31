@@ -706,6 +706,21 @@ const espionnerReseau = (app: AppElectron) =>
   });
 const demandesReseau = (app: AppElectron) => app.evaluate(() => (globalThis as unknown as { demandes: string[] }).demandes);
 
+/** Compte, dans le process principal, les appels IPC qui demandent la liste des actions. */
+const espionnerListe = (app: AppElectron) =>
+  app.evaluate(({ ipcMain }) => {
+    const g = globalThis as unknown as { appelsListe: number };
+    g.appelsListe = 0;
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...a: unknown[]) => unknown> })._invokeHandlers;
+    const canal = "webaios:actions-liste";
+    const original = handlers.get(canal);
+    if (!original) throw new Error("gestionnaire de la liste des actions introuvable");
+    // Réenregistré par l'API publique : le gestionnaire d'origine reste appelé, après le comptage.
+    ipcMain.removeHandler(canal);
+    ipcMain.handle(canal, ((...a: unknown[]) => (g.appelsListe++, original(...a))) as Parameters<typeof ipcMain.handle>[1]);
+  });
+const appelsListe = (app: AppElectron) => app.evaluate(() => (globalThis as unknown as { appelsListe: number }).appelsListe);
+
 /** Deux actions : une sans saisie (mot-clé gitlab) et une avec saisie ; la fenêtre montre le nouvel onglet. */
 async function lancerAvecSuggestions(opt: { prive?: boolean } = {}) {
   const racine = nouvelleRacine();
@@ -715,6 +730,9 @@ async function lancerAvecSuggestions(opt: { prive?: boolean } = {}) {
   const o = await lancerActions(racine, profil);
   await attendreNoyau(o.fenetre);
   await espionnerReseau(o.app);
+  // Le compteur est posé avant l'ouverture du nouvel onglet (et avant le passage en espace privé) : toute demande de la
+  // liste faite par ce nouvel onglet est comptée.
+  await espionnerListe(o.app);
   if (opt.prive) await reglerEspaceActifPrive(o.fenetre, true);
   await o.fenetre.getByTestId("nouvel-onglet").click();
   await expect(o.fenetre.getByTestId("saisie-page-vide")).toBeVisible();
@@ -786,20 +804,30 @@ test("« leboncoin » puis Entrée : page avec le champ de saisie, rien de lanc�
   }
 });
 
-test("espace privé : aucune suggestion, la liste n'est même pas demandée", async () => {
-  const { fenetre, fermer } = await lancerAvecSuggestions({ prive: true });
+/** Une action de plus : le noyau signale le changement (`api.actions.surChange`), que PageVide n'écoute qu'hors espace privé. */
+const ajouterAction = (racine: string, id: string) =>
+  ecrireActionExecutable(racine, id, { nom: `Autre ${id}`, code: "export default async () => [];" });
+
+test("espace privé : aucune suggestion, la liste n'est même pas demandée (même quand les actions changent)", async () => {
+  const { app, fenetre, racine, fermer } = await lancerAvecSuggestions({ prive: true });
   try {
-    await fenetre.evaluate(() => {
-      const w = window as unknown as { webaios: { actions: { liste: () => unknown } }; __appels: number };
-      w.__appels = 0;
-      const liste = w.webaios.actions.liste.bind(w.webaios.actions);
-      w.webaios.actions.liste = () => (w.__appels++, liste());
-    });
-    const saisie = fenetre.getByTestId("saisie-page-vide");
-    await saisie.fill("git");
-    await fenetre.waitForTimeout(500);
+    ajouterAction(racine, "nouvelle");
+    await fenetre.getByTestId("saisie-page-vide").fill("autre");
+    await fenetre.waitForTimeout(1500);
     await expect(fenetre.getByTestId("suggestions-actions")).toHaveCount(0);
-    expect(await fenetre.evaluate(() => (window as unknown as { __appels: number }).__appels)).toBe(0);
+    expect(await appelsListe(app)).toBe(0);
+  } finally {
+    await fermer();
+  }
+});
+
+test("espace normal : un changement des actions redemande la liste (le compteur du process principal fonctionne)", async () => {
+  const { app, fenetre, racine, fermer } = await lancerAvecSuggestions();
+  try {
+    ajouterAction(racine, "nouvelle");
+    await expect.poll(() => appelsListe(app), { timeout: 15_000 }).toBeGreaterThan(0);
+    await fenetre.getByTestId("saisie-page-vide").fill("autre");
+    await expect(fenetre.getByTestId("suggestions-actions")).toContainText("Autre nouvelle");
   } finally {
     await fermer();
   }

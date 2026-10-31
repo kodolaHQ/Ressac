@@ -47,12 +47,25 @@
   const suggestions = $derived(enPrive || fermee ? [] : suggestionsActions(saisie, actions));
   const ligneHabituelle = $derived(/^\S+\.\S+$/.test(saisie.trim()) ? `Ouvrir ${saisie.trim()}` : `Rechercher « ${saisie.trim()} »`);
 
+  let refus = $state("");
+  const cles = $derived(suggestions.map((x) => x.id).join("\0"));
+  $effect(() => {
+    void cles;
+    choisie = -1;
+  });
   function valider(i: number) {
     const s = suggestions[i];
     if (s) {
-      saisie = "";
       choisie = -1;
-      void api.actions.ouvrir(s.id, s.saisie);
+      void api.actions.ouvrir(s.id, s.saisie).then(
+        (r) => {
+          if (r.ok) {
+            saisie = "";
+            refus = "";
+          } else refus = r.erreur;
+        },
+        () => (refus = "Le service des actions ne répond pas"),
+      );
     } else if (saisie.trim()) {
       api.naviguer(null, saisie.trim());
       saisie = "";
@@ -66,7 +79,7 @@
       choisie = (choisie + 1) % n;
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      choisie = (choisie - 1 + n) % n;
+      choisie = choisie < 0 ? n - 1 : choisie - 1;
     } else if (e.key === "Escape") {
       e.preventDefault();
       fermee = true;
@@ -89,8 +102,11 @@
       bind:value={saisie}
       oninput={() => {
         fermee = false;
+        refus = "";
         choisie = -1;
       }}
+      onblur={() => (fermee = true)}
+      onfocus={() => (fermee = false)}
       onkeydown={touche}
       data-testid="saisie-page-vide"
       placeholder="Rechercher ou saisir une adresse"
@@ -103,6 +119,7 @@
     {#if suggestions.length}
       <SuggestionsActions {suggestions} {ligneHabituelle} {choisie} choisir={(i) => valider(i)} />
     {/if}
+    {#if refus}<p class="refus" data-testid="refus-action">{refus}</p>{/if}
   </form>
   <Essentiels {fenetre} grand />
   <Accueil />
@@ -113,6 +130,7 @@
   .ia-locale { position: absolute; top: 12px; right: 16px; }
   form { width: min(560px, 80%); }
   input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); outline: none; }
+  .refus { margin: 6px 4px 0; color: var(--en-erreur); font-size: 13px; }
   input:focus { border-color: var(--accent); }
   .page-vide :global([data-testid="essentiels-page-vide"]) { width: min(560px, 80%); }
 </style>
