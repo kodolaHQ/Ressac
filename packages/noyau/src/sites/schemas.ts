@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 import { adresseLocale } from "../workflows/acces.js";
 
@@ -10,6 +11,10 @@ export const CADRES_MOTIFS =
   'retouches.cadres : false, ou une liste de motifs d\'adresses complètes (ex. ["https://*.lecteur.example/*"])';
 export const CORRESPOND_CHEMIN = 'retouches.correspond : des chemins qui commencent par « / » (ex. "/series/*")';
 export const fichierRetoucheIntrouvable = (f: string) => `retouches : fichier introuvable ou trop gros : ${f}`;
+export const DOMAINE_INVALIDE = "domaines, connexion : de vrais noms de domaine (avec un point), jamais une adresse IP ni locale";
+export const ERREUR_ID_SITE = "nom de dossier non pris en charge : minuscules, chiffres et tirets seulement, 60 caractères au plus (ex. mon-site)";
+/** L'id sert d'hôte de `webaios-site://<id>` et de partition `persist:site-<id>`. */
+export const ID_SITE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 export const HTTPS_SEULEMENT = "adresse : https seulement, jamais une adresse locale";
 
 /** Un hôte en minuscules : sans schéma, sans joker, sans port, sans chemin. */
@@ -27,11 +32,10 @@ const url = z.string().max(2048).refine((u) => {
   }
 }, "URL attendue");
 
-const CHEMIN_RETOUCHE = /^[A-Za-z0-9._/-]+\.(js|css)$/;
-const cheminRetouche = z
+const cheminRetouche = (extensions: RegExp, texte: string) => z
   .string()
   .max(200)
-  .regex(CHEMIN_RETOUCHE, "chemin relatif vers un .js ou .css")
+  .regex(extensions, texte)
   .refine((p) => !p.startsWith("/") && !p.split("/").some((s) => s === ".." || s === "." || s === ""), "chemin relatif sans « .. »");
 
 const motifCadre = z
@@ -42,8 +46,8 @@ const motifCadre = z
 const Retouche = z
   .object({
     correspond: z.array(z.string().max(500).refine((m) => m.startsWith("/"), CORRESPOND_CHEMIN)).min(1).max(20),
-    js: z.array(cheminRetouche).max(20).default([]),
-    css: z.array(cheminRetouche).max(20).default([]),
+    js: z.array(cheminRetouche(/^[A-Za-z0-9._/-]+\.(js|mjs)$/, "chemin relatif vers un .js ou .mjs")).max(20).default([]),
+    css: z.array(cheminRetouche(/^[A-Za-z0-9._/-]+\.css$/, "chemin relatif vers un .css")).max(20).default([]),
     cadres: z.union([z.literal(false), z.array(motifCadre).min(1).max(20)], { error: CADRES_MOTIFS }).default(false),
   })
   .strict();
@@ -89,6 +93,10 @@ export function verifierDeclarationSite(d: DeclarationSite, o: { adressesLocales
   const depart = adresseAcceptee(d.adresse, o.adressesLocales);
   if (!depart) return HTTPS_SEULEMENT;
   if (d.suiviAdresse && !adresseAcceptee(d.suiviAdresse.page, o.adressesLocales)) return HTTPS_SEULEMENT;
+  const vrai = (h: string) =>
+    !isIP(h) && h.includes(".") && !/\.\d+$/.test(h) && (o.adressesLocales || !adresseLocale(h));
+  if (![...d.domaines, ...d.connexion].every(vrai) || [...d.domaines, ...d.connexion].some((h) => h === "localhost" || h.endsWith(".")))
+    return DOMAINE_INVALIDE;
   const h = depart.hostname.toLowerCase();
   if (!d.domaines.some((dom) => h === dom || h.endsWith(`.${dom}`))) return ADRESSE_HORS_DOMAINES;
   return null;
