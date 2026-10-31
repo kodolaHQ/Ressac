@@ -898,6 +898,12 @@ test("Lancer ouvre la page de l'action ; une action à saisie la demande en lign
     const saisie = fenetre.getByTestId("saisie-leboncoin");
     await expect(saisie).toBeVisible();
     await expect(fenetre.getByTestId("page-action")).toHaveCount(0);
+    // Saisie vide : rien n'est lancé, le champ reste avec son message.
+    await saisie.press("Enter");
+    await expect(fenetre.getByTestId("refus-actions")).toHaveText("Saisie requise : Recherche");
+    await expect(saisie).toBeVisible();
+    await expect(fenetre.getByTestId("page-action")).toHaveCount(0);
+    expect(executionsSurDisque(profil, "leboncoin")).toHaveLength(0);
     await saisie.fill("vélo");
     await saisie.press("Enter");
     await expect(fenetre.getByTestId("page-action")).toBeVisible();
@@ -936,6 +942,10 @@ test("Supprimer : le dossier part dans actions/.corbeille, l'accord et les résu
     await expect(fenetre.getByTestId("retirer-accord-compte")).toBeVisible();
     await fenetre.getByTestId("supprimer-compte").click();
     await expect(fenetre.getByTestId("confirmation-suppression-action")).toContainText("Avec compte");
+    // La confirmation couvre toute la fenêtre, dont les zones de glisser de macOS (les clics CDP l'ignorent).
+    for (const id of ["voile-suppression-action", "confirmation-suppression-action"]) {
+      expect(await fenetre.getByTestId(id).evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-app-region"))).toBe("no-drag");
+    }
     // Annuler ne supprime rien.
     await fenetre.getByTestId("annuler-suppression-action").click();
     await expect(fenetre.getByTestId("ligne-action-compte")).toBeVisible();
@@ -963,6 +973,12 @@ test("Retirer l'accord : le bouton disparaît, résultats effacés", async () =>
     await attendreNoyau(fenetre);
     await ouvrirPageActions(fenetre);
     await fenetre.getByTestId("retirer-accord-compte").click();
+    // Annuler garde l'accord et les résultats.
+    await fenetre.getByTestId("annuler-suppression-action").click();
+    await expect(fenetre.getByTestId("retirer-accord-compte")).toBeVisible();
+    expect(existsSync(join(profil, "actions", "compte", "resultats", `${EXECUTION}.json`))).toBe(true);
+    await fenetre.getByTestId("retirer-accord-compte").click();
+    await fenetre.getByTestId("confirmer-suppression-action").click();
     await expect(fenetre.getByTestId("retirer-accord-compte")).toHaveCount(0);
     await expect(fenetre.getByTestId("dernier-compte")).toContainText("Jamais lancée");
     expect(existsSync(join(profil, "actions", "compte", "resultats", `${EXECUTION}.json`))).toBe(false);

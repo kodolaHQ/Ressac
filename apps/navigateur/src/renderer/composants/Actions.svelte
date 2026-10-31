@@ -12,6 +12,9 @@
     "accord-requis": "Accord requis",
   };
 
+  /** Même texte que le noyau (actions/executer.ts). */
+  const saisieRequise = (libelle: string) => `Saisie requise : ${libelle}`;
+
   let liste = $state<ActionAffichee[]>([]);
   let chargee = $state(false);
   let requete = 0;
@@ -19,7 +22,7 @@
   let saisieDe = $state<string | null>(null);
   let saisie = $state("");
   /** Action dont la suppression attend la confirmation de l'utilisateur. */
-  let aSupprimer = $state<ActionAffichee | null>(null);
+  let aConfirmer = $state<{ action: ActionAffichee; genre: "supprimer" | "accord" } | null>(null);
   /** Refus rendu par le process principal (ouverture, suppression), montré au-dessus de la liste. */
   let refus = $state<string | null>(null);
 
@@ -38,6 +41,11 @@
 
   async function lancer(a: ActionAffichee, texte: string | null) {
     refus = null;
+    // Saisie requise et vide : le champ reste ouvert avec son message, rien n'est lancé.
+    if (a.saisie && !texte?.trim()) {
+      refus = saisieRequise(a.saisie.libelle);
+      return;
+    }
     saisieDe = null;
     const r = await api.actions.ouvrir(a.id, texte);
     if (!r.ok) refus = r.erreur;
@@ -50,16 +58,14 @@
     } else void lancer(a, null);
   }
 
-  async function supprimer(a: ActionAffichee) {
-    aSupprimer = null;
+  async function confirmer(c: { action: ActionAffichee; genre: "supprimer" | "accord" }) {
+    aConfirmer = null;
     refus = null;
-    const r = await api.actions.supprimer(a.id);
-    if (!r.ok) refus = r.erreur;
-    await charger();
-  }
-
-  async function retirerAccord(a: ActionAffichee) {
-    await api.actions.refuserAccord(a.id);
+    if (c.genre === "accord") await api.actions.refuserAccord(c.action.id);
+    else {
+      const r = await api.actions.supprimer(c.action.id);
+      if (!r.ok) refus = r.erreur;
+    }
     await charger();
   }
 
@@ -108,8 +114,8 @@
               <button data-testid="lancer-{a.id}" onclick={() => demanderLancement(a)}><Icone nom="actions" taille={12} /> Lancer</button>
             {/if}
             <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.voirWorkflow(a.id)}>Voir le workflow</button>
-            {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => void retirerAccord(a)}>Retirer l'accord</button>{/if}
-            <button data-testid="supprimer-{a.id}" onclick={() => (aSupprimer = a)}>Supprimer</button>
+            {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => (aConfirmer = { action: a, genre: "accord" })}>Retirer l'accord</button>{/if}
+            <button data-testid="supprimer-{a.id}" onclick={() => (aConfirmer = { action: a, genre: "supprimer" })}>Supprimer</button>
           </div>
         </li>
       {/each}
@@ -117,14 +123,19 @@
   {/if}
 </section>
 
-{#if aSupprimer}
-  {@const cible = aSupprimer}
-  <div class="voile">
+{#if aConfirmer}
+  {@const c = aConfirmer}
+  {@const cible = c.action}
+  <div class="voile" data-testid="voile-suppression-action">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
-      <p>Supprimer « {cible.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
+      {#if c.genre === "accord"}
+        <p>Retirer l'accord de « {cible.nom} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
+      {:else}
+        <p>Supprimer « {cible.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
+      {/if}
       <div class="confirmer-boutons">
-        <button data-testid="annuler-suppression-action" onclick={() => (aSupprimer = null)}>Annuler</button>
-        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void supprimer(cible)}>Supprimer</button>
+        <button data-testid="annuler-suppression-action" onclick={() => (aConfirmer = null)}>Annuler</button>
+        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirmer(c)}>{c.genre === "accord" ? "Retirer l'accord" : "Supprimer"}</button>
       </div>
     </div>
   </div>
@@ -146,7 +157,7 @@
   .boutons { display: flex; gap: 6px; flex: none; }
   .boutons button, .confirmation button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
   .boutons button:hover { background: var(--fond-survol); }
-  .voile { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
+  .voile { position: fixed; inset: 0; -webkit-app-region: no-drag; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
   .confirmation { max-width: 420px; padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); }
   .confirmation p { margin: 0 0 14px; }
   .confirmer-boutons { display: flex; justify-content: flex-end; gap: 8px; }
