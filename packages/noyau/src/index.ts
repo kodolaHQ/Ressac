@@ -46,6 +46,8 @@ export * from "./workflows/duckduckgo.js";
 export * from "./actions/schemas.js";
 export * from "./actions/lire.js";
 export * from "./actions/donnees.js";
+export * from "./actions/executer.js";
+export * from "./actions/file.js";
 export * from "./extensions/manifeste.js";
 export * from "./extensions/registre.js";
 export * from "./extensions/copie.js";
