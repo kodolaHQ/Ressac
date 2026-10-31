@@ -7,6 +7,7 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
+import { lireReference } from "../../src/pages/plan.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 /** Les fichiers des widgets de départ dans un espace neuf : des workflows, sans recolte.mjs. */
@@ -369,6 +370,17 @@ test("un AGENTS.md identique au modèle 28a1cac est remplacé par le nouveau", a
   expect(apres).toBe(modele);
   for (const motif of ["action.json", 'vers: "page"', "{saisie}", "miseEnPage", "composant.json", "lancer_action", "<svg"]) {
     expect(apres, motif).toContain(motif);
+  }
+});
+
+test("les références données en exemple dans AGENTS.md sont valides pour le lecteur de plans", async () => {
+  const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  const blocs = [...texte.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
+  expect(blocs.length).toBeGreaterThan(0);
+  const references = blocs.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
+  expect(references.length).toBeGreaterThanOrEqual(3);
+  for (const r of references) {
+    expect(lireReference(r), r).not.toHaveProperty("erreur");
   }
 });
 

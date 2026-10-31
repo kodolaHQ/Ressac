@@ -71,7 +71,7 @@ afficher « Workflow invalide : … » au widget, qui garde ses données.
 
 - `id` de bloc : minuscules, chiffres et tirets (40 au plus), uniques. `nom` (60 au plus) et
   `position: { x, y }` sont facultatifs (le constructeur les affiche ; voir plus bas).
-- **Une seule** `sortie` (`"vers": "widget"`) : sa valeur est ce que reçoit `affichage.html`.
+- **Une seule** `sortie` (`"vers": "widget"` ; `"page"` dans une action, voir « Actions ») : sa valeur est ce que reçoit `affichage.html`.
 - **Entrée d'un bloc** : la sortie du prédécesseur s'il n'y en a qu'un ; avec plusieurs, un objet
   `{ "<id du prédécesseur>": sortie }` ; `null` sans prédécesseur, mais seulement pour les blocs à
   entrée facultative (`source.flux`, `code`). Tous les autres (`liste.*`, `ia.trier`, `sortie`, et
@@ -92,7 +92,7 @@ afficher « Workflow invalide : … » au widget, qui garde ses données.
 | `ia.trier` | `question`, `texte` (gabarits), `seuil` (0,5), `champ` (`p`), `siErreur`, `budgetSecondes`, `reutiliser` | les éléments notés au moins au seuil (≥ `seuil`), du meilleur au moins bon, la note (2 décimales) sous `champ` ; toujours par élément |
 | `ia.rediger` | `consigne` (gabarit), `champ` (`texte`), `json` (`false`), `texteMax` (12 000), + mode par élément | le texte de Gemma (ou son JSON) ; vide = échec de l'élément |
 | `code` | `source` (`nom.mjs` du dossier du widget), `appel` (`entree`) | ce que rend le module |
-| `sortie` | `vers: "widget"`, `auFilDeLEau` (facultatif) | la valeur du workflow ; avec `auFilDeLEau: true`, le widget montre les éléments finis pendant l'exécution (voir « Veilles ») |
+| `sortie` | `vers: "widget"` (`"page"` dans une action), `auFilDeLEau` (facultatif) | la valeur du workflow ; avec `auFilDeLEau: true`, le widget montre les éléments finis pendant l'exécution (voir « Veilles ») |
 
 - **Gabarits** : dans `url`, `question`, `texte`, `consigne` et `requete`, `{chemin}` (lettres, chiffres, `_`,
   points : `{titre}`, `{page.texte}`) est remplacé par le champ de l'élément en cours (en mode
@@ -539,7 +539,8 @@ mêmes blocs, mêmes règles, mêmes gabarits, voir « Workflows des widgets »)
 - `saisie: { "libelle": "…" }` (40 caractères au plus) : l'action demande un texte à l'utilisateur au lancement.
 - `sources` : comme dans `widget.json` (`compte`, `publiques`, `web`). Avec `compte`, l'utilisateur doit accorder
   la lecture avec son compte, et `web` est refusé. **Une action qui cherche sur le web (`web.chercher`,
-  `webaios.chercherWeb`) doit déclarer `"web": true` dans `sources`**, sinon le workflow est refusé.
+  `webaios.chercherWeb`) doit déclarer `"web": true` dans `sources`**, sinon le bloc `web.chercher` est refusé
+  à la validation et `chercherWeb` échoue à l'exécution.
 - `miseEnPage` (1 000 caractères au plus) : ta consigne de présentation pour Gemma (voir plus bas).
 - `dureeMaxMinutes` (1 à 60) : comme pour une récolte (voir « Veilles »).
 - **Pas de planification** (ni `recolte`, ni `config`) : une action ne tourne que lancée.
@@ -567,14 +568,16 @@ Sans Gemma, ou si son plan est refusé, une mise en page simple de secours est u
 simple »). Ce qui compte pour toi : **rends des résultats propres**.
 
 - Des champs simples (textes, nombres, listes d'objets plats), des noms clairs (`titre`, `prix`, `ville`,
-  `photo`, `url`), des **URL entières** (`https://…`, jamais relatives). Les listes sont coupées à 200 éléments.
+  `projet`, `url`), des **URL entières** (`https://…`, jamais relatives). Les listes sont coupées à 200 éléments.
 - `miseEnPage` dit à Gemma ce que l'utilisateur veut voir (« un chiffre clé, les tickets par priorité, les trois plus
   urgents en encadré »). Elle reste une consigne de présentation, pas de donnée.
 - Un calcul plus riche que les opérations ci-dessous (moyenne, jointure, formatage) se fait dans un bloc `code`
   du workflow, pas dans la page.
 - Rien ne sort par la page : les liens ne sont que des adresses http(s) lues telles quelles dans les résultats
   (jamais composées, jamais locales), les images seulement en https lues dans les résultats, et **jamais d'image
-  pour une action avec `compte`**. Tout est affiché comme du texte.
+  pour une action avec `compte`**. Une image n'apparaît que si son adresse https figure telle quelle dans les
+  résultats (`source.page` ne rend que du texte et des liens : n'invente jamais d'adresse d'image). Tout est affiché
+  comme du texte.
 
 Composants intégrés (propriétés entre parenthèses ; une propriété « champ » est un chemin relatif à un élément,
 comme `titre` ou `auteur.nom`, jamais une référence) :
@@ -585,11 +588,11 @@ comme `titre` ou `auteur.nom`, jamais une référence) :
 | `paragraphe` | `texte` (400 au plus) ou `valeur` (référence) |
 | `encadre` | `niveau` (`info`, `avis`, `attention`, requis), `titre` (80), `texte` (400), `elements` (référence) + `champ` |
 | `chiffre` | `valeur` (référence, requis), `libelle` (60, requis) |
-| `chiffres` | `chiffres` : 6 au plus, chacun `{ valeur: référence, libelle }` |
+| `chiffres` | `chiffres` (requis) : 6 au plus, chacun `{ valeur: référence, libelle }` |
 | `liste` | `elements` (référence, requis), `titre` (champ, requis), `sousTitre`, `lien` (champs) |
 | `cartes` | `elements` (requis), `titre` (champ, requis), `sousTitre`, `image`, `valeur`, `etiquettes`, `lien` (champs) |
 | `tableau` | `elements` (requis), `colonnes` (8 au plus, `[{ champ, libelle }]`, requis), `lien` (champ) |
-| `champs` | `objet` (référence, requis), `champs` (`[{ champ, libelle }]`, tous les champs simples si absent) |
+| `champs` | `objet` (référence, requis), `champs` (`[{ champ, libelle }]`, 12 au plus ; tous les champs simples si absent) |
 | `etiquettes` | `valeurs` (référence, liste de textes) ou `elements` (référence) + `champ` |
 | `lien` | `objet` (référence, requis), `url` (champ, requis), `texte` (texte, 80) ou `champTexte` (champ ; il l'emporte) |
 | `groupe` | `titre` (80, requis), `replie` ; contient des `blocs` |
@@ -597,15 +600,21 @@ comme `titre` ou `auteur.nom`, jamais une référence) :
 
 Plus tes propres composants (voir plus bas). La page tient 40 blocs, groupes et colonnes sur deux niveaux au plus.
 
-**Les références** lisent les résultats (`$` est la racine ; seules les propriétés propres sont lues) :
+**Les références** lisent les résultats. Un nom nu part de la racine de ce que ta `sortie` rend
+(`tickets`, `stats.total` : lettres, chiffres, `_`, points ; seules les propriétés propres sont lues), et `$`
+seul désigne tous les résultats. **Jamais `$.tickets`** : cette forme est refusée.
 
-- `$.tickets`, `$.stats.total` : un chemin (lettres, chiffres, `_`, points).
 - `compter(ref)`, `trier(ref, champ[, "desc"])`, `garder(ref, n)` (n de 1 à 200),
   `filtrer(ref, champ = valeur | champ ~ texte | champ > nombre | champ < nombre)` (`~` ignore accents et casse),
   `regrouper(ref, champ)` (une section par valeur, dans l'ordre d'apparition). 4 opérations imbriquées au plus.
-- Trois exemples : `compter(filtrer($.tickets, priorite = urgent))` pour un chiffre ;
-  `garder(trier($.annonces, prix), 10)` pour les dix moins chères ; `regrouper($.tickets, priorite)` pour une
-  `liste`, des `cartes` ou un `tableau` en une section par priorité.
+- Trois exemples, un chiffre, les dix moins chères, une section par priorité (un exemple par ligne) :
+
+```reference
+compter(filtrer(tickets, priorite = urgent))
+garder(trier(annonces, prix), 10)
+regrouper(tickets, priorite)
+```
+
 - Une référence qui finit par `regrouper`, donnée à `liste`, `cartes` ou `tableau`, dessine une section par valeur.
 
 ### Composants de l'agent
@@ -614,8 +623,9 @@ Plus tes propres composants (voir plus bas). La page tient 40 blocs, groupes et 
 ajouter un composant dans `/workspace/composants/<nom>/` (`<nom>` : minuscules, chiffres, tirets, 40 au plus,
 différent d'un composant intégré) avec deux fichiers :
 
-- `composant.json` : `{ "nom": "barres", "description": "Graphique en barres (300 au plus)", "proprietes": { "valeurs": { "genre": "reference", "description": "Liste de { libelle, valeur }", "requis": true }, "titre": { "genre": "texte", "description": "Titre du graphique" } } }`. `genre` : `reference`, `champ`, `texte`, `nombre` ou `case` ; 12 propriétés au plus, noms
-  `[a-zA-Z][a-zA-Z0-9_]*`. `nom` est celui du dossier. Aucune autre clé.
+- `composant.json` : `{ "nom": "barres", "description": "Graphique en barres", "proprietes": { "valeurs": { "genre": "reference", "description": "Liste de { libelle, valeur }", "requis": true }, "titre": { "genre": "texte", "description": "Titre du graphique" } } }`. `description` du composant : 1 à 300 caractères. `genre` : `reference`, `champ`, `texte`, `nombre` ou `case` ;
+  12 propriétés au plus ; chaque propriété a une `description` obligatoire (1 à 200 caractères) et un nom
+  `[a-zA-Z][a-zA-Z0-9_]*` de 40 caractères au plus. `nom` est celui du dossier. Aucune autre clé.
 - `composant.html` (256 Ko au plus) : une page complète. Il tourne dans un cadre isolé : **aucun réseau, images
   `data:` seulement, pas de lien**. Il reçoit `window.postMessage({ type: "composant", props, theme, largeur })`
   (`theme` : `"clair"` ou `"sombre"`, `props` : les valeurs résolues) et doit répondre
@@ -681,9 +691,9 @@ Gemma voit tes composants (nom, description, propriétés) et les pose comme les
 → `sortie` (`vers: "page"`). Pas d'image (action avec compte), l'accord de l'utilisateur est demandé au premier lancement.
 
 **Leboncoin, avec saisie.** `action.json` : `nom: "Annonces Leboncoin"`, `saisie: { "libelle": "Recherche" }`,
-`sources: { "web": true }`, `miseEnPage: "des cartes avec photo et prix, les moins chères en premier"`. Workflow :
+`sources: { "web": true }`, `miseEnPage: "des cartes avec le prix et la ville, les moins chères en premier"`. Workflow :
 `recherche` (`source.page`, `url: "https://www.leboncoin.fr/recherche?text={saisie}"`) → `extraire` (`code`, qui
-rend `{ annonces: [{ titre, prix, ville, photo, url }] }`, `prix` en nombre) → `sortie` (`vers: "page"`).
+rend `{ annonces: [{ titre, prix, ville, url }] }`, `prix` en nombre) → `sortie` (`vers: "page"`).
 
 ## Outils du navigateur (serveur MCP `webaios`)
 
