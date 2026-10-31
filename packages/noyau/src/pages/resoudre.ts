@@ -1,4 +1,5 @@
 import { adresseLocale } from "../workflows/acces.js";
+import { resultatsVides } from "./apercu.js";
 import type { DefinitionComposant } from "./catalogue.js";
 import { MAX_BLOCS_PAGE, PROFONDEUR_PAGE, evaluer, lireChemin, lireReference, type BlocPlan, type Groupe, type PlanPage } from "./plan.js";
 
@@ -61,24 +62,6 @@ export function chainesDe(resultats: unknown): Set<string> {
     else if (v !== null && typeof v === "object") for (const k of Object.keys(v)) pile.push((v as Record<string, unknown>)[k]);
   }
   return chaines;
-}
-
-function sansResultat(r: unknown): boolean {
-  const pile: unknown[] = [r];
-  while (pile.length > 0) {
-    const v = pile.pop();
-    if (v === null || v === undefined || v === "") continue;
-    if (Array.isArray(v)) {
-      if (v.length === 0) continue;
-      return false;
-    }
-    if (typeof v === "object") {
-      for (const k of Object.keys(v)) pile.push((v as Record<string, unknown>)[k]);
-      continue;
-    }
-    return false;
-  }
-  return true;
 }
 
 /** Pose une propriété propre (une clé « __proto__ » reste une donnée, jamais un prototype). */
@@ -379,5 +362,5 @@ export function resoudrePage(
 ): PageRendue {
   const ctx: Contexte = { resultats, compte: o.compte, defs: new Map(o.catalogue.map((d) => [d.nom, d])), coupes: 0, blocs: 0, chaines: null };
   const blocs = resoudreBlocs(plan?.blocs, 0, ctx);
-  return { blocs, secours: o.secours, vide: sansResultat(resultats), coupes: ctx.coupes };
+  return { blocs, secours: o.secours, vide: resultatsVides(resultats), coupes: ctx.coupes };
 }
