@@ -345,13 +345,13 @@ const lancerActions = (racine: string, profil: string) =>
 function ecrireActionExecutable(
   racine: string,
   id: string,
-  o: { nom: string; code: string; compte?: string[]; saisie?: string; blocs?: { id: string; type: string; parametres: Record<string, unknown> }[] },
+  o: { nom: string; code: string; compte?: string[]; saisie?: string; motsCles?: string[]; blocs?: { id: string; type: string; parametres: Record<string, unknown> }[] },
 ): void {
   const dossier = join(racine, "actions", id);
   mkdirSync(dossier, { recursive: true });
   writeFileSync(
     join(dossier, "action.json"),
-    JSON.stringify({ nom: o.nom, sources: { compte: o.compte ?? [], publiques: [] }, ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}) }),
+    JSON.stringify({ nom: o.nom, sources: { compte: o.compte ?? [], publiques: [] }, ...(o.motsCles ? { motsCles: o.motsCles } : {}), ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}) }),
   );
   const blocs = [{ id: "liste", type: "code", parametres: { source: "liste.mjs" } }, ...(o.blocs ?? []), { id: "sortie", type: "sortie", parametres: { vers: "page" } }];
   writeFileSync(
@@ -685,6 +685,132 @@ test("une exécution qui n'existe plus : « Ce résultat n'existe plus » et le 
     await expect(fenetre.getByTestId("erreur-action")).toHaveText("Action inconnue");
     expect(ollama.prompts.length).toBe(prompts);
     expect(executionsSurDisque(profil, "annonces")).toEqual([`${DERNIERE}.json`]);
+  } finally {
+    await fermer();
+  }
+});
+
+// --- Les suggestions du nouvel onglet -------------------------------------------------------------------------
+
+const TICKETS_NOM = "Mes tickets GitLab à traiter";
+type AppElectron = import("@playwright/test").ElectronApplication;
+/** Note (et coupe) les requêtes vers Google et exemple.org : aucun test n'atteint le réseau. */
+const espionnerReseau = (app: AppElectron) =>
+  app.evaluate(({ session }) => {
+    const g = globalThis as unknown as { demandes: string[] };
+    g.demandes = [];
+    session.fromPartition("persist:webaios").webRequest.onBeforeRequest({ urls: ["https://www.google.com/*", "https://exemple.org/*"] }, (d, rappel) => {
+      g.demandes.push(d.url);
+      rappel({ cancel: true });
+    });
+  });
+const demandesReseau = (app: AppElectron) => app.evaluate(() => (globalThis as unknown as { demandes: string[] }).demandes);
+
+/** Deux actions : une sans saisie (mot-clé gitlab) et une avec saisie ; la fenêtre montre le nouvel onglet. */
+async function lancerAvecSuggestions(opt: { prive?: boolean } = {}) {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "tickets", { nom: TICKETS_NOM, motsCles: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  ecrireActionExecutable(racine, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
+  const o = await lancerActions(racine, profil);
+  await attendreNoyau(o.fenetre);
+  await espionnerReseau(o.app);
+  if (opt.prive) await reglerEspaceActifPrive(o.fenetre, true);
+  await o.fenetre.getByTestId("nouvel-onglet").click();
+  await expect(o.fenetre.getByTestId("saisie-page-vide")).toBeVisible();
+  return { ...o, profil };
+}
+
+test("taper « git » montre la suggestion ; ↓ puis Entrée ouvre la page de l'action et lance", async () => {
+  test.setTimeout(90_000);
+  const { fenetre, profil, fermer } = await lancerAvecSuggestions();
+  try {
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("git");
+    const liste = fenetre.getByTestId("suggestions-actions");
+    await expect(liste).toContainText(TICKETS_NOM);
+    await expect(liste).toContainText("Rechercher");
+    await saisie.press("ArrowDown");
+    await expect(saisie).toHaveAttribute("aria-activedescendant", /.+/);
+    await saisie.press("Enter");
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect.poll(() => executionsSurDisque(profil, "tickets"), { timeout: 60_000 }).toHaveLength(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Échap ferme la liste, Entrée cherche « git » comme avant", async () => {
+  const { app, fenetre, profil, fermer } = await lancerAvecSuggestions();
+  try {
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("git");
+    await expect(fenetre.getByTestId("suggestions-actions")).toBeVisible();
+    await saisie.press("Escape");
+    await expect(fenetre.getByTestId("suggestions-actions")).toHaveCount(0);
+    await saisie.press("Enter");
+    await expect.poll(() => demandesReseau(app)).toContain("https://www.google.com/search?q=git");
+    expect(executionsSurDisque(profil, "tickets")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("taper « exemple.org » sans correspondance puis Entrée ouvre l'adresse", async () => {
+  const { app, fenetre, fermer } = await lancerAvecSuggestions();
+  try {
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("exemple.org");
+    await expect(fenetre.getByTestId("suggestions-actions")).toHaveCount(0);
+    await saisie.press("Enter");
+    await expect.poll(() => demandesReseau(app)).toContain("https://exemple.org/");
+  } finally {
+    await fermer();
+  }
+});
+
+test("« leboncoin » puis Entrée : page avec le champ de saisie, rien de lancé", async () => {
+  const { fenetre, profil, fermer } = await lancerAvecSuggestions();
+  try {
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("leboncoin");
+    await expect(fenetre.getByTestId("suggestions-actions")).toContainText("Leboncoin");
+    await saisie.press("ArrowDown");
+    await saisie.press("Enter");
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect(fenetre.getByTestId("saisie-action")).toBeVisible();
+    await fenetre.waitForTimeout(500);
+    expect(executionsSurDisque(profil, "leboncoin")).toEqual([]);
+  } finally {
+    await fermer();
+  }
+});
+
+test("espace privé : aucune suggestion, la liste n'est même pas demandée", async () => {
+  const { fenetre, fermer } = await lancerAvecSuggestions({ prive: true });
+  try {
+    await fenetre.evaluate(() => {
+      const w = window as unknown as { webaios: { actions: { liste: () => unknown } }; __appels: number };
+      w.__appels = 0;
+      const liste = w.webaios.actions.liste.bind(w.webaios.actions);
+      w.webaios.actions.liste = () => (w.__appels++, liste());
+    });
+    const saisie = fenetre.getByTestId("saisie-page-vide");
+    await saisie.fill("git");
+    await fenetre.waitForTimeout(500);
+    await expect(fenetre.getByTestId("suggestions-actions")).toHaveCount(0);
+    expect(await fenetre.evaluate(() => (window as unknown as { __appels: number }).__appels)).toBe(0);
+  } finally {
+    await fermer();
+  }
+});
+
+test("la liste de suggestions n'est pas dans une zone de glisser de macOS", async () => {
+  const { fenetre, fermer } = await lancerAvecSuggestions();
+  try {
+    await fenetre.getByTestId("saisie-page-vide").fill("git");
+    const zone = await fenetre.getByTestId("suggestions-actions").evaluate((el) => getComputedStyle(el as HTMLElement).getPropertyValue("-webkit-app-region"));
+    expect(zone).not.toBe("drag");
   } finally {
     await fermer();
   }
