@@ -38,19 +38,15 @@ import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { creerServiceActions, espaceActifPrive, repondreComposant, repondreImage, SCHEMA_COMPOSANT, SCHEMA_IMAGE } from "./agent/actions";
 import {
-  enregistrerCodeAction,
+  creerConstructeurActions,
   enregistrerCodeSur,
   enregistrerEdition,
-  enregistrerEditionAction,
   FileEcritures,
-  lireCodeAction,
   lireCodeSur,
   lireEdition,
-  lireEditionAction,
   workflowOuvertDe,
   type SelectionConstructeur,
 } from "./agent/constructeur";
-import { ACTIONS_EN_ESPACE_PRIVE } from "../commun/actions";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
@@ -548,6 +544,14 @@ app.whenReady().then(async () => {
     chemins: () => agent?.chemins ?? null,
     dossierActions,
   });
+  const constructeurActions = creerConstructeurActions({
+    etat: () => magasin.etat,
+    noyau: () => agent?.noyau() ?? null,
+    chemins: () => agent?.chemins ?? null,
+    dossierActions,
+    file: fileEcritures,
+    messageArrete: MESSAGE_AGENT_ARRETE,
+  });
   brancherIpc({
     magasin,
     fenetreDe,
@@ -636,7 +640,7 @@ app.whenReady().then(async () => {
       lire: async (f, cible) => {
         if (!agent) return null;
         if (cible.type === "widget") return lireEdition({ chemins: agent.chemins, dossierWidgets: agent.dossierWidgets }, cible.id);
-        return espaceActifPrive(magasin.etat, f) ? null : lireEditionAction({ chemins: agent.chemins, dossierActions }, cible.id);
+        return constructeurActions.lire(f, cible.id);
       },
       enregistrer: async (f, cible, brouillon) => {
         if (!agent) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] };
@@ -644,41 +648,30 @@ app.whenReady().then(async () => {
         if (cible.type === "widget") {
           return fileEcritures.enSerie(cible.id, () => enregistrerEdition({ chemins: a.chemins, dossierWidgets: a.dossierWidgets }, cible.id, brouillon));
         }
-        if (espaceActifPrive(magasin.etat, f)) return { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE, avertissements: [] };
-        return fileEcritures.enSerie(`action:${cible.id}`, () => enregistrerEditionAction({ chemins: a.chemins, dossierActions }, cible.id, brouillon));
+        return constructeurActions.enregistrer(f, cible.id, brouillon);
       },
       lireCode: async (f, cible, nom) => {
         if (!agent) return { erreur: MESSAGE_AGENT_ARRETE };
         if (cible.type === "widget") return lireCodeSur(agent.chemins, cible.id, nom);
-        return espaceActifPrive(magasin.etat, f) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : lireCodeAction(agent.chemins, cible.id, nom);
+        return constructeurActions.lireCode(f, cible.id, nom);
       },
       enregistrerCode: async (f, cible, nom, texte) => {
         if (!agent) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
         const a = agent;
         if (cible.type === "widget") return fileEcritures.enSerie(cible.id, () => enregistrerCodeSur(a.chemins, cible.id, nom, texte));
-        if (espaceActifPrive(magasin.etat, f)) return { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
-        return fileEcritures.enSerie(`action:${cible.id}`, () => enregistrerCodeAction(a.chemins, cible.id, nom, texte));
+        return constructeurActions.enregistrerCode(f, cible.id, nom, texte);
       },
       rejouer: async (f, cible, execution, bloc) => {
         const noyau = agent?.noyau();
         if (!noyau) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
         if (cible.type === "widget") return noyau.rejouer(cible.id, execution, bloc);
-        if (espaceActifPrive(magasin.etat, f)) return { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
-        // L'essai d'une action : son résultat se voit dans l'aperçu du constructeur, jamais comme dernier résultat.
-        const r = await noyau.actions.rejouer(cible.id, execution, bloc).fin;
-        return r.statut !== "invalide" && r.execution !== undefined
-          ? { ok: true as const, execution: r.execution, statut: r.statut }
-          : { ok: false as const, erreur: r.erreur ?? "Rejeu impossible" };
+        return constructeurActions.rejouer(f, cible.id, execution, bloc);
       },
       // Sans noyau : {} (l'interface ne sélectionne alors aucune exécution) ; une récolte qui échoue ne lève rien.
       lancer: async (f, cible, saisie) => {
         const noyau = agent?.noyau();
         if (!noyau) return {};
-        if (cible.type === "action") {
-          if (espaceActifPrive(magasin.etat, f)) return { erreur: ACTIONS_EN_ESPACE_PRIVE };
-          const r = await noyau.actions.lancer(cible.id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" }).fin;
-          return { ...(r.execution !== undefined ? { execution: r.execution } : {}), ...(r.erreur !== undefined && r.execution === undefined ? { erreur: r.erreur } : {}) };
-        }
+        if (cible.type === "action") return constructeurActions.lancer(f, cible.id, saisie);
         const id = cible.id;
         try {
           const r = await noyau.recolterMaintenant(id, "manuelle");

@@ -15,11 +15,15 @@ import {
   type DeclarationAction,
   type Avertissement,
   type CheminsEspace,
+  type ActionsNoyau,
   type ResultatEnregistrement,
+  type ResultatEssai,
   type WorkflowOuvert,
 } from "@webaios/noyau";
 import { cibleDeUrlWorkflow, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
-import type { EditionWorkflow, SelectionConstructeur } from "../../commun/api";
+import type { Brouillon, EditionWorkflow, SelectionConstructeur } from "../../commun/api";
+import { ACTION_TOURNE_DEJA, ACTIONS_EN_ESPACE_PRIVE } from "../../commun/actions";
+import { espaceActifPrive } from "./actions";
 
 export type { SelectionConstructeur };
 
@@ -265,4 +269,69 @@ export async function enregistrerCodeAction(chemins: CheminsEspace, id: string, 
     console.error(`[webaios] code de l'action ${id} :`, e);
     return { ok: false, erreur: MESSAGE_ILLISIBLE };
   }
+}
+
+type Code = { texte: string } | { absent: true } | { erreur: string };
+type Ecrit = { ok: true } | { ok: false; erreur: string };
+
+/**
+ * Le constructeur d'une action, côté main : chaque appel nomme sa fenêtre et est refusé quand son espace actif est privé
+ * (une fenêtre inconnue compte comme privée). Lancer ou rejouer une action qui tourne déjà ne prend jamais cette
+ * exécution-là pour la sienne : `ACTION_TOURNE_DEJA`.
+ */
+export function creerConstructeurActions(o: {
+  etat: () => Pick<EtatNavigateur, "espaces" | "fenetres">;
+  noyau: () => { actions: Pick<ActionsNoyau, "lancer" | "rejouer"> } | null;
+  chemins: () => CheminsEspace | null;
+  dossierActions: string;
+  file: FileEcritures;
+  /** Sans agent. */
+  messageArrete: string;
+}) {
+  const prive = (f: IdFenetre) => espaceActifPrive(o.etat(), f);
+  const cle = (id: string) => `action:${id}`;
+  return {
+    async lire(f: IdFenetre, id: string): Promise<EditionWorkflow | null> {
+      const chemins = o.chemins();
+      return !chemins || prive(f) ? null : lireEditionAction({ chemins, dossierActions: o.dossierActions }, id);
+    },
+    async enregistrer(f: IdFenetre, id: string, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }> {
+      const chemins = o.chemins();
+      if (!chemins) return { ok: false, erreur: o.messageArrete, avertissements: [] };
+      if (prive(f)) return { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE, avertissements: [] };
+      return o.file.enSerie(cle(id), () => enregistrerEditionAction({ chemins, dossierActions: o.dossierActions }, id, brouillon));
+    },
+    async lireCode(f: IdFenetre, id: string, nom: string): Promise<Code> {
+      const chemins = o.chemins();
+      if (!chemins) return { erreur: o.messageArrete };
+      return prive(f) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : lireCodeAction(chemins, id, nom);
+    },
+    async enregistrerCode(f: IdFenetre, id: string, nom: string, texte: string): Promise<Ecrit> {
+      const chemins = o.chemins();
+      if (!chemins) return { ok: false, erreur: o.messageArrete };
+      if (prive(f)) return { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE };
+      return o.file.enSerie(cle(id), () => enregistrerCodeAction(chemins, id, nom, texte));
+    },
+    /** Un essai : son résultat se voit dans l'aperçu du constructeur, jamais comme dernier résultat. */
+    async rejouer(f: IdFenetre, id: string, execution: string, bloc: string): Promise<ResultatEssai> {
+      const noyau = o.noyau();
+      if (!noyau) return { ok: false, erreur: o.messageArrete };
+      if (prive(f)) return { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE };
+      const l = noyau.actions.rejouer(id, execution, bloc);
+      if (l.deja) return { ok: false, erreur: ACTION_TOURNE_DEJA };
+      const r = await l.fin;
+      return r.statut !== "invalide" && r.execution !== undefined ? { ok: true, execution: r.execution, statut: r.statut } : { ok: false, erreur: r.erreur ?? "Rejeu impossible" };
+    },
+    /** Sans noyau : {} (rien n'est choisi). Une saisie différente pendant que l'action tourne n'est pas perdue sans le dire. */
+    async lancer(f: IdFenetre, id: string, saisie: string | null): Promise<{ execution?: string; erreur?: string }> {
+      const noyau = o.noyau();
+      if (!noyau) return {};
+      if (prive(f)) return { erreur: ACTIONS_EN_ESPACE_PRIVE };
+      const l = noyau.actions.lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" });
+      if (l.deja) return { erreur: ACTION_TOURNE_DEJA };
+      const r = await l.fin;
+      if (r.execution !== undefined) return { execution: r.execution };
+      return r.erreur !== undefined ? { erreur: r.erreur } : {};
+    },
+  };
 }

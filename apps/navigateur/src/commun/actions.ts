@@ -2,6 +2,8 @@ import type { Execution } from "@webaios/noyau";
 
 /** Les actions : messages de l'interface, adresses des images et des composants (aussi lues par l'interface). */
 export const ACTIONS_EN_ESPACE_PRIVE = "Les actions ne sont pas disponibles dans un espace privé";
+/** Le constructeur lance ou rejoue une action qui tourne déjà (depuis sa page, une autre fenêtre…) : rien ne part. */
+export const ACTION_TOURNE_DEJA = "L'action tourne déjà";
 export const EN_ATTENTE = "En attente : deux actions tournent déjà";
 export const MISE_EN_PAGE = "Mise en page…";
 export const lectureDe = (hote: string) => `Lecture de ${hote}…`;

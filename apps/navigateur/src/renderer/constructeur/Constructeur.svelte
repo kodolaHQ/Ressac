@@ -230,7 +230,7 @@
     <SvelteFlowProvider>
       <div class="corps">
         {#if vue === "executions"}<ListeExecutions {executions} onchoisie={() => (vue = "workflow")} />{/if}
-        <Palette {catalogue} {aSortie} web={edition.widget?.web ?? edition.action?.web ?? false} onajouter={(type) => ajouter(type)} />
+        <Palette {catalogue} {aSortie} web={edition.widget?.web ?? edition.action?.web ?? false} action={estAction} onajouter={(type) => ajouter(type)} />
         <div class="zone-canevas">
           <Canevas
             bind:this={canevas}

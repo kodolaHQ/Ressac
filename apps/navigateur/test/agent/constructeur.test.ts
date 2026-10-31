@@ -344,3 +344,69 @@ test("code d'une action : écrit et relu dans son dossier ; dossier d'action qui
   expect(await enregistrerCodeAction(m.chemins, "gitlab", "neuf.mjs", "pwned")).toMatchObject({ ok: false });
   expect(existsSync(m.join(dehors, "gitlab", "neuf.mjs"))).toBe(false);
 });
+
+// --- Le constructeur d'une action, côté main : espace privé refusé, action qui tourne déjà signalée ---
+
+async function constructeurActions(o: { prive: boolean; deja?: boolean }) {
+  const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
+  const { creerConstructeurActions } = await import("../../src/main/agent/constructeur");
+  const m = await monterAction();
+  writeFileSync(m.join(m.dossier, "lire.mjs"), "export default async () => []");
+  const wf = { version: 1, blocs: [lireCode, versPage], liens: [{ de: "lire", vers: "sortie" }] };
+  writeFileSync(m.join(m.dossier, "workflow.json"), JSON.stringify(wf));
+  const etat = {
+    fenetres: [{ id: "F", espaceActif: "E" }],
+    espaces: [{ id: "E", prive: o.prive }],
+  } as unknown as EtatNavigateur;
+  const appels: string[] = [];
+  const fin = Promise.resolve({ statut: "reussie" as const, execution: "2026-10-31T08-00-00-000Z" });
+  const noyau = {
+    actions: {
+      lancer: (id: string, l: { saisie?: string }) => (appels.push(`lancer ${id} ${l.saisie ?? ""}`), { deja: o.deja === true, fin }),
+      rejouer: (id: string) => (appels.push(`rejouer ${id}`), { deja: o.deja === true, fin }),
+    },
+  };
+  const c = creerConstructeurActions({
+    etat: () => etat,
+    noyau: () => noyau,
+    chemins: () => m.chemins,
+    dossierActions: m.c.dossierActions,
+    file: new FileEcritures(),
+    messageArrete: "arrêté",
+  });
+  return { c, appels, m, lireWf: () => readFileSync(m.join(m.dossier, "workflow.json"), "utf8"), existsSync };
+}
+
+test("constructeur d'une action depuis une fenêtre en espace privé : lire, enregistrer, codes, rejouer et lancer refusés, rien d'écrit ni de lancé", async () => {
+  const { ACTIONS_EN_ESPACE_PRIVE } = await import("../../src/commun/actions");
+  const { c, appels, m, lireWf, existsSync } = await constructeurActions({ prive: true });
+  const avant = lireWf();
+  expect(await c.lire("F", "gitlab")).toBeNull();
+  expect(await c.enregistrer("F", "gitlab", { version: 1, blocs: [lireCode, versPage], liens: [] })).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE, avertissements: [] });
+  expect(await c.lireCode("F", "gitlab", "lire.mjs")).toEqual({ erreur: ACTIONS_EN_ESPACE_PRIVE });
+  expect(await c.enregistrerCode("F", "gitlab", "neuf.mjs", "x")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+  expect(await c.rejouer("F", "gitlab", "2026-10-31T08-00-00-000Z", "lire")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+  expect(await c.lancer("F", "gitlab", "x")).toEqual({ erreur: ACTIONS_EN_ESPACE_PRIVE });
+  // Une fenêtre inconnue compte comme privée.
+  expect(await c.lire("inconnue", "gitlab")).toBeNull();
+  expect(appels).toEqual([]);
+  expect(lireWf()).toBe(avant);
+  expect(existsSync(m.join(m.dossier, "neuf.mjs"))).toBe(false);
+});
+
+test("constructeur d'une action en espace normal : lu, lancé avec sa saisie, essai rendu", async () => {
+  const { c, appels } = await constructeurActions({ prive: false });
+  expect(await c.lire("F", "gitlab")).toMatchObject({ action: { nom: "GitLab" } });
+  expect(await c.lireCode("F", "gitlab", "lire.mjs")).toEqual({ texte: "export default async () => []" });
+  expect(await c.lancer("F", "gitlab", "webaios")).toEqual({ execution: "2026-10-31T08-00-00-000Z" });
+  expect(await c.rejouer("F", "gitlab", "2026-10-31T08-00-00-000Z", "lire")).toEqual({ ok: true, execution: "2026-10-31T08-00-00-000Z", statut: "reussie" });
+  expect(appels).toEqual(["lancer gitlab webaios", "rejouer gitlab"]);
+});
+
+test("l'action tourne déjà (lancée depuis sa page) : ni lancer ni rejouer ne prennent cette exécution pour la leur", async () => {
+  const { ACTION_TOURNE_DEJA } = await import("../../src/commun/actions");
+  expect(ACTION_TOURNE_DEJA).toBe("L'action tourne déjà");
+  const { c } = await constructeurActions({ prive: false, deja: true });
+  expect(await c.lancer("F", "gitlab", "autre saisie")).toEqual({ erreur: ACTION_TOURNE_DEJA });
+  expect(await c.rejouer("F", "gitlab", "2026-10-31T08-00-00-000Z", "lire")).toEqual({ ok: false, erreur: ACTION_TOURNE_DEJA });
+});

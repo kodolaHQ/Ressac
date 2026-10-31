@@ -1579,6 +1579,10 @@ test("ouvrir le workflow d'une action depuis sa page : panneau Action avec saisi
     await expect(panneau.getByTestId("action-mise-en-page")).toHaveText(CONSIGNE_GITLAB);
     await expect(panneau).toContainText("Durée maximale : 5 min");
     await expect(fenetre.getByTestId("bouton-apercu")).toHaveText("Aperçu de la page");
+    // Action sans accès au web : la palette le dit pour une action (action.json), pas pour un widget.
+    const chercher = fenetre.getByTestId("palette-web.chercher");
+    await expect(chercher).toBeDisabled();
+    await expect(chercher).toHaveAttribute("title", 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.');
     // L'agent sait que c'est le workflow de l'action, et le bloc choisi.
     const ouvert = async () => (await appelerOutil(racine, "workflow_ouvert", {}, { session: true })).texte;
     await expect.poll(ouvert).toBe('{"action":"gitlab","bloc":null}');
