@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -839,6 +839,165 @@ test("la liste de suggestions n'est pas dans une zone de glisser de macOS", asyn
     await fenetre.getByTestId("saisie-page-vide").fill("git");
     const zone = await fenetre.getByTestId("suggestions-actions").evaluate((el) => getComputedStyle(el as HTMLElement).getPropertyValue("-webkit-app-region"));
     expect(zone).not.toBe("drag");
+  } finally {
+    await fermer();
+  }
+});
+
+// --- La page « Actions » (barre latérale) ---
+
+const HIER = "2026-10-30T08:00:00.000Z";
+
+/** Deux actions : « Tickets » (mots-clés, dernier résultat) et « Leboncoin » (saisie, jamais lancée). */
+function ecrireDeuxActions(racine: string, profil: string): void {
+  ecrireActionExecutable(racine, "tickets", { nom: TICKETS_NOM, motsCles: ["gitlab", "tickets"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  ecrireResultat(profil, "tickets", EXECUTION, HIER, "Ticket 1");
+  ecrireActionExecutable(racine, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
+}
+
+async function ouvrirPageActions(fenetre: Page): Promise<void> {
+  await fenetre.getByTestId("bouton-actions").click();
+  await expect(fenetre.getByTestId("page-actions")).toBeVisible();
+}
+
+test("la page liste deux actions avec leurs mots-clés et leur dernier résultat", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireDeuxActions(racine, profil);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    const tickets = fenetre.getByTestId("ligne-action-tickets");
+    await expect(tickets).toContainText(TICKETS_NOM);
+    await expect(tickets.getByTestId("mots-cles-tickets")).toHaveText("gitlab, tickets");
+    await expect(tickets.getByTestId("dernier-tickets")).toContainText("Réussie");
+    await expect(fenetre.getByTestId("ligne-action-leboncoin")).toContainText("Leboncoin");
+    await expect(fenetre.getByTestId("dernier-leboncoin")).toContainText("Jamais lancée");
+    // Pas d'accord : pas de « Retirer l'accord ».
+    await expect(fenetre.getByTestId("retirer-accord-tickets")).toHaveCount(0);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Lancer ouvre la page de l'action ; une action à saisie la demande en ligne d'abord", async () => {
+  test.setTimeout(90_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireDeuxActions(racine, profil);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    await fenetre.getByTestId("lancer-tickets").click();
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect.poll(() => executionsSurDisque(profil, "tickets"), { timeout: 60_000 }).toHaveLength(2);
+    await ouvrirPageActions(fenetre);
+    await fenetre.getByTestId("lancer-leboncoin").click();
+    const saisie = fenetre.getByTestId("saisie-leboncoin");
+    await expect(saisie).toBeVisible();
+    await expect(fenetre.getByTestId("page-action")).toHaveCount(0);
+    await saisie.fill("vélo");
+    await saisie.press("Enter");
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect.poll(() => executionsSurDisque(profil, "leboncoin"), { timeout: 60_000 }).toHaveLength(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("« Voir le workflow » ouvre le constructeur de l'action", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireDeuxActions(racine, profil);
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    await fenetre.getByTestId("voir-workflow-tickets").click();
+    await expect(fenetre.locator('[data-testid^="onglet-"]').filter({ hasText: `Workflow — ${TICKETS_NOM}` })).toHaveCount(1);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Supprimer : le dossier part dans actions/.corbeille, l'accord et les résultats sont effacés, la ligne disparaît", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "compte", { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
+  ecrireResultat(profil, "compte", EXECUTION, HIER, "Secret");
+  ecrireDeuxActions(racine, profil);
+  writeFileSync(join(profil, "actions", "accords.json"), JSON.stringify({ compte: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    await expect(fenetre.getByTestId("retirer-accord-compte")).toBeVisible();
+    await fenetre.getByTestId("supprimer-compte").click();
+    await expect(fenetre.getByTestId("confirmation-suppression-action")).toContainText("Avec compte");
+    // Annuler ne supprime rien.
+    await fenetre.getByTestId("annuler-suppression-action").click();
+    await expect(fenetre.getByTestId("ligne-action-compte")).toBeVisible();
+    await fenetre.getByTestId("supprimer-compte").click();
+    await fenetre.getByTestId("confirmer-suppression-action").click();
+    await expect(fenetre.getByTestId("ligne-action-compte")).toHaveCount(0);
+    expect(readdirSync(join(racine, "actions", ".corbeille")).some((f) => f.startsWith("compte-"))).toBe(true);
+    expect(existsSync(join(racine, "actions", "compte"))).toBe(false);
+    expect(existsSync(join(profil, "actions", "compte"))).toBe(false);
+    expect(readFileSync(join(profil, "actions", "accords.json"), "utf8")).not.toContain("compte");
+    await expect(fenetre.getByTestId("ligne-action-tickets")).toBeVisible();
+  } finally {
+    await fermer();
+  }
+});
+
+test("Retirer l'accord : le bouton disparaît, résultats effacés", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireActionExecutable(racine, "compte", { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
+  ecrireResultat(profil, "compte", EXECUTION, HIER, "Secret");
+  writeFileSync(join(profil, "actions", "accords.json"), JSON.stringify({ compte: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    await fenetre.getByTestId("retirer-accord-compte").click();
+    await expect(fenetre.getByTestId("retirer-accord-compte")).toHaveCount(0);
+    await expect(fenetre.getByTestId("dernier-compte")).toContainText("Jamais lancée");
+    expect(existsSync(join(profil, "actions", "compte", "resultats", `${EXECUTION}.json`))).toBe(false);
+  } finally {
+    await fermer();
+  }
+});
+
+test("une action.json abîmée montre son erreur", async () => {
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireDeuxActions(racine, profil);
+  mkdirSync(join(racine, "actions", "cassee"), { recursive: true });
+  writeFileSync(join(racine, "actions", "cassee", "action.json"), "{ pas du json");
+  const { fenetre, fermer } = await lancerActions(racine, profil);
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    await expect(fenetre.getByTestId("erreur-cassee")).toContainText("action.json");
+    await expect(fenetre.getByTestId("lancer-cassee")).toHaveCount(0);
+    await expect(fenetre.getByTestId("ligne-action-tickets")).toBeVisible();
+  } finally {
+    await fermer();
+  }
+});
+
+test("aucune action : le message d'invitation ; espace privé : ACTIONS_EN_ESPACE_PRIVE", async () => {
+  const { fenetre, fermer } = await lancerActions(nouvelleRacine(), nouveauProfil());
+  try {
+    await attendreNoyau(fenetre);
+    await ouvrirPageActions(fenetre);
+    await expect(fenetre.getByTestId("page-actions")).toContainText("Aucune action. Demande à l'agent de t'en créer une.");
+    await reglerEspaceActifPrive(fenetre, true);
+    await expect(fenetre.getByTestId("action-espace-prive")).toHaveText("Les actions ne sont pas disponibles dans un espace privé");
+    await expect(fenetre.getByTestId("page-actions")).toHaveCount(0);
   } finally {
     await fermer();
   }

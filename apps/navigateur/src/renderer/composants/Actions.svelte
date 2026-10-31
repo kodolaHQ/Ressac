@@ -1,0 +1,154 @@
+<script lang="ts">
+  import type { Execution } from "@webaios/noyau";
+  import type { ActionAffichee } from "../../commun/actions";
+  import { api } from "../etat.svelte";
+  import Icone from "./Icone.svelte";
+
+  const STATUTS: Record<Execution["statut"], string> = {
+    reussie: "Réussie",
+    partielle: "Partielle",
+    echouee: "Échouée",
+    interrompue: "Interrompue",
+    "accord-requis": "Accord requis",
+  };
+
+  let liste = $state<ActionAffichee[]>([]);
+  let chargee = $state(false);
+  let requete = 0;
+  /** Action dont la saisie est demandée en ligne (« Lancer »), et ce que l'utilisateur y tape. */
+  let saisieDe = $state<string | null>(null);
+  let saisie = $state("");
+  /** Action dont la suppression attend la confirmation de l'utilisateur. */
+  let aSupprimer = $state<ActionAffichee | null>(null);
+  /** Refus rendu par le process principal (ouverture, suppression), montré au-dessus de la liste. */
+  let refus = $state<string | null>(null);
+
+  async function charger() {
+    const n = ++requete;
+    const r = await api.actions.liste();
+    if (n !== requete) return;
+    liste = r;
+    chargee = true;
+  }
+
+  $effect(() => {
+    void charger();
+    return api.actions.surChange(() => void charger());
+  });
+
+  async function lancer(a: ActionAffichee, texte: string | null) {
+    refus = null;
+    saisieDe = null;
+    const r = await api.actions.ouvrir(a.id, texte);
+    if (!r.ok) refus = r.erreur;
+  }
+
+  function demanderLancement(a: ActionAffichee) {
+    if (a.saisie) {
+      saisieDe = saisieDe === a.id ? null : a.id;
+      saisie = "";
+    } else void lancer(a, null);
+  }
+
+  async function supprimer(a: ActionAffichee) {
+    aSupprimer = null;
+    refus = null;
+    const r = await api.actions.supprimer(a.id);
+    if (!r.ok) refus = r.erreur;
+    await charger();
+  }
+
+  async function retirerAccord(a: ActionAffichee) {
+    await api.actions.refuserAccord(a.id);
+    await charger();
+  }
+
+  /** « 30 oct. 08:00 » */
+  const quand = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  const dernier = (a: ActionAffichee) => (a.dernier ? `${STATUTS[a.dernier.statut]} · ${quand(a.dernier.debut)}` : "Jamais lancée");
+</script>
+
+<section class="actions" data-testid="page-actions" aria-label="Actions">
+  <h1>Actions</h1>
+  {#if refus}<p class="bandeau" role="status" data-testid="refus-actions">{refus}</p>{/if}
+  {#if chargee && liste.length === 0}
+    <p class="vide">Aucune action. Demande à l'agent de t'en créer une.</p>
+  {:else}
+    <ul>
+      {#each liste as a (a.id)}
+        <li data-testid="ligne-action-{a.id}">
+          <div class="nom">
+            <b>{a.nom}</b>
+            {#if a.erreur}
+              <span class="erreur" data-testid="erreur-{a.id}">{a.erreur}</span>
+            {:else}
+              {#if a.motsCles.length}<span data-testid="mots-cles-{a.id}">{a.motsCles.join(", ")}</span>{/if}
+              <span class="dernier" data-testid="dernier-{a.id}">{dernier(a)}</span>
+            {/if}
+            {#if saisieDe === a.id && a.saisie}
+              <!-- svelte-ignore a11y_autofocus -->
+              <input
+                class="saisie"
+                data-testid="saisie-{a.id}"
+                placeholder={a.saisie.libelle}
+                aria-label={a.saisie.libelle}
+                spellcheck="false"
+                autofocus
+                bind:value={saisie}
+                onkeydown={(e) => {
+                  if (e.key === "Enter") void lancer(a, saisie);
+                  else if (e.key === "Escape") saisieDe = null;
+                }}
+              />
+            {/if}
+          </div>
+          <div class="boutons">
+            {#if !a.erreur}
+              <button data-testid="lancer-{a.id}" onclick={() => demanderLancement(a)}><Icone nom="actions" taille={12} /> Lancer</button>
+            {/if}
+            <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.voirWorkflow(a.id)}>Voir le workflow</button>
+            {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => void retirerAccord(a)}>Retirer l'accord</button>{/if}
+            <button data-testid="supprimer-{a.id}" onclick={() => (aSupprimer = a)}>Supprimer</button>
+          </div>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</section>
+
+{#if aSupprimer}
+  {@const cible = aSupprimer}
+  <div class="voile">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
+      <p>Supprimer « {cible.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
+      <div class="confirmer-boutons">
+        <button data-testid="annuler-suppression-action" onclick={() => (aSupprimer = null)}>Annuler</button>
+        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void supprimer(cible)}>Supprimer</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .actions { height: 100%; overflow-y: auto; padding: 20px 24px; color: var(--texte); }
+  h1 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+  .bandeau { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--fond-actif); }
+  .vide { color: var(--texte-doux); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--bord); }
+  .nom { flex: 1; min-width: 0; }
+  .nom b { display: block; font-weight: 600; }
+  .nom span { display: block; font-size: 12px; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nom .erreur { color: var(--en-erreur); white-space: normal; }
+  .saisie { all: unset; box-sizing: border-box; width: 100%; max-width: 360px; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond-barre); }
+  .saisie:focus { border-color: var(--accent); }
+  .boutons { display: flex; gap: 6px; flex: none; }
+  .boutons button, .confirmation button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
+  .boutons button:hover { background: var(--fond-survol); }
+  .voile { position: fixed; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / 0.35); z-index: 10; }
+  .confirmation { max-width: 420px; padding: 16px 20px; border-radius: 10px; background: var(--fond-barre); border: 1px solid var(--bord); color: var(--texte); }
+  .confirmation p { margin: 0 0 14px; }
+  .confirmer-boutons { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirmation .confirmer { background: var(--accent); border-color: var(--accent); color: white; }
+</style>

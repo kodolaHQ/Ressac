@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { actionDeUrl, URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { actionDeUrl, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
   import { ACTIONS_EN_ESPACE_PRIVE } from "../../commun/actions";
   import PageAction from "../action/PageAction.svelte";
+  import Actions from "./Actions.svelte";
   import Applications from "./Applications.svelte";
   import Extensions from "./Extensions.svelte";
   import Constructeur from "../constructeur/Constructeur.svelte";
@@ -67,6 +68,12 @@
     <PageVide {fenetre} />
   {:else if onglet?.url === URL_APPLICATIONS}
     <Applications />
+  {:else if onglet?.url === URL_ACTIONS}
+    {#if actionEnPrive}
+      <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+    {:else}
+      <Actions />
+    {/if}
   {:else if onglet?.url === URL_EXTENSIONS}
     <Extensions />
   {:else if widgetWorkflow}
