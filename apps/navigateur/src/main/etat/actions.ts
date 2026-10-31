@@ -4,8 +4,12 @@ import {
   cleEspace,
   LARGEUR_AGENT_MAX,
   LARGEUR_AGENT_MIN,
+  actionDeUrl,
+  PREFIXE_WORKFLOW_ACTION,
+  URL_ACTIONS,
   URL_APPLICATIONS,
   URL_EXTENSIONS,
+  urlAction,
   urlWorkflow,
   type EtatFenetre,
   type EtatNavigateur,
@@ -82,6 +86,35 @@ function ouvrirPageInterne(d: Brouillon, genId: () => string, fenetreId: string,
   }
   const o = ouvrir(d, genId, f, { url });
   if (o) o.titre = titre;
+  return !!o;
+}
+
+/**
+ * Active la page de l'action `id` de la fenêtre (onglet dont l'URL est celle de l'action, avec ou sans exécution) si elle
+ * est ouverte dans un espace non privé, sinon l'ouvre dans l'espace actif s'il n'est pas privé. `execution` change l'URL
+ * de cet onglet (un résultat précis).
+ */
+function ouvrirAction(d: Brouillon, genId: () => string, a: { fenetreId: string; id: string; nom: string; execution?: string }): boolean {
+  const f = fenetre(d, a.fenetreId);
+  if (!f) return false;
+  const nonPrive = (esp: IdEspace) => d.espaces.find((e) => e.id === esp)?.prive === false;
+  const espaces = [f.espaceActif, ...Object.keys(f.ordre).filter((x) => x !== f.espaceActif)].filter(nonPrive);
+  for (const esp of espaces) {
+    const existant = liste(f, esp).find((id) => actionDeUrl(d.onglets[id]?.url ?? "")?.id === a.id);
+    if (!existant) continue;
+    const o = d.onglets[existant]!;
+    const url = a.execution ? urlAction(a.id, a.execution) : o.url;
+    if (f.espaceActif === esp && f.actif[esp] === existant && o.titre === a.nom && o.url === url) return false;
+    // L'action a pu être renommée depuis : le titre suit.
+    o.titre = a.nom;
+    o.url = url;
+    f.actif[esp] = existant;
+    f.espaceActif = esp;
+    return true;
+  }
+  if (!nonPrive(f.espaceActif)) return false;
+  const o = ouvrir(d, genId, f, { url: urlAction(a.id, a.execution) });
+  if (o) o.titre = a.nom;
   return !!o;
 }
 
@@ -385,7 +418,12 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       return ouvrirPageInterne(d, genId, a.fenetreId, URL_EXTENSIONS, "Extensions");
     // De même, une seule page « Voir le workflow » par widget et par fenêtre.
     case "ouvrirWorkflow":
-      return ouvrirPageInterne(d, genId, a.fenetreId, urlWorkflow(a.id), `Workflow — ${a.nom}`);
+      return ouvrirPageInterne(d, genId, a.fenetreId, a.proprietaire === "action" ? PREFIXE_WORKFLOW_ACTION + a.id : urlWorkflow(a.id), `Workflow — ${a.nom}`);
+    // Une seule page par action et par fenêtre (quel que soit le résultat montré), et une seule page « Actions ».
+    case "ouvrirAction":
+      return ouvrirAction(d, genId, a);
+    case "ouvrirActions":
+      return ouvrirPageInterne(d, genId, a.fenetreId, URL_ACTIONS, "Actions");
     // Ouvrir le panneau sur un onglet le donne à l'agent : la page d'accueil ne l'ouvre que si elle est encore affichée.
     case "panneauAgentAccueil": {
       const f = fenetre(d, a.fenetreId);

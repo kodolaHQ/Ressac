@@ -151,6 +151,17 @@ test("la récolte reçoit le widget, le dossier des données, le moteur et l'IA"
   expect(o.surChange).toBeTypeOf("function");
 });
 
+test("avec un répartiteur donné, les récoltes l'utilisent", async () => {
+  const cles: string[] = [];
+  const acces = { kev: vi.fn(), gemma: vi.fn(), oublier: vi.fn() };
+  const repartiteur = { pour: (cle: string) => (cles.push(cle), acces) };
+  const { p, recolter } = await preparer({ options: { repartiteur } });
+  await p.verifier({ auLancement: true });
+  expect(recolter.mock.calls[0]![0].ia).toBe(acces);
+  expect(cles).toEqual([`actus:${DEBUT.toISOString()}`]);
+  expect(acces.oublier).toHaveBeenCalledTimes(1);
+});
+
 test("le ménagement et la base des recherches sont transmis à chaque récolte et à chaque essai ; absents, rien n'est transmis", async () => {
   const menagement = new Menagement();
   const { p, recolter, recolterEssai } = await preparer({ options: { menagement, urlRecherche: "http://127.0.0.1:9/html/" } });
@@ -520,6 +531,25 @@ test("deux rejouer demandés coup sur coup s'exécutent l'un après l'autre", as
   fins[1]!.resoudre();
   expect(await a).toMatchObject({ execution: "e0-essai" });
   expect(await b).toMatchObject({ execution: "e1-essai" });
+});
+
+test("une trace avancement ou lecture ne change pas le suivi en direct d'un widget", async () => {
+  const { p, recolterEssai, directs } = await preparer();
+  const vus: { avant: EtatDirect; apres: EtatDirect; signales: number }[] = [];
+  recolterEssai.mockImplementation(async (o) => {
+    o.surTrace!({ bloc: "liste", etape: "debut" });
+    const avant = structuredClone(p.direct());
+    const signales = directs.length;
+    o.surTrace!({ bloc: "liste", etape: "avancement", faits: 2, total: 5 });
+    o.surTrace!({ bloc: "liste", etape: "lecture", hote: "gitlab.com" });
+    o.surTrace!({ bloc: "autre", etape: "lecture", hote: "gitlab.com" });
+    vus.push({ avant, apres: structuredClone(p.direct()), signales: directs.length - signales });
+    return { ok: true, execution: idEssai(DEBUT.toISOString()), statut: "reussie" };
+  });
+  await p.rejouer("actus", "o", "liste");
+  expect(vus[0]!.apres).toEqual(vus[0]!.avant);
+  expect(vus[0]!.apres.courants[0]!.blocs).toEqual({ liste: { statut: "en-cours", elements: null } });
+  expect(vus[0]!.signales).toBe(0);
 });
 
 test("direct() montre le widget en cours, son genre et ses blocs au fil des traces, puis plus rien", async () => {

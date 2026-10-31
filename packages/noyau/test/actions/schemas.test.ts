@@ -1,0 +1,55 @@
+import { expect, test } from "vitest";
+import { DeclarationAction, ID_ACTION, WEB_AVEC_COMPTE } from "../../src/index.js";
+
+const message = (brut: unknown) => {
+  const r = DeclarationAction.safeParse(brut);
+  return r.success ? null : r.error.issues.map((i) => i.message).join(" | ");
+};
+
+test("l'exemple GitLab (compte gitlab.com, motsCles, miseEnPage) est accepté", () => {
+  const d = DeclarationAction.parse({
+    nom: "Mes merge requests",
+    description: "Les merge requests qui m'attendent",
+    motsCles: ["gitlab", "mr", "revue"],
+    sources: { compte: ["gitlab.com"] },
+    miseEnPage: "Un tableau par projet, les plus anciennes d'abord",
+  });
+  expect(d.sources).toEqual({ compte: ["gitlab.com"], publiques: [], web: false });
+  expect(d.saisie).toBeUndefined();
+});
+
+test("l'exemple Leboncoin (web, saisie « Recherche ») est accepté", () => {
+  const d = DeclarationAction.parse({ nom: "Leboncoin", sources: { web: true }, saisie: { libelle: "Recherche" }, dureeMaxMinutes: 10 });
+  expect(d.saisie).toEqual({ libelle: "Recherche" });
+  expect(d.description).toBe("");
+  expect(d.motsCles).toEqual([]);
+});
+
+test("web avec compte : WEB_AVEC_COMPTE", () => {
+  expect(message({ nom: "X", sources: { web: true, compte: ["gitlab.com"] } })).toBe(WEB_AVEC_COMPTE);
+});
+
+test("clé inconnue (recolte, tailles) refusée", () => {
+  expect(message({ nom: "X", sources: {}, recolte: { minutes: 30 } })).not.toBeNull();
+  expect(message({ nom: "X", sources: {}, tailles: {} })).not.toBeNull();
+  expect(message({ nom: "X", sources: {}, saisie: { libelle: "R", defaut: "x" } })).not.toBeNull();
+});
+
+test("11 mots-clés, libellé de 41 caractères, dureeMaxMinutes 61 refusés", () => {
+  const base = { nom: "X", sources: {} };
+  expect(DeclarationAction.safeParse({ ...base, motsCles: Array.from({ length: 10 }, (_, i) => `m${i}`) }).success).toBe(true);
+  expect(DeclarationAction.safeParse({ ...base, motsCles: Array.from({ length: 11 }, (_, i) => `m${i}`) }).success).toBe(false);
+  expect(DeclarationAction.safeParse({ ...base, motsCles: ["x".repeat(31)] }).success).toBe(false);
+  expect(DeclarationAction.safeParse({ ...base, saisie: { libelle: "x".repeat(40) } }).success).toBe(true);
+  expect(DeclarationAction.safeParse({ ...base, saisie: { libelle: "x".repeat(41) } }).success).toBe(false);
+  expect(DeclarationAction.safeParse({ ...base, dureeMaxMinutes: 60 }).success).toBe(true);
+  expect(DeclarationAction.safeParse({ ...base, dureeMaxMinutes: 61 }).success).toBe(false);
+  expect(DeclarationAction.safeParse({ ...base, miseEnPage: "x".repeat(1001) }).success).toBe(false);
+});
+
+test("ID_ACTION", () => {
+  expect(ID_ACTION.test("gitlab-mr")).toBe(true);
+  expect(ID_ACTION.test("Gitlab")).toBe(false);
+  expect(ID_ACTION.test(".cache")).toBe(false);
+  expect(ID_ACTION.test("a".repeat(61))).toBe(false);
+});

@@ -68,7 +68,26 @@ export function cibleIcone(url: string): string | null {
   return cible;
 }
 
-type Chercher = (url: string, init: { signal: AbortSignal; credentials: "omit" }) => Promise<Response>;
+export type Chercher = (url: string, init: { signal: AbortSignal; credentials: "omit" }) => Promise<Response>;
+
+/** Le corps de la réponse, ou null s'il manque ou dépasse `max` octets (la lecture s'arrête alors). */
+export async function corpsBorne(r: Response, max: number): Promise<Buffer<ArrayBuffer> | null> {
+  if (!r.body) return null;
+  const morceaux: Uint8Array[] = [];
+  let taille = 0;
+  const lecteur = r.body.getReader();
+  for (;;) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    taille += value.length;
+    if (taille > max) {
+      await lecteur.cancel().catch(() => {});
+      return null;
+    }
+    morceaux.push(value);
+  }
+  return Buffer.concat(morceaux);
+}
 
 /**
  * Répond à une URL `webaios-icone:` en allant chercher le favicon hors de la session de l'interface (`chercher` : une
@@ -83,21 +102,9 @@ export async function repondreIcone(chercher: Chercher, url: string): Promise<Re
   try {
     const r = await chercher(cible, { signal: arret.signal, credentials: "omit" });
     const type = r.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (!r.ok || !r.body) return new Response("", { status: 404 });
-    const morceaux: Uint8Array[] = [];
-    let taille = 0;
-    const lecteur = r.body.getReader();
-    for (;;) {
-      const { done, value } = await lecteur.read();
-      if (done) break;
-      taille += value.length;
-      if (taille > TAILLE_ICONE) {
-        await lecteur.cancel().catch(() => {});
-        return new Response("", { status: 404 });
-      }
-      morceaux.push(value);
-    }
-    return new Response(Buffer.concat(morceaux), {
+    const corps = r.ok ? await corpsBorne(r, TAILLE_ICONE) : null;
+    if (!corps) return new Response("", { status: 404 });
+    return new Response(corps, {
       headers: { "Content-Type": type.startsWith("image/") ? type : "application/octet-stream" },
     });
   } catch {

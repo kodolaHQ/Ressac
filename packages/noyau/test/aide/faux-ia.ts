@@ -53,3 +53,14 @@ export async function urlInjoignable(): Promise<string> {
   await new Promise<void>((ok) => s.close(() => ok()));
   return `http://127.0.0.1:${port}`;
 }
+
+/** Faux Ollama qui ne répond jamais à /api/chat ; `coupees` compte les requêtes abandonnées par le client. */
+export async function fauxOllamaMuet(): Promise<FauxServeur & { coupees: () => number }> {
+  let coupees = 0;
+  const s = await demarrer((_r, res) => {
+    res.on("close", () => {
+      if (!res.writableEnded) coupees++;
+    });
+  });
+  return { ...s, coupees: () => coupees };
+}

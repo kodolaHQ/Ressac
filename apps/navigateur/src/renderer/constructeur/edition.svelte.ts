@@ -3,6 +3,7 @@ import type { ApiWebaios, EditionWorkflow } from "../../commun/api";
 import { MODELE_CODE, parametresNeufs } from "./ajout";
 import { ajouterBloc, deplacer, Historique, memeBrouillon, suivreFichier, versBrouillon, type Brouillon } from "./brouillon";
 import { disposer, positionsAffichees, sansDisposition } from "./disposition";
+import { estCleAction } from "./cible";
 import { oublierChoixExecutions } from "./executions.svelte";
 
 type Position = { x: number; y: number };
@@ -10,7 +11,13 @@ export type Validation = { ok: true } | { ok: false; erreur: string; bloc?: stri
 export type EtatEnregistrement = "enregistre" | "en-cours" | { invalide: string; bloc?: string } | { erreur: string };
 /** `illisible` : `workflow.json` n'est pas lisible à l'ouverture (JSON coupé…) ; `introuvable` : ni widget ni récolte. */
 export type Chargement = "chargement" | "pret" | "introuvable" | { illisible: string };
-export type Depot = Pick<ApiWebaios["workflow"], "lire" | "enregistrer" | "lireCode" | "enregistrerCode">;
+/** Lecture et écriture du workflow, adressées par la clé du workflow (`cleCible`). */
+export type Depot = {
+  lire(cle: string): ReturnType<ApiWebaios["workflow"]["lire"]>;
+  enregistrer(cle: string, brouillon: Brouillon): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;
+  lireCode(cle: string, nom: string): ReturnType<ApiWebaios["workflow"]["lireCode"]>;
+  enregistrerCode(cle: string, nom: string, texte: string): ReturnType<ApiWebaios["workflow"]["enregistrerCode"]>;
+};
 export type Viewport = { x: number; y: number; zoom: number };
 
 const PREFIXE_NON_ENREGISTRE = /^Non enregistré : /;
@@ -34,7 +41,9 @@ export class Edition {
   /** Positions affichées : celles du brouillon, ou la disposition automatique d'un workflow qui n'en a pas. */
   positions = $state.raw<Record<string, Position>>({});
   chargement = $state.raw<Chargement>("chargement");
-  widget = $state.raw<EditionWorkflow["widget"] | null>(null);
+  widget = $state.raw<NonNullable<EditionWorkflow["widget"]> | null>(null);
+  /** Ce que déclare l'action dont c'est le workflow ; null pour un widget. */
+  action = $state.raw<NonNullable<EditionWorkflow["action"]> | null>(null);
   origine = $state<"fichier" | "implicite">("fichier");
   /** Le workflow sur le disque est valide : « Lancer » a un sens. */
   disqueValide = $state(false);
@@ -71,7 +80,8 @@ export class Edition {
   }
 
   private charger(l: EditionWorkflow): void {
-    this.widget = l.widget;
+    this.widget = l.widget ?? null;
+    this.action = l.action ?? null;
     this.origine = l.origine;
     const disque = l.brut === null ? null : versBrouillon(l.brut);
     if (!disque) {
@@ -104,9 +114,10 @@ export class Edition {
     const n = ++this.lecture;
     const l = await this.depot.lire(this.id);
     if (n !== this.lecture) return;
-    // L'agent réécrit peut-être widget.json : le canevas reste tel quel.
+    // L'agent réécrit peut-être widget.json (ou action.json) : le canevas reste tel quel.
     if (!l) return;
-    this.widget = l.widget;
+    this.widget = l.widget ?? null;
+    this.action = l.action ?? null;
     if (this.chargement !== "pret" || !this.brouillon || !this.historique) {
       this.chargement = "chargement";
       this.charger(l);
@@ -363,10 +374,13 @@ function invalide(erreur: string, bloc?: string): EtatEnregistrement {
 /** Une édition par widget et par fenêtre : changer d'onglet ne perd ni un brouillon invalide ni l'historique. */
 const editions = new Map<string, Edition>();
 
-/** Oublie l'édition des widgets qui ne sont plus sur l'accueil : un id réutilisé ne reprend jamais l'ancien historique. */
+/**
+ * Oublie l'édition des widgets qui ne sont plus sur l'accueil : un id réutilisé ne reprend jamais l'ancien historique.
+ * Celles des actions (clé `action:<id>`) ne dépendent pas de l'accueil : elles restent.
+ */
 export function oublierEditions(presents: Iterable<string>): void {
   const ids = new Set(presents);
-  for (const id of [...editions.keys()]) if (!ids.has(id)) editions.delete(id);
+  for (const id of [...editions.keys()]) if (!ids.has(id) && !estCleAction(id)) editions.delete(id);
   oublierChoixExecutions(ids);
 }
 

@@ -148,6 +148,8 @@
 {#if accordPour}
   {@const cible = accordPour}
   <CarteAccordCompte
+    sujet="widget"
+    profilsPourAccord={api.accueil.profilsPourAccord}
     nom={cible.nom}
     domaines={cible.compte}
     publiques={cible.publiques}

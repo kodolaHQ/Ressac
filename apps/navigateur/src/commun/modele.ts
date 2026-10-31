@@ -1,4 +1,4 @@
-import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
+import type { DroitDev, EtatAccesOnglet, Proprietaire } from "@webaios/noyau";
 import type { CarteExtension } from "./extensions";
 
 /** Page interne des applications : un onglet sans page web, affiché par l'interface. */
@@ -13,6 +13,32 @@ export function widgetDeUrlWorkflow(url: string): string | null {
   if (!url.startsWith(PREFIXE_WORKFLOW)) return null;
   const id = url.slice(PREFIXE_WORKFLOW.length);
   return /^[a-z0-9-]{1,100}$/.test(id) ? id : null;
+}
+/** Page interne « Voir le workflow » d'une action : `webaios://workflow/action/<id de l'action>`. */
+export const PREFIXE_WORKFLOW_ACTION = "webaios://workflow/action/";
+const ID_ACTION = /^[a-z0-9-]{1,60}$/;
+/** Ce qu'ouvre une page « Voir le workflow » (widget ou action), ou null si l'URL n'en est pas une. */
+export function cibleDeUrlWorkflow(url: string): Proprietaire | null {
+  if (url.startsWith(PREFIXE_WORKFLOW_ACTION)) {
+    const id = url.slice(PREFIXE_WORKFLOW_ACTION.length);
+    return ID_ACTION.test(id) ? { type: "action", id } : null;
+  }
+  const widget = widgetDeUrlWorkflow(url);
+  return widget ? { type: "widget", id: widget } : null;
+}
+/** Page interne « Actions » : la liste des actions. */
+export const URL_ACTIONS = "webaios://actions";
+/** Page d'une action : `webaios://action/<id>` (le dernier résultat) ou `webaios://action/<id>/<exécution>`. */
+export const PREFIXE_ACTION = "webaios://action/";
+const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
+export const urlAction = (id: string, execution?: string) => PREFIXE_ACTION + id + (execution ? `/${execution}` : "");
+/** L'action (et l'exécution) d'une page d'action, ou null si l'URL n'en est pas une (jamais un chemin). */
+export function actionDeUrl(url: string): { id: string; execution: string | null } | null {
+  if (!url.startsWith(PREFIXE_ACTION)) return null;
+  const [id, execution, ...reste] = url.slice(PREFIXE_ACTION.length).split("/");
+  if (reste.length || !id || !ID_ACTION.test(id)) return null;
+  if (execution === undefined) return { id, execution: null };
+  return execution.length <= 64 && ID_EXECUTION.test(execution) ? { id, execution } : null;
 }
 /** Une page interne (`webaios:`) n'a pas de vue : c'est l'interface qui l'affiche, comme la page vide. */
 export const aUneVue = (url: string) => !url.startsWith("webaios:");
@@ -232,6 +258,8 @@ export interface Demande {
   titre?: string;
   /** « donnees-widget » : l'id du widget dont l'agent veut voir les données. */
   widget?: string;
+  /** « donnees-widget » : l'id de l'action dont l'agent veut voir les résultats (au lieu d'un widget). */
+  action?: string;
   /** « lire-onglet » : la question ne s'affiche que dans cette fenêtre (sinon, selon `ongletId`). */
   fenetreId?: IdFenetre;
   /** « lire-onglet » et « outils-dev » : l'onglet visé ; s'il est fermé, la question est refusée. */

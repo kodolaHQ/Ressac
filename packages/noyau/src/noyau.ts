@@ -16,16 +16,25 @@ import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
 import type { OutilsExtensions } from "./mcp/extensions.js";
-import { demarrerServeurMcp, genererJeton, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
-import { listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
+import { creerRepartiteurIa } from "./ia/repartiteur.js";
+import { ID_EXECUTION, listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
 import { MENAGEMENT_PAR_DEFAUT } from "./workflows/executer.js";
 import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
 import type { NotificationWidget } from "./widgets/nouveautes.js";
 import { accordRequis } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
+import { lireAction, lireActions, type ActionLue } from "./actions/lire.js";
+import { dernierResultat, lireResultat, oublierActionsDisparues, supprimerDonneesAction } from "./actions/donnees.js";
+import { FileActions, type EtatActions, type LancementAction } from "./actions/file.js";
+import { ID_ACTION } from "./actions/schemas.js";
+import { COMPOSANTS_INTEGRES } from "./pages/catalogue.js";
+import { lireComposantsAgent } from "./pages/composants-agent.js";
+import { resoudrePage, type PageRendue } from "./pages/resoudre.js";
+import type { ResumeExecution } from "./workflows/executions.js";
 
 export class ErreurAtelier extends Error {
   constructor(readonly etat: EtatAtelier, detail?: string) {
@@ -168,8 +177,43 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
   };
 }
 
+/** Le résultat d'une exécution d'action tel que sa page le montre : la page résolue à la lecture. */
+export type PageAction = {
+  execution: string;
+  debut: string;
+  fin: string | null;
+  saisie: string | null;
+  statut: Execution["statut"];
+  erreur?: string;
+  page: PageRendue | null;
+  /** L'action lit avec le compte de l'utilisateur (déclaration actuelle) : les images des résultats restent neutres. */
+  compte: boolean;
+};
+
+/** Les actions : lancées à la demande, dans leur propre file, résultats et accords hors de l'espace. */
+export interface ActionsNoyau {
+  lister(): Promise<ActionLue[]>;
+  /** Lance l'action (déclencheur « manuelle » par défaut) ; si elle tourne ou attend déjà, rend celle-là (`deja`). */
+  lancer(id: string, o: { saisie?: string; declencheur?: Execution["declencheur"] }): LancementAction;
+  arreter(id: string): void;
+  direct(): EtatActions;
+  surDirect(rappel: (e: EtatActions) => void): () => void;
+  executions(id: string): Promise<ResumeExecution[]>;
+  execution(id: string, execution: string): Promise<Execution | null>;
+  /** Le résultat de cette exécution (null : le dernier résultat), sans rien relancer ; null s'il n'y en a pas. */
+  page(id: string, execution: string | null): Promise<PageAction | null>;
+  /** Comme pour un widget, mais rien n'est lancé : L'utilisateur relance depuis la page. */
+  accorder(o: { id: string; profil: string; compte: string[]; publiques: string[] }): Promise<void>;
+  /** Retire l'accord et efface exécutions, résultats et mémoire. */
+  refuserAccord(id: string): Promise<void>;
+  /** Essai du constructeur : une exécution « -essai » qui ne devient pas le dernier résultat. */
+  rejouer(id: string, origine: string, depart: string): LancementAction;
+  supprimerDonnees(id: string): Promise<void>;
+}
+
 export interface Noyau {
   chemins: CheminsEspace;
+  actions: ActionsNoyau;
   politique: PolitiqueAcces;
   /** Nom de l'agent du profil de ce noyau (celui qui détient les accès). */
   agent: string;
@@ -226,6 +270,11 @@ export async function creerNoyau(o: {
   dossierProfilage?: string;
   /** Dossier des données, états et accords des widgets, hors de l'espace (le navigateur donne `<profil>/widgets`). */
   dossierWidgets: string;
+  /**
+   * Dossier des exécutions, résultats, mémoire et accords des actions, hors de l'espace (le navigateur donne
+   * `<profil>/actions`).
+   */
+  dossierActions: string;
   /** IA locale pour les récoltes ; arrêtée avec le noyau. */
   ia?: IaLocale;
   /** Moteur des workflows, monté dans le conteneur de récolte (par défaut `<ressources>/docker/moteur`). */
@@ -253,9 +302,14 @@ export async function creerNoyau(o: {
 
   const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
   const { dossierWidgets } = o;
+  const { dossierActions } = o;
+  // Une action supprimée (ou mise à la corbeille) depuis le dernier lancement : ses données et son accord partent.
+  await oublierActionsDisparues(chemins, dossierActions).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
   const ia = o.ia ?? null;
   // Accès propre à ce noyau, fermé avec lui : une récolte encore en vol à l'arrêt ne relance pas Kev.
   const accesIa = ia?.acces() ?? null;
+  // Un seul répartiteur pour les widgets et les actions : les appels d'une action passent avant ceux des widgets.
+  const repartiteurIa = accesIa ? creerRepartiteurIa(accesIa) : null;
   const signaler = () => {
     try {
       o.surChange?.();
@@ -284,6 +338,25 @@ export async function creerNoyau(o: {
   const proprietaire = o.pont.outilsDev?.proprietaire?.();
   const outilsDev = proprietaire ?? o.pont.outilsDev;
   const jeton = genererJeton();
+  // Lues par l'agent via ses outils MCP. Une action illisible, ou qui a un accord enregistré, compte comme lisant avec le
+  // compte de l'utilisateur. `actions` est défini plus bas : ces fonctions ne servent qu'une fois le serveur lancé.
+  const outilsActions: OutilsActions = {
+    async lire(id) {
+      const a = await lireAction(chemins, id);
+      if (!a) return null;
+      const accord = (await lireAccords(dossierActions))[id] !== undefined;
+      if ("erreur" in a) return { nom: id, compte: true, saisie: null };
+      return { nom: a.declaration.nom, compte: accord || a.declaration.sources.compte.length > 0, saisie: a.declaration.saisie?.libelle ?? null };
+    },
+    lancer: (id, saisie) => actions.lancer(id, { ...(saisie !== undefined ? { saisie } : {}), declencheur: "agent" }).fin,
+    executions: (id) => actions.executions(id),
+    async execution(id, execution) {
+      const e = await actions.execution(id, execution);
+      if (!e) return null;
+      const r = await lireResultat(dossierActions, id, execution);
+      return { ...e, plan: r?.plan ?? null };
+    },
+  };
   const serveur = await demarrerServeurMcp({
     pont: o.pont,
     politique,
@@ -293,6 +366,7 @@ export async function creerNoyau(o: {
     ...(outilsDev ? { outilsDev } : {}),
     ...(o.applications ? { applications: o.applications } : {}),
     widgets: outilsWidgets,
+    actions: outilsActions,
     ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}),
     ...(o.extensions ? { extensions: o.extensions } : {}),
   });
@@ -328,6 +402,7 @@ export async function creerNoyau(o: {
     atelier,
     pont: o.pont,
     ia: accesIa,
+    ...(repartiteurIa ? { repartiteur: repartiteurIa } : {}),
     surChange: signaler,
     surDirect(e) {
       for (const rappel of abonnesDirect) {
@@ -349,6 +424,81 @@ export async function creerNoyau(o: {
     ...(o.notifier ? { notifier: o.notifier } : {}),
   });
   await planificateur.demarrer();
+  const abonnesActions = new Set<(e: EtatActions) => void>();
+  const fileActions = new FileActions({
+    chemins,
+    dossierActions,
+    moteur,
+    atelier,
+    pont: o.pont,
+    repartiteur: repartiteurIa,
+    pret: atelierPret,
+    ...(o.horloge ? { horloge: o.horloge } : {}),
+    ...(o.adressesLocales ? { adressesLocales: true } : {}),
+    menagement: MENAGEMENT_PAR_DEFAUT,
+    ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
+    surDirect(e) {
+      for (const rappel of abonnesActions) {
+        try {
+          rappel(e);
+        } catch (err) {
+          console.error("[webaios] suivi des actions :", err);
+        }
+      }
+    },
+  });
+  const actions: ActionsNoyau = {
+    lister: () => lireActions(chemins),
+    lancer: (id, l) => fileActions.lancer(id, { saisie: l.saisie ?? null, declencheur: l.declencheur ?? "manuelle" }),
+    arreter: (id) => void fileActions.arreter(id),
+    direct: () => fileActions.direct(),
+    surDirect(rappel) {
+      abonnesActions.add(rappel);
+      return () => void abonnesActions.delete(rappel);
+    },
+    executions: async (id) => (ID_ACTION.test(id) ? listerExecutions(join(dossierActions, id)) : []),
+    execution: async (id, execution) => (ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? lireExecution(join(dossierActions, id), execution) : null),
+    async page(id, execution) {
+      if (execution !== null && !ID_EXECUTION.test(execution)) return null;
+      const action = await lireAction(chemins, id);
+      if (!action) return null;
+      const r = execution === null ? await dernierResultat(dossierActions, id) : await lireResultat(dossierActions, id, execution);
+      const e = await lireExecution(join(dossierActions, id), r?.execution ?? execution ?? "");
+      if (!e) return null;
+      // Illisible, ou un accord encore enregistré (réécrite sans compte, ses résultats ont pu être lus avec) : compte comme
+      // lisant avec le compte (le plus prudent, comme les outils MCP et les images). Accords illisibles : de même.
+      const accords = await lireAccords(dossierActions).catch(() => null);
+      const compte = "erreur" in action || action.declaration.sources.compte.length > 0 || !accords || Object.hasOwn(accords, id);
+      const catalogue = [...COMPOSANTS_INTEGRES, ...(await lireComposantsAgent(chemins.composants)).valides];
+      return {
+        execution: e.id,
+        debut: e.debut,
+        fin: e.fin,
+        saisie: r?.saisie ?? e.saisie ?? null,
+        statut: e.statut,
+        ...(e.erreur !== undefined ? { erreur: e.erreur } : {}),
+        page: r ? resoudrePage(r.plan ?? { blocs: [] }, r.resultats, { compte, catalogue, secours: r.secours }) : null,
+        compte,
+      };
+    },
+    async accorder({ id, profil: nomProfil, compte: montres, publiques: publiquesMontrees }) {
+      const a = await lireAction(chemins, id);
+      if (!a) throw new Error(`Action inconnue : ${id}`);
+      if ("erreur" in a) throw new Error(`Action illisible : ${a.erreur}`);
+      const { compte, publiques } = a.declaration.sources;
+      if (!compte.length) throw new Error(`L'action ${id} ne lit pas avec un compte`);
+      if (!memesListes(compte, montres) || !memesListes(publiques, publiquesMontrees)) {
+        throw new Error(`La déclaration de l'action ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
+      }
+      await accorder(dossierActions, id, { domaines: [...compte].sort(), publiques: [...publiques].sort(), profil: nomProfil });
+    },
+    async refuserAccord(id) {
+      await retirerAccord(dossierActions, id);
+      await supprimerDonneesAction(dossierActions, id);
+    },
+    rejouer: (id, origine, depart) => fileActions.essayer(id, origine, depart),
+    supprimerDonnees: (id) => supprimerDonneesAction(dossierActions, id),
+  };
   const pont = o.pont;
   const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
 
@@ -357,6 +507,7 @@ export async function creerNoyau(o: {
 
   return {
     chemins,
+    actions,
     politique,
     agent: profil.nom,
     etatAtelier: () => atelier.etat(),
@@ -452,7 +603,7 @@ export async function creerNoyau(o: {
       sessionsOuvertes.clear();
       // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
       politique.reinitialiser();
-      await planificateur.arreter();
+      await Promise.all([planificateur.arreter(), fileActions.arreterTout()]);
       await accesIa?.fermer().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
       await serveur.arreter();
       proprietaire?.liberer();

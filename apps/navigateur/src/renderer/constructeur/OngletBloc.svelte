@@ -5,10 +5,15 @@
   import EditeurCode from "./EditeurCode.svelte";
   import type { Executions } from "./executions.svelte";
   import FormulaireBloc from "./FormulaireBloc.svelte";
+  import { estCleAction } from "./cible";
+  import PanneauAction from "./PanneauAction.svelte";
   import PanneauWidget from "./PanneauWidget.svelte";
   import SortieBloc from "./SortieBloc.svelte";
 
-  /** L'onglet « Bloc » : le bloc sélectionné (réglages, code, sortie), ou le widget quand aucun ne l'est. */
+  /**
+   * L'onglet « Bloc » : le bloc sélectionné (réglages, code, sortie), ou le widget (l'action) quand aucun ne l'est.
+   * `widget` : la clé du workflow (`cleCible`).
+   */
   let {
     widget,
     edition,
@@ -53,6 +58,8 @@
       {/if}
       <SortieBloc bloc={bloc.id} choisie={executions.choisie} execution={executions.detail} introuvable={executions.introuvable} />
     {/key}
+  {:else if estCleAction(widget)}
+    <PanneauAction action={edition.action} />
   {:else}
     <PanneauWidget widget={edition.widget} />
   {/if}

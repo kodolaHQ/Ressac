@@ -54,6 +54,25 @@ describe("gabarits", () => {
     expect(remplir("{lien?}", { element: { lien: "https://x.fr/?a=1" }, config: null }, { url: true })).toEqual({ texte: "https://x.fr/?a=1" });
   });
 
+  it("{saisie} rend la saisie, même si l'élément a un champ saisie", () => {
+    const e = { saisie: "de l'élément", titre: "T" };
+    expect(remplir("{saisie} / {titre} / {saisie?}", { element: e, config: null, saisie: "clio lyon" })).toEqual({ texte: "clio lyon / T / clio lyon" });
+    // Seul le repère exact : un chemin plus long lit toujours l'élément.
+    expect(remplir("{saisie.x}", { element: { saisie: { x: 1 } }, config: null, saisie: "clio" })).toEqual({ texte: "1" });
+  });
+
+  it("sans saisie donnée, {saisie} lit l'élément comme avant", () => {
+    expect(remplir("{saisie}", { element: { saisie: "de l'élément" }, config: null })).toEqual({ texte: "de l'élément" });
+    expect(remplir("{saisie}", { element: {}, config: null })).toEqual({ absente: "saisie" });
+    expect(remplir("[{saisie?}]", { element: {}, config: null })).toEqual({ texte: "[]" });
+  });
+
+  it("{saisie} dans une URL est encodé", () => {
+    expect(remplir("https://www.leboncoin.fr/recherche?text={saisie}", { element: null, config: null, saisie: "clio lyon&co" }, { url: true })).toEqual({
+      texte: "https://www.leboncoin.fr/recherche?text=clio%20lyon%26co",
+    });
+  });
+
   it("un texte sans gabarit reste tel quel ; les accolades qui ne sont pas un chemin aussi", () => {
     expect(remplir("rien { ici } {a-b}", { element, config })).toEqual({ texte: "rien { ici } {a-b}" });
   });

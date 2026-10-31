@@ -2,7 +2,7 @@
   import type { EditionWorkflow } from "../../commun/api";
 
   /** Le widget, en lecture seule : ses sources et sa configuration ne s'éditent pas dans le constructeur. */
-  let { widget }: { widget: EditionWorkflow["widget"] | null } = $props();
+  let { widget }: { widget: NonNullable<EditionWorkflow["widget"]> | null } = $props();
 
   const config = $derived(widget ? JSON.stringify(widget.config ?? null, null, 2) : "");
 </script>

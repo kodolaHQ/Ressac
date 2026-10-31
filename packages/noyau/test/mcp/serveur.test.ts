@@ -4,8 +4,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
+import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, ERREUR_RESERVEE_ACTION, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
 import type { Execution } from "../../src/workflows/executions.js";
+import { ACTION_INCONNUE, ACTION_SANS_WORKFLOW, RESULTAT_TROP_GROS, saisieRequise, type ResultatLancement } from "../../src/actions/executer.js";
+import { ERREUR_ACTION_INTERNE } from "../../src/actions/file.js";
+import { ACTION_ARRETEE } from "../../src/workflows/executions.js";
 import type { EtatWidget } from "../../src/accueil/schemas.js";
 import type { Application } from "../../src/applications/gestionnaire.js";
 
@@ -653,6 +656,15 @@ test("workflow_ouvert rend le widget et le bloc de la fenêtre de la session", a
   );
 });
 
+test("workflow_ouvert rend l'action et le bloc quand le constructeur montre une action", async () => {
+  await avecWorkflowOuvert(
+    (f) => (f === "F1" ? { action: "gitlab", bloc: "lire" } : null),
+    async ({ s, appeler }) => {
+      expect(JSON.parse(await appeler(s.ouvrirSession("F1")))).toEqual({ action: "gitlab", bloc: "lire" });
+    },
+  );
+});
+
 test("deux sessions de deux fenêtres voient chacune le leur", async () => {
   const ouverts: Record<string, WorkflowOuvert> = { F1: { widget: "a", bloc: null }, F2: { widget: "b", bloc: "x" } };
   await avecWorkflowOuvert(
@@ -703,4 +715,161 @@ test("un fournisseur qui lève : AUCUN_WORKFLOW_OUVERT", async () => {
       expect(await appeler(s.ouvrirSession("F1"))).toBe(AUCUN_WORKFLOW_OUVERT);
     },
   );
+});
+
+// --- Actions ---
+
+/** Deux actions : « veille » (sans compte, saisie « sujet ») et « courrier » (lit avec le compte de l'utilisateur). */
+function actionsFactices() {
+  const lancees: { id: string; saisie?: string }[] = [];
+  let resultat: ResultatLancement = { statut: "reussie", execution: "2026-10-28T10-00-00-000Z" };
+  const outils: OutilsActions = {
+    async lire(id) {
+      if (id === "veille") return { nom: "Veille", compte: false, saisie: "Sujet" };
+      if (id === "courrier") return { nom: "Courrier", compte: true, saisie: null };
+      return null;
+    },
+    async lancer(id, saisie) {
+      lancees.push({ id, ...(saisie !== undefined ? { saisie } : {}) });
+      return resultat;
+    },
+    async executions(id) {
+      return executionsFactices(id).map((e) => ({ id: e.id, declencheur: e.declencheur, debut: e.debut, fin: e.fin, statut: e.statut, blocs: e.blocs.map((b) => ({ id: b.id, statut: b.statut, elements: b.elements })) }));
+    },
+    async execution(id, execution) {
+      const e = executionsFactices(id).find((x) => x.id === execution);
+      return e ? { ...e, plan: { blocs: [{ composant: "titre", props: { texte: "plan secret du compte" } }] } } : null;
+    },
+  };
+  return { outils, lancees, fixer: (r: ResultatLancement) => (resultat = r) };
+}
+
+async function avecActions(actions: OutilsActions, o: { donneesWidget?: boolean } = {}) {
+  await client.close();
+  await serveur.arreter();
+  pont = new PontFactice([], { actif: null, autoriser: false, ...o });
+  politique = new PolitiqueAcces();
+  serveur = await demarrerServeurMcp({ pont, politique, jeton, actions, agent: "Claude" });
+  client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${jeton}` } },
+    }),
+  );
+}
+
+test("sans actions : les outils d'actions n'existent pas", async () => {
+  const noms = (await client.listTools()).tools.map((t) => t.name);
+  expect(noms).not.toContain("lancer_action");
+  expect(noms).not.toContain("executions_action");
+});
+
+test("lancer_action sur une action sans compte : statut reussie et id d'exécution, aucune donnée dans la réponse", async () => {
+  const { outils, lancees } = actionsFactices();
+  await avecActions(outils);
+  const r = await client.callTool({ name: "lancer_action", arguments: { id: "veille", saisie: "clio lyon" } });
+  expect(r.isError).toBeFalsy();
+  expect(lancees).toEqual([{ id: "veille", saisie: "clio lyon" }]);
+  expect(JSON.parse(texte(r))).toEqual({ statut: "reussie", execution: "2026-10-28T10-00-00-000Z" });
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("lancer_action avec compte et erreur écrite par le code : ERREUR_RESERVEE_ACTION ; erreur du noyau : montrée", async () => {
+  const { outils, fixer } = actionsFactices();
+  await avecActions(outils);
+  fixer({ statut: "echouee", erreur: "SECRET du compte" });
+  let t = texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }));
+  expect(t).not.toContain("SECRET");
+  expect(t).toContain(ERREUR_RESERVEE_ACTION);
+  expect(t).not.toContain("donnees_widget");
+  fixer({ statut: "echouee", erreur: "SECRET du compte", erreurNoyau: true });
+  expect(texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }))).not.toContain("SECRET");
+  fixer({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : mail.test", erreurNoyau: true });
+  t = texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }));
+  expect(t).toContain("Accord requis pour lire avec ton compte : mail.test");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("lancer_action avec compte : les messages fixes des actions passent, pas un texte identique écrit par le code", async () => {
+  const { outils, fixer } = actionsFactices();
+  await avecActions(outils);
+  for (const erreur of [ACTION_SANS_WORKFLOW, ACTION_ARRETEE, RESULTAT_TROP_GROS, ERREUR_ACTION_INTERNE, ACTION_INCONNUE]) {
+    fixer({ statut: "echouee", erreur, erreurNoyau: true });
+    expect(JSON.parse(texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }))).erreur).toBe(erreur);
+    // Sans `erreurNoyau`, le même texte a pu être écrit par le code de l'action : réservé.
+    fixer({ statut: "echouee", erreur });
+    expect(JSON.parse(texte(await client.callTool({ name: "lancer_action", arguments: { id: "courrier" } }))).erreur).toBe(ERREUR_RESERVEE_ACTION);
+  }
+  expect(ERREUR_RESERVEE_ACTION).not.toBe(ERREUR_RESERVEE);
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("lancer_action : saisie requise absente → erreur saisieRequise, rien n'est lancé", async () => {
+  const { outils, lancees } = actionsFactices();
+  await avecActions(outils);
+  const t = texte(await client.callTool({ name: "lancer_action", arguments: { id: "veille" } }));
+  expect(t).toContain(saisieRequise("Sujet"));
+  expect(lancees).toEqual([]);
+});
+
+test("lancer_action sur une action inconnue : erreur", async () => {
+  const { outils } = actionsFactices();
+  await avecActions(outils);
+  const r = await client.callTool({ name: "lancer_action", arguments: { id: "absente" } });
+  expect(r.isError).toBe(true);
+  expect(texte(r)).toContain("Action inconnue : absente");
+});
+
+test("executions_action avec compte sans accord : statuts seuls (partielle → reussie) et l'avis", async () => {
+  const { outils } = actionsFactices();
+  await avecActions(outils, { donneesWidget: true });
+  const t = texte(await client.callTool({ name: "executions_action", arguments: { id: "courrier" } }));
+  expect(JSON.parse(t.split("\n").slice(0, -1).join("\n"))).toEqual([
+    { id: "2026-10-28T10-00-00-000Z", statut: "reussie" },
+    { id: "2026-10-27T10-00-00-000Z", statut: "echouee" },
+  ]);
+  expect(t).toContain(AVIS_EXECUTIONS_ACTION_CACHEES);
+  expect(t).not.toContain("secret");
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("executions_action d'une action sans compte : liste complète avec le préfixe, sans carte", async () => {
+  const { outils } = actionsFactices();
+  await avecActions(outils);
+  const t = texte(await client.callTool({ name: "executions_action", arguments: { id: "veille" } }));
+  expect(t).toContain(PREFIXE_DONNEES_ACTION);
+  expect(t).toContain('"elements": 12');
+  expect(cartesDonnees()).toHaveLength(0);
+});
+
+test("executions_action, détail : carte genre action, refus → statut seul ; accord → exécution et plan", async () => {
+  const { outils } = actionsFactices();
+  await avecActions(outils, { donneesWidget: false });
+  let t = texte(await client.callTool({ name: "executions_action", arguments: { id: "courrier", execution: "2026-10-28T10-00-00-000Z" } }));
+  expect(cartesDonnees()).toHaveLength(1);
+  expect(cartesDonnees()[0]!.args[0]).toEqual({ id: "courrier", nom: "Courrier", agent: "Claude", genre: "action" });
+  expect(t).toContain('"statut": "reussie"');
+  expect(t).toContain("L'utilisateur a refusé de montrer le détail.");
+  expect(t).not.toContain("secret");
+
+  await avecActions(outils, { donneesWidget: true });
+  t = texte(await client.callTool({ name: "executions_action", arguments: { id: "courrier", execution: "2026-10-28T10-00-00-000Z" } }));
+  expect(t).toContain(PREFIXE_DONNEES_ACTION);
+  expect(t).toContain("secret du compte");
+  expect(t).toContain("plan secret du compte");
+  // Une exécution inconnue ne pose pas de carte.
+  expect(texte(await client.callTool({ name: "executions_action", arguments: { id: "courrier", execution: "2020-01-01T00-00-00-000Z" } }))).toContain("Aucune exécution");
+  expect(cartesDonnees()).toHaveLength(1);
+});
+
+test("accorder les données de l'action « courrier » n'accorde pas celles du widget « courrier »", async () => {
+  const { outils } = actionsFactices();
+  await avecActions(outils, { donneesWidget: true });
+  await client.callTool({ name: "executions_action", arguments: { id: "courrier", execution: "2026-10-28T10-00-00-000Z" } });
+  expect(politique.donneesActionAccordees("courrier")).toBe(true);
+  expect(politique.donneesWidgetAccordees("courrier")).toBe(false);
+  politique.accorderDonneesWidget("daily");
+  expect(politique.donneesActionAccordees("daily")).toBe(false);
+  politique.reinitialiser();
+  expect(politique.donneesActionAccordees("courrier")).toBe(false);
 });

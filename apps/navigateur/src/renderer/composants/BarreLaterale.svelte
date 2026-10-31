@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Panneau } from "../../commun/api";
-  import { URL_APPLICATIONS, widgetDeUrlWorkflow, type EtatFenetre } from "../../commun/modele";
+  import { URL_ACTIONS, URL_APPLICATIONS, cibleDeUrlWorkflow, type EtatFenetre } from "../../commun/modele";
   import { api, etat, telechargements } from "../etat.svelte";
   import BarreAdresse from "./BarreAdresse.svelte";
   import Essentiels from "./Essentiels.svelte";
@@ -34,7 +34,7 @@
   });
   const lienActif = $derived(ongletActif?.lien?.id);
   // Dans le constructeur, l'agent a son onglet « Agent » : ✦ l'y montre (comme ⌘J), le panneau latéral n'y paraît pas.
-  const constructeur = $derived(!!ongletActif && widgetDeUrlWorkflow(ongletActif.url) !== null);
+  const constructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
 </script>
 
 <aside class="barre" data-testid="barre-laterale" hidden={cachee}>
@@ -87,6 +87,14 @@
       aria-pressed={ongletActif?.url === URL_APPLICATIONS}
       onclick={() => api.agir({ type: "ouvrirApplications", fenetreId: fenetre.id })}><Icone nom="applications" /></button
     >
+    <button
+      class="outil"
+      data-testid="bouton-actions"
+      aria-label="Actions"
+      title="Actions"
+      aria-pressed={ongletActif?.url === URL_ACTIONS}
+      onclick={() => api.agir({ type: "ouvrirActions", fenetreId: fenetre.id })}><Icone nom="actions" /></button
+    >
     {#if telechargements.liste.length}
       <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => basculerPanneau?.("telechargements")}>
         <Icone nom="telecharger" />
@@ -117,7 +125,7 @@
   footer :global(nav) { flex: 1; }
   .telechargements { all: unset; position: relative; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
   .telechargements:hover { background: var(--fond-survol); }
-  .outil { all: unset; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
+  .outil { all: unset; -webkit-app-region: no-drag; width: 28px; height: 28px; margin-bottom: 8px; display: grid; place-content: center; border-radius: 6px; color: var(--texte-doux); }
   .outil:hover { background: var(--fond-survol); }
   .outil[aria-pressed="true"] { color: var(--accent); }
   .pastille { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }

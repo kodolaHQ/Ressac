@@ -7,7 +7,7 @@ import { lireAccueil } from "../accueil/lire.js";
 import type { EtatWidget, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
-import { creerRepartiteurIa } from "../ia/repartiteur.js";
+import { creerRepartiteurIa, type RepartiteurIa } from "../ia/repartiteur.js";
 import type { PontNavigateur } from "../mcp/pont.js";
 import { lireAccords, retirerAccord } from "./accords.js";
 import { creneauCourant, heureDue, suiviApres, type IssueHeure, type SuiviHeures } from "./heures.js";
@@ -95,6 +95,8 @@ export interface OptionsPlanificateur {
   atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
   pont: PontNavigateur;
   ia: Pick<IaLocale, "kev" | "gemma"> | null;
+  /** Le répartiteur des appels à l'IA, partagé avec les actions ; absent : le planificateur crée le sien sur `ia`. */
+  repartiteur?: ReturnType<typeof creerRepartiteurIa>;
   horloge?: () => Date;
   /** Vérification des récoltes dues (par défaut chaque minute). */
   intervalleMs?: number;
@@ -146,7 +148,7 @@ export class PlanificateurWidgets {
   /** Les exécutions suivies en direct (celles qui tournent vraiment, pas une vérification sans récolte). */
   private enDirect: DirectWidget[] = [];
   /** Appels à l'IA servis à tour de rôle entre les exécutions ; aucun sans IA. */
-  private readonly repartiteur: ReturnType<typeof creerRepartiteurIa> | null;
+  private readonly repartiteur: RepartiteurIa | null;
   /** Widgets des demandes en file, pas encore commencées (un par demande). */
   private attente: string[] = [];
   /** Démarrage : l'atelier prêt et les états « en-cours » d'avant le lancement remis. Avant toute exécution. */
@@ -163,7 +165,7 @@ export class PlanificateurWidgets {
       recolter: o.recolter ?? executerRecolte,
       recolterEssai: o.recolterEssai ?? executerEssai,
     };
-    this.repartiteur = o.ia ? creerRepartiteurIa(o.ia) : null;
+    this.repartiteur = o.repartiteur ?? (o.ia ? creerRepartiteurIa(o.ia) : null);
   }
 
   /** Ce qui tourne en ce moment, et les demandes qui attendent leur tour. */
@@ -213,7 +215,8 @@ export class PlanificateurWidgets {
     this.enDirect = [...this.enDirect, suivi];
     this.signalerDirect();
     const surTrace = (t: TraceDirecte) => {
-      if (!this.enDirect.includes(suivi)) return;
+      // Les traces `avancement` et `lecture` (pour les actions) ne changent rien au suivi d'un widget.
+      if (!this.enDirect.includes(suivi) || (t.etape !== "debut" && t.etape !== "fin")) return;
       suivi.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
       this.signalerDirect();
     };

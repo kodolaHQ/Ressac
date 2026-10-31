@@ -76,6 +76,24 @@ export const CANAUX = {
   extensionsRevoir: "webaios:extensions-revoir",
   extensionsReactiver: "webaios:extensions-reactiver",
   extensionsCouperDeblocage: "webaios:extensions-couper-deblocage",
+  actionsListe: "webaios:actions-liste",
+  /** Diffusé quand une action, un composant ou un dernier résultat change (sans contenu : relire). */
+  actionsChange: "webaios:actions-change",
+  actionsOuvrir: "webaios:actions-ouvrir",
+  actionsLancer: "webaios:actions-lancer",
+  actionsArreter: "webaios:actions-arreter",
+  actionsPage: "webaios:actions-page",
+  actionsExecutions: "webaios:actions-executions",
+  actionsExecution: "webaios:actions-execution",
+  /** Diffusé aux fenêtres dont l'espace actif n'est pas privé : les actions qui tournent ou attendent. */
+  actionsDirect: "webaios:actions-direct",
+  actionsDirectLire: "webaios:actions-direct-lire",
+  actionsOuvrirLien: "webaios:actions-ouvrir-lien",
+  actionsProfils: "webaios:actions-profils",
+  actionsAccorder: "webaios:actions-accorder",
+  actionsRefuserAccord: "webaios:actions-refuser-accord",
+  actionsSupprimer: "webaios:actions-supprimer",
+  actionsVoirWorkflow: "webaios:actions-voir-workflow",
   /** Diffusé après chaque changement du registre des extensions (sans contenu : relire). */
   extensionsChange: "webaios:extensions-change",
 } as const;

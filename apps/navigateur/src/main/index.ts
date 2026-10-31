@@ -30,13 +30,23 @@ import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { creerNotifieur } from "./notifications";
 import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
-import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, retirerAccord, supprimerDonnees, type DroitDev, type OngletInfo } from "@webaios/noyau";
+import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, lireAction, retirerAccord, supprimerDonnees, type DroitDev, type EtatActions, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
-import { enregistrerCodeSur, enregistrerEdition, FileEcritures, lireCodeSur, lireEdition, workflowOuvertDe, type SelectionConstructeur } from "./agent/constructeur";
+import { creerServiceActions, espaceActifPrive, repondreComposant, repondreImage, SCHEMA_COMPOSANT, SCHEMA_IMAGE } from "./agent/actions";
+import {
+  creerConstructeurActions,
+  enregistrerCodeSur,
+  enregistrerEdition,
+  FileEcritures,
+  lireCodeSur,
+  lireEdition,
+  workflowOuvertDe,
+  type SelectionConstructeur,
+} from "./agent/constructeur";
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
@@ -57,7 +67,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 // le seul autre, remplace le sien. Voulu : avec `bypassCSP`, les affichages des widgets pourraient charger ces icônes
 // malgré leur CSP. L'interface a `crx:` dans son `img-src` (index.html) : sans privilège, l'icône s'y charge quand même
 // (vérifié par e2e/extensions-interface.spec.ts).
-enregistrerSchemaWidget([SCHEMA_ICONE]);
+enregistrerSchemaWidget([SCHEMA_ICONE, SCHEMA_IMAGE, SCHEMA_COMPOSANT]);
 // Aucune résolution de nom anticipée, nulle part (<link rel=dns-prefetch>, liens) : dans un affichage de widget, elle
 // ferait sortir des données dans une requête DNS, sans passer par la CSP ni par le proxy de l'interface. Les onglets y
 // perdent un peu de vitesse ; leurs navigations résolvent les noms normalement.
@@ -271,6 +281,17 @@ app.whenReady().then(async () => {
   }
   const sessionIcones = session.fromPartition("webaios-icones");
   protocol.handle(SCHEMA_ICONE, (requete) => repondreIcone((url, init) => sessionIcones.fetch(url, init), requete.url));
+  // Exécutions, résultats et accords des actions : hors de l'espace, à côté de ceux des widgets.
+  const dossierActions = join(dossier, "actions");
+  // Les images des résultats d'une action sans compte : la même session sans cookies que les favicons.
+  protocol.handle(SCHEMA_IMAGE, (requete) =>
+    repondreImage(
+      { dossierActions, lireAction: async (id) => (agent ? lireAction(agent.chemins, id) : null), chercher: (url, init) => sessionIcones.fetch(url, init) },
+      requete.url,
+    ),
+  );
+  // Les composants de l'agent, dessinés dans un cadre sans réseau comme un affichage de widget.
+  protocol.handle(SCHEMA_COMPOSANT, (requete) => repondreComposant(agent?.chemins.composants ?? null, requete.url));
   const magasin = new Magasin(await chargerSession(dossier));
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
@@ -507,9 +528,35 @@ app.whenReady().then(async () => {
   magasin.abonner((etat, avant) => {
     for (const id of espacesDevenusPrives(avant, etat)) historique?.rendrePrive(id);
   });
+  /** Les actions qui tournent ne sont montrées qu'aux fenêtres dont l'espace actif n'est pas privé. */
+  let actionsCourantes = new Set<string>();
+  const diffuserDirectActions = (e: EtatActions) => {
+    for (const [id, f] of fenetres) if (!f.isDestroyed() && !espaceActifPrive(magasin.etat, id)) f.webContents.send(CANAUX.actionsDirect, e);
+    // Une action finie a un nouveau dernier résultat (écrit hors de l'espace surveillé) : la liste se relit.
+    const courantes = new Set(e.courantes.map((c) => c.action));
+    if ([...actionsCourantes].some((a) => !courantes.has(a))) diffuser(CANAUX.actionsChange, null);
+    actionsCourantes = courantes;
+  };
+  const serviceActions = creerServiceActions({
+    etat: () => magasin.etat,
+    agir: (a) => magasin.agir(a),
+    noyau: () => agent?.noyau() ?? null,
+    chemins: () => agent?.chemins ?? null,
+    dossierActions,
+    surChange: () => diffuser(CANAUX.actionsChange, null),
+  });
+  const constructeurActions = creerConstructeurActions({
+    etat: () => magasin.etat,
+    noyau: () => agent?.noyau() ?? null,
+    chemins: () => agent?.chemins ?? null,
+    dossierActions,
+    file: fileEcritures,
+    messageArrete: MESSAGE_AGENT_ARRETE,
+  });
   brancherIpc({
     magasin,
     fenetreDe,
+    actions: serviceActions,
     naviguer: (fenetreId, ongletId, saisie) => {
       const url = versUrl(saisie, magasin.etat.reglages.moteur);
       if (!url) return;
@@ -591,22 +638,42 @@ app.whenReady().then(async () => {
     },
     workflow: {
       catalogue: () => catalogueBlocs(),
-      lire: async (id) => (agent ? lireEdition({ chemins: agent.chemins, dossierWidgets: agent.dossierWidgets }, id) : null),
-      enregistrer: async (id, brouillon) =>
-        agent
-          ? fileEcritures.enSerie(id, () => enregistrerEdition({ chemins: agent!.chemins, dossierWidgets: agent!.dossierWidgets }, id, brouillon))
-          : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] },
-      lireCode: async (id, nom) => (agent ? lireCodeSur(agent.chemins, id, nom) : { erreur: MESSAGE_AGENT_ARRETE }),
-      enregistrerCode: async (id, nom, texte) =>
-        agent ? fileEcritures.enSerie(id, () => enregistrerCodeSur(agent!.chemins, id, nom, texte)) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE },
-      rejouer: async (id, execution, bloc) => {
+      lire: async (f, cible) => {
+        if (!agent) return null;
+        if (cible.type === "widget") return lireEdition({ chemins: agent.chemins, dossierWidgets: agent.dossierWidgets }, cible.id);
+        return constructeurActions.lire(f, cible.id);
+      },
+      enregistrer: async (f, cible, brouillon) => {
+        if (!agent) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] };
+        const a = agent;
+        if (cible.type === "widget") {
+          return fileEcritures.enSerie(cible.id, () => enregistrerEdition({ chemins: a.chemins, dossierWidgets: a.dossierWidgets }, cible.id, brouillon));
+        }
+        return constructeurActions.enregistrer(f, cible.id, brouillon);
+      },
+      lireCode: async (f, cible, nom) => {
+        if (!agent) return { erreur: MESSAGE_AGENT_ARRETE };
+        if (cible.type === "widget") return lireCodeSur(agent.chemins, cible.id, nom);
+        return constructeurActions.lireCode(f, cible.id, nom);
+      },
+      enregistrerCode: async (f, cible, nom, texte) => {
+        if (!agent) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+        const a = agent;
+        if (cible.type === "widget") return fileEcritures.enSerie(cible.id, () => enregistrerCodeSur(a.chemins, cible.id, nom, texte));
+        return constructeurActions.enregistrerCode(f, cible.id, nom, texte);
+      },
+      rejouer: async (f, cible, execution, bloc) => {
         const noyau = agent?.noyau();
-        return noyau ? noyau.rejouer(id, execution, bloc) : { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+        if (!noyau) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+        if (cible.type === "widget") return noyau.rejouer(cible.id, execution, bloc);
+        return constructeurActions.rejouer(f, cible.id, execution, bloc);
       },
       // Sans noyau : {} (l'interface ne sélectionne alors aucune exécution) ; une récolte qui échoue ne lève rien.
-      lancer: async (id) => {
+      lancer: async (f, cible, saisie) => {
         const noyau = agent?.noyau();
         if (!noyau) return {};
+        if (cible.type === "action") return constructeurActions.lancer(f, cible.id, saisie);
+        const id = cible.id;
         try {
           const r = await noyau.recolterMaintenant(id, "manuelle");
           return r.execution === undefined ? {} : { execution: r.execution };
@@ -615,8 +682,8 @@ app.whenReady().then(async () => {
           return {};
         }
       },
-      selection: (f, widget, bloc) => {
-        selectionsConstructeur.set(f, { widget, bloc });
+      selection: (f, s) => {
+        selectionsConstructeur.set(f, s);
       },
       direct: async () => agent?.noyau()?.direct() ?? { courants: [], enAttente: [] },
     },
@@ -831,6 +898,9 @@ app.whenReady().then(async () => {
     dossierProfilage: join(dossier, "profilage"),
     // Données récoltées et accords des widgets : hors de l'espace, que l'agent lit.
     dossierWidgets: join(dossier, "widgets"),
+    dossierActions,
+    surDirectActions: diffuserDirectActions,
+    surActions: () => diffuser(CANAUX.actionsChange, null),
     // Lectures invisibles des widgets avec un compte : la session du profil de connexion (non privé, vérifié au pont).
     sessionProfil: (id) => sessions.session(id),
     applications: applications.gestionnaire,
@@ -868,7 +938,13 @@ app.whenReady().then(async () => {
     // conversation en cours et retire la carte (signal) quand une nouvelle commence.
     demanderDonneesWidget: (w, signal) =>
       attendreReponse(
-        (repondre) => poserQuestion({ origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent }, repondre),
+        (repondre) =>
+          poserQuestion(
+            w.genre === "action"
+              ? { origine: `webaios://action/${w.id}`, permissions: ["donnees-widget"], titre: w.nom, action: w.id, agent: w.agent }
+              : { origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent },
+            repondre,
+          ),
         DELAI_QUESTION_MS,
         signal,
       ),

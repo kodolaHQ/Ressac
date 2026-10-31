@@ -233,7 +233,7 @@ test("changer garderJours de liste.nouveaux n'efface pas sa mémoire ; changer c
 });
 
 test("le workflow en place est relu avec le contexte du widget : un widget long efface la mémoire et ne réécrit pas un fichier identique", async () => {
-  const contexte = { web: false, dureeMaxMinutes: 30 };
+  const contexte = { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false };
   const long = (cle: string) => {
     const w = wf(cle);
     w.blocs.splice(1, 0, { id: "p", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://x.fr/{url}", parElement: true, budgetSecondes: 600 } } as never);
@@ -262,8 +262,8 @@ test("enregistrer web.chercher dans un widget sans web : refusé, rien d'écrit"
   brut.liens = [{ de: "a", vers: "w" }, { de: "w", vers: "n" }, { de: "n", vers: "s" }];
   const attendu = { ok: false, erreur: 'Workflow invalide : web.chercher : le widget doit déclarer "web": true', bloc: "w" };
   expect(await enreg(brut)).toEqual(attendu);
-  expect(await enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte: { web: false, dureeMaxMinutes: 30 } })).toEqual(attendu);
+  expect(await enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte: { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false } })).toEqual(attendu);
   expect(await readdir(fichiers)).toEqual(["a.mjs"]);
   // Avec web, le même workflow est écrit.
-  expect(await enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte: { web: true, dureeMaxMinutes: null } })).toMatchObject({ ok: true, ecrit: true });
+  expect(await enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte: { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false } })).toMatchObject({ ok: true, ecrit: true });
 });

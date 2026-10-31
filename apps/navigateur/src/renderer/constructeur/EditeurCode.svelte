@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { api } from "../etat.svelte";
+  import { depotDe, estCleAction } from "./cible";
   import { FichierCode } from "./codes.svelte";
   import { creerEdition } from "./edition.svelte";
 
@@ -8,17 +9,19 @@
    * Le fichier `.mjs` d'un bloc `code`. Rien n'est écrit à la frappe (le widget en marche lirait un code à moitié écrit) :
    * « Enregistrer le code » ou ⌘S l'écrit. Le code ne s'exécute jamais ici, il n'est que du texte.
    */
+  /** `widget` : la clé du workflow (`cleCible`), celui d'un widget ou d'une action. */
   let { widget, nom }: { widget: string; nom: string } = $props();
+  const depot = depotDe(api.workflow);
 
   // svelte-ignore state_referenced_locally
   // Enregistré, le code peut débloquer le workflow refusé faute de ce fichier (même édition que le constructeur).
-  const fichier = new FichierCode(widget, nom, api.workflow, (n) => creerEdition(widget, api.workflow).codeEnregistre(n));
+  const fichier = new FichierCode(widget, nom, depot, (n) => creerEdition(widget, depot).codeEnregistre(n));
 
   $effect(() =>
     untrack(() => {
       void fichier.lire();
-      // L'agent écrit peut-être le fichier : relu à chaque changement de l'accueil.
-      return api.accueil.surChange(() => void fichier.lire());
+      // L'agent écrit peut-être le fichier : relu à chaque changement de l'accueil (ou des actions).
+      return (estCleAction(widget) ? api.actions.surChange : api.accueil.surChange)(() => void fichier.lire());
     }),
   );
 

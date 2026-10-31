@@ -8,9 +8,11 @@ import {
   PORTS,
   prefixeContexte,
   surveillerAccueil,
+  surveillerActions,
   type Atelier,
   type CheminsEspace,
   type DroitDev,
+  type EtatActions,
   type EtatDirect,
   type EtatIa,
   type Noyau,
@@ -80,7 +82,7 @@ export function demarrerAgent(o: {
   /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
   /** Carte « donnees-widget » : l'agent veut voir les données d'un widget lu avec le compte de l'utilisateur (voir index.ts). */
-  demanderDonneesWidget: (o: { id: string; nom: string; agent: string }, signal?: AbortSignal) => Promise<boolean>;
+  demanderDonneesWidget: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
   /** Carte de consentement des outils de développement (voir index.ts). */
   demanderOutilsDev: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
   /** L'accès de l'agent à un onglet a changé (politique du noyau). */
@@ -101,10 +103,16 @@ export function demarrerAgent(o: {
   dossierProfilage: string;
   /** Dossier du profil du navigateur, hors de l'espace monté, où sont rangés données, états et accords des widgets. */
   dossierWidgets: string;
+  /** Dossier du profil du navigateur, hors de l'espace monté : exécutions, résultats, mémoire et accords des actions. */
+  dossierActions: string;
   /** Le workflow ouvert dans le constructeur d'une fenêtre (outil MCP `workflow_ouvert`) : toujours fourni. */
   workflowOuvert: (fenetre: IdFenetre) => WorkflowOuvert | null;
   /** L'exécution (ou l'essai) en cours d'un widget a changé : diffusé aux constructeurs ouverts. */
   surDirect: (e: EtatDirect) => void;
+  /** Les actions qui tournent ou attendent ont changé (file des actions du noyau). */
+  surDirectActions: (e: EtatActions) => void;
+  /** Une action ou un composant de l'agent a changé sur le disque (`~/WebAiOs/actions`, `composants`). */
+  surActions: () => void;
   /** Historique de navigation, cherché par l'agent (chercher_historique, lire_historique). */
   historique?: Historique;
   /** Session d'un profil de connexion, pour les lectures invisibles des widgets. */
@@ -143,15 +151,23 @@ export function demarrerAgent(o: {
   } catch (e) {
     console.error("[webaios] surveillance de la page d'accueil impossible :", e);
   }
+  let arreterActions: (() => Promise<void>) | undefined;
+  try {
+    arreterActions = surveillerActions(chemins, o.surActions);
+  } catch (e) {
+    console.error("[webaios] surveillance des actions impossible :", e);
+  }
   let desabonnerAcces: (() => void) | undefined;
   let desabonnerDirect: (() => void) | undefined;
+  let desabonnerDirectActions: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(o.extensions ? { extensions: o.extensions } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}), ...(DUCKDUCKGO_TESTS ? { urlRecherche: DUCKDUCKGO_TESTS } : {}) }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, dossierActions: o.dossierActions, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(o.extensions ? { extensions: o.extensions } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}), ...(DUCKDUCKGO_TESTS ? { urlRecherche: DUCKDUCKGO_TESTS } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);
         desabonnerDirect = n.surDirect(o.surDirect);
+        desabonnerDirectActions = n.actions.surDirect(o.surDirectActions);
         o.surAcces();
         o.surAccueil(); // l'espace vient peut-être d'être créé
         return n;
@@ -169,10 +185,15 @@ export function demarrerAgent(o: {
     desabonnerAcces = undefined;
     desabonnerDirect?.();
     desabonnerDirect = undefined;
+    desabonnerDirectActions?.();
+    desabonnerDirectActions = undefined;
     o.surAcces(); // plus de noyau : plus aucune pastille
     await n?.arreter();
     // Un essai ou une exécution en cours a pris fin avec le noyau : les constructeurs ne gardent pas un « en cours » fantôme.
-    if (n) o.surDirect({ courants: [], enAttente: [] });
+    if (n) {
+      o.surDirect({ courants: [], enAttente: [] });
+      o.surDirectActions({ courantes: [], enAttente: [] });
+    }
   };
   let pret = lancerNoyau(o.magasin.etat.reglages.profilAgent);
   // Autre profil (spec §10) : un nouveau noyau (commande, config MCP, veilles), et un nouvel agent dans chaque panneau.
@@ -240,7 +261,7 @@ export function demarrerAgent(o: {
       ia.annulerInstallation();
       // Les agents d'abord : leur arrêt passe par le conteneur, avant que l'app ne quitte.
       await sessions.toutArreter();
-      await Promise.all([arreterAccueil?.(), arreterNoyau(await pret)]);
+      await Promise.all([arreterAccueil?.(), arreterActions?.(), arreterNoyau(await pret)]);
       // L'app quitte : l'IA locale est fermée pour de bon (aussi quand le noyau n'a pas démarré), une récolte en retard ne la relance pas.
       await ia.fermer().catch(() => {});
     },

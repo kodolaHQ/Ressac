@@ -130,3 +130,21 @@ test("un onglet ouvert par l'agent porte l'indicateur ✦", async () => {
   await expect(fenetre.locator(onglets).nth(1).getByTitle("Ouvert par l'agent")).toHaveCount(0);
   await fermer();
 });
+
+test("le bouton Actions ouvre une seule page Actions par fenêtre, et n'est pas dans une zone de glisser", async () => {
+  const { fenetre, fermer } = await lancer();
+  const bouton = fenetre.getByTestId("bouton-actions");
+  await expect(bouton).toHaveAttribute("aria-label", "Actions");
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  // La barre latérale est une zone de glisser : un clic y est avalé par macOS (les clics CDP l'ignorent).
+  expect(await bouton.evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-app-region"))).toBe("no-drag");
+  await bouton.click();
+  await expect(fenetre.getByTestId("page-actions")).toBeVisible();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await fenetre.getByTestId("bouton-applications").click();
+  await expect(fenetre.getByTestId("page-applications")).toBeVisible();
+  await bouton.click();
+  await expect(fenetre.getByTestId("page-actions")).toBeVisible();
+  await expect(fenetre.locator(onglets).filter({ hasText: "Actions" })).toHaveCount(1);
+  await fermer();
+});

@@ -140,7 +140,7 @@ test("lireEdition : workflow.json invalide gardé tel quel, JSON coupé : brut n
   writeFileSync(m.join(m.dossier, "workflow.json"), JSON.stringify(valide));
   const e = await lireEdition(m.c, "meteo");
   expect(e?.avertissements).toEqual([{ bloc: "page", message: "config.absente absent de la configuration du widget" }]);
-  expect(e?.widget.config).toEqual({ ville: "Lyon" });
+  expect(e?.widget?.config).toEqual({ ville: "Lyon" });
 });
 
 test("lireEdition et enregistrerEdition valident selon le widget (durée maximale) et signalent une sortie au fil de l'eau sans chaîne", async () => {
@@ -241,4 +241,172 @@ test("code d'un widget normal : écrit et relu", async () => {
   const m = await monter();
   expect(await enregistrerCodeSur(m.chemins, "meteo", "trier.mjs", "ok")).toEqual({ ok: true });
   expect(await lireCodeSur(m.chemins, "meteo", "trier.mjs")).toEqual({ texte: "ok" });
+});
+
+// --- Le constructeur ouvert sur une action (webaios://workflow/action/<id>) ---
+
+test("workflowOuvertDe sur webaios://workflow/action/gitlab : { action: \"gitlab\", bloc }", () => {
+  const { e, F } = preparer("webaios://workflow/action/gitlab");
+  expect(workflowOuvertDe(e(), new Map([[F, { action: "gitlab", bloc: "lire" }]]), F)).toEqual({ action: "gitlab", bloc: "lire" });
+  // La sélection d'un widget du même nom, ou d'une autre action, ne vaut pas pour celle-ci.
+  expect(workflowOuvertDe(e(), new Map([[F, { widget: "gitlab", bloc: "lire" }]]), F)).toEqual({ action: "gitlab", bloc: null });
+  expect(workflowOuvertDe(e(), new Map([[F, { action: "autre", bloc: "lire" }]]), F)).toEqual({ action: "gitlab", bloc: null });
+});
+
+test("workflowOuvertDe sur un widget : inchangé (la sélection d'une action du même nom n'y vaut pas)", () => {
+  const { e, F } = preparer("webaios://workflow/gitlab");
+  expect(workflowOuvertDe(e(), new Map([[F, { widget: "gitlab", bloc: "x" }]]), F)).toEqual({ widget: "gitlab", bloc: "x" });
+  expect(workflowOuvertDe(e(), new Map([[F, { action: "gitlab", bloc: "x" }]]), F)).toEqual({ widget: "gitlab", bloc: null });
+});
+
+async function monterAction(decl: object = { nom: "GitLab", saisie: { libelle: "Projet" }, sources: { publiques: ["gitlab.com"] }, miseEnPage: "Un tableau", dureeMaxMinutes: 5 }) {
+  const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { cheminsEspace } = await import("@webaios/noyau");
+  const racine = mkdtempSync(join(tmpdir(), "constructeur-action-"));
+  const chemins = cheminsEspace(join(racine, "espace"));
+  const dossier = join(chemins.actions, "gitlab");
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(join(dossier, "action.json"), JSON.stringify(decl));
+  return { racine, chemins, dossier, c: { chemins, dossierActions: join(racine, "actions") }, join };
+}
+const lireCode = { id: "lire", type: "code", position: { x: 0, y: 0 }, parametres: { source: "lire.mjs" } };
+const versPage = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, parametres: { vers: "page" } };
+
+test("lireEdition d'une action : action renseignée, widget absent, sortie vers page", async () => {
+  const { writeFileSync, existsSync } = await import("node:fs");
+  const { lireEditionAction } = await import("../../src/main/agent/constructeur");
+  const m = await monterAction();
+  // Sans workflow.json : rien à ouvrir (pas de workflow implicite pour une action), rien d'écrit.
+  writeFileSync(m.join(m.dossier, "recolte.mjs"), "export default 1");
+  expect(await lireEditionAction(m.c, "gitlab")).toBeNull();
+  expect(await lireEditionAction(m.c, "absente")).toBeNull();
+  expect(existsSync(m.join(m.dossier, "workflow.json"))).toBe(false);
+  writeFileSync(m.join(m.dossier, "lire.mjs"), "export default async () => []");
+  const wf = { version: 1, blocs: [lireCode, versPage], liens: [{ de: "lire", vers: "sortie" }] };
+  writeFileSync(m.join(m.dossier, "workflow.json"), JSON.stringify(wf));
+  const e = await lireEditionAction(m.c, "gitlab");
+  expect(e).toMatchObject({
+    origine: "fichier",
+    validation: { ok: true },
+    action: { nom: "GitLab", compte: [], publiques: ["gitlab.com"], web: false, saisie: { libelle: "Projet" }, miseEnPage: "Un tableau", dureeMaxMinutes: 5 },
+  });
+  expect(e && "widget" in e).toBe(false);
+  expect((e?.brut as { blocs: { parametres: { vers?: string } }[] }).blocs[1]!.parametres.vers).toBe("page");
+});
+
+test("lireEdition d'une action : {saisie} sans saisie déclarée avertit ; action.json abîmé : null", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const { AVERTISSEMENT_SAISIE } = await import("@webaios/noyau");
+  const { lireEditionAction } = await import("../../src/main/agent/constructeur");
+  const m = await monterAction({ nom: "GitLab", sources: { publiques: ["gitlab.com"] } });
+  const page = { id: "page", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://gitlab.com/{saisie}" } };
+  const wf = { version: 1, blocs: [page, versPage], liens: [{ de: "page", vers: "sortie" }] };
+  writeFileSync(m.join(m.dossier, "workflow.json"), JSON.stringify(wf));
+  expect(await lireEditionAction(m.c, "gitlab")).toMatchObject({
+    action: { saisie: null, miseEnPage: null, dureeMaxMinutes: null },
+    avertissements: [{ bloc: "page", message: AVERTISSEMENT_SAISIE }],
+  });
+  writeFileSync(m.join(m.dossier, "action.json"), "{pas du json");
+  expect(await lireEditionAction(m.c, "gitlab")).toBeNull();
+});
+
+test("enregistrer un brouillon d'action avec vers \"widget\" : SORTIE_PAGE_REQUISE", async () => {
+  const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
+  const { SORTIE_PAGE_REQUISE } = await import("@webaios/noyau");
+  const { enregistrerEditionAction } = await import("../../src/main/agent/constructeur");
+  const m = await monterAction();
+  writeFileSync(m.join(m.dossier, "lire.mjs"), "export default async () => []");
+  const versWidget = { ...versPage, parametres: { vers: "widget" } };
+  const refuse = await enregistrerEditionAction(m.c, "gitlab", { version: 1, blocs: [lireCode, versWidget], liens: [{ de: "lire", vers: "sortie" }] });
+  expect(refuse).toMatchObject({ ok: false, erreur: expect.stringContaining(SORTIE_PAGE_REQUISE), avertissements: [] });
+  expect(existsSync(m.join(m.dossier, "workflow.json"))).toBe(false);
+  const ok = await enregistrerEditionAction(m.c, "gitlab", { version: 1, blocs: [lireCode, versPage], liens: [{ de: "lire", vers: "sortie" }] });
+  expect(ok).toMatchObject({ ok: true, avertissements: [] });
+  expect(JSON.parse(readFileSync(m.join(m.dossier, "workflow.json"), "utf8")).blocs[1].parametres.vers).toBe("page");
+  // action.json n'est jamais écrit par WebAiOs.
+  expect(JSON.parse(readFileSync(m.join(m.dossier, "action.json"), "utf8")).nom).toBe("GitLab");
+  expect(await enregistrerEditionAction(m.c, "absente", { version: 1, blocs: [lireCode, versPage], liens: [] })).toMatchObject({ ok: false, erreur: "Action inconnue" });
+});
+
+test("code d'une action : écrit et relu dans son dossier ; dossier d'action qui est un lien : refusé", async () => {
+  const { mkdtempSync, renameSync, symlinkSync, existsSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { enregistrerCodeAction, lireCodeAction } = await import("../../src/main/agent/constructeur");
+  const m = await monterAction();
+  expect(await enregistrerCodeAction(m.chemins, "gitlab", "lire.mjs", "ok")).toEqual({ ok: true });
+  expect(await lireCodeAction(m.chemins, "gitlab", "lire.mjs")).toEqual({ texte: "ok" });
+  const dehors = mkdtempSync(m.join(tmpdir(), "dehors-"));
+  renameSync(m.dossier, m.join(dehors, "gitlab"));
+  symlinkSync(m.join(dehors, "gitlab"), m.dossier);
+  expect(await lireCodeAction(m.chemins, "gitlab", "lire.mjs")).toEqual({ erreur: "Action inconnue" });
+  expect(await enregistrerCodeAction(m.chemins, "gitlab", "neuf.mjs", "pwned")).toMatchObject({ ok: false });
+  expect(existsSync(m.join(dehors, "gitlab", "neuf.mjs"))).toBe(false);
+});
+
+// --- Le constructeur d'une action, côté main : espace privé refusé, action qui tourne déjà signalée ---
+
+async function constructeurActions(o: { prive: boolean; deja?: boolean }) {
+  const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
+  const { creerConstructeurActions } = await import("../../src/main/agent/constructeur");
+  const m = await monterAction();
+  writeFileSync(m.join(m.dossier, "lire.mjs"), "export default async () => []");
+  const wf = { version: 1, blocs: [lireCode, versPage], liens: [{ de: "lire", vers: "sortie" }] };
+  writeFileSync(m.join(m.dossier, "workflow.json"), JSON.stringify(wf));
+  const etat = {
+    fenetres: [{ id: "F", espaceActif: "E" }],
+    espaces: [{ id: "E", prive: o.prive }],
+  } as unknown as EtatNavigateur;
+  const appels: string[] = [];
+  const fin = Promise.resolve({ statut: "reussie" as const, execution: "2026-10-31T08-00-00-000Z" });
+  const noyau = {
+    actions: {
+      lancer: (id: string, l: { saisie?: string }) => (appels.push(`lancer ${id} ${l.saisie ?? ""}`), { deja: o.deja === true, fin }),
+      rejouer: (id: string) => (appels.push(`rejouer ${id}`), { deja: o.deja === true, fin }),
+    },
+  };
+  const c = creerConstructeurActions({
+    etat: () => etat,
+    noyau: () => noyau,
+    chemins: () => m.chemins,
+    dossierActions: m.c.dossierActions,
+    file: new FileEcritures(),
+    messageArrete: "arrêté",
+  });
+  return { c, appels, m, lireWf: () => readFileSync(m.join(m.dossier, "workflow.json"), "utf8"), existsSync };
+}
+
+test("constructeur d'une action depuis une fenêtre en espace privé : lire, enregistrer, codes, rejouer et lancer refusés, rien d'écrit ni de lancé", async () => {
+  const { ACTIONS_EN_ESPACE_PRIVE } = await import("../../src/commun/actions");
+  const { c, appels, m, lireWf, existsSync } = await constructeurActions({ prive: true });
+  const avant = lireWf();
+  expect(await c.lire("F", "gitlab")).toBeNull();
+  expect(await c.enregistrer("F", "gitlab", { version: 1, blocs: [lireCode, versPage], liens: [] })).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE, avertissements: [] });
+  expect(await c.lireCode("F", "gitlab", "lire.mjs")).toEqual({ erreur: ACTIONS_EN_ESPACE_PRIVE });
+  expect(await c.enregistrerCode("F", "gitlab", "neuf.mjs", "x")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+  expect(await c.rejouer("F", "gitlab", "2026-10-31T08-00-00-000Z", "lire")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+  expect(await c.lancer("F", "gitlab", "x")).toEqual({ erreur: ACTIONS_EN_ESPACE_PRIVE });
+  // Une fenêtre inconnue compte comme privée.
+  expect(await c.lire("inconnue", "gitlab")).toBeNull();
+  expect(appels).toEqual([]);
+  expect(lireWf()).toBe(avant);
+  expect(existsSync(m.join(m.dossier, "neuf.mjs"))).toBe(false);
+});
+
+test("constructeur d'une action en espace normal : lu, lancé avec sa saisie, essai rendu", async () => {
+  const { c, appels } = await constructeurActions({ prive: false });
+  expect(await c.lire("F", "gitlab")).toMatchObject({ action: { nom: "GitLab" } });
+  expect(await c.lireCode("F", "gitlab", "lire.mjs")).toEqual({ texte: "export default async () => []" });
+  expect(await c.lancer("F", "gitlab", "webaios")).toEqual({ execution: "2026-10-31T08-00-00-000Z" });
+  expect(await c.rejouer("F", "gitlab", "2026-10-31T08-00-00-000Z", "lire")).toEqual({ ok: true, execution: "2026-10-31T08-00-00-000Z", statut: "reussie" });
+  expect(appels).toEqual(["lancer gitlab webaios", "rejouer gitlab"]);
+});
+
+test("l'action tourne déjà (lancée depuis sa page) : ni lancer ni rejouer ne prennent cette exécution pour la leur", async () => {
+  const { ACTION_TOURNE_DEJA } = await import("../../src/commun/actions");
+  expect(ACTION_TOURNE_DEJA).toBe("L'action tourne déjà");
+  const { c } = await constructeurActions({ prive: false, deja: true });
+  expect(await c.lancer("F", "gitlab", "autre saisie")).toEqual({ erreur: ACTION_TOURNE_DEJA });
+  expect(await c.rejouer("F", "gitlab", "2026-10-31T08-00-00-000Z", "lire")).toEqual({ ok: false, erreur: ACTION_TOURNE_DEJA });
 });

@@ -263,6 +263,16 @@ export class PolitiqueAcces {
     return this.donneesWidgets.has(id);
   }
 
+  /** Comme pour un widget, avec une clé à part : accorder les résultats d'une action n'accorde pas ceux d'un widget du même nom. */
+  accorderDonneesAction(id: string): void {
+    this.donneesWidgets.add(`action:${id}`);
+    this.change();
+  }
+
+  donneesActionAccordees(id: string): boolean {
+    return this.donneesWidgets.has(`action:${id}`);
+  }
+
   /** Nouvelle conversation : plus aucune autorisation, refus ni coupe. Les « construites » restent : elles tiennent à l'onglet. */
   reinitialiser(): void {
     this.autorisations.clear();

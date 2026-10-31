@@ -10,6 +10,19 @@ const taille = z.object({ l: cote, h: cote });
 
 export const WEB_AVEC_COMPTE = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 
+/** Ce qu'un propriétaire (widget ou action) lit : domaines avec son compte, domaines publics, recherche web. */
+export const SourcesDeclarees = z
+  .object({ compte: z.array(domaine).default([]), publiques: z.array(domaine).default([]), web: z.boolean().default(false) })
+  .default({ compte: [], publiques: [], web: false });
+export type SourcesDeclarees = z.infer<typeof SourcesDeclarees>;
+
+/** Refuse `web` avec un `compte` (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu). */
+export function verifierSources(s: SourcesDeclarees, ctx: z.RefinementCtx): void {
+  if (s.web && s.compte.length > 0) {
+    ctx.addIssue({ code: "custom", path: ["sources", "web"], message: WEB_AVEC_COMPTE });
+  }
+}
+
 const heureFixe = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "heure HH:MM attendue");
 
 const Recolte = z
@@ -35,15 +48,11 @@ export const DeclarationWidget = z
     tailles: z.object({ min: taille, max: taille, defaut: taille }),
     recolte: Recolte.optional(),
     // Pour un widget avec `compte`, `publiques` vide = aucune récupération publique permise (liste appliquée par la tâche 5).
-    sources: z
-      .object({ compte: z.array(domaine).default([]), publiques: z.array(domaine).default([]), web: z.boolean().default(false) })
-      .default({ compte: [], publiques: [], web: false }),
+    sources: SourcesDeclarees,
     config: z.unknown().optional(),
   })
   .superRefine((d, ctx) => {
-    if (d.sources.web && d.sources.compte.length > 0) {
-      ctx.addIssue({ code: "custom", path: ["sources", "web"], message: WEB_AVEC_COMPTE });
-    }
+    verifierSources(d.sources, ctx);
     const { min, max, defaut } = d.tailles;
     for (const axe of ["l", "h"] as const) {
       if (!(min[axe] <= defaut[axe] && defaut[axe] <= max[axe])) {

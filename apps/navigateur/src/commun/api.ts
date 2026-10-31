@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, ID_EXECUTION, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import type { ActionAffichee } from "./actions";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
@@ -67,7 +68,27 @@ export const SchemaAction = z.discriminatedUnion("type", [
   /** Active la page Extensions de cette fenêtre, ou l'ouvre (comme Applications). */
   z.object({ type: z.literal("ouvrirExtensions"), fenetreId: id }),
   /** Active la page « Voir le workflow » du widget `id` dans cette fenêtre, ou l'ouvre. */
-  z.object({ type: z.literal("ouvrirWorkflow"), fenetreId: id, id: z.string().regex(/^[a-z0-9-]+$/).max(100), nom: z.string().max(60) }),
+  z.object({
+    type: z.literal("ouvrirWorkflow"),
+    fenetreId: id,
+    id: z.string().regex(/^[a-z0-9-]+$/).max(100),
+    nom: z.string().max(60),
+    /** Le workflow d'une action (`webaios://workflow/action/<id>`) plutôt que celui d'un widget. */
+    proprietaire: z.literal("action").optional(),
+  }),
+  /**
+   * Active la page de l'action `id` dans cette fenêtre (un onglet `webaios://action/<id>[/…]`, dans un espace non privé),
+   * ou l'ouvre ; `execution` y montre ce résultat-là.
+   */
+  z.object({
+    type: z.literal("ouvrirAction"),
+    fenetreId: id,
+    id: z.string().regex(/^[a-z0-9-]{1,60}$/),
+    nom: z.string().max(60),
+    execution: z.string().regex(ID_EXECUTION).max(64).optional(),
+  }),
+  /** Active la page « Actions » de cette fenêtre, ou l'ouvre. */
+  z.object({ type: z.literal("ouvrirActions"), fenetreId: id }),
   /** Ouverture et fermeture automatiques du panneau par la page d'accueil (pas une action de l'utilisateur). */
   z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
@@ -193,19 +214,27 @@ export interface ApiWebaios {
     /** Une exécution complète (blocs, sorties, journaux) ; null si elle n'existe plus ou si l'id est invalide. */
     execution(id: string, execution: string): Promise<Execution | null>;
   };
-  /** Constructeur visuel des workflows (page `webaios://workflow/<id>`). */
+  /**
+   * Constructeur visuel des workflows : celui d'un widget (page `webaios://workflow/<id>`) ou d'une action
+   * (`webaios://workflow/action/<id>`, refusé quand l'espace actif de la fenêtre est privé).
+   */
   workflow: {
     catalogue(): Promise<CatalogueBloc[]>;
-    /** null : widget inconnu ou sans récolte. */
-    lire(id: string): Promise<EditionWorkflow | null>;
-    enregistrer(id: string, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }>;
-    lireCode(id: string, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
-    enregistrerCode(id: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    rejouer(id: string, execution: string, bloc: string): Promise<ResultatEssai>;
-    /** Lance une vraie exécution maintenant ; rend son id (absent si l'agent est arrêté ou si la récolte n'a pas démarré). */
-    lancer(id: string): Promise<{ execution?: string }>;
+    /** null : widget ou action inconnus, ou sans workflow. */
+    lire(cible: Proprietaire): Promise<EditionWorkflow | null>;
+    enregistrer(cible: Proprietaire, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }>;
+    lireCode(cible: Proprietaire, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
+    enregistrerCode(cible: Proprietaire, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    /** Un essai ; pour une action, sa page se voit dans l'aperçu, jamais comme dernier résultat. */
+    rejouer(cible: Proprietaire, execution: string, bloc: string): Promise<ResultatEssai>;
+    /**
+     * Lance une vraie exécution maintenant ; rend son id (absent si l'agent est arrêté ou si rien n'a tourné). Une action
+     * reçoit `saisie` et peut rendre le refus (`erreur` : saisie requise, accord requis…).
+     */
+    lancer(cible: Proprietaire, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
     /** Le bloc sélectionné dans le constructeur de cette fenêtre (pour workflow_ouvert). */
-    selection(id: string, bloc: string | null): void;
+    selection(cible: Proprietaire, bloc: string | null): void;
+    /** Les exécutions des widgets qui tournent (celles des actions : `actions.direct`). */
     direct(): Promise<EtatDirect>;
     surDirect(rappel: (e: EtatDirect) => void): () => void;
   };
@@ -217,6 +246,42 @@ export interface ApiWebaios {
     surEtat(rappel: (e: EtatIaAffiche) => void): () => void;
     /** Une ligne de la sortie de l'installation. */
     surProgres(rappel: (ligne: string) => void): () => void;
+  };
+  /**
+   * Les actions (`~/WebAiOs/actions`) et leurs pages. Refusé quand l'espace actif de la fenêtre est privé
+   * (`ACTIONS_EN_ESPACE_PRIVE`, ou rien : `[]`, `null`).
+   */
+  actions: {
+    liste(): Promise<ActionAffichee[]>;
+    /** Une action, un composant ou un dernier résultat a changé : relire. */
+    surChange(rappel: () => void): () => void;
+    /**
+     * Le choix d'une suggestion : la page de l'action s'ouvre (ou celle qui montre l'exécution en cours) et l'action est
+     * lancée, sauf si elle tourne déjà ou que sa saisie requise manque.
+     */
+    ouvrir(id: string, saisie: string | null): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    /** « Relancer » depuis la page : rend l'issue de l'exécution, à sa fin. */
+    lancer(id: string, saisie: string | null): Promise<ResultatLancement>;
+    arreter(id: string): void;
+    /** Ce résultat (null : le dernier), sans rien relancer ; null s'il n'y en a pas. */
+    page(id: string, execution: string | null): Promise<PageAction | null>;
+    executions(id: string): Promise<ResumeExecution[]>;
+    /** Une exécution complète (blocs, sorties, journaux), pour le constructeur ; null si elle n'existe plus. */
+    execution(id: string, execution: string): Promise<Execution | null>;
+    direct(): Promise<EtatActions>;
+    surDirect(rappel: (e: EtatActions) => void): () => void;
+    /** Un lien de la page : ouvert dans un onglet seulement si l'adresse figure telle quelle dans les résultats. */
+    ouvrirLien(id: string, execution: string, url: string): void;
+    /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
+    profilsPourAccord(): Promise<ProfilPourAccord[]>;
+    /** Comme pour un widget ; rien n'est lancé (L'utilisateur relance depuis la page). */
+    accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    /** Retire l'accord et efface exécutions, résultats et mémoire. */
+    refuserAccord(id: string): Promise<void>;
+    /** Met l'action à la corbeille (`actions/.corbeille`) et oublie son accord et ses données. */
+    supprimer(id: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    /** Ouvre le constructeur sur le workflow de l'action. */
+    voirWorkflow(id: string): void;
   };
   /** Page Applications (projets de l'espace de l'agent). */
   applications: {
@@ -309,6 +374,15 @@ export type EtatPanneauAgent =
 const COLONNES_GRILLE = 12;
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 export const SchemaIdWidget = idWidget;
+/** Id d'une action (nom de son dossier sous `~/WebAiOs/actions`). */
+export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
+/** Saisie d'une action venue de l'interface : bornée ici, coupée par le noyau. */
+export const SchemaSaisieAction = z.string().max(2000).nullable();
+/** Ce qu'ouvre le constructeur : le workflow d'un widget ou celui d'une action. */
+export const SchemaCible = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("widget"), id: idWidget }).strict(),
+  z.object({ type: z.literal("action"), id: SchemaIdAction }).strict(),
+]);
 
 /**
  * Id d'un bloc venu de l'interface : borné en taille seulement (jamais un chemin). Le moteur valide la forme et nomme
@@ -339,28 +413,42 @@ export const SchemaBrouillon = z.object({
   liens: z.array(z.object({ de: SchemaBlocWorkflow, vers: SchemaBlocWorkflow })).max(400),
 });
 
+/** Le bloc sélectionné dans le constructeur d'une fenêtre, et le workflow (widget ou action) où il l'est. */
+export type SelectionConstructeur = { widget: string; bloc: string | null } | { action: string; bloc: string | null };
 /**
- * Le bloc sélectionné dans le constructeur d'un widget : un bloc invalide devient « aucun » (`workflow_ouvert` ne
- * montre jamais l'ancien) ; null, message ignoré, si le widget est invalide.
+ * Le bloc sélectionné dans le constructeur : un bloc invalide devient « aucun » (`workflow_ouvert` ne montre jamais
+ * l'ancien) ; null, message ignoré, si la cible est invalide.
  */
-export function selectionConstructeur(v: unknown): { id: string; bloc: string | null } | null {
-  const o = v as { id?: unknown; bloc?: unknown } | null;
-  if (!SchemaIdWidget.safeParse(o?.id).success) return null;
-  const bloc = SchemaBlocWorkflow.safeParse(o?.bloc);
-  return { id: o!.id as string, bloc: bloc.success ? bloc.data : null };
+export function selectionConstructeur(v: unknown): SelectionConstructeur | null {
+  const o = v as { cible?: unknown; bloc?: unknown } | null;
+  const cible = SchemaCible.safeParse(o?.cible);
+  if (!cible.success) return null;
+  const r = SchemaBlocWorkflow.safeParse(o?.bloc);
+  const bloc = r.success ? r.data : null;
+  return cible.data.type === "widget" ? { widget: cible.data.id, bloc } : { action: cible.data.id, bloc };
 }
 export type Brouillon = z.infer<typeof SchemaBrouillon>;
 
 export type EditionWorkflow = LectureBrouillon & {
   avertissements: Avertissement[];
-  /** Ce que `widget.json` déclare, en lecture seule ; `recolte` null : le widget n'en déclare pas. */
-  widget: {
+  /** Ce que `widget.json` déclare, en lecture seule ; `recolte` null : le widget n'en déclare pas. Absent pour une action. */
+  widget?: {
     nom: string;
     compte: string[];
     publiques: string[];
     config: unknown;
     web: boolean;
     recolte: { minutes: number | null; heures: string[]; dureeMaxMinutes: number | null; notifier: boolean } | null;
+  };
+  /** Ce que `action.json` déclare, en lecture seule (jamais écrit par WebAiOs). Absent pour un widget. */
+  action?: {
+    nom: string;
+    compte: string[];
+    publiques: string[];
+    web: boolean;
+    saisie: { libelle: string } | null;
+    miseEnPage: string | null;
+    dureeMaxMinutes: number | null;
   };
 };
 /** Id d'une exécution : son début ISO sans « : » ni « . » (jamais un chemin). */

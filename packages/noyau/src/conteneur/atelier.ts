@@ -3,6 +3,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { dossierValide } from "../applications/manifeste.js";
 import { CHEMIN_CONTENEUR, type CheminsEspace } from "../chemins.js";
+import type { Proprietaire } from "../workflows/schema.js";
 import { executeurParDefaut, type Executeur } from "./executeur.js";
 
 export const NOM_CONTENEUR = "webaios-atelier";
@@ -33,10 +34,14 @@ function normaliser(chemin: string): string {
   }
 }
 
-/** Nom du conteneur de récolte d'un widget ; l'id entre dans un nom docker, on refuse tout id douteux. */
-function nomRecolte(id: string): string {
-  if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
-  return `webaios-recolte-${id}`;
+/**
+ * Nom du conteneur d'une exécution : `webaios-recolte-<id>` pour un widget (un id seul est celui d'un widget),
+ * `webaios-action-<id>` pour une action. L'id entre dans un nom docker, on refuse tout id douteux.
+ */
+export function nomRecolte(p: string | Proprietaire): string {
+  const { type, id } = typeof p === "string" ? { type: "widget" as const, id: p } : p;
+  if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id ${type === "widget" ? "de widget" : "d'action"} invalide : ${id}`);
+  return type === "widget" ? `webaios-recolte-${id}` : `webaios-action-${id}`;
 }
 
 /** Durée maximale d'une récolte dans son conteneur (secondes), avant SIGTERM puis SIGKILL 5 s après. */
@@ -194,13 +199,13 @@ export class Atelier {
    * moteur (celui du récolteur et de ses modules), en lecture seule, et ne parle au noyau que par son entrée et sa
    * sortie standard (`-i`). `delaiS` : le conteneur est arrêté après ce délai (+5 s pour finir).
    */
-  commandeRecolte(id: string, dossierFichiers: string, moteur: string, delaiS: number = DELAI_RECOLTE_S): string[] {
+  commandeRecolte(proprietaire: string | Proprietaire, dossierFichiers: string, moteur: string, delaiS: number = DELAI_RECOLTE_S): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     // « : » changerait le sens de -v (cible, options) : un tel chemin ne peut pas être monté sans risque.
     for (const c of [dossierFichiers, moteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
     return [
       this.docker, "run", "-i", "--rm",
-      "--name", nomRecolte(id),
+      "--name", nomRecolte(proprietaire),
       "--network", "none",
       "--read-only",
       "--tmpfs", "/tmp",
@@ -215,8 +220,8 @@ export class Atelier {
   }
 
   /** Tuer le client `docker run` ne suffit pas : le conteneur est supprimé de force. */
-  async supprimerRecolte(id: string): Promise<void> {
-    if (this.docker) await this.lancer(["rm", "-f", nomRecolte(id)], DELAI_SONDE_MS);
+  async supprimerRecolte(proprietaire: string | Proprietaire): Promise<void> {
+    if (this.docker) await this.lancer(["rm", "-f", nomRecolte(proprietaire)], DELAI_SONDE_MS);
   }
 
   /**

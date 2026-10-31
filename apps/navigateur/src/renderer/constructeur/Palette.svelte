@@ -3,12 +3,22 @@
   import { GLISSER_BLOC } from "./ajout";
 
   /**
-   * Les blocs par famille : un clic en pose un au centre de la vue, un glisser là où on le lâche. `web` : le widget déclare
-   * `"web": true` ; sans lui, « Chercher sur le web » est grisé (le validateur le refuserait).
+   * Les blocs par famille : un clic en pose un au centre de la vue, un glisser là où on le lâche. `web` : le widget (ou
+   * l'action, `action`) déclare `"web": true` ; sans lui, « Chercher sur le web » est grisé (le validateur le refuserait).
    */
-  let { catalogue, aSortie, web, onajouter }: { catalogue: CatalogueBloc[]; aSortie: boolean; web: boolean; onajouter: (type: string) => void } = $props();
+  let {
+    catalogue,
+    aSortie,
+    web,
+    action = false,
+    onajouter,
+  }: { catalogue: CatalogueBloc[]; aSortie: boolean; web: boolean; action?: boolean; onajouter: (type: string) => void } = $props();
 
-  const SANS_WEB = 'Le widget doit déclarer "web": true : demande-le à l\'agent.';
+  const SANS_WEB = $derived(
+    action
+      ? 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.'
+      : 'Le widget doit déclarer "web": true : demande-le à l\'agent.',
+  );
   const grise = (type: string) => type === "web.chercher" && !web;
 
   let repliees = $state<Partial<Record<FamilleBloc, boolean>>>({});

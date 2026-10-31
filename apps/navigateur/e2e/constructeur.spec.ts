@@ -1508,3 +1508,170 @@ test("auFilDeLEau derrière Garder les N premiers : avertissement sur la sortie"
   await expect(fenetre.getByTestId("avertissement-sortie")).toHaveCount(0);
   await fermer();
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Le constructeur ouvert sur une action (webaios://workflow/action/<id>) : panneau Action, ▶ Lancer avec la saisie,
+// rejeu dont la page s'affiche dans l'aperçu sans devenir le dernier résultat. Gemma absente : mise en page de secours.
+
+const CONSIGNE_GITLAB = "Un tableau des tickets, les plus urgents d'abord";
+
+/** Une action à saisie : un bloc `code` qui rend la saisie (et `marque`), puis la sortie vers la page. */
+function actionGitlab(racine: string, marque = "un"): string {
+  const dossier = join(racine, "actions", "gitlab");
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(
+    join(dossier, "action.json"),
+    JSON.stringify({ nom: "Tickets GitLab", saisie: { libelle: "Projet" }, sources: { publiques: ["gitlab.com"] }, miseEnPage: CONSIGNE_GITLAB, dureeMaxMinutes: 5 }),
+  );
+  writeFileSync(
+    join(dossier, "workflow.json"),
+    JSON.stringify({
+      version: 1,
+      blocs: [
+        { id: "lire", type: "code", parametres: { source: "lire.mjs" } },
+        { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+      ],
+      liens: [{ de: "lire", vers: "sortie" }],
+    }),
+  );
+  codeGitlab(racine, marque);
+  return dossier;
+}
+const codeGitlab = (racine: string, marque: string) =>
+  writeFileSync(join(racine, "actions", "gitlab", "lire.mjs"), `export default async (_e, w) => [{ titre: "ticket-" + w.saisie + "-${marque}" }];`);
+const executionsAction = (profil: string, id: string) => {
+  const d = join(profil, "actions", id, "executions");
+  return existsSync(d) ? readdirSync(d).filter((f) => f.endsWith(".json")).sort() : [];
+};
+
+/** Attend que le noyau serve les actions, puis ouvre le constructeur de l'action par sa page (« Voir le workflow »). */
+async function ouvrirConstructeurAction(fenetre: Page, id: string, nom: string): Promise<Locator> {
+  await expect
+    .poll(() => fenetre.evaluate(() => window.webaios.actions.lancer("inconnue-du-test", null).then((r) => r.erreur ?? "")), { timeout: 30_000 })
+    .not.toContain("agent arrêté");
+  await fenetre.evaluate(([id, nom]) => window.webaios.agir({ type: "ouvrirAction", fenetreId: window.webaios.fenetreId, id, nom }), [id, nom] as const);
+  await expect(fenetre.getByTestId("page-action")).toBeVisible();
+  await fenetre.getByTestId("voir-workflow").click();
+  const page = fenetre.getByTestId("constructeur");
+  await expect(page).toBeVisible();
+  return page;
+}
+
+test("ouvrir le workflow d'une action depuis sa page : panneau Action avec saisie et consigne", async () => {
+  const racine = nouvelleRacine();
+  const dossier = actionGitlab(racine);
+  const avant = instantane(dossier);
+  const { fenetre, fermer } = await lancerWidgets(racine);
+  try {
+    await expect(terminalPanneau(fenetre)).toContainText("faux agent prêt>");
+    const page = await ouvrirConstructeurAction(fenetre, "gitlab", "Tickets GitLab");
+    await expect(fenetre.locator('[data-testid^="onglet-"]').filter({ hasText: "Workflow — Tickets GitLab" })).toHaveCount(1);
+    await expect(page.locator("h1")).toHaveText("Tickets GitLab");
+    await expect(fenetre.getByTestId("noeud-lire")).toBeVisible();
+    await expect(fenetre.getByTestId("etat-enregistrement")).toHaveText("Enregistré");
+    // Rien de sélectionné : le panneau Action (lecture seule) à la place de celui du widget.
+    const panneau = fenetre.getByTestId("panneau-action");
+    await expect(panneau).toBeVisible();
+    await expect(fenetre.getByTestId("panneau-widget")).toHaveCount(0);
+    await expect(panneau.getByTestId("action-compte")).toHaveText("aucun");
+    await expect(panneau.getByTestId("action-publiques")).toHaveText("gitlab.com");
+    await expect(panneau.getByTestId("action-saisie")).toHaveText("Projet");
+    await expect(panneau.getByTestId("action-mise-en-page")).toHaveText(CONSIGNE_GITLAB);
+    await expect(panneau).toContainText("Durée maximale : 5 min");
+    await expect(fenetre.getByTestId("bouton-apercu")).toHaveText("Aperçu de la page");
+    // Action sans accès au web : la palette le dit pour une action (action.json), pas pour un widget.
+    const chercher = fenetre.getByTestId("palette-web.chercher");
+    await expect(chercher).toBeDisabled();
+    await expect(chercher).toHaveAttribute("title", 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.');
+    // L'agent sait que c'est le workflow de l'action, et le bloc choisi.
+    const ouvert = async () => (await appelerOutil(racine, "workflow_ouvert", {}, { session: true })).texte;
+    await expect.poll(ouvert).toBe('{"action":"gitlab","bloc":null}');
+    await fenetre.getByTestId("noeud-lire").click();
+    await expect.poll(ouvert).toBe('{"action":"gitlab","bloc":"lire"}');
+    // Ouvrir et sélectionner n'écrivent rien dans le dossier de l'action.
+    expect(instantane(dossier)).toEqual(avant);
+  } finally {
+    await fermer();
+  }
+});
+
+test("▶ Lancer demande la saisie, puis l'exécution apparaît dans la liste", async () => {
+  const racine = nouvelleRacine();
+  actionGitlab(racine);
+  const profil = nouveauProfil();
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  try {
+    await ouvrirConstructeurAction(fenetre, "gitlab", "Tickets GitLab");
+    await expect(fenetre.getByText("Aucune exécution pour l'instant.")).toBeVisible();
+    await fenetre.getByTestId("lancer").click();
+    const demande = fenetre.getByTestId("demande-saisie");
+    await expect(demande).toBeVisible();
+    await expect(demande).toContainText("Projet");
+    // Saisie vide : rien n'est lancé.
+    await expect(demande.getByTestId("confirmer-lancer")).toBeDisabled();
+    // Échap ferme la demande sans rien lancer.
+    await demande.getByTestId("saisie-lancer").press("Escape");
+    await expect(demande).toHaveCount(0);
+    expect(executionsAction(profil, "gitlab")).toEqual([]);
+    await fenetre.getByTestId("lancer").click();
+    await fenetre.getByTestId("saisie-lancer").fill("webaios");
+    await fenetre.getByTestId("saisie-lancer").press("Enter");
+    await expect(fenetre.getByTestId("demande-saisie")).toHaveCount(0);
+    await expect.poll(() => executionsAction(profil, "gitlab"), { timeout: 60_000 }).toHaveLength(1);
+    const id = executionsAction(profil, "gitlab")[0]!.replace(/\.json$/, "");
+    const bouton = fenetre.getByTestId(`execution-${id}`);
+    await expect(bouton).toBeVisible({ timeout: 30_000 });
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(bouton).toContainText("Manuelle");
+    await expect(fenetre.getByTestId("pastille-lire")).toHaveText("1");
+    const e = lireJson(join(profil, "actions", "gitlab", "executions", `${id}.json`));
+    expect(e).toMatchObject({ declencheur: "manuelle", saisie: "webaios", statut: "reussie" });
+    // L'aperçu montre la page de cette exécution (les composants de l'agent n'y sont jamais chargés).
+    await fenetre.getByTestId("bouton-apercu").click();
+    await expect(fenetre.getByTestId("apercu-action")).toContainText("ticket-webaios-un", { timeout: 30_000 });
+  } finally {
+    await fermer();
+  }
+});
+
+test("rejouer depuis un bloc : l'aperçu montre une page, le dernier résultat de la page de l'action ne change pas", async () => {
+  const racine = nouvelleRacine();
+  actionGitlab(racine, "un");
+  const profil = nouveauProfil();
+  const { fenetre, fermer } = await lancerWidgets(racine, profil);
+  try {
+    await ouvrirConstructeurAction(fenetre, "gitlab", "Tickets GitLab");
+    // Une vraie exécution, lancée depuis la page (sa saisie : « webaios »).
+    const vraie = await fenetre.evaluate(() => window.webaios.actions.lancer("gitlab", "webaios"));
+    expect(vraie.statut).toBe("reussie");
+    const origine = vraie.execution!;
+    await expect(fenetre.getByTestId(`execution-${origine}`)).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
+    // Le code change : l'essai le montre, la vraie exécution non.
+    codeGitlab(racine, "deux");
+    await fenetre.getByTestId("noeud-lire").click();
+    await expect(fenetre.getByTestId("rejouer")).toBeEnabled();
+    await fenetre.getByTestId("rejouer").click();
+    await expect.poll(() => executionsAction(profil, "gitlab").filter((f) => f.includes("-essai")), { timeout: 60_000 }).toHaveLength(1);
+    const essai = executionsAction(profil, "gitlab").find((f) => f.includes("-essai"))!.replace(/\.json$/, "");
+    const bouton = fenetre.getByTestId(`execution-${essai}`);
+    await expect(bouton).toContainText("essai", { timeout: 30_000 });
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(fenetre.getByTestId("refus-rejeu")).toHaveCount(0);
+    await fenetre.getByTestId("bouton-apercu").click();
+    const apercuAction = fenetre.getByTestId("apercu-action");
+    await expect(apercuAction.getByTestId("rendu-page")).toBeVisible({ timeout: 30_000 });
+    // L'essai reprend la saisie de l'exécution d'origine.
+    await expect(apercuAction).toContainText("ticket-webaios-deux");
+    // Choisir la vraie exécution : l'aperçu montre sa page.
+    await fenetre.getByTestId(`execution-${origine}`).click();
+    await expect(apercuAction).toContainText("ticket-webaios-un");
+    // Le dernier résultat de l'action reste la vraie exécution : sa page ne montre pas l'essai.
+    const derniere = await fenetre.evaluate(() => window.webaios.actions.page("gitlab", null));
+    expect(derniere?.execution).toBe(origine);
+    await fenetre.evaluate(() => window.webaios.agir({ type: "ouvrirAction", fenetreId: window.webaios.fenetreId, id: "gitlab", nom: "Tickets GitLab" }));
+    await expect(fenetre.getByTestId("page-action").getByTestId("rendu-page")).toContainText("ticket-webaios-un");
+    await expect(fenetre.getByTestId("page-action")).not.toContainText("ticket-webaios-deux");
+  } finally {
+    await fermer();
+  }
+});

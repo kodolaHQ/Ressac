@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  EXECUTION_MAX_OCTETS, ESSAIS_GARDES, ID_EXECUTION, SORTIE_MAX_OCTETS, ecrireExecution, effacerExecutionsEtMemoire, idEssai, idExecution, listerExecutions, lireExecution,
+  ACTION_ARRETEE, EXECUTION_MAX_OCTETS, ESSAIS_GARDES, ID_EXECUTION, SORTIE_MAX_OCTETS, ecrireExecution, effacerExecutionsEtMemoire, idEssai, idExecution, listerExecutions, lireExecution,
   type Execution, type TraceBloc,
 } from "../../src/index.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -179,4 +179,21 @@ test("effacerExecutionsEtMemoire efface aussi les essais", async () => {
   await effacerExecutionsEtMemoire(d);
   expect(await lireExecution(d, idEssai(horodatage(3)))).toBeNull();
   expect(await listerExecutions(d)).toEqual([]);
+});
+
+test("une exécution d'action (proprietaire action, saisie « clio lyon ») s'écrit et se relit", async () => {
+  const d = await dossierTemporaire();
+  const e: Execution = { ...execution(horodatage(0), [bloc("a", { x: 1 })]), proprietaire: { type: "action", id: "recherche" }, saisie: "clio lyon" };
+  await ecrireExecution(d, e);
+  expect(await lireExecution(d, e.id)).toEqual(e);
+  expect(ACTION_ARRETEE).toBe("Arrêtée à ta demande");
+});
+
+test("une exécution de widget écrite avant ce plan se relit sans changement", async () => {
+  const d = await dossierTemporaire();
+  const e = execution(horodatage(1), [bloc("a")]);
+  await ecrireExecution(d, e);
+  const lue = (await lireExecution(d, e.id))!;
+  expect(lue).toEqual(e);
+  expect(lue).not.toHaveProperty("saisie");
 });

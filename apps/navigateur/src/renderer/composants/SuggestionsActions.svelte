@@ -1,0 +1,49 @@
+<script lang="ts">
+  import type { Suggestion } from "./suggestions";
+
+  /** Les actions proposées, puis la ligne habituelle (recherche ou adresse) : `choisie` = -1 : aucun choix. */
+  let {
+    suggestions,
+    ligneHabituelle,
+    choisie,
+    choisir,
+  }: { suggestions: Suggestion[]; ligneHabituelle: string; choisie: number; choisir: (i: number) => void } = $props();
+</script>
+
+<ul class="suggestions-actions" id="suggestions-actions" role="listbox" data-testid="suggestions-actions">
+  {#each suggestions as s, i (s.id)}
+    <li
+      id="suggestion-action-{i}"
+      role="option"
+      aria-selected={i === choisie}
+      data-testid="suggestion-action"
+      onmousedown={(e) => {
+        e.preventDefault();
+        choisir(i);
+      }}
+    >
+      {s.saisie ? `${s.nom} — ${s.saisie}` : s.nom}
+    </li>
+  {/each}
+  <li
+    id="suggestion-action-{suggestions.length}"
+    class="habituelle"
+    role="option"
+    aria-selected={choisie === suggestions.length}
+    data-testid="suggestion-habituelle"
+    onmousedown={(e) => {
+      e.preventDefault();
+      choisir(suggestions.length);
+    }}
+  >
+    {ligneHabituelle}
+  </li>
+</ul>
+
+<style>
+  .suggestions-actions { -webkit-app-region: no-drag; list-style: none; margin: 4px 0 0; padding: 4px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); }
+  li { padding: 8px 12px; border-radius: 6px; cursor: pointer; color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.habituelle { color: var(--texte-doux); }
+  li:hover { background: var(--fond-survol); }
+  li[aria-selected="true"] { background: var(--fond-actif); }
+</style>

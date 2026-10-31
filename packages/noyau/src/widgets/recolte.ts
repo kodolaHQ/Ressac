@@ -127,7 +127,7 @@ type WorkflowDuWidget =
 
 /** Ce que la déclaration du widget change aux règles de son workflow. */
 export function contexteValidation(d: DeclarationWidget): ContexteValidation {
-  return { web: d.sources.web, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null };
+  return { web: d.sources.web, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null, proprietaire: "widget", saisie: false };
 }
 
 async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {
@@ -217,7 +217,7 @@ function infraDe(o: OptionsRecolte, horloge: () => Date): Parameters<typeof exec
 }
 
 /** Arrêt du noyau : l'exécution n'a pas échoué, elle est interrompue ; un bloc commencé sans fin est interrompu. */
-function marquerInterrompue(execution: Execution): void {
+export function marquerInterrompue(execution: Execution): void {
   execution.statut = "interrompue";
   execution.erreur = ERREUR_INTERROMPUE;
   execution.erreurNoyau = true;
@@ -530,7 +530,7 @@ export async function executerEssai(o: OptionsRecolte & { origine: string; depar
  * L'exécution d'origine d'un essai et, quand elle est elle-même un essai, la chaîne de ses origines (bornée) : leurs
  * blocs `repris` y trouvent leur sortie. Une origine élaguée arrête la chaîne.
  */
-async function chaineOrigine(dossierDonnees: string, id: string): Promise<[Execution | null, Execution[]]> {
+export async function chaineOrigine(dossierDonnees: string, id: string): Promise<[Execution | null, Execution[]]> {
   const origine = await lireExecution(dossierDonnees, id);
   const anterieures: Execution[] = [];
   const vus = new Set([id]);

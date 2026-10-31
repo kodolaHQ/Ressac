@@ -108,7 +108,9 @@
     aria-label={outilsDev
       ? "Demande d'accès aux outils de développement"
       : donneesWidget
-        ? "Demande d'accès aux données d'un widget"
+        ? demande.action !== undefined
+          ? "Demande d'accès aux résultats d'une action"
+          : "Demande d'accès aux données d'un widget"
         : extension
           ? "Activer une extension"
           : consoleExtension
@@ -140,7 +142,11 @@
         </div>
       {:else if donneesWidget}
         <div class="lecture" data-testid="demande-donnees-widget">
-          <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
+          {#if demande.action !== undefined}
+            <p>L'agent veut voir les résultats de l'action « {demande.titre ?? demande.action} » (lus avec ton compte).</p>
+          {:else}
+            <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
+          {/if}
           <div class="actions">
             <!-- Entrée refuse : montrer à l'agent des données lues avec le compte demande un vrai clic. -->
             <button data-principal onclick={refuser}>Refuser</button>

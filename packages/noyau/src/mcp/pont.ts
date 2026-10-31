@@ -83,9 +83,10 @@ export interface PontNavigateur {
   /**
    * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
    * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
-   * noyau arrêté), elle est retirée et la demande répond faux. Absent : la demande est refusée.
+   * noyau arrêté), elle est retirée et la demande répond faux. `genre: "action"` : les résultats d'une action, non d'un
+   * widget. Absent : la demande est refusée.
    */
-  demanderDonneesWidget?(o: { id: string; nom: string; agent: string }, signal?: AbortSignal): Promise<boolean>;
+  demanderDonneesWidget?(o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal): Promise<boolean>;
 }
 
 export interface MessageConsole {

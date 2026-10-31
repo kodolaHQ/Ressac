@@ -8,7 +8,9 @@ import { dirname, join } from "node:path";
 import { creerNoyau, ErreurAtelier, type Noyau } from "../src/noyau.js";
 import type { IaLocale } from "../src/ia/ia-locale.js";
 import { PlanificateurWidgets } from "../src/widgets/planificateur.js";
-import { lireAccords } from "../src/widgets/accords.js";
+import { accorder as accorderAccord, lireAccords } from "../src/widgets/accords.js";
+import { ecrireExecution, idExecution, type Execution } from "../src/workflows/executions.js";
+import { ecrireResultat } from "../src/actions/donnees.js";
 import { ecrireDonnees, lireDonnees, lireEtatWidget } from "../src/accueil/donnees.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -26,7 +28,7 @@ afterEach(async () => {
 async function creerSansDocker() {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   return noyau;
 }
 
@@ -70,7 +72,7 @@ test("profil inconnu → erreur claire", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   await expect(
-    creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, profilId: "inconnu" }),
+    creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, profilId: "inconnu" }),
   ).rejects.toThrow(/inconnu/);
 });
 
@@ -83,7 +85,7 @@ test("creerNoyau n'attend pas une construction d'image lente", async () => {
     [/ build /, () => new Promise(() => {})], // ne se termine jamais
   ]);
   const debut = Date.now();
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   expect(Date.now() - debut).toBeLessThan(2000);
 });
 
@@ -95,7 +97,7 @@ test("échec de démarrage du conteneur : creerNoyau réussit, la session lève 
     [/ image inspect /, { code: 0 }],
     [/ run /, { code: 125, stderr: "Bind for 127.0.0.1:5280 failed: port is already allocated" }],
   ]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   const erreur = await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
   expect(erreur).toBeInstanceOf(ErreurAtelier);
   expect(erreur.message).toContain("port is already allocated");
@@ -109,7 +111,7 @@ test("construction échouée au lancement : la première session rend cet échec
     [/ inspect -f/, { code: 1 }],
     [/ build /, { code: 1, stderr: "réseau coupé" }],
   ]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   const erreur = await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
   expect(erreur.message).toContain("réseau coupé");
   expect(appels.filter((a) => a.args[0] === "build")).toHaveLength(1);
@@ -129,7 +131,7 @@ test("au lancement, une fois le conteneur prêt, les agents d'une app précéden
   const executerAJour: typeof executer = (c, args, o) =>
     args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
   const atelier = await atelierSansDocker(racine, executerAJour);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
   await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).then((s) => s.arreter(), () => {});
   const execs = appels.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
   // Le nettoyage (toutes les sessions marquées) passe avant l'arrêt de la session ouverte ici.
@@ -144,7 +146,7 @@ test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
   await cp(join(import.meta.dirname, "..", "docker"), join(copie, "docker"), { recursive: true });
   await writeFile(join(copie, "modeles", "AGENTS.md"), "# copie");
   const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "absent" }]]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, ressources: copie, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, ressources: copie, executer });
   expect(await readFile(join(racine, "AGENTS.md"), "utf8")).toBe("# copie");
 });
 
@@ -153,7 +155,7 @@ test("creerNoyau réutilise l'atelier fourni", async () => {
   const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "absent" }]]);
   const atelier = new Atelier({ chemins: cheminsEspace(racine), executer });
   const etat = vi.spyOn(atelier, "etat").mockResolvedValue("docker-absent");
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, atelier });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, atelier });
   await noyau.etatAtelier();
   expect(etat).toHaveBeenCalled();
 });
@@ -169,12 +171,12 @@ test("arreter : nouvelle conversation pour la politique (les cartes en attente t
     const numero = ++n;
     return Object.assign(Object.create(outils), { liberer: () => liberes.push(numero) });
   };
-  const premier = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont, racine, executer });
+  const premier = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont, racine, executer });
   const conversation = premier.politique.conversation;
   await premier.arreter();
   expect(premier.politique.conversation).toBe(conversation + 1);
   expect(liberes).toEqual([1]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont, racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont, racine, executer });
   expect(n).toBe(2);
 });
 
@@ -190,7 +192,7 @@ test("noyau : arreter() arrête le planificateur et l'IA locale", async () => {
   // Le noyau ferme son propre accès à l'IA (une récolte en retard ne relance pas Kev), pas l'IA partagée.
   const acces = { kev: vi.fn(), gemma: vi.fn(), fermer: vi.fn(async () => void ordre.push("ia")) };
   const ia = { acces: () => acces, arreter: vi.fn() } as unknown as IaLocale;
-  const n = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, ia });
+  const n = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, ia });
   expect(n.ia).toBe(ia);
   await n.arreter();
   expect(ordre).toEqual(["planificateur", "ia"]);
@@ -201,7 +203,7 @@ test("noyau : arreter() arrête le planificateur et l'IA locale", async () => {
 test("noyau : lireAccueil lit les widgets ; ia vaut null sans IA locale", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   await ecrireWidget(noyau.chemins, "meteo", declarationWidget());
   const etat = await noyau.lireAccueil();
   expect(etat.widgets.map((w) => w.id)).toContain("meteo");
@@ -213,7 +215,7 @@ test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   const surChange = vi.fn();
-  noyau = await creerNoyau({ dossierWidgets, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, surChange });
+  noyau = await creerNoyau({ dossierWidgets, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, surChange });
   await ecrireWidget(
     noyau.chemins,
     "daily",
@@ -238,7 +240,7 @@ test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance
 test("noyau : accorder refuse un widget sans compte", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   await ecrireWidget(noyau.chemins, "meteo", declarationWidget());
   await expect(noyau.accorder({ id: "meteo", profil: "perso", compte: [], publiques: [] })).rejects.toThrow(/compte/);
 });
@@ -247,7 +249,7 @@ test("noyau : accorder refuse si la déclaration n'est plus celle montrée à l'
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
-  noyau = await creerNoyau({ dossierWidgets, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   await ecrireWidget(
     noyau.chemins,
     "daily",
@@ -268,7 +270,7 @@ test("noyau : refuserAccord efface les données ; compte retiré ensuite → don
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
-  noyau = await creerNoyau({ dossierWidgets, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   const decl = (compte: string[]) => declarationWidget(undefined, { recolte: { minutes: 60 }, sources: { compte, publiques: [] } });
   await ecrireWidget(noyau.chemins, "daily", decl(["app.daily.dev"]), { "recolte.mjs": "export default () => 1" });
   await noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev"], publiques: [] });
@@ -317,7 +319,7 @@ async function creerPret() {
   const executerAJour: typeof executer = (c, args, o) =>
     args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
   const atelier = await atelierSansDocker(racine, executerAJour);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
   return noyau;
 }
 
@@ -343,7 +345,7 @@ test("au démarrage du noyau, les configs de session laissées par un plantage s
   await mkdir(dossier, { recursive: true });
   await writeFile(join(dossier, "reste.json"), "{}");
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
-  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   expect(existsSync(join(dossier, "reste.json"))).toBe(false);
 });
 
@@ -369,4 +371,82 @@ test("une session dont le dossier est un lien symbolique est refusée, rien n'es
   await expect(n.ouvrirSessionAgent({ cols: 80, rows: 24, fenetre: "F1" })).rejects.toThrow(/Dossier des sessions invalide/);
   expect(await readdir(cible)).toEqual([]);
   expect((await stat(cible)).isDirectory()).toBe(true);
+});
+
+async function creerAvecActions(preparerEspace?: (racine: string, dossierActions: string) => Promise<void>) {
+  const racine = await dossierTemporaire();
+  const dossierActions = await dossierTemporaire();
+  await preparerEspace?.(racine, dossierActions);
+  const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "Cannot connect to the Docker daemon" }]]);
+  noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
+  return { n: noyau, dossierActions };
+}
+
+const executionAction = (id: string, debut: string): Execution => ({
+  version: 1, id: idExecution(debut), proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", blocs: [],
+});
+
+test("noyau.actions : page(id, null) rend le dernier résultat résolu ; page d'une exécution inconnue : null", async () => {
+  const { n, dossierActions } = await creerAvecActions(async (racine) => {
+    const dossier = join(cheminsEspace(racine).actions, "gitlab");
+    await mkdir(dossier, { recursive: true });
+    await writeFile(join(dossier, "action.json"), JSON.stringify({ nom: "GitLab", sources: { compte: ["gitlab.com"] } }));
+  });
+  const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
+  await ecrireExecution(join(dossierActions, "gitlab"), { ...e, saisie: "x" });
+  const plan = { blocs: [{ composant: "liste", props: { elements: "tickets", titre: "titre" } }] };
+  await ecrireResultat(dossierActions, "gitlab", { version: 1, execution: e.id, saisie: "x", resultats: { tickets: [{ titre: "A" }] }, plan, secours: false, vide: false });
+  const p = await n.actions.page("gitlab", null);
+  expect(p).toMatchObject({ execution: e.id, debut: e.debut, fin: e.fin, saisie: "x", statut: "reussie", compte: true });
+  expect(p!.page).toMatchObject({ secours: false, vide: false });
+  expect(p!.page!.blocs[0]).toMatchObject({ composant: "liste" });
+  expect(await n.actions.page("gitlab", e.id)).toEqual(p);
+  expect(await n.actions.page("gitlab", "2020-01-01T00-00-00-000Z")).toBeNull();
+  expect(await n.actions.page("absente", null)).toBeNull();
+  expect(await n.actions.page("gitlab", "../x")).toBeNull();
+  expect(await n.actions.execution("gitlab", "../x")).toBeNull();
+  expect((await n.actions.lister()).map((a) => a.id)).toEqual(["gitlab"]);
+  expect((await n.actions.executions("gitlab")).map((x) => x.id)).toEqual([e.id]);
+  expect(await n.actions.execution("gitlab", e.id)).toMatchObject({ id: e.id });
+  expect(n.actions.direct()).toEqual({ courantes: [], enAttente: [] });
+});
+
+test("noyau.actions : page() d'une action réécrite sans compte mais encore accordée compte comme lisant avec le compte", async () => {
+  const { n, dossierActions } = await creerAvecActions(async (racine, dossierActions) => {
+    const dossier = join(cheminsEspace(racine).actions, "gitlab");
+    await mkdir(dossier, { recursive: true });
+    await writeFile(join(dossier, "action.json"), JSON.stringify({ nom: "GitLab", sources: { web: true } }));
+    await accorderAccord(dossierActions, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+  });
+  const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
+  await ecrireExecution(join(dossierActions, "gitlab"), e);
+  const plan = { blocs: [{ composant: "liste", props: { elements: "tickets", titre: "titre", image: "image" } }] };
+  await ecrireResultat(dossierActions, "gitlab", { version: 1, execution: e.id, saisie: null, resultats: { tickets: [{ titre: "A", image: "https://img.test/a.png" }] }, plan, secours: false, vide: false });
+  expect(await n.actions.page("gitlab", null)).toMatchObject({ execution: e.id, compte: true });
+});
+
+test("noyau.actions : au démarrage, les données d'une action disparue sont effacées", async () => {
+  const { dossierActions } = await creerAvecActions(async (racine, dossierActions) => {
+    await mkdir(cheminsEspace(racine).actions, { recursive: true });
+    await ecrireExecution(join(dossierActions, "partie"), executionAction("partie", "2026-10-31T08:00:00.000Z"));
+    await accorderAccord(dossierActions, "partie", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+  });
+  expect(existsSync(join(dossierActions, "partie"))).toBe(false);
+  expect((await lireAccords(dossierActions)).partie).toBeUndefined();
+});
+
+test("noyau.actions : accorder enregistre l'accord sans rien lancer ; refuserAccord le retire et efface", async () => {
+  const { n, dossierActions } = await creerAvecActions(async (racine) => {
+    const dossier = join(cheminsEspace(racine).actions, "gitlab");
+    await mkdir(dossier, { recursive: true });
+    await writeFile(join(dossier, "action.json"), JSON.stringify({ nom: "GitLab", sources: { compte: ["gitlab.com"] } }));
+  });
+  await expect(n.actions.accorder({ id: "gitlab", profil: "perso", compte: ["github.com"], publiques: [] })).rejects.toThrow(/changé/);
+  await n.actions.accorder({ id: "gitlab", profil: "perso", compte: ["gitlab.com"], publiques: [] });
+  expect((await lireAccords(dossierActions)).gitlab).toEqual({ domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+  expect(n.actions.direct().courantes).toEqual([]);
+  await ecrireExecution(join(dossierActions, "gitlab"), executionAction("gitlab", "2026-10-31T08:00:00.000Z"));
+  await n.actions.refuserAccord("gitlab");
+  expect((await lireAccords(dossierActions)).gitlab).toBeUndefined();
+  expect(await n.actions.executions("gitlab")).toEqual([]);
 });

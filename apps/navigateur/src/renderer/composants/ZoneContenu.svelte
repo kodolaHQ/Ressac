@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { URL_APPLICATIONS, URL_EXTENSIONS, widgetDeUrlWorkflow, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { actionDeUrl, cibleDeUrlWorkflow, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { ACTIONS_EN_ESPACE_PRIVE } from "../../commun/actions";
+  import PageAction from "../action/PageAction.svelte";
+  import Actions from "./Actions.svelte";
   import Applications from "./Applications.svelte";
   import Extensions from "./Extensions.svelte";
   import Constructeur from "../constructeur/Constructeur.svelte";
-  import { acces, api, demandeDe } from "../etat.svelte";
+  import { acces, api, demandeDe, etat } from "../etat.svelte";
   import { estDemandeAgent, modale } from "./modale.svelte";
   import DemandePermission from "./DemandePermission.svelte";
   import { recherche } from "./recherche.svelte";
@@ -22,7 +25,16 @@
   let zone: HTMLElement;
   // Les questions des sites ; celles de l'agent s'ouvrent en modale (App.svelte).
   const demande = $derived(demandeDe(fenetre, onglet));
-  const widgetWorkflow = $derived(onglet ? widgetDeUrlWorkflow(onglet.url) : null);
+  /** Le workflow ouvert dans le constructeur : celui d'un widget ou d'une action. */
+  const cibleWorkflow = $derived(onglet ? cibleDeUrlWorkflow(onglet.url) : null);
+  // Page d'une action : l'ouvrir ne lance rien. Refusée quand l'espace de l'onglet (ou celui affiché) est privé ; un
+  // espace introuvable compte comme privé.
+  const pageAction = $derived(onglet ? actionDeUrl(onglet.url) : null);
+  const actionEnPrive = $derived.by(() => {
+    const espaces = etat.valeur?.espaces ?? [];
+    const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
+    return prive(fenetre?.espaceActif) || prive(onglet?.espaceId);
+  });
 
   $effect(() => {
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
@@ -57,10 +69,26 @@
     <PageVide {fenetre} />
   {:else if onglet?.url === URL_APPLICATIONS}
     <Applications />
+  {:else if onglet?.url === URL_ACTIONS}
+    {#if actionEnPrive}
+      <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+    {:else}
+      <Actions />
+    {/if}
   {:else if onglet?.url === URL_EXTENSIONS}
     <Extensions />
-  {:else if widgetWorkflow}
-    {#key widgetWorkflow}<Constructeur id={widgetWorkflow} />{/key}
+  {:else if cibleWorkflow}
+    {#if cibleWorkflow.type === "action" && actionEnPrive}
+      <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+    {:else}
+      {#key `${cibleWorkflow.type}:${cibleWorkflow.id}`}<Constructeur cible={cibleWorkflow} />{/key}
+    {/if}
+  {:else if pageAction}
+    {#if actionEnPrive}
+      <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+    {:else}
+      {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
+    {/if}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>

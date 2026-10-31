@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Atelier, DELAI_CONSTRUCTION_MS, IMAGE, empreinteDockerfile, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
+import { Atelier, DELAI_CONSTRUCTION_MS, IMAGE, empreinteDockerfile, nomRecolte, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -299,6 +299,23 @@ test("commandeRecolte monte le moteur en lecture seule et lance /opt/webaios/mot
   ]);
   // Le dossier du moteur est monté tel quel, pas son parent : rien d'autre du paquet n'entre dans le conteneur.
   expect(() => atelier.commandeRecolte("meteo", "/d", "/app/x:y")).toThrow();
+});
+
+test("commandeRecolte d'une action nomme le conteneur webaios-action-<id> ; d'un widget, webaios-recolte-<id>", async () => {
+  const atelier = new Atelier({ chemins, docker: "/usr/local/bin/docker" });
+  const nom = (c: string[]) => c[c.indexOf("--name") + 1];
+  expect(nom(atelier.commandeRecolte({ type: "action", id: "gitlab" }, "/d", "/app/docker/moteur"))).toBe("webaios-action-gitlab");
+  expect(nom(atelier.commandeRecolte({ type: "widget", id: "meteo" }, "/d", "/app/docker/moteur"))).toBe("webaios-recolte-meteo");
+  expect(nom(atelier.commandeRecolte("meteo", "/d", "/app/docker/moteur"))).toBe("webaios-recolte-meteo");
+  expect(nomRecolte({ type: "action", id: "gitlab" })).toBe("webaios-action-gitlab");
+  expect(nomRecolte("meteo")).toBe("webaios-recolte-meteo");
+  expect(() => nomRecolte({ type: "action", id: "../x" })).toThrow();
+  // La suppression vise le même nom.
+  const appels: string[][] = [];
+  const supprimeur = new Atelier({ chemins, docker: "/usr/local/bin/docker", executer: async (_c, args) => (appels.push(args), { code: 0, stdout: "", stderr: "" }) });
+  await supprimeur.supprimerRecolte({ type: "action", id: "gitlab" });
+  await supprimeur.supprimerRecolte("meteo");
+  expect(appels).toEqual([["rm", "-f", "webaios-action-gitlab"], ["rm", "-f", "webaios-recolte-meteo"]]);
 });
 
 test("commandeRecolte avec delaiS 1830 : timeout -k 5 1830", () => {

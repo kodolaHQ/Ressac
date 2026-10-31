@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { AVERTISSEMENT_FIL_DE_L_EAU, AVERTISSEMENT_WEB_SANS_DUREE, avertirWorkflow, validerWorkflow, type Workflow } from "../../src/index.js";
+import { AVERTISSEMENT_FIL_DE_L_EAU, AVERTISSEMENT_SAISIE, AVERTISSEMENT_WEB_SANS_DUREE, avertirWorkflow, validerWorkflow, type Workflow } from "../../src/index.js";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown>) => ({ id, type, position: { x: 0, y: 0 }, parametres });
 const wf = (...blocs: ReturnType<typeof bloc>[]): Workflow => ({ version: 1, blocs, liens: [] });
@@ -79,4 +79,17 @@ test("web.chercher sans durée maximale déclarée : avertissement (pas une erre
 test("{config.ville?} facultatif : jamais signalé, même absent de la configuration", () => {
   const w = wf(bloc("r", "source.recuperer", { url: "https://hn.algolia.com/x?v={config.ville?}&q={config.mot}" }));
   expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: {} })).toEqual([{ bloc: "r", message: "config.mot absent de la configuration du widget" }]);
+});
+
+test("{saisie} dans source.page d'une action sans saisie : AVERTISSEMENT_SAISIE ; avec saisie : aucun ; dans un widget : aucun", () => {
+  const w = wf(bloc("p", "source.page", { url: "https://x.fr/?q={saisie}" }), bloc("q", "source.page", { url: "https://x.fr/?q={saisie?}" }), bloc("r", "source.page", { url: "https://x.fr/" }));
+  const base = { sources: { compte: [], publiques: [] }, config: {} };
+  expect(AVERTISSEMENT_SAISIE).toBe("{saisie} : l'action ne déclare pas de saisie");
+  expect(avertirWorkflow(w, { ...base, proprietaire: "action", saisie: false })).toEqual([
+    { bloc: "p", message: AVERTISSEMENT_SAISIE },
+    { bloc: "q", message: AVERTISSEMENT_SAISIE },
+  ]);
+  expect(avertirWorkflow(w, { ...base, proprietaire: "action", saisie: true })).toEqual([]);
+  expect(avertirWorkflow(w, { ...base, proprietaire: "widget", saisie: false })).toEqual([]);
+  expect(avertirWorkflow(w, base)).toEqual([]);
 });

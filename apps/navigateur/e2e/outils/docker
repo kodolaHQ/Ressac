@@ -28,10 +28,14 @@ if (args[0] === "inspect") {
 /** PID du client `run` d'une récolte en cours, par nom de conteneur. */
 const fichierRecolte = (nom) => join(env.WEBAIOS_RACINE, `faux-docker-${nom}.pid`);
 
-// Récolte d'un widget (Atelier.commandeRecolte) : `run -i --rm … --name webaios-recolte-<id> … node <récolteur> /widget`.
+/** Conteneur d'une exécution : la récolte d'un widget ou l'exécution d'une action. */
+const estExecution = (nom) => (nom ?? "").startsWith("webaios-recolte-") || (nom ?? "").startsWith("webaios-action-");
+
+// Récolte d'un widget ou exécution d'une action (Atelier.commandeRecolte) :
+// `run -i --rm … --name webaios-recolte-<id> (ou webaios-action-<id>) … node <récolteur> /widget`.
 // Le récolteur tourne sur le Mac (node), avec les chemins de l'hôte retrouvés par les `-v hote:conteneur`. Le noyau
 // doit couper le réseau du conteneur : sans `--network none`, la récolte échoue.
-if (args[0] === "run" && args.includes("-i") && (args[args.indexOf("--name") + 1] ?? "").startsWith("webaios-recolte-")) {
+if (args[0] === "run" && args.includes("-i") && estExecution(args[args.indexOf("--name") + 1])) {
   const reseau = args.indexOf("--network");
   if (reseau < 0 || args[reseau + 1] !== "none") sortir(1, "", "faux docker : --network none manquant\n");
   const montages = new Map();
@@ -64,8 +68,8 @@ if (args[0] === "run" && args.includes("-i") && (args[args.indexOf("--name") + 1
   });
   return;
 }
-// Suppression forcée d'un conteneur de récolte (Atelier.supprimerRecolte) : le récolteur en cours est tué.
-if (args[0] === "rm" && args[1] === "-f" && (args[2] ?? "").startsWith("webaios-recolte-")) {
+// Suppression forcée d'un conteneur d'exécution (Atelier.supprimerRecolte) : le récolteur en cours est tué.
+if (args[0] === "rm" && args[1] === "-f" && estExecution(args[2])) {
   const fichier = fichierRecolte(args[2]);
   if (existsSync(fichier)) {
     try {

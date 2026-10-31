@@ -19,6 +19,10 @@ export interface CheminsEspace {
   journaux: string;
   /** Extensions écrites par l'agent (`<dossier>/manifest.json`) ; rien de ce qui s'y trouve n'accorde un droit. */
   extensions: string;
+  /** Actions (`<dossier>/action.json`, workflow.json) ; leurs données, résultats et accords sont hors de l'espace. */
+  actions: string;
+  /** Composants de page écrits par l'agent (`<dossier>/composant.json`). */
+  composants: string;
 }
 
 export function cheminsEspace(racine?: string): CheminsEspace {
@@ -37,6 +41,8 @@ export function cheminsEspace(racine?: string): CheminsEspace {
     configMcp: join(interne, "mcp.json"),
     journaux: join(interne, "journaux"),
     extensions: join(r, "extensions"),
+    actions: join(r, "actions"),
+    composants: join(r, "composants"),
   };
 }
 

@@ -1,21 +1,32 @@
 <script lang="ts">
   import type { ProfilPourAccord } from "../../commun/api";
-  import { api } from "../etat.svelte";
 
   let {
+    sujet,
     nom,
     domaines,
     publiques,
+    profilsPourAccord,
     autoriser,
     fermer,
-  }: { nom: string; domaines: string[]; publiques: string[]; autoriser: (profil: string) => void; fermer: () => void } = $props();
+  }: {
+    /** Ce qui demande l'accord : un widget de l'accueil ou une action. */
+    sujet: "widget" | "action";
+    nom: string;
+    domaines: string[];
+    publiques: string[];
+    /** Les profils proposés (jamais celui d'un espace privé), lus par le service du sujet. */
+    profilsPourAccord: () => Promise<ProfilPourAccord[]>;
+    autoriser: (profil: string) => void;
+    fermer: () => void;
+  } = $props();
 
   let profils = $state<ProfilPourAccord[] | null>(null);
   let erreur = $state<string | null>(null);
   let choisi = $state<string | null>(null);
 
   $effect(() => {
-    api.accueil.profilsPourAccord().then(
+    profilsPourAccord().then(
       (ps) => {
         profils = ps;
         choisi = (ps.find((p) => p.parDefaut) ?? ps[0])?.id ?? null;
@@ -27,8 +38,8 @@
 
 <div class="voile">
   <div class="carte" role="dialog" aria-modal="true" aria-labelledby="titre-accord" data-testid="carte-accord">
-    <h2 id="titre-accord">Autoriser « {nom} » à lire avec ton compte</h2>
-    <p data-testid="accord-compte">Ce widget veut lire {domaines.join(", ")} avec ton compte, connecté avec le profil choisi.</p>
+    <h2 id="titre-accord">{#if sujet === "action"}Autoriser l'action « {nom} » à lire avec ton compte{:else}Autoriser « {nom} » à lire avec ton compte{/if}</h2>
+    <p data-testid="accord-compte">{sujet === "action" ? "Cette action" : "Ce widget"} veut lire {domaines.join(", ")} avec ton compte, connecté avec le profil choisi.</p>
     <p data-testid="accord-publiques">
       {#if publiques.length}Et pourra contacter : {publiques.join(", ")}.{:else}Et ne contactera aucun autre site.{/if}
     </p>

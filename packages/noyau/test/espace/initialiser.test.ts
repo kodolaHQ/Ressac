@@ -7,6 +7,7 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
+import { lireReference } from "../../src/pages/plan.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 /** Les fichiers des widgets de départ dans un espace neuf : des workflows, sans recolte.mjs. */
@@ -32,6 +33,8 @@ test("crée l'espace complet dans un dossier vide", async () => {
   for (const f of attendus) expect(existsSync(join(c.racine, f)), f).toBe(true);
   expect(existsSync(c.projets)).toBe(true);
   expect(existsSync(c.extensions)).toBe(true);
+  expect(existsSync(c.actions)).toBe(true);
+  expect(existsSync(c.composants)).toBe(true);
   expect(crees.length).toBe(attendus.length);
 });
 
@@ -352,6 +355,32 @@ test("chaque version commitée du modèle AGENTS.md est dans agents-livres", asy
     const version = sha256(git(["show", `${h}:./AGENTS.md`]));
     if (version === modele) continue;
     expect(livres.has(version), `version ${h} absente de agents-livres (et sans doute de ANCIENS_AGENTS)`).toBe(true);
+  }
+});
+
+test("un AGENTS.md identique au modèle 28a1cac est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant les actions (28a1cac) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-28a1cac.md"), "utf8");
+  expect(sha256(ancien)).toBe("5f67ab38d6cb781fb6d823744d7c2198f33b74c734326f4b75dac7f3b88ca6b3");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  for (const motif of ["action.json", 'vers: "page"', "{saisie}", "miseEnPage", "composant.json", "lancer_action", "<svg"]) {
+    expect(apres, motif).toContain(motif);
+  }
+});
+
+test("les références données en exemple dans AGENTS.md sont valides pour le lecteur de plans", async () => {
+  const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  const blocs = [...texte.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
+  expect(blocs.length).toBeGreaterThan(0);
+  const references = blocs.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
+  expect(references.length).toBeGreaterThanOrEqual(3);
+  for (const r of references) {
+    expect(lireReference(r), r).not.toHaveProperty("erreur");
   }
 });
 
