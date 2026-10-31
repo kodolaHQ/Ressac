@@ -131,12 +131,13 @@ export class Permissions {
 }
 
 /**
- * Session d'une appli lancée par l'agent (code non relu) : ce qu'un onglet a sans demander, rien d'autre. Ni caméra,
- * ni micro, ni position, ni notifications, ni périphériques (HID, série, USB), ni lien confié à une autre application.
+ * Session d'une appli lancée par l'agent (code non relu) : ce qu'un onglet a sans demander (ou moins, `permises`), rien
+ * d'autre. Ni caméra, ni micro, ni position, ni notifications, ni périphériques (HID, série, USB), ni lien confié à une
+ * autre application.
  */
-export function refuserPermissions(session: Session): void {
-  session.setPermissionRequestHandler((_wc, permission, rappel) => rappel(SANS_DEMANDE.has(permission)));
-  session.setPermissionCheckHandler((_wc, permission) => SANS_DEMANDE.has(permission));
+export function refuserPermissions(session: Session, permises: ReadonlySet<string> = SANS_DEMANDE): void {
+  session.setPermissionRequestHandler((_wc, permission, rappel) => rappel(permises.has(permission)));
+  session.setPermissionCheckHandler((_wc, permission) => permises.has(permission));
   session.setDevicePermissionHandler(() => false);
   // Un choix de périphérique annulé : aucun n'est donné à la page.
   session.on("select-hid-device", (e, _d, rappel) => (e.preventDefault(), rappel()));
