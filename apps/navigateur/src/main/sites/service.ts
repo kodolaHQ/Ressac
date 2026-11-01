@@ -31,7 +31,7 @@ import { gardienGestes } from "../agent/geste-widget";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
 import { empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
-import { brancherInjection, injectionPour } from "./injection";
+import { brancherInjection, injectionPour, repriseDansCadre } from "./injection";
 import { fixerPreloadSite, sessionSite, siteDeSession } from "./session";
 
 export type { ErreurRetouche };
@@ -232,7 +232,10 @@ export function demarrerSites(o: {
       return injectionPour({ site: s, retouches: r, accorde: !s.accordRequis, garde, adressesLocales: o.adressesLocales }, cadre);
     },
     accorde: (id) => fenetres.site(id)?.accordRequis === false,
-    reprise: (id) => fenetres.site(id)?.declaration.reprise === true,
+    reprise(id, cadre) {
+      const s = fenetres.site(id);
+      return !!s && repriseDansCadre(s.declaration, cadre, o.adressesLocales === true);
+    },
     memoire,
     adresseRelative(id, url) {
       const s = fenetres.site(id);

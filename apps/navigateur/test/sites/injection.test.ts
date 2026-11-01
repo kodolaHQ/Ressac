@@ -16,7 +16,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-const { ajouterConsoleRetouche, brancherInjection, injectionPour } = await import("../../src/main/sites/injection");
+const { ajouterConsoleRetouche, brancherInjection, injectionPour, repriseDansCadre } = await import("../../src/main/sites/injection");
 
 const GARDE = "/* garde */";
 const declaration = DeclarationSite.parse({
@@ -73,9 +73,9 @@ test("cadre principal sur une page sans retouche : ni garde ni script, le pont r
   expect(i.reprise).toBe(true);
 });
 
-test("sous-cadre lecteur.localhost sans motif cadres : seulement la reprise", () => {
+test("sous-cadre lecteur.localhost hors des motifs cadres déclarés : rien, pas même la reprise", () => {
   const i = injectionPour(avec(), { url: "https://lecteur.localhost/v", principal: false });
-  expect(i).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: true });
+  expect(i).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
   const sansReprise = injectionPour({ ...avec(), site: { ...site, declaration: { ...declaration, reprise: false } } }, { url: "https://lecteur.localhost/v", principal: false });
   expect(sansReprise?.reprise).toBe(false);
 });
@@ -128,6 +128,8 @@ const evenement = (sender: unknown, senderFrame: FauxCadre | null) => ({ sender,
 let memoire: MemoireSite;
 let accorde: boolean;
 let reprise: boolean;
+let horloge: number;
+let differes: { f: () => void; ms: number }[];
 let demandes: { id: string; cadre: { url: string; principal: boolean } }[];
 beforeEach(async () => {
   on.clear();
@@ -135,6 +137,8 @@ beforeEach(async () => {
   demandes = [];
   accorde = true;
   reprise = true;
+  horloge = 0;
+  differes = [];
   vue.mainFrame = principal;
   memoire = await MemoireSite.ouvrir(mkdtempSync(join(tmpdir(), "injection-")), "vidola");
   brancherInjection({
@@ -145,7 +149,9 @@ beforeEach(async () => {
       return injectionPour(avec(), cadre);
     },
     accorde: () => accorde,
-    reprise: () => reprise,
+    reprise: (_id, cadre) => reprise && (cadre.principal || !cadre.url.includes("pub.example")),
+    maintenant: () => horloge,
+    differer: (f, ms) => void differes.push({ f, ms }),
     memoire: async () => memoire,
     adresseRelative: (_id, url) => {
       const u = new URL(url);
@@ -255,87 +261,172 @@ test("console des retouches : texte tronqué à 2000 caractères, source à 500,
   expect(petits[0]!.texte).toBe("30");
 });
 
-// --- Reprise des vidéos : la position de la page principale, jamais celle du lecteur.
+// --- Reprise des vidéos : la position de la page principale appartient à la vidéo de même durée.
 
 type CadreReprise = { url: string; parent: CadreReprise | null; top: CadreReprise | null };
-/** La vue est sur `url` : son cadre principal (son propre `top`) et un lecteur d'un autre domaine dedans. */
+/** La vue est sur `url` : son cadre principal (son propre `top`), un lecteur d'un autre domaine et une publicité dedans. */
 function pageAvecLecteur(url: string) {
   const page: CadreReprise = { url, parent: null, top: null };
   page.top = page;
   vue.mainFrame = page as never;
   const lecteur: CadreReprise = { url: "https://www.lecteur.example/embed/9", parent: page, top: page };
-  return { page, lecteur };
+  const lecteur2: CadreReprise = { url: "https://autre-lecteur.example/e/9", parent: page, top: page };
+  const pub: CadreReprise = { url: "https://ads.pub.example/v", parent: page, top: page };
+  return { page, lecteur, lecteur2, pub };
 }
 /** Envoie une position (canal sans réponse) et laisse la mémoire, ouverte de façon asynchrone, la noter. */
 const positionIpc = async (sender: unknown, cadre: CadreReprise | null, p: unknown) => {
   on.get("webaios:site-position")!(evenement(sender, cadre as never), p);
   await new Promise((r) => setTimeout(r));
 };
-const repriseIpc = (sender: unknown, cadre: CadreReprise | null) => handle.get("webaios:site-reprise")!(evenement(sender, cadre as never));
-/** Le preload du cadre principal demande son injection : un nouveau chargement de la page. */
-const charger = (page: CadreReprise) => injection(evenement(vue, page as never));
+/** Une note un peu plus tard (au-delà de la limite d'une note par seconde et par cadre). */
+const plusTard = async (sender: unknown, cadre: CadreReprise | null, p: unknown) => {
+  horloge += 1000;
+  await positionIpc(sender, cadre, p);
+};
+const repriseIpc = (sender: unknown, cadre: CadreReprise | null, d: unknown) => handle.get("webaios:site-reprise")!(evenement(sender, cadre as never), d);
 
 test("position : notée sous l'adresse relative de la page principale, depuis le lecteur comme depuis la page", async () => {
   const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4?s=1");
   await positionIpc(vue, lecteur, { t: 70, duree: 90 });
   expect(memoire.contenu().positions).toEqual({ "/episode/4?s=1": { t: 70, duree: 90, quand: expect.any(String) } });
-  await positionIpc(vue, page, { t: 72, duree: 90 });
+  await plusTard(vue, page, { t: 72, duree: 90 });
   expect(memoire.position("/episode/4?s=1")?.t).toBe(72);
   expect(Object.keys(memoire.contenu().positions)).toEqual(["/episode/4?s=1"]);
 });
 
-test("position : refusée sans accord, sans reprise déclarée, hors du site, hors de la vue, valeurs invalides", async () => {
-  const { lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+test("position : refusée sans accord, sans reprise dans ce cadre, hors du site, hors de la vue, valeurs invalides", async () => {
+  const { lecteur, pub } = pageAvecLecteur("https://vidola-b.example/episode/4");
   accorde = false;
-  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  await plusTard(vue, lecteur, { t: 70, duree: 90 });
   accorde = true;
   reprise = false;
-  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  await plusTard(vue, lecteur, { t: 70, duree: 90 });
   reprise = true;
-  await positionIpc({ session }, lecteur, { t: 70, duree: 90 });
-  await positionIpc(vue, null, { t: 70, duree: 90 });
-  for (const p of [null, "x", { t: "70", duree: 90 }, { t: 70 }, { t: Infinity, duree: 90 }]) await positionIpc(vue, lecteur, p);
+  await plusTard(vue, pub, { t: 70, duree: 90 });
+  await plusTard({ session }, lecteur, { t: 70, duree: 90 });
+  await plusTard(vue, null, { t: 70, duree: 90 });
+  for (const p of [null, "x", { t: "70", duree: 90 }, { t: 70 }, { t: Infinity, duree: 90 }]) await plusTard(vue, lecteur, p);
   // Un cadre d'une autre arborescence (son top n'est pas le cadre principal de la vue).
   const ailleurs: CadreReprise = { url: "https://vidola-b.example/x", parent: null, top: null };
-  await positionIpc(vue, { url: "https://www.lecteur.example/v", parent: ailleurs, top: ailleurs }, { t: 70, duree: 90 });
+  await plusTard(vue, { url: "https://www.lecteur.example/v", parent: ailleurs, top: ailleurs }, { t: 70, duree: 90 });
   pageAvecLecteur("https://compte.example/connexion");
-  await positionIpc(vue, vue.mainFrame as never, { t: 70, duree: 90 });
+  await plusTard(vue, vue.mainFrame as never, { t: 70, duree: 90 });
   expect(memoire.contenu().positions).toEqual({});
 });
 
-test("reprise : la position de la page, au plus une fois par chargement du cadre principal", async () => {
+test("position : au plus une note par seconde et par cadre ; la dernière trop tôt est écrite au bout de la seconde ; la fin, tout de suite", async () => {
+  const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  horloge += 300;
+  await positionIpc(vue, lecteur, { t: 71, duree: 90 });
+  horloge += 300;
+  await positionIpc(vue, lecteur, { t: 71.5, duree: 90 });
+  expect(memoire.position("/episode/4")?.t).toBe(70);
+  // Une seule écriture différée, au bout de la seconde, avec la dernière valeur (une pause juste après un saut n'est pas perdue).
+  expect(differes.map((d) => d.ms)).toEqual([700]);
+  horloge = 1000;
+  differes.shift()!.f();
+  await new Promise((r) => setTimeout(r));
+  expect(memoire.position("/episode/4")?.t).toBe(71.5);
+  // Un autre cadre de la page n'est pas freiné par le premier.
+  await positionIpc(vue, page, { t: 72, duree: 90 });
+  expect(memoire.position("/episode/4")?.t).toBe(72);
+  // La fin passe tout de suite et annule une note en attente (qui ne ferait pas revenir la position oubliée).
+  horloge += 100;
+  await positionIpc(vue, lecteur, { t: 80, duree: 90 });
+  expect(differes).toHaveLength(1);
+  await positionIpc(vue, lecteur, { t: 90, duree: 90, fin: true });
+  expect(memoire.position("/episode/4")).toBeNull();
+  differes.shift()!.f();
+  await new Promise((r) => setTimeout(r));
+  expect(memoire.position("/episode/4")).toBeNull();
+  horloge += 1000;
+  await positionIpc(vue, lecteur, { t: 30, duree: 90 });
+  expect(memoire.position("/episode/4")?.t).toBe(30);
+});
+
+test("reprise : la position de la page à une vidéo de même durée (±2 s), à chaque nouvel élément ; rien sous l'adresse du lecteur", async () => {
   const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
   memoire.noterPosition("/episode/4", 70, 90);
   memoire.noterPosition("https://www.lecteur.example/embed/9", 30, 90);
-  charger(page);
-  expect(await repriseIpc(vue, lecteur)).toBe(70);
-  expect(await repriseIpc(vue, lecteur)).toBeNull();
-  expect(await repriseIpc(vue, page)).toBeNull();
-  // Un lecteur rechargé seul ne redonne rien ; la page rechargée, si.
-  charger(page);
-  expect(await repriseIpc(vue, lecteur)).toBe(70);
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBe(70);
+  // Un <video> recréé, la page rechargée : de nouveau servie.
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBe(70);
+  expect(await repriseIpc(vue, page, { duree: 91.5 })).toBe(70);
+  expect(await repriseIpc(vue, lecteur, { duree: 92.5 })).toBeNull();
+  for (const d of [undefined, null, {}, { duree: "90" }, { duree: NaN }]) expect(await repriseIpc(vue, lecteur, d)).toBeNull();
 });
 
-test("reprise : une page sans position rend null, et la page qui note ensuite ne se la redonne pas", async () => {
-  const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/5");
-  charger(page);
-  expect(await repriseIpc(vue, lecteur)).toBeNull();
-  await positionIpc(vue, lecteur, { t: 40, duree: 90 });
-  expect(await repriseIpc(vue, lecteur)).toBeNull();
-});
-
-test("reprise : rien sans accord, sans reprise déclarée, hors du site, ou depuis la petite fenêtre", async () => {
+test("une publicité d'une autre durée ne prend pas la position et ne l'écrase ni ne l'efface ; le lecteur arrivé second reprend", async () => {
+  const { lecteur, lecteur2 } = pageAvecLecteur("https://vidola-b.example/episode/4");
   memoire.noterPosition("/episode/4", 70, 90);
-  for (const cas of ["accord", "reprise", "fenetre"] as const) {
-    const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
-    charger(page);
-    accorde = cas !== "accord";
-    reprise = cas !== "reprise";
-    expect(await repriseIpc(cas === "fenetre" ? { session } : vue, lecteur)).toBeNull();
-    accorde = true;
-    reprise = true;
-  }
+  // La publicité de 75 s dans un cadre où la reprise tourne (pas de motif cadres) : jouée d'abord.
+  expect(await repriseIpc(vue, lecteur2, { duree: 75 })).toBeNull();
+  await plusTard(vue, lecteur2, { t: 0.2, duree: 75 });
+  await plusTard(vue, lecteur2, { t: 40, duree: 75 });
+  await plusTard(vue, lecteur2, { t: 75, duree: 75, fin: true });
+  expect(memoire.position("/episode/4")).toMatchObject({ t: 70, duree: 90 });
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBe(70);
+});
+
+test("« Lecteur 2 » : le cadre change de lecteur, la même vidéo reprend où le premier en était", async () => {
+  const { lecteur, lecteur2 } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  memoire.noterPosition("/episode/4", 1200, 2700);
+  expect(await repriseIpc(vue, lecteur, { duree: 2700 })).toBe(1200);
+  await plusTard(vue, lecteur, { t: 1210, duree: 2700 });
+  expect(await repriseIpc(vue, lecteur2, { duree: 2699 })).toBe(1210);
+  expect(memoire.position("/episode/4")?.t).toBe(1210);
+});
+
+test("sans position retenue : le premier élément de 60 s ou plus note ; une vidéo d'une autre durée ne l'écrase pas ensuite", async () => {
+  const { lecteur, lecteur2 } = pageAvecLecteur("https://vidola-b.example/episode/5");
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBeNull();
+  await plusTard(vue, lecteur, { t: 40, duree: 90 });
+  expect(memoire.position("/episode/5")).toMatchObject({ t: 40, duree: 90 });
+  await plusTard(vue, lecteur2, { t: 10, duree: 300 });
+  expect(memoire.position("/episode/5")).toMatchObject({ t: 40, duree: 90 });
+});
+
+test("pushState vers un autre épisode : chaque épisode garde et reprend sa propre position (adresse lue à chaque demande)", async () => {
+  const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  memoire.noterPosition("/episode/4", 70, 90);
+  memoire.noterPosition("/episode/5", 720, 1500);
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBe(70);
+  // La page change d'adresse sans nouveau document (même cadre principal).
+  page.url = "https://vidola-b.example/episode/5";
+  expect(await repriseIpc(vue, lecteur, { duree: 1500 })).toBe(720);
+  await plusTard(vue, lecteur, { t: 730, duree: 1500 });
+  expect(memoire.position("/episode/5")?.t).toBe(730);
+  expect(memoire.position("/episode/4")).toMatchObject({ t: 70, duree: 90 });
+});
+
+test("reprise : rien sans accord, sans reprise dans ce cadre, hors du site, ou depuis la petite fenêtre", async () => {
+  memoire.noterPosition("/episode/4", 70, 90);
+  const { lecteur, pub } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  accorde = false;
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBeNull();
+  accorde = true;
+  reprise = false;
+  expect(await repriseIpc(vue, lecteur, { duree: 90 })).toBeNull();
+  reprise = true;
+  expect(await repriseIpc(vue, pub, { duree: 90 })).toBeNull();
+  expect(await repriseIpc({ session }, lecteur, { duree: 90 })).toBeNull();
   const { page } = pageAvecLecteur("https://compte.example/episode/4");
-  charger(page);
-  expect(await repriseIpc(vue, page)).toBeNull();
+  expect(await repriseIpc(vue, page, { duree: 90 })).toBeNull();
+});
+
+test("motifs cadres déclarés : la reprise ne va que dans le cadre principal et les cadres qui leur correspondent ; sans motif, partout", () => {
+  const avecCadres = injectionPour(avec(), { url: "https://www.lecteur.example/v", principal: false })!;
+  expect(avecCadres.reprise).toBe(true);
+  expect(injectionPour(avec(), { url: "https://ads.pub.example/v", principal: false })!.reprise).toBe(false);
+  expect(injectionPour(avec(), { url: "https://vidola-b.example/episode/4", principal: true })!.reprise).toBe(true);
+  expect(repriseDansCadre(declaration, { url: "https://ads.pub.example/v", principal: false })).toBe(false);
+  const sansCadres = DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/series/*"], js: ["a.js"] }] });
+  expect(repriseDansCadre(sansCadres, { url: "https://ads.pub.example/v", principal: false })).toBe(true);
+  expect(repriseDansCadre({ ...sansCadres, reprise: false }, { url: "https://vidola-b.example/", principal: true })).toBe(false);
+  // Tests : un lecteur http d'un hôte local comparé comme en https.
+  const local = DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/x"], cadres: ["https://lecteur.localhost:*/*"] }] });
+  expect(repriseDansCadre(local, { url: "http://lecteur.localhost:4000/v", principal: false }, true)).toBe(true);
+  expect(repriseDansCadre(local, { url: "http://pub.localhost:4000/v", principal: false }, true)).toBe(false);
 });

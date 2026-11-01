@@ -1,5 +1,5 @@
 import { ipcMain, type Session, type WebContents, type WebFrameMain } from "electron";
-import { adresseLocale, adresseRelative, retouchesPour, type MemoireSite, type RetouchesLues } from "@webaios/noyau";
+import { adresseLocale, adresseRelative, correspondMotif, retouchesPour, type DeclarationSite, type MemoireSite, type RetouchesLues } from "@webaios/noyau";
 import { CANAUX_PRELOAD_SITE as CANAUX } from "../../commun/preload-site";
 import {
   CONSOLE_RETOUCHE_SOURCE_MAX,
@@ -32,11 +32,30 @@ function urlPourMotifs(url: string, adressesLocales: boolean): string {
   return `https:${url.slice("http:".length)}`;
 }
 
+/** Écart toléré entre la durée d'une position retenue et celle de la vidéo qui la demande ou la note (même vidéo). */
+export const ECART_DUREE_REPRISE_S = 2;
+/** Au plus une position notée par seconde et par cadre (sauf la fin d'une vidéo) ; la dernière arrivée trop tôt attend. */
+export const ECART_NOTE_CADRE_MS = 1000;
+
+/**
+ * La reprise des vidéos va-t-elle dans ce cadre ? Cadre principal : oui si la déclaration la demande. Sous-cadre : si la
+ * déclaration a des motifs `cadres`, seulement dans ceux qui leur correspondent (le lecteur déclaré, pas un cadre
+ * publicitaire) ; sans motif, dans tous.
+ */
+export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; principal: boolean }, adressesLocales = false): boolean {
+  if (!d.reprise) return false;
+  if (cadre.principal) return true;
+  const motifs = d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres));
+  if (motifs.length === 0) return true;
+  const url = urlPourMotifs(cadre.url, adressesLocales);
+  return motifs.some((m) => correspondMotif(m, url));
+}
+
 /**
  * Ce qui va dans un cadre de la vue de l'appli, d'après son adresse et sa place (jamais d'après ce que dit le cadre).
  * Sans accord : null. Cadre principal sur le site : les retouches de `correspond`, `webaiosSite`, la garde bornée aux
  * domaines effectifs. Cadre principal ailleurs (connexion) : rien. Sous-cadre : les retouches de `cadres`, sans
- * `webaiosSite`, la garde bornée à son hôte. La reprise (code de WebAiOs) va dans tous les cadres du site.
+ * `webaiosSite`, la garde bornée à son hôte. La reprise (code de WebAiOs) : voir `repriseDansCadre`.
  */
 export function injectionPour(
   o: { site: SiteOuvrable; retouches: RetouchesLues; accorde: boolean; garde: string; adressesLocales?: boolean },
@@ -70,7 +89,7 @@ export function injectionPour(
     }
   }
   const hotes = cadre.principal ? site.domaines.flatMap((x) => [`https://*.${x}/*`, `https://${x}/*`]) : js.length > 0 ? [`https://${hote}/*`] : [];
-  return { css, js, garde: js.length > 0 ? o.garde : null, hotes, pont: cadre.principal, reprise: d.reprise };
+  return { css, js, garde: js.length > 0 ? o.garde : null, hotes, pont: cadre.principal, reprise: repriseDansCadre(d, cadre, adressesLocales) };
 }
 
 /**
@@ -115,11 +134,21 @@ function pageDe(e: { sender: WebContents; senderFrame: WebFrameMain | null }): s
   }
 }
 
-function positionRecue(p: unknown): { t: number; duree: number } | null {
+const fini = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+
+function positionRecue(p: unknown): { t: number; duree: number; fin: boolean } | null {
   if (!p || typeof p !== "object") return null;
-  const { t, duree } = p as { t?: unknown; duree?: unknown };
-  return typeof t === "number" && typeof duree === "number" && Number.isFinite(t) && Number.isFinite(duree) ? { t, duree } : null;
+  const { t, duree, fin } = p as { t?: unknown; duree?: unknown; fin?: unknown };
+  return fini(t) && fini(duree) ? { t, duree, fin: fin === true } : null;
 }
+
+function dureeRecue(d: unknown): number | null {
+  const duree = d && typeof d === "object" ? (d as { duree?: unknown }).duree : undefined;
+  return fini(duree) && duree > 0 ? duree : null;
+}
+
+/** Même vidéo : des durées à `ECART_DUREE_REPRISE_S` près. */
+const memeDuree = (a: number, b: number) => Math.abs(a - b) <= ECART_DUREE_REPRISE_S;
 
 type DemandeMemoire = { op: "retenir"; cle: string; valeur: unknown } | { op: "lire" | "oublier"; cle: string };
 export type ReponseMemoire = { ok: true; valeur?: unknown } | { ok: false; erreur: string };
@@ -145,8 +174,11 @@ export function brancherInjection(o: {
   injection(id: string, cadre: { url: string; principal: boolean }): InjectionCadre | null;
   /** L'accord des retouches couvre-t-il la déclaration ? Sans lui, pas de mémoire, quel que soit l'appelant. */
   accorde(id: string): boolean;
-  /** La déclaration demande-t-elle la reprise des vidéos (et l'accord la couvre-t-il) ? */
-  reprise(id: string): boolean;
+  /** La reprise des vidéos va-t-elle dans ce cadre (déclaration, motifs `cadres`) ? L'accord est vérifié par `accorde`. */
+  reprise(id: string, cadre: { url: string; principal: boolean }): boolean;
+  /** Horloge et minuterie (tests). */
+  maintenant?: () => number;
+  differer?: (f: () => void, ms: number) => void;
   memoire(id: string): Promise<MemoireSite>;
   adresseRelative(id: string, url: string): string | null;
 }): void {
@@ -161,18 +193,19 @@ export function brancherInjection(o: {
     return id !== undefined && o.vue(id) === sender ? id : undefined;
   };
 
+  const maintenant = o.maintenant ?? Date.now;
+  const differer = o.differer ?? ((f: () => void, ms: number) => void setTimeout(f, ms));
   /**
-   * Par vue : la position de la page a-t-elle déjà été rendue pour ce chargement du cadre principal ? Remis à zéro quand
-   * le preload du cadre principal demande son injection (au début de chaque document de la page, avant ses cadres).
+   * Par cadre (objet `WebFrameMain` d'Electron, le même tant que le cadre vit) : l'heure de sa dernière note écrite, et la
+   * dernière note arrivée trop tôt, écrite au bout de la seconde (une pause juste après un saut n'est pas perdue).
    */
-  const chargements = new WeakMap<WebContents, { servie: boolean }>();
+  const notes = new WeakMap<object, { derniere: number; enAttente: (() => void) | null }>();
 
   ipcMain.on(CANAUX.injection, (e) => {
     let reponse: InjectionCadre | null = null;
     try {
       const id = appliDe(e.sender);
       const cadre = id === undefined ? null : cadreDe(e);
-      if (cadre?.principal) chargements.set(e.sender, { servie: false });
       if (id !== undefined && cadre) reponse = o.injection(id, cadre);
     } catch (err) {
       console.error("[sites] injection impossible :", err);
@@ -198,31 +231,66 @@ export function brancherInjection(o: {
     return { ok: true };
   });
 
-  /** L'adresse relative de la page principale, si l'expéditeur est la vue d'une appli avec la reprise accordée. */
+  /**
+   * L'adresse relative de la page principale (lue à chaque demande : un `pushState` vers un autre épisode compte), si
+   * l'expéditeur est la vue d'une appli avec la reprise accordée et que la reprise va dans ce cadre.
+   */
   const pageReprise = (e: { sender: WebContents; senderFrame: WebFrameMain | null }): { id: string; adresse: string } | null => {
     const id = appliDe(e.sender);
-    if (id === undefined || !o.accorde(id) || !o.reprise(id)) return null;
+    const cadre = id === undefined ? null : cadreDe(e);
+    if (id === undefined || !cadre || !o.accorde(id) || !o.reprise(id, cadre)) return null;
     const page = pageDe(e);
     const adresse = page === null ? null : o.adresseRelative(id, page);
     return adresse === null ? null : { id, adresse };
   };
 
+  /**
+   * Une position notée. La position retenue d'une page appartient à la vidéo de même durée : une autre (publicité,
+   * bande-annonce) ne l'écrase ni ne l'efface. Sans position retenue, la première vidéo assez longue note.
+   */
   ipcMain.on(CANAUX.position, (e, brute: unknown) => {
     const p = positionRecue(brute);
     const cible = p ? pageReprise(e) : null;
-    if (!p || !cible) return;
-    void o.memoire(cible.id).then(
-      (m) => m.noterPosition(cible.adresse, p.t, p.duree),
-      (err) => console.error("[sites] position non notée :", err),
-    );
+    const cadre = e.senderFrame;
+    if (!p || !cible || !cadre) return;
+    const ecrire = () =>
+      void o.memoire(cible.id).then(
+        (m) => {
+          const retenue = m.position(cible.adresse);
+          if (retenue && !memeDuree(retenue.duree, p.duree)) return;
+          m.noterPosition(cible.adresse, p.t, p.duree);
+        },
+        (err) => console.error("[sites] position non notée :", err),
+      );
+    const t = maintenant();
+    const etat = notes.get(cadre);
+    if (!etat) {
+      notes.set(cadre, { derniere: t, enAttente: null });
+      return ecrire();
+    }
+    if (p.fin || t - etat.derniere >= ECART_NOTE_CADRE_MS) {
+      etat.derniere = t;
+      etat.enAttente = null;
+      return ecrire();
+    }
+    const attendait = etat.enAttente !== null;
+    etat.enAttente = ecrire;
+    if (attendait) return;
+    differer(() => {
+      const f = etat.enAttente;
+      etat.enAttente = null;
+      if (!f) return;
+      etat.derniere = maintenant();
+      f();
+    }, ECART_NOTE_CADRE_MS - (t - etat.derniere));
   });
 
-  ipcMain.handle(CANAUX.reprise, async (e): Promise<number | null> => {
-    const cible = pageReprise(e);
-    const chargement = chargements.get(e.sender);
-    if (!cible || !chargement || chargement.servie) return null;
-    chargement.servie = true;
-    const m = await o.memoire(cible.id);
-    return m.position(cible.adresse)?.t ?? null;
+  /** La position retenue de la page, à toute vidéo de même durée qui la demande (lecteur recréé, « Lecteur 2 », rechargement). */
+  ipcMain.handle(CANAUX.reprise, async (e, brute: unknown): Promise<number | null> => {
+    const duree = dureeRecue(brute);
+    const cible = duree === null ? null : pageReprise(e);
+    if (duree === null || !cible) return null;
+    const retenue = (await o.memoire(cible.id)).position(cible.adresse);
+    return retenue && memeDuree(retenue.duree, duree) ? retenue.t : null;
   });
 }

@@ -56,14 +56,15 @@ const pont = {
 /**
  * La reprise des vidéos de ce cadre : écouteurs en capture sur `document` (les événements des médias ne remontent
  * pas), dans ce monde-ci, jamais celui de la page ni celui des retouches. Un événement fabriqué par la page (isTrusted
- * faux) est ignoré. La position est notée et demandée pour la page principale (décidé par le process principal).
+ * faux) est ignoré. La position est notée et demandée pour la page principale, avec la durée de la vidéo : le process
+ * principal ne la sert, ne l'écrase et ne l'efface que pour une vidéo de même durée.
  */
 function brancherReprise(): void {
   const suivi = new SuiviReprise({
-    noter: (t, duree) => ipcRenderer.send(CANAUX.position, { t, duree }),
-    demander: async () => {
+    noter: (t, duree, fin) => ipcRenderer.send(CANAUX.position, { t, duree, fin }),
+    demander: async (duree) => {
       try {
-        const p: unknown = await ipcRenderer.invoke(CANAUX.reprise);
+        const p: unknown = await ipcRenderer.invoke(CANAUX.reprise, { duree });
         return typeof p === "number" && Number.isFinite(p) ? p : null;
       } catch {
         return null;

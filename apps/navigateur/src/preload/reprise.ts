@@ -21,15 +21,17 @@ export class SuiviReprise {
 
   constructor(
     private readonly o: {
-      noter(t: number, duree: number): void;
-      demander(): Promise<number | null>;
+      /** `fin` : la vidéo est allée au bout (`ended`). */
+      noter(t: number, duree: number, fin: boolean): void;
+      /** La position retenue pour la page, si elle appartient à une vidéo de cette durée (décidé par le main). */
+      demander(duree: number): Promise<number | null>;
       maintenant(): number;
     },
   ) {}
 
   /**
    * Un événement d'un élément (`cle`) : la position à donner à `currentTime`, ou null. Au premier événement où la durée
-   * est connue et assez longue, la position de la page est demandée, une seule fois par élément ; rien n'est noté avant
+   * est connue et assez longue, la position de la page est demandée avec sa durée, une seule fois par élément ; rien n'est noté avant
    * qu'elle soit rendue (un `timeupdate` à 0 s n'écrase pas la position retenue).
    */
   async surEvenement(type: EvenementVideo, v: { currentTime: number; duration: number; cle: object }): Promise<number | null> {
@@ -41,7 +43,7 @@ export class SuiviReprise {
       this.etats.set(v.cle, nouveau);
       let p: number | null = null;
       try {
-        p = await this.o.demander();
+        p = await this.o.demander(duree);
       } catch {
         p = null;
       }
@@ -50,18 +52,18 @@ export class SuiviReprise {
       return Math.max(0, p - RECUL_REPRISE_S);
     }
     if (!etat.reglee) return null;
-    if (type === "pause" || type === "ended") this.noter(etat, t, duree);
+    if (type === "pause" || type === "ended") this.noter(etat, t, duree, type === "ended");
     else if (type === "timeupdate") {
       const maintenant = this.o.maintenant();
-      if (etat.derniere === null || maintenant - etat.derniere >= ECART_POSITION_MS) this.noter(etat, t, duree);
+      if (etat.derniere === null || maintenant - etat.derniere >= ECART_POSITION_MS) this.noter(etat, t, duree, false);
     }
     return null;
   }
 
-  private noter(etat: Etat, t: number, duree: number): void {
+  private noter(etat: Etat, t: number, duree: number, fin: boolean): void {
     etat.derniere = this.o.maintenant();
     try {
-      this.o.noter(t, duree);
+      this.o.noter(t, duree, fin);
     } catch {
       // une position est un confort
     }

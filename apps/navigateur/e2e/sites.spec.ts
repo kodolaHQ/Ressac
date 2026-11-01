@@ -1215,22 +1215,32 @@ test.describe("carte d'accord", () => {
 // --- La reprise des vidéos à la minute (dans la page et ses cadres)
 
 test.describe("reprise des vidéos", () => {
-  const declaration = () => ({ nom: "Vidola", adresse: serveur.url("vidola-a.localhost", "/episode/4"), domaines: ["vidola-a.localhost"], connexion: [], reprise: true });
+  const declaration = (depart = "/episode/4") => ({ nom: "Vidola", adresse: serveur.url("vidola-a.localhost", depart), domaines: ["vidola-a.localhost"], connexion: [], reprise: true });
   const LECTEUR = "/lecteur.html";
+
+  /** Un WAV servi avec les plages d'octets (Range), comme un vrai serveur de vidéos : le lecteur peut aller à la minute voulue. */
+  const servirWav = (wav: Buffer) => (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => {
+    const plage = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+    if (!plage) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);
+    const debut = Number(plage[1]);
+    const fin = plage[2] ? Math.min(Number(plage[2]), wav.length - 1) : wav.length - 1;
+    res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": fin - debut + 1, "Content-Range": `bytes ${debut}-${fin}/${wav.length}`, "Accept-Ranges": "bytes" });
+    res.end(wav.subarray(debut, fin + 1));
+  };
 
   test.beforeAll(() => {
     const wav = silenceWav(90);
+    // Une page avec une publicité de 75 s (autre domaine, autre durée) avant le lecteur de l'épisode.
+    serveur.definir(
+      "vidola-a.localhost",
+      "/episode/7",
+      `<title>Épisode 7</title><iframe id="pub" src="${serveur.url("pub.localhost", "/pub-video")}"></iframe><iframe id="lecteur" src="${serveur.url("lecteur.localhost", LECTEUR)}"></iframe>`,
+    );
+    serveur.definir("pub.localhost", "/pub-video", '<title>Pub</title><video id="v" muted autoplay preload="auto" src="/pub-75.wav"></video>');
+    serveur.definir("pub.localhost", "/pub-75.wav", servirWav(silenceWav(75)));
     serveur.definir("vidola-a.localhost", "/episode/4", `<title>Épisode 4</title><iframe id="lecteur" src="${serveur.url("lecteur.localhost", LECTEUR)}"></iframe>`);
     serveur.definir("lecteur.localhost", LECTEUR, readFileSync(join(__dirname, "pages", "lecteur.html"), "utf8"));
-    // Avec les plages d'octets (Range), comme un vrai serveur de vidéos : le lecteur peut aller à la minute voulue.
-    serveur.definir("lecteur.localhost", "/silence-90.wav", (req, res) => {
-      const plage = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
-      if (!plage) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);
-      const debut = Number(plage[1]);
-      const fin = plage[2] ? Math.min(Number(plage[2]), wav.length - 1) : wav.length - 1;
-      res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": fin - debut + 1, "Content-Range": `bytes ${debut}-${fin}/${wav.length}`, "Accept-Ranges": "bytes" });
-      res.end(wav.subarray(debut, fin + 1));
-    });
+    serveur.definir("lecteur.localhost", "/silence-90.wav", servirWav(wav));
   });
 
   /** Le contenu de memoire.json de l'appli (écrit 500 ms après un changement), ou null. */
@@ -1239,18 +1249,19 @@ test.describe("reprise des vidéos", () => {
     return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")).positions : null;
   };
   /** Dans le lecteur (le seul sous-cadre de la page) : `code`, avec `v` la vidéo. */
-  const lecteur = (app: ElectronApplication, code: string) => vueSite(app, "vidola", `(() => { const v = document.getElementById("v"); return ${code}; })()`, { cadre: 0 });
+  const lecteur = (app: ElectronApplication, code: string, cadre = 0) =>
+    vueSite(app, "vidola", `(() => { const v = document.getElementById("v"); return ${code}; })()`, { cadre });
   /** Attendre que la vidéo du lecteur joue (sa reprise est alors réglée : rien n'est noté avant). */
   const attendreLecture = async (app: ElectronApplication) => {
     await expect.poll(() => lecteur(app, "v ? v.duration : 0"), { timeout: 10_000 }).toBe(90);
     await expect.poll(() => lecteur(app, "!v.paused && v.currentTime > 0.3"), { timeout: 10_000 }).toBe(true);
   };
   /** Mettre la vidéo à `t` puis en pause, une fois arrivée. */
-  const allerPuisPause = (app: ElectronApplication, t: number) =>
-    lecteur(app, `new Promise((ok) => { v.addEventListener("seeked", () => { v.pause(); ok(v.currentTime); }, { once: true }); v.currentTime = ${t}; })`);
+  const allerPuisPause = (app: ElectronApplication, t: number, cadre = 0) =>
+    lecteur(app, `new Promise((ok) => { v.addEventListener("seeked", () => { v.pause(); ok(v.currentTime); }, { once: true }); v.currentTime = ${t}; })`, cadre);
 
-  async function demarrerReprise(o: { accord?: boolean; positions?: Record<string, { t: number; duree: number }> } = {}) {
-    const l = await demarrer({ vidola: { declaration: declaration() } });
+  async function demarrerReprise(o: { accord?: boolean; depart?: string; positions?: Record<string, { t: number; duree: number }> } = {}) {
+    const l = await demarrer({ vidola: { declaration: declaration(o.depart) } });
     if (o.accord !== false) {
       writeFileSync(join(l.profil, "sites-accords.json"), JSON.stringify({ vidola: { domaines: ["vidola-a.localhost"], connexion: [], cadres: [], reprise: true } }));
     }
@@ -1305,6 +1316,29 @@ test.describe("reprise des vidéos", () => {
     expect(await allerPuisPause(app, 40)).toBeCloseTo(40, 0);
     await new Promise((r) => setTimeout(r, 1000));
     expect(positions(profil)).toEqual({ "/episode/4": { t: 70, duree: 90, quand: expect.any(String) } });
+    await fermer();
+  });
+
+  test("une publicité de 75 s dans un autre cadre : elle ne prend pas la position, ne l'écrase ni ne l'efface en allant au bout ; le lecteur de 90 s reprend", async () => {
+    const { app, fenetre, profil, fermer } = await demarrerReprise({ depart: "/episode/7", positions: { "/episode/7": { t: 70, duree: 90 } } });
+    await ouvrirEtAttendre(app, fenetre, "vidola", "/episode/7");
+    const pub = (code: string) => lecteur(app, code, 0);
+    const episode = (code: string) => lecteur(app, code, 1);
+    await expect.poll(() => pub("v ? v.duration : 0"), { timeout: 10_000 }).toBe(75);
+    // Le lecteur reprend à 65 ; la publicité part de 0.
+    await expect.poll(() => episode("v && v.currentTime >= 64.9"), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => pub("!v.paused && v.currentTime > 0.3"), { timeout: 10_000 }).toBe(true);
+    expect(await pub("v.currentTime")).toBeLessThan(10);
+    // L'épisode joue un peu (plus d'une seconde depuis sa dernière note), puis pause.
+    await expect.poll(() => episode("v.currentTime >= 67"), { timeout: 10_000 }).toBe(true);
+    const quitte = (await episode("(v.pause(), v.currentTime)")) as number;
+    await expect.poll(() => positions(profil)?.["/episode/7"]?.t ?? null).toBeCloseTo(quitte, 0);
+    // La publicité en pause au milieu, puis jusqu'au bout.
+    expect(await allerPuisPause(app, 30, 0)).toBeCloseTo(30, 0);
+    await pub("(v.currentTime = 73, v.play(), true)");
+    await expect.poll(() => pub("v.ended"), { timeout: 10_000 }).toBe(true);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(positions(profil)).toEqual({ "/episode/7": { t: expect.closeTo(quitte, 0), duree: expect.closeTo(90, 0), quand: expect.any(String) } });
     await fermer();
   });
 });

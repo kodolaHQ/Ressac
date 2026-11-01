@@ -4,14 +4,20 @@ import { DUREE_MIN_REPRISE_S, ECART_POSITION_MS, RECUL_REPRISE_S, SuiviReprise }
 /** Un suivi avec une horloge du test et la position que rend le process principal. */
 function suivi(connue: number | null = null) {
   const notes: [number, number][] = [];
+  const fins: boolean[] = [];
+  const durees: number[] = [];
   let demandes = 0;
   let maintenant = 0;
   let reponse: (p: number | null) => void = () => {};
   let differee = false;
   const s = new SuiviReprise({
-    noter: (t, duree) => void notes.push([t, duree]),
-    demander: () => {
+    noter: (t, duree, fin) => {
+      notes.push([t, duree]);
+      fins.push(fin);
+    },
+    demander: (duree) => {
       demandes++;
+      durees.push(duree);
       return differee ? new Promise((ok) => (reponse = ok)) : Promise.resolve(connue);
     },
     maintenant: () => maintenant,
@@ -19,6 +25,8 @@ function suivi(connue: number | null = null) {
   return {
     s,
     notes,
+    fins,
+    durees,
     demandes: () => demandes,
     horloge: (ms: number) => void (maintenant = ms),
     differer: () => void (differee = true),
@@ -46,8 +54,8 @@ test("timeupdate toutes les secondes pendant 35 s : 4 noter (0, 10, 20, 30 s)", 
   ]);
 });
 
-test("pause : noter tout de suite ; ended aussi", async () => {
-  const { s, notes, horloge } = suivi();
+test("pause : noter tout de suite ; ended aussi, marqué comme la fin", async () => {
+  const { s, notes, fins, horloge } = suivi();
   const cle = {};
   await s.surEvenement("play", { currentTime: 0, duration: 1500, cle });
   await s.surEvenement("timeupdate", { currentTime: 1, duration: 1500, cle });
@@ -60,6 +68,7 @@ test("pause : noter tout de suite ; ended aussi", async () => {
     [2, 1500],
     [1500, 1500],
   ]);
+  expect(fins).toEqual([false, false, true]);
 });
 
 test("vidéo de 30 s : rien noté, rien repris", async () => {
@@ -84,13 +93,14 @@ test("durée non finie (direct) ou absente : ignorée", async () => {
 });
 
 test("play avec position 1390 connue : rend 1385, une seule fois", async () => {
-  const { s, demandes } = suivi(1390);
+  const { s, demandes, durees } = suivi(1390);
   const cle = {};
   expect(await s.surEvenement("loadedmetadata", { currentTime: 0, duration: 1500, cle })).toBe(1385);
+  expect(durees).toEqual([1500]);
   expect(await s.surEvenement("play", { currentTime: 1385, duration: 1500, cle })).toBeNull();
   expect(await s.surEvenement("loadedmetadata", { currentTime: 1385, duration: 1500, cle })).toBeNull();
   expect(demandes()).toBe(1);
-  // Un autre élément de la page demande pour lui-même.
+  // Un autre élément de la page (lecteur recréé) demande pour lui-même, avec sa durée ; le main décide s'il la sert.
   expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBe(1385);
   expect(demandes()).toBe(2);
 });
