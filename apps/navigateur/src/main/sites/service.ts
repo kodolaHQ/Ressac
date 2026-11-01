@@ -232,6 +232,7 @@ export function demarrerSites(o: {
       return injectionPour({ site: s, retouches: r, accorde: !s.accordRequis, garde, adressesLocales: o.adressesLocales }, cadre);
     },
     accorde: (id) => fenetres.site(id)?.accordRequis === false,
+    reprise: (id) => fenetres.site(id)?.declaration.reprise === true,
     memoire,
     adresseRelative(id, url) {
       const s = fenetres.site(id);

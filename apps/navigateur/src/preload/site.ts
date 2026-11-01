@@ -3,11 +3,13 @@
  * cadre principal et dans chaque sous-cadre. Il demande au process principal ce qui va dans ce cadre (décidé depuis
  * l'expéditeur, jamais d'après ce que dit le cadre), pose le CSS de l'agent, puis lance la garde des extensions et ses
  * scripts dans le monde des retouches (`MONDE_RETOUCHES`) : jamais dans celui de la page, ni dans celui-ci (qui a
- * `ipcRenderer`). `webaiosSite` n'est exposé qu'à ce monde, et seulement dans le cadre principal.
+ * `ipcRenderer`). `webaiosSite` n'est exposé qu'à ce monde, et seulement dans le cadre principal. La reprise des
+ * vidéos (code de WebAiOs) tourne ici, dans le monde du preload, dans chaque cadre où le process principal la permet.
  */
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { CANAUX_PRELOAD_SITE as CANAUX, MONDE_RETOUCHES } from "../commun/preload-site";
 import type { InjectionCadre } from "../commun/sites";
+import { EVENEMENTS_VIDEO, SuiviReprise } from "./reprise";
 
 type ReponseMemoire = { ok: true; valeur?: unknown } | { ok: false; erreur: string };
 
@@ -51,6 +53,39 @@ const pont = {
   oublier: async (cle: unknown): Promise<void> => void (await memoire({ op: "oublier", cle })),
 };
 
+/**
+ * La reprise des vidéos de ce cadre : écouteurs en capture sur `document` (les événements des médias ne remontent
+ * pas), dans ce monde-ci, jamais celui de la page ni celui des retouches. Un événement fabriqué par la page (isTrusted
+ * faux) est ignoré. La position est notée et demandée pour la page principale (décidé par le process principal).
+ */
+function brancherReprise(): void {
+  const suivi = new SuiviReprise({
+    noter: (t, duree) => ipcRenderer.send(CANAUX.position, { t, duree }),
+    demander: async () => {
+      try {
+        const p: unknown = await ipcRenderer.invoke(CANAUX.reprise);
+        return typeof p === "number" && Number.isFinite(p) ? p : null;
+      } catch {
+        return null;
+      }
+    },
+    maintenant: () => Date.now(),
+  });
+  for (const type of EVENEMENTS_VIDEO) {
+    document.addEventListener(
+      type,
+      (e) => {
+        const v = e.target;
+        if (!e.isTrusted || !(v instanceof HTMLVideoElement)) return;
+        void suivi.surEvenement(type, { currentTime: v.currentTime, duration: v.duration, cle: v }).then((p) => {
+          if (p !== null && p > 0) v.currentTime = p;
+        });
+      },
+      { capture: true },
+    );
+  }
+}
+
 const i = demander();
 if (i) {
   for (const css of i.css) {
@@ -87,5 +122,5 @@ if (i) {
     if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", (e) => e.isTrusted && lancer(), { capture: true });
     else lancer();
   }
-  // `i.reprise` : la reprise des vidéos (tâche suivante), dans le monde de ce preload.
+  if (i.reprise === true) brancherReprise();
 }

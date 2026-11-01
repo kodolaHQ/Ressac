@@ -7,6 +7,10 @@ export const CANAUX_PRELOAD_SITE = {
   injection: "webaios:site-injection",
   /** La mémoire de l'appli pour `webaiosSite` (cadre principal seulement). */
   memoire: "webaios:site-memoire",
+  /** La position d'une vidéo du cadre (`{ t, duree }`), notée sous l'adresse de la page principale. */
+  position: "webaios:site-position",
+  /** La position à reprendre pour la page principale, au plus une fois par chargement de celle-ci. */
+  reprise: "webaios:site-reprise",
 } as const;
 
 /**

@@ -127,12 +127,14 @@ const evenement = (sender: unknown, senderFrame: FauxCadre | null) => ({ sender,
 
 let memoire: MemoireSite;
 let accorde: boolean;
+let reprise: boolean;
 let demandes: { id: string; cadre: { url: string; principal: boolean } }[];
 beforeEach(async () => {
   on.clear();
   handle.clear();
   demandes = [];
   accorde = true;
+  reprise = true;
   vue.mainFrame = principal;
   memoire = await MemoireSite.ouvrir(mkdtempSync(join(tmpdir(), "injection-")), "vidola");
   brancherInjection({
@@ -143,6 +145,7 @@ beforeEach(async () => {
       return injectionPour(avec(), cadre);
     },
     accorde: () => accorde,
+    reprise: () => reprise,
     memoire: async () => memoire,
     adresseRelative: (_id, url) => {
       const u = new URL(url);
@@ -250,4 +253,89 @@ test("console des retouches : texte tronqué à 2000 caractères, source à 500,
   for (let n = 0; n < 80; n++) ajouterConsoleRetouche(petits, { texte: `${n}`, source: "s" }, "t");
   expect(petits).toHaveLength(50);
   expect(petits[0]!.texte).toBe("30");
+});
+
+// --- Reprise des vidéos : la position de la page principale, jamais celle du lecteur.
+
+type CadreReprise = { url: string; parent: CadreReprise | null; top: CadreReprise | null };
+/** La vue est sur `url` : son cadre principal (son propre `top`) et un lecteur d'un autre domaine dedans. */
+function pageAvecLecteur(url: string) {
+  const page: CadreReprise = { url, parent: null, top: null };
+  page.top = page;
+  vue.mainFrame = page as never;
+  const lecteur: CadreReprise = { url: "https://www.lecteur.example/embed/9", parent: page, top: page };
+  return { page, lecteur };
+}
+/** Envoie une position (canal sans réponse) et laisse la mémoire, ouverte de façon asynchrone, la noter. */
+const positionIpc = async (sender: unknown, cadre: CadreReprise | null, p: unknown) => {
+  on.get("webaios:site-position")!(evenement(sender, cadre as never), p);
+  await new Promise((r) => setTimeout(r));
+};
+const repriseIpc = (sender: unknown, cadre: CadreReprise | null) => handle.get("webaios:site-reprise")!(evenement(sender, cadre as never));
+/** Le preload du cadre principal demande son injection : un nouveau chargement de la page. */
+const charger = (page: CadreReprise) => injection(evenement(vue, page as never));
+
+test("position : notée sous l'adresse relative de la page principale, depuis le lecteur comme depuis la page", async () => {
+  const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4?s=1");
+  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  expect(memoire.contenu().positions).toEqual({ "/episode/4?s=1": { t: 70, duree: 90, quand: expect.any(String) } });
+  await positionIpc(vue, page, { t: 72, duree: 90 });
+  expect(memoire.position("/episode/4?s=1")?.t).toBe(72);
+  expect(Object.keys(memoire.contenu().positions)).toEqual(["/episode/4?s=1"]);
+});
+
+test("position : refusée sans accord, sans reprise déclarée, hors du site, hors de la vue, valeurs invalides", async () => {
+  const { lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  accorde = false;
+  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  accorde = true;
+  reprise = false;
+  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  reprise = true;
+  await positionIpc({ session }, lecteur, { t: 70, duree: 90 });
+  await positionIpc(vue, null, { t: 70, duree: 90 });
+  for (const p of [null, "x", { t: "70", duree: 90 }, { t: 70 }, { t: Infinity, duree: 90 }]) await positionIpc(vue, lecteur, p);
+  // Un cadre d'une autre arborescence (son top n'est pas le cadre principal de la vue).
+  const ailleurs: CadreReprise = { url: "https://vidola-b.example/x", parent: null, top: null };
+  await positionIpc(vue, { url: "https://www.lecteur.example/v", parent: ailleurs, top: ailleurs }, { t: 70, duree: 90 });
+  pageAvecLecteur("https://compte.example/connexion");
+  await positionIpc(vue, vue.mainFrame as never, { t: 70, duree: 90 });
+  expect(memoire.contenu().positions).toEqual({});
+});
+
+test("reprise : la position de la page, au plus une fois par chargement du cadre principal", async () => {
+  const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  memoire.noterPosition("/episode/4", 70, 90);
+  memoire.noterPosition("https://www.lecteur.example/embed/9", 30, 90);
+  charger(page);
+  expect(await repriseIpc(vue, lecteur)).toBe(70);
+  expect(await repriseIpc(vue, lecteur)).toBeNull();
+  expect(await repriseIpc(vue, page)).toBeNull();
+  // Un lecteur rechargé seul ne redonne rien ; la page rechargée, si.
+  charger(page);
+  expect(await repriseIpc(vue, lecteur)).toBe(70);
+});
+
+test("reprise : une page sans position rend null, et la page qui note ensuite ne se la redonne pas", async () => {
+  const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/5");
+  charger(page);
+  expect(await repriseIpc(vue, lecteur)).toBeNull();
+  await positionIpc(vue, lecteur, { t: 40, duree: 90 });
+  expect(await repriseIpc(vue, lecteur)).toBeNull();
+});
+
+test("reprise : rien sans accord, sans reprise déclarée, hors du site, ou depuis la petite fenêtre", async () => {
+  memoire.noterPosition("/episode/4", 70, 90);
+  for (const cas of ["accord", "reprise", "fenetre"] as const) {
+    const { page, lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+    charger(page);
+    accorde = cas !== "accord";
+    reprise = cas !== "reprise";
+    expect(await repriseIpc(cas === "fenetre" ? { session } : vue, lecteur)).toBeNull();
+    accorde = true;
+    reprise = true;
+  }
+  const { page } = pageAvecLecteur("https://compte.example/episode/4");
+  charger(page);
+  expect(await repriseIpc(vue, page)).toBeNull();
 });

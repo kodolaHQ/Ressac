@@ -100,6 +100,27 @@ function cadreDe(e: { sender: WebContents; senderFrame: WebFrameMain | null }): 
   }
 }
 
+/**
+ * La page principale de la vue, vue d'un de ses cadres (le lecteur dans un cadre d'un autre domaine compris) : son
+ * adresse, si le cadre est bien dans l'arborescence du cadre principal de la vue. La position d'une vidéo est toujours
+ * celle de la page, jamais celle du lecteur.
+ */
+function pageDe(e: { sender: WebContents; senderFrame: WebFrameMain | null }): string | null {
+  try {
+    const f = e.senderFrame;
+    const top = f?.top;
+    return top && top === e.sender.mainFrame ? top.url : null;
+  } catch {
+    return null;
+  }
+}
+
+function positionRecue(p: unknown): { t: number; duree: number } | null {
+  if (!p || typeof p !== "object") return null;
+  const { t, duree } = p as { t?: unknown; duree?: unknown };
+  return typeof t === "number" && typeof duree === "number" && Number.isFinite(t) && Number.isFinite(duree) ? { t, duree } : null;
+}
+
 type DemandeMemoire = { op: "retenir"; cle: string; valeur: unknown } | { op: "lire" | "oublier"; cle: string };
 export type ReponseMemoire = { ok: true; valeur?: unknown } | { ok: false; erreur: string };
 
@@ -124,6 +145,8 @@ export function brancherInjection(o: {
   injection(id: string, cadre: { url: string; principal: boolean }): InjectionCadre | null;
   /** L'accord des retouches couvre-t-il la déclaration ? Sans lui, pas de mémoire, quel que soit l'appelant. */
   accorde(id: string): boolean;
+  /** La déclaration demande-t-elle la reprise des vidéos (et l'accord la couvre-t-il) ? */
+  reprise(id: string): boolean;
   memoire(id: string): Promise<MemoireSite>;
   adresseRelative(id: string, url: string): string | null;
 }): void {
@@ -138,11 +161,18 @@ export function brancherInjection(o: {
     return id !== undefined && o.vue(id) === sender ? id : undefined;
   };
 
+  /**
+   * Par vue : la position de la page a-t-elle déjà été rendue pour ce chargement du cadre principal ? Remis à zéro quand
+   * le preload du cadre principal demande son injection (au début de chaque document de la page, avant ses cadres).
+   */
+  const chargements = new WeakMap<WebContents, { servie: boolean }>();
+
   ipcMain.on(CANAUX.injection, (e) => {
     let reponse: InjectionCadre | null = null;
     try {
       const id = appliDe(e.sender);
       const cadre = id === undefined ? null : cadreDe(e);
+      if (cadre?.principal) chargements.set(e.sender, { servie: false });
       if (id !== undefined && cadre) reponse = o.injection(id, cadre);
     } catch (err) {
       console.error("[sites] injection impossible :", err);
@@ -166,5 +196,33 @@ export function brancherInjection(o: {
     if (d.op === "lire") return { ok: true, valeur: m.lire(d.cle) };
     m.oublier(d.cle);
     return { ok: true };
+  });
+
+  /** L'adresse relative de la page principale, si l'expéditeur est la vue d'une appli avec la reprise accordée. */
+  const pageReprise = (e: { sender: WebContents; senderFrame: WebFrameMain | null }): { id: string; adresse: string } | null => {
+    const id = appliDe(e.sender);
+    if (id === undefined || !o.accorde(id) || !o.reprise(id)) return null;
+    const page = pageDe(e);
+    const adresse = page === null ? null : o.adresseRelative(id, page);
+    return adresse === null ? null : { id, adresse };
+  };
+
+  ipcMain.on(CANAUX.position, (e, brute: unknown) => {
+    const p = positionRecue(brute);
+    const cible = p ? pageReprise(e) : null;
+    if (!p || !cible) return;
+    void o.memoire(cible.id).then(
+      (m) => m.noterPosition(cible.adresse, p.t, p.duree),
+      (err) => console.error("[sites] position non notée :", err),
+    );
+  });
+
+  ipcMain.handle(CANAUX.reprise, async (e): Promise<number | null> => {
+    const cible = pageReprise(e);
+    const chargement = chargements.get(e.sender);
+    if (!cible || !chargement || chargement.servie) return null;
+    chargement.servie = true;
+    const m = await o.memoire(cible.id);
+    return m.position(cible.adresse)?.t ?? null;
   });
 }

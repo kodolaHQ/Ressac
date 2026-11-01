@@ -9,9 +9,9 @@ const BARRE = 36;
 
 let serveur: Awaited<ReturnType<typeof serveurSites>>;
 
-/** 3 s de silence en WAV (8 kHz, 8 bits, mono) : de quoi jouer sans geste. */
-function silenceWav(): Buffer {
-  const n = 8000 * 3;
+/** `secondes` de silence en WAV (8 kHz, 8 bits, mono), généré en mémoire : de quoi jouer sans geste. */
+function silenceWav(secondes = 3): Buffer {
+  const n = 8000 * secondes;
   const b = Buffer.alloc(44 + n, 0x80);
   b.write("RIFF", 0);
   b.writeUInt32LE(36 + n, 4);
@@ -1208,6 +1208,103 @@ test.describe("carte d'accord", () => {
     expect((await etatVueSite(app, "tube"))?.visible).toBe(true);
     await expect(page.getByTestId("site-entrer")).toHaveCount(0);
     await expect(page.getByTestId("site-accueil")).toHaveCount(0);
+    await fermer();
+  });
+});
+
+// --- La reprise des vidéos à la minute (dans la page et ses cadres)
+
+test.describe("reprise des vidéos", () => {
+  const declaration = () => ({ nom: "Vidola", adresse: serveur.url("vidola-a.localhost", "/episode/4"), domaines: ["vidola-a.localhost"], connexion: [], reprise: true });
+  const LECTEUR = "/lecteur.html";
+
+  test.beforeAll(() => {
+    const wav = silenceWav(90);
+    serveur.definir("vidola-a.localhost", "/episode/4", `<title>Épisode 4</title><iframe id="lecteur" src="${serveur.url("lecteur.localhost", LECTEUR)}"></iframe>`);
+    serveur.definir("lecteur.localhost", LECTEUR, readFileSync(join(__dirname, "pages", "lecteur.html"), "utf8"));
+    // Avec les plages d'octets (Range), comme un vrai serveur de vidéos : le lecteur peut aller à la minute voulue.
+    serveur.definir("lecteur.localhost", "/silence-90.wav", (req, res) => {
+      const plage = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+      if (!plage) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);
+      const debut = Number(plage[1]);
+      const fin = plage[2] ? Math.min(Number(plage[2]), wav.length - 1) : wav.length - 1;
+      res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": fin - debut + 1, "Content-Range": `bytes ${debut}-${fin}/${wav.length}`, "Accept-Ranges": "bytes" });
+      res.end(wav.subarray(debut, fin + 1));
+    });
+  });
+
+  /** Le contenu de memoire.json de l'appli (écrit 500 ms après un changement), ou null. */
+  const positions = (profil: string): Record<string, { t: number; duree: number }> | null => {
+    const f = join(profil, "sites", "vidola", "memoire.json");
+    return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")).positions : null;
+  };
+  /** Dans le lecteur (le seul sous-cadre de la page) : `code`, avec `v` la vidéo. */
+  const lecteur = (app: ElectronApplication, code: string) => vueSite(app, "vidola", `(() => { const v = document.getElementById("v"); return ${code}; })()`, { cadre: 0 });
+  /** Attendre que la vidéo du lecteur joue (sa reprise est alors réglée : rien n'est noté avant). */
+  const attendreLecture = async (app: ElectronApplication) => {
+    await expect.poll(() => lecteur(app, "v ? v.duration : 0"), { timeout: 10_000 }).toBe(90);
+    await expect.poll(() => lecteur(app, "!v.paused && v.currentTime > 0.3"), { timeout: 10_000 }).toBe(true);
+  };
+  /** Mettre la vidéo à `t` puis en pause, une fois arrivée. */
+  const allerPuisPause = (app: ElectronApplication, t: number) =>
+    lecteur(app, `new Promise((ok) => { v.addEventListener("seeked", () => { v.pause(); ok(v.currentTime); }, { once: true }); v.currentTime = ${t}; })`);
+
+  async function demarrerReprise(o: { accord?: boolean; positions?: Record<string, { t: number; duree: number }> } = {}) {
+    const l = await demarrer({ vidola: { declaration: declaration() } });
+    if (o.accord !== false) {
+      writeFileSync(join(l.profil, "sites-accords.json"), JSON.stringify({ vidola: { domaines: ["vidola-a.localhost"], connexion: [], cadres: [], reprise: true } }));
+    }
+    if (o.positions) {
+      const quand = new Date().toISOString();
+      const p = Object.fromEntries(Object.entries(o.positions).map(([k, v]) => [k, { ...v, quand }]));
+      mkdirSync(join(l.profil, "sites", "vidola"), { recursive: true });
+      writeFileSync(join(l.profil, "sites", "vidola", "memoire.json"), JSON.stringify({ version: 1, valeurs: {}, positions: p }));
+    }
+    return l;
+  }
+
+  test("le test met la vidéo à 70 s puis pause : positions[\"/episode/4\"].t ≈ 70, rien sous l'adresse du lecteur ; recharger : la vidéo démarre et currentTime ≈ 65", async () => {
+    const { app, fenetre, profil, fermer } = await demarrerReprise();
+    await ouvrirEtAttendre(app, fenetre, "vidola", "/episode/4");
+    await attendreLecture(app);
+    expect(await allerPuisPause(app, 70)).toBeCloseTo(70, 0);
+    await expect.poll(() => positions(profil)?.["/episode/4"]?.t ?? null).toBeCloseTo(70, 0);
+    const p = positions(profil)!;
+    expect(Object.keys(p)).toEqual(["/episode/4"]);
+    expect(p["/episode/4"]!.duree).toBeCloseTo(90, 0);
+    // La page rechargée : le lecteur, de nouveau chargé dans son cadre, reprend 5 s avant.
+    // (Le lecteur n'est interrogé qu'une fois la page rechargée chargée, cadres compris : un cadre qui disparaît pendant
+    // un appel ne répond jamais.)
+    await vueSite(app, "vidola", "window.marque = 1; location.reload()");
+    await expect.poll(() => vueSite(app, "vidola", "window.marque === undefined && document.readyState === 'complete'"), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => lecteur(app, "v && v.currentTime >= 64.9 && !v.paused"), { timeout: 10_000 }).toBe(true);
+    expect(await lecteur(app, "v.currentTime")).toBeLessThan(69);
+    await fermer();
+  });
+
+  test("à 88 s puis pause : position oubliée", async () => {
+    const { app, fenetre, profil, fermer } = await demarrerReprise({ positions: { "/episode/4": { t: 70, duree: 90 } } });
+    await ouvrirEtAttendre(app, fenetre, "vidola", "/episode/4");
+    // Repris à 65 depuis la position retenue.
+    await expect.poll(() => lecteur(app, "v && v.currentTime >= 64.9"), { timeout: 10_000 }).toBe(true);
+    expect(await allerPuisPause(app, 88)).toBeCloseTo(88, 0);
+    await expect.poll(() => positions(profil)?.["/episode/4"] ?? null).toBeNull();
+    expect(positions(profil)).toEqual({});
+    await fermer();
+  });
+
+  test("sans accord (Ouvrir sans retouches) : aucune position notée, rien repris", async () => {
+    const { app, fenetre, profil, fermer } = await demarrerReprise({ accord: false, positions: { "/episode/4": { t: 70, duree: 90 } } });
+    await ouvrirSite(fenetre, "vidola");
+    const page = await fenetreSite(app, "vidola");
+    await page.getByTestId("refuser-site").click();
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/episode/4"));
+    await attendreLecture(app);
+    // Pas repris : la vidéo est partie de 0.
+    expect(await lecteur(app, "v.currentTime")).toBeLessThan(10);
+    expect(await allerPuisPause(app, 40)).toBeCloseTo(40, 0);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(positions(profil)).toEqual({ "/episode/4": { t: 70, duree: 90, quand: expect.any(String) } });
     await fermer();
   });
 });
