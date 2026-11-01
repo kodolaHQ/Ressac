@@ -74,6 +74,15 @@ export type MessageVersLAccueil =
   | { type: "memoire"; valeurs: Record<string, EntreeMemoire>; positions: Record<string, PositionVideo>; domaine: string }
   | { type: "image"; n: number; data: string | null };
 
+/** Erreurs de console des retouches gardées par appli ouverte (les plus récentes). */
+export const ERREURS_RETOUCHES_MAX = 50;
+/** Préfixe des sources des retouches (`webaios-retouche://<id>/<fichier>`), pour reconnaître leurs messages de console. */
+export const sourceRetouche = (id: string, fichier: string) => `webaios-retouche://${id}/${fichier}`;
+
+/**
+ * Ce que le preload `site.js` pose dans un cadre de la vue d'une appli de site. `pont` : `webaiosSite` dans le monde des
+ * retouches (cadre principal sur le site seulement) ; `reprise` : la reprise des vidéos (code de WebAiOs).
+ */
 export type InjectionCadre = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
 
 export type SiteAffiche = { id: string; nom: string; description: string; domaine: string | null; icone: string | null; ouverte: boolean; erreur?: string };

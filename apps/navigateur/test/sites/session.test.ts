@@ -39,7 +39,7 @@ vi.mock("electron", () => ({
 // vues.ts (preferencesWeb) importe electron-chrome-extensions, qui touche à `app` dès son chargement.
 vi.mock("electron-chrome-extensions", () => ({ ElectronChromeExtensions: class {} }));
 
-const { effacerSessionSite, fixerPreloadSite, partitionSite, preferencesSite, sessionSite } = await import("../../src/main/sites/session");
+const { effacerSessionSite, fixerPreloadSite, partitionSite, preferencesSite, sessionSite, siteDeSession } = await import("../../src/main/sites/session");
 
 const PRELOAD = "/app/out/preload/site.js";
 fixerPreloadSite(PRELOAD);
@@ -112,4 +112,10 @@ test("effacerSessionSite : connexions fermées, puis stockage, cache et identifi
   await effacerSessionSite("vidola");
   expect(fausse("vidola").efface).toEqual(["connexions", "stockage", "cache", "authentification"]);
   expect(fausse("youtube").efface).toEqual([]);
+});
+
+test("siteDeSession : l'appli d'une session préparée, rien pour une autre session", () => {
+  const s = sessionSite("vidola");
+  expect(siteDeSession(s)).toBe("vidola");
+  expect(siteDeSession({} as never)).toBeUndefined();
 });

@@ -739,3 +739,201 @@ test("une image du site redirigée (vrai 302 du serveur) : suivie sur le site, r
   expect(vues.filter((v) => v.includes("/boucle/"))).toEqual(["/boucle/0", "/boucle/1", "/boucle/2", "/boucle/3"].map((c) => `vidola-a.localhost${c}`));
   await fermer();
 });
+
+// --- Les retouches de l'agent (monde isolé, garde des extensions, webaiosSite)
+
+/**
+ * La retouche de la page d'une série : elle cache `.shorts` (CSS), retient l'épisode, note ce qu'elle voit de son monde
+ * dans le DOM (partagé avec la page), et répond aux commandes du test (`data-commande` puis un événement « essai »).
+ */
+const RETOUCHE_SERIE = `
+const racine = document.documentElement;
+racine.dataset.monde = JSON.stringify({ require: typeof require, ipcRenderer: typeof ipcRenderer, process: typeof process, pont: typeof webaiosSite });
+document.body.dataset.retouche = "oui";
+webaiosSite.retenir("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.retenu = "oui"), (e) => (racine.dataset.retenu = "refus:" + e.message));
+const repondre = (p) => p.then((r) => (racine.dataset.resultat = "ok:" + r), (e) => (racine.dataset.resultat = "refus:" + (e && e.message)));
+document.addEventListener("essai", () => {
+  const c = racine.dataset.commande;
+  if (c === "mdp") racine.dataset.resultat = "valeur:" + document.getElementById("mdp").value;
+  else if (c === "fetch-pub") repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
+  else if (c === "fetch-site") repondre(fetch("/film/2").then((r) => r.status));
+  else if (c === "elargir") {
+    __webaiosPortee({ reseau: [racine.dataset.pubHote], hotes: ["<all_urls>"] });
+    repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
+  } else if (c === "non-json") repondre(webaiosSite.retenir("f", () => 1));
+  else if (c === "lire") repondre(webaiosSite.lire("encours.the-bear").then((v) => JSON.stringify(v)));
+});`;
+
+/** Vidola avec ses retouches, l'accord déjà donné (écrit par le test dans le profil, comme « Autoriser »). */
+async function demarrerRetouches(fichiers: Record<string, string> = {}) {
+  const lecteur = serveur.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
+  const declaration = {
+    nom: "Vidola",
+    adresse: serveur.url("vidola-a.localhost", "/serie/the-bear"),
+    domaines: ["vidola-a.localhost"],
+    connexion: ["compte.localhost"],
+    retouches: [
+      { correspond: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] },
+      { correspond: ["/jamais"], js: ["cadre.js"], cadres: [lecteur] },
+      { correspond: ["/erreur"], js: ["erreur.js", "apres.js"] },
+    ],
+  };
+  const l = await demarrer({
+    vidola: {
+      declaration,
+      fichiers: {
+        "retouches/serie.js": RETOUCHE_SERIE,
+        "retouches/cacher.css": ".shorts { display: none; }",
+        "retouches/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof webaiosSite;',
+        "retouches/erreur.js": 'throw new Error("retouche cassée");',
+        "retouches/apres.js": 'document.documentElement.dataset.apres = "oui"; setTimeout(() => { throw new Error("plus tard"); });',
+        ...fichiers,
+      },
+    },
+  });
+  writeFileSync(
+    join(l.profil, "sites-accords.json"),
+    JSON.stringify({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [lecteur], reprise: false } }),
+  );
+  const page = await ouvrirEtAttendre(l.app, l.fenetre, "vidola", "/serie/the-bear");
+  return { ...l, page };
+}
+
+test.describe("retouches", () => {
+  test.beforeAll(() => {
+    serveur.definir(
+      "vidola-a.localhost",
+      "/serie/the-bear",
+      '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><input type="password" id="mdp"><p>épisode</p>',
+    );
+    serveur.definir("vidola-a.localhost", "/lecteur", `<title>Lecteur</title><iframe id="l" src="${serveur.url("lecteur.localhost", "/v")}"></iframe>`);
+    serveur.definir("lecteur.localhost", "/v", "<title>Vidéo</title><video></video>");
+    serveur.definir("vidola-a.localhost", "/erreur", "<title>Erreur</title><p id='p'>la page marche</p>");
+  });
+
+  const commande = async (app: ElectronApplication, c: string) => {
+    await vueSite(app, "vidola", `document.documentElement.dataset.resultat = ""; document.documentElement.dataset.commande = ${JSON.stringify(c)}; document.dispatchEvent(new Event("essai"))`);
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.resultat")).not.toBe("");
+    return vueSite(app, "vidola", "document.documentElement.dataset.resultat");
+  };
+
+  test("une retouche CSS cache .shorts dans la page (display none)", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
+    await fermer();
+  });
+
+  test("une retouche JS retient encours.the-bear par webaiosSite.retenir ; la mémoire relue par le test a adresse \"/serie/the-bear\"", async () => {
+    const { app, profil, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.retenu")).toBe("oui");
+    const fichier = join(profil, "sites", "vidola", "memoire.json");
+    await expect.poll(() => existsSync(fichier)).toBe(true);
+    const m = JSON.parse(readFileSync(fichier, "utf8"));
+    expect(m.valeurs["encours.the-bear"]).toMatchObject({ valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear" });
+    expect(await commande(app, "lire")).toBe('ok:{"titre":"The Bear","episode":"S2E4"}');
+    // Une valeur non JSON : refus nommé par la mémoire.
+    expect(await commande(app, "non-json")).toBe("refus:Valeur refusée : JSON seulement");
+    await fermer();
+  });
+
+  test('dans la retouche : typeof require, ipcRenderer, process sont "undefined"', async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.monde")).toBeTruthy();
+    const monde = JSON.parse(String(await vueSite(app, "vidola", "document.documentElement.dataset.monde")));
+    expect(monde).toEqual({ require: "undefined", ipcRenderer: "undefined", process: "undefined", pont: "object" });
+    await fermer();
+  });
+
+  test("dans le monde de la page : window.webaiosSite est undefined et le DOM est modifié", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
+    expect(await vueSite(app, "vidola", "typeof window.webaiosSite")).toBe("undefined");
+    expect(await vueSite(app, "vidola", "typeof __webaiosPortee")).toBe("undefined");
+    await fermer();
+  });
+
+  test('dans le sous-cadre lecteur.localhost avec motif cadres : la retouche tourne, typeof webaiosSite === "undefined"', async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("vidola-a.localhost", "/lecteur"))}`);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/lecteur"));
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.cadre ?? null", { cadre: 0 })).toBe("oui");
+    expect(await vueSite(app, "vidola", "document.documentElement.dataset.pont", { cadre: 0 })).toBe("undefined");
+    // La retouche du cadre ne va pas dans la page principale (/lecteur n'est dans aucun « correspond »).
+    expect(await vueSite(app, "vidola", "document.documentElement.dataset.cadre ?? null")).toBeNull();
+    await fermer();
+  });
+
+  test("fetch de la retouche vers pub.localhost rejeté, aucune requête reçue ; vers le site, permis", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
+    await vueSite(app, "vidola", `document.documentElement.dataset.pub = ${JSON.stringify(serveur.url("pub.localhost", "/x"))}`);
+    serveur.requetes.splice(0);
+    expect(await commande(app, "fetch-pub")).toMatch(/^refus:/);
+    expect(await commande(app, "fetch-site")).toBe("ok:200");
+    expect(serveur.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
+    expect(serveur.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/film/2")).toBe(true);
+    await fermer();
+  });
+
+  test('un champ mot de passe rempli par le test : la retouche lit ""', async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
+    await vueSite(app, "vidola", 'document.getElementById("mdp").value = "secret"');
+    expect(await vueSite(app, "vidola", 'document.getElementById("mdp").value')).toBe("secret");
+    expect(await commande(app, "mdp")).toBe("valeur:");
+    await fermer();
+  });
+
+  test("__webaiosPortee rappelé avec <all_urls> : fetch vers pub.localhost toujours rejeté", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
+    await vueSite(app, "vidola", `document.documentElement.dataset.pub = ${JSON.stringify(serveur.url("pub.localhost", "/x"))}; document.documentElement.dataset.pubHote = "pub.localhost"`);
+    serveur.requetes.splice(0);
+    expect(await commande(app, "elargir")).toMatch(/^refus:/);
+    expect(serveur.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
+    await fermer();
+  });
+
+  test("une retouche qui lève une erreur : erreursRetouches la contient, la page marche", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("vidola-a.localhost", "/erreur"))}`);
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.apres ?? null")).toBe("oui");
+    const erreurs = () => app.evaluate(() => (globalThis as unknown as { __webaiosErreursRetouches(id: string): { texte: string; source: string }[] }).__webaiosErreursRetouches("vidola"));
+    await expect.poll(async () => (await erreurs()).map((e) => e.texte).join("\n")).toContain("retouche cassée");
+    await expect.poll(async () => (await erreurs()).map((e) => e.texte).join("\n")).toContain("plus tard");
+    const e = (await erreurs()).find((x) => x.texte.includes("retouche cassée"))!;
+    expect(e.source).toMatch(/^webaios-retouche:\/\/vidola\/erreur\.js/);
+    expect(await vueSite(app, "vidola", 'document.getElementById("p").textContent')).toBe("la page marche");
+    await fermer();
+  });
+
+  test("réécrire retouches/a.js : la vue se recharge et le nouveau code tourne", async () => {
+    const { app, racine, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
+    await vueSite(app, "vidola", "window.marque = 1");
+    writeFileSync(join(racine, "sites", "vidola", "retouches", "serie.js"), 'document.documentElement.dataset.version = "2";');
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.version ?? null"), { timeout: 10_000 }).toBe("2");
+    expect(await vueSite(app, "vidola", "window.marque ?? null")).toBeNull();
+    await fermer();
+  });
+
+  test("sans accord : ni CSS ni script de l'agent dans la page", async () => {
+    const { app, profil, fenetre, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes("/renderer/site.html")).forEach((w) => w.destroy()));
+    writeFileSync(join(profil, "sites-accords.json"), "{}");
+    await ouvrirSite(fenetre, "vidola");
+    await fenetreSite(app, "vidola");
+    // Sans accord, la vue attend la carte (tâche suivante) : la page est chargée ici à la main, dans la vue de l'appli.
+    await app.evaluate(({ BrowserWindow }, url) => {
+      const f = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes("/renderer/site.html"));
+      void (f?.contentView.children[0] as Electron.WebContentsView).webContents.loadURL(url);
+    }, serveur.url("vidola-a.localhost", "/serie/the-bear"));
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
+    await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBeNull();
+    expect(await vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display')).toBe("block");
+    await fermer();
+  });
+});

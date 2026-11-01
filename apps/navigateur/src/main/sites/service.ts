@@ -1,19 +1,25 @@
+import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   accordCouvre,
   accordNecessaire,
   adresseDeDepart,
+  adresseRelative,
   adresseSurDomaine,
   domainesEffectifs,
   ID_SITE,
   lireAccordsSites,
   lireEtatAdresse,
+  lireRetouches,
   lireSite,
   lireSites,
   MemoireSite,
+  surveillerSites,
   type CheminsEspace,
   type DroitsSite,
+  type RetouchesLues,
+  type SiteLu,
 } from "@webaios/noyau";
 import { CANAUX } from "../../commun/canaux";
 import { ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
@@ -22,11 +28,11 @@ import { requetesDe } from "../image-distante";
 import { gardienGestes } from "../agent/geste-widget";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
-import { FenetresSites, type SiteOuvrable } from "./fenetres";
-import { fixerPreloadSite, sessionSite } from "./session";
+import { FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
+import { brancherInjection, injectionPour } from "./injection";
+import { fixerPreloadSite, sessionSite, siteDeSession } from "./session";
 
-/** Une erreur de console d'une retouche (tâche des retouches). */
-export type ErreurRetouche = { quand: string; texte: string; source: string };
+export type { ErreurRetouche };
 
 export interface ServiceSites {
   fenetres: FenetresSites;
@@ -38,7 +44,7 @@ export interface ServiceSites {
   ouvrirParId(id: string): Promise<boolean>;
   /** La mémoire de l'appli, ouverte une fois et gardée (écrite à la fermeture de sa fenêtre et à la sortie). */
   memoire(id: string): Promise<MemoireSite>;
-  /** Les erreurs de console des retouches de l'appli ouverte (vide tant que les retouches ne sont pas injectées). */
+  /** La console des retouches de l'appli ouverte (au plus `ERREURS_RETOUCHES_MAX`, gardée jusqu'à sa fermeture). */
   erreurs(id: string): ErreurRetouche[];
   /** L'adresse est-elle sur les domaines de l'appli ouverte ? (navigation demandée par l'agent) */
   adressePermise(id: string, url: string): boolean;
@@ -84,6 +90,8 @@ export function demarrerSites(o: {
   dossierProfil: string;
   /** `out/preload/site.js`, enregistré sur les seules sessions `persist:site-<id>`. */
   preloadSite: string;
+  /** La garde des extensions de l'agent (`webaios-garde-page.js` du noyau), lue une fois, posée avant les retouches. */
+  cheminGarde: string;
   /** Tests (`WEBAIOS_TEST_ADRESSES_LOCALES=1`) : http et hôtes locaux permis. */
   adressesLocales: boolean;
   /** Ouvre l'URL dans un onglet de la fenêtre principale active (« Ouvrir dans un onglet »). */
@@ -94,6 +102,7 @@ export function demarrerSites(o: {
   diffuser(): void;
 }): ServiceSites {
   fixerPreloadSite(o.preloadSite);
+  const garde = readFileSync(o.cheminGarde, "utf8");
   const dossierSites = join(o.dossierProfil, "sites");
   const souvenirs = new MemoireApplications(o.dossierProfil, 500, "sites.json");
   const memoires = new Map<string, Promise<MemoireSite>>();
@@ -113,6 +122,10 @@ export function demarrerSites(o: {
   const derniereOuverture = new Map<string, number>();
   /** Images de l'accueil : chargements en cours et en attente, par appli. */
   const images = new Map<string, { enCours: number; attente: (() => void)[] }>();
+  /** Les fichiers des retouches de chaque appli ouverte, lus à l'ouverture et à chaque changement (l'injection est synchrone). */
+  const retouches = new Map<string, RetouchesLues>();
+  /** Relectures en cours, par appli : seule la dernière compte. */
+  const relectures = new Map<string, number>();
 
   const fenetres = new FenetresSites({
     memoire: souvenirs,
@@ -122,14 +135,19 @@ export function demarrerSites(o: {
       abonnements.get(id)?.();
       abonnements.delete(id);
       derniereOuverture.delete(id);
+      retouches.delete(id);
+      relectures.delete(id);
       void viderMemoire(id);
       o.diffuser();
     },
     surFavicon: () => o.diffuser(),
   });
 
-  /** L'appli telle qu'elle s'ouvre, ou null (absente, site.json invalide, dossier dont le nom n'est pas exactement `id`). */
-  async function ouvrable(id: string): Promise<SiteOuvrable | null> {
+  /**
+   * L'appli telle qu'elle s'ouvre et ses fichiers de retouches, ou null (absente, site.json invalide, dossier dont le nom
+   * n'est pas exactement `id`).
+   */
+  async function preparer(id: string): Promise<{ site: SiteOuvrable; retouches: RetouchesLues } | null> {
     if (!ID_SITE.test(id)) return null;
     // Un disque insensible à la casse trouverait « MonSite » pour « monsite » : seul le nom exact compte.
     const noms = await readdir(o.chemins.sites).catch(() => [] as string[]);
@@ -147,14 +165,68 @@ export function demarrerSites(o: {
       console.error("[sites] accords illisibles :", e);
     }
     return {
-      id,
-      declaration: d,
-      aAccueil: lu.aAccueil,
-      domaines: domainesEffectifs(d, etat),
-      depart: adresseDeDepart(d, etat),
-      accordRequis: accordNecessaire(d) && !accordCouvre(accord, d),
+      site: {
+        id,
+        declaration: d,
+        aAccueil: lu.aAccueil,
+        domaines: domainesEffectifs(d, etat),
+        depart: adresseDeDepart(d, etat),
+        accordRequis: accordNecessaire(d) && !accordCouvre(accord, d),
+      },
+      retouches: await fichiersRetouches(lu),
     };
   }
+
+  /** Les fichiers des retouches ; aucun si l'un d'eux manque ou dépasse les bornes (l'erreur est écrite). */
+  async function fichiersRetouches(lu: Extract<SiteLu, { declaration: unknown }>): Promise<RetouchesLues> {
+    if (lu.declaration.retouches.length === 0) return { js: {}, css: {} };
+    const r = await lireRetouches(lu).catch((e: unknown) => ({ erreur: String(e) }));
+    if (!("erreur" in r)) return r;
+    console.warn(`[sites] ${lu.id} : retouches non injectées : ${r.erreur}`);
+    return { js: {}, css: {} };
+  }
+
+  /** site.json ou un fichier de retouche a changé : l'appli ouverte est relue, puis sa page rechargée. */
+  async function relire(id: string): Promise<void> {
+    if (!fenetres.site(id)) return;
+    const n = (relectures.get(id) ?? 0) + 1;
+    relectures.set(id, n);
+    const p = await preparer(id).catch((e: unknown) => {
+      console.error(`[sites] ${id} illisible :`, e);
+      return null;
+    });
+    const avant = fenetres.site(id);
+    if (relectures.get(id) !== n || !avant) return;
+    // Devenue invalide : plus rien n'est injecté (la fenêtre garde ce qu'elle avait, sans retouches).
+    const nouvelles = p ? p.retouches : { js: {}, css: {} };
+    // Rien de changé pour la page (dossier recopié, événement en double) : elle n'est pas rechargée.
+    const pareil =
+      JSON.stringify(nouvelles) === JSON.stringify(retouches.get(id) ?? null) &&
+      (!p || JSON.stringify({ ...p.site, aAccueil: null }) === JSON.stringify({ ...avant, aAccueil: null }));
+    retouches.set(id, nouvelles);
+    if (p) fenetres.mettreAJour(p.site);
+    if (!pareil) fenetres.rechargerVue(id);
+  }
+
+  const arreterSurveillance = surveillerSites(o.chemins, (id, quoi) => {
+    if (quoi !== "accueil") void relire(id);
+  });
+
+  brancherInjection({
+    siteDeSession,
+    vue: (id) => fenetres.vueSite(id),
+    injection(id, cadre) {
+      const s = fenetres.site(id);
+      const r = retouches.get(id);
+      if (!s || !r) return null;
+      return injectionPour({ site: s, retouches: r, accorde: !s.accordRequis, garde, adressesLocales: o.adressesLocales }, cadre);
+    },
+    memoire,
+    adresseRelative(id, url) {
+      const s = fenetres.site(id);
+      return s ? adresseRelative(url, s.domaines) : null;
+    },
+  });
 
   /** Le domaine actuel de l'appli ouverte (celui de son adresse de départ). */
   const domaineActuel = (id: string) => {
@@ -202,9 +274,12 @@ export function demarrerSites(o: {
   }
 
   async function ouvrirParId(id: string): Promise<boolean> {
-    const s = await ouvrable(id);
-    if (!s) return false;
-    fenetres.ouvrir(s);
+    const p = await preparer(id);
+    if (!p) return false;
+    // Avant la fenêtre : le premier chargement de la page demande déjà ses retouches.
+    retouches.set(id, p.retouches);
+    relectures.set(id, (relectures.get(id) ?? 0) + 1);
+    fenetres.ouvrir(p.site);
     o.diffuser();
     return true;
   }
@@ -242,7 +317,7 @@ export function demarrerSites(o: {
     },
     ouvrirParId,
     memoire,
-    erreurs: () => [],
+    erreurs: (id) => fenetres.erreursRetouches(id),
     adressePermise: (id, url) => fenetres.adressePermise(id, url),
     async memoireAccueil(id) {
       const m = await memoire(id);
@@ -283,6 +358,7 @@ export function demarrerSites(o: {
     },
     async arreter() {
       try {
+        await arreterSurveillance().catch(() => {});
         await Promise.allSettled(fenetres.ouvertes().map((f) => fenetres.fermer(f.id)));
         await Promise.allSettled([...memoires.keys()].map(viderMemoire));
       } finally {

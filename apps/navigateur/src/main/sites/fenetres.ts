@@ -2,7 +2,7 @@ import { BrowserWindow, WebContentsView, type WebContents } from "electron";
 import { join } from "node:path";
 import type { DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
-import { HAUTEUR_BARRE_SITE, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
+import { ERREURS_RETOUCHES_MAX, HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
 import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
@@ -29,6 +29,9 @@ export type SiteOuvrable = {
   accordRequis: boolean;
 };
 
+/** Un message de console dont la source est une retouche de l'appli (ses erreurs, ses traces). */
+export type ErreurRetouche = { quand: string; texte: string; source: string };
+
 interface Ouverte {
   site: SiteOuvrable;
   fenetre: BrowserWindow;
@@ -47,6 +50,8 @@ interface Ouverte {
   minuterieAvis: NodeJS.Timeout | undefined;
   /** Petites fenêtres de connexion ouvertes par la page : fermées avec l'appli. */
   petites: Set<BrowserWindow>;
+  /** Console des retouches (les `ERREURS_RETOUCHES_MAX` dernières), gardée jusqu'à la fermeture de la fenêtre. */
+  erreurs: ErreurRetouche[];
 }
 
 /** L'hôte d'une adresse http(s), sinon null (about:blank, javascript:, adresse illisible). */
@@ -158,7 +163,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -215,6 +220,14 @@ export class FenetresSites {
       if (principal) diffuser();
     });
     wc.on("did-stop-loading", diffuser);
+    // La console des retouches de l'agent : leurs sources sont nommées `webaios-retouche://<id>/<fichier>` (page et cadres).
+    const prefixe = sourceRetouche(id, "");
+    wc.on("console-message", (ev) => {
+      const source = typeof ev.sourceId === "string" ? ev.sourceId : "";
+      if (!source.startsWith(prefixe)) return;
+      o.erreurs.push({ quand: new Date().toISOString(), texte: String(ev.message), source: ev.lineNumber ? `${source}:${ev.lineNumber}` : source });
+      if (o.erreurs.length > ERREURS_RETOUCHES_MAX) o.erreurs.splice(0, o.erreurs.length - ERREURS_RETOUCHES_MAX);
+    });
     wc.on("page-favicon-updated", (_e, favicons) => {
       const url = favicons[0];
       if (!url) return;
@@ -395,6 +408,25 @@ export class FenetresSites {
     return [...this.ouvertesParId.values()]
       .filter((o) => !o.fenetre.isDestroyed())
       .map((o) => ({ id: o.site.id, nom: o.site.declaration.nom, url: (!o.vue.webContents.isDestroyed() && o.vue.webContents.getURL()) || o.site.depart }));
+  }
+
+  /** La console des retouches de l'appli ouverte (vide si elle ne l'est pas). */
+  erreursRetouches(id: string): ErreurRetouche[] {
+    return (this.ouverte(id)?.erreurs ?? []).map((e) => ({ ...e }));
+  }
+
+  /** La déclaration de l'appli ouverte a changé (site.json, retouches) : reprise sans montrer ni recharger la fenêtre. */
+  mettreAJour(s: SiteOuvrable): void {
+    const o = this.ouverte(s.id);
+    if (!o) return;
+    o.site = s;
+    this.diffuserEtat(o);
+  }
+
+  /** Recharge la page du site si elle a été chargée (retouches réécrites), quelle que soit la vue affichée. */
+  rechargerVue(id: string): void {
+    const o = this.ouverte(id);
+    if (o?.chargee && !o.vue.webContents.isDestroyed()) o.vue.webContents.reload();
   }
 
   /** L'appli telle qu'elle a été ouverte (déclaration, domaines effectifs, départ), si sa fenêtre l'est. */

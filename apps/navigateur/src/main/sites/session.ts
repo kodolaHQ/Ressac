@@ -18,8 +18,11 @@ export function fixerPreloadSite(chemin: string): void {
   preloadSite = chemin;
 }
 
-/** Sessions déjà préparées (une par id, gardée par Electron toute la vie du navigateur). */
-const preparees = new WeakSet<Session>();
+/** Sessions déjà préparées (une par id, gardée par Electron toute la vie du navigateur), et leur appli. */
+const preparees = new WeakMap<Session, string>();
+
+/** L'appli de site dont `s` est la session (préparée par `sessionSite`), sinon undefined. */
+export const siteDeSession = (s: Session): string | undefined => preparees.get(s);
 
 /**
  * La session d'une appli de site, préparée une fois : plein écran seul, aucun périphérique, téléchargements annulés, le
@@ -36,7 +39,7 @@ export function sessionSite(id: string): Session {
       e.preventDefault();
       item.cancel();
     });
-    preparees.add(s);
+    preparees.set(s, id);
   }
   return s;
 }

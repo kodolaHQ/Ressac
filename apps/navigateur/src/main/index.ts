@@ -879,6 +879,7 @@ app.whenReady().then(async () => {
     chemins,
     dossierProfil: dossier,
     preloadSite: join(__dirname, "../preload/site.js"),
+    cheminGarde: join(__RESSOURCES_NOYAU__, "extensions", "webaios-garde-page.js"),
     adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
     ouvrirOnglet: (url) => {
       if (/^https?:\/\//.test(url)) ouvrirDansOnglet(url);
@@ -890,6 +891,10 @@ app.whenReady().then(async () => {
     // La section « Sites » de la page Applications relit la liste.
     diffuser: () => diffuser(CANAUX.sitesChange, null),
   });
+  // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
+  if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
+    (globalThis as { __webaiosErreursRetouches?: (id: string) => unknown }).__webaiosErreursRetouches = (id) => sites?.erreurs(id) ?? [];
+  }
   /**
    * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que
    * soit l'onglet affiché.
