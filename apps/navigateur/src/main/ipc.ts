@@ -11,7 +11,7 @@ import type { Telechargements } from "./telechargements";
 import type { ServiceActions } from "./agent/actions";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
-export type GesteSite = "entrer" | "accueil" | "precedent" | "suivant" | "recharger" | "ouvrirBloque";
+export type GesteSite = "entrer" | "accueil" | "precedent" | "suivant" | "recharger" | "ouvrirBloque" | "chercherAdresse";
 
 type Abonne = (etat: EtatNavigateur, precedent: EtatNavigateur) => void;
 
@@ -383,6 +383,7 @@ export function brancherIpc(g: Gestionnaires): void {
     [CANAUX.siteSuivant, "suivant"],
     [CANAUX.siteRecharger, "recharger"],
     [CANAUX.siteOuvrirBloque, "ouvrirBloque"],
+    [CANAUX.siteChercherAdresse, "chercherAdresse"],
   ];
   for (const [canal, geste] of gestes)
     ipcMain.on(canal, (e) => {

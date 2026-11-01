@@ -6,6 +6,9 @@ import type { EntreeMemoire, PositionVideo } from "@webaios/noyau";
 /** Hauteur de la barre d'une fenêtre d'appli de site, en px : la vue du site est posée juste dessous. */
 export const HAUTEUR_BARRE_SITE = 36;
 
+/** Au plus une lecture de la page de référence par minute et par appli. */
+export const INTERVALLE_SUIVI_MS = 60_000;
+
 export const ENTRER_DANS_LE_SITE = "Entrer dans le site";
 export const lienBloque = (domaine: string) => `Lien vers ${domaine} bloqué`;
 export const OUVRIR_DANS_UN_ONGLET = "Ouvrir dans un onglet";

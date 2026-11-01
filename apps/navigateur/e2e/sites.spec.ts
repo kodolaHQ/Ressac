@@ -1342,3 +1342,171 @@ test.describe("reprise des vidéos", () => {
     await fermer();
   });
 });
+
+test.describe("suivi de l'adresse", () => {
+  const PAGE_REFERENCE = () => serveur.url("adresses.localhost", "/");
+  const reference = (...liens: string[]) =>
+    serveur.definir("adresses.localhost", "/", `<title>Adresses</title>${liens.map((l) => `<a href="${l}">${l}</a>`).join("<br>")}`);
+  const lecturesReference = () => serveur.requetes.filter((r) => r.hote === "adresses.localhost").length;
+  const SERIE = '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>';
+
+  const declarationSuivi = (adresse = serveur.url("vidola-a.localhost", "/serie/the-bear")) => ({
+    nom: "Vidola",
+    adresse,
+    domaines: ["vidola-a.localhost"],
+    connexion: ["compte.localhost"],
+    suiviAdresse: { page: PAGE_REFERENCE(), motif: "vidola" },
+  });
+
+  test.beforeAll(() => {
+    serveur.definir("vidola-a.localhost", "/serie/the-bear", SERIE);
+    serveur.definir("vidola-b.localhost", "/serie/the-bear", SERIE);
+    serveur.definir("vidola-a.localhost", "/parque", (_req, res) => res.writeHead(302, { Location: serveur.url("pub.localhost", "/arrivee") }).end());
+  });
+  test.beforeEach(() => {
+    serveur.couper("vidola-a.localhost", false);
+    reference(serveur.url("vidola-b.localhost", "/"));
+  });
+  test.afterEach(() => serveur.couper("vidola-a.localhost", false));
+
+  const adresseJson = (profil: string) => {
+    const f = join(profil, "sites", "vidola", "adresse.json");
+    return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { actuel: string; anciens: string[] }) : null;
+  };
+  const AVIS_CHANGE = "Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.";
+
+  test("vidola-a arrêté, adresses.localhost liste vidola-b : la fenêtre s'ouvre sur vidola-b et dit l'adresse changée ; rouvrir : vidola-b directement, sans relire", async () => {
+    serveur.couper("vidola-a.localhost");
+    const { app, fenetre, profil, fermer } = await demarrer({ vidola: { declaration: declarationSuivi() } });
+    await ouvrirSite(fenetre, "vidola");
+    const page = await fenetreSite(app, "vidola");
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/serie/the-bear"));
+    await expect(page.getByTestId("site-avis")).toHaveText(AVIS_CHANGE);
+    await expect(page.getByTestId("site-domaine")).toHaveText("vidola-b.localhost");
+    expect(adresseJson(profil)).toMatchObject({ actuel: "vidola-b.localhost", anciens: ["vidola-a.localhost"] });
+    expect(lecturesReference()).toBe(1);
+    // Rouvrir (la fenêtre est fermée, puis l'appli rouverte) : vidola-b directement.
+    await fenetre.evaluate(() => 0);
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes("/renderer/site.html")) w.destroy();
+    });
+    await expect.poll(() => fenetresDuSite(app, "vidola")).toBe(0);
+    serveur.requetes.splice(0);
+    await ouvrirSite(fenetre, "vidola");
+    const page2 = await fenetreSite(app, "vidola");
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/serie/the-bear"));
+    await expect(page2.getByTestId("site-domaine")).toHaveText("vidola-b.localhost");
+    expect(lecturesReference()).toBe(0);
+    expect(serveur.requetes.some((r) => r.hote === "vidola-a.localhost")).toBe(false);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))).toBe(false);
+    await fermer();
+  });
+
+  test("une retouche /serie/* s'applique sur vidola-b ; la mémoire retenue sur vidola-a se rouvre depuis l'accueil sur vidola-b", async () => {
+    serveur.couper("vidola-a.localhost");
+    const l = await demarrer({
+      vidola: {
+        declaration: { ...declarationSuivi(), retouches: [{ correspond: ["/serie/*"], css: ["cacher.css"] }] },
+        fichiers: { "accueil/index.html": ACCUEIL, "retouches/cacher.css": ".shorts { display: none; }" },
+      },
+    });
+    writeFileSync(join(l.profil, "sites-accords.json"), JSON.stringify({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [], reprise: false } }));
+    const dossier = join(l.profil, "sites", "vidola");
+    mkdirSync(dossier, { recursive: true });
+    writeFileSync(
+      join(dossier, "memoire.json"),
+      JSON.stringify({
+        version: 1,
+        valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } },
+        positions: {},
+      }),
+    );
+    await ouvrirSite(l.fenetre, "vidola");
+    const page = await fenetreSite(l.app, "vidola");
+    const accueil = await cadreAccueil(page);
+    await expect.poll(() => accueil.evaluate(() => (window as unknown as { recus: unknown[] }).recus.length)).toBeGreaterThan(0);
+    await page.getByTestId("site-entrer").click();
+    await expect.poll(async () => (await etatVueSite(l.app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/serie/the-bear"));
+    await expect(page.getByTestId("site-avis")).toHaveText(AVIS_CHANGE);
+    // La retouche tourne sur le nouveau domaine.
+    await expect.poll(() => vueSite(l.app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
+    // Depuis l'accueil, la mémoire s'ouvre sur vidola-b.
+    await page.getByTestId("site-accueil").click();
+    await expect.poll(() => cadreAccueil(page).then((f) => f.evaluate(() => document.getElementById("domaine")!.textContent))).toBe("vidola-b.localhost");
+    await cliquerOuvrir(page, "/serie/the-bear?e=4");
+    await expect.poll(async () => (await etatVueSite(l.app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/serie/the-bear?e=4"));
+    await l.fermer();
+  });
+
+  test("vidola-a redirige vers pub.localhost (domaine parqué) à l'ouverture : suivi déclenché", async () => {
+    const { app, fenetre, profil, fermer } = await demarrer({ vidola: { declaration: declarationSuivi(serveur.url("vidola-a.localhost", "/parque")) } });
+    await ouvrirSite(fenetre, "vidola");
+    const page = await fenetreSite(app, "vidola");
+    await expect(page.getByTestId("site-avis")).toHaveText(AVIS_CHANGE);
+    // Le chemin visé n'existe pas chez vidola-b : il y va quand même (le site y répond).
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/parque"));
+    expect(adresseJson(profil)?.actuel).toBe("vidola-b.localhost");
+    expect(serveur.requetes.some((r) => r.hote === "pub.localhost")).toBe(false);
+    await fermer();
+  });
+
+  test("une redirection hors du site après un clic dans la page ne déclenche pas le suivi", async () => {
+    const { app, fenetre, profil, fermer } = await demarrer({ vidola: { declaration: declarationSuivi(serveur.url("vidola-a.localhost", "/")) } });
+    await ouvrirEtAttendre(app, fenetre);
+    await vueSite(app, "vidola", "document.getElementById('aller-pub').click()", { geste: true });
+    const page = await fenetreSite(app, "vidola");
+    await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+    await new Promise((r) => setTimeout(r, 800));
+    expect(lecturesReference()).toBe(0);
+    expect(adresseJson(profil)).toBeNull();
+    await fermer();
+  });
+
+  test("page de référence piégée : « Adresse introuvable sur adresses.localhost », l'appli reste sur vidola-a", async () => {
+    reference(serveur.url("adresses.localhost", "/vidola-b"), serveur.url("pub.localhost", "/vidola"), "http://vidola-b.example/", "javascript:alert(1)");
+    serveur.couper("vidola-a.localhost");
+    const { app, fenetre, profil, fermer } = await demarrer({ vidola: { declaration: declarationSuivi() } });
+    await ouvrirSite(fenetre, "vidola");
+    const page = await fenetreSite(app, "vidola");
+    await expect(page.getByTestId("site-avis")).toHaveText("Adresse introuvable sur adresses.localhost");
+    await expect(page.getByTestId("site-domaine")).toHaveText("vidola-a.localhost");
+    expect(adresseJson(profil)).toBeNull();
+    expect(serveur.requetes.some((r) => r.hote === "vidola-b.localhost" || r.hote === "pub.localhost")).toBe(false);
+    await fermer();
+  });
+
+  test("la lecture de référence n'envoie aucun cookie, même si l'appli en a un pour adresses.localhost", async () => {
+    const { app, fenetre, fermer } = await demarrer({ vidola: { declaration: declarationSuivi(serveur.url("vidola-a.localhost", "/")) } });
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await app.evaluate(async ({ session }, url) => {
+      for (const p of ["persist:site-vidola", "persist:webaios"]) await session.fromPartition(p).cookies.set({ url, name: "secret", value: "1", expirationDate: Date.now() / 1000 + 600 });
+    }, serveur.url("adresses.localhost", "/"));
+    await page.getByTestId("site-chercher-adresse").click();
+    await expect.poll(lecturesReference).toBeGreaterThan(0);
+    const lectures = serveur.requetes.filter((r) => r.hote === "adresses.localhost");
+    expect(lectures.every((r) => r.cookie === undefined)).toBe(true);
+    await fermer();
+  });
+
+  test("« Chercher la nouvelle adresse » deux fois en 10 s : une seule lecture ; le bouton est no-drag", async () => {
+    reference(serveur.url("vidola-a.localhost", "/"));
+    const { app, fenetre, fermer } = await demarrer({ vidola: { declaration: declarationSuivi(serveur.url("vidola-a.localhost", "/")) } });
+    const page = await ouvrirEtAttendre(app, fenetre);
+    const bouton = page.getByTestId("site-chercher-adresse");
+    await expect(bouton).toHaveText("Chercher la nouvelle adresse");
+    expect(await bouton.evaluate((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region"))).toBe("no-drag");
+    await bouton.click();
+    await expect(page.getByTestId("site-avis")).toHaveText("Vidola ne répond pas, et sa page de référence donne toujours la même adresse");
+    await bouton.click();
+    await new Promise((r) => setTimeout(r, 800));
+    expect(lecturesReference()).toBe(1);
+    await fermer();
+  });
+
+  test("une appli sans suiviAdresse n'a pas le bouton", async () => {
+    const { app, fenetre, fermer } = await demarrer();
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await expect(page.getByTestId("site-chercher-adresse")).toHaveCount(0);
+    await fermer();
+  });
+});

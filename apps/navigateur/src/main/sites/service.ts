@@ -24,7 +24,8 @@ import {
   type SiteLu,
 } from "@webaios/noyau";
 import { CANAUX } from "../../commun/canaux";
-import { ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
+import { adresseChangee, adresseInchangee, adresseIntrouvable, ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
+import { lirePageInvisible } from "../agent/lecture-invisible";
 import { imageSite } from "./accueil";
 import { requetesDe } from "../image-distante";
 import { gardienGestes } from "../agent/geste-widget";
@@ -33,6 +34,7 @@ import { MemoireApplications } from "../applications/service";
 import { empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
 import { brancherInjection, injectionPour, repriseDansCadre } from "./injection";
 import { fixerPreloadSite, sessionSite, siteDeSession } from "./session";
+import { SuiviAdresse } from "./suivi";
 
 export type { ErreurRetouche };
 
@@ -150,7 +152,61 @@ export function demarrerSites(o: {
       o.diffuser();
     },
     surFavicon: () => o.diffuser(),
+    surSuivi: (id, url) => void chercherAdresse(id, url),
   });
+
+  // La page de référence est lue par la session publique, sans profil : jamais un cookie de l'appli ni de l'utilisateur.
+  const suivi = new SuiviAdresse({
+    lireLiens: async (page) =>
+      (
+        await lirePageInvisible(
+          page,
+          { profil: null, ...(o.adressesLocales ? { adressesLocales: true } : {}) },
+          {
+            etat: () => {
+              throw new Error("lecture publique : pas de profil");
+            },
+            sessionProfil: () => {
+              throw new Error("lecture publique : pas de profil");
+            },
+          },
+        )
+      ).liens.map((l) => l.url),
+    dossierSites,
+    adressesLocales: o.adressesLocales,
+    maintenant: () => Date.now(),
+  });
+
+  /**
+   * Le site ne répond plus (ou renvoie hors de ses domaines, ou l'utilisateur le demande) : la page de référence dit où il est
+   * maintenant. `url` : la page visée, reprise sur le nouveau domaine. Un avis dit le résultat ; trop tôt, rien.
+   */
+  async function chercherAdresse(id: string, url: string | null): Promise<void> {
+    const s = fenetres.site(id);
+    const d = s?.declaration;
+    if (!s || !d?.suiviAdresse) return;
+    const r = await suivi.chercher(id, d).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
+    if (!fenetres.site(id)) return;
+    switch (r.t) {
+      case "trop-tot":
+        return;
+      case "introuvable":
+        return fenetres.avis(id, { genre: "introuvable", texte: adresseIntrouvable(hote(d.suiviAdresse.page) ?? d.suiviAdresse.page) });
+      case "inchangee":
+        return fenetres.avis(id, { genre: "inchangee", texte: adresseInchangee(d.nom) });
+      case "change": {
+        const domaines = domainesEffectifs(d, r.etat);
+        const depart = adresseDeDepart(d, r.etat);
+        // La même page sur le nouveau domaine, sinon l'adresse de départ.
+        const relative = url ? adresseRelative(url, domaines) : null;
+        const vers = (relative && adresseSurDomaine(relative, r.domaine, domaines, depart, lecture)) || depart;
+        fenetres.adresseChangee(id, domaines, depart, vers);
+        fenetres.avis(id, { genre: "adresse-changee", texte: adresseChangee(d.nom, r.domaine) });
+        // L'accueil montre le nouveau domaine.
+        if (abonnements.has(id)) void memoire(id).then((m) => fenetres.envoyer(id, CANAUX.siteAccueilMemoireChange, messageMemoire(id, m)), () => {});
+      }
+    }
+  }
 
   /**
    * L'appli telle qu'elle s'ouvre et ses fichiers de retouches, ou null (absente, site.json invalide, dossier dont le nom

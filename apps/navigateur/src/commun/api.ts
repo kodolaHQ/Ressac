@@ -558,6 +558,8 @@ export interface ApiSite {
   recharger(): void;
   /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans un onglet de la fenêtre principale. */
   ouvrirBloque(): void;
+  /** « Chercher la nouvelle adresse » : lit la page de référence (au plus une fois par minute) ; sans effet si l'appli n'en a pas. */
+  chercherAdresse(): void;
   /**
    * La carte d'accord des retouches. oui : l'accord est retenu, puis la vue suivante (accueil ou site) avec retouches ;
    * non : la vue suivante sans retouches ni reprise, pour cette ouverture seulement (la carte revient à la prochaine).

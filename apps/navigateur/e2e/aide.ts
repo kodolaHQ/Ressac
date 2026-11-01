@@ -437,7 +437,8 @@ export async function serveurSites(): Promise<{
     const hote = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
     const chemin = req.url ?? "/";
     requetes.push({ hote, chemin, cookie: req.headers.cookie });
-    if (coupes.has(hote)) return void req.socket.destroy();
+    // Réinitialisation (RST) : Chromium rend ERR_CONNECTION_RESET (-101), un site arrêté ; une fermeture propre donnerait -324.
+    if (coupes.has(hote)) return void req.socket.resetAndDestroy();
     const route = routes.get(`${hote} ${chemin}`) ?? routes.get(`${hote} ${chemin.split("?")[0]}`);
     if (typeof route === "function") return route(req, res);
     if (typeof route === "string") {

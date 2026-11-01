@@ -8,7 +8,7 @@ import { navigationCadrePermise } from "../agent/accueil";
 import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
 import type { MemoireApplications } from "../applications/service";
-import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "./navigation";
+import { decisionNavigation, decisionOuverture, erreurDeReseau, type ContexteNavigation } from "./navigation";
 import { ajouterConsoleRetouche } from "./injection";
 import { preferencesSite, sessionSite } from "./session";
 
@@ -48,8 +48,14 @@ interface Ouverte {
   avis: AvisBarre | null;
   /** Le dernier lien bloqué : il reste ici, l'interface n'en voit que le domaine. */
   bloquee: string | null;
-  /** La dernière adresse chargée par WebAiOs (`aller`), pour le suivi de l'adresse. */
+  /** La dernière adresse chargée par WebAiOs (`aller`). */
   voulue: string | null;
+  /** WebAiOs vient de lancer un chargement (`aller`, recharger) que `did-start-navigation` n'a pas encore vu. */
+  attendVoulu: boolean;
+  /** Le chargement en cours du cadre principal est-il voulu par WebAiOs (et non un clic dans la page) ? */
+  chargementVoulu: boolean;
+  /** L'adresse du dernier chargement commencé dans le cadre principal (le suivi de l'adresse en reprend le chemin). */
+  cible: string | null;
   pleinEcran: boolean;
   /** Dernière diffusion d'un changement de mention (un cadre hostile peut en provoquer des centaines). */
   avisDiffuse: number;
@@ -117,6 +123,12 @@ export class FenetresSites {
       surFermee?: (id: string) => void;
       /** L'appli a montré son favicon (adresse `data:`), déjà retenu. */
       surFavicon?: (id: string) => void;
+      /**
+       * Le site ne répond plus, ou un chargement voulu par WebAiOs a été renvoyé hors du site, ou l'utilisateur a cliqué
+       * « Chercher la nouvelle adresse » : `url` est la page visée (le suivi de l'adresse n'existe que si la déclaration
+       * a `suiviAdresse`, jamais appelé sinon).
+       */
+      surSuivi?: (id: string, url: string | null) => void;
     },
   ) {}
 
@@ -183,7 +195,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, cible: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -267,7 +279,24 @@ export class FenetresSites {
       if (e.isMainFrame) garder(e, e.url);
     });
     wc.on("will-redirect", (e) => {
-      if (e.isMainFrame) garder(e, e.url);
+      if (!e.isMainFrame) return;
+      garder(e, e.url);
+      // Renvoyé hors du site (domaine parqué) pendant un chargement voulu par WebAiOs : le site a peut-être déménagé.
+      // Un clic de l'utilisateur dans la page, lui, ne cherche rien.
+      if (e.defaultPrevented && o.chargementVoulu && this.suiviActif(o)) this.o.surSuivi?.(id, o.cible);
+    });
+    // Le chargement qui commence est voulu si WebAiOs vient de le lancer ; ses redirections gardent ce caractère.
+    wc.on("did-start-navigation", (d) => {
+      if (!d.isMainFrame || d.isSameDocument) return;
+      o.chargementVoulu = o.attendVoulu;
+      o.attendVoulu = false;
+      o.cible = d.url;
+    });
+    wc.on("did-stop-loading", () => {
+      o.chargementVoulu = false;
+    });
+    wc.on("did-fail-load", (_e, code, _description, url, principal) => {
+      if (principal && erreurDeReseau(code) && this.suiviActif(o)) this.o.surSuivi?.(id, url || o.cible);
     });
 
     wc.setWindowOpenHandler(({ url }) => {
@@ -305,6 +334,16 @@ export class FenetresSites {
       o.pleinEcran = false;
       this.placer(o);
     });
+  }
+
+  private suiviActif(o: Ouverte): boolean {
+    return o.site.declaration.suiviAdresse !== undefined;
+  }
+
+  /** Recharge la page du site, comme un chargement voulu par WebAiOs (le suivi de l'adresse en tient compte). */
+  private recharge(o: Ouverte): void {
+    o.attendVoulu = true;
+    o.vue.webContents.reload();
   }
 
   /** Une petite fenêtre de connexion : même session, bornée au site et à sa connexion, sans rien ouvrir d'autre. */
@@ -458,7 +497,7 @@ export class FenetresSites {
     if (s.accordRequis && o.affichee !== "accord" && (!avant.accordRequis || droitsGrandis)) {
       o.affichee = "accord";
       if (o.chargee && !o.vue.webContents.isDestroyed()) {
-        o.vue.webContents.reload();
+        this.recharge(o);
         rechargee = true;
       }
     } else if (o.affichee === "accord" && !s.accordRequis) this.vueSuivante(o);
@@ -489,7 +528,7 @@ export class FenetresSites {
     if (s?.accordRequis) return this.diffuserEtat(o);
     const recharger = s !== null && o.chargee;
     this.vueSuivante(o);
-    if (recharger && !o.vue.webContents.isDestroyed()) o.vue.webContents.reload();
+    if (recharger && !o.vue.webContents.isDestroyed()) this.recharge(o);
     this.placer(o);
     this.diffuserEtat(o);
   }
@@ -497,7 +536,7 @@ export class FenetresSites {
   /** Recharge la page du site si elle a été chargée (retouches réécrites), quelle que soit la vue affichée. */
   rechargerVue(id: string): void {
     const o = this.ouverte(id);
-    if (o?.chargee && !o.vue.webContents.isDestroyed()) o.vue.webContents.reload();
+    if (o?.chargee && !o.vue.webContents.isDestroyed()) this.recharge(o);
   }
 
   /** Rediffuse l'état de la fenêtre (la carte à jour, après un « Autoriser » sur des droits qui ont changé). */
@@ -557,7 +596,7 @@ export class FenetresSites {
 
   recharger(id: string): void {
     const o = this.ouverte(id);
-    if (o?.affichee === "site" && o.chargee) o.vue.webContents.reload();
+    if (o?.affichee === "site" && o.chargee) this.recharge(o);
   }
 
   /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans la fenêtre principale ; la mention tombe. */
@@ -577,9 +616,33 @@ export class FenetresSites {
     if (!o) return;
     o.chargee = true;
     o.voulue = url;
+    o.attendVoulu = true;
     void o.vue.webContents.loadURL(url).catch(() => {
       // Site injoignable, ou chargement remplacé aussitôt : did-fail-load le dit (suivi de l'adresse).
+      o.attendVoulu = false;
     });
+  }
+
+  /** « Chercher la nouvelle adresse » (bouton de la barre, appli avec suiviAdresse seulement). */
+  chercherAdresse(id: string): void {
+    const o = this.ouverte(id);
+    if (!o || !this.suiviActif(o)) return;
+    const wc = o.vue.webContents;
+    this.o.surSuivi?.(id, o.cible ?? (wc.isDestroyed() ? null : wc.getURL()) ?? null);
+  }
+
+  /**
+   * Le suivi a trouvé la nouvelle adresse : l'appli ouverte prend ses domaines effectifs et son départ à jour (retouches,
+   * pont de la mémoire et reprise les relisent à chaque cadre), et la vue va à la même adresse sur le nouveau domaine.
+   * `vers` : l'adresse à charger, déjà calculée par le service.
+   */
+  adresseChangee(id: string, domaines: string[], depart: string, vers: string): void {
+    const o = this.ouverte(id);
+    if (!o) return;
+    o.site = { ...o.site, domaines, depart };
+    if (o.affichee === "accord") return this.diffuserEtat(o);
+    this.aller(id, vers);
+    this.diffuserEtat(o);
   }
 
   /** La mention de la barre (lien bloqué, adresse changée…) ; null l'efface. */
