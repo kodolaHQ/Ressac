@@ -4,6 +4,8 @@ import { join } from "node:path";
 import {
   accordCouvre,
   accordNecessaire,
+  accorderSite,
+  droitsDe,
   adresseDeDepart,
   adresseRelative,
   adresseSurDomaine,
@@ -58,6 +60,12 @@ export interface ServiceSites {
    * une par `ECART_OUVERTURE_ACCUEIL_MS` ; faux si refusée (sans geste, en silence).
    */
   ouvrirDepuisAccueil(id: string, adresse: string): boolean;
+  /**
+   * La carte d'accord des retouches de l'appli ouverte. oui : les droits de la déclaration affichée sont retenus
+   * (`<profil>/sites-accords.json`), puis la vue suivante avec retouches ; non : la vue suivante sans retouches ni
+   * reprise, pour cette ouverture seulement. Rien si la carte n'est pas affichée.
+   */
+  accorder(id: string, oui: boolean): Promise<void>;
   /** Vrai appui de l'utilisateur dans le cadre de l'accueil de l'appli (vu par le preload de ce cadre). */
   gesteAccueil(id: string): void;
   /** Une image d'un domaine de l'appli, en `data:` (session de l'appli) ; null si refusée. */
@@ -204,8 +212,9 @@ export function demarrerSites(o: {
       JSON.stringify(nouvelles) === JSON.stringify(retouches.get(id) ?? null) &&
       (!p || JSON.stringify({ ...p.site, aAccueil: null }) === JSON.stringify({ ...avant, aAccueil: null }));
     retouches.set(id, nouvelles);
-    if (p) fenetres.mettreAJour(p.site);
-    if (!pareil) fenetres.rechargerVue(id);
+    // La carte qui revient recharge déjà la page (sans retouches) : pas une seconde fois.
+    const rechargee = p ? fenetres.mettreAJour(p.site) : false;
+    if (!pareil && !rechargee) fenetres.rechargerVue(id);
   }
 
   const arreterSurveillance = surveillerSites(o.chemins, (id, quoi) => {
@@ -342,6 +351,18 @@ export function demarrerSites(o: {
       if (!url || !gestes.accepter(id, id) || !fenetres.depuisAccueil(id, url)) return false;
       derniereOuverture.set(id, maintenant);
       return true;
+    },
+    async accorder(id, oui) {
+      const montree = fenetres.site(id);
+      if (!montree || fenetres.etat(id)?.vue !== "accord") return;
+      if (!oui) return fenetres.apresAccord(id, null);
+      // Les droits de la déclaration montrée par la carte, pris avant toute attente (site.json peut changer entre-temps).
+      const d = montree.declaration;
+      await accorderSite(o.dossierProfil, id, d);
+      const s = fenetres.site(id);
+      if (!s) return;
+      const accorde = droitsDe(d);
+      fenetres.apresAccord(id, { ...s, accordRequis: accordNecessaire(s.declaration) && !accordCouvre(accorde, s.declaration) });
     },
     gesteAccueil(id) {
       if (fenetres.site(id)) gestes.geste(id, id);

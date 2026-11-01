@@ -1,6 +1,6 @@
 import { BrowserWindow, WebContentsView, type WebContents } from "electron";
 import { join } from "node:path";
-import type { DeclarationSite } from "@webaios/noyau";
+import { droitsDe, type DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
 import { HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
@@ -71,7 +71,7 @@ function hoteHttp(url: string): string | null {
 
 const uniques = (l: string[]) => [...new Set(l)];
 
-/** Ce que la carte d'accord montre (tâche suivante) : les droits demandés par la déclaration. */
+/** Ce que la carte d'accord montre : les droits demandés par la déclaration, et les fichiers qu'elle injecte. */
 function demandeAccord(d: DeclarationSite): DemandeAccordSite {
   return {
     nom: d.nom,
@@ -107,13 +107,15 @@ export class FenetresSites {
     },
   ) {}
 
-  /** Ouvre la fenêtre de l'appli, ou la remet devant sans la recharger (sa déclaration et ses domaines sont repris). */
+  /**
+   * Ouvre la fenêtre de l'appli, ou la remet devant sans la recharger (sa déclaration et ses domaines sont repris, et la
+   * vue revue : carte si les droits ont grandi, site si l'accueil a disparu).
+   */
   ouvrir(s: SiteOuvrable): void {
     const deja = this.ouvertesParId.get(s.id);
     if (deja && !deja.fenetre.isDestroyed()) {
-      deja.site = s;
+      this.reprendre(deja, s);
       this.montrer(s.id);
-      this.diffuserEtat(deja);
       return;
     }
     const o = this.creer(s);
@@ -419,11 +421,63 @@ export class FenetresSites {
     return (this.ouverte(id)?.erreurs ?? []).map((e) => ({ ...e }));
   }
 
-  /** La déclaration de l'appli ouverte a changé (site.json, retouches) : reprise sans montrer ni recharger la fenêtre. */
-  mettreAJour(s: SiteOuvrable): void {
+  /**
+   * La déclaration de l'appli ouverte a changé (site.json, retouches) : reprise sans montrer la fenêtre. Vrai si la page
+   * du site a été rechargée (la carte revient sur une page chargée).
+   */
+  mettreAJour(s: SiteOuvrable): boolean {
     const o = this.ouverte(s.id);
-    if (!o) return;
+    return o ? this.reprendre(o, s) : false;
+  }
+
+  /**
+   * La fenêtre ouverte prend la nouvelle lecture de l'appli, et sa vue est revue. Les droits demandés ont grandi (accord
+   * qui ne couvre plus, ou nouveaux droits après « Ouvrir sans retouches ») : la carte revient, la vue du site est cachée
+   * (rien n'y est injecté avant le choix, puisque l'accord manque). L'accord n'est plus nécessaire : la vue suivante.
+   * L'accueil a disparu : le site. Vrai si la page du site a été rechargée : quand la carte revient sur une page déjà
+   * chargée, ses retouches d'avant n'y restent pas.
+   */
+  private reprendre(o: Ouverte, s: SiteOuvrable): boolean {
+    const avant = o.site;
     o.site = s;
+    let rechargee = false;
+    const droitsGrandis = JSON.stringify(droitsDe(avant.declaration)) !== JSON.stringify(droitsDe(s.declaration));
+    if (s.accordRequis && o.affichee !== "accord" && (!avant.accordRequis || droitsGrandis)) {
+      o.affichee = "accord";
+      if (o.chargee && !o.vue.webContents.isDestroyed()) {
+        o.vue.webContents.reload();
+        rechargee = true;
+      }
+    } else if (o.affichee === "accord" && !s.accordRequis) this.vueSuivante(o);
+    else if (o.affichee === "accueil" && !s.aAccueil) this.vueSuivante(o);
+    this.placer(o);
+    this.diffuserEtat(o);
+    return rechargee;
+  }
+
+  /** Après la carte : l'accueil s'il y en a un, sinon le site (chargé sur son départ la première fois). */
+  private vueSuivante(o: Ouverte): void {
+    if (o.site.aAccueil) o.affichee = "accueil";
+    else {
+      o.affichee = "site";
+      if (!o.chargee) this.aller(o.site.id, o.site.depart);
+    }
+  }
+
+  /**
+   * Le choix de l'utilisateur sur la carte (l'accord, s'il l'a donné, est déjà retenu dans `s`) : la vue suivante. Avec les
+   * retouches, une page déjà chargée (sans elles) est rechargée pour les recevoir. Rien si la carte n'est pas affichée.
+   */
+  apresAccord(id: string, s: SiteOuvrable | null): void {
+    const o = this.ouverte(id);
+    if (!o || o.affichee !== "accord") return;
+    if (s) o.site = s;
+    // L'accord donné ne couvre pas la déclaration d'aujourd'hui (site.json réécrit pendant le choix) : la carte reste.
+    if (s?.accordRequis) return this.diffuserEtat(o);
+    const recharger = s !== null && o.chargee;
+    this.vueSuivante(o);
+    if (recharger && !o.vue.webContents.isDestroyed()) o.vue.webContents.reload();
+    this.placer(o);
     this.diffuserEtat(o);
   }
 

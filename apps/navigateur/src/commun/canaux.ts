@@ -106,6 +106,8 @@ export const CANAUX = {
   siteSuivant: "webaios:site-suivant",
   siteRecharger: "webaios:site-recharger",
   siteOuvrirBloque: "webaios:site-ouvrir-bloque",
+  /** La carte d'accord des retouches : « Autoriser » (true) ou « Ouvrir sans retouches » (false). */
+  siteAccorder: "webaios:site-accorder",
   /** L'écran d'accueil, relayé par l'interface : la mémoire de l'appli (lecture), ses changements, une adresse, une image. */
   siteAccueilMemoire: "webaios:site-accueil-memoire",
   siteAccueilMemoireChange: "webaios:site-accueil-memoire-change",

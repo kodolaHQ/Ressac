@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import BarreSite from "./BarreSite.svelte";
   import CadreAccueil from "./CadreAccueil.svelte";
+  import CarteAccordSite from "./CarteAccordSite.svelte";
   import type { EtatFenetreSite } from "../../commun/sites";
   import type { ApiSite } from "../../commun/api";
 
@@ -26,13 +27,12 @@
   <!-- Sous la barre : la vue du site (posée par le process principal) en vue « site », l'accueil sinon. -->
   {#if etat.vue === "accueil"}
     <CadreAccueil id={etat.id} {api} />
-  {:else if etat.vue === "accord"}
-    <section class="accord" data-testid="site-zone-accord"></section>
+  {:else if etat.vue === "accord" && etat.accord}
+    <CarteAccordSite accord={etat.accord} accorder={(oui) => api.accorder(oui)} />
   {/if}
 {/if}
 
 <style>
   :global(html), :global(body) { margin: 0; height: 100%; background: var(--fond); color: var(--texte); font: 13px system-ui, sans-serif; overflow: hidden; }
   :global(#app) { display: flex; flex-direction: column; height: 100%; }
-  section { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 16px; min-height: 0; }
 </style>

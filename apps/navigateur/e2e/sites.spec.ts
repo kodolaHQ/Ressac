@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Frame, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, serveurSites, vueSite } from "./aide";
 
@@ -965,7 +965,7 @@ test.describe("retouches", () => {
     writeFileSync(join(profil, "sites-accords.json"), JSON.stringify(accord()));
     await ouvrirSite(fenetre, "vidola");
     await fenetreSite(app, "vidola");
-    // Sans accord, la vue attend la carte (tâche suivante) : la page est chargée ici à la main, dans la vue de l'appli.
+    // Sans accord, la vue attend la carte : la page est chargée ici à la main, dans la vue cachée de l'appli.
     await app.evaluate(({ BrowserWindow }, url) => {
       const f = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes("/renderer/site.html"));
       void (f?.contentView.children[0] as Electron.WebContentsView).webContents.loadURL(url);
@@ -975,6 +975,173 @@ test.describe("retouches", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBeNull();
     expect(await vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display')).toBe("block");
+    await fermer();
+  });
+});
+
+// --- La carte d'accord des retouches (redemandée quand les droits grandissent)
+
+test.describe("carte d'accord", () => {
+  const lecteur = () => serveur.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
+  const declaration = (plus: { connexion?: string[] } = {}) => ({
+    nom: "Vidola",
+    adresse: serveur.url("vidola-a.localhost", "/serie/the-bear"),
+    domaines: ["vidola-a.localhost"],
+    connexion: plus.connexion ?? ["compte.localhost"],
+    retouches: [{ correspond: ["/serie/*"], js: ["a.js"], css: ["cacher.css"], cadres: [lecteur()] }],
+    reprise: true,
+  });
+  const A_JS = 'document.body.dataset.retouche = "oui";';
+
+  test.beforeAll(() => {
+    serveur.definir("vidola-a.localhost", "/serie/the-bear", '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>');
+  });
+
+  async function demarrerCarte() {
+    const l = await demarrer({ vidola: { declaration: declaration(), fichiers: { "retouches/a.js": A_JS, "retouches/cacher.css": ".shorts { display: none; }" } } });
+    await ouvrirSite(l.fenetre, "vidola");
+    const page = await fenetreSite(l.app, "vidola");
+    await expect(page.getByTestId("carte-accord-site")).toBeVisible();
+    return { ...l, page };
+  }
+
+  /** Ferme la fenêtre de l'appli (comme l'utilisateur) et la rouvre depuis la page Applications. */
+  async function rouvrir(app: ElectronApplication, fenetre: Page) {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes("/renderer/site.html")).forEach((w) => w.close()));
+    await expect.poll(() => fenetresDuSite(app, "vidola")).toBe(0);
+    await ouvrirSite(fenetre, "vidola");
+    return fenetreSite(app, "vidola");
+  }
+
+  const shorts = (app: ElectronApplication) => vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display');
+
+  test("première ouverture d'une appli avec retouches : la carte liste domaines, connexion, fichiers et reprise ; la vue du site est cachée", async () => {
+    const { app, page, fermer } = await demarrerCarte();
+    const carte = page.getByTestId("carte-accord-site");
+    await expect(carte.getByRole("heading")).toHaveText("Autoriser les retouches de « Vidola » ?");
+    await expect(page.getByTestId("accord-site-domaines")).toContainText("vidola-a.localhost");
+    await expect(page.getByTestId("accord-site-connexion")).toContainText("compte.localhost");
+    await expect(page.getByTestId("accord-site-cadres")).toContainText(lecteur());
+    await expect(page.getByTestId("accord-site-fichiers")).toContainText("a.js");
+    await expect(page.getByTestId("accord-site-fichiers")).toContainText("cacher.css");
+    await expect(page.getByTestId("accord-site-reprise")).toHaveText("Reprend les vidéos à la minute");
+    await expect(carte).toContainText("Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.");
+    await expect(page.getByTestId("accorder-site")).toHaveText("Autoriser");
+    await expect(page.getByTestId("refuser-site")).toHaveText("Ouvrir sans retouches");
+    const e = await etatVueSite(app, "vidola");
+    expect(e?.visible).toBe(false);
+    expect(e?.url).toBe("");
+    expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+    await fermer();
+  });
+
+  test("Ouvrir sans retouches : le site s'ouvre, .shorts visible, aucune position notée ; la carte revient à la prochaine ouverture", async () => {
+    const { app, fenetre, page, profil, fermer } = await demarrerCarte();
+    await page.getByTestId("refuser-site").click();
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
+    await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(true);
+    await expect(page.getByTestId("carte-accord-site")).toHaveCount(0);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await shorts(app)).toBe("block");
+    expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBeNull();
+    const memoire = join(profil, "sites", "vidola", "memoire.json");
+    expect(!existsSync(memoire) || Object.keys(JSON.parse(readFileSync(memoire, "utf8")).positions).length === 0).toBe(true);
+    expect(existsSync(join(profil, "sites-accords.json")) && JSON.parse(readFileSync(join(profil, "sites-accords.json"), "utf8")).vidola).toBeFalsy();
+    // Refuser vaut pour cette ouverture seulement.
+    const encore = await rouvrir(app, fenetre);
+    await expect(encore.getByTestId("carte-accord-site")).toBeVisible();
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(false);
+    await fermer();
+  });
+
+  test("Autoriser : .shorts caché ; rouvrir ne redemande pas", async () => {
+    const { app, fenetre, page, profil, fermer } = await demarrerCarte();
+    await page.getByTestId("accorder-site").click();
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
+    await expect.poll(() => shorts(app)).toBe("none");
+    expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBe("oui");
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(true);
+    const accords = JSON.parse(readFileSync(join(profil, "sites-accords.json"), "utf8"));
+    expect(accords.vidola).toEqual({ domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [lecteur()], reprise: true });
+    const encore = await rouvrir(app, fenetre);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
+    await expect.poll(() => shorts(app)).toBe("none");
+    await expect(encore.getByTestId("carte-accord-site")).toHaveCount(0);
+    await fermer();
+  });
+
+  test("changer le code de a.js : pas de carte", async () => {
+    const { app, page, racine, fermer } = await demarrerCarte();
+    await page.getByTestId("accorder-site").click();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBe("oui");
+    writeFileSync(join(racine, "sites", "vidola", "retouches", "a.js"), 'document.body.dataset.retouche = "v2";');
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("v2");
+    await expect(page.getByTestId("carte-accord-site")).toHaveCount(0);
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(true);
+    await fermer();
+  });
+
+  test("ajouter un domaine de connexion à site.json : la carte revient, rien d'injecté avant le choix", async () => {
+    const { app, page, racine, fermer } = await demarrerCarte();
+    await page.getByTestId("accorder-site").click();
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBe("oui");
+    await vueSite(app, "vidola", "window.marque = 1");
+    writeFileSync(join(racine, "sites", "vidola", "site.json"), JSON.stringify(declaration({ connexion: ["compte.localhost", "autre-compte.localhost"] })));
+    await expect(page.getByTestId("carte-accord-site")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("accord-site-connexion")).toContainText("autre-compte.localhost");
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(false);
+    // La page est rechargée cachée, sans retouches.
+    await expect.poll(() => vueSite(app, "vidola", "window.marque ?? null"), { timeout: 10_000 }).toBeNull();
+    await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBeNull();
+    expect(await shorts(app)).toBe("block");
+    // Autoriser à nouveau : la page se recharge avec ses retouches.
+    await page.getByTestId("accorder-site").click();
+    await expect.poll(() => shorts(app)).toBe("none");
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(true);
+    await fermer();
+  });
+
+  test("rouvrir la fenêtre ouverte après le retrait de l'accord : la carte revient, la page rechargée sans retouches", async () => {
+    const { app, fenetre, page, profil, fermer } = await demarrerCarte();
+    await page.getByTestId("accorder-site").click();
+    await expect.poll(() => shorts(app)).toBe("none");
+    await vueSite(app, "vidola", "window.marque = 1");
+    writeFileSync(join(profil, "sites-accords.json"), "{}");
+    await ouvrirSite(fenetre, "vidola");
+    await expect(page.getByTestId("carte-accord-site")).toBeVisible();
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(false);
+    await expect.poll(() => vueSite(app, "vidola", "window.marque ?? null")).toBeNull();
+    await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await shorts(app)).toBe("block");
+    expect(await fenetresDuSite(app, "vidola")).toBe(1);
+    await fermer();
+  });
+
+  test("boutons de la carte no-drag", async () => {
+    const { page, fermer } = await demarrerCarte();
+    const region = (id: string) => page.getByTestId(id).evaluate((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region"));
+    expect(await region("accorder-site")).toBe("no-drag");
+    expect(await region("refuser-site")).toBe("no-drag");
+    await fermer();
+  });
+
+  test("rouvrir une appli dont l'accueil a disparu : la vue passe au site", async () => {
+    const { app, fenetre, racine, fermer } = await demarrer({
+      tube: { declaration: { nom: "Tube", adresse: serveur.url("vidola-a.localhost", "/"), domaines: ["vidola-a.localhost"] }, fichiers: { "accueil/index.html": "<p>accueil</p>" } },
+    });
+    await ouvrirSite(fenetre, "tube");
+    const page = await fenetreSite(app, "tube");
+    await expect(page.getByTestId("site-entrer")).toBeVisible();
+    rmSync(join(racine, "sites", "tube", "accueil"), { recursive: true });
+    await ouvrirSite(fenetre, "tube");
+    await expect.poll(async () => (await etatVueSite(app, "tube"))?.url).toBe(serveur.url("vidola-a.localhost", "/"));
+    expect((await etatVueSite(app, "tube"))?.visible).toBe(true);
+    await expect(page.getByTestId("site-entrer")).toHaveCount(0);
+    await expect(page.getByTestId("site-accueil")).toHaveCount(0);
     await fermer();
   });
 });

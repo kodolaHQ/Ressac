@@ -558,6 +558,11 @@ export interface ApiSite {
   recharger(): void;
   /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans un onglet de la fenêtre principale. */
   ouvrirBloque(): void;
+  /**
+   * La carte d'accord des retouches. oui : l'accord est retenu, puis la vue suivante (accueil ou site) avec retouches ;
+   * non : la vue suivante sans retouches ni reprise, pour cette ouverture seulement (la carte revient à la prochaine).
+   */
+  accorder(oui: boolean): Promise<void>;
   /** Pour l'écran d'accueil : la mémoire de l'appli et ses positions de reprise (lecture), et le domaine actuel. */
   memoire(): Promise<MessageVersLAccueil & { type: "memoire" }>;
   /** Chaque changement de la mémoire de l'appli ; renvoie le désabonnement. */

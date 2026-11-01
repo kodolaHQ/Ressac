@@ -171,6 +171,7 @@ const site: ApiSite = {
   suivant: () => ipcRenderer.send(CANAUX.siteSuivant),
   recharger: () => ipcRenderer.send(CANAUX.siteRecharger),
   ouvrirBloque: () => ipcRenderer.send(CANAUX.siteOuvrirBloque),
+  accorder: (oui) => ipcRenderer.invoke(CANAUX.siteAccorder, oui),
   memoire: () => ipcRenderer.invoke(CANAUX.siteAccueilMemoire),
   surMemoire: (rappel) => ecouter(CANAUX.siteAccueilMemoireChange, rappel),
   ouvrir: (adresse) => ipcRenderer.invoke(CANAUX.siteAccueilOuvrir, adresse),

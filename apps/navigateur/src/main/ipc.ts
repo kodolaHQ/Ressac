@@ -118,6 +118,8 @@ export interface Gestionnaires {
     idDe(sender: WebContents): string | undefined;
     etat(id: string): EtatFenetreSite | null;
     geste(id: string, g: GesteSite): void;
+    /** La carte d'accord des retouches de l'appli : « Autoriser » ou « Ouvrir sans retouches ». */
+    accorder(id: string, oui: boolean): Promise<void>;
     /** L'écran d'accueil (relayé par l'interface) : mémoire en lecture, une adresse du site, une image du site. */
     memoire(id: string): Promise<MessageVersLAccueil & { type: "memoire" }>;
     ouvrir(id: string, adresse: string): Promise<boolean>;
@@ -387,6 +389,12 @@ export function brancherIpc(g: Gestionnaires): void {
       const id = siteDe(e);
       if (id) g.site.geste(id, geste);
     });
+  ipcMain.handle(CANAUX.siteAccorder, (e, oui: unknown) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    if (typeof oui !== "boolean") throw new Error("réponse invalide");
+    return g.site.accorder(id, oui);
+  });
   // L'écran d'accueil passe par l'interface de sa fenêtre : l'appli vient de l'expéditeur, les adresses sont bornées.
   ipcMain.handle(CANAUX.siteAccueilMemoire, (e) => {
     const id = siteDe(e);
