@@ -4,6 +4,7 @@ import {
   accordCouvre,
   accordNecessaire,
   adresseDeDepart,
+  adresseSurDomaine,
   domainesEffectifs,
   ID_SITE,
   lireAccordsSites,
@@ -14,11 +15,13 @@ import {
   type CheminsEspace,
   type DroitsSite,
 } from "@webaios/noyau";
-import type { ActionSite, SiteAffiche } from "../../commun/sites";
+import { CANAUX } from "../../commun/canaux";
+import { ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
+import { imageSite } from "./accueil";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
 import { FenetresSites, type SiteOuvrable } from "./fenetres";
-import { fixerPreloadSite } from "./session";
+import { fixerPreloadSite, sessionSite } from "./session";
 
 /** Une erreur de console d'une retouche (tâche des retouches). */
 export type ErreurRetouche = { quand: string; texte: string; source: string };
@@ -37,9 +40,23 @@ export interface ServiceSites {
   erreurs(id: string): ErreurRetouche[];
   /** L'adresse est-elle sur les domaines de l'appli ouverte ? (navigation demandée par l'agent) */
   adressePermise(id: string, url: string): boolean;
+  /**
+   * Pour l'écran d'accueil de l'appli ouverte : sa mémoire (valeurs et positions, en lecture) et son domaine actuel. Ses
+   * changements sont ensuite envoyés à l'interface de la fenêtre tant qu'elle reste ouverte.
+   */
+  memoireAccueil(id: string): Promise<MessageVersLAccueil & { type: "memoire" }>;
+  /** L'accueil demande une adresse : sur le domaine actuel, une par `ECART_OUVERTURE_ACCUEIL_MS` ; faux si refusée. */
+  ouvrirDepuisAccueil(id: string, adresse: string): boolean;
+  /** Une image d'un domaine de l'appli, en `data:` (session de l'appli) ; null si refusée. */
+  imageAccueil(id: string, url: string): Promise<string | null>;
   /** À la sortie : fenêtres fermées (cadres notés), mémoires écrites. */
   arreter(): Promise<void>;
 }
+
+/** Images de l'accueil chargées en même temps par appli ; les autres attendent leur tour. */
+const IMAGES_EN_MEME_TEMPS = 4;
+/** Demandes d'images en attente par appli : au-delà, refusées (un accueil qui en demande des milliers). */
+const IMAGES_EN_ATTENTE_MAX = 200;
 
 /** L'hôte d'une adresse, ou null. */
 function hote(url: string): string | null {
@@ -81,11 +98,21 @@ export function demarrerSites(o: {
       ?.then((m) => m.vider())
       .catch((e) => console.error(`[sites] mémoire de ${id} non écrite :`, e));
 
+  /** Désabonnements des changements de mémoire envoyés à l'accueil, par appli ouverte. */
+  const abonnements = new Map<string, () => void>();
+  /** Dernière adresse ouverte par l'accueil, par appli. */
+  const derniereOuverture = new Map<string, number>();
+  /** Images de l'accueil : chargements en cours et en attente, par appli. */
+  const images = new Map<string, { enCours: number; attente: (() => void)[] }>();
+
   const fenetres = new FenetresSites({
     memoire: souvenirs,
     adressesLocales: o.adressesLocales,
     ouvrirOnglet: o.ouvrirOnglet,
     surFermee: (id) => {
+      abonnements.get(id)?.();
+      abonnements.delete(id);
+      derniereOuverture.delete(id);
       void viderMemoire(id);
       o.diffuser();
     },
@@ -118,6 +145,51 @@ export function demarrerSites(o: {
       depart: adresseDeDepart(d, etat),
       accordRequis: accordNecessaire(d) && !accordCouvre(accord, d),
     };
+  }
+
+  /** Le domaine actuel de l'appli ouverte (celui de son adresse de départ). */
+  const domaineActuel = (id: string) => {
+    const s = fenetres.site(id);
+    return (s && hote(s.depart)) ?? "";
+  };
+
+  const messageMemoire = (id: string, m: MemoireSite): MessageVersLAccueil & { type: "memoire" } => {
+    const { valeurs, positions } = m.contenu();
+    return { type: "memoire", valeurs, positions, domaine: domaineActuel(id) };
+  };
+
+  function memoire(id: string): Promise<MemoireSite> {
+    let m = memoires.get(id);
+    if (!m) {
+      m = MemoireSite.ouvrir(dossierSites, id);
+      memoires.set(id, m);
+      // Un id refusé ne reste pas en cache.
+      m.catch(() => memoires.delete(id));
+    }
+    return m;
+  }
+
+  /** Une place parmi les chargements d'images de l'appli ; false si trop de demandes attendent déjà. */
+  async function placeImage(id: string): Promise<boolean> {
+    let f = images.get(id);
+    if (!f) images.set(id, (f = { enCours: 0, attente: [] }));
+    if (f.enCours < IMAGES_EN_MEME_TEMPS) {
+      f.enCours++;
+      return true;
+    }
+    if (f.attente.length >= IMAGES_EN_ATTENTE_MAX) return false;
+    const file = f;
+    // La place est transmise par celui qui la libère (enCours ne change pas).
+    await new Promise<void>((ok) => file.attente.push(ok));
+    return true;
+  }
+  function libererImage(id: string): void {
+    const f = images.get(id);
+    if (!f) return;
+    const suivant = f.attente.shift();
+    if (suivant) return suivant();
+    f.enCours--;
+    if (f.enCours === 0) images.delete(id);
   }
 
   async function ouvrirParId(id: string): Promise<boolean> {
@@ -160,18 +232,41 @@ export function demarrerSites(o: {
       }
     },
     ouvrirParId,
-    memoire(id) {
-      let m = memoires.get(id);
-      if (!m) {
-        m = MemoireSite.ouvrir(dossierSites, id);
-        memoires.set(id, m);
-        // Un id refusé ne reste pas en cache.
-        m.catch(() => memoires.delete(id));
-      }
-      return m;
-    },
+    memoire,
     erreurs: () => [],
     adressePermise: (id, url) => fenetres.adressePermise(id, url),
+    async memoireAccueil(id) {
+      const m = await memoire(id);
+      // Abonné une fois par fenêtre ouverte (désabonné à sa fermeture) ; une fenêtre déjà fermée ne l'est pas.
+      if (!abonnements.has(id) && fenetres.site(id)) {
+        abonnements.set(
+          id,
+          m.surChange(() => fenetres.envoyer(id, CANAUX.siteAccueilMemoireChange, messageMemoire(id, m))),
+        );
+      }
+      return messageMemoire(id, m);
+    },
+    ouvrirDepuisAccueil(id, adresse) {
+      const s = fenetres.site(id);
+      if (!s) return false;
+      const maintenant = Date.now();
+      if (maintenant - (derniereOuverture.get(id) ?? -Infinity) < ECART_OUVERTURE_ACCUEIL_MS) return false;
+      const url = adresseSurDomaine(adresse, hote(s.depart) ?? "", s.domaines, s.depart, lecture);
+      if (!url || !fenetres.depuisAccueil(id, url)) return false;
+      derniereOuverture.set(id, maintenant);
+      return true;
+    },
+    async imageAccueil(id, url) {
+      const s = fenetres.site(id);
+      if (!s || !(await placeImage(id))) return null;
+      try {
+        // Domaines relus à chaque image : l'appli a pu être rouverte avec d'autres entre-temps.
+        const domaines = fenetres.site(id)?.domaines;
+        return domaines ? await imageSite(sessionSite(id), url, domaines) : null;
+      } finally {
+        libererImage(id);
+      }
+    },
     async arreter() {
       try {
         await Promise.allSettled(fenetres.ouvertes().map((f) => fenetres.fermer(f.id)));

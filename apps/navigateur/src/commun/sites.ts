@@ -51,7 +51,16 @@ export type EtatFenetreSite = {
 };
 
 /** Longueur maximale d'une adresse demandée par l'accueil (ouvrir, image). */
-export const ADRESSE_ACCUEIL_MAX = 4096;
+export const ADRESSE_ACCUEIL_MAX = 2000;
+
+/** Schéma de l'écran d'accueil : `webaios-site://<id>/<chemin dans accueil/>`. */
+export const SCHEMA_SITE = "webaios-site";
+/** L'adresse de la page d'entrée de l'accueil de l'appli `id`. */
+export const urlAccueilSite = (id: string) => `${SCHEMA_SITE}://${id}/index.html`;
+/** Taille maximale d'une image du site demandée par l'accueil (rendue en `data:`). */
+export const IMAGE_SITE_MAX = 2 * 1024 * 1024;
+/** Écart minimal entre deux adresses ouvertes par l'accueil. */
+export const ECART_OUVERTURE_ACCUEIL_MS = 1000;
 
 /** Ce que l'accueil (cadre isolé, code de l'agent) peut demander : rien d'autre n'est relayé. */
 export const MessageDeLAccueil = z.discriminatedUnion("type", [

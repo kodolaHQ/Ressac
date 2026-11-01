@@ -8,6 +8,8 @@ import { SchemaIdExecution, SchemaIdWidget, SchemaPlacements, type Placement, ty
 import type { EtatNavigateur, IdFenetre } from "../../commun/modele";
 import { contientIndiceReseau } from "../../commun/indices-reseau";
 import { composantDuCadre, SCHEMA_COMPOSANT } from "../../commun/actions";
+import { SCHEMA_SITE } from "../../commun/sites";
+import { accueilSiteDuCadre } from "../sites/cadre-accueil";
 import { profilsLisibles, urlPermise } from "./lecture-invisible";
 
 export const SCHEMA_WIDGET = "webaios-widget";
@@ -116,20 +118,27 @@ export function widgetDuCadre(url: string): string | null {
  * s'il en montre déjà un, celui du même widget (ou du même composant) : rechargement quand l'agent le réécrit. Un cadre neuf (`""`, `about:blank`) ou resté sur la page
  * d'erreur de Chromium (après une navigation bloquée, sans script) charge un affichage : seule l'interface, qui garde
  * un cadre par widget, change sa source.
+ *
+ * `site` : la fenêtre est celle de cette appli de site ; son seul cadre est son écran d'accueil (`webaios-site://<site>/…`),
+ * qui ne va que vers ses propres pages. Jamais un widget ni un composant dans cette fenêtre, jamais un accueil de site
+ * dans une fenêtre principale.
  */
-export function navigationCadrePermise(actuelle: string, cible: string): boolean {
+export function navigationCadrePermise(actuelle: string, cible: string, site?: string): boolean {
   const vers = identiteCadre(cible);
   if (!vers) return false;
+  if (site === undefined ? vers.startsWith("site:") : vers !== `site:${site}`) return false;
   if (actuelle === "" || actuelle === "about:blank" || actuelle.startsWith("chrome-error:")) return true;
   return identiteCadre(actuelle) === vers;
 }
 
-/** Ce que montre un cadre de l'interface : l'affichage d'un widget ou un composant de l'agent (page d'une action). */
+/** Ce que montre un cadre de l'interface : l'affichage d'un widget, un composant de l'agent (page d'une action), ou l'accueil d'une appli de site. */
 function identiteCadre(url: string): string | null {
   const widget = widgetDuCadre(url);
   if (widget) return `widget:${widget}`;
   const composant = composantDuCadre(url);
-  return composant ? `composant:${composant}` : null;
+  if (composant) return `composant:${composant}`;
+  const site = accueilSiteDuCadre(url);
+  return site ? `site:${site}` : null;
 }
 
 /**
@@ -199,11 +208,11 @@ export function urlOuvrable(url: string): boolean {
 
 /**
  * Permissions demandées dans la session de l'interface : seule sa propre page (le cadre principal) en a ; un affichage
- * de widget, un composant de l'agent, ou tout autre cadre, n'a rien (ni caméra, ni notifications, ni presse-papiers…).
+ * de widget, un composant de l'agent, l'accueil d'une appli de site, ou tout autre cadre, n'a rien (ni caméra, ni notifications, ni presse-papiers…).
  */
 export function permissionInterface(d: { requestingUrl?: string; isMainFrame?: boolean }): boolean {
   const url = d.requestingUrl ?? "";
-  return d.isMainFrame === true && !url.startsWith(`${SCHEMA_WIDGET}:`) && !url.startsWith(`${SCHEMA_COMPOSANT}:`);
+  return d.isMainFrame === true && ![SCHEMA_WIDGET, SCHEMA_COMPOSANT, SCHEMA_SITE].some((schema) => url.startsWith(`${schema}:`));
 }
 
 /**

@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
-import type { ActionSite, EtatFenetreSite, SiteAffiche } from "../commun/sites";
+import { ADRESSE_ACCUEIL_MAX, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
 import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution, Proprietaire } from "@webaios/noyau";
@@ -113,7 +113,15 @@ export interface Gestionnaires {
    * Interface d'une fenêtre d'appli de site : l'appli vient de l'expéditeur (`idDe`), jamais du message ; seule la page
    * elle-même (pas un de ses cadres) est entendue.
    */
-  site: { idDe(sender: WebContents): string | undefined; etat(id: string): EtatFenetreSite | null; geste(id: string, g: GesteSite): void };
+  site: {
+    idDe(sender: WebContents): string | undefined;
+    etat(id: string): EtatFenetreSite | null;
+    geste(id: string, g: GesteSite): void;
+    /** L'écran d'accueil (relayé par l'interface) : mémoire en lecture, une adresse du site, une image du site. */
+    memoire(id: string): Promise<MessageVersLAccueil & { type: "memoire" }>;
+    ouvrir(id: string, adresse: string): Promise<boolean>;
+    image(id: string, url: string): Promise<string | null>;
+  };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
   pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
 }
@@ -376,6 +384,22 @@ export function brancherIpc(g: Gestionnaires): void {
       const id = siteDe(e);
       if (id) g.site.geste(id, geste);
     });
+  // L'écran d'accueil passe par l'interface de sa fenêtre : l'appli vient de l'expéditeur, les adresses sont bornées.
+  ipcMain.handle(CANAUX.siteAccueilMemoire, (e) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    return g.site.memoire(id);
+  });
+  ipcMain.handle(CANAUX.siteAccueilOuvrir, (e, adresse: unknown) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    return chaine(adresse, ADRESSE_ACCUEIL_MAX) ? g.site.ouvrir(id, adresse) : false;
+  });
+  ipcMain.handle(CANAUX.siteAccueilImage, (e, url: unknown) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    return chaine(url, ADRESSE_ACCUEIL_MAX) ? g.site.image(id, url) : null;
+  });
   recevoir(CANAUX.applicationAction, zod(SchemaActionApplication), ({ dossier, action }, f) => g.applications.agir(dossier, action, f));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));
   recevoir(CANAUX.agentRedimensionner, zod(SchemaTailleTerminal), (t, f) => g.agent.redimensionner(f, t));

@@ -171,6 +171,10 @@ const site: ApiSite = {
   suivant: () => ipcRenderer.send(CANAUX.siteSuivant),
   recharger: () => ipcRenderer.send(CANAUX.siteRecharger),
   ouvrirBloque: () => ipcRenderer.send(CANAUX.siteOuvrirBloque),
+  memoire: () => ipcRenderer.invoke(CANAUX.siteAccueilMemoire),
+  surMemoire: (rappel) => ecouter(CANAUX.siteAccueilMemoireChange, rappel),
+  ouvrir: (adresse) => ipcRenderer.invoke(CANAUX.siteAccueilOuvrir, adresse),
+  image: (url) => ipcRenderer.invoke(CANAUX.siteAccueilImage, url),
 };
 
 /**

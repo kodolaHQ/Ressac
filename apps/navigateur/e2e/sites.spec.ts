@@ -1,5 +1,5 @@
-import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { existsSync, readFileSync } from "node:fs";
+import { expect, test, type ElectronApplication, type Frame, type Page } from "@playwright/test";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, serveurSites, vueSite } from "./aide";
 
@@ -470,5 +470,212 @@ test("des window.open en rafale vers deux domaines alternés : au plus un change
   expect(await envois()).toBeGreaterThanOrEqual(1);
   expect(await envois()).toBeLessThanOrEqual(3);
   await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+  await fermer();
+});
+
+// ——— L'écran d'accueil (tâche 7) ———
+
+/** Une image PNG de 1 × 1 px. */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+
+/** Un accueil qui affiche la mémoire reçue et note tout message de l'interface (`window.recus`). */
+const ACCUEIL = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
+<ul id="series"></ul><p id="domaine"></p>
+<script>
+  window.recus = [];
+  addEventListener("message", (e) => {
+    window.recus.push(e.data);
+    if (e.data && e.data.type === "memoire") {
+      const ul = document.getElementById("series");
+      ul.textContent = "";
+      for (const [cle, v] of Object.entries(e.data.valeurs)) {
+        const li = document.createElement("li");
+        li.textContent = cle + " : " + v.valeur.titre + " " + v.adresse;
+        ul.append(li);
+      }
+      document.getElementById("domaine").textContent = e.data.domaine;
+    }
+  });
+  parent.postMessage({ type: "pret" }, "*");
+</script>`;
+
+/** Vidola avec un accueil ; `actuel` : le domaine où le site a déménagé (adresse.json du profil). */
+async function demarrerAccueil(o: { actuel?: string } = {}) {
+  const l = await demarrer({
+    vidola: { declaration: vidola().declaration, fichiers: { "accueil/index.html": ACCUEIL, "accueil/img/logo.png": PNG } },
+    autre: { declaration: { nom: "Autre", adresse: serveur.url("vidola-b.localhost", "/"), domaines: ["vidola-b.localhost"] }, fichiers: { "accueil/index.html": "<p>autre</p>" } },
+  });
+  const dossier = join(l.profil, "sites", "vidola");
+  mkdirSync(dossier, { recursive: true });
+  const quand = new Date().toISOString();
+  writeFileSync(
+    join(dossier, "memoire.json"),
+    JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand } }, positions: {} }),
+  );
+  if (o.actuel) writeFileSync(join(dossier, "adresse.json"), JSON.stringify({ actuel: o.actuel, anciens: ["vidola-a.localhost"], depuis: quand }));
+  await ouvrirSite(l.fenetre, "vidola");
+  const page = await fenetreSite(l.app, "vidola");
+  const accueil = await cadreAccueil(page);
+  await expect.poll(() => accueil.evaluate(() => (window as unknown as { recus: unknown[] }).recus.length)).toBeGreaterThan(0);
+  return { ...l, page, accueil };
+}
+
+/** Le cadre de l'écran d'accueil dans l'interface de la fenêtre. */
+async function cadreAccueil(page: Page): Promise<Frame> {
+  for (const fin = Date.now() + 10_000; Date.now() < fin; ) {
+    const f = page.frames().find((x) => x.url().startsWith("webaios-site://"));
+    if (f) return f;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("le cadre de l'accueil n'est pas apparu");
+}
+
+/** L'accueil envoie `m` à l'interface (comme le ferait le code de l'agent). */
+const demander = (accueil: Frame, m: object) => accueil.evaluate((m) => parent.postMessage(m, "*"), m);
+const recus = (accueil: Frame) => accueil.evaluate(() => (window as unknown as { recus: { type: string; n?: number; data?: string | null }[] }).recus);
+
+test("l'accueil reçoit la mémoire écrite par le test (encours.the-bear) et l'affiche ; il a la garde des widgets", async () => {
+  const { page, accueil, fermer } = await demarrerAccueil();
+  await expect(page.getByTestId("site-cadre-accueil")).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(page.getByTestId("site-cadre-accueil")).toHaveAttribute("src", "webaios-site://vidola/index.html");
+  const cadre = page.frameLocator('[data-testid="site-cadre-accueil"]');
+  await expect(cadre.locator("#series")).toHaveText("encours.the-bear : The Bear /serie/the-bear?e=4");
+  await expect(cadre.locator("#domaine")).toHaveText("vidola-a.localhost");
+  // Origine opaque, garde du preload posée (ni WebRTC ni XSLT), aucune API de WebAiOs.
+  expect(await accueil.evaluate(() => [origin, typeof RTCPeerConnection, typeof XSLTProcessor, typeof (window as unknown as { webaios?: unknown }).webaios])).toEqual(["null", "undefined", "undefined", "undefined"]);
+  // Toujours le bouton de WebAiOs sous l'accueil, cliquable dans la zone de glissement.
+  await expect(page.getByTestId("site-entrer")).toHaveText("Entrer dans le site");
+  expect(await page.getByTestId("site-entrer").evaluate((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region"))).toBe("no-drag");
+  await fermer();
+});
+
+test("il demande « /serie/the-bear?e=4 » : la vue du site y va sur le domaine actuel", async () => {
+  serveur.definir("vidola-b.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  const { app, accueil, fermer } = await demarrerAccueil({ actuel: "vidola-b.localhost" });
+  await expect.poll(async () => (await recus(accueil)).find((m) => m.type === "memoire")).toMatchObject({ domaine: "vidola-b.localhost" });
+  await demander(accueil, { type: "ouvrir", adresse: "/serie/the-bear?e=4" });
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/serie/the-bear?e=4"));
+  expect((await etatVueSite(app, "vidola"))!.visible).toBe(true);
+  expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+  await fermer();
+});
+
+test("il demande javascript:alert(1), //pub.localhost/x, https://pub.localhost/ : rien ne s'ouvre", async () => {
+  serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  const { app, page, accueil, fermer } = await demarrerAccueil();
+  for (const adresse of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", serveur.url("pub.localhost", "/x"), "/\\pub.localhost/x", "x".repeat(2001)])
+    await demander(accueil, { type: "ouvrir", adresse });
+  // Les mêmes refus par l'API de l'interface (ce que le relais appelle).
+  const api = (a: string) => page.evaluate((a) => (window as unknown as { webaios: { site: { ouvrir(a: string): Promise<boolean> } } }).webaios.site.ouvrir(a), a);
+  expect(await api("javascript:alert(1)")).toBe(false);
+  expect(await api("https://pub.localhost/")).toBe(false);
+  await new Promise((r) => setTimeout(r, 500));
+  const e = (await etatVueSite(app, "vidola"))!;
+  expect(e.url).toBe("");
+  expect(e.visible).toBe(false);
+  expect(serveur.requetes).toEqual([]);
+  // Les refus n'ont rien consommé : une adresse du site s'ouvre aussitôt.
+  expect(await api("/serie/the-bear?e=4")).toBe(true);
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear?e=4"));
+  await fermer();
+});
+
+test("au plus une adresse ouverte par seconde depuis l'accueil", async () => {
+  serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  const { app, page, fermer } = await demarrerAccueil();
+  const api = (a: string) => page.evaluate((a) => (window as unknown as { webaios: { site: { ouvrir(a: string): Promise<boolean> } } }).webaios.site.ouvrir(a), a);
+  expect(await api("/serie/the-bear?e=1")).toBe(true);
+  await page.getByTestId("site-accueil").click();
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.visible).toBe(false);
+  expect(await api("/serie/the-bear?e=2")).toBe(false);
+  await new Promise((r) => setTimeout(r, 1100));
+  expect(await api("/serie/the-bear?e=3")).toBe(true);
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear?e=3"));
+  await fermer();
+});
+
+test("fetch depuis l'accueil vers le serveur de test : aucune requête reçue ; il ne quitte pas son accueil", async () => {
+  const { page, accueil, fermer } = await demarrerAccueil();
+  const espion = (c: string) => serveur.url("vidola-a.localhost", `/espion-${c}`);
+  const fetchRefuse = await accueil.evaluate(async (u) => {
+    try {
+      await fetch(u);
+      return false;
+    } catch {
+      return true;
+    }
+  }, espion("fetch"));
+  expect(fetchRefuse).toBe(true);
+  await accueil.evaluate(
+    ([img, beacon, form]) => {
+      const i = new Image();
+      i.src = img;
+      navigator.sendBeacon(beacon, "x");
+      const f = document.createElement("form");
+      f.action = form;
+      f.method = "post";
+      document.body.append(f);
+      f.submit();
+    },
+    [espion("img"), espion("beacon"), espion("form")] as const,
+  );
+  // Navigation du cadre vers le web, puis vers l'accueil d'une autre appli : refusées.
+  await accueil.evaluate((u) => void (location.href = u), espion("nav")).catch(() => {});
+  await new Promise((r) => setTimeout(r, 500));
+  await accueil.evaluate(() => void (location.href = "webaios-site://autre/index.html")).catch(() => {});
+  await new Promise((r) => setTimeout(r, 800));
+  expect(serveur.requetes).toEqual([]);
+  const urls = page.frames().map((f) => f.url()).filter((u) => u !== page.url());
+  expect(urls.every((u) => u.startsWith("webaios-site://vidola/") || u.startsWith("chrome-error:")), urls.join(" ")).toBe(true);
+  expect(urls.some((u) => u.includes("autre"))).toBe(false);
+  await fermer();
+});
+
+test("une image du site demandée revient en data: (avec les cookies de l'appli) ; une image de pub.localhost revient null", async () => {
+  serveur.definir("vidola-a.localhost", "/affiche.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
+  serveur.definir("pub.localhost", "/pub.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
+  const { app, accueil, fermer } = await demarrerAccueil();
+  await app.evaluate(({ session }, url) => session.fromPartition("persist:site-vidola").cookies.set({ url, name: "essai", value: "appli" }), serveur.url("vidola-a.localhost", "/"));
+  await demander(accueil, { type: "image", n: 1, url: serveur.url("vidola-a.localhost", "/affiche.png") });
+  await demander(accueil, { type: "image", n: 2, url: serveur.url("pub.localhost", "/pub.png") });
+  await expect.poll(async () => (await recus(accueil)).filter((m) => m.type === "image").length).toBe(2);
+  const images = (await recus(accueil)).filter((m) => m.type === "image");
+  expect(images.find((m) => m.n === 1)?.data).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
+  expect(images.find((m) => m.n === 2)?.data).toBeNull();
+  expect(serveur.requetes.map((r) => [r.hote, r.chemin, r.cookie])).toEqual([["vidola-a.localhost", "/affiche.png", "essai=appli"]]);
+  // Ses propres images (accueil/img/) se chargent par le schéma, sans passer par WebAiOs.
+  const largeur = await accueil.evaluate(
+    () =>
+      new Promise<number>((ok) => {
+        const i = new Image();
+        i.onload = () => ok(i.naturalWidth);
+        i.onerror = () => ok(-1);
+        i.src = "webaios-site://vidola/img/logo.png";
+      }),
+  );
+  expect(largeur).toBe(1);
+  await fermer();
+});
+
+test("⌂ revient à l'accueil, « Entrer dans le site » retrouve la page où il était (même URL, pas de rechargement)", async () => {
+  serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  const { app, page, accueil, fermer } = await demarrerAccueil();
+  await demander(accueil, { type: "ouvrir", adresse: "/serie/the-bear?e=4" });
+  const url = serveur.url("vidola-a.localhost", "/serie/the-bear?e=4");
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(url);
+  await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
+  await vueSite(app, "vidola", "window.marque = 7");
+  await page.getByTestId("site-accueil").click();
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.visible).toBe(false);
+  // L'accueil revient (nouveau cadre) et relit la mémoire.
+  const revenu = await cadreAccueil(page);
+  await expect(page.frameLocator('[data-testid="site-cadre-accueil"]').locator("#series")).toContainText("The Bear");
+  expect(revenu.url()).toBe("webaios-site://vidola/index.html");
+  const avant = serveur.requetes.length;
+  await page.getByTestId("site-entrer").click();
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.visible).toBe(true);
+  expect((await etatVueSite(app, "vidola"))!.url).toBe(url);
+  expect(await vueSite(app, "vidola", "window.marque")).toBe(7);
+  expect(serveur.requetes.length).toBe(avant);
   await fermer();
 });

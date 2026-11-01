@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
 import { HAUTEUR_BARRE_SITE, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
+import { navigationCadrePermise } from "../agent/accueil";
 import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
 import type { MemoireApplications } from "../applications/service";
@@ -148,6 +149,8 @@ export class FenetresSites {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        // Le preload tourne aussi dans le cadre de l'accueil (code de l'agent) pour y poser la garde des widgets.
+        nodeIntegrationInSubFrames: true,
         additionalArguments: [`${ARG_SITE}${id}`],
       },
     });
@@ -173,13 +176,16 @@ export class FenetresSites {
       this.o.surFermee?.(id);
     });
 
-    // L'interface ne quitte jamais sa page et n'ouvre rien.
+    // L'interface ne quitte jamais sa page et n'ouvre rien. Son seul cadre, l'accueil de cette appli, ne va que vers ses
+    // propres pages (jamais le web, ni l'accueil d'une autre appli) : ses demandes passent par postMessage.
     const ui = f.webContents;
     ui.on("will-navigate", (e) => e.preventDefault());
     ui.on("will-frame-navigate", (e) => {
-      if (!e.isMainFrame) e.preventDefault();
+      if (!e.isMainFrame && !navigationCadrePermise(e.frame?.url ?? "", e.url, id)) e.preventDefault();
     });
     ui.setWindowOpenHandler(() => ({ action: "deny" }));
+    // Comme les widgets : WebRTC (s'il échappait à la garde) ne passe que par le proxy de la session, qui ne mène nulle part.
+    ui.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
     if (process.env.ELECTRON_RENDERER_URL) void ui.loadURL(`${process.env.ELECTRON_RENDERER_URL}/site.html?id=${encodeURIComponent(id)}`).catch(() => {});
     else void ui.loadFile(join(__dirname, "../renderer/site.html"), { query: { id } }).catch(() => {});
 
@@ -389,6 +395,26 @@ export class FenetresSites {
     return [...this.ouvertesParId.values()]
       .filter((o) => !o.fenetre.isDestroyed())
       .map((o) => ({ id: o.site.id, nom: o.site.declaration.nom, url: (!o.vue.webContents.isDestroyed() && o.vue.webContents.getURL()) || o.site.depart }));
+  }
+
+  /** L'appli telle qu'elle a été ouverte (déclaration, domaines effectifs, départ), si sa fenêtre l'est. */
+  site(id: string): SiteOuvrable | undefined {
+    return this.ouverte(id)?.site;
+  }
+
+  /** Envoie un message à l'interface de la fenêtre de l'appli (son accueil), si elle est ouverte. */
+  envoyer(id: string, canal: string, valeur: unknown): void {
+    const o = this.ouverte(id);
+    if (o && !o.fenetre.webContents.isDestroyed()) o.fenetre.webContents.send(canal, valeur);
+  }
+
+  /** L'accueil a demandé `url` (déjà vérifiée) : la vue du site y va et se montre ; faux si l'accueil n'est pas affiché. */
+  depuisAccueil(id: string, url: string): boolean {
+    const o = this.ouverte(id);
+    if (o?.affichee !== "accueil") return false;
+    this.aller(id, url);
+    this.entrer(id);
+    return true;
   }
 
   /** « Entrer dans le site » : l'adresse de départ la première fois, la page où il était ensuite. */

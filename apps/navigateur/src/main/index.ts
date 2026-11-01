@@ -35,6 +35,8 @@ import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { demarrerSites, type ServiceSites } from "./sites/service";
+import { repondreAccueilSite } from "./sites/accueil";
+import { SCHEMA_SITE } from "../commun/sites";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { creerServiceActions, espaceActifPrive, repondreComposant, repondreImage, SCHEMA_COMPOSANT, SCHEMA_IMAGE } from "./agent/actions";
@@ -68,7 +70,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 // le seul autre, remplace le sien. Voulu : avec `bypassCSP`, les affichages des widgets pourraient charger ces icônes
 // malgré leur CSP. L'interface a `crx:` dans son `img-src` (index.html) : sans privilège, l'icône s'y charge quand même
 // (vérifié par e2e/extensions-interface.spec.ts).
-enregistrerSchemaWidget([SCHEMA_ICONE, SCHEMA_IMAGE, SCHEMA_COMPOSANT]);
+enregistrerSchemaWidget([SCHEMA_ICONE, SCHEMA_IMAGE, SCHEMA_COMPOSANT, SCHEMA_SITE]);
 // Aucune résolution de nom anticipée, nulle part (<link rel=dns-prefetch>, liens) : dans un affichage de widget, elle
 // ferait sortir des données dans une requête DNS, sans passer par la CSP ni par le proxy de l'interface. Les onglets y
 // perdent un peu de vitesse ; leurs navigations résolvent les noms normalement.
@@ -296,6 +298,9 @@ app.whenReady().then(async () => {
   );
   // Les composants de l'agent, dessinés dans un cadre sans réseau comme un affichage de widget.
   protocol.handle(SCHEMA_COMPOSANT, (requete) => repondreComposant(agent?.chemins.composants ?? null, requete.url));
+  // L'écran d'accueil des applis de site (`~/WebAiOs/sites/<id>/accueil/`), dans un cadre sans réseau de leur fenêtre.
+  const cheminsAccueilSites = cheminsEspace();
+  protocol.handle(SCHEMA_SITE, (requete) => repondreAccueilSite(cheminsAccueilSites, requete.url));
   const magasin = new Magasin(await chargerSession(dossier));
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
@@ -707,6 +712,12 @@ app.whenReady().then(async () => {
       idDe: (sender) => sites?.fenetres.idDeInterface(sender),
       etat: (id) => sites?.fenetres.etat(id) ?? null,
       geste: (id, g) => sites?.fenetres[g](id),
+      memoire: async (id) => {
+        if (!sites) throw new Error("applis de site pas prêtes");
+        return sites.memoireAccueil(id);
+      },
+      ouvrir: async (id, adresse) => sites?.ouvrirDepuisAccueil(id, adresse) ?? false,
+      image: async (id, url) => (await sites?.imageAccueil(id, url)) ?? null,
     },
     extensions: {
       // Dans l'espace actif de la fenêtre émettrice ; la carte s'ouvre dans cette fenêtre.

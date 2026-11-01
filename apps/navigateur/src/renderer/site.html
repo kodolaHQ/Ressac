@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <!--
       Interface d'une fenêtre d'appli de site : la barre. Elle ne charge rien du web (le site est dans une vue à part,
-      de sa propre session) et n'a aucun cadre.
+      de sa propre session) ; son seul cadre est l'écran d'accueil de l'appli (webaios-site:, sans réseau).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src webaios-site:" />
     <title>Appli de site</title>
   </head>
   <body>

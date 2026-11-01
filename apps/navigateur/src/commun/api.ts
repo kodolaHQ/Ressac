@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
-import type { ActionSite, EtatFenetreSite, SiteAffiche } from "./sites";
+import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
@@ -558,4 +558,15 @@ export interface ApiSite {
   recharger(): void;
   /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans un onglet de la fenêtre principale. */
   ouvrirBloque(): void;
+  /** Pour l'écran d'accueil : la mémoire de l'appli et ses positions de reprise (lecture), et le domaine actuel. */
+  memoire(): Promise<MessageVersLAccueil & { type: "memoire" }>;
+  /** Chaque changement de la mémoire de l'appli ; renvoie le désabonnement. */
+  surMemoire(rappel: (m: MessageVersLAccueil & { type: "memoire" }) => void): () => void;
+  /**
+   * L'accueil demande une adresse du site (relative ou sur un de ses domaines) : la vue du site y va, sur le domaine
+   * actuel. Faux si elle est refusée, ou si une autre vient d'être ouverte (une par `ECART_OUVERTURE_ACCUEIL_MS`).
+   */
+  ouvrir(adresse: string): Promise<boolean>;
+  /** Une image d'un domaine de l'appli, chargée avec sa session, en `data:` ; null si elle est refusée. */
+  image(url: string): Promise<string | null>;
 }
