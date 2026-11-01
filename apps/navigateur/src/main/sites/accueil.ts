@@ -1,17 +1,14 @@
-import type { Session } from "electron";
-import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { adresseLocale, hoteDansSite, ID_SITE, type CheminsEspace } from "@webaios/noyau";
 import { IMAGE_SITE_MAX, SCHEMA_SITE } from "../../commun/sites";
 import { contientIndiceReseau } from "../../commun/indices-reseau";
 import { AFFICHAGE_REFUSE, CSP_WIDGET } from "../agent/accueil";
-import { corpsBorne } from "../reseau-interface";
+import { chargerImage, type OuvrirRequete } from "../image-distante";
 
 /** Taille maximale d'un fichier de l'accueil (page, script, style, image). */
 export const FICHIER_ACCUEIL_MAX = 2 * 1024 * 1024;
-/** Redirections suivies pour une image du site, chacune revérifiée. */
-const REDIRECTIONS_IMAGE = 3;
-const DELAI_IMAGE_MS = 10_000;
 
 /** Les directives de `CSP_WIDGET` où les fichiers de l'appli sont permis. */
 const DIRECTIVES_FICHIERS = new Set(["script-src", "style-src", "img-src", "font-src"]);
@@ -72,6 +69,32 @@ function cible(url: string): { id: string; segments: string[] } | null {
 const introuvable = () => new Response("", { status: 404 });
 
 /**
+ * Le contenu du fichier `chemin`, lu par son descripteur : ouvert sans suivre un lien (`O_NOFOLLOW` : un fichier devenu
+ * lien après la vérification des chemins est refusé) ni attendre (`O_NONBLOCK` : un tube nommé ne bloque pas la lecture),
+ * puis `fstat` (un fichier ordinaire, `FICHIER_ACCUEIL_MAX` au plus) et une lecture bornée. null sinon.
+ */
+async function lireSansLien(chemin: string): Promise<Buffer | null> {
+  const f = await open(chemin, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
+  if (!f) return null;
+  try {
+    const infos = await f.stat();
+    if (!infos.isFile() || infos.size > FICHIER_ACCUEIL_MAX) return null;
+    // Un octet de plus que la taille vue : un fichier qui grandit pendant la lecture est refusé, jamais tronqué.
+    const tampon = Buffer.alloc(infos.size + 1);
+    let lus = 0;
+    for (;;) {
+      const { bytesRead } = await f.read(tampon, lus, tampon.length - lus, lus);
+      if (bytesRead === 0) break;
+      lus += bytesRead;
+      if (lus > infos.size) return null;
+    }
+    return tampon.subarray(0, lus);
+  } finally {
+    await f.close().catch(() => {});
+  }
+}
+
+/**
  * Réponse du schéma `webaios-site:` : seulement un fichier de `<sites>/<id>/accueil/`, le dossier de l'appli nommé
  * exactement `id` (un disque insensible à la casse trouverait « MonSite » pour « monsite »), aucun lien symbolique sur le
  * chemin (ni le dossier des applis, ni l'appli, ni l'accueil, ni le fichier), `FICHIER_ACCUEIL_MAX` au plus. Une page qui
@@ -88,11 +111,10 @@ export async function repondreAccueilSite(chemins: Pick<CheminsEspace, "sites">,
     // realpath résout tout lien du chemin : s'il diffère du chemin attendu, un lien (ou une autre casse) s'y trouve.
     const reel = await realpath(join(chemins.sites, c.id, "accueil", ...c.segments));
     if (reel !== attendu) return introuvable();
-    const infos = await stat(reel);
-    if (!infos.isFile() || infos.size > FICHIER_ACCUEIL_MAX) return introuvable();
-    const type = TYPES[extname(reel).toLowerCase()] ?? "application/octet-stream";
-    const contenu = await readFile(reel);
-    const corps = type.startsWith("text/html") && contientIndiceReseau(contenu.toString("utf8")) ? AFFICHAGE_REFUSE : contenu;
+    const contenu = await lireSansLien(attendu);
+    if (!contenu) return introuvable();
+    const type = TYPES[extname(attendu).toLowerCase()] ?? "application/octet-stream";
+    const corps = type.startsWith("text/html") && contientIndiceReseau(contenu.toString("utf8")) ? AFFICHAGE_REFUSE : new Uint8Array(contenu);
     return new Response(corps, {
       headers: {
         "Content-Type": type,
@@ -121,40 +143,12 @@ function imagePermise(url: string, domaines: readonly string[]): boolean {
   }
 }
 
-/** Un type d'image simple (`image/png`), jamais recopié tel quel s'il contient autre chose. */
-const TYPE_IMAGE = /^image\/[a-z0-9.+-]+$/;
-
 /**
- * Une image du site demandée par l'accueil, rendue en `data:` : seulement en https sur un domaine de l'appli (chaque redirection
- * revérifiée, `REDIRECTIONS_IMAGE` au plus), chargée avec la session de l'appli (ses cookies), `image/*`,
- * `IMAGE_SITE_MAX` au plus. null sinon.
+ * Une image du site demandée par l'accueil, rendue en `data:` : seulement en https sur un domaine de l'appli (chaque
+ * redirection revérifiée avant d'être suivie, `REDIRECTIONS_IMAGE` au plus), chargée par les requêtes de la session de
+ * l'appli (`ouvrir`, ses cookies), `image/*`, `IMAGE_SITE_MAX` au plus. null sinon.
  */
-export async function imageSite(s: Pick<Session, "fetch">, url: string, domaines: readonly string[]): Promise<string | null> {
-  if (!imagePermise(url, domaines)) return null;
-  const arret = new AbortController();
-  const minuterie = setTimeout(() => arret.abort(), DELAI_IMAGE_MS);
-  try {
-    let adresse = url;
-    let r = await s.fetch(adresse, { signal: arret.signal, credentials: "include", redirect: "manual" });
-    for (let sauts = 0; r.status >= 300 && r.status < 400; sauts++) {
-      await r.body?.cancel().catch(() => {});
-      const location = r.headers.get("location");
-      if (!location || sauts >= REDIRECTIONS_IMAGE) return null;
-      const suivante = new URL(location, adresse).href;
-      if (!imagePermise(suivante, domaines)) return null;
-      adresse = suivante;
-      r = await s.fetch(adresse, { signal: arret.signal, credentials: "include", redirect: "manual" });
-    }
-    const type = r.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (!r.ok || !TYPE_IMAGE.test(type) || Number(r.headers.get("content-length") ?? 0) > IMAGE_SITE_MAX) {
-      await r.body?.cancel().catch(() => {});
-      return null;
-    }
-    const corps = await corpsBorne(r, IMAGE_SITE_MAX);
-    return corps ? `data:${type};base64,${corps.toString("base64")}` : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(minuterie);
-  }
+export async function imageSite(ouvrir: OuvrirRequete, url: string, domaines: readonly string[]): Promise<string | null> {
+  const image = await chargerImage(ouvrir, url, { permise: (u) => imagePermise(u, domaines), cookies: true, max: IMAGE_SITE_MAX });
+  return image ? `data:${image.type};base64,${image.corps.toString("base64")}` : null;
 }

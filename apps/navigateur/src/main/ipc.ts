@@ -1,5 +1,6 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
+import { accueilSiteDuCadre } from "./sites/cadre-accueil";
 import { ADRESSE_ACCUEIL_MAX, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
 import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
@@ -121,6 +122,8 @@ export interface Gestionnaires {
     memoire(id: string): Promise<MessageVersLAccueil & { type: "memoire" }>;
     ouvrir(id: string, adresse: string): Promise<boolean>;
     image(id: string, url: string): Promise<string | null>;
+    /** Vrai geste de l'utilisateur dans le cadre de l'accueil de l'appli `id`. */
+    gesteAccueil(id: string): void;
   };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
   pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
@@ -394,6 +397,16 @@ export function brancherIpc(g: Gestionnaires): void {
     const id = siteDe(e);
     if (!id) throw new Error("expéditeur inconnu");
     return chaine(adresse, ADRESSE_ACCUEIL_MAX) ? g.site.ouvrir(id, adresse) : false;
+  });
+  // Le geste vient du preload du cadre de l'accueil : retenu seulement pour un cadre posé directement dans la page de la
+  // fenêtre de cette appli et qui montre son propre accueil.
+  ipcMain.on(CANAUX.siteAccueilGeste, (e) => {
+    const cadre = e.senderFrame;
+    const id = g.site.idDe(e.sender);
+    if (!cadre || !id) return;
+    const principal = e.sender.mainFrame;
+    if (cadre.frameTreeNodeId === principal.frameTreeNodeId || cadre.parent?.frameTreeNodeId !== principal.frameTreeNodeId) return;
+    if (accueilSiteDuCadre(cadre.url) === id) g.site.gesteAccueil(id);
   });
   ipcMain.handle(CANAUX.siteAccueilImage, (e, url: unknown) => {
     const id = siteDe(e);

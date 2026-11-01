@@ -22,6 +22,7 @@ import { ACTIONS_EN_ESPACE_PRIVE, EN_ATTENTE, lectureDe, MISE_EN_PAGE, SCHEMA_CO
 import { AFFICHAGE_REFUSE, CSP_WIDGET, navigationCadrePermise, permissionInterface } from "../../src/main/agent/accueil";
 import { creerServiceActions, IMAGE_MAX, lienPermis, lireActionsAffichees, repondreComposant, repondreImage, retirerAction } from "../../src/main/agent/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
+import { fauxReseau } from "../faux-reseau-image";
 import { appliquer } from "../../src/main/etat/actions";
 
 const DEBUT = "2026-10-31T10:00:00.000Z";
@@ -94,26 +95,22 @@ test("urlImage : webaios-image://<id>/<exécution>?u=<url encodée>", () => {
   expect(urlComposant("barres")).toBe("webaios-composant://barres/composant.html");
 });
 
-/** Un faux fetch qui note chaque demande. */
+/** De fausses requêtes (`net.request`, redirections en mode « manual ») qui notent chaque adresse demandée. */
 function faussesRequetes(reponse: (url: string) => Response = () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } })) {
-  const demandes: { url: string; credentials: string; redirect?: string }[] = [];
-  const chercher = async (url: string, init: { credentials: "omit"; signal: AbortSignal; redirect: "manual" }) => {
-    demandes.push({ url, credentials: init.credentials, redirect: init.redirect });
-    return reponse(url);
-  };
-  return { demandes, chercher };
+  const { demandes, ouvrir } = fauxReseau(reponse);
+  return { demandes, ouvrir };
 }
 
 test("repondreImage : une adresse https présente telle quelle dans les résultats d'une action sans compte est récupérée sans cookies", async () => {
   const { c, dossierActions } = espace({ leboncoin: { nom: "Leboncoin", sources: { web: true } } });
   const image = "https://img.test/annonce/1.jpg?rule=ad-large";
   const ex = await executer(dossierActions, "leboncoin", { annonces: [{ titre: "Clio", photo: image }] });
-  const { demandes, chercher } = faussesRequetes();
-  const r = await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), chercher }, urlImage("leboncoin", ex, image));
+  const { demandes, ouvrir } = faussesRequetes();
+  const r = await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), ouvrir }, urlImage("leboncoin", ex, image));
   expect(r.status).toBe(200);
   expect(r.headers.get("content-type")).toBe("image/jpeg");
   expect([...new Uint8Array(await r.arrayBuffer())]).toEqual([1, 2, 3]);
-  expect(demandes).toEqual([{ url: image, credentials: "omit", redirect: "manual" }]);
+  expect(demandes).toEqual([{ url: image, cookies: false }]);
 });
 
 test("repondreImage refuse (404, aucune requête) : compte, http, adresse absente ou composée, exécution inconnue, adresse locale", async () => {
@@ -125,8 +122,8 @@ test("repondreImage refuse (404, aucune requête) : compte, http, adresse absent
   const resultats = { elements: [{ photo: image, http: "http://img.test/a.jpg", local: "https://127.0.0.1/a.jpg", lan: "https://192.168.1.2/a.jpg" }] };
   const exPublique = await executer(dossierActions, "publique", resultats);
   const exGitlab = await executer(dossierActions, "gitlab", resultats);
-  const { demandes, chercher } = faussesRequetes();
-  const o = { dossierActions, lireAction: (id: string) => lireAction(c, id), chercher };
+  const { demandes, ouvrir } = faussesRequetes();
+  const o = { dossierActions, lireAction: (id: string) => lireAction(c, id), ouvrir };
   const refusees = [
     urlImage("gitlab", exGitlab, image), // action avec compte
     urlImage("publique", exPublique, "http://img.test/a.jpg"), // http
@@ -152,15 +149,20 @@ test("repondreImage refuse une réponse qui n'est pas une image, un échec ou un
   const gros = "https://img.test/gros.jpg";
   const absent = "https://img.test/absent.jpg";
   const ex = await executer(dossierActions, "publique", { a: html, b: gros, c: absent });
-  const { chercher } = faussesRequetes((url) => {
+  const { ouvrir } = faussesRequetes((url) => {
     if (url === html) return new Response("<p>x</p>", { headers: { "content-type": "text/html" } });
     if (url === gros) return new Response(new Uint8Array(IMAGE_MAX + 1), { headers: { "content-type": "image/png" } });
     return new Response("", { status: 404 });
   });
-  const o = { dossierActions, lireAction: (id: string) => lireAction(c, id), chercher };
+  const o = { dossierActions, lireAction: (id: string) => lireAction(c, id), ouvrir };
   expect(IMAGE_MAX).toBe(5 * 1024 * 1024);
   for (const u of [html, gros, absent]) expect((await repondreImage(o, urlImage("publique", ex, u))).status, u).toBe(404);
-  const echec = { ...o, chercher: async () => Promise.reject(new Error("réseau")) };
+  const echec = {
+    ...o,
+    ouvrir: fauxReseau(() => {
+      throw new Error("réseau");
+    }).ouvrir,
+  };
   expect((await repondreImage(echec, urlImage("publique", ex, html))).status).toBe(404);
 });
 
@@ -170,20 +172,20 @@ test("repondreImage suit au plus 3 redirections, chacune vers une adresse https 
   const ex = await executer(dossierActions, "publique", { photo: image });
   const redirection = (location: string) => new Response(null, { status: 302, headers: { location } });
   const essayer = async (sauts: Record<string, Response | (() => Response)>) => {
-    const { demandes, chercher } = faussesRequetes((url) => {
+    const { demandes, ouvrir } = faussesRequetes((url) => {
       const r = sauts[url];
       if (r) return typeof r === "function" ? r() : r;
       return new Response(new Uint8Array([7]), { headers: { "content-type": "image/png" } });
     });
-    const r = await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), chercher }, urlImage("publique", ex, image));
-    return { statut: r.status, demandes: demandes.map((d) => d.url), redirections: demandes.map((d) => d.redirect) };
+    const r = await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), ouvrir }, urlImage("publique", ex, image));
+    return { statut: r.status, demandes: demandes.map((d) => d.url), cookies: demandes.map((d) => d.cookies) };
   };
   // https → https publique (relative comprise) : suivie, l'image finale est servie.
   const suivie = await essayer({ [image]: redirection("https://cdn.test/b.jpg"), "https://cdn.test/b.jpg": redirection("/c.jpg") });
-  expect(suivie).toEqual({ statut: 200, demandes: [image, "https://cdn.test/b.jpg", "https://cdn.test/c.jpg"], redirections: ["manual", "manual", "manual"] });
+  expect(suivie).toEqual({ statut: 200, demandes: [image, "https://cdn.test/b.jpg", "https://cdn.test/c.jpg"], cookies: [false, false, false] });
   // Vers le réseau local, la machine ou en http : refusée, sans requête vers la cible.
   for (const cible of ["http://192.168.1.2/", "https://192.168.1.2/a.png", "https://127.0.0.1:5280/a.png", "http://img.test/a.jpg", "javascript:alert(1)"]) {
-    expect(await essayer({ [image]: redirection(cible) }), cible).toEqual({ statut: 404, demandes: [image], redirections: ["manual"] });
+    expect(await essayer({ [image]: redirection(cible) }), cible).toEqual({ statut: 404, demandes: [image], cookies: [false] });
   }
   // Sans Location : refusée.
   expect((await essayer({ [image]: new Response(null, { status: 302 }) })).statut).toBe(404);
@@ -202,8 +204,8 @@ test("repondreImage refuse une action qui a un accord du compte, même si sa dé
   const image = "https://img.test/a.jpg";
   const ex = await executer(dossierActions, "reecrite", { photo: image });
   await accorder(dossierActions, "reecrite", { domaines: ["gitlab.com"], publiques: [], profil: "defaut" });
-  const { demandes, chercher } = faussesRequetes();
-  expect((await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), chercher }, urlImage("reecrite", ex, image))).status).toBe(404);
+  const { demandes, ouvrir } = faussesRequetes();
+  expect((await repondreImage({ dossierActions, lireAction: (id) => lireAction(c, id), ouvrir }, urlImage("reecrite", ex, image))).status).toBe(404);
   expect(demandes).toEqual([]);
 });
 

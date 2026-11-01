@@ -1,4 +1,5 @@
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
+import { fauxReseau } from "../faux-reseau-image";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,18 +133,10 @@ test("repondreAccueilSite : <link>, <meta http-equiv> ou règles de spéculation
   expect((await repondreAccueilSite(c, "webaios-site://vidola/gros.png")).status).toBe(404);
 });
 
-/** Une session dont `fetch` répond par `repondre` et note chaque appel. */
+/** Les requêtes de la session de l'appli (faux `net.request`), qui répondent par `repondre` ; `appels` : adresses demandées. */
 function session(repondre: (url: string) => Response) {
-  const appels: { url: string; init: RequestInit | undefined }[] = [];
-  return {
-    appels,
-    s: {
-      fetch: vi.fn(async (url: string, init?: RequestInit) => {
-        appels.push({ url, init });
-        return repondre(url);
-      }),
-    },
-  };
+  const f = fauxReseau(repondre);
+  return { appels: f.demandes, s: f.ouvrir };
 }
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
 const DOMAINES = ["vidola.example"];
@@ -152,8 +145,7 @@ test("imageSite : une image du site (ou d'un sous-domaine) rendue en data:, char
   const { s, appels } = session(() => new Response(PNG, { headers: { "Content-Type": "image/png" } }));
   expect(await imageSite(s, "https://vidola.example/affiches/bear.png", DOMAINES)).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
   expect(await imageSite(s, "https://img.vidola.example/a.png", DOMAINES)).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
-  expect(appels[0]!.init?.credentials).toBe("include");
-  expect(appels[0]!.init?.redirect).toBe("manual");
+  expect(appels[0]!.cookies).toBe(true);
 });
 
 test("imageSite : pub.example, javascript:, identifiants, text/html, 10 Mo, erreur, redirection hors du site → null", async () => {
@@ -171,13 +163,15 @@ test("imageSite : pub.example, javascript:, identifiants, text/html, 10 Mo, erre
   expect(await imageSite(annonce.s, "https://vidola.example/a.png", DOMAINES)).toBeNull();
   const absente = session(() => new Response("", { status: 404, headers: { "Content-Type": "image/png" } }));
   expect(await imageSite(absente.s, "https://vidola.example/a.png", DOMAINES)).toBeNull();
-  const panne = { fetch: async () => Promise.reject(new Error("réseau")) };
-  expect(await imageSite(panne, "https://vidola.example/a.png", DOMAINES)).toBeNull();
+  const panne = session(() => {
+    throw new Error("réseau");
+  });
+  expect(await imageSite(panne.s, "https://vidola.example/a.png", DOMAINES)).toBeNull();
   // Type bizarre : jamais recopié dans l'adresse data:.
   const bizarre = session(() => new Response(PNG, { headers: { "Content-Type": "image/png,text/html" } }));
   expect(await imageSite(bizarre.s, "https://vidola.example/a.png", DOMAINES)).toBeNull();
 
-  // Redirection : chaque saut est revérifié ; vers un tiers ou une adresse locale, rien n'y est demandé.
+  // Redirection : chaque saut est revérifié avant d'être suivi ; vers un tiers ou en http, la cible n'est jamais demandée.
   const redirige = session((url) =>
     url.endsWith("/vers-pub")
       ? new Response(null, { status: 302, headers: { Location: "https://pub.example/a.png" } })
@@ -191,10 +185,16 @@ test("imageSite : pub.example, javascript:, identifiants, text/html, 10 Mo, erre
   // Vers http sur le même domaine : les cookies de l'appli partiraient en clair.
   expect(await imageSite(redirige.s, "https://vidola.example/vers-http", DOMAINES)).toBeNull();
   expect(redirige.appels.map((a) => a.url)).toEqual(["https://vidola.example/vers-pub", "https://vidola.example/vers-http"]);
+  // Sur le site (relative ou vers un sous-domaine) : suivie, avec les cookies de l'appli.
   expect(await imageSite(redirige.s, "https://vidola.example/vers-cdn", DOMAINES)).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
-  const boucle = session(() => new Response(null, { status: 302, headers: { Location: "/encore" } }));
-  expect(await imageSite(boucle.s, "https://vidola.example/encore", DOMAINES)).toBeNull();
-  expect(boucle.appels.length).toBeLessThanOrEqual(4);
+  expect(redirige.appels.slice(2)).toEqual([
+    { url: "https://vidola.example/vers-cdn", cookies: true },
+    { url: "https://vidola.example/affiches/a.png", cookies: true },
+  ]);
+  // 3 sauts suivis, le quatrième jamais demandé.
+  const boucle = session((url) => new Response(null, { status: 302, headers: { Location: `/n${Number(/\d+$/.exec(url)?.[0] ?? 0) + 1}` } }));
+  expect(await imageSite(boucle.s, "https://vidola.example/n0", DOMAINES)).toBeNull();
+  expect(boucle.appels.map((a) => a.url)).toEqual(["https://vidola.example/n0", "https://vidola.example/n1", "https://vidola.example/n2", "https://vidola.example/n3"]);
 });
 
 test("permissionInterface refuse un cadre webaios-site:, même présenté comme cadre principal", () => {

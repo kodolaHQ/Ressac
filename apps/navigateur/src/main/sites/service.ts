@@ -18,6 +18,8 @@ import {
 import { CANAUX } from "../../commun/canaux";
 import { ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
 import { imageSite } from "./accueil";
+import { requetesDe } from "../image-distante";
+import { gardienGestes } from "../agent/geste-widget";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
 import { FenetresSites, type SiteOuvrable } from "./fenetres";
@@ -45,8 +47,13 @@ export interface ServiceSites {
    * changements sont ensuite envoyés à l'interface de la fenêtre tant qu'elle reste ouverte.
    */
   memoireAccueil(id: string): Promise<MessageVersLAccueil & { type: "memoire" }>;
-  /** L'accueil demande une adresse : sur le domaine actuel, une par `ECART_OUVERTURE_ACCUEIL_MS` ; faux si refusée. */
+  /**
+   * L'accueil demande une adresse : sur le domaine actuel, juste après un vrai geste de l'utilisateur dans l'accueil (consommé),
+   * une par `ECART_OUVERTURE_ACCUEIL_MS` ; faux si refusée (sans geste, en silence).
+   */
   ouvrirDepuisAccueil(id: string, adresse: string): boolean;
+  /** Vrai appui de l'utilisateur dans le cadre de l'accueil de l'appli (vu par le preload de ce cadre). */
+  gesteAccueil(id: string): void;
   /** Une image d'un domaine de l'appli, en `data:` (session de l'appli) ; null si refusée. */
   imageAccueil(id: string, url: string): Promise<string | null>;
   /** À la sortie : fenêtres fermées (cadres notés), mémoires écrites. */
@@ -100,6 +107,8 @@ export function demarrerSites(o: {
 
   /** Désabonnements des changements de mémoire envoyés à l'accueil, par appli ouverte. */
   const abonnements = new Map<string, () => void>();
+  /** Derniers vrais gestes de l'utilisateur dans l'accueil, par appli (un geste permet une seule ouverture). */
+  const gestes = gardienGestes<string>();
   /** Dernière adresse ouverte par l'accueil, par appli. */
   const derniereOuverture = new Map<string, number>();
   /** Images de l'accueil : chargements en cours et en attente, par appli. */
@@ -252,9 +261,14 @@ export function demarrerSites(o: {
       const maintenant = Date.now();
       if (maintenant - (derniereOuverture.get(id) ?? -Infinity) < ECART_OUVERTURE_ACCUEIL_MS) return false;
       const url = adresseSurDomaine(adresse, hote(s.depart) ?? "", s.domaines, s.depart, lecture);
-      if (!url || !fenetres.depuisAccueil(id, url)) return false;
+      // Sans geste récent de l'utilisateur dans l'accueil, rien ne s'ouvre : sinon un accueil qui ouvre une adresse dès son
+      // chargement renverrait sur le site à chaque ⌂.
+      if (!url || !gestes.accepter(id, id) || !fenetres.depuisAccueil(id, url)) return false;
       derniereOuverture.set(id, maintenant);
       return true;
+    },
+    gesteAccueil(id) {
+      if (fenetres.site(id)) gestes.geste(id, id);
     },
     async imageAccueil(id, url) {
       const s = fenetres.site(id);
@@ -262,7 +276,7 @@ export function demarrerSites(o: {
       try {
         // Domaines relus à chaque image : l'appli a pu être rouverte avec d'autres entre-temps.
         const domaines = fenetres.site(id)?.domaines;
-        return domaines ? await imageSite(sessionSite(id), url, domaines) : null;
+        return domaines ? await imageSite(requetesDe(sessionSite(id)), url, domaines) : null;
       } finally {
         libererImage(id);
       }

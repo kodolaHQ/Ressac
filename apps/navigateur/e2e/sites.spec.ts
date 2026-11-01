@@ -480,9 +480,11 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 
 /** Un accueil qui affiche la mémoire reçue et note tout message de l'interface (`window.recus`). */
 const ACCUEIL = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
-<ul id="series"></ul><p id="domaine"></p>
+<ul id="series"></ul><p id="domaine"></p><button id="ouvrir">Reprendre</button>
 <script>
   window.recus = [];
+  window.adresse = "/";
+  document.getElementById("ouvrir").addEventListener("click", () => parent.postMessage({ type: "ouvrir", adresse: window.adresse }, "*"));
   addEventListener("message", (e) => {
     window.recus.push(e.data);
     if (e.data && e.data.type === "memoire") {
@@ -530,6 +532,12 @@ async function cadreAccueil(page: Page): Promise<Frame> {
   throw new Error("le cadre de l'accueil n'est pas apparu");
 }
 
+/** L'utilisateur clique « Reprendre » dans l'accueil (un vrai clic), qui demande alors `adresse`. */
+async function cliquerOuvrir(page: Page, adresse: string): Promise<void> {
+  await (await cadreAccueil(page)).evaluate((a) => void ((window as unknown as { adresse: string }).adresse = a), adresse);
+  await page.frameLocator('[data-testid="site-cadre-accueil"]').locator("#ouvrir").click();
+}
+
 /** L'accueil envoie `m` à l'interface (comme le ferait le code de l'agent). */
 const demander = (accueil: Frame, m: object) => accueil.evaluate((m) => parent.postMessage(m, "*"), m);
 const recus = (accueil: Frame) => accueil.evaluate(() => (window as unknown as { recus: { type: string; n?: number; data?: string | null }[] }).recus);
@@ -551,9 +559,9 @@ test("l'accueil reçoit la mémoire écrite par le test (encours.the-bear) et l'
 
 test("il demande « /serie/the-bear?e=4 » : la vue du site y va sur le domaine actuel", async () => {
   serveur.definir("vidola-b.localhost", "/serie/the-bear", "<title>The Bear</title>");
-  const { app, accueil, fermer } = await demarrerAccueil({ actuel: "vidola-b.localhost" });
+  const { app, page, accueil, fermer } = await demarrerAccueil({ actuel: "vidola-b.localhost" });
   await expect.poll(async () => (await recus(accueil)).find((m) => m.type === "memoire")).toMatchObject({ domaine: "vidola-b.localhost" });
-  await demander(accueil, { type: "ouvrir", adresse: "/serie/the-bear?e=4" });
+  await cliquerOuvrir(page, "/serie/the-bear?e=4");
   await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/serie/the-bear?e=4"));
   expect((await etatVueSite(app, "vidola"))!.visible).toBe(true);
   expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
@@ -563,8 +571,10 @@ test("il demande « /serie/the-bear?e=4 » : la vue du site y va sur le domaine 
 test("il demande javascript:alert(1), //pub.localhost/x, https://pub.localhost/ : rien ne s'ouvre", async () => {
   serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
   const { app, page, accueil, fermer } = await demarrerAccueil();
+  // Après un vrai clic dans l'accueil : refusées quand même.
   for (const adresse of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", serveur.url("pub.localhost", "/x"), "/\\pub.localhost/x", "x".repeat(2001)])
-    await demander(accueil, { type: "ouvrir", adresse });
+    await cliquerOuvrir(page, adresse);
+  await demander(accueil, { type: "ouvrir", adresse: "javascript:alert(1)" });
   // Les mêmes refus par l'API de l'interface (ce que le relais appelle).
   const api = (a: string) => page.evaluate((a) => (window as unknown as { webaios: { site: { ouvrir(a: string): Promise<boolean> } } }).webaios.site.ouvrir(a), a);
   expect(await api("javascript:alert(1)")).toBe(false);
@@ -574,8 +584,8 @@ test("il demande javascript:alert(1), //pub.localhost/x, https://pub.localhost/ 
   expect(e.url).toBe("");
   expect(e.visible).toBe(false);
   expect(serveur.requetes).toEqual([]);
-  // Les refus n'ont rien consommé : une adresse du site s'ouvre aussitôt.
-  expect(await api("/serie/the-bear?e=4")).toBe(true);
+  // Les refus n'ont rien consommé : une adresse du site s'ouvre aussitôt après un clic.
+  await cliquerOuvrir(page, "/serie/the-bear?e=4");
   await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear?e=4"));
   await fermer();
 });
@@ -583,13 +593,15 @@ test("il demande javascript:alert(1), //pub.localhost/x, https://pub.localhost/ 
 test("au plus une adresse ouverte par seconde depuis l'accueil", async () => {
   serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
   const { app, page, fermer } = await demarrerAccueil();
-  const api = (a: string) => page.evaluate((a) => (window as unknown as { webaios: { site: { ouvrir(a: string): Promise<boolean> } } }).webaios.site.ouvrir(a), a);
-  expect(await api("/serie/the-bear?e=1")).toBe(true);
+  await cliquerOuvrir(page, "/serie/the-bear?e=1");
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear?e=1"));
   await page.getByTestId("site-accueil").click();
   await expect.poll(async () => (await etatVueSite(app, "vidola"))?.visible).toBe(false);
-  expect(await api("/serie/the-bear?e=2")).toBe(false);
+  await cliquerOuvrir(page, "/serie/the-bear?e=2");
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await etatVueSite(app, "vidola")).toMatchObject({ visible: false, url: serveur.url("vidola-a.localhost", "/serie/the-bear?e=1") });
   await new Promise((r) => setTimeout(r, 1100));
-  expect(await api("/serie/the-bear?e=3")).toBe(true);
+  await cliquerOuvrir(page, "/serie/the-bear?e=3");
   await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear?e=3"));
   await fermer();
 });
@@ -659,8 +671,8 @@ test("une image du site demandée revient en data: (avec les cookies de l'appli)
 
 test("⌂ revient à l'accueil, « Entrer dans le site » retrouve la page où il était (même URL, pas de rechargement)", async () => {
   serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
-  const { app, page, accueil, fermer } = await demarrerAccueil();
-  await demander(accueil, { type: "ouvrir", adresse: "/serie/the-bear?e=4" });
+  const { app, page, fermer } = await demarrerAccueil();
+  await cliquerOuvrir(page, "/serie/the-bear?e=4");
   const url = serveur.url("vidola-a.localhost", "/serie/the-bear?e=4");
   await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(url);
   await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
@@ -677,5 +689,53 @@ test("⌂ revient à l'accueil, « Entrer dans le site » retrouve la page où i
   expect((await etatVueSite(app, "vidola"))!.url).toBe(url);
   expect(await vueSite(app, "vidola", "window.marque")).toBe(7);
   expect(serveur.requetes.length).toBe(avant);
+  await fermer();
+});
+
+test("une demande « ouvrir » envoyée au chargement de l'accueil est refusée ; la même après un clic dans l'accueil ouvre", async () => {
+  serveur.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  const auto = ACCUEIL.replace('parent.postMessage({ type: "pret" }, "*");', 'parent.postMessage({ type: "pret" }, "*"); parent.postMessage({ type: "ouvrir", adresse: "/serie/the-bear?e=9" }, "*");');
+  const l = await demarrer({ vidola: { declaration: vidola().declaration, fichiers: { "accueil/index.html": auto } } });
+  await ouvrirSite(l.fenetre, "vidola");
+  const page = await fenetreSite(l.app, "vidola");
+  const accueil = await cadreAccueil(page);
+  await expect.poll(() => accueil.evaluate(() => (window as unknown as { recus: unknown[] }).recus.length)).toBeGreaterThan(0);
+  // Sans geste, même redemandé par le code de l'accueil (y compris un clic qu'il simule) : rien ne s'ouvre.
+  await demander(accueil, { type: "ouvrir", adresse: "/serie/the-bear?e=9" });
+  await accueil.evaluate(() => document.getElementById("ouvrir")!.click());
+  await new Promise((r) => setTimeout(r, 1500));
+  expect(await etatVueSite(l.app, "vidola")).toMatchObject({ url: "", visible: false });
+  expect(serveur.requetes).toEqual([]);
+  // ⌂ ne repart pas sur le site : l'accueil rechargé redemande, sans effet.
+  await cliquerOuvrir(page, "/serie/the-bear?e=4");
+  await expect.poll(async () => (await etatVueSite(l.app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear?e=4"));
+  await page.getByTestId("site-accueil").click();
+  await expect.poll(async () => (await etatVueSite(l.app, "vidola"))?.visible).toBe(false);
+  await new Promise((r) => setTimeout(r, 2000));
+  expect(await etatVueSite(l.app, "vidola")).toMatchObject({ visible: false, url: serveur.url("vidola-a.localhost", "/serie/the-bear?e=4") });
+  await l.fermer();
+});
+
+test("une image du site redirigée (vrai 302 du serveur) : suivie sur le site, refusée vers pub.localhost sans y aller", async () => {
+  serveur.definir("vidola-a.localhost", "/affiche.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
+  serveur.definir("vidola-a.localhost", "/img/123", (_req, res) => res.writeHead(302, { Location: "/affiche.png" }).end());
+  serveur.definir("vidola-a.localhost", "/img/pub", (_req, res) => res.writeHead(302, { Location: serveur.url("pub.localhost", "/pub.png") }).end());
+  serveur.definir("pub.localhost", "/pub.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
+  for (let i = 0; i < 5; i++) serveur.definir("vidola-a.localhost", `/boucle/${i}`, (_req, res) => res.writeHead(302, { Location: `/boucle/${i + 1}` }).end());
+  const { app, accueil, fermer } = await demarrerAccueil();
+  await app.evaluate(({ session }, url) => session.fromPartition("persist:site-vidola").cookies.set({ url, name: "essai", value: "appli" }), serveur.url("vidola-a.localhost", "/"));
+  await demander(accueil, { type: "image", n: 1, url: serveur.url("vidola-a.localhost", "/img/123") });
+  await demander(accueil, { type: "image", n: 2, url: serveur.url("vidola-a.localhost", "/img/pub") });
+  await demander(accueil, { type: "image", n: 3, url: serveur.url("vidola-a.localhost", "/boucle/0") });
+  await expect.poll(async () => (await recus(accueil)).filter((m) => m.type === "image").length).toBe(3);
+  const images = (await recus(accueil)).filter((m) => m.type === "image");
+  expect(images.find((m) => m.n === 1)?.data).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
+  expect(images.find((m) => m.n === 2)?.data).toBeNull();
+  expect(images.find((m) => m.n === 3)?.data).toBeNull();
+  const vues = serveur.requetes.map((r) => `${r.hote}${r.chemin}`);
+  expect(vues.filter((v) => v.startsWith("pub.localhost"))).toEqual([]);
+  // La redirection suivie garde les cookies de l'appli ; la boucle s'arrête après 3 sauts.
+  expect(serveur.requetes.find((r) => r.chemin === "/affiche.png")?.cookie).toBe("essai=appli");
+  expect(vues.filter((v) => v.includes("/boucle/"))).toEqual(["/boucle/0", "/boucle/1", "/boucle/2", "/boucle/3"].map((c) => `vidola-a.localhost${c}`));
   await fermer();
 });

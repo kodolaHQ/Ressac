@@ -213,3 +213,11 @@ if (!cadrePrincipal && location.protocol === "webaios-widget:") {
     true,
   );
 }
+if (!cadrePrincipal && location.protocol === "webaios-site:") {
+  // Écran d'accueil d'une appli de site : comme pour un widget, un vrai appui (souris, ou Entrée et Espace au clavier,
+  // `isTrusted`, que le code de l'accueil ne peut pas produire) est signalé au process principal, qui seul permet alors
+  // à l'accueil d'ouvrir une adresse du site. Écouté en capture, avant tout écouteur de l'accueil.
+  const signaler = () => ipcRenderer.send(CANAUX.siteAccueilGeste);
+  addEventListener("pointerdown", (e) => e.isTrusted && signaler(), true);
+  addEventListener("keydown", (e) => e.isTrusted && !e.repeat && (e.key === "Enter" || e.key === " ") && signaler(), true);
+}

@@ -111,6 +111,8 @@ export const CANAUX = {
   siteAccueilMemoireChange: "webaios:site-accueil-memoire-change",
   siteAccueilOuvrir: "webaios:site-accueil-ouvrir",
   siteAccueilImage: "webaios:site-accueil-image",
+  /** Vrai geste de l'utilisateur dans le cadre de l'accueil, signalé par le preload de ce cadre (seul lui permet `ouvrir`). */
+  siteAccueilGeste: "webaios:site-accueil-geste",
   /** Page Applications (fenêtre principale) : les applis de site. */
   sitesListe: "webaios:sites-liste",
   /** Diffusé quand une appli de site apparaît, change, s'ouvre ou se ferme (sans contenu : relire). */

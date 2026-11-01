@@ -36,6 +36,7 @@ import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { demarrerSites, type ServiceSites } from "./sites/service";
 import { repondreAccueilSite } from "./sites/accueil";
+import { requetesDe } from "./image-distante";
 import { SCHEMA_SITE } from "../commun/sites";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
@@ -286,13 +287,14 @@ app.whenReady().then(async () => {
     console.error("[webaios] le réseau de l'interface n'a pas pu être coupé :", e);
   }
   const sessionIcones = session.fromPartition("webaios-icones");
+  const requetesIcones = requetesDe(sessionIcones);
   protocol.handle(SCHEMA_ICONE, (requete) => repondreIcone((url, init) => sessionIcones.fetch(url, init), requete.url));
   // Exécutions, résultats et accords des actions : hors de l'espace, à côté de ceux des widgets.
   const dossierActions = join(dossier, "actions");
   // Les images des résultats d'une action sans compte : la même session sans cookies que les favicons.
   protocol.handle(SCHEMA_IMAGE, (requete) =>
     repondreImage(
-      { dossierActions, lireAction: async (id) => (agent ? lireAction(agent.chemins, id) : null), chercher: (url, init) => sessionIcones.fetch(url, init) },
+      { dossierActions, lireAction: async (id) => (agent ? lireAction(agent.chemins, id) : null), ouvrir: requetesIcones },
       requete.url,
     ),
   );
@@ -718,6 +720,7 @@ app.whenReady().then(async () => {
       },
       ouvrir: async (id, adresse) => sites?.ouvrirDepuisAccueil(id, adresse) ?? false,
       image: async (id, url) => (await sites?.imageAccueil(id, url)) ?? null,
+      gesteAccueil: (id) => sites?.gesteAccueil(id),
     },
     extensions: {
       // Dans l'espace actif de la fenêtre émettrice ; la carte s'ouvre dans cette fenêtre.
