@@ -1,9 +1,9 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { CLE_INVALIDE, DeclarationSite, MemoireSite, VALEUR_NON_JSON, type RetouchesLues } from "@webaios/noyau";
+import { accordCouvre, accordNecessaire, CLE_INVALIDE, DeclarationSite, MemoireSite, VALEUR_NON_JSON, type RetouchesLues } from "@webaios/noyau";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { InjectionCadre } from "../../src/commun/sites";
+import { CONSOLE_RETOUCHES_TOTAL, type InjectionCadre } from "../../src/commun/sites";
 import type { SiteOuvrable } from "../../src/main/sites/fenetres";
 
 type Gestionnaire = (e: unknown, ...a: unknown[]) => unknown;
@@ -16,7 +16,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-const { brancherInjection, injectionPour } = await import("../../src/main/sites/injection");
+const { ajouterConsoleRetouche, brancherInjection, injectionPour } = await import("../../src/main/sites/injection");
 
 const GARDE = "/* garde */";
 const declaration = DeclarationSite.parse({
@@ -117,17 +117,23 @@ test("un fichier cité mais absent du cache n'est pas injecté", () => {
 
 type FauxCadre = { url: string; parent: FauxCadre | null };
 const session = { nom: "persist:site-vidola" };
-const vue = { session };
 const principal: FauxCadre = { url: "https://vidola-b.example/series/x", parent: null };
+/** La vue du site : son cadre principal est celui qu'Electron donne (`mainFrame`), changé par les tests qui naviguent. */
+const vue: { session: typeof session; mainFrame: FauxCadre } = { session, mainFrame: principal };
+/** La vue navigue vers `url` : son nouveau cadre principal. */
+const naviguer = (url: string): FauxCadre => (vue.mainFrame = { url, parent: null });
 const sous: FauxCadre = { url: "https://www.lecteur.example/v", parent: principal };
 const evenement = (sender: unknown, senderFrame: FauxCadre | null) => ({ sender, senderFrame, returnValue: undefined as unknown });
 
 let memoire: MemoireSite;
+let accorde: boolean;
 let demandes: { id: string; cadre: { url: string; principal: boolean } }[];
 beforeEach(async () => {
   on.clear();
   handle.clear();
   demandes = [];
+  accorde = true;
+  vue.mainFrame = principal;
   memoire = await MemoireSite.ouvrir(mkdtempSync(join(tmpdir(), "injection-")), "vidola");
   brancherInjection({
     siteDeSession: (s) => ((s as unknown) === session ? "vidola" : undefined),
@@ -136,6 +142,7 @@ beforeEach(async () => {
       demandes.push({ id, cadre });
       return injectionPour(avec(), cadre);
     },
+    accorde: () => accorde,
     memoire: async () => memoire,
     adresseRelative: (_id, url) => {
       const u = new URL(url);
@@ -174,8 +181,9 @@ test("injection : un expéditeur hors d'une session de site, ou sans cadre, ne r
 const memoireIpc = (sender: unknown, cadre: FauxCadre | null, demande: unknown) => handle.get("webaios:site-memoire")!(evenement(sender, cadre), demande);
 
 test("mémoire : retenir reçoit l'adresse relative de la page principale ; lire, oublier", async () => {
-  expect(await memoireIpc(vue, { url: "https://vidola-b.example/serie/the-bear?e=4", parent: null }, { op: "retenir", cle: "encours.the-bear", valeur: { titre: "The Bear" } })).toEqual({ ok: true });
+  expect(await memoireIpc(vue, naviguer("https://vidola-b.example/serie/the-bear?e=4"), { op: "retenir", cle: "encours.the-bear", valeur: { titre: "The Bear" } })).toEqual({ ok: true });
   expect(memoire.contenu().valeurs["encours.the-bear"]).toMatchObject({ valeur: { titre: "The Bear" }, adresse: "/serie/the-bear?e=4" });
+  vue.mainFrame = principal;
   expect(await memoireIpc(vue, principal, { op: "lire", cle: "encours.the-bear" })).toEqual({ ok: true, valeur: { titre: "The Bear" } });
   expect(await memoireIpc(vue, principal, { op: "lire", cle: "absente" })).toEqual({ ok: true, valeur: null });
   expect(await memoireIpc(vue, principal, { op: "oublier", cle: "encours.the-bear" })).toEqual({ ok: true });
@@ -194,7 +202,52 @@ test("mémoire : refusée à un sous-cadre, à la petite fenêtre, hors session,
   expect(await memoireIpc({ session }, principal, demande)).toEqual(refus);
   expect(await memoireIpc({ session: {} }, principal, demande)).toEqual(refus);
   expect(await memoireIpc(vue, null, demande)).toEqual(refus);
-  expect(await memoireIpc(vue, { url: "https://compte.example/", parent: null }, demande)).toEqual(refus);
+  expect(await memoireIpc(vue, naviguer("https://compte.example/"), demande)).toEqual(refus);
+  vue.mainFrame = principal;
   for (const d of [null, "x", { op: "effacer", cle: "x" }, { op: "lire", cle: 3 }]) expect(await memoireIpc(vue, principal, d)).toEqual(refus);
   expect(memoire.contenu().valeurs).toEqual({});
+});
+
+test("principal = le cadre principal de la vue (mainFrame), jamais un autre cadre sans parent (cadre clôturé)", async () => {
+  const cloture: FauxCadre = { url: "https://vidola-b.example/series/x", parent: null };
+  expect((injection(evenement(vue, cloture)) as InjectionCadre).pont).toBe(false);
+  expect(demandes.at(-1)).toEqual({ id: "vidola", cadre: { url: cloture.url, principal: false } });
+  expect(await memoireIpc(vue, cloture, { op: "retenir", cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: expect.any(String) });
+  expect(memoire.contenu().valeurs).toEqual({});
+});
+
+test("mémoire : sans accord, refusée quel que soit l'appelant (même le cadre principal de la vue)", async () => {
+  accorde = false;
+  for (const op of ["retenir", "lire", "oublier"]) {
+    expect(await memoireIpc(vue, principal, { op, cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: expect.any(String) });
+  }
+  expect(memoire.contenu().valeurs).toEqual({});
+});
+
+test("un accord qui couvre moins de droits que la déclaration (cadres ajoutés) : aucune injection", () => {
+  const plus = DeclarationSite.parse({ ...declaration, retouches: [...declaration.retouches, { correspond: ["/x"], cadres: ["https://*.autre.example/*"] }] });
+  const accord = { domaines: ["vidola-a.example"], connexion: ["compte.example"], cadres: ["https://*.lecteur.example/*"], reprise: true };
+  // Ce que fait le service : accorde = !accordRequis, accordRequis = accordNecessaire && !accordCouvre.
+  const requis = accordNecessaire(plus) && !accordCouvre(accord, plus);
+  expect(requis).toBe(true);
+  const o = { ...avec(!requis), site: { ...site, declaration: plus, accordRequis: requis } };
+  expect(injectionPour(o, { url: "https://vidola-b.example/series/x", principal: true })).toBeNull();
+  expect(injectionPour(o, { url: "https://www.lecteur.example/v", principal: false })).toBeNull();
+  // Avec l'ancienne déclaration, le même accord suffit.
+  expect(accordCouvre(accord, declaration)).toBe(true);
+});
+
+test("console des retouches : texte tronqué à 2000 caractères, source à 500, total borné, 50 au plus, jamais vérifiée", () => {
+  const l: ReturnType<typeof ajouterConsoleRetouche> = [];
+  ajouterConsoleRetouche(l, { texte: "a".repeat(10_000), source: "webaios-retouche://vidola/" + "b".repeat(1000) }, "t");
+  expect(l[0]!.texte).toHaveLength(2000);
+  expect(l[0]!.source).toHaveLength(500);
+  expect(l[0]!.sourceVerifiee).toBe(false);
+  for (let n = 0; n < 100; n++) ajouterConsoleRetouche(l, { texte: `${n}`.padEnd(2000, "x"), source: "s" }, "t");
+  expect(l.reduce((t, e) => t + e.texte.length, 0)).toBeLessThanOrEqual(CONSOLE_RETOUCHES_TOTAL);
+  expect(l.at(-1)!.texte.startsWith("99")).toBe(true);
+  const petits: ReturnType<typeof ajouterConsoleRetouche> = [];
+  for (let n = 0; n < 80; n++) ajouterConsoleRetouche(petits, { texte: `${n}`, source: "s" }, "t");
+  expect(petits).toHaveLength(50);
+  expect(petits[0]!.texte).toBe("30");
 });

@@ -1,8 +1,15 @@
 import { ipcMain, type Session, type WebContents, type WebFrameMain } from "electron";
 import { adresseLocale, adresseRelative, retouchesPour, type MemoireSite, type RetouchesLues } from "@webaios/noyau";
 import { CANAUX_PRELOAD_SITE as CANAUX } from "../../commun/preload-site";
-import { sourceRetouche, type InjectionCadre } from "../../commun/sites";
-import type { SiteOuvrable } from "./fenetres";
+import {
+  CONSOLE_RETOUCHE_SOURCE_MAX,
+  CONSOLE_RETOUCHE_TEXTE_MAX,
+  CONSOLE_RETOUCHES_TOTAL,
+  ERREURS_RETOUCHES_MAX,
+  sourceRetouche,
+  type InjectionCadre,
+} from "../../commun/sites";
+import type { ErreurRetouche, SiteOuvrable } from "./fenetres";
 
 /** Rien dans ce cadre : ni retouche, ni pont, ni reprise. */
 const rien = (): InjectionCadre => ({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
@@ -66,13 +73,28 @@ export function injectionPour(
   return { css, js, garde: js.length > 0 ? o.garde : null, hotes, pont: cadre.principal, reprise: d.reprise };
 }
 
-/** Le cadre qui a envoyé le message, s'il est encore là (un cadre détruit entre-temps n'a rien). */
-function cadreDe(e: { senderFrame: WebFrameMain | null }): { url: string; principal: boolean } | null {
+/**
+ * Un message de console dont la source se dit une retouche, gardé borné : texte et source tronqués, au plus
+ * `ERREURS_RETOUCHES_MAX` messages et `CONSOLE_RETOUCHES_TOTAL` caractères de texte (les plus anciens oubliés).
+ * `sourceVerifiee` est toujours faux : la page peut nommer son propre code `webaios-retouche://…` (`//# sourceURL=`).
+ */
+export function ajouterConsoleRetouche(erreurs: ErreurRetouche[], m: { texte: string; source: string }, quand: string): ErreurRetouche[] {
+  erreurs.push({ quand, texte: m.texte.slice(0, CONSOLE_RETOUCHE_TEXTE_MAX), source: m.source.slice(0, CONSOLE_RETOUCHE_SOURCE_MAX), sourceVerifiee: false });
+  let total = erreurs.reduce((t, e) => t + e.texte.length, 0);
+  while (erreurs.length > ERREURS_RETOUCHES_MAX || (erreurs.length > 1 && total > CONSOLE_RETOUCHES_TOTAL)) total -= erreurs.shift()!.texte.length;
+  return erreurs;
+}
+
+/**
+ * Le cadre qui a envoyé le message, s'il est encore là (un cadre détruit entre-temps n'a rien). Principal : le cadre
+ * principal de la vue elle-même (`mainFrame`), jamais un autre cadre sans parent (racine d'un cadre clôturé).
+ */
+function cadreDe(e: { sender: WebContents; senderFrame: WebFrameMain | null }): { url: string; principal: boolean } | null {
   let f: WebFrameMain | null;
   try {
     f = e.senderFrame;
     if (!f) return null;
-    return { url: f.url, principal: f.parent === null };
+    return { url: f.url, principal: f === e.sender.mainFrame };
   } catch {
     return null;
   }
@@ -100,6 +122,8 @@ export function brancherInjection(o: {
   siteDeSession(s: Session): string | undefined;
   vue(id: string): WebContents | undefined;
   injection(id: string, cadre: { url: string; principal: boolean }): InjectionCadre | null;
+  /** L'accord des retouches couvre-t-il la déclaration ? Sans lui, pas de mémoire, quel que soit l'appelant. */
+  accorde(id: string): boolean;
   memoire(id: string): Promise<MemoireSite>;
   adresseRelative(id: string, url: string): string | null;
 }): void {
@@ -131,7 +155,7 @@ export function brancherInjection(o: {
     const id = appliDe(e.sender);
     const cadre = id === undefined ? null : cadreDe(e);
     const d = demandeMemoire(brute);
-    if (id === undefined || !cadre?.principal || !d) return { ok: false, erreur: REFUS_MEMOIRE };
+    if (id === undefined || !cadre?.principal || !d || !o.accorde(id)) return { ok: false, erreur: REFUS_MEMOIRE };
     const adresse = o.adresseRelative(id, cadre.url);
     if (adresse === null) return { ok: false, erreur: REFUS_MEMOIRE };
     const m = await o.memoire(id);

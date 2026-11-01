@@ -809,6 +809,12 @@ test.describe("retouches", () => {
     serveur.definir("vidola-a.localhost", "/lecteur", `<title>Lecteur</title><iframe id="l" src="${serveur.url("lecteur.localhost", "/v")}"></iframe>`);
     serveur.definir("lecteur.localhost", "/v", "<title>Vidéo</title><video></video>");
     serveur.definir("vidola-a.localhost", "/erreur", "<title>Erreur</title><p id='p'>la page marche</p>");
+    // Une page qui arrête DOMContentLoaded dès window, en capture, avant tout autre écouteur qu'elle connaît.
+    serveur.definir(
+      "vidola-a.localhost",
+      "/serie/bloque",
+      '<title>Bloque</title><script>window.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true); document.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true);</script><div class="shorts" id="shorts">shorts</div><input type="password" id="mdp">',
+    );
   });
 
   const commande = async (app: ElectronApplication, c: string) => {
@@ -898,11 +904,13 @@ test.describe("retouches", () => {
     const { app, fermer } = await demarrerRetouches();
     await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("vidola-a.localhost", "/erreur"))}`);
     await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.apres ?? null")).toBe("oui");
-    const erreurs = () => app.evaluate(() => (globalThis as unknown as { __webaiosErreursRetouches(id: string): { texte: string; source: string }[] }).__webaiosErreursRetouches("vidola"));
+    const erreurs = () => app.evaluate(() => (globalThis as unknown as { __webaiosErreursRetouches(id: string): { texte: string; source: string; sourceVerifiee: boolean }[] }).__webaiosErreursRetouches("vidola"));
     await expect.poll(async () => (await erreurs()).map((e) => e.texte).join("\n")).toContain("retouche cassée");
     await expect.poll(async () => (await erreurs()).map((e) => e.texte).join("\n")).toContain("plus tard");
     const e = (await erreurs()).find((x) => x.texte.includes("retouche cassée"))!;
     expect(e.source).toMatch(/^webaios-retouche:\/\/vidola\/erreur\.js/);
+    // La source se dit une retouche : rien ne le prouve (la page peut se nommer ainsi).
+    expect(e.sourceVerifiee).toBe(false);
     expect(await vueSite(app, "vidola", 'document.getElementById("p").textContent')).toBe("la page marche");
     await fermer();
   });
@@ -917,11 +925,44 @@ test.describe("retouches", () => {
     await fermer();
   });
 
-  test("sans accord : ni CSS ni script de l'agent dans la page", async () => {
+  test("une page qui appelle stopImmediatePropagation sur DOMContentLoaded (window, capture) : la retouche tourne", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("vidola-a.localhost", "/serie/bloque"))}`);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/bloque"));
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBe("oui");
+    await fermer();
+  });
+
+  test("le canal mémoire qui échoue : le pont rejette sans redemander (un seul appel)", async () => {
+    const { app, fermer } = await demarrerRetouches();
+    await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.retenu")).toBe("oui");
+    await app.evaluate(({ ipcMain }) => {
+      const g = globalThis as unknown as { appelsMemoire: unknown[] };
+      g.appelsMemoire = [];
+      ipcMain.removeHandler("webaios:site-memoire");
+      ipcMain.handle("webaios:site-memoire", (_e, d) => {
+        g.appelsMemoire.push(d);
+        throw new Error("panne");
+      });
+    });
+    expect(await commande(app, "lire")).toMatch(/^refus:/);
+    expect(await app.evaluate(() => (globalThis as unknown as { appelsMemoire: unknown[] }).appelsMemoire.length)).toBe(1);
+    // Une valeur non clonable n'est jamais envoyée telle quelle, et l'erreur n'est pas redemandée.
+    expect(await commande(app, "non-json")).toMatch(/^refus:/);
+    expect(await app.evaluate(() => (globalThis as unknown as { appelsMemoire: unknown[] }).appelsMemoire.length)).toBeLessThanOrEqual(2);
+    await fermer();
+  });
+
+  for (const [cas, accord] of [
+    ["sans accord", () => ({})],
+    // L'accord d'avant l'ajout du motif de cadres : il couvre moins que ce que la déclaration demande.
+    ["avec un accord qui couvre moins que la déclaration", () => ({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [], reprise: false } })],
+  ] as const)
+  test(`${cas} : ni CSS ni script de l'agent dans la page`, async () => {
     const { app, profil, fenetre, fermer } = await demarrerRetouches();
     await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche")).toBe("oui");
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes("/renderer/site.html")).forEach((w) => w.destroy()));
-    writeFileSync(join(profil, "sites-accords.json"), "{}");
+    writeFileSync(join(profil, "sites-accords.json"), JSON.stringify(accord()));
     await ouvrirSite(fenetre, "vidola");
     await fenetreSite(app, "vidola");
     // Sans accord, la vue attend la carte (tâche suivante) : la page est chargée ici à la main, dans la vue de l'appli.

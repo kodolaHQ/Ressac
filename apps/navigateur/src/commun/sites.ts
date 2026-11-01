@@ -76,6 +76,11 @@ export type MessageVersLAccueil =
 
 /** Erreurs de console des retouches gardées par appli ouverte (les plus récentes). */
 export const ERREURS_RETOUCHES_MAX = 50;
+/** Longueur gardée du texte d'un message de console des retouches, et de sa source. */
+export const CONSOLE_RETOUCHE_TEXTE_MAX = 2000;
+export const CONSOLE_RETOUCHE_SOURCE_MAX = 500;
+/** Total des textes gardés par appli ouverte : au-delà, les plus anciens sont oubliés. */
+export const CONSOLE_RETOUCHES_TOTAL = 32_000;
 /** Préfixe des sources des retouches (`webaios-retouche://<id>/<fichier>`), pour reconnaître leurs messages de console. */
 export const sourceRetouche = (id: string, fichier: string) => `webaios-retouche://${id}/${fichier}`;
 

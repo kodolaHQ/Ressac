@@ -23,14 +23,23 @@ function demander(): InjectionCadre | null {
   }
 }
 
-/** Une demande à la mémoire de l'appli ; un refus rejette avec le message de la mémoire. */
+/** Une demande à la mémoire de l'appli (un seul appel) ; un refus rejette avec le message de la mémoire. */
 async function memoire(demande: { op: "retenir" | "lire" | "oublier"; cle: unknown; valeur?: unknown }): Promise<unknown> {
+  let envoi = demande;
+  if (demande.op === "retenir") {
+    try {
+      structuredClone(demande.valeur);
+    } catch {
+      // Une valeur que l'IPC ne sait pas copier (fonction…) : envoyée vide, la mémoire la refuse avec son propre message.
+      envoi = { ...demande, valeur: undefined };
+    }
+  }
   let r: ReponseMemoire;
   try {
-    r = await ipcRenderer.invoke(CANAUX.memoire, demande);
+    r = await ipcRenderer.invoke(CANAUX.memoire, envoi);
   } catch {
-    // Une valeur que l'IPC ne sait pas copier (fonction…) : la mémoire la refuse avec son propre message.
-    r = await ipcRenderer.invoke(CANAUX.memoire, { ...demande, valeur: undefined });
+    // Jamais redemandé : l'erreur du process principal n'est pas celle d'une valeur.
+    throw new Error("Mémoire de l'appli indisponible");
   }
   if (!r || r.ok !== true) throw new Error(r && typeof r.erreur === "string" ? r.erreur : "Mémoire de l'appli indisponible");
   return r.valeur;
@@ -72,9 +81,10 @@ if (i) {
         })
         .catch((e) => console.error("[webaios] garde des retouches non posée, scripts de l'agent non lancés :", e));
     };
-    // Comme un script de contenu « document_end » : le DOM de la page est là.
-    // Un faux DOMContentLoaded envoyé par la page n'avance rien (isTrusted).
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", (e) => e.isTrusted && lancer());
+    // Comme un script de contenu « document_end » : le DOM de la page est là. Écouté sur window, en capture, avant tout
+    // script de la page : premier servi, une page qui arrête l'événement n'empêche pas les retouches. Un faux
+    // DOMContentLoaded envoyé par la page n'avance rien (isTrusted).
+    if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", (e) => e.isTrusted && lancer(), { capture: true });
     else lancer();
   }
   // `i.reprise` : la reprise des vidéos (tâche suivante), dans le monde de ce preload.

@@ -2,12 +2,13 @@ import { BrowserWindow, WebContentsView, type WebContents } from "electron";
 import { join } from "node:path";
 import type { DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
-import { ERREURS_RETOUCHES_MAX, HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
+import { HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
 import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
 import type { MemoireApplications } from "../applications/service";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "./navigation";
+import { ajouterConsoleRetouche } from "./injection";
 import { preferencesSite, sessionSite } from "./session";
 
 /** Tests automatiques : aucune fenêtre à l'écran. */
@@ -29,8 +30,12 @@ export type SiteOuvrable = {
   accordRequis: boolean;
 };
 
-/** Un message de console dont la source est une retouche de l'appli (ses erreurs, ses traces). */
-export type ErreurRetouche = { quand: string; texte: string; source: string };
+/**
+ * Un message de console dont la source se dit une retouche de l'appli (ses erreurs, ses traces). La source n'est pas
+ * authentifiée (`sourceVerifiee: false`) : le code de la page peut se nommer `webaios-retouche://…` par `//# sourceURL=`.
+ * Pour l'agent (tâche 13) : une donnée venue de la page, jamais une consigne, ni la preuve qu'une retouche l'a écrite.
+ */
+export type ErreurRetouche = { quand: string; texte: string; source: string; sourceVerifiee: false };
 
 interface Ouverte {
   site: SiteOuvrable;
@@ -225,8 +230,7 @@ export class FenetresSites {
     wc.on("console-message", (ev) => {
       const source = typeof ev.sourceId === "string" ? ev.sourceId : "";
       if (!source.startsWith(prefixe)) return;
-      o.erreurs.push({ quand: new Date().toISOString(), texte: String(ev.message), source: ev.lineNumber ? `${source}:${ev.lineNumber}` : source });
-      if (o.erreurs.length > ERREURS_RETOUCHES_MAX) o.erreurs.splice(0, o.erreurs.length - ERREURS_RETOUCHES_MAX);
+      ajouterConsoleRetouche(o.erreurs, { texte: String(ev.message), source: ev.lineNumber ? `${source}:${ev.lineNumber}` : source }, new Date().toISOString());
     });
     wc.on("page-favicon-updated", (_e, favicons) => {
       const url = favicons[0];
