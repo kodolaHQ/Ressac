@@ -5,13 +5,14 @@
    * La carte d'accord des retouches de l'appli, dans sa fenêtre : ce que l'agent demande (domaines, connexion, cadres,
    * reprise) et ce qu'il injecte. Tout vient de site.json, écrit par l'agent : affiché en texte, jamais en HTML.
    */
-  let { accord, accorder }: { accord: DemandeAccordSite; accorder: (oui: boolean) => Promise<void> } = $props();
+  let { accord, accorder }: { accord: DemandeAccordSite; accorder: (oui: boolean, empreinte: string) => Promise<void> } = $props();
   let enCours = $state(false);
 
   const choisir = (oui: boolean) => {
     if (enCours) return;
     enCours = true;
-    void accorder(oui).finally(() => (enCours = false));
+    // L'empreinte des droits affichés : le main n'accorde que ceux-là.
+    void accorder(oui, accord.empreinte).finally(() => (enCours = false));
   };
 </script>
 
@@ -21,6 +22,10 @@
     <dl>
       <dt>Domaines</dt>
       <dd data-testid="accord-site-domaines">{accord.domaines.join(", ")}</dd>
+      {#if accord.suivis.length}
+        <dt>Adresses suivies</dt>
+        <dd data-testid="accord-site-suivis">{accord.suivis.join(", ")}</dd>
+      {/if}
       {#if accord.connexion.length}
         <dt>Connexion</dt>
         <dd data-testid="accord-site-connexion">{accord.connexion.join(", ")}</dd>

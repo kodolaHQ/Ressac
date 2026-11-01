@@ -30,7 +30,7 @@ import { requetesDe } from "../image-distante";
 import { gardienGestes } from "../agent/geste-widget";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
-import { FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
+import { empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
 import { brancherInjection, injectionPour } from "./injection";
 import { fixerPreloadSite, sessionSite, siteDeSession } from "./session";
 
@@ -61,11 +61,12 @@ export interface ServiceSites {
    */
   ouvrirDepuisAccueil(id: string, adresse: string): boolean;
   /**
-   * La carte d'accord des retouches de l'appli ouverte. oui : les droits de la déclaration affichée sont retenus
-   * (`<profil>/sites-accords.json`), puis la vue suivante avec retouches ; non : la vue suivante sans retouches ni
-   * reprise, pour cette ouverture seulement. Rien si la carte n'est pas affichée.
+   * La carte d'accord des retouches de l'appli ouverte. oui : si `empreinte` (celle de la carte cliquée) est encore celle
+   * des droits de la déclaration, ils sont retenus (`<profil>/sites-accords.json`), puis la vue suivante avec retouches ;
+   * sinon rien n'est accordé et la carte à jour est rediffusée. non : la vue suivante sans retouches ni reprise, pour
+   * cette ouverture seulement. Rien si la carte n'est pas affichée.
    */
-  accorder(id: string, oui: boolean): Promise<void>;
+  accorder(id: string, oui: boolean, empreinte: string): Promise<void>;
   /** Vrai appui de l'utilisateur dans le cadre de l'accueil de l'appli (vu par le preload de ce cadre). */
   gesteAccueil(id: string): void;
   /** Une image d'un domaine de l'appli, en `data:` (session de l'appli) ; null si refusée. */
@@ -352,12 +353,14 @@ export function demarrerSites(o: {
       derniereOuverture.set(id, maintenant);
       return true;
     },
-    async accorder(id, oui) {
+    async accorder(id, oui, empreinte) {
       const montree = fenetres.site(id);
       if (!montree || fenetres.etat(id)?.vue !== "accord") return;
       if (!oui) return fenetres.apresAccord(id, null);
-      // Les droits de la déclaration montrée par la carte, pris avant toute attente (site.json peut changer entre-temps).
+      // La déclaration connue du main, prise avant toute attente, n'est accordée que si ses droits sont ceux de la carte
+      // cliquée : site.json a pu grandir entre l'affichage et le clic (l'agent choisit son moment).
       const d = montree.declaration;
+      if (empreinteDroits(d) !== empreinte) return fenetres.rediffuser(id);
       await accorderSite(o.dossierProfil, id, d);
       const s = fenetres.site(id);
       if (!s) return;

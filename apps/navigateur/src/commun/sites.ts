@@ -35,7 +35,14 @@ export type DemandeAccordSite = {
   reprise: boolean;
   fichiers: string[];
   correspond: string[];
+  /** Domaines où le site a été retrouvé par le suivi de l'adresse (hors `domaines`) : les retouches y tournent aussi. */
+  suivis: string[];
+  /** sha256 (hex) des droits demandés (`droitsDe`) : « Autoriser » ne vaut que pour ceux que la carte a montrés. */
+  empreinte: string;
 };
+
+/** Longueur d'une empreinte de droits (sha256 en hex). */
+export const EMPREINTE_ACCORD_LONGUEUR = 64;
 
 export type EtatFenetreSite = {
   id: string;

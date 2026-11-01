@@ -28,7 +28,7 @@
   {#if etat.vue === "accueil"}
     <CadreAccueil id={etat.id} {api} />
   {:else if etat.vue === "accord" && etat.accord}
-    <CarteAccordSite accord={etat.accord} accorder={(oui) => api.accorder(oui)} />
+    <CarteAccordSite accord={etat.accord} accorder={(oui, empreinte) => api.accorder(oui, empreinte)} />
   {/if}
 {/if}
 

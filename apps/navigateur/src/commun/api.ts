@@ -561,8 +561,9 @@ export interface ApiSite {
   /**
    * La carte d'accord des retouches. oui : l'accord est retenu, puis la vue suivante (accueil ou site) avec retouches ;
    * non : la vue suivante sans retouches ni reprise, pour cette ouverture seulement (la carte revient à la prochaine).
+   * `empreinte` : celle de la carte cliquée ; si les droits ont changé depuis, rien n'est accordé et la carte revient à jour.
    */
-  accorder(oui: boolean): Promise<void>;
+  accorder(oui: boolean, empreinte: string): Promise<void>;
   /** Pour l'écran d'accueil : la mémoire de l'appli et ses positions de reprise (lecture), et le domaine actuel. */
   memoire(): Promise<MessageVersLAccueil & { type: "memoire" }>;
   /** Chaque changement de la mémoire de l'appli ; renvoie le désabonnement. */

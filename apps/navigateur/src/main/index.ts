@@ -714,7 +714,7 @@ app.whenReady().then(async () => {
       idDe: (sender) => sites?.fenetres.idDeInterface(sender),
       etat: (id) => sites?.fenetres.etat(id) ?? null,
       geste: (id, g) => sites?.fenetres[g](id),
-      accorder: async (id, oui) => sites?.accorder(id, oui),
+      accorder: async (id, oui, empreinte) => sites?.accorder(id, oui, empreinte),
       memoire: async (id) => {
         if (!sites) throw new Error("applis de site pas prêtes");
         return sites.memoireAccueil(id);

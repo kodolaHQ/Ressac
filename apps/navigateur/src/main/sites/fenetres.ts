@@ -1,4 +1,5 @@
 import { BrowserWindow, WebContentsView, type WebContents } from "electron";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { droitsDe, type DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
@@ -71,8 +72,18 @@ function hoteHttp(url: string): string | null {
 
 const uniques = (l: string[]) => [...new Set(l)];
 
-/** Ce que la carte d'accord montre : les droits demandés par la déclaration, et les fichiers qu'elle injecte. */
-function demandeAccord(d: DeclarationSite): DemandeAccordSite {
+/** L'empreinte des droits demandés par la déclaration (ceux que l'accord retient). */
+export function empreinteDroits(d: DeclarationSite): string {
+  return createHash("sha256").update(JSON.stringify(droitsDe(d))).digest("hex");
+}
+
+/**
+ * Ce que la carte d'accord montre : les droits demandés par la déclaration, les fichiers qu'elle injecte, les domaines
+ * ajoutés par le suivi de l'adresse, et l'empreinte des droits (renvoyée par « Autoriser »).
+ */
+function demandeAccord(s: SiteOuvrable): DemandeAccordSite {
+  const d = s.declaration;
+  const declares = new Set(d.domaines.map((x) => x.toLowerCase()));
   return {
     nom: d.nom,
     domaines: [...d.domaines],
@@ -81,6 +92,8 @@ function demandeAccord(d: DeclarationSite): DemandeAccordSite {
     reprise: d.reprise,
     fichiers: uniques(d.retouches.flatMap((r) => [...r.js, ...r.css])),
     correspond: uniques(d.retouches.flatMap((r) => r.correspond)),
+    suivis: uniques(s.domaines.map((x) => x.toLowerCase()).filter((x) => !declares.has(x))),
+    empreinte: empreinteDroits(d),
   };
 }
 
@@ -378,7 +391,7 @@ export class FenetresSites {
       peutAvancer: vivante && wc.navigationHistory.canGoForward(),
       suivi: o.site.declaration.suiviAdresse !== undefined,
       avis: o.avis,
-      accord: o.affichee === "accord" ? demandeAccord(o.site.declaration) : null,
+      accord: o.affichee === "accord" ? demandeAccord(o.site) : null,
     };
   }
 
@@ -485,6 +498,12 @@ export class FenetresSites {
   rechargerVue(id: string): void {
     const o = this.ouverte(id);
     if (o?.chargee && !o.vue.webContents.isDestroyed()) o.vue.webContents.reload();
+  }
+
+  /** Rediffuse l'état de la fenêtre (la carte à jour, après un « Autoriser » sur des droits qui ont changé). */
+  rediffuser(id: string): void {
+    const o = this.ouverte(id);
+    if (o) this.diffuserEtat(o);
   }
 
   /** L'appli telle qu'elle a été ouverte (déclaration, domaines effectifs, départ), si sa fenêtre l'est. */

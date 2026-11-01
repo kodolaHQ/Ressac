@@ -1,7 +1,7 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
 import { accueilSiteDuCadre } from "./sites/cadre-accueil";
-import { ADRESSE_ACCUEIL_MAX, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
+import { ADRESSE_ACCUEIL_MAX, EMPREINTE_ACCORD_LONGUEUR, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
 import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution, Proprietaire } from "@webaios/noyau";
@@ -119,7 +119,7 @@ export interface Gestionnaires {
     etat(id: string): EtatFenetreSite | null;
     geste(id: string, g: GesteSite): void;
     /** La carte d'accord des retouches de l'appli : « Autoriser » ou « Ouvrir sans retouches ». */
-    accorder(id: string, oui: boolean): Promise<void>;
+    accorder(id: string, oui: boolean, empreinte: string): Promise<void>;
     /** L'écran d'accueil (relayé par l'interface) : mémoire en lecture, une adresse du site, une image du site. */
     memoire(id: string): Promise<MessageVersLAccueil & { type: "memoire" }>;
     ouvrir(id: string, adresse: string): Promise<boolean>;
@@ -389,11 +389,11 @@ export function brancherIpc(g: Gestionnaires): void {
       const id = siteDe(e);
       if (id) g.site.geste(id, geste);
     });
-  ipcMain.handle(CANAUX.siteAccorder, (e, oui: unknown) => {
+  ipcMain.handle(CANAUX.siteAccorder, (e, oui: unknown, empreinte: unknown) => {
     const id = siteDe(e);
     if (!id) throw new Error("expéditeur inconnu");
-    if (typeof oui !== "boolean") throw new Error("réponse invalide");
-    return g.site.accorder(id, oui);
+    if (typeof oui !== "boolean" || !chaine(empreinte, EMPREINTE_ACCORD_LONGUEUR)) throw new Error("réponse invalide");
+    return g.site.accorder(id, oui, empreinte);
   });
   // L'écran d'accueil passe par l'interface de sa fenêtre : l'appli vient de l'expéditeur, les adresses sont bornées.
   ipcMain.handle(CANAUX.siteAccueilMemoire, (e) => {

@@ -1121,6 +1121,72 @@ test.describe("carte d'accord", () => {
     await fermer();
   });
 
+  type ApiCarte = { webaios: { site: { etat(): Promise<{ accord: { empreinte: string } | null }>; accorder(oui: boolean, empreinte?: string): Promise<void> } } };
+
+  test("Autoriser avec l'empreinte de la v1 après l'écriture de la v2 : rien n'est accordé, la carte reste et montre la v2", async () => {
+    const { app, page, racine, profil, fermer } = await demarrerCarte();
+    const v1 = await page.evaluate(() => (window as unknown as ApiCarte).webaios.site.etat().then((e) => e.accord?.empreinte ?? null));
+    expect(v1).toMatch(/^[0-9a-f]{64}$/);
+    writeFileSync(join(racine, "sites", "vidola", "site.json"), JSON.stringify(declaration({ connexion: ["compte.localhost", "evil.localhost"] })));
+    // La v2 est prise en compte par le main (son empreinte a changé).
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as ApiCarte).webaios.site.etat().then((e) => e.accord?.empreinte ?? null)), { timeout: 10_000 })
+      .not.toBe(v1);
+    await page.evaluate((v1) => (window as unknown as ApiCarte).webaios.site.accorder(true, v1!), v1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(existsSync(join(profil, "sites-accords.json")) && JSON.parse(readFileSync(join(profil, "sites-accords.json"), "utf8")).vidola).toBeFalsy();
+    await expect(page.getByTestId("carte-accord-site")).toBeVisible();
+    await expect(page.getByTestId("accord-site-connexion")).toContainText("evil.localhost");
+    expect((await etatVueSite(app, "vidola"))?.visible).toBe(false);
+    // Avec l'empreinte de la v2 (celle de la carte à jour), le clic accorde.
+    await page.getByTestId("accorder-site").click();
+    await expect.poll(() => shorts(app)).toBe("none");
+    expect(JSON.parse(readFileSync(join(profil, "sites-accords.json"), "utf8")).vidola.connexion).toEqual(["compte.localhost", "evil.localhost"]);
+    await fermer();
+  });
+
+  test("les domaines ajoutés par le suivi de l'adresse sont nommés sur la carte (adresses suivies)", async () => {
+    const l = await demarrer({ vidola: { declaration: declaration(), fichiers: { "retouches/a.js": A_JS, "retouches/cacher.css": ".shorts { display: none; }" } } });
+    const dossier = join(l.profil, "sites", "vidola");
+    mkdirSync(dossier, { recursive: true });
+    writeFileSync(join(dossier, "adresse.json"), JSON.stringify({ actuel: "vidola-b.localhost", anciens: ["vidola-a.localhost"], depuis: new Date().toISOString() }));
+    await ouvrirSite(l.fenetre, "vidola");
+    const page = await fenetreSite(l.app, "vidola");
+    await expect(page.getByTestId("accord-site-suivis")).toContainText("vidola-b.localhost");
+    await expect(page.getByTestId("accord-site-suivis")).not.toContainText("vidola-a.localhost");
+    await l.fermer();
+  });
+
+  test("webaios:site-accorder est refusé depuis la vue du site et depuis un sous-cadre de l'interface", async () => {
+    const { app, page, profil, fermer } = await demarrerCarte();
+    const empreinte = await page.evaluate(() => (window as unknown as ApiCarte).webaios.site.etat().then((e) => e.accord!.empreinte));
+    // Le main répond comme il le ferait à la vue du site ou à un sous-cadre : on rejoue le gestionnaire avec ces expéditeurs.
+    const refus = await app.evaluate(async ({ BrowserWindow, ipcMain }, empreinte) => {
+      const f = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes("/renderer/site.html"))!;
+      const vue = (f.contentView.children[0] as Electron.WebContentsView).webContents;
+      const gestionnaire = (ipcMain as unknown as { _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => unknown> })._invokeHandlers.get("webaios:site-accorder")!;
+      const essayer = async (e: unknown) => {
+        try {
+          await gestionnaire(e, true, empreinte);
+          return "accepte";
+        } catch (err) {
+          return String((err as Error).message);
+        }
+      };
+      // Un faux sous-cadre de l'interface : un cadre qui n'est pas son cadre principal.
+      const sousCadre = { frameTreeNodeId: -1, url: "webaios-site://vidola/index.html", parent: f.webContents.mainFrame };
+      return [await essayer({ sender: vue, senderFrame: vue.mainFrame }), await essayer({ sender: f.webContents, senderFrame: sousCadre })];
+    }, empreinte);
+    expect(refus).toEqual(["expéditeur inconnu", "expéditeur inconnu"]);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(existsSync(join(profil, "sites-accords.json"))).toBe(false);
+    await expect(page.getByTestId("carte-accord-site")).toBeVisible();
+    // Une empreinte qui n'est pas une chaîne bornée est refusée par l'IPC.
+    const invalide = await page.evaluate(() => (window as unknown as { webaios: { site: { accorder(o: boolean, e: unknown): Promise<void> } } }).webaios.site.accorder(true, "x".repeat(200)).then(() => "accepte", (e: Error) => e.message));
+    expect(invalide).toContain("réponse invalide");
+    await fermer();
+  });
+
   test("boutons de la carte no-drag", async () => {
     const { page, fermer } = await demarrerCarte();
     const region = (id: string) => page.getByTestId(id).evaluate((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region"));
