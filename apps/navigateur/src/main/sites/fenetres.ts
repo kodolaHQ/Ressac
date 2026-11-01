@@ -12,6 +12,9 @@ import { preferencesSite, sessionSite } from "./session";
 /** Tests automatiques : aucune fenêtre à l'écran. */
 const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
 
+/** Écart minimal entre deux diffusions d'un changement de la mention « lien bloqué ». */
+const ECART_AVIS_MS = 500;
+
 /** Petite fenêtre d'un domaine de connexion (OAuth…), comme celle d'un onglet. */
 const PETITE_FENETRE = { largeur: 500, hauteur: 650 };
 
@@ -38,6 +41,9 @@ interface Ouverte {
   /** La dernière adresse chargée par WebAiOs (`aller`), pour le suivi de l'adresse. */
   voulue: string | null;
   pleinEcran: boolean;
+  /** Dernière diffusion d'un changement de mention (un cadre hostile peut en provoquer des centaines). */
+  avisDiffuse: number;
+  minuterieAvis: NodeJS.Timeout | undefined;
   /** Petites fenêtres de connexion ouvertes par la page : fermées avec l'appli. */
   petites: Set<BrowserWindow>;
 }
@@ -149,7 +155,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, pleinEcran: false, petites: new Set() };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -160,6 +166,7 @@ export class FenetresSites {
     f.on("move", noterCadre);
     f.on("close", noterCadre);
     f.on("closed", () => {
+      clearTimeout(o.minuterieAvis);
       for (const p of o.petites) if (!p.isDestroyed()) p.destroy();
       if (!vue.webContents.isDestroyed()) vue.webContents.close();
       if (this.ouvertesParId.get(id) === o) this.ouvertesParId.delete(id);
@@ -288,7 +295,34 @@ export class FenetresSites {
     o.bloquee = url;
     if (o.avis?.genre === "lien-bloque" && o.avis.domaine === domaine) return;
     o.avis = { genre: "lien-bloque", domaine };
-    this.diffuserEtat(o);
+    this.diffuserAvis(o);
+  }
+
+  /** Au plus un changement de mention diffusé par `ECART_AVIS_MS` ; le dernier part toujours (en différé). */
+  private diffuserAvis(o: Ouverte): void {
+    if (o.minuterieAvis) return;
+    const attente = o.avisDiffuse + ECART_AVIS_MS - Date.now();
+    const diffuser = () => {
+      o.minuterieAvis = undefined;
+      o.avisDiffuse = Date.now();
+      this.diffuserEtat(o);
+    };
+    if (attente <= 0) diffuser();
+    else o.minuterieAvis = setTimeout(diffuser, attente);
+  }
+
+  /**
+   * L'entrée d'historique visée par « précédent » ou « suivant » est revue avec les règles d'aujourd'hui : les domaines
+   * ont pu rétrécir depuis la visite (site.json réécrit, appli rouverte). Vrai si elle est permise.
+   */
+  private historiquePermis(o: Ouverte, ecart: -1 | 1): boolean {
+    const h = o.vue.webContents.navigationHistory;
+    const i = h.getActiveIndex() + ecart;
+    if (i < 0 || i >= h.length()) return false;
+    const url = h.getEntryAtIndex(i)?.url ?? "";
+    if (decisionNavigation(url, this.contexte(o)) === "suivre") return true;
+    this.bloquer(o, url);
+    return false;
   }
 
   /** La vue du site sous la barre (toute la fenêtre en plein écran), visible seulement en vue « site ». */
@@ -378,12 +412,12 @@ export class FenetresSites {
 
   precedent(id: string): void {
     const o = this.ouverte(id);
-    if (o?.affichee === "site" && o.vue.webContents.navigationHistory.canGoBack()) o.vue.webContents.navigationHistory.goBack();
+    if (o?.affichee === "site" && o.vue.webContents.navigationHistory.canGoBack() && this.historiquePermis(o, -1)) o.vue.webContents.navigationHistory.goBack();
   }
 
   suivant(id: string): void {
     const o = this.ouverte(id);
-    if (o?.affichee === "site" && o.vue.webContents.navigationHistory.canGoForward()) o.vue.webContents.navigationHistory.goForward();
+    if (o?.affichee === "site" && o.vue.webContents.navigationHistory.canGoForward() && this.historiquePermis(o, 1)) o.vue.webContents.navigationHistory.goForward();
   }
 
   recharger(id: string): void {

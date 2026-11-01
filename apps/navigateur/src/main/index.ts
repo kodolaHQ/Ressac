@@ -121,6 +121,8 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     height: 900,
     ...cadre,
     show: !INVISIBLE,
+    // Tests : macOS montrerait la fenêtre pour la passer en plein écran ; la page y passe quand même (vidéo en plein écran).
+    fullscreenable: !INVISIBLE,
     titleBarStyle: "hiddenInset",
     // Boutons de la fenêtre centrés sur la rangée du haut de la barre latérale (← → recharger, centre vers 27 px,
     // mesuré à l'écran par l'utilisateur) ; ceux de macOS font 14 px de haut et s'arrêtent avant les 70 px laissés à gauche.

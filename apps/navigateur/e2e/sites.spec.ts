@@ -49,6 +49,13 @@ test.beforeAll(async () => {
   serveur.definir("pub.localhost", "/cadre", "<title>Cadre pub</title><p>pub</p>");
   serveur.definir("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
   serveur.definir("compte.localhost", "/connexion", "<title>Connexion</title>");
+  serveur.definir("vidola-a.localhost", "/refresh", `<title>Refresh</title><meta http-equiv="refresh" content="0;url=${pub("/meta")}">`);
+  serveur.definir(
+    "vidola-a.localhost",
+    "/formulaire",
+    `<title>Formulaire</title><form id="f" method="post" action="${pub("/post")}"><input name="q" value="secret"><button id="envoyer">ok</button></form>`,
+  );
+  serveur.definir("vidola-b.localhost", "/", "<title>Vidola B</title>");
 });
 test.afterAll(() => serveur.fermer());
 // Les requêtes notées sont celles du test en cours (un test précédent a pu ouvrir pub.localhost dans un onglet).
@@ -249,7 +256,8 @@ test("requestFullscreen d'un élément : document.fullscreenElement posé, la vu
   await expect.poll(() => vueSite(app, "vidola", "document.title")).toBe("Plein");
   await vueSite(app, "vidola", "void document.getElementById('plein').requestFullscreen(); 1", { geste: true });
   await expect.poll(() => vueSite(app, "vidola", "!!document.fullscreenElement"), { timeout: 10_000 }).toBe(true);
-  // Même en plein écran, aucune fenêtre n'est montrée en test.
+  // Même en plein écran, aucune fenêtre n'est montrée en test (macOS anime le passage : on lui laisse le temps).
+  await new Promise((r) => setTimeout(r, 1000));
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))).toBe(false);
   await expect
     .poll(async () => {
@@ -349,5 +357,118 @@ test("un cookie posé par l'appli n'est ni dans persist:webaios, ni dans persist
   expect(visites).toEqual([]);
   expect((await urlsOnglets(fenetre)).some((u) => u.includes("vidola"))).toBe(false);
   expect(await app.evaluate(({ session }) => session.fromPartition("persist:site-vidola").extensions.getAllExtensions().length)).toBe(0);
+  await fermer();
+});
+
+/** Les requêtes reçues par pub.localhost pendant ce test, hors le cadre publicitaire que la page d'accueil du site contient. */
+const rienVersPub = () => serveur.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => r.chemin);
+
+test("un cadre pub.localhost qui fait top.location vers pub.localhost (avec geste) : bloqué, mention, aucune requête", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  const page = await ouvrirEtAttendre(app, fenetre);
+  await expect.poll(() => vueSite(app, "vidola", "document.title", { cadre: 0 })).toBe("Cadre pub");
+  serveur.requetes.splice(0);
+  await vueSite(app, "vidola", `top.location = ${JSON.stringify(serveur.url("pub.localhost", "/haut"))}; 1`, { geste: true, cadre: 0 });
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+  await new Promise((r) => setTimeout(r, 500));
+  expect((await etatVueSite(app, "vidola"))!.url).toBe(serveur.url("vidola-a.localhost", "/"));
+  expect(rienVersPub()).toEqual([]);
+  await fermer();
+});
+
+test("un <meta refresh> vers pub.localhost : bloqué, mention, aucune requête", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  const page = await ouvrirEtAttendre(app, fenetre);
+  await vueSite(app, "vidola", "location.href = '/refresh'", { geste: true });
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+  await new Promise((r) => setTimeout(r, 500));
+  expect((await etatVueSite(app, "vidola"))!.url).toBe(serveur.url("vidola-a.localhost", "/refresh"));
+  expect(rienVersPub()).toEqual([]);
+  await fermer();
+});
+
+test("un formulaire POST vers pub.localhost : bloqué, mention, aucune requête", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  const page = await ouvrirEtAttendre(app, fenetre);
+  await vueSite(app, "vidola", "location.href = '/formulaire'", { geste: true });
+  await expect.poll(() => vueSite(app, "vidola", "document.title")).toBe("Formulaire");
+  await vueSite(app, "vidola", "document.getElementById('envoyer').click()", { geste: true });
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+  await new Promise((r) => setTimeout(r, 500));
+  expect((await etatVueSite(app, "vidola"))!.url).toBe(serveur.url("vidola-a.localhost", "/formulaire"));
+  expect(rienVersPub()).toEqual([]);
+  await fermer();
+});
+
+test("la petite fenêtre de connexion qui fait opener.location vers pub.localhost : la vue reste sur le site, aucune requête", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  const page = await ouvrirEtAttendre(app, fenetre);
+  const connexion = serveur.url("compte.localhost", "/connexion");
+  await vueSite(app, "vidola", `window.open(${JSON.stringify(connexion)}, "connexion", "width=500,height=650"); 1`, { geste: true });
+  const dansLaPetite = (code: string) =>
+    app.evaluate(({ BrowserWindow }, [url, code]) => {
+      const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
+      return w?.webContents.executeJavaScript(code, true);
+    }, [connexion, code] as const);
+  await expect.poll(() => dansLaPetite("document.readyState")).toBe("complete");
+  expect(await dansLaPetite("!!window.opener")).toBe(true);
+  await dansLaPetite(`opener.location = ${JSON.stringify(serveur.url("pub.localhost", "/opener"))}; 1`);
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+  await new Promise((r) => setTimeout(r, 500));
+  expect((await etatVueSite(app, "vidola"))!.url).toBe(serveur.url("vidola-a.localhost", "/"));
+  expect(rienVersPub()).toEqual([]);
+  await fermer();
+});
+
+test("précédent vers un domaine retiré de site.json depuis la visite : bloqué, « Lien vers vidola-b.localhost bloqué »", async () => {
+  const deuxDomaines = { declaration: { ...vidola().declaration, domaines: ["vidola-a.localhost", "vidola-b.localhost"] } };
+  const { app, fenetre, racine, fermer } = await demarrer({ vidola: deuxDomaines });
+  const page = await ouvrirEtAttendre(app, fenetre);
+  await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("vidola-b.localhost", "/"))}`, { geste: true });
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/"));
+  await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("vidola-a.localhost", "/film/2"))}`, { geste: true });
+  await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/film/2"));
+  // L'agent retire vidola-b de site.json ; l'utilisateur rouvre l'appli (même fenêtre, nouvelles règles).
+  ecrireSite(racine, "vidola", vidola());
+  await ouvrirSite(fenetre, "vidola");
+  await expect(page.getByTestId("site-precedent")).toBeEnabled();
+  serveur.requetes.splice(0);
+  await page.getByTestId("site-precedent").click();
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers vidola-b.localhost bloqué");
+  await new Promise((r) => setTimeout(r, 500));
+  expect((await etatVueSite(app, "vidola"))!.url).toBe(serveur.url("vidola-a.localhost", "/film/2"));
+  expect(serveur.requetes.filter((r) => r.hote === "vidola-b.localhost")).toEqual([]);
+  await fermer();
+});
+
+test("des window.open en rafale vers deux domaines alternés : au plus un changement de mention par 500 ms", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  const page = await ouvrirEtAttendre(app, fenetre);
+  // Compte, côté process principal, les états envoyés à l'interface de la fenêtre.
+  const envois = () => app.evaluate(() => (globalThis as unknown as { envoisEtat: number }).envoisEtat);
+  await app.evaluate(({ BrowserWindow }) => {
+    const g = globalThis as unknown as { envoisEtat: number };
+    g.envoisEtat = 0;
+    const ui = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes("/renderer/site.html"))!.webContents;
+    const envoyer = ui.send.bind(ui);
+    ui.send = (canal: string, ...args: unknown[]) => {
+      if (canal === "webaios:site-etat-change") g.envoisEtat++;
+      envoyer(canal, ...args);
+    };
+  });
+  const a = JSON.stringify(serveur.url("pub.localhost", "/x"));
+  const b = JSON.stringify(serveur.url("autre-pub.localhost", "/x"));
+  // Un geste par ouverture (sans geste, Chromium n'en laisse passer qu'une), tous dans le même aller-retour au process principal.
+  await app.evaluate(({ BrowserWindow }, [a, b]) => {
+    const f = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes("/renderer/site.html"))!;
+    const wc = (f.contentView.children[0] as Electron.WebContentsView).webContents;
+    return Promise.all(Array.from({ length: 20 }, (_, i) => wc.executeJavaScript(`window.open(${i % 2 ? a : b}); 1`, true)));
+  }, [a, b] as const);
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+  await new Promise((r) => setTimeout(r, 1200));
+  // La première tout de suite, la dernière (pub.localhost) au plus 500 ms après : pas une par ouverture.
+  expect(await envois()).toBeGreaterThanOrEqual(1);
+  expect(await envois()).toBeLessThanOrEqual(3);
+  await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
   await fermer();
 });

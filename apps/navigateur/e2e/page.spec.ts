@@ -47,22 +47,39 @@ test("⌘F trouve le mot et affiche le compteur ; Échap ferme la barre", async 
   await fermer();
 });
 
-test("une vidéo en plein écran masque la barre latérale ; Échap la rétablit", async () => {
+/** Une fenêtre est-elle à l'écran ? (Jamais en test : les yeux de l'utilisateur.) */
+const fenetreMontree = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()));
+
+/** La vue de l'onglet dont l'URL contient `morceau` couvre-t-elle toute la fenêtre principale ? */
+const vuePleineFenetre = (app: ElectronApplication, morceau: string) =>
+  app.evaluate(({ BrowserWindow }, morceau) => {
+    const f = BrowserWindow.getAllWindows()[0]!;
+    const vue = f.contentView.children.find((v) => (v as Electron.WebContentsView).webContents?.getURL().includes(morceau)) as Electron.WebContentsView | undefined;
+    if (!vue) return null;
+    const [l, h] = f.getContentSize();
+    const b = vue.getBounds();
+    return b.x === 0 && b.y === 0 && b.width === l && b.height === h;
+  }, morceau);
+
+// En test, la fenêtre n'est pas plein-écranable (macOS la montrerait) : la page passe en plein écran dans la fenêtre.
+test("une vidéo en plein écran masque la barre latérale ; Échap la rétablit ; aucune fenêtre n'est montrée", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/video.html`);
   await expect.poll(() => dansLaVue(app, "video.html", "document.title")).toBe("Vidéo");
-  const entree = await evenementFenetre(app, "enter-full-screen");
   await dansLaVue(app, "video.html", "document.getElementById('plein').click()");
   await expect(fenetre.getByTestId("barre-laterale")).toBeHidden();
-  await entree();
   await expect.poll(() => dansLaVue(app, "video.html", "!!document.fullscreenElement")).toBe(true);
-  const sortie = await evenementFenetre(app, "leave-full-screen");
+  await expect.poll(() => vuePleineFenetre(app, "video.html")).toBe(true);
+  // macOS anime le passage en plein écran d'une fenêtre : on laisse à une fenêtre le temps d'apparaître.
+  await new Promise((r) => setTimeout(r, 1000));
+  expect(await fenetreMontree(app)).toBe(false);
   await app.evaluate(({ webContents }) =>
     webContents.getAllWebContents().find((w) => w.getURL().includes("video.html"))?.sendInputEvent({ type: "keyDown", keyCode: "Escape" }),
   );
-  await sortie();
-  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
   await expect.poll(() => dansLaVue(app, "video.html", "!!document.fullscreenElement")).toBe(false);
+  await expect(fenetre.getByTestId("barre-laterale")).toBeVisible();
+  await expect.poll(() => vuePleineFenetre(app, "video.html")).toBe(false);
+  expect(await fenetreMontree(app)).toBe(false);
   await fermer();
 });
 
