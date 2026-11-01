@@ -1463,7 +1463,7 @@ test.describe("suivi de l'adresse", () => {
   });
 
   test("page de référence piégée : « Adresse introuvable sur adresses.localhost », l'appli reste sur vidola-a", async () => {
-    reference(serveur.url("adresses.localhost", "/vidola-b"), serveur.url("pub.localhost", "/vidola"), "http://vidola-b.example/", "javascript:alert(1)");
+    reference(serveur.url("vidola.adresses.localhost", "/"), serveur.url("adresses.localhost", "/vidola-b"), serveur.url("pub.localhost", "/vidola"), "http://vidola-b.example/", "javascript:alert(1)");
     serveur.couper("vidola-a.localhost");
     const { app, fenetre, profil, fermer } = await demarrer({ vidola: { declaration: declarationSuivi() } });
     await ouvrirSite(fenetre, "vidola");
@@ -1500,6 +1500,42 @@ test.describe("suivi de l'adresse", () => {
     await bouton.click();
     await new Promise((r) => setTimeout(r, 800));
     expect(lecturesReference()).toBe(1);
+    await fermer();
+  });
+
+  test("pendant la lecture le bouton est désactivé et occupé ; un clic trop tôt redonne le dernier résultat après un lien bloqué", async () => {
+    serveur.definir("adresses.localhost", "/", (_req, res) => {
+      setTimeout(() => res.writeHead(200, { "Content-Type": "text/html" }).end(`<title>Adresses</title><a href="${serveur.url("vidola-a.localhost", "/")}">a</a>`), 1200);
+    });
+    const { app, fenetre, fermer } = await demarrer({ vidola: { declaration: declarationSuivi(serveur.url("vidola-a.localhost", "/")) } });
+    const page = await ouvrirEtAttendre(app, fenetre);
+    const bouton = page.getByTestId("site-chercher-adresse");
+    await bouton.click();
+    await expect(bouton).toBeDisabled();
+    await expect(bouton).toHaveAttribute("aria-busy", "true");
+    const AVIS = "Vidola ne répond pas, et sa page de référence donne toujours la même adresse";
+    await expect(page.getByTestId("site-avis")).toHaveText(AVIS);
+    await expect(bouton).toBeEnabled();
+    await expect(bouton).toHaveAttribute("aria-busy", "false");
+    // Un lien bloqué remplace l'avis ; un clic trop tôt (aucune lecture) redonne le dernier résultat.
+    await vueSite(app, "vidola", "document.getElementById('pub').click()", { geste: true });
+    await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+    serveur.requetes.splice(0);
+    await bouton.click();
+    await expect(page.getByTestId("site-avis")).toHaveText(AVIS);
+    expect(lecturesReference()).toBe(0);
+    await fermer();
+  });
+
+  test("le bouton vise la page affichée sur le site, pas la cible d'un lien bloqué", async () => {
+    serveur.definir("vidola-a.localhost", "/film/2", "<title>Film 2</title>");
+    serveur.definir("vidola-b.localhost", "/film/2", "<title>Film 2 B</title>");
+    const { app, fenetre, fermer } = await demarrer({ vidola: { declaration: declarationSuivi(serveur.url("vidola-a.localhost", "/film/2")) } });
+    const page = await ouvrirEtAttendre(app, fenetre, "vidola", "/film/2");
+    await vueSite(app, "vidola", `location.href = ${JSON.stringify(serveur.url("pub.localhost", "/x"))}`, { geste: true });
+    await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
+    await page.getByTestId("site-chercher-adresse").click();
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-b.localhost", "/film/2"));
     await fermer();
   });
 

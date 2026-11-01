@@ -24,7 +24,7 @@ import {
   type SiteLu,
 } from "@webaios/noyau";
 import { CANAUX } from "../../commun/canaux";
-import { adresseChangee, adresseInchangee, adresseIntrouvable, ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
+import { type AvisBarre, adresseChangee, adresseInchangee, adresseIntrouvable, ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
 import { lirePageInvisible } from "../agent/lecture-invisible";
 import { imageSite } from "./accueil";
 import { requetesDe } from "../image-distante";
@@ -137,6 +137,12 @@ export function demarrerSites(o: {
   const retouches = new Map<string, RetouchesLues>();
   /** Relectures en cours, par appli : seule la dernière compte. */
   const relectures = new Map<string, number>();
+  /** Lecture de la page de référence en cours, par appli : annulée à la fermeture de la fenêtre et à la sortie. */
+  const recherches = new Map<string, AbortController>();
+  /** Le dernier résultat du suivi montré dans la barre, par appli (redonné quand une demande arrive trop tôt). */
+  const derniersAvis = new Map<string, AvisBarre>();
+  /** Nombre de changements d'adresse par appli : une relecture de site.json commencée avant l'un d'eux est refaite. */
+  const changements = new Map<string, number>();
 
   const fenetres = new FenetresSites({
     memoire: souvenirs,
@@ -148,6 +154,9 @@ export function demarrerSites(o: {
       derniereOuverture.delete(id);
       retouches.delete(id);
       relectures.delete(id);
+      recherches.get(id)?.abort();
+      recherches.delete(id);
+      derniersAvis.delete(id);
       void viderMemoire(id);
       o.diffuser();
     },
@@ -157,11 +166,11 @@ export function demarrerSites(o: {
 
   // La page de référence est lue par la session publique, sans profil : jamais un cookie de l'appli ni de l'utilisateur.
   const suivi = new SuiviAdresse({
-    lireLiens: async (page) =>
+    lireLiens: async (page, signal) =>
       (
         await lirePageInvisible(
           page,
-          { profil: null, ...(o.adressesLocales ? { adressesLocales: true } : {}) },
+          { profil: null, ...(o.adressesLocales ? { adressesLocales: true } : {}), ...(signal ? { signal } : {}) },
           {
             etat: () => {
               throw new Error("lecture publique : pas de profil");
@@ -185,23 +194,47 @@ export function demarrerSites(o: {
     const s = fenetres.site(id);
     const d = s?.declaration;
     if (!s || !d?.suiviAdresse) return;
-    const r = await suivi.chercher(id, d).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
-    if (!fenetres.site(id)) return;
+    // Une lecture est déjà en cours : le suivi répondra « trop-tot » sans la doubler.
+    const enCours = recherches.has(id);
+    const controle = new AbortController();
+    if (!enCours) {
+      recherches.set(id, controle);
+      fenetres.cherche(id, true);
+    }
+    const r = await suivi.chercher(id, d, controle.signal).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
+    if (!enCours) {
+      if (recherches.get(id) === controle) recherches.delete(id);
+      if (!controle.signal.aborted) fenetres.cherche(id, false);
+    }
+    // Fenêtre fermée (ou sortie) pendant la lecture : ce qui arrive après est ignoré.
+    const courante = fenetres.site(id);
+    if (controle.signal.aborted || !courante) return;
+    const notifier = (a: AvisBarre) => {
+      derniersAvis.set(id, a);
+      fenetres.avis(id, a);
+    };
     switch (r.t) {
-      case "trop-tot":
+      case "trop-tot": {
+        // Rien de nouveau : le dernier résultat revient dans la barre, s'il y en a un.
+        const dernier = derniersAvis.get(id);
+        if (dernier) fenetres.avis(id, dernier);
         return;
+      }
       case "introuvable":
-        return fenetres.avis(id, { genre: "introuvable", texte: adresseIntrouvable(hote(d.suiviAdresse.page) ?? d.suiviAdresse.page) });
+        return notifier({ genre: "introuvable", texte: adresseIntrouvable(hote(d.suiviAdresse.page) ?? d.suiviAdresse.page) });
       case "inchangee":
-        return fenetres.avis(id, { genre: "inchangee", texte: adresseInchangee(d.nom) });
+        return notifier({ genre: "inchangee", texte: adresseInchangee(d.nom) });
       case "change": {
-        const domaines = domainesEffectifs(d, r.etat);
-        const depart = adresseDeDepart(d, r.etat);
+        // La déclaration d'aujourd'hui (site.json a pu être relu pendant la lecture).
+        const decl = courante.declaration;
+        const domaines = domainesEffectifs(decl, r.etat);
+        const depart = adresseDeDepart(decl, r.etat);
         // La même page sur le nouveau domaine, sinon l'adresse de départ.
         const relative = url ? adresseRelative(url, domaines) : null;
         const vers = (relative && adresseSurDomaine(relative, r.domaine, domaines, depart, lecture)) || depart;
+        changements.set(id, (changements.get(id) ?? 0) + 1);
         fenetres.adresseChangee(id, domaines, depart, vers);
-        fenetres.avis(id, { genre: "adresse-changee", texte: adresseChangee(d.nom, r.domaine) });
+        notifier({ genre: "adresse-changee", texte: adresseChangee(d.nom, r.domaine) });
         // L'accueil montre le nouveau domaine.
         if (abonnements.has(id)) void memoire(id).then((m) => fenetres.envoyer(id, CANAUX.siteAccueilMemoireChange, messageMemoire(id, m)), () => {});
       }
@@ -256,12 +289,15 @@ export function demarrerSites(o: {
     if (!fenetres.site(id)) return;
     const n = (relectures.get(id) ?? 0) + 1;
     relectures.set(id, n);
+    const changementsAvant = changements.get(id) ?? 0;
     const p = await preparer(id).catch((e: unknown) => {
       console.error(`[sites] ${id} illisible :`, e);
       return null;
     });
     const avant = fenetres.site(id);
     if (relectures.get(id) !== n || !avant) return;
+    // Le site a changé d'adresse pendant la lecture : ses domaines seraient ceux d'avant, on relit.
+    if ((changements.get(id) ?? 0) !== changementsAvant) return relire(id);
     // Devenue invalide : plus rien n'est injecté (la fenêtre garde ce qu'elle avait, sans retouches).
     const nouvelles = p ? p.retouches : { js: {}, css: {} };
     // Rien de changé pour la page (dossier recopié, événement en double) : elle n'est pas rechargée.
@@ -443,6 +479,7 @@ export function demarrerSites(o: {
     },
     async arreter() {
       try {
+        for (const c of recherches.values()) c.abort();
         await arreterSurveillance().catch(() => {});
         await Promise.allSettled(fenetres.ouvertes().map((f) => fenetres.fermer(f.id)));
         await Promise.allSettled([...memoires.keys()].map(viderMemoire));

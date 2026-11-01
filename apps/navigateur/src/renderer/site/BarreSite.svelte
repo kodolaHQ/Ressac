@@ -24,7 +24,7 @@
     <span data-testid="site-domaine" class="domaine">{etat.domaine}</span>
   </div>
   {#if etat.suivi && surSite}
-    <button data-testid="site-chercher-adresse" class="chercher" onclick={() => api.chercherAdresse()}>{CHERCHER_ADRESSE}</button>
+    <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{CHERCHER_ADRESSE}</button>
   {/if}
   {#if etat.avis}
     <div data-testid="site-avis" class="avis" role="status">
@@ -50,7 +50,8 @@
   .nom { font-weight: 600; color: var(--texte); }
   .domaine { color: var(--texte-doux); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
   .chercher { all: unset; flex: none; padding: 3px 8px; border-radius: 5px; font-size: 12px; color: var(--texte-doux); white-space: nowrap; -webkit-app-region: no-drag; }
-  .chercher:hover { background: var(--fond-survol); color: var(--texte); }
+  .chercher:disabled { opacity: 0.5; }
+  .chercher:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
   .avis { display: flex; align-items: center; gap: 8px; flex: none; max-width: 60%; padding: 3px 4px 3px 10px; border-radius: 6px; background: var(--attention-fond); color: var(--texte); font-size: 12px; -webkit-app-region: no-drag; }
   .avis span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .avis button { all: unset; padding: 2px 8px; border-radius: 5px; background: var(--fond-actif); color: var(--texte); white-space: nowrap; -webkit-app-region: no-drag; }

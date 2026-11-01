@@ -56,6 +56,8 @@ export type EtatFenetreSite = {
   peutReculer: boolean;
   peutAvancer: boolean;
   suivi: boolean;
+  /** Une lecture de la page de référence est en cours (le bouton « Chercher la nouvelle adresse » attend). */
+  recherche: boolean;
   avis: AvisBarre | null;
   accord: DemandeAccordSite | null;
 };

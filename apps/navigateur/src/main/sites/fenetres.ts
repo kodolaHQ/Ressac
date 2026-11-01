@@ -1,7 +1,7 @@
 import { BrowserWindow, WebContentsView, type WebContents } from "electron";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { droitsDe, type DeclarationSite } from "@webaios/noyau";
+import { adresseRelative, droitsDe, type DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
 import { HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
@@ -54,6 +54,10 @@ interface Ouverte {
   attendVoulu: boolean;
   /** Le chargement en cours du cadre principal est-il voulu par WebAiOs (et non un clic dans la page) ? */
   chargementVoulu: boolean;
+  /** Lecture de la page de référence en cours. */
+  recherche: boolean;
+  /** Adresse à charger quand la carte d'accord se ferme : l'adresse a changé pendant qu'elle était affichée. */
+  aCharger: string | null;
   /** L'adresse du dernier chargement commencé dans le cadre principal (le suivi de l'adresse en reprend le chemin). */
   cible: string | null;
   pleinEcran: boolean;
@@ -195,7 +199,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, cible: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, cible: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -429,6 +433,7 @@ export class FenetresSites {
       peutReculer: vivante && wc.navigationHistory.canGoBack(),
       peutAvancer: vivante && wc.navigationHistory.canGoForward(),
       suivi: o.site.declaration.suiviAdresse !== undefined,
+      recherche: o.recherche,
       avis: o.avis,
       accord: o.affichee === "accord" ? demandeAccord(o.site) : null,
     };
@@ -509,6 +514,11 @@ export class FenetresSites {
 
   /** Après la carte : l'accueil s'il y en a un, sinon le site (chargé sur son départ la première fois). */
   private vueSuivante(o: Ouverte): void {
+    if (o.aCharger) {
+      const vers = o.aCharger;
+      o.aCharger = null;
+      this.aller(o.site.id, vers);
+    }
     if (o.site.aAccueil) o.affichee = "accueil";
     else {
       o.affichee = "site";
@@ -526,7 +536,7 @@ export class FenetresSites {
     if (s) o.site = s;
     // L'accord donné ne couvre pas la déclaration d'aujourd'hui (site.json réécrit pendant le choix) : la carte reste.
     if (s?.accordRequis) return this.diffuserEtat(o);
-    const recharger = s !== null && o.chargee;
+    const recharger = s !== null && o.chargee && o.aCharger === null;
     this.vueSuivante(o);
     if (recharger && !o.vue.webContents.isDestroyed()) this.recharge(o);
     this.placer(o);
@@ -628,7 +638,17 @@ export class FenetresSites {
     const o = this.ouverte(id);
     if (!o || !this.suiviActif(o)) return;
     const wc = o.vue.webContents;
-    this.o.surSuivi?.(id, o.cible ?? (wc.isDestroyed() ? null : wc.getURL()) ?? null);
+    // La page affichée si elle est sur le site, sinon (page d'erreur, lien bloqué…) l'adresse de départ.
+    const url = wc.isDestroyed() ? "" : wc.getURL();
+    this.o.surSuivi?.(id, url && adresseRelative(url, o.site.domaines) !== null ? url : null);
+  }
+
+  /** Une lecture de la page de référence commence ou finit : le bouton le montre. */
+  cherche(id: string, oui: boolean): void {
+    const o = this.ouverte(id);
+    if (!o) return;
+    o.recherche = oui;
+    this.diffuserEtat(o);
   }
 
   /**
@@ -640,7 +660,11 @@ export class FenetresSites {
     const o = this.ouverte(id);
     if (!o) return;
     o.site = { ...o.site, domaines, depart };
-    if (o.affichee === "accord") return this.diffuserEtat(o);
+    if (o.affichee === "accord") {
+      // La carte est affichée : la vue ne charge rien avant le choix ; la page déjà chargée l'était sur l'ancien domaine.
+      if (o.chargee) o.aCharger = vers;
+      return this.diffuserEtat(o);
+    }
     this.aller(id, vers);
     this.diffuserEtat(o);
   }

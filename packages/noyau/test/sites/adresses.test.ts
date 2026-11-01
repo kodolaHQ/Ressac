@@ -138,6 +138,21 @@ describe("retouchesPour", () => {
   });
 });
 
+describe("trouverAdresse : un vrai nom de domaine", () => {
+  const o = { page: "https://adresses.example/", motif: "vidola", adressesLocales: false };
+  it("sans point (intranet) ou dont le dernier libellé est numérique : refusé, comme dans site.json", () => {
+    for (const lien of ["https://vidola/", "https://vidola-box/", "https://vidola.1/", "https://vidola.12/"]) {
+      expect(trouverAdresse([lien], o), lien).toBeNull();
+    }
+    expect(trouverAdresse(["https://vidola-b.example/"], o)?.hostname).toBe("vidola-b.example");
+  });
+  it("en mode test, vidola-b.localhost reste permis, vidola seul non", () => {
+    const t = { ...o, adressesLocales: true };
+    expect(trouverAdresse(["http://vidola-b.localhost:80/"], t)?.hostname).toBe("vidola-b.localhost");
+    expect(trouverAdresse(["http://vidola/"], t)).toBeNull();
+  });
+});
+
 describe("trouverAdresse", () => {
   const o = { page: "https://ww1.vidola-adresses.example/", motif: "vidola", adressesLocales: false };
   it("premier lien sûr dont l'hôte contient le motif", () => {

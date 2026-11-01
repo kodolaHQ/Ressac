@@ -1,6 +1,6 @@
 import { domainToASCII } from "node:url";
 import { adresseLocale } from "../workflows/acces.js";
-import type { DeclarationSite, Retouche } from "./schemas.js";
+import { domaineVrai, type DeclarationSite, type Retouche } from "./schemas.js";
 
 /** Domaines de l'appli, jamais dans site.json : l'actuel, et les anciens qu'il faut encore reconnaître. */
 export type EtatAdresse = { actuel: string; anciens: string[]; depuis: string | null };
@@ -176,7 +176,7 @@ export function trouverAdresse(
     if (!u || !schemaAccepte(u, o.adressesLocales)) continue;
     const h = nettoyer(u.hostname);
     if (!h || !HOTE_VALIDE.test(h) || !h.includes(motif) || deux(h) === deux(hotePage)) continue;
-    if (adresseLocale(h) && !o.adressesLocales) continue;
+    if (!domaineVrai(h, o.adressesLocales)) continue;
     const port = o.adressesLocales && u.port ? u.port : null;
     return { hostname: h, origine: `${u.protocol}//${h}${port ? `:${port}` : ""}/`, port };
   }

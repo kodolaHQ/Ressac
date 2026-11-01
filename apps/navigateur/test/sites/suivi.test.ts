@@ -18,11 +18,13 @@ const declaration: DeclarationSite = {
 };
 
 function suivi(liens: string[] | Error) {
+  const signaux: (AbortSignal | undefined)[] = [];
   const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   let maintenant = 1_000_000;
   let lectures = 0;
   const s = new SuiviAdresse({
-    lireLiens: async () => {
+    lireLiens: async (_page, signal) => {
+      signaux.push(signal);
       lectures++;
       if (liens instanceof Error) throw liens;
       return liens;
@@ -31,7 +33,7 @@ function suivi(liens: string[] | Error) {
     adressesLocales: false,
     maintenant: () => maintenant,
   });
-  return { s, dossierSites, lectures: () => lectures, avancer: (ms: number) => void (maintenant += ms) };
+  return { s, signaux, dossierSites, lectures: () => lectures, avancer: (ms: number) => void (maintenant += ms) };
 }
 
 test("l'intervalle du plan est d'une minute", () => {
@@ -88,4 +90,35 @@ test("deux applis ne se limitent pas l'une l'autre", async () => {
   const t = suivi(["https://vidola-b.example/"]);
   await t.s.chercher("un", declaration);
   expect((await t.s.chercher("deux", declaration)).t).not.toBe("trop-tot");
+});
+
+test("après un premier changement, un lien vers l'adresse actuelle est inchangee (comparé à actuel, pas à l'adresse déclarée)", async () => {
+  const t = suivi(["https://vidola-b.example/"]);
+  expect((await t.s.chercher("vidola", declaration)).t).toBe("change");
+  t.avancer(61_000);
+  expect((await t.s.chercher("vidola", declaration)).t).toBe("inchangee");
+  expect((await lireEtatAdresse(t.dossierSites, "vidola"))?.actuel).toBe("vidola-b.example");
+});
+
+test("une lecture qui a échoué compte dans l'intervalle : 30 s plus tard, trop-tot", async () => {
+  const t = suivi(new Error("muette"));
+  expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
+  t.avancer(30_000);
+  expect((await t.s.chercher("vidola", declaration)).t).toBe("trop-tot");
+  expect(t.lectures()).toBe(1);
+});
+
+test("le signal d'annulation est transmis à la lecture ; une lecture annulée donne introuvable et ne change rien", async () => {
+  const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
+  const controle = new AbortController();
+  const s = new SuiviAdresse({
+    lireLiens: (_p, signal) => new Promise((_ok, non) => signal?.addEventListener("abort", () => non(new Error("annulée")))),
+    dossierSites,
+    adressesLocales: false,
+    maintenant: () => 0,
+  });
+  const r = s.chercher("vidola", declaration, controle.signal);
+  controle.abort();
+  expect((await r).t).toBe("introuvable");
+  expect(await lireEtatAdresse(dossierSites, "vidola")).toBeNull();
 });

@@ -24,14 +24,14 @@ export class SuiviAdresse {
   constructor(
     private readonly o: {
       /** Les liens de la page de référence, lus sans cookies ni profil. */
-      lireLiens(page: string): Promise<string[]>;
+      lireLiens(page: string, signal?: AbortSignal): Promise<string[]>;
       dossierSites: string;
       adressesLocales: boolean;
       maintenant(): number;
     },
   ) {}
 
-  async chercher(id: string, d: DeclarationSite): Promise<ResultatSuivi> {
+  async chercher(id: string, d: DeclarationSite, signal?: AbortSignal): Promise<ResultatSuivi> {
     const suivi = d.suiviAdresse;
     if (!suivi) return { t: "introuvable" };
     const maintenant = this.o.maintenant();
@@ -41,12 +41,14 @@ export class SuiviAdresse {
     this.dernieres.set(id, maintenant);
     let liens: string[];
     try {
-      liens = await this.o.lireLiens(suivi.page);
+      liens = await this.o.lireLiens(suivi.page, signal);
+      if (signal?.aborted) return { t: "introuvable" };
     } catch {
       return { t: "introuvable" };
     }
     const trouvee = trouverAdresse(liens, { page: suivi.page, motif: suivi.motif, adressesLocales: this.o.adressesLocales });
     if (!trouvee) return { t: "introuvable" };
+    if (signal?.aborted) return { t: "introuvable" };
     const courant = await lireEtatAdresse(this.o.dossierSites, id);
     const actuel = courant?.actuel ?? hoteDe(d.adresse);
     if (trouvee.hostname === actuel) return { t: "inchangee" };

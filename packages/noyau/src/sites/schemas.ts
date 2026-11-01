@@ -88,13 +88,20 @@ function adresseAcceptee(brute: string, adressesLocales: boolean): URL | null {
   return null;
 }
 
+/**
+ * Un vrai nom de domaine pour un site : ni adresse IP, ni nom sans point (intranet), ni dernier libellé numérique, ni
+ * adresse locale (sauf `adressesLocales`, tests seulement). Même règle pour `domaines`, `connexion` et l'adresse suivie.
+ */
+export function domaineVrai(h: string, adressesLocales: boolean): boolean {
+  return !isIP(h) && h.includes(".") && !/\.\d+$/.test(h) && (adressesLocales || !adresseLocale(h));
+}
+
 /** Les règles que le schéma seul ne dit pas : l'adresse et la page de suivi, et le domaine de l'adresse. */
 export function verifierDeclarationSite(d: DeclarationSite, o: { adressesLocales: boolean }): string | null {
   const depart = adresseAcceptee(d.adresse, o.adressesLocales);
   if (!depart) return HTTPS_SEULEMENT;
   if (d.suiviAdresse && !adresseAcceptee(d.suiviAdresse.page, o.adressesLocales)) return HTTPS_SEULEMENT;
-  const vrai = (h: string) =>
-    !isIP(h) && h.includes(".") && !/\.\d+$/.test(h) && (o.adressesLocales || !adresseLocale(h));
+  const vrai = (h: string) => domaineVrai(h, o.adressesLocales);
   if (![...d.domaines, ...d.connexion].every(vrai) || [...d.domaines, ...d.connexion].some((h) => h === "localhost" || h.endsWith(".")))
     return DOMAINE_INVALIDE;
   const h = depart.hostname.toLowerCase();
