@@ -919,6 +919,7 @@ if (m) {
 
 ```js
 const liste = document.getElementById("liste");
+const minute = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 const images = new Map(); // url d'image -> { n, data } : une seule demande par url
 window.addEventListener("message", (e) => {
   const m = e.data;
@@ -930,7 +931,8 @@ window.addEventListener("message", (e) => {
     for (const [, entree] of encours) {
       const { serie, saison, episode, image } = entree.valeur;
       const carte = document.createElement("button");
-      carte.textContent = `${serie} · saison ${saison}, épisode ${episode}`;
+      const position = m.positions[entree.adresse]; // la minute notée par la reprise des vidéos, si elle y est
+      carte.textContent = `${serie} · saison ${saison}, épisode ${episode}` + (position ? ` — reprendre à ${minute(position.t)}` : "");
       carte.addEventListener("click", () => parent.postMessage({ type: "ouvrir", adresse: entree.adresse }, "*"));
       if (image) {
         if (!images.has(image)) {
