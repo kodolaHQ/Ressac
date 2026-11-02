@@ -656,6 +656,20 @@ test("lire_console sur une appli de site dont site.json a été réécrit (autre
   expect(cartesSite()).toHaveLength(2);
 });
 
+test("lire_console : site.json réécrit pendant la carte de l'appli (autre empreinte) : rien n'est lu", async () => {
+  await demarrer({ accorderDev: ["console"] });
+  pont.modifierOnglet("site:vidola", { empreinte: "e1" });
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  let repondre: ((oui: boolean) => void) | undefined;
+  pont.demanderDonneesWidget = () => new Promise<boolean>((ok) => (repondre = ok));
+  const r = appeler("lire_console", { id: "site:vidola" });
+  await vi.waitFor(() => expect(repondre).toBeDefined());
+  pont.modifierOnglet("site:vidola", { empreinte: "autre" });
+  repondre!(true);
+  expect(await r).toBe(REFUS);
+  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+});
+
 test("lire_console sur une appli de site : les deux accords → les messages, URL masquées (le site n'est pas construit par l'agent)", async () => {
   await demarrer({ accorderDev: ["console"], site: true });
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);

@@ -486,3 +486,12 @@ test("supprimer : l'accord de lecture de l'agent est retiré dès le début, ava
   expect(surSupprimee).toHaveBeenCalledWith("vidola");
   expect(journal.filter((j) => /^(supprimee|fermee)/.test(j))).toEqual(["supprimee vidola", "fermee vidola"]);
 });
+
+test("accorder (carte des retouches) pendant une suppression : rien n'est accordé", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  const fin = service.agir("vidola", "supprimer", "f1" as never);
+  await service.accorder("vidola", true, "");
+  await fin;
+  expect(journal.filter((j) => j.startsWith("apresAccord"))).toEqual([]);
+  expect(Object.hasOwn(await lireAccordsSites(profil), "vidola")).toBe(false);
+});

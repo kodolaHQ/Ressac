@@ -320,7 +320,7 @@ test("lecture d'une appli de site liée à l'empreinte de sa déclaration : une 
   expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
 });
 
-test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ; sans accord, rien ne change", () => {
+test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ; les cartes en attente le voient (retraitsLectureSite)", () => {
   p.accorderLectureSite("vidola", "e1");
   p.accorderLectureSite("youtube", "y");
   let n = 0;
@@ -329,6 +329,10 @@ test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ;
   expect(n).toBe(1);
   expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
   expect(p.lectureSiteAccordee("youtube", "y")).toBe(true);
+  // Même sans accord (une carte encore en attente), le retrait est compté et signalé.
+  const avant = p.retraitsLectureSite("vidola");
   p.retirerLectureSite("vidola");
-  expect(n).toBe(1);
+  expect(p.retraitsLectureSite("vidola")).toBe(avant + 1);
+  expect(p.retraitsLectureSite("youtube")).toBe(0);
+  expect(n).toBe(2);
 });

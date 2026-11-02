@@ -62,6 +62,8 @@ export class PolitiqueAcces {
    * déclaration au moment de la carte (`empreinteLectureSite` ; null si le navigateur n'en donne pas).
    */
   private readonly sitesLus = new Map<string, string | null>();
+  /** Retraits de l'accord de lecture par appli (suppressions) : une carte posée avant l'un d'eux n'accorde rien. */
+  private readonly retraitsSites = new Map<string, number>();
   private readonly ecouteurs = new Set<() => void>();
   private numeroConversation = 0;
   private readonly portConstruit: (port: number) => boolean;
@@ -303,9 +305,19 @@ export class PolitiqueAcces {
     return this.sitesLus.has(id) && this.sitesLus.get(id) === (empreinte ?? null);
   }
 
-  /** L'appli de site est supprimée : son accord de lecture tombe (une appli recréée au même id redemande la carte). */
+  /**
+   * L'appli de site est supprimée : son accord de lecture tombe, et ses cartes encore en attente (toutes conversations)
+   * sont retirées et valent refus. Une appli recréée au même id redemande la carte.
+   */
   retirerLectureSite(id: string): void {
-    if (this.sitesLus.delete(id)) this.change();
+    this.sitesLus.delete(id);
+    this.retraitsSites.set(id, this.retraitsLectureSite(id) + 1);
+    this.change();
+  }
+
+  /** Nombre de retraits de l'accord de lecture de l'appli : une carte le relève à sa pose. */
+  retraitsLectureSite(id: string): number {
+    return this.retraitsSites.get(id) ?? 0;
   }
 
   /** Nouvelle conversation : plus aucune autorisation, refus ni coupe. Les « construites » restent : elles tiennent à l'onglet. */

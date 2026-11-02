@@ -1075,6 +1075,40 @@ test("la carte de l'appli de site en attente est retirée par une nouvelle conve
   expect(appelsPont("lireTexte")).toHaveLength(0);
 });
 
+/** La carte de l'appli tenue : son signal, et de quoi y répondre. */
+function carteTenue() {
+  const c: { signal?: AbortSignal; repondre?: (oui: boolean) => void } = {};
+  pont.demanderDonneesWidget = (_o, signal) => {
+    if (signal) c.signal = signal;
+    return new Promise<boolean>((ok) => (c.repondre = ok));
+  };
+  return c;
+}
+
+test("site.json réécrit pendant la carte (autre empreinte) : « Autoriser » ne livre rien de la fenêtre réécrite", async () => {
+  await avecSite({ fenetre: { ...vidola, empreinte: "e1" } });
+  const c = carteTenue();
+  const appel = client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  await vi.waitFor(() => expect(c.repondre).toBeDefined());
+  pont.modifierOnglet("site:vidola", { empreinte: "autre" });
+  c.repondre!(true);
+  expect(texte(await appel)).toBe(TEXTE_REFUS);
+  expect(appelsPont("lireTexte")).toHaveLength(0);
+});
+
+test("appli supprimée pendant sa carte : la carte est retirée, vaut refus, et sa réponse tardive n'accorde rien", async () => {
+  await avecSite({ fenetre: { ...vidola, empreinte: "e1" } });
+  const c = carteTenue();
+  const appel = client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  await vi.waitFor(() => expect(c.signal).toBeDefined());
+  politique.retirerLectureSite("vidola");
+  expect(c.signal!.aborted).toBe(true);
+  c.repondre!(true);
+  expect(texte(await appel)).toBe(TEXTE_REFUS);
+  expect(politique.lectureSiteAccordee("vidola", "e1")).toBe(false);
+  expect(appelsPont("lireTexte")).toHaveLength(0);
+});
+
 test("naviguer dans une appli de site sans accord : TEXTE_REFUS, rien chargé", async () => {
   await avecSite({ donneesWidget: false });
   const r = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });

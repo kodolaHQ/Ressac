@@ -111,9 +111,14 @@ export function enregistrerOutilsDev(
   async function obtenir(id: string, voulus: DroitDev[], raison: string): Promise<{ tenus: DroitDev[]; onglet: OngletInfo }> {
     raison = bornerRaison(raison);
     for (;;) {
-      const o = await onglet(id);
+      let o = await onglet(id);
       if (!origineDe(o.url)) return { tenus: [], onglet: o };
-      if (o.site !== undefined && (await c.accesSite?.(o)) !== true) return { tenus: [], onglet: o };
+      if (o.site !== undefined) {
+        if ((await c.accesSite?.(o)) !== true) return { tenus: [], onglet: o };
+        // La fenêtre relue après la carte de l'appli : ses droits sont ceux de sa déclaration d'aujourd'hui.
+        o = await onglet(id);
+        if (!accordSiteTenu(o)) return { tenus: [], onglet: o };
+      }
       const tenus = politique.droitsDev(o);
       const manquants = voulus.filter((d) => !tenus.includes(d) && politique.peutDemander(id, d));
       const demander = pont.demanderOutilsDev?.bind(pont);

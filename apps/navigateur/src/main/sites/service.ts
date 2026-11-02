@@ -614,7 +614,8 @@ export function demarrerSites(o: {
     },
     async accorder(id, oui, empreinte) {
       const montree = fenetres.site(id);
-      if (!montree || fenetres.etat(id)?.vue !== "accord") return;
+      // Pendant une suppression, rien n'est accordé (l'accord serait celui d'une appli qui s'en va).
+      if (!montree || suppressions.has(id) || fenetres.etat(id)?.vue !== "accord") return;
       if (!oui) return fenetres.apresAccord(id, null);
       // La déclaration connue du main, prise avant toute attente, n'est accordée que si ses droits sont ceux de la carte
       // cliquée : site.json a pu grandir entre l'affichage et le clic (l'agent choisit son moment).
@@ -624,7 +625,7 @@ export function demarrerSites(o: {
       relectures.set(id, (relectures.get(id) ?? 0) + 1);
       await accorderSite(o.dossierProfil, id, d);
       const s = fenetres.site(id);
-      if (!s) return;
+      if (!s || suppressions.has(id)) return;
       const accorde = droitsDe(d);
       fenetres.apresAccord(id, { ...s, accordRequis: accordNecessaire(s.declaration) && !accordCouvre(accorde, s.declaration) });
       void relire(id);

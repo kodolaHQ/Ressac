@@ -226,6 +226,8 @@ async function poserCarteDonnees(
   accordee: () => boolean,
   /** Clé de la carte en attente dans `demandes` (par défaut l'id de la cible). */
   cle = carte.id,
+  /** Vrai quand la carte n'a plus d'objet (appli de site supprimée depuis sa pose) : elle est retirée, et vaut refus. */
+  caduque: () => boolean = () => false,
 ): Promise<boolean> {
   const demander = pont.demanderDonneesWidget?.bind(pont);
   if (!demander) return false;
@@ -234,12 +236,12 @@ async function poserCarteDonnees(
     const conversation = politique.conversation;
     const retrait = new AbortController();
     const desabonner = politique.surChange(() => {
-      if (politique.conversation !== conversation) retrait.abort();
+      if (politique.conversation !== conversation || caduque()) retrait.abort();
     });
     const abandon = new Promise<boolean>((ok) => retrait.signal.addEventListener("abort", () => ok(false), { once: true }));
     demande = Promise.race([demander(carte, retrait.signal), abandon])
       .then((oui) => {
-        if (!oui || politique.conversation !== conversation) return false;
+        if (!oui || politique.conversation !== conversation || caduque()) return false;
         accorder();
         return true;
       })
@@ -279,13 +281,16 @@ function creerServeurOutils(
    * ouverte ou non. Il est lié à l'`empreinte` de la déclaration d'aujourd'hui (nom, domaines, connexion), recalculée
    * par le navigateur à chaque appel : site.json réécrit autrement, la carte revient.
    */
-  const accesSite = (site: string, nom: string, empreinte: string | undefined): Promise<boolean> =>
-    politique.lectureSiteAccordee(site, empreinte)
-      ? Promise.resolve(true)
-      : poserCarteDonnees(
-          pont, politique, demandes, { id: site, nom, agent: dev?.agent ?? "L'agent", genre: "site" },
-          () => politique.accorderLectureSite(site, empreinte), () => politique.lectureSiteAccordee(site, empreinte), `site:${site}`,
-        );
+  const accesSite = (site: string, nom: string, empreinte: string | undefined): Promise<boolean> => {
+    if (politique.lectureSiteAccordee(site, empreinte)) return Promise.resolve(true);
+    // Supprimée pendant la carte : la carte est retirée et vaut refus (recréée, l'appli redemande la sienne).
+    const retraits = politique.retraitsLectureSite(site);
+    return poserCarteDonnees(
+      pont, politique, demandes, { id: site, nom, agent: dev?.agent ?? "L'agent", genre: "site" },
+      () => politique.accorderLectureSite(site, empreinte), () => politique.lectureSiteAccordee(site, empreinte), `site:${site}`,
+      () => politique.retraitsLectureSite(site) !== retraits,
+    );
+  };
 
   /**
    * Vérifie l'accès ; à défaut, demande à l'utilisateur et mémorise un oui. La fenêtre d'une appli de site (`o.site`) a sa propre
@@ -293,7 +298,8 @@ function creerServeurOutils(
    */
   async function acces(o: OngletInfo): Promise<boolean> {
     if (politique.peutLire(o)) return true;
-    if (o.site !== undefined) return accesSite(o.site, o.titre, o.empreinte);
+    // Comme pour un onglet : site.json a pu être réécrit (fenêtre relue) pendant la carte ; la fenêtre d'aujourd'hui compte.
+    if (o.site !== undefined) return (await accesSite(o.site, o.titre, o.empreinte)) && politique.peutLire(await onglet(o.id));
     let demande = demandes.get(o.id);
     if (!demande) {
       demande = pont
