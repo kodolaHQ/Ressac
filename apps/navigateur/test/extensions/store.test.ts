@@ -475,3 +475,19 @@ test("installerStore d'une extension déjà inscrite garde ses applis", async ()
   expect(await installerStore(id, contexte(), dependances())).toEqual({ ok: true });
   expect(etat.extensions[cle]).toMatchObject({ profils: ["defaut"], applis: { vidola: "E1" } });
 });
+
+test("M4 retirerDuProfilStore depuis le dernier profil, sans appli active : le stockage est effacé dans les applis de ses vues site:* avant que store/<id> ne parte", async () => {
+  const { retirerDuProfilStore } = await import("../../src/main/extensions/store");
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, vues: { defaut: "1.0.0", "site:autre": "1.0.0" } } } };
+  const appels: { sites: string[]; chemin: string; present: boolean; inscrite: boolean }[] = [];
+  await retirerDuProfilStore(cle, "defaut", {
+    ...dependances(),
+    effacerDansSites: async (c, chemin, sites) => void appels.push({ sites: [...sites], chemin, present: existsSync(join(chemin, "manifest.json")), inscrite: c in etat.extensions }),
+  });
+  expect(appels).toEqual([{ sites: ["autre"], chemin: join(dossier, "store", id, "1.0.0_0"), present: true, inscrite: false }]);
+  expect(existsSync(join(dossier, "store", id))).toBe(false);
+  expect(etat.extensions[cle]).toBeUndefined();
+});

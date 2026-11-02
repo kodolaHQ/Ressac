@@ -38,6 +38,11 @@ import { droitsOnglets, hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPe
 /** Canal du preload des correctifs (`src/preload/extensions.ts`) : service workers et pages `chrome-extension://`. */
 export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
 /**
+ * Accusé du preload des correctifs, service workers seulement (I2) : la réponse à `CANAL_DEMARRAGE` est appliquée (les
+ * rulesets du manifeste posés par `updateEnabledRulesets`, ou rien à poser). C'est lui que `attendreDemarrage` attend.
+ */
+export const CANAL_DEMARREE = "webaios:extension-demarree";
+/**
  * Canaux du garde des extensions de l'agent (`globalThis.__webaios` exposé par le preload des correctifs) : une adresse
  * à ouvrir (`tabs.create`, `tabs.update`, `windows.create`), un onglet où agir (`scripting`, `tabs.insertCSS`), et
  * (synchrone, pages seulement) « cette page est-elle celle d'une extension de l'agent ? ».
@@ -631,7 +636,13 @@ export class ExtensionsProfils {
       if (!worker || workersEcoutes.has(worker) || !worker.scope.startsWith("chrome-extension://")) return;
       workersEcoutes.add(worker);
       const id = new URL(worker.scope).host;
-      worker.ipc.handle(CANAL_DEMARRAGE, () => this.demarrage(portee, s, id, "fond"));
+      // L'extension chargée quand ce fond a demandé sa réponse : son accusé ne vaut que pour ce chargement-là (M2).
+      let chargement: object | undefined;
+      worker.ipc.handle(CANAL_DEMARRAGE, () => {
+        chargement = this.chargementDe(portee, s, id);
+        return this.demarrage(portee, s, id, "fond");
+      });
+      worker.ipc.handle(CANAL_DEMARREE, () => void this.demarreeDepuisFond(portee, s, id, chargement));
       worker.ipc.handle(CANAL_URL_PERMISE, (_e, url: unknown) => this.urlPermise(s, id, url));
       worker.ipc.handle(CANAL_HOTE_PERMIS, (_e, onglet: unknown) => this.hotePermis(s, id, onglet));
       worker.ipc.handle(CANAL_ONGLET, (_e, onglet: unknown) => this.estOnglet(s, id, onglet));
@@ -906,25 +917,49 @@ export class ExtensionsProfils {
     if (!ext || !cle) return vide(false);
     const agent = lireCle(cle)?.source === "agent";
     if (contexte === "page" && (ext.manifest as { background?: unknown }).background) return vide(agent);
+    // Un fond accuse lui-même son démarrage (`CANAL_DEMARREE`, une fois ses rulesets posés) ; une extension sans fond n'a
+    // que ses pages, et rien à poser par elles : sa réponse suffit.
+    if (contexte === "fond") return this.reponseDemarrage(profil, cle, ext, agent, vide);
+    const chargement = this.chargementDe(profil, s, id);
     try {
       return await this.reponseDemarrage(profil, cle, ext, agent, vide);
     } finally {
-      this.noterDemarre(profil, cle);
+      this.noterDemarre(profil, cle, ext.id, chargement);
     }
   }
 
-  /** Le démarrage de `cle` dans `profil` est répondu : ceux qui l'attendaient (`attendreDemarrage`) repartent. */
-  private noterDemarre(profil: IdProfil, cle: string): void {
+  /** L'entrée de `chargees` de l'extension `id` dans cette portée (un objet par chargement), ou undefined. */
+  private chargementDe(portee: IdProfil, s: Session, id: string): object | undefined {
+    const ext = s.extensions.getExtension(id);
+    const cle = ext ? this.cleDe(portee, ext) : undefined;
+    return cle ? this.chargees.get(portee)?.get(cle) : undefined;
+  }
+
+  /** L'accusé d'un fond (`CANAL_DEMARREE`) : ses rulesets du manifeste sont posés. */
+  private demarreeDepuisFond(portee: IdProfil, s: Session, id: string, chargement: object | undefined): void {
+    const ext = s.extensions.getExtension(id);
+    const cle = ext ? this.cleDe(portee, ext) : undefined;
+    if (ext && cle) this.noterDemarre(portee, cle, ext.id, chargement);
+  }
+
+  /**
+   * Le démarrage de `cle` dans `profil` est fait : ceux qui l'attendaient (`attendreDemarrage`) repartent. Seulement si
+   * l'extension `id` est toujours celle chargée, et du même chargement qu'à la demande de sa réponse (M2 : retirée puis
+   * rechargée entre-temps, c'est le nouveau fond qui doit accuser).
+   */
+  private noterDemarre(profil: IdProfil, cle: string, id: string, chargement: object | undefined): void {
+    const actuel = this.chargees.get(profil)?.get(cle);
+    if (!actuel || actuel.id !== id || (chargement !== undefined && chargement !== actuel)) return;
     const k = `${profil}|${cle}`;
     this.demarres.add(k);
     for (const finir of [...(this.attentesDemarrage.get(k) ?? [])]) finir(true);
   }
 
   /**
-   * C5 : attend, au plus `ms`, que le démarrage du fond de `cle` ait été répondu dans `portee` depuis son dernier
-   * chargement (ses rulesets du manifeste sont alors posés par le preload). Vrai tout de suite si c'est déjà fait ou si
-   * elle n'a pas de fond ; faux si elle n'est pas chargée dans cette portée, si elle en est retirée pendant l'attente, ou
-   * sans réponse dans le délai.
+   * C5 : attend, au plus `ms`, que le fond de `cle`, dans `portee`, ait accusé son démarrage depuis son dernier
+   * chargement (`CANAL_DEMARREE` : le preload l'envoie une fois `updateEnabledRulesets` abouti, ou tout de suite s'il
+   * n'a rien à poser). Vrai tout de suite si c'est déjà fait ou si elle n'a pas de fond ; faux si elle n'est pas chargée
+   * dans cette portée, si elle en est retirée pendant l'attente, ou sans accusé dans le délai (rulesets refusés compris).
    */
   attendreDemarrage(portee: IdProfil, cle: string, ms: number): Promise<boolean> {
     const c = this.chargees.get(portee)?.get(cle);

@@ -50,6 +50,10 @@ let journal: string[];
 let chargeesSite: Map<string, { cle: string; id: string }[]>;
 let attentes: [string, string, number][];
 let nomsSites: Record<string, string>;
+/** Tenue (non nulle) : chaque synchronisation l'attend (M1 : le démarrage du service reste ouvert). */
+let synchroTenue: Promise<void> | null;
+/** Ce que rend le faux `attendreDemarrage` (par défaut : vrai tout de suite). */
+let reponseDemarrage: () => Promise<boolean>;
 
 const etatNav = (prive: boolean) =>
   ({ espaces: [{ id: "e1", profil: "defaut", prive }], profils: [{ id: "defaut" }], fenetres: [], onglets: {} }) as unknown as EtatNavigateur;
@@ -59,14 +63,15 @@ function demarrer(avecAgent = false) {
   const magasin = { get etat() { return nav; }, abonner: (f: (e: EtatNavigateur) => void) => void abonnes.push(f) };
   const profils = {
     synchroniser: async (e: EtatExtensions) => {
+      if (synchroTenue) await synchroTenue;
       synchronisees.push(e);
       journal.push("synchro");
     },
     brancherSite: (id: string, s: unknown) => void journal.push(`brancher:${id}:${(s as { session: string }).session}`),
     chargeesProfil: (p: string) => chargeesSite.get(p) ?? [],
-    attendreDemarrage: async (portee: string, cle: string, ms: number) => {
+    attendreDemarrage: (portee: string, cle: string, ms: number) => {
       attentes.push([portee, cle, ms]);
-      return true;
+      return reponseDemarrage();
     },
     erreursChargement: () => new Map<string, string>(),
     retirerAgentsPrives: (e: EtatNavigateur) => void retraitsPrives.push(e),
@@ -121,6 +126,8 @@ beforeEach(() => {
   chargeesSite = new Map();
   attentes = [];
   nomsSites = {};
+  synchroTenue = null;
+  reponseDemarrage = async () => true;
 });
 
 test("registre illisible : aucune extension chargée, et le démarrage ne lève pas", async () => {
@@ -1028,6 +1035,54 @@ test("deux basculerSite lancés ensemble (vrai puis faux) : l'état final est le
   expect(a).toEqual({ ok: true });
   expect(b).toEqual({ ok: true });
   expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  // L'ordre inverse (faux puis vrai) : active à la fin.
+  const [c, d] = await Promise.all([service.basculerSite(CLE, "vidola", false), service.basculerSite(CLE, "vidola", true)]);
+  expect(c).toEqual({ ok: true });
+  expect(d).toEqual({ ok: true });
+  expect(registre().extensions[CLE]!.applis).toEqual({ vidola: "E1" });
+});
+
+test("M5 une activation qui attend le démarrage (C5) ne retient pas la désactivation qui la suit ; réveillée à faux, elle rend quand même ok", async () => {
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  let reveiller: ((ok: boolean) => void) | undefined;
+  reponseDemarrage = () => new Promise<boolean>((ok) => (reveiller = ok));
+  let activationFinie = false;
+  const activation = service.basculerSite(CLE, "vidola", true).then((r) => {
+    activationFinie = true;
+    return r;
+  });
+  await vi.waitFor(() => expect(reveiller).toBeDefined());
+  expect(registre().extensions[CLE]!.applis).toEqual({ vidola: "E1" });
+  // L'attente est hors de la file : la désactivation passe, pendant que l'activation attend toujours.
+  expect(await service.basculerSite(CLE, "vidola", false)).toEqual({ ok: true });
+  expect(activationFinie).toBe(false);
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  // Retirée : l'attente est réveillée à faux, et l'activation rend ok avec un avertissement.
+  const avertir = vi.spyOn(console, "warn").mockImplementation(() => {});
+  reveiller!(false);
+  expect(await activation).toEqual({ ok: true });
+  expect(avertir).toHaveBeenCalledWith(expect.stringContaining("non répondu"));
+  avertir.mockRestore();
+});
+
+test("I1 domaines changés pendant que la file est tenue : l'activation est refusée DOMAINES_CHANGES_EXTENSION, rien n'est écrit", async () => {
+  const { enFileStore } = await import("../../src/main/extensions/store");
+  const { DOMAINES_CHANGES_EXTENSION } = await import("../../src/commun/extensions");
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  // Une carte d'installation de cette extension tient sa file.
+  let liberer: (() => void) | undefined;
+  const tenue = enFileStore(dossier, ID, () => new Promise<void>((ok) => (liberer = ok)));
+  const bascule = service.basculerSite(CLE, "vidola", true);
+  await vi.waitFor(() => expect(liberer).toBeDefined());
+  // L'agent ajoute un domaine : l'appli est relue avec une autre empreinte.
+  await service.ouvertureSite("vidola", "E2");
+  liberer!();
+  await tenue;
+  expect(await bascule).toEqual({ ok: false, erreur: DOMAINES_CHANGES_EXTENSION });
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  expect(attentes).toEqual([]);
 });
 
 test("fermetureSite pendant un basculerSite : l'activation écrite est refusée APPLI_FERMEE, rien n'est chargé", async () => {
@@ -1093,10 +1148,17 @@ test("C1 ouvertureSite avant la fin du démarrage du service : elle l'attend, pu
   mkdirSync(version, { recursive: true });
   writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
   writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [CLE]: { ...entree("store", []), applis: { vidola: "E1" } } } }));
+  // Le démarrage tenu ouvert (sa synchronisation attend) : l'ouverture de l'appli ne rend pas avant lui.
+  let libererSynchro!: () => void;
+  synchroTenue = new Promise<void>((ok) => (libererSynchro = ok));
   const { service, pret } = demarrer();
   const ouverture = service.ouvertureSite("vidola", "E1");
   let finie = false;
   void ouverture.then(() => (finie = true));
+  await new Promise((ok) => setTimeout(ok, 50));
+  expect(finie).toBe(false);
+  synchroTenue = null;
+  libererSynchro();
   await pret;
   await ouverture;
   expect(finie).toBe(true);
@@ -1220,4 +1282,23 @@ test("désinstaller une extension active dans une appli : son stockage est effac
     expect(x.chemin).toBe(join(dossier, "store", ID, "1.0.0_0"));
     expect(x.registre.extensions[CLE]).toBeUndefined();
   }
+});
+
+test("M3 retirerSite : le dossier effacé est relu dans la file de l'extension (une mise à jour passée entre-temps)", async () => {
+  const { enFileStore } = await import("../../src/main/extensions/store");
+  const { service, registre } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  const v2 = join(dossier, "store", ID, "2.0.0_0");
+  mkdirSync(v2, { recursive: true });
+  writeFileSync(join(v2, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "2.0.0", key: `cle-${ID}` }));
+  let liberer: (() => void) | undefined;
+  const tenue = enFileStore(dossier, ID, () => new Promise<void>((ok) => (liberer = ok)));
+  await vi.waitFor(() => expect(liberer).toBeDefined());
+  const retrait = service.retirerSite("vidola");
+  await vi.waitFor(() => expect(registre().extensions[CLE]!.applis).toBeUndefined());
+  // Une mise à jour appliquée pendant que la file est tenue : la version installée devient 2.0.0.
+  await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, [CLE]: { ...e.extensions[CLE]!, version: "2.0.0" } } }));
+  liberer!();
+  await tenue;
+  await retrait;
+  expect(effacements.map((x) => x.chemin)).toEqual([v2]);
 });

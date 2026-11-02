@@ -42,6 +42,7 @@ import {
   APPLI_FERMEE,
   carteDe,
   DESACTIVEE_PLANTAGES,
+  DOMAINES_CHANGES_EXTENSION,
   DESACTIVEE_PORTEE,
   LONGUEUR_RAISON_DEBLOCAGE,
   nonPrisEnCharge,
@@ -1077,8 +1078,11 @@ export class ServiceExtensions {
       }
     };
     if (!actif) return ecrire((e) => (cle in e.extensions ? desactiverDansSite(e, cle, id) : e));
+    // I1 : l'empreinte des domaines que l'utilisateur a sous les yeux au clic ; c'est elle qui est écrite, jamais une autre.
+    const vue = this.ouverts.get(id);
     const refus = (e: EtatExtensions): string | null => {
-      if (!this.ouverts.has(id)) return APPLI_FERMEE;
+      if (vue === undefined || !this.ouverts.has(id)) return APPLI_FERMEE;
+      if (this.ouverts.get(id) !== vue) return DOMAINES_CHANGES_EXTENSION;
       if (e.toutesCoupees) return TOUTES_COUPEES_AGENT;
       const x = e.extensions[cle];
       if (!x) return `Extension inconnue : ${cle}`;
@@ -1090,7 +1094,7 @@ export class ServiceExtensions {
     const r = await ecrire((e) => {
       const pourquoi = refus(e);
       if (pourquoi) throw new Error(pourquoi);
-      return activerDansSite(e, cle, id, this.ouverts.get(id)!);
+      return activerDansSite(e, cle, id, vue!);
     });
     if (!r.ok) return r;
     const demarree = await (o.profils.attendreDemarrage?.(porteeSite(id), cle, DELAI_DEMARRAGE_FOND_MS) ?? Promise.resolve(true));
@@ -1114,12 +1118,17 @@ export class ServiceExtensions {
     const portee = porteeSite(id);
     const aEffacer = Object.entries(this.etat.extensions)
       .filter(([cle, x]) => lireCle(cle)?.source === "store" && (x.applis?.[id] !== undefined || x.vues[portee] !== undefined))
-      .map(([cle]) => ({ cle, chemin: cheminExtension(o.dossier, cle, this.etat) }));
+      .map(([cle]) => cle);
     await this.modifier((e) => retirerSite(e, id));
-    // Dans la file de chaque extension : ni mise à jour ni désinstallation n'efface sa version pendant l'effacement.
-    for (const { cle, chemin } of aEffacer) {
+    // Dans la file de chaque extension, son dossier relu là (M3) : ni mise à jour ni désinstallation ne le change pendant
+    // l'effacement. Désinstallée entre-temps : rien à effacer ici.
+    for (const cle of aEffacer) {
       const idStore = lireCle(cle)?.id;
-      if (chemin && idStore) await enFileStore(o.dossier, idStore, () => this.effacerDansSites(cle, chemin, [id]));
+      if (!idStore) continue;
+      await enFileStore(o.dossier, idStore, async () => {
+        const chemin = cheminExtension(o.dossier, cle, this.etat);
+        if (chemin) await this.effacerDansSites(cle, chemin, [id]);
+      });
     }
   }
 

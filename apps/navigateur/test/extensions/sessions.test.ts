@@ -182,7 +182,7 @@ function fausseSession(nom: string): FausseSession {
 }
 
 const { ElectronChromeExtensions } = await import("electron-chrome-extensions");
-const { detournerNotifications, ExtensionsProfils, CANAL_DEMARRAGE, CANAL_ONGLET } = await import("../../src/main/extensions/sessions");
+const { detournerNotifications, ExtensionsProfils, CANAL_DEMARRAGE, CANAL_DEMARREE, CANAL_ONGLET } = await import("../../src/main/extensions/sessions");
 const { connexionNative } = await import("../../src/main/extensions/natif");
 
 const temporaires: string[] = [];
@@ -639,6 +639,18 @@ test("le preload des correctifs est enregistré pour les service workers et les 
   const ids = (s.preloads as { id: string; type: string }[]).map((x) => `${x.id}:${x.type}`);
   expect(ids).toEqual(["crx-mv2-preload:frame", "crx-mv3-preload:service-worker", "webaios-extensions-fond:service-worker", "webaios-extensions-page:frame"]);
 });
+
+/** Démarre le service worker d'une extension chargée : la réponse à son preload, et de quoi envoyer son accusé (I2). */
+async function demarrerFondAccuse(s: FausseSession, id: string, versionId: number): Promise<{ reponse: unknown; accuser: () => Promise<unknown> }> {
+  const gestionnaires = new Map<string, (...a: unknown[]) => unknown>();
+  s.workers.set(versionId, { scope: `chrome-extension://${id}/`, ipc: { handle: (c: string, f: (...a: unknown[]) => unknown) => void gestionnaires.set(c, f), on: () => {} } });
+  s.serviceWorkers.emit("running-status-changed", { runningStatus: "starting", versionId });
+  const f = gestionnaires.get(CANAL_DEMARRAGE);
+  const accuse = gestionnaires.get(CANAL_DEMARREE);
+  if (!f || !accuse) throw new Error("gestionnaires de démarrage absents sur ce service worker");
+  const reponse = await f({ session: s, versionId });
+  return { reponse, accuser: async () => accuse({ session: s, versionId }) };
+}
 
 /** Démarre le service worker d'une extension chargée : la réponse à son preload. */
 async function demarrerFond(s: FausseSession, id: string, versionId: number): Promise<unknown> {
@@ -1680,10 +1692,16 @@ test("C5 attendreDemarrage : rend vrai quand le démarrage du fond de la clé a 
   expect(await p.attendreDemarrage("site:vidola", `store:${"c".repeat(32)}`, 1000)).toBe(false);
   // Aucun démarrage dans le délai : faux.
   expect(await p.attendreDemarrage("site:vidola", cle, 20)).toBe(false);
-  // Le démarrage répondu pendant l'attente : vrai ; ensuite, vrai tout de suite.
+  // I2 : la réponse au preload ne suffit pas ; c'est son accusé (rulesets posés) qui termine l'attente. Ensuite, vrai
+  // tout de suite.
   const attente = p.attendreDemarrage("site:vidola", cle, 5000);
+  let finie = false;
+  void attente.then(() => (finie = true));
   const id = [...s.charges.values()].find((c) => c.chemin === chemin)!.id;
-  await demarrerFond(s, id, 1);
+  const { accuser } = await demarrerFondAccuse(s, id, 1);
+  await new Promise((ok) => setTimeout(ok, 10));
+  expect(finie).toBe(false);
+  await accuser();
   expect(await attente).toBe(true);
   expect(await p.attendreDemarrage("site:vidola", cle, 20)).toBe(true);
   // Retirée puis rechargée : il faut un nouveau démarrage ; retirée pendant l'attente : faux.
@@ -1692,4 +1710,41 @@ test("C5 attendreDemarrage : rend vrai quand le démarrage du fond de la clé a 
   const seconde = p.attendreDemarrage("site:vidola", cle, 5000);
   await p.synchroniser(etatExt({}));
   expect(await seconde).toBe(false);
+});
+
+test("M2 activer, désactiver, réactiver vite : l'accusé du fond de la première fois ne compte pas pour la nouvelle ; il faut celui du nouveau fond", async () => {
+  const { site } = optionsSite();
+  const p = creer({ site });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  const chemin = join(dossier, "store", ID_A, "1.0.0_0");
+  s.manifestes.set(chemin, { version: "1.0.0", background: { service_worker: "fond.js" } });
+  const cle = `store:${ID_A}`;
+  const actif = etatExt({ [cle]: enSite({ vidola: "E1" }) });
+  await p.synchroniser(actif);
+  const id = [...s.charges.values()].find((c) => c.chemin === chemin)!.id;
+  const premier = await demarrerFondAccuse(s, id, 1);
+  // Désactivée puis réactivée avant que le premier fond n'ait accusé son démarrage.
+  await p.synchroniser(etatExt({}));
+  await p.synchroniser(actif);
+  await premier.accuser();
+  expect(await p.attendreDemarrage("site:vidola", cle, 30)).toBe(false);
+  // Le nouveau fond accuse : c'est fait.
+  const second = await demarrerFondAccuse(s, id, 2);
+  await second.accuser();
+  expect(await p.attendreDemarrage("site:vidola", cle, 30)).toBe(true);
+});
+
+test("I2 un profil : l'accusé du fond ne change pas la réponse au preload (installation, rulesets)", async () => {
+  const p = creer();
+  const s = fausseSession("defaut");
+  p.brancher(s as unknown as Electron.Session, "defaut");
+  const chemin = join(dossier, "store", ID_A, "1.0.0_0");
+  s.manifestes.set(chemin, { version: "1.0.0", background: { service_worker: "fond.js" }, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "r.json" }] } });
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["defaut"]) }));
+  const id = [...s.charges.keys()][0]!;
+  const { reponse, accuser } = await demarrerFondAccuse(s, id, 1);
+  expect(reponse).toEqual({ installation: { reason: "install" }, rulesets: ["r"], rulesetsInactifs: [], agent: false });
+  await expect(accuser()).resolves.toBeUndefined();
+  expect(await p.attendreDemarrage("defaut", `store:${ID_A}`, 30)).toBe(true);
 });

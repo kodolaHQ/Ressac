@@ -17,7 +17,7 @@ interface Demarrage {
 }
 
 /** Monde principal de l'extension : sérialisé par `executeInMainWorld`, il ne voit rien de ce module. */
-function correctifs(reponse: Promise<Demarrage>): void {
+function correctifs(reponse: Promise<Demarrage>, demarree?: () => void): void {
   type Ecouteur = (details: { reason: string; previousVersion?: string }) => void;
   type Dnr = { updateEnabledRulesets?(o: { enableRulesetIds: string[]; disableRulesetIds: string[] }): Promise<void> };
   const c = (globalThis as unknown as { chrome?: { runtime?: object; declarativeNetRequest?: Dnr } }).chrome;
@@ -45,11 +45,21 @@ function correctifs(reponse: Promise<Demarrage>): void {
   reponse.then(
     async (r) => {
       // Les rulesets d'abord : un `onInstalled` qui en coupe un passe après, et le garde coupé.
+      let poses = true;
       if (r.installation && r.rulesets.length + r.rulesetsInactifs.length > 0 && c?.declarativeNetRequest?.updateEnabledRulesets) {
         try {
           await c.declarativeNetRequest.updateEnabledRulesets({ enableRulesetIds: r.rulesets, disableRulesetIds: r.rulesetsInactifs });
         } catch (e) {
+          poses = false;
           console.error("[webaios] rulesets du manifeste non activés :", e);
+        }
+      }
+      // L'accusé (fond seulement) : ses règles sont en place, la vue peut être rechargée. Jamais si elles ont été refusées.
+      if (poses) {
+        try {
+          demarree?.();
+        } catch (e) {
+          console.error("[webaios] démarrage non accusé :", e);
         }
       }
       if (!r.installation) return;
@@ -362,7 +372,12 @@ if (dansExtension) {
     const reponse: Promise<Demarrage> = ipcRenderer.invoke("webaios:extension-demarrage");
     // Le refus est traité dans le monde principal ; ici, il ne doit pas remonter comme rejet non traité.
     reponse.catch(() => {});
-    contextBridge.executeInMainWorld({ func: correctifs, args: [reponse] });
+    // L'accusé de démarrage n'est envoyé que par un service worker (`webaios:extension-demarree`, I2).
+    const fond = process.type === "service-worker";
+    const demarree = () => {
+      if (fond) void ipcRenderer.invoke("webaios:extension-demarree").catch(() => {});
+    };
+    contextBridge.executeInMainWorld({ func: correctifs, args: [reponse, demarree] });
   } catch (e) {
     console.error("[webaios] correctifs des extensions :", e);
   }
