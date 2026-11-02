@@ -915,7 +915,22 @@ if (m) {
 }
 ```
 
-`accueil/index.html` charge `accueil.js`, un `<script>` classique :
+`accueil/index.html`, minimal : la liste vit dans `#liste`, le CSS dans un `<style>`, le code dans `accueil.js` (un `<script>` classique) :
+
+```html
+<!doctype html>
+<meta charset="utf-8">
+<title>Mes séries</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  button { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  img { width: 40px; height: 56px; object-fit: cover; }
+</style>
+<div id="liste"></div>
+<script src="accueil.js"></script>
+```
+
+`accueil/accueil.js` :
 
 ```js
 const liste = document.getElementById("liste");
