@@ -3,6 +3,7 @@ import { chmod, copyFile, mkdir, readdir, readFile, realpath, rename, stat, writ
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
 import { genererJeton } from "../mcp/serveur.js";
+import { ecrireJsonPrive } from "./ecriture-atomique.js";
 import { idExterne, type ClientExterne, type ProjetExterne } from "./projets.js";
 
 export const DOSSIER_NON_ABSOLU = "Le dossier doit être un chemin absolu.";
@@ -66,14 +67,8 @@ export class RegistreExternes {
     return () => { this.ecouteurs.delete(f); };
   }
 
-  private async ecrireFichier(nom: string, donnees: unknown): Promise<void> {
-    await mkdir(this.prive, { recursive: true, mode: 0o700 });
-    await chmod(this.prive, 0o700);
-    const cible = join(this.prive, nom);
-    const temporaire = `${cible}.${randomBytes(4).toString("hex")}.tmp`;
-    await writeFile(temporaire, JSON.stringify(donnees, null, 2), { mode: 0o600 });
-    await chmod(temporaire, 0o600);
-    await rename(temporaire, cible);
+  private ecrireFichier(nom: string, donnees: unknown): Promise<void> {
+    return ecrireJsonPrive(join(this.prive, nom), donnees);
   }
 
   // Calcule le nouvel état, l'écrit (clients d'abord), puis seulement le adopte en mémoire.
