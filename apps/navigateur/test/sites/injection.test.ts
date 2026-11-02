@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { accordCouvre, accordNecessaire, CLE_INVALIDE, DeclarationSite, MemoireSite, VALEUR_NON_JSON, type RetouchesLues } from "@webaios/noyau";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CONSOLE_RETOUCHES_TOTAL, type InjectionCadre } from "../../src/commun/sites";
@@ -126,6 +126,8 @@ const sous: FauxCadre = { url: "https://www.lecteur.example/v", parent: principa
 const evenement = (sender: unknown, senderFrame: FauxCadre | null) => ({ sender, senderFrame, returnValue: undefined as unknown });
 
 let memoire: MemoireSite;
+let dossierMemoire: string;
+let controle: ReturnType<typeof brancherInjection>;
 let accorde: boolean;
 let reprise: boolean;
 let horloge: number;
@@ -140,8 +142,9 @@ beforeEach(async () => {
   horloge = 0;
   differes = [];
   vue.mainFrame = principal;
-  memoire = await MemoireSite.ouvrir(mkdtempSync(join(tmpdir(), "injection-")), "vidola");
-  brancherInjection({
+  dossierMemoire = mkdtempSync(join(tmpdir(), "injection-"));
+  memoire = await MemoireSite.ouvrir(dossierMemoire, "vidola");
+  controle = brancherInjection({
     siteDeSession: (s) => ((s as unknown) === session ? "vidola" : undefined),
     vue: (id) => (id === "vidola" ? (vue as never) : undefined),
     injection: (id, cadre) => {
@@ -429,4 +432,37 @@ test("motifs cadres déclarés : la reprise ne va que dans le cadre principal et
   const local = DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/x"], cadres: ["https://lecteur.localhost:*/*"] }] });
   expect(repriseDansCadre(local, { url: "http://lecteur.localhost:4000/v", principal: false }, true)).toBe(true);
   expect(repriseDansCadre(local, { url: "http://pub.localhost:4000/v", principal: false }, true)).toBe(false);
+});
+
+test("oublier : une note en attente de sa seconde ne recrée pas memoire.json (1,5 s plus tard)", async () => {
+  const { lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  horloge += 300;
+  // Trop tôt : attend sa seconde.
+  await positionIpc(vue, lecteur, { t: 75, duree: 90 });
+  expect(differes).toHaveLength(1);
+  // « Oublier ce que l'appli a retenu » : notes annulées, puis mémoire effacée.
+  controle.annulerNotes("vidola");
+  await memoire.effacer();
+  horloge = 1000;
+  differes.shift()!.f();
+  await new Promise((r) => setTimeout(r, 1500));
+  expect(memoire.contenu().positions).toEqual({});
+  expect(existsSync(join(dossierMemoire, "vidola", "memoire.json"))).toBe(false);
+  // Une note neuve, après l'oubli, est de nouveau retenue.
+  horloge += 2000;
+  await positionIpc(vue, lecteur, { t: 30, duree: 90 });
+  expect(memoire.position("/episode/4")?.t).toBe(30);
+});
+
+test("accord retiré avant l'écriture différée : la note n'est pas écrite", async () => {
+  const { lecteur } = pageAvecLecteur("https://vidola-b.example/episode/4");
+  await positionIpc(vue, lecteur, { t: 70, duree: 90 });
+  horloge += 300;
+  await positionIpc(vue, lecteur, { t: 75, duree: 90 });
+  accorde = false;
+  horloge = 1000;
+  differes.shift()!.f();
+  await new Promise((r) => setTimeout(r));
+  expect(memoire.position("/episode/4")?.t).toBe(70);
 });

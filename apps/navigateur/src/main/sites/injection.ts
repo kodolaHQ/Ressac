@@ -181,7 +181,13 @@ export function brancherInjection(o: {
   differer?: (f: () => void, ms: number) => void;
   memoire(id: string): Promise<MemoireSite>;
   adresseRelative(id: string, url: string): string | null;
-}): void {
+}): { annulerNotes(id: string): void } {
+  /**
+   * Génération des notes par appli : « Oublier » et « Supprimer » la changent, et toute note reçue avant (écriture
+   * différée comprise) est abandonnée, au lieu de recréer memoire.json.
+   */
+  const generations = new Map<string, number>();
+  const generation = (id: string) => generations.get(id) ?? 0;
   /** L'appli dont `sender` est la vue, ou undefined. */
   const appliDe = (sender: WebContents): string | undefined => {
     let id: string | undefined;
@@ -253,9 +259,12 @@ export function brancherInjection(o: {
     const cible = p ? pageReprise(e) : null;
     const cadre = e.senderFrame;
     if (!p || !cible || !cadre) return;
+    const generationRecue = generation(cible.id);
     const ecrire = () =>
       void o.memoire(cible.id).then(
         (m) => {
+          // Oubliée ou supprimée depuis la note, ou accord retiré : rien n'est écrit.
+          if (generation(cible.id) !== generationRecue || !o.accorde(cible.id)) return;
           const retenue = m.position(cible.adresse);
           if (retenue && !memeDuree(retenue.duree, p.duree)) return;
           m.noterPosition(cible.adresse, p.t, p.duree);
@@ -293,4 +302,11 @@ export function brancherInjection(o: {
     const retenue = (await o.memoire(cible.id)).position(cible.adresse);
     return retenue && memeDuree(retenue.duree, duree) ? retenue.t : null;
   });
+
+  return {
+    /** Abandonne les notes de positions de l'appli reçues jusqu'ici (celles qui attendent leur seconde comprises). */
+    annulerNotes(id) {
+      generations.set(id, generation(id) + 1);
+    },
+  };
 }

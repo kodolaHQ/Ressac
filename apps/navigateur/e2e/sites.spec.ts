@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Frame, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, serveurSites, vueSite } from "./aide";
 
@@ -1544,5 +1544,140 @@ test.describe("suivi de l'adresse", () => {
     const page = await ouvrirEtAttendre(app, fenetre);
     await expect(page.getByTestId("site-chercher-adresse")).toHaveCount(0);
     await fermer();
+  });
+});
+
+// --- La section « Sites » de la page Applications
+
+test.describe("section Sites de la page Applications", () => {
+  const menuApplications = (app: ElectronApplication) => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("applications")?.click());
+  const entreeAgent = (racine: string) => {
+    const f = join(racine, "faux-agent-entree.txt");
+    return existsSync(f) ? readFileSync(f, "utf8") : "";
+  };
+  const cookies = (app: ElectronApplication, partition: string) =>
+    app.evaluate(async ({ session }, p) => (await session.fromPartition(p).cookies.get({})).map((c) => `${c.name}=${c.value}`), partition);
+
+  /** Vidola (avec un accueil), Autre (sans), et un site.json abîmé ; la page Applications est ouverte. */
+  async function demarrerSection(env: Record<string, string> = {}, accueil = true) {
+    const l = await lancer({ env: { ...ENV, ...env } });
+    ecrireSite(l.racine, "vidola", { declaration: vidola().declaration, ...(accueil ? { fichiers: { "accueil/index.html": ACCUEIL } } : {}) });
+    ecrireSite(l.racine, "autre", { declaration: { nom: "Autre", adresse: serveur.url("vidola-b.localhost", "/"), domaines: ["vidola-b.localhost"] } });
+    ecrireSite(l.racine, "casse", { declaration: "{ pas du json" });
+    await menuApplications(l.app);
+    await expect(l.fenetre.getByTestId("page-applications")).toBeVisible();
+    await expect(l.fenetre.getByTestId("section-sites")).toBeVisible();
+    return l;
+  }
+
+  test("deux sites listés avec leur domaine actuel ; un site.json abîmé : « Sans fiche » et l'erreur", async () => {
+    const l = await demarrerSection();
+    const dossier = join(l.profil, "sites", "autre");
+    mkdirSync(dossier, { recursive: true });
+    writeFileSync(join(dossier, "adresse.json"), JSON.stringify({ actuel: "vidola-c.localhost", anciens: ["vidola-b.localhost"], depuis: new Date().toISOString() }));
+    const section = l.fenetre.getByTestId("section-sites");
+    await expect(section.getByRole("heading", { name: "Sites" })).toBeVisible();
+    await expect(l.fenetre.getByTestId("site-vidola")).toContainText("Vidola");
+    await expect(l.fenetre.getByTestId("site-vidola")).toContainText("vidola-a.localhost");
+    // Le domaine actuel est celui de l'adresse retenue dans le profil : relu quand la page se rouvre.
+    await l.fenetre.getByTestId("recherche-applications").fill("autre");
+    await l.fenetre.getByTestId("recherche-applications").fill("");
+    await l.fenetre.reload();
+    await menuApplications(l.app);
+    await expect(l.fenetre.getByTestId("site-autre")).toContainText("vidola-c.localhost");
+    const casse = l.fenetre.getByTestId("site-casse");
+    await expect(casse).toContainText("Sans fiche");
+    await expect(l.fenetre.getByTestId("site-casse-erreur")).toContainText("site.json");
+    // Filtrée par le champ de recherche.
+    await l.fenetre.getByTestId("recherche-applications").fill("autre");
+    await expect(l.fenetre.locator('[data-testid^="site-"][data-ouverte]')).toHaveCount(1);
+    await l.fermer();
+  });
+
+  test("docker absent (faux docker en panne) : les boutons des sites restent actifs, pas de bandeau sur la section", async () => {
+    const l = await demarrerSection({ FAUX_DOCKER_ABSENT: "1" });
+    await expect(l.fenetre.getByTestId("page-applications")).toContainText("Docker n'est pas lancé");
+    await expect(l.fenetre.getByTestId("section-sites")).not.toContainText("Docker");
+    const ligne = l.fenetre.getByTestId("site-vidola");
+    for (const b of ["Ouvrir", "Modifier avec l'agent", "Oublier ce que l'appli a retenu", "Afficher le dossier", "Supprimer"])
+      await expect(ligne.getByRole("button", { name: b })).toBeEnabled();
+    await l.fermer();
+  });
+
+  test("Ouvrir ouvre la fenêtre de l'appli ; la ligne passe à « Ouverte »", async () => {
+    const l = await demarrerSection();
+    await l.fenetre.getByTestId("site-vidola-ouvrir").click();
+    await fenetreSite(l.app, "vidola");
+    await expect(l.fenetre.getByTestId("site-vidola")).toHaveAttribute("data-ouverte", "true");
+    await l.fermer();
+  });
+
+  test("Modifier avec l'agent : le terminal de l'agent est pré-rempli de « Appli de site ~/WebAiOs/sites/vidola/ : »", async () => {
+    const l = await demarrerSection();
+    await l.fenetre.getByTestId("site-vidola-modifier").click();
+    await expect(l.fenetre.getByTestId("panneau-agent")).toBeVisible();
+    await expect.poll(() => entreeAgent(l.racine)).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(entreeAgent(l.racine)).not.toContain("\r");
+    await l.fermer();
+  });
+
+  test("Oublier ce que l'appli a retenu (confirmé) : memoire.json absent, l'accueil ouvert n'affiche plus la série", async () => {
+    const l = await demarrerSection();
+    const dossier = join(l.profil, "sites", "vidola");
+    mkdirSync(dossier, { recursive: true });
+    writeFileSync(
+      join(dossier, "memoire.json"),
+      JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {} }),
+    );
+    await ouvrirSite(l.fenetre, "vidola");
+    const page = await fenetreSite(l.app, "vidola");
+    const cadre = page.frameLocator('[data-testid="site-cadre-accueil"]');
+    await expect(cadre.locator("#series")).toHaveText("encours.the-bear : The Bear /serie/the-bear?e=4");
+    // Annuler ne change rien.
+    await l.fenetre.getByTestId("site-vidola-oublier").click();
+    await expect(l.fenetre.getByTestId("confirmation-oubli-site")).toContainText("Oublier tout ce que « Vidola » a retenu");
+    await l.fenetre.getByTestId("confirmation-oubli-site").getByRole("button", { name: "Annuler" }).click();
+    expect(existsSync(join(dossier, "memoire.json"))).toBe(true);
+    await l.fenetre.getByTestId("site-vidola-oublier").click();
+    await l.fenetre.getByTestId("confirmer-oubli-site").click();
+    await expect.poll(() => existsSync(join(dossier, "memoire.json"))).toBe(false);
+    await expect(cadre.locator("#series")).toHaveText("");
+    // Le dossier de l'appli n'est pas touché.
+    expect(existsSync(join(l.racine, "sites", "vidola", "site.json"))).toBe(true);
+    await l.fermer();
+  });
+
+  test("Supprimer (confirmé) : cookie et mémoire effacés, fenêtre fermée, dossier dans sites/.corbeille, la ligne disparaît ; une appli recréée au même id repart vide", async () => {
+    const l = await demarrerSection({}, false);
+    await ouvrirEtAttendre(l.app, l.fenetre);
+    await vueSite(l.app, "vidola", "location.href = '/cookie'");
+    await expect.poll(() => cookies(l.app, "persist:site-vidola")).toContain("essai=vidola-a.localhost");
+    const dossier = join(l.profil, "sites", "vidola");
+    mkdirSync(dossier, { recursive: true });
+    writeFileSync(join(dossier, "memoire.json"), JSON.stringify({ version: 1, valeurs: {}, positions: {} }));
+    writeFileSync(join(dossier, "adresse.json"), JSON.stringify({ actuel: "vidola-a.localhost", anciens: [], depuis: null }));
+    await l.fenetre.getByTestId("site-vidola-supprimer").click();
+    await expect(l.fenetre.getByTestId("confirmation-suppression-site")).toContainText("Supprimer « Vidola » ?");
+    await l.fenetre.getByTestId("confirmation-suppression-site").getByRole("button", { name: "Annuler" }).click();
+    expect(existsSync(join(l.racine, "sites", "vidola"))).toBe(true);
+    await l.fenetre.getByTestId("site-vidola-supprimer").click();
+    await l.fenetre.getByTestId("confirmer-suppression-site").click();
+    await expect(l.fenetre.getByTestId("site-vidola")).toHaveCount(0);
+    expect(await fenetresDuSite(l.app, "vidola")).toBe(0);
+    expect(await cookies(l.app, "persist:site-vidola")).toEqual([]);
+    expect(existsSync(join(l.racine, "sites", "vidola"))).toBe(false);
+    const corbeille = join(l.racine, "sites", ".corbeille");
+    expect(readdirSync(corbeille).filter((n) => /^vidola-\d+$/.test(n))).toHaveLength(1);
+    expect(existsSync(join(dossier, "memoire.json"))).toBe(false);
+    expect(existsSync(join(dossier, "adresse.json"))).toBe(false);
+    // Une nouvelle appli au même id repart vide : ni cookie, ni mémoire, ni adresse retenue.
+    ecrireSite(l.racine, "vidola", vidola());
+    await expect(l.fenetre.getByTestId("site-vidola")).toHaveCount(1);
+    await ouvrirEtAttendre(l.app, l.fenetre);
+    expect(await cookies(l.app, "persist:site-vidola")).toEqual([]);
+    expect(existsSync(join(dossier, "memoire.json"))).toBe(false);
+    expect(existsSync(join(dossier, "adresse.json"))).toBe(false);
+    await l.fermer();
   });
 });

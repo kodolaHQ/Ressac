@@ -31,6 +31,11 @@ export class SuiviAdresse {
     },
   ) {}
 
+  /** L'appli est supprimée : la prochaine appli au même id repart sans lecture récente. */
+  oublier(id: string): void {
+    this.dernieres.delete(id);
+  }
+
   async chercher(id: string, d: DeclarationSite, signal?: AbortSignal): Promise<ResultatSuivi> {
     const suivi = d.suiviAdresse;
     if (!suivi) return { t: "introuvable" };
@@ -50,6 +55,8 @@ export class SuiviAdresse {
     if (!trouvee) return { t: "introuvable" };
     if (signal?.aborted) return { t: "introuvable" };
     const courant = await lireEtatAdresse(this.o.dossierSites, id);
+    // Annulée pendant la relecture de l'état (suppression de l'appli) : rien n'est écrit.
+    if (signal?.aborted) return { t: "introuvable" };
     const actuel = courant?.actuel ?? hoteDe(d.adresse);
     if (trouvee.hostname === actuel) return { t: "inchangee" };
     try {

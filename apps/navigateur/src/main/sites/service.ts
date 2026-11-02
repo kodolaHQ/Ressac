@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { constants } from "node:fs";
+import { mkdir, open, readdir, realpath, rename } from "node:fs/promises";
+import { extname, join, sep } from "node:path";
+import { shell } from "electron";
 import {
   accordCouvre,
   accordNecessaire,
@@ -17,6 +19,7 @@ import {
   lireSite,
   lireSites,
   MemoireSite,
+  supprimerDonneesSite,
   surveillerSites,
   type CheminsEspace,
   type DroitsSite,
@@ -24,7 +27,7 @@ import {
   type SiteLu,
 } from "@webaios/noyau";
 import { CANAUX } from "../../commun/canaux";
-import { type AvisBarre, adresseChangee, adresseInchangee, adresseIntrouvable, ECART_OUVERTURE_ACCUEIL_MS, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
+import { type AvisBarre, adresseChangee, adresseInchangee, adresseIntrouvable, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, modifierAvecAgent, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../commun/sites";
 import { lirePageInvisible } from "../agent/lecture-invisible";
 import { imageSite } from "./accueil";
 import { requetesDe } from "../image-distante";
@@ -33,7 +36,7 @@ import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
 import { empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
 import { brancherInjection, injectionPour, repriseDansCadre } from "./injection";
-import { fixerPreloadSite, sessionSite, siteDeSession } from "./session";
+import { effacerSessionSite, fixerPreloadSite, sessionSite, siteDeSession } from "./session";
 import { SuiviAdresse } from "./suivi";
 
 export type { ErreurRetouche };
@@ -91,6 +94,34 @@ function hote(url: string): string | null {
   }
 }
 
+const TYPES_ICONE: Record<string, string> = { ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".webp": "image/webp" };
+
+/**
+ * L'icône déclarée par l'appli (`icone`, chemin relatif vers une image), en `data:` ; null si elle manque, sort du dossier
+ * (lien, `..`), est un lien ou dépasse `ICONE_MAX`.
+ */
+async function lireIcone(dossier: string, chemin: string): Promise<string | null> {
+  const type = TYPES_ICONE[extname(chemin).toLowerCase()];
+  if (!type) return null;
+  try {
+    const racine = await realpath(dossier);
+    const reel = await realpath(join(dossier, chemin));
+    if (!reel.startsWith(racine + sep)) return null;
+    const f = await open(reel, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const st = await f.stat();
+      if (!st.isFile() || st.size > ICONE_MAX) return null;
+      const tampon = Buffer.alloc(st.size);
+      const { bytesRead } = await f.read(tampon, 0, st.size, 0);
+      return `data:${type};base64,${tampon.subarray(0, bytesRead).toString("base64")}`;
+    } finally {
+      await f.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Les applis de site de l'espace (`~/WebAiOs/sites/<id>/`, écrites par l'agent, jamais par WebAiOs) et leurs fenêtres.
  * Ce que WebAiOs en retient est dans le profil : `<profil>/sites/<id>/` (mémoire, adresse actuelle), `<profil>/sites.json`
@@ -143,6 +174,8 @@ export function demarrerSites(o: {
   const derniersAvis = new Map<string, AvisBarre>();
   /** Nombre de changements d'adresse par appli : une relecture de site.json commencée avant l'un d'eux est refaite. */
   const changements = new Map<string, number>();
+  /** Suppressions en cours : une seconde demande pour la même appli ne fait rien. */
+  const suppressions = new Set<string>();
 
   const fenetres = new FenetresSites({
     memoire: souvenirs,
@@ -311,10 +344,12 @@ export function demarrerSites(o: {
   }
 
   const arreterSurveillance = surveillerSites(o.chemins, (id, quoi) => {
+    // La section « Sites » de la page Applications relit la liste (appli écrite, changée ou retirée par l'agent).
+    o.diffuser();
     if (quoi !== "accueil") void relire(id);
   });
 
-  brancherInjection({
+  const notes = brancherInjection({
     siteDeSession,
     vue: (id) => fenetres.vueSite(id),
     injection(id, cadre) {
@@ -380,7 +415,47 @@ export function demarrerSites(o: {
     if (f.enCours === 0) images.delete(id);
   }
 
+  /**
+   * « Oublier ce que l'appli a retenu » : les notes de positions en attente sont abandonnées, puis la mémoire est effacée
+   * (memoire.json supprimé ; l'accueil ouvert reçoit une mémoire vide). Sans fenêtre ouverte, la mémoire n'est pas gardée.
+   */
+  async function oublier(id: string): Promise<void> {
+    notes.annulerNotes(id);
+    const m = await memoire(id);
+    await m.effacer();
+    if (!fenetres.site(id)) memoires.delete(id);
+  }
+
+  /**
+   * « Supprimer » : lecture de l'adresse annulée, notes abandonnées, fenêtre fermée (vue détruite) avant que sa session soit
+   * effacée, puis mémoire, adresse et accord oubliés, enfin le dossier à la corbeille. Une appli recréée au même id repart
+   * vide. WebAiOs n'écrit rien d'autre dans ~/WebAiOs/sites/<id>/.
+   */
+  async function supprimer(id: string): Promise<void> {
+    if (suppressions.has(id)) return;
+    suppressions.add(id);
+    try {
+      recherches.get(id)?.abort();
+      notes.annulerNotes(id);
+      await fenetres.fermer(id);
+      const m = memoires.get(id);
+      if (m) await m.then((x) => x.effacer(), () => {});
+      memoires.delete(id);
+      suivi.oublier(id);
+      await effacerSessionSite(id);
+      await supprimerDonneesSite(o.dossierProfil, id);
+      souvenirs.oublier(id);
+      const corbeille = join(o.chemins.sites, ".corbeille");
+      await mkdir(corbeille, { recursive: true });
+      await rename(join(o.chemins.sites, id), join(corbeille, `${id}-${Date.now()}`));
+    } finally {
+      suppressions.delete(id);
+      o.diffuser();
+    }
+  }
+
   async function ouvrirParId(id: string): Promise<boolean> {
+    if (suppressions.has(id)) return false;
     const p = await preparer(id);
     if (!p) return false;
     // Avant la fenêtre : le premier chargement de la page demande déjà ses retouches.
@@ -398,28 +473,37 @@ export function demarrerSites(o: {
       const ouvertes = new Set(fenetres.ouvertes().map((f) => f.id));
       return Promise.all(
         sites.map(async (s): Promise<SiteAffiche> => {
-          const icone = souvenirs.lire(s.id).favicon ?? null;
-          if ("erreur" in s) return { id: s.id, nom: s.id, description: "", domaine: null, icone, ouverte: ouvertes.has(s.id), erreur: s.erreur };
+          const favicon = souvenirs.lire(s.id).favicon ?? null;
+          if ("erreur" in s) return { id: s.id, nom: s.id, description: "", domaine: null, icone: favicon, ouverte: ouvertes.has(s.id), erreur: s.erreur };
           const etat = ID_SITE.test(s.id) ? await lireEtatAdresse(dossierSites, s.id) : null;
+          const declaree = s.declaration.icone ? await lireIcone(s.dossier, s.declaration.icone) : null;
           return {
             id: s.id,
             nom: s.declaration.nom,
             description: s.declaration.description,
             domaine: hote(adresseDeDepart(s.declaration, etat)),
-            icone,
+            icone: declaree ?? favicon,
             ouverte: ouvertes.has(s.id),
           };
         }),
       );
     },
-    async agir(id, a) {
+    async agir(id, a, fenetreId) {
+      if (!ID_SITE.test(id)) return;
       switch (a) {
         case "ouvrir":
           if (!(await ouvrirParId(id))) console.warn(`[sites] ${id} ne peut pas s'ouvrir`);
           return;
-        default:
-          // Modifier, oublier, dossier, supprimer : la section « Sites » de la page Applications (tâche suivante).
-          console.warn(`[sites] action ${a} pas encore prise en charge`);
+        case "modifier":
+          o.deboguer(fenetreId, modifierAvecAgent(id));
+          return;
+        case "oublier":
+          return oublier(id);
+        case "dossier":
+          shell.showItemInFolder(join(o.chemins.sites, id));
+          return;
+        case "supprimer":
+          return supprimer(id);
       }
     },
     ouvrirParId,

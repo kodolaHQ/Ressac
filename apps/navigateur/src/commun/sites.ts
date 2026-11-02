@@ -9,6 +9,9 @@ export const HAUTEUR_BARRE_SITE = 36;
 /** Au plus une lecture de la page de référence par minute et par appli. */
 export const INTERVALLE_SUIVI_MS = 60_000;
 
+/** Taille maximale de l'icône déclarée par une appli de site. */
+export const ICONE_MAX = 256 * 1024;
+
 export const ENTRER_DANS_LE_SITE = "Entrer dans le site";
 export const lienBloque = (domaine: string) => `Lien vers ${domaine} bloqué`;
 export const OUVRIR_DANS_UN_ONGLET = "Ouvrir dans un onglet";
