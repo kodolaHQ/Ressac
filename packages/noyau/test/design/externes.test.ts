@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
@@ -76,6 +76,9 @@ describe("RegistreExternes", () => {
     const sous = join(c.racineEspace, "projets", "x");
     await mkdir(sous, { recursive: true });
     await expect(refus(sous)).rejects.toThrow(DOSSIER_ESPACE);
+    const pointpoint = join(c.racineEspace, "..x", "p");
+    await mkdir(pointpoint, { recursive: true });
+    await expect(refus(pointpoint)).rejects.toThrow(DOSSIER_ESPACE);
     expect(DOSSIER_NON_ABSOLU).toBe("Le dossier doit être un chemin absolu.");
     expect(DOSSIER_ESPACE).toBe("Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.");
     expect(r.projets()).toEqual([]);
@@ -182,5 +185,20 @@ describe("RegistreExternes", () => {
     arret();
     await r.revoquer(client.id);
     expect(n).toBe(3);
+  });
+
+  test("revoquer : si l'écriture échoue, l'appel est rejeté et le client reste cohérent avec le disque", async () => {
+    const c = await cadre();
+    const r = await RegistreExternes.ouvrir(c.prive);
+    const { client, jeton } = await r.brancher("x");
+    const fichier = join(c.prive, "clients-externes.json");
+    const contenu = await readFile(fichier, "utf8");
+    await rm(fichier);
+    await mkdir(join(fichier, "bloque"), { recursive: true }); // le rename du fichier sur ce dossier échoue
+    await expect(r.revoquer(client.id)).rejects.toThrow();
+    expect(r.clientDuJeton(jeton)?.id).toBe(client.id);
+    await rm(fichier, { recursive: true });
+    await writeFile(fichier, contenu);
+    expect((await RegistreExternes.ouvrir(c.prive)).clientDuJeton(jeton)?.id).toBe(client.id);
   });
 });

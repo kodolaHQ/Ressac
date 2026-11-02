@@ -30,7 +30,7 @@ export interface OptionsDeclaration { plages: [number, number][]; racineEspace: 
 
 const dedans = (dossier: string, racine: string): boolean => {
   const r = relative(racine, dossier);
-  return r === "" || (!r.startsWith("..") && !isAbsolute(r));
+  return r === "" || (r !== ".." && !r.startsWith(`..${sep}`) && !isAbsolute(r));
 };
 
 async function lire<T>(fichier: string, schema: z.ZodType<T>): Promise<T[]> {
@@ -76,12 +76,14 @@ export class RegistreExternes {
     await rename(temporaire, cible);
   }
 
-  // Applique la modification en mémoire puis écrit, à la suite des écritures précédentes.
-  private modifier<T>(f: () => T, projets: boolean, clients: boolean): Promise<T> {
+  // Calcule le nouvel état, l'écrit (clients d'abord), puis seulement le adopte en mémoire.
+  private modifier<T>(calcul: () => { projets?: ProjetExterne[]; clients?: ClientExterne[]; resultat: T }): Promise<T> {
     const tache = this.ecritures.then(async () => {
-      const resultat = f();
-      if (projets) await this.ecrireFichier(FICHIER_PROJETS, this.liste);
-      if (clients) await this.ecrireFichier(FICHIER_CLIENTS, this.lesClients);
+      const { projets, clients, resultat } = calcul();
+      if (clients) await this.ecrireFichier(FICHIER_CLIENTS, clients);
+      if (projets) await this.ecrireFichier(FICHIER_PROJETS, projets);
+      if (clients) this.lesClients = clients;
+      if (projets) this.liste = projets;
       for (const e of [...this.ecouteurs]) { try { e(); } catch { /* un écouteur ne bloque pas */ } }
       return resultat;
     });
@@ -97,7 +99,7 @@ export class RegistreExternes {
       empreinte: createHash("sha256").update(jeton).digest("hex"),
       cree: new Date().toISOString(),
     };
-    await this.modifier(() => { this.lesClients.push(client); }, false, true);
+    await this.modifier(() => ({ clients: [...this.lesClients, client], resultat: undefined }));
     return { client: { ...client }, jeton };
   }
 
@@ -112,10 +114,11 @@ export class RegistreExternes {
   }
 
   async revoquer(idClient: string): Promise<void> {
-    await this.modifier(() => {
-      this.lesClients = this.lesClients.filter((c) => c.id !== idClient);
-      this.liste = this.liste.map((p) => (p.client === idClient ? { ...p, client: null } : p));
-    }, true, true);
+    await this.modifier(() => ({
+      clients: this.lesClients.filter((c) => c.id !== idClient),
+      projets: this.liste.map((p) => (p.client === idClient ? { ...p, client: null } : p)),
+      resultat: undefined,
+    }));
   }
 
   async declarer(
@@ -152,11 +155,10 @@ export class RegistreExternes {
       const existant = this.liste.find((p) => p.id === id);
       const nom = d.nom?.trim() || existant?.nom || basename(reel);
       const projet: ProjetExterne = { id, nom, dossier: reel, ports, client, declare: existant?.declare ?? new Date().toISOString() };
-      this.liste = this.liste.map((p) => (p.id === id ? p : { ...p, ports: p.ports.filter((x) => !ports.includes(x)) }));
-      if (existant) this.liste = this.liste.map((p) => (p.id === id ? projet : p));
-      else this.liste.push(projet);
-      return { projet: { ...projet, ports: [...ports] }, premiere: !existant, lisible };
-    }, true, false);
+      const autres = this.liste.filter((p) => p.id !== id).map((p) => ({ ...p, ports: p.ports.filter((x) => !ports.includes(x)) }));
+      const projets = existant ? this.liste.map((p) => (p.id === id ? projet : autres.find((a) => a.id === p.id)!)) : [...autres, projet];
+      return { projets, resultat: { projet: { ...projet, ports: [...ports] }, premiere: !existant, lisible } };
+    });
   }
 
   async projetDe(client: string, dossier: string): Promise<ProjetExterne | null> {
@@ -167,6 +169,6 @@ export class RegistreExternes {
   }
 
   async oublier(id: string): Promise<void> {
-    await this.modifier(() => { this.liste = this.liste.filter((p) => p.id !== id); }, true, false);
+    await this.modifier(() => ({ projets: this.liste.filter((p) => p.id !== id), resultat: undefined }));
   }
 }
