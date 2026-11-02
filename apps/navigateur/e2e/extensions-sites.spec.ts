@@ -1,9 +1,9 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { dansLaVue, ecrireSite, etatVueSite, fenetreSite, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurSites, vueSite, type SiteTest } from "./aide";
 import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
-import { AUCUNE_EXTENSION_SITE, GERER_EXTENSIONS, VOIT_LES_PAGES_SITE } from "../src/commun/extensions-messages";
+import { activeDans, AUCUNE_EXTENSION_SITE, DOMAINES_CHANGES_EXTENSION, GERER_EXTENSIONS, VOIT_LES_PAGES_SITE } from "../src/commun/extensions-messages";
 
 /**
  * Plan 16 : les extensions du Store dans les applis de site, activées appli par appli. L'extension de ces tests imite
@@ -724,6 +724,167 @@ test("« Désactiver toutes les extensions » : l'interrupteur de l'appli est gr
     const ligne = page.getByTestId("ligne-extension-site");
     await expect(ligne).not.toContainText(VOIT_LES_PAGES_SITE);
     await expect(ligne).toContainText("toutes désactivées");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+// ---- Tâche 6 : la page Extensions, la coupure, les domaines qui changent, la suppression ----
+
+type EtatRegistre = { extensions: Record<string, { applis?: Record<string, string>; vues?: Record<string, unknown> }> };
+const registre = (profil: string): EtatRegistre => JSON.parse(readFileSync(join(profil, "extensions", "etat.json"), "utf8"));
+
+/** La page Extensions, dans la fenêtre principale (par le menu des extensions). */
+async function ouvrirPageExtensions(fenetre: Page) {
+  await fenetre.getByTestId("menu-extensions").click();
+  await fenetre.getByTestId("panneau-extensions").getByRole("button", { name: "Gérer les extensions" }).click();
+  const page = fenetre.getByTestId("page-extensions");
+  await expect(page).toBeVisible();
+  return page;
+}
+
+test("activée dans Vidola : la page Extensions montre « Active dans : Vidola » ; « Désactiver partout » : plus aucune extension dans persist:site-vidola, la ligne disparaît, l'interrupteur de l'appli s'éteint", async () => {
+  const { app, fenetre, profil, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await basculerEtAttendre(app, page, cle, true);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    const extensions = await ouvrirPageExtensions(fenetre);
+    const ligne = extensions.getByTestId("extension-page").filter({ hasText: "uBlock factice" });
+    await expect(ligne.getByTestId("extension-applis")).toHaveText(activeDans(["Vidola"]));
+    // C12 : active seulement dans une appli, pas « Active nulle part ».
+    await expect(ligne).toContainText("Espaces : aucun");
+    await expect(ligne).not.toContainText("Active nulle part");
+    const desactiver = ligne.getByRole("button", { name: "Désactiver partout" });
+    await expect(desactiver).toBeEnabled();
+    await desactiver.click();
+    await expect(ligne.getByTestId("extension-applis")).toHaveCount(0);
+    await expect(ligne).toContainText("Active nulle part");
+    await expect(desactiver).toBeDisabled();
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual([]);
+    expect(registre(profil).extensions[cle]!.applis).toBeUndefined();
+    // L'interrupteur du menu de l'appli s'éteint (P2 : la vue n'est pas rechargée, on ne regarde pas la page).
+    await ouvrirMenu(page);
+    await expect(page.getByTestId("interrupteur-extension-site")).toHaveAttribute("aria-checked", "false");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("« Désactiver toutes les extensions » : plus rien dans la session de l'appli, l'interrupteur est grisé avec TOUTES_COUPEES_AGENT ; réactivées : l'extension revient sans geste dans l'appli", async () => {
+  const { app, fenetre, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await basculerEtAttendre(app, page, cle, true);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    await ouvrirMenu(page);
+    const toutCouper = (oui: boolean) =>
+      fenetre.evaluate((oui) => (window as unknown as { webaios: { extensions: { toutCouper(oui: boolean): Promise<unknown> } } }).webaios.extensions.toutCouper(oui), oui);
+    await toutCouper(true);
+    // G4/P2 : la vue n'est pas rechargée ; on lit ce que la session charge, pas la page.
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual([]);
+    const inter = page.getByTestId("interrupteur-extension-site");
+    await expect(inter).toBeDisabled();
+    await expect(page.getByTestId("ligne-extension-site")).toContainText("toutes désactivées");
+    await toutCouper(false);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    await expect(inter).toBeEnabled();
+    await expect(inter).toHaveAttribute("aria-checked", "true");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("site.json réécrit avec un domaine de plus, fenêtre ouverte : l'extension quitte la session, le menu montre DOMAINES_CHANGES_EXTENSION ; l'interrupteur la réactive (bloquée de nouveau)", async () => {
+  const { app, fenetre, racine, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await basculerEtAttendre(app, page, cle, true);
+    expect(await banniere(app)).toBe("none");
+    await ouvrirMenu(page);
+    ecrireSite(racine, "vidola", { declaration: { ...vidola().declaration, domaines: ["vidola-a.localhost", "autre.localhost"] } });
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola"), { timeout: 15_000 }).toEqual([]);
+    await expect(page.getByTestId("ligne-extension-site")).toContainText(DOMAINES_CHANGES_EXTENSION);
+    const inter = page.getByTestId("interrupteur-extension-site");
+    await expect(inter).toHaveAttribute("aria-checked", "false");
+    await interrupteurEtAttendre(app, page, true);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    expect(await banniere(app)).toBe("none");
+    expect(pubsDemandees()).toEqual([]);
+    await expect(page.getByTestId("ligne-extension-site")).not.toContainText(DOMAINES_CHANGES_EXTENSION);
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("site.json réécrit avec seulement un autre nom : l'extension reste chargée", async () => {
+  const { app, fenetre, racine, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await basculerEtAttendre(app, page, cle, true);
+    await ouvrirMenu(page);
+    ecrireSite(racine, "vidola", { declaration: { ...vidola().declaration, nom: "Vidola renommé" } });
+    // Le nouveau nom est lu (la page Extensions le montre), l'extension n'a pas bougé.
+    const extensions = await ouvrirPageExtensions(fenetre);
+    await expect(extensions.getByTestId("extension-applis")).toHaveText(activeDans(["Vidola renommé"]), { timeout: 15_000 });
+    expect(await extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    await expect(page.getByTestId("interrupteur-extension-site")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("ligne-extension-site")).not.toContainText(DOMAINES_CHANGES_EXTENSION);
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("supprimer l'appli puis la recréer au même id : interrupteur éteint, registre sans applis.vidola ni vues[\"site:vidola\"] ; réactivée, elle bloque de nouveau", async () => {
+  const { app, fenetre, racine, profil, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await basculerEtAttendre(app, page, cle, true);
+    await expect.poll(() => registre(profil).extensions[cle]!.applis?.vidola).toBeTruthy();
+    expect(registre(profil).extensions[cle]!.vues?.["site:vidola"]).toBeTruthy();
+    await fenetre.evaluate(() => (window as unknown as ApiSites).webaios.sites.agir("vidola", "supprimer"));
+    await expect.poll(() => existsSync(join(racine, "sites", "vidola"))).toBe(false);
+    await expect.poll(() => registre(profil).extensions[cle]!.applis?.vidola, { timeout: 15_000 }).toBeUndefined();
+    expect(registre(profil).extensions[cle]!.vues?.["site:vidola"]).toBeUndefined();
+
+    ecrireSite(racine, "vidola", vidola());
+    serveur.requetes.splice(0);
+    const page2 = await ouvrirEtAttendre(app, fenetre);
+    expect(await extensionsDe(app, "persist:site-vidola")).toEqual([]);
+    expect(await banniere(app)).toBe("block");
+    await ouvrirMenu(page2);
+    await expect(page2.getByTestId("interrupteur-extension-site")).toHaveAttribute("aria-checked", "false");
+    await interrupteurEtAttendre(app, page2, true);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    expect(await banniere(app)).toBe("none");
+    expect(pubsDemandees()).toEqual([]);
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("« Supprimer » l'extension sur la page Extensions, active dans l'appli : retirée de persist:site-vidola, absente du registre, store/<id> effacé ; le menu de l'appli dit AUCUNE_EXTENSION_SITE", async () => {
+  const { app, fenetre, profil, id, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await basculerEtAttendre(app, page, cle, true);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    await ouvrirMenu(page);
+    const extensions = await ouvrirPageExtensions(fenetre);
+    const ligne = extensions.getByTestId("extension-page").filter({ hasText: "uBlock factice" });
+    await ligne.getByRole("button", { name: "Supprimer" }).click();
+    await fenetre.getByTestId("confirmation-suppression-extension").getByRole("button", { name: "Supprimer" }).click();
+    await expect(ligne).toHaveCount(0);
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual([]);
+    await expect.poll(() => existsSync(join(profil, "extensions", "store", id))).toBe(false);
+    expect(registre(profil).extensions[cle]).toBeUndefined();
+    await expect(page.getByTestId("panneau-extensions-site")).toContainText(AUCUNE_EXTENSION_SITE);
     await aucuneVisible(app);
   } finally {
     await fermer();

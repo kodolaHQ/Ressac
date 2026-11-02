@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { LigneExtension } from "../../commun/extensions";
-  import { CONSOLE_DEBLOQUEE_PAGE, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions-messages";
+  import { activeDans, CONSOLE_DEBLOQUEE_PAGE, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../commun/extensions-messages";
   import type { ResultatExtension } from "../../commun/api";
   import { api } from "../etat.svelte";
 
@@ -48,7 +48,7 @@
   }
 
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const espaces = (l: LigneExtension) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : "Active nulle part");
+  const espaces = (l: LigneExtension) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : l.applis.length ? "aucun" : "Active nulle part");
 </script>
 
 <section class="extensions" data-testid="page-extensions" aria-label="Extensions">
@@ -90,6 +90,7 @@
         <p>Droits : {l.droits.length ? l.droits.join(" · ") : "aucun"}</p>
         <p>Sites : {l.tousLesSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
         <p>Espaces : {espaces(l)}</p>
+        {#if l.applis.length}<p data-testid="extension-applis">{activeDans(l.applis)}</p>{/if}
         {#if l.modifieeLe}<p class="doux">Modifiée le {date(l.modifieeLe)}</p>{/if}
         {#if l.nonPrisEnCharge.length}<p class="doux">Non pris en charge : {l.nonPrisEnCharge.join(", ")}</p>{/if}
         {#if l.erreurs.length}
@@ -114,7 +115,7 @@
           {/if}
           {#if l.desactivee === DESACTIVEE_PLANTAGES}<button onclick={() => void faire(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
           {#if l.consoleDebloquee}<button onclick={() => void faire(api.extensions.couperDeblocage(l.cle))}>Couper le déblocage</button>{/if}
-          <button disabled={l.espaces.length === 0} onclick={() => void faire(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
+          <button disabled={l.espaces.length === 0 && l.applis.length === 0} onclick={() => void faire(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
           <button onclick={() => (aSupprimer = l)}>Supprimer</button>
           <button aria-expanded={!!details[l.cle]} onclick={() => (details[l.cle] = !details[l.cle])}>Détails</button>
         </div>
