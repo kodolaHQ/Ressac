@@ -7,6 +7,7 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
+import { DeclarationSite, verifierDeclarationSite } from "../../src/sites/schemas.js";
 import { lireReference } from "../../src/pages/plan.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -371,6 +372,35 @@ test("un AGENTS.md identique au modèle 28a1cac est remplacé par le nouveau", a
   expect(apres).toBe(modele);
   for (const motif of ["action.json", 'vers: "page"', "{saisie}", "miseEnPage", "composant.json", "lancer_action", "<svg"]) {
     expect(apres, motif).toContain(motif);
+  }
+});
+
+test("un AGENTS.md identique au modèle c19ad8d (avant les applis de site) est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant les applis de site (c19ad8d) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-c19ad8d.md"), "utf8");
+  expect(sha256(ancien)).toBe("7f7acaaff80c1afc24df9ee2582d7bdb9addfd8188967367681a4d37a8c8142e");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  for (const motif of ["site.json", "webaiosSite.retenir", "suiviAdresse", "reprise", "ouvrir_site", "memoire_site", '{ type: "ouvrir"', "lister_sites", "erreurs_retouches"]) {
+    expect(apres, motif).toContain(motif);
+  }
+});
+
+test("les site.json donnés en exemple dans AGENTS.md (YouTube, Vidola) sont valides pour le schéma des applis de site", async () => {
+  const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  const blocs = [...texte.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ nom: m[1]!, json: m[2]! }));
+  expect(blocs.map((b) => b.nom).sort()).toEqual(["vidola", "youtube"]);
+  for (const { nom, json } of blocs) {
+    const r = DeclarationSite.safeParse(JSON.parse(json));
+    expect(r.success, `${nom} : ${r.success ? "" : r.error.message}`).toBe(true);
+    if (!r.success) continue;
+    expect(verifierDeclarationSite(r.data, { adressesLocales: false }), nom).toBeNull();
+    // Chaque fichier de retouche déclaré est montré dans AGENTS.md.
+    for (const r2 of r.data.retouches) for (const f of [...r2.js, ...r2.css]) expect(texte, `${nom} : retouches/${f}`).toContain(`retouches/${f}`);
   }
 });
 
