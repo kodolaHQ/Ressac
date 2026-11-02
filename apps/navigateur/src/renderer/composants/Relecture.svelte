@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** Le jeton de la comparaison montrée par chaque onglet : une page remontée la retrouve telle quelle. */
+  const jetons = new Map<string, string>();
+</script>
+
 <script lang="ts">
   import type { DiffFichier as Diff, FichierModifie, VueRelecture } from "../../commun/api";
   import { api } from "../etat.svelte";
@@ -7,7 +12,8 @@
    * La page Relecture d'un projet : ce qui a changé depuis la dernière relecture, en lecture seule. La comparaison est
    * faite à l'ouverture et gardée telle quelle jusqu'à « Rafraîchir ».
    */
-  let { projet }: { projet: string } = $props();
+  let { projet, ongletId }: { projet: string; ongletId: string } = $props();
+  let jeton = $state<string | null>(null);
 
   let vue = $state<VueRelecture | null>(null);
   let choisi = $state<string | null>(null);
@@ -20,13 +26,17 @@
   const STATUTS = { ajoute: "+", supprime: "−", modifie: "~" } as const;
   const LIBELLES = { ajoute: "ajouté", supprime: "supprimé", modifie: "modifié" } as const;
 
-  async function charger() {
+  /** `garder` : la comparaison de l'onglet si elle est encore gardée ; sinon (« Rafraîchir ») une nouvelle. */
+  async function charger(garder: boolean) {
     const n = ++requete;
     enCours = true;
     try {
-      const v = await api.relecture.ouvrir(projet);
+      const v = await api.relecture.ouvrir(projet, garder ? jetons.get(ongletId) : undefined);
       if (n !== requete) return;
       vue = v;
+      jeton = v.etat === "ok" ? v.jeton : null;
+      if (jeton) jetons.set(ongletId, jeton);
+      else jetons.delete(ongletId);
       const fichiers = v.etat === "ok" ? v.comparaison.fichiers : [];
       // Le fichier choisi reste choisi s'il est encore modifié ; sinon le premier.
       const garde = fichiers.find((f) => f.chemin === choisi) ?? fichiers[0];
@@ -43,24 +53,25 @@
     const n = ++requeteDiff;
     choisi = chemin;
     erreurDiff = null;
-    if (chemin === null) {
+    if (chemin === null || jeton === null) {
       diff = null;
       return;
     }
     try {
-      const d = await api.relecture.fichier(projet, chemin);
+      const d = await api.relecture.fichier(projet, jeton, chemin);
       if (n === requeteDiff) diff = d;
     } catch {
       if (n === requeteDiff) {
         diff = null;
-        erreurDiff = "Ce fichier n'est plus dans la relecture : Rafraîchir.";
+        erreurDiff = "Ce fichier n'est plus dans cette comparaison : Rafraîchis la relecture.";
       }
     }
   }
 
   $effect(() => {
     void projet;
-    void charger();
+    void ongletId;
+    void charger(true);
   });
 
   const fichiers = $derived<FichierModifie[]>(vue?.etat === "ok" ? vue.comparaison.fichiers : []);
@@ -69,7 +80,7 @@
 <section class="relecture" data-testid="page-relecture" aria-label="Relecture">
   <header>
     <h2>{vue?.nom ?? ""}</h2>
-    <button onclick={() => void charger()} disabled={enCours}>Rafraîchir</button>
+    <button onclick={() => void charger(false)} disabled={enCours}>Rafraîchir</button>
   </header>
   {#if vue?.etat === "indisponible"}
     <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {vue.raison}</p>
@@ -100,8 +111,8 @@
       <div class="centre">
         {#if erreurDiff}
           <p class="vide">{erreurDiff}</p>
-        {:else if diff}
-          {#key diff}<DiffFichier {projet} {diff} />{/key}
+        {:else if diff && jeton}
+          {#key diff}<DiffFichier {projet} {jeton} {diff} />{/key}
         {/if}
       </div>
     </div>

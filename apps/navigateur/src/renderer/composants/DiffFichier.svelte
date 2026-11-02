@@ -4,7 +4,7 @@
   import { api } from "../etat.svelte";
 
   /** Le diff unifié d'un fichier, en lecture seule ; les lignes cachées entre les blocs se déplient par 20. */
-  let { projet, diff }: { projet: string; diff: DiffFichier } = $props();
+  let { projet, jeton, diff }: { projet: string; jeton: string; diff: DiffFichier } = $props();
 
   type Ligne = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
   /** Lignes dépliées de chaque intervalle (avant le bloc i ; i = nombre de blocs : après le dernier). */
@@ -45,7 +45,7 @@
     charge = i;
     try {
       const fin = r.fin === null ? r.debut + LIGNES_DEPLIEES - 1 : Math.min(r.fin, r.debut + LIGNES_DEPLIEES - 1);
-      const textes = await api.relecture.lignes(projet, diff.chemin, r.debut, fin);
+      const textes = await api.relecture.lignes(projet, jeton, diff.chemin, r.debut, fin);
       const deja = intervalles[i]?.lignes ?? [];
       const nouvelles = textes.map((texte, k) => ({ marque: " " as const, texte, nouveau: r.debut + k, ancien: r.debut + k + r.decalage }));
       const toutes = [...deja, ...nouvelles];

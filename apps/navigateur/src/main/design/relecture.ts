@@ -20,14 +20,23 @@ import type { VueRelecture } from "../../commun/api";
 export const PROJET_INCONNU = "projet inconnu";
 /** Lignes rendues au plus par un appel à `lignes` (la page en demande 20 à la fois). */
 export const LIGNES_MAX = 200;
+/** Comparaisons gardées au plus par projet (une page peut montrer une comparaison plus ancienne que la dernière). */
+export const COMPARAISONS_GARDEES = 8;
+/** Une page demande une comparaison qui n'est plus gardée (ou jamais faite). */
+export const COMPARAISON_INCONNUE = "Cette comparaison n'est plus gardée : Rafraîchis la relecture.";
+/** Le jeton d'une comparaison : ses deux arbres (relu, courant). */
+export const JETON_RELECTURE = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
+const jetonDe = (c: Comparaison) => `${c.arbreRelu}:${c.arbreCourant}`;
 
 /**
  * La relecture des projets : la photo de prise en charge de chaque appli de l'agent, la comparaison avec la dernière
- * relecture (gardée en mémoire par projet : le diff ne bouge pas avant « Rafraîchir »), le diff d'un fichier et ses lignes
- * cachées. Un chemin n'est jamais libre : il doit être dans la comparaison gardée.
+ * relecture, le diff d'un fichier et ses lignes cachées. Chaque comparaison a son jeton (ses deux arbres) ; les
+ * `COMPARAISONS_GARDEES` dernières de chaque projet sont gardées, si bien que chaque page reste sur celle qu'elle montre
+ * jusqu'à « Rafraîchir ». Un chemin n'est jamais libre : il doit être dans la comparaison du jeton.
  */
 export class ServiceRelecture {
-  private readonly comparaisons = new Map<IdProjet, { depot: DepotRelecture; comparaison: Comparaison }>();
+  /** Par projet, les comparaisons gardées, la plus récente en premier. */
+  private readonly comparaisons = new Map<IdProjet, { jeton: string; depot: DepotRelecture; comparaison: Comparaison }[]>();
   private priseEnCours: Promise<void> = Promise.resolve();
 
   constructor(
@@ -84,41 +93,55 @@ export class ServiceRelecture {
     return null;
   }
 
-  async ouvrir(p: IdProjet): Promise<VueRelecture> {
+  /**
+   * Avec le jeton d'une comparaison gardée : celle-là, sans comparer de nouveau (une page remontée montre la même chose).
+   * Sans jeton (ou s'il n'est plus gardé) : une nouvelle comparaison, gardée en tête.
+   */
+  async ouvrir(p: IdProjet, jeton?: string): Promise<VueRelecture> {
     const projet = await this.projet(p);
     if (!projet) {
       this.comparaisons.delete(p);
       return { etat: "indisponible", nom: p, raison: PROJET_INCONNU };
     }
-    const depot = this.depot(p, projet.dossier);
     try {
-      const comparaison = await depot.comparer();
-      this.comparaisons.set(p, { depot, comparaison });
+      let g = jeton ? this.comparaisons.get(p)?.find((x) => x.jeton === jeton) : undefined;
+      if (!g) {
+        const depot = this.depot(p, projet.dossier);
+        const comparaison = await depot.comparer();
+        g = { jeton: jetonDe(comparaison), depot, comparaison };
+        const autres = (this.comparaisons.get(p) ?? []).filter((x) => x.jeton !== g!.jeton);
+        this.comparaisons.set(p, [g, ...autres].slice(0, COMPARAISONS_GARDEES));
+      }
       const commentaires = await new CommentairesRelecture(fichierCommentaires(this.o.dossiers, p)).liste();
-      return { etat: "ok", nom: projet.nom, comparaison: { fichiers: comparaison.fichiers }, commentaires };
+      return { etat: "ok", nom: projet.nom, jeton: g.jeton, comparaison: { fichiers: g.comparaison.fichiers }, commentaires };
     } catch (e) {
-      this.comparaisons.delete(p);
       if (e instanceof ErreurRelecture) return { etat: "indisponible", nom: projet.nom, raison: e.raison };
       console.error(`[relecture] comparaison de ${p} :`, e);
       return { etat: "indisponible", nom: projet.nom, raison: "la comparaison a échoué" };
     }
   }
 
-  private garde(p: IdProjet, chemin: string) {
-    const g = this.comparaisons.get(p);
-    const f = g?.comparaison.fichiers.find((x) => x.chemin === chemin);
-    if (!g || !f) throw new Error("fichier absent de la relecture");
+  private garde(p: IdProjet, jeton: string, chemin: string) {
+    const g = this.comparaisons.get(p)?.find((x) => x.jeton === jeton);
+    if (!g) throw new Error(COMPARAISON_INCONNUE);
+    const f = g.comparaison.fichiers.find((x) => x.chemin === chemin);
+    if (!f) throw new Error("fichier absent de la relecture");
     return { ...g, fichier: f };
   }
 
-  fichier(p: IdProjet, chemin: string): Promise<DiffFichier> {
-    const g = this.garde(p, chemin);
+  /** La comparaison d'un jeton gardé (tâche 12 : « Marquer comme relu » retient l'arbre que la page a montré). */
+  comparaison(p: IdProjet, jeton: string): { depot: DepotRelecture; comparaison: Comparaison } | null {
+    return this.comparaisons.get(p)?.find((x) => x.jeton === jeton) ?? null;
+  }
+
+  async fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier> {
+    const g = this.garde(p, jeton, chemin);
     return g.depot.fichier(g.comparaison, chemin);
   }
 
   /** Lignes de la version courante (jamais d'un fichier supprimé ni non affichable). */
-  async lignes(p: IdProjet, chemin: string, debut: number, fin: number): Promise<string[]> {
-    const g = this.garde(p, chemin);
+  async lignes(p: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]> {
+    const g = this.garde(p, jeton, chemin);
     if (g.fichier.statut === "supprime" || g.fichier.affichable !== true) return [];
     const a = Math.max(1, Math.floor(debut));
     const b = Math.min(Math.floor(fin), a + LIGNES_MAX - 1);
@@ -129,7 +152,7 @@ export class ServiceRelecture {
     return l.at(-1) === "" ? l.slice(0, -1) : l;
   }
 
-  /** Un projet oublié : sa comparaison gardée tombe. */
+  /** Un projet oublié : ses comparaisons gardées tombent. */
   oublier(p: IdProjet): void {
     this.comparaisons.delete(p);
   }

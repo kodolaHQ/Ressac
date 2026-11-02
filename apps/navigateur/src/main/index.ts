@@ -828,15 +828,18 @@ app.whenReady().then(async () => {
         }),
     },
     relecture: {
-      ouvrir: async (p) => {
+      ouvrir: async (p, jeton) => {
         if (!relecture) throw new Error("la relecture n'est pas prête");
-        return relecture.ouvrir(p);
+        return relecture.ouvrir(p, jeton);
       },
-      fichier: async (p, chemin) => {
+      fichier: async (p, jeton, chemin) => {
         if (!relecture) throw new Error("la relecture n'est pas prête");
-        return relecture.fichier(p, chemin);
+        return relecture.fichier(p, jeton, chemin);
       },
-      lignes: async (p, chemin, debut, fin) => (await relecture?.lignes(p, chemin, debut, fin)) ?? [],
+      lignes: async (p, jeton, chemin, debut, fin) => {
+        if (!relecture) throw new Error("la relecture n'est pas prête");
+        return relecture.lignes(p, jeton, chemin, debut, fin);
+      },
     },
   });
   const cibles: CiblesMenu = {

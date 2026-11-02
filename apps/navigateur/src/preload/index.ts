@@ -174,9 +174,9 @@ const api: ApiWebaios = {
     surChange: (rappel) => ecouter(CANAUX.externesChange, () => rappel()),
   },
   relecture: {
-    ouvrir: (projet) => ipcRenderer.invoke(CANAUX.relectureOuvrir, projet),
-    fichier: (projet, chemin) => ipcRenderer.invoke(CANAUX.relectureFichier, projet, chemin),
-    lignes: (projet, chemin, debut, fin) => ipcRenderer.invoke(CANAUX.relectureLignes, projet, chemin, debut, fin),
+    ouvrir: (projet, jeton) => ipcRenderer.invoke(CANAUX.relectureOuvrir, projet, jeton),
+    fichier: (projet, jeton, chemin) => ipcRenderer.invoke(CANAUX.relectureFichier, projet, jeton, chemin),
+    lignes: (projet, jeton, chemin, debut, fin) => ipcRenderer.invoke(CANAUX.relectureLignes, projet, jeton, chemin, debut, fin),
   },
 };
 

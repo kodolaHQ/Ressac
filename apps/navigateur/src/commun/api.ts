@@ -672,14 +672,17 @@ export interface ApiExternes {
 
 /** Page Relecture : ce qu'elle montre d'un projet (le diff depuis la dernière relecture), ou pourquoi elle ne le peut pas. */
 export type VueRelecture =
-  | { etat: "ok"; nom: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[] }
+  | { etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[] }
   | { etat: "indisponible"; nom: string; raison: string };
 export type { DiffFichier, FichierModifie, Commentaire };
 export interface ApiRelecture {
-  /** Compare le projet à sa dernière relecture ; le process principal garde cette comparaison (par projet). */
-  ouvrir(projet: IdProjet): Promise<VueRelecture>;
-  /** Le diff d'un fichier de la comparaison gardée (jamais un autre chemin). */
-  fichier(projet: IdProjet, chemin: string): Promise<DiffFichier>;
-  /** Lignes `debut`..`fin` (à partir de 1) de la version courante d'un fichier de la comparaison gardée. */
-  lignes(projet: IdProjet, chemin: string, debut: number, fin: number): Promise<string[]>;
+  /**
+   * Compare le projet à sa dernière relecture et rend le jeton de cette comparaison (gardée par le process principal).
+   * Avec le jeton d'une comparaison encore gardée : celle-là, sans comparer de nouveau ; « Rafraîchir » n'en passe pas.
+   */
+  ouvrir(projet: IdProjet, jeton?: string): Promise<VueRelecture>;
+  /** Le diff d'un fichier de la comparaison du jeton (jamais un autre chemin) ; un jeton qui n'est plus gardé est refusé. */
+  fichier(projet: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
+  /** Lignes `debut`..`fin` (à partir de 1) de la version courante d'un fichier de la comparaison du jeton. */
+  lignes(projet: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
 }

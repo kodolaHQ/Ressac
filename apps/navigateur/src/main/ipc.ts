@@ -13,6 +13,7 @@ import { ID_PROJET, type IdProjet } from "@webaios/noyau";
 import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type EtatExternes, type LotAffiche } from "../commun/api";
 import type { DiffFichier, VueRelecture } from "../commun/api";
 import type { CibleDesign } from "./design/service";
+import { JETON_RELECTURE } from "./design/relecture";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
 export type GesteSite = "entrer" | "accueil" | "precedent" | "suivant" | "recharger" | "ouvrirBloque" | "chercherAdresse";
@@ -164,9 +165,9 @@ export interface Gestionnaires {
   };
   /** Page Relecture (fenêtre principale) : `projet` validé ici ; le chemin, par la comparaison gardée. */
   relecture: {
-    ouvrir(p: IdProjet): Promise<VueRelecture>;
-    fichier(p: IdProjet, chemin: string): Promise<DiffFichier>;
-    lignes(p: IdProjet, chemin: string, debut: number, fin: number): Promise<string[]>;
+    ouvrir(p: IdProjet, jeton?: string): Promise<VueRelecture>;
+    fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
+    lignes(p: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
   };
 }
 
@@ -572,11 +573,16 @@ function brancherRelecture(g: Gestionnaires): void {
     if (typeof c !== "string" || c === "" || c.length > CHEMIN_RELECTURE_MAX || c.includes("\0")) throw new Error("chemin invalide");
     return c;
   };
-  ipcMain.handle(CANAUX.relectureOuvrir, (e, p: unknown) => g.relecture.ouvrir(verifier(e, p)));
-  ipcMain.handle(CANAUX.relectureFichier, (e, p: unknown, c: unknown) => g.relecture.fichier(verifier(e, p), chemin(c)));
-  ipcMain.handle(CANAUX.relectureLignes, (e, p: unknown, c: unknown, debut: unknown, fin: unknown) => {
+  // Le jeton d'une comparaison : ses deux arbres (40 hex chacun), séparés par « : ».
+  const jeton = (j: unknown): string => {
+    if (typeof j !== "string" || !JETON_RELECTURE.test(j)) throw new Error("jeton invalide");
+    return j;
+  };
+  ipcMain.handle(CANAUX.relectureOuvrir, (e, p: unknown, j: unknown) => g.relecture.ouvrir(verifier(e, p), j === undefined || j === null ? undefined : jeton(j)));
+  ipcMain.handle(CANAUX.relectureFichier, (e, p: unknown, j: unknown, c: unknown) => g.relecture.fichier(verifier(e, p), jeton(j), chemin(c)));
+  ipcMain.handle(CANAUX.relectureLignes, (e, p: unknown, j: unknown, c: unknown, debut: unknown, fin: unknown) => {
     const projet = verifier(e, p);
     if (!entier(debut) || !entier(fin) || fin < debut) throw new Error("lignes invalides");
-    return g.relecture.lignes(projet, chemin(c), debut, fin);
+    return g.relecture.lignes(projet, jeton(j), chemin(c), debut, fin);
   });
 }

@@ -108,7 +108,7 @@
       {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
     {/if}
   {:else if projetRelecture}
-    {#key projetRelecture}<Relecture projet={projetRelecture} />{/key}
+    {#key `${onglet?.id}:${projetRelecture}`}<Relecture projet={projetRelecture} ongletId={onglet?.id ?? ""} />{/key}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>

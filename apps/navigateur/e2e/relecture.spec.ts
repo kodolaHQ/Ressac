@@ -137,6 +137,30 @@ test("fichier modifié pendant que la page est ouverte : rien ne change avant «
   }
 });
 
+test("fichier modifié, puis un autre onglet et retour : la page montre encore l'ancien diff jusqu'à « Rafraîchir »", async () => {
+  const racine = racineEssai();
+  const { app, fenetre, fermer } = await demarrer(racine);
+  try {
+    ecrireAppJs(racine, LIGNES.map((l, i) => (i === 14 ? "ligne 15 modifiée" : l)));
+    const page = await relireDepuisCarte(app, fenetre);
+    await fichier(page, "app.js").click();
+    await expect(page.locator('[data-testid="ligne-diff"].ajout')).toHaveText(["15ligne 15 modifiée"]);
+    ecrireAppJs(racine, LIGNES.map((l, i) => (i === 14 ? "ligne 15 modifiée" : i === 24 ? "ligne 25 modifiée" : l)));
+    // Un autre onglet (la page Applications), puis retour sur l'onglet Relecture : la page est remontée.
+    await fenetre.getByRole("tab", { name: /Applications/ }).click();
+    await expect(page).toHaveCount(0);
+    await fenetre.getByRole("tab", { name: /Relecture — Essai/ }).click();
+    await expect(page).toBeVisible();
+    await fichier(page, "app.js").click();
+    await expect(page.locator('[data-testid="ligne-diff"].ajout')).toHaveText(["15ligne 15 modifiée"]);
+    await page.getByRole("button", { name: "Rafraîchir" }).click();
+    await expect(page.locator('[data-testid="ligne-diff"].ajout')).toHaveText(["15ligne 15 modifiée", "25ligne 25 modifiée"]);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
 test("« Relire ce projet » depuis la pastille de la fenêtre d'appli essai, puis depuis le menu relire-projet, ramènent la même page, sans second onglet", async () => {
   const racine = racineEssai();
   const { app, fenetre, fermer } = await demarrer(racine);
