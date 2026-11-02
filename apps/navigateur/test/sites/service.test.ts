@@ -10,7 +10,7 @@ import { modifierAvecAgent } from "../../src/commun/sites";
 
 const journal: string[] = [];
 const ouvertes = new Map<string, Record<string, unknown>>();
-const options: { surSuivi?: (id: string, url: string | null) => void } = {};
+const options: { surSuivi?: (id: string, url: string | null) => void; surFermee?: (id: string) => void } = {};
 const misesAJour: Record<string, unknown>[] = [];
 /** Lecture de la page de référence : le signal reçu, et de quoi la garder en suspens. */
 const lectures: { signal?: AbortSignal }[] = [];
@@ -103,8 +103,9 @@ vi.mock("../../src/main/sites/fenetres", () => ({
     if (!wc.isDestroyed()) wc.close();
   },
   FenetresSites: class {
-    constructor(o: { surSuivi: (id: string, url: string | null) => void }) {
+    constructor(o: { surSuivi: (id: string, url: string | null) => void; surFermee: (id: string) => void }) {
       options.surSuivi = o.surSuivi;
+      options.surFermee = o.surFermee;
     }
     site = (id: string) => ouvertes.get(id);
     ouvertes = () => [...ouvertes.keys()].map((id) => ({ id }));
@@ -605,4 +606,62 @@ test("un changement d'adresse trouvé par le suivi ne rappelle pas ouverture : l
   expect((misesAJour.at(-1) as { domaines: string[] }).domaines).toContain("vidola-b.example");
   await new Promise((r) => setTimeout(r, 100));
   expect(ouvertures).toHaveLength(1);
+});
+
+/** L'utilisateur ferme la fenêtre de l'appli (FenetresSites appelle surFermee). */
+const fermerFenetre = (id: string) => {
+  ouvertes.delete(id);
+  options.surFermee!(id);
+};
+
+test("M3 : deux ouvertures en même temps, la fenêtre de la première fermée pendant l'attente de la seconde : ouverture rappelée avant la fenêtre", async () => {
+  const atteint = new Promise<void>((ok) => (extTenue.atteint = ok));
+  extTenue.tenir = true;
+  const a = service.ouvrirParId("vidola");
+  await atteint;
+  // B passe sans attendre, ouvre la fenêtre ; l'utilisateur la ferme aussitôt.
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  fermerFenetre("vidola");
+  journal.length = 0;
+  extTenue.ouvrir!();
+  expect(await a).toBe(true);
+  expect(ouvertes.has("vidola")).toBe(true);
+  // Rappelée après la fermeture : la fenêtre que A ouvre a bien ses extensions.
+  expect(journal.filter((j) => /^(ouverture|fermeture)/.test(j))).toEqual(["ouverture vidola"]);
+});
+
+test("M3 : la fenêtre déjà ouverte, fermée pendant l'attente d'une nouvelle ouverture : ouverture rappelée", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  const atteint = new Promise<void>((ok) => (extTenue.atteint = ok));
+  extTenue.tenir = true;
+  const encore = service.ouvrirParId("vidola");
+  await atteint;
+  fermerFenetre("vidola");
+  journal.length = 0;
+  extTenue.ouvrir!();
+  expect(await encore).toBe(true);
+  expect(journal.filter((j) => /^(ouverture|fermeture)/.test(j))).toEqual(["ouverture vidola"]);
+});
+
+test("M3 : sans fermeture pendant l'attente, ouverture n'est appelée qu'une fois", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  expect(ouvertures).toHaveLength(2);
+});
+
+test("M4 : une relecture plus récente pendant l'attente des extensions ne recharge pas avant leur mise à jour", async () => {
+  const c = cheminsEspace(racine);
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  const plus = { ...declaration, domaines: [...declaration.domaines, "mail.example.com"] };
+  const atteint = new Promise<void>((ok) => (extTenue.atteint = ok));
+  extTenue.tenir = true;
+  writeFileSync(join(c.sites, "vidola", "site.json"), JSON.stringify(plus));
+  await atteint;
+  // Une seconde relecture (mêmes domaines, autre description) arrive pendant l'attente.
+  writeFileSync(join(c.sites, "vidola", "site.json"), JSON.stringify({ ...plus, description: "autre" }));
+  await new Promise((r) => setTimeout(r, 400));
+  expect(misesAJour).toEqual([]);
+  extTenue.ouvrir!();
+  await vi.waitFor(() => expect(misesAJour.length).toBeGreaterThan(0), { timeout: 3000 });
+  expect(ouvertures).toHaveLength(2);
 });

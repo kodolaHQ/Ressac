@@ -100,6 +100,15 @@ function extensionDe(url: string): string | null {
   }
 }
 
+/** Au moins une extension est-elle chargée dans la session de cette page ? */
+function extensionsChargees(wc: WebContents): boolean {
+  try {
+    return wc.session.extensions.getAllExtensions().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** L'hôte d'une adresse http(s), sinon null (about:blank, javascript:, adresse illisible). */
 function hoteHttp(url: string): string | null {
   try {
@@ -349,11 +358,15 @@ export class FenetresSites {
       o.chargementVoulu = false;
     });
     // C8 : la vue ne montre que le web. Un chargement lancé par le main sans passer par `will-frame-navigate` (`tabs.update`
-    // d'une extension vers sa propre page, par exemple) est arrêté s'il n'est pas http(s).
+    // d'une extension vers sa propre page, par exemple) est arrêté s'il n'est pas http(s). M1 : quand une extension est
+    // chargée dans la session de l'appli, la vue cachée (accueil, carte d'accord) ne charge que ce que WebAiOs lance
+    // (`chargementVoulu`, posé par l'écouteur plus haut) : jamais une page de l'appli demandée par `tabs.update` avant
+    // « Entrer dans le site » ou avant le choix de l'utilisateur. Sans extension, rien ne change (plan 15).
     wc.on("did-start-navigation", (d) => {
       if (!d.isMainFrame || d.isSameDocument) return;
-      if (/^https?:/i.test(d.url)) return;
-      console.warn(`[sites] ${id} : chargement hors du web arrêté dans la vue (${d.url.slice(0, 80)})`);
+      const web = /^https?:/i.test(d.url);
+      if (web && (o.affichee === "site" || o.chargementVoulu || !extensionsChargees(wc))) return;
+      console.warn(`[sites] ${id} : chargement arrêté dans la vue (${web ? `vue ${o.affichee}, non voulu` : "hors du web"}) : ${d.url.slice(0, 80)}`);
       wc.stop();
     });
     wc.on("did-fail-load", (_e, code, _description, url, principal) => {
@@ -838,6 +851,10 @@ export class FenetresSites {
     if (!o) throw new Error(`appli de site fermée : ${id}`);
     const extension = extensionDe(url);
     if (extension !== null) {
+      // M5 : seule l'extension chargée est vérifiée ici, pas celle qui appelle (inconnue). Que ce soit sa propre page est
+      // garanti en amont : `verifierUrl` (tabs.create, tabs.update, windows.create, entrées du menu du bouton) exige le
+      // même id, et `runtime.openOptionsPage` construit l'adresse depuis `extension.id`. Un futur appel de `site.ouvrir`
+      // ne doit pas supposer davantage.
       if (!sessionSite(id).extensions.getExtension(extension)) throw new Error(`page d'une extension absente de l'appli ${id}`);
       return this.ouvrirPageExtension(o, extension, url);
     }
@@ -871,6 +888,10 @@ export class FenetresSites {
     });
     wc.on("will-redirect", (e) => {
       if (e.isMainFrame) garder(e, e.url);
+    });
+    // M7 : `tabs.update` de cette fenêtre (un onglet pour la bibliothèque) charge par le main, sans `will-frame-navigate`.
+    wc.on("did-start-navigation", (d) => {
+      if (d.isMainFrame && !d.isSameDocument && extensionDe(d.url) !== extension) wc.stop();
     });
     wc.setWindowOpenHandler(() => ({ action: "deny" }));
     void wc.loadURL(url).catch(() => {});

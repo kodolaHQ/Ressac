@@ -217,6 +217,10 @@ export function demarrerSites(o: {
   const erreursActions = new Map<string, string>();
   /** L'empreinte des domaines donnée aux extensions pour chaque appli ouverte (`ouverture`). */
   const empreintesExtensions = new Map<string, string>();
+  /** M4 : la synchronisation des extensions lancée par une relecture, en cours : toute relecture l'attend avant de recharger. */
+  const synchrosExtensions = new Map<string, Promise<void>>();
+  /** M3 : fermetures (pour les extensions) par appli : une ouverture qui en voit une pendant son attente redonne l'empreinte. */
+  const fermeturesExtensions = new Map<string, number>();
 
   /** Les extensions de l'appli, pour cette empreinte (une erreur est journalisée : l'appli s'ouvre quand même). */
   async function ouvertureExtensions(id: string, empreinte: string): Promise<void> {
@@ -229,6 +233,7 @@ export function demarrerSites(o: {
   }
   const fermetureExtensions = (id: string) => {
     empreintesExtensions.delete(id);
+    fermeturesExtensions.set(id, (fermeturesExtensions.get(id) ?? 0) + 1);
     try {
       o.extensions?.fermeture(id);
     } catch (e) {
@@ -408,7 +413,15 @@ export function demarrerSites(o: {
     const empreinte = p ? empreinteExtensionsSite(p.site.declaration) : null;
     if (empreinte !== null && empreinte !== empreintesExtensions.get(id)) {
       empreintesExtensions.set(id, empreinte);
-      await ouvertureExtensions(id, empreinte);
+      const synchro: Promise<void> = ouvertureExtensions(id, empreinte).finally(() => {
+        if (synchrosExtensions.get(id) === synchro) synchrosExtensions.delete(id);
+      });
+      synchrosExtensions.set(id, synchro);
+    }
+    // Celle-ci, ou celle d'une relecture précédente encore en cours (même empreinte) : la page n'est rechargée qu'après.
+    const enCours = synchrosExtensions.get(id);
+    if (enCours) {
+      await enCours;
       if (relectures.get(id) !== n || !fenetres.site(id)) return;
       if ((changements.get(id) ?? 0) !== changementsAvant) return relire(id);
     }
@@ -587,10 +600,14 @@ export function demarrerSites(o: {
     // Les extensions de l'appli, avant sa première page (l'attente n'a pas de limite, comme au démarrage de WebAiOs).
     if (o.extensions) {
       const empreinte = empreinteExtensionsSite(p.site.declaration);
-      const deja = fenetres.site(id) !== undefined;
+      // M3 : une fenêtre de l'appli fermée pendant l'attente (la sienne, ou celle d'une ouverture concurrente) a oublié
+      // l'empreinte : elle est redonnée pour la fenêtre qui va s'ouvrir.
+      let fermees = fermeturesExtensions.get(id) ?? 0;
       await ouvertureExtensions(id, empreinte);
-      // Fermée pendant l'attente : sa fermeture a oublié l'empreinte, qui est redonnée pour la nouvelle fenêtre.
-      if (deja && !fenetres.site(id) && encore()) await ouvertureExtensions(id, empreinte);
+      while (encore() && (fermeturesExtensions.get(id) ?? 0) !== fermees) {
+        fermees = fermeturesExtensions.get(id) ?? 0;
+        await ouvertureExtensions(id, empreinte);
+      }
       if (!encore()) {
         // C3 : l'ouverture est abandonnée ; une appli qui n'est pas ouverte n'a plus rien à recevoir.
         if (!fenetres.site(id)) fermetureExtensions(id);

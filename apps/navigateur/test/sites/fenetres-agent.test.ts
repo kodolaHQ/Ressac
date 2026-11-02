@@ -18,6 +18,7 @@ function fausseWc() {
     }),
     reload: vi.fn(),
     stop: vi.fn(),
+    session: { extensions: { getAllExtensions: () => extensionsChargees } },
     close: vi.fn(),
     forcefullyCrashRenderer: vi.fn(),
     isDestroyed: () => false,
@@ -27,6 +28,8 @@ function fausseWc() {
   return wc;
 }
 
+/** Les extensions chargées dans la session de l'appli (M1 ne joue qu'avec au moins une). */
+let extensionsChargees: unknown[] = [];
 const vuesCreees: { webContents: ReturnType<typeof fausseWc>; visible: boolean }[] = [];
 
 vi.mock("electron", () => ({
@@ -247,4 +250,33 @@ test("C8 : la vue du site arrête tout chargement de son cadre principal qui n'e
   expect(wc.stop).toHaveBeenCalledTimes(1);
   demarrer("file:///etc/passwd");
   expect(wc.stop).toHaveBeenCalledTimes(2);
+});
+
+test("M1 : extension chargée, sur l'accueil (ou la carte), un chargement http(s) de la vue que WebAiOs n'a pas lancé est arrêté ; un chargement voulu, ou en vue « site », non ; sans extension, rien (plan 15)", () => {
+  const f = fenetres();
+  f.ouvrir(site({ aAccueil: true, accordRequis: false }));
+  const wc = vuesCreees[0]!.webContents;
+  const demarrer = (url: string) => {
+    for (const c of wc.on.mock.calls.filter((c) => c[0] === "did-start-navigation")) (c[1] as (d: unknown) => void)({ url, isMainFrame: true, isSameDocument: false });
+  };
+  extensionsChargees = [];
+  demarrer("https://vidola-a.example/sans-extension");
+  expect(wc.stop).not.toHaveBeenCalled();
+  extensionsChargees = [{ id: "x" }];
+  // Accueil, page jamais chargée : `tabs.update` d'une extension vers une page de l'appli.
+  demarrer("https://vidola-a.example/x");
+  expect(wc.stop).toHaveBeenCalledTimes(1);
+  // « Entrer dans le site » : voulu, puis vue « site » : un clic dans la page passe.
+  f.entrer("vidola");
+  demarrer("https://vidola-a.example/");
+  demarrer("https://vidola-a.example/clic");
+  expect(wc.stop).toHaveBeenCalledTimes(1);
+  // De retour à l'accueil : la page cachée ne charge rien d'elle-même ; un rechargement voulu passe.
+  f.accueil("vidola");
+  demarrer("https://vidola-a.example/seule");
+  expect(wc.stop).toHaveBeenCalledTimes(2);
+  f.rechargerVue("vidola");
+  demarrer("https://vidola-a.example/clic");
+  expect(wc.stop).toHaveBeenCalledTimes(2);
+  extensionsChargees = [];
 });

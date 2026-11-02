@@ -31,6 +31,8 @@ export const siteDeSession = (s: Session): string | undefined => preparees.get(s
  * bibliothèque d'extensions branchée, tant que l'utilisateur n'en active aucune pour cette appli (plan 16,
  * `ServiceExtensions.basculerSite`) : alors seulement `ExtensionsProfils.brancherSite` l'équipe (ses preloads de pages
  * d'extension viennent après celui-ci), et ses extensions n'y sont chargées que pendant que la fenêtre est ouverte.
+ * Une fois équipée, elle le reste (bibliothèque et preload `webaios-extensions-page`, sans extension chargée) jusqu'au
+ * redémarrage : même après la désactivation de sa dernière extension, ou la suppression puis la recréation de l'appli.
  */
 export function sessionSite(id: string): Session {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);

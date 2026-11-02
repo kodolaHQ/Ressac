@@ -213,3 +213,20 @@ test("diffuserATous : l'interface de chaque appli ouverte", () => {
   f.diffuserATous("webaios:extensions-change", null);
   expect(fenetresCreees.map((x) => x.webContents.send.mock.calls.filter((c) => c[0] === "webaios:extensions-change").length)).toEqual([1, 1]);
 });
+
+test("M7 : la petite fenêtre ne charge que les pages de l'extension qui l'a ouverte (tabs.update passe par le main)", async () => {
+  const f = fenetres();
+  f.ouvrir(site);
+  await f.ouvrirPourExtension("vidola", `chrome-extension://${EXT}/options.html`);
+  const wc = fenetresCreees[1]!.webContents;
+  const demarrer = (url: string, isMainFrame = true) => {
+    for (const c of wc.on.mock.calls.filter((c) => c[0] === "did-start-navigation")) (c[1] as (d: unknown) => void)({ url, isMainFrame, isSameDocument: false });
+  };
+  demarrer(`chrome-extension://${EXT}/autre.html`);
+  demarrer("https://vidola-a.example/", false);
+  expect(wc.stop).not.toHaveBeenCalled();
+  demarrer("https://vidola-a.example/");
+  expect(wc.stop).toHaveBeenCalledTimes(1);
+  demarrer(`chrome-extension://${"b".repeat(32)}/options.html`);
+  expect(wc.stop).toHaveBeenCalledTimes(2);
+});

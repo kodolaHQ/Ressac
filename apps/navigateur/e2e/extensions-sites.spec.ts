@@ -270,6 +270,8 @@ test("fermer puis rouvrir l'appli : aucune requête vers pub.localhost dès le p
     await basculerEtAttendre(app, page, cle, true);
     await fermerAppli(app, "vidola");
     await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.webContents.getURL().includes("/renderer/site.html")).length)).toBe(0);
+    // Chargée seulement fenêtre ouverte : la réouverture ne trouve rien de déjà chargé, elle attend ses extensions.
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual([]);
     serveur.requetes.splice(0);
     await ouvrirEtAttendre(app, fenetre);
     expect(serveur.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/pubs")).toBe(true);
