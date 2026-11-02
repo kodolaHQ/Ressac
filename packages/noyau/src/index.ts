@@ -64,3 +64,4 @@ export { parserDiff, positionNouvelle, type Bloc as BlocDiff, type LigneDiff } f
 export * from "./relecture/depot.js";
 export * from "./relecture/commentaires.js";
 export * from "./design/remarques.js";
+export * from "./design/serveur-externe.js";
