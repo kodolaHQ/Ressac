@@ -101,6 +101,7 @@ vi.mock("../../src/main/sites/fenetres", () => ({
       return fermeture.restante;
     };
     ouvrir = (s: { id: string }) => void ouvertes.set(s.id, s);
+    depuisAccueil = (id: string, url: string) => (journal.push(`accueil ${id} ${url}`), true);
     mettreAJour = (s: { id: string }) => {
       misesAJour.push(s);
       ouvertes.set(s.id, s);
@@ -402,4 +403,60 @@ test("accorder : une relecture commencée avant l'accord est jetée (elle a lu l
   // Aucune mise à jour ne porte l'accord d'avant (accordRequis: true).
   expect(misesAJour.map((m) => m.accordRequis)).not.toContain(true);
   expect(journal).toContain("apresAccord vidola false");
+});
+
+// --- Ouvertures demandées par l'accueil : un vrai geste récent, de cette fenêtre, une par seconde
+
+const accueilOuvertes = () => journal.filter((j) => j.startsWith("accueil "));
+
+test("accueil : sans geste de l'utilisateur, rien ne s'ouvre", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  expect(service.ouvrirDepuisAccueil("vidola", "/series/x")).toBe(false);
+  expect(accueilOuvertes()).toEqual([]);
+  // Le geste est consommé par une ouverture : la suivante en redemande un.
+  service.gesteAccueil("vidola");
+  expect(service.ouvrirDepuisAccueil("vidola", "/series/x")).toBe(true);
+  expect(accueilOuvertes()).toEqual(["accueil vidola https://vidola-a.example/series/x"]);
+});
+
+test("accueil : un geste de plus de 1,5 s ne compte plus", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    expect(await service.ouvrirParId("vidola")).toBe(true);
+    service.gesteAccueil("vidola");
+    vi.setSystemTime(Date.now() + 1501);
+    expect(service.ouvrirDepuisAccueil("vidola", "/series/x")).toBe(false);
+    service.gesteAccueil("vidola");
+    vi.setSystemTime(Date.now() + 1400);
+    expect(service.ouvrirDepuisAccueil("vidola", "/series/x")).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("accueil : une seconde ouverture moins d'1 s après la première est refusée, même avec un nouveau geste", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    expect(await service.ouvrirParId("vidola")).toBe(true);
+    service.gesteAccueil("vidola");
+    expect(service.ouvrirDepuisAccueil("vidola", "/a")).toBe(true);
+    vi.setSystemTime(Date.now() + 500);
+    service.gesteAccueil("vidola");
+    expect(service.ouvrirDepuisAccueil("vidola", "/b")).toBe(false);
+    vi.setSystemTime(Date.now() + 600);
+    expect(service.ouvrirDepuisAccueil("vidola", "/b")).toBe(true);
+    expect(accueilOuvertes()).toEqual(["accueil vidola https://vidola-a.example/a", "accueil vidola https://vidola-a.example/b"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("accueil : le geste fait dans la fenêtre d'une autre appli n'ouvre rien dans celle-ci", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  ouvertes.set("youtube", { id: "youtube", depart: "https://youtube.example/", domaines: ["youtube.example"] });
+  service.gesteAccueil("youtube");
+  expect(service.ouvrirDepuisAccueil("vidola", "/series/x")).toBe(false);
+  expect(accueilOuvertes()).toEqual([]);
+  // Le geste de youtube reste à youtube.
+  expect(service.ouvrirDepuisAccueil("youtube", "/v")).toBe(true);
 });

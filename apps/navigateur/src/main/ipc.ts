@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
-import { accueilSiteDuCadre } from "./sites/cadre-accueil";
+import { gesteAccueilDuCadre } from "./sites/cadre-accueil";
 import { ADRESSE_ACCUEIL_MAX, EMPREINTE_ACCORD_LONGUEUR, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
 import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
@@ -410,12 +410,8 @@ export function brancherIpc(g: Gestionnaires): void {
   // Le geste vient du preload du cadre de l'accueil : retenu seulement pour un cadre posé directement dans la page de la
   // fenêtre de cette appli et qui montre son propre accueil.
   ipcMain.on(CANAUX.siteAccueilGeste, (e) => {
-    const cadre = e.senderFrame;
-    const id = g.site.idDe(e.sender);
-    if (!cadre || !id) return;
-    const principal = e.sender.mainFrame;
-    if (cadre.frameTreeNodeId === principal.frameTreeNodeId || cadre.parent?.frameTreeNodeId !== principal.frameTreeNodeId) return;
-    if (accueilSiteDuCadre(cadre.url) === id) g.site.gesteAccueil(id);
+    const id = gesteAccueilDuCadre(e.senderFrame, e.sender.mainFrame, g.site.idDe(e.sender));
+    if (id) g.site.gesteAccueil(id);
   });
   ipcMain.handle(CANAUX.siteAccueilImage, (e, url: unknown) => {
     const id = siteDe(e);

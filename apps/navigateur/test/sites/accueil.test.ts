@@ -7,7 +7,7 @@ import { cheminsEspace } from "@webaios/noyau";
 import { AFFICHAGE_REFUSE, CSP_WIDGET, navigationCadrePermise, permissionInterface } from "../../src/main/agent/accueil";
 import { cspAccueilSite, FICHIER_ACCUEIL_MAX, imageSite, repondreAccueilSite } from "../../src/main/sites/accueil";
 import { ADRESSE_ACCUEIL_MAX, IMAGE_SITE_MAX, MessageDeLAccueil, SCHEMA_SITE } from "../../src/commun/sites";
-import { accueilSiteDuCadre } from "../../src/main/sites/cadre-accueil";
+import { accueilSiteDuCadre, gesteAccueilDuCadre } from "../../src/main/sites/cadre-accueil";
 
 /** Un espace avec l'appli `vidola` et son accueil. */
 function espace() {
@@ -231,4 +231,22 @@ test("navigationCadrePermise : un cadre webaios-site://vidola ne va que vers son
   expect(navigationCadrePermise("webaios-widget://meteo/affichage.html", index)).toBe(false);
   // Les widgets de la fenêtre principale gardent leur règle.
   expect(navigationCadrePermise("", "webaios-widget://meteo/affichage.html")).toBe(true);
+});
+
+// --- Geste dans l'accueil : le cadre qui l'envoie (canal siteAccueilGeste)
+
+test("gesteAccueilDuCadre : seul le cadre posé dans la page de la fenêtre de l'appli, et qui montre son propre accueil", () => {
+  const principal = { frameTreeNodeId: 1 };
+  const accueil = (url: string, parent: { frameTreeNodeId: number } | null = principal, frameTreeNodeId = 2) => ({ url, frameTreeNodeId, parent });
+  const sien = `${SCHEMA_SITE}://vidola/accueil/index.html`;
+  expect(gesteAccueilDuCadre(accueil(sien), principal, "vidola")).toBe("vidola");
+  // Sans cadre, ou d'une fenêtre qui n'est pas celle d'une appli.
+  expect(gesteAccueilDuCadre(null, principal, "vidola")).toBeNull();
+  expect(gesteAccueilDuCadre(accueil(sien), principal, undefined)).toBeNull();
+  // La page site.html elle-même (cadre principal), ou un cadre imbriqué dans l'accueil.
+  expect(gesteAccueilDuCadre({ url: sien, frameTreeNodeId: 1, parent: null }, principal, "vidola")).toBeNull();
+  expect(gesteAccueilDuCadre(accueil(sien, { frameTreeNodeId: 2 }, 3), principal, "vidola")).toBeNull();
+  // L'accueil d'une autre appli (cadre détourné), ou une page qui n'est pas un accueil.
+  expect(gesteAccueilDuCadre(accueil(`${SCHEMA_SITE}://youtube/accueil/index.html`), principal, "vidola")).toBeNull();
+  expect(gesteAccueilDuCadre(accueil("https://vidola-a.example/"), principal, "vidola")).toBeNull();
 });
