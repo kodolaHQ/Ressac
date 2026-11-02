@@ -60,3 +60,5 @@ export { COMPOSANT_HTML_MAX } from "./pages/composants-agent.js";
 export * from "./sites/accords.js";
 export * from "./sites/suivi.js";
 export * from "./design/projets.js";
+export { parserDiff, positionNouvelle, type Bloc as BlocDiff, type LigneDiff } from "./relecture/diff.js";
+export * from "./relecture/depot.js";
