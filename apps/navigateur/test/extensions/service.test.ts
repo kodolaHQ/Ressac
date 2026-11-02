@@ -899,3 +899,28 @@ test("B noterVue pour un profil retiré entre-temps (service worker qui démarre
   expect(await service.noterVue("agent:essai", "efface", "1.0.0")).toEqual({ nouvelle: false });
   expect(service.etatExtensions().extensions["agent:essai"]!.vues).toEqual({});
 });
+
+test("C15 appliquer : un profil dont l'id contient « : » est ignoré (journalisé), sa session n'est pas créée", async () => {
+  nav = {
+    espaces: [
+      { id: "e1", profil: "defaut", prive: false },
+      { id: "e2", profil: "site:vidola", prive: false },
+    ],
+    profils: [{ id: "defaut" }, { id: "site:vidola" }],
+    fenetres: [],
+    onglets: {},
+  } as unknown as EtatNavigateur;
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`store:${ID}`]: entree("store", ["defaut", "site:vidola"]) } }));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await demarrer().pret;
+    expect(branchees).toContain("defaut");
+    expect(branchees).not.toContain("site:vidola");
+    expect(erreur).toHaveBeenCalledWith(expect.stringMatching(/site:vidola ignoré/));
+  } finally {
+    erreur.mockRestore();
+  }
+});

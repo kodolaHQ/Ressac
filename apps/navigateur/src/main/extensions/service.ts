@@ -1403,7 +1403,14 @@ export class ServiceExtensions {
         Object.entries(this.etat.extensions).filter(([cle]) => !this.erreursPreparation.has(cle) && !this.agentsBloques.has(cle) && (this.agentsPrets || !cle.startsWith("agent:"))),
       ),
     };
-    for (const profil of profilsEnUsage(nav)) if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);
+    for (const profil of profilsEnUsage(nav)) {
+      // C15 : la persistance accepte tout id de profil ; avec « : », il pourrait prendre la portée d'une appli (`site:<id>`).
+      if (profil.includes(":")) {
+        console.error(`[extensions] profil ${profil} ignoré : un id de profil ne contient jamais « : »`);
+        continue;
+      }
+      if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);
+    }
     await o.profils.synchroniser(e);
     this.resoudreEssais();
   }

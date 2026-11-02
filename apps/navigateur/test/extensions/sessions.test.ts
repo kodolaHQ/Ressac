@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -261,6 +261,9 @@ function creer(
     aTourneDansOnglet?: ConstructorParameters<typeof ExtensionsProfils>[0]["aTourneDansOnglet"];
     delaiEffacementMs?: number;
     delaiFondMs?: number;
+    site?: ConstructorParameters<typeof ExtensionsProfils>[0]["site"];
+    fermer?: (wc: Electron.WebContents) => void;
+    avantInstallationStore?: ConstructorParameters<typeof ExtensionsProfils>[0]["avantInstallationStore"];
   } = {},
 ) {
   const p = new ExtensionsProfils({
@@ -279,6 +282,8 @@ function creer(
     ...(o.aTourneDansOnglet ? { aTourneDansOnglet: o.aTourneDansOnglet } : {}),
     ...(o.delaiEffacementMs ? { delaiEffacementMs: o.delaiEffacementMs } : {}),
     ...(o.delaiFondMs ? { delaiFondMs: o.delaiFondMs } : {}),
+    ...(o.site ? { site: o.site } : {}),
+    ...(o.avantInstallationStore ? { avantInstallationStore: o.avantInstallationStore } : {}),
     dossier,
     etat: () => etat,
     premierPlan: () => "f1",
@@ -288,7 +293,7 @@ function creer(
     },
     fenetreDe: () => null,
     activer: () => {},
-    fermer: () => {},
+    fermer: o.fermer ?? (() => {}),
     invisible: o.invisible ?? false,
     ...(o.notifications ? { fichierNotifications } : {}),
   });
@@ -1238,5 +1243,354 @@ test("N1/N6 onglets suivis : gardés après un retrait sans rechargement, oubli�
     expect(reste.reload).toHaveBeenCalledTimes(1);
   } finally {
     vuesParId.clear();
+  }
+});
+
+// ——— Plan 16 : la session d'une appli de site (`brancherSite`) ———
+
+/** Une fausse vue (WebContents) de la session `s`, connue de `webContents.fromId`. */
+function fausseVue(s: FausseSession, id: number, url = "https://vidola-a.localhost/pubs") {
+  const wc = Object.assign(new EventEmitter(), {
+    id,
+    session: s,
+    favicon: undefined,
+    audioMuted: false,
+    detruite: false,
+    getType: () => "window",
+    getURL: () => url,
+    getTitle: () => "Pubs",
+    isLoading: () => false,
+    isCurrentlyAudible: () => false,
+    isDestroyed: () => wc.detruite,
+    reload: () => {},
+  });
+  vuesParId.set(id, wc);
+  return wc;
+}
+function fausseFenetre(id: number) {
+  return Object.assign(new EventEmitter(), {
+    id,
+    isDestroyed: () => false,
+    getSize: () => [800, 600],
+    getPosition: () => [0, 0],
+    isFocused: () => true,
+    isAlwaysOnTop: () => false,
+    isMaximized: () => false,
+    isMinimized: () => false,
+    isFullScreen: () => false,
+  });
+}
+type MagasinBib = {
+  tabs: Set<unknown>;
+  tabToWindow: Map<unknown, unknown>;
+  windows: Set<unknown>;
+};
+const magasinDe = (s: FausseSession) => (rouages(s).ctx.store as unknown as MagasinBib);
+
+/** Les options `site` d'un test : l'appli `vidola`, son empreinte, sa vue, et ce qui a été ouvert ou fermé. */
+function optionsSite(o: { empreinte?: string | null; vue?: { wc: unknown; fenetre: unknown } | null; permis?: boolean } = {}) {
+  const r = {
+    empreinte: o.empreinte === undefined ? "E1" : o.empreinte,
+    vue: o.vue ?? null,
+    permis: o.permis ?? true,
+    demandes: [] as [string, string, string][],
+    ouvertes: [] as [string, string][],
+    fermees: [] as unknown[],
+    /** Ce que rend `ouvrir` (sinon : lève). */
+    rendu: null as [unknown, unknown] | null,
+  };
+  const site: NonNullable<ConstructorParameters<typeof ExtensionsProfils>[0]["site"]> = {
+    vue: (id) => (id === "vidola" ? (r.vue as never) : null),
+    empreinte: (id) => (id === "vidola" ? r.empreinte : null),
+    urlPermise: (id, extensionId, url) => {
+      r.demandes.push([id, extensionId, url]);
+      return r.permis;
+    },
+    ouvrir: async (id, url) => {
+      r.ouvertes.push([id, url]);
+      if (!r.rendu) throw new Error("rien d'ouvert");
+      return r.rendu as never;
+    },
+    fermer: (wc) => void r.fermees.push(wc),
+  };
+  return { r, site };
+}
+const enSite = (applis: Record<string, string>, plus: Partial<EntreeExtension> = {}) => entree("store", [], { applis, ...plus });
+
+test("brancherSite équipe la session de l'appli une fois, sans page du Store, avec les deux preloads des correctifs", async () => {
+  const avant = vi.fn(() => async () => ({ action: "deny" as const }));
+  const { site } = optionsSite();
+  const p = creer({ site, avantInstallationStore: avant });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  const instance = ElectronChromeExtensions.fromSession(s as unknown as Electron.Session);
+  expect(instance).toBeDefined();
+  expect(() => p.brancherSite("vidola", s as unknown as Electron.Session)).not.toThrow();
+  expect(ElectronChromeExtensions.fromSession(s as unknown as Electron.Session)).toBe(instance);
+  expect(avant).not.toHaveBeenCalled();
+  const ids = (s.preloads as { id: string; type: string }[]).map((x) => `${x.id}:${x.type}`);
+  expect(ids).toEqual(["crx-mv2-preload:frame", "crx-mv3-preload:service-worker", "webaios-extensions-fond:service-worker", "webaios-extensions-page:frame"]);
+  expect(p.aLaSession(s as unknown as Electron.Session)).toBe(true);
+  // Sans l'option `site` : rien n'est fait.
+  const sans = creer();
+  const s2 = fausseSession("persist:site-autre");
+  sans.brancherSite("autre", s2 as unknown as Electron.Session);
+  expect(ElectronChromeExtensions.fromSession(s2 as unknown as Electron.Session)).toBeUndefined();
+});
+
+test("synchroniser charge dans la session de l'appli les clés de chargeesDansSite pour l'empreinte de site.empreinte ; empreinte null (appli fermée) ou autre : rien, et ce qui l'était est retiré", async () => {
+  const { r, site } = optionsSite();
+  const p = creer({ site });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  const ext = etatExt({ [`store:${ID_A}`]: enSite({ vidola: "E1" }), [`store:${ID_B}`]: enSite({ autre: "E1" }) });
+  await p.synchroniser(ext);
+  expect(s.chargements.map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "1.0.0_0")]);
+  expect(p.chargeesProfil("site:vidola").map((c) => c.cle)).toEqual([`store:${ID_A}`]);
+  // Les domaines ont changé : l'empreinte n'est plus la même, l'extension est retirée.
+  r.empreinte = "E2";
+  await p.synchroniser(ext);
+  expect(s.charges.size).toBe(0);
+  expect(s.retraits).toEqual([`id-${ID_A}-1.0.0_0`]);
+  // Appli fermée : rien n'est chargé.
+  r.empreinte = null;
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: enSite({ vidola: "E1" }) }));
+  expect(s.charges.size).toBe(0);
+  r.empreinte = "E1";
+  await p.synchroniser(ext);
+  expect(s.charges.size).toBe(1);
+  r.empreinte = null;
+  await p.synchroniser(ext);
+  expect(s.charges.size).toBe(0);
+});
+
+test("activée dans l'appli seulement : rien dans la session du profil ; activée dans le profil seulement : rien dans la session de l'appli", async () => {
+  const { site } = optionsSite();
+  const p = creer({ site });
+  const profil = fausseSession("defaut");
+  const app = fausseSession("persist:site-vidola");
+  p.brancher(profil as unknown as Electron.Session, "defaut");
+  p.brancherSite("vidola", app as unknown as Electron.Session);
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: enSite({ vidola: "E1" }), [`store:${ID_B}`]: entree("store", ["defaut"]) }));
+  expect(profil.chargements.map((c) => c.chemin)).toEqual([join(dossier, "store", ID_B, "1.0.0_0")]);
+  expect(app.chargements.map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "1.0.0_0")]);
+  // Une extension de l'agent, même active dans le profil : jamais dans l'appli.
+  await p.synchroniser(etatExt({ "agent:fond": entree("agent", ["defaut"], { applis: { vidola: "E1" } }) }));
+  expect(app.charges.size).toBe(0);
+});
+
+test("toutesCoupees : rien dans la session de l'appli", async () => {
+  const { site } = optionsSite();
+  const p = creer({ site });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  const ext = { [`store:${ID_A}`]: enSite({ vidola: "E1" }) };
+  await p.synchroniser(etatExt(ext));
+  expect(s.charges.size).toBe(1);
+  await p.synchroniser(etatExt(ext, true));
+  expect(s.charges.size).toBe(0);
+});
+
+test("brancherSite d'une appli ouverte : sa vue est ajoutée comme onglet avec la fenêtre de l'appli ; ongletCree d'une vue de cette session fait de même", async () => {
+  const s = fausseSession("persist:site-vidola");
+  const vue = fausseVue(s, 41);
+  const fenetre = fausseFenetre(7);
+  const activer = vi.fn();
+  const { site } = optionsSite({ vue: { wc: vue, fenetre } });
+  try {
+    const p = creer({ site });
+    (p as unknown as { o: { activer: unknown } }).o.activer = activer;
+    p.brancherSite("vidola", s as unknown as Electron.Session);
+    const m = magasinDe(s);
+    expect([...m.tabs]).toEqual([vue]);
+    expect(m.tabToWindow.get(vue)).toBe(fenetre);
+    const extension = appelante();
+    const actif = (await rouages(s).ctx.router.getHandler("tabs.query").callback({ extension }, { active: true })) as { id: number }[];
+    expect(actif.map((t) => t.id)).toEqual([41]);
+    // Une autre vue de la session (page de l'extension dans sa petite fenêtre) : ongletCree l'ajoute aussi.
+    const page = fausseVue(s, 42, `chrome-extension://${"x".repeat(32)}/options.html`);
+    const petite = fausseFenetre(8);
+    p.ongletCree(page as unknown as Electron.WebContents, petite as unknown as Electron.BrowserWindow);
+    expect(m.tabToWindow.get(page)).toBe(petite);
+    // selectTab ne revient jamais vers les onglets de WebAiOs.
+    p.ongletActive(page as unknown as Electron.WebContents);
+    expect(activer).not.toHaveBeenCalled();
+  } finally {
+    vuesParId.clear();
+  }
+});
+
+test("tabs.create et windows.create depuis la session de l'appli passent par site.ouvrir, jamais par ouvrirOnglet ; verifierUrl demande site.urlPermise avec l'id de l'extension appelante, et un refus fait échouer l'appel", async () => {
+  const s = fausseSession("persist:site-vidola");
+  const vue = fausseVue(s, 51);
+  const fenetre = fausseFenetre(9);
+  const { r, site } = optionsSite({ vue: { wc: vue, fenetre }, permis: false });
+  try {
+    const p = creer({ site });
+    p.brancherSite("vidola", s as unknown as Electron.Session);
+    const routeur = rouages(s).ctx.router;
+    const extension = appelante();
+    await expect(routeur.getHandler("tabs.create").callback({ extension }, { url: "http://pub.localhost/" })).rejects.toThrow(/refusée/);
+    await expect(routeur.getHandler("windows.create").callback({ extension }, { url: "http://pub.localhost/f" })).rejects.toThrow(/refusée/);
+    await expect(routeur.getHandler("tabs.update").callback({ extension }, 51, { url: "http://pub.localhost/u" })).rejects.toThrow(/refusée/);
+    expect(r.demandes).toEqual([
+      ["vidola", extension.id, "http://pub.localhost/"],
+      ["vidola", extension.id, "http://pub.localhost/f"],
+      ["vidola", extension.id, "http://pub.localhost/u"],
+    ]);
+    expect(r.ouvertes).toEqual([]);
+    // Permis : l'appli ouvre (la vue va sur la page du site, ou une petite fenêtre pour une page de l'extension).
+    r.permis = true;
+    r.rendu = [vue, fenetre];
+    await routeur.getHandler("tabs.create").callback({ extension }, { url: "https://vidola-a.localhost/autre", active: true });
+    const page = fausseVue(s, 52, `chrome-extension://${extension.id}/options.html`);
+    const petite = fausseFenetre(10);
+    r.rendu = [page, petite];
+    await routeur.getHandler("windows.create").callback({ extension }, { url: "options.html" });
+    expect(r.ouvertes).toEqual([
+      ["vidola", "https://vidola-a.localhost/autre"],
+      ["vidola", `chrome-extension://${extension.id}/options.html`],
+    ]);
+    // La page ouverte par windows.create est un onglet de sa petite fenêtre (comme dans Chrome) ; la vue reste dans la sienne.
+    expect(magasinDe(s).tabToWindow.get(page)).toBe(petite);
+    expect(magasinDe(s).tabToWindow.get(vue)).toBe(fenetre);
+    expect(ouvertures).toEqual([]);
+  } finally {
+    vuesParId.clear();
+  }
+});
+
+test("tabs.remove de la vue du site : site.fermer est appelé, jamais o.fermer", async () => {
+  // C4 : la vue n'est jamais fermée, ni ne quitte les onglets de la bibliothèque ; une page de l'extension, elle, est
+  // fermée par l'appli (site.fermer).
+  const s = fausseSession("persist:site-vidola");
+  const vue = fausseVue(s, 61);
+  const fenetre = fausseFenetre(11);
+  const fermer = vi.fn();
+  const { r, site } = optionsSite({ vue: { wc: vue, fenetre } });
+  try {
+    const p = creer({ site, fermer });
+    p.brancherSite("vidola", s as unknown as Electron.Session);
+    const routeur = rouages(s).ctx.router;
+    const extension = appelante();
+    await routeur.getHandler("tabs.remove").callback({ extension }, 61);
+    expect(r.fermees).toEqual([]);
+    expect(fermer).not.toHaveBeenCalled();
+    const tous = (await routeur.getHandler("tabs.query").callback({ extension }, {})) as { id: number; active: boolean }[];
+    expect(tous.map((t) => [t.id, t.active])).toEqual([[61, true]]);
+    expect(magasinDe(s).tabToWindow.get(vue)).toBe(fenetre);
+    // Une page de l'extension (onglet de sa petite fenêtre) : fermée par l'appli.
+    const page = fausseVue(s, 62, `chrome-extension://${extension.id}/options.html`);
+    p.ongletCree(page as unknown as Electron.WebContents, fausseFenetre(12) as unknown as Electron.BrowserWindow);
+    await routeur.getHandler("tabs.remove").callback({ extension }, 62);
+    expect(r.fermees).toEqual([page]);
+    expect(fermer).not.toHaveBeenCalled();
+    // Détruite par WebAiOs (ongletDetruit, sans écho) : rien n'est fermé ni remis.
+    p.ongletDetruit(vue as unknown as Electron.WebContents);
+    expect(magasinDe(s).tabs.has(vue)).toBe(false);
+    expect(r.fermees).toEqual([page]);
+  } finally {
+    vuesParId.clear();
+  }
+});
+
+test("une nouvelle version (dossier changé) est rechargée dans la session de l'appli comme dans celle d'un profil", async () => {
+  const { site } = optionsSite();
+  const p = creer({ site });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: enSite({ vidola: "E1" }, { version: "1.0.0" }) }));
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: enSite({ vidola: "E1" }, { version: "2.0.0" }) }));
+  expect(s.retraits).toEqual([`id-${ID_A}-1.0.0_0`]);
+  expect([...s.charges.values()].map((c) => c.chemin)).toEqual([join(dossier, "store", ID_A, "2.0.0_0")]);
+});
+
+test("un démarrage dans la session de l'appli appelle noterVue avec « site:vidola »", async () => {
+  const { site } = optionsSite();
+  const p = creer({ site });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  const chemin = join(dossier, "store", ID_A, "1.0.0_0");
+  s.manifestes.set(chemin, {
+    version: "1.0.0",
+    background: { service_worker: "fond.js" },
+    declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
+  });
+  await p.synchroniser(etatExt({ [`store:${ID_A}`]: enSite({ vidola: "E1" }) }));
+  const id = [...s.charges.keys()][0]!;
+  expect(await demarrerFond(s, id, 1)).toEqual({ installation: { reason: "install" }, rulesets: ["regles"], rulesetsInactifs: [], agent: false });
+  expect([...vuesNotees.keys()]).toEqual([`store:${ID_A}|site:vidola`]);
+});
+
+test("C15 un profil dont l'id contient « : » n'est jamais équipé (journalisé) : il ne peut pas prendre la portée d'une appli", async () => {
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const { site } = optionsSite();
+    const p = creer({ site });
+    const faux = fausseSession("site:vidola");
+    const autre = fausseSession("a:b");
+    p.brancher(faux as unknown as Electron.Session, "site:vidola");
+    p.brancher(autre as unknown as Electron.Session, "a:b");
+    expect(ElectronChromeExtensions.fromSession(faux as unknown as Electron.Session)).toBeUndefined();
+    expect(ElectronChromeExtensions.fromSession(autre as unknown as Electron.Session)).toBeUndefined();
+    expect(erreur).toHaveBeenCalledTimes(2);
+    await p.synchroniser(etatExt({ [`store:${ID_A}`]: entree("store", ["site:vidola", "a:b"], { applis: { vidola: "E1" } }) }));
+    expect(faux.chargements).toEqual([]);
+    expect(autre.chargements).toEqual([]);
+    // La vraie appli, elle, reste branchable.
+    const app = fausseSession("persist:site-vidola");
+    p.brancherSite("vidola", app as unknown as Electron.Session);
+    await vi.waitFor(() => expect(app.chargements).toHaveLength(1));
+  } finally {
+    erreur.mockRestore();
+  }
+});
+
+test("C6 effacerStockage d'une extension du Store : un talon de même key (sans fond, scripts de contenu ni règles) est chargé depuis un dossier temporaire, effacé ensuite", async () => {
+  effacement.charger = () => Promise.resolve();
+  effacement.executer = () => Promise.resolve(0);
+  const p = creer({ delaiEffacementMs: 200 });
+  const s = fausseSession("persist:site-vidola") as FausseSession & { effacees: unknown[] };
+  const version = join(dossier, "store", ID_A, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(
+    join(version, "manifest.json"),
+    JSON.stringify({
+      manifest_version: 3,
+      name: "uBlock factice",
+      version: "1.0.0",
+      key: "CLE-PUBLIQUE",
+      background: { service_worker: "fond.js" },
+      content_scripts: [{ matches: ["<all_urls>"], js: ["contenu.js"] }],
+      declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
+    }),
+  );
+  const lus: { chemin: string; manifeste: Record<string, unknown> }[] = [];
+  const charger = s.extensions.loadExtension as (c: string, o: unknown) => Promise<unknown>;
+  s.extensions.loadExtension = async (c: string, o: unknown) => {
+    lus.push({ chemin: c, manifeste: JSON.parse(readFileSync(join(c, "manifest.json"), "utf8")) });
+    return charger(c, o);
+  };
+  await p.effacerStockage(version, [s as never]);
+  expect(lus).toHaveLength(1);
+  expect(lus[0]!.chemin.startsWith(join(dossier, "store"))).toBe(false);
+  expect(lus[0]!.manifeste).toEqual({ manifest_version: 3, name: "uBlock factice", version: "1.0.0", key: "CLE-PUBLIQUE", permissions: ["storage"] });
+  expect(existsSync(lus[0]!.chemin)).toBe(false);
+  expect(s.retraits).toHaveLength(1);
+  expect(s.effacees).toHaveLength(1);
+  // Le vrai dossier n'est pas touché.
+  expect(existsSync(join(version, "manifest.json"))).toBe(true);
+
+  // Sans key : journalisé, rien n'est chargé, l'effacement est sauté sans lever.
+  const sansCle = join(dossier, "store", ID_B, "1.0.0_0");
+  mkdirSync(sansCle, { recursive: true });
+  writeFileSync(join(sansCle, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(p.effacerStockage(sansCle, [s as never])).resolves.toBeUndefined();
+    expect(lus).toHaveLength(1);
+    expect(erreur).toHaveBeenCalledWith(expect.stringMatching(/sans key/));
+  } finally {
+    erreur.mockRestore();
   }
 });
