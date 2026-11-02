@@ -10,7 +10,7 @@ import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
 import type { ServiceActions } from "./agent/actions";
 import { ID_PROJET, type IdProjet } from "@webaios/noyau";
-import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type LotAffiche } from "../commun/api";
+import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type EtatExternes, type LotAffiche } from "../commun/api";
 import type { CibleDesign } from "./design/service";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
@@ -152,6 +152,14 @@ export interface Gestionnaires {
     envoyer(p: IdProjet): Promise<ResultatExtension>;
     lots(p: IdProjet): Promise<LotAffiche[]>;
     traite(p: IdProjet, lot: string): Promise<void>;
+  };
+  /** Section « Projets externes » (fenêtre principale) : `id` validé ici (16 hex). */
+  externes: {
+    liste(): Promise<EtatExternes>;
+    brancher(nom: string): Promise<{ commande: string }>;
+    revoquer(id: string): Promise<void>;
+    oublier(id: string): Promise<void>;
+    relire(id: string): void;
   };
 }
 
@@ -451,6 +459,7 @@ export function brancherIpc(g: Gestionnaires): void {
     if (g.fenetreDe(e)) e.sender.send(CANAUX.etat, g.magasin.etat);
   });
   brancherDesign(g);
+  brancherExternes(g);
 }
 
 type OrigineDesign = { cible: CibleDesign; origine: "fenetre" | "pastille" | "calque" };
@@ -510,5 +519,32 @@ function brancherDesign(g: Gestionnaires): void {
   ipcMain.on(CANAUX.designAnnuler, (e) => {
     const o = origine(e);
     if (o?.origine === "calque") g.design.annuler(o.cible);
+  });
+}
+
+const ID_EXTERNE = /^[0-9a-f]{16}$/;
+const ID_CLIENT = /^[0-9a-f-]{8,64}$/;
+
+/** « Projets externes » : la fenêtre principale seule ; ids et noms validés ici. */
+function brancherExternes(g: Gestionnaires): void {
+  const principale = (e: Pick<IpcMainEvent, "sender" | "senderFrame">) => {
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+  };
+  ipcMain.handle(CANAUX.externesListe, (e) => (principale(e), g.externes.liste()));
+  ipcMain.handle(CANAUX.externesBrancher, (e, nom: unknown) => {
+    principale(e);
+    if (typeof nom !== "string" || nom.length > 200) throw new Error("Nom invalide");
+    return g.externes.brancher(nom);
+  });
+  ipcMain.handle(CANAUX.externesRevoquer, async (e, id: unknown) => {
+    principale(e);
+    if (typeof id === "string" && ID_CLIENT.test(id)) await g.externes.revoquer(id);
+  });
+  ipcMain.handle(CANAUX.externesOublier, async (e, id: unknown) => {
+    principale(e);
+    if (typeof id === "string" && ID_EXTERNE.test(id)) await g.externes.oublier(id);
+  });
+  ipcMain.on(CANAUX.externesRelire, (e, id: unknown) => {
+    if (g.fenetreDe(e) && typeof id === "string" && ID_EXTERNE.test(id)) g.externes.relire(id);
   });
 }

@@ -3,6 +3,7 @@
   import { confirmerOubli, confirmerSuppressionSite, OUBLIER_MEMOIRE, type ActionSite, type SiteAffiche } from "../../commun/sites";
   import { api } from "../etat.svelte";
   import Icone from "./Icone.svelte";
+  import ProjetsExternes from "./ProjetsExternes.svelte";
   import { ouvrirMenu, type EntreeMenu } from "./menu.svelte";
 
   type Filtre = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
@@ -291,6 +292,7 @@
         </ul>
       </section>
     {/if}
+    <ProjetsExternes />
   </div>
 </section>
 

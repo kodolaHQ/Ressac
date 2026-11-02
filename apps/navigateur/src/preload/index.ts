@@ -165,6 +165,14 @@ const api: ApiWebaios = {
     relire: () => ipcRenderer.send(CANAUX.designRelire),
     ...paniers,
   },
+  externes: {
+    liste: () => ipcRenderer.invoke(CANAUX.externesListe),
+    brancher: (nom) => ipcRenderer.invoke(CANAUX.externesBrancher, nom),
+    revoquer: (id) => ipcRenderer.invoke(CANAUX.externesRevoquer, id),
+    oublier: (id) => ipcRenderer.invoke(CANAUX.externesOublier, id),
+    relire: (id) => ipcRenderer.send(CANAUX.externesRelire, id),
+    surChange: (rappel) => ecouter(CANAUX.externesChange, () => rappel()),
+  },
 };
 
 /** Pastille d'une fenêtre d'appli : l'accès de l'agent et la taille de sa vue, pas le reste de l'API de la fenêtre. */

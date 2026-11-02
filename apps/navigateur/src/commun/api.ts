@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
-import type { EtatLot, IdProjet, ProjetSuivi } from "@webaios/noyau";
+import type { EtatLot, IdProjet, ProjetExterne, ProjetSuivi } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
@@ -333,6 +333,7 @@ export interface ApiWebaios {
   };
   /** Mode design de l'onglet actif de cette fenêtre, et paniers de remarques. */
   design: ApiDesign;
+  externes: ApiExternes;
 }
 
 
@@ -647,3 +648,20 @@ export type ApiCalque = {
 } & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
 /** Texte d'une remarque : borné à l'entrée du process principal. */
 export const TEXTE_REMARQUE_MAX = 4000;
+
+/** Section « Projets externes » de la page Applications : le MCP externe, ses projets et ses clients (jamais un jeton). */
+export interface EtatExternes {
+  serveur: { etat: "pret"; port: number } | { etat: "eteint"; raison: string };
+  projets: (ProjetExterne & { client: string | null; nomClient: string | null })[];
+  clients: { id: string; nom: string; cree: string }[];
+}
+export interface ApiExternes {
+  liste(): Promise<EtatExternes>;
+  /** La commande à copier dans le terminal du Claude Code : le jeton n'y paraît qu'une fois. */
+  brancher(nom: string): Promise<{ commande: string }>;
+  revoquer(id: string): Promise<void>;
+  oublier(id: string): Promise<void>;
+  /** « Relire » : la page de relecture du projet. */
+  relire(id: string): void;
+  surChange(rappel: () => void): () => void;
+}

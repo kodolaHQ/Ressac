@@ -56,8 +56,10 @@ import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-int
 import { brancherPagesAgent } from "./extensions/reseau";
 import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
 import { ServiceDesign } from "./design/service";
-import { plagesConteneur, RegistreExternes, Remarques } from "@webaios/noyau";
+import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
 import { creerEnvoi } from "./design/envoi";
+import { demarrerExternes, type ServiceExternes } from "./design/externes";
+import { homedir } from "node:os";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
@@ -277,6 +279,8 @@ let applications: ServiceApplications | undefined;
 let sites: ServiceSites | undefined;
 /** Mode design des onglets et des fenêtres d'appli ; créé avec les applis (il lit leurs ports). */
 let design: ServiceDesign | undefined;
+/** Le MCP externe et ses projets (page Applications) ; prêt une fois le registre ouvert. */
+let externes: ServiceExternes | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
@@ -800,6 +804,17 @@ app.whenReady().then(async () => {
       lots: async (p) => (await design?.lots(p)) ?? [],
       traite: async (p, lot) => design?.traite(p, lot),
     },
+    externes: {
+      liste: async () => (await externes?.etat()) ?? { serveur: { etat: "eteint", raison: "Le MCP externe démarre" }, projets: [], clients: [] },
+      brancher: async (nom) => {
+        if (!externes) throw new Error("Le MCP externe démarre");
+        return externes.brancher(nom);
+      },
+      revoquer: async (id) => void (await externes?.revoquer(id)),
+      oublier: async (id) => void (await externes?.oublier(id)),
+      // « Relire » : la page de relecture arrive avec la tâche 11 ; pour l'instant, rien.
+      relire: () => undefined,
+    },
   });
   const cibles: CiblesMenu = {
     fenetreActive: () => {
@@ -922,8 +937,22 @@ app.whenReady().then(async () => {
   let registreExternes: RegistreExternes | null = null;
   const diffuserDesign = () => {
     diffuser(CANAUX.designChange, null);
+    diffuser(CANAUX.externesChange, null);
     design?.calques.notifier();
   };
+  // Les clients et projets branchés par un Claude Code : une notification à la première déclaration d'un projet.
+  const notifierExterne = creerNotifieur({
+    creer: (opts) => new Notification(opts),
+    auClic: () => {
+      const id = fenetreAgent();
+      const f = id ? fenetres.get(id) : undefined;
+      if (!f || INVISIBLE) return;
+      if (f.isMinimized()) f.restore();
+      f.focus();
+    },
+    ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierTest: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
+    invisible: INVISIBLE,
+  });
   design = new ServiceDesign({
     remarques,
     registre: () => registreExternes,
@@ -962,9 +991,22 @@ app.whenReady().then(async () => {
     .then((r) => {
       registreExternes = r;
       r.surChange(diffuserDesign);
-      diffuserDesign();
+      // Port demandé, sinon celui de tout le monde ; jamais un autre port si celui-là est pris.
+      return demarrerExternes({
+        registre: r,
+        remarques,
+        dossiers: dossiersDesign,
+        port: Number(process.env.WEBAIOS_PORT_MCP_EXTERNE ?? PORT_MCP_EXTERNE),
+        plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS),
+        racineEspace: chemins.racine,
+        maison: homedir(),
+        notifier: (n) => notifierExterne({ widget: "externes", ...n }),
+      }).then((service) => {
+        externes = service;
+        diffuserDesign();
+      });
     })
-    .catch((e) => console.error("[design] registre des projets externes illisible :", e));
+    .catch((e) => console.error("[design] projets externes indisponibles :", e));
   // Un autre onglet affiché (ou l'onglet fermé) arrête le mode design de la fenêtre ; après la synchro des vues.
   magasin.abonner(() => design?.verifierOnglets());
   // Les applis de site : leurs fenêtres n'attendent ni Docker ni l'agent.
@@ -1169,6 +1211,7 @@ app.on("activate", () => rouvrirFenetres());
 app.on("will-quit", () => {
   clearInterval(minuteurPurge);
   clearInterval(minuteurPurgeLots);
+  void externes?.arreter();
   arreterMisesAJour?.();
   historique?.fermer();
 });

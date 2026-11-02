@@ -137,6 +137,14 @@ export const CANAUX = {
   designContexte: "webaios:design-contexte",
   designAjouter: "webaios:design-ajouter",
   designAnnuler: "webaios:design-annuler",
+  /** Page Applications : « Projets externes » (MCP externe, clients branchés). */
+  externesListe: "webaios:externes-liste",
+  externesBrancher: "webaios:externes-brancher",
+  externesRevoquer: "webaios:externes-revoquer",
+  externesOublier: "webaios:externes-oublier",
+  externesRelire: "webaios:externes-relire",
+  /** Diffusé quand un projet externe ou un client change (sans contenu : relire). */
+  externesChange: "webaios:externes-change",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";
