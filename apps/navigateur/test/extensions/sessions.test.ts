@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, generateKeyPairSync } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -1412,8 +1413,12 @@ test("brancherSite d'une appli ouverte : sa vue est ajoutée comme onglet avec l
     const petite = fausseFenetre(8);
     p.ongletCree(page as unknown as Electron.WebContents, petite as unknown as Electron.BrowserWindow);
     expect(m.tabToWindow.get(page)).toBe(petite);
-    // selectTab ne revient jamais vers les onglets de WebAiOs.
-    p.ongletActive(page as unknown as Electron.WebContents);
+    // selectTab ne revient jamais vers les onglets de WebAiOs, même demandé par l'extension (hors écho) : une seconde
+    // page dans la même petite fenêtre devient active (la bibliothèque active chaque onglet ajouté) ; rendre la première
+    // active par tabs.update fait appeler selectTab par la bibliothèque.
+    const seconde = fausseVue(s, 43, `chrome-extension://${"x".repeat(32)}/autre.html`);
+    p.ongletCree(seconde as unknown as Electron.WebContents, petite as unknown as Electron.BrowserWindow);
+    await rouages(s).ctx.router.getHandler("tabs.update").callback({ extension }, 42, { active: true });
     expect(activer).not.toHaveBeenCalled();
   } finally {
     vuesParId.clear();
@@ -1460,9 +1465,8 @@ test("tabs.create et windows.create depuis la session de l'appli passent par sit
   }
 });
 
-test("tabs.remove de la vue du site : site.fermer est appelé, jamais o.fermer", async () => {
-  // C4 : la vue n'est jamais fermée, ni ne quitte les onglets de la bibliothèque ; une page de l'extension, elle, est
-  // fermée par l'appli (site.fermer).
+test("tabs.remove de la vue du site : refusé (« Onglet protégé »), sans rien retirer ni diffuser ; une page de l'extension passe par site.fermer, jamais o.fermer", async () => {
+  // I1 : le crochet `peutFermerOnglet` du correctif refuse avant que la bibliothèque ne retire la vue.
   const s = fausseSession("persist:site-vidola");
   const vue = fausseVue(s, 61);
   const fenetre = fausseFenetre(11);
@@ -1471,9 +1475,19 @@ test("tabs.remove de la vue du site : site.fermer est appelé, jamais o.fermer",
   try {
     const p = creer({ site, fermer });
     p.brancherSite("vidola", s as unknown as Electron.Session);
-    const routeur = rouages(s).ctx.router;
+    const routeur = rouages(s).ctx.router as unknown as Rouages["ctx"]["router"] & { broadcastEvent(n: string, ...a: unknown[]): void };
+    const diffuses: string[] = [];
+    const diffuser = routeur.broadcastEvent.bind(routeur);
+    routeur.broadcastEvent = (n: string, ...a: unknown[]) => {
+      diffuses.push(n);
+      diffuser(n, ...a);
+    };
     const extension = appelante();
-    await routeur.getHandler("tabs.remove").callback({ extension }, 61);
+    const ecouteurs = () => vue.eventNames().map((n) => `${String(n)}:${vue.listenerCount(n)}`).sort();
+    const avant = ecouteurs();
+    await expect(Promise.resolve().then(() => routeur.getHandler("tabs.remove").callback({ extension }, 61))).rejects.toThrow(/Onglet protégé/);
+    expect(ecouteurs()).toEqual(avant);
+    expect(diffuses).not.toContain("tabs.onRemoved");
     expect(r.fermees).toEqual([]);
     expect(fermer).not.toHaveBeenCalled();
     const tous = (await routeur.getHandler("tabs.query").callback({ extension }, {})) as { id: number; active: boolean }[];
@@ -1485,10 +1499,36 @@ test("tabs.remove de la vue du site : site.fermer est appelé, jamais o.fermer",
     await routeur.getHandler("tabs.remove").callback({ extension }, 62);
     expect(r.fermees).toEqual([page]);
     expect(fermer).not.toHaveBeenCalled();
-    // Détruite par WebAiOs (ongletDetruit, sans écho) : rien n'est fermé ni remis.
+    // Détruite par WebAiOs (ongletDetruit, sans écho) : rien n'est fermé.
     p.ongletDetruit(vue as unknown as Electron.WebContents);
     expect(magasinDe(s).tabs.has(vue)).toBe(false);
     expect(r.fermees).toEqual([page]);
+  } finally {
+    vuesParId.clear();
+  }
+});
+
+test("windows.remove de la fenêtre de l'appli : refusé (« Fenêtre protégée »), windows.getAll la rend toujours ; dans un profil, rien ne change", async () => {
+  const s = fausseSession("persist:site-vidola");
+  const vue = fausseVue(s, 71);
+  const fenetre = fausseFenetre(13);
+  const { site } = optionsSite({ vue: { wc: vue, fenetre } });
+  try {
+    const p = creer({ site });
+    p.brancherSite("vidola", s as unknown as Electron.Session);
+    const routeur = rouages(s).ctx.router;
+    const extension = appelante();
+    await expect(routeur.getHandler("windows.remove").callback({ extension }, 13)).rejects.toThrow(/Fenêtre protégée/);
+    const fenetres = (await routeur.getHandler("windows.getAll").callback({ extension })) as { id: number }[];
+    expect(fenetres.map((f) => f.id)).toEqual([13]);
+    // Profil : aucun crochet, la bibliothèque fait comme avant (la fenêtre quitte son magasin).
+    const sp = fausseSession("defaut");
+    p.brancher(sp as unknown as Electron.Session, "defaut");
+    const onglet = fausseVue(sp, 72);
+    p.ongletCree(onglet as unknown as Electron.WebContents, fausseFenetre(14) as unknown as Electron.BrowserWindow);
+    await rouages(sp).ctx.router.getHandler("windows.remove").callback({ extension }, 14);
+    expect((await rouages(sp).ctx.router.getHandler("windows.getAll").callback({ extension })) as unknown[]).toEqual([]);
+    await rouages(sp).ctx.router.getHandler("tabs.remove").callback({ extension }, 72);
   } finally {
     vuesParId.clear();
   }
@@ -1546,25 +1586,36 @@ test("C15 un profil dont l'id contient « : » n'est jamais équipé (journalis�
   }
 });
 
+/** Une clé publique de manifeste (base64 du SPKI DER) et l'id Chromium qu'elle donne, calculé ici indépendamment. */
+function cleEtId(): { cle: string; id: string } {
+  const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const der = publicKey.export({ type: "spki", format: "der" });
+  const hex = createHash("sha256").update(der).digest("hex").slice(0, 32);
+  return { cle: der.toString("base64"), id: [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("") };
+}
+
 test("C6 effacerStockage d'une extension du Store : un talon de même key (sans fond, scripts de contenu ni règles) est chargé depuis un dossier temporaire, effacé ensuite", async () => {
   effacement.charger = () => Promise.resolve();
   effacement.executer = () => Promise.resolve(0);
   const p = creer({ delaiEffacementMs: 200 });
   const s = fausseSession("persist:site-vidola") as FausseSession & { effacees: unknown[] };
-  const version = join(dossier, "store", ID_A, "1.0.0_0");
-  mkdirSync(version, { recursive: true });
-  writeFileSync(
-    join(version, "manifest.json"),
-    JSON.stringify({
-      manifest_version: 3,
-      name: "uBlock factice",
-      version: "1.0.0",
-      key: "CLE-PUBLIQUE",
-      background: { service_worker: "fond.js" },
-      content_scripts: [{ matches: ["<all_urls>"], js: ["contenu.js"] }],
-      declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
-    }),
-  );
+  const { cle, id } = cleEtId();
+  const ecrire = (dossierId: string, manifeste: Record<string, unknown>) => {
+    const v = join(dossier, "store", dossierId, "1.0.0_0");
+    mkdirSync(v, { recursive: true });
+    writeFileSync(join(v, "manifest.json"), JSON.stringify(manifeste));
+    return v;
+  };
+  const complet = {
+    manifest_version: 3,
+    name: "uBlock factice",
+    version: "1.0.0",
+    key: cle,
+    background: { service_worker: "fond.js" },
+    content_scripts: [{ matches: ["<all_urls>"], js: ["contenu.js"] }],
+    declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
+  };
+  const version = ecrire(id, complet);
   const lus: { chemin: string; manifeste: Record<string, unknown> }[] = [];
   const charger = s.extensions.loadExtension as (c: string, o: unknown) => Promise<unknown>;
   s.extensions.loadExtension = async (c: string, o: unknown) => {
@@ -1574,23 +1625,40 @@ test("C6 effacerStockage d'une extension du Store : un talon de même key (sans 
   await p.effacerStockage(version, [s as never]);
   expect(lus).toHaveLength(1);
   expect(lus[0]!.chemin.startsWith(join(dossier, "store"))).toBe(false);
-  expect(lus[0]!.manifeste).toEqual({ manifest_version: 3, name: "uBlock factice", version: "1.0.0", key: "CLE-PUBLIQUE", permissions: ["storage"] });
+  expect(lus[0]!.manifeste).toEqual({ manifest_version: 3, name: "uBlock factice", version: "1.0.0", key: cle, permissions: ["storage"] });
   expect(existsSync(lus[0]!.chemin)).toBe(false);
   expect(s.retraits).toHaveLength(1);
   expect(s.effacees).toHaveLength(1);
   // Le vrai dossier n'est pas touché.
   expect(existsSync(join(version, "manifest.json"))).toBe(true);
 
-  // Sans key : journalisé, rien n'est chargé, l'effacement est sauté sans lever.
-  const sansCle = join(dossier, "store", ID_B, "1.0.0_0");
-  mkdirSync(sansCle, { recursive: true });
-  writeFileSync(join(sansCle, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
   const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
+    // Sans key : journalisé, rien n'est chargé, l'effacement est sauté sans lever.
+    const sansCle = ecrire(ID_B, { manifest_version: 3, name: "x", version: "1.0.0" });
     await expect(p.effacerStockage(sansCle, [s as never])).resolves.toBeUndefined();
-    expect(lus).toHaveLength(1);
     expect(erreur).toHaveBeenCalledWith(expect.stringMatching(/sans key/));
+    // M2 : une key qui ne donne pas l'id du dossier (manifeste abîmé) : sautée, journalisée ; jamais une autre extension.
+    const autreId = ecrire("d".repeat(32), complet);
+    await expect(p.effacerStockage(autreId, [s as never])).resolves.toBeUndefined();
+    expect(erreur).toHaveBeenCalledWith(expect.stringMatching(/ne correspond pas/));
+    expect(lus).toHaveLength(1);
   } finally {
     erreur.mockRestore();
   }
+  // Aucun talon laissé dans le dossier temporaire.
+  expect(readdirSync(tmpdir()).filter((n) => n.startsWith("webaios-talon-") && lus.some((l) => l.chemin.endsWith(n)))).toEqual([]);
+});
+
+test("M1 effacerStockage : l'extension encore chargée dans la session (même id) fait lever « extension encore chargée », sans rien charger", async () => {
+  const p = creer({ delaiEffacementMs: 200 });
+  const s = fausseSession("persist:site-vidola");
+  const { cle, id } = cleEtId();
+  const version = join(dossier, "store", id, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0", key: cle }));
+  s.charges.set(id, { id, chemin: version });
+  await expect(p.effacerStockage(version, [s as never])).rejects.toThrow(/extension encore chargée/);
+  expect(s.chargements).toEqual([]);
+  expect(s.retraits).toEqual([]);
 });

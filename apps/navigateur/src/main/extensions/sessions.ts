@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { appendFileSync, realpathSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   app,
   ipcMain,
@@ -260,6 +261,12 @@ const VIDER_STOCKAGE = `(async () => {
  * Le talon d'effacement d'une extension du Store (C6) : même `key` (donc même id Chromium), même nom et même version,
  * sans fond, scripts de contenu ni règles ; `storage` pour vider `chrome.storage` depuis sa page.
  */
+/** L'id Chromium que donne la `key` d'un manifeste (sha256 du SPKI DER, 32 premiers chiffres hexadécimaux en a-p). */
+export function idDeCle(cle: string): string {
+  const hex = createHash("sha256").update(Buffer.from(cle, "base64")).digest("hex").slice(0, 32);
+  return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("");
+}
+
 export function manifesteTalonStore(manifeste: unknown): Record<string, unknown> | null {
   const m = manifeste as { key?: unknown; name?: unknown; version?: unknown } | null;
   if (!m || typeof m.key !== "string" || m.key === "") return null;
@@ -268,7 +275,8 @@ export function manifesteTalonStore(manifeste: unknown): Record<string, unknown>
 
 /** Ce que la bibliothèque reçoit de chaque session, au-delà de ce qui est commun aux profils et aux applis. */
 type OptionsBibliotheque = ConstructorParameters<typeof ElectronChromeExtensions>[0];
-type OptionsPortee = Required<Pick<OptionsBibliotheque, "createTab" | "selectTab" | "removeTab" | "createWindow" | "verifierUrl">>;
+type OptionsPortee = Required<Pick<OptionsBibliotheque, "createTab" | "selectTab" | "removeTab" | "createWindow" | "verifierUrl">> &
+  Pick<OptionsBibliotheque, "peutFermerOnglet" | "peutFermerFenetre">;
 
 /** Service workers dont le canal de démarrage est posé. */
 const workersEcoutes = new WeakSet<object>();
@@ -385,7 +393,10 @@ export class ExtensionsProfils {
         empreinte(id: IdSite): string | null;
         /** `verifierUrl` dans une session d'appli ; faux : l'appel de l'extension échoue. */
         urlPermise(id: IdSite, extensionId: string, url: string): boolean;
-        /** `createTab` / `createWindow` (adresse déjà vérifiée) : l'onglet et la fenêtre rendus à la bibliothèque. */
+        /**
+         * `createTab` / `createWindow` : l'onglet et la fenêtre rendus à la bibliothèque. L'adresse n'est PAS toujours
+         * vérifiée avant : `runtime.openOptionsPage` appelle `createTab` sans `verifierUrl` ; l'appli revérifie.
+         */
         ouvrir(id: IdSite, url: string): Promise<[WebContents, BrowserWindow]>;
         /** `removeTab` : ferme une page de l'extension ouverte dans sa petite fenêtre ; jamais la vue du site. */
         fermer(wc: WebContents): void;
@@ -517,16 +528,18 @@ export class ExtensionsProfils {
    * Équipe la session `persist:site-<id>` d'une appli de site (une fois, portée `site:<id>`, sans page du Store) et y
    * charge ses extensions si l'état est déjà connu. Ses onglets et fenêtres passent par l'appli : `createTab` et
    * `createWindow` par `site.ouvrir` (adresse vérifiée avant par `verifierUrl`, qui exige aussi `site.urlPermise`),
-   * `selectTab` ne fait rien, `removeTab` d'une page de l'extension par `site.fermer`. La vue du site n'est jamais fermée
-   * par une extension : un `tabs.remove` qui la vise la remet aussitôt parmi les onglets (C4). Si l'appli est ouverte, sa
-   * vue devient tout de suite l'onglet actif de sa fenêtre. Rien n'est fait sans l'option `site`.
+   * `selectTab` ne fait rien, `removeTab` d'une page de l'extension par `site.fermer`. Ni la vue du site ni la fenêtre de
+   * l'appli ne sont fermées par une extension : les crochets du correctif `peutFermerOnglet` / `peutFermerFenetre` font
+   * échouer `tabs.remove` / `windows.remove` avant que la bibliothèque ne les retire de son magasin (I1, remplace la
+   * remise de C4). Si l'appli est ouverte, sa vue devient tout de suite l'onglet actif de sa fenêtre. Rien n'est fait
+   * sans l'option `site`.
    */
   brancherSite(id: IdSite, s: Session): void {
     const site = this.o.site;
     if (!site) return;
     const portee = porteeSite(id);
-    /** Remet la vue de l'appli parmi les onglets de la bibliothèque, active dans sa fenêtre. */
-    const remettreVue = (x: ElectronChromeExtensions, v: { wc: WebContents; fenetre: BrowserWindow }) => {
+    /** Ajoute la vue de l'appli aux onglets de la bibliothèque, active dans sa fenêtre. */
+    const ajouterVue = (x: ElectronChromeExtensions, v: { wc: WebContents; fenetre: BrowserWindow }) => {
       try {
         this.sansEcho(() => {
           x.addTab(v.wc, v.fenetre);
@@ -541,15 +554,15 @@ export class ExtensionsProfils {
       selectTab: () => {},
       removeTab: (wc) => {
         if (this.echo || wc.isDestroyed()) return;
-        const v = site.vue(id);
-        const x = this.instances.get(portee)?.extensions;
-        // C4 : la bibliothèque l'a déjà retirée de son magasin ; sans elle, plus d'onglet actif (popup cassée).
-        if (v && v.wc === wc) {
-          if (x) remettreVue(x, v);
+        // `peutFermerOnglet` refuse déjà la vue ; par sécurité (bibliothèque changée), elle n'est jamais fermée ici.
+        if (site.vue(id)?.wc === wc) {
+          console.error(`[extensions] retrait de la vue de l'appli ${id} par une extension : ignoré`);
           return;
         }
         site.fermer(wc);
       },
+      peutFermerOnglet: (wc) => site.vue(id)?.wc !== wc,
+      peutFermerFenetre: (fenetre) => site.vue(id)?.fenetre !== fenetre,
       // Une fenêtre demandée : ce que l'appli ouvre (la vue pour une page du site, une petite fenêtre pour une page de
       // l'extension), qui devient un onglet de cette fenêtre comme avec `tabs.create` (C20).
       createWindow: async (details) => {
@@ -564,7 +577,7 @@ export class ExtensionsProfils {
     });
     if (!extensions) return;
     const v = site.vue(id);
-    if (v && !v.wc.isDestroyed()) remettreVue(extensions, v);
+    if (v && !v.wc.isDestroyed()) ajouterVue(extensions, v);
     if (this.dernier) void this.synchroniser(this.dernier);
   }
 
@@ -644,6 +657,11 @@ export class ExtensionsProfils {
    * synchronisations, qu'il ne retient pas) : chargée,
    * `chrome.storage` vidé depuis une de ses pages (jamais montrée), retirée, puis le reste de son origine
    * (`clearStorageData` : IndexedDB, service worker…) et ses dossiers sous `storagePath`. Lève au premier échec.
+   *
+   * Une version du Store (`store/<id>/<version>_0`, C6) : un talon de même `key` est chargé, jamais son code. Pour
+   * l'appelant (T3) : attendre d'abord la synchronisation qui retire l'extension de chaque session (lève sinon,
+   * « extension encore chargée » : le talon de même id la remplacerait), et appeler ceci AVANT d'effacer `store/<id>`
+   * (le manifeste y est lu). Une `key` absente ou qui ne donne pas l'id du dossier : journalisé, sauté, sans lever.
    */
   effacerStockage(chemin: string, sessions: readonly Session[]): Promise<void> {
     // L'entrée a déjà quitté le registre et seul le talon est à ce chemin : aucune synchronisation ne le charge, l'effacement
@@ -651,10 +669,12 @@ export class ExtensionsProfils {
     const travail = this.fileEffacements.then(async () => {
       // C6 : le dossier d'une version du Store (`store/<id>/<version>_0`) a tout le code de l'extension ; c'est un talon
       // de même `key` (même id) qui est chargé, depuis un dossier temporaire effacé ensuite.
-      const talon = this.dansStore(chemin) ? await this.poserTalonStore(chemin) : chemin;
+      const store = this.dansStore(chemin);
+      const talon = store ? await this.poserTalonStore(chemin) : chemin;
       if (talon === null) return;
+      const id = store ? basename(dirname(resolve(chemin))) : idChromeDeDossier(chemin);
       try {
-        for (const s of new Set(sessions)) await this.effacerStockageDans(s, talon);
+        for (const s of new Set(sessions)) await this.effacerStockageDans(s, talon, id);
       } finally {
         if (talon !== chemin) await rm(talon, { recursive: true, force: true }).catch(() => undefined);
       }
@@ -671,7 +691,8 @@ export class ExtensionsProfils {
 
   /**
    * Le talon d'effacement de la version du Store à `chemin`, dans un dossier temporaire (rendu) ; null, journalisé, si
-   * son manifeste n'a pas de `key` : l'id ne serait pas le même, l'effacement est sauté.
+   * son manifeste n'a pas de `key`, ou si elle ne donne pas l'id du dossier `store/<id>` (M2) : ce ne serait pas le
+   * stockage de cette extension, l'effacement est sauté.
    */
   private async poserTalonStore(chemin: string): Promise<string | null> {
     const manifeste: unknown = JSON.parse(await readFile(join(chemin, "manifest.json"), "utf8"));
@@ -680,8 +701,19 @@ export class ExtensionsProfils {
       console.error(`[extensions] ${chemin} : manifeste sans key, stockage non effacé`);
       return null;
     }
+    const attendu = basename(dirname(resolve(chemin)));
+    const donne = idDeCle(talon.key as string);
+    if (donne !== attendu) {
+      console.error(`[extensions] ${chemin} : la key (id ${donne}) ne correspond pas au dossier ${attendu}, stockage non effacé`);
+      return null;
+    }
     const dossier = await mkdtemp(join(tmpdir(), "webaios-talon-"));
-    await writeFile(join(dossier, "manifest.json"), JSON.stringify(talon));
+    try {
+      await writeFile(join(dossier, "manifest.json"), JSON.stringify(talon));
+    } catch (erreur) {
+      await rm(dossier, { recursive: true, force: true }).catch(() => undefined);
+      throw erreur;
+    }
     return dossier;
   }
 
@@ -689,8 +721,10 @@ export class ExtensionsProfils {
    * Chaque étape est bornée (`delaiEffacementMs`) : au-delà, elle échoue, la vue est fermée et l'extension retirée
    * (un chargement qui finit après le délai est retiré aussitôt), et la file des synchronisations continue.
    */
-  private async effacerStockageDans(s: Session, chemin: string): Promise<void> {
+  private async effacerStockageDans(s: Session, chemin: string, idAttendu: string): Promise<void> {
     const ms = this.o.delaiEffacementMs ?? DELAI_EFFACEMENT_MS;
+    // M1 : l'extension de même id encore chargée serait remplacée par le talon (puis retirée à l'insu de `chargees`).
+    if (s.extensions.getExtension(idAttendu)) throw new Error(`${idAttendu} : extension encore chargée, stockage non effacé`);
     const retirer = (id: string) => {
       try {
         s.extensions.removeExtension(id);
