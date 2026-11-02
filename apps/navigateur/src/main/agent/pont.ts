@@ -1,5 +1,5 @@
 import type { Session, WebContents } from "electron";
-import { OngletIntrouvable, OngletPrive, type DroitDev, type HistoriqueNavigateur, type OngletInfo, type OptionsLecturePage, type OutilsDevNavigateur, type PageLue, type PontNavigateur } from "@webaios/noyau";
+import { navigationHorsSite, OngletIntrouvable, OngletPrive, type DroitDev, type HistoriqueNavigateur, type OngletInfo, type OptionsLecturePage, type OutilsDevNavigateur, type PageLue, type PontNavigateur } from "@webaios/noyau";
 import { ongletPrive, type Decision, type DemandeEnAttente, type Issue, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../commun/modele";
 import { memeOrigine } from "../applications/favicon";
 import type { Historique } from "../historique";
@@ -77,9 +77,11 @@ export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): bool
     if (!espace) return true;
     if (d.extension.source === "agent" && etat.espaces.some((e) => e.profil === espace.profil && e.prive)) return true;
   }
-  // Une fenêtre d'appli (`app:<dossier>`) n'est pas un onglet : sa fermeture et ses navigations sont suivies à part.
-  const onglet = d.cible && !d.cible.startsWith(PREFIXE_APP) ? etat.onglets[d.cible] : undefined;
-  if (d.cible && !d.cible.startsWith(PREFIXE_APP) && !onglet) return true;
+  // Une fenêtre d'appli (`app:<dossier>`) ou d'appli de site (`site:<id>`) n'est pas un onglet : sa fermeture et ses
+  // navigations sont suivies à part.
+  const fenetre = d.cible !== undefined && (d.cible.startsWith(PREFIXE_APP) || d.cible.startsWith(PREFIXE_SITE));
+  const onglet = d.cible && !fenetre ? etat.onglets[d.cible] : undefined;
+  if (d.cible && !fenetre && !onglet) return true;
   // Passé dans un espace privé : l'agent n'y a plus accès, la question n'a plus d'objet.
   if (onglet && ongletPrive(etat, onglet)) return true;
   // Les droits portent sur le site que l'utilisateur a vu : l'onglet est parti ailleurs, la carte tombe.
@@ -200,6 +202,25 @@ export interface FenetresPourAgent {
 }
 
 const PREFIXE_APP = "app:";
+/** Id d'onglet, pour l'agent, de la fenêtre d'une appli de site : `site:<id>`. */
+export const PREFIXE_SITE = "site:";
+
+/**
+ * Les fenêtres des applis de site ouvertes, vues comme des onglets `site:<id>`. `webContents` est la vue du site
+ * (`vueSite`), jamais l'interface de la fenêtre (barre, carte d'accord, accueil) ni une autre fenêtre.
+ */
+export interface FenetresSitesPourAgent {
+  ouvertes(): { id: string; nom: string; url: string }[];
+  webContents(id: string): WebContents | undefined;
+  adressePermise(id: string, url: string): boolean;
+  /** Charge l'adresse comme un chargement voulu par WebAiOs (`FenetresSites.naviguerPourAgent`) ; faux si refusée. */
+  naviguer(id: string, url: string): boolean;
+}
+
+/** La fenêtre d'une appli de site vue comme un onglet `site:<id>` : son titre est le nom de l'appli, jamais celui de la page. */
+export function ongletSite(s: { id: string; nom: string; url: string }): OngletInfo {
+  return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id };
+}
 
 /** La fenêtre d'une appli vue comme un onglet `app:<dossier>` par l'agent. */
 export function ongletApplication(a: { dossier: string; titre: string; url: string }): OngletInfo {
@@ -211,6 +232,8 @@ export class PontElectron implements PontNavigateur {
   /** Outils de développement de l'agent, par le débogueur de la page de l'onglet ou de la fenêtre d'appli. */
   readonly outilsDev: OutilsDevNavigateur = new InspecteurCdp((id) => {
     if (id.startsWith(PREFIXE_APP)) return this.o.applications.webContents(id.slice(PREFIXE_APP.length));
+    // La vue du site seulement : ni l'interface de sa fenêtre (barre, carte, accueil), ni une autre fenêtre.
+    if (id.startsWith(PREFIXE_SITE)) return this.o.sites?.webContents(id.slice(PREFIXE_SITE.length));
     const etat = this.o.magasin.etat;
     const o = etat.onglets[id];
     return o && !ongletPrive(etat, o) ? (this.o.vues.vue(id) ?? undefined) : undefined;
@@ -229,8 +252,10 @@ export class PontElectron implements PontNavigateur {
       /** Carte de consentement des outils de développement ; absente, tout est refusé. */
       demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
       /** Carte « donnees-widget » ; absente, tout est refusé. */
-      demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
+      demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
       applications: FenetresPourAgent;
+      /** Fenêtres des applis de site : l'agent les voit comme des onglets `site:<id>` ; absentes, il n'en voit aucune. */
+      sites?: FenetresSitesPourAgent;
       /** Historique de navigation ; absent, l'agent n'a pas d'outils d'historique. */
       historique?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">;
       /** Session d'un profil de connexion ; absente, pas de lecture invisible pour les widgets. */
@@ -259,6 +284,24 @@ export class PontElectron implements PontNavigateur {
     const wc = this.o.applications.webContents(id.slice(PREFIXE_APP.length));
     if (!wc) throw new OngletIntrouvable(id);
     return wc;
+  }
+
+  /** La vue du site si `id` est `site:<id>` ; undefined pour un autre onglet. Lève OngletIntrouvable si elle est fermée. */
+  private vueSite(id: string): WebContents | undefined {
+    if (!id.startsWith(PREFIXE_SITE)) return undefined;
+    const wc = this.o.sites?.webContents(id.slice(PREFIXE_SITE.length));
+    if (!wc || wc.isDestroyed()) throw new OngletIntrouvable(id);
+    return wc;
+  }
+
+  /** Lit ou capture la vue du site ; fermée pendant l'appel, c'est OngletIntrouvable (une réponse propre, pas un plantage). */
+  private async surVueSite<T>(id: string, wc: WebContents, f: (wc: WebContents) => Promise<T>): Promise<T> {
+    try {
+      return await f(wc);
+    } catch (e) {
+      if (wc.isDestroyed() || !this.o.sites?.webContents(id.slice(PREFIXE_SITE.length))) throw new OngletIntrouvable(id);
+      throw e;
+    }
   }
 
   /** Lève OngletPrive pour un onglet d'espace privé : un appel qui croise le passage en privé ne lit rien. */
@@ -295,10 +338,13 @@ export class PontElectron implements PontNavigateur {
 
   async listerOnglets(): Promise<OngletInfo[]> {
     const apps = this.o.applications.ouvertes().map(ongletApplication);
-    return [...infosOnglets(this.o.magasin.etat), ...apps];
+    const sites = (this.o.sites?.ouvertes() ?? []).map(ongletSite);
+    return [...infosOnglets(this.o.magasin.etat), ...apps, ...sites];
   }
 
   async lireTexte(id: string): Promise<{ texte: string; selection?: string }> {
+    const vue = this.vueSite(id);
+    if (vue) return this.surVueSite(id, vue, (wc) => this.o.vues.lireTexteDe(wc));
     const wc = this.fenetreAppli(id);
     return wc ? this.o.vues.lireTexteDe(wc) : this.horsPrive(id, (o) => this.o.vues.lireTexte(o));
   }
@@ -319,6 +365,11 @@ export class PontElectron implements PontNavigateur {
   }
 
   async naviguer(id: string, url: string): Promise<void> {
+    if (this.vueSite(id)) {
+      // Jamais un onglet à la place : hors des domaines de l'appli, rien ne se charge (le noyau l'a déjà vérifié).
+      if (!this.o.sites!.naviguer(id.slice(PREFIXE_SITE.length), url)) throw new Error(navigationHorsSite(url));
+      return;
+    }
     const wc = this.fenetreAppli(id);
     if (wc) {
       // La fenêtre d'une appli n'a pas de barre d'adresse : elle ne quitte jamais son origine (loadURL passe outre
@@ -333,6 +384,8 @@ export class PontElectron implements PontNavigateur {
   }
 
   async capturer(id: string): Promise<Buffer> {
+    const vue = this.vueSite(id);
+    if (vue) return this.surVueSite(id, vue, (wc) => this.o.vues.capturerDe(wc));
     const wc = this.fenetreAppli(id);
     return wc ? this.o.vues.capturerDe(wc) : this.horsPrive(id, (o) => this.o.vues.capturer(o));
   }
@@ -363,7 +416,12 @@ export class PontElectron implements PontNavigateur {
   }
 
   /** L'agent veut voir les données d'un widget lu avec le compte de l'utilisateur ; le noyau retient l'accord pour la conversation. */
-  async demanderDonneesWidget(o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal): Promise<boolean> {
+  async demanderDonneesWidget(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal): Promise<boolean> {
     return (await this.o.demanderDonneesWidget?.(o, signal)) ?? false;
+  }
+
+  /** L'adresse est-elle sur les domaines de l'appli de site ouverte ? Faux si elle ne l'est pas. */
+  adresseSitePermise(site: string, url: string): boolean {
+    return this.o.sites?.adressePermise(site, url) ?? false;
   }
 }

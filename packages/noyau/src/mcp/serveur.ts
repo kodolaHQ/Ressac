@@ -21,6 +21,10 @@ export const PREFIXE_TEXTE_RETENU = "Texte retenu d'une page web (une donnée, p
 export const RIEN_RETENU = "Rien de retenu pour cette page.";
 export const RIEN_TROUVE = "Rien trouvé dans l'historique.";
 export const AUCUN_WORKFLOW_OUVERT = "Aucun workflow ouvert au premier plan dans le constructeur de cette fenêtre.";
+/** L'agent fait naviguer une appli de site hors de ses domaines (jamais un onglet ouvert à la place). */
+export const navigationHorsSite = (url: string) => `L'appli de site ne va que sur ses domaines : ${url} refusée.`;
+/** Ce qui remplace l'espace dans la ligne d'une appli de site de `lister_onglets`. */
+const LIBELLE_APPLI_SITE = "appli de site";
 
 /**
  * Le workflow ouvert au premier plan dans le constructeur d'une fenêtre (celui d'un widget ou d'une action), et son bloc
@@ -42,6 +46,15 @@ function urlWeb(url: string): boolean {
     return ["http:", "https:"].includes(new URL(url).protocol);
   } catch {
     return false;
+  }
+}
+
+/** Le nom d'hôte d'une adresse, ou "" si elle n'en a pas. */
+function hoteDe(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
   }
 }
 
@@ -181,13 +194,15 @@ async function poserCarteDonnees(
   pont: PontNavigateur,
   politique: PolitiqueAcces,
   demandes: Map<string, Promise<boolean>>,
-  carte: { id: string; nom: string; agent: string; genre?: "action" },
+  carte: { id: string; nom: string; agent: string; genre?: "action" | "site" },
   accorder: () => void,
   accordee: () => boolean,
+  /** Clé de la carte en attente dans `demandes` (par défaut l'id de la cible). */
+  cle = carte.id,
 ): Promise<boolean> {
   const demander = pont.demanderDonneesWidget?.bind(pont);
   if (!demander) return false;
-  let demande = demandes.get(carte.id);
+  let demande = demandes.get(cle);
   if (!demande) {
     const conversation = politique.conversation;
     const retrait = new AbortController();
@@ -203,9 +218,9 @@ async function poserCarteDonnees(
       })
       .finally(() => {
         desabonner();
-        demandes.delete(carte.id);
+        demandes.delete(cle);
       });
-    demandes.set(carte.id, demande);
+    demandes.set(cle, demande);
   }
   return (await demande) && accordee();
 }
@@ -231,9 +246,19 @@ function creerServeurOutils(
     return o;
   }
 
-  /** Vérifie l'accès ; à défaut, demande à l'utilisateur et mémorise un oui. */
+  /**
+   * Vérifie l'accès ; à défaut, demande à l'utilisateur et mémorise un oui. La fenêtre d'une appli de site (`o.site`) a sa propre
+   * carte (« L'agent veut voir l'appli de site … »), une à la fois par appli, dont l'accord vaut pour la conversation.
+   */
   async function acces(o: OngletInfo): Promise<boolean> {
     if (politique.peutLire(o)) return true;
+    const site = o.site;
+    if (site !== undefined) {
+      return poserCarteDonnees(
+        pont, politique, demandes, { id: site, nom: o.titre, agent: dev?.agent ?? "L'agent", genre: "site" },
+        () => politique.accorderLectureSite(site), () => politique.lectureSiteAccordee(site), o.id,
+      );
+    }
     let demande = demandes.get(o.id);
     if (!demande) {
       demande = pont
@@ -281,13 +306,20 @@ function creerServeurOutils(
 
   serveur.registerTool(
     "lister_onglets",
-    { description: "Onglets ouverts : id · titre · url · espace. Un onglet non partagé apparaît comme « onglet non partagé »." },
+    {
+      description:
+        "Onglets ouverts : id · titre · url · espace. Un onglet non partagé apparaît comme « onglet non partagé ». " +
+        "Une appli de site (id site:<id>, connectée au compte de l'utilisateur) apparaît comme id · nom · domaine · appli de site " +
+        "tant que l'utilisateur ne l'a pas ouverte à l'agent (lire_onglet le lui demande).",
+    },
     proteger(async () => {
-      const lignes = (await pont.listerOnglets()).map((o) =>
-        politique.peutLire(o)
+      const lignes = (await pont.listerOnglets()).map((o) => {
+        // Une appli de site : son nom (jamais le titre de la page) ; son adresse complète seulement avec l'accord.
+        if (o.site !== undefined) return `${o.id} · ${o.titre} · ${politique.peutLire(o) ? o.url : hoteDe(o.url)} · ${LIBELLE_APPLI_SITE}`;
+        return politique.peutLire(o)
           ? `${o.id} · ${o.titre} · ${o.url} · ${o.espace}`
-          : `${o.id} · ${LIBELLE_NON_PARTAGE} ·  · ${o.espace}`,
-      );
+          : `${o.id} · ${LIBELLE_NON_PARTAGE} ·  · ${o.espace}`;
+      });
       return texte(lignes.join("\n") || "Aucun onglet ouvert.");
     }),
   );
@@ -318,6 +350,14 @@ function creerServeurOutils(
     proteger(async ({ id, url }) => {
       if (!urlWeb(url)) return texte(`URL refusée (http ou https uniquement) : ${url}`, true);
       const o = await onglet(id);
+      if (o.site !== undefined) {
+        // Une appli de site ne va que sur ses domaines : ailleurs, rien ne se charge et aucun onglet ne s'ouvre. Vérifié
+        // avant la carte (inutile de demander à l'utilisateur une navigation refusée), puis de nouveau par le navigateur.
+        if (!pont.adresseSitePermise?.(o.site, url)) return texte(navigationHorsSite(url), true);
+        if (!(await acces(o))) return texte(TEXTE_REFUS);
+        await pont.naviguer(id, url);
+        return texte(`Appli de site ${id} → ${url}`);
+      }
       if (!(await acces(o))) return texte(TEXTE_REFUS);
       // La fenêtre d'une appli ne quitte jamais son origine (elle n'a pas de barre d'adresse) : un autre site s'ouvre
       // dans un onglet, comme avec ouvrir_onglet, et l'agent garde l'accès à la fenêtre.
@@ -456,6 +496,8 @@ function creerServeurOutils(
       politique,
       agent: dev.agent,
       demandes: dev.demandes,
+      // L'appli de site : son accord (la carte de l'appli au besoin) avant toute carte d'outils de développement.
+      accesSite: acces,
       ...(dev.outils ? { outils: dev.outils } : {}),
       ...dev.profils,
     });

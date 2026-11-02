@@ -29,7 +29,7 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { creerNotifieur } from "./notifications";
-import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, PREFIXE_SITE, questionCaduque } from "./agent/pont";
 import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, lireAction, retirerAccord, supprimerDonnees, type DroitDev, type EtatActions, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
@@ -518,7 +518,10 @@ app.whenReady().then(async () => {
       const d = q.demande;
       const appli = d.cible?.startsWith("app:") ? applications?.fenetres.ouvertes().find((a) => `app:${a.dossier}` === d.cible) : undefined;
       const appliCaduque = d.cible?.startsWith("app:") && (!appli || origineDe(appli.url) !== d.origine);
-      if (appliCaduque || questionCaduque(d, magasin.etat)) {
+      // Fenêtre d'appli de site : fermée, ou (outils de développement) partie sur une autre origine.
+      const site = d.cible?.startsWith(PREFIXE_SITE) ? sites?.fenetres.ouvertes().find((s) => `${PREFIXE_SITE}${s.id}` === d.cible) : undefined;
+      const siteCaduque = d.cible?.startsWith(PREFIXE_SITE) && (!site || (d.permissions.includes("outils-dev") && origineDe(site.url) !== d.origine));
+      if (appliCaduque || siteCaduque || questionCaduque(d, magasin.etat)) {
         questions.delete(id);
         // Tombée sans réponse de l'utilisateur : retirée, pas refusée (les cartes de l'agent le disent).
         q.repondre("retiree");
@@ -891,6 +894,12 @@ app.whenReady().then(async () => {
     },
     // La section « Sites » de la page Applications relit la liste.
     diffuser: () => diffuser(CANAUX.sitesChange, null),
+    // L'agent perd ses outils de développement sur la fenêtre fermée ; ses cartes sur elle tombent. L'accord de l'appli,
+    // lui, vaut pour la conversation (rouverte, elle reste ouverte à l'agent).
+    surFermee: (id) => {
+      agent?.noyau()?.politique.ongletFerme(`${PREFIXE_SITE}${id}`);
+      ecarterQuestionsCaduques();
+    },
   });
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
@@ -956,6 +965,13 @@ app.whenReady().then(async () => {
     sessionProfil: (id) => sessions.session(id),
     applications: applications.gestionnaire,
     fenetresApplications: applications.fenetres,
+    // La vue du site de chaque appli ouverte (jamais sa barre ni son accueil) ; relu à chaque appel.
+    fenetresSites: {
+      ouvertes: () => sites?.fenetres.ouvertes() ?? [],
+      webContents: (id) => sites?.fenetres.vueSite(id),
+      adressePermise: (id, url) => sites?.adressePermise(id, url) ?? false,
+      naviguer: (id, url) => sites?.fenetres.naviguerPourAgent(id, url) ?? false,
+    },
     magasin,
     vues,
     fenetres,
@@ -993,7 +1009,9 @@ app.whenReady().then(async () => {
           poserQuestion(
             w.genre === "action"
               ? { origine: `webaios://action/${w.id}`, permissions: ["donnees-widget"], titre: w.nom, action: w.id, agent: w.agent }
-              : { origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent },
+              : w.genre === "site"
+                ? { origine: `${SCHEMA_SITE}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, site: w.id, agent: w.agent }
+                : { origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent },
             repondre,
           ),
         DELAI_QUESTION_MS,

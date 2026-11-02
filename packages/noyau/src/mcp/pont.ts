@@ -21,6 +21,11 @@ export interface OngletInfo {
   espace: string;
   /** Dossier du projet, pour la fenêtre d'une application. */
   application?: string;
+  /**
+   * Id de l'appli de site, pour sa fenêtre (`site:<id>`) : `titre` est alors le nom de l'appli (jamais le titre de la
+   * page), et sa lecture passe par l'accord de l'appli (`PolitiqueAcces.lectureSiteAccordee`), jamais par l'origine.
+   */
+  site?: string;
 }
 
 /** Ce que le navigateur (Electron, extension…) fournit au noyau. */
@@ -84,9 +89,15 @@ export interface PontNavigateur {
    * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
    * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
    * noyau arrêté), elle est retirée et la demande répond faux. `genre: "action"` : les résultats d'une action, non d'un
-   * widget. Absent : la demande est refusée.
+   * widget ; `genre: "site"` : les pages et la mémoire d'une appli de site (`id` est celui de l'appli). Absent : la
+   * demande est refusée.
    */
-  demanderDonneesWidget?(o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal): Promise<boolean>;
+  demanderDonneesWidget?(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal): Promise<boolean>;
+  /**
+   * L'adresse est-elle sur les domaines de l'appli de site ouverte `site` (jamais ceux de sa connexion) ? Faux si sa
+   * fenêtre n'est pas ouverte. Absent : l'agent ne fait naviguer aucune appli de site.
+   */
+  adresseSitePermise?(site: string, url: string): boolean;
 }
 
 export interface MessageConsole {

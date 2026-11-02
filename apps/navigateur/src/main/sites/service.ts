@@ -146,6 +146,8 @@ export function demarrerSites(o: {
   deboguer(fenetreId: IdFenetre, texte: string): void;
   /** La liste ou l'état des applis de site a changé. */
   diffuser(): void;
+  /** La fenêtre de l'appli s'est fermée (l'agent perd ses outils de développement dessus, ses cartes tombent). */
+  surFermee?(id: string): void;
 }): ServiceSites {
   fixerPreloadSite(o.preloadSite);
   const garde = readFileSync(o.cheminGarde, "utf8");
@@ -200,6 +202,7 @@ export function demarrerSites(o: {
       derniersAvis.delete(id);
       void viderMemoire(id);
       o.diffuser();
+      o.surFermee?.(id);
     },
     surFavicon: () => o.diffuser(),
     surSuivi: (id, url) => void chercherAdresse(id, url),

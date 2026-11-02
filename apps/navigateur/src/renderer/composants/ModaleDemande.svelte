@@ -110,7 +110,9 @@
       : donneesWidget
         ? demande.action !== undefined
           ? "Demande d'accès aux résultats d'une action"
-          : "Demande d'accès aux données d'un widget"
+          : demande.site !== undefined
+            ? "Demande d'accès à une appli de site"
+            : "Demande d'accès aux données d'un widget"
         : extension
           ? "Activer une extension"
           : consoleExtension
@@ -144,6 +146,8 @@
         <div class="lecture" data-testid="demande-donnees-widget">
           {#if demande.action !== undefined}
             <p>L'agent veut voir les résultats de l'action « {demande.titre ?? demande.action} » (lus avec ton compte).</p>
+          {:else if demande.site !== undefined}
+            <p data-testid="demande-site">L'agent veut voir l'appli de site « {demande.titre ?? demande.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
           {:else}
             <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
           {/if}

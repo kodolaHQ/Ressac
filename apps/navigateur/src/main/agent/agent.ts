@@ -26,7 +26,7 @@ import type { IdFenetre, IdProfil } from "../../commun/modele";
 import type { Historique } from "../historique";
 import type { Magasin } from "../ipc";
 import type { GestionnaireVues } from "../onglets/vues";
-import { changementsPolitique, ongletActifDe, PontElectron, type FenetresPourAgent } from "./pont";
+import { changementsPolitique, ongletActifDe, PontElectron, type FenetresPourAgent, type FenetresSitesPourAgent } from "./pont";
 import { SessionsAgent } from "./sessions";
 import { CANAUX } from "../../commun/canaux";
 import { plageDePorts } from "../applications/service";
@@ -81,8 +81,11 @@ export function demarrerAgent(o: {
   fenetreActive: () => IdFenetre | undefined;
   /** Demande de lecture affichée à l'utilisateur (voir index.ts). */
   demanderLecture: (o: OngletInfo) => Promise<boolean>;
-  /** Carte « donnees-widget » : l'agent veut voir les données d'un widget lu avec le compte de l'utilisateur (voir index.ts). */
-  demanderDonneesWidget: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
+  /**
+   * Carte « donnees-widget » : l'agent veut voir les données d'un widget lu avec le compte de l'utilisateur, les résultats d'une
+   * action (`genre: "action"`) ou une appli de site (`genre: "site"`) (voir index.ts).
+   */
+  demanderDonneesWidget: (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
   /** Carte de consentement des outils de développement (voir index.ts). */
   demanderOutilsDev: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
   /** L'accès de l'agent à un onglet a changé (politique du noyau). */
@@ -99,6 +102,8 @@ export function demarrerAgent(o: {
   applications: OutilsApplications;
   /** Fenêtres des applications lancées : l'agent les voit comme des onglets `app:<dossier>`. */
   fenetresApplications: FenetresPourAgent;
+  /** Fenêtres des applis de site : l'agent les voit comme des onglets `site:<id>`, derrière l'accord de l'appli. */
+  fenetresSites?: FenetresSitesPourAgent;
   /** Dossier du profil du navigateur, hors de l'espace monté, où restent les profils bruts des sites tiers. */
   dossierProfilage: string;
   /** Dossier du profil du navigateur, hors de l'espace monté, où sont rangés données, états et accords des widgets. */
@@ -132,6 +137,7 @@ export function demarrerAgent(o: {
     demanderOutilsDev: o.demanderOutilsDev,
     demanderDonneesWidget: o.demanderDonneesWidget,
     applications: o.fenetresApplications,
+    ...(o.fenetresSites ? { sites: o.fenetresSites } : {}),
     sessionProfil: o.sessionProfil,
     ...(o.historique ? { historique: o.historique } : {}),
   });

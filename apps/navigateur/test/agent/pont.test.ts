@@ -1,10 +1,10 @@
 import { expect, test, vi } from "vitest";
-import { OngletPrive } from "@webaios/noyau";
+import { navigationHorsSite, OngletIntrouvable, OngletPrive } from "@webaios/noyau";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import { siteDe, type EtatNavigateur } from "../../src/commun/modele";
-import { attendreDroits, attendreReponse, changementsPolitique, decisionPermise, espacesDevenusPrives, infosOnglets, ongletActifDe, PontElectron, questionCaduque, resoudreEspace } from "../../src/main/agent/pont";
+import { attendreDroits, attendreReponse, changementsPolitique, decisionPermise, espacesDevenusPrives, infosOnglets, ongletActifDe, ongletSite, PontElectron, PREFIXE_SITE, questionCaduque, resoudreEspace, type FenetresSitesPourAgent } from "../../src/main/agent/pont";
 
 /** Règle le caractère privé d'un espace, sans toucher au reste. */
 function reglerPrive(e: EtatNavigateur, ag: (a: Action) => unknown, id: string, prive: boolean) {
@@ -426,4 +426,119 @@ test("decisionPermise : un « oui » à une carte renforcée sans la case coché
   expect(decisionPermise(simple, "autoriser")).toBe("autoriser");
   const lecture = { id: "l", ongletId: null, origine: "https://a.test", permissions: ["lire-onglet" as const] };
   expect(decisionPermise(lecture, "autoriser")).toBe("autoriser");
+});
+
+// ——— Fenêtres d'applis de site (`site:<id>`) ———
+
+/** Une fenêtre d'appli de site ouverte (« vidola ») dont la vue du site est `vue`, fermable par le test. */
+function sitesFactices() {
+  let ouverte = true;
+  const vue = { isDestroyed: () => !ouverte, loadURL: vi.fn() };
+  const charges: [string, string][] = [];
+  const sites: FenetresSitesPourAgent = {
+    ouvertes: () => (ouverte ? [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1" }] : []),
+    webContents: (id) => (ouverte && id === "vidola" ? (vue as never) : undefined),
+    adressePermise: (id, url) => ouverte && id === "vidola" && new URL(url).hostname === "vidola-a.example",
+    naviguer: (id, url) => {
+      if (!sites.adressePermise(id, url)) return false;
+      charges.push([id, url]);
+      return true;
+    },
+  };
+  return { sites, vue, charges, fermer: () => (ouverte = false) };
+}
+
+test("ongletSite : site:<id>, titre = nom de l'appli, espace vide, site renseigné", () => {
+  expect(PREFIXE_SITE).toBe("site:");
+  expect(ongletSite({ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/" })).toEqual({
+    id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/", espace: "", site: "vidola",
+  });
+});
+
+test("PontElectron : les fenêtres d'applis de site sont listées, lues et capturées par la vue du site", async () => {
+  const { e, ag, F } = preparer();
+  const f = sitesFactices();
+  const vues = { lireTexteDe: vi.fn(async () => ({ texte: "Film 1" })), capturerDe: vi.fn(async () => Buffer.from("png")) };
+  const pont = new PontElectron({
+    magasin: { get etat() { return e(); }, agir: ag } as never,
+    vues: vues as never,
+    fenetreActive: () => F,
+    demander: async () => true,
+    applications: { ouvertes: () => [], webContents: () => undefined },
+    sites: f.sites,
+  });
+  expect(await pont.listerOnglets()).toContainEqual({ id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" });
+  expect((await pont.lireTexte("site:vidola")).texte).toBe("Film 1");
+  expect(vues.lireTexteDe).toHaveBeenCalledWith(f.vue);
+  expect((await pont.capturer("site:vidola")).toString()).toBe("png");
+  expect(vues.capturerDe).toHaveBeenCalledWith(f.vue);
+  expect(pont.adresseSitePermise("vidola", "https://vidola-a.example/film/2")).toBe(true);
+  expect(pont.adresseSitePermise("vidola", "https://pub.example/")).toBe(false);
+  expect(pont.adresseSitePermise("youtube", "https://vidola-a.example/")).toBe(false);
+  await expect(pont.lireTexte("site:youtube")).rejects.toBeInstanceOf(OngletIntrouvable);
+  // Fermée : introuvable, sans rien lire ; plus listée ; l'inspecteur ne trouve rien.
+  f.fermer();
+  await expect(pont.lireTexte("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
+  await expect(pont.capturer("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
+  await expect(pont.outilsDev.attacher("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
+  expect((await pont.listerOnglets()).some((o) => o.id === "site:vidola")).toBe(false);
+  expect(vues.lireTexteDe).toHaveBeenCalledTimes(1);
+});
+
+test("PontElectron : une vue de site fermée pendant la lecture rend « introuvable », pas une erreur brute", async () => {
+  const { e, ag, F } = preparer();
+  const f = sitesFactices();
+  const vues = {
+    lireTexteDe: vi.fn(async () => {
+      f.fermer();
+      throw new Error("Object has been destroyed");
+    }),
+  };
+  const pont = new PontElectron({
+    magasin: { get etat() { return e(); }, agir: ag } as never,
+    vues: vues as never,
+    fenetreActive: () => F,
+    demander: async () => true,
+    applications: { ouvertes: () => [], webContents: () => undefined },
+    sites: f.sites,
+  });
+  await expect(pont.lireTexte("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
+});
+
+test("PontElectron : naviguer une appli de site passe par sa fenêtre, sur ses domaines seulement ; jamais un onglet ouvert à la place", async () => {
+  const { e, ag, F } = preparer();
+  const f = sitesFactices();
+  const vues = { naviguer: vi.fn() };
+  const pont = new PontElectron({
+    magasin: { get etat() { return e(); }, agir: ag } as never,
+    vues: vues as never,
+    fenetreActive: () => F,
+    demander: async () => true,
+    applications: { ouvertes: () => [], webContents: () => undefined },
+    sites: f.sites,
+  });
+  const avant = Object.keys(e().onglets).length;
+  await pont.naviguer("site:vidola", "https://vidola-a.example/film/2");
+  expect(f.charges).toEqual([["vidola", "https://vidola-a.example/film/2"]]);
+  await expect(pont.naviguer("site:vidola", "https://pub.example/")).rejects.toThrow(navigationHorsSite("https://pub.example/"));
+  expect(f.charges).toHaveLength(1);
+  expect(f.vue.loadURL).not.toHaveBeenCalled();
+  expect(vues.naviguer).not.toHaveBeenCalled();
+  expect(Object.keys(e().onglets)).toHaveLength(avant);
+  f.fermer();
+  await expect(pont.naviguer("site:vidola", "https://vidola-a.example/film/3")).rejects.toBeInstanceOf(OngletIntrouvable);
+});
+
+test("PontElectron sans fenêtres d'applis de site : aucune listée, aucune adresse permise", async () => {
+  const { e, ag, F } = preparer();
+  const pont = pontSur(e, ag, F);
+  expect((await pont.listerOnglets()).some((o) => o.id.startsWith("site:"))).toBe(false);
+  expect(pont.adresseSitePermise("vidola", "https://vidola-a.example/")).toBe(false);
+  await expect(pont.lireTexte("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
+});
+
+test("questionCaduque : une fenêtre d'appli de site n'est pas un onglet fermé (suivie à part)", () => {
+  const { e, F } = preparer();
+  const dev = { id: "d", ongletId: null, fenetreId: F, cible: "site:vidola", origine: "https://vidola-a.example", permissions: ["outils-dev" as const], droits: ["console" as const] };
+  expect(questionCaduque(dev, e())).toBe(false);
 });

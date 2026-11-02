@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, ERREUR_RESERVEE, ERREUR_RESERVEE_ACTION, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
+import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, navigationHorsSite, TEXTE_REFUS, ERREUR_RESERVEE, ERREUR_RESERVEE_ACTION, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_INCONNUE, ACTION_SANS_WORKFLOW, RESULTAT_TROP_GROS, saisieRequise, type ResultatLancement } from "../../src/actions/executer.js";
 import { ERREUR_ACTION_INTERNE } from "../../src/actions/file.js";
@@ -872,4 +872,134 @@ test("accorder les données de l'action « courrier » n'accorde pas celles du w
   expect(politique.donneesActionAccordees("daily")).toBe(false);
   politique.reinitialiser();
   expect(politique.donneesActionAccordees("courrier")).toBe(false);
+});
+
+// ——— Fenêtres d'applis de site (`site:<id>`) ———
+
+const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1?ep=3", espace: "", site: "vidola" };
+/** Un onglet ordinaire sur le domaine du site. */
+const ongletVidola: OngletInfo = { id: "ow", titre: "Vidola dans un onglet", url: "https://vidola-a.example/", espace: "perso" };
+
+async function avecSite(o: { donneesWidget?: boolean; autoriser?: boolean } = {}) {
+  await client.close();
+  await serveur.arreter();
+  pont = new PontFactice([github, ongletVidola, vidola], {
+    actif: "github",
+    autoriser: o.autoriser ?? false,
+    sites: { vidola: ["vidola-a.example"] },
+    ...(o.donneesWidget !== undefined ? { donneesWidget: o.donneesWidget } : {}),
+  });
+  politique = new PolitiqueAcces();
+  serveur = await demarrerServeurMcp({ pont, politique, jeton, agent: "Claude" });
+  client = new Client({ name: "test", version: "0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${jeton}` } },
+    }),
+  );
+}
+const cartesSite = () => pont.appels.filter((a) => a.methode === "demanderDonneesWidget");
+const appelsPont = (m: string) => pont.appels.filter((a) => a.methode === m);
+
+test("lister_onglets sans accord : « site:vidola · Vidola · vidola-a.example · appli de site », aucune URL de page", async () => {
+  await avecSite({ donneesWidget: true, autoriser: true });
+  // Un onglet ordinaire du même domaine, autorisé, n'ouvre pas la fenêtre de l'appli.
+  politique.accorder(ongletVidola);
+  const t = texte(await client.callTool({ name: "lister_onglets", arguments: {} }));
+  const lignes = t.split("\n");
+  expect(lignes).toContain("site:vidola · Vidola · vidola-a.example · appli de site");
+  expect(lignes.filter((l) => l.startsWith("site:vidola"))).toHaveLength(1);
+  expect(lignes.find((l) => l.startsWith("site:vidola"))).not.toContain("/film/1");
+  expect(t).not.toContain("ep=3");
+  expect(cartesSite()).toHaveLength(0);
+  expect(appelsPont("demanderAutorisation")).toHaveLength(0);
+});
+
+test("lister_onglets avec l'accord de l'appli : la ligne d'un onglet lisible (URL de la page), toujours marquée appli de site", async () => {
+  await avecSite();
+  politique.accorderLectureSite("vidola");
+  const t = texte(await client.callTool({ name: "lister_onglets", arguments: {} }));
+  expect(t.split("\n")).toContain("site:vidola · Vidola · https://vidola-a.example/film/1?ep=3 · appli de site");
+});
+
+test("lire_onglet sur une appli de site : la carte genre site ; refus → TEXTE_REFUS, rien lu, jamais la carte d'onglet", async () => {
+  await avecSite({ donneesWidget: false, autoriser: true });
+  const r = await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  expect(texte(r)).toBe(TEXTE_REFUS);
+  expect(cartesSite().map((c) => c.args[0])).toEqual([{ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }]);
+  expect(appelsPont("demanderAutorisation")).toHaveLength(0);
+  expect(appelsPont("lireTexte")).toHaveLength(0);
+  expect(politique.lectureSiteAccordee("vidola")).toBe(false);
+  // capture_ecran refusée de même (une nouvelle carte : la première a été refusée).
+  expect(texte(await client.callTool({ name: "capture_ecran", arguments: { id: "site:vidola" } }))).toBe(TEXTE_REFUS);
+  expect(appelsPont("capturer")).toHaveLength(0);
+});
+
+test("lire_onglet sur une appli de site : accord → le texte, et capture_ecran sans seconde carte", async () => {
+  await avecSite({ donneesWidget: true });
+  const lu = texte(await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } }));
+  expect(lu).toContain("Titre : Vidola");
+  expect(lu).toContain("Texte de Vidola (https://vidola-a.example/film/1?ep=3)");
+  expect(politique.lectureSiteAccordee("vidola")).toBe(true);
+  const capture = await client.callTool({ name: "capture_ecran", arguments: { id: "site:vidola" } });
+  expect((capture.content as { type: string }[])[0]!.type).toBe("image");
+  expect(cartesSite()).toHaveLength(1);
+  // Nouvelle conversation : la carte revient.
+  politique.reinitialiser();
+  await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  expect(cartesSite()).toHaveLength(2);
+});
+
+test("appli de site : deux lectures en même temps ne posent qu'une carte", async () => {
+  await avecSite({ donneesWidget: true });
+  const [a, b] = await Promise.all([
+    client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } }),
+    client.callTool({ name: "capture_ecran", arguments: { id: "site:vidola" } }),
+  ]);
+  expect(texte(a)).toContain("Texte de Vidola");
+  expect((b.content as { type: string }[])[0]!.type).toBe("image");
+  expect(cartesSite()).toHaveLength(1);
+});
+
+test("appli de site fermée entre l'accord et la lecture : erreur propre « introuvable », sans plantage", async () => {
+  await avecSite({ donneesWidget: true });
+  politique.accorderLectureSite("vidola");
+  pont.fermerOnglet("site:vidola");
+  const r = await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  expect(r.isError).toBe(true);
+  expect(texte(r)).toBe("Onglet introuvable : site:vidola");
+  expect(texte(await client.callTool({ name: "lister_onglets", arguments: {} }))).not.toContain("site:vidola");
+});
+
+test("naviguer vers https://pub.example : navigationHorsSite, aucun onglet ouvert ; vers /film/2 du site : fait", async () => {
+  await avecSite({ donneesWidget: true });
+  const hors = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://pub.example/" } });
+  expect(texte(hors)).toBe(navigationHorsSite("https://pub.example/"));
+  expect(appelsPont("naviguer")).toHaveLength(0);
+  expect(appelsPont("ouvrirOnglet")).toHaveLength(0);
+  // Refusée avant toute carte : rien à demander à l'utilisateur pour une adresse hors du site.
+  expect(cartesSite()).toHaveLength(0);
+  const dans = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
+  expect(dans.isError).toBeFalsy();
+  expect(appelsPont("naviguer").map((a) => a.args)).toEqual([["site:vidola", "https://vidola-a.example/film/2"]]);
+  expect(appelsPont("ouvrirOnglet")).toHaveLength(0);
+  // La navigation passe par l'accord de l'appli.
+  expect(cartesSite()).toHaveLength(1);
+});
+
+test("naviguer dans une appli de site sans accord : TEXTE_REFUS, rien chargé", async () => {
+  await avecSite({ donneesWidget: false });
+  const r = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
+  expect(texte(r)).toBe(TEXTE_REFUS);
+  expect(cartesSite()).toHaveLength(1);
+  expect(appelsPont("naviguer")).toHaveLength(0);
+  expect(appelsPont("ouvrirOnglet")).toHaveLength(0);
+});
+
+test("naviguer dans une appli de site sans navigateur pour vérifier l'adresse : refusée", async () => {
+  await avecSite({ donneesWidget: true });
+  (pont as { adresseSitePermise?: unknown }).adresseSitePermise = undefined;
+  const r = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
+  expect(texte(r)).toBe(navigationHorsSite("https://vidola-a.example/film/2"));
+  expect(appelsPont("naviguer")).toHaveLength(0);
 });

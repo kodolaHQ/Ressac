@@ -154,7 +154,9 @@ export class PontFactice implements PontNavigateur {
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Lectures suspendues en cours, par URL : `relacher` les laisse finir. */
   private readonly suspendues = new Map<string, (() => void)[]>();
-  demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal) => Promise<boolean>;
+  demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
+  /** Domaines de chaque appli de site (id → domaines), pour `adresseSitePermise`. */
+  private readonly sites: Record<string, string[]>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
@@ -167,7 +169,8 @@ export class PontFactice implements PontNavigateur {
    * la raison du signal, comme le vrai pont qui ferme sa fenêtre. `redirections` simule une redirection :
    * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue ; vers un autre hôte, avec
    * `changerHote`, elle l'attend d'abord (notée « changerHote »). `donneesWidget` fournit la carte
-   * « donnees-widget », qui répond cette valeur.
+   * « donnees-widget » (et celle d'une appli de site, `genre: "site"`), qui répond cette valeur. `sites` : les domaines
+   * de chaque appli de site ouverte (onglets `site:<id>` avec `site` renseigné), pour `adresseSitePermise`.
    */
   constructor(
     onglets: OngletInfo[],
@@ -180,8 +183,10 @@ export class PontFactice implements PontNavigateur {
       historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
       lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string>; suspendues?: string[] };
       donneesWidget?: boolean;
+      sites?: Record<string, string[]>;
     },
   ) {
+    this.sites = o.sites ?? {};
     this.onglets = onglets.map((x) => ({ ...x }));
     this.actif = o.actif;
     this.autoriser = o.autoriser;
@@ -260,6 +265,27 @@ export class PontFactice implements PontNavigateur {
         return [...accorder];
       };
     }
+  }
+
+  /** L'onglet (ou la fenêtre d'appli de site) se ferme. */
+  fermerOnglet(id: string): void {
+    const i = this.onglets.findIndex((x) => x.id === id);
+    if (i >= 0) this.onglets.splice(i, 1);
+  }
+
+  /** Comme le vrai navigateur : l'hôte est un domaine de l'appli ouverte ou un de leurs sous-domaines. */
+  adresseSitePermise(site: string, url: string): boolean {
+    this.noter("adresseSitePermise", site, url);
+    if (!this.onglets.some((x) => x.site === site)) return false;
+    let hote: string;
+    try {
+      const u = new URL(url);
+      if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+      hote = u.hostname;
+    } catch {
+      return false;
+    }
+    return (this.sites[site] ?? []).some((d) => hote === d || hote.endsWith(`.${d}`));
   }
 
   /** Laisse finir les lectures suspendues de cette URL ; rend leur nombre. */

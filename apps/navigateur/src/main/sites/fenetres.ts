@@ -633,6 +633,28 @@ export class FenetresSites {
     });
   }
 
+  /**
+   * L'agent fait naviguer l'appli (après l'accord de l'utilisateur pour cette conversation) : seulement sur les domaines de
+   * l'appli, comme un chargement voulu par WebAiOs (règles de navigation et suivi de l'adresse s'appliquent). Depuis
+   * l'accueil, la vue du site se montre ; la carte d'accord des retouches affichée, l'adresse attend le choix de l'utilisateur.
+   * Faux si l'appli n'est pas ouverte ou que l'adresse est hors de ses domaines (rien n'est chargé).
+   */
+  naviguerPourAgent(id: string, url: string): boolean {
+    const o = this.ouverte(id);
+    if (!o || o.vue.webContents.isDestroyed() || !this.adressePermise(id, url)) return false;
+    if (o.affichee === "accord") {
+      o.aCharger = url;
+      return true;
+    }
+    this.aller(id, url);
+    if (o.affichee === "accueil") {
+      o.affichee = "site";
+      this.placer(o);
+    }
+    this.diffuserEtat(o);
+    return true;
+  }
+
   /** « Chercher la nouvelle adresse » (bouton de la barre, appli avec suiviAdresse seulement). */
   chercherAdresse(id: string): void {
     const o = this.ouverte(id);

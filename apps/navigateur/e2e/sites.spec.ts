@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Frame, type Page } from "@playwright/test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, nouvelleRacine, serveurSites, vueSite } from "./aide";
+import { appelerOutil, ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, nouvelleRacine, serveurSites, vueSite } from "./aide";
 
 /** Les hôtes de test `*.localhost` sont permis (http compris) ; jamais une vraie adresse. */
 const ENV = { WEBAIOS_TEST_ADRESSES_LOCALES: "1" };
@@ -1688,5 +1688,83 @@ test.describe("section Sites de la page Applications", () => {
     expect(existsSync(join(dossier, "memoire.json"))).toBe(false);
     expect(existsSync(join(dossier, "adresse.json"))).toBe(false);
     await l.fermer();
+  });
+});
+
+test.describe("l'agent", () => {
+  const REFUS = "Accès refusé par l'utilisateur à cet onglet.";
+  const terminal = (p: Page) => p.getByTestId("panneau-agent").locator(".xterm-rows");
+
+  test("lister_onglets, lire_onglet, capture_ecran et naviguer sur la fenêtre de l'appli, derrière la carte de l'appli", async () => {
+    const { app, fenetre, racine, fermer } = await demarrer();
+    // Le démarrage de la session de l'agent remet les accords à zéro : on l'attend avant d'appeler ses outils.
+    await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+    await ouvrirEtAttendre(app, fenetre);
+    const depart = serveur.url("vidola-a.localhost", "/");
+
+    // Sans accord : nom, domaine et « appli de site », jamais l'adresse ni le titre de la page.
+    const liste = (await appelerOutil(racine, "lister_onglets")).texte;
+    expect(liste.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
+    expect(liste).not.toContain(depart);
+    expect(liste).not.toContain("Vidola A");
+
+    // La carte de l'appli, dans la fenêtre principale ; refusée → refus, rien lu.
+    const carte = fenetre.getByTestId("demande-donnees-widget");
+    let lecture = appelerOutil(racine, "lire_onglet", { id: "site:vidola" });
+    await expect(carte.getByTestId("demande-site")).toHaveText(
+      "L'agent veut voir l'appli de site « Vidola » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.",
+    );
+    await carte.getByRole("button", { name: "Refuser" }).click();
+    expect(await lecture).toEqual({ texte: REFUS, erreur: false });
+    await expect(carte).toHaveCount(0);
+
+    // Redemandée : accordée pour la conversation → le texte de la page, lu dans la vue du site.
+    lecture = appelerOutil(racine, "lire_onglet", { id: "site:vidola" });
+    await carte.getByRole("button", { name: "Autoriser pour cette conversation" }).click();
+    const lu = await lecture;
+    expect(lu.erreur).toBe(false);
+    expect(lu.texte).toContain("Titre : Vidola");
+    expect(lu.texte).toContain(`URL : ${depart}`);
+    expect(lu.texte).toContain("aller");
+    await expect(carte).toHaveCount(0);
+
+    // capture_ecran : sans seconde carte.
+    const capture = await appelerOutil(racine, "capture_ecran", { id: "site:vidola" });
+    expect(capture.image?.startsWith("iVBOR")).toBe(true);
+    await expect(fenetre.getByTestId("modale-demande")).toHaveCount(0);
+
+    // naviguer hors du site : refusé, rien chargé, aucun onglet ouvert.
+    const onglets = await urlsOnglets(fenetre);
+    const pub = serveur.url("pub.localhost", "/x");
+    const hors = await appelerOutil(racine, "naviguer", { id: "site:vidola", url: pub });
+    expect(hors).toEqual({ texte: `L'appli de site ne va que sur ses domaines : ${pub} refusée.`, erreur: true });
+    expect(await urlsOnglets(fenetre)).toEqual(onglets);
+    expect(serveur.requetes.some((r) => r.hote === "pub.localhost" && r.chemin === "/x")).toBe(false);
+
+    // Sur le site : la vue de l'appli y va.
+    const film = serveur.url("vidola-a.localhost", "/film/2");
+    expect((await appelerOutil(racine, "naviguer", { id: "site:vidola", url: film })).erreur).toBe(false);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(film);
+    await expect.poll(() => vueSite(app, "vidola", "document.title")).toBe("Film 2");
+    expect(await urlsOnglets(fenetre)).toEqual(onglets);
+    // Avec l'accord, la ligne porte l'adresse de la page ; le titre reste le nom de l'appli.
+    expect((await appelerOutil(racine, "lister_onglets")).texte.split("\n")).toContain(`site:vidola · Vidola · ${film} · appli de site`);
+    await fermer();
+  });
+
+  test("lire_console sur la fenêtre de l'appli : la carte de l'appli, puis celle des outils de développement ; la console de la vue du site", async () => {
+    const { app, fenetre, racine, fermer } = await demarrer();
+    await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+    await ouvrirEtAttendre(app, fenetre);
+    const console_ = appelerOutil(racine, "lire_console", { id: "site:vidola" });
+    await fenetre.getByTestId("demande-donnees-widget").getByRole("button", { name: "Autoriser pour cette conversation" }).click();
+    const outils = fenetre.getByTestId("demande-outils-dev");
+    await expect(outils).toContainText("Vidola");
+    await outils.getByRole("button", { name: "Autoriser la sélection" }).click();
+    expect((await console_).texte).toBe("Aucun message.");
+    await vueSite(app, "vidola", "console.warn('message de la vue du site')");
+    await expect.poll(async () => (await appelerOutil(racine, "lire_console", { id: "site:vidola" })).texte).toContain("[warn] message de la vue du site");
+    await expect(fenetre.getByTestId("modale-demande")).toHaveCount(0);
+    await fermer();
   });
 });
