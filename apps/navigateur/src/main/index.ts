@@ -29,7 +29,7 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { creerNotifieur } from "./notifications";
-import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, PREFIXE_SITE, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, PREFIXE_SITE, questionCaduque, questionSiteCaduque } from "./agent/pont";
 import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, lireAction, retirerAccord, supprimerDonnees, type DroitDev, type EtatActions, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
@@ -519,8 +519,7 @@ app.whenReady().then(async () => {
       const appli = d.cible?.startsWith("app:") ? applications?.fenetres.ouvertes().find((a) => `app:${a.dossier}` === d.cible) : undefined;
       const appliCaduque = d.cible?.startsWith("app:") && (!appli || origineDe(appli.url) !== d.origine);
       // Fenêtre d'appli de site : fermée, ou (outils de développement) partie sur une autre origine.
-      const site = d.cible?.startsWith(PREFIXE_SITE) ? sites?.fenetres.ouvertes().find((s) => `${PREFIXE_SITE}${s.id}` === d.cible) : undefined;
-      const siteCaduque = d.cible?.startsWith(PREFIXE_SITE) && (!site || (d.permissions.includes("outils-dev") && origineDe(site.url) !== d.origine));
+      const siteCaduque = questionSiteCaduque(d, sites?.fenetres.ouvertes() ?? []);
       if (appliCaduque || siteCaduque || questionCaduque(d, magasin.etat)) {
         questions.delete(id);
         // Tombée sans réponse de l'utilisateur : retirée, pas refusée (les cartes de l'agent le disent).
@@ -894,8 +893,8 @@ app.whenReady().then(async () => {
     },
     // La section « Sites » de la page Applications relit la liste.
     diffuser: () => diffuser(CANAUX.sitesChange, null),
-    // L'agent perd ses outils de développement sur la fenêtre fermée ; ses cartes sur elle tombent. L'accord de l'appli,
-    // lui, vaut pour la conversation (rouverte, elle reste ouverte à l'agent).
+    // L'agent perd ses outils de développement sur la fenêtre fermée ; ses cartes d'outils sur elle tombent. La carte de
+    // l'appli et son accord, eux, valent pour l'appli et la conversation (rouverte, elle reste ouverte à l'agent).
     surFermee: (id) => {
       agent?.noyau()?.politique.ongletFerme(`${PREFIXE_SITE}${id}`);
       ecarterQuestionsCaduques();
@@ -970,7 +969,7 @@ app.whenReady().then(async () => {
       ouvertes: () => sites?.fenetres.ouvertes() ?? [],
       webContents: (id) => sites?.fenetres.vueSite(id),
       adressePermise: (id, url) => sites?.adressePermise(id, url) ?? false,
-      naviguer: (id, url) => sites?.fenetres.naviguerPourAgent(id, url) ?? false,
+      naviguer: (id, url) => sites?.fenetres.naviguerPourAgent(id, url) ?? "refuse",
     },
     magasin,
     vues,

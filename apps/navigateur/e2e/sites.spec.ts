@@ -1767,4 +1767,21 @@ test.describe("l'agent", () => {
     await expect(fenetre.getByTestId("modale-demande")).toHaveCount(0);
     await fermer();
   });
+
+  test("la fenêtre de l'appli fermée pendant la carte des outils de développement : la carte tombe, lire_console répond « introuvable »", async () => {
+    const { app, fenetre, racine, fermer } = await demarrer();
+    await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+    await ouvrirEtAttendre(app, fenetre);
+    const console_ = appelerOutil(racine, "lire_console", { id: "site:vidola" });
+    await fenetre.getByTestId("demande-donnees-widget").getByRole("button", { name: "Autoriser pour cette conversation" }).click();
+    const outils = fenetre.getByTestId("demande-outils-dev");
+    await expect(outils).toContainText("Vidola");
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed() && w.webContents.getURL().includes("site.html")) w.close();
+    });
+    await expect.poll(() => fenetresDuSite(app, "vidola")).toBe(0);
+    await expect(outils).toHaveCount(0);
+    expect(await console_).toEqual({ texte: "Onglet introuvable : site:vidola", erreur: true });
+    await fermer();
+  });
 });

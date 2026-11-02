@@ -210,16 +210,28 @@ export const PREFIXE_SITE = "site:";
  * (`vueSite`), jamais l'interface de la fenêtre (barre, carte d'accord, accueil) ni une autre fenêtre.
  */
 export interface FenetresSitesPourAgent {
-  ouvertes(): { id: string; nom: string; url: string }[];
+  /** `url` : la page affichée ; `domaine` : le domaine actuel de l'appli, seul montré à l'agent sans l'accord. */
+  ouvertes(): { id: string; nom: string; url: string; domaine: string }[];
   webContents(id: string): WebContents | undefined;
   adressePermise(id: string, url: string): boolean;
-  /** Charge l'adresse comme un chargement voulu par WebAiOs (`FenetresSites.naviguerPourAgent`) ; faux si refusée. */
-  naviguer(id: string, url: string): boolean;
+  /** Charge l'adresse comme un chargement voulu par WebAiOs (`FenetresSites.naviguerPourAgent`). */
+  naviguer(id: string, url: string): "charge" | "en-attente" | "refuse";
 }
 
 /** La fenêtre d'une appli de site vue comme un onglet `site:<id>` : son titre est le nom de l'appli, jamais celui de la page. */
-export function ongletSite(s: { id: string; nom: string; url: string }): OngletInfo {
-  return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id };
+export function ongletSite(s: { id: string; nom: string; url: string; domaine: string }): OngletInfo {
+  return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id, domaine: s.domaine };
+}
+
+/**
+ * Une question de l'agent sur une fenêtre d'appli de site (`cible: site:<id>`) qui n'a plus d'objet : la fenêtre est
+ * fermée, ou (outils de développement) sa page est partie sur une autre origine. La carte de l'appli (sans cible) n'est
+ * pas concernée : son accord vaut pour l'appli, fenêtre ouverte ou non.
+ */
+export function questionSiteCaduque(d: DemandeEnAttente, ouvertes: { id: string; url: string }[]): boolean {
+  if (!d.cible?.startsWith(PREFIXE_SITE)) return false;
+  const site = ouvertes.find((s) => PREFIXE_SITE + s.id === d.cible);
+  return !site || (d.permissions.includes("outils-dev") && origineDe(site.url) !== d.origine);
 }
 
 /** La fenêtre d'une appli vue comme un onglet `app:<dossier>` par l'agent. */
@@ -364,11 +376,12 @@ export class PontElectron implements PontNavigateur {
     return info(this.o.magasin.etat, nouveau);
   }
 
-  async naviguer(id: string, url: string): Promise<void> {
+  async naviguer(id: string, url: string): Promise<void | "en-attente"> {
     if (this.vueSite(id)) {
       // Jamais un onglet à la place : hors des domaines de l'appli, rien ne se charge (le noyau l'a déjà vérifié).
-      if (!this.o.sites!.naviguer(id.slice(PREFIXE_SITE.length), url)) throw new Error(navigationHorsSite(url));
-      return;
+      const r = this.o.sites!.naviguer(id.slice(PREFIXE_SITE.length), url);
+      if (r === "refuse") throw new Error(navigationHorsSite(url));
+      return r === "en-attente" ? r : undefined;
     }
     const wc = this.fenetreAppli(id);
     if (wc) {

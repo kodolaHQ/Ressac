@@ -56,8 +56,10 @@ interface Ouverte {
   chargementVoulu: boolean;
   /** Lecture de la page de référence en cours. */
   recherche: boolean;
-  /** Adresse à charger quand la carte d'accord se ferme : l'adresse a changé pendant qu'elle était affichée. */
+  /** Adresse à charger quand la carte d'accord se ferme : l'adresse a changé, ou l'agent a navigué, pendant qu'elle était affichée. */
   aCharger: string | null;
+  /** `aCharger` vient de l'agent : après la carte, la vue du site se montre (pas l'accueil). */
+  aChargerAgent: boolean;
   /** L'adresse du dernier chargement commencé dans le cadre principal (le suivi de l'adresse en reprend le chemin). */
   cible: string | null;
   pleinEcran: boolean;
@@ -199,7 +201,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, cible: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, aChargerAgent: false, cible: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -467,10 +469,16 @@ export class FenetresSites {
     return !!o && decisionOuverture(url, this.contexte(o)) === "dans-l-appli";
   }
 
-  ouvertes(): { id: string; nom: string; url: string }[] {
+  /** Les fenêtres ouvertes : `url` est la page affichée, `domaine` le domaine actuel de l'appli (celui de son départ). */
+  ouvertes(): { id: string; nom: string; url: string; domaine: string }[] {
     return [...this.ouvertesParId.values()]
       .filter((o) => !o.fenetre.isDestroyed())
-      .map((o) => ({ id: o.site.id, nom: o.site.declaration.nom, url: (!o.vue.webContents.isDestroyed() && o.vue.webContents.getURL()) || o.site.depart }));
+      .map((o) => ({
+        id: o.site.id,
+        nom: o.site.declaration.nom,
+        url: (!o.vue.webContents.isDestroyed() && o.vue.webContents.getURL()) || o.site.depart,
+        domaine: hoteHttp(o.site.depart) ?? "",
+      }));
   }
 
   /** La console des retouches de l'appli ouverte (vide si elle ne l'est pas). */
@@ -514,12 +522,15 @@ export class FenetresSites {
 
   /** Après la carte : l'accueil s'il y en a un, sinon le site (chargé sur son départ la première fois). */
   private vueSuivante(o: Ouverte): void {
+    const agent = o.aChargerAgent;
+    o.aChargerAgent = false;
     if (o.aCharger) {
       const vers = o.aCharger;
       o.aCharger = null;
       this.aller(o.site.id, vers);
     }
-    if (o.site.aAccueil) o.affichee = "accueil";
+    // L'agent a demandé une adresse pendant la carte : c'est elle que l'utilisateur voit, même si l'appli a un accueil.
+    if (o.site.aAccueil && !agent) o.affichee = "accueil";
     else {
       o.affichee = "site";
       if (!o.chargee) this.aller(o.site.id, o.site.depart);
@@ -636,15 +647,17 @@ export class FenetresSites {
   /**
    * L'agent fait naviguer l'appli (après l'accord de l'utilisateur pour cette conversation) : seulement sur les domaines de
    * l'appli, comme un chargement voulu par WebAiOs (règles de navigation et suivi de l'adresse s'appliquent). Depuis
-   * l'accueil, la vue du site se montre ; la carte d'accord des retouches affichée, l'adresse attend le choix de l'utilisateur.
-   * Faux si l'appli n'est pas ouverte ou que l'adresse est hors de ses domaines (rien n'est chargé).
+   * l'accueil, la vue du site se montre. La carte d'accord des retouches affichée : « en-attente », l'adresse se charge
+   * après le choix de l'utilisateur, et la vue du site se montre alors (pas l'accueil). « refuse » : l'appli n'est pas ouverte
+   * ou l'adresse est hors de ses domaines (rien n'est chargé).
    */
-  naviguerPourAgent(id: string, url: string): boolean {
+  naviguerPourAgent(id: string, url: string): "charge" | "en-attente" | "refuse" {
     const o = this.ouverte(id);
-    if (!o || o.vue.webContents.isDestroyed() || !this.adressePermise(id, url)) return false;
+    if (!o || o.vue.webContents.isDestroyed() || !this.adressePermise(id, url)) return "refuse";
     if (o.affichee === "accord") {
       o.aCharger = url;
-      return true;
+      o.aChargerAgent = true;
+      return "en-attente";
     }
     this.aller(id, url);
     if (o.affichee === "accueil") {
@@ -652,7 +665,7 @@ export class FenetresSites {
       this.placer(o);
     }
     this.diffuserEtat(o);
-    return true;
+    return "charge";
   }
 
   /** « Chercher la nouvelle adresse » (bouton de la barre, appli avec suiviAdresse seulement). */
@@ -684,7 +697,10 @@ export class FenetresSites {
     o.site = { ...o.site, domaines, depart };
     if (o.affichee === "accord") {
       // La carte est affichée : la vue ne charge rien avant le choix ; la page déjà chargée l'était sur l'ancien domaine.
-      if (o.chargee) o.aCharger = vers;
+      if (o.chargee) {
+        o.aCharger = vers;
+        o.aChargerAgent = false;
+      }
       return this.diffuserEtat(o);
     }
     this.aller(id, vers);

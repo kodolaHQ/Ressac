@@ -157,6 +157,8 @@ export class PontFactice implements PontNavigateur {
   demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
   /** Domaines de chaque appli de site (id → domaines), pour `adresseSitePermise`. */
   private readonly sites: Record<string, string[]>;
+  /** Applis de site dont la carte des retouches est affichée : naviguer répond « en-attente ». */
+  private readonly sitesEnAttente: Set<string>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
@@ -184,9 +186,11 @@ export class PontFactice implements PontNavigateur {
       lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string>; suspendues?: string[] };
       donneesWidget?: boolean;
       sites?: Record<string, string[]>;
+      sitesEnAttente?: string[];
     },
   ) {
     this.sites = o.sites ?? {};
+    this.sitesEnAttente = new Set(o.sitesEnAttente ?? []);
     this.onglets = onglets.map((x) => ({ ...x }));
     this.actif = o.actif;
     this.autoriser = o.autoriser;
@@ -369,9 +373,11 @@ export class PontFactice implements PontNavigateur {
     return { ...o };
   }
 
-  async naviguer(id: string, url: string) {
+  async naviguer(id: string, url: string): Promise<void | "en-attente"> {
     this.noter("naviguer", id, url);
-    this.trouver(id).url = url;
+    const o = this.trouver(id);
+    if (o.site !== undefined && this.sitesEnAttente.has(o.site)) return "en-attente";
+    o.url = url;
   }
 
   async capturer(id: string) {

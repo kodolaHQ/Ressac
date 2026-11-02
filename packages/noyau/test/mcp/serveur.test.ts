@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PolitiqueAcces } from "../../src/acces/politique.js";
 import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, navigationHorsSite, TEXTE_REFUS, ERREUR_RESERVEE, ERREUR_RESERVEE_ACTION, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
+import { AUCUN_WORKFLOW_OUVERT, AVIS_EXECUTIONS_ACTION_CACHEES, AVIS_EXECUTIONS_CACHEES, demarrerServeurMcp, NAVIGATION_SITE_EN_ATTENTE, navigationHorsSite, TEXTE_REFUS, ERREUR_RESERVEE, ERREUR_RESERVEE_ACTION, PREFIXE_DONNEES_ACTION, PREFIXE_DONNEES_WIDGET, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "../../src/mcp/serveur.js";
 import type { Execution } from "../../src/workflows/executions.js";
 import { ACTION_INCONNUE, ACTION_SANS_WORKFLOW, RESULTAT_TROP_GROS, saisieRequise, type ResultatLancement } from "../../src/actions/executer.js";
 import { ERREUR_ACTION_INTERNE } from "../../src/actions/file.js";
@@ -876,17 +876,18 @@ test("accorder les données de l'action « courrier » n'accorde pas celles du w
 
 // ——— Fenêtres d'applis de site (`site:<id>`) ———
 
-const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1?ep=3", espace: "", site: "vidola" };
+const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1?ep=3", espace: "", site: "vidola", domaine: "vidola-a.example" };
 /** Un onglet ordinaire sur le domaine du site. */
 const ongletVidola: OngletInfo = { id: "ow", titre: "Vidola dans un onglet", url: "https://vidola-a.example/", espace: "perso" };
 
-async function avecSite(o: { donneesWidget?: boolean; autoriser?: boolean } = {}) {
+async function avecSite(o: { donneesWidget?: boolean; autoriser?: boolean; fenetre?: OngletInfo; enAttente?: string[] } = {}) {
   await client.close();
   await serveur.arreter();
-  pont = new PontFactice([github, ongletVidola, vidola], {
+  pont = new PontFactice([github, ongletVidola, o.fenetre ?? vidola], {
     actif: "github",
     autoriser: o.autoriser ?? false,
     sites: { vidola: ["vidola-a.example"] },
+    ...(o.enAttente ? { sitesEnAttente: o.enAttente } : {}),
     ...(o.donneesWidget !== undefined ? { donneesWidget: o.donneesWidget } : {}),
   });
   politique = new PolitiqueAcces();
@@ -977,14 +978,59 @@ test("naviguer vers https://pub.example : navigationHorsSite, aucun onglet ouver
   expect(texte(hors)).toBe(navigationHorsSite("https://pub.example/"));
   expect(appelsPont("naviguer")).toHaveLength(0);
   expect(appelsPont("ouvrirOnglet")).toHaveLength(0);
-  // Refusée avant toute carte : rien à demander à l'utilisateur pour une adresse hors du site.
-  expect(cartesSite()).toHaveLength(0);
+  // L'accord de l'appli d'abord (une carte), puis l'adresse.
+  expect(cartesSite()).toHaveLength(1);
   const dans = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(dans.isError).toBeFalsy();
   expect(appelsPont("naviguer").map((a) => a.args)).toEqual([["site:vidola", "https://vidola-a.example/film/2"]]);
   expect(appelsPont("ouvrirOnglet")).toHaveLength(0);
-  // La navigation passe par l'accord de l'appli.
+  // L'accord tient pour la conversation : pas de seconde carte.
   expect(cartesSite()).toHaveLength(1);
+});
+
+test("naviguer hors du site sans accord : la carte de l'appli d'abord ; refusée → TEXTE_REFUS, jamais navigationHorsSite (rien appris des domaines)", async () => {
+  await avecSite({ donneesWidget: false });
+  const r = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-ancien.example/" } });
+  expect(texte(r)).toBe(TEXTE_REFUS);
+  expect(r.isError).toBeFalsy();
+  expect(cartesSite()).toHaveLength(1);
+  expect(appelsPont("adresseSitePermise")).toHaveLength(0);
+  expect(appelsPont("naviguer")).toHaveLength(0);
+});
+
+test("naviguer pendant la carte des retouches : NAVIGATION_SITE_EN_ATTENTE, jamais « fait »", async () => {
+  await avecSite({ donneesWidget: true, enAttente: ["vidola"] });
+  const r = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
+  expect(texte(r)).toBe(NAVIGATION_SITE_EN_ATTENTE);
+  expect(texte(r)).not.toContain("→");
+  expect(appelsPont("naviguer")).toHaveLength(1);
+});
+
+test("lister_onglets sans accord : le domaine actuel de l'appli, jamais l'hôte de la page affichée (domaine de connexion)", async () => {
+  await avecSite({
+    fenetre: { ...vidola, url: "https://compte.example/connexion?u=user", domaine: "vidola-a.example" },
+  });
+  const t = texte(await client.callTool({ name: "lister_onglets", arguments: {} }));
+  expect(t.split("\n")).toContain("site:vidola · Vidola · vidola-a.example · appli de site");
+  expect(t).not.toContain("compte.example");
+});
+
+test("la carte de l'appli de site en attente est retirée par une nouvelle conversation ; sa réponse tardive n'accorde rien", async () => {
+  await avecSite();
+  let signalRecu: AbortSignal | undefined;
+  let repondre!: (oui: boolean) => void;
+  pont.demanderDonneesWidget = (_o, signal) => {
+    signalRecu = signal;
+    return new Promise<boolean>((ok) => (repondre = ok));
+  };
+  const appel = client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  await vi.waitFor(() => expect(signalRecu).toBeDefined());
+  politique.reinitialiser();
+  expect(signalRecu!.aborted).toBe(true);
+  repondre(true);
+  expect(texte(await appel)).toBe(TEXTE_REFUS);
+  expect(politique.lectureSiteAccordee("vidola")).toBe(false);
+  expect(appelsPont("lireTexte")).toHaveLength(0);
 });
 
 test("naviguer dans une appli de site sans accord : TEXTE_REFUS, rien chargé", async () => {

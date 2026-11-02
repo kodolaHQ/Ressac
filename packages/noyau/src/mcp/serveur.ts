@@ -23,6 +23,9 @@ export const RIEN_TROUVE = "Rien trouvé dans l'historique.";
 export const AUCUN_WORKFLOW_OUVERT = "Aucun workflow ouvert au premier plan dans le constructeur de cette fenêtre.";
 /** L'agent fait naviguer une appli de site hors de ses domaines (jamais un onglet ouvert à la place). */
 export const navigationHorsSite = (url: string) => `L'appli de site ne va que sur ses domaines : ${url} refusée.`;
+/** naviguer sur une appli de site dont la carte d'accord des retouches est affichée : rien n'est encore chargé. */
+export const NAVIGATION_SITE_EN_ATTENTE =
+  "La carte des retouches de l'appli est affichée : l'adresse se chargera quand l'utilisateur aura choisi.";
 /** Ce qui remplace l'espace dans la ligne d'une appli de site de `lister_onglets`. */
 const LIBELLE_APPLI_SITE = "appli de site";
 
@@ -46,15 +49,6 @@ function urlWeb(url: string): boolean {
     return ["http:", "https:"].includes(new URL(url).protocol);
   } catch {
     return false;
-  }
-}
-
-/** Le nom d'hôte d'une adresse, ou "" si elle n'en a pas. */
-function hoteDe(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "";
   }
 }
 
@@ -315,7 +309,8 @@ function creerServeurOutils(
     proteger(async () => {
       const lignes = (await pont.listerOnglets()).map((o) => {
         // Une appli de site : son nom (jamais le titre de la page) ; son adresse complète seulement avec l'accord.
-        if (o.site !== undefined) return `${o.id} · ${o.titre} · ${politique.peutLire(o) ? o.url : hoteDe(o.url)} · ${LIBELLE_APPLI_SITE}`;
+        // Sans accord : le domaine actuel de l'appli, jamais l'hôte de la page (un domaine de connexion dirait ce que fait l'utilisateur).
+        if (o.site !== undefined) return `${o.id} · ${o.titre} · ${politique.peutLire(o) ? o.url : (o.domaine ?? "")} · ${LIBELLE_APPLI_SITE}`;
         return politique.peutLire(o)
           ? `${o.id} · ${o.titre} · ${o.url} · ${o.espace}`
           : `${o.id} · ${LIBELLE_NON_PARTAGE} ·  · ${o.espace}`;
@@ -351,11 +346,11 @@ function creerServeurOutils(
       if (!urlWeb(url)) return texte(`URL refusée (http ou https uniquement) : ${url}`, true);
       const o = await onglet(id);
       if (o.site !== undefined) {
-        // Une appli de site ne va que sur ses domaines : ailleurs, rien ne se charge et aucun onglet ne s'ouvre. Vérifié
-        // avant la carte (inutile de demander à l'utilisateur une navigation refusée), puis de nouveau par le navigateur.
-        if (!pont.adresseSitePermise?.(o.site, url)) return texte(navigationHorsSite(url), true);
+        // L'accord de l'appli d'abord : sans lui, l'agent n'apprend rien de ses domaines. Puis une appli de site ne va que
+        // sur ses domaines : ailleurs, rien ne se charge et aucun onglet ne s'ouvre (le navigateur revérifie).
         if (!(await acces(o))) return texte(TEXTE_REFUS);
-        await pont.naviguer(id, url);
+        if (!pont.adresseSitePermise?.(o.site, url)) return texte(navigationHorsSite(url), true);
+        if ((await pont.naviguer(id, url)) === "en-attente") return texte(NAVIGATION_SITE_EN_ATTENTE);
         return texte(`Appli de site ${id} → ${url}`);
       }
       if (!(await acces(o))) return texte(TEXTE_REFUS);

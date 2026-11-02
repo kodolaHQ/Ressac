@@ -26,6 +26,11 @@ export interface OngletInfo {
    * page), et sa lecture passe par l'accord de l'appli (`PolitiqueAcces.lectureSiteAccordee`), jamais par l'origine.
    */
   site?: string;
+  /**
+   * Appli de site : son domaine actuel (celui de son adresse de départ, suivi de l'adresse compris), seul montré sans
+   * l'accord, jamais l'hôte de la page affichée (qui peut être un domaine de connexion).
+   */
+  domaine?: string;
 }
 
 /** Ce que le navigateur (Electron, extension…) fournit au noyau. */
@@ -35,7 +40,11 @@ export interface PontNavigateur {
   /** Lève OngletIntrouvable si l'id est inconnu (comme lireTexte, naviguer et capturer). */
   lireTexte(id: string): Promise<{ texte: string; selection?: string }>;
   ouvrirOnglet(url: string, espace?: string): Promise<OngletInfo>;
-  naviguer(id: string, url: string): Promise<void>;
+  /**
+   * `"en-attente"` (fenêtre d'appli de site seulement) : la carte d'accord des retouches est affichée ; l'adresse se
+   * chargera après le choix de l'utilisateur.
+   */
+  naviguer(id: string, url: string): Promise<void | "en-attente">;
   /** Capture PNG de l'onglet. */
   capturer(id: string): Promise<Buffer>;
   /** Affiche la demande à l'utilisateur ; vrai s'il accepte. */
