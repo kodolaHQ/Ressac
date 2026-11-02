@@ -24,6 +24,7 @@ vi.mock("electron", () => ({
           setDevicePermissionHandler: (h: Gestionnaire) => (f.peripherique = h),
           on: (e: string, h: Gestionnaire) => (f.evenements[e] = h),
           registerPreloadScript: (p: unknown) => f.preloads.push(p),
+          clearData: async () => void f.efface.push("tout"),
           clearStorageData: async () => void f.efface.push("stockage"),
           clearCache: async () => void f.efface.push("cache"),
           clearAuthCache: async () => void f.efface.push("authentification"),
@@ -108,10 +109,10 @@ test("preferencesSite : celles d'un onglet, vidéos lancées sans geste", () => 
   });
 });
 
-test("effacerSessionSite : connexions fermées, puis stockage, cache et identifiants HTTP, de la seule partition de l'appli", async () => {
+test("effacerSessionSite : connexions fermées, puis tout (clearData : caches de code compris), stockage, cache et identifiants HTTP, de la seule partition de l'appli", async () => {
   sessionSite("youtube");
   await effacerSessionSite("vidola");
-  expect(fausse("vidola").efface).toEqual(["connexions", "stockage", "cache", "authentification", "cookies"]);
+  expect(fausse("vidola").efface).toEqual(["connexions", "tout", "stockage", "cache", "authentification", "cookies"]);
   expect(fausse("youtube").efface).toEqual([]);
 });
 

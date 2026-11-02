@@ -50,13 +50,15 @@ export function preferencesSite(s: Session) {
 }
 
 /**
- * Efface la session de l'appli (suppression) : connexions ouvertes fermées, cookies, stockage, cache et identifiants
- * HTTP retenus. Une nouvelle appli au même id repart vide.
+ * Efface la session de l'appli (suppression) : connexions ouvertes fermées, toutes les données (`clearData` : caches de
+ * code et dictionnaires partagés compris), cookies, stockage, cache et identifiants HTTP retenus. Une nouvelle appli au
+ * même id repart vide.
  */
 export async function effacerSessionSite(id: string): Promise<void> {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
   const s = session.fromPartition(partitionSite(id));
   await s.closeAllConnections();
+  await s.clearData();
   await s.clearStorageData();
   await s.clearCache();
   await s.clearAuthCache();
