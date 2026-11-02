@@ -6,6 +6,7 @@ import { zoneGauche, zoneSortie, type ZoneGauche } from "../../commun/revelation
 import { brancherCapture } from "./capture-texte";
 import { brancherBalayage } from "./balayage";
 import { attendreChargement } from "./chargement";
+import { creerRegroupeur } from "./regroupeur";
 import { brancherEvenements, type NotesHistorique } from "./evenements";
 import { entreesMenuPage } from "./menu-page";
 
@@ -76,6 +77,13 @@ export class GestionnaireVues {
   /** Session (profil de connexion) de chaque vue, celle de son onglet à sa création. */
   private sessions = new Map<IdOnglet, Session>();
   private attachees = new Map<IdFenetre, IdOnglet>();
+  /** Dernier aperçu (data URL JPEG) de chaque onglet vu affiché : une vue détachée ne peint plus, on ne peut pas la capturer. */
+  private apercus = new Map<IdOnglet, string>();
+  /** Une capture 1 s après la fin du chargement, réarmée à chaque fin de chargement. */
+  private captures = creerRegroupeur(1000, (cle) => {
+    const f = this.fenetreDe(cle);
+    if (f !== undefined) void this.capturerAffiche(f);
+  });
   private zones = new Map<IdFenetre, Bornes>();
   /** Popups ouvertes depuis un onglet (directement ou par une autre popup) : leurs questions vont à cet onglet. */
   private popups = new Map<WebContents, IdOnglet>();
@@ -200,13 +208,38 @@ export class GestionnaireVues {
     const wc = this.attachees.get(fenetreId) === ongletId ? this.vues.get(ongletId)?.webContents : undefined;
     if (!wc || wc.isDestroyed() || wc.isCrashed()) return null;
     try {
-      let image = await wc.capturePage(undefined, { stayHidden: true });
-      if (image.isEmpty()) return null;
-      if (image.getSize().width > LARGEUR_APERCU) image = image.resize({ width: LARGEUR_APERCU, quality: "good" });
-      return `data:image/jpeg;base64,${image.toJPEG(70).toString("base64")}`;
+      const image = await wc.capturePage(undefined, { stayHidden: true });
+      return this.encoderApercu(image);
     } catch {
       return null;
     }
+  }
+
+  /** Dernier aperçu connu de l'onglet, ou null s'il n'a jamais été capturé. */
+  apercuEnCache(id: IdOnglet): string | null {
+    return this.apercus.get(id) ?? null;
+  }
+
+  /** Capture l'onglet attaché à la fenêtre et met le cache à jour. Sans effet si rien n'est attaché, vue détruite ou plantée, image vide. */
+  async capturerAffiche(fenetreId: IdFenetre): Promise<void> {
+    const id = this.attachees.get(fenetreId);
+    const wc = id === undefined ? undefined : this.vues.get(id)?.webContents;
+    if (id === undefined || !wc || wc.isDestroyed() || wc.isCrashed()) return;
+    try {
+      const image = await wc.capturePage(undefined, { stayHidden: true });
+      // Pendant la capture, l'onglet a pu être fermé ou remplacé : on n'écrit pas un cache orphelin.
+      if (this.attachees.get(fenetreId) !== id || !this.vues.has(id)) return;
+      const url = this.encoderApercu(image);
+      if (url) this.apercus.set(id, url);
+    } catch {
+      /* capture impossible : on garde l'ancien aperçu */
+    }
+  }
+
+  private encoderApercu(image: Electron.NativeImage): string | null {
+    if (image.isEmpty()) return null;
+    const reduite = image.getSize().width > LARGEUR_APERCU ? image.resize({ width: LARGEUR_APERCU, quality: "good" }) : image;
+    return `data:image/jpeg;base64,${reduite.toJPEG(70).toString("base64")}`;
   }
 
   /** Fenêtre fermée dont l'état est gardé (macOS) : ses pages se ferment et se recréeront à sa réouverture. */
@@ -310,6 +343,7 @@ export class GestionnaireVues {
     const contexte = () => this.o.contexteHistorique?.(onglet.id) ?? null;
     brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, contexte);
     brancherBalayage(wc);
+    wc.on("did-stop-loading", () => this.captures.planifier(onglet.id));
     if (this.o.retenir) brancherCapture(wc, contexte, this.o.retenir);
     gererOuvertures(
       wc,
@@ -404,6 +438,8 @@ export class GestionnaireVues {
       }
       this.attachees.delete(f);
     }
+    this.captures.oublier(id);
+    this.apercus.delete(id);
     this.vues.delete(id);
     this.sessions.delete(id);
     this.zooms.delete(id);

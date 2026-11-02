@@ -1,0 +1,29 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { creerRegroupeur } from "../src/main/onglets/regroupeur";
+
+describe("regroupeur", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("regroupe deux planifications rapprochées en un seul appel", () => {
+    const faire = vi.fn();
+    const r = creerRegroupeur(1000, faire);
+    r.planifier("a");
+    vi.advanceTimersByTime(500);
+    r.planifier("a");
+    vi.advanceTimersByTime(999);
+    expect(faire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(faire).toHaveBeenCalledTimes(1);
+    expect(faire).toHaveBeenCalledWith("a");
+  });
+
+  it("oublier avant l'échéance annule l'appel", () => {
+    const faire = vi.fn();
+    const r = creerRegroupeur(1000, faire);
+    r.planifier("a");
+    r.oublier("a");
+    vi.advanceTimersByTime(5000);
+    expect(faire).not.toHaveBeenCalled();
+  });
+});
