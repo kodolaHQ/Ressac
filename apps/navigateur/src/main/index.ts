@@ -54,6 +54,7 @@ import {
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
+import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
@@ -905,6 +906,10 @@ app.whenReady().then(async () => {
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
     (globalThis as { __webaiosErreursRetouches?: (id: string) => unknown }).__webaiosErreursRetouches = (id) => sites?.erreurs(id) ?? [];
+  }
+  // Mode design, tests seulement : le viseur est appelé directement par les e2e (l'interface le branche à la tâche suivante).
+  if (INVISIBLE) {
+    (globalThis as { __webaiosViseur?: unknown }).__webaiosViseur = { armer: armerViseur, desarmer: desarmerViseur, lireSource, capturer: capturerElement };
   }
   /**
    * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que

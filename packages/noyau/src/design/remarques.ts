@@ -7,6 +7,15 @@ import { ID_PROJET, dossierRemarques, type DossiersDesign, type IdProjet } from 
 
 export const PANIER_VIDE = "Le panier est vide.";
 export const HTML_MAX = 4096;
+export const MARGE_CAPTURE = 16;
+/** Monde isolé du viseur (999 est celui de la lecture du texte). */
+export const MONDE_VISEUR = 1999;
+export const STYLES_UTILES = [
+  "color", "background-color", "font-family", "font-size", "font-weight", "line-height", "text-align", "width", "height",
+  "margin-top", "margin-right", "margin-bottom", "margin-left", "padding-top", "padding-right", "padding-bottom", "padding-left",
+  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-style", "border-color",
+  "border-radius", "display", "position",
+] as const;
 export const TRONQUE = "… [tronqué]";
 export const JOURS_PURGE = 30;
 

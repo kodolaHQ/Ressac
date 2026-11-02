@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Design</title>
+<style>body{margin:0;font:16px sans-serif} #inscription{padding:10px} ul{margin:0;padding:10px 30px} li{height:24px}</style></head>
+<body>
+<form id="inscription">
+  <input id="email" class="champ" type="email" value="a@b.c">
+  <button type="submit" id="envoyer">Envoyer</button>
+</form>
+<a id="lien" href="/autre">Autre page</a>
+<p data-source="src/Inscription.svelte:12">Texte avec source</p>
+<p id="nue">Texte sans source</p>
+<ul><li>un</li><li>deux</li><li>trois</li></ul>
+<script>
+  window.reactions = [];
+  for (const type of ["click", "mousedown", "mouseup", "pointerdown"])
+    document.addEventListener(type, (e) => window.reactions.push(type + ":" + (e.target.id || e.target.tagName)));
+  document.addEventListener("submit", (e) => { e.preventDefault(); window.reactions.push("submit"); });
+</script>
+</body></html>
