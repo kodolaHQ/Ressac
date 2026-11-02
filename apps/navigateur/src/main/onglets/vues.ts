@@ -18,6 +18,10 @@ const LONGUEUR_TEXTE = 100_000;
 const LARGEUR_APERCU = 1024;
 /** Largeur des aperçus en cache (panneau ⌃Tab) : des vignettes, pas des fonds de modale. */
 const LARGEUR_APERCU_ONGLET = 480;
+/** Délai laissé à l'interface pour remontrer la page après le panneau ⌃Tab, avant de renoncer à lui rendre le focus. */
+const ATTENTE_FOCUS_MS = 1000;
+/** Zone de contenu à l'écran (l'interface envoie une taille nulle quand elle efface la page). */
+const estMontree = (b: Bornes | undefined) => !!b && b.largeur > 0 && b.hauteur > 0;
 
 /**
  * Préférences de toute page web : bac à sable, aucun preload propre. Les preloads de la session (extensions, sur les
@@ -87,6 +91,8 @@ export class GestionnaireVues {
     if (f !== undefined) void this.capturerAffiche(f);
   });
   private zones = new Map<IdFenetre, Bornes>();
+  /** Focus à rendre à la page quand l'interface la remontrera (voir focaliserAffiche). */
+  private focusEnAttente = new Map<IdFenetre, ReturnType<typeof setTimeout>>();
   /** Popups ouvertes depuis un onglet (directement ou par une autre popup) : leurs questions vont à cet onglet. */
   private popups = new Map<WebContents, IdOnglet>();
   /** Fermetures en cours (voir `fermer`), à abandonner si l'utilisateur reste sur la page. */
@@ -224,6 +230,24 @@ export class GestionnaireVues {
     return this.apercus.get(id) ?? null;
   }
 
+  /**
+   * Donne le clavier à la page affichée dans la fenêtre, s'il y en a une (sinon l'interface le garde). Page effacée
+   * (panneau ⌃Tab encore à l'écran) : quand l'interface la remontre, si c'est dans la seconde ; un panneau de
+   * l'interface (historique…) resté ouvert garde le clavier.
+   */
+  focaliserAffiche(fenetreId: IdFenetre): void {
+    clearTimeout(this.focusEnAttente.get(fenetreId));
+    this.focusEnAttente.delete(fenetreId);
+    if (estMontree(this.zones.get(fenetreId))) return this.focaliserAttachee(fenetreId);
+    this.focusEnAttente.set(fenetreId, setTimeout(() => this.focusEnAttente.delete(fenetreId), ATTENTE_FOCUS_MS));
+  }
+
+  private focaliserAttachee(fenetreId: IdFenetre): void {
+    const id = this.attachees.get(fenetreId);
+    const wc = id === undefined ? undefined : this.vues.get(id)?.webContents;
+    if (wc && !wc.isDestroyed()) wc.focus();
+  }
+
   /** Capture l'onglet attaché à la fenêtre et met le cache à jour. Sans effet si rien n'est attaché, vue détruite ou plantée, image vide. */
   async capturerAffiche(fenetreId: IdFenetre): Promise<void> {
     const id = this.attachees.get(fenetreId);
@@ -261,6 +285,12 @@ export class GestionnaireVues {
     const id = this.attachees.get(fenetreId);
     const v = id && this.vues.get(id);
     if (v) this.placer(fenetreId, v);
+    const attente = this.focusEnAttente.get(fenetreId);
+    if (attente !== undefined && estMontree(b)) {
+      clearTimeout(attente);
+      this.focusEnAttente.delete(fenetreId);
+      this.focaliserAttachee(fenetreId);
+    }
   }
 
   vue(id: IdOnglet): WebContents | null {

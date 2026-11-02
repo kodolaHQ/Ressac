@@ -26,7 +26,6 @@
     const id = fenetre?.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;
   });
-  /** L'onglet actif est un constructeur (affiché, ou sous l'historique / les téléchargements). */
   /** Panneau ⌃Tab envoyé par le process principal (null : fermé). */
   let panneauOnglets = $state<Parcours | null>(null);
   // Prêt : la page est figée sous le fond, la vue native s'est effacée ; le panneau peut s'afficher.
@@ -37,6 +36,7 @@
       if (!p) panneauOngletsPret = false;
     }),
   );
+  /** L'onglet actif est un constructeur (affiché, ou sous l'historique / les téléchargements). */
   const ongletConstructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
 
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant

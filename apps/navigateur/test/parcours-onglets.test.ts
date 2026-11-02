@@ -12,6 +12,10 @@ let F: string;
 let p: ParcoursOnglets;
 let envoyer: ReturnType<typeof vi.fn<(f: string, panneau: PanneauOnglets | null) => void>>;
 let capturer: ReturnType<typeof vi.fn<(f: string) => Promise<void>>>;
+let rendreFocus: ReturnType<typeof vi.fn<(f: string) => void>>;
+/** Onglet actif au moment où le focus est rendu (il doit l'être après le changement d'onglet). */
+let actifAuFocus: (string | null | undefined)[];
+let focalisee: boolean;
 
 const agir = (a: Action) => {
   e = appliquer(e, a, genId);
@@ -34,7 +38,10 @@ beforeEach(() => {
   F = e.fenetres[0]!.id;
   envoyer = vi.fn();
   capturer = vi.fn(async () => {});
-  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === "sans" ? null : `apercu-${id}`), capturer });
+  actifAuFocus = [];
+  rendreFocus = vi.fn(() => void actifAuFocus.push(actif()));
+  focalisee = true;
+  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === "sans" ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => focalisee });
   p.surEtat(e);
 });
 afterEach(() => vi.useRealTimers());
@@ -212,11 +219,87 @@ test("essentiel d'un espace frère (même clé) : validé sans changer d'espace"
 test("carte sans aperçu : apercu null", () => {
   const a = ouvrir("https://a.fr");
   ouvrir("https://b.fr");
-  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === a ? null : `apercu-${id}`), capturer });
+  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === a ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => true });
   p.surEtat(e);
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
   const carte = dernierEnvoi()!.cartes.find((c) => c.id === a)!;
   expect(carte.apercu).toBeNull();
   expect(carte.favicon).toBe(e.onglets[a]!.favicon);
+});
+
+test("focus rendu à la page affichée après un parcours avec panneau (validé ou annulé), jamais sans panneau", () => {
+  const { a, b, c } = troisOnglets();
+  // Appui bref : pas de panneau, l'interface n'a jamais pris le focus.
+  p.parcourir(F, 1);
+  p.toucheRelachee(F);
+  expect(actif()).toBe(b);
+  expect(rendreFocus).not.toHaveBeenCalled();
+  // Annulé avant le panneau : rien non plus.
+  p.parcourir(F, 1);
+  p.annuler(F);
+  expect(rendreFocus).not.toHaveBeenCalled();
+
+  // Validé avec panneau : focus rendu après l'activation de la sélection.
+  p.parcourir(F, 1); // ordre b, c, a : sélection sur c
+  vi.advanceTimersByTime(250);
+  p.toucheRelachee(F);
+  expect(rendreFocus).toHaveBeenCalledTimes(1);
+  expect(rendreFocus).toHaveBeenLastCalledWith(F);
+  expect(actifAuFocus).toEqual([c]);
+
+  // Annulé (Échap) avec panneau : focus rendu à l'onglet resté affiché.
+  p.parcourir(F, 1);
+  vi.advanceTimersByTime(250);
+  p.message(F, { type: "annuler" });
+  expect(rendreFocus).toHaveBeenCalledTimes(2);
+  expect(actifAuFocus).toEqual([c, c]);
+
+  // Choisi d'un clic : pareil.
+  p.parcourir(F, 1);
+  vi.advanceTimersByTime(250);
+  p.message(F, { type: "choisir", id: a });
+  expect(actifAuFocus).toEqual([c, c, a]);
+});
+
+test("fenêtre quittée pendant le parcours : panneau fermé, focus pas repris", () => {
+  const { c } = troisOnglets();
+  p.parcourir(F, 1);
+  vi.advanceTimersByTime(250);
+  p.fenetreQuittee(F);
+  expect(dernierEnvoi()).toBeNull();
+  expect(actif()).toBe(c);
+  expect(rendreFocus).not.toHaveBeenCalled();
+});
+
+test("fenêtre sans le focus (outils de développement…) : bascule immédiate, sans parcours ni minuteur", () => {
+  const { a, b } = troisOnglets();
+  focalisee = false;
+  p.parcourir(F, 1);
+  expect(actif()).toBe(b);
+  // Seule la capture du nouvel onglet affiché est planifiée (surEtat), pas de minuteur de panneau.
+  expect(vi.getTimerCount()).toBe(1);
+  vi.advanceTimersByTime(1000);
+  expect(envoyer).not.toHaveBeenCalled();
+  // Aucun parcours en cours : le relâchement ne fait rien de plus.
+  p.toucheRelachee(F);
+  expect(actif()).toBe(b);
+  // ⌃⇧Tab : le plus ancien, comme un appui bref.
+  p.parcourir(F, -1);
+  expect(actif()).toBe(a);
+  expect(rendreFocus).not.toHaveBeenCalled();
+});
+
+test("fenêtre sans le focus : un essentiel d'un espace frère s'ouvre par son favori", () => {
+  const ess = ouvrir("https://ess.fr");
+  agir({ type: "ajouterEssentiel", id: ess });
+  const espaceA = e.fenetres[0]!.espaceActif;
+  const a = e.espaces.find((x) => x.id === espaceA)!;
+  agir({ type: "creerEspace", nom: "B", icone: "b", prive: a.prive, profil: a.profil, fenetreId: F });
+  const espaceB = e.fenetres[0]!.espaceActif;
+  ouvrir("https://x.fr");
+  focalisee = false;
+  p.parcourir(F, 1);
+  expect(e.fenetres[0]!.espaceActif).toBe(espaceB);
+  expect(e.fenetres[0]!.actif[espaceB]).toBe(ess);
 });

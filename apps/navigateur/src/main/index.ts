@@ -150,7 +150,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues, p
   fenetre.webContents.on("before-input-event", (_e, input) => {
     if (estRelachementCtrl(input)) parcours.toucheRelachee(id);
   });
-  fenetre.on("blur", () => parcours.annuler(id));
+  fenetre.on("blur", () => parcours.fenetreQuittee(id));
   // macOS : les boutons de la fenêtre sont dans la rangée du haut de la barre latérale. L'interface les cache avec
   // elle (mode compact, barre non révélée) : rien d'autre ne passe dessous. En plein écran, macOS les gère seul.
   let boutonsVoulus = true;
@@ -556,6 +556,9 @@ app.whenReady().then(async () => {
     },
     apercu: (id) => vues.apercuEnCache(id),
     capturer: (id) => vues.capturerAffiche(id),
+    rendreFocus: (id) => vues.focaliserAffiche(id),
+    // En mode invisible (e2e), aucune fenêtre n'a jamais le focus : le parcours y est quand même testé.
+    estFocalisee: (id) => INVISIBLE || fenetres.get(id)?.isFocused() === true,
   });
   parcours.surEtat(magasin.etat);
   magasin.abonner((etat) => parcours.surEtat(etat));

@@ -117,6 +117,118 @@ test("⌃Tab tenu ouvre le panneau des onglets récents", async () => {
   await fermer();
 });
 
+/**
+ * Fenêtre invisible (e2e) : `isFocused()` y reste toujours faux. On note donc les appels à `focus()` des vues d'onglet,
+ * et l'on compare au dernier la vue attachée à la fenêtre.
+ */
+const espionnerFocus = (app: ElectronApplication) =>
+  app.evaluate(({ webContents }) => {
+    const g = globalThis as { focusVues?: number[] };
+    g.focusVues = [];
+    for (const wc of webContents.getAllWebContents()) {
+      const focus = wc.focus.bind(wc);
+      wc.focus = () => {
+        g.focusVues!.push(wc.id);
+        focus();
+      };
+    }
+  });
+/** Le dernier focus donné à une vue d'onglet vise celle affichée dans la fenêtre (null : aucun appel). */
+const focusSurLaPage = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => {
+    const appels = (globalThis as { focusVues?: number[] }).focusVues ?? [];
+    if (!appels.length) return null;
+    const affichee = BrowserWindow.getAllWindows()[0]!.contentView.children.map((v) => (v as Electron.WebContentsView).webContents).find(Boolean);
+    return appels.at(-1) === affichee?.id;
+  });
+
+test("⌃Tab : le panneau fermé, le clavier revient à la page affichée", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await troisOnglets(app, fenetre);
+  const panneau = fenetre.getByTestId("panneau-onglets");
+  await menu(app, "onglet-suivant");
+  await expect(panneau).toBeVisible();
+  await espionnerFocus(app);
+  await relacherCtrl(app);
+  await expect(panneau).toHaveCount(0);
+  await expect(fenetre.locator(onglets).nth(0)).toHaveAttribute("aria-current", "page");
+  await expect.poll(() => focusSurLaPage(app)).toBe(true);
+  // Annulé (Échap) : pareil, sur l'onglet resté affiché.
+  await menu(app, "onglet-suivant");
+  await expect(panneau).toBeVisible();
+  await espionnerFocus(app);
+  await fenetre.keyboard.press("Escape");
+  await expect(panneau).toHaveCount(0);
+  await expect.poll(() => focusSurLaPage(app)).toBe(true);
+  // Appui bref : l'interface n'a jamais pris le clavier, rien à rendre.
+  await espionnerFocus(app);
+  await menu(app, "onglet-suivant");
+  await relacherCtrl(app);
+  await expect(fenetre.locator(onglets).nth(2)).toHaveAttribute("aria-current", "page");
+  await new Promise((r) => setTimeout(r, 300));
+  expect(await focusSurLaPage(app)).toBeNull();
+  await fermer();
+});
+
+test("⌃Tab : une carte sous la souris immobile ne prend pas la sélection, un vrai mouvement si", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await troisOnglets(app, fenetre);
+  const panneau = fenetre.getByTestId("panneau-onglets");
+  const cartes = panneau.getByTestId("carte-onglet");
+  // Repère la place de la première carte, puis referme sans rien changer.
+  await menu(app, "onglet-suivant");
+  await expect(cartes).toHaveCount(3);
+  const boite = (await cartes.nth(0).boundingBox())!;
+  await fenetre.keyboard.press("Escape");
+  await expect(panneau).toHaveCount(0);
+  const x = boite.x + boite.width / 2;
+  const y = boite.y + boite.height / 2;
+  await fenetre.mouse.move(x, y);
+  // Le panneau apparaît sous la souris immobile : la sélection reste celle du clavier.
+  await menu(app, "onglet-suivant");
+  await expect(cartes).toHaveCount(3);
+  await expect(cartes.nth(1)).toHaveAttribute("aria-selected", "true");
+  await new Promise((r) => setTimeout(r, 300));
+  await expect(cartes.nth(1)).toHaveAttribute("aria-selected", "true");
+  // Le panneau change de contenu (pas suivant) sous la souris toujours immobile : idem.
+  await menu(app, "onglet-suivant");
+  await expect(cartes.nth(2)).toHaveAttribute("aria-selected", "true");
+  await new Promise((r) => setTimeout(r, 300));
+  await expect(cartes.nth(2)).toHaveAttribute("aria-selected", "true");
+  // Un vrai mouvement sur la carte la sélectionne.
+  await fenetre.mouse.move(x + 6, y + 4, { steps: 3 });
+  await expect(cartes.nth(0)).toHaveAttribute("aria-selected", "true");
+  await relacherCtrl(app);
+  await expect(panneau).toHaveCount(0);
+  await expect(fenetre.locator(onglets).nth(2)).toHaveAttribute("aria-current", "page");
+  await fermer();
+});
+
+test("⌃Tab par-dessus l'historique : Échap ferme le panneau ⌃Tab seulement", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await troisOnglets(app, fenetre);
+  await menu(app, "historique");
+  const historique = fenetre.getByTestId("historique");
+  await expect(historique).toBeVisible();
+  const panneau = fenetre.getByTestId("panneau-onglets");
+  await menu(app, "onglet-suivant");
+  await expect(panneau).toBeVisible();
+  // Le panneau ⌃Tab est au-dessus (rien ne le couvre au centre de sa première carte).
+  const carte = panneau.getByTestId("carte-onglet").nth(0);
+  const b = (await carte.boundingBox())!;
+  const dessus = await fenetre.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[data-testid="panneau-onglets"]'), { x: b.x + b.width / 2, y: b.y + b.height / 2 });
+  expect(dessus).toBe(true);
+  await espionnerFocus(app);
+  await fenetre.keyboard.press("Escape");
+  await expect(panneau).toHaveCount(0);
+  await expect(historique).toBeVisible();
+  // L'historique, resté ouvert, garde le clavier : la page cachée dessous ne le reprend pas.
+  await new Promise((r) => setTimeout(r, 1200));
+  expect(await focusSurLaPage(app)).not.toBe(true);
+  await expect(fenetre.locator(onglets).nth(2)).toHaveAttribute("aria-current", "page");
+  await fermer();
+});
+
 test("⌃2 active le deuxième espace", async () => {
   const { app, fenetre, fermer } = await lancer();
   await fenetre.evaluate(() => {

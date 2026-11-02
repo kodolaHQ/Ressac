@@ -10,16 +10,31 @@
   let { panneau }: { panneau: PanneauOnglets } = $props();
 
   const envoyer = api.parcoursOnglets;
+
+  /**
+   * La souris ne choisit une carte qu'après un vrai mouvement : le panneau qui apparaît (ou change de cartes) sous une
+   * souris immobile ne doit pas voler la sélection du clavier. Chromium envoie alors des déplacements à la même place.
+   */
+  let place: { x: number; y: number } | null = null;
+  /** Le déplacement en cours de traitement a vraiment bougé (noté en capture, avant la carte). */
+  let bouge = false;
+  const noterPlace = (e: PointerEvent) => {
+    bouge = !!place && (place.x !== e.screenX || place.y !== e.screenY);
+    place = { x: e.screenX, y: e.screenY };
+  };
 </script>
 
+<!-- En capture : le panneau passe avant tout le reste (modale, historique…), et Échap ne ferme que lui. -->
 <svelte:window
+  onpointermovecapture={noterPlace}
   onkeyup={(e) => {
     // Redondant avec le `before-input-event` de l'interface (sans effet hors parcours) : le panneau ne reste jamais bloqué.
     if (e.key === "Control") envoyer({ type: "valider" });
   }}
-  onkeydown={(e) => {
+  onkeydowncapture={(e) => {
     if (e.key === "Escape") {
       e.preventDefault();
+      e.stopImmediatePropagation();
       envoyer({ type: "annuler" });
     }
     // ⌃Tab et ⌃⇧Tab : l'accélérateur du menu avance déjà le parcours, interface au focus comprise. Rien à envoyer ici
@@ -36,7 +51,7 @@
       tabindex="-1"
       aria-selected={i === panneau.selection}
       title={carte.titre}
-      onmouseenter={() => i !== panneau.selection && envoyer({ type: "survoler", id: carte.id })}
+      onpointermove={() => bouge && i !== panneau.selection && envoyer({ type: "survoler", id: carte.id })}
       onclick={() => envoyer({ type: "choisir", id: carte.id })}
     >
       <div class="apercu">
@@ -58,7 +73,8 @@
   .panneau {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    /* Au-dessus des modales (100) : une demande de l'agent arrivée pendant le parcours ne le couvre pas. */
+    z-index: 101;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -34,6 +34,13 @@ export class ParcoursOnglets {
       envoyer(fenetreId: IdFenetre, p: PanneauOnglets | null): void;
       apercu(id: IdOnglet): string | null;
       capturer(fenetreId: IdFenetre): Promise<void>;
+      /** Rend le clavier à la page affichée dans la fenêtre (l'interface l'a pris pour la capture du fond du panneau). */
+      rendreFocus(fenetreId: IdFenetre): void;
+      /**
+       * La fenêtre principale a le focus. Sinon (outils de développement détachés…), le relâchement de ⌃ n'y arriverait
+       * jamais et la fenêtre ne perdrait pas le focus : un parcours y resterait bloqué.
+       */
+      estFocalisee(fenetreId: IdFenetre): boolean;
       delaiMs?: number;
     },
   ) {
@@ -51,6 +58,8 @@ export class ParcoursOnglets {
     }
     const p = demarrer(ordreRecent(this.o.etat(), fenetreId, this.historiques.get(fenetreId) ?? []), delta);
     if (!p) return;
+    // Fenêtre sans le focus : bascule immédiate, comme un appui bref, sans parcours ni panneau.
+    if (!this.o.estFocalisee(fenetreId)) return this.o.agir(this.activation(fenetreId, p.liste[p.selection]!));
     const enCours: EnCours = { p, minuteur: undefined, visible: false };
     this.parcours.set(fenetreId, enCours);
     // L'onglet affiché a pu changer depuis sa dernière capture : sa carte doit être à jour.
@@ -93,9 +102,14 @@ export class ParcoursOnglets {
     }
   }
 
-  /** Échap, ou la fenêtre perd le focus : fermer sans changer d'onglet. */
+  /** Échap : fermer sans changer d'onglet. */
   annuler(fenetreId: IdFenetre): void {
     if (this.parcours.has(fenetreId)) this.terminer(fenetreId, undefined);
+  }
+
+  /** La fenêtre perd le focus (⌘Tab vers une autre appli) : fermer sans changer d'onglet ni reprendre le focus. */
+  fenetreQuittee(fenetreId: IdFenetre): void {
+    if (this.parcours.has(fenetreId)) this.terminer(fenetreId, undefined, false);
   }
 
   /** À chaque nouvel état : utilisation des onglets, onglets sortis des parcours, fenêtres disparues. */
@@ -135,13 +149,15 @@ export class ParcoursOnglets {
     }
   }
 
-  private terminer(fenetreId: IdFenetre, activer: IdOnglet | undefined): void {
+  /** `focus` : rendre le clavier à la page affichée si le panneau l'avait pris, une fois l'onglet changé. */
+  private terminer(fenetreId: IdFenetre, activer: IdOnglet | undefined, focus = true): void {
     const c = this.parcours.get(fenetreId);
     if (!c) return;
     clearTimeout(c.minuteur);
     this.parcours.delete(fenetreId);
     if (c.visible) this.o.envoyer(fenetreId, null);
     if (activer) this.o.agir(this.activation(fenetreId, activer));
+    if (c.visible && focus) this.o.rendreFocus(fenetreId);
   }
 
   /**
