@@ -63,3 +63,4 @@ export * from "./design/projets.js";
 export { parserDiff, positionNouvelle, type Bloc as BlocDiff, type LigneDiff } from "./relecture/diff.js";
 export * from "./relecture/depot.js";
 export * from "./relecture/commentaires.js";
+export * from "./design/remarques.js";
