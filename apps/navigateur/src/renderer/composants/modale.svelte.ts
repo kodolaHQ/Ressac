@@ -2,10 +2,10 @@ import type { Bornes } from "../../commun/api";
 import type { DemandeEnAttente } from "../../commun/modele";
 
 /**
- * Modale d'une demande de l'agent, montée au niveau de la fenêtre. `masquer` : la vue native de la page s'efface
- * (elle couvrirait la modale). `zone` : dernières bornes de la zone de contenu, où placer la capture floutée de la page.
+ * Modale d'une demande de l'agent, montée au niveau de la fenêtre. `masqueurs` : nombre de fonds figés montés (modale,
+ * panneau ⌃Tab) ; au-dessus de 0, la vue native de la page s'efface (elle les couvrirait). `zone` : dernières bornes de la zone de contenu, où placer la capture floutée de la page.
  */
-export const modale = $state<{ masquer: boolean; zone: Bornes | null }>({ masquer: false, zone: null });
+export const modale = $state<{ masqueurs: number; zone: Bornes | null }>({ masqueurs: 0, zone: null });
 
 /**
  * Les demandes de l'agent (lecture, outils de développement, données d'un widget) et les cartes d'accord des extensions

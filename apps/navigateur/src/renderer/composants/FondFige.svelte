@@ -24,13 +24,16 @@
 
   onMount(() => {
     let finie = false;
+    // Ce fond compte parmi les masqueurs dès que la capture est prise (ou abandonnée), et s'en retire une seule fois.
+    let masque = false;
     const ouvrir = (url: string | null) => {
       if (finie) return;
       finie = true;
       apercu = url;
       zone = modale.zone;
       // La capture est prise : la vue native peut s'effacer derrière la modale.
-      modale.masquer = true;
+      masque = true;
+      modale.masqueurs++;
       surPret();
     };
     const secours = setTimeout(() => ouvrir(null), ATTENTE_APERCU_MS);
@@ -41,7 +44,8 @@
     return () => {
       finie = true;
       clearTimeout(secours);
-      modale.masquer = false;
+      if (masque) modale.masqueurs--;
+      masque = false;
     };
   });
 </script>

@@ -40,7 +40,7 @@
     // Un panneau de l'interface occupe la zone : la page web s'efface (une vue couvre toujours l'interface).
     // Idem pour la bulle d'accès en mode compact, où la barre latérale s'affiche par-dessus la page, et pour la
     // modale d'une demande de l'agent (une capture floutée de la page la remplace).
-    const masquer = panneau !== null || (acces.bullesOuvertes > 0 && fenetre?.compact === true) || modale.masquer;
+    const masquer = panneau !== null || (acces.bullesOuvertes > 0 && fenetre?.compact === true) || modale.masqueurs > 0;
     const envoyer = () => {
       const r = zone.getBoundingClientRect();
       modale.zone = { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };

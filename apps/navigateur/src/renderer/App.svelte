@@ -8,9 +8,11 @@
   import PanneauAgent from "./composants/PanneauAgent.svelte";
   import ModaleDemande from "./composants/ModaleDemande.svelte";
   import ModaleEspace from "./composants/ModaleEspace.svelte";
+  import FondFige from "./composants/FondFige.svelte";
+  import PanneauOnglets from "./composants/PanneauOnglets.svelte";
   import { reglagesEspace } from "./composants/reglagesEspace.svelte";
   import { estDemandeAgent } from "./composants/modale.svelte";
-  import type { Panneau } from "../commun/api";
+  import type { Panneau, PanneauOnglets as Parcours } from "../commun/api";
   import { tick, untrack } from "svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "./etat.svelte";
   import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, cibleDeUrlWorkflow } from "../commun/modele";
@@ -25,6 +27,16 @@
     return id ? etat.valeur?.onglets[id] : undefined;
   });
   /** L'onglet actif est un constructeur (affiché, ou sous l'historique / les téléchargements). */
+  /** Panneau ⌃Tab envoyé par le process principal (null : fermé). */
+  let panneauOnglets = $state<Parcours | null>(null);
+  // Prêt : la page est figée sous le fond, la vue native s'est effacée ; le panneau peut s'afficher.
+  let panneauOngletsPret = $state(false);
+  $effect(() =>
+    api.surPanneauOnglets((p) => {
+      panneauOnglets = p;
+      if (!p) panneauOngletsPret = false;
+    }),
+  );
   const ongletConstructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
 
   // Mode compact : la barre réapparaît quand la souris touche le bord gauche. Une page web couvrant
@@ -207,6 +219,11 @@
 </div>
 <MenuContextuel />
 <!-- Une demande de l'agent passe devant les réglages d'un espace, qui reviennent ensuite avec leur brouillon. -->
+{#if panneauOnglets}
+  <!-- La capture du fond donne le focus à l'interface : Échap et le relâchement de ⌃ y arrivent. -->
+  <FondFige ongletId={panneau ? null : (ongletActif?.id ?? null)} surPret={() => (panneauOngletsPret = true)} />
+  {#if panneauOngletsPret}<PanneauOnglets panneau={panneauOnglets} />{/if}
+{/if}
 {#if demandeAgent}
   <ModaleDemande demande={demandeAgent} ongletId={panneau ? null : (ongletActif?.id ?? null)} />
 {:else if reglagesEspace.brouillon && fenetre}

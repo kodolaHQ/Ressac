@@ -61,18 +61,59 @@ test("⌘N ouvre une seconde fenêtre avec ses propres onglets ; les fermer une 
   await fermer();
 });
 
-test("⌘2 active le deuxième onglet ; ⌃Tab passe au suivant", async () => {
-  const { app, fenetre, fermer } = await lancer();
+/** Trois onglets a, b, plante ; ordre récent : plante (actif), a, b. */
+async function troisOnglets(app: ElectronApplication, fenetre: import("@playwright/test").Page) {
   for (const p of ["a.html", "b.html", "plante.html"]) await ouvrirOnglet(fenetre, `${serveur.url}/${p}`, { activer: false });
   await expect(fenetre.locator(onglets)).toHaveCount(3);
-  await menu(app, "onglet-2");
-  await expect(fenetre.locator(onglets).nth(1)).toHaveAttribute("aria-current", "page");
-  await menu(app, "onglet-suivant");
-  await expect(fenetre.locator(onglets).nth(2)).toHaveAttribute("aria-current", "page");
-  await menu(app, "onglet-suivant");
+  await menu(app, "onglet-1");
   await expect(fenetre.locator(onglets).nth(0)).toHaveAttribute("aria-current", "page");
+  await menu(app, "onglet-3");
+  await expect(fenetre.locator(onglets).nth(2)).toHaveAttribute("aria-current", "page");
+}
+
+/**
+ * Relâche ⌃ dans l'interface. `fenetre.keyboard.up` (CDP) n'atteint pas `before-input-event` : seul `sendInputEvent`
+ * passe par là, comme une vraie touche (le process principal valide le parcours).
+ */
+const relacherCtrl = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.sendInputEvent({ type: "keyUp", keyCode: "Control" }));
+
+test("⌃Tab bref revient à l'onglet précédent", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await troisOnglets(app, fenetre);
+  const panneau = fenetre.getByTestId("panneau-onglets");
+  await menu(app, "onglet-suivant");
+  await relacherCtrl(app);
+  await expect(fenetre.locator(onglets).nth(0)).toHaveAttribute("aria-current", "page");
+  await new Promise((r) => setTimeout(r, 300));
+  await expect(panneau).toHaveCount(0);
   await menu(app, "onglet-9");
   await expect(fenetre.locator(onglets).nth(2)).toHaveAttribute("aria-current", "page");
+  await fermer();
+});
+
+test("⌃Tab tenu ouvre le panneau des onglets récents", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await troisOnglets(app, fenetre);
+  const panneau = fenetre.getByTestId("panneau-onglets");
+  const cartes = panneau.getByTestId("carte-onglet");
+  await menu(app, "onglet-suivant");
+  // Visible : le focus donné à l'interface par la capture du fond ne fait pas perdre le focus à la fenêtre.
+  await expect(panneau).toBeVisible();
+  await expect(cartes).toHaveCount(3);
+  await expect(cartes.nth(1)).toHaveAttribute("aria-selected", "true");
+  await menu(app, "onglet-suivant");
+  await expect(cartes.nth(2)).toHaveAttribute("aria-selected", "true");
+  await relacherCtrl(app);
+  await expect(panneau).toHaveCount(0);
+  await expect(fenetre.locator(onglets).nth(1)).toHaveAttribute("aria-current", "page");
+
+  // Échap annule : l'onglet ne change pas.
+  await menu(app, "onglet-suivant");
+  await expect(panneau).toBeVisible();
+  await fenetre.keyboard.press("Escape");
+  await expect(panneau).toHaveCount(0);
+  await expect(fenetre.locator(onglets).nth(1)).toHaveAttribute("aria-current", "page");
   await fermer();
 });
 
