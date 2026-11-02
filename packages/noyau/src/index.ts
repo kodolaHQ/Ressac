@@ -59,3 +59,4 @@ export { AUCUN_RESULTAT, chainesDe, MENTION_SECOURS, type BlocRendu, type Image 
 export { COMPOSANT_HTML_MAX } from "./pages/composants-agent.js";
 export * from "./sites/accords.js";
 export * from "./sites/suivi.js";
+export * from "./design/projets.js";
