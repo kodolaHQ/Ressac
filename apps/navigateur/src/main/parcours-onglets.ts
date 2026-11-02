@@ -141,7 +141,16 @@ export class ParcoursOnglets {
     clearTimeout(c.minuteur);
     this.parcours.delete(fenetreId);
     if (c.visible) this.o.envoyer(fenetreId, null);
-    if (activer) this.o.agir({ type: "activerOnglet", id: activer });
+    if (activer) this.o.agir(this.activation(fenetreId, activer));
+  }
+
+  /**
+   * Comme la barre latérale : un essentiel s'ouvre par son favori, qui le montre dans l'espace affiché (son onglet peut
+   * appartenir à un espace frère de même clé, qu'activerOnglet rendrait actif à la place).
+   */
+  private activation(fenetreId: IdFenetre, id: IdOnglet): Action {
+    const lien = this.o.etat().onglets[id]?.lien;
+    return lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id };
   }
 
   private envoyerPanneau(fenetreId: IdFenetre, c: EnCours): void {

@@ -192,3 +192,31 @@ test("panneau glissant : 7 cartes au plus, sélection relative", () => {
   expect(panneau.cartes).toHaveLength(7);
   expect(panneau.cartes[panneau.selection]!.id).toBe(ids[0]);
 });
+
+test("essentiel d'un espace frère (même clé) : validé sans changer d'espace", () => {
+  const ess = ouvrir("https://ess.fr");
+  agir({ type: "ajouterEssentiel", id: ess });
+  const espaceA = e.fenetres[0]!.espaceActif;
+  const a = e.espaces.find((x) => x.id === espaceA)!;
+  agir({ type: "creerEspace", nom: "B", icone: "b", prive: a.prive, profil: a.profil, fenetreId: F });
+  const espaceB = e.fenetres[0]!.espaceActif;
+  expect(espaceB).not.toBe(espaceA);
+  const x = ouvrir("https://x.fr");
+  expect(actif()).toBe(x);
+  p.parcourir(F, 1);
+  p.toucheRelachee(F);
+  expect(e.fenetres[0]!.espaceActif).toBe(espaceB);
+  expect(e.fenetres[0]!.actif[espaceB]).toBe(ess);
+});
+
+test("carte sans aperçu : apercu null", () => {
+  const a = ouvrir("https://a.fr");
+  ouvrir("https://b.fr");
+  p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === a ? null : `apercu-${id}`), capturer });
+  p.surEtat(e);
+  p.parcourir(F, 1);
+  vi.advanceTimersByTime(250);
+  const carte = dernierEnvoi()!.cartes.find((c) => c.id === a)!;
+  expect(carte.apercu).toBeNull();
+  expect(carte.favicon).toBe(e.onglets[a]!.favicon);
+});
