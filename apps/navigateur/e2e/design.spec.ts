@@ -279,8 +279,6 @@ const largeurVue = (app: ElectronApplication) =>
 
 /** Écrit une remarque dans la bulle ouverte sur `selecteur`, et l'ajoute au panier par ⌘Entrée. */
 async function remarquer(app: ElectronApplication, selecteur: string, etiquette: string, texte: string) {
-  // Le viseur avale les clics pendant 500 ms après une capture (fin d'un double clic).
-  await new Promise((r) => setTimeout(r, 600));
   await cliquerSur(app, selecteur);
   const calque = await pageCalque(app);
   const bulle = calque.getByTestId("bulle-design");
@@ -328,8 +326,7 @@ test("⌘⇧D sur la démo : volet du panier, bulle sur #email, remarque au pani
     await expect(fenetre.getByTestId("compteur-panier")).toHaveText("1");
     await expect(fenetre.getByTestId("envoyer-remarques")).toHaveText("Envoyer 1 remarque à l'agent");
     await expect.poll(() => viseurs(app)).toBe(1);
-    // Annuler (Échap dans la bulle) : rien d'ajouté, le viseur revient (il avale les clics 500 ms après une capture).
-    await new Promise((r) => setTimeout(r, 600));
+    // Annuler (Échap dans la bulle) : rien d'ajouté, le viseur revient aussitôt (clic juste après le réarmement).
     await cliquerSur(app, "#envoyer");
     await expect(calque.getByTestId("bulle-design")).toContainText("button#envoyer");
     await calque.getByTestId("bulle-design").locator("textarea").press("Escape");

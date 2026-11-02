@@ -67,6 +67,7 @@ class FauxWc extends EventEmitter {
   getZoomFactor() {
     return 1;
   }
+  focus = vi.fn();
 }
 
 const fenetre = { getContentSize: () => [1200, 800], isDestroyed: () => false, once: () => {}, on: () => {} };
@@ -196,4 +197,20 @@ test("la bulle se pose sous l'élément, décalée des bornes de la vue, bornée
   armements[1]!({ ...capture, rect: { x: 1000, y: 700, largeur: 50, hauteur: 30 } });
   await attendre();
   expect((calques.bulles[1] as { place: unknown }).place).toEqual({ x: 880, y: 630, width: 320, height: 170 });
+});
+
+test("le clavier revient à la page : au basculement, après Ajouter et après Annuler", async () => {
+  const { s, wc } = service("http://localhost:15283/");
+  await s.basculer(CIBLE);
+  await attendre();
+  expect(wc.focus).toHaveBeenCalledTimes(1);
+  armements[0]!(capture);
+  await attendre();
+  expect(await s.ajouter(CIBLE, "Plus grand")).toEqual({ ok: true });
+  expect(wc.focus).toHaveBeenCalledTimes(2);
+  await attendre();
+  armements[1]!(capture);
+  await attendre();
+  s.annuler(CIBLE);
+  expect(wc.focus).toHaveBeenCalledTimes(3);
 });

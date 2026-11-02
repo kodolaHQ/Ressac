@@ -13,6 +13,8 @@ type RectCss = CaptureViseur["rect"];
 export function scriptViseur(): string {
   return `(() => {
   if (typeof globalThis.__viseurArret === "function") globalThis.__viseurArret();
+  // Un nouvel armement retire l'avalement des clics laissé par la capture précédente : il a ses propres écouteurs.
+  if (typeof globalThis.__viseurAvaler === "function") globalThis.__viseurAvaler();
   const STYLES = ${JSON.stringify(STYLES_UTILES)};
   const HTML_MAX = ${HTML_MAX};
   const TRONQUE = ${JSON.stringify(TRONQUE)};
@@ -77,7 +79,13 @@ export function scriptViseur(): string {
       if (valeur) {
         // La fin d'un double clic (deuxième clic, dblclick) ne doit pas atteindre la page.
         for (const t of TYPES_SOURIS) window.addEventListener(t, surSouris, true);
-        setTimeout(() => { for (const t of TYPES_SOURIS) window.removeEventListener(t, surSouris, true); }, 500);
+        const avaler = () => {
+          clearTimeout(minuterie);
+          for (const t of TYPES_SOURIS) window.removeEventListener(t, surSouris, true);
+          if (globalThis.__viseurAvaler === avaler) delete globalThis.__viseurAvaler;
+        };
+        const minuterie = setTimeout(avaler, 500);
+        globalThis.__viseurAvaler = avaler;
       }
       window.removeEventListener("mousemove", surMove, true);
       window.removeEventListener("keydown", surTouche, true);
@@ -117,7 +125,7 @@ export function scriptViseur(): string {
 })()`;
 }
 
-const ARRET = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret()`;
+const ARRET = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
 
 const fini = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const chaine = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;

@@ -763,6 +763,22 @@ app.whenReady().then(async () => {
       etat: (dossier) => applications?.fenetres.accesDe(dossier) ?? { agent: "L'agent", onglets: {} },
       redimensionner: (dossier, ouverte) => applications?.fenetres.redimensionnerPastille(dossier, ouverte),
     },
+    agent: {
+      demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
+      ecrire: (f, d) => agent?.sessions.ecrire(f, d),
+      redimensionner: (f, t) => agent?.sessions.redimensionner(f, t),
+      profils: async () => (await agent?.profils()) ?? [],
+    },
+    permissions: {
+      enAttente,
+      repondre: (id, d, droits, confirme) => {
+        const q = questions.get(id);
+        if (!q) return;
+        questions.delete(id);
+        q.repondre(decisionPermise(q.demande, d, confirme), droits);
+        diffuser(CANAUX.permissions, enAttente());
+      },
+    },
     design: {
       calqueDe: (sender) => design?.cibleDeCalque(sender),
       etat: async (c) => {
@@ -781,22 +797,6 @@ app.whenReady().then(async () => {
       envoyer: async (p) => (await design?.envoyer(p)) ?? { ok: false, erreur: "mode design pas prêt" },
       lots: async (p) => (await design?.lots(p)) ?? [],
       traite: async (p, lot) => design?.traite(p, lot),
-    },
-    agent: {
-      demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
-      ecrire: (f, d) => agent?.sessions.ecrire(f, d),
-      redimensionner: (f, t) => agent?.sessions.redimensionner(f, t),
-      profils: async () => (await agent?.profils()) ?? [],
-    },
-    permissions: {
-      enAttente,
-      repondre: (id, d, droits, confirme) => {
-        const q = questions.get(id);
-        if (!q) return;
-        questions.delete(id);
-        q.repondre(decisionPermise(q.demande, d, confirme), droits);
-        diffuser(CANAUX.permissions, enAttente());
-      },
     },
   });
   const cibles: CiblesMenu = {

@@ -190,7 +190,15 @@ export class ServiceDesign {
     };
     this.sessions.set(cle, s);
     this.o.diffuser();
+    // Le clavier va à la page (il était au bouton, au menu ou à la pastille) : Échap y arrête le mode.
+    this.rendreClavier(s);
     void this.armer(s);
+  }
+
+  /** Rend le clavier à la page de la session (et sa fenêtre d'appli au premier plan, hors tests invisibles). */
+  private rendreClavier(s: Session): void {
+    if (s.cible.type === "app" && process.env.WEBAIOS_INVISIBLE !== "1" && !s.fenetre.isDestroyed()) s.fenetre.focus();
+    if (!s.wc.isDestroyed()) s.wc.focus();
   }
 
   private actuelle(s: Session, generation: number): boolean {
@@ -253,6 +261,7 @@ export class ServiceDesign {
     if (this.sessions.get(s.cle) !== s || s.attente !== attente) return { ok: true };
     s.attente = null;
     this.calques.fermerBulle(s.cle);
+    this.rendreClavier(s);
     void this.armer(s);
     return { ok: true };
   }
@@ -263,6 +272,7 @@ export class ServiceDesign {
     if (!s?.attente) return this.calques.fermerPanier(cleCible(c));
     s.attente = null;
     this.calques.fermerBulle(s.cle);
+    this.rendreClavier(s);
     void this.armer(s);
   }
 

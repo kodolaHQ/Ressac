@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type EtatLot, type IdProjet, type ProjetSuivi, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import type { EtatLot, IdProjet, ProjetSuivi } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
@@ -334,68 +335,6 @@ export interface ApiWebaios {
   design: ApiDesign;
 }
 
-/** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */
-export interface EtatDesign {
-  actif: boolean;
-  projet: ProjetSuivi | null;
-  /** Raison pour laquelle le mode design n'est pas proposé ici ; null s'il l'est. */
-  indisponible: string | null;
-  /** « l'agent », « Claude Code (<nom>) » ; null si personne ne peut recevoir les remarques. */
-  destination: string | null;
-  /** Pourquoi `destination` est null (aucun Claude Code branché). */
-  sansDestination: string | null;
-  /** Nombre de remarques dans le panier du projet. */
-  panier: number;
-  /** Nom du projet à afficher. */
-  nom: string;
-}
-/** Une remarque telle que le panier et l'historique l'affichent : du texte, jamais du HTML. */
-export interface ElementAffiche {
-  id: string;
-  type: "design" | "relecture";
-  etiquette: string;
-  texte: string;
-  source: string | null;
-  traite: { quand: string; note?: string } | null;
-}
-export interface LotAffiche {
-  id: string;
-  cree: string;
-  etat: EtatLot;
-  destination: "agent" | "mcp";
-  elements: ElementAffiche[];
-}
-export interface ApiDesign {
-  etat(): Promise<EtatDesign>;
-  /** ⌘⇧D : sans effet là où le mode est indisponible. */
-  basculer(): void;
-  panier(projet: IdProjet): Promise<ElementAffiche[]>;
-  retirer(projet: IdProjet, id: string): Promise<void>;
-  envoyer(projet: IdProjet): Promise<ResultatExtension>;
-  lots(projet: IdProjet): Promise<LotAffiche[]>;
-  traite(projet: IdProjet, lot: string): Promise<void>;
-  /** « Relire ce projet » (projets `app` et `externe`). */
-  relire(): void;
-  surChange(rappel: () => void): () => void;
-}
-/** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
-export interface ContexteCalque {
-  mode: "bulle" | "panier";
-  projet: IdProjet;
-  etiquette: string;
-  source: string | null;
-  destination: string | null;
-  sansDestination: string | null;
-}
-/** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
-export type ApiCalque = {
-  contexte(): Promise<ContexteCalque | null>;
-  ajouter(texte: string): Promise<ResultatExtension>;
-  /** Échap ou « Annuler » dans la bulle ; « Fermer » du panier. */
-  annuler(): void;
-} & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
-/** Texte d'une remarque : borné à l'entrée du process principal. */
-export const TEXTE_REMARQUE_MAX = 4000;
 
 export type ResultatExtension = { ok: true } | { ok: false; erreur: string };
 
@@ -645,3 +584,66 @@ export interface ApiSite {
   /** Une image d'un domaine de l'appli, chargée avec sa session, en `data:` ; null si elle est refusée. */
   image(url: string): Promise<string | null>;
 }
+
+/** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */
+export interface EtatDesign {
+  actif: boolean;
+  projet: ProjetSuivi | null;
+  /** Raison pour laquelle le mode design n'est pas proposé ici ; null s'il l'est. */
+  indisponible: string | null;
+  /** « l'agent », « Claude Code (<nom>) » ; null si personne ne peut recevoir les remarques. */
+  destination: string | null;
+  /** Pourquoi `destination` est null (aucun Claude Code branché). */
+  sansDestination: string | null;
+  /** Nombre de remarques dans le panier du projet. */
+  panier: number;
+  /** Nom du projet à afficher. */
+  nom: string;
+}
+/** Une remarque telle que le panier et l'historique l'affichent : du texte, jamais du HTML. */
+export interface ElementAffiche {
+  id: string;
+  type: "design" | "relecture";
+  etiquette: string;
+  texte: string;
+  source: string | null;
+  traite: { quand: string; note?: string } | null;
+}
+export interface LotAffiche {
+  id: string;
+  cree: string;
+  etat: EtatLot;
+  destination: "agent" | "mcp";
+  elements: ElementAffiche[];
+}
+export interface ApiDesign {
+  etat(): Promise<EtatDesign>;
+  /** ⌘⇧D : sans effet là où le mode est indisponible. */
+  basculer(): void;
+  panier(projet: IdProjet): Promise<ElementAffiche[]>;
+  retirer(projet: IdProjet, id: string): Promise<void>;
+  envoyer(projet: IdProjet): Promise<ResultatExtension>;
+  lots(projet: IdProjet): Promise<LotAffiche[]>;
+  traite(projet: IdProjet, lot: string): Promise<void>;
+  /** « Relire ce projet » (projets `app` et `externe`). */
+  relire(): void;
+  surChange(rappel: () => void): () => void;
+}
+/** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
+export interface ContexteCalque {
+  mode: "bulle" | "panier";
+  projet: IdProjet;
+  etiquette: string;
+  source: string | null;
+  destination: string | null;
+  sansDestination: string | null;
+}
+/** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
+export type ApiCalque = {
+  contexte(): Promise<ContexteCalque | null>;
+  ajouter(texte: string): Promise<ResultatExtension>;
+  /** Échap ou « Annuler » dans la bulle ; « Fermer » du panier. */
+  annuler(): void;
+} & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
+/** Texte d'une remarque : borné à l'entrée du process principal. */
+export const TEXTE_REMARQUE_MAX = 4000;
