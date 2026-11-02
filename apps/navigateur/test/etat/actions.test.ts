@@ -757,6 +757,9 @@ test("projetDeUrlRelecture refuse webaios://relecture/../x et webaios://relectur
   const { NON_AFFICHABLE } = await import("../../src/commun/modele");
   const { FICHIER_BINAIRE, FICHIER_TROP_GROS } = await import("@webaios/noyau");
   expect(NON_AFFICHABLE).toEqual({ binaire: FICHIER_BINAIRE, "trop-gros": FICHIER_TROP_GROS });
+  const { LIGNE_CHANGEE_PAGE } = await import("../../src/commun/modele");
+  const { LIGNE_CHANGEE } = await import("@webaios/noyau");
+  expect(LIGNE_CHANGEE_PAGE).toBe(LIGNE_CHANGEE);
   for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b"])
     expect(projetDeUrlRelecture(`webaios://relecture/${p}`) !== null).toBe(ID_PROJET.test(p));
 });

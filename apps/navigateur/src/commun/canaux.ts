@@ -149,6 +149,13 @@ export const CANAUX = {
   relectureOuvrir: "webaios:relecture-ouvrir",
   relectureFichier: "webaios:relecture-fichier",
   relectureLignes: "webaios:relecture-lignes",
+  relectureCommentaires: "webaios:relecture-commentaires",
+  relectureCommenter: "webaios:relecture-commenter",
+  relectureModifier: "webaios:relecture-modifier",
+  relectureResoudre: "webaios:relecture-resoudre",
+  relectureSupprimer: "webaios:relecture-supprimer",
+  relectureEnvoyer: "webaios:relecture-envoyer",
+  relectureRelu: "webaios:relecture-relu",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

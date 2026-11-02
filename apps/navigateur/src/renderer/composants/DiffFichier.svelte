@@ -1,10 +1,128 @@
 <script lang="ts">
-  import type { DiffFichier } from "../../commun/api";
-  import { LIGNES_DEPLIEES, NON_AFFICHABLE } from "../../commun/modele";
+  import type { Commentaire, DiffFichier } from "../../commun/api";
+  import { LIGNES_DEPLIEES, NON_AFFICHABLE, PLAGE_HORS_BLOC } from "../../commun/modele";
   import { api } from "../etat.svelte";
+  import CommentaireRelecture from "./CommentaireRelecture.svelte";
 
-  /** Le diff unifié d'un fichier, en lecture seule ; les lignes cachées entre les blocs se déplient par 20. */
-  let { projet, jeton, diff }: { projet: string; jeton: string; diff: DiffFichier } = $props();
+  /**
+   * Le diff unifié d'un fichier ; les lignes cachées entre les blocs se déplient par 20. Le code reste en lecture seule :
+   * le `+` de la marge ouvre un commentaire sur une ligne d'un bloc (Maj+clic ou glisser étendent la plage, dans le bloc).
+   */
+  let {
+    projet,
+    jeton,
+    diff,
+    commentaires,
+    surChange,
+  }: { projet: string; jeton: string; diff: DiffFichier; commentaires: Commentaire[]; surChange: () => void } = $props();
+
+  type Bloc = DiffFichier["blocs"][number];
+  /** Position d'une ligne d'un bloc : son numéro nouveau, celui de la ligne suivante pour un retrait (comme le noyau). */
+  function position(b: Bloc, i: number): number {
+    for (let k = i; k < b.lignes.length; k++) {
+      const n = b.lignes[k]!.nouveau;
+      if (n !== null) return n;
+    }
+    return b.nouveauDebut + b.nouveauNombre;
+  }
+
+  /** La plage en cours : son bloc, la ligne d'ancrage et l'autre bout (indices dans le bloc). */
+  let selection = $state<{ bloc: number; ancre: number; bout: number } | null>(null);
+  let glisse = $state(false);
+  let texte = $state("");
+  let erreur = $state<string | null>(null);
+  let envoi = $state(false);
+
+  const plage = $derived.by(() => {
+    if (!selection) return null;
+    const b = diff.blocs[selection.bloc]!;
+    const p1 = position(b, selection.ancre);
+    const p2 = position(b, selection.bout);
+    const debut = Math.min(p1, p2);
+    const fin = Math.max(p1, p2);
+    let derniere = -1;
+    b.lignes.forEach((_, k) => {
+      const p = position(b, k);
+      if (p >= debut && p <= fin) derniere = k;
+    });
+    return { bloc: selection.bloc, debut, fin, derniere };
+  });
+  const choisie = (bloc: number, k: number) => {
+    if (!plage || plage.bloc !== bloc) return false;
+    const p = position(diff.blocs[bloc]!, k);
+    return p >= plage.debut && p <= plage.fin;
+  };
+
+  /** `+` pressé : une nouvelle plage, ou (Maj) l'autre bout de la plage en cours, refusé hors de son bloc. */
+  function viser(bloc: number, k: number, etendre: boolean) {
+    erreur = null;
+    if (etendre && selection) {
+      if (selection.bloc !== bloc) {
+        erreur = PLAGE_HORS_BLOC;
+        selection = { ...selection, bout: selection.ancre };
+        return;
+      }
+      selection = { ...selection, bout: k };
+      return;
+    }
+    if (!selection) texte = "";
+    selection = { bloc, ancre: k, bout: k };
+    glisse = true;
+  }
+  /** En glissant : la plage suit la souris, dans le bloc seulement. */
+  function survol(bloc: number, k: number) {
+    if (glisse && selection && selection.bloc === bloc) selection = { ...selection, bout: k };
+  }
+  function fermer() {
+    selection = null;
+    texte = "";
+    erreur = null;
+  }
+  async function valider() {
+    if (!plage || envoi) return;
+    envoi = true;
+    try {
+      const r = await api.relecture.commenter(projet, jeton, { fichier: diff.chemin, debut: plage.debut, fin: plage.fin, texte });
+      if (r.ok) {
+        fermer();
+        surChange();
+      } else erreur = r.erreur;
+    } catch {
+      erreur = "Le commentaire n'a pas pu être enregistré.";
+    } finally {
+      envoi = false;
+    }
+  }
+  function touche(e: KeyboardEvent) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      void valider();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      fermer();
+    }
+  }
+
+  /** Chaque commentaire sous la dernière ligne affichée de sa plage (premier bloc qui a la ligne `fin`) ; sinon en tête. */
+  const places = $derived.by(() => {
+    const sous = new Map<string, Commentaire[]>();
+    const ailleurs: Commentaire[] = [];
+    for (const c of commentaires) {
+      let ou: string | null = null;
+      for (let i = 0; i < diff.blocs.length && ou === null; i++) {
+        const b = diff.blocs[i]!;
+        for (let k = b.lignes.length - 1; k >= 0; k--) {
+          if (position(b, k) === c.fin) {
+            ou = `${i}:${k}`;
+            break;
+          }
+        }
+      }
+      if (ou === null) ailleurs.push(c);
+      else sous.set(ou, [...(sous.get(ou) ?? []), c]);
+    }
+    return { sous, ailleurs };
+  });
 
   type Ligne = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
   /** Lignes dépliées de chaque intervalle (avant le bloc i ; i = nombre de blocs : après le dernier). */
@@ -62,7 +180,46 @@
 </script>
 
 {#snippet rangee(l: Ligne)}
-  <div class="ligne {classe(l)}" data-testid="ligne-diff" data-ancien={l.ancien ?? ""} data-nouveau={l.nouveau ?? ""}><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
+  <div class="ligne {classe(l)}" data-testid="ligne-diff" data-ancien={l.ancien ?? ""} data-nouveau={l.nouveau ?? ""}><span class="marge"></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
+{/snippet}
+
+{#snippet rangeeBloc(l: Ligne, bloc: number, k: number)}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="ligne {classe(l)}"
+    class:choisie={choisie(bloc, k)}
+    data-testid="ligne-diff"
+    data-ancien={l.ancien ?? ""}
+    data-nouveau={l.nouveau ?? ""}
+    onmouseenter={() => survol(bloc, k)}
+  ><span class="marge"><button
+        class="ajouter"
+        data-testid="ajouter-commentaire"
+        aria-label="Commenter la ligne {position(diff.blocs[bloc]!, k)}"
+        title="Commenter (Maj+clic ou glisser : plusieurs lignes)"
+        onmousedown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          viser(bloc, k, e.shiftKey);
+        }}
+        onclick={(e) => {
+          // Clavier (Entrée, Espace) : pas de mousedown.
+          if (e.detail === 0) viser(bloc, k, e.shiftKey);
+        }}></button
+      ></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
+  {#each places.sous.get(`${bloc}:${k}`) ?? [] as c (c.id)}<CommentaireRelecture {projet} commentaire={c} {surChange} />{/each}
+  {#if plage && plage.bloc === bloc && plage.derniere === k}
+    <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void valider(); }}>
+      <div class="plage">{plage.debut === plage.fin ? `Ligne ${plage.debut}` : `Lignes ${plage.debut}–${plage.fin}`}</div>
+      <!-- svelte-ignore a11y_autofocus -->
+      <textarea bind:value={texte} rows="3" autofocus placeholder="Commentaire (texte simple, Markdown montré tel quel)" onkeydown={touche}></textarea>
+      {#if erreur}<p class="erreur" data-testid="erreur-commentaire">{erreur}</p>{/if}
+      <div class="actions">
+        <button type="button" onclick={fermer}>Annuler</button>
+        <button type="submit" disabled={envoi || texte.trim() === ""}>Commenter</button>
+      </div>
+    </form>
+  {/if}
 {/snippet}
 
 {#snippet intervalle(i: number)}
@@ -72,8 +229,11 @@
   {/if}
 {/snippet}
 
+<svelte:window onmouseup={() => (glisse = false)} />
+
 <section class="diff" data-testid="diff-fichier" aria-label="Diff de {diff.chemin}">
   <h3 class="chemin">{diff.chemin}</h3>
+  {#each places.ailleurs as c (c.id)}<CommentaireRelecture {projet} commentaire={c} {surChange} />{/each}
   {#if diff.affichable !== true}
     <p class="non-affichable">{NON_AFFICHABLE[diff.affichable]}</p>
   {:else if diff.blocs.length === 0}
@@ -82,7 +242,7 @@
     <div class="code-diff">
       {#each diff.blocs as b, i (i)}
         {@render intervalle(i)}
-        {#each b.lignes as l, k (k)}{@render rangee(l)}{/each}
+        {#each b.lignes as l, k (k)}{@render rangeeBloc(l, i, k)}{/each}
       {/each}
       {@render intervalle(diff.blocs.length)}
     </div>
@@ -94,7 +254,19 @@
   .chemin { margin: 0 0 8px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
   .non-affichable { color: var(--texte-doux); }
   .code-diff { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; border: 1px solid var(--bord); border-radius: 6px; overflow: auto; }
-  .ligne { display: grid; grid-template-columns: 44px 44px 1fr; }
+  .ligne { display: grid; grid-template-columns: 18px 44px 44px 1fr; }
+  .ligne.choisie { box-shadow: inset 3px 0 0 var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent); }
+  .marge { display: flex; align-items: center; justify-content: center; }
+  .ajouter { width: 16px; height: 16px; padding: 0; border: none; border-radius: 4px; background: var(--accent, #3b82f6); color: white; font-size: 12px; line-height: 16px; cursor: pointer; opacity: 0; }
+  /* Le « + » par CSS : il n'entre pas dans le texte de la ligne. */
+  .ajouter::before { content: "+"; }
+  .ligne:hover .ajouter, .ajouter:focus-visible { opacity: 1; }
+  .formulaire { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 6px; }
+  .formulaire textarea { font: inherit; font-size: 12px; resize: vertical; padding: 6px; border: 1px solid var(--bord); border-radius: 4px; background: var(--fond-barre); color: var(--texte); }
+  .plage { font-size: 11px; color: var(--texte-doux); }
+  .erreur { margin: 0; color: var(--en-erreur); font-size: 12px; }
+  .actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .actions button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
   .num { padding: 0 6px; text-align: right; color: var(--texte-doux); user-select: none; }
   .code { white-space: pre; padding-left: 14px; position: relative; }
   .code::before { position: absolute; left: 3px; color: var(--texte-doux); }

@@ -672,7 +672,11 @@ export interface ApiExternes {
 
 /** Page Relecture : ce qu'elle montre d'un projet (le diff depuis la dernière relecture), ou pourquoi elle ne le peut pas. */
 export type VueRelecture =
-  | { etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[] }
+  | {
+      etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[];
+      /** À qui vont les commentaires (« l'agent », « Claude Code (…) ») ; sinon pourquoi ils ne peuvent pas partir. */
+      destination: string | null; sansDestination: string | null;
+    }
   | { etat: "indisponible"; nom: string; raison: string };
 export type { DiffFichier, FichierModifie, Commentaire };
 export interface ApiRelecture {
@@ -685,4 +689,15 @@ export interface ApiRelecture {
   fichier(projet: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
   /** Lignes `debut`..`fin` (à partir de 1) de la version courante d'un fichier de la comparaison du jeton. */
   lignes(projet: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
+  /** Les commentaires du projet, tels qu'enregistrés. */
+  commentaires(projet: IdProjet): Promise<Commentaire[]>;
+  /** Un commentaire sur des lignes d'un seul bloc du diff du jeton ; les lignes sont lues par le process principal. */
+  commenter(projet: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
+  modifierCommentaire(projet: IdProjet, id: string, texte: string): Promise<void>;
+  resoudre(projet: IdProjet, id: string, resolu: boolean): Promise<void>;
+  supprimerCommentaire(projet: IdProjet, id: string): Promise<void>;
+  /** Les commentaires non résolus partent en un lot (agent : pré-rempli, jamais envoyé ; externe : file du MCP). */
+  envoyer(projet: IdProjet): Promise<ResultatExtension>;
+  /** « Marquer comme relu » : retient l'arbre montré par la comparaison du jeton, puis rend une nouvelle comparaison. */
+  relu(projet: IdProjet, jeton: string): Promise<VueRelecture>;
 }

@@ -11,7 +11,7 @@ import type { Telechargements } from "./telechargements";
 import type { ServiceActions } from "./agent/actions";
 import { ID_PROJET, type IdProjet } from "@webaios/noyau";
 import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type EtatExternes, type LotAffiche } from "../commun/api";
-import type { DiffFichier, VueRelecture } from "../commun/api";
+import type { Commentaire, DiffFichier, VueRelecture } from "../commun/api";
 import type { CibleDesign } from "./design/service";
 import { JETON_RELECTURE } from "./design/relecture";
 
@@ -168,6 +168,13 @@ export interface Gestionnaires {
     ouvrir(p: IdProjet, jeton?: string): Promise<VueRelecture>;
     fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
     lignes(p: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
+    commentaires(p: IdProjet): Promise<Commentaire[]>;
+    commenter(p: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
+    modifierCommentaire(p: IdProjet, id: string, texte: string): Promise<void>;
+    resoudre(p: IdProjet, id: string, resolu: boolean): Promise<void>;
+    supprimerCommentaire(p: IdProjet, id: string): Promise<void>;
+    envoyer(p: IdProjet): Promise<ResultatExtension>;
+    relu(p: IdProjet, jeton: string): Promise<VueRelecture>;
   };
 }
 
@@ -560,6 +567,7 @@ function brancherExternes(g: Gestionnaires): void {
 }
 
 const CHEMIN_RELECTURE_MAX = 4096;
+const ID_COMMENTAIRE = /^c-[0-9a-f]{8}$/;
 const entier = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 1;
 
 /** Page Relecture : la fenêtre principale seule ; projet par `ID_PROJET`, chemin borné (le service le cherche dans la comparaison gardée). */
@@ -585,4 +593,29 @@ function brancherRelecture(g: Gestionnaires): void {
     if (!entier(debut) || !entier(fin) || fin < debut) throw new Error("lignes invalides");
     return g.relecture.lignes(projet, jeton(j), chemin(c), debut, fin);
   });
+  // Commentaires : texte borné comme une remarque, id d'un commentaire `c-<8 hex>`.
+  const texte = (t: unknown): string => {
+    if (typeof t !== "string" || t.length > TEXTE_REMARQUE_MAX) throw new Error("texte invalide");
+    return t;
+  };
+  const idCommentaire = (id: unknown): string => {
+    if (typeof id !== "string" || !ID_COMMENTAIRE.test(id)) throw new Error("commentaire invalide");
+    return id;
+  };
+  ipcMain.handle(CANAUX.relectureCommentaires, (e, p: unknown) => g.relecture.commentaires(verifier(e, p)));
+  ipcMain.handle(CANAUX.relectureCommenter, (e, p: unknown, j: unknown, c: unknown) => {
+    const projet = verifier(e, p);
+    const o = (c ?? {}) as Record<string, unknown>;
+    if (typeof c !== "object" || c === null || !entier(o.debut) || !entier(o.fin) || o.fin < o.debut) throw new Error("lignes invalides");
+    return g.relecture.commenter(projet, jeton(j), { fichier: chemin(o.fichier), debut: o.debut, fin: o.fin, texte: texte(o.texte) });
+  });
+  ipcMain.handle(CANAUX.relectureModifier, (e, p: unknown, id: unknown, t: unknown) => g.relecture.modifierCommentaire(verifier(e, p), idCommentaire(id), texte(t)));
+  ipcMain.handle(CANAUX.relectureResoudre, (e, p: unknown, id: unknown, r: unknown) => {
+    const projet = verifier(e, p);
+    if (typeof r !== "boolean") throw new Error("résolu invalide");
+    return g.relecture.resoudre(projet, idCommentaire(id), r);
+  });
+  ipcMain.handle(CANAUX.relectureSupprimer, (e, p: unknown, id: unknown) => g.relecture.supprimerCommentaire(verifier(e, p), idCommentaire(id)));
+  ipcMain.handle(CANAUX.relectureEnvoyer, (e, p: unknown) => g.relecture.envoyer(verifier(e, p)));
+  ipcMain.handle(CANAUX.relectureRelu, (e, p: unknown, j: unknown) => g.relecture.relu(verifier(e, p), jeton(j)));
 }

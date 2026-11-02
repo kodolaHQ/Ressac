@@ -284,6 +284,11 @@ let design: ServiceDesign | undefined;
 let externes: ServiceExternes | undefined;
 /** Page Relecture : photos de prise en charge des applis, comparaison gardée par projet. */
 let relecture: ServiceRelecture | undefined;
+/** La relecture, ou une erreur tant qu'elle n'est pas prête. */
+function prete(): ServiceRelecture {
+  if (!relecture) throw new Error("la relecture n'est pas prête");
+  return relecture;
+}
 let minuteurPriseEnCharge: NodeJS.Timeout | undefined;
 /** Reprend la prise en charge des applis après 1 s de calme ; branché quand la relecture est prête. */
 let planifierPriseEnCharge = (): void => undefined;
@@ -840,6 +845,13 @@ app.whenReady().then(async () => {
         if (!relecture) throw new Error("la relecture n'est pas prête");
         return relecture.lignes(p, jeton, chemin, debut, fin);
       },
+      commentaires: async (p) => prete().commentaires(p),
+      commenter: async (p, jeton, c) => prete().commenter(p, jeton, c),
+      modifierCommentaire: async (p, id, texte) => prete().modifierCommentaire(p, id, texte),
+      resoudre: async (p, id, resolu) => prete().resoudre(p, id, resolu),
+      supprimerCommentaire: async (p, id) => prete().supprimerCommentaire(p, id),
+      envoyer: async (p) => prete().envoyer(p),
+      relu: async (p, jeton) => prete().relu(p, jeton),
     },
   });
   const cibles: CiblesMenu = {
@@ -981,6 +993,20 @@ app.whenReady().then(async () => {
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierTest: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     invisible: INVISIBLE,
   });
+  // Le lot envoyé à l'agent (mode design, relecture) : une ligne pré-remplie dans sa session, jamais envoyée.
+  const envoiLot = creerEnvoi({
+    chemins,
+    fenetreAgent,
+    dossierLot: (p, l) => remarques.dossierLot(p, l),
+    preRemplir: (f, texte) => agent?.preRemplir(f, texte),
+    donnerLeTerminal: (f) => cibles.raccourci(f, "agent"),
+    devant: (f) => {
+      const fenetre = fenetres.get(f);
+      if (!fenetre || fenetre.isDestroyed() || INVISIBLE) return;
+      if (fenetre.isMinimized()) fenetre.restore();
+      fenetre.focus();
+    },
+  });
   design = new ServiceDesign({
     remarques,
     registre: () => registreExternes,
@@ -1000,20 +1026,7 @@ app.whenReady().then(async () => {
     relire: (p, c) => {
       if (p.type !== "demo") ouvrirRelecture(c.type === "fenetre" ? c.fenetreId : undefined, p.projet, p.nom);
     },
-    // Le lot envoyé à l'agent : une ligne pré-remplie dans sa session, jamais envoyée.
-    envoyer: creerEnvoi({
-      chemins,
-      fenetreAgent,
-      dossierLot: (p, l) => remarques.dossierLot(p, l),
-      preRemplir: (f, texte) => agent?.preRemplir(f, texte),
-      donnerLeTerminal: (f) => cibles.raccourci(f, "agent"),
-      devant: (f) => {
-        const fenetre = fenetres.get(f);
-        if (!fenetre || fenetre.isDestroyed() || INVISIBLE) return;
-        if (fenetre.isMinimized()) fenetre.restore();
-        fenetre.focus();
-      },
-    }),
+    envoyer: envoiLot,
   });
   // Relecture : la première photo de chaque appli au démarrage, puis à chaque changement de la liste (après 1 s de calme).
   relecture = new ServiceRelecture({
@@ -1021,6 +1034,8 @@ app.whenReady().then(async () => {
     chemins,
     registre: () => registreExternes,
     applis: async () => (await applications?.gestionnaire.liste()) ?? [],
+    remarques,
+    envoyer: envoiLot,
   });
   const prendreEnCharge = () =>
     void applications?.gestionnaire

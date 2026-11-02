@@ -309,3 +309,7 @@ export function projetDeUrlRelecture(url: string): string | null {
 export const LIGNES_DEPLIEES = 20;
 /** Ce que la page Relecture affiche à la place d'un fichier non affichable (copies de `FICHIER_BINAIRE`/`FICHIER_TROP_GROS`). */
 export const NON_AFFICHABLE = { binaire: "fichier binaire", "trop-gros": "fichier trop gros pour la relecture" } as const;
+/** Ce qu'affiche un commentaire dont les lignes ont changé (copie de `LIGNE_CHANGEE` du noyau). */
+export const LIGNE_CHANGEE_PAGE = "la ligne a changé";
+/** Un commentaire porte sur des lignes affichées d'un seul bloc du diff, sans trou (page et process principal). */
+export const PLAGE_HORS_BLOC = "Un commentaire porte sur des lignes d'un seul bloc du diff.";

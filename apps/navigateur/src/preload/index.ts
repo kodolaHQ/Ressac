@@ -177,6 +177,13 @@ const api: ApiWebaios = {
     ouvrir: (projet, jeton) => ipcRenderer.invoke(CANAUX.relectureOuvrir, projet, jeton),
     fichier: (projet, jeton, chemin) => ipcRenderer.invoke(CANAUX.relectureFichier, projet, jeton, chemin),
     lignes: (projet, jeton, chemin, debut, fin) => ipcRenderer.invoke(CANAUX.relectureLignes, projet, jeton, chemin, debut, fin),
+    commentaires: (projet) => ipcRenderer.invoke(CANAUX.relectureCommentaires, projet),
+    commenter: (projet, jeton, c) => ipcRenderer.invoke(CANAUX.relectureCommenter, projet, jeton, c),
+    modifierCommentaire: (projet, id, texte) => ipcRenderer.invoke(CANAUX.relectureModifier, projet, id, texte),
+    resoudre: (projet, id, resolu) => ipcRenderer.invoke(CANAUX.relectureResoudre, projet, id, resolu),
+    supprimerCommentaire: (projet, id) => ipcRenderer.invoke(CANAUX.relectureSupprimer, projet, id),
+    envoyer: (projet) => ipcRenderer.invoke(CANAUX.relectureEnvoyer, projet),
+    relu: (projet, jeton) => ipcRenderer.invoke(CANAUX.relectureRelu, projet, jeton),
   },
 };
 

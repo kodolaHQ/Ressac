@@ -4,17 +4,26 @@ import {
   CommentairesRelecture,
   DepotRelecture,
   depotRelecture,
+  destinationDe,
   ErreurRelecture,
   fichierCommentaires,
   ID_PROJET,
+  positionNouvelle,
+  REMARQUE_VIDE,
+  SANS_CLIENT,
   type CheminsEspace,
+  type Commentaire,
   type Comparaison,
   type DiffFichier,
   type DossiersDesign,
   type IdProjet,
+  type Lot,
+  type ProjetSuivi,
   type RegistreExternes,
+  type Remarques,
 } from "@webaios/noyau";
-import type { VueRelecture } from "../../commun/api";
+import type { ResultatExtension, VueRelecture } from "../../commun/api";
+import { PLAGE_HORS_BLOC } from "../../commun/modele";
 
 /** Raison affichée pour un projet que la relecture ne connaît pas (démo, projet externe oublié, dossier disparu). */
 export const PROJET_INCONNU = "projet inconnu";
@@ -27,6 +36,26 @@ export const COMPARAISON_INCONNUE = "Cette comparaison n'est plus gardée : Rafr
 /** Le jeton d'une comparaison : ses deux arbres (relu, courant). */
 export const JETON_RELECTURE = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
 const jetonDe = (c: Comparaison) => `${c.arbreRelu}:${c.arbreCourant}`;
+export { PLAGE_HORS_BLOC };
+/** « Envoyer » sans commentaire non résolu. */
+export const AUCUN_COMMENTAIRE = "Aucun commentaire à envoyer.";
+
+/**
+ * Les lignes d'un commentaire, lues dans le diff gardé : celles d'un même bloc dont la position (numéro nouveau, celui
+ * de la ligne suivante pour un retrait) va de `debut` à `fin`, chaque position présente. null si aucun bloc ne convient.
+ */
+export function lignesDuBloc(diff: DiffFichier, debut: number, fin: number): Commentaire["lignes"] | null {
+  if (!Number.isSafeInteger(debut) || !Number.isSafeInteger(fin) || debut < 1 || fin < debut) return null;
+  for (const b of diff.blocs) {
+    const lignes = b.lignes.map((l, i) => ({ marque: l.marque, texte: l.texte, position: positionNouvelle(b, i) }));
+    const dedans = lignes.filter((l) => l.position >= debut && l.position <= fin);
+    const positions = new Set(dedans.map((l) => l.position));
+    let complet = true;
+    for (let n = debut; n <= fin && complet; n++) complet = positions.has(n);
+    if (complet) return dedans.map(({ marque, texte }) => ({ marque, texte }));
+  }
+  return null;
+}
 
 /**
  * La relecture des projets : la photo de prise en charge de chaque appli de l'agent, la comparaison avec la dernière
@@ -47,6 +76,10 @@ export class ServiceRelecture {
       git?: string;
       /** Les noms des applis de l'agent (leur fiche) ; le nom de dossier sinon. */
       applis?: () => Promise<{ dossier: string; nom: string }[]>;
+      /** Les lots des commentaires envoyés. */
+      remarques: Remarques;
+      /** Après l'écriture d'un lot (comme le mode design : pré-remplir la session de l'agent ; rien pour un projet externe). */
+      envoyer(p: ProjetSuivi, lot: Lot): Promise<void>;
     },
   ) {}
 
@@ -112,8 +145,11 @@ export class ServiceRelecture {
         const autres = (this.comparaisons.get(p) ?? []).filter((x) => x.jeton !== g!.jeton);
         this.comparaisons.set(p, [g, ...autres].slice(0, COMPARAISONS_GARDEES));
       }
-      const commentaires = await new CommentairesRelecture(fichierCommentaires(this.o.dossiers, p)).liste();
-      return { etat: "ok", nom: projet.nom, jeton: g.jeton, comparaison: { fichiers: g.comparaison.fichiers }, commentaires };
+      const commentaires = await this.recollerTout(p, g);
+      return {
+        etat: "ok", nom: projet.nom, jeton: g.jeton, comparaison: { fichiers: g.comparaison.fichiers }, commentaires,
+        ...this.destination(await this.suivi(p)),
+      };
     } catch (e) {
       if (e instanceof ErreurRelecture) return { etat: "indisponible", nom: projet.nom, raison: e.raison };
       console.error(`[relecture] comparaison de ${p} :`, e);
@@ -136,7 +172,9 @@ export class ServiceRelecture {
 
   async fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier> {
     const g = this.garde(p, jeton, chemin);
-    return g.depot.fichier(g.comparaison, chemin);
+    const diff = await g.depot.fichier(g.comparaison, chemin);
+    await this.commentairesDe(p).recollerFichier(chemin, diff.affichable === true ? diff : null);
+    return diff;
   }
 
   /** Lignes de la version courante (jamais d'un fichier supprimé ni non affichable). */
@@ -150,6 +188,110 @@ export class ServiceRelecture {
     const l = await g.depot.lignes(g.comparaison.arbreCourant, chemin, a, b + 1);
     if (l.length > b - a + 1) return l.slice(0, b - a + 1);
     return l.at(-1) === "" ? l.slice(0, -1) : l;
+  }
+
+  private commentairesDe(p: IdProjet): CommentairesRelecture {
+    return new CommentairesRelecture(fichierCommentaires(this.o.dossiers, p));
+  }
+
+  /** Les commentaires recollés au diff de la comparaison montrée ; ceux d'un fichier qui n'y est plus, « ligne changée ». */
+  private async recollerTout(p: IdProjet, g: { depot: DepotRelecture; comparaison: Comparaison }): Promise<Commentaire[]> {
+    const commentaires = this.commentairesDe(p);
+    const fichiers = new Set((await commentaires.liste()).map((c) => c.fichier));
+    for (const chemin of fichiers) {
+      const f = g.comparaison.fichiers.find((x) => x.chemin === chemin);
+      const diff = f && f.affichable === true ? await g.depot.fichier(g.comparaison, chemin).catch(() => null) : null;
+      await commentaires.recollerFichier(chemin, diff);
+    }
+    return commentaires.liste();
+  }
+
+  /** Le projet suivi (destination de l'envoi) ; null pour un projet inconnu. */
+  private async suivi(p: IdProjet): Promise<ProjetSuivi | null> {
+    const projet = await this.projet(p);
+    if (!projet) return null;
+    if (p.startsWith("app-")) return { type: "app", projet: p, dossier: p.slice(4), nom: projet.nom };
+    const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
+    return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
+  }
+
+  private destination(s: ProjetSuivi | null): { destination: string | null; sansDestination: string | null } {
+    if (!s) return { destination: null, sansDestination: PROJET_INCONNU };
+    const d = destinationDe(s, this.o.registre()?.clients() ?? []);
+    return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
+  }
+
+  /** Les commentaires du projet, tels qu'enregistrés (sans recoller). */
+  commentaires(p: IdProjet): Promise<Commentaire[]> {
+    return this.commentairesDe(p).liste();
+  }
+
+  /** Un commentaire sur les lignes `debut`..`fin` d'un fichier de la comparaison du jeton, lues ici dans le diff gardé. */
+  async commenter(p: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension> {
+    try {
+      if (c.texte.trim() === "") return { ok: false, erreur: REMARQUE_VIDE };
+      const g = this.garde(p, jeton, c.fichier);
+      const diff = await g.depot.fichier(g.comparaison, c.fichier);
+      const lignes = diff.affichable === true ? lignesDuBloc(diff, c.debut, c.fin) : null;
+      if (!lignes) return { ok: false, erreur: PLAGE_HORS_BLOC };
+      await this.commentairesDe(p).ajouter({ fichier: c.fichier, debut: c.debut, fin: c.fin, lignes, texte: c.texte });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  modifierCommentaire(p: IdProjet, id: string, texte: string): Promise<void> {
+    return this.commentairesDe(p).modifier(id, texte);
+  }
+
+  resoudre(p: IdProjet, id: string, resolu: boolean): Promise<void> {
+    return this.commentairesDe(p).resoudre(id, resolu);
+  }
+
+  supprimerCommentaire(p: IdProjet, id: string): Promise<void> {
+    return this.commentairesDe(p).supprimer(id);
+  }
+
+  /** Les commentaires non résolus (déjà envoyés compris) deviennent un lot pour l'agent ou le Claude Code branché. */
+  async envoyer(p: IdProjet): Promise<ResultatExtension> {
+    try {
+      const s = await this.suivi(p);
+      if (!s) return { ok: false, erreur: PROJET_INCONNU };
+      let destination: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
+      if (s.type === "externe") {
+        const d = destinationDe(s, this.o.registre()?.clients() ?? []);
+        if ("indisponible" in d || s.client === null) return { ok: false, erreur: SANS_CLIENT };
+        destination = { destination: "mcp", client: s.client };
+      }
+      const commentaires = this.commentairesDe(p);
+      const a = await commentaires.aEnvoyer();
+      if (a.length === 0) return { ok: false, erreur: AUCUN_COMMENTAIRE };
+      const lot = await this.o.remarques.envoyerRelecture(
+        p,
+        a.map((c) => ({ texte: c.texte, contexte: { fichier: c.fichier, debut: c.debut, fin: c.fin, lignes: c.lignes } })),
+        destination,
+      );
+      await commentaires.marquerEnvoyes(a.map((c) => c.id));
+      await this.o.envoyer(s, lot);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /**
+   * « Marquer comme relu » : retient l'arbre que la page a montré (celui du jeton), jamais un nouvel état : ce qui a
+   * changé depuis reste à relire. Les commentaires résolus partent ; les comparaisons gardées du projet tombent (une
+   * autre page ne peut plus retenir un arbre plus ancien) ; puis une nouvelle comparaison.
+   */
+  async relu(p: IdProjet, jeton: string): Promise<VueRelecture> {
+    const g = this.comparaison(p, jeton);
+    if (!g) throw new Error(COMPARAISON_INCONNUE);
+    await g.depot.retenir(g.comparaison.arbreCourant);
+    await this.commentairesDe(p).apresRelu();
+    this.comparaisons.delete(p);
+    return this.ouvrir(p);
   }
 
   /** Un projet oublié : ses comparaisons gardées tombent. */

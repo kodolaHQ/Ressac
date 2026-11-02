@@ -1,7 +1,11 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet } from "./aide";
+import { ecrireProjet, entreeAgent, lancer, nouvelleRacine, ouvrirOnglet } from "./aide";
 
 // La page Relecture : le diff d'un projet depuis sa dernière relecture, en lecture seule.
 const ENV = { WEBAIOS_PORTS_APPS: "15280-15284", WEBAIOS_PORT_MCP_EXTERNE: "0" };
@@ -213,6 +217,186 @@ test("WEBAIOS_GIT=/chemin/absent : la page affiche « git est nécessaire » et 
     await expect(bouton).toHaveAttribute("aria-pressed", "true");
     await aucuneFenetreVisible(app);
   } finally {
+    await fermer();
+  }
+});
+
+// --- Tâche 12 : commenter, envoyer les commentaires, marquer comme relu.
+
+const PLAGE_HORS_BLOC = "Un commentaire porte sur des lignes d'un seul bloc du diff.";
+const LIGNE_CHANGEE = "la ligne a changé";
+const modifie = (...n: number[]) => LIGNES.map((l, i) => (n.includes(i + 1) ? `${l} modifiée` : l));
+type Zone = ReturnType<Page["getByTestId"]>;
+/** La ligne affichée de numéro nouveau `n` (l'ajout pour une ligne modifiée). */
+const ligne = (page: Zone, n: number) => page.locator(`[data-testid="ligne-diff"][data-nouveau="${n}"]`);
+const plus = (page: Zone, n: number) => ligne(page, n).getByTestId("ajouter-commentaire");
+
+async function commenter(page: Zone, texte: string) {
+  const f = page.getByTestId("formulaire-commentaire");
+  await expect(f).toBeVisible();
+  await f.locator("textarea").fill(texte);
+  await f.getByRole("button", { name: "Commenter" }).click();
+  await expect(f).toHaveCount(0);
+}
+
+/** app.js modifié (lignes `n`), la page Relecture ouverte sur app.js. */
+async function pageSurAppJs(app: ElectronApplication, fenetre: Page, racine: string, ...n: number[]) {
+  ecrireAppJs(racine, modifie(...n));
+  const page = await relireDepuisCarte(app, fenetre);
+  await fichier(page, "app.js").click();
+  await expect(ligne(page, n[0]!)).toBeVisible();
+  return page;
+}
+
+test("+ sur la ligne 15 de app.js, « garder l'ancien nom » : un commentaire sous la ligne ; « Envoyer 1 commentaire à l'agent » : entreeAgent contient « 1) app.js:15-15 : « garder l'ancien nom » » et pas de \\r ; le commentaire affiche « envoyé »", async () => {
+  const racine = racineEssai();
+  const { app, fenetre, fermer } = await demarrer(racine);
+  try {
+    const page = await pageSurAppJs(app, fenetre, racine, 15);
+    await plus(page, 15).click();
+    await commenter(page, "garder l'ancien nom");
+    const c = page.getByTestId("commentaire");
+    await expect(c).toHaveCount(1);
+    await expect(c).toContainText("garder l'ancien nom");
+    await expect(c).toContainText("Ligne 15");
+    expect(await c.evaluate((el) => (el.previousElementSibling as HTMLElement | null)?.dataset.nouveau)).toBe("15");
+    await expect(c).not.toContainText("envoyé");
+    const envoyer = page.getByTestId("envoyer-commentaires");
+    await expect(envoyer).toHaveText("Envoyer 1 commentaire à l'agent");
+    await envoyer.click();
+    await expect.poll(() => entreeAgent(racine)).toContain("1) app.js:15-15 : « garder l'ancien nom »");
+    expect(entreeAgent(racine)).toContain("/workspace/.webaios/remarques/app-essai/");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(entreeAgent(racine)).not.toContain("\r");
+    await expect(c).toContainText("envoyé");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Maj+clic de la ligne 13 à 16 : le commentaire couvre 13–16 ; une plage sur deux blocs est refusée", async () => {
+  const racine = racineEssai();
+  const { app, fenetre, fermer } = await demarrer(racine);
+  try {
+    const page = await pageSurAppJs(app, fenetre, racine, 15, 25);
+    await plus(page, 13).click();
+    await plus(page, 16).click({ modifiers: ["Shift"] });
+    await expect(page.locator('[data-testid="ligne-diff"].choisie')).toHaveCount(5);
+    await commenter(page, "tout ce passage");
+    const c = page.getByTestId("commentaire");
+    await expect(c).toHaveCount(1);
+    await expect(c).toContainText("Lignes 13–16");
+    expect(await c.evaluate((el) => (el.previousElementSibling as HTMLElement | null)?.dataset.nouveau)).toBe("16");
+    // De la ligne 13 (premier bloc) à la ligne 25 (second bloc) : refusé.
+    await plus(page, 13).click();
+    await plus(page, 25).click({ modifiers: ["Shift"] });
+    await expect(page.getByTestId("erreur-commentaire")).toHaveText(PLAGE_HORS_BLOC);
+    await expect(page.locator('[data-testid="ligne-diff"].choisie')).toHaveCount(1);
+    await page.getByTestId("formulaire-commentaire").getByRole("button", { name: "Annuler" }).click();
+    await expect(page.getByTestId("commentaire")).toHaveCount(1);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("ajout de 3 lignes en tête de app.js puis Rafraîchir : le commentaire suit à la ligne 18 sans LIGNE_CHANGEE ; ligne 18 réécrite puis Rafraîchir : LIGNE_CHANGEE", async () => {
+  const racine = racineEssai();
+  const { app, fenetre, fermer } = await demarrer(racine);
+  try {
+    const page = await pageSurAppJs(app, fenetre, racine, 15);
+    await plus(page, 15).click();
+    await commenter(page, "garder l'ancien nom");
+    ecrireAppJs(racine, ["a", "b", "c", ...modifie(15)]);
+    await page.getByRole("button", { name: "Rafraîchir" }).click();
+    const c = page.getByTestId("commentaire");
+    await expect(c).toContainText("Ligne 18");
+    await expect(c).not.toContainText(LIGNE_CHANGEE);
+    expect(await c.evaluate((el) => (el.previousElementSibling as HTMLElement | null)?.dataset.nouveau)).toBe("18");
+    ecrireAppJs(racine, ["a", "b", "c", ...LIGNES.map((l, i) => (i === 14 ? "ligne 15 réécrite" : l))]);
+    await page.getByRole("button", { name: "Rafraîchir" }).click();
+    await expect(c).toContainText(LIGNE_CHANGEE);
+    await expect(c).toContainText("garder l'ancien nom");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("Résoudre puis Marquer comme relu : plus aucun fichier, le commentaire résolu a disparu, un non résolu reste rattaché à app.js", async () => {
+  const racine = racineEssai();
+  const { app, fenetre, fermer } = await demarrer(racine);
+  try {
+    const page = await pageSurAppJs(app, fenetre, racine, 15);
+    await plus(page, 15).click();
+    await commenter(page, "à résoudre");
+    await plus(page, 13).click();
+    await commenter(page, "reste ouvert");
+    const resolu = page.getByTestId("commentaire").filter({ hasText: "à résoudre" });
+    await resolu.getByRole("button", { name: "Résoudre" }).click();
+    await expect(resolu).toContainText("résolu");
+    await expect(page.getByTestId("envoyer-commentaires")).toHaveText("Envoyer 1 commentaire à l'agent");
+    await page.getByTestId("marquer-relu").click();
+    await expect(page.getByTestId("fichier-relecture")).toHaveCount(0);
+    await expect(page.getByTestId("commentaire-relecture")).toHaveCount(1);
+    await expect(page.getByTestId("commentaire-relecture")).toContainText("reste ouvert");
+    await expect(page.getByTestId("commentaire-relecture")).toContainText("app.js");
+    await expect(page).not.toContainText("à résoudre");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("projet externe (déclaré comme à la tâche 10) : « Envoyer 1 commentaire à Claude Code (…) », lire_remarques rend type relecture avec fichier et lignes ; rien n'est pré-rempli", async () => {
+  const parent = mkdtempSync(join(tmpdir(), "webaios-externe-"));
+  const dossier = join(parent, "mon-site");
+  mkdirSync(dossier);
+  const reel = realpathSync(dossier);
+  writeFileSync(join(reel, "app.js"), LIGNES.join("\n") + "\n");
+  test.setTimeout(60_000);
+  const { app, fenetre, profil, racine, fermer } = await lancer({ env: ENV });
+  let c: Client | undefined;
+  try {
+    await expect.poll(() => app.evaluate(({ Menu }) => !!Menu.getApplicationMenu()?.getMenuItemById("applications"))).toBe(true);
+    await menu(app, "applications");
+    const section = fenetre.getByTestId("projets-externes");
+    await section.getByTestId("brancher-externe").click();
+    await section.getByTestId("valider-brancher").click();
+    const commande = (await section.getByTestId("commande-branchement").textContent()) ?? "";
+    const m = /http:\/\/127\.0\.0\.1:(\d+)\/mcp-externe --header "Authorization: Bearer ([0-9a-f]{64})"/.exec(commande)!;
+    c = new Client({ name: "essai", version: "1.0.0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${m[1]}/mcp-externe`), { requestInit: { headers: { Authorization: `Bearer ${m[2]}` } } }));
+    await c.callTool({ name: "declarer_projet", arguments: { dossier: reel, ports: [18765] } });
+    const id = createHash("sha256").update(reel).digest("hex").slice(0, 16);
+    await expect.poll(() => existsSync(join(profil, "design", "relecture", `ext-${id}.git`, "refs", "webaios", "relu")), { timeout: 15_000 }).toBe(true);
+    writeFileSync(join(reel, "app.js"), modifie(2).join("\n") + "\n");
+    const ligneProjet = fenetre.getByTestId("projet-externe");
+    await expect(ligneProjet).toHaveCount(1);
+    await ligneProjet.getByRole("button", { name: "Relire" }).click();
+    const page = fenetre.getByTestId("page-relecture");
+    await expect(page).toBeVisible();
+    await fichier(page, "app.js").click();
+    await expect(ligne(page, 2)).toContainText("ligne 2 modifiée");
+    await expect(plus(page, 2)).toHaveCount(1, { timeout: 2000 });
+    await plus(page, 2).click();
+    await commenter(page, "renommer");
+    const envoyer = page.getByTestId("envoyer-commentaires");
+    await expect(envoyer).toHaveText("Envoyer 1 commentaire à Claude Code (Claude Code)");
+    await envoyer.click();
+    await expect(page.getByTestId("commentaire")).toContainText("envoyé");
+    const lu = await c.callTool({ name: "lire_remarques", arguments: { dossier: reel } });
+    const texte = ((lu as { content: { type: string; text?: string }[] }).content ?? []).map((x) => x.text ?? "").join("\n");
+    expect(texte).toContain("(relecture, lot ");
+    expect(texte).toContain("texte de l'utilisateur : renommer");
+    expect(texte).toContain('Fichier : "app.js", lignes 2–2');
+    expect(texte).toContain("-ligne 2\n+ligne 2 modifiée");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(existsSync(join(racine, "faux-agent-entree.txt"))).toBe(false);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await c?.close().catch(() => undefined);
     await fermer();
   }
 });
