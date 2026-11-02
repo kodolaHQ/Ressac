@@ -125,6 +125,8 @@ export const CANAUX = {
   siteExtensionsBarre: "webaios:site-extensions-barre",
   siteExtensionsGerer: "webaios:site-extensions-gerer",
   siteExtensionsPanneau: "webaios:site-extensions-panneau",
+  /** Main → interface de l'appli : fermer le menu « Extensions » (clic dans la vue du site, plein écran). */
+  siteExtensionsFermer: "webaios:site-extensions-fermer",
   /** Page Applications (fenêtre principale) : les applis de site. */
   sitesListe: "webaios:sites-liste",
   /** Diffusé quand une appli de site apparaît, change, s'ouvre ou se ferme (sans contenu : relire). */

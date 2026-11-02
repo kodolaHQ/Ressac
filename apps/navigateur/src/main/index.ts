@@ -470,6 +470,7 @@ app.whenReady().then(async () => {
         return sites.fenetres.ouvrirPourExtension(id, url);
       },
       fermer: (wc) => sites?.fenetres.fermerPageExtension(wc),
+      peutCharger: (id, wc, url) => sites?.fenetres.peutChargerPourExtension(id, wc, url) ?? false,
     },
   });
   // Pages des extensions de l'agent : navigations, ouvertures et WebRTC (reseau.ts).

@@ -184,6 +184,7 @@ const site: ApiSite = {
     surChange: (rappel) => ecouter(CANAUX.extensionsChange, () => rappel()),
     gerer: () => ipcRenderer.send(CANAUX.siteExtensionsGerer),
     panneau: (hauteur) => ipcRenderer.send(CANAUX.siteExtensionsPanneau, hauteur),
+    surFermer: (rappel) => ecouter(CANAUX.siteExtensionsFermer, () => rappel()),
   },
 };
 

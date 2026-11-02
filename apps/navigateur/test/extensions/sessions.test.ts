@@ -1307,6 +1307,9 @@ function optionsSite(o: { empreinte?: string | null; vue?: { wc: unknown; fenetr
     vue: o.vue ?? null,
     permis: o.permis ?? true,
     demandes: [] as [string, string, string][],
+    /** `peutCharger` (tabs.update) : réponse, et les demandes reçues. */
+    charge: true,
+    chargements: [] as [string, unknown, string][],
     ouvertes: [] as [string, string][],
     fermees: [] as unknown[],
     /** Ce que rend `ouvrir` (sinon : lève). */
@@ -1325,6 +1328,10 @@ function optionsSite(o: { empreinte?: string | null; vue?: { wc: unknown; fenetr
       return r.rendu as never;
     },
     fermer: (wc) => void r.fermees.push(wc),
+    peutCharger: (id, wc, url) => {
+      r.chargements.push([id, wc, url]);
+      return r.charge;
+    },
   };
   return { r, site };
 }
@@ -1747,4 +1754,29 @@ test("I2 un profil : l'accusé du fond ne change pas la réponse au preload (ins
   expect(reponse).toEqual({ installation: { reason: "install" }, rulesets: ["r"], rulesetsInactifs: [], agent: false });
   await expect(accuser()).resolves.toBeUndefined();
   expect(await p.attendreDemarrage("defaut", `store:${ID_A}`, 30)).toBe(true);
+});
+
+test("I1 : tabs.update dans la session d'une appli demande site.peutCharger (l'onglet, l'adresse) juste avant loadURL ; un refus fait échouer l'appel sans rien charger", async () => {
+  const s = fausseSession("persist:site-vidola");
+  const vue = Object.assign(fausseVue(s, 71), { loadURL: vi.fn(async () => {}) });
+  const fenetre = fausseFenetre(12);
+  const { r, site } = optionsSite({ vue: { wc: vue, fenetre } });
+  try {
+    const p = creer({ site });
+    p.brancherSite("vidola", s as unknown as Electron.Session);
+    const routeur = rouages(s).ctx.router;
+    const extension = appelante();
+    r.charge = false;
+    await expect(routeur.getHandler("tabs.update").callback({ extension }, 71, { url: "https://vidola-a.localhost/x" })).rejects.toThrow("Chargement refusé par WebAiOs");
+    expect(vue.loadURL).not.toHaveBeenCalled();
+    expect(r.chargements).toEqual([["vidola", vue, "https://vidola-a.localhost/x"]]);
+    r.charge = true;
+    await routeur.getHandler("tabs.update").callback({ extension }, 71, { url: "https://vidola-a.localhost/y" });
+    expect(vue.loadURL).toHaveBeenCalledWith("https://vidola-a.localhost/y");
+    // Sans adresse (active, muted) : rien à vérifier.
+    await routeur.getHandler("tabs.update").callback({ extension }, 71, { active: true });
+    expect(r.chargements).toHaveLength(2);
+  } finally {
+    vuesParId.clear();
+  }
 });

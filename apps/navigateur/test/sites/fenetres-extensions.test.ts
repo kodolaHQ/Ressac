@@ -214,19 +214,49 @@ test("diffuserATous : l'interface de chaque appli ouverte", () => {
   expect(fenetresCreees.map((x) => x.webContents.send.mock.calls.filter((c) => c[0] === "webaios:extensions-change").length)).toEqual([1, 1]);
 });
 
-test("M7 : la petite fenêtre ne charge que les pages de l'extension qui l'a ouverte (tabs.update passe par le main)", async () => {
+test("M7 : la petite fenêtre ne charge que les pages de l'extension qui l'a ouverte (filet : arrêt au tour suivant, jamais dans l'écouteur)", async () => {
   const f = fenetres();
   f.ouvrir(site);
   await f.ouvrirPourExtension("vidola", `chrome-extension://${EXT}/options.html`);
   const wc = fenetresCreees[1]!.webContents;
-  const demarrer = (url: string, isMainFrame = true) => {
+  const demarrer = async (url: string, isMainFrame = true) => {
+    const avant = wc.stop.mock.calls.length;
     for (const c of wc.on.mock.calls.filter((c) => c[0] === "did-start-navigation")) (c[1] as (d: unknown) => void)({ url, isMainFrame, isSameDocument: false });
+    expect(wc.stop.mock.calls.length).toBe(avant);
+    await new Promise<void>((r) => setImmediate(r));
   };
-  demarrer(`chrome-extension://${EXT}/autre.html`);
-  demarrer("https://vidola-a.example/", false);
+  await demarrer(`chrome-extension://${EXT}/autre.html`);
+  await demarrer("https://vidola-a.example/", false);
   expect(wc.stop).not.toHaveBeenCalled();
-  demarrer("https://vidola-a.example/");
+  await demarrer("https://vidola-a.example/");
   expect(wc.stop).toHaveBeenCalledTimes(1);
-  demarrer(`chrome-extension://${"b".repeat(32)}/options.html`);
+  await demarrer(`chrome-extension://${"b".repeat(32)}/options.html`);
   expect(wc.stop).toHaveBeenCalledTimes(2);
+});
+
+test("I1 : peutChargerPourExtension (tabs.update, avant tout chargement) : la vue en vue « site » seulement et en http(s) ; la petite fenêtre, les pages de son extension seulement ; le reste, non", async () => {
+  const f = fenetres();
+  const autre = `chrome-extension://${"b".repeat(32)}/options.html`;
+  // Appli fermée : rien.
+  expect(f.peutChargerPourExtension("vidola", fausseWc() as never, DEPART)).toBe(false);
+  // Une appli avec un accueil : la vue cachée ne charge rien tant que l'utilisateur n'est pas entré.
+  f.ouvrir({ ...site, aAccueil: true });
+  const vue = vuesCreees[0]!.webContents as never;
+  expect(f.peutChargerPourExtension("vidola", vue, `${DEPART}x`)).toBe(false);
+  f.entrer("vidola");
+  expect(f.peutChargerPourExtension("vidola", vue, `${DEPART}x`)).toBe(true);
+  expect(f.peutChargerPourExtension("vidola", vue, `chrome-extension://${EXT}/options.html`)).toBe(false);
+  expect(f.peutChargerPourExtension("vidola", vue, "file:///etc/passwd")).toBe(false);
+  expect(f.peutChargerPourExtension("vidola", vue, "data:text/html,x")).toBe(false);
+  // De retour à l'accueil : de nouveau non.
+  f.accueil("vidola");
+  expect(f.peutChargerPourExtension("vidola", vue, `${DEPART}x`)).toBe(false);
+  // La petite fenêtre d'une page d'extension.
+  const [page] = await f.ouvrirPourExtension("vidola", `chrome-extension://${EXT}/options.html`);
+  expect(f.peutChargerPourExtension("vidola", page, `chrome-extension://${EXT}/autre.html`)).toBe(true);
+  expect(f.peutChargerPourExtension("vidola", page, autre)).toBe(false);
+  expect(f.peutChargerPourExtension("vidola", page, DEPART)).toBe(false);
+  // L'interface de l'appli, ou une page inconnue : non.
+  expect(f.peutChargerPourExtension("vidola", fenetresCreees[0]!.webContents as never, DEPART)).toBe(false);
+  expect(f.peutChargerPourExtension("vidola", fausseWc() as never, `chrome-extension://${EXT}/x.html`)).toBe(false);
 });

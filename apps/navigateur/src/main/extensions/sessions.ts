@@ -293,7 +293,7 @@ export function manifesteTalonStore(manifeste: unknown): Record<string, unknown>
 /** Ce que la bibliothèque reçoit de chaque session, au-delà de ce qui est commun aux profils et aux applis. */
 type OptionsBibliotheque = ConstructorParameters<typeof ElectronChromeExtensions>[0];
 type OptionsPortee = Required<Pick<OptionsBibliotheque, "createTab" | "selectTab" | "removeTab" | "createWindow" | "verifierUrl">> &
-  Pick<OptionsBibliotheque, "peutFermerOnglet" | "peutFermerFenetre">;
+  Pick<OptionsBibliotheque, "peutFermerOnglet" | "peutFermerFenetre" | "peutChargerOnglet">;
 
 /** Service workers dont le canal de démarrage est posé. */
 const workersEcoutes = new WeakSet<object>();
@@ -421,6 +421,11 @@ export class ExtensionsProfils {
         ouvrir(id: IdSite, url: string): Promise<[WebContents, BrowserWindow]>;
         /** `removeTab` : ferme une page de l'extension ouverte dans sa petite fenêtre ; jamais la vue du site. */
         fermer(wc: WebContents): void;
+        /**
+         * `tabs.update` vers `url` dans l'onglet `wc` (la vue du site ou une petite fenêtre), juste avant son chargement ;
+         * faux : l'appel échoue et aucune navigation ne commence.
+         */
+        peutCharger(id: IdSite, wc: WebContents, url: string): boolean;
       };
       /** Délai de chaque étape de l'effacement du stockage (`DELAI_EFFACEMENT_MS` par défaut ; tests). */
       delaiEffacementMs?: number;
@@ -583,6 +588,9 @@ export class ExtensionsProfils {
         site.fermer(wc);
       },
       peutFermerOnglet: (wc) => site.vue(id)?.wc !== wc,
+      // I1 : `tabs.update` est vérifié avec l'onglet visé, avant `loadURL` (jamais une page hors du web dans la vue, ni
+      // une page de l'appli dans la vue cachée de l'accueil ou de la carte d'accord).
+      peutChargerOnglet: (wc, url) => site.peutCharger(id, wc, url),
       peutFermerFenetre: (fenetre) => site.vue(id)?.fenetre !== fenetre,
       // Une fenêtre demandée : ce que l'appli ouvre (la vue pour une page du site, une petite fenêtre pour une page de
       // l'extension), qui devient un onglet de cette fenêtre comme avec `tabs.create` (C20).

@@ -591,5 +591,7 @@ export interface ApiSite {
     gerer(): void;
     /** La hauteur du panneau du menu ouvert sous la barre (0 : fermé), bornée à `PANNEAU_EXTENSIONS_MAX`. */
     panneau(hauteur: number): void;
+    /** Le process principal demande de fermer le menu (clic dans la vue du site, plein écran) ; renvoie le désabonnement. */
+    surFermer(rappel: () => void): () => void;
   };
 }

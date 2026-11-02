@@ -154,6 +154,8 @@ function demandeAccord(s: SiteOuvrable): DemandeAccordSite {
  */
 export class FenetresSites {
   private readonly ouvertesParId = new Map<string, Ouverte>();
+  /** L'extension de chaque petite fenêtre de page d'extension (son seul contenu permis). */
+  private readonly extensionDesPages = new WeakMap<WebContents, string>();
 
   constructor(
     private readonly o: {
@@ -367,8 +369,9 @@ export class FenetresSites {
       const web = /^https?:/i.test(d.url);
       if (web && (o.affichee === "site" || o.chargementVoulu || !extensionsChargees(wc))) return;
       console.warn(`[sites] ${id} : chargement arrêté dans la vue (${web ? `vue ${o.affichee}, non voulu` : "hors du web"}) : ${d.url.slice(0, 80)}`);
+      // Filet seulement : `tabs.update` est refusé avant tout chargement (`peutChargerPourExtension`, crochet du correctif).
       // Au tour suivant, jamais dans l'écouteur : `stop()` pendant `did-start-navigation` fait planter tout le processus
-      // (vu en e2e : `tabs.update` de la vue vers options.html). Le chargement n'a pas encore abouti au tour suivant.
+      // (vu en e2e). Ce n'est qu'une course gagnée en pratique : rien ne garantit que le chargement n'a pas abouti avant.
       setImmediate(() => {
         if (!wc.isDestroyed()) wc.stop();
       });
@@ -406,7 +409,13 @@ export class FenetresSites {
     // Plein écran d'un élément (vidéo) : la vue prend toute la fenêtre, par-dessus la barre ; à la sortie, la barre revient.
     wc.on("enter-html-full-screen", () => {
       o.pleinEcran = true;
+      this.fermerPanneau(o);
       this.placer(o);
+    });
+    // m2 : un clic dans la vue du site (ou le focus qu'elle prend) ferme le menu « Extensions » de la barre.
+    wc.on("focus", () => this.fermerPanneau(o));
+    wc.on("before-mouse-event", (_e, souris) => {
+      if (souris.type === "mouseDown") this.fermerPanneau(o);
     });
     wc.on("leave-html-full-screen", () => {
       o.pleinEcran = false;
@@ -877,6 +886,7 @@ export class FenetresSites {
     });
     o.petites.add(petite);
     o.pagesExtension.add(petite);
+    this.extensionDesPages.set(petite.webContents, extension);
     petite.on("closed", () => {
       o.petites.delete(petite);
       o.pagesExtension.delete(petite);
@@ -895,11 +905,37 @@ export class FenetresSites {
     });
     // M7 : `tabs.update` de cette fenêtre (un onglet pour la bibliothèque) charge par le main, sans `will-frame-navigate`.
     wc.on("did-start-navigation", (d) => {
-      if (d.isMainFrame && !d.isSameDocument && extensionDe(d.url) !== extension) wc.stop();
+      // Filet (comme la vue) : au tour suivant, jamais dans l'écouteur, où `stop()` fait planter le processus.
+      if (d.isMainFrame && !d.isSameDocument && extensionDe(d.url) !== extension)
+        setImmediate(() => {
+          if (!wc.isDestroyed()) wc.stop();
+        });
     });
     wc.setWindowOpenHandler(() => ({ action: "deny" }));
     void wc.loadURL(url).catch(() => {});
     return [wc, petite];
+  }
+
+  /**
+   * I1 : `tabs.update` d'une extension de l'appli vers `url` dans l'onglet `wc`, vérifié avant tout chargement. La vue du
+   * site : une adresse http(s) seulement, et seulement en vue « site » (jamais la page cachée sous l'accueil ou la carte
+   * d'accord, avant « Entrer » ou le choix de l'utilisateur) ; les domaines eux-mêmes sont vérifiés avant par `verifierUrl`.
+   * Une petite fenêtre : les pages de l'extension qui l'a ouverte seulement. Tout autre onglet, ou une appli fermée : non.
+   */
+  peutChargerPourExtension(id: string, wc: WebContents, url: string): boolean {
+    const o = this.ouverte(id);
+    if (!o) return false;
+    if (wc === o.vue.webContents) return /^https?:/i.test(url) && o.affichee === "site";
+    const extension = this.extensionDesPages.get(wc);
+    if (extension === undefined) return false;
+    for (const petite of o.pagesExtension) if (!petite.isDestroyed() && petite.webContents === wc) return extensionDe(url) === extension;
+    return false;
+  }
+
+  /** Ferme le menu « Extensions » de la barre (l'interface envoie ensuite la hauteur 0 du panneau). */
+  private fermerPanneau(o: Ouverte): void {
+    if (o.panneau === 0) return;
+    if (!o.fenetre.isDestroyed() && !o.fenetre.webContents.isDestroyed()) o.fenetre.webContents.send(CANAUX.siteExtensionsFermer);
   }
 
   /** `tabs.remove` d'une page d'extension : sa petite fenêtre, si c'en est une ouverte ici ; rien sinon. */

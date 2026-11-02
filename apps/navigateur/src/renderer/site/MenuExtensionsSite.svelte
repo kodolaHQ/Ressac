@@ -19,10 +19,21 @@
   let panneau = $state<HTMLElement | null>(null);
   let lecture = 0;
 
-  async function relire() {
+  /**
+   * Relit la liste. Une lecture posée (ni ratée, ni dépassée par une plus récente) remplace l'état voulu des extensions
+   * sans demande en attente : c'est l'état du process principal (m1 : jamais après une lecture ratée, qui montrerait
+   * l'ancien état à tort ; la prochaine lecture le fera).
+   */
+  async function relire(): Promise<void> {
     const n = ++lecture;
     const l = await api.extensions.liste().catch(() => null);
-    if (l && n === lecture) lignes = l;
+    if (!l || n !== lecture) return;
+    lignes = l;
+    for (const cle of Object.keys(voulus))
+      if (!enCours[cle]) {
+        delete voulus[cle];
+        delete enCours[cle];
+      }
   }
 
   function ouvrir() {
@@ -46,11 +57,10 @@
     if (reste > 0) return;
     // Plus rien en attente : l'état lu au process principal remplace celui des clics.
     await relire();
-    if (!enCours[l.cle]) {
-      delete enCours[l.cle];
-      delete voulus[l.cle];
-    }
   }
+
+  // Fermé à la demande du process principal : un clic dans la vue du site, ou son passage en plein écran.
+  $effect(() => api.extensions.surFermer(() => fermer()));
 
   // La liste est relue à chaque changement des extensions (menu ouvert).
   $effect(() =>
