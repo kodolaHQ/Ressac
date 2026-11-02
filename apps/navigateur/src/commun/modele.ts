@@ -293,3 +293,19 @@ export const SORTIE_GAUCHE = 60;
 export const LARGEUR_BARRE = 240;
 /** Révélée, la barre reste ouverte tant que la souris ne dépasse pas sa largeur de plus de cette marge (px). */
 export const MARGE_BARRE = 40;
+
+/** Page Relecture d'un projet (plan 17) : `webaios://relecture/<projet>`, une par projet et par fenêtre. */
+export const PREFIXE_RELECTURE = "webaios://relecture/";
+/** Copie de `ID_PROJET` du noyau (l'interface n'importe pas ses valeurs) ; un test vérifie qu'elles s'accordent. */
+const ID_PROJET_PAGE = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5})$/;
+export const urlRelecture = (projet: string) => PREFIXE_RELECTURE + projet;
+/** Le projet d'une page Relecture, ou null si l'URL n'en est pas une (jamais un chemin). */
+export function projetDeUrlRelecture(url: string): string | null {
+  if (!url.startsWith(PREFIXE_RELECTURE)) return null;
+  const p = url.slice(PREFIXE_RELECTURE.length);
+  return ID_PROJET_PAGE.test(p) ? p : null;
+}
+/** Lignes de contexte chargées d'un coup par « déplier » sur la page Relecture. */
+export const LIGNES_DEPLIEES = 20;
+/** Ce que la page Relecture affiche à la place d'un fichier non affichable (copies de `FICHIER_BINAIRE`/`FICHIER_TROP_GROS`). */
+export const NON_AFFICHABLE = { binaire: "fichier binaire", "trop-gros": "fichier trop gros pour la relecture" } as const;

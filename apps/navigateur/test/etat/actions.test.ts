@@ -728,3 +728,35 @@ test("profilsEnUsage et profilsChanges : par identifiant, espaces compris", () =
   expect(e.profils).not.toBe(avant.profils);
   expect(profilsChanges(avant, e)).toBe(false);
 });
+
+// Plan 17, tâche 11 : la page Relecture d'un projet.
+test("ouvrirRelecture ouvre webaios://relecture/app-essai titré « Relecture — Essai » ; un second appel revient au même onglet", async () => {
+  const { urlRelecture } = await import("../../src/commun/modele");
+  ag({ type: "ouvrirRelecture", fenetreId: F, projet: "app-essai", nom: "Essai" });
+  const pages = () => Object.values(e.onglets).filter((o) => o.url === "webaios://relecture/app-essai");
+  expect(pages()).toHaveLength(1);
+  expect(pages()[0]).toMatchObject({ titre: "Relecture — Essai" });
+  expect(urlRelecture("app-essai")).toBe("webaios://relecture/app-essai");
+  ouvrir("https://b.test/");
+  ag({ type: "ouvrirRelecture", fenetreId: F, projet: "app-essai", nom: "Essai" });
+  expect(pages()).toHaveLength(1);
+  expect(actif()).toBe(pages()[0]!.id);
+  expect(SchemaAction.safeParse({ type: "ouvrirRelecture", fenetreId: F, projet: "../x", nom: "x" }).success).toBe(false);
+});
+
+test("projetDeUrlRelecture refuse webaios://relecture/../x et webaios://relecture/app-", async () => {
+  const { projetDeUrlRelecture } = await import("../../src/commun/modele");
+  const { ID_PROJET } = await import("@webaios/noyau");
+  expect(projetDeUrlRelecture("webaios://relecture/../x")).toBeNull();
+  expect(projetDeUrlRelecture("webaios://relecture/app-")).toBeNull();
+  expect(projetDeUrlRelecture("webaios://relecture/app-essai/x")).toBeNull();
+  expect(projetDeUrlRelecture("webaios://applications")).toBeNull();
+  expect(projetDeUrlRelecture("webaios://relecture/app-essai")).toBe("app-essai");
+  expect(projetDeUrlRelecture("webaios://relecture/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
+  // Les copies de l'interface suivent le noyau.
+  const { NON_AFFICHABLE } = await import("../../src/commun/modele");
+  const { FICHIER_BINAIRE, FICHIER_TROP_GROS } = await import("@webaios/noyau");
+  expect(NON_AFFICHABLE).toEqual({ binaire: FICHIER_BINAIRE, "trop-gros": FICHIER_TROP_GROS });
+  for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b"])
+    expect(projetDeUrlRelecture(`webaios://relecture/${p}`) !== null).toBe(ID_PROJET.test(p));
+});

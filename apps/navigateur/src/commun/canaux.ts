@@ -145,6 +145,10 @@ export const CANAUX = {
   externesRelire: "webaios:externes-relire",
   /** Diffusé quand un projet externe ou un client change (sans contenu : relire). */
   externesChange: "webaios:externes-change",
+  /** Page Relecture (fenêtre principale seule) : comparaison gardée par projet, diff d'un fichier, lignes cachées. */
+  relectureOuvrir: "webaios:relecture-ouvrir",
+  relectureFichier: "webaios:relecture-fichier",
+  relectureLignes: "webaios:relecture-lignes",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";

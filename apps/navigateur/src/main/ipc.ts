@@ -11,6 +11,7 @@ import type { Telechargements } from "./telechargements";
 import type { ServiceActions } from "./agent/actions";
 import { ID_PROJET, type IdProjet } from "@webaios/noyau";
 import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type EtatExternes, type LotAffiche } from "../commun/api";
+import type { DiffFichier, VueRelecture } from "../commun/api";
 import type { CibleDesign } from "./design/service";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
@@ -159,7 +160,13 @@ export interface Gestionnaires {
     brancher(nom: string): Promise<{ commande: string }>;
     revoquer(id: string): Promise<void>;
     oublier(id: string): Promise<void>;
-    relire(id: string): void;
+    relire(f: IdFenetre, id: string): void;
+  };
+  /** Page Relecture (fenêtre principale) : `projet` validé ici ; le chemin, par la comparaison gardée. */
+  relecture: {
+    ouvrir(p: IdProjet): Promise<VueRelecture>;
+    fichier(p: IdProjet, chemin: string): Promise<DiffFichier>;
+    lignes(p: IdProjet, chemin: string, debut: number, fin: number): Promise<string[]>;
   };
 }
 
@@ -460,6 +467,7 @@ export function brancherIpc(g: Gestionnaires): void {
   });
   brancherDesign(g);
   brancherExternes(g);
+  brancherRelecture(g);
 }
 
 type OrigineDesign = { cible: CibleDesign; origine: "fenetre" | "pastille" | "calque" };
@@ -545,6 +553,30 @@ function brancherExternes(g: Gestionnaires): void {
     if (typeof id === "string" && ID_EXTERNE.test(id)) await g.externes.oublier(id);
   });
   ipcMain.on(CANAUX.externesRelire, (e, id: unknown) => {
-    if (g.fenetreDe(e) && typeof id === "string" && ID_EXTERNE.test(id)) g.externes.relire(id);
+    const f = g.fenetreDe(e);
+    if (f && typeof id === "string" && ID_EXTERNE.test(id)) g.externes.relire(f, id);
+  });
+}
+
+const CHEMIN_RELECTURE_MAX = 4096;
+const entier = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 1;
+
+/** Page Relecture : la fenêtre principale seule ; projet par `ID_PROJET`, chemin borné (le service le cherche dans la comparaison gardée). */
+function brancherRelecture(g: Gestionnaires): void {
+  const verifier = (e: Pick<IpcMainEvent, "sender" | "senderFrame">, p: unknown): IdProjet => {
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+    if (typeof p !== "string" || !ID_PROJET.test(p)) throw new Error("projet invalide");
+    return p;
+  };
+  const chemin = (c: unknown): string => {
+    if (typeof c !== "string" || c === "" || c.length > CHEMIN_RELECTURE_MAX || c.includes("\0")) throw new Error("chemin invalide");
+    return c;
+  };
+  ipcMain.handle(CANAUX.relectureOuvrir, (e, p: unknown) => g.relecture.ouvrir(verifier(e, p)));
+  ipcMain.handle(CANAUX.relectureFichier, (e, p: unknown, c: unknown) => g.relecture.fichier(verifier(e, p), chemin(c)));
+  ipcMain.handle(CANAUX.relectureLignes, (e, p: unknown, c: unknown, debut: unknown, fin: unknown) => {
+    const projet = verifier(e, p);
+    if (!entier(debut) || !entier(fin) || fin < debut) throw new Error("lignes invalides");
+    return g.relecture.lignes(projet, chemin(c), debut, fin);
   });
 }

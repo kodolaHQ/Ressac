@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
 import type { EtatLot, IdProjet, ProjetExterne, ProjetSuivi } from "@webaios/noyau";
+import { ID_PROJET, type Commentaire, type DiffFichier, type FichierModifie } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
@@ -96,6 +97,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choisirMoteur"), moteur }),
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("largeurPanneauAgent"), largeur: z.number().finite() }),
+  /** Active la page Relecture du projet dans cette fenêtre, ou l'ouvre (une par projet et par fenêtre). */
+  z.object({ type: z.literal("ouvrirRelecture"), fenetreId: id, projet: z.string().regex(ID_PROJET), nom: z.string().max(80) }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
@@ -334,6 +337,7 @@ export interface ApiWebaios {
   /** Mode design de l'onglet actif de cette fenêtre, et paniers de remarques. */
   design: ApiDesign;
   externes: ApiExternes;
+  relecture: ApiRelecture;
 }
 
 
@@ -353,7 +357,7 @@ const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
 export const SchemaActionApplication = z
   .object({
     dossier: z.string(),
-    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier"]),
+    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
   })
   .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
@@ -664,4 +668,18 @@ export interface ApiExternes {
   /** « Relire » : la page de relecture du projet. */
   relire(id: string): void;
   surChange(rappel: () => void): () => void;
+}
+
+/** Page Relecture : ce qu'elle montre d'un projet (le diff depuis la dernière relecture), ou pourquoi elle ne le peut pas. */
+export type VueRelecture =
+  | { etat: "ok"; nom: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[] }
+  | { etat: "indisponible"; nom: string; raison: string };
+export type { DiffFichier, FichierModifie, Commentaire };
+export interface ApiRelecture {
+  /** Compare le projet à sa dernière relecture ; le process principal garde cette comparaison (par projet). */
+  ouvrir(projet: IdProjet): Promise<VueRelecture>;
+  /** Le diff d'un fichier de la comparaison gardée (jamais un autre chemin). */
+  fichier(projet: IdProjet, chemin: string): Promise<DiffFichier>;
+  /** Lignes `debut`..`fin` (à partir de 1) de la version courante d'un fichier de la comparaison gardée. */
+  lignes(projet: IdProjet, chemin: string, debut: number, fin: number): Promise<string[]>;
 }

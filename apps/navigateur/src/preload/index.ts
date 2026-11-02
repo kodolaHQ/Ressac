@@ -173,6 +173,11 @@ const api: ApiWebaios = {
     relire: (id) => ipcRenderer.send(CANAUX.externesRelire, id),
     surChange: (rappel) => ecouter(CANAUX.externesChange, () => rappel()),
   },
+  relecture: {
+    ouvrir: (projet) => ipcRenderer.invoke(CANAUX.relectureOuvrir, projet),
+    fichier: (projet, chemin) => ipcRenderer.invoke(CANAUX.relectureFichier, projet, chemin),
+    lignes: (projet, chemin, debut, fin) => ipcRenderer.invoke(CANAUX.relectureLignes, projet, chemin, debut, fin),
+  },
 };
 
 /** Pastille d'une fenêtre d'appli : l'accès de l'agent et la taille de sa vue, pas le reste de l'API de la fenêtre. */

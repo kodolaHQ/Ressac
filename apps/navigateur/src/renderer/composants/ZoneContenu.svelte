@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { actionDeUrl, cibleDeUrlWorkflow, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
+  import { actionDeUrl, cibleDeUrlWorkflow, projetDeUrlRelecture, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, type EtatFenetre, type Onglet } from "../../commun/modele";
   import { ACTIONS_EN_ESPACE_PRIVE } from "../../commun/actions";
   import PageAction from "../action/PageAction.svelte";
   import Actions from "./Actions.svelte";
@@ -16,6 +16,7 @@
   import PageVide from "./PageVide.svelte";
   import Telechargements from "./Telechargements.svelte";
   import PanierDesign from "./PanierDesign.svelte";
+  import Relecture from "./Relecture.svelte";
   import { design, relireDesign } from "./design.svelte";
 
   let {
@@ -32,6 +33,8 @@
   // Page d'une action : l'ouvrir ne lance rien. Refusée quand l'espace de l'onglet (ou celui affiché) est privé ; un
   // espace introuvable compte comme privé.
   const pageAction = $derived(onglet ? actionDeUrl(onglet.url) : null);
+  /** Page Relecture d'un projet (une par projet et par fenêtre). */
+  const projetRelecture = $derived(onglet ? projetDeUrlRelecture(onglet.url) : null);
   const actionEnPrive = $derived.by(() => {
     const espaces = etat.valeur?.espaces ?? [];
     const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
@@ -104,6 +107,8 @@
     {:else}
       {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
     {/if}
+  {:else if projetRelecture}
+    {#key projetRelecture}<Relecture projet={projetRelecture} />{/key}
   {:else if onglet?.erreur}
     <div class="plante">
       <p>Impossible d'ouvrir cette page.</p>

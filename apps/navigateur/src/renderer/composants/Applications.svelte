@@ -165,20 +165,21 @@
     switch (a.etat) {
       case "preparation":
       case "lancement":
-        return { boutons: [{ libelle: "Arrêter", action: "arreter" }], menu: [entree("Déboguer", "deboguer")] };
+        return { boutons: [{ libelle: "Arrêter", action: "arreter" }], menu: [entree("Déboguer", "deboguer"), entree("Relire", "relire")] };
       case "en-marche":
         return {
           boutons: [
             { libelle: "Ouvrir", action: "ouvrir" },
             { libelle: "Arrêter", action: "arreter" },
           ],
-          menu: [entree("Relancer", "relancer"), entree("Déboguer", "deboguer")],
+          menu: [entree("Relancer", "relancer"), entree("Déboguer", "deboguer"), entree("Relire", "relire")],
         };
       case "erreur":
         return {
           boutons: [
             { libelle: "Relancer", action: "relancer", lance: true },
             { libelle: "Déboguer", action: "deboguer" },
+            { libelle: "Relire", action: "relire" },
           ],
           menu: [entree("Supprimer", "supprimer"), ...promouvoir],
         };
@@ -187,6 +188,7 @@
           boutons: [
             { libelle: "Lancer", action: "lancer", lance: true },
             { libelle: "Déboguer", action: "deboguer" },
+            { libelle: "Relire", action: "relire" },
           ],
           menu: [entree("Supprimer", "supprimer"), ...promouvoir, entree("Afficher le dossier", "dossier")],
         };

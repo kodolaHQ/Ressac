@@ -59,6 +59,7 @@ import { ServiceDesign } from "./design/service";
 import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
 import { creerEnvoi } from "./design/envoi";
 import { demarrerExternes, type ServiceExternes } from "./design/externes";
+import { ServiceRelecture } from "./design/relecture";
 import { homedir } from "node:os";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
@@ -281,6 +282,11 @@ let sites: ServiceSites | undefined;
 let design: ServiceDesign | undefined;
 /** Le MCP externe et ses projets (page Applications) ; prêt une fois le registre ouvert. */
 let externes: ServiceExternes | undefined;
+/** Page Relecture : photos de prise en charge des applis, comparaison gardée par projet. */
+let relecture: ServiceRelecture | undefined;
+let minuteurPriseEnCharge: NodeJS.Timeout | undefined;
+/** Reprend la prise en charge des applis après 1 s de calme ; branché quand la relecture est prête. */
+let planifierPriseEnCharge = (): void => undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
@@ -811,9 +817,26 @@ app.whenReady().then(async () => {
         return externes.brancher(nom);
       },
       revoquer: async (id) => void (await externes?.revoquer(id)),
-      oublier: async (id) => void (await externes?.oublier(id)),
-      // « Relire » : la page de relecture arrive avec la tâche 11 ; pour l'instant, rien.
-      relire: () => undefined,
+      oublier: async (id) => {
+        await externes?.oublier(id);
+        relecture?.oublier(`ext-${id}`);
+      },
+      // « Relire » : la page Relecture du projet, dans la fenêtre qui l'a demandée.
+      relire: (f, id) =>
+        void design?.projetSuivi(`ext-${id}`).then((p) => {
+          if (p?.type === "externe") ouvrirRelecture(f, p.projet, p.nom);
+        }),
+    },
+    relecture: {
+      ouvrir: async (p) => {
+        if (!relecture) throw new Error("la relecture n'est pas prête");
+        return relecture.ouvrir(p);
+      },
+      fichier: async (p, chemin) => {
+        if (!relecture) throw new Error("la relecture n'est pas prête");
+        return relecture.fichier(p, chemin);
+      },
+      lignes: async (p, chemin, debut, fin) => (await relecture?.lignes(p, chemin, debut, fin)) ?? [],
     },
   });
   const cibles: CiblesMenu = {
@@ -908,6 +931,7 @@ app.whenReady().then(async () => {
     diffuser: () => {
       diffuser(CANAUX.applicationsChange, null);
       diffuser(CANAUX.designChange, null);
+      planifierPriseEnCharge();
     },
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre, son mode design aussi.
     surFenetreFermee: (dossier) => {
@@ -929,6 +953,7 @@ app.whenReady().then(async () => {
       agent?.preRemplir(f, texte, acces);
       cibles.raccourci(f, "agent");
     },
+    relire: (f, dossier, nom) => ouvrirRelecture(f, `app-${dossier}`, nom),
   });
   // Mode design. Les paniers et lots des applis et des démos vont dans l'espace (l'agent les lit) ; les registres des
   // projets externes et des clients, dans le profil du navigateur (jamais monté dans le conteneur).
@@ -968,6 +993,10 @@ app.whenReady().then(async () => {
     },
     fenetreApp: (d) => applications?.fenetres.fenetre(d) ?? null,
     diffuser: diffuserDesign,
+    // « Relire ce projet » (bouton, menu, pastille) : la page Relecture dans la fenêtre principale (celle de l'onglet, ou l'active).
+    relire: (p, c) => {
+      if (p.type !== "demo") ouvrirRelecture(c.type === "fenetre" ? c.fenetreId : undefined, p.projet, p.nom);
+    },
     // Le lot envoyé à l'agent : une ligne pré-remplie dans sa session, jamais envoyée.
     envoyer: creerEnvoi({
       chemins,
@@ -983,6 +1012,23 @@ app.whenReady().then(async () => {
       },
     }),
   });
+  // Relecture : la première photo de chaque appli au démarrage, puis à chaque changement de la liste (après 1 s de calme).
+  relecture = new ServiceRelecture({
+    dossiers: dossiersDesign,
+    chemins,
+    registre: () => registreExternes,
+    applis: async () => (await applications?.gestionnaire.liste()) ?? [],
+  });
+  const prendreEnCharge = () =>
+    void applications?.gestionnaire
+      .liste()
+      .then((l) => relecture?.priseEnCharge(l.map((a) => a.dossier)))
+      .catch((e) => console.error("[relecture] prise en charge :", e));
+  planifierPriseEnCharge = () => {
+    clearTimeout(minuteurPriseEnCharge);
+    minuteurPriseEnCharge = setTimeout(prendreEnCharge, 1000);
+  };
+  prendreEnCharge();
   // Les lots traités ou trop anciens sont purgés au démarrage puis toutes les 24 heures.
   void remarques.purger().catch(() => undefined);
   minuteurPurgeLots = setInterval(() => void remarques.purger().catch(() => undefined), 24 * 60 * 60 * 1000);
@@ -1007,6 +1053,19 @@ app.whenReady().then(async () => {
       });
     })
     .catch((e) => console.error("[design] projets externes indisponibles :", e));
+  /** La page Relecture d'un projet dans la fenêtre `f` (sinon la fenêtre principale active, rouverte au besoin), mise devant. */
+  function ouvrirRelecture(f: IdFenetre | undefined, projet: string, nom: string): void {
+    if (!f) {
+      if (!fenetreAgent()) rouvrirFenetres();
+      f = fenetreAgent();
+    }
+    if (!f) return;
+    magasin.agir({ type: "ouvrirRelecture", fenetreId: f, projet, nom: nom.slice(0, 80) });
+    const fenetre = fenetres.get(f);
+    if (!fenetre || fenetre.isDestroyed() || INVISIBLE) return;
+    if (fenetre.isMinimized()) fenetre.restore();
+    fenetre.focus();
+  }
   // Un autre onglet affiché (ou l'onglet fermé) arrête le mode design de la fenêtre ; après la synchro des vues.
   magasin.abonner(() => design?.verifierOnglets());
   // Les applis de site : leurs fenêtres n'attendent ni Docker ni l'agent.
@@ -1211,6 +1270,7 @@ app.on("activate", () => rouvrirFenetres());
 app.on("will-quit", () => {
   clearInterval(minuteurPurge);
   clearInterval(minuteurPurgeLots);
+  clearTimeout(minuteurPriseEnCharge);
   void externes?.arreter();
   arreterMisesAJour?.();
   historique?.fermer();
