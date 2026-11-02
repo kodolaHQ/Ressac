@@ -35,6 +35,16 @@ export function empreinteLectureSite(d: DeclarationSite): string {
   return createHash("sha256").update(JSON.stringify({ nom: d.nom, domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
 }
 
+/**
+ * L'empreinte des domaines d'une appli, pour les extensions du Store activées dans sa session : ses domaines et ses
+ * domaines de connexion (sha256 d'un JSON canonique, minuscules, sans doublon, triés). Ni le nom, ni les retouches, ni la
+ * reprise n'y entrent.
+ */
+export function empreinteExtensionsSite(d: DeclarationSite): string {
+  const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
+  return createHash("sha256").update(JSON.stringify({ domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
+}
+
 /** Au moins une retouche, ou la reprise des vidéos. */
 export function accordNecessaire(d: DeclarationSite): boolean {
   return d.retouches.length > 0 || d.reprise;

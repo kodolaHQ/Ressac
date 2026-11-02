@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  accordCouvre, accordNecessaire, accorderSite, droitsDe, empreinteLectureSite, lireAccordsSites, retirerAccordSite,
+  accordCouvre, accordNecessaire, accorderSite, droitsDe, empreinteExtensionsSite, empreinteLectureSite, lireAccordsSites, retirerAccordSite,
 } from "../../src/sites/accords.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -92,4 +92,15 @@ test("empreinteLectureSite : nom, domaines et connexion ; l'ordre et la casse de
   expect(empreinteLectureSite({ ...avec, nom: "Mail" })).not.toBe(e);
   // Les champs ne se confondent pas (un domaine passé en connexion change l'empreinte).
   expect(empreinteLectureSite({ ...avec, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
+});
+
+test("empreinteExtensionsSite : stable pour un autre nom, d'autres retouches, une autre reprise, un autre ordre ou une autre casse ; change avec un domaine en plus", () => {
+  const e = empreinteExtensionsSite(base);
+  expect(e).toMatch(/^[0-9a-f]{64}$/);
+  expect(empreinteExtensionsSite({ ...base, nom: "Autre", retouches: [], reprise: true })).toBe(e);
+  const deux = { ...base, domaines: ["a.example", "B.example"], connexion: ["c.example", "d.example"] };
+  expect(empreinteExtensionsSite({ ...deux, domaines: ["b.EXAMPLE", "a.example", "a.example"], connexion: ["D.example", "c.example"] })).toBe(empreinteExtensionsSite(deux));
+  expect(empreinteExtensionsSite({ ...base, domaines: [...base.domaines, "autre.example"] })).not.toBe(e);
+  expect(empreinteExtensionsSite({ ...base, connexion: ["login.example"] })).not.toBe(e);
+  expect(empreinteExtensionsSite({ ...base, domaines: [], connexion: ["vidola-a.example"] })).not.toBe(e);
 });
