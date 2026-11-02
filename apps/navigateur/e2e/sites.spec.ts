@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Frame, type Page } from "@playwright/test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, serveurSites, vueSite } from "./aide";
+import { ecrireSite, etatVueSite, fenetreSite, lancer, lireNotifications, nombreWebContents, nouvelleRacine, serveurSites, vueSite } from "./aide";
 
 /** Les hôtes de test `*.localhost` sont permis (http compris) ; jamais une vraie adresse. */
 const ENV = { WEBAIOS_TEST_ADRESSES_LOCALES: "1" };
@@ -86,6 +86,7 @@ const fenetresDuSite = (app: ElectronApplication, id: string) =>
   app.evaluate(
     ({ BrowserWindow }, id) =>
       BrowserWindow.getAllWindows().filter((w) => {
+        if (w.isDestroyed() || w.webContents.isDestroyed()) return false;
         const u = w.webContents.getURL();
         return u.includes("/renderer/site.html") && new URL(u).searchParams.get("id") === id;
       }).length,
@@ -93,9 +94,10 @@ const fenetresDuSite = (app: ElectronApplication, id: string) =>
   );
 
 async function demarrer(sites: Record<string, Parameters<typeof ecrireSite>[2]> = { vidola: vidola() }) {
-  const l = await lancer({ env: ENV });
-  for (const [id, s] of Object.entries(sites)) ecrireSite(l.racine, id, s);
-  return l;
+  // Les appli sont écrites avant le lancement : le surveillant ne voit aucun événement initial qui relirait l'appli en route.
+  const racine = nouvelleRacine();
+  for (const [id, s] of Object.entries(sites)) ecrireSite(racine, id, s);
+  return lancer({ env: ENV, racine });
 }
 
 /** Ouvre l'appli et attend que la vue soit sur `chemin` du site. */
@@ -1007,10 +1009,16 @@ test.describe("carte d'accord", () => {
 
   /** Ferme la fenêtre de l'appli (comme l'utilisateur) et la rouvre depuis la page Applications. */
   async function rouvrir(app: ElectronApplication, fenetre: Page) {
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes("/renderer/site.html")).forEach((w) => w.close()));
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed() && w.webContents.getURL().includes("/renderer/site.html"))
+        .forEach((w) => w.close()),
+    );
     await expect.poll(() => fenetresDuSite(app, "vidola")).toBe(0);
     await ouvrirSite(fenetre, "vidola");
-    return fenetreSite(app, "vidola");
+    const page = await fenetreSite(app, "vidola");
+    // Comme `ouvrirEtAttendre` : la nouvelle vue est chargée avant que le test la lise (la carte, elle, cache la vue).
+    return page;
   }
 
   const shorts = (app: ElectronApplication) => vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display');
@@ -1042,8 +1050,7 @@ test.describe("carte d'accord", () => {
     await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
     expect((await etatVueSite(app, "vidola"))?.visible).toBe(true);
     await expect(page.getByTestId("carte-accord-site")).toHaveCount(0);
-    await new Promise((r) => setTimeout(r, 300));
-    expect(await shorts(app)).toBe("block");
+    await expect.poll(() => shorts(app)).toBe("block");
     expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBeNull();
     const memoire = join(profil, "sites", "vidola", "memoire.json");
     expect(!existsSync(memoire) || Object.keys(JSON.parse(readFileSync(memoire, "utf8")).positions).length === 0).toBe(true);
@@ -1051,7 +1058,7 @@ test.describe("carte d'accord", () => {
     // Refuser vaut pour cette ouverture seulement.
     const encore = await rouvrir(app, fenetre);
     await expect(encore.getByTestId("carte-accord-site")).toBeVisible();
-    expect((await etatVueSite(app, "vidola"))?.visible).toBe(false);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.visible).toBe(false);
     await fermer();
   });
 
@@ -1060,14 +1067,15 @@ test.describe("carte d'accord", () => {
     await page.getByTestId("accorder-site").click();
     await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
     await expect.poll(() => shorts(app)).toBe("none");
-    expect(await vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBe("oui");
-    expect((await etatVueSite(app, "vidola"))?.visible).toBe(true);
+    await expect.poll(() => vueSite(app, "vidola", "document.body.dataset.retouche ?? null")).toBe("oui");
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.visible).toBe(true);
     const accords = JSON.parse(readFileSync(join(profil, "sites-accords.json"), "utf8"));
     expect(accords.vidola).toEqual({ domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [lecteur()], reprise: true });
     const encore = await rouvrir(app, fenetre);
-    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
-    await expect.poll(() => shorts(app)).toBe("none");
     await expect(encore.getByTestId("carte-accord-site")).toHaveCount(0);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.url).toBe(serveur.url("vidola-a.localhost", "/serie/the-bear"));
+    await expect.poll(() => vueSite(app, "vidola", "document.readyState")).toBe("complete");
+    await expect.poll(() => shorts(app)).toBe("none");
     await fermer();
   });
 
@@ -1560,10 +1568,11 @@ test.describe("section Sites de la page Applications", () => {
 
   /** Vidola (avec un accueil), Autre (sans), et un site.json abîmé ; la page Applications est ouverte. */
   async function demarrerSection(env: Record<string, string> = {}, accueil = true) {
-    const l = await lancer({ env: { ...ENV, ...env } });
-    ecrireSite(l.racine, "vidola", { declaration: vidola().declaration, ...(accueil ? { fichiers: { "accueil/index.html": ACCUEIL } } : {}) });
-    ecrireSite(l.racine, "autre", { declaration: { nom: "Autre", adresse: serveur.url("vidola-b.localhost", "/"), domaines: ["vidola-b.localhost"] } });
-    ecrireSite(l.racine, "casse", { declaration: "{ pas du json" });
+    const racine = nouvelleRacine();
+    ecrireSite(racine, "vidola", { declaration: vidola().declaration, ...(accueil ? { fichiers: { "accueil/index.html": ACCUEIL } } : {}) });
+    ecrireSite(racine, "autre", { declaration: { nom: "Autre", adresse: serveur.url("vidola-b.localhost", "/"), domaines: ["vidola-b.localhost"] } });
+    ecrireSite(racine, "casse", { declaration: "{ pas du json" });
+    const l = await lancer({ env: { ...ENV, ...env }, racine });
     await menuApplications(l.app);
     await expect(l.fenetre.getByTestId("page-applications")).toBeVisible();
     await expect(l.fenetre.getByTestId("section-sites")).toBeVisible();

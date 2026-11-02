@@ -60,4 +60,6 @@ export async function effacerSessionSite(id: string): Promise<void> {
   await s.clearStorageData();
   await s.clearCache();
   await s.clearAuthCache();
+  // Les cookies effacés sont écrits tout de suite : un arrêt brutal ne les ressuscite pas.
+  await s.cookies.flushStore();
 }

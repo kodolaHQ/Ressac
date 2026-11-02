@@ -28,6 +28,7 @@ vi.mock("electron", () => ({
           clearCache: async () => void f.efface.push("cache"),
           clearAuthCache: async () => void f.efface.push("authentification"),
           closeAllConnections: async () => void f.efface.push("connexions"),
+          cookies: { flushStore: async () => void f.efface.push("cookies") },
         });
         sessions.set(partition, s);
       }
@@ -110,7 +111,7 @@ test("preferencesSite : celles d'un onglet, vidéos lancées sans geste", () => 
 test("effacerSessionSite : connexions fermées, puis stockage, cache et identifiants HTTP, de la seule partition de l'appli", async () => {
   sessionSite("youtube");
   await effacerSessionSite("vidola");
-  expect(fausse("vidola").efface).toEqual(["connexions", "stockage", "cache", "authentification"]);
+  expect(fausse("vidola").efface).toEqual(["connexions", "stockage", "cache", "authentification", "cookies"]);
   expect(fausse("youtube").efface).toEqual([]);
 });
 

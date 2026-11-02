@@ -212,7 +212,7 @@
     {#if sansDocker}
       <p class="bandeau" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
     {/if}
-    {#if chargee && donnees.applications.length === 0}
+    {#if chargee && donnees.applications.length === 0 && sites.length === 0}
       <p class="vide">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
     {:else}
       <ul>
@@ -247,7 +247,7 @@
             </div>
           </li>
         {:else}
-          <li class="aucune">Aucune appli ne correspond.</li>
+          {#if lignesSites.length === 0}<li class="aucune">Aucune appli ne correspond.</li>{/if}
         {/each}
       </ul>
     {/if}
@@ -272,6 +272,10 @@
               {#if s.erreur !== undefined}
                 <span class="erreur-site" data-testid="site-{s.id}-erreur">{s.erreur}</span>
               {/if}
+              {#if s.erreurAction}
+                <span class="erreur-site" data-testid="site-{s.id}-erreur-action" role="alert">{s.erreurAction}</span>
+              {/if}
+              {#if !s.sansActions}
               <div class="actions">
                 {#if s.erreur === undefined}
                   <button data-testid="site-{s.id}-ouvrir" onclick={() => agirSite(s, "ouvrir")}>Ouvrir</button>
@@ -281,6 +285,7 @@
                 <button data-testid="site-{s.id}-dossier" onclick={() => agirSite(s, "dossier")}>Afficher le dossier</button>
                 <button data-testid="site-{s.id}-supprimer" onclick={() => (siteASupprimer = s)}>Supprimer</button>
               </div>
+              {/if}
             </li>
           {/each}
         </ul>

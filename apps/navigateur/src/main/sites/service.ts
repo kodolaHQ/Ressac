@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { constants } from "node:fs";
-import { mkdir, open, readdir, realpath, rename } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, rename } from "node:fs/promises";
 import { extname, join, sep } from "node:path";
 import { shell } from "electron";
 import {
@@ -98,16 +98,20 @@ const TYPES_ICONE: Record<string, string> = { ".png": "image/png", ".svg": "imag
 
 /**
  * L'icône déclarée par l'appli (`icone`, chemin relatif vers une image), en `data:` ; null si elle manque, sort du dossier
- * (lien, `..`), est un lien ou dépasse `ICONE_MAX`.
+ * (lien, `..`), est un lien, un tube ou dépasse `ICONE_MAX`.
  */
-async function lireIcone(dossier: string, chemin: string): Promise<string | null> {
+export async function lireIcone(dossier: string, chemin: string): Promise<string | null> {
   const type = TYPES_ICONE[extname(chemin).toLowerCase()];
   if (!type) return null;
   try {
+    const fichier = join(dossier, chemin);
+    // Un fichier ordinaire, pas un lien ni un tube nommé : lstat avant tout open.
+    if (!(await lstat(fichier)).isFile()) return null;
+    // Aucun dossier du chemin n'est un lien qui sort du dossier de l'appli.
     const racine = await realpath(dossier);
-    const reel = await realpath(join(dossier, chemin));
-    if (!reel.startsWith(racine + sep)) return null;
-    const f = await open(reel, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (!(await realpath(fichier)).startsWith(racine + sep)) return null;
+    // Sans suivre un lien devenu tel depuis le lstat, et sans attendre un tube.
+    const f = await open(fichier, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const st = await f.stat();
       if (!st.isFile() || st.size > ICONE_MAX) return null;
@@ -176,6 +180,10 @@ export function demarrerSites(o: {
   const changements = new Map<string, number>();
   /** Suppressions en cours : une seconde demande pour la même appli ne fait rien. */
   const suppressions = new Set<string>();
+  /** Ids montrés par la dernière `liste()` : une ligne périmée (dossier renommé depuis) agit encore sur ce qu'elle montrait. */
+  let affiches = new Set<string>();
+  /** Dernière action ratée par appli (« Supprimer » sans corbeille…), montrée en texte sur sa ligne. */
+  const erreursActions = new Map<string, string>();
 
   const fenetres = new FenetresSites({
     memoire: souvenirs,
@@ -345,7 +353,7 @@ export function demarrerSites(o: {
 
   const arreterSurveillance = surveillerSites(o.chemins, (id, quoi) => {
     // La section « Sites » de la page Applications relit la liste (appli écrite, changée ou retirée par l'agent).
-    o.diffuser();
+    if (quoi === "declaration") o.diffuser();
     if (quoi !== "accueil") void relire(id);
   });
 
@@ -420,21 +428,38 @@ export function demarrerSites(o: {
    * (memoire.json supprimé ; l'accueil ouvert reçoit une mémoire vide). Sans fenêtre ouverte, la mémoire n'est pas gardée.
    */
   async function oublier(id: string): Promise<void> {
+    if (!(await connue(id))) return;
     notes.annulerNotes(id);
     const m = await memoire(id);
     await m.effacer();
     if (!fenetres.site(id)) memoires.delete(id);
   }
 
+  /** L'appli est-elle une de celles que la section montre : son dossier existe, ou la dernière liste la montrait ? */
+  async function connue(id: string): Promise<boolean> {
+    return (await dossierReel(id)) || affiches.has(id) || !!fenetres.site(id);
+  }
+
+  /** Le dossier de l'appli existe, et c'est un vrai dossier (jamais un lien). */
+  async function dossierReel(id: string): Promise<boolean> {
+    try {
+      return (await lstat(join(o.chemins.sites, id))).isDirectory();
+    } catch {
+      return false;
+    }
+  }
+
   /**
-   * « Supprimer » : lecture de l'adresse annulée, notes abandonnées, fenêtre fermée (vue détruite) avant que sa session soit
+   * « Supprimer » : lecture d'adresse annulée, notes abandonnées, fenêtre fermée (vue détruite) avant que sa session soit
    * effacée, puis mémoire, adresse et accord oubliés, enfin le dossier à la corbeille. Une appli recréée au même id repart
-   * vide. WebAiOs n'écrit rien d'autre dans ~/WebAiOs/sites/<id>/.
+   * vide. WebAiOs n'écrit rien d'autre dans ~/WebAiOs/sites/<id>/. Un dossier disparu depuis l'affichage de la ligne :
+   * les données sont effacées quand même. Un échec de la corbeille est montré sur la ligne.
    */
   async function supprimer(id: string): Promise<void> {
     if (suppressions.has(id)) return;
     suppressions.add(id);
     try {
+      if (!(await connue(id))) return;
       recherches.get(id)?.abort();
       notes.annulerNotes(id);
       await fenetres.fermer(id);
@@ -445,9 +470,15 @@ export function demarrerSites(o: {
       await effacerSessionSite(id);
       await supprimerDonneesSite(o.dossierProfil, id);
       souvenirs.oublier(id);
-      const corbeille = join(o.chemins.sites, ".corbeille");
-      await mkdir(corbeille, { recursive: true });
-      await rename(join(o.chemins.sites, id), join(corbeille, `${id}-${Date.now()}`));
+      if (!(await dossierReel(id))) return;
+      try {
+        const corbeille = join(o.chemins.sites, ".corbeille");
+        await mkdir(corbeille, { recursive: true });
+        await rename(join(o.chemins.sites, id), join(corbeille, `${id}-${Date.now()}`));
+      } catch (e) {
+        console.error(`[sites] ${id} : dossier non mis à la corbeille :`, e);
+        erreursActions.set(id, "Dossier non mis à la corbeille : la connexion et la mémoire sont effacées, le dossier reste.");
+      }
     } finally {
       suppressions.delete(id);
       o.diffuser();
@@ -470,11 +501,15 @@ export function demarrerSites(o: {
     fenetres,
     async liste() {
       const sites = await lireSites(o.chemins, lecture);
+      affiches = new Set(sites.map((s) => s.id));
       const ouvertes = new Set(fenetres.ouvertes().map((f) => f.id));
       return Promise.all(
         sites.map(async (s): Promise<SiteAffiche> => {
           const favicon = souvenirs.lire(s.id).favicon ?? null;
-          if ("erreur" in s) return { id: s.id, nom: s.id, description: "", domaine: null, icone: favicon, ouverte: ouvertes.has(s.id), erreur: s.erreur };
+          const erreurAction = erreursActions.get(s.id);
+          // Un id refusé par ID_SITE (« MonSite ») ne peut recevoir aucune action : le schéma les rejetterait toutes.
+          if ("erreur" in s)
+            return { id: s.id, nom: s.id, description: "", domaine: null, icone: favicon, ouverte: ouvertes.has(s.id), erreur: s.erreur, ...(ID_SITE.test(s.id) ? {} : { sansActions: true as const }), ...(erreurAction ? { erreurAction } : {}) };
           const etat = ID_SITE.test(s.id) ? await lireEtatAdresse(dossierSites, s.id) : null;
           const declaree = s.declaration.icone ? await lireIcone(s.dossier, s.declaration.icone) : null;
           return {
@@ -484,12 +519,14 @@ export function demarrerSites(o: {
             domaine: hote(adresseDeDepart(s.declaration, etat)),
             icone: declaree ?? favicon,
             ouverte: ouvertes.has(s.id),
+            ...(erreurAction ? { erreurAction } : {}),
           };
         }),
       );
     },
     async agir(id, a, fenetreId) {
       if (!ID_SITE.test(id)) return;
+      erreursActions.delete(id);
       switch (a) {
         case "ouvrir":
           if (!(await ouvrirParId(id))) console.warn(`[sites] ${id} ne peut pas s'ouvrir`);
@@ -541,11 +578,14 @@ export function demarrerSites(o: {
       // cliquée : site.json a pu grandir entre l'affichage et le clic (l'agent choisit son moment).
       const d = montree.declaration;
       if (empreinteDroits(d) !== empreinte) return fenetres.rediffuser(id);
+      // Une relecture déjà en cours a lu l'accord d'avant : elle est jetée (et refaite une fois l'accord écrit).
+      relectures.set(id, (relectures.get(id) ?? 0) + 1);
       await accorderSite(o.dossierProfil, id, d);
       const s = fenetres.site(id);
       if (!s) return;
       const accorde = droitsDe(d);
       fenetres.apresAccord(id, { ...s, accordRequis: accordNecessaire(s.declaration) && !accordCouvre(accorde, s.declaration) });
+      void relire(id);
     },
     gesteAccueil(id) {
       if (fenetres.site(id)) gestes.geste(id, id);

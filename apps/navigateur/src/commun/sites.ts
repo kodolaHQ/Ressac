@@ -105,6 +105,6 @@ export const sourceRetouche = (id: string, fichier: string) => `webaios-retouche
  */
 export type InjectionCadre = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
 
-export type SiteAffiche = { id: string; nom: string; description: string; domaine: string | null; icone: string | null; ouverte: boolean; erreur?: string };
+export type SiteAffiche = { id: string; nom: string; description: string; domaine: string | null; icone: string | null; ouverte: boolean; erreur?: string; erreurAction?: string; sansActions?: true };
 
 export type ActionSite = "ouvrir" | "modifier" | "oublier" | "dossier" | "supprimer";

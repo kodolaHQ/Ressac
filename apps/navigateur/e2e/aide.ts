@@ -490,11 +490,12 @@ export function vueSite(app: ElectronApplication, id: string, code: string, o: {
   return app.evaluate(
     async ({ BrowserWindow }, [id, code, geste, cadre]) => {
       const f = BrowserWindow.getAllWindows().find((w) => {
+        if (w.isDestroyed() || w.webContents.isDestroyed()) return false;
         const u = w.webContents.getURL();
         return u.includes("/renderer/site.html") && new URL(u).searchParams.get("id") === id;
       });
       const vue = f?.contentView.children[0] as Electron.WebContentsView | undefined;
-      if (!vue) return undefined;
+      if (!vue || vue.webContents.isDestroyed()) return undefined;
       const wc = vue.webContents;
       if (cadre === -1) return wc.executeJavaScript(code, geste);
       const sous = wc.mainFrame.frames[cadre];
@@ -511,11 +512,12 @@ export function etatVueSite(
 ): Promise<{ url: string; bornes: { x: number; y: number; width: number; height: number }; visible: boolean; contenu: [number, number] } | undefined> {
   return app.evaluate(({ BrowserWindow }, id) => {
     const f = BrowserWindow.getAllWindows().find((w) => {
+      if (w.isDestroyed() || w.webContents.isDestroyed()) return false;
       const u = w.webContents.getURL();
       return u.includes("/renderer/site.html") && new URL(u).searchParams.get("id") === id;
     });
     const vue = f?.contentView.children[0] as Electron.WebContentsView | undefined;
-    if (!f || !vue) return undefined;
+    if (!f || !vue || vue.webContents.isDestroyed()) return undefined;
     const [l = 0, h = 0] = f.getContentSize();
     return { url: vue.webContents.getURL(), bornes: vue.getBounds(), visible: vue.getVisible(), contenu: [l, h] as [number, number] };
   }, id);
