@@ -41,10 +41,12 @@ const site: SiteOuvrable = {
 };
 const retouches: RetouchesLues = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
 const avec = (accorde = true) => ({ site, retouches, accorde, garde: GARDE });
+/** La page principale de la vue, sur le site : celle des sous-cadres. */
+const PAGE = "https://vidola-b.example/series/x";
 
 test("sans accord : null", () => {
   expect(injectionPour(avec(false), { url: "https://vidola-b.example/series/x", principal: true })).toBeNull();
-  expect(injectionPour(avec(false), { url: "https://www.lecteur.example/v", principal: false })).toBeNull();
+  expect(injectionPour(avec(false), { url: "https://www.lecteur.example/v", principal: false, page: PAGE })).toBeNull();
 });
 
 test("cadre principal sur /series/x : js et css de la retouche, pont vrai, hotes des domaines effectifs", () => {
@@ -74,26 +76,26 @@ test("cadre principal sur une page sans retouche : ni garde ni script, le pont r
 });
 
 test("sous-cadre lecteur.localhost hors des motifs cadres déclarés : rien, pas même la reprise", () => {
-  const i = injectionPour(avec(), { url: "https://lecteur.localhost/v", principal: false });
+  const i = injectionPour(avec(), { url: "https://lecteur.localhost/v", principal: false, page: PAGE });
   expect(i).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
-  const sansReprise = injectionPour({ ...avec(), site: { ...site, declaration: { ...declaration, reprise: false } } }, { url: "https://lecteur.localhost/v", principal: false });
+  const sansReprise = injectionPour({ ...avec(), site: { ...site, declaration: { ...declaration, reprise: false } } }, { url: "https://lecteur.localhost/v", principal: false, page: PAGE });
   expect(sansReprise?.reprise).toBe(false);
 });
 
 test("sous-cadre qui correspond à cadres : js, pont faux", () => {
-  const i = injectionPour(avec(), { url: "https://www.lecteur.example/v/1", principal: false })!;
+  const i = injectionPour(avec(), { url: "https://www.lecteur.example/v/1", principal: false, page: PAGE })!;
   expect(i.js).toEqual([{ code: "window.l = 1", nom: "webaios-retouche://vidola/lecteur.js" }]);
   expect(i.garde).toBe(GARDE);
   expect(i.pont).toBe(false);
   expect(i.hotes).toEqual(["https://www.lecteur.example/*"]);
   // Le motif de la page principale ne vaut jamais pour un sous-cadre (même sur le site).
-  expect(injectionPour(avec(), { url: "https://vidola-b.example/series/x", principal: false })?.js).toEqual([]);
+  expect(injectionPour(avec(), { url: "https://vidola-b.example/series/x", principal: false, page: PAGE })?.js).toEqual([]);
 });
 
 test("tests seulement : un sous-cadre http local correspond aux motifs https (le serveur de test n'a pas de TLS)", () => {
   const motif = { ...declaration, retouches: [{ correspond: ["/rien"], js: ["lecteur.js"], css: [], cadres: ["https://lecteur.localhost:8080/*"] }] };
   const o = { ...avec(), site: { ...site, declaration: motif } };
-  const cadre = { url: "http://lecteur.localhost:8080/v", principal: false };
+  const cadre = { url: "http://lecteur.localhost:8080/v", principal: false, page: PAGE };
   expect(injectionPour({ ...o, adressesLocales: true }, cadre)?.js).toHaveLength(1);
   expect(injectionPour(o, cadre)?.js ?? []).toEqual([]);
 });
@@ -104,6 +106,14 @@ test("page hors site (connexion) : aucune retouche", () => {
   for (const url of ["about:blank", "javascript:alert(1)", "https://pub.example/series/x", ""]) {
     expect(injectionPour(avec(), { url, principal: true })?.js ?? []).toEqual([]);
     expect(injectionPour(avec(), { url, principal: true })?.pont ?? false).toBe(false);
+  }
+});
+
+test("page principale sur un domaine de connexion : ses sous-cadres ne reçoivent rien (ni retouche ni reprise), même ceux des motifs cadres", () => {
+  const lecteur = { url: "https://www.lecteur.example/v/1", principal: false };
+  expect(injectionPour(avec(), { ...lecteur, page: "https://vidola-b.example/series/x" })!.js).toHaveLength(1);
+  for (const page of ["https://compte.example/connexion", "https://pub.example/", null]) {
+    expect(injectionPour(avec(), { ...lecteur, page })).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
   }
 });
 
@@ -134,7 +144,7 @@ let reprise: boolean;
 let memoireRefusee: boolean;
 let horloge: number;
 let differes: { f: () => void; ms: number }[];
-let demandes: { id: string; cadre: { url: string; principal: boolean } }[];
+let demandes: { id: string; cadre: { url: string; principal: boolean; page?: string | null } }[];
 beforeEach(async () => {
   on.clear();
   handle.clear();
@@ -180,7 +190,8 @@ test("injection : le cadre principal de la vue reçoit ses retouches, calculées
   expect(i.pont).toBe(true);
   expect(demandes).toEqual([{ id: "vidola", cadre: { url: principal.url, principal: true } }]);
   expect((injection(evenement(vue, sous)) as InjectionCadre).pont).toBe(false);
-  expect(demandes[1]).toEqual({ id: "vidola", cadre: { url: sous.url, principal: false } });
+  // Un sous-cadre porte la page principale de la vue (ici aucune : le faux cadre n'a pas de `top`).
+  expect(demandes[1]).toEqual({ id: "vidola", cadre: { url: sous.url, principal: false, page: null } });
 });
 
 test("injection : la petite fenêtre de connexion (même session, autre webContents) ne reçoit rien", () => {
@@ -237,7 +248,7 @@ test("mémoire refusée par le service (appli en cours de suppression) : le refu
 test("principal = le cadre principal de la vue (mainFrame), jamais un autre cadre sans parent (cadre clôturé)", async () => {
   const cloture: FauxCadre = { url: "https://vidola-b.example/series/x", parent: null };
   expect((injection(evenement(vue, cloture)) as InjectionCadre).pont).toBe(false);
-  expect(demandes.at(-1)).toEqual({ id: "vidola", cadre: { url: cloture.url, principal: false } });
+  expect(demandes.at(-1)).toEqual({ id: "vidola", cadre: { url: cloture.url, principal: false, page: null } });
   expect(await memoireIpc(vue, cloture, { op: "retenir", cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: expect.any(String) });
   expect(memoire.contenu().valeurs).toEqual({});
 });
@@ -258,7 +269,7 @@ test("un accord qui couvre moins de droits que la déclaration (cadres ajoutés)
   expect(requis).toBe(true);
   const o = { ...avec(!requis), site: { ...site, declaration: plus, accordRequis: requis } };
   expect(injectionPour(o, { url: "https://vidola-b.example/series/x", principal: true })).toBeNull();
-  expect(injectionPour(o, { url: "https://www.lecteur.example/v", principal: false })).toBeNull();
+  expect(injectionPour(o, { url: "https://www.lecteur.example/v", principal: false, page: PAGE })).toBeNull();
   // Avec l'ancienne déclaration, le même accord suffit.
   expect(accordCouvre(accord, declaration)).toBe(true);
 });
@@ -434,9 +445,9 @@ test("reprise : rien sans accord, sans reprise dans ce cadre, hors du site, ou d
 });
 
 test("motifs cadres déclarés : la reprise ne va que dans le cadre principal et les cadres qui leur correspondent ; sans motif, partout", () => {
-  const avecCadres = injectionPour(avec(), { url: "https://www.lecteur.example/v", principal: false })!;
+  const avecCadres = injectionPour(avec(), { url: "https://www.lecteur.example/v", principal: false, page: PAGE })!;
   expect(avecCadres.reprise).toBe(true);
-  expect(injectionPour(avec(), { url: "https://ads.pub.example/v", principal: false })!.reprise).toBe(false);
+  expect(injectionPour(avec(), { url: "https://ads.pub.example/v", principal: false, page: PAGE })!.reprise).toBe(false);
   expect(injectionPour(avec(), { url: "https://vidola-b.example/episode/4", principal: true })!.reprise).toBe(true);
   expect(repriseDansCadre(declaration, { url: "https://ads.pub.example/v", principal: false })).toBe(false);
   const sansCadres = DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/series/*"], js: ["a.js"] }] });
@@ -479,4 +490,12 @@ test("accord retiré avant l'écriture différée : la note n'est pas écrite", 
   differes.shift()!.f();
   await new Promise((r) => setTimeout(r));
   expect(memoire.position("/episode/4")?.t).toBe(70);
+});
+
+test("injection d'un sous-cadre : la page principale vient d'Electron (top du cadre) ; page de connexion → rien pour le lecteur", () => {
+  const surSite = pageAvecLecteur("https://vidola-b.example/episode/4");
+  expect((injection(evenement(vue, surSite.lecteur)) as InjectionCadre).js).toHaveLength(1);
+  expect(demandes.at(-1)!.cadre.page).toBe("https://vidola-b.example/episode/4");
+  const connexion = pageAvecLecteur("https://compte.example/connexion");
+  expect(injection(evenement(vue, connexion.lecteur))).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
 });

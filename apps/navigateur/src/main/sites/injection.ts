@@ -55,11 +55,12 @@ export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; princ
  * Ce qui va dans un cadre de la vue de l'appli, d'après son adresse et sa place (jamais d'après ce que dit le cadre).
  * Sans accord : null. Cadre principal sur le site : les retouches de `correspond`, `webaiosSite`, la garde bornée aux
  * domaines effectifs. Cadre principal ailleurs (connexion) : rien. Sous-cadre : les retouches de `cadres`, sans
- * `webaiosSite`, la garde bornée à son hôte. La reprise (code de WebAiOs) : voir `repriseDansCadre`.
+ * `webaiosSite`, la garde bornée à son hôte, seulement si la page principale (`page`, celle de la vue) est sur le site :
+ * les cadres d'une page de connexion ne reçoivent rien. La reprise (code de WebAiOs) : voir `repriseDansCadre`.
  */
 export function injectionPour(
   o: { site: SiteOuvrable; retouches: RetouchesLues; accorde: boolean; garde: string; adressesLocales?: boolean },
-  cadre: { url: string; principal: boolean },
+  cadre: { url: string; principal: boolean; page?: string | null },
 ): InjectionCadre | null {
   if (!o.accorde) return null;
   const { site } = o;
@@ -71,6 +72,8 @@ export function injectionPour(
   if (!u || !permise) return rien();
   // Page principale hors des domaines effectifs (domaine de connexion) : ce n'est pas une page de l'appli.
   if (cadre.principal && adresseRelative(cadre.url, site.domaines) === null) return rien();
+  // Sous-cadre d'une page hors des domaines effectifs (connexion), ou d'une page inconnue : rien non plus.
+  if (!cadre.principal && (!cadre.page || adresseRelative(cadre.page, site.domaines) === null)) return rien();
   const hote = u.hostname;
   const retenues = retouchesPour(d, cadre.principal ? cadre : { ...cadre, url: urlPourMotifs(cadre.url, adressesLocales) }, site.domaines, { adressesLocales });
   const css: string[] = [];
@@ -171,7 +174,8 @@ function demandeMemoire(d: unknown): DemandeMemoire | null {
 export function brancherInjection(o: {
   siteDeSession(s: Session): string | undefined;
   vue(id: string): WebContents | undefined;
-  injection(id: string, cadre: { url: string; principal: boolean }): InjectionCadre | null;
+  /** `page` : l'adresse de la page principale de la vue, pour un sous-cadre (null si le cadre n'est pas dans son arbre). */
+  injection(id: string, cadre: { url: string; principal: boolean; page?: string | null }): InjectionCadre | null;
   /** L'accord des retouches couvre-t-il la déclaration ? Sans lui, pas de mémoire, quel que soit l'appelant. */
   accorde(id: string): boolean;
   /** La reprise des vidéos va-t-elle dans ce cadre (déclaration, motifs `cadres`) ? L'accord est vérifié par `accorde`. */
@@ -212,7 +216,7 @@ export function brancherInjection(o: {
     try {
       const id = appliDe(e.sender);
       const cadre = id === undefined ? null : cadreDe(e);
-      if (id !== undefined && cadre) reponse = o.injection(id, cadre);
+      if (id !== undefined && cadre) reponse = o.injection(id, cadre.principal ? cadre : { ...cadre, page: pageDe(e) });
     } catch (err) {
       console.error("[sites] injection impossible :", err);
       reponse = null;
