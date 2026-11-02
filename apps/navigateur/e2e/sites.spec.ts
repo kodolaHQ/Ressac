@@ -1785,6 +1785,46 @@ test.describe("l'agent", () => {
     await fermer();
   });
 
+  test("l'accord suit la déclaration : site.json inchangé, aucune carte ; un domaine de plus, la carte revient ; supprimée puis recréée, aussi", async () => {
+    const { app, fenetre, racine, fermer } = await demarrer();
+    await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+    await ouvrirEtAttendre(app, fenetre);
+    const carte = fenetre.getByTestId("demande-donnees-widget");
+    const autoriser = () => carte.getByRole("button", { name: "Autoriser pour cette conversation" }).click();
+    let lecture = appelerOutil(racine, "lire_onglet", { id: "site:vidola" });
+    await autoriser();
+    expect((await lecture).texte).toContain("Titre : Vidola");
+
+    // site.json réécrit à l'identique (puis relu par ouvrir_site) : aucune carte.
+    ecrireSite(racine, "vidola", vidola());
+    expect((await appelerOutil(racine, "ouvrir_site", { id: "vidola" })).texte).toBe("site:vidola");
+    expect((await appelerOutil(racine, "lire_onglet", { id: "site:vidola" })).texte).toContain("Titre : Vidola");
+    expect((await appelerOutil(racine, "memoire_site", { id: "vidola" })).erreur).toBe(false);
+    await expect(fenetre.getByTestId("modale-demande")).toHaveCount(0);
+
+    // L'agent ajoute un domaine : la carte revient avant toute lecture ; refusée, rien n'est lu.
+    ecrireSite(racine, "vidola", { declaration: { ...vidola().declaration, domaines: ["vidola-a.localhost", "mail.localhost"] } });
+    expect((await appelerOutil(racine, "ouvrir_site", { id: "vidola" })).texte).toBe("site:vidola");
+    lecture = appelerOutil(racine, "lire_onglet", { id: "site:vidola" });
+    await expect(carte.getByTestId("demande-site")).toContainText("« Vidola »");
+    await carte.getByRole("button", { name: "Refuser" }).click();
+    expect(await lecture).toEqual({ texte: REFUS, erreur: false });
+    lecture = appelerOutil(racine, "capture_ecran", { id: "site:vidola" });
+    await autoriser();
+    expect((await lecture).image?.startsWith("iVBOR")).toBe(true);
+
+    // Supprimée puis recréée au même id, à l'identique : l'accord est retiré, la carte revient.
+    await fenetre.evaluate(() => (window as unknown as ApiSites).webaios.sites.agir("vidola", "supprimer"));
+    await expect.poll(() => fenetresDuSite(app, "vidola")).toBe(0);
+    await expect.poll(() => existsSync(join(racine, "sites", "vidola"))).toBe(false);
+    ecrireSite(racine, "vidola", { declaration: { ...vidola().declaration, domaines: ["vidola-a.localhost", "mail.localhost"] } });
+    const memoire = appelerOutil(racine, "memoire_site", { id: "vidola" });
+    await expect(carte.getByTestId("demande-site")).toContainText("« Vidola »");
+    await carte.getByRole("button", { name: "Refuser" }).click();
+    expect((await memoire).texte).not.toContain("Mémoire d'une appli de site");
+    await fermer();
+  });
+
   test("memoire_site, fenêtre fermée : la carte porte le nom de l'appli ; accord → la mémoire ; ensuite lire_onglet sans seconde carte", async () => {
     const { app, fenetre, racine, profil, fermer } = await demarrer();
     await expect(terminal(fenetre)).toContainText("faux agent prêt>");
