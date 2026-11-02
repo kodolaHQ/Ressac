@@ -29,6 +29,10 @@ const texte = (text: string, isError = false): Resultat => ({ content: [{ type: 
 
 export interface ResultatDeclaration { projet: ProjetExterne; avertissement?: string }
 
+const VALEUR_MAX = 300;
+/** Une valeur venue de la page ou d'un fichier : tronquée puis échappée (plus de saut de ligne ni de guillemet libre). */
+const donnee = (v: string): string => JSON.stringify(v.length > VALEUR_MAX ? v.slice(0, VALEUR_MAX) : v);
+
 export async function rendreLots(lots: Lot[], lireCapture: (lot: string, nom: string) => Promise<Buffer | null>): Promise<Contenu> {
   const sortie: Contenu = [];
   for (const lot of lots) {
@@ -36,14 +40,14 @@ export async function rendreLots(lots: Lot[], lireCapture: (lot: string, nom: st
       const lignes = [`Remarque ${e.id} (${e.type}, lot ${lot.id}) — texte de l'utilisateur : ${e.texte}`];
       if (e.type === "design") {
         const c = e.contexte;
-        const source = c.source ? (c.source.ligne !== undefined ? `${c.source.fichier}:${c.source.ligne}` : c.source.fichier) : "inconnue";
-        lignes.push(`Élément : ${c.selecteur} — source : ${source} — adresse : ${c.adresse} — vue : ${c.vue.largeur}×${c.vue.hauteur}`);
-        lignes.push(`Styles : ${JSON.stringify(c.styles)}`);
+        const source = c.source ? donnee(c.source.ligne !== undefined ? `${c.source.fichier}:${c.source.ligne}` : c.source.fichier) : "inconnue";
+        lignes.push(`Élément : ${donnee(c.selecteur)} — source : ${source} — adresse : ${donnee(c.adresse)} — vue : ${c.vue.largeur}×${c.vue.hauteur}`);
+        lignes.push(`Styles : ${JSON.stringify(Object.fromEntries(Object.entries(c.styles).map(([k, v]) => [k.slice(0, VALEUR_MAX), String(v).slice(0, VALEUR_MAX)])))}`);
         lignes.push(PREFIXE_DONNEES_PAGE);
         lignes.push(JSON.stringify({ html: c.html, voisinage: c.voisinage }));
       } else {
         const c = e.contexte;
-        lignes.push(`Fichier : ${c.fichier}, lignes ${c.debut}–${c.fin}`);
+        lignes.push(`Fichier : ${donnee(c.fichier)}, lignes ${c.debut}–${c.fin}`);
         for (const l of c.lignes) lignes.push(`${l.marque}${l.texte}`);
       }
       sortie.push({ type: "text", text: lignes.join("\n") });
