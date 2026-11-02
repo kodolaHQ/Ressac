@@ -13,7 +13,7 @@
 <ul><li>un</li><li>deux</li><li>trois</li></ul>
 <script>
   window.reactions = [];
-  for (const type of ["click", "mousedown", "mouseup", "pointerdown"])
+  for (const type of ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "auxclick", "contextmenu", "dblclick"])
     document.addEventListener(type, (e) => window.reactions.push(type + ":" + (e.target.id || e.target.tagName)));
   document.addEventListener("submit", (e) => { e.preventDefault(); window.reactions.push("submit"); });
 </script>

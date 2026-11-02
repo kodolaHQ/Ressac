@@ -35,19 +35,23 @@ export function scriptViseur(): string {
       return t;
     };
     const unique = (sel, el) => { try { const l = document.querySelectorAll(sel); return l.length === 1 && l[0] === el; } catch { return false; } };
-    const selecteurDe = (el) => {
-      if (el.id) { const s = "#" + CSS.escape(el.id); if (unique(s, el)) return s; }
+    const chemin = (el, complet) => {
       const morceaux = [];
       let n = el;
       while (n && n.nodeType === 1) {
-        if (n !== el && n.id && unique("#" + CSS.escape(n.id), n)) { morceaux.unshift("#" + CSS.escape(n.id)); break; }
+        if (!complet && n !== el && n.id && unique("#" + CSS.escape(n.id), n)) { morceaux.unshift("#" + CSS.escape(n.id)); break; }
         if (n === document.documentElement) { morceaux.unshift("html"); break; }
         let rang = 1;
         for (let f = n.previousElementSibling; f; f = f.previousElementSibling) if (f.localName === n.localName) rang++;
-        morceaux.unshift(n.localName + ":nth-of-type(" + rang + ")");
+        morceaux.unshift(CSS.escape(n.localName) + ":nth-of-type(" + rang + ")");
         n = n.parentElement;
       }
       return morceaux.join(" > ");
+    };
+    const selecteurDe = (el) => {
+      if (el.id) { const s = "#" + CSS.escape(el.id); if (unique(s, el)) return s; }
+      const court = chemin(el, false);
+      return unique(court, el) ? court : chemin(el, true);
     };
     const placer = (el) => {
       if (!el || el === hote) return;
@@ -61,11 +65,20 @@ export function scriptViseur(): string {
     };
 
     const bloque = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
-    const surSouris = (e) => { bloque(e); };
+    // Les événements fabriqués par la page (isTrusted faux) passent sans être touchés : seuls ceux de l'utilisateur comptent.
+    const surSouris = (e) => { if (e.isTrusted) bloque(e); };
+    // Pendant la visée, « click » est traité à part (surClic) ; l'avaler seul après la capture.
+    const TYPES_VISEE = ["pointerdown", "pointerup", "mousedown", "mouseup", "auxclick", "contextmenu", "dblclick"];
+    const TYPES_SOURIS = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];
     const surMove = (e) => { if (e.target instanceof Element) placer(e.target); };
     const fin = (valeur) => {
-      for (const t of ["pointerdown", "pointerup", "mousedown", "mouseup", "click"]) window.removeEventListener(t, surSouris, true);
+      for (const t of TYPES_SOURIS) window.removeEventListener(t, surSouris, true);
       window.removeEventListener("click", surClic, true);
+      if (valeur) {
+        // La fin d'un double clic (deuxième clic, dblclick) ne doit pas atteindre la page.
+        for (const t of TYPES_SOURIS) window.addEventListener(t, surSouris, true);
+        setTimeout(() => { for (const t of TYPES_SOURIS) window.removeEventListener(t, surSouris, true); }, 500);
+      }
       window.removeEventListener("mousemove", surMove, true);
       window.removeEventListener("keydown", surTouche, true);
       hote.remove();
@@ -73,8 +86,9 @@ export function scriptViseur(): string {
       resolve(valeur);
     };
     const arret = () => fin(null);
-    const surTouche = (e) => { if (e.key === "Escape") { bloque(e); fin(null); } };
+    const surTouche = (e) => { if (e.isTrusted && e.key === "Escape") { bloque(e); fin(null); } };
     const surClic = (e) => {
+      if (!e.isTrusted) return;
       bloque(e);
       const el = e.target;
       if (!(el instanceof Element)) return fin(null);
@@ -94,13 +108,29 @@ export function scriptViseur(): string {
         adresse: location.href, vue: { largeur: innerWidth, hauteur: innerHeight },
       });
     };
-    for (const t of ["pointerdown", "pointerup", "mousedown", "mouseup"]) window.addEventListener(t, surSouris, true);
+    for (const t of TYPES_VISEE) window.addEventListener(t, surSouris, true);
     window.addEventListener("click", surClic, true);
     window.addEventListener("mousemove", surMove, true);
     window.addEventListener("keydown", surTouche, true);
     globalThis.__viseurArret = arret;
   });
 })()`;
+}
+
+const ARRET = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret()`;
+
+const fini = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+const chaine = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;
+
+/** Le monde isolé est sûr, mais la forme est vérifiée quand même : null si elle n'est pas celle attendue. */
+function propreCapture(v: unknown): CaptureViseur | null {
+  const c = v as Partial<CaptureViseur> | null;
+  if (!c || typeof c !== "object" || !c.rect || !c.vue || !c.voisinage || !c.styles) return null;
+  if (![c.rect.x, c.rect.y, c.rect.largeur, c.rect.hauteur, c.vue.largeur, c.vue.hauteur].every(fini)) return null;
+  if (![c.selecteur, c.etiquette, c.html, c.adresse, c.voisinage.parent].every((x) => chaine(x))) return null;
+  if (!Array.isArray(c.voisinage.freres) || !c.voisinage.freres.every((f) => chaine(f))) return null;
+  if (!Object.values(c.styles).every((x) => chaine(x))) return null;
+  return c as CaptureViseur;
 }
 
 const armes = new Map<WebContents, () => void>();
@@ -120,7 +150,10 @@ export async function armerViseur(wc: WebContents): Promise<CaptureViseur | null
         wc.off("render-process-gone", surMort);
         wc.off("destroyed", surMort);
       }
-      resolve(v ? { ...v, html: tronquerHtml(v.html) } : null);
+      // Navigation sans changement de document, ou qui n'aboutit pas : le script tourne encore, on l'arrête.
+      if (!v && !wc.isDestroyed()) void wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code: ARRET }]).catch(() => {});
+      const propre = v ? propreCapture(v) : null;
+      resolve(propre ? { ...propre, html: tronquerHtml(propre.html) } : null);
     };
     const surMort = () => clore(null);
     const annuler = () => clore(null);
@@ -139,11 +172,20 @@ export async function armerViseur(wc: WebContents): Promise<CaptureViseur | null
 export async function desarmerViseur(wc: WebContents): Promise<void> {
   if (wc.isDestroyed()) return;
   try {
-    await wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code: `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret()` }]);
+    await wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code: ARRET }]);
   } catch {
     // page déjà partie : rien à retirer
   }
   armes.get(wc)?.();
+}
+
+const entierPositif = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
+
+/** Ce qui vient du monde de la page n'est jamais cru : fichier court, numéros entiers positifs, le reste est écarté. */
+function sourceSaine(r: unknown): ContexteDesign["source"] {
+  const o = r as { fichier?: unknown; ligne?: unknown; colonne?: unknown } | null;
+  if (!o || typeof o !== "object" || !chaine(o.fichier, 1024) || o.fichier === "") return null;
+  return { fichier: o.fichier, ...(entierPositif(o.ligne) ? { ligne: o.ligne } : {}), ...(entierPositif(o.colonne) ? { colonne: o.colonne } : {}) };
 }
 
 /** Source de l'élément, lue dans le monde de la page par une expression sans effet ni global ; null si inconnue. */
@@ -170,8 +212,11 @@ export async function lireSource(wc: WebContents, selecteur: string): Promise<Co
     } catch { return null; }
   })()`;
   try {
-    const r = (await wc.executeJavaScript(code)) as ContexteDesign["source"];
-    return r ?? null;
+    const r = await Promise.race([
+      wc.executeJavaScript(code) as Promise<unknown>,
+      new Promise<null>((ok) => setTimeout(() => ok(null), 1500)),
+    ]);
+    return sourceSaine(r);
   } catch {
     return null;
   }

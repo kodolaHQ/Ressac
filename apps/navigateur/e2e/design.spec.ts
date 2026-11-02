@@ -42,15 +42,19 @@ const resultat = (app: ElectronApplication) =>
 const dansPage = <T>(app: ElectronApplication, code: string) =>
   app.evaluate(({ webContents }, code) => webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!.executeJavaScript(code) as Promise<T>, code);
 
-async function cliquerSur(app: ElectronApplication, selecteur: string) {
+async function cliquerSur(app: ElectronApplication, selecteur: string, o: { bouton?: "left" | "middle" | "right"; fois?: number } = {}) {
   const c = await dansPage<{ x: number; y: number }>(app, `(() => { const r = document.querySelector(${JSON.stringify(selecteur)}).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
-  await app.evaluate(async ({ webContents }, c) => {
+  const bouton = o.bouton ?? "left";
+  const fois = o.fois ?? 1;
+  await app.evaluate(async ({ webContents }, [c, bouton, fois]) => {
     const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!;
     wc.sendInputEvent({ type: "mouseMove", x: c.x, y: c.y });
     await new Promise((r) => setTimeout(r, 50));
-    wc.sendInputEvent({ type: "mouseDown", x: c.x, y: c.y, button: "left", clickCount: 1 });
-    wc.sendInputEvent({ type: "mouseUp", x: c.x, y: c.y, button: "left", clickCount: 1 });
-  }, c);
+    for (let i = 1; i <= fois; i++) {
+      wc.sendInputEvent({ type: "mouseDown", x: c.x, y: c.y, button: bouton, clickCount: i });
+      wc.sendInputEvent({ type: "mouseUp", x: c.x, y: c.y, button: bouton, clickCount: i });
+    }
+  }, [c, bouton, fois] as const);
 }
 
 const aucuneFenetreVisible = async (app: ElectronApplication) =>
@@ -148,19 +152,19 @@ test("lireSource : data-source lu, null sans source", async () => {
 test("capturerElement rend un PNG de la taille de rectCapture", async () => {
   const { app, fermer } = await ouvrir();
   try {
-    const r = await app.evaluate(async ({ webContents, nativeImage }) => {
+    const r = await app.evaluate(async ({ webContents, nativeImage, screen }) => {
       const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!;
       const rect = { x: 50, y: 20, largeur: 80, hauteur: 30 };
       const vue = { largeur: 600, hauteur: 400 };
       const png = await (globalThis as unknown as { __webaiosViseur: { capturer(wc: unknown, r: unknown, v: unknown): Promise<Buffer | null> } }).__webaiosViseur.capturer(wc, rect, vue);
       if (!png) return null;
       const t = nativeImage.createFromBuffer(png).getSize();
-      return { t, signature: png.subarray(1, 4).toString("latin1"), zoom: wc.getZoomFactor() };
+      return { t, signature: png.subarray(1, 4).toString("latin1"), zoom: wc.getZoomFactor(), echelle: screen.getPrimaryDisplay().scaleFactor };
     });
     expect(r?.signature).toBe("PNG");
     // 80 + 32 de large, 30 + 32 de haut (le rect est loin des bords de la vue).
-    expect(r!.t.width).toBe(112 * r!.zoom);
-    expect(r!.t.height).toBe(62 * r!.zoom);
+    expect(r!.t.width).toBe(Math.round(112 * r!.zoom * r!.echelle));
+    expect(r!.t.height).toBe(Math.round(62 * r!.zoom * r!.echelle));
     await aucuneFenetreVisible(app);
   } finally {
     await fermer();
@@ -173,6 +177,74 @@ test("recharger la page pendant le viseur : armerViseur rend null", async () => 
     await armer(app);
     await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!.reload());
     expect(await resultat(app)).toBeNull();
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("navigation sans nouveau document : le viseur s'arrête et les clics suivants atteignent la page", async () => {
+  const { app, fermer } = await ouvrir();
+  try {
+    await armer(app);
+    await dansPage(app, `history.pushState({}, "", "/x")`);
+    expect(await resultat(app)).toBeNull();
+    expect(await dansPage(app, `document.querySelectorAll("webaios-viseur").length`)).toBe(0);
+    await cliquerSur(app, "#email");
+    await expect.poll(() => dansPage<string[]>(app, "window.reactions")).toContain("click:email");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("clic du milieu, clic droit et double clic n'atteignent pas la page", async () => {
+  const { app, fermer } = await ouvrir();
+  try {
+    await armer(app);
+    await cliquerSur(app, "#lien", { bouton: "middle" });
+    await cliquerSur(app, "#lien", { bouton: "right" });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await dansPage(app, "window.reactions")).toEqual([]);
+    expect(await dansPage(app, "location.href")).toBe(`${BASE}/`);
+    // Le double clic : le premier clic capture, la suite (deuxième clic, dblclick) est avalée.
+    await cliquerSur(app, "#envoyer", { fois: 2 });
+    expect((await resultat(app))?.selecteur).toBe("#envoyer");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await dansPage(app, "window.reactions")).toEqual([]);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("un clic fabriqué par la page ne capture rien, un Échap fabriqué n'annule rien", async () => {
+  const { app, fermer } = await ouvrir();
+  try {
+    await armer(app);
+    await dansPage(app, `document.querySelector("li").click(); window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))`);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await dansPage(app, `document.querySelectorAll("webaios-viseur").length`)).toBe(1);
+    await cliquerSur(app, "#email");
+    expect((await resultat(app))?.selecteur).toBe("#email");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("lireSource écarte les valeurs de la page qui n'ont pas la bonne forme", async () => {
+  const { app, fermer } = await ouvrir();
+  try {
+    await dansPage(app, `document.querySelector("#nue").__svelte_meta = { loc: { file: {}, line: "x" } }`);
+    const lire = () =>
+      app.evaluate(({ webContents }) => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!;
+        return (globalThis as unknown as { __webaiosViseur: { lireSource(wc: unknown, s: string): Promise<unknown> } }).__webaiosViseur.lireSource(wc, "#nue");
+      });
+    expect(await lire()).toBeNull();
+    await dansPage(app, `document.querySelector("#nue").__svelte_meta = { loc: { file: "a.svelte", line: -3, column: 1.5 } }`);
+    expect(await lire()).toEqual({ fichier: "a.svelte" });
     await aucuneFenetreVisible(app);
   } finally {
     await fermer();
