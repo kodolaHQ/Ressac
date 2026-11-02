@@ -1,7 +1,7 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 import type { Action, CommandeOnglet, Panneau, Raccourci } from "../commun/api";
 import { cibleDeUrlWorkflow, type EtatNavigateur, type IdFenetre, type IdOnglet, type MoteurRecherche } from "../commun/modele";
-import { versNieme, versVoisin } from "./raccourcis";
+import { versNieme } from "./raccourcis";
 
 export interface CiblesMenu {
   /** Fenêtre principale au premier plan (ou la première si aucune n'a le focus) ; undefined si une popup a le focus. */
@@ -11,6 +11,8 @@ export interface CiblesMenu {
   oublierAutorisations(fenetreId: IdFenetre): void;
   etat(): EtatNavigateur;
   agir(a: Action): void;
+  /** ⌃Tab (1) / ⌃⇧Tab (-1) : parcours des onglets récents, validé au relâchement de ⌃ (voir ParcoursOnglets). */
+  parcourir(fenetreId: IdFenetre, delta: 1 | -1): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   ouvrirPanneau(fenetreId: IdFenetre, p: Panneau): void;
   /** Raccourci destiné à l'interface de la fenêtre (qui reçoit le focus). */
@@ -170,8 +172,8 @@ export function installerMenu(c: CiblesMenu): void {
         entree("reculer", "Reculer", "CmdOrCtrl+[", surOnglet("reculer")),
         entree("avancer", "Avancer", "CmdOrCtrl+]", surOnglet("avancer")),
         { type: "separator" },
-        entree("onglet-suivant", "Onglet suivant", "Ctrl+Tab", agirSi((f) => versVoisin(c.etat(), f, 1))),
-        entree("onglet-precedent", "Onglet précédent", "Ctrl+Shift+Tab", agirSi((f) => versVoisin(c.etat(), f, -1))),
+        entree("onglet-suivant", "Onglet suivant", "Ctrl+Tab", dansFenetre((f) => c.parcourir(f, 1))),
+        entree("onglet-precedent", "Onglet précédent", "Ctrl+Shift+Tab", dansFenetre((f) => c.parcourir(f, -1))),
         ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
           entree(`onglet-${n}`, n === 9 ? "Dernier onglet" : `Onglet ${n}`, `CmdOrCtrl+${n}`, agirSi((f) => versNieme(c.etat(), f, n))),
         ),

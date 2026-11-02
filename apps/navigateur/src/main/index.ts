@@ -21,6 +21,7 @@ import { brancherIpc, Magasin } from "./ipc";
 import { versUrl } from "./adresse";
 import { Historique } from "./historique";
 import { installerMenu, type CiblesMenu } from "./menu";
+import { ParcoursOnglets } from "./parcours-onglets";
 import { GestionnaireVues } from "./onglets/vues";
 import { Permissions } from "./permissions";
 import { cheminProfil } from "./profil";
@@ -117,7 +118,7 @@ function noterCadre(id: IdFenetre, f: BrowserWindow, magasin: Magasin): void {
   magasin.agir({ type: "cadrerFenetre", id, cadre: { x, y, largeur: width, hauteur: height } });
 }
 
-function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): BrowserWindow {
+function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues, parcours: ParcoursOnglets): BrowserWindow {
   const cadre = cadreVisible(magasin.etat.fenetres.find((f) => f.id === id)?.cadre);
   const fenetre = new BrowserWindow({
     width: 1400,
@@ -144,6 +145,12 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   fenetres.set(id, fenetre);
   fenetre.on("focus", () => (derniereFocalisee = id));
+  // Parcours ⌃Tab : ⌃ relâché dans l'interface le valide (dans une page, voir l'option `saisie` des vues) ; la fenêtre
+  // qui perd le focus (⌘Tab vers une autre appli) l'annule, car le relâchement peut ne jamais arriver.
+  fenetre.webContents.on("before-input-event", (_e, input) => {
+    if (estRelachementCtrl(input)) parcours.toucheRelachee(id);
+  });
+  fenetre.on("blur", () => parcours.annuler(id));
   // macOS : les boutons de la fenêtre sont dans la rangée du haut de la barre latérale. L'interface les cache avec
   // elle (mode compact, barre non révélée) : rien d'autre ne passe dessous. En plein écran, macOS les gère seul.
   let boutonsVoulus = true;
@@ -233,6 +240,11 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
   });
   void chargerInterface();
   return fenetre;
+}
+
+/** ⌃ relâché, ou une touche relâchée sans ⌃ (le relâchement de ⌃ lui-même a pu échapper). */
+function estRelachementCtrl(input: Electron.Input): boolean {
+  return input.type === "keyUp" && (input.key === "Control" || !input.control);
 }
 
 /**
@@ -487,6 +499,11 @@ app.whenReady().then(async () => {
     resultatRecherche: (id, r) => fenetres.get(id)?.webContents.send(CANAUX.resultatRecherche, r),
     // Électron met lui-même la fenêtre en plein écran natif : l'interface n'a qu'à s'effacer.
     pleinEcran: (id, actif) => fenetres.get(id)?.webContents.send(CANAUX.pleinEcran, actif),
+    // La fenêtre est lue au moment de la frappe : un onglet peut changer de fenêtre.
+    saisie: (ongletId, input) => {
+      const f = magasin.etat.onglets[ongletId]?.fenetreId;
+      if (f && estRelachementCtrl(input)) parcours.toucheRelachee(f);
+    },
     extensions: {
       creee: (wc, f) => extensions.ongletCree(wc, f),
       activee: (wc) => extensions.ongletActive(wc),
@@ -529,6 +546,19 @@ app.whenReady().then(async () => {
     }
     if (change) diffuser(CANAUX.permissions, enAttente());
   };
+  // ⌃Tab : ordre d'utilisation récente et parcours en cours, par fenêtre. Seul l'envoi du panneau vise l'interface.
+  const parcours = new ParcoursOnglets({
+    etat: () => magasin.etat,
+    agir: (a) => magasin.agir(a),
+    envoyer: (id, p) => {
+      const f = fenetres.get(id);
+      if (f && !f.isDestroyed()) f.webContents.send(CANAUX.panneauOnglets, p);
+    },
+    apercu: (id) => vues.apercuEnCache(id),
+    capturer: (id) => vues.capturerAffiche(id),
+  });
+  parcours.surEtat(magasin.etat);
+  magasin.abonner((etat) => parcours.surEtat(etat));
   magasin.abonner(ecarterQuestionsCaduques);
   magasin.abonner((etat, avant) => {
     diffuser(CANAUX.etat, etat);
@@ -581,6 +611,7 @@ app.whenReady().then(async () => {
     boutonsFenetre: (f, visibles) => boutonsFenetre.get(f)?.(visibles),
     apercu: (f, id) => vues.apercu(f, id),
     fermerOnglet: (id) => vues.fermer(id),
+    parcoursOnglets: (f, m) => parcours.message(f, m),
     historique,
     telechargements,
     accueil: {
@@ -799,6 +830,7 @@ app.whenReady().then(async () => {
     },
     etat: () => magasin.etat,
     agir: (a) => magasin.agir(a),
+    parcourir: (id, delta) => parcours.parcourir(id, delta),
     commande: (id, c) => vues.commande(id, c),
     ouvrirPanneau: (id, p) => fenetres.get(id)?.webContents.send(CANAUX.panneau, p),
     raccourci: (id, r) => {
@@ -823,7 +855,7 @@ app.whenReady().then(async () => {
   await Promise.race([demarrageExtensions, new Promise((ok) => setTimeout(ok, 2000))]);
   // Une fenêtre principale par EtatFenetre : ⌘N en ajoute une, sa fermeture la retire.
   const synchroniserFenetres = (etat: EtatNavigateur) => {
-    for (const f of etat.fenetres) if (!fenetres.has(f.id) && !gardees.has(f.id)) creerFenetre(f.id, magasin, vues);
+    for (const f of etat.fenetres) if (!fenetres.has(f.id) && !gardees.has(f.id)) creerFenetre(f.id, magasin, vues, parcours);
     for (const [id, f] of fenetres) if (!etat.fenetres.some((x) => x.id === id) && !f.isDestroyed() && !enFermeture.has(f)) f.close();
   };
   magasin.abonner(synchroniserFenetres);

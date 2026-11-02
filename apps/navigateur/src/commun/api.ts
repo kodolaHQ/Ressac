@@ -167,6 +167,10 @@ export interface ApiWebaios {
    * JPEG réduite) pour rester visible, floutée, derrière la modale. null : pas de page à montrer, ou capture ratée.
    */
   apercuPage(ongletId: IdOnglet | null): Promise<string | null>;
+  /** Panneau ⌃Tab de cette fenêtre : envoyé 200 ms après le premier ⌃Tab si ⌃ est encore enfoncé ; null le ferme. */
+  surPanneauOnglets(rappel: (p: PanneauOnglets | null) => void): () => void;
+  /** Le panneau ⌃Tab agit sur le parcours en cours (sans effet hors parcours). */
+  parcoursOnglets(m: MessageParcours): void;
   /** Terminal de l'agent de cette fenêtre. */
   agent: {
     /** Démarre la session (ou la retrouve : son état et sa sortie récente sont renvoyés). */
@@ -373,6 +377,28 @@ export const SchemaCouperAcces = z.object({ id, droit: z.enum(DROITS_DEV as [Dro
 
 /** Capture de la page affichée, pour le fond d'une modale : l'onglet que l'interface voit actif, ou aucun. */
 export const SchemaApercuPage = z.object({ ongletId: id.nullable() });
+
+/** Une carte du panneau ⌃Tab : `apercu` est une data URL JPEG, null si l'onglet n'a jamais été capturé. */
+export interface CartePanneauOnglets {
+  id: IdOnglet;
+  titre: string;
+  favicon: string | null;
+  apercu: string | null;
+}
+/** Panneau ⌃Tab : au plus 7 cartes (fenêtre glissante), `selection` est un indice dans `cartes`. */
+export interface PanneauOnglets {
+  cartes: CartePanneauOnglets[];
+  selection: number;
+}
+/** Messages du panneau ⌃Tab vers le process principal (Échap, clic, survol, Tab au clavier de l'interface). */
+export const SchemaMessageParcours = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("valider") }),
+  z.object({ type: z.literal("annuler") }),
+  z.object({ type: z.literal("choisir"), id }),
+  z.object({ type: z.literal("survoler"), id }),
+  z.object({ type: z.literal("avancer"), delta: z.union([z.literal(1), z.literal(-1)]) }),
+]);
+export type MessageParcours = z.infer<typeof SchemaMessageParcours>;
 
 /** La pastille d'une fenêtre d'appli s'agrandit (bulle ouverte) ou se referme. */
 export const SchemaTaillePastille = z.object({ ouverte: z.boolean() });

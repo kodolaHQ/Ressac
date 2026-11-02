@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
-import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
+import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaMessageParcours, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension, type MessageParcours } from "../commun/api";
 import { gesteAccueilDuCadre } from "./sites/cadre-accueil";
 import { ADRESSE_ACCUEIL_MAX, EMPREINTE_ACCORD_LONGUEUR, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
 import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
@@ -48,6 +48,8 @@ export interface Gestionnaires {
   apercu(fenetreId: IdFenetre, ongletId: IdOnglet): Promise<string | null>;
   /** Fermer un onglet en laissant la page demander confirmation (voir GestionnaireVues.fermer). */
   fermerOnglet(ongletId: IdOnglet): void;
+  /** Le panneau ⌃Tab de la fenêtre agit sur son parcours (voir ParcoursOnglets.message). */
+  parcoursOnglets(fenetreId: IdFenetre, m: MessageParcours): void;
   historique: Historique;
   telechargements: Telechargements;
   permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision, droits?: DroitDev[], confirme?: boolean): void };
@@ -159,6 +161,7 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.commande, zod(SchemaCommande), (v) => g.commande(v.ongletId, v.c));
   recevoir(CANAUX.bornes, zod(SchemaBornes), (b, f) => g.bornes(f, b));
   recevoir(CANAUX.boutonsFenetre, zod(SchemaBoutonsFenetre), ({ visibles }, f) => g.boutonsFenetre(f, visibles));
+  recevoir(CANAUX.parcoursOnglets, zod<MessageParcours>(SchemaMessageParcours), (m, f) => g.parcoursOnglets(f, m));
   const repondre = (canal: string, traiter: (...args: unknown[]) => unknown) =>
     ipcMain.handle(canal, (e, ...args: unknown[]) => {
       if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");

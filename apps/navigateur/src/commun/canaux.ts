@@ -63,6 +63,8 @@ export const CANAUX = {
   accesCouper: "webaios:acces-couper",
   pastilleTaille: "webaios:pastille-taille",
   apercuPage: "webaios:apercu-page",
+  panneauOnglets: "webaios:panneau-onglets",
+  parcoursOnglets: "webaios:parcours-onglets",
   extensionsInstallerStore: "webaios:extensions-installer-store",
   extensionsPourEspace: "webaios:extensions-pour-espace",
   extensionsBasculer: "webaios:extensions-basculer",

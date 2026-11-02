@@ -20,14 +20,6 @@ function versElement(fenetreId: IdFenetre, x: Element | undefined): Action | nul
   return "onglet" in x ? { type: "activerOnglet", id: x.onglet } : { type: "ouvrirFavori", fenetreId, genre: "epingle", id: x.favori };
 }
 
-/** ⌃Tab (delta 1) / ⌃⇧Tab (delta -1), en boucle. */
-export function versVoisin(etat: EtatNavigateur, fenetreId: IdFenetre, delta: 1 | -1): Action | null {
-  const { elements, courant } = elementsAffiches(etat, fenetreId);
-  if (!elements.length) return null;
-  const i = courant < 0 ? (delta > 0 ? 0 : elements.length - 1) : (courant + delta + elements.length) % elements.length;
-  return versElement(fenetreId, elements[i]);
-}
-
 /** ⌘1…⌘8 : n-ième élément affiché ; ⌘9 : le dernier. */
 export function versNieme(etat: EtatNavigateur, fenetreId: IdFenetre, n: number): Action | null {
   const { elements } = elementsAffiches(etat, fenetreId);

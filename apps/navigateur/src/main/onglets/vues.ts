@@ -109,6 +109,8 @@ export class GestionnaireVues {
       retenir?: (r: { url: string; espaceId: string; titre: string; texte: string }) => void;
       resultatRecherche?: (fenetreId: IdFenetre, r: { ongletId: IdOnglet; actif: number; total: number }) => void;
       pleinEcran?: (fenetreId: IdFenetre, actif: boolean) => void;
+      /** Chaque frappe dans la page d'un onglet, sans pouvoir l'empêcher (relâchement de ⌃ pour le parcours ⌃Tab). */
+      saisie?: (ongletId: IdOnglet, input: Electron.Input) => void;
       /**
        * Les extensions voient les vues des onglets, et elles seules (jamais une popup de site, une lecture invisible ou
        * une fenêtre d'appli) : `creee` à la création de chaque vue d'onglet, `activee` quand elle est attachée comme
@@ -346,6 +348,8 @@ export class GestionnaireVues {
     brancherEvenements(wc, onglet.id, this.o.agir, this.o.historique, contexte);
     brancherBalayage(wc);
     wc.on("did-stop-loading", () => this.captures.planifier(onglet.id));
+    const saisie = this.o.saisie;
+    if (saisie) wc.on("before-input-event", (_e, input) => saisie(onglet.id, input));
     if (this.o.retenir) brancherCapture(wc, contexte, this.o.retenir);
     gererOuvertures(
       wc,
