@@ -57,6 +57,13 @@ export class PolitiqueAcces {
   private readonly utilisations = new Map<string, number>();
   /** Widgets avec compte dont l'utilisateur a montré les données à l'agent (carte « donnees-widget »), pour cette conversation. */
   private readonly donneesWidgets = new Set<string>();
+  /**
+   * Applis de site que l'utilisateur a ouvertes à l'agent (pages et mémoire), pour cette conversation, et l'empreinte de leur
+   * déclaration au moment de la carte (`empreinteLectureSite` ; null si le navigateur n'en donne pas).
+   */
+  private readonly sitesLus = new Map<string, string | null>();
+  /** Retraits de l'accord de lecture par appli (suppressions) : une carte posée avant l'un d'eux n'accorde rien. */
+  private readonly retraitsSites = new Map<string, number>();
   private readonly ecouteurs = new Set<() => void>();
   private numeroConversation = 0;
   private readonly portConstruit: (port: number) => boolean;
@@ -104,7 +111,8 @@ export class PolitiqueAcces {
   /** Marque l'onglet comme construit par l'agent (fenêtre d'application, ou démo locale sur un port de l'agent). */
   construite(o: OngletInfo): void {
     const org = origine(o.url);
-    if (!org || !(o.application || this.qualifie(o.url))) return;
+    // Une appli de site n'est jamais ce que l'agent a construit (pas de droits d'office), même servie en local.
+    if (!org || o.site !== undefined || !(o.application || this.qualifie(o.url))) return;
     if (this.construites.get(o.id) === org) return;
     this.construites.set(o.id, org);
     this.change();
@@ -132,8 +140,9 @@ export class PolitiqueAcces {
     );
   }
 
-  /** Droits d'outils de développement valables maintenant pour cet onglet. */
+  /** Droits d'outils de développement valables maintenant pour cet onglet ; aucun sur une appli de site sans son accord. */
   droitsDev(o: OngletInfo): DroitDev[] {
+    if (o.site !== undefined && !this.lectureSiteAccordee(o.site, o.empreinte)) return [];
     return this.droitsDe(o.id, origine(o.url), this.estConstruite(o));
   }
 
@@ -194,6 +203,8 @@ export class PolitiqueAcces {
   }
 
   private autoriser(o: OngletInfo): boolean {
+    // La fenêtre d'une appli de site ne s'ouvre que par l'accord de l'appli (accorderLectureSite), jamais par une origine.
+    if (o.site !== undefined) return false;
     const org = origine(o.url);
     if (!org || this.autorisations.get(o.id) === org) return false;
     this.autorisations.set(o.id, org);
@@ -248,7 +259,12 @@ export class PolitiqueAcces {
     this.change();
   }
 
+  /**
+   * Une appli de site (`o.site`) se lit seulement avec son accord, quelle que soit l'origine de sa page : une
+   * autorisation donnée à un onglet du même domaine ne l'ouvre pas.
+   */
   peutLire(o: OngletInfo): boolean {
+    if (o.site !== undefined) return this.lectureSiteAccordee(o.site, o.empreinte);
     const org = origine(o.url);
     return org !== null && this.autorisations.get(o.id) === org;
   }
@@ -273,6 +289,37 @@ export class PolitiqueAcces {
     return this.donneesWidgets.has(`action:${id}`);
   }
 
+  /**
+   * L'utilisateur ouvre l'appli de site `id` à l'agent (ses pages et sa mémoire), jusqu'à la prochaine conversation, telle que
+   * la carte la montrait (`empreinte` de sa déclaration) : une autre empreinte ensuite ne compte pas.
+   */
+  accorderLectureSite(id: string, empreinte?: string): void {
+    const e = empreinte ?? null;
+    if (this.sitesLus.has(id) && this.sitesLus.get(id) === e) return;
+    this.sitesLus.set(id, e);
+    this.change();
+  }
+
+  /** L'accord de lecture de l'appli tient-il, pour la déclaration d'empreinte `empreinte` (celle d'aujourd'hui) ? */
+  lectureSiteAccordee(id: string, empreinte?: string): boolean {
+    return this.sitesLus.has(id) && this.sitesLus.get(id) === (empreinte ?? null);
+  }
+
+  /**
+   * L'appli de site est supprimée : son accord de lecture tombe, et ses cartes encore en attente (toutes conversations)
+   * sont retirées et valent refus. Une appli recréée au même id redemande la carte.
+   */
+  retirerLectureSite(id: string): void {
+    this.sitesLus.delete(id);
+    this.retraitsSites.set(id, this.retraitsLectureSite(id) + 1);
+    this.change();
+  }
+
+  /** Nombre de retraits de l'accord de lecture de l'appli : une carte le relève à sa pose. */
+  retraitsLectureSite(id: string): number {
+    return this.retraitsSites.get(id) ?? 0;
+  }
+
   /** Nouvelle conversation : plus aucune autorisation, refus ni coupe. Les « construites » restent : elles tiennent à l'onglet. */
   reinitialiser(): void {
     this.autorisations.clear();
@@ -281,6 +328,7 @@ export class PolitiqueAcces {
     this.coupes.clear();
     this.coupesConstruites.clear();
     this.donneesWidgets.clear();
+    this.sitesLus.clear();
     this.numeroConversation++;
     this.change();
   }

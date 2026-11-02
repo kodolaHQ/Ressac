@@ -9,8 +9,6 @@ import { ongletApplication } from "../agent/pont";
 import { FenetresApplications, partitionApplication } from "./fenetres";
 import { SondeDocker } from "./sonde";
 
-const FICHIER = "applications.json";
-
 export interface SouvenirApplication {
   cadre?: Cadre;
   dernierLancement?: string;
@@ -18,11 +16,12 @@ export interface SouvenirApplication {
 }
 
 /**
- * Ce que le navigateur retient de chaque appli (`<userData>/applications.json`) : cadre de sa fenêtre, dernier lancement,
- * favicon. Écrit au plus une fois par `delaiMs`, de façon atomique (fichier temporaire + rename).
+ * Ce que le navigateur retient de chaque appli (`<userData>/applications.json`, ou `fichier` : `sites.json` pour les
+ * applis de site) : cadre de sa fenêtre, dernier lancement, favicon. Écrit au plus une fois par `delaiMs`, de façon
+ * atomique (fichier temporaire + rename).
  */
 export class MemoireApplications {
-  private donnees: Record<string, SouvenirApplication> = {};
+  private donnees: Record<string, SouvenirApplication> = Object.create(null);
   private minuterie: NodeJS.Timeout | undefined;
   private modifiee = false;
   /** Écritures enchaînées, jamais simultanées. */
@@ -32,10 +31,12 @@ export class MemoireApplications {
   constructor(
     private readonly dossier: string,
     private readonly delaiMs = 500,
+    private readonly fichier = "applications.json",
   ) {
     try {
-      const lu: unknown = JSON.parse(readFileSync(join(dossier, FICHIER), "utf8"));
-      if (lu && typeof lu === "object" && !Array.isArray(lu)) this.donnees = lu as Record<string, SouvenirApplication>;
+      const lu: unknown = JSON.parse(readFileSync(join(dossier, fichier), "utf8"));
+      // Sans prototype : un nom d'appli « __proto__ » ou « constructor » reste une simple clé.
+      if (lu && typeof lu === "object" && !Array.isArray(lu)) this.donnees = Object.assign(Object.create(null), lu) as Record<string, SouvenirApplication>;
     } catch {
       // Absent ou illisible : on repart de zéro (rien d'essentiel n'y est gardé).
     }
@@ -72,7 +73,7 @@ export class MemoireApplications {
   }
 
   private async ecrire(texte: string): Promise<void> {
-    const cible = join(this.dossier, FICHIER);
+    const cible = join(this.dossier, this.fichier);
     const temporaire = `${cible}.${process.pid}.${++this.numero}.tmp`;
     await fs.mkdir(this.dossier, { recursive: true });
     await fs.writeFile(temporaire, texte);

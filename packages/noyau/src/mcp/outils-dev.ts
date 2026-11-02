@@ -82,6 +82,11 @@ export function enregistrerOutilsDev(
     demandes: Map<string, Promise<DroitDev[]>>;
     /** Outils réservés au noyau ; à défaut, ceux du pont. */
     outils?: OutilsDevNavigateur;
+    /**
+     * L'accord d'une appli de site (`o.site`), demandé au besoin par sa carte : il s'ajoute aux droits de développement.
+     * Absent : aucun outil de développement sur une appli de site.
+     */
+    accesSite?: (o: OngletInfo) => Promise<boolean>;
   } & FichiersProfils,
 ): void {
   const { pont, politique, demandes } = c;
@@ -93,17 +98,27 @@ export function enregistrerOutilsDev(
     return o;
   }
 
+  /** L'accord de l'appli de site, s'il en est une, tient toujours (une nouvelle conversation le retire). */
+  const accordSiteTenu = (o: OngletInfo) => o.site === undefined || politique.lectureSiteAccordee(o.site, o.empreinte);
+
   /**
    * Obtient les droits voulus : ceux qui manquent et ne sont pas bloqués sont demandés à l'utilisateur, une carte à la fois par
    * onglet. Renvoie les droits voulus que l'agent tient ensuite, et l'onglet tel qu'il était alors. Une page sans origine
    * (about:blank, data:, file:) ne peut recevoir aucun droit : refus immédiat, sans carte. Une carte posée dans une
-   * conversation passée (nouvelle conversation, noyau arrêté) est retirée, et sa réponse ne vaut rien.
+   * conversation passée (nouvelle conversation, noyau arrêté) est retirée, et sa réponse ne vaut rien. Une appli de site
+   * demande d'abord son propre accord (sa carte au besoin) : sans lui, aucun droit, et aucune carte d'outils posée.
    */
   async function obtenir(id: string, voulus: DroitDev[], raison: string): Promise<{ tenus: DroitDev[]; onglet: OngletInfo }> {
     raison = bornerRaison(raison);
     for (;;) {
-      const o = await onglet(id);
+      let o = await onglet(id);
       if (!origineDe(o.url)) return { tenus: [], onglet: o };
+      if (o.site !== undefined) {
+        if ((await c.accesSite?.(o)) !== true) return { tenus: [], onglet: o };
+        // La fenêtre relue après la carte de l'appli : ses droits sont ceux de sa déclaration d'aujourd'hui.
+        o = await onglet(id);
+        if (!accordSiteTenu(o)) return { tenus: [], onglet: o };
+      }
       const tenus = politique.droitsDev(o);
       const manquants = voulus.filter((d) => !tenus.includes(d) && politique.peutDemander(id, d));
       const demander = pont.demanderOutilsDev?.bind(pont);
@@ -160,7 +175,7 @@ export function enregistrerOutilsDev(
     const controleur = new AbortController();
     const { signal } = controleur;
     const verifier = () => {
-      if (!signal.aborted && !politique.droitsDev(o).includes(droit)) controleur.abort(new Coupe());
+      if (!signal.aborted && (!politique.droitsDev(o).includes(droit) || !accordSiteTenu(o))) controleur.abort(new Coupe());
     };
     const fichiers: string[] = [];
     const effacer = (x: string) => c.supprimerProfil(x).catch(() => {});

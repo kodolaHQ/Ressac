@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ActionApplication, ApplicationAffichee, ListeApplications } from "../../commun/api";
+  import { confirmerOubli, confirmerSuppressionSite, OUBLIER_MEMOIRE, type ActionSite, type SiteAffiche } from "../../commun/sites";
   import { api } from "../etat.svelte";
   import Icone from "./Icone.svelte";
   import { ouvrirMenu, type EntreeMenu } from "./menu.svelte";
@@ -46,6 +47,30 @@
   let requete = 0;
   /** Projet dont la suppression attend la confirmation de l'utilisateur. */
   let aSupprimer = $state<ApplicationAffichee | null>(null);
+
+  /** Les applis de site (section « Sites ») : relues à chaque changement de la liste ou de leur état. */
+  let sites = $state<SiteAffiche[]>([]);
+  let requeteSites = 0;
+  /** Appli de site dont l'oubli ou la suppression attend la confirmation de l'utilisateur. */
+  let siteAOublier = $state<SiteAffiche | null>(null);
+  let siteASupprimer = $state<SiteAffiche | null>(null);
+
+  async function chargerSites() {
+    const n = ++requeteSites;
+    const r = await api.sites.liste();
+    if (n === requeteSites) sites = r;
+  }
+
+  $effect(() => {
+    void chargerSites();
+    return api.sites.surChange(() => void chargerSites());
+  });
+
+  const agirSite = (s: SiteAffiche, action: ActionSite) => api.sites.agir(s.id, action);
+  const lignesSites = $derived.by(() => {
+    const cherche = texte.trim().toLowerCase();
+    return sites.filter((s) => !cherche || [s.nom, s.id, s.domaine ?? "", s.description].some((x) => x.toLowerCase().includes(cherche)));
+  });
 
   async function charger() {
     const n = ++requete;
@@ -187,7 +212,7 @@
     {#if sansDocker}
       <p class="bandeau" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
     {/if}
-    {#if chargee && donnees.applications.length === 0}
+    {#if chargee && donnees.applications.length === 0 && sites.length === 0}
       <p class="vide">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
     {:else}
       <ul>
@@ -222,12 +247,94 @@
             </div>
           </li>
         {:else}
-          <li class="aucune">Aucune appli ne correspond.</li>
+          {#if lignesSites.length === 0}<li class="aucune">Aucune appli ne correspond.</li>{/if}
         {/each}
       </ul>
     {/if}
+    {#if lignesSites.length > 0}
+      <section class="sites" data-testid="section-sites" aria-label="Sites">
+        <h2 class="titre-sites">Sites</h2>
+        <ul>
+          {#each lignesSites as s (s.id)}
+            <li data-testid="site-{s.id}" data-ouverte={s.ouverte}>
+              <span class="icone">
+                {#if s.icone}<img src={s.icone} alt="" width="16" height="16" />{:else}🌐{/if}
+              </span>
+              <div class="nom">
+                <b>{s.nom}</b>
+                <span>{s.domaine ?? s.id}</span>
+              </div>
+              {#if s.erreur !== undefined}
+                <span class="etat" title={s.erreur}><span class="pastille erreur"></span>Sans fiche</span>
+              {:else}
+                <span class="etat"><span class="pastille {s.ouverte ? 'en-marche' : 'arretee'}"></span>{s.ouverte ? "Ouverte" : "Fermée"}</span>
+              {/if}
+              {#if s.erreur !== undefined}
+                <span class="erreur-site" data-testid="site-{s.id}-erreur">{s.erreur}</span>
+              {/if}
+              {#if s.erreurAction}
+                <span class="erreur-site" data-testid="site-{s.id}-erreur-action" role="alert">{s.erreurAction}</span>
+              {/if}
+              {#if !s.sansActions}
+              <div class="actions">
+                {#if s.erreur === undefined}
+                  <button data-testid="site-{s.id}-ouvrir" onclick={() => agirSite(s, "ouvrir")}>Ouvrir</button>
+                {/if}
+                <button data-testid="site-{s.id}-modifier" onclick={() => agirSite(s, "modifier")}>Modifier avec l'agent</button>
+                <button data-testid="site-{s.id}-oublier" onclick={() => (siteAOublier = s)}>{OUBLIER_MEMOIRE}</button>
+                <button data-testid="site-{s.id}-dossier" onclick={() => agirSite(s, "dossier")}>Afficher le dossier</button>
+                <button data-testid="site-{s.id}-supprimer" onclick={() => (siteASupprimer = s)}>Supprimer</button>
+              </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
   </div>
 </section>
+
+{#if siteAOublier}
+  {@const cible = siteAOublier}
+  <div class="voile">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-oubli-site">
+      <p>{confirmerOubli(cible.nom)}</p>
+      <div class="boutons">
+        <button onclick={() => (siteAOublier = null)}>Annuler</button>
+        <button
+          class="confirmer"
+          data-testid="confirmer-oubli-site"
+          onclick={() => {
+            const s = cible;
+            siteAOublier = null;
+            agirSite(s, "oublier");
+          }}>Oublier</button
+        >
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if siteASupprimer}
+  {@const cible = siteASupprimer}
+  <div class="voile">
+    <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-site">
+      <p>{confirmerSuppressionSite(cible.nom)}</p>
+      <div class="boutons">
+        <button onclick={() => (siteASupprimer = null)}>Annuler</button>
+        <button
+          class="confirmer"
+          data-testid="confirmer-suppression-site"
+          onclick={() => {
+            const s = cible;
+            siteASupprimer = null;
+            agirSite(s, "supprimer");
+          }}>Supprimer</button
+        >
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if aSupprimer}
   {@const cible = aSupprimer}
@@ -263,6 +370,9 @@
   .recherche:focus-within { border-color: var(--accent); }
   .recherche input { all: unset; flex: 1; padding: 8px 0; color: var(--texte); }
   .bandeau { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--fond-actif); }
+  .sites { margin-top: 24px; }
+  .titre-sites { margin: 0 0 6px; }
+  .erreur-site { flex: 1; min-width: 0; font-size: 12px; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vide, .aucune { color: var(--texte-doux); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--bord); }

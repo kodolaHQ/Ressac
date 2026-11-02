@@ -258,3 +258,81 @@ test("accorder signale le changement (la pastille de lecture suit) ; rien si l'a
   p.accorder(gmail);
   expect(n).toBe(1);
 });
+
+const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
+const youtube: OngletInfo = { id: "site:youtube", titre: "YouTube", url: "https://www.youtube.com/", espace: "", site: "youtube" };
+
+test("accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:youtube faux ; nouvelle conversation : faux", () => {
+  expect(p.peutLire(vidola)).toBe(false);
+  let n = 0;
+  p.surChange(() => n++);
+  p.accorderLectureSite("vidola");
+  expect(n).toBe(1);
+  expect(p.lectureSiteAccordee("vidola")).toBe(true);
+  expect(p.peutLire(vidola)).toBe(true);
+  // L'accord porte sur l'appli, pas sur l'origine : la page peut changer dans le site.
+  expect(p.peutLire({ ...vidola, url: "https://vidola-b.example/serie/2" })).toBe(true);
+  expect(p.peutLire(youtube)).toBe(false);
+  p.reinitialiser();
+  expect(p.lectureSiteAccordee("vidola")).toBe(false);
+  expect(p.peutLire(vidola)).toBe(false);
+});
+
+test("appli de site : une autorisation d'origine (onglet du même domaine, ou accorder sur la fenêtre) ne l'ouvre pas", () => {
+  const onglet: OngletInfo = { id: "7", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "perso" };
+  p.accorder(onglet);
+  p.interactionUtilisateur(onglet);
+  expect(p.peutLire(onglet)).toBe(true);
+  expect(p.peutLire(vidola)).toBe(false);
+  // Même posée sur l'id de la fenêtre, une autorisation d'origine ne compte pas.
+  p.accorder(vidola);
+  p.interactionUtilisateur(vidola);
+  p.ongletOuvertParAgent(vidola);
+  expect(p.peutLire(vidola)).toBe(false);
+  // Ni les données d'un widget ou d'une action du même nom.
+  p.accorderDonneesWidget("vidola");
+  p.accorderDonneesAction("vidola");
+  expect(p.peutLire(vidola)).toBe(false);
+});
+
+test("appli de site : ses droits de développement ne valent qu'avec son accord ; une nouvelle conversation retire les deux", () => {
+  p.accorderDev(vidola, ["console"], []);
+  expect(p.droitsDev(vidola)).toEqual([]);
+  p.accorderLectureSite("vidola");
+  expect(p.droitsDev(vidola)).toEqual(["console"]);
+  p.reinitialiser();
+  expect(p.droitsDev(vidola)).toEqual([]);
+});
+
+test("lecture d'une appli de site liée à l'empreinte de sa déclaration : une autre empreinte ne compte pas", () => {
+  p.accorderLectureSite("vidola", "e1");
+  expect(p.lectureSiteAccordee("vidola", "e1")).toBe(true);
+  expect(p.peutLire({ ...vidola, empreinte: "e1" })).toBe(true);
+  expect(p.lectureSiteAccordee("vidola", "e2")).toBe(false);
+  expect(p.lectureSiteAccordee("vidola")).toBe(false);
+  expect(p.peutLire({ ...vidola, empreinte: "e2" })).toBe(false);
+  p.accorderDev({ ...vidola, empreinte: "e1" }, ["console"], []);
+  expect(p.droitsDev({ ...vidola, empreinte: "e1" })).toEqual(["console"]);
+  expect(p.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
+  // Le nouvel accord remplace l'ancien.
+  p.accorderLectureSite("vidola", "e2");
+  expect(p.lectureSiteAccordee("vidola", "e2")).toBe(true);
+  expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
+});
+
+test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ; les cartes en attente le voient (retraitsLectureSite)", () => {
+  p.accorderLectureSite("vidola", "e1");
+  p.accorderLectureSite("youtube", "y");
+  let n = 0;
+  p.surChange(() => n++);
+  p.retirerLectureSite("vidola");
+  expect(n).toBe(1);
+  expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
+  expect(p.lectureSiteAccordee("youtube", "y")).toBe(true);
+  // Même sans accord (une carte encore en attente), le retrait est compté et signalé.
+  const avant = p.retraitsLectureSite("vidola");
+  p.retirerLectureSite("vidola");
+  expect(p.retraitsLectureSite("vidola")).toBe(avant + 1);
+  expect(p.retraitsLectureSite("youtube")).toBe(0);
+  expect(n).toBe(2);
+});

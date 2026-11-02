@@ -42,3 +42,11 @@ test("src/workflows n'importe ni widgets/, accueil/, actions/ ni pages/", () => 
     expect(readFileSync(f, "utf8"), f).not.toMatch(interdit);
   }
 });
+
+test("src/sites existe et n'importe pas electron", () => {
+  const sources = fichiers(join(racine, "src", "sites"));
+  expect(sources.length).toBeGreaterThan(0);
+  for (const f of sources) {
+    expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["']electron["']|require\(["']electron["']\)|import\(["']electron["']\)/);
+  }
+});

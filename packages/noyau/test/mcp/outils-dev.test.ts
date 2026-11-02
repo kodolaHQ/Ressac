@@ -15,6 +15,7 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 
 const github: OngletInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
 const gmail: OngletInfo = { id: "gmail", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
+const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
 const appTodo: OngletInfo = { id: "app:todo", titre: "Todo", url: "http://localhost:5280/", espace: "perso", application: "todo" };
 
 const REFUS = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
@@ -35,13 +36,16 @@ async function demarrer(o: {
   accorderDev?: DroitDev[];
   bloquer?: boolean;
   profils?: Partial<ReturnType<typeof fichiersProfils>>;
+  /** Réponse de la carte de l'appli de site (absente : pas de carte, refus). */
+  site?: boolean;
 } = {}) {
-  pont = new PontFactice([github, gmail, appTodo], {
+  pont = new PontFactice([github, gmail, appTodo, vidola], {
     actif: "github",
     autoriser: false,
     outilsDev: o.outilsDev ?? true,
     ...(o.accorderDev ? { accorderDev: o.accorderDev } : {}),
     ...(o.bloquer ? { bloquer: true } : {}),
+    ...(o.site !== undefined ? { donneesWidget: o.site } : {}),
   });
   politique = new PolitiqueAcces();
   racine = await dossierTemporaire();
@@ -609,4 +613,75 @@ test("espace privé pendant un appel : il est coupé et répond TEXTE_PRIVE", as
   pont.rendrePrive("github");
   politique.ongletFerme("github"); // ce que fait le navigateur quand l'onglet devient privé
   expect(await r).toBe(TEXTE_PRIVE);
+});
+
+// ——— Fenêtres d'applis de site : l'accord de l'appli ET celui des outils de développement ———
+
+const cartesSite = () => pont.appels.filter((a) => a.methode === "demanderDonneesWidget");
+
+test("lire_console avec l'accord du site mais sans droit de développement : refusé", async () => {
+  await demarrer({ accorderDev: [], site: true });
+  politique.accorderLectureSite("vidola");
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  expect(await appeler("lire_console", { id: "site:vidola" })).toBe(REFUS);
+  expect(demandesDev()).toHaveLength(1);
+  expect(cartesSite()).toHaveLength(0);
+  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(await appeler("lire_reseau", { id: "site:vidola" })).toBe(REFUS);
+  expect(pont.appels.some((a) => a.methode === "reseau")).toBe(false);
+});
+
+test("lire_console avec le droit de développement mais sans l'accord du site : la carte de l'appli, refusée → refusé, sans carte d'outils", async () => {
+  await demarrer({ accorderDev: ["console", "reseau"], site: false });
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  // Un droit de développement déjà tenu ne suffit pas.
+  politique.accorderDev(vidola, ["console"], []);
+  expect(await appeler("lire_console", { id: "site:vidola" })).toBe(REFUS);
+  expect(cartesSite().map((c) => c.args[0])).toEqual([{ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }]);
+  expect(demandesDev()).toHaveLength(0);
+  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(await appeler("demander_outils_dev", { id: "site:vidola", droits: ["reseau"], raison: "voir" })).toBe(REFUS);
+  expect(demandesDev()).toHaveLength(0);
+});
+
+test("lire_console sur une appli de site dont site.json a été réécrit (autre empreinte) : la carte de l'appli revient avant tout", async () => {
+  await demarrer({ accorderDev: ["console"], site: true });
+  pont.modifierOnglet("site:vidola", { empreinte: "e1" });
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "message" }]);
+  expect(await appeler("lire_console", { id: "site:vidola" })).toContain("message");
+  expect(cartesSite()).toHaveLength(1);
+  pont.modifierOnglet("site:vidola", { empreinte: "e2" });
+  expect(politique.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
+  await appeler("lire_console", { id: "site:vidola" });
+  expect(cartesSite()).toHaveLength(2);
+});
+
+test("lire_console : site.json réécrit pendant la carte de l'appli (autre empreinte) : rien n'est lu", async () => {
+  await demarrer({ accorderDev: ["console"] });
+  pont.modifierOnglet("site:vidola", { empreinte: "e1" });
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  let repondre: ((oui: boolean) => void) | undefined;
+  pont.demanderDonneesWidget = () => new Promise<boolean>((ok) => (repondre = ok));
+  const r = appeler("lire_console", { id: "site:vidola" });
+  await vi.waitFor(() => expect(repondre).toBeDefined());
+  pont.modifierOnglet("site:vidola", { empreinte: "autre" });
+  repondre!(true);
+  expect(await r).toBe(REFUS);
+  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+});
+
+test("lire_console sur une appli de site : les deux accords → les messages, URL masquées (le site n'est pas construit par l'agent)", async () => {
+  await demarrer({ accorderDev: ["console"], site: true });
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);
+  const r = await appeler("lire_console", { id: "site:vidola" });
+  expect(r).toContain("[error] échec");
+  expect(r).not.toContain("token=abc");
+  expect(r).toContain("token=«masqué»");
+  expect(cartesSite()).toHaveLength(1);
+  expect(demandesDev()).toHaveLength(1);
+  // Nouvelle conversation : les deux accords tombent.
+  politique.reinitialiser();
+  pont.appels.length = 0;
+  await appeler("lire_console", { id: "site:vidola" });
+  expect(cartesSite()).toHaveLength(1);
 });

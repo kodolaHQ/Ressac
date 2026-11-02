@@ -394,3 +394,131 @@ export function ecrireProjet(
   const manifeste = typeof o.manifeste === "string" ? o.manifeste : JSON.stringify({ type: "application", lancement: "node serveur.mjs", ...o.manifeste });
   writeFileSync(join(chemin, "webaios.json"), manifeste);
 }
+
+/** Une appli de site de test : `site.json` (un objet, écrit en JSON ; une chaîne, écrite telle quelle) et d'autres fichiers. */
+export interface SiteTest {
+  declaration: object | string;
+  /** Chemins relatifs au dossier de l'appli (`accueil/index.html`, `retouches/a.js`…) → contenu. */
+  fichiers?: Record<string, string | Buffer>;
+}
+
+/** Écrit une appli de site dans `sites/<id>/` de l'espace (ce que l'agent y écrirait). */
+export function ecrireSite(racine: string, id: string, s: SiteTest): void {
+  const dossier = join(racine, "sites", id);
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(join(dossier, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
+  for (const [chemin, contenu] of Object.entries(s.fichiers ?? {})) {
+    mkdirSync(join(dossier, chemin, ".."), { recursive: true });
+    writeFileSync(join(dossier, chemin), contenu);
+  }
+}
+
+/** Ce qu'une route de `serveurSites` répond : un texte HTML, ou la main sur la réponse. */
+export type RouteSite = string | ((req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => void);
+
+/**
+ * Un seul serveur pour tous les hôtes de test `*.localhost` (Chromium les résout vers la boucle locale sans DNS) : il
+ * répond selon l'en-tête Host. `definir(hote, chemin, route)` ajoute une page ; `/cookie` pose un cookie sur tout hôte ;
+ * `couper(hote)` coupe les connexions de cet hôte (site arrêté). Chaque requête reçue est notée dans `requetes`.
+ */
+export async function serveurSites(): Promise<{
+  port: number;
+  /** `http://<hote>:<port><chemin>`. */
+  url(hote: string, chemin?: string): string;
+  definir(hote: string, chemin: string, route: RouteSite): void;
+  couper(hote: string, oui?: boolean): void;
+  requetes: { hote: string; chemin: string; cookie: string | undefined }[];
+  fermer(): Promise<void>;
+}> {
+  const routes = new Map<string, RouteSite>();
+  const coupes = new Set<string>();
+  const requetes: { hote: string; chemin: string; cookie: string | undefined }[] = [];
+  const serveur = createServer((req, res) => {
+    const hote = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
+    const chemin = req.url ?? "/";
+    requetes.push({ hote, chemin, cookie: req.headers.cookie });
+    // Réinitialisation (RST) : Chromium rend ERR_CONNECTION_RESET (-101), un site arrêté ; une fermeture propre donnerait -324.
+    if (coupes.has(hote)) return void req.socket.resetAndDestroy();
+    const route = routes.get(`${hote} ${chemin}`) ?? routes.get(`${hote} ${chemin.split("?")[0]}`);
+    if (typeof route === "function") return route(req, res);
+    if (typeof route === "string") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return void res.end(route);
+    }
+    if (chemin === "/cookie") {
+      res.writeHead(200, { "Set-Cookie": `essai=${hote}; Max-Age=86400; Path=/`, "Content-Type": "text/html" });
+      return void res.end("<title>cookie</title>ok");
+    }
+    if (chemin === "/") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return void res.end(`<title>${hote}</title><p>${hote}</p>`);
+    }
+    res.writeHead(404).end();
+  });
+  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  const port = (serveur.address() as AddressInfo).port;
+  return {
+    port,
+    url: (hote, chemin = "/") => `http://${hote}:${port}${chemin}`,
+    definir: (hote, chemin, route) => void routes.set(`${hote} ${chemin}`, route),
+    couper: (hote, oui = true) => void (oui ? coupes.add(hote) : coupes.delete(hote)),
+    requetes,
+    fermer: () =>
+      new Promise((ok) => {
+        serveur.closeAllConnections();
+        serveur.close(() => ok());
+      }),
+  };
+}
+
+/** La page de l'interface de la fenêtre d'une appli de site (`site.html?id=<id>`). */
+export async function fenetreSite(app: ElectronApplication, id: string): Promise<Page> {
+  const est = (p: Page) => p.url().includes("/renderer/site.html") && new URL(p.url()).searchParams.get("id") === id;
+  for (const fin = Date.now() + 10_000; Date.now() < fin; ) {
+    const trouvee = app.windows().find(est);
+    if (trouvee) return trouvee;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`la fenêtre de l'appli de site ${id} n'est pas apparue`);
+}
+
+/**
+ * Exécute `code` dans la vue du site de l'appli `id` (la WebContentsView sous la barre), avec un geste de l'utilisateur si
+ * `geste`. `cadre` : l'indice d'un sous-cadre direct de la page. undefined si la fenêtre n'est pas ouverte.
+ */
+export function vueSite(app: ElectronApplication, id: string, code: string, o: { geste?: boolean; cadre?: number } = {}): Promise<unknown> {
+  return app.evaluate(
+    async ({ BrowserWindow }, [id, code, geste, cadre]) => {
+      const f = BrowserWindow.getAllWindows().find((w) => {
+        if (w.isDestroyed() || w.webContents.isDestroyed()) return false;
+        const u = w.webContents.getURL();
+        return u.includes("/renderer/site.html") && new URL(u).searchParams.get("id") === id;
+      });
+      const vue = f?.contentView.children[0] as Electron.WebContentsView | undefined;
+      if (!vue || vue.webContents.isDestroyed()) return undefined;
+      const wc = vue.webContents;
+      if (cadre === -1) return wc.executeJavaScript(code, geste);
+      const sous = wc.mainFrame.frames[cadre];
+      return sous?.executeJavaScript(code, geste);
+    },
+    [id, code, o.geste ?? false, o.cadre ?? -1] as const,
+  );
+}
+
+/** L'état de la vue du site de l'appli `id` vu du process principal : adresse, bornes, visibilité, et la taille de la fenêtre. */
+export function etatVueSite(
+  app: ElectronApplication,
+  id: string,
+): Promise<{ url: string; bornes: { x: number; y: number; width: number; height: number }; visible: boolean; contenu: [number, number] } | undefined> {
+  return app.evaluate(({ BrowserWindow }, id) => {
+    const f = BrowserWindow.getAllWindows().find((w) => {
+      if (w.isDestroyed() || w.webContents.isDestroyed()) return false;
+      const u = w.webContents.getURL();
+      return u.includes("/renderer/site.html") && new URL(u).searchParams.get("id") === id;
+    });
+    const vue = f?.contentView.children[0] as Electron.WebContentsView | undefined;
+    if (!f || !vue || vue.webContents.isDestroyed()) return undefined;
+    const [l = 0, h = 0] = f.getContentSize();
+    return { url: vue.webContents.getURL(), bornes: vue.getBounds(), visible: vue.getVisible(), contenu: [l, h] as [number, number] };
+  }, id);
+}

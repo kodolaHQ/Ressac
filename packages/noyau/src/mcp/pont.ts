@@ -21,6 +21,21 @@ export interface OngletInfo {
   espace: string;
   /** Dossier du projet, pour la fenêtre d'une application. */
   application?: string;
+  /**
+   * Id de l'appli de site, pour sa fenêtre (`site:<id>`) : `titre` est alors le nom de l'appli (jamais le titre de la
+   * page), et sa lecture passe par l'accord de l'appli (`PolitiqueAcces.lectureSiteAccordee`), jamais par l'origine.
+   */
+  site?: string;
+  /**
+   * Appli de site : son domaine actuel (celui de son adresse de départ, suivi de l'adresse compris), seul montré sans
+   * l'accord, jamais l'hôte de la page affichée (qui peut être un domaine de connexion).
+   */
+  domaine?: string;
+  /**
+   * Appli de site : l'empreinte de sa déclaration d'aujourd'hui (`empreinteLectureSite` : nom, domaines, connexion).
+   * L'accord de l'agent ne vaut que pour l'empreinte montrée sur sa carte.
+   */
+  empreinte?: string;
 }
 
 /** Ce que le navigateur (Electron, extension…) fournit au noyau. */
@@ -30,7 +45,11 @@ export interface PontNavigateur {
   /** Lève OngletIntrouvable si l'id est inconnu (comme lireTexte, naviguer et capturer). */
   lireTexte(id: string): Promise<{ texte: string; selection?: string }>;
   ouvrirOnglet(url: string, espace?: string): Promise<OngletInfo>;
-  naviguer(id: string, url: string): Promise<void>;
+  /**
+   * `"en-attente"` (fenêtre d'appli de site seulement) : la carte d'accord des retouches est affichée ; l'adresse se
+   * chargera après le choix de l'utilisateur.
+   */
+  naviguer(id: string, url: string): Promise<void | "en-attente">;
   /** Capture PNG de l'onglet. */
   capturer(id: string): Promise<Buffer>;
   /** Affiche la demande à l'utilisateur ; vrai s'il accepte. */
@@ -84,9 +103,15 @@ export interface PontNavigateur {
    * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
    * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
    * noyau arrêté), elle est retirée et la demande répond faux. `genre: "action"` : les résultats d'une action, non d'un
-   * widget. Absent : la demande est refusée.
+   * widget ; `genre: "site"` : les pages et la mémoire d'une appli de site (`id` est celui de l'appli). Absent : la
+   * demande est refusée.
    */
-  demanderDonneesWidget?(o: { id: string; nom: string; agent: string; genre?: "action" }, signal?: AbortSignal): Promise<boolean>;
+  demanderDonneesWidget?(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal): Promise<boolean>;
+  /**
+   * L'adresse est-elle sur les domaines de l'appli de site ouverte `site` (jamais ceux de sa connexion) ? Faux si sa
+   * fenêtre n'est pas ouverte. Absent : l'agent ne fait naviguer aucune appli de site.
+   */
+  adresseSitePermise?(site: string, url: string): boolean;
 }
 
 export interface MessageConsole {

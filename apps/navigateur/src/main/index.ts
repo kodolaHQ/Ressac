@@ -29,11 +29,15 @@ import { fichierPermissions, SessionsProfils } from "./profils-connexion";
 import { Telechargements } from "./telechargements";
 import { demarrerAgent, type ServiceAgent } from "./agent/agent";
 import { creerNotifieur } from "./notifications";
-import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, questionCaduque } from "./agent/pont";
+import { attendreDroits, attendreReponse, decisionPermise, DELAI_QUESTION_MS, espacesDevenusPrives, infosOnglets, origineDe, ongletActifDe, ongletApplication, PREFIXE_SITE, questionCaduque, questionSiteCaduque } from "./agent/pont";
 import { Atelier, catalogueBlocs, cheminsEspace, lireAccueil, lireAction, retirerAccord, supprimerDonnees, type DroitDev, type EtatActions, type OngletInfo } from "@webaios/noyau";
 import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
+import { demarrerSites, type ServiceSites } from "./sites/service";
+import { repondreAccueilSite } from "./sites/accueil";
+import { requetesDe } from "./image-distante";
+import { SCHEMA_SITE } from "../commun/sites";
 import { gardienGestes } from "./agent/geste-widget";
 import { enregistrerSchemaWidget, executionWidget, executionsWidget, navigationCadrePermise, widgetDuCadre, lireWidgetsAffiches, permissionInterface, placerWidgets, profilsPourAccord, retirerWidget, SCHEMA_WIDGET, servirWidgets, urlOuvrable } from "./agent/accueil";
 import { creerServiceActions, espaceActifPrive, repondreComposant, repondreImage, SCHEMA_COMPOSANT, SCHEMA_IMAGE } from "./agent/actions";
@@ -67,7 +71,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 // le seul autre, remplace le sien. Voulu : avec `bypassCSP`, les affichages des widgets pourraient charger ces icônes
 // malgré leur CSP. L'interface a `crx:` dans son `img-src` (index.html) : sans privilège, l'icône s'y charge quand même
 // (vérifié par e2e/extensions-interface.spec.ts).
-enregistrerSchemaWidget([SCHEMA_ICONE, SCHEMA_IMAGE, SCHEMA_COMPOSANT]);
+enregistrerSchemaWidget([SCHEMA_ICONE, SCHEMA_IMAGE, SCHEMA_COMPOSANT, SCHEMA_SITE]);
 // Aucune résolution de nom anticipée, nulle part (<link rel=dns-prefetch>, liens) : dans un affichage de widget, elle
 // ferait sortir des données dans une requête DNS, sans passer par la CSP ni par le proxy de l'interface. Les onglets y
 // perdent un peu de vitesse ; leurs navigations résolvent les noms normalement.
@@ -120,6 +124,8 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     height: 900,
     ...cadre,
     show: !INVISIBLE,
+    // Tests : macOS montrerait la fenêtre pour la passer en plein écran ; la page y passe quand même (vidéo en plein écran).
+    fullscreenable: !INVISIBLE,
     titleBarStyle: "hiddenInset",
     // Boutons de la fenêtre centrés sur la rangée du haut de la barre latérale (← → recharger, centre vers 27 px,
     // mesuré à l'écran par l'utilisateur) ; ceux de macOS font 14 px de haut et s'arrêtent avant les 70 px laissés à gauche.
@@ -263,6 +269,7 @@ let agent: ServiceAgent | undefined;
 const fileEcritures = new FileEcritures();
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 let applications: ServiceApplications | undefined;
+let sites: ServiceSites | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
@@ -280,18 +287,22 @@ app.whenReady().then(async () => {
     console.error("[webaios] le réseau de l'interface n'a pas pu être coupé :", e);
   }
   const sessionIcones = session.fromPartition("webaios-icones");
+  const requetesIcones = requetesDe(sessionIcones);
   protocol.handle(SCHEMA_ICONE, (requete) => repondreIcone((url, init) => sessionIcones.fetch(url, init), requete.url));
   // Exécutions, résultats et accords des actions : hors de l'espace, à côté de ceux des widgets.
   const dossierActions = join(dossier, "actions");
   // Les images des résultats d'une action sans compte : la même session sans cookies que les favicons.
   protocol.handle(SCHEMA_IMAGE, (requete) =>
     repondreImage(
-      { dossierActions, lireAction: async (id) => (agent ? lireAction(agent.chemins, id) : null), chercher: (url, init) => sessionIcones.fetch(url, init) },
+      { dossierActions, lireAction: async (id) => (agent ? lireAction(agent.chemins, id) : null), ouvrir: requetesIcones },
       requete.url,
     ),
   );
   // Les composants de l'agent, dessinés dans un cadre sans réseau comme un affichage de widget.
   protocol.handle(SCHEMA_COMPOSANT, (requete) => repondreComposant(agent?.chemins.composants ?? null, requete.url));
+  // L'écran d'accueil des applis de site (`~/WebAiOs/sites/<id>/accueil/`), dans un cadre sans réseau de leur fenêtre.
+  const cheminsAccueilSites = cheminsEspace();
+  protocol.handle(SCHEMA_SITE, (requete) => repondreAccueilSite(cheminsAccueilSites, requete.url));
   const magasin = new Magasin(await chargerSession(dossier));
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
@@ -507,7 +518,9 @@ app.whenReady().then(async () => {
       const d = q.demande;
       const appli = d.cible?.startsWith("app:") ? applications?.fenetres.ouvertes().find((a) => `app:${a.dossier}` === d.cible) : undefined;
       const appliCaduque = d.cible?.startsWith("app:") && (!appli || origineDe(appli.url) !== d.origine);
-      if (appliCaduque || questionCaduque(d, magasin.etat)) {
+      // Fenêtre d'appli de site : fermée, ou (outils de développement) partie sur une autre origine.
+      const siteCaduque = questionSiteCaduque(d, sites?.fenetres.ouvertes() ?? []);
+      if (appliCaduque || siteCaduque || questionCaduque(d, magasin.etat)) {
         questions.delete(id);
         // Tombée sans réponse de l'utilisateur : retirée, pas refusée (les cartes de l'agent le disent).
         q.repondre("retiree");
@@ -695,6 +708,23 @@ app.whenReady().then(async () => {
       liste: async () => (await applications?.liste()) ?? { atelier: "ok", applications: [] },
       agir: (dossier, action, f) => applications?.agir(dossier, action, f),
     },
+    sites: {
+      liste: async () => (await sites?.liste()) ?? [],
+      agir: (id, action, f) => void sites?.agir(id, action, f).catch((e) => console.error(`[sites] ${id} : ${action} impossible :`, e)),
+    },
+    site: {
+      idDe: (sender) => sites?.fenetres.idDeInterface(sender),
+      etat: (id) => sites?.fenetres.etat(id) ?? null,
+      geste: (id, g) => sites?.fenetres[g](id),
+      accorder: async (id, oui, empreinte) => sites?.accorder(id, oui, empreinte),
+      memoire: async (id) => {
+        if (!sites) throw new Error("applis de site pas prêtes");
+        return sites.memoireAccueil(id);
+      },
+      ouvrir: async (id, adresse) => sites?.ouvrirDepuisAccueil(id, adresse) ?? false,
+      image: async (id, url) => (await sites?.imageAccueil(id, url)) ?? null,
+      gesteAccueil: (id) => sites?.gesteAccueil(id),
+    },
     extensions: {
       // Dans l'espace actif de la fenêtre émettrice ; la carte s'ouvre dans cette fenêtre.
       installerStore: async (saisie, fenetreId) => {
@@ -781,7 +811,7 @@ app.whenReady().then(async () => {
     fermerOnglet: (id) => vues.fermer(id),
     rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
-    surApplication: (action) => applications?.fenetres.surPremierPlan(action) ?? false,
+    surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
   };
   installerMenu(cibles);
   // La coche du moteur de recherche suit l'état.
@@ -808,21 +838,23 @@ app.whenReady().then(async () => {
   // Un seul conteneur pour l'agent (quel que soit son profil) et les applis qu'il lance.
   const chemins = cheminsEspace();
   const atelier = new Atelier({ chemins, dossierDocker: join(__RESSOURCES_NOYAU__, "docker") });
+  // Lien sortant d'une appli (ou d'une appli de site, sur un clic de l'utilisateur) : un onglet dans la fenêtre principale
+  // active, mise au premier plan.
+  const ouvrirDansOnglet = (url: string) => {
+    if (!fenetreAgent()) rouvrirFenetres();
+    const id = fenetreAgent();
+    if (!id) return;
+    magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url });
+    const f = fenetres.get(id);
+    if (!f || INVISIBLE) return;
+    if (f.isMinimized()) f.restore();
+    f.focus();
+  };
   applications = demarrerApplications({
     chemins,
     atelier,
     dossierProfil: dossier,
-    // Lien sortant d'une appli : un onglet dans la fenêtre principale active, mise au premier plan.
-    ouvrirOnglet: (url) => {
-      if (!fenetreAgent()) rouvrirFenetres();
-      const id = fenetreAgent();
-      if (!id) return;
-      magasin.agir({ type: "ouvrirOnglet", fenetreId: id, url });
-      const f = fenetres.get(id);
-      if (!f || INVISIBLE) return;
-      if (f.isMinimized()) f.restore();
-      f.focus();
-    },
+    ouvrirOnglet: ouvrirDansOnglet,
     // La page Applications relit la liste.
     diffuser: () => diffuser(CANAUX.applicationsChange, null),
     // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
@@ -845,6 +877,35 @@ app.whenReady().then(async () => {
       cibles.raccourci(f, "agent");
     },
   });
+  // Les applis de site : leurs fenêtres n'attendent ni Docker ni l'agent.
+  sites = demarrerSites({
+    chemins,
+    dossierProfil: dossier,
+    preloadSite: join(__dirname, "../preload/site.js"),
+    cheminGarde: join(__RESSOURCES_NOYAU__, "extensions", "webaios-garde-page.js"),
+    adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
+    ouvrirOnglet: (url) => {
+      if (/^https?:\/\//.test(url)) ouvrirDansOnglet(url);
+    },
+    deboguer: (f, texte) => {
+      agent?.preRemplir(f, texte);
+      cibles.raccourci(f, "agent");
+    },
+    // La section « Sites » de la page Applications relit la liste.
+    diffuser: () => diffuser(CANAUX.sitesChange, null),
+    // L'agent perd ses outils de développement sur la fenêtre fermée ; ses cartes d'outils sur elle tombent. La carte de
+    // l'appli et son accord, eux, valent pour l'appli et la conversation (rouverte, elle reste ouverte à l'agent).
+    surFermee: (id) => {
+      agent?.noyau()?.politique.ongletFerme(`${PREFIXE_SITE}${id}`);
+      ecarterQuestionsCaduques();
+    },
+    // Supprimée : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée au même id redemande la carte).
+    surSupprimee: (id) => agent?.noyau()?.politique.retirerLectureSite(id),
+  });
+  // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
+  if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
+    (globalThis as { __webaiosErreursRetouches?: (id: string) => unknown }).__webaiosErreursRetouches = (id) => sites?.erreurs(id) ?? [];
+  }
   /**
    * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que
    * soit l'onglet affiché.
@@ -892,6 +953,23 @@ app.whenReady().then(async () => {
   agent = demarrerAgent({
     // Outils MCP des extensions : lister, demander (carte d'accord), recharger, console filtrée et son déblocage.
     extensions: serviceExtensions.outilsAgent({ fenetreAgent }),
+    // Outils MCP des applis de site ; relus à chaque appel (le service est créé plus haut, jamais remplacé).
+    sites: {
+      lister: async () =>
+        ((await sites?.listeAgent()) ?? []).map((s) => ({
+          id: s.id, nom: s.nom, domaine: s.domaine, ouverte: s.ouverte, ...(s.erreur !== undefined ? { erreur: s.erreur } : {}),
+          ...(s.empreinte !== undefined ? { empreinte: s.empreinte } : {}),
+        })),
+      ouvrir: async (id) => (await sites?.ouvrirParId(id)) ?? false,
+      memoire: async (id) => {
+        if (!sites || !(await sites.liste()).some((s) => s.id === id)) return null;
+        return (await sites.memoire(id)).contenu();
+      },
+      erreurs: async (id) => {
+        if (!sites || !(await sites.liste()).some((s) => s.id === id)) return null;
+        return sites.erreurs(id).map(({ quand, texte, source }) => ({ quand, texte, source }));
+      },
+    },
     atelier,
     historique,
     // Profils bruts des sites tiers : dans le profil du navigateur, jamais dans l'espace que l'agent lit.
@@ -905,6 +983,13 @@ app.whenReady().then(async () => {
     sessionProfil: (id) => sessions.session(id),
     applications: applications.gestionnaire,
     fenetresApplications: applications.fenetres,
+    // La vue du site de chaque appli ouverte (jamais sa barre ni son accueil) ; relu à chaque appel.
+    fenetresSites: {
+      ouvertes: () => sites?.fenetres.ouvertes() ?? [],
+      webContents: (id) => sites?.fenetres.vueSite(id),
+      adressePermise: (id, url) => sites?.adressePermise(id, url) ?? false,
+      naviguer: (id, url) => sites?.fenetres.naviguerPourAgent(id, url) ?? "refuse",
+    },
     magasin,
     vues,
     fenetres,
@@ -942,7 +1027,9 @@ app.whenReady().then(async () => {
           poserQuestion(
             w.genre === "action"
               ? { origine: `webaios://action/${w.id}`, permissions: ["donnees-widget"], titre: w.nom, action: w.id, agent: w.agent }
-              : { origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent },
+              : w.genre === "site"
+                ? { origine: `${SCHEMA_SITE}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, site: w.id, agent: w.agent }
+                : { origine: `${SCHEMA_WIDGET}://${w.id}`, permissions: ["donnees-widget"], titre: w.nom, widget: w.id, agent: w.agent },
             repondre,
           ),
         DELAI_QUESTION_MS,
@@ -1003,7 +1090,7 @@ app.on("before-quit", (e) => {
   if (magasinGlobal) for (const [id, f] of fenetres) noterCadre(id, f, magasinGlobal);
   // Les applis s'arrêtent (et leurs fenêtres se ferment) avant l'écriture de la session.
   const enregistrement = enregistreur;
-  const ecriture = Promise.allSettled([applications?.arreter()]).then(() => enregistrement.vider());
+  const ecriture = Promise.allSettled([applications?.arreter(), sites?.arreter()]).then(() => enregistrement.vider());
   void Promise.allSettled([agent?.arreter(), ecriture]).finally(() => {
     sessionEcrite = true;
     app.quit();

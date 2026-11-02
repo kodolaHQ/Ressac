@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { injectBrowserAction } from "electron-chrome-extensions/browser-action";
-import type { ApiPastille, ApiWebaios } from "../commun/api";
-import { ARG_FENETRE, ARG_PASTILLE, CANAUX } from "../commun/canaux";
+import type { ApiPastille, ApiSite, ApiWebaios } from "../commun/api";
+import { ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "../commun/canaux";
 import { MOTIF_INDICES_RESEAU } from "../commun/indices-reseau";
 import { gardeWidget } from "./garde-widget";
 import type { EtatNavigateur } from "../commun/modele";
@@ -123,6 +123,11 @@ const api: ApiWebaios = {
     surChange: (rappel) => ecouter(CANAUX.applicationsChange, () => rappel()),
     agir: (dossier, action) => ipcRenderer.send(CANAUX.applicationAction, { dossier, action }),
   },
+  sites: {
+    liste: () => ipcRenderer.invoke(CANAUX.sitesListe),
+    surChange: (rappel) => ecouter(CANAUX.sitesChange, () => rappel()),
+    agir: (id, action) => ipcRenderer.send(CANAUX.sitesAction, { id, action }),
+  },
   extensions: {
     installerStore: (saisie) => ipcRenderer.invoke(CANAUX.extensionsInstallerStore, saisie),
     pourEspace: (espaceId) => ipcRenderer.invoke(CANAUX.extensionsPourEspace, espaceId),
@@ -156,17 +161,38 @@ const pastille: ApiPastille = {
   pastilleTaille: (ouverte) => ipcRenderer.send(CANAUX.pastilleTaille, { ouverte }),
 };
 
+/** Interface de la fenêtre d'une appli de site : sa barre et son état, rien d'autre (le main reconnaît l'appli à l'expéditeur). */
+const site: ApiSite = {
+  etat: () => ipcRenderer.invoke(CANAUX.siteEtat),
+  surEtat: (rappel) => ecouter(CANAUX.siteEtatChange, rappel),
+  entrer: () => ipcRenderer.send(CANAUX.siteEntrer),
+  accueil: () => ipcRenderer.send(CANAUX.siteAccueil),
+  precedent: () => ipcRenderer.send(CANAUX.sitePrecedent),
+  suivant: () => ipcRenderer.send(CANAUX.siteSuivant),
+  recharger: () => ipcRenderer.send(CANAUX.siteRecharger),
+  ouvrirBloque: () => ipcRenderer.send(CANAUX.siteOuvrirBloque),
+  chercherAdresse: () => ipcRenderer.send(CANAUX.siteChercherAdresse),
+  accorder: (oui, empreinte) => ipcRenderer.invoke(CANAUX.siteAccorder, oui, empreinte),
+  memoire: () => ipcRenderer.invoke(CANAUX.siteAccueilMemoire),
+  surMemoire: (rappel) => ecouter(CANAUX.siteAccueilMemoireChange, rappel),
+  ouvrir: (adresse) => ipcRenderer.invoke(CANAUX.siteAccueilOuvrir, adresse),
+  image: (url) => ipcRenderer.invoke(CANAUX.siteAccueilImage, url),
+};
+
 /**
  * Ce preload tourne aussi dans les cadres de l'interface (nodeIntegrationInSubFrames, pour les affichages des widgets).
  * Seul le cadre principal reçoit l'API ; un cadre n'en voit rien.
  */
 const cadrePrincipal = process.isMainFrame !== false && window.top === window;
 const estPastille = process.argv.some((a) => a.startsWith(ARG_PASTILLE));
+const estSite = process.argv.some((a) => a.startsWith(ARG_SITE));
 if (cadrePrincipal) {
-  contextBridge.exposeInMainWorld("webaios", estPastille ? pastille : api);
+  // La fenêtre d'une appli de site n'a que `site` : ni l'API de la fenêtre principale, ni les boutons des extensions.
+  if (estSite) contextBridge.exposeInMainWorld("webaios", { site });
+  else contextBridge.exposeInMainWorld("webaios", estPastille ? pastille : api);
   // Les boutons des extensions (`<button is="browser-action">`, BarreExtensions.svelte) : l'interface d'une fenêtre
-  // principale seulement, jamais un cadre (affichage de widget) ni la pastille d'une appli.
-  if (!estPastille) injectBrowserAction();
+  // principale seulement, jamais un cadre (affichage de widget), la pastille d'une appli ni une fenêtre d'appli de site.
+  if (!estPastille && !estSite) injectBrowserAction();
 } else {
   // Tout autre cadre de l'interface est l'affichage d'un widget ou un cadre qu'il a créé : ni WebRTC, ni indice réseau
   // (voir garde-widget.ts), posé avant le premier script de la page.
@@ -188,4 +214,12 @@ if (!cadrePrincipal && location.protocol === "webaios-widget:") {
     },
     true,
   );
+}
+if (!cadrePrincipal && location.protocol === "webaios-site:") {
+  // Écran d'accueil d'une appli de site : comme pour un widget, un vrai appui (souris, ou Entrée et Espace au clavier,
+  // `isTrusted`, que le code de l'accueil ne peut pas produire) est signalé au process principal, qui seul permet alors
+  // à l'accueil d'ouvrir une adresse du site. Écouté en capture, avant tout écouteur de l'accueil.
+  const signaler = () => ipcRenderer.send(CANAUX.siteAccueilGeste);
+  addEventListener("pointerdown", (e) => e.isTrusted && signaler(), true);
+  addEventListener("keydown", (e) => e.isTrusted && !e.repeat && (e.key === "Enter" || e.key === " ") && signaler(), true);
 }

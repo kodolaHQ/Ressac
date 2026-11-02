@@ -260,6 +260,8 @@ export interface Demande {
   widget?: string;
   /** « donnees-widget » : l'id de l'action dont l'agent veut voir les résultats (au lieu d'un widget). */
   action?: string;
+  /** « donnees-widget » : l'id de l'appli de site que l'agent veut voir (ses pages et sa mémoire), au lieu d'un widget. */
+  site?: string;
   /** « lire-onglet » : la question ne s'affiche que dans cette fenêtre (sinon, selon `ongletId`). */
   fenetreId?: IdFenetre;
   /** « lire-onglet » et « outils-dev » : l'onglet visé ; s'il est fermé, la question est refusée. */

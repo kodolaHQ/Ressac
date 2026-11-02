@@ -26,7 +26,7 @@ import {
 import type { Accord, Action, ProfilPourAccord } from "../../commun/api";
 import { ACTIONS_EN_ESPACE_PRIVE, composantDuCadre, SCHEMA_COMPOSANT, SCHEMA_IMAGE, urlComposant, urlImage, type ActionAffichee } from "../../commun/actions";
 import type { EtatNavigateur, IdFenetre } from "../../commun/modele";
-import { corpsBorne } from "../reseau-interface";
+import { chargerImage, type OuvrirRequete } from "../image-distante";
 import { lireConfine, profilsPourAccord, reponseAffichage, urlOuvrable } from "./accueil";
 import { profilsLisibles } from "./lecture-invisible";
 
@@ -34,11 +34,6 @@ export { SCHEMA_COMPOSANT, SCHEMA_IMAGE, urlComposant, urlImage, COMPOSANT_HTML_
 
 /** Taille au plus d'une image des résultats servie à l'interface. */
 export const IMAGE_MAX = 5 * 1024 * 1024;
-const DELAI_IMAGE_MS = 10_000;
-/** Redirections suivies au plus pour une image, chacune revérifiée (https, ni locale ni du réseau privé). */
-export const REDIRECTIONS_IMAGE = 3;
-/** Cherche une adresse sans cookies et sans suivre les redirections (elles sont suivies et vérifiées ici). */
-export type ChercherImage = (url: string, init: { signal: AbortSignal; credentials: "omit"; redirect: "manual" }) => Promise<Response>;
 /** Une image ne se cherche qu'en https, jamais sur la machine ni sur le réseau local. */
 const adresseImagePermise = (url: string) => url.startsWith("https://") && urlOuvrable(url);
 const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
@@ -61,12 +56,12 @@ export function cibleImage(url: string): { id: string; execution: string; cible:
 /**
  * Réponse du schéma `webaios-image:`. Une image se charge sans clic : son adresse pourrait porter des données vers un
  * tiers. Donc 404 sans rien chercher, sauf pour une action actuelle sans compte, une exécution gardée, et une adresse
- * `https` (ni locale) présente telle quelle dans ses résultats, sans accord du compte. Cherchée sans cookies (`chercher` :
- * la session à part des favicons), redirections suivies ici (`REDIRECTIONS_IMAGE`, chacune revérifiée), `image/*`
- * seulement, `IMAGE_MAX` au plus.
+ * `https` (ni locale) présente telle quelle dans ses résultats, sans accord du compte. Cherchée sans cookies (`ouvrir` :
+ * les requêtes de la session à part des favicons), redirections suivies seulement après vérification
+ * (`REDIRECTIONS_IMAGE`, https, ni locale ni du réseau privé), `image/*` seulement, `IMAGE_MAX` au plus.
  */
 export async function repondreImage(
-  o: { dossierActions: string; lireAction: (id: string) => Promise<ActionLue | null>; chercher: ChercherImage },
+  o: { dossierActions: string; lireAction: (id: string) => Promise<ActionLue | null>; ouvrir: OuvrirRequete },
   url: string,
 ): Promise<Response> {
   const refus = () => new Response("", { status: 404 });
@@ -79,39 +74,9 @@ export async function repondreImage(
   if (!accords || Object.hasOwn(accords, c.id)) return refus();
   const [resultat, execution] = await Promise.all([lireResultat(o.dossierActions, c.id, c.execution), lireExecution(join(o.dossierActions, c.id), c.execution)]);
   if (!resultat || !execution || !chainesDe(resultat.resultats).has(c.cible)) return refus();
-  const arret = new AbortController();
-  const minuterie = setTimeout(() => arret.abort(), DELAI_IMAGE_MS);
-  try {
-    let adresse = c.cible;
-    let r = await o.chercher(adresse, { signal: arret.signal, credentials: "omit", redirect: "manual" });
-    for (let sauts = 0; r.status >= 300 && r.status < 400; sauts++) {
-      await r.body?.cancel().catch(() => {});
-      const location = r.headers.get("location");
-      if (!location || sauts >= REDIRECTIONS_IMAGE) return refus();
-      let suivante: string;
-      try {
-        suivante = new URL(location, adresse).href;
-      } catch {
-        return refus();
-      }
-      // Une page hostile pourrait rediriger vers le réseau local ou un port de WebAiOs : chaque saut est revérifié.
-      if (!adresseImagePermise(suivante)) return refus();
-      adresse = suivante;
-      r = await o.chercher(adresse, { signal: arret.signal, credentials: "omit", redirect: "manual" });
-    }
-    const type = r.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (!r.ok || !type.startsWith("image/")) {
-      await r.body?.cancel().catch(() => {});
-      return refus();
-    }
-    const corps = await corpsBorne(r, IMAGE_MAX);
-    if (!corps) return refus();
-    return new Response(corps, { headers: { "Content-Type": type, "X-Content-Type-Options": "nosniff" } });
-  } catch {
-    return refus();
-  } finally {
-    clearTimeout(minuterie);
-  }
+  const image = await chargerImage(o.ouvrir, c.cible, { permise: adresseImagePermise, cookies: false, max: IMAGE_MAX });
+  if (!image) return refus();
+  return new Response(new Uint8Array(image.corps), { headers: { "Content-Type": image.type, "X-Content-Type-Options": "nosniff" } });
 }
 
 /**
