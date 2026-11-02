@@ -16,6 +16,8 @@ const ZOOM_MAX = 3;
 const LONGUEUR_TEXTE = 100_000;
 /** Largeur maximale de la capture qui sert de fond flouté aux modales (px) : légère, le flou efface le détail. */
 const LARGEUR_APERCU = 1024;
+/** Largeur des aperçus en cache (panneau ⌃Tab) : des vignettes, pas des fonds de modale. */
+const LARGEUR_APERCU_ONGLET = 480;
 
 /**
  * Préférences de toute page web : bac à sable, aucun preload propre. Les preloads de la session (extensions, sur les
@@ -209,7 +211,7 @@ export class GestionnaireVues {
     if (!wc || wc.isDestroyed() || wc.isCrashed()) return null;
     try {
       const image = await wc.capturePage(undefined, { stayHidden: true });
-      return this.encoderApercu(image);
+      return this.encoderApercu(image, LARGEUR_APERCU);
     } catch {
       return null;
     }
@@ -229,16 +231,16 @@ export class GestionnaireVues {
       const image = await wc.capturePage(undefined, { stayHidden: true });
       // Pendant la capture, l'onglet a pu être fermé ou remplacé : on n'écrit pas un cache orphelin.
       if (this.attachees.get(fenetreId) !== id || !this.vues.has(id)) return;
-      const url = this.encoderApercu(image);
+      const url = this.encoderApercu(image, LARGEUR_APERCU_ONGLET);
       if (url) this.apercus.set(id, url);
     } catch {
       /* capture impossible : on garde l'ancien aperçu */
     }
   }
 
-  private encoderApercu(image: Electron.NativeImage): string | null {
+  private encoderApercu(image: Electron.NativeImage, largeur: number): string | null {
     if (image.isEmpty()) return null;
-    const reduite = image.getSize().width > LARGEUR_APERCU ? image.resize({ width: LARGEUR_APERCU, quality: "good" }) : image;
+    const reduite = image.getSize().width > largeur ? image.resize({ width: largeur, quality: "good" }) : image;
     return `data:image/jpeg;base64,${reduite.toJPEG(70).toString("base64")}`;
   }
 
