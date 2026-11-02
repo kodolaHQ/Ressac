@@ -183,6 +183,31 @@ describe("erreurs", () => {
     await expect(sans.assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
     await expect(sans.assurerReference()).rejects.toBeInstanceOf(ErreurRelecture);
   });
+  test("git dont --version échoue : GIT_NECESSAIRE", async () => {
+    const faux = join(racine, "faux-git");
+    await writeFile(faux, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
+    await expect(new DepotRelecture({ depot, dossier, git: faux }).assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
+  });
+  test("WEBAIOS_GIT=/chemin/absent : GIT_NECESSAIRE", async () => {
+    const avant = process.env.WEBAIOS_GIT;
+    process.env.WEBAIOS_GIT = "/chemin/absent";
+    try {
+      await expect(new DepotRelecture({ depot, dossier }).assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
+    } finally {
+      if (avant === undefined) delete process.env.WEBAIOS_GIT; else process.env.WEBAIOS_GIT = avant;
+    }
+  });
+  test.skipIf(process.getuid?.() === 0)("sous-dossier chmod 000 : ACCES_REFUSE", async () => {
+    await ecrire("a.txt", "a");
+    await mkdir(join(dossier, "sub"));
+    await writeFile(join(dossier, "sub", "x.txt"), "x");
+    await chmod(join(dossier, "sub"), 0o000);
+    try {
+      await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCES_REFUSE });
+    } finally {
+      await chmod(join(dossier, "sub"), 0o755);
+    }
+  });
   test.skipIf(process.getuid?.() === 0)("dossier chmod 000 : ACCES_REFUSE", async () => {
     await ecrire("a.txt", "a");
     await chmod(dossier, 0o000);

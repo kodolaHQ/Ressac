@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, appendFile, constants, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, constants, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parserDiff, type Bloc } from "./diff.js";
 
@@ -29,10 +29,13 @@ export interface DiffFichier { chemin: string; statut: FichierModifie["statut"];
 
 const gitParDefaut = () => process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 
-function lancer(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string): Promise<string> {
+function lancer(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, avertissements?: { texte: string }): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(git, args, { env, cwd, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (!err) return resolve(stdout);
+      if (!err) {
+        if (avertissements) avertissements.texte = stderr;
+        return resolve(stdout);
+      }
       const e = err as NodeJS.ErrnoException & { code?: string | number };
       if (e.code === "ENOENT") return reject(new ErreurRelecture(GIT_NECESSAIRE, git));
       reject(Object.assign(new Error(`git ${args[0]} : ${stderr.trim() || e.message}`), { stderr, code: e.code }));
@@ -92,9 +95,14 @@ export class DepotRelecture {
     return lancer(this.git, args, this.env(), this.dossier);
   }
 
+  private gitVerifie: Promise<boolean> | null = null;
+
   private async preparer(): Promise<void> {
+    this.gitVerifie ??= gitDisponible(this.git);
+    if (!(await this.gitVerifie)) throw new ErreurRelecture(GIT_NECESSAIRE, this.git);
     try {
       await access(this.dossier, constants.R_OK | constants.X_OK);
+      await readdir(this.dossier);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if (code === "EACCES" || code === "EPERM") throw new ErreurRelecture(ACCES_REFUSE, this.dossier);
@@ -114,9 +122,12 @@ export class DepotRelecture {
     await this.preparer();
     for (let essai = 0; ; essai++) {
       try {
-        await this.g(["add", "-A"]);
+        const av = { texte: "" };
+        await lancer(this.git, ["add", "-A"], this.env(), this.dossier, av);
+        if (/could not open directory|Permission denied|Operation not permitted/i.test(av.texte)) throw new ErreurRelecture(ACCES_REFUSE, av.texte.trim());
         break;
       } catch (e) {
+        if (e instanceof ErreurRelecture) throw e;
         const s = (e as { stderr?: string }).stderr ?? "";
         if (/Operation not permitted|Permission denied/i.test(s)) throw new ErreurRelecture(ACCES_REFUSE, this.dossier);
         // Un sous-dossier qui est un dépôt sans commit ne peut pas devenir un lien : on l'exclut.
