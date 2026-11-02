@@ -742,10 +742,16 @@ function enregistrerOutilsActions(
   );
 }
 
+/** Coupe à `max` unités sans séparer une paire de surrogates (un emoji coupé en deux). */
+function couper(t: string, max: number): string {
+  if (t.length <= max) return t;
+  const fin = t.charCodeAt(max - 1);
+  return t.slice(0, fin >= 0xd800 && fin <= 0xdbff ? max - 1 : max) + TRONQUE;
+}
+
 /** Une ligne : sauts de ligne et espaces multiples ramenés à une espace, au plus `max` caractères. */
 function uneLigne(t: string, max: number): string {
-  const l = t.replace(/\s+/g, " ").trim();
-  return l.length > max ? `${l.slice(0, max)}${TRONQUE}` : l;
+  return couper(t.replace(/\s+/g, " ").trim(), max);
 }
 
 /**
@@ -771,7 +777,7 @@ function enregistrerOutilsSites(
       if (sites.length === 0) return texte("Aucune appli de site.");
       return texte(
         sites
-          .map((x) => `${x.id} · ${x.nom} · ${x.domaine ?? "domaine inconnu"} · ${x.ouverte ? "ouverte" : "fermée"}${x.erreur !== undefined ? ` · erreur : ${x.erreur}` : ""}`)
+          .map((x) => `${uneLigne(x.id, 80)} · ${uneLigne(x.nom, 100)} · ${x.domaine ?? "domaine inconnu"} · ${x.ouverte ? "ouverte" : "fermée"}${x.erreur !== undefined ? ` · erreur : ${uneLigne(x.erreur, 300)}` : ""}`)
           .join("\n"),
       );
     }),
@@ -806,7 +812,7 @@ function enregistrerOutilsSites(
       const m = await s.outils.memoire(id);
       if (m === null) return texte(SITE_INCONNU, true);
       const json = JSON.stringify(m);
-      return texte(`${PREFIXE_DONNEES_SITE}\n${json.length > MEMOIRE_SITE_MAX_MONTREE ? json.slice(0, MEMOIRE_SITE_MAX_MONTREE) + TRONQUE : json}`);
+      return texte(`${PREFIXE_DONNEES_SITE}\n${couper(json, MEMOIRE_SITE_MAX_MONTREE)}`);
     }),
   );
 
