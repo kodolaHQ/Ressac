@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { HTML_MAX, PANIER_VIDE, Remarques, TRONQUE, etatLot, tronquerHtml, type ContexteDesign, type ContexteRelecture } from "../../src/design/remarques.js";
@@ -188,32 +188,77 @@ describe("Remarques", () => {
     expect(r.nombreAttentes()).toBe(0);
   });
 
-  test("purger (+31 j) efface un lot traité et garde un lot lu ou en attente ; à +29 j garde tout", async () => {
+  test("purger (+31 j) ne supprime que le lot entièrement traité ; à +29 j garde tout", async () => {
     const { dossiers, horloge, r } = await cadre();
-    const mk = async (p: string, texte: string) => {
-      await r.ajouterAuPanier(p, { texte, contexte: ctx(), capture: PNG });
-      return r.envoyerPanier(p, { destination: "mcp" });
+    const mk = async (p: string, textes: string[]) => {
+      for (const texte of textes) await r.ajouterAuPanier(p, { texte, contexte: ctx(), capture: PNG });
+      const lot = await r.envoyerPanier(p, { destination: "mcp" });
+      horloge.t = new Date(horloge.t.getTime() + 1000);
+      return lot;
     };
-    const traite = await mk("app-essai", "t");
-    horloge.t = new Date(horloge.t.getTime() + 1000); // autre id de lot
-    const lu = await mk("app-essai", "l");
-    horloge.t = new Date(horloge.t.getTime() + 1000);
-    await mk("app-essai", "w");
-    const extTraite = await mk("ext-0123456789abcdef", "x");
+    const traite = await mk("app-essai", ["t"]);
+    const partiel = await mk("app-essai", ["p1", "p2"]);
+    const lu = await mk("app-essai", ["l"]);
+    const attente = await mk("app-essai", ["w"]);
+    const extTraite = await mk("ext-0123456789abcdef", ["x"]);
     await r.marquerTraites("app-essai", traite.elements.map((e) => e.id));
+    await r.marquerTraites("app-essai", [partiel.elements[0]!.id]);
     await r.marquerTraites("ext-0123456789abcdef", extTraite.elements.map((e) => e.id));
-    const maintenant = horloge.t.getTime();
-    // le « lu » : une moitié traitée seulement n'est pas traité
+    // pose « lu » sur le lot lu seulement : on le fait via aLire puis on remet les autres en attente sur disque
     await r.aLire("app-essai");
-    void lu;
+    const ecrit = join(dossiers.remarquesEspace, "app-essai", attente.id, "lot.json");
+    const brut = JSON.parse(await readFile(ecrit, "utf8"));
+    delete brut.lu;
+    await writeFile(ecrit, JSON.stringify(brut));
+    expect(etatLot((await r.lots("app-essai")).find((l) => l.id === attente.id)!)).toBe("en-attente");
+    expect(etatLot((await r.lots("app-essai")).find((l) => l.id === lu.id)!)).toBe("lu");
+    const maintenant = horloge.t.getTime();
     horloge.t = new Date(maintenant + 29 * 86_400_000);
     expect(await r.purger()).toBe(0);
     horloge.t = new Date(maintenant + 31 * 86_400_000);
     expect(await r.purger()).toBe(2);
-    expect((await r.lots("app-essai")).map((l) => l.id)).not.toContain(traite.id);
-    expect(await r.lots("app-essai")).toHaveLength(2);
+    const restants = (await r.lots("app-essai")).map((l) => l.id).sort();
+    expect(restants).toEqual([partiel.id, lu.id, attente.id].sort());
     expect(await existe(join(dossiers.prive, "remarques", "ext-0123456789abcdef", extTraite.id))).toBe(false);
-    expect((await readdir(join(dossiers.remarquesEspace, "app-essai"))).filter((n) => n !== "panier.json")).toHaveLength(2);
+  });
+
+  test("panier.json trafiqué : capture hors du dossier ignorée, aucun fichier extérieur déplacé", async () => {
+    const { dossiers, r } = await cadre();
+    const dossier = dossierRemarques(dossiers, "app-essai");
+    await mkdir(dossier, { recursive: true });
+    const victime = join(dossiers.remarquesEspace, "victime.txt");
+    await writeFile(victime, "x");
+    await writeFile(join(dossier, "panier.json"), JSON.stringify([
+      { id: "e-0000000a", type: "design", texte: "a", contexte: ctx(), capture: "../victime.txt" },
+      { id: "../mauvais", type: "design", texte: "b", contexte: ctx(), capture: null },
+    ]));
+    const lot = await r.envoyerPanier("app-essai", { destination: "agent" });
+    expect(lot.elements).toHaveLength(1);
+    expect(lot.elements[0]).toMatchObject({ capture: null });
+    expect(await existe(victime)).toBe(true);
+  });
+
+  test("lot.json trafiqué : id et projet imposés par le dossier ; purge et écritures restent chez le lot", async () => {
+    const { dossiers, horloge, r } = await cadre();
+    const ext = "ext-0123456789abcdef";
+    await r.ajouterAuPanier(ext, { texte: "secret", contexte: ctx(), capture: null });
+    const lotExt = await r.envoyerPanier(ext, { destination: "mcp" });
+    await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: null });
+    const lot = await r.envoyerPanier("app-essai", { destination: "mcp" });
+    const f = join(dossiers.remarquesEspace, "app-essai", lot.id, "lot.json");
+    const brut = JSON.parse(await readFile(f, "utf8"));
+    brut.projet = ext;
+    brut.id = lotExt.id;
+    await writeFile(f, JSON.stringify(brut));
+    const lus = await r.lots("app-essai");
+    expect(lus[0]).toMatchObject({ id: lot.id, projet: "app-essai" });
+    await r.marquerLotTraite("app-essai", lot.id);
+    expect(etatLot((await r.lots(ext))[0]!)).toBe("en-attente");
+    expect((await r.lots(ext))[0]!.elements[0]!.traite).toBeUndefined();
+    horloge.t = new Date(horloge.t.getTime() + 31 * 86_400_000);
+    expect(await r.purger()).toBe(1);
+    expect(await r.lots(ext)).toHaveLength(1);
+    expect(await r.lots("app-essai")).toEqual([]);
   });
 
   test("marquerLotTraite traite tous les éléments du lot", async () => {

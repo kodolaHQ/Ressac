@@ -51,6 +51,17 @@ async function ecrireAtomique(fichier: string, contenu: string | Buffer, prive: 
   await rename(temporaire, fichier);
 }
 
+/** Le JSON peut venir du conteneur : ids d'éléments valides, capture seulement `<id>.png`. */
+function assainir(v: unknown): Element[] {
+  if (!Array.isArray(v)) return [];
+  const sortie: Element[] = [];
+  for (const e of v as Element[]) {
+    if (!e || typeof e !== "object" || typeof e.id !== "string" || !ID_ELEMENT.test(e.id)) continue;
+    sortie.push(e.type === "design" ? { ...e, capture: e.capture === `${e.id}.png` ? e.capture : null } : e);
+  }
+  return sortie;
+}
+
 async function lireJson<T>(fichier: string): Promise<T | null> {
   try { return JSON.parse(await readFile(fichier, "utf8")) as T; } catch { return null; }
 }
@@ -93,7 +104,7 @@ export class Remarques {
 
   private async lirePanier(p: IdProjet): Promise<Element[]> {
     const v = await lireJson<Element[]>(join(this.dossier(p), "panier.json"));
-    return Array.isArray(v) ? v : [];
+    return assainir(v);
   }
   private ecrirePanier(p: IdProjet, panier: Element[]): Promise<void> {
     const f = join(this.dossier(p), "panier.json");
@@ -109,7 +120,7 @@ export class Remarques {
     const lots: Lot[] = [];
     for (const n of noms.filter((x) => ID_LOT.test(x)).sort().reverse()) {
       const l = await lireJson<Lot>(join(this.dossier(p), n, "lot.json"));
-      if (l && Array.isArray(l.elements)) lots.push(l);
+      if (l && Array.isArray(l.elements)) lots.push({ ...l, id: n, projet: p, elements: assainir(l.elements) });
     }
     return lots;
   }
