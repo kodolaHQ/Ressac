@@ -763,7 +763,7 @@ test("activée dans Vidola : la page Extensions montre « Active dans : Vidola �
     await expect(ligne).toContainText("Active nulle part");
     await expect(desactiver).toBeDisabled();
     await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual([]);
-    expect(registre(profil).extensions[cle]!.applis).toBeUndefined();
+    await expect.poll(() => registre(profil).extensions[cle]!.applis).toBeUndefined();
     // L'interrupteur du menu de l'appli s'éteint (P2 : la vue n'est pas rechargée, on ne regarde pas la page).
     await ouvrirMenu(page);
     await expect(page.getByTestId("interrupteur-extension-site")).toHaveAttribute("aria-checked", "false");
@@ -828,7 +828,9 @@ test("site.json réécrit avec seulement un autre nom : l'extension reste charg�
     await basculerEtAttendre(app, page, cle, true);
     await ouvrirMenu(page);
     ecrireSite(racine, "vidola", { declaration: { ...vidola().declaration, nom: "Vidola renommé" } });
-    // Le nouveau nom est lu (la page Extensions le montre), l'extension n'a pas bougé.
+    // Preuve que `relire` a tourné : la barre de l'appli (état du service, pas le disque) prend le nouveau nom.
+    // Seulement après, on conclut que l'extension n'a pas bougé.
+    await expect(page.getByTestId("site-nom")).toHaveText("Vidola renommé", { timeout: 15_000 });
     const extensions = await ouvrirPageExtensions(fenetre);
     await expect(extensions.getByTestId("extension-applis")).toHaveText(activeDans(["Vidola renommé"]), { timeout: 15_000 });
     expect(await extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
@@ -850,7 +852,7 @@ test("supprimer l'appli puis la recréer au même id : interrupteur éteint, reg
     await fenetre.evaluate(() => (window as unknown as ApiSites).webaios.sites.agir("vidola", "supprimer"));
     await expect.poll(() => existsSync(join(racine, "sites", "vidola"))).toBe(false);
     await expect.poll(() => registre(profil).extensions[cle]!.applis?.vidola, { timeout: 15_000 }).toBeUndefined();
-    expect(registre(profil).extensions[cle]!.vues?.["site:vidola"]).toBeUndefined();
+    await expect.poll(() => registre(profil).extensions[cle]!.vues?.["site:vidola"]).toBeUndefined();
 
     ecrireSite(racine, "vidola", vidola());
     serveur.requetes.splice(0);
