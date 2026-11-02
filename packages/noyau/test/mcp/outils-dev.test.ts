@@ -644,6 +644,18 @@ test("lire_console avec le droit de développement mais sans l'accord du site : 
   expect(demandesDev()).toHaveLength(0);
 });
 
+test("lire_console sur une appli de site dont site.json a été réécrit (autre empreinte) : la carte de l'appli revient avant tout", async () => {
+  await demarrer({ accorderDev: ["console"], site: true });
+  pont.modifierOnglet("site:vidola", { empreinte: "e1" });
+  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "message" }]);
+  expect(await appeler("lire_console", { id: "site:vidola" })).toContain("message");
+  expect(cartesSite()).toHaveLength(1);
+  pont.modifierOnglet("site:vidola", { empreinte: "e2" });
+  expect(politique.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
+  await appeler("lire_console", { id: "site:vidola" });
+  expect(cartesSite()).toHaveLength(2);
+});
+
 test("lire_console sur une appli de site : les deux accords → les messages, URL masquées (le site n'est pas construit par l'agent)", async () => {
   await demarrer({ accorderDev: ["console"], site: true });
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);

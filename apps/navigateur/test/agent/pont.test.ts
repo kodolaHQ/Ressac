@@ -437,7 +437,7 @@ function sitesFactices() {
   const vue = { isDestroyed: () => !ouverte, loadURL: vi.fn() };
   const charges: [string, string][] = [];
   const sites: FenetresSitesPourAgent = {
-    ouvertes: () => (ouverte ? [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1", domaine: "vidola-a.example" }] : []),
+    ouvertes: () => (ouverte ? [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1", domaine: "vidola-a.example", empreinte: "e1" }] : []),
     webContents: (id) => (ouverte && id === "vidola" ? (vue as never) : undefined),
     adressePermise: (id, url) => ouverte && id === "vidola" && new URL(url).hostname === "vidola-a.example",
     naviguer: (id, url) => {
@@ -450,10 +450,10 @@ function sitesFactices() {
   return { sites, vue, charges, fermer: () => (ouverte = false), attendre: () => (enAttente = true) };
 }
 
-test("ongletSite : site:<id>, titre = nom de l'appli, espace vide, site et domaine actuel renseignés", () => {
+test("ongletSite : site:<id>, titre = nom de l'appli, espace vide, site, domaine actuel et empreinte de la déclaration renseignés", () => {
   expect(PREFIXE_SITE).toBe("site:");
-  expect(ongletSite({ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example" })).toEqual({
-    id: "site:vidola", titre: "Vidola", url: "https://compte.example/connexion", espace: "", site: "vidola", domaine: "vidola-a.example",
+  expect(ongletSite({ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example", empreinte: "e1" })).toEqual({
+    id: "site:vidola", titre: "Vidola", url: "https://compte.example/connexion", espace: "", site: "vidola", domaine: "vidola-a.example", empreinte: "e1",
   });
 });
 
@@ -469,7 +469,7 @@ test("PontElectron : les fenêtres d'applis de site sont listées, lues et captu
     applications: { ouvertes: () => [], webContents: () => undefined },
     sites: f.sites,
   });
-  expect(await pont.listerOnglets()).toContainEqual({ id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola", domaine: "vidola-a.example" });
+  expect(await pont.listerOnglets()).toContainEqual({ id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola", domaine: "vidola-a.example", empreinte: "e1" });
   expect((await pont.lireTexte("site:vidola")).texte).toBe("Film 1");
   expect(vues.lireTexteDe).toHaveBeenCalledWith(f.vue);
   expect((await pont.capturer("site:vidola")).toString()).toBe("png");

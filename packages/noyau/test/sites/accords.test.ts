@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  accordCouvre, accordNecessaire, accorderSite, droitsDe, lireAccordsSites, retirerAccordSite,
+  accordCouvre, accordNecessaire, accorderSite, droitsDe, empreinteLectureSite, lireAccordsSites, retirerAccordSite,
 } from "../../src/sites/accords.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -76,4 +76,20 @@ test("lecture en panne (pas absent ni abîmé) : l'écriture échoue sans efface
   await writeFile(join(p, "sites-accords.json"), "{abîmé");
   await accorderSite(p, "c", base); // abîmé : repart de zéro
   expect(Object.keys(await lireAccordsSites(p))).toEqual(["c"]);
+});
+
+test("empreinteLectureSite : nom, domaines et connexion ; l'ordre et la casse des domaines n'y changent rien", () => {
+  const avec = { ...base, connexion: ["compte.example"] };
+  const e = empreinteLectureSite(avec);
+  expect(e).toMatch(/^[0-9a-f]{64}$/);
+  expect(empreinteLectureSite({ ...avec, domaines: ["Vidola-A.example", "vidola-a.example"] })).toBe(e);
+  expect(empreinteLectureSite({ ...avec, domaines: ["b.example", "vidola-a.example"] })).toBe(empreinteLectureSite({ ...avec, domaines: ["vidola-a.example", "b.example"] }));
+  // Ce que la carte ne montre pas ne compte pas.
+  expect(empreinteLectureSite({ ...avec, description: "autre", retouches: [], reprise: true })).toBe(e);
+  // Un domaine, une connexion ou un nom de plus : une autre empreinte.
+  expect(empreinteLectureSite({ ...avec, domaines: [...avec.domaines, "mail.example.com"] })).not.toBe(e);
+  expect(empreinteLectureSite({ ...avec, connexion: [...avec.connexion, "accounts.google.com"] })).not.toBe(e);
+  expect(empreinteLectureSite({ ...avec, nom: "Mail" })).not.toBe(e);
+  // Les champs ne se confondent pas (un domaine passé en connexion change l'empreinte).
+  expect(empreinteLectureSite({ ...avec, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
 });

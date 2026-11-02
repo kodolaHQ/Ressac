@@ -31,6 +31,11 @@ export interface OngletInfo {
    * l'accord, jamais l'hôte de la page affichée (qui peut être un domaine de connexion).
    */
   domaine?: string;
+  /**
+   * Appli de site : l'empreinte de sa déclaration d'aujourd'hui (`empreinteLectureSite` : nom, domaines, connexion).
+   * L'accord de l'agent ne vaut que pour l'empreinte montrée sur sa carte.
+   */
+  empreinte?: string;
 }
 
 /** Ce que le navigateur (Electron, extension…) fournit au noyau. */

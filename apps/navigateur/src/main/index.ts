@@ -899,6 +899,8 @@ app.whenReady().then(async () => {
       agent?.noyau()?.politique.ongletFerme(`${PREFIXE_SITE}${id}`);
       ecarterQuestionsCaduques();
     },
+    // Supprimée : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée au même id redemande la carte).
+    surSupprimee: (id) => agent?.noyau()?.politique.retirerLectureSite(id),
   });
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
@@ -954,8 +956,9 @@ app.whenReady().then(async () => {
     // Outils MCP des applis de site ; relus à chaque appel (le service est créé plus haut, jamais remplacé).
     sites: {
       lister: async () =>
-        ((await sites?.liste()) ?? []).map((s) => ({
+        ((await sites?.listeAgent()) ?? []).map((s) => ({
           id: s.id, nom: s.nom, domaine: s.domaine, ouverte: s.ouverte, ...(s.erreur !== undefined ? { erreur: s.erreur } : {}),
+          ...(s.empreinte !== undefined ? { empreinte: s.empreinte } : {}),
         })),
       ouvrir: async (id) => (await sites?.ouvrirParId(id)) ?? false,
       memoire: async (id) => {

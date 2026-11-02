@@ -271,6 +271,12 @@ export class PontFactice implements PontNavigateur {
     }
   }
 
+  /** Champs de l'onglet changés (par exemple l'empreinte d'une appli de site dont site.json a été réécrit). */
+  modifierOnglet(id: string, champs: Partial<OngletInfo>): void {
+    const o = this.onglets.find((x) => x.id === id);
+    if (o) Object.assign(o, champs);
+  }
+
   /** L'onglet (ou la fenêtre d'appli de site) se ferme. */
   fermerOnglet(id: string): void {
     const i = this.onglets.findIndex((x) => x.id === id);

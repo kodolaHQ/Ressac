@@ -99,7 +99,7 @@ export function enregistrerOutilsDev(
   }
 
   /** L'accord de l'appli de site, s'il en est une, tient toujours (une nouvelle conversation le retire). */
-  const accordSiteTenu = (o: OngletInfo) => o.site === undefined || politique.lectureSiteAccordee(o.site);
+  const accordSiteTenu = (o: OngletInfo) => o.site === undefined || politique.lectureSiteAccordee(o.site, o.empreinte);
 
   /**
    * Obtient les droits voulus : ceux qui manquent et ne sont pas bloqués sont demandés à l'utilisateur, une carte à la fois par

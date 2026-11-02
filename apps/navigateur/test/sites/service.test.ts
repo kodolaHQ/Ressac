@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, w
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cheminsEspace, lireAccordsSites, accorderSite, DeclarationSite } from "@webaios/noyau";
+import { cheminsEspace, lireAccordsSites, accorderSite, DeclarationSite, empreinteLectureSite } from "@webaios/noyau";
 import { SchemaActionSite } from "../../src/commun/api";
 import { ICONE_MAX } from "../../src/commun/sites";
 import { modifierAvecAgent } from "../../src/commun/sites";
@@ -129,6 +129,8 @@ let racine: string;
 let profil: string;
 let service: ReturnType<typeof demarrerSites>;
 const deboguer = vi.fn();
+/** Appelé quand une suppression commence (l'accord de lecture de l'agent tombe). */
+const surSupprimee = vi.fn((id: string) => void journal.push(`supprimee ${id}`));
 
 const declaration = {
   nom: "Vidola",
@@ -166,6 +168,7 @@ beforeEach(() => {
     ouvrirOnglet: () => {},
     deboguer,
     diffuser: () => {},
+    surSupprimee,
   });
 });
 afterEach(async () => {
@@ -459,4 +462,27 @@ test("accueil : le geste fait dans la fenêtre d'une autre appli n'ouvre rien da
   expect(accueilOuvertes()).toEqual([]);
   // Le geste de youtube reste à youtube.
   expect(service.ouvrirDepuisAccueil("youtube", "/v")).toBe(true);
+});
+
+// --- Ce que voit l'agent : l'empreinte de la déclaration, et l'accord retiré à la suppression
+
+test("listeAgent : l'empreinte de la déclaration d'aujourd'hui (site.json réécrit avec un domaine de plus : une autre), aucune pour un site.json abîmé", async () => {
+  const c = cheminsEspace(racine);
+  const avant = (await service.listeAgent()).find((s) => s.id === "vidola")!;
+  expect(avant).toMatchObject({ id: "vidola", nom: "Vidola", domaine: "vidola-a.example", ouverte: false, empreinte: empreinteLectureSite(DeclarationSite.parse(declaration)) });
+  const plus = { ...declaration, domaines: [...declaration.domaines, "mail.example.com"] };
+  writeFileSync(join(c.sites, "vidola", "site.json"), JSON.stringify(plus));
+  const apres = (await service.listeAgent()).find((s) => s.id === "vidola")!;
+  expect(apres.empreinte).toBe(empreinteLectureSite(DeclarationSite.parse(plus)));
+  expect(apres.empreinte).not.toBe(avant.empreinte);
+  expect((await service.listeAgent()).find((s) => s.id === "casse")!.empreinte).toBeUndefined();
+  // La liste de la page Applications ne la porte pas.
+  expect((await service.liste()).find((s) => s.id === "vidola")).not.toHaveProperty("empreinte");
+});
+
+test("supprimer : l'accord de lecture de l'agent est retiré dès le début, avant la fermeture", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  await service.agir("vidola", "supprimer", "f1" as never);
+  expect(surSupprimee).toHaveBeenCalledWith("vidola");
+  expect(journal.filter((j) => /^(supprimee|fermee)/.test(j))).toEqual(["supprimee vidola", "fermee vidola"]);
 });

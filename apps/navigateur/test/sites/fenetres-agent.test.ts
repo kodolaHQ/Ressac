@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import type { DeclarationSite } from "@webaios/noyau";
+import { empreinteLectureSite, type DeclarationSite } from "@webaios/noyau";
 
 /** Une page (vue du site ou interface) : ce que FenetresSites lit et appelle, sans Electron. */
 function fausseWc() {
@@ -145,7 +145,17 @@ test("ouvertes : le domaine actuel de l'appli (celui du départ), jamais l'hôte
   f.ouvrir(site({ aAccueil: false, accordRequis: false }));
   // La page va sur le domaine de connexion (OAuth) : le domaine montré reste celui de l'appli.
   vuesCreees[0]!.webContents.loadURL("https://compte.example/connexion");
-  expect(f.ouvertes()).toEqual([{ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example" }]);
+  expect(f.ouvertes()).toEqual([{ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example", empreinte: empreinteLectureSite(declaration) }]);
+});
+
+test("ouvertes : l'empreinte suit la déclaration d'aujourd'hui (site.json relu avec un domaine de plus)", () => {
+  const f = fenetres();
+  f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+  const avant = f.ouvertes()[0]!.empreinte;
+  const plus = { ...declaration, domaines: [...declaration.domaines, "mail.example.com"] };
+  f.mettreAJour({ ...site({ aAccueil: false, accordRequis: false }), declaration: plus });
+  expect(f.ouvertes()[0]!.empreinte).toBe(empreinteLectureSite(plus));
+  expect(f.ouvertes()[0]!.empreinte).not.toBe(avant);
 });
 
 /** Le gestionnaire `evenement` posé sur la vue du site. */

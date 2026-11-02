@@ -8,6 +8,7 @@ import {
   accordNecessaire,
   accorderSite,
   droitsDe,
+  empreinteLectureSite,
   adresseDeDepart,
   adresseRelative,
   adresseSurDomaine,
@@ -45,6 +46,11 @@ export interface ServiceSites {
   fenetres: FenetresSites;
   /** Ce que montre la section « Sites » de la page Applications. */
   liste(): Promise<SiteAffiche[]>;
+  /**
+   * La même liste pour l'agent (`lister_sites`, `memoire_site`…), avec l'empreinte de chaque déclaration valide
+   * d'aujourd'hui (`empreinteLectureSite`), relue à chaque appel.
+   */
+  listeAgent(): Promise<(SiteAffiche & { empreinte?: string })[]>;
   /** Une action de la page Applications, venue de la fenêtre `fenetreId`. */
   agir(id: string, a: ActionSite, fenetreId: IdFenetre): Promise<void>;
   /** Ouvre la fenêtre de l'appli (ou la remet devant) ; faux si l'appli n'existe pas ou que son site.json est invalide. */
@@ -148,6 +154,8 @@ export function demarrerSites(o: {
   diffuser(): void;
   /** La fenêtre de l'appli s'est fermée (l'agent perd ses outils de développement dessus, ses cartes tombent). */
   surFermee?(id: string): void;
+  /** Une suppression commence : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée le redemande). */
+  surSupprimee?(id: string): void;
 }): ServiceSites {
   fixerPreloadSite(o.preloadSite);
   const garde = readFileSync(o.cheminGarde, "utf8");
@@ -478,6 +486,7 @@ export function demarrerSites(o: {
     suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
     try {
       if (!(await connue(id))) return;
+      o.surSupprimee?.(id);
       recherches.get(id)?.abort();
       notes.annulerNotes(id);
       // La vue est détruite, ou le délai est passé (`restante`, détruite après l'effacement de la session).
@@ -523,33 +532,40 @@ export function demarrerSites(o: {
     return true;
   }
 
+  /** Les lignes de la section « Sites », et l'empreinte de chaque déclaration valide (pour l'agent seulement). */
+  async function lignes(): Promise<(SiteAffiche & { empreinte?: string })[]> {
+    const sites = await lireSites(o.chemins, lecture);
+    affiches = new Set(sites.map((s) => s.id));
+    const ouvertes = new Set(fenetres.ouvertes().map((f) => f.id));
+    return Promise.all(
+      sites.map(async (s): Promise<SiteAffiche & { empreinte?: string }> => {
+        const favicon = souvenirs.lire(s.id).favicon ?? null;
+        const erreurAction = erreursActions.get(s.id);
+        // Un id refusé par ID_SITE (« MonSite ») ne peut recevoir aucune action : le schéma les rejetterait toutes.
+        if ("erreur" in s)
+          return { id: s.id, nom: s.id, description: "", domaine: null, icone: favicon, ouverte: ouvertes.has(s.id), erreur: s.erreur, ...(ID_SITE.test(s.id) ? {} : { sansActions: true as const }), ...(erreurAction ? { erreurAction } : {}) };
+        const etat = ID_SITE.test(s.id) ? await lireEtatAdresse(dossierSites, s.id) : null;
+        const declaree = s.declaration.icone ? await lireIcone(s.dossier, s.declaration.icone) : null;
+        return {
+          id: s.id,
+          nom: s.declaration.nom,
+          description: s.declaration.description,
+          domaine: hote(adresseDeDepart(s.declaration, etat)),
+          icone: declaree ?? favicon,
+          ouverte: ouvertes.has(s.id),
+          ...(erreurAction ? { erreurAction } : {}),
+          empreinte: empreinteLectureSite(s.declaration),
+        };
+      }),
+    );
+  }
+
   return {
     fenetres,
     async liste() {
-      const sites = await lireSites(o.chemins, lecture);
-      affiches = new Set(sites.map((s) => s.id));
-      const ouvertes = new Set(fenetres.ouvertes().map((f) => f.id));
-      return Promise.all(
-        sites.map(async (s): Promise<SiteAffiche> => {
-          const favicon = souvenirs.lire(s.id).favicon ?? null;
-          const erreurAction = erreursActions.get(s.id);
-          // Un id refusé par ID_SITE (« MonSite ») ne peut recevoir aucune action : le schéma les rejetterait toutes.
-          if ("erreur" in s)
-            return { id: s.id, nom: s.id, description: "", domaine: null, icone: favicon, ouverte: ouvertes.has(s.id), erreur: s.erreur, ...(ID_SITE.test(s.id) ? {} : { sansActions: true as const }), ...(erreurAction ? { erreurAction } : {}) };
-          const etat = ID_SITE.test(s.id) ? await lireEtatAdresse(dossierSites, s.id) : null;
-          const declaree = s.declaration.icone ? await lireIcone(s.dossier, s.declaration.icone) : null;
-          return {
-            id: s.id,
-            nom: s.declaration.nom,
-            description: s.declaration.description,
-            domaine: hote(adresseDeDepart(s.declaration, etat)),
-            icone: declaree ?? favicon,
-            ouverte: ouvertes.has(s.id),
-            ...(erreurAction ? { erreurAction } : {}),
-          };
-        }),
-      );
+      return (await lignes()).map(({ empreinte: _, ...l }) => l);
     },
+    listeAgent: lignes,
     async agir(id, a, fenetreId) {
       if (!ID_SITE.test(id)) return;
       erreursActions.delete(id);

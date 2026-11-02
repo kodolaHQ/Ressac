@@ -1,7 +1,7 @@
 import { BrowserWindow, WebContentsView, type WebContents } from "electron";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { adresseRelative, droitsDe, type DeclarationSite } from "@webaios/noyau";
+import { adresseRelative, droitsDe, empreinteLectureSite, type DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
 import { HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
@@ -486,7 +486,8 @@ export class FenetresSites {
   }
 
   /** Les fenêtres ouvertes : `url` est la page affichée, `domaine` le domaine actuel de l'appli (celui de son départ). */
-  ouvertes(): { id: string; nom: string; url: string; domaine: string }[] {
+  /** `empreinte` : celle de la déclaration d'aujourd'hui (relue à chaque changement de site.json), pour l'accord de l'agent. */
+  ouvertes(): { id: string; nom: string; url: string; domaine: string; empreinte: string }[] {
     return [...this.ouvertesParId.values()]
       .filter((o) => !o.fenetre.isDestroyed())
       .map((o) => ({
@@ -494,6 +495,7 @@ export class FenetresSites {
         nom: o.site.declaration.nom,
         url: (!o.vue.webContents.isDestroyed() && o.vue.webContents.getURL()) || o.site.depart,
         domaine: hoteHttp(o.site.depart) ?? "",
+        empreinte: empreinteLectureSite(o.site.declaration),
       }));
   }
 

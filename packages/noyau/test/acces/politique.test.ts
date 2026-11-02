@@ -303,3 +303,32 @@ test("appli de site : ses droits de développement ne valent qu'avec son accord 
   p.reinitialiser();
   expect(p.droitsDev(vidola)).toEqual([]);
 });
+
+test("lecture d'une appli de site liée à l'empreinte de sa déclaration : une autre empreinte ne compte pas", () => {
+  p.accorderLectureSite("vidola", "e1");
+  expect(p.lectureSiteAccordee("vidola", "e1")).toBe(true);
+  expect(p.peutLire({ ...vidola, empreinte: "e1" })).toBe(true);
+  expect(p.lectureSiteAccordee("vidola", "e2")).toBe(false);
+  expect(p.lectureSiteAccordee("vidola")).toBe(false);
+  expect(p.peutLire({ ...vidola, empreinte: "e2" })).toBe(false);
+  p.accorderDev({ ...vidola, empreinte: "e1" }, ["console"], []);
+  expect(p.droitsDev({ ...vidola, empreinte: "e1" })).toEqual(["console"]);
+  expect(p.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
+  // Le nouvel accord remplace l'ancien.
+  p.accorderLectureSite("vidola", "e2");
+  expect(p.lectureSiteAccordee("vidola", "e2")).toBe(true);
+  expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
+});
+
+test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ; sans accord, rien ne change", () => {
+  p.accorderLectureSite("vidola", "e1");
+  p.accorderLectureSite("youtube", "y");
+  let n = 0;
+  p.surChange(() => n++);
+  p.retirerLectureSite("vidola");
+  expect(n).toBe(1);
+  expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
+  expect(p.lectureSiteAccordee("youtube", "y")).toBe(true);
+  p.retirerLectureSite("vidola");
+  expect(n).toBe(1);
+});

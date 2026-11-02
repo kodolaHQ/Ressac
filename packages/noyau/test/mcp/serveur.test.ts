@@ -951,6 +951,48 @@ test("lire_onglet sur une appli de site : accord → le texte, et capture_ecran 
   expect(cartesSite()).toHaveLength(2);
 });
 
+test("site.json réécrit avec un nouveau domaine (autre empreinte) : une nouvelle carte avant toute lecture ; inchangé : aucune", async () => {
+  await avecSite({ donneesWidget: true, fenetre: { ...vidola, empreinte: "e1" } });
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } }))).toContain("Texte de Vidola");
+  expect(cartesSite()).toHaveLength(1);
+  // Déclaration inchangée : ni capture, ni lecture, ni navigation ne reposent la carte.
+  await client.callTool({ name: "capture_ecran", arguments: { id: "site:vidola" } });
+  await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
+  expect(cartesSite()).toHaveLength(1);
+  // L'agent réécrit site.json (domaine mail.example.com ajouté) : la fenêtre a une autre empreinte.
+  pont.modifierOnglet("site:vidola", { empreinte: "e2" });
+  expect(politique.peutLire({ ...vidola, empreinte: "e2" })).toBe(false);
+  await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  expect(cartesSite()).toHaveLength(2);
+  await client.callTool({ name: "capture_ecran", arguments: { id: "site:vidola" } });
+  expect(cartesSite()).toHaveLength(2);
+});
+
+test("site.json réécrit, la nouvelle carte refusée : rien n'est lu, capturé ni navigué", async () => {
+  await avecSite({ donneesWidget: true, fenetre: { ...vidola, empreinte: "e1" } });
+  await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  pont.demanderDonneesWidget = async () => false;
+  pont.modifierOnglet("site:vidola", { empreinte: "e2" });
+  pont.appels.length = 0;
+  expect(texte(await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } }))).toBe(TEXTE_REFUS);
+  expect(texte(await client.callTool({ name: "capture_ecran", arguments: { id: "site:vidola" } }))).toBe(TEXTE_REFUS);
+  expect(texte(await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } }))).toBe(TEXTE_REFUS);
+  expect(appelsPont("lireTexte")).toHaveLength(0);
+  expect(appelsPont("capturer")).toHaveLength(0);
+  expect(appelsPont("naviguer")).toHaveLength(0);
+});
+
+test("appli supprimée puis recréée au même id (même déclaration) : l'accord est retiré, une nouvelle carte", async () => {
+  await avecSite({ donneesWidget: true, fenetre: { ...vidola, empreinte: "e1" } });
+  await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  expect(cartesSite()).toHaveLength(1);
+  // Ce que fait le navigateur à la suppression.
+  politique.retirerLectureSite("vidola");
+  await client.callTool({ name: "lire_onglet", arguments: { id: "site:vidola" } });
+  expect(cartesSite()).toHaveLength(2);
+});
+
 test("appli de site : deux lectures en même temps ne posent qu'une carte", async () => {
   await avecSite({ donneesWidget: true });
   const [a, b] = await Promise.all([
@@ -1054,13 +1096,17 @@ test("naviguer dans une appli de site sans navigateur pour vérifier l'adresse :
 
 const memoireBear = { version: 1, valeurs: { "encours.the-bear": { valeur: { saison: 3 }, adresse: "/series/the-bear", quand: "2026-10-31T10:00:00.000Z" } }, positions: {} };
 
+/** L'empreinte de la déclaration de vidola rendue par `lister` (site.json réécrit : elle change). */
+let empreinteListee: string | undefined;
+
 async function avecOutilsSites(o: { donneesWidget?: boolean; erreurs?: { quand: string; texte: string; source: string }[]; memoire?: unknown } = {}) {
   await client.close();
   await serveur.arreter();
   const ouvertes: string[] = [];
+  empreinteListee = undefined;
   const outils: OutilsSites = {
     lister: async () => [
-      { id: "vidola", nom: "Vidola", domaine: "vidola-a.example", ouverte: false },
+      { id: "vidola", nom: "Vidola", domaine: "vidola-a.example", ouverte: false, ...(empreinteListee !== undefined ? { empreinte: empreinteListee } : {}) },
       { id: "youtube", nom: "YouTube", domaine: "youtube.example", ouverte: true },
       { id: "casse", nom: "casse", domaine: null, ouverte: false, erreur: "site.json : adresse manquante" },
     ],
@@ -1184,6 +1230,19 @@ test("ouvrir_site avec un id invalide : le refus de validation, exactement", asy
   const r = await client.callTool({ name: "ouvrir_site", arguments: { id: "../Vidola" } });
   expect(r.isError).toBe(true);
   expect(texte(r)).toContain("id d'appli de site : minuscules, chiffres et tirets");
+});
+
+test("memoire_site et erreurs_retouches : site.json réécrit (autre empreinte listée) redemande la carte ; inchangé, non", async () => {
+  await avecOutilsSites({ donneesWidget: true });
+  empreinteListee = "e1";
+  expect(await appeler("memoire_site", { id: "vidola" })).toContain("encours.the-bear");
+  await appeler("erreurs_retouches", { id: "vidola" });
+  expect(cartesSite()).toHaveLength(1);
+  empreinteListee = "e2";
+  await appeler("erreurs_retouches", { id: "vidola" });
+  expect(cartesSite()).toHaveLength(2);
+  expect(politique.lectureSiteAccordee("vidola", "e2")).toBe(true);
+  expect(politique.lectureSiteAccordee("vidola", "e1")).toBe(false);
 });
 
 test("memoire_site : une nouvelle conversation redemande la carte", async () => {

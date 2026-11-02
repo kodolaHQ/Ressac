@@ -130,8 +130,11 @@ export interface OutilsWidgets {
 
 /** Ce que le navigateur fournit pour les outils des applis de site. */
 export interface OutilsSites {
-  /** Les applis du dossier : domaine actuel (jamais une page), ouverte ou non ; `erreur` si site.json est invalide. */
-  lister(): Promise<{ id: string; nom: string; domaine: string | null; ouverte: boolean; erreur?: string }[]>;
+  /**
+   * Les applis du dossier : domaine actuel (jamais une page), ouverte ou non ; `erreur` si site.json est invalide ;
+   * `empreinte` : celle de la déclaration d'aujourd'hui (`empreinteLectureSite`), à laquelle l'accord de lecture est lié.
+   */
+  lister(): Promise<{ id: string; nom: string; domaine: string | null; ouverte: boolean; erreur?: string; empreinte?: string }[]>;
   /** Ouvre la fenêtre (accueil) ; faux si l'appli n'existe pas ou que son site.json est invalide. */
   ouvrir(id: string): Promise<boolean>;
   /** La mémoire de l'appli ; null si l'appli est inconnue. */
@@ -143,7 +146,7 @@ export interface OutilsSites {
 /** Outils des applis de site et accès par appli (carte « site », partagée avec celle des fenêtres). */
 interface OptionsSites {
   outils: OutilsSites;
-  acces: (id: string, nom: string) => Promise<boolean>;
+  acces: (id: string, nom: string, empreinte: string | undefined) => Promise<boolean>;
 }
 
 /** Ce que le noyau fournit pour les outils des actions. */
@@ -271,13 +274,17 @@ function creerServeurOutils(
     return o;
   }
 
-  /** L'accord d'une appli de site (valable pour la conversation) : la même carte, une à la fois, que la fenêtre soit ouverte ou non. */
-  const accesSite = (site: string, nom: string): Promise<boolean> =>
-    politique.lectureSiteAccordee(site)
+  /**
+   * L'accord d'une appli de site (valable pour la conversation) : la même carte, une à la fois, que la fenêtre soit
+   * ouverte ou non. Il est lié à l'`empreinte` de la déclaration d'aujourd'hui (nom, domaines, connexion), recalculée
+   * par le navigateur à chaque appel : site.json réécrit autrement, la carte revient.
+   */
+  const accesSite = (site: string, nom: string, empreinte: string | undefined): Promise<boolean> =>
+    politique.lectureSiteAccordee(site, empreinte)
       ? Promise.resolve(true)
       : poserCarteDonnees(
           pont, politique, demandes, { id: site, nom, agent: dev?.agent ?? "L'agent", genre: "site" },
-          () => politique.accorderLectureSite(site), () => politique.lectureSiteAccordee(site), `site:${site}`,
+          () => politique.accorderLectureSite(site, empreinte), () => politique.lectureSiteAccordee(site, empreinte), `site:${site}`,
         );
 
   /**
@@ -286,7 +293,7 @@ function creerServeurOutils(
    */
   async function acces(o: OngletInfo): Promise<boolean> {
     if (politique.peutLire(o)) return true;
-    if (o.site !== undefined) return accesSite(o.site, o.titre);
+    if (o.site !== undefined) return accesSite(o.site, o.titre, o.empreinte);
     let demande = demandes.get(o.id);
     if (!demande) {
       demande = pont
@@ -793,9 +800,10 @@ function enregistrerOutilsSites(
     proteger(async ({ id }) => ((await s.outils.ouvrir(id)) ? texte(`site:${id}`) : texte(SITE_INCONNU, true))),
   );
 
-  /** Le nom de l'appli (pour la carte), ou null si elle est inconnue. */
-  async function nomDe(id: string): Promise<string | null> {
-    return (await s.outils.lister()).find((x) => x.id === id)?.nom ?? null;
+  /** Le nom de l'appli (pour la carte) et l'empreinte de sa déclaration d'aujourd'hui, ou null si elle est inconnue. */
+  async function appliDe(id: string): Promise<{ nom: string; empreinte: string | undefined } | null> {
+    const a = (await s.outils.lister()).find((x) => x.id === id);
+    return a ? { nom: a.nom, empreinte: a.empreinte } : null;
   }
 
   serveur.registerTool(
@@ -806,9 +814,9 @@ function enregistrerOutilsSites(
       inputSchema: { id },
     },
     proteger(async ({ id }) => {
-      const nom = await nomDe(id);
-      if (nom === null) return texte(SITE_INCONNU, true);
-      if (!(await s.acces(id, nom))) return texte(SITE_REFUSE);
+      const a = await appliDe(id);
+      if (a === null) return texte(SITE_INCONNU, true);
+      if (!(await s.acces(id, a.nom, a.empreinte))) return texte(SITE_REFUSE);
       const m = await s.outils.memoire(id);
       if (m === null) return texte(SITE_INCONNU, true);
       const json = JSON.stringify(m);
@@ -824,9 +832,9 @@ function enregistrerOutilsSites(
       inputSchema: { id },
     },
     proteger(async ({ id }) => {
-      const nom = await nomDe(id);
-      if (nom === null) return texte(SITE_INCONNU, true);
-      if (!(await s.acces(id, nom))) return texte(SITE_REFUSE);
+      const a = await appliDe(id);
+      if (a === null) return texte(SITE_INCONNU, true);
+      if (!(await s.acces(id, a.nom, a.empreinte))) return texte(SITE_REFUSE);
       const erreurs = await s.outils.erreurs(id);
       if (erreurs === null) return texte(SITE_INCONNU, true);
       if (erreurs.length === 0) return texte(`${PREFIXE_ERREURS_RETOUCHES}\n(aucune)`);

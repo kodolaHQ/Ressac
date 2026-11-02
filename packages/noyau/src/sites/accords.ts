@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -23,6 +24,16 @@ function verifierId(id: string): void {
 }
 
 const unique = (l: string[]) => [...new Set(l)];
+
+/**
+ * L'empreinte de ce que la carte « L'agent veut voir l'appli de site » engage : son nom, ses domaines et ses domaines de
+ * connexion (sha256 d'un JSON canonique : domaines en minuscules, sans doublon, triés). L'accord de lecture de l'agent
+ * ne vaut que pour cette empreinte : site.json réécrit avec un autre nom ou d'autres domaines redemande la carte.
+ */
+export function empreinteLectureSite(d: DeclarationSite): string {
+  const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
+  return createHash("sha256").update(JSON.stringify({ nom: d.nom, domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
+}
 
 /** Au moins une retouche, ou la reprise des vidéos. */
 export function accordNecessaire(d: DeclarationSite): boolean {

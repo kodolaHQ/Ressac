@@ -210,8 +210,11 @@ export const PREFIXE_SITE = "site:";
  * (`vueSite`), jamais l'interface de la fenêtre (barre, carte d'accord, accueil) ni une autre fenêtre.
  */
 export interface FenetresSitesPourAgent {
-  /** `url` : la page affichée ; `domaine` : le domaine actuel de l'appli, seul montré à l'agent sans l'accord. */
-  ouvertes(): { id: string; nom: string; url: string; domaine: string }[];
+  /**
+   * `url` : la page affichée ; `domaine` : le domaine actuel de l'appli, seul montré à l'agent sans l'accord ;
+   * `empreinte` : celle de sa déclaration d'aujourd'hui, à laquelle l'accord de l'agent est lié.
+   */
+  ouvertes(): { id: string; nom: string; url: string; domaine: string; empreinte: string }[];
   webContents(id: string): WebContents | undefined;
   adressePermise(id: string, url: string): boolean;
   /** Charge l'adresse comme un chargement voulu par WebAiOs (`FenetresSites.naviguerPourAgent`). */
@@ -219,8 +222,8 @@ export interface FenetresSitesPourAgent {
 }
 
 /** La fenêtre d'une appli de site vue comme un onglet `site:<id>` : son titre est le nom de l'appli, jamais celui de la page. */
-export function ongletSite(s: { id: string; nom: string; url: string; domaine: string }): OngletInfo {
-  return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id, domaine: s.domaine };
+export function ongletSite(s: { id: string; nom: string; url: string; domaine: string; empreinte: string }): OngletInfo {
+  return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id, domaine: s.domaine, empreinte: s.empreinte };
 }
 
 /**
