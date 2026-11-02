@@ -9,6 +9,9 @@ import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
 import type { ServiceActions } from "./agent/actions";
+import { ID_PROJET, type IdProjet } from "@webaios/noyau";
+import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type LotAffiche } from "../commun/api";
+import type { CibleDesign } from "./design/service";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
 export type GesteSite = "entrer" | "accueil" | "precedent" | "suivant" | "recharger" | "ouvrirBloque" | "chercherAdresse";
@@ -129,6 +132,27 @@ export interface Gestionnaires {
   };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
   pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
+  /**
+   * Mode design : l'expéditeur est l'interface d'une fenêtre principale (son onglet affiché), la pastille d'une fenêtre
+   * d'appli ou un calque (bulle, panier). La cible vient toujours de l'expéditeur, jamais du message.
+   */
+  design: {
+    calqueDe(sender: WebContents): CibleDesign | undefined;
+    etat(c: CibleDesign): Promise<EtatDesign>;
+    basculer(c: CibleDesign): void;
+    relire(c: CibleDesign): void;
+    ouvrirPanier(c: CibleDesign): void;
+    /** Le projet suivi de la cible (le seul que la pastille d'une appli peut lire). */
+    projetDe(c: CibleDesign): Promise<IdProjet | null>;
+    contexte(c: CibleDesign): ContexteCalque | null;
+    ajouter(c: CibleDesign, texte: string): Promise<ResultatExtension>;
+    annuler(c: CibleDesign): void;
+    panier(p: IdProjet): Promise<ElementAffiche[]>;
+    retirer(p: IdProjet, id: string): Promise<void>;
+    envoyer(p: IdProjet): Promise<ResultatExtension>;
+    lots(p: IdProjet): Promise<LotAffiche[]>;
+    traite(p: IdProjet, lot: string): Promise<void>;
+  };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -425,5 +449,66 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.agentEcrire, (v) => (typeof v === "string" && v.length <= 1_000_000 ? v : null), (d, f) => g.agent.ecrire(f, d));
   ipcMain.on(CANAUX.demanderEtat, (e) => {
     if (g.fenetreDe(e)) e.sender.send(CANAUX.etat, g.magasin.etat);
+  });
+  brancherDesign(g);
+}
+
+type OrigineDesign = { cible: CibleDesign; origine: "fenetre" | "pastille" | "calque" };
+
+/** Mode design : chaque message est rattaché à sa cible d'après l'expéditeur ; projets et textes sont validés. */
+function brancherDesign(g: Gestionnaires): void {
+  const origine = (e: Pick<IpcMainEvent, "sender" | "senderFrame">): OrigineDesign | undefined => {
+    const f = g.fenetreDe(e);
+    if (f) return { cible: { type: "fenetre", fenetreId: f }, origine: "fenetre" };
+    if (!e.senderFrame || e.senderFrame !== e.sender.mainFrame) return undefined;
+    const dossier = g.pastille.dossierDe(e.sender);
+    if (dossier) return { cible: { type: "app", dossier }, origine: "pastille" };
+    const calque = g.design.calqueDe(e.sender);
+    return calque ? { cible: calque, origine: "calque" } : undefined;
+  };
+  /** La fenêtre principale voit tous les projets ; une pastille ou un calque, seulement celui de sa cible. */
+  const projetPermis = async (o: OrigineDesign, p: unknown): Promise<boolean> => {
+    if (typeof p !== "string" || !ID_PROJET.test(p)) return false;
+    if (o.origine === "fenetre") return true;
+    if (o.origine === "calque") return g.design.contexte(o.cible)?.projet === p;
+    return (await g.design.projetDe(o.cible)) === p;
+  };
+  const exiger = (e: Pick<IpcMainEvent, "sender" | "senderFrame">, permises: OrigineDesign["origine"][]) => {
+    const o = origine(e);
+    if (!o || !permises.includes(o.origine)) throw new Error("expéditeur inconnu");
+    return o;
+  };
+  const toutes: OrigineDesign["origine"][] = ["fenetre", "pastille", "calque"];
+  ipcMain.handle(CANAUX.designEtat, (e) => g.design.etat(exiger(e, ["fenetre", "pastille"]).cible));
+  ipcMain.on(CANAUX.designBasculer, (e) => {
+    const o = origine(e);
+    if (o && o.origine !== "calque") g.design.basculer(o.cible);
+  });
+  ipcMain.on(CANAUX.designRelire, (e) => {
+    const o = origine(e);
+    if (o && o.origine !== "calque") g.design.relire(o.cible);
+  });
+  ipcMain.on(CANAUX.designOuvrirPanier, (e) => {
+    const o = origine(e);
+    if (o?.origine === "pastille") g.design.ouvrirPanier(o.cible);
+  });
+  const invalide = { ok: false as const, erreur: "Demande invalide" };
+  ipcMain.handle(CANAUX.designPanier, async (e, p: unknown) => (await projetPermis(exiger(e, toutes), p) ? g.design.panier(p as IdProjet) : []));
+  ipcMain.handle(CANAUX.designLots, async (e, p: unknown) => (await projetPermis(exiger(e, toutes), p) ? g.design.lots(p as IdProjet) : []));
+  ipcMain.handle(CANAUX.designRetirer, async (e, p: unknown, id: unknown) => {
+    if ((await projetPermis(exiger(e, toutes), p)) && typeof id === "string" && id.length <= 64) await g.design.retirer(p as IdProjet, id);
+  });
+  ipcMain.handle(CANAUX.designTraite, async (e, p: unknown, lot: unknown) => {
+    if ((await projetPermis(exiger(e, toutes), p)) && typeof lot === "string" && lot.length <= 64) await g.design.traite(p as IdProjet, lot);
+  });
+  ipcMain.handle(CANAUX.designEnvoyer, async (e, p: unknown) => ((await projetPermis(exiger(e, toutes), p)) ? g.design.envoyer(p as IdProjet) : invalide));
+  ipcMain.handle(CANAUX.designContexte, (e) => g.design.contexte(exiger(e, ["calque"]).cible));
+  ipcMain.handle(CANAUX.designAjouter, (e, texte: unknown) => {
+    const o = exiger(e, ["calque"]);
+    return typeof texte === "string" && texte.length <= TEXTE_REMARQUE_MAX ? g.design.ajouter(o.cible, texte) : invalide;
+  });
+  ipcMain.on(CANAUX.designAnnuler, (e) => {
+    const o = origine(e);
+    if (o?.origine === "calque") g.design.annuler(o.cible);
   });
 }

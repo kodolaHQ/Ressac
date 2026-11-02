@@ -1,8 +1,8 @@
-import { expect, test, type ElectronApplication } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { lancer, ouvrirOnglet } from "./aide";
+import { dansLaVue, ecrireProjet, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest } from "./aide";
 
 const PORT = 15283;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -19,8 +19,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => new Promise<void>((ok) => serveur.close(() => ok())));
 
-async function ouvrir() {
-  const l = await lancer({ env: ENV });
+async function ouvrir(o: { profil?: string; racine?: string } = {}) {
+  const l = await lancer({ env: ENV, ...o });
   await ouvrirOnglet(l.fenetre, `${BASE}/`);
   await expect.poll(() => l.app.evaluate(({ webContents }) => webContents.getAllWebContents().some((w) => w.getURL() === "http://127.0.0.1:15283/" && !w.isLoading()))).toBe(true);
   return l;
@@ -245,6 +245,214 @@ test("lireSource écarte les valeurs de la page qui n'ont pas la bonne forme", a
     expect(await lire()).toBeNull();
     await dansPage(app, `document.querySelector("#nue").__svelte_meta = { loc: { file: "a.svelte", line: -3, column: 1.5 } }`);
     expect(await lire()).toEqual({ fichier: "a.svelte" });
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+// Le mode design branché dans l'interface : bouton, ⌘⇧D, bulle (calque design.html), panier.
+const INDISPONIBLE = "Le mode design marche sur les applis de l'agent et les projets branchés par un Claude Code";
+const menu = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
+const viseurs = (app: ElectronApplication) => dansPage<number>(app, `document.querySelectorAll("webaios-viseur").length`);
+
+/** La page du calque (bulle ou panier) : une vue posée sur une fenêtre. */
+async function pageCalque(app: ElectronApplication): Promise<Page> {
+  for (const fin = Date.now() + 10_000; Date.now() < fin; ) {
+    const p = app.windows().find((x) => x.url().includes("design.html"));
+    if (p) return p;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("le calque du mode design n'est pas apparu");
+}
+
+/** Largeur de la vue de l'onglet de la démo, vue du process principal. */
+const largeurVue = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows())
+      for (const v of w.contentView.children) {
+        const wc = (v as Electron.WebContentsView).webContents;
+        if (wc && !wc.isDestroyed() && wc.getURL().startsWith("http://127.0.0.1:15283")) return v.getBounds().width;
+      }
+    return -1;
+  });
+
+/** Écrit une remarque dans la bulle ouverte sur `selecteur`, et l'ajoute au panier par ⌘Entrée. */
+async function remarquer(app: ElectronApplication, selecteur: string, etiquette: string, texte: string) {
+  // Le viseur avale les clics pendant 500 ms après une capture (fin d'un double clic).
+  await new Promise((r) => setTimeout(r, 600));
+  await cliquerSur(app, selecteur);
+  const calque = await pageCalque(app);
+  const bulle = calque.getByTestId("bulle-design");
+  await expect(bulle).toContainText(etiquette);
+  await bulle.locator("textarea").fill(texte);
+  await bulle.locator("textarea").press("Meta+Enter");
+  return calque;
+}
+
+test("onglet hors des projets suivis : bouton désactivé, ⌘⇧D ne pose aucun viseur", async () => {
+  const serveur = await serveurTest();
+  const { app, fenetre, fermer } = await lancer({ env: ENV });
+  try {
+    await ouvrirOnglet(fenetre, `${serveur.url}/design.html`);
+    await expect.poll(() => dansLaVue(app, "/design.html", "document.readyState")).toBe("complete");
+    const bouton = fenetre.getByTestId("bouton-design");
+    await expect(bouton).toBeDisabled();
+    await expect(bouton).toHaveAttribute("title", INDISPONIBLE);
+    await menu(app, "mode-design");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await dansLaVue(app, "/design.html", `document.querySelectorAll("webaios-viseur").length`)).toBe(0);
+    await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+    await serveur.fermer();
+  }
+});
+
+test("⌘⇧D sur la démo : volet du panier, bulle sur #email, remarque au panier, viseur réarmé ; Annuler puis Échap", async () => {
+  const { app, fenetre, fermer } = await ouvrir();
+  try {
+    await expect.poll(() => largeurVue(app)).toBeGreaterThan(300);
+    const avant = await largeurVue(app);
+    const bouton = fenetre.getByTestId("bouton-design");
+    await expect(bouton).toBeEnabled();
+    await menu(app, "mode-design");
+    await expect(bouton).toHaveAttribute("aria-pressed", "true");
+    await expect(fenetre.getByTestId("panier-design")).toBeVisible();
+    await expect.poll(() => largeurVue(app)).toBe(avant - 300);
+    await expect.poll(() => viseurs(app)).toBe(1);
+    const calque = await remarquer(app, "#email", "input#email.champ", "Champ plus large");
+    await expect(fenetre.getByTestId("remarque-panier")).toHaveCount(1);
+    await expect(fenetre.getByTestId("remarque-panier")).toContainText("input#email.champ");
+    await expect(fenetre.getByTestId("compteur-panier")).toHaveText("1");
+    await expect(fenetre.getByTestId("envoyer-remarques")).toHaveText("Envoyer 1 remarque à l'agent");
+    await expect.poll(() => viseurs(app)).toBe(1);
+    // Annuler (Échap dans la bulle) : rien d'ajouté, le viseur revient (il avale les clics 500 ms après une capture).
+    await new Promise((r) => setTimeout(r, 600));
+    await cliquerSur(app, "#envoyer");
+    await expect(calque.getByTestId("bulle-design")).toContainText("button#envoyer");
+    await calque.getByTestId("bulle-design").locator("textarea").press("Escape");
+    await expect.poll(() => viseurs(app)).toBe(1);
+    await expect(fenetre.getByTestId("remarque-panier")).toHaveCount(1);
+    // Échap dans la page : le mode s'arrête, le panier reste.
+    await app.evaluate(({ webContents }) =>
+      webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!.sendInputEvent({ type: "keyDown", keyCode: "Escape" }),
+    );
+    await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    await expect(fenetre.getByTestId("panier-design")).toHaveCount(0);
+    expect(await viseurs(app)).toBe(0);
+    await expect(fenetre.getByTestId("compteur-panier")).toHaveText("1");
+    expect(await dansPage(app, "window.reactions")).toEqual([]);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("deux remarques, rechargement puis redémarrage : le mode est coupé, le panier reste (racine/.webaios/remarques/demo-15283)", async () => {
+  const profil = nouveauProfil();
+  const racine = nouvelleRacine();
+  let l = await ouvrir({ profil, racine });
+  try {
+    await menu(l.app, "mode-design");
+    await expect.poll(() => viseurs(l.app)).toBe(1);
+    await remarquer(l.app, "#email", "input#email.champ", "Champ plus large");
+    await expect(l.fenetre.getByTestId("compteur-panier")).toHaveText("1");
+    await expect.poll(() => viseurs(l.app)).toBe(1);
+    await remarquer(l.app, "#envoyer", "button#envoyer", "Bouton en vert");
+    await expect(l.fenetre.getByTestId("compteur-panier")).toHaveText("2");
+    await l.app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getURL().startsWith("http://127.0.0.1:15283"))!.reload());
+    await expect(l.fenetre.getByTestId("bouton-design")).toHaveAttribute("aria-pressed", "false");
+    await expect(l.fenetre.getByTestId("compteur-panier")).toHaveText("2");
+    await aucuneFenetreVisible(l.app);
+  } finally {
+    await l.fermer();
+  }
+  l = await lancer({ profil, racine, env: ENV });
+  try {
+    await expect(l.fenetre.getByTestId("compteur-panier")).toHaveText("2", { timeout: 15_000 });
+    const dossier = join(racine, ".webaios", "remarques", "demo-15283");
+    expect(existsSync(join(dossier, "panier.json"))).toBe(true);
+    expect(JSON.parse(readFileSync(join(dossier, "panier.json"), "utf8"))).toHaveLength(2);
+    await aucuneFenetreVisible(l.app);
+  } finally {
+    await l.fermer();
+  }
+});
+
+test("changer d'onglet pendant le mode : le mode est coupé", async () => {
+  const { app, fenetre, fermer } = await ouvrir();
+  try {
+    await menu(app, "mode-design");
+    await expect(fenetre.getByTestId("bouton-design")).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => viseurs(app)).toBe(1);
+    await ouvrirOnglet(fenetre, "about:blank");
+    await expect.poll(() => viseurs(app)).toBe(0);
+    await expect(fenetre.getByTestId("bouton-design")).toHaveAttribute("aria-pressed", "false");
+    await expect(fenetre.getByTestId("panier-design")).toHaveCount(0);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("fenêtre d'appli lancée par la page Applications : pastille WebAiOs, Mode design, bulle dans son calque, Panier", async () => {
+  const racine = nouvelleRacine();
+  ecrireProjet(racine, "essai", { manifeste: { nom: "Essai" }, serveur: "formulaire" });
+  const { app, fenetre, fermer } = await lancer({ racine, env: ENV });
+  try {
+    await menu(app, "applications");
+    const ligne = fenetre.getByTestId("appli-essai");
+    await ligne.getByRole("button", { name: "Lancer" }).click();
+    await expect(ligne).toHaveAttribute("data-etat", "en-marche", { timeout: 15_000 });
+    const dansAppli = <T>(code: string) =>
+      app.evaluate(({ webContents }, code) => webContents.getAllWebContents().find((w) => /^http:\/\/localhost:1528\d\//.test(w.getURL()))?.executeJavaScript(code) as Promise<T>, code);
+    await expect.poll(() => dansAppli<string>("document.title")).toBe("Inscription");
+    let pastille: Page | undefined;
+    for (const fin = Date.now() + 10_000; !pastille && Date.now() < fin; await new Promise((r) => setTimeout(r, 100)))
+      pastille = app.windows().find((x) => x.url().includes("pastille.html"));
+    expect(pastille).toBeTruthy();
+    await expect(pastille!.getByTestId("pastille-webaios")).toBeVisible();
+    // L'appli lancée est « construite » : l'agent y a accès (88×28). Accès coupé, la pastille WebAiOs reste seule (48×28).
+    await expect(pastille!.getByTestId("pastille-acces")).toHaveCount(1);
+    await expect.poll(() => pastille!.evaluate(() => [innerWidth, innerHeight])).toEqual([88, 28]);
+    await pastille!.getByTestId("pastille-acces").click();
+    await pastille!.getByTestId("bulle-acces").getByRole("button", { name: "Couper l'accès" }).click();
+    await expect(pastille!.getByTestId("pastille-acces")).toHaveCount(0);
+    await expect(pastille!.getByTestId("pastille-webaios")).toBeVisible();
+    await expect.poll(() => pastille!.evaluate(() => [innerWidth, innerHeight])).toEqual([48, 28]);
+    await pastille!.getByTestId("pastille-webaios").click();
+    await pastille!.getByRole("menuitem", { name: /Mode design/ }).click();
+    await expect.poll(() => dansAppli<number>(`document.querySelectorAll("webaios-viseur").length`)).toBe(1);
+    // Clic sur #email dans la fenêtre d'appli.
+    const c = await dansAppli<{ x: number; y: number }>(`(() => { const r = document.querySelector("#email").getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+    await app.evaluate(async ({ webContents }, c) => {
+      const wc = webContents.getAllWebContents().find((w) => /^http:\/\/localhost:1528\d\//.test(w.getURL()))!;
+      wc.sendInputEvent({ type: "mouseMove", x: c.x, y: c.y });
+      await new Promise((r) => setTimeout(r, 50));
+      wc.sendInputEvent({ type: "mouseDown", x: c.x, y: c.y, button: "left", clickCount: 1 });
+      wc.sendInputEvent({ type: "mouseUp", x: c.x, y: c.y, button: "left", clickCount: 1 });
+    }, c);
+    const calque = await pageCalque(app);
+    await expect(calque.getByTestId("bulle-design")).toContainText("input#email.champ");
+    // Le calque est un enfant de la fenêtre d'appli.
+    expect(
+      await app.evaluate(({ BrowserWindow }) => {
+        const f = BrowserWindow.getAllWindows().find((w) => /^http:\/\/localhost:1528\d\//.test(w.webContents.getURL()));
+        return !!f && f.contentView.children.some((v) => (v as Electron.WebContentsView).webContents?.getURL().includes("design.html"));
+      }),
+    ).toBe(true);
+    await calque.getByTestId("bulle-design").locator("textarea").fill("Champ plus large");
+    await calque.getByTestId("bulle-design").locator("textarea").press("Meta+Enter");
+    await expect.poll(() => dansAppli<number>(`document.querySelectorAll("webaios-viseur").length`)).toBe(1);
+    // « Panier » : le calque montre le panier de l'appli.
+    await pastille!.getByTestId("pastille-webaios").click();
+    await pastille!.getByRole("menuitem", { name: "Panier (1)" }).click();
+    await expect(calque.getByTestId("panier-design")).toBeVisible();
+    await expect(calque.getByTestId("remarque-panier")).toHaveCount(1);
+    await expect(calque.getByTestId("envoyer-remarques")).toHaveText("Envoyer 1 remarque à l'agent");
+    expect(readdirSync(join(racine, ".webaios", "remarques"))).toEqual(["app-essai"]);
     await aucuneFenetreVisible(app);
   } finally {
     await fermer();

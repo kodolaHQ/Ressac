@@ -32,8 +32,8 @@ export default defineConfig({
       },
     },
   },
-  // Trois pages : l'interface d'une fenêtre, la pastille d'accès posée sur les fenêtres d'appli, et l'interface (barre)
-  // d'une fenêtre d'appli de site.
+  // Quatre pages : l'interface d'une fenêtre, la pastille posée sur les fenêtres d'appli, l'interface (barre) d'une
+  // fenêtre d'appli de site, et le calque du mode design (bulle d'une remarque, panier d'une fenêtre d'appli).
   renderer: {
     plugins: [svelte()],
     build: {
@@ -42,6 +42,7 @@ export default defineConfig({
           index: resolve(__dirname, "src/renderer/index.html"),
           pastille: resolve(__dirname, "src/renderer/pastille.html"),
           site: resolve(__dirname, "src/renderer/site.html"),
+          design: resolve(__dirname, "src/renderer/design.html"),
         },
       },
     },

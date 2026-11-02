@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type EtatLot, type IdProjet, type ProjetSuivi, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
-export { ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "./canaux";
+export { ARG_CALQUE, ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "./canaux";
 
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
@@ -330,7 +330,72 @@ export interface ApiWebaios {
     /** « Couper le déblocage » de la console d'une extension de l'agent. */
     couperDeblocage(cle: string): Promise<ResultatExtension>;
   };
+  /** Mode design de l'onglet actif de cette fenêtre, et paniers de remarques. */
+  design: ApiDesign;
 }
+
+/** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */
+export interface EtatDesign {
+  actif: boolean;
+  projet: ProjetSuivi | null;
+  /** Raison pour laquelle le mode design n'est pas proposé ici ; null s'il l'est. */
+  indisponible: string | null;
+  /** « l'agent », « Claude Code (<nom>) » ; null si personne ne peut recevoir les remarques. */
+  destination: string | null;
+  /** Pourquoi `destination` est null (aucun Claude Code branché). */
+  sansDestination: string | null;
+  /** Nombre de remarques dans le panier du projet. */
+  panier: number;
+  /** Nom du projet à afficher. */
+  nom: string;
+}
+/** Une remarque telle que le panier et l'historique l'affichent : du texte, jamais du HTML. */
+export interface ElementAffiche {
+  id: string;
+  type: "design" | "relecture";
+  etiquette: string;
+  texte: string;
+  source: string | null;
+  traite: { quand: string; note?: string } | null;
+}
+export interface LotAffiche {
+  id: string;
+  cree: string;
+  etat: EtatLot;
+  destination: "agent" | "mcp";
+  elements: ElementAffiche[];
+}
+export interface ApiDesign {
+  etat(): Promise<EtatDesign>;
+  /** ⌘⇧D : sans effet là où le mode est indisponible. */
+  basculer(): void;
+  panier(projet: IdProjet): Promise<ElementAffiche[]>;
+  retirer(projet: IdProjet, id: string): Promise<void>;
+  envoyer(projet: IdProjet): Promise<ResultatExtension>;
+  lots(projet: IdProjet): Promise<LotAffiche[]>;
+  traite(projet: IdProjet, lot: string): Promise<void>;
+  /** « Relire ce projet » (projets `app` et `externe`). */
+  relire(): void;
+  surChange(rappel: () => void): () => void;
+}
+/** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
+export interface ContexteCalque {
+  mode: "bulle" | "panier";
+  projet: IdProjet;
+  etiquette: string;
+  source: string | null;
+  destination: string | null;
+  sansDestination: string | null;
+}
+/** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
+export type ApiCalque = {
+  contexte(): Promise<ContexteCalque | null>;
+  ajouter(texte: string): Promise<ResultatExtension>;
+  /** Échap ou « Annuler » dans la bulle ; « Fermer » du panier. */
+  annuler(): void;
+} & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
+/** Texte d'une remarque : borné à l'entrée du process principal. */
+export const TEXTE_REMARQUE_MAX = 4000;
 
 export type ResultatExtension = { ok: true } | { ok: false; erreur: string };
 
@@ -536,10 +601,12 @@ export interface EtatIaAffiche {
   verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
 }
 
-/** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent, rien d'autre. */
+/** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent et le mode design de son appli. */
 export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
   /** Demande au process principal d'agrandir (bulle ouverte) ou de rétrécir la vue de la pastille. */
   pastilleTaille(ouverte: boolean): void;
+  /** Le mode design de la fenêtre d'appli ; « Panier » l'ouvre dans le calque de la fenêtre. */
+  design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
 };
 
 /**

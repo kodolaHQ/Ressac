@@ -15,6 +15,8 @@
   import Historique from "./Historique.svelte";
   import PageVide from "./PageVide.svelte";
   import Telechargements from "./Telechargements.svelte";
+  import PanierDesign from "./PanierDesign.svelte";
+  import { design, relireDesign } from "./design.svelte";
 
   let {
     fenetre,
@@ -34,6 +36,18 @@
     const espaces = etat.valeur?.espaces ?? [];
     const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
     return prive(fenetre?.espaceActif) || prive(onglet?.espaceId);
+  });
+
+  // Le mode design suit l'onglet affiché et son adresse (le process principal arrête le mode s'il change).
+  $effect(() => {
+    void onglet?.id;
+    void onglet?.url;
+    void relireDesign();
+  });
+  /** Volet du panier : tant que le mode design est actif, ou demandé par « Panier ». */
+  const panierDesign = $derived.by(() => {
+    const e = design.etat;
+    return e?.projet && panneau === null && (e.actif || design.panierDemande) ? e : null;
   });
 
   $effect(() => {
@@ -60,6 +74,7 @@
 <main class="contenu" data-testid="zone-contenu">
   {#if demande && !estDemandeAgent(demande) && !panneau}<DemandePermission {demande} />{/if}
   {#if recherche.ouverte && onglet && !panneau}<RechercheDansPage {onglet} />{/if}
+  <div class="rangee">
   <div class="surface" bind:this={zone}>
   {#if fenetre && panneau === "historique"}
     <Historique {fenetre} fermer={fermerPanneau} />
@@ -102,11 +117,28 @@
     </div>
   {/if}
   </div>
+  {#if panierDesign?.projet}
+    <div class="volet-design">
+      <PanierDesign
+        api={api.design}
+        projet={panierDesign.projet.projet}
+        destination={panierDesign.destination}
+        sansDestination={panierDesign.sansDestination}
+        fermer={() => {
+          design.panierDemande = false;
+          if (panierDesign?.actif) api.design.basculer();
+        }}
+      />
+    </div>
+  {/if}
+  </div>
 </main>
 
 <style>
   .contenu { background: var(--fond); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .surface { flex: 1; position: relative; min-height: 0; }
+  .rangee { flex: 1; display: flex; min-height: 0; }
+  .surface { flex: 1; position: relative; min-height: 0; min-width: 0; }
+  .volet-design { width: 300px; flex: none; min-height: 0; }
   .detail { color: var(--texte-doux); font-size: 12px; word-break: break-all; }
   .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
 </style>

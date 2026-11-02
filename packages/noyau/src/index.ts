@@ -65,3 +65,4 @@ export * from "./relecture/depot.js";
 export * from "./relecture/commentaires.js";
 export * from "./design/remarques.js";
 export * from "./design/serveur-externe.js";
+export * from "./design/externes.js";

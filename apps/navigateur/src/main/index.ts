@@ -55,6 +55,8 @@ import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
 import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
+import { ServiceDesign } from "./design/service";
+import { plagesConteneur, RegistreExternes, Remarques } from "@webaios/noyau";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
@@ -196,6 +198,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues): 
     questionsFenetreFermee(id);
     boutonsFenetre.delete(id);
     selectionsConstructeur.delete(id);
+    design?.oublier({ type: "fenetre", fenetreId: id });
     void agent?.sessions.fermerFenetre(id);
     if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
     // Dernière fenêtre (gardée dans l'état) : ses pages se ferment, elles reviendront avec elle.
@@ -271,6 +274,8 @@ const fileEcritures = new FileEcritures();
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 let applications: ServiceApplications | undefined;
 let sites: ServiceSites | undefined;
+/** Mode design des onglets et des fenêtres d'appli ; créé avec les applis (il lit leurs ports). */
+let design: ServiceDesign | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
@@ -758,6 +763,25 @@ app.whenReady().then(async () => {
       etat: (dossier) => applications?.fenetres.accesDe(dossier) ?? { agent: "L'agent", onglets: {} },
       redimensionner: (dossier, ouverte) => applications?.fenetres.redimensionnerPastille(dossier, ouverte),
     },
+    design: {
+      calqueDe: (sender) => design?.cibleDeCalque(sender),
+      etat: async (c) => {
+        if (!design) throw new Error("mode design pas prêt");
+        return design.etat(c);
+      },
+      basculer: (c) => void design?.basculer(c),
+      relire: (c) => void design?.relire(c),
+      ouvrirPanier: (c) => void design?.ouvrirPanier(c),
+      projetDe: async (c) => (await design?.projetCourant(c))?.projet ?? null,
+      contexte: (c) => design?.contexteCalque(c) ?? null,
+      ajouter: async (c, texte) => (await design?.ajouter(c, texte)) ?? { ok: false, erreur: "mode design pas prêt" },
+      annuler: (c) => design?.annuler(c),
+      panier: async (p) => (await design?.panier(p)) ?? [],
+      retirer: async (p, id) => design?.retirer(p, id),
+      envoyer: async (p) => (await design?.envoyer(p)) ?? { ok: false, erreur: "mode design pas prêt" },
+      lots: async (p) => (await design?.lots(p)) ?? [],
+      traite: async (p, lot) => design?.traite(p, lot),
+    },
     agent: {
       demarrer: (f, t) => void agent?.sessions.demarrer(f, t),
       ecrire: (f, d) => agent?.sessions.ecrire(f, d),
@@ -813,6 +837,13 @@ app.whenReady().then(async () => {
     rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
     surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
+    design: (action) => {
+      const dossier = applications?.fenetres.dossierAuPremierPlan();
+      const f = dossier ? undefined : cibles.fenetreActive();
+      const cible = dossier ? ({ type: "app", dossier } as const) : f ? ({ type: "fenetre", fenetreId: f } as const) : undefined;
+      if (!cible || !design) return;
+      void (action === "basculer" ? design.basculer(cible) : design.relire(cible));
+    },
   };
   installerMenu(cibles);
   // La coche du moteur de recherche suit l'état.
@@ -856,11 +887,15 @@ app.whenReady().then(async () => {
     atelier,
     dossierProfil: dossier,
     ouvrirOnglet: ouvrirDansOnglet,
-    // La page Applications relit la liste.
-    diffuser: () => diffuser(CANAUX.applicationsChange, null),
-    // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
+    // La page Applications relit la liste ; le mode design aussi (les ports des applis en marche ont pu changer).
+    diffuser: () => {
+      diffuser(CANAUX.applicationsChange, null);
+      diffuser(CANAUX.designChange, null);
+    },
+    // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre, son mode design aussi.
     surFenetreFermee: (dossier) => {
       agent?.noyau()?.politique.ongletFerme(`app:${dossier}`);
+      design?.oublier({ type: "app", dossier });
       ecarterQuestionsCaduques();
     },
     // Une fenêtre d'appli montre toujours ce que l'agent a construit : de nouveau « construite » sur sa nouvelle origine.
@@ -878,6 +913,43 @@ app.whenReady().then(async () => {
       cibles.raccourci(f, "agent");
     },
   });
+  // Mode design. Les paniers et lots des applis et des démos vont dans l'espace (l'agent les lit) ; les registres des
+  // projets externes et des clients, dans le profil du navigateur (jamais monté dans le conteneur).
+  const dossiersDesign = { remarquesEspace: join(chemins.interne, "remarques"), prive: join(dossier, "design") };
+  const remarques = new Remarques({ dossiers: dossiersDesign });
+  let registreExternes: RegistreExternes | null = null;
+  const diffuserDesign = () => {
+    diffuser(CANAUX.designChange, null);
+    design?.calques.notifier();
+  };
+  design = new ServiceDesign({
+    remarques,
+    registre: () => registreExternes,
+    applis: async () =>
+      ((await applications?.gestionnaire.liste()) ?? []).flatMap((a) =>
+        a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : [],
+      ),
+    plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS),
+    vueOnglet: (f) => {
+      const fenetre = fenetres.get(f);
+      const v = vues.vueAffichee(f);
+      return fenetre && !fenetre.isDestroyed() && v ? { ...v, fenetre, url: v.wc.getURL() } : null;
+    },
+    fenetreApp: (d) => applications?.fenetres.fenetre(d) ?? null,
+    diffuser: diffuserDesign,
+    // Tâche 9 : pré-remplir la session de l'agent avec le lot envoyé.
+    envoyer: async () => {},
+  });
+  remarques.surChange(diffuserDesign);
+  RegistreExternes.ouvrir(dossiersDesign.prive)
+    .then((r) => {
+      registreExternes = r;
+      r.surChange(diffuserDesign);
+      diffuserDesign();
+    })
+    .catch((e) => console.error("[design] registre des projets externes illisible :", e));
+  // Un autre onglet affiché (ou l'onglet fermé) arrête le mode design de la fenêtre ; après la synchro des vues.
+  magasin.abonner(() => design?.verifierOnglets());
   // Les applis de site : leurs fenêtres n'attendent ni Docker ni l'agent.
   sites = demarrerSites({
     chemins,

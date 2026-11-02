@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { injectBrowserAction } from "electron-chrome-extensions/browser-action";
-import type { ApiPastille, ApiSite, ApiWebaios } from "../commun/api";
-import { ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "../commun/canaux";
+import type { ApiCalque, ApiDesign, ApiPastille, ApiSite, ApiWebaios } from "../commun/api";
+import { ARG_CALQUE, ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "../commun/canaux";
 import { MOTIF_INDICES_RESEAU } from "../commun/indices-reseau";
 import { gardeWidget } from "./garde-widget";
 import type { EtatNavigateur } from "../commun/modele";
@@ -14,6 +14,16 @@ function ecouter<T>(canal: string, rappel: (v: T) => void): () => void {
   ipcRenderer.on(canal, ecouteur);
   return () => ipcRenderer.removeListener(canal, ecouteur);
 }
+
+/** Paniers du mode design : partagés par l'interface d'une fenêtre et le calque (bulle ou panier). */
+const paniers: Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange"> = {
+  panier: (projet) => ipcRenderer.invoke(CANAUX.designPanier, projet),
+  retirer: (projet, id) => ipcRenderer.invoke(CANAUX.designRetirer, projet, id),
+  envoyer: (projet) => ipcRenderer.invoke(CANAUX.designEnvoyer, projet),
+  lots: (projet) => ipcRenderer.invoke(CANAUX.designLots, projet),
+  traite: (projet, lot) => ipcRenderer.invoke(CANAUX.designTraite, projet, lot),
+  surChange: (rappel) => ecouter(CANAUX.designChange, () => rappel()),
+};
 
 const api: ApiWebaios = {
   fenetreId,
@@ -149,6 +159,12 @@ const api: ApiWebaios = {
     ipcRenderer.on(CANAUX.telechargements, ecouteur);
     return () => ipcRenderer.removeListener(CANAUX.telechargements, ecouteur);
   },
+  design: {
+    etat: () => ipcRenderer.invoke(CANAUX.designEtat),
+    basculer: () => ipcRenderer.send(CANAUX.designBasculer),
+    relire: () => ipcRenderer.send(CANAUX.designRelire),
+    ...paniers,
+  },
 };
 
 /** Pastille d'une fenêtre d'appli : l'accès de l'agent et la taille de sa vue, pas le reste de l'API de la fenêtre. */
@@ -159,6 +175,20 @@ const pastille: ApiPastille = {
   },
   surAcces: (rappel) => ecouter(CANAUX.acces, rappel),
   pastilleTaille: (ouverte) => ipcRenderer.send(CANAUX.pastilleTaille, { ouverte }),
+  design: {
+    etat: () => ipcRenderer.invoke(CANAUX.designEtat),
+    basculer: () => ipcRenderer.send(CANAUX.designBasculer),
+    panier: () => ipcRenderer.send(CANAUX.designOuvrirPanier),
+    relire: () => ipcRenderer.send(CANAUX.designRelire),
+  },
+};
+
+/** Calque du mode design (bulle ou panier) : sa remarque et les paniers, rien d'autre. */
+const calque: ApiCalque = {
+  contexte: () => ipcRenderer.invoke(CANAUX.designContexte),
+  ajouter: (texte) => ipcRenderer.invoke(CANAUX.designAjouter, texte),
+  annuler: () => ipcRenderer.send(CANAUX.designAnnuler),
+  ...paniers,
 };
 
 /** Interface de la fenêtre d'une appli de site : sa barre et son état, rien d'autre (le main reconnaît l'appli à l'expéditeur). */
@@ -186,13 +216,14 @@ const site: ApiSite = {
 const cadrePrincipal = process.isMainFrame !== false && window.top === window;
 const estPastille = process.argv.some((a) => a.startsWith(ARG_PASTILLE));
 const estSite = process.argv.some((a) => a.startsWith(ARG_SITE));
+const estCalque = process.argv.some((a) => a.startsWith(ARG_CALQUE));
 if (cadrePrincipal) {
   // La fenêtre d'une appli de site n'a que `site` : ni l'API de la fenêtre principale, ni les boutons des extensions.
   if (estSite) contextBridge.exposeInMainWorld("webaios", { site });
-  else contextBridge.exposeInMainWorld("webaios", estPastille ? pastille : api);
+  else contextBridge.exposeInMainWorld("webaios", estCalque ? calque : estPastille ? pastille : api);
   // Les boutons des extensions (`<button is="browser-action">`, BarreExtensions.svelte) : l'interface d'une fenêtre
-  // principale seulement, jamais un cadre (affichage de widget), la pastille d'une appli ni une fenêtre d'appli de site.
-  if (!estPastille && !estSite) injectBrowserAction();
+  // principale seulement, jamais un cadre (affichage de widget), la pastille d'une appli, un calque ni une fenêtre d'appli de site.
+  if (!estPastille && !estSite && !estCalque) injectBrowserAction();
 } else {
   // Tout autre cadre de l'interface est l'affichage d'un widget ou un cadre qu'il a créé : ni WebRTC, ni indice réseau
   // (voir garde-widget.ts), posé avant le premier script de la page.

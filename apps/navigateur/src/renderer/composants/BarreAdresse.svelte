@@ -1,5 +1,6 @@
 <script lang="ts">
   import BarreExtensions from "./BarreExtensions.svelte";
+  import BoutonDesign from "./BoutonDesign.svelte";
   import PastilleAcces from "./PastilleAcces.svelte";
   import Icone from "./Icone.svelte";
   import type { EtatFenetre, Visite } from "../../commun/modele";
@@ -88,6 +89,7 @@
     title={fenetre.compact ? "Quitter le mode compact (⌘⇧S)" : "Mode compact (⌘⇧S)"}
     aria-pressed={fenetre.compact}
     onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}><Icone nom="barre" /></button>
+  <BoutonDesign />
 </div>
 <div class="ligne">
 <form onsubmit={valider}>

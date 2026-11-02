@@ -376,6 +376,13 @@ process.exit(3);
 `,
   muet: () => `setInterval(() => {}, 1000);
 `,
+  // Un formulaire d'inscription : la page des essais du mode design dans une fenêtre d'appli.
+  formulaire: () => `import { createServer } from "node:http";
+createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end('<title>Inscription</title><form id="inscription"><input id="email" class="champ" type="email"> <button id="envoyer" type="button">Envoyer</button></form>');
+}).listen(Number(process.env.PORT));
+`,
 };
 
 /**
