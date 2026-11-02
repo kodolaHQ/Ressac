@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, w
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cheminsEspace, lireAccordsSites, accorderSite, DeclarationSite, empreinteLectureSite } from "@webaios/noyau";
+import { cheminsEspace, lireAccordsSites, accorderSite, DeclarationSite, empreinteExtensionsSite, empreinteLectureSite } from "@webaios/noyau";
 import { SchemaActionSite } from "../../src/commun/api";
 import { ICONE_MAX } from "../../src/commun/sites";
 import { modifierAvecAgent } from "../../src/commun/sites";
@@ -19,6 +19,27 @@ const portail: { tenir: boolean; atteint: (() => void) | null; ouvrir: (() => vo
 /** La lecture du dossier des applis (`readdir`) : tenue une fois quand `dossierTenu.tenir` est armé. */
 const dossierTenu: { tenir: boolean; atteint: (() => void) | null; ouvrir: (() => void) | null } = { tenir: false, atteint: null, ouvrir: null };
 /** Ce que rend `fenetres.fermer` : la vue encore vivante après le délai (elle n'a jamais été détruite), ou null. */
+/** Les extensions de l'appli (plan 16) : `ouverture` tenue tant que `extTenue.tenir` est armé ; `suppression` peut échouer. */
+const extTenue: { tenir: boolean; atteint: (() => void) | null; ouvrir: (() => void) | null; echecSuppression: boolean } = { tenir: false, atteint: null, ouvrir: null, echecSuppression: false };
+const ouvertures: { id: string; empreinte: string }[] = [];
+const extensions = {
+  ouverture: async (id: string, empreinte: string) => {
+    ouvertures.push({ id, empreinte });
+    journal.push(`ouverture ${id}`);
+    if (extTenue.tenir) {
+      extTenue.tenir = false;
+      await new Promise<void>((ok) => {
+        extTenue.ouvrir = ok;
+        extTenue.atteint?.();
+      });
+    }
+  },
+  fermeture: (id: string) => void journal.push(`fermeture ${id}`),
+  suppression: async (id: string) => {
+    journal.push(`suppression ${id}`);
+    if (extTenue.echecSuppression) throw new Error("registre illisible");
+  },
+};
 const fermeture: { restante: { isDestroyed(): boolean; close(): void; forcefullyCrashRenderer(): void } | null } = { restante: null };
 
 vi.mock("node:fs/promises", async (importer) => {
@@ -149,6 +170,10 @@ beforeEach(() => {
   portail.tenir = false;
   dossierTenu.tenir = false;
   fermeture.restante = null;
+  ouvertures.length = 0;
+  extTenue.tenir = false;
+  extTenue.atteint = null;
+  extTenue.echecSuppression = false;
   racine = mkdtempSync(join(tmpdir(), "service-sites-"));
   profil = mkdtempSync(join(tmpdir(), "service-profil-"));
   const c = cheminsEspace(racine);
@@ -169,6 +194,7 @@ beforeEach(() => {
     deboguer,
     diffuser: () => {},
     surSupprimee,
+    extensions,
   });
 });
 afterEach(async () => {
@@ -494,4 +520,89 @@ test("accorder (carte des retouches) pendant une suppression : rien n'est accord
   await fin;
   expect(journal.filter((j) => j.startsWith("apresAccord"))).toEqual([]);
   expect(Object.hasOwn(await lireAccordsSites(profil), "vidola")).toBe(false);
+});
+
+// --- Les extensions de l'appli (plan 16)
+
+const empreinteDe = (d: object) => empreinteExtensionsSite(DeclarationSite.parse(d));
+
+test("ouvrirParId attend extensions.ouverture avec l'empreinte des domaines avant d'ouvrir la fenêtre", async () => {
+  const atteint = new Promise<void>((ok) => (extTenue.atteint = ok));
+  extTenue.tenir = true;
+  const ouverture = service.ouvrirParId("vidola");
+  await atteint;
+  expect(ouvertures).toEqual([{ id: "vidola", empreinte: empreinteDe(declaration) }]);
+  // Rien ne s'ouvre avant la fin de l'attente : la première page trouverait sa session sans ses extensions.
+  await new Promise((r) => setTimeout(r, 30));
+  expect(ouvertes.has("vidola")).toBe(false);
+  extTenue.ouvrir!();
+  expect(await ouverture).toBe(true);
+  expect(ouvertes.has("vidola")).toBe(true);
+});
+
+test("une suppression commencée pendant cette attente : rien ne s'ouvre, et l'appli est rendue fermée aux extensions (C3)", async () => {
+  await service.liste();
+  const atteint = new Promise<void>((ok) => (extTenue.atteint = ok));
+  extTenue.tenir = true;
+  const ouverture = service.ouvrirParId("vidola");
+  await atteint;
+  await service.agir("vidola", "supprimer", "f1" as never);
+  // La suppression est finie ; l'ouverture, elle, reprend après : elle rend l'appli fermée aux extensions.
+  journal.length = 0;
+  extTenue.ouvrir!();
+  expect(await ouverture).toBe(false);
+  expect(ouvertes.has("vidola")).toBe(false);
+  expect(journal).toEqual(["fermeture vidola"]);
+});
+
+test("supprimer appelle extensions.suppression après la fermeture et avant l'effacement de la session ; un échec n'arrête pas la suppression", async () => {
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  await service.agir("vidola", "supprimer", "f1" as never);
+  expect(journal.filter((j) => /^(fermee|fermeture|suppression|session)/.test(j))).toEqual(["fermee vidola", "fermeture vidola", "suppression vidola", "session vidola"]);
+
+  // Une appli recréée au même id, dont le retrait des extensions échoue : la suppression va au bout.
+  mkdirSync(join(cheminsEspace(racine).sites, "vidola"), { recursive: true });
+  writeFileSync(join(cheminsEspace(racine).sites, "vidola", "site.json"), JSON.stringify(declaration));
+  journal.length = 0;
+  extTenue.echecSuppression = true;
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await service.agir("vidola", "supprimer", "f1" as never);
+  } finally {
+    erreur.mockRestore();
+  }
+  expect(journal.filter((j) => /^(suppression|session)/.test(j))).toEqual(["suppression vidola", "session vidola"]);
+  expect(existsSync(join(cheminsEspace(racine).sites, "vidola"))).toBe(false);
+});
+
+test("site.json relu avec un domaine de plus : ouverture rappelée avec la nouvelle empreinte avant le rechargement", async () => {
+  const c = cheminsEspace(racine);
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  const plus = { ...declaration, domaines: [...declaration.domaines, "mail.example.com"] };
+  const atteint = new Promise<void>((ok) => (extTenue.atteint = ok));
+  extTenue.tenir = true;
+  writeFileSync(join(c.sites, "vidola", "site.json"), JSON.stringify(plus));
+  await atteint;
+  expect(ouvertures.at(-1)).toEqual({ id: "vidola", empreinte: empreinteDe(plus) });
+  expect(empreinteDe(plus)).not.toBe(empreinteDe(declaration));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(misesAJour).toEqual([]);
+  extTenue.ouvrir!();
+  await vi.waitFor(() => expect(misesAJour.length).toBeGreaterThan(0), { timeout: 3000 });
+});
+
+test("un changement d'adresse trouvé par le suivi ne rappelle pas ouverture : l'empreinte ne dépend que de site.json", async () => {
+  const c = cheminsEspace(racine);
+  const suivie = { ...declaration, suiviAdresse: { page: "https://reference.example/", motif: "vidola" } };
+  writeFileSync(join(c.sites, "vidola", "site.json"), JSON.stringify(suivie));
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  expect(ouvertures).toHaveLength(1);
+  // Le suivi a noté un nouveau domaine (adresse.json), puis site.json change de nom seulement : relu, sans ouverture.
+  mkdirSync(join(profil, "sites", "vidola"), { recursive: true });
+  writeFileSync(join(profil, "sites", "vidola", "adresse.json"), JSON.stringify({ actuel: "vidola-b.example", anciens: [], depuis: null }));
+  writeFileSync(join(c.sites, "vidola", "site.json"), JSON.stringify({ ...suivie, nom: "Vidola 2" }));
+  await vi.waitFor(() => expect(misesAJour.length).toBeGreaterThan(0), { timeout: 3000 });
+  expect((misesAJour.at(-1) as { domaines: string[] }).domaines).toContain("vidola-b.example");
+  await new Promise((r) => setTimeout(r, 100));
+  expect(ouvertures).toHaveLength(1);
 });

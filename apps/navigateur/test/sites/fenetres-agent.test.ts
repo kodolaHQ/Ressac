@@ -17,6 +17,7 @@ function fausseWc() {
       wc.charges.push(u);
     }),
     reload: vi.fn(),
+    stop: vi.fn(),
     close: vi.fn(),
     forcefullyCrashRenderer: vi.fn(),
     isDestroyed: () => false,
@@ -208,4 +209,42 @@ test("fermer : la vue détruite à temps rend null ; detruireVue arrête puis fe
   detruireVue(wc as never);
   expect(wc.forcefullyCrashRenderer).toHaveBeenCalled();
   expect(wc.close).toHaveBeenCalled();
+});
+
+// --- Les extensions de l'appli (plan 16)
+
+test("urlPermisePourExtension : sa propre page et une page de l'appli, oui ; la page d'une autre extension, javascript:, file:, non ; pub.localhost, non, avec « Lien vers pub.localhost bloqué »", () => {
+  const f = new FenetresSites({ memoire: { lire: () => ({}), noter }, adressesLocales: true, ouvrirOnglet: vi.fn() });
+  f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+  const ext = "abcdefghijklmnopabcdefghijklmnop";
+  expect(f.urlPermisePourExtension("vidola", ext, `chrome-extension://${ext}/options.html`)).toBe(true);
+  expect(f.urlPermisePourExtension("vidola", ext, "https://vidola-a.example/film/2")).toBe(true);
+  for (const url of [`chrome-extension://${"b".repeat(32)}/options.html`, "javascript:alert(1)", "file:///etc/passwd", "about:blank", "data:text/html,x"])
+    expect(f.urlPermisePourExtension("vidola", ext, url), url).toBe(false);
+  // Rien de ce qui précède n'est mentionné : il n'y a rien à ouvrir dans un onglet.
+  expect(f.etat("vidola")?.avis).toBeNull();
+  expect(f.urlPermisePourExtension("vidola", ext, "http://pub.localhost:4000/pub.js")).toBe(false);
+  // Le texte « Lien vers pub.localhost bloqué » vient de l'interface : le main n'en donne que le domaine.
+  expect(f.etat("vidola")?.avis).toEqual({ genre: "lien-bloque", domaine: "pub.localhost" });
+  // C7 : l'entrée « page d'accueil » du menu du bouton passe aussi par cette vérification (refusée, mentionnée).
+  expect(f.urlPermisePourExtension("vidola", ext, "https://chrome.google.com/webstore/detail/x")).toBe(false);
+  expect(f.etat("vidola")?.avis).toEqual({ genre: "lien-bloque", domaine: "chrome.google.com" });
+  // Appli fermée : rien n'est permis.
+  expect(f.urlPermisePourExtension("youtube", ext, "https://vidola-a.example/")).toBe(false);
+});
+
+test("C8 : la vue du site arrête tout chargement de son cadre principal qui n'est pas http(s) (tabs.update vers une page d'extension)", () => {
+  const f = fenetres();
+  f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+  const wc = vuesCreees[0]!.webContents;
+  const demarrer = (url: string, isMainFrame = true) => {
+    for (const c of wc.on.mock.calls.filter((c) => c[0] === "did-start-navigation")) (c[1] as (d: unknown) => void)({ url, isMainFrame, isSameDocument: false });
+  };
+  demarrer("https://vidola-a.example/film/2");
+  demarrer("chrome-extension://abcdefghijklmnopabcdefghijklmnop/x.html", false);
+  expect(wc.stop).not.toHaveBeenCalled();
+  demarrer("chrome-extension://abcdefghijklmnopabcdefghijklmnop/options.html");
+  expect(wc.stop).toHaveBeenCalledTimes(1);
+  demarrer("file:///etc/passwd");
+  expect(wc.stop).toHaveBeenCalledTimes(2);
 });

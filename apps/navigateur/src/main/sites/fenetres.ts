@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { adresseRelative, droitsDe, empreinteLectureSite, type DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
-import { HAUTEUR_BARRE_SITE, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
+import { HAUTEUR_BARRE_SITE, PANNEAU_EXTENSIONS_MAX, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
 import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
@@ -80,10 +80,24 @@ interface Ouverte {
   /** Dernière diffusion d'un changement de mention (un cadre hostile peut en provoquer des centaines). */
   avisDiffuse: number;
   minuterieAvis: NodeJS.Timeout | undefined;
-  /** Petites fenêtres de connexion ouvertes par la page : fermées avec l'appli. */
+  /** Petites fenêtres de connexion ouvertes par la page, et pages d'extension : fermées avec l'appli. */
   petites: Set<BrowserWindow>;
+  /** Les petites fenêtres des pages d'extension (plan 16), seules que `fermerPageExtension` ferme. */
+  pagesExtension: Set<BrowserWindow>;
+  /** Hauteur du panneau du menu « Extensions » ouvert sous la barre (0 : fermé) ; la vue est repoussée d'autant. */
+  panneau: number;
   /** Console des retouches (les `ERREURS_RETOUCHES_MAX` dernières), gardée jusqu'à la fermeture de la fenêtre. */
   erreurs: ErreurRetouche[];
+}
+
+/** L'id d'extension d'une adresse `chrome-extension://<id>/…`, sinon null. */
+function extensionDe(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "chrome-extension:" && u.hostname ? u.hostname : null;
+  } catch {
+    return null;
+  }
 }
 
 /** L'hôte d'une adresse http(s), sinon null (about:blank, javascript:, adresse illisible). */
@@ -149,8 +163,21 @@ export class FenetresSites {
        * a `suiviAdresse`, jamais appelé sinon).
        */
       surSuivi?: (id: string, url: string | null) => void;
+      /**
+       * La vue du site vient d'être créée (`creee`), ou va être fermée (`detruite`) : pour les extensions de l'appli
+       * (plan 16), c'est son seul onglet web, dans la fenêtre de l'appli.
+       */
+      surVue?: (id: string, quoi: "creee" | "detruite", wc: WebContents, fenetre: BrowserWindow) => void;
     },
   ) {}
+
+  private signalerVue(id: string, quoi: "creee" | "detruite", wc: WebContents, fenetre: BrowserWindow): void {
+    try {
+      this.o.surVue?.(id, quoi, wc, fenetre);
+    } catch (e) {
+      console.error(`[sites] vue de ${id} (${quoi}) non signalée aux extensions :`, e);
+    }
+  }
 
   /**
    * Ouvre la fenêtre de l'appli, ou la remet devant sans la recharger (sa déclaration et ses domaines sont repris, et la
@@ -215,7 +242,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, aChargerAgent: false, cible: null, pleinEcran: false, petites: new Set(), avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, aChargerAgent: false, cible: null, pleinEcran: false, petites: new Set(), pagesExtension: new Set(), panneau: 0, avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -228,7 +255,10 @@ export class FenetresSites {
     f.on("closed", () => {
       clearTimeout(o.minuterieAvis);
       for (const p of o.petites) if (!p.isDestroyed()) p.destroy();
-      if (!vue.webContents.isDestroyed()) vue.webContents.close();
+      if (!vue.webContents.isDestroyed()) {
+        this.signalerVue(id, "detruite", vue.webContents, f);
+        vue.webContents.close();
+      }
       if (this.ouvertesParId.get(id) === o) this.ouvertesParId.delete(id);
       this.o.surFermee?.(id);
     });
@@ -247,6 +277,7 @@ export class FenetresSites {
     else void ui.loadFile(join(__dirname, "../renderer/site.html"), { query: { id } }).catch(() => {});
 
     this.equiperVue(o);
+    this.signalerVue(id, "creee", vue.webContents, f);
     return o;
   }
 
@@ -316,6 +347,14 @@ export class FenetresSites {
     });
     wc.on("did-stop-loading", () => {
       o.chargementVoulu = false;
+    });
+    // C8 : la vue ne montre que le web. Un chargement lancé par le main sans passer par `will-frame-navigate` (`tabs.update`
+    // d'une extension vers sa propre page, par exemple) est arrêté s'il n'est pas http(s).
+    wc.on("did-start-navigation", (d) => {
+      if (!d.isMainFrame || d.isSameDocument) return;
+      if (/^https?:/i.test(d.url)) return;
+      console.warn(`[sites] ${id} : chargement hors du web arrêté dans la vue (${d.url.slice(0, 80)})`);
+      wc.stop();
     });
     wc.on("did-fail-load", (_e, code, _description, url, principal) => {
       if (principal && erreurDeReseau(code) && this.suiviActif(o)) this.o.surSuivi?.(id, url || o.cible);
@@ -428,7 +467,7 @@ export class FenetresSites {
   private placer(o: Ouverte): void {
     if (o.fenetre.isDestroyed()) return;
     const [largeur = 0, hauteur = 0] = o.fenetre.getContentSize();
-    const haut = o.pleinEcran ? 0 : HAUTEUR_BARRE_SITE;
+    const haut = o.pleinEcran ? 0 : HAUTEUR_BARRE_SITE + o.panneau;
     o.vue.setBounds({ x: 0, y: haut, width: largeur, height: Math.max(0, hauteur - haut) });
     o.vue.setVisible(o.affichee === "site");
   }
@@ -763,6 +802,102 @@ export class FenetresSites {
     this.noterCadre(id, o.fenetre);
     o.fenetre.destroy();
     return detruite;
+  }
+
+  // ——— Les extensions de l'appli (plan 16) ———
+
+  /** La vue du site de l'appli ouverte et sa fenêtre (son seul onglet pour les extensions), ou null. */
+  vueEtFenetre(id: string): { wc: WebContents; fenetre: BrowserWindow } | null {
+    const o = this.ouverte(id);
+    if (!o || o.vue.webContents.isDestroyed()) return null;
+    return { wc: o.vue.webContents, fenetre: o.fenetre };
+  }
+
+  /**
+   * Une extension de l'appli veut ouvrir `url` (`verifierUrl` de la bibliothèque) : sa propre page, ou une page de
+   * l'appli. Une autre adresse web est bloquée et mentionnée dans la barre (C7 : l'entrée « page d'accueil » du menu du
+   * bouton aussi) ; tout le reste (page d'une autre extension, javascript:, file:…) est refusé sans rien dire.
+   */
+  urlPermisePourExtension(id: string, extensionId: string, url: string): boolean {
+    const o = this.ouverte(id);
+    if (!o) return false;
+    if (extensionDe(url) !== null) return extensionDe(url) === extensionId;
+    if (decisionOuverture(url, this.contexte(o)) === "dans-l-appli") return true;
+    this.bloquer(o, url);
+    return false;
+  }
+
+  /**
+   * Ce qu'une extension de l'appli ouvre (`tabs.create`, `windows.create`, `runtime.openOptionsPage`) : une page d'une
+   * extension chargée dans l'appli s'ouvre dans une petite fenêtre cachée en test, de la session de l'appli, fermée avec
+   * elle ; une page de l'appli fait aller la vue (comme une navigation demandée par l'agent). L'adresse est revérifiée
+   * ici : `openOptionsPage` ne passe pas par `verifierUrl`. Tout le reste lève.
+   */
+  async ouvrirPourExtension(id: string, url: string): Promise<[WebContents, BrowserWindow]> {
+    const o = this.ouverte(id);
+    if (!o) throw new Error(`appli de site fermée : ${id}`);
+    const extension = extensionDe(url);
+    if (extension !== null) {
+      if (!sessionSite(id).extensions.getExtension(extension)) throw new Error(`page d'une extension absente de l'appli ${id}`);
+      return this.ouvrirPageExtension(o, extension, url);
+    }
+    if (o.vue.webContents.isDestroyed() || this.naviguerPourAgent(id, url) === "refuse") throw new Error(`adresse refusée dans l'appli ${id}`);
+    return [o.vue.webContents, o.fenetre];
+  }
+
+  private ouvrirPageExtension(o: Ouverte, extension: string, url: string): [WebContents, BrowserWindow] {
+    const petite = new BrowserWindow({
+      width: PETITE_FENETRE.largeur,
+      height: PETITE_FENETRE.hauteur,
+      show: !INVISIBLE,
+      fullscreenable: !INVISIBLE,
+      autoHideMenuBar: true,
+      webPreferences: { session: sessionSite(o.site.id), sandbox: true, contextIsolation: true },
+    });
+    o.petites.add(petite);
+    o.pagesExtension.add(petite);
+    petite.on("closed", () => {
+      o.petites.delete(petite);
+      o.pagesExtension.delete(petite);
+    });
+    const wc = petite.webContents;
+    wc.on("will-prevent-unload", (e) => e.preventDefault());
+    // Sa page principale ne quitte jamais l'origine de son extension.
+    const garder = (e: Electron.Event, vers: string) => {
+      if (extensionDe(vers) !== extension) e.preventDefault();
+    };
+    wc.on("will-frame-navigate", (e) => {
+      if (e.isMainFrame) garder(e, e.url);
+    });
+    wc.on("will-redirect", (e) => {
+      if (e.isMainFrame) garder(e, e.url);
+    });
+    wc.setWindowOpenHandler(() => ({ action: "deny" }));
+    void wc.loadURL(url).catch(() => {});
+    return [wc, petite];
+  }
+
+  /** `tabs.remove` d'une page d'extension : sa petite fenêtre, si c'en est une ouverte ici ; rien sinon. */
+  fermerPageExtension(wc: WebContents): void {
+    for (const o of this.ouvertesParId.values())
+      for (const p of o.pagesExtension) {
+        if (p.isDestroyed() || p.webContents !== wc) continue;
+        p.close();
+        return;
+      }
+  }
+
+  /** Le panneau du menu « Extensions » s'ouvre (sa hauteur) ou se ferme (0) : la vue du site est repoussée d'autant. */
+  panneauExtensions(id: string, hauteur: number): void {
+    const o = this.ouverte(id);
+    if (!o) return;
+    o.panneau = Number.isFinite(hauteur) ? Math.round(Math.min(PANNEAU_EXTENSIONS_MAX, Math.max(0, hauteur))) : 0;
+    this.placer(o);
+  }
+
+  /** Envoie un message à l'interface de chaque appli ouverte (`CANAUX.extensionsChange`). */
+  diffuserATous(canal: string, valeur: unknown): void {
+    for (const o of this.ouvertesParId.values()) if (!o.fenetre.isDestroyed() && !o.fenetre.webContents.isDestroyed()) o.fenetre.webContents.send(canal, valeur);
   }
 
   /** ⌘R, ⌥⌘I ou ⌘W sur la fenêtre d'appli de site au premier plan ; vrai si c'en est une. */

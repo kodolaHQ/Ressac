@@ -27,8 +27,10 @@ export const siteDeSession = (s: Session): string | undefined => preparees.get(s
 
 /**
  * La session d'une appli de site, préparée une fois : plein écran seul, aucun périphérique, téléchargements annulés, le
- * preload `site.js` sur chaque cadre. Aucune extension n'y est chargée tant que l'utilisateur n'en active aucune pour cette appli
- * (plan 16, `ServiceExtensions.basculerSite`).
+ * preload `site.js` sur chaque cadre (`webaios-site`, posé ici en premier). Aucune extension n'y est chargée, ni aucune
+ * bibliothèque d'extensions branchée, tant que l'utilisateur n'en active aucune pour cette appli (plan 16,
+ * `ServiceExtensions.basculerSite`) : alors seulement `ExtensionsProfils.brancherSite` l'équipe (ses preloads de pages
+ * d'extension viennent après celui-ci), et ses extensions n'y sont chargées que pendant que la fenêtre est ouverte.
  */
 export function sessionSite(id: string): Session {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);

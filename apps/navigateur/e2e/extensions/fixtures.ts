@@ -333,7 +333,57 @@ const localisee = {
   "_locales/fr/messages.json": { EXTNAME: { message: NOM_LOCALISE }, extShortDesc: { message: "Bloque" } },
 };
 
+/**
+ * Comme uBlock Origin Lite (plan 16) : un ruleset DNR du manifeste bloque `pub.localhost`, un script de contenu cache
+ * `.pub` et marque la page (`data-ublock`). Sur l'événement `ublock-ouvrir` du document, le fond ouvre
+ * `data-ublock-ouvrir` par `tabs.create` (ou `windows.create` si `data-ublock-fenetre="1"`) ; un refus est écrit dans
+ * la console. La popup rend ce que voit l'extension (`data-onglets`, `data-fenetres`).
+ */
+const ublockFactice = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "uBlock factice",
+    version: "1.0.0",
+    permissions: ["declarativeNetRequest"],
+    background: { service_worker: "fond.js" },
+    declarative_net_request: { rule_resources: [{ id: "regles", enabled: true, path: "regles.json" }] },
+    content_scripts: [{ matches: ["<all_urls>"], css: ["cache.css"], js: ["contenu.js"] }],
+    action: { default_title: "uBlock factice", default_popup: "popup.html", default_icon: { "16": "icone.png" } },
+    options_page: "options.html",
+  },
+  "regles.json": [
+    { id: 1, priority: 1, action: { type: "block" }, condition: { requestDomains: ["pub.localhost"], resourceTypes: ["script", "image", "sub_frame", "xmlhttprequest"] } },
+  ],
+  "cache.css": ".pub { display: none !important; }\n",
+  "contenu.js": `document.documentElement.dataset.ublock = "1";
+document.addEventListener("ublock-ouvrir", () => {
+  const d = document.documentElement.dataset;
+  chrome.runtime.sendMessage({ ouvrir: d.ublockOuvrir, fenetre: d.ublockFenetre === "1" });
+});
+`,
+  "fond.js": `chrome.runtime.onMessage.addListener((m) => {
+  if (!m || typeof m.ouvrir !== "string") return;
+  const refus = (e) => console.log("ouverture refusée : " + (e && e.message));
+  try {
+    Promise.resolve(m.fenetre ? chrome.windows.create({ url: m.ouvrir }) : chrome.tabs.create({ url: m.ouvrir })).catch(refus);
+  } catch (e) {
+    refus(e);
+  }
+});
+`,
+  "popup.html": `<!doctype html><meta charset="utf-8"><title>Popup uBlock factice</title><p id="etat">…</p><script src="popup.js"></script>`,
+  "popup.js": `Promise.all([chrome.tabs.query({}), chrome.windows.getAll()]).then(([onglets, fenetres]) => {
+  document.body.dataset.onglets = JSON.stringify(onglets.map((o) => o.id));
+  document.body.dataset.fenetres = String(fenetres.length);
+  document.getElementById("etat").textContent = "Popup prête";
+});
+`,
+  "options.html": `<!doctype html><meta charset="utf-8"><title>Options uBlock factice</title><p>Options</p>`,
+  "icone.png": PNG_1PX,
+};
+
 export const EXTENSIONS_TEST = {
+  "ublock-factice": ublockFactice,
   localisee,
   "bavard-store": bavardStore,
   bouton, "marqueur-store": marqueurStore, bloqueur, cacheur, sonde, "sonde-correctifs": sondeCorrectifs, "bloqueur-statique": bloqueurStatique, "sonde-reseau-store": sondeReseauStore, "sonde-tableaux": sondeTableaux } as const;

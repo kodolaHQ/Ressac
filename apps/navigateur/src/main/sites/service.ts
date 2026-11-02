@@ -8,6 +8,7 @@ import {
   accordNecessaire,
   accorderSite,
   droitsDe,
+  empreinteExtensionsSite,
   empreinteLectureSite,
   adresseDeDepart,
   adresseRelative,
@@ -35,6 +36,7 @@ import { requetesDe } from "../image-distante";
 import { gardienGestes } from "../agent/geste-widget";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
+import type { BrowserWindow, WebContents } from "electron";
 import { detruireVue, empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
 import { brancherInjection, injectionPour, repriseDansCadre } from "./injection";
 import { effacerSessionSite, fixerPreloadSite, sessionSite, siteDeSession } from "./session";
@@ -46,6 +48,11 @@ export interface ServiceSites {
   fenetres: FenetresSites;
   /** Ce que montre la section « Sites » de la page Applications. */
   liste(): Promise<SiteAffiche[]>;
+  /**
+   * Le nom de chaque appli valide, par id (la page Extensions : « Active dans : … »). Sans effet de bord (C11) : les
+   * ids montrés par la section « Sites » ne changent pas.
+   */
+  noms(): Promise<Record<string, string>>;
   /**
    * La même liste pour l'agent (`lister_sites`, `memoire_site`…), avec l'empreinte de chaque déclaration valide
    * d'aujourd'hui (`empreinteLectureSite`), relue à chaque appel.
@@ -156,6 +163,18 @@ export function demarrerSites(o: {
   surFermee?(id: string): void;
   /** Une suppression commence : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée le redemande). */
   surSupprimee?(id: string): void;
+  /**
+   * Les extensions du Store activées dans l'appli (plan 16, `ServiceExtensions`). `ouverture` : l'appli s'ouvre, ou
+   * les domaines de son site.json changent (`empreinteExtensionsSite`) ; attendue, sans limite de temps, avant la
+   * première page. `fermeture` : la fenêtre est fermée (ou l'ouverture abandonnée, C3). `suppression` : « Supprimer »,
+   * entre la fermeture de la fenêtre et l'effacement de la session. `surVue` : la vue du site, son seul onglet (C2).
+   */
+  extensions?: {
+    ouverture(id: string, empreinte: string): Promise<void>;
+    fermeture(id: string): void;
+    suppression(id: string): Promise<void>;
+    surVue?(id: string, quoi: "creee" | "detruite", wc: WebContents, fenetre: BrowserWindow): void;
+  };
 }): ServiceSites {
   fixerPreloadSite(o.preloadSite);
   const garde = readFileSync(o.cheminGarde, "utf8");
@@ -196,6 +215,26 @@ export function demarrerSites(o: {
   let affiches = new Set<string>();
   /** Dernière action ratée par appli (« Supprimer » sans corbeille…), montrée en texte sur sa ligne. */
   const erreursActions = new Map<string, string>();
+  /** L'empreinte des domaines donnée aux extensions pour chaque appli ouverte (`ouverture`). */
+  const empreintesExtensions = new Map<string, string>();
+
+  /** Les extensions de l'appli, pour cette empreinte (une erreur est journalisée : l'appli s'ouvre quand même). */
+  async function ouvertureExtensions(id: string, empreinte: string): Promise<void> {
+    if (!o.extensions) return;
+    try {
+      await o.extensions.ouverture(id, empreinte);
+    } catch (e) {
+      console.error(`[sites] ${id} : extensions non préparées :`, e);
+    }
+  }
+  const fermetureExtensions = (id: string) => {
+    empreintesExtensions.delete(id);
+    try {
+      o.extensions?.fermeture(id);
+    } catch (e) {
+      console.error(`[sites] ${id} : extensions non fermées :`, e);
+    }
+  };
 
   const fenetres = new FenetresSites({
     // Rien n'est retenu pour une appli en cours de suppression (cadre, favicon) : souvenirs.oublier passe après.
@@ -216,12 +255,14 @@ export function demarrerSites(o: {
       recherches.get(id)?.abort();
       recherches.delete(id);
       derniersAvis.delete(id);
+      fermetureExtensions(id);
       void viderMemoire(id);
       o.diffuser();
       o.surFermee?.(id);
     },
     surFavicon: () => o.diffuser(),
     surSuivi: (id, url) => void chercherAdresse(id, url),
+    ...(o.extensions?.surVue ? { surVue: o.extensions.surVue } : {}),
   });
 
   // La page de référence est lue par la session publique, sans profil : jamais un cookie de l'appli ni de l'utilisateur.
@@ -362,6 +403,15 @@ export function demarrerSites(o: {
     if (relectures.get(id) !== n || !avant) return;
     // Le site a changé d'adresse pendant la lecture : ses domaines seraient ceux d'avant, on relit.
     if ((changements.get(id) ?? 0) !== changementsAvant) return relire(id);
+    // Les domaines de site.json ont changé : les extensions de l'appli suivent (une activation pour d'autres domaines ne
+    // charge plus rien) avant que la page ne soit rechargée. Devenu invalide (C14) : l'empreinte d'avant reste.
+    const empreinte = p ? empreinteExtensionsSite(p.site.declaration) : null;
+    if (empreinte !== null && empreinte !== empreintesExtensions.get(id)) {
+      empreintesExtensions.set(id, empreinte);
+      await ouvertureExtensions(id, empreinte);
+      if (relectures.get(id) !== n || !fenetres.site(id)) return;
+      if ((changements.get(id) ?? 0) !== changementsAvant) return relire(id);
+    }
     // Devenue invalide : plus rien n'est injecté (la fenêtre garde ce qu'elle avait, sans retouches).
     const nouvelles = p ? p.retouches : { js: {}, css: {} };
     // Rien de changé pour la page (dossier recopié, événement en double) : elle n'est pas rechargée.
@@ -491,6 +541,16 @@ export function demarrerSites(o: {
       notes.annulerNotes(id);
       // La vue est détruite, ou le délai est passé (`restante`, détruite après l'effacement de la session).
       const restante = await fenetres.fermer(id);
+      // Les extensions : l'appli n'y est plus ouverte (avant tout retrait, sans attendre la fermeture), puis elle les
+      // quitte et leur stockage est effacé dans sa session, avant que la session elle-même ne le soit.
+      fermetureExtensions(id);
+      if (o.extensions) {
+        try {
+          await o.extensions.suppression(id);
+        } catch (e) {
+          console.error(`[sites] ${id} : extensions non retirées :`, e);
+        }
+      }
       const m = memoires.get(id);
       if (m) await m.then((x) => x.effacer(), () => {});
       memoires.delete(id);
@@ -524,6 +584,20 @@ export function demarrerSites(o: {
     if (!encore()) return false;
     const p = await preparer(id, encore);
     if (!p || !encore()) return false;
+    // Les extensions de l'appli, avant sa première page (l'attente n'a pas de limite, comme au démarrage de WebAiOs).
+    if (o.extensions) {
+      const empreinte = empreinteExtensionsSite(p.site.declaration);
+      const deja = fenetres.site(id) !== undefined;
+      await ouvertureExtensions(id, empreinte);
+      // Fermée pendant l'attente : sa fermeture a oublié l'empreinte, qui est redonnée pour la nouvelle fenêtre.
+      if (deja && !fenetres.site(id) && encore()) await ouvertureExtensions(id, empreinte);
+      if (!encore()) {
+        // C3 : l'ouverture est abandonnée ; une appli qui n'est pas ouverte n'a plus rien à recevoir.
+        if (!fenetres.site(id)) fermetureExtensions(id);
+        return false;
+      }
+      empreintesExtensions.set(id, empreinte);
+    }
     // Avant la fenêtre : le premier chargement de la page demande déjà ses retouches.
     retouches.set(id, p.retouches);
     relectures.set(id, (relectures.get(id) ?? 0) + 1);
@@ -564,6 +638,11 @@ export function demarrerSites(o: {
     fenetres,
     async liste() {
       return (await lignes()).map(({ empreinte: _, ...l }) => l);
+    },
+    async noms() {
+      const r: Record<string, string> = {};
+      for (const s of await lireSites(o.chemins, lecture)) if (!("erreur" in s)) r[s.id] = s.declaration.nom;
+      return r;
     },
     listeAgent: lignes,
     async agir(id, a, fenetreId) {

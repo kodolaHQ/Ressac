@@ -2,7 +2,7 @@ import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { CANAUX, SchemaIdAction, SchemaSaisieAction, SchemaIdExecution, SchemaAction, SchemaActionTelechargement, SchemaReponsePermission, SchemaBornes, SchemaBoutonsFenetre, SchemaCommande, SchemaTailleTerminal, SchemaPlacements, SchemaIdWidget, SchemaBlocWorkflow, SchemaBrouillon, SchemaCible, SchemaCodeWorkflow, SchemaNomCode, SchemaAccord, SchemaOuvrirWidget, SchemaActionApplication, SchemaCouperAcces, SchemaTaillePastille, SchemaApercuPage, SchemaActionSite, selectionConstructeur, type SelectionConstructeur, type Accord, type ActionApplication, type EtatIaAffiche, type ListeApplications, type Brouillon, type EditionWorkflow, type Placement, type ProfilPourAccord, type TailleTerminal, type Action, type WidgetAffiche, type Bornes, type CommandeOnglet, type ResultatExtension } from "../commun/api";
 import { gesteAccueilDuCadre } from "./sites/cadre-accueil";
 import { ADRESSE_ACCUEIL_MAX, EMPREINTE_ACCORD_LONGUEUR, type ActionSite, type EtatFenetreSite, type MessageVersLAccueil, type SiteAffiche } from "../commun/sites";
-import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace } from "../commun/extensions";
+import { SAISIE_INVALIDE, type BarreExtensions, type LigneExtension, type LigneExtensionEspace, type LigneExtensionSite } from "../commun/extensions";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import type { Avertissement, CatalogueBloc, DroitDev, EtatDirect, Execution, ResultatEnregistrement, ResultatEssai, ResumeExecution, Proprietaire } from "@webaios/noyau";
 import { appliquer } from "./etat/actions";
@@ -126,6 +126,16 @@ export interface Gestionnaires {
     image(id: string, url: string): Promise<string | null>;
     /** Vrai geste de l'utilisateur dans le cadre de l'accueil de l'appli `id`. */
     gesteAccueil(id: string): void;
+    /** Le menu « Extensions » de la barre (plan 16) : les extensions du Store et leur état dans l'appli. */
+    extensionsListe(id: string): LigneExtensionSite[];
+    /** L'interrupteur d'une extension dans l'appli ; réussi, la vue du site est rechargée (page déjà chargée seulement). */
+    extensionsBasculer(id: string, cle: string, actif: boolean): Promise<ResultatExtension>;
+    /** Les boutons des extensions chargées dans l'appli, sur la vue du site (en vue « site »). */
+    extensionsBarre(id: string): BarreExtensions;
+    /** « Gérer les extensions » : la page Extensions dans la fenêtre principale au premier plan. */
+    extensionsGerer(id: string): void;
+    /** Hauteur du panneau du menu (0 : fermé) : la vue du site est repoussée d'autant. */
+    extensionsPanneau(id: string, hauteur: number): void;
   };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
   pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
@@ -417,6 +427,31 @@ export function brancherIpc(g: Gestionnaires): void {
     const id = siteDe(e);
     if (!id) throw new Error("expéditeur inconnu");
     return chaine(url, ADRESSE_ACCUEIL_MAX) ? g.site.image(id, url) : null;
+  });
+  // Le menu « Extensions » de la barre d'une appli de site : l'appli vient de l'expéditeur, les clés sont bornées.
+  ipcMain.handle(CANAUX.siteExtensionsListe, (e) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    return g.site.extensionsListe(id);
+  });
+  ipcMain.handle(CANAUX.siteExtensionsBasculer, (e, cle: unknown, actif: unknown) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    if (!chaine(cle, 200) || typeof actif !== "boolean") return invalide;
+    return g.site.extensionsBasculer(id, cle, actif);
+  });
+  ipcMain.handle(CANAUX.siteExtensionsBarre, (e) => {
+    const id = siteDe(e);
+    if (!id) throw new Error("expéditeur inconnu");
+    return g.site.extensionsBarre(id);
+  });
+  ipcMain.on(CANAUX.siteExtensionsGerer, (e) => {
+    const id = siteDe(e);
+    if (id) g.site.extensionsGerer(id);
+  });
+  ipcMain.on(CANAUX.siteExtensionsPanneau, (e, hauteur: unknown) => {
+    const id = siteDe(e);
+    if (id && typeof hauteur === "number" && Number.isFinite(hauteur)) g.site.extensionsPanneau(id, hauteur);
   });
   recevoir(CANAUX.applicationAction, zod(SchemaActionApplication), ({ dossier, action }, f) => g.applications.agir(dossier, action, f));
   recevoir(CANAUX.agentDemarrer, zod(SchemaTailleTerminal), (t, f) => g.agent.demarrer(f, t));
