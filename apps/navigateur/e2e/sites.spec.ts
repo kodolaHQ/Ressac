@@ -1834,10 +1834,6 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
   const LECTEUR = "/lecteur.html";
   const cadreLecteur = () => serveur.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
   const image = () => serveur.url("images.localhost", "/affiches/the-bear.png");
-  const INDEX = `<!doctype html><meta charset="utf-8"><title>Mes séries</title>
-<style>body { font-family: sans-serif; } button { display: block; margin: 8px 0; } img { width: 40px; height: 40px; }</style>
-<div id="liste"></div>
-<script src="accueil.js"></script>`;
 
   /** Vidola de l'exemple d'AGENTS.md : domaines fictifs remplacés par ceux des serveurs de test. */
   const declarationVidola = () => {
@@ -1858,8 +1854,8 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
   const siteVidola = () => ({
     declaration: declarationVidola(),
     fichiers: {
-      "accueil/index.html": INDEX,
-      "accueil/accueil.js": bloc("`accueil/index.html` charge `accueil.js`"),
+      "accueil/index.html": bloc("`accueil/index.html`, minimal"),
+      "accueil/accueil.js": bloc("`accueil/accueil.js`"),
       "retouches/en-cours.js": bloc("`retouches/en-cours.js`"),
     },
   });
@@ -1885,7 +1881,7 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
         `<!doctype html><title>The Bear S2E4</title><meta property="og:image" content="${image()}">
 <iframe id="lecteur" src="${serveur.url("lecteur.localhost", LECTEUR)}"></iframe>
 <iframe id="pub" src="${serveur.url("pub.localhost", "/pub-ouvre")}"></iframe>
-<script>for (let i = 0; i < 3; i++) window.open(${JSON.stringify(serveur.url("pub.localhost", "/popup"))});</script>`,
+<script>let refus = 0; for (let i = 0; i < 3; i++) if (!window.open(${JSON.stringify(serveur.url("pub.localhost", "/popup"))})) refus++; fetch("/balise-page?ouvertures=3&refus=" + refus);</script>`,
       );
     }
     serveur.definir("lecteur.localhost", LECTEUR, readFileSync(join(__dirname, "pages", "lecteur.html"), "utf8"));
@@ -1894,7 +1890,7 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     serveur.definir(
       "pub.localhost",
       "/pub-ouvre",
-      `<title>Pub</title><script>for (let i = 0; i < 5; i++) window.open(${JSON.stringify(serveur.url("pub.localhost", "/popup"))});</script>`,
+      `<title>Pub</title><script>let refus = 0; for (let i = 0; i < 5; i++) if (!window.open(${JSON.stringify(serveur.url("pub.localhost", "/popup"))})) refus++; fetch("/balise?ouvertures=5&refus=" + refus);</script>`,
     );
     serveur.definir("youtube.localhost", "/connexion", (_req, res) => res.writeHead(200, { "Set-Cookie": "SID=abc; Max-Age=86400; Path=/", "Content-Type": "text/html" }).end("<title>Connecté</title>ok"));
     serveur.definir(
@@ -1915,9 +1911,35 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
 
   const cookies = (app: ElectronApplication, partition: string) =>
     app.evaluate(async ({ session }, p) => (await session.fromPartition(p).cookies.get({})).map((c) => `${c.name}=${c.value}`), partition);
-  /** Les fenêtres vivantes, et leur visibilité : aucune ne doit jamais être montrée. */
+  /** Les fenêtres vivantes. */
   const fenetres = (app: ElectronApplication) =>
     app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).map((w) => w.isVisible()));
+  /**
+   * Des sondes posées dès le lancement : fenêtres créées, webContents créés, fenêtres montrées (événement `show`) et
+   * fenêtres vues par `setWindowOpenHandler`. Aucune fenêtre ne doit jamais être montrée, à aucun moment.
+   */
+  const sonder = (app: ElectronApplication) =>
+    app.evaluate(({ app }) => {
+      const g = globalThis as unknown as { __sondes: { fenetres: number; contenus: number; montrees: number } };
+      g.__sondes = { fenetres: 0, contenus: 0, montrees: 0 };
+      app.on("browser-window-created", (_e, w) => {
+        g.__sondes.fenetres++;
+        w.on("show", () => g.__sondes.montrees++);
+      });
+      app.on("web-contents-created", () => g.__sondes.contenus++);
+    });
+  const sondes = (app: ElectronApplication) =>
+    app.evaluate(() => (globalThis as unknown as { __sondes: { fenetres: number; contenus: number; montrees: number } }).__sondes);
+  const jamaisMontree = async (app: ElectronApplication) => {
+    expect((await sondes(app)).montrees).toBe(0);
+    expect((await fenetres(app)).every((v) => !v)).toBe(true);
+  };
+  /** Les cookies des sessions qui ne sont pas celles d'une appli de site : par défaut du profil et de l'application. */
+  const cookiesHorsSite = (app: ElectronApplication) =>
+    app.evaluate(async ({ session }) => [
+      ...(await session.fromPartition("persist:webaios").cookies.get({})),
+      ...(await session.defaultSession.cookies.get({})),
+    ].map((c) => `${c.name}=${c.value}`));
   const lecteur = (app: ElectronApplication, code: string) =>
     vueSite(app, "vidola", `(() => { const v = document.getElementById("v"); return ${code}; })()`, { cadre: 0 });
   const attendreLecture = async (app: ElectronApplication) => {
@@ -1955,8 +1977,9 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     await aller(l.app, EPISODE);
     await attendreUrl(l.app, serveur.url(hote, EPISODE));
     await attendreLecture(l.app);
-    expect(await allerPuisPause(l.app, 70)).toBeCloseTo(70, 0);
-    await expect.poll(() => memoire(l.profil)?.positions[EPISODE]?.t ?? null).toBeCloseTo(70, 0);
+    // 70,5 s : « 1:10 » même si la position est arrondie vers le bas, et la reprise (5 s avant) tombe vers 65,5 s.
+    expect(await allerPuisPause(l.app, 70.5)).toBeGreaterThanOrEqual(70);
+    await expect.poll(() => { const t = memoire(l.profil)?.positions[EPISODE]?.t ?? 0; return t >= 70 && t < 71; }).toBe(true);
     await expect.poll(() => memoire(l.profil)?.valeurs["encours.the-bear"]?.adresse ?? null).toBe(EPISODE);
   }
 
@@ -1964,6 +1987,7 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     const racine = nouvelleRacine();
     ecrireSite(racine, "vidola", siteVidola());
     const l = await lancer({ env: ENV, racine });
+    await sonder(l.app);
     if (accord) writeFileSync(join(l.profil, "sites-accords.json"), JSON.stringify({ vidola: accordDe(declarationVidola()) }));
     return l;
   }
@@ -1996,11 +2020,10 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     expect(await lecteur(app, "v.currentTime")).toBeLessThan(69);
 
     // Rien n'a fui : cookie propre à l'appli, aucun onglet, aucune fenêtre montrée ni ouverte en plus.
-    expect(await cookies(app, "persist:webaios")).toEqual([]);
+    expect(await cookiesHorsSite(app)).toEqual([]);
     expect(await urlsOnglets(fenetre)).toEqual(onglets);
-    const apres = await fenetres(app);
-    expect(apres).toHaveLength(nombre + 1);
-    expect(apres.every((v) => !v)).toBe(true);
+    expect(await fenetres(app)).toHaveLength(nombre + 1);
+    await jamaisMontree(app);
     await l.fermer();
   });
 
@@ -2013,11 +2036,22 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     await fermerFenetresSite(app);
 
     serveur.couper("vidola-a.localhost");
+    serveur.requetes.splice(0);
     await ouvrirSite(fenetre, "vidola");
     const page2 = await fenetreSite(app, "vidola");
     await expect(carteSerie(page2)).toHaveText("the-bear · saison 2, épisode 4 — reprendre à 1:10");
     await page2.getByTestId("site-entrer").click();
     await expect.poll(() => urlVue(app)).toBe(serveur.url("vidola-b.localhost", "/"));
+    // vidola-a a bien échoué d'abord, la page de référence a été lue une fois et sans cookie, puis vidola-b a été joint sans la connexion.
+    const noms = serveur.requetes.map((r) => `${r.hote}${r.chemin}`);
+    const premiereA = noms.indexOf("vidola-a.localhost/");
+    const reference = noms.indexOf("adresses.localhost/");
+    const premiereB = noms.indexOf("vidola-b.localhost/");
+    expect(premiereA).toBeGreaterThanOrEqual(0);
+    expect(reference).toBeGreaterThan(premiereA);
+    expect(premiereB).toBeGreaterThan(reference);
+    expect(serveur.requetes.filter((r) => r.hote === "adresses.localhost")).toEqual([{ hote: "adresses.localhost", chemin: "/", cookie: undefined }]);
+    expect(serveur.requetes[premiereB]!.cookie).toBeUndefined();
     await expect(page2.getByTestId("site-avis")).toHaveText("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
     await expect(page2.getByTestId("site-domaine")).toHaveText("vidola-b.localhost");
     await page2.getByTestId("site-accueil").click();
@@ -2028,15 +2062,16 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     await carte.click();
     await attendreUrl(app, serveur.url("vidola-b.localhost", EPISODE));
     await expect.poll(() => lecteur(app, "v && v.currentTime >= 64.9 && !v.paused"), { timeout: 10_000 }).toBe(true);
-    expect((await fenetres(app)).every((v) => !v)).toBe(true);
+    await jamaisMontree(app);
     await l.fermer();
   });
 
-  test("YouTube : .shorts caché, le cookie de connexion tient après un redémarrage de WebAiOs (même profil) et n'existe dans aucun onglet", async () => {
+  test("YouTube : rayons et entrée Shorts cachés (CSS et JS de l'exemple), le cookie de connexion tient après un redémarrage de WebAiOs (même profil) et n'existe dans aucun onglet", async () => {
     const racine = nouvelleRacine();
     ecrireSite(racine, "youtube", siteYoutube());
     const premier = await lancer({ env: ENV, racine });
     const { profil } = premier;
+    await sonder(premier.app);
     const rayons = (app: ElectronApplication) =>
       vueSite(
         app,
@@ -2058,22 +2093,24 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     await vueSite(premier.app, "youtube", "location.href = '/connexion'");
     await expect.poll(() => cookies(premier.app, "persist:site-youtube")).toContain("SID=abc");
     await premier.app.evaluate(({ session }) => session.fromPartition("persist:site-youtube").cookies.flushStore());
-    expect(await cookies(premier.app, "persist:webaios")).toEqual([]);
+    expect(await cookiesHorsSite(premier.app)).toEqual([]);
     expect((await urlsOnglets(premier.fenetre)).some((u) => u.includes("youtube"))).toBe(false);
+    await jamaisMontree(premier.app);
     await premier.fermer();
 
     // Redémarrage sur le même profil : la connexion tient, l'accord aussi (pas de carte), .shorts reste caché.
     serveur.requetes.splice(0);
     const second = await lancer({ env: ENV, racine, profil });
+    await sonder(second.app);
     const page2 = await ouvrirYoutube(second);
     await expect.poll(async () => (await etatVueSite(second.app, "youtube"))?.url).toBe(serveur.url("youtube.localhost", "/"));
     await expect(page2.getByTestId("carte-accord-site")).toHaveCount(0);
     await expect.poll(() => rayons(second.app)).toEqual(["none", "none", "retiré", true]);
     expect(await cookies(second.app, "persist:site-youtube")).toContain("SID=abc");
     expect(serveur.requetes.some((r) => r.hote === "youtube.localhost" && r.chemin === "/" && r.cookie?.includes("SID=abc"))).toBe(true);
-    expect(await cookies(second.app, "persist:webaios")).toEqual([]);
+    expect(await cookiesHorsSite(second.app)).toEqual([]);
     expect((await urlsOnglets(second.fenetre)).some((u) => u.includes("youtube"))).toBe(false);
-    expect((await fenetres(second.app)).every((v) => !v)).toBe(true);
+    await jamaisMontree(second.app);
     await second.fermer();
   });
 
@@ -2083,25 +2120,42 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     const onglets = await urlsOnglets(fenetre);
     await ouvrirSite(fenetre, "vidola");
     const page = await fenetreSite(app, "vidola");
-    const nombre = (await fenetres(app)).length;
-    const contenus = await nombreWebContents(app);
     await page.getByTestId("site-entrer").click();
     await attendreUrl(app, serveur.url("vidola-a.localhost", "/"));
+    // Les fenêtres et webContents de l'appli elle-même sont créés : on mesure à partir d'ici, sondes posées depuis le lancement.
+    const depart = await sondes(app);
+    const nombre = (await fenetres(app)).length;
+    const contenus = await nombreWebContents(app);
+    const balises = (chemin: string, refus: number) =>
+      serveur.requetes.filter((r) => r.chemin === `${chemin}?ouvertures=${chemin === "/balise" ? 5 : 3}&refus=${refus}`).length;
+    const stable = async () => {
+      expect(await sondes(app)).toEqual({ ...depart, montrees: 0 });
+      expect(await fenetres(app)).toHaveLength(nombre);
+      expect(await nombreWebContents(app)).toBe(contenus);
+      expect(await urlsOnglets(fenetre)).toEqual(onglets);
+    };
     await aller(app, EPISODE);
     await attendreUrl(app, serveur.url("vidola-a.localhost", EPISODE));
     await attendreLecture(app);
-    // Le cadre publicitaire a chargé (et essayé d'ouvrir ses fenêtres) ; on recharge deux fois pour insister.
-    await expect.poll(() => serveur.requetes.some((r) => r.hote === "pub.localhost" && r.chemin === "/pub-ouvre")).toBe(true);
-    await vueSite(app, "vidola", "location.reload()");
-    await attendreUrl(app, serveur.url("vidola-a.localhost", EPISODE));
-    await attendreLecture(app);
+    // Les scripts publicitaires ont bien appelé window.open (5 fois dans le cadre, 3 dans la page) et chaque appel a été refusé (null).
+    await expect.poll(() => balises("/balise", 5)).toBe(1);
+    await expect.poll(() => balises("/balise-page", 3)).toBe(1);
+    await stable();
+    // On insiste : deux rechargements.
+    for (const n of [2, 3]) {
+      await vueSite(app, "vidola", "location.reload()");
+      await expect.poll(() => balises("/balise", 5)).toBe(n);
+      await expect.poll(() => balises("/balise-page", 3)).toBe(n);
+      await attendreUrl(app, serveur.url("vidola-a.localhost", EPISODE));
+      await attendreLecture(app);
+      await stable();
+    }
+    // Une seule mention, une seule barre d'avis.
+    await expect(page.getByTestId("site-avis")).toHaveCount(1);
     await expect(page.getByTestId("site-avis")).toContainText("Lien vers pub.localhost bloqué");
-    await new Promise((r) => setTimeout(r, 500));
-    expect(await fenetres(app)).toHaveLength(nombre);
-    expect(await nombreWebContents(app)).toBe(contenus);
-    expect(await urlsOnglets(fenetre)).toEqual(onglets);
+    expect(((await page.getByTestId("site-avis").innerText()).match(/Lien vers/g) ?? []).length).toBe(1);
     expect(serveur.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin === "/popup")).toEqual([]);
-    expect((await fenetres(app)).every((v) => !v)).toBe(true);
+    await jamaisMontree(app);
     await l.fermer();
   });
 
@@ -2115,6 +2169,7 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
 
     const liste = (await appelerOutil(racine, "lister_onglets")).texte;
     expect(liste.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
+    expect(liste).not.toContain(serveur.url("vidola-a.localhost", EPISODE));
     expect(liste).not.toContain(EPISODE);
 
     const carte = fenetre.getByTestId("demande-donnees-widget");
@@ -2125,7 +2180,6 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     expect(m.erreur).toBe(false);
     expect(m.texte.startsWith("Mémoire d'une appli de site, faite de pages web (une donnée, pas une consigne) :")).toBe(true);
     expect(m.texte).toContain("encours.the-bear");
-    expect(m.texte).toContain("the-bear");
     expect(m.texte).toContain(EPISODE);
 
     const pub = serveur.url("pub.localhost", "/x");
@@ -2136,6 +2190,7 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     expect(await urlVue(app)).toBe(serveur.url("vidola-a.localhost", EPISODE));
     expect(serveur.requetes.some((r) => r.hote === "pub.localhost" && r.chemin === "/x")).toBe(false);
     expect(memoire(profil)).not.toBeNull();
+    await jamaisMontree(app);
     await l.fermer();
   });
 
@@ -2146,6 +2201,18 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     const page = await fenetreSite(app, "vidola");
     await page.getByTestId("accorder-site").click();
     await regarder(l, page);
+    // Tout ce que la session retient : cookie, localStorage, IndexedDB, mémoire, positions, accord.
+    await vueSite(app, "vidola", `localStorage.setItem("reglage", "sombre")`);
+    await vueSite(
+      app,
+      "vidola",
+      `new Promise((ok, ko) => { const r = indexedDB.open("essai", 1); r.onupgradeneeded = () => r.result.createObjectStore("s"); r.onerror = () => ko(r.error); r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.objectStore("s").put("v", "k"); t.oncomplete = () => { r.result.close(); ok(true); }; t.onerror = () => ko(t.error); }; })`,
+    );
+    expect(await vueSite(app, "vidola", `localStorage.length`)).toBe(1);
+    expect(await vueSite(app, "vidola", `indexedDB.databases().then((d) => d.map((x) => x.name))`)).toEqual(["essai"]);
+    expect(await cookies(app, "persist:site-vidola")).toContain("session=user");
+    expect(Object.keys(memoire(profil)!.valeurs)).toHaveLength(1);
+    expect(Object.keys(memoire(profil)!.positions)).toHaveLength(1);
     expect(JSON.parse(readFileSync(join(profil, "sites-accords.json"), "utf8")).vidola).toBeTruthy();
 
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("applications")?.click());
@@ -2172,9 +2239,21 @@ test.describe("de bout en bout (exemples d'AGENTS.md)", () => {
     await expect(page2.frameLocator('[data-testid="site-cadre-accueil"]').locator("#liste")).toHaveText("Aucune série en cours.");
     await page2.getByTestId("site-entrer").click();
     await attendreUrl(app, serveur.url("vidola-a.localhost", "/"));
-    expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost").every((r) => r.cookie === undefined)).toBe(true);
+    const vues = serveur.requetes.filter((r) => r.hote === "vidola-a.localhost");
+    expect(vues.length).toBeGreaterThan(0);
+    expect(vues.every((r) => r.cookie === undefined)).toBe(true);
+    expect(await vueSite(app, "vidola", `localStorage.length`)).toBe(0);
+    expect(await vueSite(app, "vidola", `indexedDB.databases().then((d) => d.length)`)).toBe(0);
     expect(await cookies(app, "persist:site-vidola")).toEqual([]);
-    expect(memoire(profil)).toBeNull();
+    // L'épisode rouvert ne reprend pas à 1:05 : la position a été effacée avec le reste.
+    await aller(app, EPISODE);
+    await attendreUrl(app, serveur.url("vidola-a.localhost", EPISODE));
+    await attendreLecture(app);
+    expect(await lecteur(app, "v.currentTime")).toBeLessThan(10);
+    expect(memoire(profil)?.positions[EPISODE]?.t ?? 0).toBeLessThan(10);
+    // La retouche retient de nouveau la série dans la mémoire neuve.
+    await expect.poll(() => Object.keys(memoire(profil)?.valeurs ?? {})).toEqual(["encours.the-bear"]);
+    await jamaisMontree(app);
     await l.fermer();
   });
 });
