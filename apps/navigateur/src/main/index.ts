@@ -57,6 +57,7 @@ import { brancherPagesAgent } from "./extensions/reseau";
 import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
 import { ServiceDesign } from "./design/service";
 import { plagesConteneur, RegistreExternes, Remarques } from "@webaios/noyau";
+import { creerEnvoi } from "./design/envoi";
 import { ExtensionsProfils } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
@@ -279,6 +280,7 @@ let design: ServiceDesign | undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
+let minuteurPurgeLots: NodeJS.Timeout | undefined;
 /** Arrête la vérification périodique des mises à jour du Store. */
 let arreterMisesAJour: (() => void) | undefined;
 const serviceExtensions = new ServiceExtensions();
@@ -937,9 +939,24 @@ app.whenReady().then(async () => {
     },
     fenetreApp: (d) => applications?.fenetres.fenetre(d) ?? null,
     diffuser: diffuserDesign,
-    // Tâche 9 : pré-remplir la session de l'agent avec le lot envoyé.
-    envoyer: async () => {},
+    // Le lot envoyé à l'agent : une ligne pré-remplie dans sa session, jamais envoyée.
+    envoyer: creerEnvoi({
+      chemins,
+      fenetreAgent,
+      dossierLot: (p, l) => remarques.dossierLot(p, l),
+      preRemplir: (f, texte) => agent?.preRemplir(f, texte),
+      donnerLeTerminal: (f) => cibles.raccourci(f, "agent"),
+      devant: (f) => {
+        const fenetre = fenetres.get(f);
+        if (!fenetre || fenetre.isDestroyed() || INVISIBLE) return;
+        if (fenetre.isMinimized()) fenetre.restore();
+        fenetre.focus();
+      },
+    }),
   });
+  // Les lots traités ou trop anciens sont purgés au démarrage puis toutes les 24 heures.
+  void remarques.purger().catch(() => undefined);
+  minuteurPurgeLots = setInterval(() => void remarques.purger().catch(() => undefined), 24 * 60 * 60 * 1000);
   remarques.surChange(diffuserDesign);
   RegistreExternes.ouvrir(dossiersDesign.prive)
     .then((r) => {
@@ -1151,6 +1168,7 @@ app.on("activate", () => rouvrirFenetres());
 
 app.on("will-quit", () => {
   clearInterval(minuteurPurge);
+  clearInterval(minuteurPurgeLots);
   arreterMisesAJour?.();
   historique?.fermer();
 });

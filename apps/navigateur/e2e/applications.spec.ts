@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { appelerOutil, creerEspace, ecrireProjet, lancer, nouvelleRacine, ouvrirOnglet } from "./aide";
+import { appelerOutil, creerEspace, ecrireProjet, entreeAgent, lancer, nouvelleRacine, ouvrirOnglet, terminal } from "./aide";
 
 /** Ports d'essai, jamais ceux des vraies applis de l'utilisateur ; délai court avant « En erreur ». */
 const ENV = { WEBAIOS_PORTS_APPS: "15280-15284", WEBAIOS_DELAI_APP_MS: "3000" };
@@ -431,11 +431,6 @@ test("la page Applications revient après un redémarrage, sans page web ni hist
 
 /** Ouvre le menu ⋯ d'une ligne. */
 const plusDActions = (fenetre: Page, dossier: string) => fenetre.getByTestId(`appli-${dossier}`).getByRole("button", { name: "Plus d'actions" }).click();
-const terminal = (fenetre: Page) => fenetre.getByTestId("panneau-agent").locator(".xterm-rows");
-const entreeAgent = (racine: string) => {
-  const f = join(racine, "faux-agent-entree.txt");
-  return existsSync(f) ? readFileSync(f, "utf8") : "";
-};
 
 async function lancerDepuisLaPage(fenetre: Page) {
   const ligne = fenetre.getByTestId("appli-essai");

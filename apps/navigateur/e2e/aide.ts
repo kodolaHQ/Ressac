@@ -529,3 +529,12 @@ export function etatVueSite(
     return { url: vue.webContents.getURL(), bornes: vue.getBounds(), visible: vue.getVisible(), contenu: [l, h] as [number, number] };
   }, id);
 }
+
+/** Le terminal du panneau agent d'une fenêtre (le texte affiché). */
+export const terminal = (fenetre: Page) => fenetre.getByTestId("panneau-agent").locator(".xterm-rows");
+
+/** Ce que le faux agent a reçu en entrée : un texte pré-rempli sans \r n'a jamais été envoyé. */
+export const entreeAgent = (racine: string) => {
+  const f = join(racine, "faux-agent-entree.txt");
+  return existsSync(f) ? readFileSync(f, "utf8") : "";
+};
