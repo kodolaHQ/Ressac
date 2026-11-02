@@ -83,7 +83,7 @@
     -webkit-app-region: no-drag;
   }
   .carte {
-    flex: 0 1 200px;
+    flex: 0 1 280px;
     min-width: 0;
     padding: 8px;
     background: var(--fond-actif);
@@ -98,6 +98,6 @@
   .apercu { aspect-ratio: 16 / 10; overflow: hidden; border-radius: 7px; background: var(--fond-barre); }
   .apercu img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
   .secours { display: grid; place-items: center; height: 100%; }
-  .legende { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 12.5px; }
+  .legende { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 13px; }
   .titre { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

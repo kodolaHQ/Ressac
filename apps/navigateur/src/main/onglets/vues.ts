@@ -17,7 +17,7 @@ const LONGUEUR_TEXTE = 100_000;
 /** Largeur maximale de la capture qui sert de fond flouté aux modales (px) : légère, le flou efface le détail. */
 const LARGEUR_APERCU = 1024;
 /** Largeur des aperçus en cache (panneau ⌃Tab) : des vignettes, pas des fonds de modale. */
-const LARGEUR_APERCU_ONGLET = 480;
+const LARGEUR_APERCU_ONGLET = 640;
 /** Délai laissé à l'interface pour remontrer la page après le panneau ⌃Tab, avant de renoncer à lui rendre le focus. */
 const ATTENTE_FOCUS_MS = 1000;
 /** Zone de contenu à l'écran (l'interface envoie une taille nulle quand elle efface la page). */
