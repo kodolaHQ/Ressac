@@ -367,7 +367,11 @@ export class FenetresSites {
       const web = /^https?:/i.test(d.url);
       if (web && (o.affichee === "site" || o.chargementVoulu || !extensionsChargees(wc))) return;
       console.warn(`[sites] ${id} : chargement arrêté dans la vue (${web ? `vue ${o.affichee}, non voulu` : "hors du web"}) : ${d.url.slice(0, 80)}`);
-      wc.stop();
+      // Au tour suivant, jamais dans l'écouteur : `stop()` pendant `did-start-navigation` fait planter tout le processus
+      // (vu en e2e : `tabs.update` de la vue vers options.html). Le chargement n'a pas encore abouti au tour suivant.
+      setImmediate(() => {
+        if (!wc.isDestroyed()) wc.stop();
+      });
     });
     wc.on("did-fail-load", (_e, code, _description, url, principal) => {
       if (principal && erreurDeReseau(code) && this.suiviActif(o)) this.o.surSuivi?.(id, url || o.cible);

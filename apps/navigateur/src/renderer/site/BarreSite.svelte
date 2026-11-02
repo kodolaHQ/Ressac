@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icone from "../composants/Icone.svelte";
+  import BoutonsExtensionsSite from "./BoutonsExtensionsSite.svelte";
+  import MenuExtensionsSite from "./MenuExtensionsSite.svelte";
   import { HAUTEUR_BARRE_SITE, CHERCHER_ADRESSE, lienBloque, OUVRIR_DANS_UN_ONGLET, type EtatFenetreSite } from "../../commun/sites";
   import type { ApiSite } from "../../commun/api";
 
@@ -36,6 +38,11 @@
       {/if}
     </div>
   {/if}
+  <!-- À droite : les boutons des extensions actives (vue « site » seulement), puis le menu « Extensions » (toutes vues). -->
+  <div class="extensions">
+    <BoutonsExtensionsSite {api} {surSite} />
+    <MenuExtensionsSite {api} />
+  </div>
 </header>
 
 <style>
@@ -56,4 +63,5 @@
   .avis span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .avis button { all: unset; padding: 2px 8px; border-radius: 5px; background: var(--fond-actif); color: var(--texte); white-space: nowrap; -webkit-app-region: no-drag; }
   .avis button:hover { background: var(--fond-survol); }
+  .extensions { display: flex; align-items: center; gap: 2px; flex: none; -webkit-app-region: no-drag; }
 </style>

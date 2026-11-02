@@ -154,6 +154,18 @@ export function detournerNotifications(extensions: ElectronChromeExtensions, fic
 let fenetresNeutralisees = false;
 let pagesEcoutees = false;
 let protocoleCrx = false;
+
+/**
+ * Sert les icônes des boutons d'extension (`crx://extension-icon/…`) à l'interface (session par défaut), une fois. À
+ * appeler au démarrage, avant toute fenêtre : une page ne voit que les protocoles servis quand elle a été chargée. Sans
+ * cela, la première session équipée après coup (une extension activée dans une appli de site, ou une première
+ * extension dans un profil) aurait des boutons sans icône jusqu'au rechargement des fenêtres déjà ouvertes.
+ */
+export function servirIconesExtensions(): void {
+  if (protocoleCrx) return;
+  protocoleCrx = true;
+  ElectronChromeExtensions.handleCRXProtocol(sessionsElectron.defaultSession);
+}
 /** Les instances vivantes : le canal des pages (`ipcMain`, un seul par processus) cherche celle de la session. */
 const instancesVivantes = new Set<ExtensionsProfils>();
 let canalPagesPose = false;
@@ -600,11 +612,8 @@ export class ExtensionsProfils {
     // La bibliothèque ajoute un `app.on("web-contents-created")` par session équipée : sans cela, Node signalerait une
     // fuite d'écouteurs (10 par défaut) dès le dixième profil. La limite suit le nombre de sessions équipées.
     app.setMaxListeners(Math.max(app.getMaxListeners(), 10 + ++sessionsEquipees));
-    if (!protocoleCrx) {
-      protocoleCrx = true;
-      // Icônes des boutons d'extension (`crx://`), affichées par l'interface.
-      ElectronChromeExtensions.handleCRXProtocol(sessionsElectron.defaultSession);
-    }
+    // Icônes des boutons d'extension (`crx://`), affichées par l'interface (déjà servies si index.ts l'a fait au démarrage).
+    servirIconesExtensions();
     const extensions = new ElectronChromeExtensions({
       session: s,
       ...options,

@@ -236,47 +236,55 @@ test("urlPermisePourExtension : sa propre page et une page de l'appli, oui ; la 
   expect(f.urlPermisePourExtension("youtube", ext, "https://vidola-a.example/")).toBe(false);
 });
 
-test("C8 : la vue du site arrête tout chargement de son cadre principal qui n'est pas http(s) (tabs.update vers une page d'extension)", () => {
+/** Un tour de la boucle : les arrêts de la vue (`stop`) sont faits au tour suivant. */
+const tour = () => new Promise<void>((r) => setImmediate(r));
+
+test("C8 : la vue du site arrête tout chargement de son cadre principal qui n'est pas http(s) (tabs.update vers une page d'extension), au tour suivant (jamais dans l'écouteur)", async () => {
   const f = fenetres();
   f.ouvrir(site({ aAccueil: false, accordRequis: false }));
   const wc = vuesCreees[0]!.webContents;
-  const demarrer = (url: string, isMainFrame = true) => {
+  const demarrer = async (url: string, isMainFrame = true) => {
+    const avant = wc.stop.mock.calls.length;
     for (const c of wc.on.mock.calls.filter((c) => c[0] === "did-start-navigation")) (c[1] as (d: unknown) => void)({ url, isMainFrame, isSameDocument: false });
+    // stop() dans l'écouteur ferait planter Electron : rien n'est arrêté avant le tour suivant.
+    expect(wc.stop.mock.calls.length).toBe(avant);
+    await tour();
   };
-  demarrer("https://vidola-a.example/film/2");
-  demarrer("chrome-extension://abcdefghijklmnopabcdefghijklmnop/x.html", false);
+  await demarrer("https://vidola-a.example/film/2");
+  await demarrer("chrome-extension://abcdefghijklmnopabcdefghijklmnop/x.html", false);
   expect(wc.stop).not.toHaveBeenCalled();
-  demarrer("chrome-extension://abcdefghijklmnopabcdefghijklmnop/options.html");
+  await demarrer("chrome-extension://abcdefghijklmnopabcdefghijklmnop/options.html");
   expect(wc.stop).toHaveBeenCalledTimes(1);
-  demarrer("file:///etc/passwd");
+  await demarrer("file:///etc/passwd");
   expect(wc.stop).toHaveBeenCalledTimes(2);
 });
 
-test("M1 : extension chargée, sur l'accueil (ou la carte), un chargement http(s) de la vue que WebAiOs n'a pas lancé est arrêté ; un chargement voulu, ou en vue « site », non ; sans extension, rien (plan 15)", () => {
+test("M1 : extension chargée, sur l'accueil (ou la carte), un chargement http(s) de la vue que WebAiOs n'a pas lancé est arrêté ; un chargement voulu, ou en vue « site », non ; sans extension, rien (plan 15)", async () => {
   const f = fenetres();
   f.ouvrir(site({ aAccueil: true, accordRequis: false }));
   const wc = vuesCreees[0]!.webContents;
-  const demarrer = (url: string) => {
+  const demarrer = async (url: string) => {
     for (const c of wc.on.mock.calls.filter((c) => c[0] === "did-start-navigation")) (c[1] as (d: unknown) => void)({ url, isMainFrame: true, isSameDocument: false });
+    await tour();
   };
   extensionsChargees = [];
-  demarrer("https://vidola-a.example/sans-extension");
+  await demarrer("https://vidola-a.example/sans-extension");
   expect(wc.stop).not.toHaveBeenCalled();
   extensionsChargees = [{ id: "x" }];
   // Accueil, page jamais chargée : `tabs.update` d'une extension vers une page de l'appli.
-  demarrer("https://vidola-a.example/x");
+  await demarrer("https://vidola-a.example/x");
   expect(wc.stop).toHaveBeenCalledTimes(1);
   // « Entrer dans le site » : voulu, puis vue « site » : un clic dans la page passe.
   f.entrer("vidola");
-  demarrer("https://vidola-a.example/");
-  demarrer("https://vidola-a.example/clic");
+  await demarrer("https://vidola-a.example/");
+  await demarrer("https://vidola-a.example/clic");
   expect(wc.stop).toHaveBeenCalledTimes(1);
   // De retour à l'accueil : la page cachée ne charge rien d'elle-même ; un rechargement voulu passe.
   f.accueil("vidola");
-  demarrer("https://vidola-a.example/seule");
+  await demarrer("https://vidola-a.example/seule");
   expect(wc.stop).toHaveBeenCalledTimes(2);
   f.rechargerVue("vidola");
-  demarrer("https://vidola-a.example/clic");
+  await demarrer("https://vidola-a.example/clic");
   expect(wc.stop).toHaveBeenCalledTimes(2);
   extensionsChargees = [];
 });

@@ -55,7 +55,7 @@ import {
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
-import { ExtensionsProfils } from "./extensions/sessions";
+import { ExtensionsProfils, servirIconesExtensions } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
 
@@ -287,6 +287,8 @@ app.whenReady().then(async () => {
   } catch (e) {
     console.error("[webaios] le réseau de l'interface n'a pas pu être coupé :", e);
   }
+  // Avant toute fenêtre : les icônes des boutons d'extension (crx:), même si aucune session n'est encore équipée.
+  servirIconesExtensions();
   const sessionIcones = session.fromPartition("webaios-icones");
   const requetesIcones = requetesDe(sessionIcones);
   protocol.handle(SCHEMA_ICONE, (requete) => repondreIcone((url, init) => sessionIcones.fetch(url, init), requete.url));

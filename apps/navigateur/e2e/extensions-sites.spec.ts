@@ -1,6 +1,9 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { dansLaVue, ecrireSite, etatVueSite, fenetreSite, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurSites, vueSite } from "./aide";
-import { installerStoreFactice } from "./extensions/fixtures";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { dansLaVue, ecrireSite, etatVueSite, fenetreSite, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurSites, vueSite, type SiteTest } from "./aide";
+import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
+import { AUCUNE_EXTENSION_SITE, GERER_EXTENSIONS, VOIT_LES_PAGES_SITE } from "../src/commun/extensions-messages";
 
 /**
  * Plan 16 : les extensions du Store dans les applis de site, activées appli par appli. L'extension de ces tests imite
@@ -37,13 +40,42 @@ const autre = () => ({ declaration: { nom: "Autre", adresse: serveur.url("vidola
 /** Les requêtes de la page vers `pub.localhost` (`/pub.js`, `/pub.png`) reçues depuis le dernier effacement. */
 const pubsDemandees = () => serveur.requetes.filter((r) => r.hote === "pub.localhost" && (r.chemin === "/pub.js" || r.chemin === "/pub.png")).map((r) => r.chemin);
 
+/**
+ * C10 : une extension de l'agent accordée et active dans le profil par défaut, écrite au registre comme le ferait
+ * l'accord (avant `installerStoreFactice`, qui garde les autres entrées).
+ */
+function poserExtensionAgent(profil: string, racine: string): void {
+  ecrireExtensionAgent(racine, "cacheur", {
+    "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: ["http://127.0.0.1/*"], css: ["cache.css"] }] },
+    "cache.css": "#cache-moi { display: none !important; }\n",
+  });
+  const dossier = join(profil, "extensions");
+  mkdirSync(dossier, { recursive: true });
+  const entree = {
+    source: "agent",
+    idChrome: null,
+    nom: "Cacheur de l'agent",
+    version: "1.0.0",
+    accord: { permissions: [], hotes: ["http://127.0.0.1/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true },
+    profils: ["defaut"],
+    epinglee: false,
+    modifieeLe: null,
+    desactivee: null,
+    majEnAttente: null,
+    vues: {},
+  };
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:cacheur": entree } }));
+}
+
 /** L'extension installée comme si elle venait du Store (avant le lancement), puis WebAiOs lancé et ses extensions prêtes. */
-async function demarrer(o: { profils?: string[] } = {}) {
+async function demarrer(o: { profils?: string[]; sansExtension?: boolean; agent?: boolean; sites?: Record<string, SiteTest> } = {}) {
   const profil = nouveauProfil();
-  const { id } = installerStoreFactice(profil, "ublock-factice", { profils: o.profils ?? [] });
   const racine = nouvelleRacine();
+  if (o.agent) poserExtensionAgent(profil, racine);
+  const { id } = o.sansExtension ? { id: "" } : installerStoreFactice(profil, "ublock-factice", { profils: o.profils ?? [] });
   ecrireSite(racine, "vidola", vidola());
   ecrireSite(racine, "autre", autre());
+  for (const [i, s] of Object.entries(o.sites ?? {})) ecrireSite(racine, i, s);
   const lance = await lancer({ profil, racine, env: ENV });
   await expect.poll(() => lance.app.evaluate(() => (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes === true)).toBe(true);
   return { ...lance, id, cle: `store:${id}` };
@@ -277,6 +309,334 @@ test("fermer puis rouvrir l'appli : aucune requête vers pub.localhost dès le p
     expect(serveur.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/pubs")).toBe(true);
     expect(pubsDemandees()).toEqual([]);
     expect(await banniere(app)).toBe("none");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+// --- La barre de l'appli (tâche 5) : le menu « Extensions », les boutons des extensions et leurs popups
+
+const HAUTEUR_BARRE = 36;
+const PANNEAU_MAX = 320;
+
+/** Ouvre le menu « Extensions » de la barre et attend sa liste. */
+async function ouvrirMenu(page: Page) {
+  await page.getByTestId("site-extensions").click();
+  const panneau = page.getByTestId("panneau-extensions-site");
+  await expect(panneau).toBeVisible();
+  await expect(page.getByTestId("site-extensions")).toHaveAttribute("aria-expanded", "true");
+  return panneau;
+}
+
+/**
+ * Active (ou désactive) par l'interrupteur et attend la fin : l'interrupteur n'est plus en attente (C5, jusqu'à 10 s),
+ * et la vue du site a été rechargée si sa page était chargée.
+ */
+async function interrupteurEtAttendre(app: ElectronApplication, page: Page, actif: boolean, o: { recharge?: boolean } = {}) {
+  const recharge = o.recharge ?? true;
+  if (recharge) {
+    await vueSite(app, "vidola", "window.marque = 1");
+    serveur.requetes.splice(0);
+  }
+  const inter = page.getByTestId("interrupteur-extension-site");
+  await inter.click();
+  await expect(inter).toHaveAttribute("aria-checked", String(actif));
+  await expect(inter).not.toHaveAttribute("aria-busy", "true", { timeout: 15_000 });
+  await expect(inter).toHaveAttribute("aria-checked", String(actif));
+  if (recharge) await expect.poll(() => vueSite(app, "vidola", "window.marque === undefined && document.readyState === 'complete'")).toBe(true);
+}
+
+const region = (page: Page, testId: string) => page.getByTestId(testId).first().evaluate((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region"));
+
+/** La popup de l'extension `id` : son état lu dans sa page, et sa fenêtre vue du process principal. */
+const popup = (app: ElectronApplication, id: string) =>
+  app.evaluate(async ({ BrowserWindow }, id) => {
+    const p = BrowserWindow.getAllWindows().find((f) => !f.isDestroyed() && f.webContents.getURL().startsWith(`chrome-extension://${id}/popup.html`));
+    if (!p) return null;
+    const lu = (await p.webContents
+      .executeJavaScript("({ etat: document.getElementById('etat')?.textContent ?? null, onglets: document.body.dataset.onglets ?? null, fenetres: document.body.dataset.fenetres ?? null })")
+      .catch(() => null)) as { etat: string | null; onglets: string | null; fenetres: string | null } | null;
+    const parent = p.getParentWindow();
+    const u = parent?.webContents.getURL() ?? "";
+    return {
+      ...lu,
+      visible: p.isVisible(),
+      parent: u.includes("/renderer/site.html") ? new URL(u).searchParams.get("id") : u,
+    };
+  }, id);
+
+/** L'id (webContents) de la vue du site de l'appli `id`. */
+const idVue = (app: ElectronApplication, id: string) =>
+  app.evaluate(({ BrowserWindow }, id) => {
+    const f = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes("/renderer/site.html") && new URL(w.webContents.getURL()).searchParams.get("id") === id);
+    return (f?.contentView.children[0] as Electron.WebContentsView | undefined)?.webContents.id ?? null;
+  }, id);
+
+test("sans extension installée, le menu dit AUCUNE_EXTENSION_SITE ; avec ublock-factice et une extension de l'agent accordée, une seule ligne (uBlock factice), interrupteur éteint, VOIT_LES_PAGES_SITE", async () => {
+  {
+    const { app, fenetre, fermer } = await demarrer({ sansExtension: true });
+    try {
+      const page = await ouvrirEtAttendre(app, fenetre);
+      const panneau = await ouvrirMenu(page);
+      await expect(panneau).toContainText(AUCUNE_EXTENSION_SITE);
+      await expect(page.getByTestId("ligne-extension-site")).toHaveCount(0);
+      await expect(page.getByTestId("site-gerer-extensions")).toHaveText(GERER_EXTENSIONS);
+      await aucuneVisible(app);
+    } finally {
+      await fermer();
+    }
+  }
+  const { app, fenetre, fermer } = await demarrer({ agent: true });
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    const panneau = await ouvrirMenu(page);
+    const lignes = page.getByTestId("ligne-extension-site");
+    await expect(lignes).toHaveCount(1);
+    await expect(lignes).toContainText("uBlock factice");
+    await expect(lignes).toContainText(VOIT_LES_PAGES_SITE);
+    await expect(panneau).not.toContainText("Cacheur de l'agent");
+    await expect(panneau).not.toContainText(AUCUNE_EXTENSION_SITE);
+    const inter = page.getByTestId("interrupteur-extension-site");
+    await expect(inter).toHaveAttribute("role", "switch");
+    await expect(inter).toHaveAttribute("aria-checked", "false");
+    await expect(inter).toBeEnabled();
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("ouvrir le menu pousse la vue du site sous le panneau (bornes.y = 36 + hauteur du panneau) ; Echap la remet à 36", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    expect((await etatVueSite(app, "vidola"))?.bornes.y).toBe(HAUTEUR_BARRE);
+    const panneau = await ouvrirMenu(page);
+    await expect(page.getByTestId("ligne-extension-site")).toHaveCount(1);
+    await expect
+      .poll(async () => {
+        const h = await panneau.evaluate((e) => e.getBoundingClientRect().height);
+        const y = (await etatVueSite(app, "vidola"))?.bornes.y;
+        return y === HAUTEUR_BARRE + Math.min(PANNEAU_MAX, Math.ceil(h)) && h > 0;
+      })
+      .toBe(true);
+    // Le panneau est sous la barre, jamais dedans (elle coupe ce qui dépasse).
+    expect(await panneau.evaluate((e) => Math.round(e.getBoundingClientRect().top))).toBe(HAUTEUR_BARRE);
+    await page.keyboard.press("Escape");
+    await expect(panneau).toHaveCount(0);
+    await expect(page.getByTestId("site-extensions")).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.bornes.y).toBe(HAUTEUR_BARRE);
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("activer par l'interrupteur : la page est bloquée ; un bouton action-extension-site apparaît avant site-extensions, son icône crx://extension-icon/ chargée", async () => {
+  const { app, fenetre, id, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await expect(page.getByTestId("action-extension-site")).toHaveCount(0);
+    await ouvrirMenu(page);
+    await interrupteurEtAttendre(app, page, true);
+    expect(await banniere(app)).toBe("none");
+    expect(pubsDemandees()).toEqual([]);
+    expect(await extensionsDe(app, "persist:site-vidola")).toEqual(["uBlock factice"]);
+    const bouton = page.getByTestId("action-extension-site");
+    await expect(bouton).toHaveCount(1);
+    await expect(bouton).toHaveAttribute("id", id);
+    await expect(bouton).toHaveAttribute("partition", "persist:site-vidola");
+    expect(await bouton.getAttribute("tab")).toBe(String(await idVue(app, "vidola")));
+    // Avant le bouton « Extensions » dans la barre.
+    expect(
+      await page.evaluate(() => {
+        const a = document.querySelector('[data-testid="action-extension-site"]')!;
+        const m = document.querySelector('[data-testid="site-extensions"]')!;
+        return Boolean(a.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
+    ).toBe(true);
+    // L'icône (crx://extension-icon/…) a été chargée par l'interface : la CSP de site.html la laisse passer.
+    await expect.poll(() => bouton.evaluate((b) => (b as HTMLElement).style.backgroundImage)).toContain("crx://extension-icon/");
+    await expect(bouton).not.toHaveClass(/no-icon/);
+    await expect(bouton).toHaveAttribute("title", "uBlock factice");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("clic sur le bouton : la popup s'ouvre cachée, sa fenêtre parente est celle de l'appli, « Popup prête », data-onglets = [id de la vue du site], data-fenetres = 1", async () => {
+  const { app, fenetre, id, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await ouvrirMenu(page);
+    await interrupteurEtAttendre(app, page, true);
+    await page.keyboard.press("Escape");
+    const bouton = page.getByTestId("action-extension-site");
+    await expect(bouton).toHaveCount(1);
+    await bouton.click();
+    await expect.poll(async () => (await popup(app, id))?.etat, { timeout: 10_000 }).toBe("Popup prête");
+    const vue = await idVue(app, "vidola");
+    expect(await popup(app, id)).toMatchObject({ visible: false, parent: "vidola", onglets: JSON.stringify([vue]), fenetres: "1" });
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("C8 : tabs.update de la vue vers options.html (depuis la popup) laisse la vue sur sa page http", async () => {
+  const { app, fenetre, id, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await ouvrirMenu(page);
+    await interrupteurEtAttendre(app, page, true);
+    await page.keyboard.press("Escape");
+    await page.getByTestId("action-extension-site").click();
+    await expect.poll(async () => (await popup(app, id))?.etat, { timeout: 10_000 }).toBe("Popup prête");
+    const vue = await idVue(app, "vidola");
+    const options = `chrome-extension://${id}/options.html`;
+    await app.evaluate(
+      async ({ webContents }, [id, vue, options]) => {
+        const p = webContents.getAllWebContents().find((x) => !x.isDestroyed() && x.getURL().startsWith(`chrome-extension://${id}/popup.html`));
+        await p?.executeJavaScript(`chrome.tabs.update(${vue}, { url: ${JSON.stringify(options)} }).then(() => "ok", (e) => String(e))`).catch(() => null);
+      },
+      [id, vue, options] as const,
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+    const etat = await etatVueSite(app, "vidola");
+    expect(etat?.url).toBe(serveur.url("vidola-a.localhost", "/pubs"));
+    expect(await vueSite(app, "vidola", "location.protocol")).toBe("http:");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+/** Une appli avec un écran d'accueil (vue « accueil » à l'ouverture), sur la page des pubs. */
+const avecAccueil = (): SiteTest => ({
+  declaration: { nom: "Vidola", adresse: serveur.url("vidola-a.localhost", "/pubs"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] },
+  fichiers: { "accueil/index.html": "<p>accueil</p>" },
+});
+/** Une appli avec des retouches et sans accord : la carte d'accord s'affiche à l'ouverture. */
+const avecCarte = (): SiteTest => ({
+  declaration: {
+    nom: "Carte",
+    adresse: serveur.url("vidola-a.localhost", "/pubs"),
+    domaines: ["vidola-a.localhost"],
+    retouches: [{ correspond: ["/pubs"], js: ["a.js"] }],
+  },
+  fichiers: { "retouches/a.js": 'document.body.dataset.retouche = "oui";' },
+});
+
+test("les boutons des extensions ne s'affichent ni sur l'accueil ni sur la carte d'accord ; le bouton Extensions, si", async () => {
+  const { app, fenetre, cle, fermer } = await demarrer({ sites: { tube: avecAccueil(), carte: avecCarte() } });
+  try {
+    // Accueil.
+    await ouvrirSite(fenetre, "tube");
+    const tube = await fenetreSite(app, "tube");
+    await expect(tube.getByTestId("site-entrer")).toBeVisible();
+    expect(await basculer(tube, cle, true)).toEqual({ ok: true });
+    await expect(tube.getByTestId("site-extensions")).toBeVisible();
+    await new Promise((r) => setTimeout(r, 500));
+    await expect(tube.getByTestId("action-extension-site")).toHaveCount(0);
+    await tube.getByTestId("site-entrer").click();
+    await expect(tube.getByTestId("action-extension-site")).toHaveCount(1);
+    await tube.getByTestId("site-accueil").click();
+    await expect(tube.getByTestId("site-entrer")).toBeVisible();
+    await expect(tube.getByTestId("action-extension-site")).toHaveCount(0);
+    await expect(tube.getByTestId("site-extensions")).toBeVisible();
+
+    // Carte d'accord.
+    await ouvrirSite(fenetre, "carte");
+    const carte = await fenetreSite(app, "carte");
+    await expect(carte.getByTestId("carte-accord-site")).toBeVisible();
+    expect(await basculer(carte, cle, true)).toEqual({ ok: true });
+    await expect(carte.getByTestId("site-extensions")).toBeVisible();
+    await new Promise((r) => setTimeout(r, 500));
+    await expect(carte.getByTestId("action-extension-site")).toHaveCount(0);
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("activer sur l'accueil (page jamais chargée) : aucune requête vers vidola-a.localhost ; « Entrer dans le site » : bloquée dès le premier chargement", async () => {
+  const { app, fenetre, fermer } = await demarrer({ sites: { tube: avecAccueil() } });
+  try {
+    await ouvrirSite(fenetre, "tube");
+    const tube = await fenetreSite(app, "tube");
+    await expect(tube.getByTestId("site-entrer")).toBeVisible();
+    serveur.requetes.splice(0);
+    await ouvrirMenu(tube);
+    const inter = tube.getByTestId("interrupteur-extension-site");
+    await inter.click();
+    await expect(inter).toHaveAttribute("aria-checked", "true");
+    await expect(inter).not.toHaveAttribute("aria-busy", "true", { timeout: 15_000 });
+    await expect.poll(() => extensionsDe(app, "persist:site-tube")).toEqual(["uBlock factice"]);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+    await tube.keyboard.press("Escape");
+    await tube.getByTestId("site-entrer").click();
+    await expect.poll(async () => (await etatVueSite(app, "tube"))?.url).toBe(serveur.url("vidola-a.localhost", "/pubs"));
+    await expect.poll(() => vueSite(app, "tube", "document.readyState")).toBe("complete");
+    expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost" && r.chemin === "/pubs")).toHaveLength(1);
+    expect(pubsDemandees()).toEqual([]);
+    expect(await vueSite(app, "tube", "getComputedStyle(document.getElementById('banniere')).display")).toBe("none");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("deux clics rapides sur l'interrupteur : l'état final (aria-checked, extensions de la session) est celui du second", async () => {
+  const { app, fenetre, profil, cle, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await ouvrirMenu(page);
+    const inter = page.getByTestId("interrupteur-extension-site");
+    await inter.click();
+    await inter.click();
+    await expect(inter).toHaveAttribute("aria-checked", "false");
+    await expect(inter).not.toHaveAttribute("aria-busy", "true", { timeout: 20_000 });
+    await expect(inter).toHaveAttribute("aria-checked", "false");
+    await expect.poll(() => extensionsDe(app, "persist:site-vidola")).toEqual([]);
+    const registre = JSON.parse(readFileSync(join(profil, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, { applis?: Record<string, string> }> };
+    expect(registre.extensions[cle]?.applis?.vidola).toBeUndefined();
+    // Relu depuis le process principal : toujours éteint.
+    await page.keyboard.press("Escape");
+    await ouvrirMenu(page);
+    await expect(page.getByTestId("interrupteur-extension-site")).toHaveAttribute("aria-checked", "false");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("site-extensions, interrupteur-extension-site, site-gerer-extensions et action-extension-site ont -webkit-app-region no-drag ; le fond de la barre reste drag", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await ouvrirMenu(page);
+    await interrupteurEtAttendre(app, page, true);
+    await expect(page.getByTestId("action-extension-site")).toHaveCount(1);
+    for (const t of ["site-extensions", "interrupteur-extension-site", "site-gerer-extensions", "action-extension-site", "panneau-extensions-site"]) expect(await region(page, t), t).toBe("no-drag");
+    expect(await region(page, "barre-site")).toBe("drag");
+    await aucuneVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("« Gérer les extensions » : la page Extensions (page-extensions) s'affiche dans la fenêtre principale ; aucune fenêtre visible", async () => {
+  const { app, fenetre, fermer } = await demarrer();
+  try {
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await ouvrirMenu(page);
+    await page.getByTestId("site-gerer-extensions").click();
+    await expect(page.getByTestId("panneau-extensions-site")).toHaveCount(0);
+    await expect.poll(async () => (await etatVueSite(app, "vidola"))?.bornes.y).toBe(HAUTEUR_BARRE);
+    await expect(fenetre.getByTestId("page-extensions")).toBeVisible();
     await aucuneVisible(app);
   } finally {
     await fermer();
