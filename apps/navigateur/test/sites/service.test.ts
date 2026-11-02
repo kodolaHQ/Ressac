@@ -16,6 +16,27 @@ const misesAJour: Record<string, unknown>[] = [];
 const lectures: { signal?: AbortSignal }[] = [];
 /** Les accords lus par `preparer` : tenus un instant quand `portail.tenir` est armé (relecture en cours). */
 const portail: { tenir: boolean; atteint: (() => void) | null; ouvrir: (() => void) | null } = { tenir: false, atteint: null, ouvrir: null };
+/** La lecture du dossier des applis (`readdir`) : tenue une fois quand `dossierTenu.tenir` est armé. */
+const dossierTenu: { tenir: boolean; atteint: (() => void) | null; ouvrir: (() => void) | null } = { tenir: false, atteint: null, ouvrir: null };
+/** Ce que rend `fenetres.fermer` : la vue encore vivante après le délai (elle n'a jamais été détruite), ou null. */
+const fermeture: { restante: { isDestroyed(): boolean; close(): void; forcefullyCrashRenderer(): void } | null } = { restante: null };
+
+vi.mock("node:fs/promises", async (importer) => {
+  const vrai = await importer<typeof import("node:fs/promises")>();
+  return {
+    ...vrai,
+    readdir: async (...a: Parameters<typeof vrai.readdir>) => {
+      if (dossierTenu.tenir) {
+        dossierTenu.tenir = false;
+        await new Promise<void>((ok) => {
+          dossierTenu.ouvrir = ok;
+          dossierTenu.atteint?.();
+        });
+      }
+      return vrai.readdir(...a);
+    },
+  };
+});
 
 vi.mock("@webaios/noyau", async (importer) => {
   const vrai = await importer<typeof import("@webaios/noyau")>();
@@ -57,6 +78,9 @@ vi.mock("../../src/main/sites/session", () => ({
 }));
 vi.mock("../../src/main/sites/fenetres", () => ({
   empreinteDroits: () => "",
+  detruireVue: (wc: { isDestroyed(): boolean; close(): void }) => {
+    if (!wc.isDestroyed()) wc.close();
+  },
   FenetresSites: class {
     constructor(o: { surSuivi: (id: string, url: string | null) => void }) {
       options.surSuivi = o.surSuivi;
@@ -74,6 +98,7 @@ vi.mock("../../src/main/sites/fenetres", () => ({
       await new Promise((r) => setTimeout(r, 20));
       journal.push(`fermee ${id}`);
       ouvertes.delete(id);
+      return fermeture.restante;
     };
     ouvrir = (s: { id: string }) => void ouvertes.set(s.id, s);
     mettreAJour = (s: { id: string }) => {
@@ -119,6 +144,8 @@ beforeEach(() => {
   misesAJour.length = 0;
   lectures.length = 0;
   portail.tenir = false;
+  dossierTenu.tenir = false;
+  fermeture.restante = null;
   racine = mkdtempSync(join(tmpdir(), "service-sites-"));
   profil = mkdtempSync(join(tmpdir(), "service-profil-"));
   const c = cheminsEspace(racine);
@@ -309,6 +336,47 @@ test("ouvrirParId est refusé pendant une suppression, accepté ensuite", async 
   expect(await service.ouvrirParId("vidola")).toBe(false);
   await fin;
   expect(ouvertes.has("vidola")).toBe(false);
+});
+
+test("ouvrirParId pendant que supprimer commence (lecture du dossier tenue) : refusé, aucune fenêtre, rien de l'appli ne revient", async () => {
+  await service.liste();
+  const atteint = new Promise<void>((ok) => (dossierTenu.atteint = ok));
+  dossierTenu.tenir = true;
+  const ouverture = service.ouvrirParId("vidola");
+  await atteint;
+  // La suppression commence pendant que l'ouverture lit le dossier (site.json et l'accord sont encore là).
+  const fin = service.agir("vidola", "supprimer", "f1" as never);
+  // Pendant la suppression, la mémoire n'est ni ouverte ni écrite.
+  await expect(service.memoire("vidola")).rejects.toThrow();
+  dossierTenu.ouvrir!();
+  expect(await ouverture).toBe(false);
+  await fin;
+  expect(ouvertes.has("vidola")).toBe(false);
+  expect(existsSync(join(profil, "sites", "vidola"))).toBe(false);
+});
+
+test("ouvrirParId : une suppression commencée et finie pendant la lecture du dossier refuse aussi l'ouverture", async () => {
+  await service.liste();
+  const atteint = new Promise<void>((ok) => (dossierTenu.atteint = ok));
+  dossierTenu.tenir = true;
+  const ouverture = service.ouvrirParId("vidola");
+  await atteint;
+  // L'appli est recréée au même id juste après : l'ouverture d'avant ne l'ouvre pas pour autant.
+  await service.agir("vidola", "supprimer", "f1" as never);
+  mkdirSync(join(cheminsEspace(racine).sites, "vidola"), { recursive: true });
+  writeFileSync(join(cheminsEspace(racine).sites, "vidola", "site.json"), JSON.stringify(declaration));
+  dossierTenu.ouvrir!();
+  expect(await ouverture).toBe(false);
+  expect(ouvertes.has("vidola")).toBe(false);
+});
+
+test("supprimer : une vue jamais détruite (délai passé) est détruite après l'effacement de la session", async () => {
+  const vue = { detruite: false, isDestroyed: () => vue.detruite, close: () => void ((vue.detruite = true), journal.push("vue detruite")), forcefullyCrashRenderer: () => {} };
+  fermeture.restante = vue;
+  expect(await service.ouvrirParId("vidola")).toBe(true);
+  await service.agir("vidola", "supprimer", "f1" as never);
+  expect(journal.filter((j) => /^(fermee|session|vue)/.test(j))).toEqual(["fermee vidola", "session vidola", "vue detruite"]);
+  expect(existsSync(join(profil, "sites", "vidola"))).toBe(false);
 });
 
 // --- Accord et relecture

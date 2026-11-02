@@ -15,6 +15,20 @@ import { preferencesSite, sessionSite } from "./session";
 /** Tests automatiques : aucune fenêtre à l'écran. */
 const INVISIBLE = process.env.WEBAIOS_INVISIBLE === "1";
 
+/** Attente au plus de la destruction de la vue d'un site fermé par le programme (sortie, suppression). */
+export const DELAI_DESTRUCTION_VUE_MS = 3000;
+
+/** La vue d'un site qui ne s'est pas détruite dans le délai : son rendu est arrêté, puis elle est fermée. */
+export function detruireVue(wc: Pick<WebContents, "isDestroyed" | "close" | "forcefullyCrashRenderer">): void {
+  try {
+    if (wc.isDestroyed()) return;
+    wc.forcefullyCrashRenderer();
+    wc.close();
+  } catch (e) {
+    console.error("[sites] vue non détruite :", e);
+  }
+}
+
 /** Écart minimal entre deux diffusions d'un changement de la mention « lien bloqué ». */
 const ECART_AVIS_MS = 500;
 
@@ -121,7 +135,7 @@ export class FenetresSites {
   constructor(
     private readonly o: {
       /** Cadre de fenêtre et favicon de chaque appli (`<profil>/sites.json`). */
-      memoire: MemoireApplications;
+      memoire: Pick<MemoireApplications, "lire" | "noter">;
       adressesLocales: boolean;
       /** Un onglet dans la fenêtre principale (« Ouvrir dans un onglet », seulement sur un clic de l'utilisateur). */
       ouvrirOnglet: (url: string) => void;
@@ -269,6 +283,8 @@ export class FenetresSites {
       const url = favicons[0];
       if (!url) return;
       void faviconEnDonnees((u, init) => wc.session.fetch(u, init), url, wc.getURL()).then((d) => {
+        // Fenêtre fermée (ou appli supprimée) pendant la lecture : rien n'est retenu.
+        if (this.ouvertesParId.get(id) !== o || o.fenetre.isDestroyed()) return;
         if (!d || this.o.memoire.lire(id).favicon === d) return;
         this.o.memoire.noter(id, { favicon: d });
         this.o.surFavicon?.(id);
@@ -725,13 +741,23 @@ export class FenetresSites {
 
   /**
    * Fermeture voulue par le programme (suppression, sortie) : cadre noté, fenêtre détruite sans demander à la page.
-   * Rendue quand la vue du site est détruite (sa session peut alors être effacée).
+   * Rendue quand la vue du site est détruite (sa session peut alors être effacée) : null. Au plus `delaiMs` d'attente :
+   * passé ce délai, la vue encore vivante est rendue (à détruire par `detruireVue`), pour que la sortie ou la
+   * suppression continue.
    */
-  fermer(id: string): Promise<void> {
+  fermer(id: string, delaiMs = DELAI_DESTRUCTION_VUE_MS): Promise<WebContents | null> {
     const o = this.ouvertesParId.get(id);
-    if (!o || o.fenetre.isDestroyed()) return Promise.resolve();
+    if (!o || o.fenetre.isDestroyed()) return Promise.resolve(null);
     const wc = o.vue.webContents;
-    const detruite = wc.isDestroyed() ? Promise.resolve() : new Promise<void>((ok) => wc.once("destroyed", () => ok()));
+    const detruite = wc.isDestroyed()
+      ? Promise.resolve(null)
+      : new Promise<WebContents | null>((ok) => {
+          const minuterie = setTimeout(() => ok(wc.isDestroyed() ? null : wc), delaiMs);
+          wc.once("destroyed", () => {
+            clearTimeout(minuterie);
+            ok(null);
+          });
+        });
     this.noterCadre(id, o.fenetre);
     o.fenetre.destroy();
     return detruite;

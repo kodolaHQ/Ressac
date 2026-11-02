@@ -34,7 +34,7 @@ import { requetesDe } from "../image-distante";
 import { gardienGestes } from "../agent/geste-widget";
 import type { IdFenetre } from "../../commun/modele";
 import { MemoireApplications } from "../applications/service";
-import { empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
+import { detruireVue, empreinteDroits, FenetresSites, type ErreurRetouche, type SiteOuvrable } from "./fenetres";
 import { brancherInjection, injectionPour, repriseDansCadre } from "./injection";
 import { effacerSessionSite, fixerPreloadSite, sessionSite, siteDeSession } from "./session";
 import { SuiviAdresse } from "./suivi";
@@ -182,13 +182,21 @@ export function demarrerSites(o: {
   const changements = new Map<string, number>();
   /** Suppressions en cours : une seconde demande pour la même appli ne fait rien. */
   const suppressions = new Set<string>();
+  /** Suppressions commencées par appli : une ouverture commencée avant l'une d'elles ne va pas au bout. */
+  const suppressionsCommencees = new Map<string, number>();
   /** Ids montrés par la dernière `liste()` : une ligne périmée (dossier renommé depuis) agit encore sur ce qu'elle montrait. */
   let affiches = new Set<string>();
   /** Dernière action ratée par appli (« Supprimer » sans corbeille…), montrée en texte sur sa ligne. */
   const erreursActions = new Map<string, string>();
 
   const fenetres = new FenetresSites({
-    memoire: souvenirs,
+    // Rien n'est retenu pour une appli en cours de suppression (cadre, favicon) : souvenirs.oublier passe après.
+    memoire: {
+      lire: (id) => souvenirs.lire(id),
+      noter: (id, x) => {
+        if (!suppressions.has(id)) souvenirs.noter(id, x);
+      },
+    },
     adressesLocales: o.adressesLocales,
     ouvrirOnglet: o.ouvrirOnglet,
     surFermee: (id) => {
@@ -237,7 +245,7 @@ export function demarrerSites(o: {
   async function chercherAdresse(id: string, url: string | null): Promise<void> {
     const s = fenetres.site(id);
     const d = s?.declaration;
-    if (!s || !d?.suiviAdresse) return;
+    if (!s || !d?.suiviAdresse || suppressions.has(id)) return;
     // Une lecture est déjà en cours : le suivi répondra « trop-tot » sans la doubler.
     const enCours = recherches.has(id);
     const controle = new AbortController();
@@ -287,17 +295,18 @@ export function demarrerSites(o: {
 
   /**
    * L'appli telle qu'elle s'ouvre et ses fichiers de retouches, ou null (absente, site.json invalide, dossier dont le nom
-   * n'est pas exactement `id`).
+   * n'est pas exactement `id`, ou `encore()` devenu faux après une des lectures).
    */
-  async function preparer(id: string): Promise<{ site: SiteOuvrable; retouches: RetouchesLues } | null> {
+  async function preparer(id: string, encore: () => boolean = () => true): Promise<{ site: SiteOuvrable; retouches: RetouchesLues } | null> {
     if (!ID_SITE.test(id)) return null;
     // Un disque insensible à la casse trouverait « MonSite » pour « monsite » : seul le nom exact compte.
     const noms = await readdir(o.chemins.sites).catch(() => [] as string[]);
-    if (!noms.includes(id)) return null;
+    if (!encore() || !noms.includes(id)) return null;
     const lu = await lireSite(o.chemins, id, lecture);
-    if (!lu || "erreur" in lu) return null;
+    if (!encore() || !lu || "erreur" in lu) return null;
     const d = lu.declaration;
     const etat = await lireEtatAdresse(dossierSites, id);
+    if (!encore()) return null;
     let accord: DroitsSite | null = null;
     try {
       const accords = await lireAccordsSites(o.dossierProfil);
@@ -306,6 +315,9 @@ export function demarrerSites(o: {
       // Accords illisibles : l'accord est redemandé (rien n'est injecté sans lui).
       console.error("[sites] accords illisibles :", e);
     }
+    if (!encore()) return null;
+    const fichiers = await fichiersRetouches(lu);
+    if (!encore()) return null;
     return {
       site: {
         id,
@@ -315,7 +327,7 @@ export function demarrerSites(o: {
         depart: adresseDeDepart(d, etat),
         accordRequis: accordNecessaire(d) && !accordCouvre(accord, d),
       },
-      retouches: await fichiersRetouches(lu),
+      retouches: fichiers,
     };
   }
 
@@ -393,6 +405,8 @@ export function demarrerSites(o: {
   };
 
   function memoire(id: string): Promise<MemoireSite> {
+    // Pendant une suppression, la mémoire n'est ni rouverte ni écrite (memoire.json ne revient pas).
+    if (suppressions.has(id)) return Promise.reject(new Error(`appli de site en cours de suppression : ${id}`));
     let m = memoires.get(id);
     if (!m) {
       m = MemoireSite.ouvrir(dossierSites, id);
@@ -461,16 +475,22 @@ export function demarrerSites(o: {
   async function supprimer(id: string): Promise<void> {
     if (suppressions.has(id)) return;
     suppressions.add(id);
+    suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
     try {
       if (!(await connue(id))) return;
       recherches.get(id)?.abort();
       notes.annulerNotes(id);
-      await fenetres.fermer(id);
+      // La vue est détruite, ou le délai est passé (`restante`, détruite après l'effacement de la session).
+      const restante = await fenetres.fermer(id);
       const m = memoires.get(id);
       if (m) await m.then((x) => x.effacer(), () => {});
       memoires.delete(id);
       suivi.oublier(id);
-      await effacerSessionSite(id);
+      try {
+        await effacerSessionSite(id);
+      } finally {
+        if (restante) detruireVue(restante);
+      }
       await supprimerDonneesSite(o.dossierProfil, id);
       souvenirs.oublier(id);
       if (!(await dossierReel(id))) return;
@@ -489,9 +509,12 @@ export function demarrerSites(o: {
   }
 
   async function ouvrirParId(id: string): Promise<boolean> {
-    if (suppressions.has(id)) return false;
-    const p = await preparer(id);
-    if (!p) return false;
+    // Une suppression commencée pendant une des lectures (même finie depuis) : rien ne s'ouvre, l'accord lu était le sien.
+    const commencees = suppressionsCommencees.get(id) ?? 0;
+    const encore = () => !suppressions.has(id) && (suppressionsCommencees.get(id) ?? 0) === commencees;
+    if (!encore()) return false;
+    const p = await preparer(id, encore);
+    if (!p || !encore()) return false;
     // Avant la fenêtre : le premier chargement de la page demande déjà ses retouches.
     retouches.set(id, p.retouches);
     relectures.set(id, (relectures.get(id) ?? 0) + 1);

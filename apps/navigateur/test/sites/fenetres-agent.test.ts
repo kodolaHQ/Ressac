@@ -18,6 +18,7 @@ function fausseWc() {
     }),
     reload: vi.fn(),
     close: vi.fn(),
+    forcefullyCrashRenderer: vi.fn(),
     isDestroyed: () => false,
     getURL: () => url,
     navigationHistory: { canGoBack: () => false, canGoForward: () => false },
@@ -31,10 +32,19 @@ vi.mock("electron", () => ({
   BrowserWindow: class {
     webContents = fausseWc();
     contentView = { addChildView: vi.fn() };
-    on = vi.fn();
+    detruite = false;
+    private readonly ecouteurs = new Map<string, (() => void)[]>();
+    on = vi.fn((e: string, f: () => void) => void this.ecouteurs.set(e, [...(this.ecouteurs.get(e) ?? []), f]));
     show = vi.fn();
     focus = vi.fn();
-    isDestroyed = () => false;
+    /** Comme Electron : la fenêtre détruite émet « closed » ; la vue, elle, n'émet jamais « destroyed » ici. */
+    destroy = () => {
+      this.detruite = true;
+      for (const f of this.ecouteurs.get("closed") ?? []) f();
+    };
+    isDestroyed = () => this.detruite;
+    isFullScreen = () => false;
+    getNormalBounds = () => ({ x: 0, y: 0, width: 1200, height: 800 });
     isMinimized = () => false;
     getContentSize = () => [1200, 800];
     static getFocusedWindow = () => null;
@@ -53,8 +63,13 @@ vi.mock("electron", () => ({
 vi.mock("../../src/main/sites/session", () => ({ preferencesSite: () => ({}), sessionSite: () => ({}) }));
 vi.mock("../../src/main/applications/fenetres", () => ({ cadreVisible: () => ({}) }));
 vi.mock("../../src/main/agent/accueil", () => ({ navigationCadrePermise: () => false }));
+/** Le favicon lu par la session de l'appli : rendu quand le test le décide. */
+const favicon: { rendre: ((d: string | null) => void) | null } = { rendre: null };
+vi.mock("../../src/main/applications/favicon", () => ({
+  faviconEnDonnees: () => new Promise<string | null>((ok) => (favicon.rendre = ok)),
+}));
 
-const { FenetresSites } = await import("../../src/main/sites/fenetres");
+const { DELAI_DESTRUCTION_VUE_MS, detruireVue, FenetresSites } = await import("../../src/main/sites/fenetres");
 
 const DEPART = "https://vidola-a.example/";
 const declaration: DeclarationSite = {
@@ -67,9 +82,10 @@ const declaration: DeclarationSite = {
   reprise: false,
 };
 
+const noter = vi.fn();
 function fenetres() {
   return new FenetresSites({
-    memoire: { lire: () => ({}), noter: vi.fn() } as never,
+    memoire: { lire: () => ({}), noter },
     adressesLocales: false,
     ouvrirOnglet: vi.fn(),
   });
@@ -77,7 +93,11 @@ function fenetres() {
 
 const site = (o: { aAccueil: boolean; accordRequis: boolean }) => ({ id: "vidola", declaration, domaines: ["vidola-a.example"], depart: DEPART, ...o });
 
-beforeEach(() => void vuesCreees.splice(0));
+beforeEach(() => {
+  vuesCreees.splice(0);
+  noter.mockClear();
+  favicon.rendre = null;
+});
 
 test("naviguerPourAgent, vue du site : chargée tout de suite (« charge ») ; hors des domaines ou connexion : « refuse », rien chargé", () => {
   const f = fenetres();
@@ -126,4 +146,56 @@ test("ouvertes : le domaine actuel de l'appli (celui du départ), jamais l'hôte
   // La page va sur le domaine de connexion (OAuth) : le domaine montré reste celui de l'appli.
   vuesCreees[0]!.webContents.loadURL("https://compte.example/connexion");
   expect(f.ouvertes()).toEqual([{ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example" }]);
+});
+
+/** Le gestionnaire `evenement` posé sur la vue du site. */
+const ecouteurVue = (evenement: string) => vuesCreees[0]!.webContents.on.mock.calls.find((c) => c[0] === evenement)![1] as (...a: unknown[]) => void;
+
+test("un favicon lu après la fermeture de la fenêtre (suppression) n'est pas retenu", async () => {
+  const f = fenetres();
+  f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+  ecouteurVue("page-favicon-updated")({}, ["https://vidola-a.example/favicon.ico"]);
+  expect(favicon.rendre).not.toBeNull();
+  void f.fermer("vidola", 0);
+  favicon.rendre!("data:image/png;base64,AAAA");
+  await new Promise((r) => setTimeout(r, 0));
+  expect(noter.mock.calls.filter((c) => "favicon" in (c[1] as object))).toEqual([]);
+});
+
+test("un favicon lu fenêtre ouverte est retenu", async () => {
+  const f = fenetres();
+  f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+  ecouteurVue("page-favicon-updated")({}, ["https://vidola-a.example/favicon.ico"]);
+  favicon.rendre!("data:image/png;base64,AAAA");
+  await new Promise((r) => setTimeout(r, 0));
+  expect(noter).toHaveBeenCalledWith("vidola", { favicon: "data:image/png;base64,AAAA" });
+});
+
+test("fermer : une vue qui n'émet jamais « destroyed » est rendue au bout du délai (3 s), sans bloquer", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fenetres();
+    f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+    let rendue: unknown = "en attente";
+    void f.fermer("vidola").then((r) => (rendue = r));
+    await vi.advanceTimersByTimeAsync(DELAI_DESTRUCTION_VUE_MS - 1);
+    expect(rendue).toBe("en attente");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(rendue).toBe(vuesCreees[0]!.webContents);
+    expect(DELAI_DESTRUCTION_VUE_MS).toBe(3000);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("fermer : la vue détruite à temps rend null ; detruireVue arrête puis ferme une vue restée vivante", async () => {
+  const f = fenetres();
+  f.ouvrir(site({ aAccueil: false, accordRequis: false }));
+  const wc = vuesCreees[0]!.webContents;
+  const fin = f.fermer("vidola");
+  (wc.once.mock.calls.find((c) => c[0] === "destroyed")![1] as () => void)();
+  expect(await fin).toBeNull();
+  detruireVue(wc as never);
+  expect(wc.forcefullyCrashRenderer).toHaveBeenCalled();
+  expect(wc.close).toHaveBeenCalled();
 });

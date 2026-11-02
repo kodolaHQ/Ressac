@@ -227,7 +227,9 @@ export function brancherInjection(o: {
     if (id === undefined || !cadre?.principal || !d || !o.accorde(id)) return { ok: false, erreur: REFUS_MEMOIRE };
     const adresse = o.adresseRelative(id, cadre.url);
     if (adresse === null) return { ok: false, erreur: REFUS_MEMOIRE };
-    const m = await o.memoire(id);
+    // Mémoire refusée par le service (appli en cours de suppression) : rien n'est lu ni écrit.
+    const m = await o.memoire(id).catch(() => null);
+    if (!m) return { ok: false, erreur: REFUS_MEMOIRE };
     if (d.op === "retenir") {
       const r = m.retenir(d.cle, d.valeur, adresse);
       return r.ok ? { ok: true } : r;
@@ -299,7 +301,7 @@ export function brancherInjection(o: {
     const duree = dureeRecue(brute);
     const cible = duree === null ? null : pageReprise(e);
     if (duree === null || !cible) return null;
-    const retenue = (await o.memoire(cible.id)).position(cible.adresse);
+    const retenue = (await o.memoire(cible.id).catch(() => null))?.position(cible.adresse);
     return retenue && memeDuree(retenue.duree, duree) ? retenue.t : null;
   });
 

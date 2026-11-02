@@ -130,6 +130,8 @@ let dossierMemoire: string;
 let controle: ReturnType<typeof brancherInjection>;
 let accorde: boolean;
 let reprise: boolean;
+/** La mémoire refusée par le service (appli en cours de suppression). */
+let memoireRefusee: boolean;
 let horloge: number;
 let differes: { f: () => void; ms: number }[];
 let demandes: { id: string; cadre: { url: string; principal: boolean } }[];
@@ -139,6 +141,7 @@ beforeEach(async () => {
   demandes = [];
   accorde = true;
   reprise = true;
+  memoireRefusee = false;
   horloge = 0;
   differes = [];
   vue.mainFrame = principal;
@@ -155,7 +158,10 @@ beforeEach(async () => {
     reprise: (_id, cadre) => reprise && (cadre.principal || !cadre.url.includes("pub.example")),
     maintenant: () => horloge,
     differer: (f, ms) => void differes.push({ f, ms }),
-    memoire: async () => memoire,
+    memoire: async () => {
+      if (memoireRefusee) throw new Error("appli de site en cours de suppression : vidola");
+      return memoire;
+    },
     adresseRelative: (_id, url) => {
       const u = new URL(url);
       return u.hostname.endsWith("vidola-b.example") ? u.pathname + u.search : null;
@@ -217,6 +223,14 @@ test("mémoire : refusée à un sous-cadre, à la petite fenêtre, hors session,
   expect(await memoireIpc(vue, naviguer("https://compte.example/"), demande)).toEqual(refus);
   vue.mainFrame = principal;
   for (const d of [null, "x", { op: "effacer", cle: "x" }, { op: "lire", cle: 3 }]) expect(await memoireIpc(vue, principal, d)).toEqual(refus);
+  expect(memoire.contenu().valeurs).toEqual({});
+});
+
+test("mémoire refusée par le service (appli en cours de suppression) : le refus de la mémoire, rien d'écrit", async () => {
+  memoireRefusee = true;
+  for (const op of ["retenir", "lire", "oublier"]) {
+    expect(await memoireIpc(vue, principal, { op, cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: expect.any(String) });
+  }
   expect(memoire.contenu().valeurs).toEqual({});
 });
 
