@@ -16,7 +16,7 @@ import { SessionAgent } from "./pty/session.js";
 import { PolitiqueAcces } from "./acces/politique.js";
 import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
 import type { OutilsExtensions } from "./mcp/extensions.js";
-import { demarrerServeurMcp, genererJeton, type OutilsActions, type OutilsApplications, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
+import { demarrerServeurMcp, genererJeton, type OutilsActions, type OutilsApplications, type OutilsSites, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
 import type { FichiersProfils } from "./mcp/outils-dev.js";
 import { SuiviOutilsDev } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
@@ -291,6 +291,8 @@ export async function creerNoyau(o: {
   notifier?: (n: NotificationWidget) => void;
   /** Outils MCP des extensions (fournis par le navigateur). */
   extensions?: OutilsExtensions;
+  /** Outils MCP des applis de site (fournis par le navigateur). */
+  sites?: OutilsSites;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
   const executer = o.executer ?? executeurParDefaut;
@@ -369,6 +371,7 @@ export async function creerNoyau(o: {
     actions: outilsActions,
     ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}),
     ...(o.extensions ? { extensions: o.extensions } : {}),
+    ...(o.sites ? { sites: o.sites } : {}),
   });
   try {
     // Configs de session laissées par un plantage : leurs jetons ne valent plus rien.

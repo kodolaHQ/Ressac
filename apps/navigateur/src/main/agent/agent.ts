@@ -20,6 +20,7 @@ import {
   type OngletInfo,
   type OutilsApplications,
   type OutilsExtensions,
+  type OutilsSites,
   type WorkflowOuvert,
 } from "@webaios/noyau";
 import type { IdFenetre, IdProfil } from "../../commun/modele";
@@ -126,6 +127,8 @@ export function demarrerAgent(o: {
   notifier?: (n: NotificationWidget) => void;
   /** Outils MCP des extensions (service des extensions). */
   extensions?: OutilsExtensions;
+  /** Outils MCP des applis de site (lister, ouvrir, mémoire, erreurs de leurs retouches). */
+  sites?: OutilsSites;
 }): ServiceAgent {
   let noyau: Noyau | null = null;
   let erreur: string | null = null;
@@ -168,7 +171,7 @@ export function demarrerAgent(o: {
   let desabonnerDirectActions: (() => void) | undefined;
   const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     erreur = null;
-    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, dossierActions: o.dossierActions, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(o.extensions ? { extensions: o.extensions } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}), ...(DUCKDUCKGO_TESTS ? { urlRecherche: DUCKDUCKGO_TESTS } : {}) }).then(
+    return creerNoyau({ pont, ressources: __RESSOURCES_NOYAU__, profilId, racine: chemins.racine, atelier: o.atelier, applications: o.applications, portConstruit: portConstruit(), dossierProfilage: o.dossierProfilage, dossierWidgets: o.dossierWidgets, dossierActions: o.dossierActions, ia, surChange: o.surAccueil, workflowOuvert: o.workflowOuvert, ...(o.notifier ? { notifier: o.notifier } : {}), ...(o.extensions ? { extensions: o.extensions } : {}), ...(o.sites ? { sites: o.sites } : {}), ...(ADRESSES_LOCALES_TESTS ? { adressesLocales: true } : {}), ...(DUCKDUCKGO_TESTS ? { urlRecherche: DUCKDUCKGO_TESTS } : {}) }).then(
       (n) => {
         noyau = n;
         desabonnerAcces = n.politique.surChange(o.surAcces);

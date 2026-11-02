@@ -951,6 +951,22 @@ app.whenReady().then(async () => {
   agent = demarrerAgent({
     // Outils MCP des extensions : lister, demander (carte d'accord), recharger, console filtrée et son déblocage.
     extensions: serviceExtensions.outilsAgent({ fenetreAgent }),
+    // Outils MCP des applis de site ; relus à chaque appel (le service est créé plus haut, jamais remplacé).
+    sites: {
+      lister: async () =>
+        ((await sites?.liste()) ?? []).map((s) => ({
+          id: s.id, nom: s.nom, domaine: s.domaine, ouverte: s.ouverte, ...(s.erreur !== undefined ? { erreur: s.erreur } : {}),
+        })),
+      ouvrir: async (id) => (await sites?.ouvrirParId(id)) ?? false,
+      memoire: async (id) => {
+        if (!sites || !(await sites.liste()).some((s) => s.id === id)) return null;
+        return (await sites.memoire(id)).contenu();
+      },
+      erreurs: async (id) => {
+        if (!sites || !(await sites.liste()).some((s) => s.id === id)) return null;
+        return sites.erreurs(id).map(({ quand, texte, source }) => ({ quand, texte, source }));
+      },
+    },
     atelier,
     historique,
     // Profils bruts des sites tiers : dans le profil du navigateur, jamais dans l'espace que l'agent lit.
