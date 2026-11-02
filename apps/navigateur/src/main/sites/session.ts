@@ -1,10 +1,11 @@
 import { session, type Session } from "electron";
 import { ID_SITE } from "@webaios/noyau";
 import { preferencesWeb } from "../onglets/vues";
+import { partitionSite } from "../../commun/sites";
 import { refuserPermissions } from "../permissions";
 
-/** Partition d'une appli de site : jamais celle d'un espace, d'une application ni d'une autre appli de site. */
-export const partitionSite = (id: string) => `persist:site-${id}`;
+// Dans `commun` (C9) : le service des extensions le lit sans charger ce module (qui demande electron).
+export { partitionSite };
 
 /** Le plein écran seul (vidéos) ; la lecture automatique passe par `preferencesSite`. Presse-papiers compris, tout le reste est refusé. */
 const PERMISES_SITE: ReadonlySet<string> = new Set(["fullscreen"]);
@@ -26,7 +27,8 @@ export const siteDeSession = (s: Session): string | undefined => preparees.get(s
 
 /**
  * La session d'une appli de site, préparée une fois : plein écran seul, aucun périphérique, téléchargements annulés, le
- * preload `site.js` sur chaque cadre. Aucune extension n'y est jamais chargée.
+ * preload `site.js` sur chaque cadre. Aucune extension n'y est chargée tant que l'utilisateur n'en active aucune pour cette appli
+ * (plan 16, `ServiceExtensions.basculerSite`).
  */
 export function sessionSite(id: string): Session {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);

@@ -11,10 +11,12 @@ import {
   lireCle,
   lireMessages,
   retirer,
+  siteDePortee,
   type AnalyseManifeste,
   type EntreeExtension,
   type EtatExtensions,
   type IdProfil,
+  type IdSite,
   type Portee,
 } from "@webaios/noyau";
 import { carteDe, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, SAISIE_INVALIDE, type CarteExtension, type ReponseAccord } from "../../commun/extensions";
@@ -84,6 +86,32 @@ export interface DependancesStore {
   demanderAccord(c: CarteExtension, o: { fenetre?: IdFenetre; pendantCoupure?: boolean }): Promise<ReponseAccord>;
   /** `preparerStore` du noyau sur une version installée (lève si elle échoue). */
   preparer(cle: string, dossierVersion: string): Promise<void>;
+  /**
+   * Efface le stockage de l'extension (version à `chemin`, encore sur le disque) dans la session de chaque appli de
+   * `sites` (plan 16). Appelé après l'écriture qui la retire (sessions synchronisées : elle n'y est plus chargée), avant
+   * l'effacement de `store/<id>`. Ne lève pas (les échecs sont journalisés).
+   */
+  effacerDansSites?(cle: string, chemin: string, sites: IdSite[]): Promise<void>;
+}
+
+/** Les applis de site d'une entrée : celles où elle est active (`applis`) et celles où elle a démarré (`vues` en `site:*`). */
+export function sitesDe(x: EntreeExtension): IdSite[] {
+  const sites = new Set(Object.keys(x.applis ?? {}));
+  for (const portee of Object.keys(x.vues)) {
+    const id = siteDePortee(portee);
+    if (id !== null) sites.add(id);
+  }
+  return [...sites];
+}
+
+/** Après le retrait de l'entrée : le stockage effacé dans les applis de site où elle a été active ou a démarré. */
+async function effacerDansSites(d: DependancesStore, cle: string, chemin: string | null, sites: IdSite[]): Promise<void> {
+  if (!chemin || sites.length === 0 || !d.effacerDansSites) return;
+  try {
+    await d.effacerDansSites(cle, chemin, sites);
+  } catch (e) {
+    console.error(`[extensions] stockage de ${cle} non effacé dans les applis de site :`, e);
+  }
 }
 
 /** Une opération à la fois par extension (téléchargement, installation, mise à jour, désinstallation), par dossier. */
@@ -230,6 +258,8 @@ async function installer(id: string, o: ContexteInstallation, d: DependancesStor
               desactivee,
               majEnAttente: null,
               vues: avant?.vues ?? {},
+              // Ses activations dans les applis de site restent (plan 16).
+              ...(avant?.applis ? { applis: avant.applis } : {}),
             },
           },
         };
@@ -256,29 +286,51 @@ export function desinstallerStore(cle: string, d: DependancesStore): Promise<voi
   const lue = lireCle(cle);
   if (!lue) return Promise.reject(new Error(`Clé d'extension invalide : ${cle}`));
   return uneAlaFois(`${d.dossier}|${lue.id}`, async () => {
-    await d.modifier((e) => retirer(e, cle));
+    // Relevé dans l'écriture : les applis de site où elle a été active ou a démarré, et sa version sur le disque.
+    let sites: IdSite[] = [];
+    let chemin: string | null = null;
+    await d.modifier((e) => {
+      const x = e.extensions[cle];
+      if (x && lue.source === "store") {
+        sites = sitesDe(x);
+        chemin = join(d.dossier, "store", lue.id, `${x.version}_0`);
+      }
+      return retirer(e, cle);
+    });
+    // Déchargée de chaque session (la synchronisation est faite) ; son manifeste est encore là pour le talon (C6).
+    await effacerDansSites(d, cle, chemin, sites);
     await rm(join(d.dossier, lue.source === "store" ? "store" : "copies", lue.id), { recursive: true, force: true });
   });
 }
 
 /**
  * « Retirer de Chrome » sur la page du Store d'un profil : n'agit que sur ce profil. Refusé si l'extension n'y est pas
- * active ; retirée de ce profil seulement si un autre la garde (fichiers et entrée restent) ; sinon désinstallée
- * (entrée retirée, puis `store/<id>` effacé). Décidé dans l'écriture sérialisée du registre, une à la fois par id.
+ * active ; retirée de ce profil seulement si un autre profil ou une appli de site la garde (fichiers et entrée restent) ;
+ * sinon désinstallée (entrée retirée, stockage effacé dans les applis où elle a démarré, puis `store/<id>` effacé). Décidé dans l'écriture sérialisée du registre, une à la fois par id.
  */
 export function retirerDuProfilStore(cle: string, profil: IdProfil, d: DependancesStore): Promise<void> {
   const lue = lireCle(cle);
   if (lue?.source !== "store") return Promise.reject(new Error(`Extension du Store inconnue : ${cle}`));
   return uneAlaFois(`${d.dossier}|${lue.id}`, async () => {
     let derniere = false;
+    let sites: IdSite[] = [];
+    let chemin: string | null = null;
     await d.modifier((e) => {
       const x = e.extensions[cle];
       if (!x) throw new Error(`Extension du Store inconnue : ${cle}`);
       if (!x.profils.includes(profil)) throw new Error(`Extension pas active dans ce profil : ${cle}`);
-      derniere = x.profils.length === 1;
+      // Active dans une appli de site : elle n'est pas désinstallée (plan 16).
+      derniere = x.profils.length === 1 && Object.keys(x.applis ?? {}).length === 0;
+      if (derniere) {
+        sites = sitesDe(x);
+        chemin = join(d.dossier, "store", lue.id, `${x.version}_0`);
+      }
       return derniere ? retirer(e, cle) : desactiver(e, cle, profil);
     });
-    if (derniere) await rm(join(d.dossier, "store", lue.id), { recursive: true, force: true });
+    if (derniere) {
+      await effacerDansSites(d, cle, chemin, sites);
+      await rm(join(d.dossier, "store", lue.id), { recursive: true, force: true });
+    }
   });
 }
 

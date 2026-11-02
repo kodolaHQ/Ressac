@@ -1662,3 +1662,34 @@ test("M1 effacerStockage : l'extension encore chargée dans la session (même id
   expect(s.chargements).toEqual([]);
   expect(s.retraits).toEqual([]);
 });
+
+test("C5 attendreDemarrage : rend vrai quand le démarrage du fond de la clé a été répondu dans la portée de l'appli ; faux sans réponse dans le délai, pas chargée, ou retirée pendant l'attente ; vrai tout de suite sans fond", async () => {
+  const { site } = optionsSite();
+  const p = creer({ site });
+  const s = fausseSession("persist:site-vidola");
+  p.brancherSite("vidola", s as unknown as Electron.Session);
+  const chemin = join(dossier, "store", ID_A, "1.0.0_0");
+  s.manifestes.set(chemin, { version: "1.0.0", background: { service_worker: "fond.js" } });
+  s.manifestes.set(join(dossier, "store", ID_B, "1.0.0_0"), { version: "1.0.0" });
+  const cle = `store:${ID_A}`;
+  await p.synchroniser(etatExt({ [cle]: enSite({ vidola: "E1" }), [`store:${ID_B}`]: enSite({ vidola: "E1" }) }));
+  // Sans fond : rien à attendre.
+  expect(await p.attendreDemarrage("site:vidola", `store:${ID_B}`, 1000)).toBe(true);
+  // Pas chargée dans cette portée : faux tout de suite.
+  expect(await p.attendreDemarrage("site:autre", cle, 1000)).toBe(false);
+  expect(await p.attendreDemarrage("site:vidola", `store:${"c".repeat(32)}`, 1000)).toBe(false);
+  // Aucun démarrage dans le délai : faux.
+  expect(await p.attendreDemarrage("site:vidola", cle, 20)).toBe(false);
+  // Le démarrage répondu pendant l'attente : vrai ; ensuite, vrai tout de suite.
+  const attente = p.attendreDemarrage("site:vidola", cle, 5000);
+  const id = [...s.charges.values()].find((c) => c.chemin === chemin)!.id;
+  await demarrerFond(s, id, 1);
+  expect(await attente).toBe(true);
+  expect(await p.attendreDemarrage("site:vidola", cle, 20)).toBe(true);
+  // Retirée puis rechargée : il faut un nouveau démarrage ; retirée pendant l'attente : faux.
+  await p.synchroniser(etatExt({}));
+  await p.synchroniser(etatExt({ [cle]: enSite({ vidola: "E1" }) }));
+  const seconde = p.attendreDemarrage("site:vidola", cle, 5000);
+  await p.synchroniser(etatExt({}));
+  expect(await seconde).toBe(false);
+});

@@ -323,6 +323,10 @@ export class ExtensionsProfils {
   private ongletsEcoutes = new WeakSet<WebContents>();
   /** Pendant nos propres appels à la bibliothèque, ses rappels `selectTab` / `removeTab` ne reviennent pas vers WebAiOs. */
   private echo = false;
+  /** Démarrages du fond répondus (`<portée>|<clé>`) depuis le dernier chargement (C5, `attendreDemarrage`). */
+  private demarres = new Set<string>();
+  /** Ceux qu'on attend, par `<portée>|<clé>` : chaque rappel reçoit vrai (répondu) ou faux (retirée). */
+  private attentesDemarrage = new Map<string, Set<(ok: boolean) => void>>();
 
   constructor(
     private readonly o: {
@@ -903,6 +907,54 @@ export class ExtensionsProfils {
     const agent = lireCle(cle)?.source === "agent";
     if (contexte === "page" && (ext.manifest as { background?: unknown }).background) return vide(agent);
     try {
+      return await this.reponseDemarrage(profil, cle, ext, agent, vide);
+    } finally {
+      this.noterDemarre(profil, cle);
+    }
+  }
+
+  /** Le démarrage de `cle` dans `profil` est répondu : ceux qui l'attendaient (`attendreDemarrage`) repartent. */
+  private noterDemarre(profil: IdProfil, cle: string): void {
+    const k = `${profil}|${cle}`;
+    this.demarres.add(k);
+    for (const finir of [...(this.attentesDemarrage.get(k) ?? [])]) finir(true);
+  }
+
+  /**
+   * C5 : attend, au plus `ms`, que le démarrage du fond de `cle` ait été répondu dans `portee` depuis son dernier
+   * chargement (ses rulesets du manifeste sont alors posés par le preload). Vrai tout de suite si c'est déjà fait ou si
+   * elle n'a pas de fond ; faux si elle n'est pas chargée dans cette portée, si elle en est retirée pendant l'attente, ou
+   * sans réponse dans le délai.
+   */
+  attendreDemarrage(portee: IdProfil, cle: string, ms: number): Promise<boolean> {
+    const c = this.chargees.get(portee)?.get(cle);
+    const ext = c ? this.instances.get(portee)?.session.extensions.getExtension(c.id) : null;
+    if (!ext) return Promise.resolve(false);
+    if (!(ext.manifest as { background?: unknown }).background) return Promise.resolve(true);
+    const k = `${portee}|${cle}`;
+    if (this.demarres.has(k)) return Promise.resolve(true);
+    return new Promise((ok) => {
+      const attentes = this.attentesDemarrage.get(k) ?? new Set<(ok: boolean) => void>();
+      this.attentesDemarrage.set(k, attentes);
+      const finir = (r: boolean) => {
+        clearTimeout(minuterie);
+        attentes.delete(finir);
+        if (attentes.size === 0 && this.attentesDemarrage.get(k) === attentes) this.attentesDemarrage.delete(k);
+        ok(r);
+      };
+      const minuterie = setTimeout(() => finir(false), ms);
+      attentes.add(finir);
+    });
+  }
+
+  private async reponseDemarrage(
+    profil: IdProfil,
+    cle: string,
+    ext: Electron.Extension,
+    agent: boolean,
+    vide: (agent: boolean) => DemarrageExtension,
+  ): Promise<DemarrageExtension> {
+    try {
       // Agent : une copie rechargée (même version) est une nouvelle vue, comme le rechargement d'une extension non
       // empaquetée dans Chrome (onInstalled « update », rulesets du manifeste) : la vue porte aussi `modifieeLe`.
       const vue = await this.o.noterVue(cle, profil, agent ? `${ext.version}#${this.dernier?.extensions[cle]?.modifieeLe ?? ""}` : ext.version);
@@ -1128,6 +1180,10 @@ export class ExtensionsProfils {
    * cette session où ses scripts ont été injectés est rechargé, pour qu'ils s'y arrêtent.
    */
   private retirer(s: Session, profil: IdProfil, cle: string, id: string): void {
+    // Rechargée plus tard, elle devra redémarrer ; qui attendait son démarrage n'a plus rien à attendre.
+    const k = `${profil}|${cle}`;
+    this.demarres.delete(k);
+    for (const finir of [...(this.attentesDemarrage.get(k) ?? [])]) finir(false);
     try {
       s.extensions.removeExtension(id);
     } catch (erreur) {

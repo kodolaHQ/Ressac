@@ -5,7 +5,19 @@ import type { Espace, EtatNavigateur } from "./modele";
 export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
 
 // Dans un module sans dépendance au noyau : l'interface les importe (le noyau n'entre pas dans son bundle).
-export { CONSOLE_DEBLOQUEE_PAGE, DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, LONGUEUR_RAISON_DEBLOCAGE, texteDeblocageConsole } from "./extensions-messages";
+export {
+  activeDans,
+  APPLI_FERMEE,
+  AUCUNE_EXTENSION_SITE,
+  CONSOLE_DEBLOQUEE_PAGE,
+  DESACTIVEE_PLANTAGES,
+  DESACTIVEE_PORTEE,
+  DOMAINES_CHANGES_EXTENSION,
+  GERER_EXTENSIONS,
+  LONGUEUR_RAISON_DEBLOCAGE,
+  texteDeblocageConsole,
+  VOIT_LES_PAGES_SITE,
+} from "./extensions-messages";
 
 /** Une ligne de la section « Extensions » des réglages d'un espace (tout y est affiché en texte). */
 export interface LigneExtensionEspace {
@@ -112,6 +124,20 @@ export interface LigneExtension {
   epinglee: boolean;
   /** Agent : L'utilisateur a débloqué sa console pour l'agent (en mémoire, jusqu'à ce que l'un d'eux la referme). */
   consoleDebloquee: boolean;
+  /** Store : les noms des applis de site où elle est active (l'id si le nom manque). */
+  applis: string[];
+}
+
+/** Une ligne du menu « Extensions » d'une appli de site (extensions du Store seulement ; tout y est affiché en texte). */
+export interface LigneExtensionSite {
+  cle: string;
+  nom: string;
+  /** Activée pour l'empreinte des domaines de l'appli d'aujourd'hui. */
+  active: boolean;
+  /** Activée, mais pour d'autres domaines (`DOMAINES_CHANGES_EXTENSION`) : rien n'est chargé. */
+  domainesChanges: boolean;
+  /** `TOUTES_COUPEES_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE` : l'interrupteur est grisé ; sinon null. */
+  indisponible: string | null;
 }
 
 /** La barre d'une fenêtre : les extensions chargées dans le profil de son espace actif. */

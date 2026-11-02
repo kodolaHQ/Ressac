@@ -15,3 +15,14 @@ export const texteDeblocageConsole = (nom: string, espaces: readonly string[] = 
     espaces.length === 0 ? "des profils où elle est active" : espaces.length === 1 ? `de l'espace « ${espaces[0]} »` : `des espaces ${espaces.map((e) => `« ${e} »`).join(", ")}`;
   return `L'agent demande à voir toute la console de « ${nom} » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets ${lieu}, y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.`;
 };
+
+// ——— Les extensions dans une appli de site (plan 16) ———
+/** Le menu « Extensions » d'une appli de site, sans aucune extension du Store installée. */
+export const AUCUNE_EXTENSION_SITE = "Aucune extension installée. Installe-en depuis le Chrome Web Store dans un onglet.";
+/** Activée pour d'autres domaines que ceux de l'appli d'aujourd'hui : rien n'est chargé. */
+export const DOMAINES_CHANGES_EXTENSION = "Les domaines de l'appli ont changé : réactive si tu veux";
+export const VOIT_LES_PAGES_SITE = "Elle verra les pages de l'appli, connectées à ton compte.";
+export const GERER_EXTENSIONS = "Gérer les extensions";
+export const APPLI_FERMEE = "Appli de site fermée : ouvre-la pour y activer une extension";
+/** La page Extensions : les applis de site où elle est active. */
+export const activeDans = (noms: string[]) => `Active dans : ${noms.join(", ")}`;
