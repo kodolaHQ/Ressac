@@ -1,12 +1,13 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
-import { Permissions, type Decision, type Demande } from "../src/main/permissions";
+import type { Issue } from "../src/commun/modele";
+import { Permissions, type Demande } from "../src/main/permissions";
 
 let fichier: string;
 let demandes: Demande[];
-let reponse: Decision;
+let reponse: Issue;
 const creer = () =>
   new Permissions({
     fichier,
@@ -73,6 +74,17 @@ test("deux demandes simultanées pour la même permission ne posent qu'une quest
   ]);
   expect(r).toEqual([true, true]);
   expect(demandes).toHaveLength(1);
+});
+
+test("question retirée sans réponse (onglet fermé) : refusée cette fois, rien de mémorisé, redemandée ensuite", async () => {
+  const p = creer();
+  reponse = "retiree";
+  expect(await p.traiter({ ongletId: "o1", origine: meet, permission: "media", mediaTypes: ["video"] })).toBe(false);
+  expect(p.decisions()).toEqual({});
+  expect(existsSync(fichier)).toBe(false);
+  reponse = "autoriser";
+  expect(await p.traiter({ ongletId: "o1", origine: meet, permission: "media", mediaTypes: ["video"] })).toBe(true);
+  expect(demandes).toHaveLength(2);
 });
 
 test("decisions survivent à un rechargement du fichier", async () => {

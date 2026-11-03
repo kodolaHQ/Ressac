@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Session, WebContents } from "electron";
 import { z } from "zod";
-import type { Decision, Demande, IdOnglet, Permission } from "../commun/modele";
+import type { Decision, Demande, IdOnglet, Issue, Permission } from "../commun/modele";
 import { estInvisible } from "./contenus-invisibles";
 
 export type { Decision, Demande, Permission };
@@ -25,9 +25,9 @@ function traduire(permission: string, mediaTypes: readonly string[] = []): Permi
 /** Autorisations des sites : demandées une fois par (origine, permission), mémorisées dans `permissions.json`. */
 export class Permissions {
   private memo: Record<string, Decision>;
-  private enAttente = new Map<string, Promise<Decision>>();
+  private enAttente = new Map<string, Promise<Issue>>();
 
-  constructor(private readonly o: { fichier: string; demander: (d: Demande) => Promise<Decision> }) {
+  constructor(private readonly o: { fichier: string; demander: (d: Demande) => Promise<Issue> }) {
     this.memo = this.lire();
   }
 
@@ -72,8 +72,10 @@ export class Permissions {
         this.enAttente.set(question, reponse);
         void reponse.then(
           (d) => {
-            for (const p of inconnues) this.memo[cle(r.origine, p)] = d;
             this.enAttente.delete(question);
+            // Retirée sans réponse (onglet fermé) : refusée cette fois, redemandée la prochaine.
+            if (d === "retiree") return;
+            for (const p of inconnues) this.memo[cle(r.origine, p)] = d;
             this.ecrire();
           },
           () => this.enAttente.delete(question),
