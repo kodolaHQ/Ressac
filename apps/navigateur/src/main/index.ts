@@ -1253,6 +1253,10 @@ app.whenReady().then(async () => {
       void remarques.oublier(`site-${id}`).catch((e) => console.error(`[design] remarques de ${id} non effacées :`, e));
       void relecture?.effacer(`site-${id}`).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e));
     },
+    // Le dossier est à la corbeille : la fermeture de la fenêtre a diffusé, et une prise en charge a pu photographier
+    // l'ancien dossier entre-temps. Effacée de nouveau, après elle (même file) : une appli recréée repart de sa photo.
+    apresSuppression: (id) =>
+      void relecture?.effacer(`site-${id}`).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e)),
     // Les extensions du Store activées dans l'appli (plan 16) : chargées avant sa première page, et seulement pendant
     // qu'elle est ouverte ; la vue du site est leur seul onglet ; retirées (stockage effacé) à la suppression.
     extensions: {

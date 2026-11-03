@@ -336,3 +336,29 @@ test("effacer(\"site-tuning\") : plus de site-tuning.git ni de site-tuning.comme
   const v2 = await service.ouvrir("site-tuning");
   expect(v2).toMatchObject({ etat: "ok", comparaison: { fichiers: [] } });
 });
+
+test("une photo prise entre effacer et la mise à la corbeille : le second effacer (après la corbeille) l'efface ; recréée, l'appli repart d'une nouvelle photo", async () => {
+  const { service, racine, sites, relecture } = preparerSites();
+  await service.priseEnChargeSites(["tuning"]);
+  const ref = join(relecture, "site-tuning.git", "refs", "webaios", "relu");
+  // Suppression commencée : premier effacer, puis une prise en charge planifiée pendant que le dossier est encore là.
+  const premier = service.effacer("site-tuning");
+  const photo = service.priseEnChargeSites(["tuning"]);
+  await Promise.all([premier, photo]);
+  expect(existsSync(ref)).toBe(true);
+  // Le dossier part à la corbeille, puis le second effacer passe après toute photo en file.
+  const { renameSync, readFileSync } = await import("node:fs");
+  renameSync(join(sites, "tuning"), join(racine, "corbeille-tuning"));
+  const tardive = service.priseEnChargeSites(["tuning"]);
+  await Promise.all([tardive, service.effacer("site-tuning")]);
+  expect(existsSync(join(relecture, "site-tuning.git"))).toBe(false);
+  expect(existsSync(join(relecture, "site-tuning.commentaires.json"))).toBe(false);
+  await service.priseEnChargeSites(["tuning"]);
+  expect(existsSync(join(relecture, "site-tuning.git"))).toBe(false);
+  // Recréée au même id avec un autre contenu : la photo est la sienne, rien à relire.
+  mkdirSync(join(sites, "tuning"));
+  writeFileSync(join(sites, "tuning", "site.json"), "{\"neuve\":true}\n");
+  await service.priseEnChargeSites(["tuning"]);
+  expect(readFileSync(ref, "utf8")).toMatch(/^[0-9a-f]{40}\n$/);
+  expect(await service.ouvrir("site-tuning")).toMatchObject({ etat: "ok", comparaison: { fichiers: [] } });
+});

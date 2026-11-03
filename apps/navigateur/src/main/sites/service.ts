@@ -165,6 +165,11 @@ export function demarrerSites(o: {
   surFermee?(id: string): void;
   /** Une suppression commence : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée le redemande). */
   surSupprimee?(id: string): void;
+  /**
+   * La suppression commencée par `surSupprimee` est finie : le dossier est à la corbeille (ou y a échoué). Une photo de
+   * relecture prise entre les deux (la fermeture de la fenêtre diffuse) est effacée ici.
+   */
+  apresSuppression?(id: string): void;
   /** Ce que montre la fenêtre de l'appli change sous le mode design (accueil, carte, plein écran, menu « Extensions »). */
   surInterruption?(id: string): void;
   /**
@@ -552,8 +557,10 @@ export function demarrerSites(o: {
     if (suppressions.has(id)) return;
     suppressions.add(id);
     suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
+    let commencee = false;
     try {
       if (!(await connue(id))) return;
+      commencee = true;
       o.surSupprimee?.(id);
       recherches.get(id)?.abort();
       notes.annulerNotes(id);
@@ -591,6 +598,7 @@ export function demarrerSites(o: {
       }
     } finally {
       suppressions.delete(id);
+      if (commencee) o.apresSuppression?.(id);
       o.diffuser();
     }
   }

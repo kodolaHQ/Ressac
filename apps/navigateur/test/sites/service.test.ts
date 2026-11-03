@@ -153,6 +153,8 @@ let service: ReturnType<typeof demarrerSites>;
 const deboguer = vi.fn();
 /** Appelé quand une suppression commence (l'accord de lecture de l'agent tombe). */
 const surSupprimee = vi.fn((id: string) => void journal.push(`supprimee ${id}`));
+/** Appelé quand la suppression est finie : le dossier n'est plus à sa place (la relecture efface ce qui s'y est photographié entre-temps). */
+const apresSuppression = vi.fn((id: string) => void journal.push(`apres ${id} dossier=${existsSync(join(cheminsEspace(racine).sites, id))}`));
 
 const declaration = {
   nom: "Vidola",
@@ -195,6 +197,7 @@ beforeEach(() => {
     deboguer,
     diffuser: () => {},
     surSupprimee,
+    apresSuppression,
     extensions,
   });
 });
@@ -237,6 +240,14 @@ test("supprimer : fenêtre fermée avant la session, dossier à la corbeille, m�
   expect(existsSync(join(c.sites, ".corbeille", corbeille[0]!, "site.json"))).toBe(true);
   // Une mémoire rouverte au même id repart vide.
   expect((await service.memoire("vidola")).contenu()).toMatchObject({ valeurs: {}, positions: {} });
+});
+
+test("supprimer : apresSuppression vient après surSupprimee, une fois le dossier mis à la corbeille ; rien pour un id inconnu", async () => {
+  await service.agir("vidola", "supprimer", "f1" as never);
+  expect(journal.filter((j) => /^(supprimee|apres)/.test(j))).toEqual(["supprimee vidola", "apres vidola dossier=false"]);
+  journal.length = 0;
+  await service.agir("inconnu", "supprimer", "f1" as never);
+  expect(journal.filter((j) => /^(supprimee|apres)/.test(j))).toEqual([]);
 });
 
 test("oublier : memoire.json supprimé, mémoire vide ; le dossier de l'appli n'est pas touché", async () => {
