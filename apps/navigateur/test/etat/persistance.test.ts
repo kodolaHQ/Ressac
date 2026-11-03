@@ -100,6 +100,16 @@ test("JSON invalide → état initial et ancien fichier gardé de côté (….co
   expect(readFileSync(join(d, garde!), "utf8")).toBe("{ pas du json");
 });
 
+test("session corrompue : le nom du fichier gardé de côté est rendu pour prévenir l'utilisateur, rien sans fichier", async () => {
+  const d = dossier();
+  const garde = vi.fn();
+  await chargerSession(d, garde);
+  expect(garde).not.toHaveBeenCalled();
+  writeFileSync(join(d, "session.json"), "{ pas du json");
+  await chargerSession(d, garde);
+  expect(garde).toHaveBeenCalledWith(join(d, mis_de_cote(d, ".corrompu")[0]!));
+});
+
 test("version inconnue → état initial et fichier gardé de côté", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 3 }));
@@ -188,6 +198,18 @@ test("vider() attend l'écriture en cours : rien n'est perdu à la sortie, aucun
   expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).reglages.moteur).toBe("qwant");
   const { readdirSync } = await import("node:fs");
   expect(readdirSync(d).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+});
+
+test("une écriture ratée ne laisse pas de fichier temporaire et l'état est réécrit au vider() suivant", async () => {
+  const d = dossier();
+  const espion = vi.spyOn(fsp, "rename").mockRejectedValueOnce(new Error("disque plein"));
+  const enr = new EnregistreurSession(d, 10_000);
+  enr.planifier(etatRiche());
+  await enr.vider();
+  expect(readdirSync(d)).toEqual([]);
+  await enr.vider();
+  expect(Object.keys(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).onglets)).toHaveLength(2);
+  espion.mockRestore();
 });
 
 test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {

@@ -70,28 +70,32 @@ function enV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
 /** Les champs volatils d'un onglet ne sont pas enregistrés : ils repartent de leur valeur par défaut. */
 const VOLATILS = { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null };
 
-/** Met le fichier de session de côté sous un nom unique : le prochain enregistrement ne l'écrasera pas. */
-async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): Promise<void> {
+/** Met le fichier de session de côté sous un nom unique : le prochain enregistrement ne l'écrasera pas. Rend ce nom. */
+async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): Promise<string | null> {
   const horodatage = new Date().toISOString().replace(/[:.]/g, "-");
   for (let i = 0; ; i++) {
     const nom = `${chemin}.${horodatage}${i ? `-${i}` : ""}.${raison}`;
     try {
       await fs.access(nom);
     } catch {
-      await fs.rename(chemin, nom).catch((e) => console.error(`[session] impossible de garder ${chemin} de côté :`, e));
-      return;
+      return fs.rename(chemin, nom).then(
+        () => nom,
+        (e) => (console.error(`[session] impossible de garder ${chemin} de côté :`, e), null),
+      );
     }
   }
 }
 
-export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
+/** `garde` reçoit le nom sous lequel une session illisible a été mise de côté, pour le dire à l'utilisateur. */
+export async function chargerSession(dossier: string, garde?: (chemin: string) => void): Promise<EtatNavigateur> {
   const chemin = join(dossier, FICHIER);
   let texte: string;
   try {
     texte = await fs.readFile(chemin, "utf8");
   } catch (e) {
     // Absent : premier lancement. Sinon (droits…), on le garde plutôt que de l'écraser au prochain enregistrement.
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") await mettreDeCote(chemin, "illisible");
+    const nom = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await mettreDeCote(chemin, "illisible"));
+    if (nom) garde?.(nom);
     return etatInitial();
   }
   try {
@@ -101,7 +105,8 @@ export async function chargerSession(dossier: string): Promise<EtatNavigateur> {
       onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILS }])),
     };
   } catch {
-    await mettreDeCote(chemin, "corrompu");
+    const nom = await mettreDeCote(chemin, "corrompu");
+    if (nom) garde?.(nom);
     return etatInitial();
   }
 }
@@ -130,7 +135,15 @@ export class EnregistreurSession {
     this.minuterie = undefined;
     const etat = this.enAttente;
     this.enAttente = null;
-    if (etat) this.ecriture = this.ecriture.then(() => this.ecrire(etat)).catch((e) => console.error("[session] écriture impossible :", e));
+    if (etat) {
+      this.ecriture = this.ecriture
+        .then(() => this.ecrire(etat))
+        .catch((e) => {
+          console.error("[session] écriture impossible :", e);
+          // Réessayé à la prochaine écriture ou à la sortie, sauf si un état plus récent est déjà là.
+          this.enAttente ??= etat;
+        });
+    }
     return this.ecriture;
   }
 
@@ -141,13 +154,18 @@ export class EnregistreurSession {
     const cible = join(this.dossier, FICHIER);
     const temporaire = `${cible}.${process.pid}.${++this.numero}.tmp`;
     await fs.mkdir(this.dossier, { recursive: true });
-    const fichier = await fs.open(temporaire, "w");
     try {
-      await fichier.writeFile(JSON.stringify({ ...etat, onglets }, null, 2));
-      await fichier.sync(); // sur disque avant le rename : une coupure de courant ne laisse pas un fichier vide
-    } finally {
-      await fichier.close();
+      const fichier = await fs.open(temporaire, "w");
+      try {
+        await fichier.writeFile(JSON.stringify({ ...etat, onglets }, null, 2));
+        await fichier.sync(); // sur disque avant le rename : une coupure de courant ne laisse pas un fichier vide
+      } finally {
+        await fichier.close();
+      }
+      await fs.rename(temporaire, cible);
+    } catch (e) {
+      await fs.rm(temporaire, { force: true });
+      throw e;
     }
-    await fs.rename(temporaire, cible);
   }
 }

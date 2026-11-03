@@ -46,7 +46,7 @@ export class Telechargements {
       this.diffuser();
     };
     item.on("updated", (_e, etat) => {
-      if (etat === "interrupted") t.etat = "interrompu";
+      t.etat = etat === "interrupted" ? "interrompu" : "en-cours"; // Chromium reprend seul après une coupure
       maj();
     });
     item.once("done", (_e, etat) => {

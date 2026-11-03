@@ -344,7 +344,8 @@ app.whenReady().then(async () => {
   // L'écran d'accueil des applis de site (`~/WebAiOs/sites/<id>/accueil/`), dans un cadre sans réseau de leur fenêtre.
   const cheminsAccueilSites = cheminsEspace();
   protocol.handle(SCHEMA_SITE, (requete) => repondreAccueilSite(cheminsAccueilSites, requete.url));
-  const magasin = new Magasin(await chargerSession(dossier));
+  let sessionGardee: string | null = null;
+  const magasin = new Magasin(await chargerSession(dossier, (chemin) => (sessionGardee = chemin)));
   magasinGlobal = magasin;
   enregistreur = new EnregistreurSession(dossier);
   historique = new Historique(join(dossier, "historique.sqlite"));
@@ -1095,6 +1096,14 @@ app.whenReady().then(async () => {
     ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierTest: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
     invisible: INVISIBLE,
   });
+  // Une session illisible repart de zéro : L'utilisateur doit savoir où son ancienne session est gardée.
+  if (sessionGardee) {
+    notifierExterne({
+      widget: "session",
+      titre: "Session précédente illisible",
+      texte: `WebAiOs repart avec une session neuve. L'ancienne est gardée dans ${sessionGardee}`,
+    });
+  }
   // Le lot envoyé à l'agent (mode design, relecture) : une ligne pré-remplie dans sa session, jamais envoyée.
   const envoiLot = creerEnvoi({
     chemins,
