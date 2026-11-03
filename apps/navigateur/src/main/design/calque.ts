@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { ARG_CALQUE, CANAUX } from "../../commun/canaux";
 import type { ContexteCalque } from "../../commun/api";
 
-/** Panier d'une fenêtre d'appli : 340 px à droite, toute la hauteur moins 24 (12 px des bords). */
+/** Panier d'une fenêtre d'appli : 340 px à droite, toute la hauteur moins 24 (12 px des bords), ou sous la barre d'une appli de site. */
 const MARGE = 12;
 const LARGEUR_PANIER = 340;
 
@@ -13,6 +13,8 @@ interface Calque {
   /** Ce que montre le calque ; null : retiré de la fenêtre. */
   bulle: { place: Rectangle; contexte: ContexteCalque } | null;
   panier: ContexteCalque | null;
+  /** Haut du panier dans la fenêtre : 12 px, ou sous la barre (et le menu) d'une appli de site. */
+  margeHaute: number;
   /** Retire les écouteurs posés sur la fenêtre (un calque recréé n'en ajoute pas à chaque fois). */
   detacher: () => void;
 }
@@ -40,7 +42,7 @@ export class Calques {
       },
     });
     vue.setBackgroundColor("#00000000");
-    const c: Calque = { vue, fenetre, bulle: null, panier: null, detacher: () => undefined };
+    const c: Calque = { vue, fenetre, bulle: null, panier: null, margeHaute: MARGE, detacher: () => undefined };
     this.calques.set(cle, c);
     const query = { cible: cle };
     if (process.env.ELECTRON_RENDERER_URL) void vue.webContents.loadURL(`${process.env.ELECTRON_RENDERER_URL}/design.html?cible=${encodeURIComponent(cle)}`).catch(() => {});
@@ -72,7 +74,7 @@ export class Calques {
     if (c.bulle) c.vue.setBounds(c.bulle.place);
     else {
       const [l = 0, h = 0] = c.fenetre.getContentSize();
-      c.vue.setBounds({ x: Math.max(0, l - MARGE - LARGEUR_PANIER), y: MARGE, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - 2 * MARGE) });
+      c.vue.setBounds({ x: Math.max(0, l - MARGE - LARGEUR_PANIER), y: c.margeHaute, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - c.margeHaute - MARGE) });
     }
     // Ajoutée (ou rajoutée) en dernier : au-dessus de la page et de la vue d'un onglet attachée depuis.
     c.fenetre.contentView.addChildView(c.vue);
@@ -94,9 +96,10 @@ export class Calques {
     this.notifierUn(c);
   }
 
-  montrerPanier(cle: string, fenetre: BrowserWindow, contexte: ContexteCalque): void {
+  montrerPanier(cle: string, fenetre: BrowserWindow, contexte: ContexteCalque, margeHaute = MARGE): void {
     const c = this.assurer(cle, fenetre);
     c.panier = contexte;
+    c.margeHaute = margeHaute;
     this.placer(c);
     this.notifierUn(c);
   }

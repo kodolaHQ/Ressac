@@ -1,12 +1,15 @@
 import type { BrowserWindow, Rectangle, WebContents } from "electron";
 import {
+  AVERTISSEMENT_CAPTURE_SITE,
   destinationDe,
   etatLot,
   ID_PROJET,
   INDISPONIBLE_DESIGN,
+  INDISPONIBLE_DESIGN_SITE,
   projetDemo,
   projetPourAdresse,
   projetPourFenetreApp,
+  projetPourSite,
   REMARQUE_VIDE,
   SANS_CLIENT,
   type ContexteDesign,
@@ -19,29 +22,40 @@ import {
 } from "@webaios/noyau";
 import type { ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../commun/api";
 import type { IdFenetre } from "../../commun/modele";
+import type { VueDesignSite } from "../sites/fenetres";
 import { Calques } from "./calque";
 import { armerViseur, capturerElement, desarmerViseur, lireSource, type CaptureViseur } from "./viseur";
 
-export type CibleDesign = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string };
+export type CibleDesign = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string } | { type: "site"; id: string };
 
 /** La bulle d'une remarque : 320×170, sous l'élément. */
 export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
+/** La bulle dans une appli de site : 20 px de plus pour la ligne d'avertissement. */
+export const TAILLE_BULLE_SITE = { largeur: 320, hauteur: 190 };
 const ECART_BULLE = 6;
 
 /** Clé d'une cible, aussi l'argument de son calque. */
-export const cleCible = (c: CibleDesign): string => (c.type === "fenetre" ? `fenetre:${c.fenetreId}` : `app:${c.dossier}`);
+export const cleCible = (c: CibleDesign): string =>
+  c.type === "fenetre" ? `fenetre:${c.fenetreId}` : c.type === "app" ? `app:${c.dossier}` : `site:${c.id}`;
 
 /**
  * Place de la bulle dans la fenêtre : sous l'élément (rect CSS × zoom, décalé des bornes de la vue de la page), bornée
- * à la fenêtre.
+ * à la fenêtre, et jamais au-dessus de `hautMin` (le bas de la barre d'une appli de site).
  */
-export function placeBulle(rect: CaptureViseur["rect"], zoom: number, bornes: Rectangle, fenetre: [number, number]): Rectangle {
+export function placeBulle(
+  rect: CaptureViseur["rect"],
+  zoom: number,
+  bornes: Rectangle,
+  fenetre: [number, number],
+  o: { hautMin?: number; hauteur?: number } = {},
+): Rectangle {
+  const hauteur = o.hauteur ?? TAILLE_BULLE.hauteur;
   const borner = (v: number, max: number) => Math.round(Math.max(0, Math.min(v, max)));
   return {
     x: borner(bornes.x + rect.x * zoom, fenetre[0] - TAILLE_BULLE.largeur),
-    y: borner(bornes.y + (rect.y + rect.hauteur) * zoom + ECART_BULLE, fenetre[1] - TAILLE_BULLE.hauteur),
+    y: Math.max(o.hautMin ?? 0, borner(bornes.y + (rect.y + rect.hauteur) * zoom + ECART_BULLE, fenetre[1] - hauteur)),
     width: TAILLE_BULLE.largeur,
-    height: TAILLE_BULLE.hauteur,
+    height: hauteur,
   };
 }
 
@@ -99,6 +113,14 @@ export interface OptionsServiceDesign {
   envoyer(p: ProjetSuivi, lot: Lot): Promise<void>;
   /** « Relire ce projet » (tâche 11). */
   relire?(p: ProjetSuivi, c: CibleDesign): void;
+  /** La vue d'une appli de site ouverte (bornes, barre, disponibilité du mode) ; null si sa fenêtre est fermée. */
+  vueSite?(id: string): VueDesignSite | null;
+  /** Les applis de site (projetSuivi : null si l'id n'y est plus). */
+  sites?(): Promise<{ id: string; nom: string }[]>;
+  /** La mention info de la barre d'une appli de site. */
+  messageSite?(id: string, texte: string): void;
+  /** Replie le menu du chevron d'une appli de site (la vue reprend sa place) avant d'armer le viseur. */
+  fermerMenuSite?(id: string): Promise<void>;
 }
 
 /**
@@ -115,13 +137,24 @@ export class ServiceDesign {
 
   private vue(c: CibleDesign): VueCible | null {
     if (c.type === "fenetre") return this.o.vueOnglet(c.fenetreId);
+    if (c.type === "site") return this.vueSite(c.id);
     const f = this.o.fenetreApp(c.dossier);
     if (!f || f.isDestroyed() || f.webContents.isDestroyed()) return null;
     const [width = 0, height = 0] = f.getContentSize();
     return { wc: f.webContents, bornes: { x: 0, y: 0, width, height }, fenetre: f, url: f.webContents.getURL() };
   }
 
+  private vueSite(id: string): VueDesignSite | null {
+    const v = this.o.vueSite?.(id) ?? null;
+    return v && !v.wc.isDestroyed() && !v.fenetre.isDestroyed() ? v : null;
+  }
+
   private async projetDe(c: CibleDesign, url: string): Promise<ProjetSuivi | null> {
+    // Appli de site : son projet dès que sa fenêtre est ouverte, même là où le mode est indisponible (compteur, panier).
+    if (c.type === "site") {
+      const v = this.vueSite(c.id);
+      return v ? projetPourSite(c.id, v.nom) : null;
+    }
     const applis = await this.o.applis();
     if (c.type === "app") return projetPourFenetreApp(c.dossier, applis.find((a) => a.dossier === c.dossier)?.nom ?? c.dossier);
     return projetPourAdresse(url, { appsLancees: applis, plages: this.o.plages, externes: this.o.registre()?.projets() ?? [] });
@@ -133,6 +166,11 @@ export class ServiceDesign {
     if (p.startsWith("app-")) {
       const dossier = p.slice(4);
       return projetPourFenetreApp(dossier, (await this.o.applis()).find((a) => a.dossier === dossier)?.nom ?? dossier);
+    }
+    if (p.startsWith("site-")) {
+      const id = p.slice(5);
+      const site = (await this.o.sites?.())?.find((x) => x.id === id);
+      return site ? projetPourSite(id, site.nom) : null;
     }
     if (p.startsWith("demo-")) return { type: "demo", projet: projetDemo(Number(p.slice(5))), port: Number(p.slice(5)) };
     const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
@@ -157,19 +195,48 @@ export class ServiceDesign {
   async etat(c: CibleDesign): Promise<EtatDesign> {
     const s = this.sessions.get(cleCible(c));
     const projet = s?.projet ?? (await this.projetCourant(c));
-    if (!projet) return { actif: false, projet: null, indisponible: INDISPONIBLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
+    if (!projet) {
+      const indisponible = c.type === "site" ? INDISPONIBLE_DESIGN_SITE : INDISPONIBLE_DESIGN;
+      return { actif: false, projet: null, indisponible, destination: null, sansDestination: null, panier: 0, nom: "" };
+    }
     const panier = (await this.o.remarques.panier(projet.projet)).length;
-    return { actif: !!s, projet, indisponible: null, ...this.destination(projet), panier, nom: this.nom(projet) };
+    // Appli de site : le projet est connu même là où le mode ne se lance pas (accueil, carte d'accord, connexion…).
+    const indisponible = c.type === "site" && !s && !this.vueSite(c.id)?.disponible ? INDISPONIBLE_DESIGN_SITE : null;
+    return { actif: !!s, projet, indisponible, ...this.destination(projet), panier, nom: this.nom(projet) };
+  }
+
+  /** La vue et le projet où lancer le mode ; null s'il y est indisponible (rien n'est alors injecté). */
+  private async aLancer(c: CibleDesign): Promise<{ v: VueCible; projet: ProjetSuivi } | null> {
+    if (c.type !== "site") {
+      const v = this.vue(c);
+      if (!v) return null;
+      const projet = await this.projetDe(c, v.url);
+      return projet ? { v, projet } : null;
+    }
+    const avant = this.vueSite(c.id);
+    if (!avant) return null;
+    if (!avant.disponible) {
+      this.o.messageSite?.(c.id, INDISPONIBLE_DESIGN_SITE);
+      return null;
+    }
+    // Le menu du chevron se replie d'abord : la vue reprend sa place, ses bornes sont relues ensuite.
+    await this.o.fermerMenuSite?.(c.id);
+    const v = this.vueSite(c.id);
+    if (!v) return null;
+    if (!v.disponible) {
+      this.o.messageSite?.(c.id, INDISPONIBLE_DESIGN_SITE);
+      return null;
+    }
+    return { v, projet: projetPourSite(c.id, v.nom) };
   }
 
   async basculer(c: CibleDesign): Promise<void> {
     const cle = cleCible(c);
     if (this.sessions.has(cle)) return this.arreter(c);
-    const v = this.vue(c);
-    if (!v) return;
-    const projet = await this.projetDe(c, v.url);
+    const pret = await this.aLancer(c);
     // Indisponible : rien n'est injecté dans la page.
-    if (!projet || this.sessions.has(cle) || v.wc.isDestroyed()) return;
+    if (!pret || this.sessions.has(cle) || pret.v.wc.isDestroyed()) return;
+    const { v, projet } = pret;
     const surNavigation = (d: { isMainFrame: boolean; isSameDocument: boolean }) => {
       if (!d.isMainFrame) return;
       if (d.isSameDocument) s.memeDocument = true;
@@ -197,7 +264,7 @@ export class ServiceDesign {
 
   /** Rend le clavier à la page de la session (et sa fenêtre d'appli au premier plan, hors tests invisibles). */
   private rendreClavier(s: Session): void {
-    if (s.cible.type === "app" && process.env.WEBAIOS_INVISIBLE !== "1" && !s.fenetre.isDestroyed()) s.fenetre.focus();
+    if ((s.cible.type === "app" || s.cible.type === "site") && process.env.WEBAIOS_INVISIBLE !== "1" && !s.fenetre.isDestroyed()) s.fenetre.focus();
     if (!s.wc.isDestroyed()) s.wc.focus();
   }
 
@@ -216,7 +283,9 @@ export class ServiceDesign {
       // Échap dans la page, page partie : le mode s'arrête.
       return this.arreter(s.cible);
     }
-    const source = await lireSource(s.wc, capture.selecteur);
+    // Appli de site : rien n'est lu dans le monde de la page, la source reste inconnue.
+    const site = s.cible.type === "site";
+    const source = site ? null : await lireSource(s.wc, capture.selecteur);
     const png = await capturerElement(s.wc, capture.rect, capture.vue);
     if (!this.actuelle(s, g)) return;
     const { rect, ...contexte } = capture;
@@ -224,13 +293,15 @@ export class ServiceDesign {
     const v = this.vue(s.cible);
     if (!v || v.wc !== s.wc || s.fenetre.isDestroyed()) return this.arreter(s.cible);
     const [l = 0, h = 0] = s.fenetre.getContentSize();
-    const place = placeBulle(rect, s.wc.isDestroyed() ? 1 : s.wc.getZoomFactor(), v.bornes, [l, h]);
+    const zoom = s.wc.isDestroyed() ? 1 : s.wc.getZoomFactor();
+    const place = placeBulle(rect, zoom, v.bornes, [l, h], site ? { hautMin: v.bornes.y, hauteur: TAILLE_BULLE_SITE.hauteur } : {});
     this.calques.montrerBulle(s.cle, s.fenetre, place, {
       mode: "bulle",
       projet: s.projet.projet,
       etiquette: contexte.etiquette,
       source: sourceTexte(source),
       ...this.destination(s.projet),
+      avertissement: site ? AVERTISSEMENT_CAPTURE_SITE : null,
     });
   }
 
@@ -291,12 +362,15 @@ export class ServiceDesign {
     this.calques.oublier(cleCible(c));
   }
 
-  /** « Panier » d'une fenêtre d'appli : le calque de la fenêtre montre le panier de l'appli. */
+  /** « Panier » d'une fenêtre d'appli : le calque de la fenêtre montre le panier de l'appli (sous la barre d'une appli de site). */
   async ouvrirPanier(c: CibleDesign): Promise<void> {
     const v = this.vue(c);
     const projet = await this.projetCourant(c);
     if (!v || !projet) return;
-    this.calques.montrerPanier(cleCible(c), v.fenetre, { mode: "panier", projet: projet.projet, etiquette: "", source: null, ...this.destination(projet) });
+    const contexte: ContexteCalque = { mode: "panier", projet: projet.projet, etiquette: "", source: null, ...this.destination(projet), avertissement: null };
+    const site = c.type === "site" ? this.vueSite(c.id) : null;
+    if (site) this.calques.montrerPanier(cleCible(c), v.fenetre, contexte, site.barre + 12);
+    else this.calques.montrerPanier(cleCible(c), v.fenetre, contexte);
   }
 
   async relire(c: CibleDesign): Promise<void> {
@@ -312,7 +386,9 @@ export class ServiceDesign {
   cibleDeCalque(sender: WebContents): CibleDesign | undefined {
     const cle = this.calques.cibleDe(sender);
     if (!cle) return undefined;
-    return cle.startsWith("fenetre:") ? { type: "fenetre", fenetreId: cle.slice(8) } : { type: "app", dossier: cle.slice(4) };
+    if (cle.startsWith("fenetre:")) return { type: "fenetre", fenetreId: cle.slice(8) };
+    if (cle.startsWith("site:")) return { type: "site", id: cle.slice(5) };
+    return { type: "app", dossier: cle.slice(4) };
   }
 
   async panier(p: IdProjet): Promise<ElementAffiche[]> {

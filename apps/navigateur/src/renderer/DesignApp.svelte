@@ -50,6 +50,7 @@
       <code class="etiquette">{contexte.etiquette}</code>
       {#if contexte.source}<span class="source">{contexte.source}</span>{/if}
     </div>
+    {#if contexte.avertissement}<p class="avertissement" data-testid="avertissement-bulle">{contexte.avertissement}</p>{/if}
     <textarea bind:this={champ} bind:value={texte} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
     {#if erreur}<p class="erreur" role="alert">{erreur}</p>{/if}
     <div class="actions">
@@ -71,6 +72,7 @@
   .source { color: var(--texte-doux); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   textarea { flex: 1; resize: none; box-sizing: border-box; width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); font: inherit; outline: none; }
   textarea:focus { border-color: var(--accent); }
+  .avertissement { margin: 0; color: var(--texte-doux); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .erreur { margin: 0; color: var(--en-erreur); }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
   button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 5px; }

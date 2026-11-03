@@ -685,6 +685,8 @@ export interface ContexteCalque {
   source: string | null;
   destination: string | null;
   sansDestination: string | null;
+  /** Bulle d'une appli de site : ce qui ira à l'agent (extrait, capture) ; null ailleurs. */
+  avertissement: string | null;
 }
 /** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
 export type ApiCalque = {
