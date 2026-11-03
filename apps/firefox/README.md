@@ -20,12 +20,42 @@ pnpm build                                     # full build (~20 min)
 
 In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The `engine` tree is shared between checkouts: run `engine:import` in the checkout you work in before building.
 
+## The three bundles
+
+`scripts/ui.sh` builds three bundles with Vite from `ui/` and `chrome/`, into `src/browser/base/content/webaios/` (generated, git-ignored):
+
+- `sidebar`: the Svelte UI, loaded in an iframe of the browser window;
+- `window`: the window controller (syncs WebAiOs tabs and spaces with Firefox tabs and containers, shortcuts);
+- `store`: the shared state module (`store.sys.mjs`: session file, containers, shutdown save), imported by the window at runtime.
+
 ## Work loop
 
-- Changed `ui/` or a `src/**` `.js`/`.css`/`.html` file: `pnpm build:ui` (~17 s: Vite, then `mach build faster`).
+- Changed `ui/` or `chrome/` (files already declared in `jar.inc.mn`): `pnpm ui`, then restart the app. No `mach`, no build: the app reads our files through symlinks.
+- Changed a `src/**` `.js`/`.css`/`.html` file: `pnpm build:ui` (~17 s: Vite, then `mach build faster`).
 - Added a file to `src/`: `pnpm engine:import` (builds the UI first, so the generated sidebar files get linked), then `pnpm build:ui`.
 - Changed a `*.patch`, or anything compiled (C++, Rust, `jar.mn`): `pnpm engine:import`, then `pnpm build`.
 - Tests: `pnpm test` (unit), `pnpm e2e` (headless Firefox with a temporary profile, driven over Marionette).
+
+## Data
+
+The WebAiOs state (session, settings) lives in `~/WebAiOs-firefox/data` by default, next to `engine/`, never in `~/WebAiOs`. Set `WEBAIOS_DATA_DIR` to use another folder. The e2e always sets it to a temporary folder.
+
+## Not migrated yet (step 2)
+
+- several windows: ⌘N does nothing;
+- compact mode;
+- agent panel, agent access, badges;
+- history: suggestions are empty;
+- downloads, permissions, extensions, design mode;
+- internal `webaios:` pages: a "not available yet" message;
+- tab previews in ⌃Tab: the cards show the icon;
+- zoom is not tracked in the state;
+- custom error and crash pages: Firefox's own are shown;
+- the `beforeunload` confirmation when closing a tab.
+
+## Worktrees
+
+`engine/` is shared by all checkouts (it links to `~/WebAiOs-firefox/engine`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.
 
 ## Measured times (M5 Pro, 2026-11-03, Firefox 159 + Zen patches)
 
