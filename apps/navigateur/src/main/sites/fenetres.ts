@@ -856,8 +856,10 @@ export class FenetresSites {
   /**
    * Ce qu'une extension de l'appli ouvre (`tabs.create`, `windows.create`, `runtime.openOptionsPage`) : une page d'une
    * extension chargée dans l'appli s'ouvre dans une petite fenêtre cachée en test, de la session de l'appli, fermée avec
-   * elle ; une page de l'appli fait aller la vue (comme une navigation demandée par l'agent). L'adresse est revérifiée
-   * ici : `openOptionsPage` ne passe pas par `verifierUrl`. Tout le reste lève.
+   * elle ; une page de l'appli fait aller la vue, seulement en vue « site » (I2 : même règle que `tabs.update`,
+   * `peutChargerPourExtension` ; jamais la page cachée sous l'accueil ou la carte d'accord, et jamais attribuée à
+   * l'agent : ni accueil quitté, ni adresse mise en attente pour après la carte). L'adresse est revérifiée ici :
+   * `openOptionsPage` ne passe pas par `verifierUrl`. Tout le reste lève.
    */
   async ouvrirPourExtension(id: string, url: string): Promise<[WebContents, BrowserWindow]> {
     const o = this.ouverte(id);
@@ -871,7 +873,10 @@ export class FenetresSites {
       if (!sessionSite(id).extensions.getExtension(extension)) throw new Error(`page d'une extension absente de l'appli ${id}`);
       return this.ouvrirPageExtension(o, extension, url);
     }
-    if (o.vue.webContents.isDestroyed() || this.naviguerPourAgent(id, url) === "refuse") throw new Error(`adresse refusée dans l'appli ${id}`);
+    if (o.vue.webContents.isDestroyed() || !this.peutChargerPourExtension(id, o.vue.webContents, url) || !this.adressePermise(id, url))
+      throw new Error(`adresse refusée dans l'appli ${id}`);
+    this.aller(id, url);
+    this.diffuserEtat(o);
     return [o.vue.webContents, o.fenetre];
   }
 

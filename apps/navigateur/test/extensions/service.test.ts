@@ -58,8 +58,9 @@ let reponseDemarrage: () => Promise<boolean>;
 const etatNav = (prive: boolean) =>
   ({ espaces: [{ id: "e1", profil: "defaut", prive }], profils: [{ id: "defaut" }], fenetres: [], onglets: {} }) as unknown as EtatNavigateur;
 
-function demarrer(avecAgent = false) {
+function demarrer(avecAgent = false, avant?: (s: InstanceType<typeof ServiceExtensions>) => void) {
   const service = new ServiceExtensions();
+  avant?.(service);
   const magasin = { get etat() { return nav; }, abonner: (f: (e: EtatNavigateur) => void) => void abonnes.push(f) };
   const profils = {
     synchroniser: async (e: EtatExtensions) => {
@@ -1164,6 +1165,62 @@ test("C1 ouvertureSite avant la fin du démarrage du service : elle l'attend, pu
   expect(finie).toBe(true);
   expect(journal).toContain("brancher:vidola:persist:site-vidola");
   expect(journal.at(-1)).toBe("synchro");
+});
+
+test("I1 démarrage du service qui ne finit jamais : une appli sans aucune activation s'ouvre dès le registre lu ; une appli avec activation attend toujours", async () => {
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  // Une activation pour « vidola » seulement (une autre empreinte compte quand même : c'est une activation pour elle).
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [CLE]: { ...entree("store", []), applis: { vidola: "E0" } } } }));
+  synchroTenue = new Promise<void>(() => {});
+  const { service } = demarrer();
+  let equipee = false;
+  void service.ouvertureSite("vidola", "E1").then(() => (equipee = true));
+  await expect(service.ouvertureSite("youtube", "E1")).resolves.toBeUndefined();
+  await new Promise((ok) => setTimeout(ok, 50));
+  expect(equipee).toBe(false);
+  // Toujours retenue : la synchronisation de fin de démarrage la verra.
+  expect(service.empreinteSite("youtube")).toBe("E1");
+});
+
+test("I1 registre illisible : une appli sans activation connue s'ouvre quand même", async () => {
+  writeFileSync(join(dossier, "etat.json"), "{ pas du json");
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { service, pret } = demarrer();
+  await service.ouvertureSite("youtube", "E1");
+  await pret;
+  erreur.mockRestore();
+});
+
+test("m2 retirerSite avant la fin du démarrage : noté, ses activations et ses vues sont retirées à la fin du démarrage", async () => {
+  for (const id of [ID, ID2]) {
+    const version = join(dossier, "store", id, "1.0.0_0");
+    mkdirSync(version, { recursive: true });
+    writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  }
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({
+      version: 1,
+      toutesCoupees: false,
+      extensions: {
+        [CLE]: { ...entree("store", []), applis: { vidola: "E1", autre: "E1", garde: "E1" }, vues: { "site:vidola": "1.0.0", "site:autre": "1.0.0", defaut: "1.0.0" } },
+        [CLE2]: { ...entree("store", []), vues: { "site:vidola": "1.0.0" } },
+      },
+    }),
+  );
+  // Avant que `demarrer` soit appelé (le service n'a pas encore son dossier), puis appelé mais le registre pas encore lu.
+  const { service, pret } = demarrer(false, (s) => void s.retirerSite("autre"));
+  const retrait = service.retirerSite("vidola");
+  await retrait;
+  await pret;
+  const r = (JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")) as EtatExtensions).extensions;
+  expect(r[CLE]!.applis).toEqual({ garde: "E1" });
+  expect(r[CLE]!.vues).toEqual({ defaut: "1.0.0" });
+  expect(r[CLE2]!.vues).toEqual({});
+  // La synchronisation de fin de démarrage ne veut plus rien dans l'appli retirée.
+  expect(synchronisees.at(-1)!.extensions[CLE]!.applis).toEqual({ garde: "E1" });
 });
 
 test("fermetureSite : la synchronisation suivante ne veut plus rien dans la session de l'appli", async () => {

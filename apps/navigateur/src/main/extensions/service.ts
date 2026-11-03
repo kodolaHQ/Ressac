@@ -209,6 +209,8 @@ export class ServiceExtensions {
   private verification: Promise<void> | null = null;
   /** Profils effacés avant le démarrage du service : retirés du registre dès qu'il est prêt. */
   private profilsARetirer: IdProfil[] = [];
+  /** Applis de site supprimées avant la fin du démarrage du service : retirées du registre dès qu'il est prêt (m2). */
+  private sitesARetirer: IdSite[] = [];
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
   /**
@@ -219,6 +221,12 @@ export class ServiceExtensions {
   /** Fin de `demarrer`, réussi ou non (C1 : `ouvertureSite` l'attend avant de synchroniser). */
   private signalerDemarre: () => void = () => {};
   private readonly demarre = new Promise<void>((ok) => (this.signalerDemarre = ok));
+  /**
+   * Registre lu (ou illisible), ou fin de `demarrer` : `ouvertureSite` sait alors si l'appli a une activation (I1). Sans
+   * aucune, elle n'attend pas `demarre`.
+   */
+  private signalerEtatLu: () => void = () => {};
+  private readonly etatLu = new Promise<void>((ok) => (this.signalerEtatLu = ok));
   /** Mises à jour inscrites que rien ne chargeait encore : résolues après chaque synchronisation (`resoudreEssai`). */
   private essaisMaj = new Map<string, { essai: EssaiMiseAJour; liberer: () => void }>();
   private poser: PoserQuestion | undefined;
@@ -283,6 +291,7 @@ export class ServiceExtensions {
     try {
       await this.demarrerService(o);
     } finally {
+      this.signalerEtatLu();
       this.signalerDemarre();
     }
   }
@@ -317,6 +326,7 @@ export class ServiceExtensions {
       console.error("[extensions] registre illisible, aucune extension chargée :", e);
       return;
     }
+    this.signalerEtatLu();
     await this.relireNoms().catch((e: unknown) => console.error("[extensions] noms localisés non relus :", e));
     await this.preparerStore();
     if (o.dossierAgent) {
@@ -330,8 +340,9 @@ export class ServiceExtensions {
     this.pret = true;
     // Un état écrit avant ce démarrage (session éditée, profil effacé au lancement) : le registre est remis d'aplomb.
     const aRetirer = this.profilsARetirer.splice(0);
-    if (aRetirer.length > 0 || appliquerProfilsPrives(this.etat, profilsPrives(o.magasin.etat)).retirees.length > 0)
-      await this.modifier((e) => aRetirer.reduce(retirerProfil, e));
+    const sites = this.sitesARetirer.splice(0);
+    if (aRetirer.length > 0 || sites.length > 0 || appliquerProfilsPrives(this.etat, profilsPrives(o.magasin.etat)).retirees.length > 0)
+      await this.modifier((e) => sites.reduce(retirerSite, aRetirer.reduce(retirerProfil, e)));
     else await this.appliquer();
     // Repère des tests (mode invisible) : le démarrage est fini, la première synchronisation complète faite.
     if (process.env.WEBAIOS_INVISIBLE === "1") (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes = true;
@@ -1011,10 +1022,16 @@ export class ServiceExtensions {
 
   /**
    * Une appli de site s'ouvre (ou ses domaines changent) : son empreinte est retenue, puis, une fois le service démarré
-   * (C1, même en échec), ses extensions sont synchronisées avant que la fenêtre ne charge sa première page.
+   * (C1, même en échec), ses extensions sont synchronisées avant que la fenêtre ne charge sa première page. Une appli
+   * sans aucune activation dans le registre lu (aucune `applis[id]`, quelle qu'en soit l'empreinte) n'attend pas le
+   * démarrage (I1) : rien n'y serait chargé, et la synchronisation de fin de démarrage la verra quand même.
    */
   async ouvertureSite(id: IdSite, empreinte: string): Promise<void> {
     this.ouverts.set(id, empreinte);
+    if (!this.pret) {
+      await this.etatLu;
+      if (!this.pret && !Object.values(this.etat.extensions).some((x) => x.applis?.[id] !== undefined)) return;
+    }
     await this.demarre;
     // Fermée (ou rouverte avec d'autres domaines) entre-temps : la synchronisation de cet autre appel suffit.
     if (this.pret && this.ouverts.get(id) === empreinte) await this.appliquer();
@@ -1114,7 +1131,11 @@ export class ServiceExtensions {
    */
   async retirerSite(id: IdSite): Promise<void> {
     const o = this.o;
-    if (!o) return;
+    // m2 : avant la fin du démarrage, noté (comme `retirerProfil`) ; le stockage, lui, est effacé par la session de l'appli.
+    if (!o || !this.pret) {
+      this.sitesARetirer.push(id);
+      return;
+    }
     const portee = porteeSite(id);
     const aEffacer = Object.entries(this.etat.extensions)
       .filter(([cle, x]) => lireCle(cle)?.source === "store" && (x.applis?.[id] !== undefined || x.vues[portee] !== undefined))

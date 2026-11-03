@@ -162,6 +162,36 @@ test("ouvrirPourExtension : une page de l'appli fait aller la vue ; une autre ad
   expect(fenetresCreees).toHaveLength(1);
 });
 
+test("I2 ouvrirPourExtension d'une page de l'appli : refusée sur l'accueil ou la carte d'accord (comme tabs.update), jamais attribuée à l'agent ; en vue « site », la vue y va", async () => {
+  const f = fenetres();
+  const vers = "https://vidola-a.example/film/2";
+  // L'accueil affiché : rien n'est chargé, l'accueil reste.
+  f.ouvrir({ ...site, aAccueil: true });
+  const vue = vuesCreees[0]!.webContents;
+  await expect(f.ouvrirPourExtension("vidola", vers)).rejects.toThrow();
+  expect(vue.charges).toEqual([]);
+  expect(f.etat("vidola")?.vue).toBe("accueil");
+  expect(f.peutChargerPourExtension("vidola", vue as never, vers)).toBe(false);
+  // En vue « site » : la vue y va (même verdict que tabs.update).
+  f.entrer("vidola");
+  expect(f.peutChargerPourExtension("vidola", vue as never, vers)).toBe(true);
+  const [wc] = await f.ouvrirPourExtension("vidola", vers);
+  expect(wc).toBe(vue);
+  expect(vue.charges.at(-1)).toBe(vers);
+  expect(f.etat("vidola")?.vue).toBe("site");
+  await f.fermer("vidola", 0);
+
+  // La carte d'accord affichée : refusée, et rien n'est mis en attente pour après le choix de l'utilisateur.
+  vuesCreees.splice(0);
+  f.ouvrir({ ...site, aAccueil: true, accordRequis: true });
+  const vue2 = vuesCreees[0]!.webContents;
+  expect(f.etat("vidola")?.vue).toBe("accord");
+  await expect(f.ouvrirPourExtension("vidola", vers)).rejects.toThrow();
+  f.apresAccord("vidola", null);
+  expect(vue2.charges).toEqual([]);
+  expect(f.etat("vidola")?.vue).toBe("accueil");
+});
+
 test("fermerPageExtension : ferme seulement une petite fenêtre qu'elle a ouverte ; une page déjà détruite, la vue ou l'interface : rien", async () => {
   const f = fenetres();
   f.ouvrir(site);
