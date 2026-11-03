@@ -118,6 +118,17 @@ export const CANAUX = {
   siteAccueilImage: "webaios:site-accueil-image",
   /** Vrai geste de l'utilisateur dans le cadre de l'accueil, signalé par le preload de ce cadre (seul lui permet `ouvrir`). */
   siteAccueilGeste: "webaios:site-accueil-geste",
+  /**
+   * Le menu « Extensions » de la barre d'une appli de site (plan 16) : ses lignes, l'interrupteur d'une extension, les
+   * boutons des extensions chargées, « Gérer les extensions » et la hauteur de son panneau (qui repousse la vue).
+   */
+  siteExtensionsListe: "webaios:site-extensions-liste",
+  siteExtensionsBasculer: "webaios:site-extensions-basculer",
+  siteExtensionsBarre: "webaios:site-extensions-barre",
+  siteExtensionsGerer: "webaios:site-extensions-gerer",
+  siteExtensionsPanneau: "webaios:site-extensions-panneau",
+  /** Main → interface de l'appli : fermer le menu « Extensions » (clic dans la vue du site, plein écran). */
+  siteExtensionsFermer: "webaios:site-extensions-fermer",
   /** Page Applications (fenêtre principale) : les applis de site. */
   sitesListe: "webaios:sites-liste",
   /** Diffusé quand une appli de site apparaît, change, s'ouvre ou se ferme (sans contenu : relire). */

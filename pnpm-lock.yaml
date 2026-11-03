@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  electron-chrome-extensions@4.10.0: 15b61b3fe1564328297f9abba66600533d00dcf0fee95408b63f879f05f958af
+  electron-chrome-extensions@4.10.0: 1479f06555423038c6a825322f8b8c171e280c81f04d47003d06eafbdd797933
   electron-chrome-web-store@0.13.0: b4f4ebe2c710a9c995682f6a8a2b5a723fd9dfc6ea12a0eaf92bd9144f7dde30
 
 importers:
@@ -177,7 +177,7 @@ importers:
         version: link:../../packages/noyau
       electron-chrome-extensions:
         specifier: 4.10.0
-        version: 4.10.0(patch_hash=15b61b3fe1564328297f9abba66600533d00dcf0fee95408b63f879f05f958af)
+        version: 4.10.0(patch_hash=1479f06555423038c6a825322f8b8c171e280c81f04d47003d06eafbdd797933)
       electron-chrome-web-store:
         specifier: 0.13.0
         version: 0.13.0(patch_hash=b4f4ebe2c710a9c995682f6a8a2b5a723fd9dfc6ea12a0eaf92bd9144f7dde30)
@@ -2338,7 +2338,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  electron-chrome-extensions@4.10.0(patch_hash=15b61b3fe1564328297f9abba66600533d00dcf0fee95408b63f879f05f958af):
+  electron-chrome-extensions@4.10.0(patch_hash=1479f06555423038c6a825322f8b8c171e280c81f04d47003d06eafbdd797933):
     dependencies:
       debug: 4.4.3
     transitivePeerDependencies:

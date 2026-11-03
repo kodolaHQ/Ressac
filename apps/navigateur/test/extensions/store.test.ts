@@ -428,3 +428,66 @@ test("desinstallerStore : entrée retirée du registre (les sessions suivent), p
   expect(Object.keys(etat.extensions)).toEqual([`store:${"b".repeat(32)}`]);
   expect(existsSync(join(dossier, "store", id))).toBe(false);
 });
+
+// ——— Plan 16, tâche 3 : les applis de site ———
+
+test("retirerDuProfilStore depuis le dernier profil d'une extension active dans une appli : retirée du profil seulement, store/<id> reste, l'entrée garde applis", async () => {
+  const { retirerDuProfilStore } = await import("../../src/main/extensions/store");
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, applis: { vidola: "E1" } } } };
+  await retirerDuProfilStore(cle, "defaut", dependances());
+  expect(etat.extensions[cle]).toMatchObject({ profils: [], applis: { vidola: "E1" } });
+  expect(existsSync(join(dossier, "store", id, "1.0.0_0", "manifest.json"))).toBe(true);
+});
+
+test("desinstallerStore : effacerDansSites reçoit les applis (activations et vues site:*) et le dossier de la version, qui existe encore à ce moment", async () => {
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  etat = {
+    ...etat,
+    extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, applis: { vidola: "E1" }, vues: { defaut: "1.0.0", "site:autre": "1.0.0", "site:vidola": "1.0.0" } } },
+  };
+  const appels: { cle: string; chemin: string; sites: string[]; present: boolean; inscrite: boolean }[] = [];
+  await desinstallerStore(cle, {
+    ...dependances(),
+    effacerDansSites: async (c, chemin, sites) =>
+      void appels.push({ cle: c, chemin, sites: [...sites].sort(), present: existsSync(join(chemin, "manifest.json")), inscrite: c in etat.extensions }),
+  });
+  expect(appels).toEqual([{ cle, chemin: join(dossier, "store", id, "1.0.0_0"), sites: ["autre", "vidola"], present: true, inscrite: false }]);
+  expect(existsSync(join(dossier, "store", id))).toBe(false);
+});
+
+test("installerStore d'une extension déjà inscrite garde ses applis", async () => {
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, applis: { vidola: "E1" } } } };
+  // Fichiers disparus : téléchargée de nouveau, l'entrée réécrite.
+  rmSync(join(dossier, "store", id), { recursive: true, force: true });
+  const travail = { ...espace, id: "e2", nom: "Travail", profil: "travail" } as Espace;
+  expect(await installerStore(id, contexte("travail", travail), dependances())).toEqual({ ok: true });
+  expect(etat.extensions[cle]).toMatchObject({ profils: ["defaut", "travail"], applis: { vidola: "E1" } });
+  // Déjà installée : activée dans un autre profil, applis gardées.
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, profils: [] } } };
+  expect(await installerStore(id, contexte(), dependances())).toEqual({ ok: true });
+  expect(etat.extensions[cle]).toMatchObject({ profils: ["defaut"], applis: { vidola: "E1" } });
+});
+
+test("M4 retirerDuProfilStore depuis le dernier profil, sans appli active : le stockage est effacé dans les applis de ses vues site:* avant que store/<id> ne parte", async () => {
+  const { retirerDuProfilStore } = await import("../../src/main/extensions/store");
+  const id = publier();
+  await installerStore(id, contexte(), dependances());
+  const cle = `store:${id}`;
+  etat = { ...etat, extensions: { ...etat.extensions, [cle]: { ...etat.extensions[cle]!, vues: { defaut: "1.0.0", "site:autre": "1.0.0" } } } };
+  const appels: { sites: string[]; chemin: string; present: boolean; inscrite: boolean }[] = [];
+  await retirerDuProfilStore(cle, "defaut", {
+    ...dependances(),
+    effacerDansSites: async (c, chemin, sites) => void appels.push({ sites: [...sites], chemin, present: existsSync(join(chemin, "manifest.json")), inscrite: c in etat.extensions }),
+  });
+  expect(appels).toEqual([{ sites: ["autre"], chemin: join(dossier, "store", id, "1.0.0_0"), present: true, inscrite: false }]);
+  expect(existsSync(join(dossier, "store", id))).toBe(false);
+  expect(etat.extensions[cle]).toBeUndefined();
+});

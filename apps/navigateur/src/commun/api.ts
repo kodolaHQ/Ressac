@@ -2,7 +2,7 @@ import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
-import type { BarreExtensions, LigneExtension, LigneExtensionEspace } from "./extensions";
+import type { BarreExtensions, LigneExtension, LigneExtensionEspace, LigneExtensionSite } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
@@ -603,4 +603,21 @@ export interface ApiSite {
   ouvrir(adresse: string): Promise<boolean>;
   /** Une image d'un domaine de l'appli, chargée avec sa session, en `data:` ; null si elle est refusée. */
   image(url: string): Promise<string | null>;
+  /** Le menu « Extensions » de la barre (plan 16) : les extensions du Store, activées pour cette appli seulement. */
+  extensions: {
+    /** Les extensions du Store, et leur état dans cette appli. */
+    liste(): Promise<LigneExtensionSite[]>;
+    /** L'interrupteur : la vue du site est rechargée après une réussite (la page déjà chargée seulement). */
+    basculer(cle: string, actif: boolean): Promise<ResultatExtension>;
+    /** Partition `persist:site-<id>`, onglet = id de la vue en vue « site » (sinon null), et les extensions chargées. */
+    barre(): Promise<BarreExtensions>;
+    /** `CANAUX.extensionsChange` ; renvoie le désabonnement. */
+    surChange(rappel: () => void): () => void;
+    /** La page Extensions, dans une fenêtre principale. */
+    gerer(): void;
+    /** La hauteur du panneau du menu ouvert sous la barre (0 : fermé), bornée à `PANNEAU_EXTENSIONS_MAX`. */
+    panneau(hauteur: number): void;
+    /** Le process principal demande de fermer le menu (clic dans la vue du site, plein écran) ; renvoie le désabonnement. */
+    surFermer(rappel: () => void): () => void;
+  };
 }

@@ -234,3 +234,45 @@ test("cadre about: : la question synchrone n'est posée que si son origine est c
   await preloadWebaios("renderer", "about:blank", null);
   expect(agent.demandes).toBe(1);
 });
+
+test("I2 correctifs : l'accusé « démarrée » part après que updateEnabledRulesets a abouti, ou tout de suite sans ruleset ; jamais s'il échoue", async () => {
+  await preloadWebaios("service-worker", `chrome-extension://${"a".repeat(32)}/fond.js`);
+  const { func, args } = executions[0]!;
+  // Dans un service worker, le second argument envoie l'accusé au processus principal.
+  expect(typeof args[1]).toBe("function");
+  (args[1] as () => void)();
+  expect(invocations).toEqual([["webaios:extension-demarrage"], ["webaios:extension-demarree"]]);
+
+  const ordre: string[] = [];
+  const dnr = {
+    updateEnabledRulesets: vi.fn(async () => {
+      await new Promise((ok) => setTimeout(ok, 5));
+      ordre.push("rulesets");
+    }),
+  };
+  vi.stubGlobal("chrome", { runtime: {}, declarativeNetRequest: dnr });
+  func(Promise.resolve({ installation: { reason: "install" }, rulesets: ["a"], rulesetsInactifs: [], agent: false }), () => ordre.push("demarree"));
+  await vi.waitFor(() => expect(ordre).toEqual(["rulesets", "demarree"]));
+
+  // Rien à poser (redémarrage) : tout de suite.
+  ordre.length = 0;
+  vi.stubGlobal("chrome", { runtime: {}, declarativeNetRequest: dnr });
+  func(Promise.resolve({ installation: null, rulesets: [], rulesetsInactifs: [], agent: false }), () => ordre.push("demarree"));
+  await vi.waitFor(() => expect(ordre).toEqual(["demarree"]));
+
+  // Les rulesets refusés : aucun accusé (le processus principal attend jusqu'à son délai).
+  ordre.length = 0;
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.stubGlobal("chrome", { runtime: {}, declarativeNetRequest: { updateEnabledRulesets: async () => Promise.reject(new Error("non")) } });
+  func(Promise.resolve({ installation: { reason: "install" }, rulesets: ["a"], rulesetsInactifs: [], agent: false }), () => ordre.push("demarree"));
+  await new Promise((ok) => setTimeout(ok, 20));
+  expect(ordre).toEqual([]);
+  erreur.mockRestore();
+});
+
+test("I2 correctifs : une page d'extension n'envoie jamais l'accusé « démarrée » (seul le fond le fait)", async () => {
+  await preloadWebaios("renderer", `chrome-extension://${"a".repeat(32)}/popup.html`);
+  const { args } = executions[0]!;
+  (args[1] as () => void)();
+  expect(invocations).toEqual([["webaios:extension-demarrage"]]);
+});

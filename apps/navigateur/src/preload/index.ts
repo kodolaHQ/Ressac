@@ -179,6 +179,15 @@ const site: ApiSite = {
   surMemoire: (rappel) => ecouter(CANAUX.siteAccueilMemoireChange, rappel),
   ouvrir: (adresse) => ipcRenderer.invoke(CANAUX.siteAccueilOuvrir, adresse),
   image: (url) => ipcRenderer.invoke(CANAUX.siteAccueilImage, url),
+  extensions: {
+    liste: () => ipcRenderer.invoke(CANAUX.siteExtensionsListe),
+    basculer: (cle, actif) => ipcRenderer.invoke(CANAUX.siteExtensionsBasculer, cle, actif),
+    barre: () => ipcRenderer.invoke(CANAUX.siteExtensionsBarre),
+    surChange: (rappel) => ecouter(CANAUX.extensionsChange, () => rappel()),
+    gerer: () => ipcRenderer.send(CANAUX.siteExtensionsGerer),
+    panneau: (hauteur) => ipcRenderer.send(CANAUX.siteExtensionsPanneau, hauteur),
+    surFermer: (rappel) => ecouter(CANAUX.siteExtensionsFermer, () => rappel()),
+  },
 };
 
 /**
@@ -189,12 +198,13 @@ const cadrePrincipal = process.isMainFrame !== false && window.top === window;
 const estPastille = process.argv.some((a) => a.startsWith(ARG_PASTILLE));
 const estSite = process.argv.some((a) => a.startsWith(ARG_SITE));
 if (cadrePrincipal) {
-  // La fenêtre d'une appli de site n'a que `site` : ni l'API de la fenêtre principale, ni les boutons des extensions.
+  // La fenêtre d'une appli de site n'a que `site` (avec le menu de ses extensions) : jamais l'API de la fenêtre principale.
   if (estSite) contextBridge.exposeInMainWorld("webaios", { site });
   else contextBridge.exposeInMainWorld("webaios", estPastille ? pastille : api);
-  // Les boutons des extensions (`<button is="browser-action">`, BarreExtensions.svelte) : l'interface d'une fenêtre
-  // principale seulement, jamais un cadre (affichage de widget), la pastille d'une appli ni une fenêtre d'appli de site.
-  if (!estPastille && !estSite) injectBrowserAction();
+  // Les boutons des extensions (`<button is="browser-action">`) : l'interface d'une fenêtre principale
+  // (BarreExtensions.svelte) et celle d'une fenêtre d'appli de site (sa barre, plan 16), dans leur cadre principal
+  // seulement ; jamais un cadre (affichage de widget, accueil d'une appli) ni la pastille d'une appli.
+  if (!estPastille) injectBrowserAction();
 } else {
   // Tout autre cadre de l'interface est l'affichage d'un widget ou un cadre qu'il a créé : ni WebRTC, ni indice réseau
   // (voir garde-widget.ts), posé avant le premier script de la page.

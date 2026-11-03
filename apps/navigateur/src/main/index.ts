@@ -36,6 +36,7 @@ import { SchemaIdWidget, type EtatIaAffiche } from "../commun/api";
 import { cadreVisible } from "./applications/fenetres";
 import { demarrerApplications, type ServiceApplications } from "./applications/service";
 import { demarrerSites, type ServiceSites } from "./sites/service";
+import { sessionSite } from "./sites/session";
 import { repondreAccueilSite } from "./sites/accueil";
 import { requetesDe } from "./image-distante";
 import { SCHEMA_SITE } from "../commun/sites";
@@ -55,7 +56,7 @@ import {
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
-import { ExtensionsProfils } from "./extensions/sessions";
+import { ExtensionsProfils, servirIconesExtensions } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
 
@@ -298,6 +299,8 @@ app.whenReady().then(async () => {
   } catch (e) {
     console.error("[webaios] le réseau de l'interface n'a pas pu être coupé :", e);
   }
+  // Avant toute fenêtre : les icônes des boutons d'extension (crx:), même si aucune session n'est encore équipée.
+  servirIconesExtensions();
   const sessionIcones = session.fromPartition("webaios-icones");
   const requetesIcones = requetesDe(sessionIcones);
   protocol.handle(SCHEMA_ICONE, (requete) => repondreIcone((url, init) => sessionIcones.fetch(url, init), requete.url));
@@ -324,6 +327,11 @@ app.whenReady().then(async () => {
   minuteurPurge = setInterval(() => historique?.purger(), 6 * 60 * 60 * 1000);
   const diffuser = (canal: string, valeur: unknown) => {
     for (const f of fenetres.values()) if (!f.isDestroyed()) f.webContents.send(canal, valeur);
+  };
+  /** Le registre ou ce qui est chargé a changé : les fenêtres principales et l'interface de chaque appli de site relisent. */
+  const diffuserExtensions = () => {
+    diffuser(CANAUX.extensionsChange, null);
+    sites?.fenetres.diffuserATous(CANAUX.extensionsChange, null);
   };
   /**
    * État de l'IA locale pour l'indicateur. Arrêtée, elle est vérifiée : sans Kev (et sans WEBAIOS_KEV_URL des tests),
@@ -404,8 +412,9 @@ app.whenReady().then(async () => {
     const info = infosOnglets(magasin.etat).find((x) => x.id === id);
     return !!info && agent?.noyau()?.politique.peutLire(info) === true;
   };
-  // Extensions : une instance de la bibliothèque par session de profil de connexion (jamais l'interface, la lecture
-  // publique, les icônes ni les applis), branchée sur les vues des onglets.
+  // Extensions : une instance de la bibliothèque par session de profil de connexion, et par session d'appli de site où
+  // une extension du Store est active (plan 16) ; jamais l'interface, la lecture publique, les icônes ni les applications
+  // du plan 4. Branchée sur les vues des onglets, et sur la vue du site de chaque appli (son seul onglet web).
   const extensions = new ExtensionsProfils({
     dossier: join(dossier, "extensions"),
     etat: () => magasin.etat,
@@ -459,9 +468,22 @@ app.whenReady().then(async () => {
     desinstallerDepuisStore: (id, profil) => serviceExtensions.desinstallerDepuisStore(id, profil),
     // Consoles et plantages en boucle (désactivée partout au troisième en une minute).
     consoles: serviceExtensions.consoles,
-    // Ce qui est chargé a pu changer : la barre et la page Extensions relisent.
-    apresSynchro: () => diffuser(CANAUX.extensionsChange, null),
+    // Ce qui est chargé a pu changer : la barre, la page Extensions et la barre de chaque appli de site relisent.
+    apresSynchro: () => diffuserExtensions(),
     // verifierUrl / verifierHote : les extensions de l'agent sont vérifiées par `ExtensionsProfils` (reseau.ts).
+    // Les applis de site (plan 16) : `sites` démarre plus loin, d'où ces fermetures paresseuses (avant lui, rien n'est
+    // ouvert : aucune vue, aucune empreinte, aucune adresse permise).
+    site: {
+      vue: (id) => sites?.fenetres.vueEtFenetre(id) ?? null,
+      empreinte: (id) => serviceExtensions.empreinteSite(id),
+      urlPermise: (id, extensionId, url) => sites?.fenetres.urlPermisePourExtension(id, extensionId, url) ?? false,
+      ouvrir: (id, url) => {
+        if (!sites) return Promise.reject(new Error("applis de site pas prêtes"));
+        return sites.fenetres.ouvrirPourExtension(id, url);
+      },
+      fermer: (wc) => sites?.fenetres.fermerPageExtension(wc),
+      peutCharger: (id, wc, url) => sites?.fenetres.peutChargerPourExtension(id, wc, url) ?? false,
+    },
   });
   // Pages des extensions de l'agent : navigations, ouvertures et WebRTC (reseau.ts).
   brancherPagesAgent((id) => extensions.accordAgent(id));
@@ -522,7 +544,11 @@ app.whenReady().then(async () => {
       dossierGardes: join(__RESSOURCES_NOYAU__, "extensions"),
       // Ce qu'écrit l'agent (~/WebAiOs/extensions) : jamais un droit, seulement la source des copies accordées.
       dossierAgent: cheminsEspace().extensions,
-      surChange: () => diffuser(CANAUX.extensionsChange, null),
+      surChange: () => diffuserExtensions(),
+      // C9 : injectée (le service ne charge pas sites/session.ts) ; appelée seulement une fois les applis démarrées.
+      sessionSite,
+      // C11 : sans toucher aux ids montrés par la section « Sites ».
+      nomsSites: async () => (await sites?.noms()) ?? {},
     })
     .catch((e) => console.error("[extensions] démarrage :", e));
   // Nos mises à jour du Store (jamais celles de la bibliothèque) : 60 s après le démarrage, puis toutes les 5 h.
@@ -758,6 +784,31 @@ app.whenReady().then(async () => {
       ouvrir: async (id, adresse) => sites?.ouvrirDepuisAccueil(id, adresse) ?? false,
       image: async (id, url) => (await sites?.imageAccueil(id, url)) ?? null,
       gesteAccueil: (id) => sites?.gesteAccueil(id),
+      extensionsListe: (id) => serviceExtensions.pourSite(id),
+      extensionsBasculer: async (id, cle, actif) => {
+        // La vue d'avant l'écriture : une appli fermée (ou rouverte) pendant l'attente n'est pas rechargée.
+        const avant = sites?.fenetres.vueEtFenetre(id)?.wc;
+        const r = await serviceExtensions.basculerSite(cle, id, actif);
+        if (r.ok && avant && sites?.fenetres.vueEtFenetre(id)?.wc === avant) sites.fenetres.rechargerVue(id);
+        return r;
+      },
+      extensionsBarre: (id) => {
+        const vue = sites?.fenetres.etat(id)?.vue === "site" ? sites.fenetres.vueEtFenetre(id)?.wc : undefined;
+        return serviceExtensions.barreSite(id, vue ? vue.id : null);
+      },
+      // La page Extensions dans la fenêtre principale au premier plan (rouverte s'il n'y en a plus), montrée hors test.
+      extensionsGerer: () => {
+        if (!fenetreAgent()) rouvrirFenetres();
+        const id = fenetreAgent();
+        if (!id) return;
+        magasin.agir({ type: "ouvrirExtensions", fenetreId: id });
+        const f = fenetres.get(id);
+        if (!f || INVISIBLE) return;
+        if (f.isMinimized()) f.restore();
+        f.show();
+        f.focus();
+      },
+      extensionsPanneau: (id, hauteur) => sites?.fenetres.panneauExtensions(id, hauteur),
     },
     extensions: {
       // Dans l'espace actif de la fenêtre émettrice ; la carte s'ouvre dans cette fenêtre.
@@ -936,6 +987,18 @@ app.whenReady().then(async () => {
     },
     // Supprimée : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée au même id redemande la carte).
     surSupprimee: (id) => agent?.noyau()?.politique.retirerLectureSite(id),
+    // Les extensions du Store activées dans l'appli (plan 16) : chargées avant sa première page, et seulement pendant
+    // qu'elle est ouverte ; la vue du site est leur seul onglet ; retirées (stockage effacé) à la suppression.
+    extensions: {
+      ouverture: (id, empreinte) => serviceExtensions.ouvertureSite(id, empreinte),
+      fermeture: (id) => serviceExtensions.fermetureSite(id),
+      suppression: (id) => serviceExtensions.retirerSite(id),
+      surVue: (_id, quoi, wc, f) => {
+        if (quoi === "detruite") return extensions.ongletDetruit(wc);
+        extensions.ongletCree(wc, f);
+        extensions.ongletActive(wc);
+      },
+    },
   });
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {

@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { appendFileSync, realpathSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   app,
   ipcMain,
@@ -15,7 +17,18 @@ import {
 } from "electron";
 import { ElectronChromeExtensions } from "electron-chrome-extensions";
 import { installChromeWebStore } from "electron-chrome-web-store";
-import { chargeesDans, lireCle, type EtatExtensions, type IdProfil, type MessageConsole, type Portee } from "@webaios/noyau";
+import {
+  chargeesDans,
+  chargeesDansSite,
+  lireCle,
+  porteeSite,
+  siteDePortee,
+  type EtatExtensions,
+  type IdProfil,
+  type IdSite,
+  type MessageConsole,
+  type Portee,
+} from "@webaios/noyau";
 import type { EtatNavigateur, IdEspace, IdFenetre } from "../../commun/modele";
 import { estInvisible } from "../contenus-invisibles";
 import { niveauConsole, type ConsolesExtensions } from "./consoles";
@@ -24,6 +37,11 @@ import { droitsOnglets, hotePermisAgent, idChromeDeDossier, idExtensionDe, urlPe
 
 /** Canal du preload des correctifs (`src/preload/extensions.ts`) : service workers et pages `chrome-extension://`. */
 export const CANAL_DEMARRAGE = "webaios:extension-demarrage";
+/**
+ * Accusé du preload des correctifs, service workers seulement (I2) : la réponse à `CANAL_DEMARRAGE` est appliquée (les
+ * rulesets du manifeste posés par `updateEnabledRulesets`, ou rien à poser). C'est lui que `attendreDemarrage` attend.
+ */
+export const CANAL_DEMARREE = "webaios:extension-demarree";
 /**
  * Canaux du garde des extensions de l'agent (`globalThis.__webaios` exposé par le preload des correctifs) : une adresse
  * à ouvrir (`tabs.create`, `tabs.update`, `windows.create`), un onglet où agir (`scripting`, `tabs.insertCSS`), et
@@ -136,6 +154,18 @@ export function detournerNotifications(extensions: ElectronChromeExtensions, fic
 let fenetresNeutralisees = false;
 let pagesEcoutees = false;
 let protocoleCrx = false;
+
+/**
+ * Sert les icônes des boutons d'extension (`crx://extension-icon/…`) à l'interface (session par défaut), une fois. À
+ * appeler au démarrage, avant toute fenêtre : une page ne voit que les protocoles servis quand elle a été chargée. Sans
+ * cela, la première session équipée après coup (une extension activée dans une appli de site, ou une première
+ * extension dans un profil) aurait des boutons sans icône jusqu'au rechargement des fenêtres déjà ouvertes.
+ */
+export function servirIconesExtensions(): void {
+  if (protocoleCrx) return;
+  protocoleCrx = true;
+  ElectronChromeExtensions.handleCRXProtocol(sessionsElectron.defaultSession);
+}
 /** Les instances vivantes : le canal des pages (`ipcMain`, un seul par processus) cherche celle de la session. */
 const instancesVivantes = new Set<ExtensionsProfils>();
 let canalPagesPose = false;
@@ -244,17 +274,41 @@ const VIDER_STOCKAGE = `(async () => {
   return Object.keys(await chrome.storage.local.get(null)).length;
 })()`;
 
+/**
+ * Le talon d'effacement d'une extension du Store (C6) : même `key` (donc même id Chromium), même nom et même version,
+ * sans fond, scripts de contenu ni règles ; `storage` pour vider `chrome.storage` depuis sa page.
+ */
+/** L'id Chromium que donne la `key` d'un manifeste (sha256 du SPKI DER, 32 premiers chiffres hexadécimaux en a-p). */
+export function idDeCle(cle: string): string {
+  const hex = createHash("sha256").update(Buffer.from(cle, "base64")).digest("hex").slice(0, 32);
+  return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("");
+}
+
+export function manifesteTalonStore(manifeste: unknown): Record<string, unknown> | null {
+  const m = manifeste as { key?: unknown; name?: unknown; version?: unknown } | null;
+  if (!m || typeof m.key !== "string" || m.key === "") return null;
+  return { manifest_version: 3, name: typeof m.name === "string" ? m.name : "WebAiOs — effacement", version: typeof m.version === "string" ? m.version : "1.0.0", key: m.key, permissions: ["storage"] };
+}
+
+/** Ce que la bibliothèque reçoit de chaque session, au-delà de ce qui est commun aux profils et aux applis. */
+type OptionsBibliotheque = ConstructorParameters<typeof ElectronChromeExtensions>[0];
+type OptionsPortee = Required<Pick<OptionsBibliotheque, "createTab" | "selectTab" | "removeTab" | "createWindow" | "verifierUrl">> &
+  Pick<OptionsBibliotheque, "peutFermerOnglet" | "peutFermerFenetre" | "peutChargerOnglet">;
+
 /** Service workers dont le canal de démarrage est posé. */
 const workersEcoutes = new WeakSet<object>();
 /** Sessions équipées par la bibliothèque dans ce processus (chacune ajoute un écouteur à `app`). */
 let sessionsEquipees = 0;
 
 /**
- * Les extensions dans les sessions des profils de connexion : une instance d'`ElectronChromeExtensions` par session de
- * profil (jamais `session.defaultSession`, ni la lecture publique, ni les icônes, ni les applis : seul `brancher` en crée,
- * et seules les sessions de profil y passent), branchée sur les vues des onglets par `ongletCree` / `ongletActive` /
- * `ongletDetruit` (appelés par `GestionnaireVues`). `synchroniser` charge dans chaque session les clés que le registre y
- * active (`chargeesDans`) et retire les autres.
+ * Les extensions dans les sessions des profils de connexion et des applis de site : une instance
+ * d'`ElectronChromeExtensions` par session de profil (`brancher`) ou d'appli de site (`brancherSite`, portée `site:<id>`,
+ * sans page du Store) ; jamais `session.defaultSession`, ni la lecture publique, ni les icônes, ni les applications du
+ * plan 4 : seuls `brancher` et `brancherSite` en créent. Elle est branchée sur les vues des onglets par `ongletCree` /
+ * `ongletActive` / `ongletDetruit` (appelés par `GestionnaireVues`, et pour une appli par `FenetresSites` : la vue du
+ * site est son seul onglet web). `synchroniser` charge dans chaque session les clés que le registre y active
+ * (`chargeesDans` pour un profil, `chargeesDansSite` avec l'empreinte de l'appli ouverte pour une appli) et retire les
+ * autres. Un id de profil qui contient « : » n'est jamais équipé (il pourrait prendre la portée d'une appli).
  */
 export class ExtensionsProfils {
   private instances = new Map<IdProfil, { session: Session; extensions: ElectronChromeExtensions }>();
@@ -286,6 +340,10 @@ export class ExtensionsProfils {
   private ongletsEcoutes = new WeakSet<WebContents>();
   /** Pendant nos propres appels à la bibliothèque, ses rappels `selectTab` / `removeTab` ne reviennent pas vers WebAiOs. */
   private echo = false;
+  /** Démarrages du fond répondus (`<portée>|<clé>`) depuis le dernier chargement (C5, `attendreDemarrage`). */
+  private demarres = new Set<string>();
+  /** Ceux qu'on attend, par `<portée>|<clé>` : chaque rappel reçoit vrai (répondu) ou faux (retirée). */
+  private attentesDemarrage = new Map<string, Set<(ok: boolean) => void>>();
 
   constructor(
     private readonly o: {
@@ -345,6 +403,30 @@ export class ExtensionsProfils {
       lisibleParAgent?(wc: WebContents): boolean;
       /** Après chaque synchronisation des sessions (ce qui est chargé a pu changer : la barre relit). */
       apresSynchro?(): void;
+      /**
+       * Les applis de site (plan 16) ; absent : `brancherSite` ne fait rien. Ses onglets et ses fenêtres passent par
+       * l'appli, jamais par `ouvrirOnglet`, `activer` ni `fermer`.
+       */
+      site?: {
+        /** La vue du site de l'appli ouverte et sa fenêtre (son seul onglet pour la bibliothèque), ou null. */
+        vue(id: IdSite): { wc: WebContents; fenetre: BrowserWindow } | null;
+        /** Empreinte de l'appli ouverte (`empreinteExtensionsSite`), null si elle est fermée : rien n'y est chargé. */
+        empreinte(id: IdSite): string | null;
+        /** `verifierUrl` dans une session d'appli ; faux : l'appel de l'extension échoue. */
+        urlPermise(id: IdSite, extensionId: string, url: string): boolean;
+        /**
+         * `createTab` / `createWindow` : l'onglet et la fenêtre rendus à la bibliothèque. L'adresse n'est PAS toujours
+         * vérifiée avant : `runtime.openOptionsPage` appelle `createTab` sans `verifierUrl` ; l'appli revérifie.
+         */
+        ouvrir(id: IdSite, url: string): Promise<[WebContents, BrowserWindow]>;
+        /** `removeTab` : ferme une page de l'extension ouverte dans sa petite fenêtre ; jamais la vue du site. */
+        fermer(wc: WebContents): void;
+        /**
+         * `tabs.update` vers `url` dans l'onglet `wc` (la vue du site ou une petite fenêtre), juste avant son chargement ;
+         * faux : l'appel échoue et aucune navigation ne commence.
+         */
+        peutCharger(id: IdSite, wc: WebContents, url: string): boolean;
+      };
       /** Délai de chaque étape de l'effacement du stockage (`DELAI_EFFACEMENT_MS` par défaut ; tests). */
       delaiEffacementMs?: number;
       /** Démarrage du service worker au chargement, au plus (`DELAI_DEMARRAGE_FOND_MS` ; tests). */
@@ -424,17 +506,12 @@ export class ExtensionsProfils {
 
   /** Équipe la session d'un profil (une fois) et y charge ses extensions si l'état est déjà connu. */
   brancher(s: Session, profil: IdProfil): void {
-    if (this.instances.has(profil) || ElectronChromeExtensions.fromSession(s)) return;
-    // La bibliothèque ajoute un `app.on("web-contents-created")` par session équipée : sans cela, Node signalerait une
-    // fuite d'écouteurs (10 par défaut) dès le dixième profil. La limite suit le nombre de sessions équipées.
-    app.setMaxListeners(Math.max(app.getMaxListeners(), 10 + ++sessionsEquipees));
-    if (!protocoleCrx) {
-      protocoleCrx = true;
-      // Icônes des boutons d'extension (`crx://`), affichées par l'interface.
-      ElectronChromeExtensions.handleCRXProtocol(sessionsElectron.defaultSession);
+    // C15 : la persistance accepte tout id de profil ; un id avec « : » pourrait prendre la portée d'une appli (`site:<id>`).
+    if (profil.includes(":")) {
+      console.error(`[extensions] profil ${profil} ignoré : un id de profil ne contient jamais « : »`);
+      return;
     }
-    const extensions = new ElectronChromeExtensions({
-      session: s,
+    const extensions = this.equiper(s, profil, {
       createTab: (details) => this.creerOnglet(profil, details.url, details.active !== false),
       selectTab: (wc) => {
         if (!this.echo) this.o.activer(wc);
@@ -448,12 +525,111 @@ export class ExtensionsProfils {
         const [, fenetre] = await this.creerOnglet(profil, url, details.focused !== false);
         return fenetre;
       },
+      // Une extension de l'agent : seulement ce que son accord permet (reseau.ts) ; puis ce que WebAiOs ajoute.
+      verifierUrl: (extension, url) => this.urlPermiseA(extension.id, url) && (this.o.verifierUrl?.(extension, url) ?? true),
+    });
+    if (!extensions) return;
+    // La page du Store dans ce profil : la bibliothèque ne charge rien (`loadExtensions: false`), ne met rien à jour, et
+    // n'installe jamais elle-même (`beforeInstall` ne rend `allow` que pour une extension déjà chargée par nous).
+    const avant = this.o.avantInstallationStore?.(s, profil);
+    if (avant) {
+      const desinstaller = this.o.desinstallerDepuisStore ?? (() => Promise.reject(new Error("Désinstallation depuis la page du Store non branchée")));
+      void installChromeWebStore({
+        session: s,
+        extensionsPath: join(this.o.dossier, "store"),
+        loadExtensions: false,
+        autoUpdate: false,
+        beforeInstall: avant,
+        // Crochet du correctif : la bibliothèque n'efface jamais `store/<id>` elle-même (commun à tous les profils).
+        // Le gestionnaire de cette session : la page du Store qui l'appelle est dans ce profil.
+        uninstallHandler: (id) => desinstaller(id, profil),
+      }).catch(
+        (erreur: unknown) => console.error(`[extensions] page du Store non équipée dans le profil ${profil} :`, erreur),
+      );
+    }
+    if (this.dernier) void this.synchroniser(this.dernier);
+  }
+
+  /**
+   * Équipe la session `persist:site-<id>` d'une appli de site (une fois, portée `site:<id>`, sans page du Store) et y
+   * charge ses extensions si l'état est déjà connu. Ses onglets et fenêtres passent par l'appli : `createTab` et
+   * `createWindow` par `site.ouvrir` (adresse vérifiée avant par `verifierUrl`, qui exige aussi `site.urlPermise`),
+   * `selectTab` ne fait rien, `removeTab` d'une page de l'extension par `site.fermer`. Ni la vue du site ni la fenêtre de
+   * l'appli ne sont fermées par une extension : les crochets du correctif `peutFermerOnglet` / `peutFermerFenetre` font
+   * échouer `tabs.remove` / `windows.remove` avant que la bibliothèque ne les retire de son magasin (I1, remplace la
+   * remise de C4). Si l'appli est ouverte, sa vue devient tout de suite l'onglet actif de sa fenêtre. Rien n'est fait
+   * sans l'option `site`.
+   */
+  brancherSite(id: IdSite, s: Session): void {
+    const site = this.o.site;
+    if (!site) return;
+    const portee = porteeSite(id);
+    /** Ajoute la vue de l'appli aux onglets de la bibliothèque, active dans sa fenêtre. */
+    const ajouterVue = (x: ElectronChromeExtensions, v: { wc: WebContents; fenetre: BrowserWindow }) => {
+      try {
+        this.sansEcho(() => {
+          x.addTab(v.wc, v.fenetre);
+          x.selectTab(v.wc);
+        });
+      } catch (erreur) {
+        console.error(`[extensions] vue de l'appli ${id} non ajoutée aux onglets :`, erreur);
+      }
+    };
+    const extensions = this.equiper(s, portee, {
+      createTab: (details) => site.ouvrir(id, details.url || "about:blank"),
+      selectTab: () => {},
+      removeTab: (wc) => {
+        if (this.echo || wc.isDestroyed()) return;
+        // `peutFermerOnglet` refuse déjà la vue ; par sécurité (bibliothèque changée), elle n'est jamais fermée ici.
+        if (site.vue(id)?.wc === wc) {
+          console.error(`[extensions] retrait de la vue de l'appli ${id} par une extension : ignoré`);
+          return;
+        }
+        site.fermer(wc);
+      },
+      peutFermerOnglet: (wc) => site.vue(id)?.wc !== wc,
+      // I1 : `tabs.update` est vérifié avec l'onglet visé, avant `loadURL` (jamais une page hors du web dans la vue, ni
+      // une page de l'appli dans la vue cachée de l'accueil ou de la carte d'accord).
+      peutChargerOnglet: (wc, url) => site.peutCharger(id, wc, url),
+      peutFermerFenetre: (fenetre) => site.vue(id)?.fenetre !== fenetre,
+      // Une fenêtre demandée : ce que l'appli ouvre (la vue pour une page du site, une petite fenêtre pour une page de
+      // l'extension), qui devient un onglet de cette fenêtre comme avec `tabs.create` (C20).
+      createWindow: async (details) => {
+        const url = Array.isArray(details.url) ? details.url[0] : details.url;
+        const [wc, fenetre] = await site.ouvrir(id, url || "about:blank");
+        const x = this.instances.get(portee)?.extensions;
+        if (x && !wc.isDestroyed()) this.sansEcho(() => x.addTab(wc, fenetre));
+        return fenetre;
+      },
+      verifierUrl: (extension, url) =>
+        this.urlPermiseA(extension.id, url) && site.urlPermise(id, extension.id, url) && (this.o.verifierUrl?.(extension, url) ?? true),
+    });
+    if (!extensions) return;
+    const v = site.vue(id);
+    if (v && !v.wc.isDestroyed()) ajouterVue(extensions, v);
+    if (this.dernier) void this.synchroniser(this.dernier);
+  }
+
+  /**
+   * Ce que `brancher` et `brancherSite` partagent : l'instance de la bibliothèque sur `s` pour la portée (profil ou
+   * `site:<id>`), les preloads des correctifs, les canaux des service workers, leur console et les notifications
+   * détournées. Rend l'instance, ou undefined si la portée ou la session est déjà équipée.
+   */
+  private equiper(s: Session, portee: IdProfil, options: OptionsPortee): ElectronChromeExtensions | undefined {
+    if (this.instances.has(portee) || ElectronChromeExtensions.fromSession(s)) return undefined;
+    // La bibliothèque ajoute un `app.on("web-contents-created")` par session équipée : sans cela, Node signalerait une
+    // fuite d'écouteurs (10 par défaut) dès le dixième profil. La limite suit le nombre de sessions équipées.
+    app.setMaxListeners(Math.max(app.getMaxListeners(), 10 + ++sessionsEquipees));
+    // Icônes des boutons d'extension (`crx://`), affichées par l'interface (déjà servies si index.ts l'a fait au démarrage).
+    servirIconesExtensions();
+    const extensions = new ElectronChromeExtensions({
+      session: s,
+      ...options,
       // Ni fermeture de fenêtre principale par une extension, ni destruction par la bibliothèque.
       removeWindow: () => {},
       requestPermissions: async () => false,
-      // Crochets du correctif de la bibliothèque (patches/electron-chrome-extensions@4.10.0.patch).
-      // Une extension de l'agent : seulement ce que son accord permet (reseau.ts) ; puis ce que WebAiOs ajoute.
-      verifierUrl: (extension, url) => this.urlPermiseA(extension.id, url) && (this.o.verifierUrl?.(extension, url) ?? true),
+      // Crochets du correctif de la bibliothèque (patches/electron-chrome-extensions@4.10.0.patch) : `verifierUrl` vient
+      // de la portée.
       verifierHote: (extension, url) => {
         const accord = this.accordAgent(extension.id);
         if (accord !== undefined && !(accord && hotePermisAgent(url, accord))) return false;
@@ -477,7 +653,13 @@ export class ExtensionsProfils {
       if (!worker || workersEcoutes.has(worker) || !worker.scope.startsWith("chrome-extension://")) return;
       workersEcoutes.add(worker);
       const id = new URL(worker.scope).host;
-      worker.ipc.handle(CANAL_DEMARRAGE, () => this.demarrage(profil, s, id, "fond"));
+      // L'extension chargée quand ce fond a demandé sa réponse : son accusé ne vaut que pour ce chargement-là (M2).
+      let chargement: object | undefined;
+      worker.ipc.handle(CANAL_DEMARRAGE, () => {
+        chargement = this.chargementDe(portee, s, id);
+        return this.demarrage(portee, s, id, "fond");
+      });
+      worker.ipc.handle(CANAL_DEMARREE, () => void this.demarreeDepuisFond(portee, s, id, chargement));
       worker.ipc.handle(CANAL_URL_PERMISE, (_e, url: unknown) => this.urlPermise(s, id, url));
       worker.ipc.handle(CANAL_HOTE_PERMIS, (_e, onglet: unknown) => this.hotePermis(s, id, onglet));
       worker.ipc.handle(CANAL_ONGLET, (_e, onglet: unknown) => this.estOnglet(s, id, onglet));
@@ -494,29 +676,11 @@ export class ExtensionsProfils {
       if (id) this.o.consoles?.noter(id, { horodatage: Date.now(), niveau: niveauConsole(d.level), texte: String(d.message) });
     });
     // Aucun `session.webRequest` ici : il couperait tout declarativeNetRequest de la session (reseau.ts, branche B).
-    // Lève si c'est impossible : le profil n'est alors pas enregistré, et aucune extension n'y sera jamais chargée.
+    // Lève si c'est impossible : la portée n'est alors pas enregistrée, et aucune extension n'y sera jamais chargée.
     if (this.o.invisible || this.o.fichierNotifications) detournerNotifications(extensions, this.o.fichierNotifications);
-    this.instances.set(profil, { session: s, extensions });
-    this.chargees.set(profil, new Map());
-    // La page du Store dans ce profil : la bibliothèque ne charge rien (`loadExtensions: false`), ne met rien à jour, et
-    // n'installe jamais elle-même (`beforeInstall` ne rend `allow` que pour une extension déjà chargée par nous).
-    const avant = this.o.avantInstallationStore?.(s, profil);
-    if (avant) {
-      const desinstaller = this.o.desinstallerDepuisStore ?? (() => Promise.reject(new Error("Désinstallation depuis la page du Store non branchée")));
-      void installChromeWebStore({
-        session: s,
-        extensionsPath: join(this.o.dossier, "store"),
-        loadExtensions: false,
-        autoUpdate: false,
-        beforeInstall: avant,
-        // Crochet du correctif : la bibliothèque n'efface jamais `store/<id>` elle-même (commun à tous les profils).
-        // Le gestionnaire de cette session : la page du Store qui l'appelle est dans ce profil.
-        uninstallHandler: (id) => desinstaller(id, profil),
-      }).catch(
-        (erreur: unknown) => console.error(`[extensions] page du Store non équipée dans le profil ${profil} :`, erreur),
-      );
-    }
-    if (this.dernier) void this.synchroniser(this.dernier);
+    this.instances.set(portee, { session: s, extensions });
+    this.chargees.set(portee, new Map());
+    return extensions;
   }
 
   /**
@@ -525,23 +689,74 @@ export class ExtensionsProfils {
    * synchronisations, qu'il ne retient pas) : chargée,
    * `chrome.storage` vidé depuis une de ses pages (jamais montrée), retirée, puis le reste de son origine
    * (`clearStorageData` : IndexedDB, service worker…) et ses dossiers sous `storagePath`. Lève au premier échec.
+   *
+   * Une version du Store (`store/<id>/<version>_0`, C6) : un talon de même `key` est chargé, jamais son code. Pour
+   * l'appelant (T3) : attendre d'abord la synchronisation qui retire l'extension de chaque session (lève sinon,
+   * « extension encore chargée » : le talon de même id la remplacerait), et appeler ceci AVANT d'effacer `store/<id>`
+   * (le manifeste y est lu). Une `key` absente ou qui ne donne pas l'id du dossier : journalisé, sauté, sans lever.
    */
   effacerStockage(chemin: string, sessions: readonly Session[]): Promise<void> {
     // L'entrée a déjà quitté le registre et seul le talon est à ce chemin : aucune synchronisation ne le charge, l'effacement
     // n'a pas à attendre (ni à retenir) la coupure générale ou les autres changements.
     const travail = this.fileEffacements.then(async () => {
-      for (const s of new Set(sessions)) await this.effacerStockageDans(s, chemin);
+      // C6 : le dossier d'une version du Store (`store/<id>/<version>_0`) a tout le code de l'extension ; c'est un talon
+      // de même `key` (même id) qui est chargé, depuis un dossier temporaire effacé ensuite.
+      const store = this.dansStore(chemin);
+      const talon = store ? await this.poserTalonStore(chemin) : chemin;
+      if (talon === null) return;
+      const id = store ? basename(dirname(resolve(chemin))) : idChromeDeDossier(chemin);
+      try {
+        for (const s of new Set(sessions)) await this.effacerStockageDans(s, talon, id);
+      } finally {
+        if (talon !== chemin) await rm(talon, { recursive: true, force: true }).catch(() => undefined);
+      }
     });
     this.fileEffacements = travail.catch(() => undefined);
     return travail;
+  }
+
+  /** `chemin` est-il sous `<dossier>/store` (une version d'une extension du Store) ? */
+  private dansStore(chemin: string): boolean {
+    const r = relative(resolve(this.o.dossier, "store"), resolve(chemin));
+    return r !== "" && !r.startsWith("..") && !isAbsolute(r);
+  }
+
+  /**
+   * Le talon d'effacement de la version du Store à `chemin`, dans un dossier temporaire (rendu) ; null, journalisé, si
+   * son manifeste n'a pas de `key`, ou si elle ne donne pas l'id du dossier `store/<id>` (M2) : ce ne serait pas le
+   * stockage de cette extension, l'effacement est sauté.
+   */
+  private async poserTalonStore(chemin: string): Promise<string | null> {
+    const manifeste: unknown = JSON.parse(await readFile(join(chemin, "manifest.json"), "utf8"));
+    const talon = manifesteTalonStore(manifeste);
+    if (!talon) {
+      console.error(`[extensions] ${chemin} : manifeste sans key, stockage non effacé`);
+      return null;
+    }
+    const attendu = basename(dirname(resolve(chemin)));
+    const donne = idDeCle(talon.key as string);
+    if (donne !== attendu) {
+      console.error(`[extensions] ${chemin} : la key (id ${donne}) ne correspond pas au dossier ${attendu}, stockage non effacé`);
+      return null;
+    }
+    const dossier = await mkdtemp(join(tmpdir(), "webaios-talon-"));
+    try {
+      await writeFile(join(dossier, "manifest.json"), JSON.stringify(talon));
+    } catch (erreur) {
+      await rm(dossier, { recursive: true, force: true }).catch(() => undefined);
+      throw erreur;
+    }
+    return dossier;
   }
 
   /**
    * Chaque étape est bornée (`delaiEffacementMs`) : au-delà, elle échoue, la vue est fermée et l'extension retirée
    * (un chargement qui finit après le délai est retiré aussitôt), et la file des synchronisations continue.
    */
-  private async effacerStockageDans(s: Session, chemin: string): Promise<void> {
+  private async effacerStockageDans(s: Session, chemin: string, idAttendu: string): Promise<void> {
     const ms = this.o.delaiEffacementMs ?? DELAI_EFFACEMENT_MS;
+    // M1 : l'extension de même id encore chargée serait remplacée par le talon (puis retirée à l'insu de `chargees`).
+    if (s.extensions.getExtension(idAttendu)) throw new Error(`${idAttendu} : extension encore chargée, stockage non effacé`);
     const retirer = (id: string) => {
       try {
         s.extensions.removeExtension(id);
@@ -719,6 +934,78 @@ export class ExtensionsProfils {
     if (!ext || !cle) return vide(false);
     const agent = lireCle(cle)?.source === "agent";
     if (contexte === "page" && (ext.manifest as { background?: unknown }).background) return vide(agent);
+    // Un fond accuse lui-même son démarrage (`CANAL_DEMARREE`, une fois ses rulesets posés) ; une extension sans fond n'a
+    // que ses pages, et rien à poser par elles : sa réponse suffit.
+    if (contexte === "fond") return this.reponseDemarrage(profil, cle, ext, agent, vide);
+    const chargement = this.chargementDe(profil, s, id);
+    try {
+      return await this.reponseDemarrage(profil, cle, ext, agent, vide);
+    } finally {
+      this.noterDemarre(profil, cle, ext.id, chargement);
+    }
+  }
+
+  /** L'entrée de `chargees` de l'extension `id` dans cette portée (un objet par chargement), ou undefined. */
+  private chargementDe(portee: IdProfil, s: Session, id: string): object | undefined {
+    const ext = s.extensions.getExtension(id);
+    const cle = ext ? this.cleDe(portee, ext) : undefined;
+    return cle ? this.chargees.get(portee)?.get(cle) : undefined;
+  }
+
+  /** L'accusé d'un fond (`CANAL_DEMARREE`) : ses rulesets du manifeste sont posés. */
+  private demarreeDepuisFond(portee: IdProfil, s: Session, id: string, chargement: object | undefined): void {
+    const ext = s.extensions.getExtension(id);
+    const cle = ext ? this.cleDe(portee, ext) : undefined;
+    if (ext && cle) this.noterDemarre(portee, cle, ext.id, chargement);
+  }
+
+  /**
+   * Le démarrage de `cle` dans `profil` est fait : ceux qui l'attendaient (`attendreDemarrage`) repartent. Seulement si
+   * l'extension `id` est toujours celle chargée, et du même chargement qu'à la demande de sa réponse (M2 : retirée puis
+   * rechargée entre-temps, c'est le nouveau fond qui doit accuser).
+   */
+  private noterDemarre(profil: IdProfil, cle: string, id: string, chargement: object | undefined): void {
+    const actuel = this.chargees.get(profil)?.get(cle);
+    if (!actuel || actuel.id !== id || (chargement !== undefined && chargement !== actuel)) return;
+    const k = `${profil}|${cle}`;
+    this.demarres.add(k);
+    for (const finir of [...(this.attentesDemarrage.get(k) ?? [])]) finir(true);
+  }
+
+  /**
+   * C5 : attend, au plus `ms`, que le fond de `cle`, dans `portee`, ait accusé son démarrage depuis son dernier
+   * chargement (`CANAL_DEMARREE` : le preload l'envoie une fois `updateEnabledRulesets` abouti, ou tout de suite s'il
+   * n'a rien à poser). Vrai tout de suite si c'est déjà fait ou si elle n'a pas de fond ; faux si elle n'est pas chargée
+   * dans cette portée, si elle en est retirée pendant l'attente, ou sans accusé dans le délai (rulesets refusés compris).
+   */
+  attendreDemarrage(portee: IdProfil, cle: string, ms: number): Promise<boolean> {
+    const c = this.chargees.get(portee)?.get(cle);
+    const ext = c ? this.instances.get(portee)?.session.extensions.getExtension(c.id) : null;
+    if (!ext) return Promise.resolve(false);
+    if (!(ext.manifest as { background?: unknown }).background) return Promise.resolve(true);
+    const k = `${portee}|${cle}`;
+    if (this.demarres.has(k)) return Promise.resolve(true);
+    return new Promise((ok) => {
+      const attentes = this.attentesDemarrage.get(k) ?? new Set<(ok: boolean) => void>();
+      this.attentesDemarrage.set(k, attentes);
+      const finir = (r: boolean) => {
+        clearTimeout(minuterie);
+        attentes.delete(finir);
+        if (attentes.size === 0 && this.attentesDemarrage.get(k) === attentes) this.attentesDemarrage.delete(k);
+        ok(r);
+      };
+      const minuterie = setTimeout(() => finir(false), ms);
+      attentes.add(finir);
+    });
+  }
+
+  private async reponseDemarrage(
+    profil: IdProfil,
+    cle: string,
+    ext: Electron.Extension,
+    agent: boolean,
+    vide: (agent: boolean) => DemarrageExtension,
+  ): Promise<DemarrageExtension> {
     try {
       // Agent : une copie rechargée (même version) est une nouvelle vue, comme le rechargement d'une extension non
       // empaquetée dans Chrome (onInstalled « update », rulesets du manifeste) : la vue porte aussi `modifieeLe`.
@@ -865,14 +1152,25 @@ export class ExtensionsProfils {
     const etat = this.o.etat();
     // Un échec de chargement compte au plus un plantage par synchronisation, quel que soit le nombre de profils.
     const comptees = new Set<string>();
-    await Promise.all([...this.instances].map(([profil, { session }]) => this.appliquerProfil(e, profil, session, profilPrive(etat, profil), comptees)));
+    await Promise.all([...this.instances].map(([portee, { session }]) => this.appliquerProfil(e, portee, session, etat, comptees)));
     this.o.apresSynchro?.();
   }
 
-  private async appliquerProfil(e: EtatExtensions, profil: IdProfil, s: Session, prive: boolean, comptees: Set<string>): Promise<void> {
+  /**
+   * Une portée : un profil (`chargeesDans`), ou une appli de site `site:<id>` (`chargeesDansSite` avec l'empreinte de
+   * l'appli ouverte, jamais privée). Un autre id qui contient « : » est ignoré (C15).
+   */
+  private async appliquerProfil(e: EtatExtensions, profil: IdProfil, s: Session, etat: EtatNavigateur, comptees: Set<string>): Promise<void> {
+    const site = siteDePortee(profil);
+    if (site === null && profil.includes(":")) {
+      console.error(`[extensions] profil ${profil} ignoré : un id de profil ne contient jamais « : »`);
+      return;
+    }
+    const prive = site === null && profilPrive(etat, profil);
+    const cles = site !== null ? chargeesDansSite(e, site, this.o.site?.empreinte(site) ?? null) : chargeesDans(e, profil, prive);
     const chargees = this.chargees.get(profil)!;
     const voulues = new Map<string, string>();
-    for (const cle of chargeesDans(e, profil, prive)) {
+    for (const cle of cles) {
       const chemin = cheminExtension(this.o.dossier, cle, e);
       if (chemin) voulues.set(cle, chemin);
     }
@@ -934,6 +1232,10 @@ export class ExtensionsProfils {
    * cette session où ses scripts ont été injectés est rechargé, pour qu'ils s'y arrêtent.
    */
   private retirer(s: Session, profil: IdProfil, cle: string, id: string): void {
+    // Rechargée plus tard, elle devra redémarrer ; qui attendait son démarrage n'a plus rien à attendre.
+    const k = `${profil}|${cle}`;
+    this.demarres.delete(k);
+    for (const finir of [...(this.attentesDemarrage.get(k) ?? [])]) finir(false);
     try {
       s.extensions.removeExtension(id);
     } catch (erreur) {

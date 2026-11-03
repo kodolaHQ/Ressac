@@ -3,7 +3,16 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ERREUR_PROFIL_PRIVE,
+  RESERVE_STORE_SITE,
+  PREFIXE_PORTEE_SITE,
+  activeNullePart,
   activer,
+  activerDansSite,
+  chargeesDansSite,
+  desactiverDansSite,
+  porteeSite,
+  retirerSite,
+  siteDePortee,
   appliquerProfilsPrives,
   chargeesDans,
   cleExtension,
@@ -118,6 +127,80 @@ describe("registre des extensions", () => {
     expect(lireCle(A)).toEqual({ source: "agent", id: "mon-ext" });
     expect(cleExtension("agent", "mon-ext")).toBe(A);
     expect(() => cleExtension("store", "abc")).toThrow();
+  });
+});
+
+describe("portée d'une appli de site", () => {
+  const E1 = "e1";
+  const e0 = () => etat({ [S]: entree("store"), [A]: entree("agent") });
+
+  it("activerDansSite n'active dans aucun profil ; activer dans un profil n'ajoute aucune appli", () => {
+    const e = activerDansSite(e0(), S, "vidola", E1);
+    expect(e.extensions[S]!.applis).toEqual({ vidola: E1 });
+    expect(e.extensions[S]!.profils).toEqual([]);
+    expect(chargeesDans(e, "defaut", false)).toEqual([]);
+    const p = activer(e0(), S, "defaut", aucun);
+    expect(p.extensions[S]!.applis).toBeUndefined();
+    expect(activerDansSite(e, S, "vidola", "e2").extensions[S]!.applis).toEqual({ vidola: "e2" });
+  });
+
+  it("activerDansSite d'une extension de l'agent lève RESERVE_STORE_SITE ; sans accord, lève", () => {
+    expect(() => activerDansSite(e0(), A, "vidola", E1)).toThrow(RESERVE_STORE_SITE);
+    expect(() => activerDansSite(etat({ [S]: entree("store", { accord: null }) }), S, "vidola", E1)).toThrow(`extension sans accord : ${S}`);
+  });
+
+  it("chargeesDansSite : la clé pour la bonne empreinte ; rien pour une autre empreinte, null, une autre appli, toutesCoupees, ni désactivée", () => {
+    const e = activerDansSite(e0(), S, "vidola", E1);
+    expect(chargeesDansSite(e, "vidola", E1)).toEqual([S]);
+    expect(chargeesDansSite(e, "vidola", "autre")).toEqual([]);
+    expect(chargeesDansSite(e, "vidola", null)).toEqual([]);
+    expect(chargeesDansSite(e, "youtube", E1)).toEqual([]);
+    expect(chargeesDansSite({ ...e, toutesCoupees: true }, "vidola", E1)).toEqual([]);
+    const d = { ...e, extensions: { ...e.extensions, [S]: { ...e.extensions[S]!, desactivee: { raison: "plantages" as const, le: "x" } } } };
+    expect(chargeesDansSite(d, "vidola", E1)).toEqual([]);
+    const sans = { ...e, extensions: { ...e.extensions, [S]: { ...e.extensions[S]!, accord: null } } };
+    expect(chargeesDansSite(sans, "vidola", E1)).toEqual([]);
+  });
+
+  it('chargeesDans("defaut") ne voit jamais une activation d\'appli', () => {
+    const e = activerDansSite(e0(), S, "defaut", E1);
+    expect(chargeesDans(e, "defaut", false)).toEqual([]);
+  });
+
+  it('retirerSite oublie applis.vidola et vues["site:vidola"], garde applis.youtube, vues.defaut et profils', () => {
+    let e = activerDansSite(activerDansSite(activer(e0(), S, "defaut", aucun), S, "vidola", E1), S, "youtube", E1);
+    e = { ...e, extensions: { ...e.extensions, [S]: { ...e.extensions[S]!, vues: { defaut: "1", "site:vidola": "1", "site:youtube": "1" } } } };
+    const r = retirerSite(e, "vidola").extensions[S]!;
+    expect(r.applis).toEqual({ youtube: E1 });
+    expect(r.vues).toEqual({ defaut: "1", "site:youtube": "1" });
+    expect(r.profils).toEqual(["defaut"]);
+    expect(retirerSite(retirerSite(e, "vidola"), "youtube").extensions[S]!.applis).toBeUndefined();
+  });
+
+  it("desactiverDansSite supprime la clé, applis vide retirée ; desactiverPartout vide profils et applis ; activeNullePart", () => {
+    const e = activerDansSite(activer(e0(), S, "defaut", aucun), S, "vidola", E1);
+    expect(activeNullePart(e.extensions[S]!)).toBe(false);
+    const d = desactiverDansSite(e, S, "vidola").extensions[S]!;
+    expect("applis" in d).toBe(false);
+    expect(d.profils).toEqual(["defaut"]);
+    const p = desactiverPartout(e, S).extensions[S]!;
+    expect(p.profils).toEqual([]);
+    expect("applis" in p).toBe(false);
+    expect(activeNullePart(p)).toBe(true);
+    expect(activeNullePart(entree("store", { applis: {} }))).toBe(true);
+  });
+
+  it("porteeSite, siteDePortee, et aucun id de profil de forme /^[\\w-]+$/ n'est une portée d'appli", () => {
+    expect(PREFIXE_PORTEE_SITE).toBe("site:");
+    expect(porteeSite("vidola")).toBe("site:vidola");
+    expect(() => porteeSite("Vidola")).toThrow();
+    expect(siteDePortee("site:vidola")).toBe("vidola");
+    expect(siteDePortee("defaut")).toBeNull();
+    expect(siteDePortee("site:Vidola")).toBeNull();
+    for (const id of ["defaut", "site", "site-vidola", "0a1b-2c", "a_b"]) {
+      expect(/^[\w-]+$/.test(id)).toBe(true);
+      expect(siteDePortee(id)).toBeNull();
+    }
   });
 });
 
@@ -248,5 +331,19 @@ describe("fichier etat.json", () => {
       () => new Set(["p"]),
     );
     expect(lu.extensions["agent:b"]!.profils).toEqual([]);
+  });
+
+  it("applis survit à modifierEtatExtensions et à la relecture ; un etat.json sans applis se relit sans copie .abime-*", async () => {
+    const dossier = await dossierTemporaire();
+    await mkdir(dossier, { recursive: true });
+    await writeFile(join(dossier, "etat.json"), JSON.stringify(etat({ [S]: entree("store") })));
+    expect((await lireEtatExtensions(dossier)).extensions[S]!.applis).toBeUndefined();
+    await modifierEtatExtensions(dossier, (e) => e, () => aucun);
+    expect((await readdir(dossier)).filter((f) => f.includes(".abime-"))).toEqual([]);
+    await modifierEtatExtensions(dossier, (e) => activerDansSite(e, S, "vidola", "e1"), () => aucun);
+    expect((await lireEtatExtensions(dossier)).extensions[S]!.applis).toEqual({ vidola: "e1" });
+    await modifierEtatExtensions(dossier, (e) => e, () => aucun);
+    expect((await lireEtatExtensions(dossier)).extensions[S]!.applis).toEqual({ vidola: "e1" });
+    expect((await readdir(dossier)).filter((f) => f.includes(".abime-"))).toEqual([]);
   });
 });

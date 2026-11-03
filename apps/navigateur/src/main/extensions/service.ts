@@ -1,15 +1,19 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { WebContents } from "electron";
+import type { Session, WebContents } from "electron";
 import {
   activer,
+  activerDansSite,
   analyserManifeste,
   appliquerProfilsPrives,
   chargeesDans,
+  chargeesDansSite,
   couperTout,
   desactiver,
+  desactiverDansSite,
   desactiverPartout,
   epingler,
+  ID_SITE,
   libellesPortee,
   ERREUR_PROFIL_PRIVE,
   empreintePortee,
@@ -17,21 +21,28 @@ import {
   lireEtatExtensions,
   lireMessages,
   modifierEtatExtensions,
+  porteeSite,
   preparerStore,
   retirerProfil,
+  retirerSite,
+  siteDePortee,
   RESERVE_AGENT,
+  RESERVE_STORE_SITE,
   DEMANDE_RETIREE,
   type ConsolePourAgent,
   type ExtensionPourAgent,
   type EtatExtensions,
   type IdProfil,
+  type IdSite,
   type OutilsExtensions,
   type ResultatConsoleExtension,
   type ResultatDemandeExtension,
 } from "@webaios/noyau";
 import {
+  APPLI_FERMEE,
   carteDe,
   DESACTIVEE_PLANTAGES,
+  DOMAINES_CHANGES_EXTENSION,
   DESACTIVEE_PORTEE,
   LONGUEUR_RAISON_DEBLOCAGE,
   nonPrisEnCharge,
@@ -39,8 +50,10 @@ import {
   type CarteExtension,
   type LigneExtension,
   type LigneExtensionEspace,
+  type LigneExtensionSite,
   type ReponseAccord,
 } from "../../commun/extensions";
+import { partitionSite } from "../../commun/sites";
 import type { ResultatExtension } from "../../commun/api";
 export { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE };
 import { aUneVue, partitionDe, profilsEnUsage, type Demande, type Issue, type Espace, type EtatNavigateur, type IdFenetre } from "../../commun/modele";
@@ -64,7 +77,7 @@ import {
 } from "./agent";
 import { ConsolesExtensions, type FiltreAgent } from "./consoles";
 import { idChromeDeDossier } from "./reseau";
-import { profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
+import { cheminExtension, DELAI_DEMARRAGE_FOND_MS, profilPrive, type CibleOnglet, type ExtensionsProfils } from "./sessions";
 import {
   abandonnerMiseAJour,
   accepterMiseAJour,
@@ -196,8 +209,24 @@ export class ServiceExtensions {
   private verification: Promise<void> | null = null;
   /** Profils effacés avant le démarrage du service : retirés du registre dès qu'il est prêt. */
   private profilsARetirer: IdProfil[] = [];
+  /** Applis de site supprimées avant la fin du démarrage du service : retirées du registre dès qu'il est prêt (m2). */
+  private sitesARetirer: IdSite[] = [];
   /** Registre lu et Store préparé : les synchronisations peuvent commencer. */
   private pret = false;
+  /**
+   * Les applis de site ouvertes et l'empreinte de leurs domaines à l'ouverture (`empreinteExtensionsSite`) : seules
+   * celles-ci reçoivent leurs extensions (`chargeesDansSite`), et seulement pour cette empreinte.
+   */
+  private ouverts = new Map<IdSite, string>();
+  /** Fin de `demarrer`, réussi ou non (C1 : `ouvertureSite` l'attend avant de synchroniser). */
+  private signalerDemarre: () => void = () => {};
+  private readonly demarre = new Promise<void>((ok) => (this.signalerDemarre = ok));
+  /**
+   * Registre lu (ou illisible), ou fin de `demarrer` : `ouvertureSite` sait alors si l'appli a une activation (I1). Sans
+   * aucune, elle n'attend pas `demarre`.
+   */
+  private signalerEtatLu: () => void = () => {};
+  private readonly etatLu = new Promise<void>((ok) => (this.signalerEtatLu = ok));
   /** Mises à jour inscrites que rien ne chargeait encore : résolues après chaque synchronisation (`resoudreEssai`). */
   private essaisMaj = new Map<string, { essai: EssaiMiseAJour; liberer: () => void }>();
   private poser: PoserQuestion | undefined;
@@ -229,9 +258,12 @@ export class ServiceExtensions {
         dossierGardes: string;
         dossierAgent?: string;
         surChange?: () => void;
+        sessionSite?: (id: IdSite) => Session;
+        nomsSites?: () => Promise<Record<IdSite, string>>;
       }
     | undefined;
 
+  /** Quoi qu'il arrive, sa fin libère les ouvertures d'applis de site qui l'attendent (C1, `ouvertureSite`). */
   async demarrer(o: {
     /** `<userData>/extensions`. */
     dossier: string;
@@ -248,7 +280,23 @@ export class ServiceExtensions {
     dossierAgent?: string;
     /** Après chaque écriture du registre (`CANAUX.extensionsChange`). */
     surChange?: () => void;
+    /**
+     * La session d'une appli de site (`sessionSite` de `main/sites/session.ts`, injectée : C9). Absent : aucune session
+     * d'appli n'est branchée, ni aucun stockage effacé dans une appli.
+     */
+    sessionSite?: (id: IdSite) => Session;
+    /** Les noms des applis de site, par id, sans effet de bord (C11) : la page Extensions (« Active dans : … »). */
+    nomsSites?: () => Promise<Record<IdSite, string>>;
   }): Promise<void> {
+    try {
+      await this.demarrerService(o);
+    } finally {
+      this.signalerEtatLu();
+      this.signalerDemarre();
+    }
+  }
+
+  private async demarrerService(o: NonNullable<ServiceExtensions["o"]>): Promise<void> {
     this.o = o;
     // Posé d'abord, de façon synchrone : il existe même si la lecture du registre échoue, et index.ts appelle `demarrer`
     // avant d'abonner les vues, donc il passe avant elles. Un espace devenu privé, ou un profil apparu ou disparu :
@@ -278,6 +326,7 @@ export class ServiceExtensions {
       console.error("[extensions] registre illisible, aucune extension chargée :", e);
       return;
     }
+    this.signalerEtatLu();
     await this.relireNoms().catch((e: unknown) => console.error("[extensions] noms localisés non relus :", e));
     await this.preparerStore();
     if (o.dossierAgent) {
@@ -291,8 +340,9 @@ export class ServiceExtensions {
     this.pret = true;
     // Un état écrit avant ce démarrage (session éditée, profil effacé au lancement) : le registre est remis d'aplomb.
     const aRetirer = this.profilsARetirer.splice(0);
-    if (aRetirer.length > 0 || appliquerProfilsPrives(this.etat, profilsPrives(o.magasin.etat)).retirees.length > 0)
-      await this.modifier((e) => aRetirer.reduce(retirerProfil, e));
+    const sites = this.sitesARetirer.splice(0);
+    if (aRetirer.length > 0 || sites.length > 0 || appliquerProfilsPrives(this.etat, profilsPrives(o.magasin.etat)).retirees.length > 0)
+      await this.modifier((e) => sites.reduce(retirerSite, aRetirer.reduce(retirerProfil, e)));
     else await this.appliquer();
     // Repère des tests (mode invisible) : le démarrage est fini, la première synchronisation complète faite.
     if (process.env.WEBAIOS_INVISIBLE === "1") (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes = true;
@@ -372,8 +422,14 @@ export class ServiceExtensions {
     // écriture du service, seul à écrire le registre pendant que l'application tourne.
     const connue = this.etat.extensions[cle];
     if (!connue || connue.vues[profil] === version) return { nouvelle: false };
-    // Un service worker qui démarre après le retrait de son profil ne remet pas une vue pour ce profil.
-    const enUsage = () => profilsEnUsage(o.magasin.etat).has(profil);
+    // Un service worker qui démarre après le retrait de son profil ne remet pas une vue pour ce profil. Une portée
+    // d'appli (`site:<id>`) n'est en usage que tant que l'appli est ouverte ; un autre id qui contient « : » jamais (C15).
+    const site = siteDePortee(profil);
+    if (site === null && profil.includes(":")) {
+      console.error(`[extensions] vue de ${cle} pour ${profil} ignorée : un id de profil ne contient jamais « : »`);
+      return { nouvelle: false };
+    }
+    const enUsage = () => (site !== null ? this.ouverts.has(site) : profilsEnUsage(o.magasin.etat).has(profil));
     if (!enUsage()) return { nouvelle: false };
     let resultat: { nouvelle: boolean; precedente?: string } = { nouvelle: false };
     this.etat = await modifierEtatExtensions(
@@ -727,6 +783,7 @@ export class ServiceExtensions {
         await preparerStore(chemin, o.dossierGardes);
         this.erreursPreparation.delete(cle);
       },
+      effacerDansSites: (cle, chemin, sites) => this.effacerDansSites(cle, chemin, sites),
     };
   }
 
@@ -905,6 +962,12 @@ export class ServiceExtensions {
     if (!o) return [];
     const nav = o.magasin.etat;
     const lignes: LigneExtension[] = [];
+    let noms: Record<IdSite, string> = {};
+    if (o.nomsSites && Object.values(this.etat.extensions).some((x) => Object.keys(x.applis ?? {}).length > 0))
+      noms = await o.nomsSites().catch((e: unknown) => {
+        console.error("[extensions] noms des applis de site non lus :", e);
+        return {};
+      });
     for (const [cle, x] of Object.entries(this.etat.extensions)) {
       const lue = lireCle(cle);
       if (!lue) continue;
@@ -930,6 +993,7 @@ export class ServiceExtensions {
         nonPrisEnCharge: nonPrisEnCharge(manifeste),
         epinglee: x.epinglee,
         consoleDebloquee: this.deblocages.has(cle),
+        applis: Object.keys(x.applis ?? {}).map((id) => noms[id] ?? id),
       });
     }
     return lignes.sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
@@ -944,14 +1008,163 @@ export class ServiceExtensions {
     if (!o || !f || !espace) return { partition: "", onglet: null, actions: [] };
     const ongletId = f.actif[f.espaceActif];
     const wc = ongletId ? o.vues.vue(ongletId) : null;
-    return {
-      partition: partitionDe(espace.profil),
-      onglet: wc && !wc.isDestroyed() ? wc.id : null,
-      actions: o.profils
-        .chargeesProfil(espace.profil)
-        .map(({ cle, id }) => ({ cle, idChrome: id, nom: this.etat.extensions[cle]?.nom ?? id, epinglee: this.etat.extensions[cle]?.epinglee === true }))
-        .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle)),
+    return { partition: partitionDe(espace.profil), onglet: wc && !wc.isDestroyed() ? wc.id : null, actions: this.actionsDe(espace.profil) };
+  }
+
+  /** Les boutons des extensions chargées dans une portée (profil ou `site:<id>`), triés par nom puis par clé. */
+  private actionsDe(portee: IdProfil): BarreExtensions["actions"] {
+    return (this.o?.profils.chargeesProfil(portee) ?? [])
+      .map(({ cle, id }) => ({ cle, idChrome: id, nom: this.etat.extensions[cle]?.nom ?? id, epinglee: this.etat.extensions[cle]?.epinglee === true }))
+      .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  // ——— Les applis de site (plan 16) ———
+
+  /**
+   * Une appli de site s'ouvre (ou ses domaines changent) : son empreinte est retenue, puis, une fois le service démarré
+   * (C1, même en échec), ses extensions sont synchronisées avant que la fenêtre ne charge sa première page. Une appli
+   * sans aucune activation dans le registre lu (aucune `applis[id]`, quelle qu'en soit l'empreinte) n'attend pas le
+   * démarrage (I1) : rien n'y serait chargé, et la synchronisation de fin de démarrage la verra quand même.
+   */
+  async ouvertureSite(id: IdSite, empreinte: string): Promise<void> {
+    this.ouverts.set(id, empreinte);
+    if (!this.pret) {
+      await this.etatLu;
+      if (!this.pret && !Object.values(this.etat.extensions).some((x) => x.applis?.[id] !== undefined)) return;
+    }
+    await this.demarre;
+    // Fermée (ou rouverte avec d'autres domaines) entre-temps : la synchronisation de cet autre appel suffit.
+    if (this.pret && this.ouverts.get(id) === empreinte) await this.appliquer();
+  }
+
+  /** La fenêtre de l'appli est fermée : plus rien n'y est voulu (la session reste équipée, mais vide). */
+  fermetureSite(id: IdSite): void {
+    if (!this.ouverts.delete(id) || !this.pret) return;
+    void this.appliquer().catch((e: unknown) => console.error(`[extensions] appli ${id} fermée, synchronisation :`, e));
+  }
+
+  /** L'empreinte de l'appli ouverte (option `site.empreinte` d'`ExtensionsProfils`), null si elle est fermée. */
+  empreinteSite(id: IdSite): string | null {
+    return this.ouverts.get(id) ?? null;
+  }
+
+  /** Le menu « Extensions » d'une appli : les extensions du Store, triées par nom puis par clé. */
+  pourSite(id: IdSite): LigneExtensionSite[] {
+    const empreinte = this.empreinteSite(id);
+    return Object.entries(this.etat.extensions)
+      .filter(([, x]) => x.source === "store")
+      .map(([cle, x]) => {
+        const activation = x.applis?.[id];
+        return {
+          cle,
+          nom: x.nom,
+          active: activation !== undefined && activation === empreinte,
+          domainesChanges: activation !== undefined && empreinte !== null && activation !== empreinte,
+          indisponible: this.etat.toutesCoupees
+            ? TOUTES_COUPEES_AGENT
+            : x.desactivee
+              ? x.desactivee.raison === "plantages"
+                ? DESACTIVEE_PLANTAGES
+                : DESACTIVEE_PORTEE
+              : null,
+        };
+      })
+      .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /**
+   * L'interrupteur d'une extension du Store dans le menu d'une appli de site : activée pour l'empreinte de l'appli
+   * ouverte, ou désactivée (toujours permis). Tout est revérifié dans l'écriture sérialisée (file de l'extension, puis
+   * registre) : appli fermée, coupure générale ou désactivation arrivées entre-temps refusent l'activation. Activée, son
+   * démarrage dans la portée de l'appli est attendu (C5, au plus `DELAI_DEMARRAGE_FOND_MS`) : la vue rechargée ensuite
+   * trouve ses règles posées.
+   */
+  async basculerSite(cle: string, id: IdSite, actif: boolean): Promise<ResultatExtension> {
+    const o = this.o;
+    const lue = lireCle(cle);
+    if (!o || !this.pret) return { ok: false, erreur: "Service des extensions non démarré" };
+    if (!lue) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    if (lue.source !== "store") return { ok: false, erreur: RESERVE_STORE_SITE };
+    if (!ID_SITE.test(id)) return { ok: false, erreur: `Appli de site inconnue : ${id}` };
+    const ecrire = async (changer: (e: EtatExtensions) => EtatExtensions): Promise<ResultatExtension> => {
+      try {
+        await enFileStore(o.dossier, lue.id, () => this.modifier((e) => changer(e)));
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, erreur: (e as Error).message };
+      }
     };
+    if (!actif) return ecrire((e) => (cle in e.extensions ? desactiverDansSite(e, cle, id) : e));
+    // I1 : l'empreinte des domaines que l'utilisateur a sous les yeux au clic ; c'est elle qui est écrite, jamais une autre.
+    const vue = this.ouverts.get(id);
+    const refus = (e: EtatExtensions): string | null => {
+      if (vue === undefined || !this.ouverts.has(id)) return APPLI_FERMEE;
+      if (this.ouverts.get(id) !== vue) return DOMAINES_CHANGES_EXTENSION;
+      if (e.toutesCoupees) return TOUTES_COUPEES_AGENT;
+      const x = e.extensions[cle];
+      if (!x) return `Extension inconnue : ${cle}`;
+      if (x.desactivee) return x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE;
+      return null;
+    };
+    const avant = refus(this.etat);
+    if (avant) return { ok: false, erreur: avant };
+    const r = await ecrire((e) => {
+      const pourquoi = refus(e);
+      if (pourquoi) throw new Error(pourquoi);
+      return activerDansSite(e, cle, id, vue!);
+    });
+    if (!r.ok) return r;
+    const demarree = await (o.profils.attendreDemarrage?.(porteeSite(id), cle, DELAI_DEMARRAGE_FOND_MS) ?? Promise.resolve(true));
+    if (!demarree) console.warn(`[extensions] ${cle} : démarrage dans l'appli ${id} non répondu, la vue est rechargée quand même`);
+    return r;
+  }
+
+  /** La barre d'une appli de site : sa partition, l'onglet donné (la vue du site), les extensions chargées dans sa portée. */
+  barreSite(id: IdSite, onglet: number | null): BarreExtensions {
+    return { partition: partitionSite(id), onglet, actions: this.actionsDe(porteeSite(id)) };
+  }
+
+  /**
+   * « Supprimer » une appli de site : elle quitte les activations et les vues de chaque extension (elle n'y est plus
+   * chargée une fois la synchronisation faite), puis le stockage de chaque extension du Store active ou démarrée dans
+   * l'appli est effacé dans sa session. Un échec est journalisé, sans lever.
+   */
+  async retirerSite(id: IdSite): Promise<void> {
+    const o = this.o;
+    // m2 : avant la fin du démarrage, noté (comme `retirerProfil`) ; le stockage, lui, est effacé par la session de l'appli.
+    if (!o || !this.pret) {
+      this.sitesARetirer.push(id);
+      return;
+    }
+    const portee = porteeSite(id);
+    const aEffacer = Object.entries(this.etat.extensions)
+      .filter(([cle, x]) => lireCle(cle)?.source === "store" && (x.applis?.[id] !== undefined || x.vues[portee] !== undefined))
+      .map(([cle]) => cle);
+    await this.modifier((e) => retirerSite(e, id));
+    // Dans la file de chaque extension, son dossier relu là (M3) : ni mise à jour ni désinstallation ne le change pendant
+    // l'effacement. Désinstallée entre-temps : rien à effacer ici.
+    for (const cle of aEffacer) {
+      const idStore = lireCle(cle)?.id;
+      if (!idStore) continue;
+      await enFileStore(o.dossier, idStore, async () => {
+        const chemin = cheminExtension(o.dossier, cle, this.etat);
+        if (chemin) await this.effacerDansSites(cle, chemin, [id]);
+      });
+    }
+  }
+
+  /** Efface le stockage de l'extension `cle` (version à `chemin`) dans la session de chaque appli ; journalise les échecs. */
+  private async effacerDansSites(cle: string, chemin: string, sites: readonly IdSite[]): Promise<void> {
+    const o = this.o;
+    if (!o) return;
+    for (const id of sites) {
+      try {
+        if (!o.sessionSite) throw new Error("sessions des applis de site non branchées");
+        await o.profils.effacerStockage(chemin, [o.sessionSite(id)]);
+      } catch (e) {
+        console.error(`[extensions] stockage de ${cle} non effacé dans l'appli ${id} :`, e);
+      }
+    }
   }
 
   /** Écrit le registre pour une clé connue (dans la file de l'extension pour le Store) ; une erreur est rendue en texte. */
@@ -1403,7 +1616,24 @@ export class ServiceExtensions {
         Object.entries(this.etat.extensions).filter(([cle]) => !this.erreursPreparation.has(cle) && !this.agentsBloques.has(cle) && (this.agentsPrets || !cle.startsWith("agent:"))),
       ),
     };
-    for (const profil of profilsEnUsage(nav)) if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);
+    for (const profil of profilsEnUsage(nav)) {
+      // C15 : la persistance accepte tout id de profil ; avec « : », il pourrait prendre la portée d'une appli (`site:<id>`).
+      if (profil.includes(":")) {
+        console.error(`[extensions] profil ${profil} ignoré : un id de profil ne contient jamais « : »`);
+        continue;
+      }
+      if (chargeesDans(e, profil, profilPrive(nav, profil)).length > 0) o.sessions.session(profil);
+    }
+    // Les applis ouvertes où une extension est voulue pour leur empreinte : leur session est équipée avant la
+    // synchronisation (une appli sans extension active n'a jamais de bibliothèque branchée).
+    for (const [id, empreinte] of this.ouverts) {
+      if (!o.sessionSite || chargeesDansSite(e, id, empreinte).length === 0) continue;
+      try {
+        o.profils.brancherSite(id, o.sessionSite(id));
+      } catch (erreur) {
+        console.error(`[extensions] session de l'appli ${id} non équipée :`, erreur);
+      }
+    }
     await o.profils.synchroniser(e);
     this.resoudreEssais();
   }

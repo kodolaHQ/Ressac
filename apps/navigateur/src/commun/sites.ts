@@ -3,8 +3,14 @@ import type { EntreeMemoire, PositionVideo } from "@webaios/noyau";
 
 /** Messages et types de la fenêtre d'une appli de site, lus aussi par l'interface (`site.html`, page Applications). */
 
+/** Partition d'une appli de site : jamais celle d'un espace, d'une application ni d'une autre appli de site. */
+export const partitionSite = (id: string) => `persist:site-${id}`;
+
 /** Hauteur de la barre d'une fenêtre d'appli de site, en px : la vue du site est posée juste dessous. */
 export const HAUTEUR_BARRE_SITE = 36;
+
+/** Hauteur au plus, en px, du panneau du menu « Extensions » de la barre (plan 16) : il repousse la vue du site d'autant. */
+export const PANNEAU_EXTENSIONS_MAX = 320;
 
 /** Au plus une lecture de la page de référence par minute et par appli. */
 export const INTERVALLE_SUIVI_MS = 60_000;

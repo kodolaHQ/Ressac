@@ -522,3 +522,32 @@ export function etatVueSite(
     return { url: vue.webContents.getURL(), bornes: vue.getBounds(), visible: vue.getVisible(), contenu: [l, h] as [number, number] };
   }, id);
 }
+
+/** `secondes` de silence en WAV (8 kHz, 8 bits, mono), généré en mémoire : de quoi jouer sans geste. */
+export function silenceWav(secondes = 3): Buffer {
+  const n = 8000 * secondes;
+  const b = Buffer.alloc(44 + n, 0x80);
+  b.write("RIFF", 0);
+  b.writeUInt32LE(36 + n, 4);
+  b.write("WAVEfmt ", 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(8000, 24);
+  b.writeUInt32LE(8000, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write("data", 36);
+  b.writeUInt32LE(n, 40);
+  return b;
+}
+
+/** Un WAV servi avec les plages d'octets (Range), comme un vrai serveur de vidéos : le lecteur peut aller à la minute voulue. */
+export const servirWav = (wav: Buffer) => (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => {
+  const plage = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+  if (!plage) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);
+  const debut = Number(plage[1]);
+  const fin = plage[2] ? Math.min(Number(plage[2]), wav.length - 1) : wav.length - 1;
+  res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": fin - debut + 1, "Content-Range": `bytes ${debut}-${fin}/${wav.length}`, "Accept-Ranges": "bytes" });
+  res.end(wav.subarray(debut, fin + 1));
+};

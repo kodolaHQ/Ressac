@@ -45,15 +45,35 @@ let nav: EtatNavigateur;
 /** Appels à `profils.effacerStockage` : le dossier, ce qu'il contenait alors, les sessions. */
 let effacements: { chemin: string; manifeste: unknown; sessions: unknown[]; registre: EtatExtensions }[];
 let effacementEchoue: boolean;
+/** Plan 16 : ce que le service fait aux applis de site (`brancherSite`, les synchronisations, l'attente du démarrage). */
+let journal: string[];
+let chargeesSite: Map<string, { cle: string; id: string }[]>;
+let attentes: [string, string, number][];
+let nomsSites: Record<string, string>;
+/** Tenue (non nulle) : chaque synchronisation l'attend (M1 : le démarrage du service reste ouvert). */
+let synchroTenue: Promise<void> | null;
+/** Ce que rend le faux `attendreDemarrage` (par défaut : vrai tout de suite). */
+let reponseDemarrage: () => Promise<boolean>;
 
 const etatNav = (prive: boolean) =>
   ({ espaces: [{ id: "e1", profil: "defaut", prive }], profils: [{ id: "defaut" }], fenetres: [], onglets: {} }) as unknown as EtatNavigateur;
 
-function demarrer(avecAgent = false) {
+function demarrer(avecAgent = false, avant?: (s: InstanceType<typeof ServiceExtensions>) => void) {
   const service = new ServiceExtensions();
+  avant?.(service);
   const magasin = { get etat() { return nav; }, abonner: (f: (e: EtatNavigateur) => void) => void abonnes.push(f) };
   const profils = {
-    synchroniser: async (e: EtatExtensions) => void synchronisees.push(e),
+    synchroniser: async (e: EtatExtensions) => {
+      if (synchroTenue) await synchroTenue;
+      synchronisees.push(e);
+      journal.push("synchro");
+    },
+    brancherSite: (id: string, s: unknown) => void journal.push(`brancher:${id}:${(s as { session: string }).session}`),
+    chargeesProfil: (p: string) => chargeesSite.get(p) ?? [],
+    attendreDemarrage: (portee: string, cle: string, ms: number) => {
+      attentes.push([portee, cle, ms]);
+      return reponseDemarrage();
+    },
     erreursChargement: () => new Map<string, string>(),
     retirerAgentsPrives: (e: EtatNavigateur) => void retraitsPrives.push(e),
     effacerStockage: async (chemin: string, sessions: unknown[]) => {
@@ -74,7 +94,17 @@ function demarrer(avecAgent = false) {
   };
   return {
     service,
-    pret: service.demarrer({ dossier, dossierGardes: gardes, ...(avecAgent ? { dossierAgent: join(dossier, "agent") } : {}), magasin, profils, sessions, vues: {} } as never),
+    pret: service.demarrer({
+      dossier,
+      dossierGardes: gardes,
+      ...(avecAgent ? { dossierAgent: join(dossier, "agent") } : {}),
+      magasin,
+      profils,
+      sessions,
+      vues: {},
+      sessionSite: (id: string) => ({ session: `persist:site-${id}` }),
+      nomsSites: async () => nomsSites,
+    } as never),
   };
 }
 
@@ -93,6 +123,12 @@ beforeEach(() => {
   nav = etatNav(false);
   effacements = [];
   effacementEchoue = false;
+  journal = [];
+  chargeesSite = new Map();
+  attentes = [];
+  nomsSites = {};
+  synchroTenue = null;
+  reponseDemarrage = async () => true;
 });
 
 test("registre illisible : aucune extension chargée, et le démarrage ne lève pas", async () => {
@@ -898,4 +934,428 @@ test("B noterVue pour un profil retiré entre-temps (service worker qui démarre
   await pret;
   expect(await service.noterVue("agent:essai", "efface", "1.0.0")).toEqual({ nouvelle: false });
   expect(service.etatExtensions().extensions["agent:essai"]!.vues).toEqual({});
+});
+
+test("C15 appliquer : un profil dont l'id contient « : » est ignoré (journalisé), sa session n'est pas créée", async () => {
+  nav = {
+    espaces: [
+      { id: "e1", profil: "defaut", prive: false },
+      { id: "e2", profil: "site:vidola", prive: false },
+    ],
+    profils: [{ id: "defaut" }, { id: "site:vidola" }],
+    fenetres: [],
+    onglets: {},
+  } as unknown as EtatNavigateur;
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`store:${ID}`]: entree("store", ["defaut", "site:vidola"]) } }));
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await demarrer().pret;
+    expect(branchees).toContain("defaut");
+    expect(branchees).not.toContain("site:vidola");
+    expect(erreur).toHaveBeenCalledWith(expect.stringMatching(/site:vidola ignoré/));
+  } finally {
+    erreur.mockRestore();
+  }
+});
+
+// ——— Plan 16, tâche 3 : les applis de site ———
+
+const ID2 = "d".repeat(32);
+const CLE = `store:${ID}`;
+const CLE2 = `store:${ID2}`;
+
+/** Deux extensions du Store installées (« Zèbre » et « alpha »), une de l'agent ; `plus` complète leurs entrées. */
+async function avecApplis(plus: Record<string, Record<string, unknown>> = {}) {
+  for (const id of [ID, ID2]) {
+    const version = join(dossier, "store", id, "1.0.0_0");
+    mkdirSync(version, { recursive: true });
+    writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0", key: `cle-${id}` }));
+  }
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({
+      version: 1,
+      toutesCoupees: false,
+      extensions: {
+        [CLE]: { ...entree("store", ["defaut"]), nom: "Zèbre", ...plus[CLE] },
+        [CLE2]: { ...entree("store", []), nom: "alpha", ...plus[CLE2] },
+        "agent:essai": { ...entree("agent", ["defaut"]), ...plus["agent:essai"] },
+      },
+    }),
+  );
+  const { service, pret } = demarrer();
+  await pret;
+  const registre = () => JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")) as EtatExtensions;
+  return { service, registre };
+}
+
+test("basculerSite active une extension du Store pour l'appli ouverte avec l'empreinte de son ouverture ; profils inchangés ; désactiver la retire", async () => {
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  expect(service.empreinteSite("vidola")).toBe("E1");
+  expect(await service.basculerSite(CLE, "vidola", true)).toEqual({ ok: true });
+  expect(registre().extensions[CLE]!.applis).toEqual({ vidola: "E1" });
+  expect(registre().extensions[CLE]!.profils).toEqual(["defaut"]);
+  // Synchronisée, la session de l'appli branchée, puis le démarrage de l'extension attendu dans la portée de l'appli (C5).
+  expect(synchronisees.at(-1)!.extensions[CLE]!.applis).toEqual({ vidola: "E1" });
+  expect(journal).toContain("brancher:vidola:persist:site-vidola");
+  const { DELAI_DEMARRAGE_FOND_MS } = await import("../../src/main/extensions/sessions");
+  expect(attentes).toEqual([["site:vidola", CLE, DELAI_DEMARRAGE_FOND_MS]]);
+  expect(await service.basculerSite(CLE, "vidola", false)).toEqual({ ok: true });
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  expect(registre().extensions[CLE]!.profils).toEqual(["defaut"]);
+  // Une désactivation n'attend aucun démarrage.
+  expect(attentes).toHaveLength(1);
+});
+
+test("basculerSite : clé de l'agent → RESERVE_STORE_SITE ; appli fermée → APPLI_FERMEE ; coupure → TOUTES_COUPEES_AGENT ; désactivée pour plantages → DESACTIVEE_PLANTAGES", async () => {
+  const { RESERVE_STORE_SITE } = await import("@webaios/noyau");
+  const { APPLI_FERMEE } = await import("../../src/commun/extensions");
+  const { TOUTES_COUPEES_AGENT } = await import("../../src/main/extensions/agent");
+  const { service, registre } = await avecApplis({ [CLE2]: { desactivee: { raison: "plantages", le: "2026-11-02T00:00:00.000Z" } } });
+  expect(await service.basculerSite("agent:essai", "vidola", true)).toEqual({ ok: false, erreur: RESERVE_STORE_SITE });
+  expect(await service.basculerSite(CLE, "vidola", true)).toEqual({ ok: false, erreur: APPLI_FERMEE });
+  await service.ouvertureSite("vidola", "E1");
+  expect(await service.basculerSite(CLE2, "vidola", true)).toEqual({ ok: false, erreur: "Désactivée : elle a planté 3 fois en une minute" });
+  await service.toutCouper(true);
+  expect(await service.basculerSite(CLE, "vidola", true)).toEqual({ ok: false, erreur: TOUTES_COUPEES_AGENT });
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  expect(registre().extensions[CLE2]!.applis).toBeUndefined();
+  // Désactiver est toujours permis (coupure, appli fermée).
+  service.fermetureSite("vidola");
+  expect(await service.basculerSite(CLE, "vidola", false)).toEqual({ ok: true });
+});
+
+test("deux basculerSite lancés ensemble (vrai puis faux) : l'état final est le second", async () => {
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  const [a, b] = await Promise.all([service.basculerSite(CLE, "vidola", true), service.basculerSite(CLE, "vidola", false)]);
+  expect(a).toEqual({ ok: true });
+  expect(b).toEqual({ ok: true });
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  // L'ordre inverse (faux puis vrai) : active à la fin.
+  const [c, d] = await Promise.all([service.basculerSite(CLE, "vidola", false), service.basculerSite(CLE, "vidola", true)]);
+  expect(c).toEqual({ ok: true });
+  expect(d).toEqual({ ok: true });
+  expect(registre().extensions[CLE]!.applis).toEqual({ vidola: "E1" });
+});
+
+test("M5 une activation qui attend le démarrage (C5) ne retient pas la désactivation qui la suit ; réveillée à faux, elle rend quand même ok", async () => {
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  let reveiller: ((ok: boolean) => void) | undefined;
+  reponseDemarrage = () => new Promise<boolean>((ok) => (reveiller = ok));
+  let activationFinie = false;
+  const activation = service.basculerSite(CLE, "vidola", true).then((r) => {
+    activationFinie = true;
+    return r;
+  });
+  await vi.waitFor(() => expect(reveiller).toBeDefined());
+  expect(registre().extensions[CLE]!.applis).toEqual({ vidola: "E1" });
+  // L'attente est hors de la file : la désactivation passe, pendant que l'activation attend toujours.
+  expect(await service.basculerSite(CLE, "vidola", false)).toEqual({ ok: true });
+  expect(activationFinie).toBe(false);
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  // Retirée : l'attente est réveillée à faux, et l'activation rend ok avec un avertissement.
+  const avertir = vi.spyOn(console, "warn").mockImplementation(() => {});
+  reveiller!(false);
+  expect(await activation).toEqual({ ok: true });
+  expect(avertir).toHaveBeenCalledWith(expect.stringContaining("non répondu"));
+  avertir.mockRestore();
+});
+
+test("I1 domaines changés pendant que la file est tenue : l'activation est refusée DOMAINES_CHANGES_EXTENSION, rien n'est écrit", async () => {
+  const { enFileStore } = await import("../../src/main/extensions/store");
+  const { DOMAINES_CHANGES_EXTENSION } = await import("../../src/commun/extensions");
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  // Une carte d'installation de cette extension tient sa file.
+  let liberer: (() => void) | undefined;
+  const tenue = enFileStore(dossier, ID, () => new Promise<void>((ok) => (liberer = ok)));
+  const bascule = service.basculerSite(CLE, "vidola", true);
+  await vi.waitFor(() => expect(liberer).toBeDefined());
+  // L'agent ajoute un domaine : l'appli est relue avec une autre empreinte.
+  await service.ouvertureSite("vidola", "E2");
+  liberer!();
+  await tenue;
+  expect(await bascule).toEqual({ ok: false, erreur: DOMAINES_CHANGES_EXTENSION });
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  expect(attentes).toEqual([]);
+});
+
+test("fermetureSite pendant un basculerSite : l'activation écrite est refusée APPLI_FERMEE, rien n'est chargé", async () => {
+  const { enFileStore } = await import("../../src/main/extensions/store");
+  const { APPLI_FERMEE } = await import("../../src/commun/extensions");
+  const { service, registre } = await avecApplis();
+  await service.ouvertureSite("vidola", "E1");
+  // La file de l'extension tenue : l'écriture de la bascule attend derrière.
+  let liberer: (() => void) | undefined;
+  const tenue = enFileStore(dossier, ID, () => new Promise<void>((ok) => (liberer = ok)));
+  const bascule = service.basculerSite(CLE, "vidola", true);
+  await vi.waitFor(() => expect(liberer).toBeDefined());
+  service.fermetureSite("vidola");
+  liberer!();
+  await tenue;
+  expect(await bascule).toEqual({ ok: false, erreur: APPLI_FERMEE });
+  expect(registre().extensions[CLE]!.applis).toBeUndefined();
+  expect(journal.filter((x) => x.startsWith("brancher:"))).toEqual([]);
+  expect(attentes).toEqual([]);
+});
+
+test("pourSite : seulement les extensions du Store, triées ; active, domainesChanges (empreinte d'activation ≠ empreinte d'ouverture), indisponible (coupure, désactivée)", async () => {
+  const { TOUTES_COUPEES_AGENT } = await import("../../src/main/extensions/agent");
+  const { service } = await avecApplis({
+    [CLE]: { applis: { vidola: "E0" } },
+    [CLE2]: { applis: { vidola: "E1" }, desactivee: { raison: "portee-elargie", le: "2026-11-02T00:00:00.000Z" } },
+  });
+  await service.ouvertureSite("vidola", "E1");
+  expect(service.pourSite("vidola")).toEqual([
+    { cle: CLE2, nom: "alpha", active: true, domainesChanges: false, indisponible: "Désactivée : elle demande plus de droits qu'accordé" },
+    { cle: CLE, nom: "Zèbre", active: false, domainesChanges: true, indisponible: null },
+  ]);
+  await service.toutCouper(true);
+  expect(service.pourSite("vidola").map((l) => l.indisponible)).toEqual([TOUTES_COUPEES_AGENT, TOUTES_COUPEES_AGENT]);
+  // Une autre appli : rien d'actif.
+  await service.ouvertureSite("autre", "E1");
+  expect(service.pourSite("autre").map((l) => [l.active, l.domainesChanges])).toEqual([
+    [false, false],
+    [false, false],
+  ]);
+});
+
+test("ouvertureSite branche la session de l'appli seulement si une clé y est chargée pour cette empreinte, et rend après la synchronisation", async () => {
+  const { service } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  journal = [];
+  // Une autre empreinte (domaines changés) : rien n'y est chargé, la session n'est pas branchée.
+  await service.ouvertureSite("vidola", "E2");
+  expect(journal).toEqual(["synchro"]);
+  journal = [];
+  await service.ouvertureSite("vidola", "E1");
+  expect(journal).toEqual(["brancher:vidola:persist:site-vidola", "synchro"]);
+});
+
+test("sans extension active pour l'appli, ouvertureSite ne branche aucune session", async () => {
+  const { service } = await avecApplis({ [CLE]: { applis: { autre: "E1" } } });
+  journal = [];
+  await service.ouvertureSite("vidola", "E1");
+  expect(journal).toEqual(["synchro"]);
+});
+
+test("C1 ouvertureSite avant la fin du démarrage du service : elle l'attend, puis synchronise avec l'appli", async () => {
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [CLE]: { ...entree("store", []), applis: { vidola: "E1" } } } }));
+  // Le démarrage tenu ouvert (sa synchronisation attend) : l'ouverture de l'appli ne rend pas avant lui.
+  let libererSynchro!: () => void;
+  synchroTenue = new Promise<void>((ok) => (libererSynchro = ok));
+  const { service, pret } = demarrer();
+  const ouverture = service.ouvertureSite("vidola", "E1");
+  let finie = false;
+  void ouverture.then(() => (finie = true));
+  await new Promise((ok) => setTimeout(ok, 50));
+  expect(finie).toBe(false);
+  synchroTenue = null;
+  libererSynchro();
+  await pret;
+  await ouverture;
+  expect(finie).toBe(true);
+  expect(journal).toContain("brancher:vidola:persist:site-vidola");
+  expect(journal.at(-1)).toBe("synchro");
+});
+
+test("I1 démarrage du service qui ne finit jamais : une appli sans aucune activation s'ouvre dès le registre lu ; une appli avec activation attend toujours", async () => {
+  const version = join(dossier, "store", ID, "1.0.0_0");
+  mkdirSync(version, { recursive: true });
+  writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  // Une activation pour « vidola » seulement (une autre empreinte compte quand même : c'est une activation pour elle).
+  writeFileSync(join(dossier, "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [CLE]: { ...entree("store", []), applis: { vidola: "E0" } } } }));
+  synchroTenue = new Promise<void>(() => {});
+  const { service } = demarrer();
+  let equipee = false;
+  void service.ouvertureSite("vidola", "E1").then(() => (equipee = true));
+  await expect(service.ouvertureSite("youtube", "E1")).resolves.toBeUndefined();
+  await new Promise((ok) => setTimeout(ok, 50));
+  expect(equipee).toBe(false);
+  // Toujours retenue : la synchronisation de fin de démarrage la verra.
+  expect(service.empreinteSite("youtube")).toBe("E1");
+});
+
+test("I1 registre illisible : une appli sans activation connue s'ouvre quand même", async () => {
+  writeFileSync(join(dossier, "etat.json"), "{ pas du json");
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { service, pret } = demarrer();
+  await service.ouvertureSite("youtube", "E1");
+  await pret;
+  erreur.mockRestore();
+});
+
+test("m2 retirerSite avant la fin du démarrage : noté, ses activations et ses vues sont retirées à la fin du démarrage", async () => {
+  for (const id of [ID, ID2]) {
+    const version = join(dossier, "store", id, "1.0.0_0");
+    mkdirSync(version, { recursive: true });
+    writeFileSync(join(version, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0" }));
+  }
+  writeFileSync(
+    join(dossier, "etat.json"),
+    JSON.stringify({
+      version: 1,
+      toutesCoupees: false,
+      extensions: {
+        [CLE]: { ...entree("store", []), applis: { vidola: "E1", autre: "E1", garde: "E1" }, vues: { "site:vidola": "1.0.0", "site:autre": "1.0.0", defaut: "1.0.0" } },
+        [CLE2]: { ...entree("store", []), vues: { "site:vidola": "1.0.0" } },
+      },
+    }),
+  );
+  // Avant que `demarrer` soit appelé (le service n'a pas encore son dossier), puis appelé mais le registre pas encore lu.
+  const { service, pret } = demarrer(false, (s) => void s.retirerSite("autre"));
+  const retrait = service.retirerSite("vidola");
+  await retrait;
+  await pret;
+  const r = (JSON.parse(readFileSync(join(dossier, "etat.json"), "utf8")) as EtatExtensions).extensions;
+  expect(r[CLE]!.applis).toEqual({ garde: "E1" });
+  expect(r[CLE]!.vues).toEqual({ defaut: "1.0.0" });
+  expect(r[CLE2]!.vues).toEqual({});
+  // La synchronisation de fin de démarrage ne veut plus rien dans l'appli retirée.
+  expect(synchronisees.at(-1)!.extensions[CLE]!.applis).toEqual({ garde: "E1" });
+});
+
+test("fermetureSite : la synchronisation suivante ne veut plus rien dans la session de l'appli", async () => {
+  const { chargeesDansSite } = await import("@webaios/noyau");
+  const { service } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  await service.ouvertureSite("vidola", "E1");
+  expect(chargeesDansSite(synchronisees.at(-1)!, "vidola", service.empreinteSite("vidola"))).toEqual([CLE]);
+  const avant = synchronisees.length;
+  service.fermetureSite("vidola");
+  expect(service.empreinteSite("vidola")).toBeNull();
+  await vi.waitFor(() => expect(synchronisees.length).toBe(avant + 1));
+  expect(chargeesDansSite(synchronisees.at(-1)!, "vidola", service.empreinteSite("vidola"))).toEqual([]);
+});
+
+test("noterVue pour « site:vidola » : notée appli ouverte ; appli fermée : rien", async () => {
+  const { service } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  expect(await service.noterVue(CLE, "site:vidola", "1.0.0")).toEqual({ nouvelle: false });
+  await service.ouvertureSite("vidola", "E1");
+  expect(await service.noterVue(CLE, "site:vidola", "1.0.0")).toEqual({ nouvelle: true });
+  expect(service.etatExtensions().extensions[CLE]!.vues).toEqual({ "site:vidola": "1.0.0" });
+  service.fermetureSite("vidola");
+  expect(await service.noterVue(CLE, "site:vidola", "2.0.0")).toEqual({ nouvelle: false });
+  // C15 : une portée qui contient « : » sans être celle d'une appli n'est jamais notée, même si un profil la porte.
+  nav = { ...nav, profils: [{ id: "defaut" }, { id: "a:b" }], espaces: [...nav.espaces, { id: "e9", profil: "a:b", prive: false }] } as unknown as EtatNavigateur;
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(await service.noterVue(CLE, "a:b", "1.0.0")).toEqual({ nouvelle: false });
+  erreur.mockRestore();
+  expect(service.etatExtensions().extensions[CLE]!.vues).toEqual({ "site:vidola": "1.0.0" });
+});
+
+test("retirerSite : l'appli quitte applis et vues ; effacerStockage reçoit le dossier de chaque extension du Store active ou démarrée dans l'appli, avec la seule session de l'appli ; un échec est journalisé et retirerSite rend quand même", async () => {
+  const { service, registre } = await avecApplis({
+    [CLE]: { applis: { vidola: "E1", autre: "E1" }, vues: { "site:vidola": "1.0.0", defaut: "1.0.0" } },
+    [CLE2]: { vues: { "site:vidola": "1.0.0" } },
+  });
+  await service.retirerSite("vidola");
+  const r = registre().extensions;
+  expect(r[CLE]!.applis).toEqual({ autre: "E1" });
+  expect(r[CLE]!.vues).toEqual({ defaut: "1.0.0" });
+  expect(r[CLE2]!.vues).toEqual({});
+  expect(effacements.map((x) => [x.chemin, x.sessions]).sort()).toEqual(
+    [
+      [join(dossier, "store", ID, "1.0.0_0"), [{ session: "persist:site-vidola" }]],
+      [join(dossier, "store", ID2, "1.0.0_0"), [{ session: "persist:site-vidola" }]],
+    ].sort(),
+  );
+  // Effacé après l'écriture (et sa synchronisation) : l'appli n'est plus dans le registre à ce moment.
+  for (const x of effacements) expect(x.registre.extensions[CLE]!.applis).toEqual({ autre: "E1" });
+
+  effacements = [];
+  await service.ouvertureSite("bis", "E1");
+  await service.basculerSite(CLE, "bis", true);
+  effacementEchoue = true;
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  await expect(service.retirerSite("bis")).resolves.toBeUndefined();
+  expect(erreur).toHaveBeenCalledWith(expect.stringContaining(`[extensions] stockage de ${CLE} non effacé dans l'appli bis`), expect.anything());
+  erreur.mockRestore();
+  expect(registre().extensions[CLE]!.applis).toEqual({ autre: "E1" });
+});
+
+test("desactiverPartout et toutCouper valent pour l'appli (plus rien de voulu dans sa session)", async () => {
+  const { chargeesDansSite } = await import("@webaios/noyau");
+  const { service } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  await service.ouvertureSite("vidola", "E1");
+  const voulues = () => chargeesDansSite(synchronisees.at(-1)!, "vidola", service.empreinteSite("vidola"));
+  expect(voulues()).toEqual([CLE]);
+  await service.toutCouper(true);
+  expect(voulues()).toEqual([]);
+  await service.toutCouper(false);
+  expect(voulues()).toEqual([CLE]);
+  expect(await service.desactiverPartout(CLE)).toEqual({ ok: true });
+  expect(voulues()).toEqual([]);
+});
+
+test("liste : applis = noms des applis où elle est active ; un id sans nom est montré tel quel", async () => {
+  const { service } = await avecApplis({ [CLE]: { applis: { vidola: "E1", perdue: "E1" } } });
+  nomsSites = { vidola: "Vidola" };
+  const lignes = await service.liste();
+  expect(lignes.find((l) => l.cle === CLE)!.applis).toEqual(["Vidola", "perdue"]);
+  expect(lignes.find((l) => l.cle === CLE2)!.applis).toEqual([]);
+  expect(lignes.find((l) => l.cle === "agent:essai")!.applis).toEqual([]);
+});
+
+test("barreSite : partition persist:site-vidola, l'onglet donné, les clés chargées dans la portée de l'appli", async () => {
+  const { service } = await avecApplis({ [CLE]: { applis: { vidola: "E1" }, epinglee: true }, [CLE2]: { applis: { vidola: "E1" } } });
+  chargeesSite.set("site:vidola", [
+    { cle: CLE, id: ID },
+    { cle: CLE2, id: ID2 },
+  ]);
+  chargeesSite.set("defaut", [{ cle: "agent:essai", id: "z".repeat(32) }]);
+  expect(service.barreSite("vidola", 42)).toEqual({
+    partition: "persist:site-vidola",
+    onglet: 42,
+    actions: [
+      { cle: CLE2, idChrome: ID2, nom: "alpha", epinglee: false },
+      { cle: CLE, idChrome: ID, nom: "Zèbre", epinglee: true },
+    ],
+  });
+  expect(service.barreSite("autre", null)).toEqual({ partition: "persist:site-autre", onglet: null, actions: [] });
+});
+
+test("« Retirer de Chrome » depuis le dernier profil d'une extension active dans une appli : retirée du profil seulement, store/<id> reste", async () => {
+  const { service, registre } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  await service.desinstallerDepuisStore(ID, "defaut");
+  expect(registre().extensions[CLE]).toMatchObject({ profils: [], applis: { vidola: "E1" } });
+  expect(existsSync(join(dossier, "store", ID, "1.0.0_0"))).toBe(true);
+});
+
+test("désinstaller une extension active dans une appli : son stockage est effacé dans la session de l'appli, avant que store/<id> ne parte", async () => {
+  const { service, registre } = await avecApplis({ [CLE]: { applis: { vidola: "E1" }, vues: { "site:autre": "1.0.0", defaut: "1.0.0" } } });
+  expect(await service.supprimer(CLE)).toEqual({ ok: true });
+  expect(registre().extensions[CLE]).toBeUndefined();
+  expect(existsSync(join(dossier, "store", ID))).toBe(false);
+  expect(effacements.map((x) => x.sessions)).toEqual([[{ session: "persist:site-vidola" }], [{ session: "persist:site-autre" }]]);
+  for (const x of effacements) {
+    expect(x.chemin).toBe(join(dossier, "store", ID, "1.0.0_0"));
+    expect(x.registre.extensions[CLE]).toBeUndefined();
+  }
+});
+
+test("M3 retirerSite : le dossier effacé est relu dans la file de l'extension (une mise à jour passée entre-temps)", async () => {
+  const { enFileStore } = await import("../../src/main/extensions/store");
+  const { service, registre } = await avecApplis({ [CLE]: { applis: { vidola: "E1" } } });
+  const v2 = join(dossier, "store", ID, "2.0.0_0");
+  mkdirSync(v2, { recursive: true });
+  writeFileSync(join(v2, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "x", version: "2.0.0", key: `cle-${ID}` }));
+  let liberer: (() => void) | undefined;
+  const tenue = enFileStore(dossier, ID, () => new Promise<void>((ok) => (liberer = ok)));
+  await vi.waitFor(() => expect(liberer).toBeDefined());
+  const retrait = service.retirerSite("vidola");
+  await vi.waitFor(() => expect(registre().extensions[CLE]!.applis).toBeUndefined());
+  // Une mise à jour appliquée pendant que la file est tenue : la version installée devient 2.0.0.
+  await service.modifier((e) => ({ ...e, extensions: { ...e.extensions, [CLE]: { ...e.extensions[CLE]!, version: "2.0.0" } } }));
+  liberer!();
+  await tenue;
+  await retrait;
+  expect(effacements.map((x) => x.chemin)).toEqual([v2]);
 });
