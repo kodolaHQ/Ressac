@@ -11,6 +11,7 @@ import {
   URL_EXTENSIONS,
   urlAction,
   urlWorkflow,
+  urlRelecture,
   type EtatFenetre,
   type EtatNavigateur,
   type Favori,
@@ -446,6 +447,9 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       d.reglages.largeurPanneauAgent = largeur;
       return true;
     }
+    // Une seule page Relecture par projet et par fenêtre.
+    case "ouvrirRelecture":
+      return ouvrirPageInterne(d, genId, a.fenetreId, urlRelecture(a.projet), `Relecture — ${a.nom}`);
   }
 }
 

@@ -9,6 +9,11 @@ import { appliquer } from "./etat/actions";
 import type { Historique } from "./historique";
 import type { Telechargements } from "./telechargements";
 import type { ServiceActions } from "./agent/actions";
+import { ID_PROJET, type IdProjet } from "@webaios/noyau";
+import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type EtatDesign, type EtatExternes, type LotAffiche } from "../commun/api";
+import type { Commentaire, DiffFichier, VueRelecture } from "../commun/api";
+import type { CibleDesign } from "./design/service";
+import { JETON_RELECTURE } from "./design/relecture";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
 export type GesteSite = "entrer" | "accueil" | "precedent" | "suivant" | "recharger" | "ouvrirBloque" | "chercherAdresse";
@@ -141,6 +146,48 @@ export interface Gestionnaires {
   };
   /** Pastilles des fenêtres d'appli (vues sans fenêtre principale) : seules, elles agissent sur leur appli. */
   pastille: { dossierDe(sender: WebContents): string | undefined; etat(dossier: string): EtatAcces; redimensionner(dossier: string, ouverte: boolean): void };
+  /**
+   * Mode design : l'expéditeur est l'interface d'une fenêtre principale (son onglet affiché), la pastille d'une fenêtre
+   * d'appli ou un calque (bulle, panier). La cible vient toujours de l'expéditeur, jamais du message.
+   */
+  design: {
+    calqueDe(sender: WebContents): CibleDesign | undefined;
+    etat(c: CibleDesign): Promise<EtatDesign>;
+    basculer(c: CibleDesign): void;
+    relire(c: CibleDesign): void;
+    ouvrirPanier(c: CibleDesign): void;
+    /** Le projet suivi de la cible (le seul que la pastille d'une appli peut lire). */
+    projetDe(c: CibleDesign): Promise<IdProjet | null>;
+    contexte(c: CibleDesign): ContexteCalque | null;
+    ajouter(c: CibleDesign, texte: string): Promise<ResultatExtension>;
+    annuler(c: CibleDesign): void;
+    panier(p: IdProjet): Promise<ElementAffiche[]>;
+    retirer(p: IdProjet, id: string): Promise<void>;
+    envoyer(p: IdProjet): Promise<ResultatExtension>;
+    lots(p: IdProjet): Promise<LotAffiche[]>;
+    traite(p: IdProjet, lot: string): Promise<void>;
+  };
+  /** Section « Projets externes » (fenêtre principale) : `id` validé ici (16 hex). */
+  externes: {
+    liste(): Promise<EtatExternes>;
+    brancher(nom: string): Promise<{ commande: string }>;
+    revoquer(id: string): Promise<void>;
+    oublier(id: string): Promise<void>;
+    relire(f: IdFenetre, id: string): void;
+  };
+  /** Page Relecture (fenêtre principale) : `projet` validé ici ; le chemin, par la comparaison gardée. */
+  relecture: {
+    ouvrir(p: IdProjet, jeton?: string): Promise<VueRelecture>;
+    fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
+    lignes(p: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
+    commentaires(p: IdProjet): Promise<Commentaire[]>;
+    commenter(p: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
+    modifierCommentaire(p: IdProjet, id: string, texte: string): Promise<void>;
+    resoudre(p: IdProjet, id: string, resolu: boolean): Promise<void>;
+    supprimerCommentaire(p: IdProjet, id: string): Promise<void>;
+    envoyer(p: IdProjet): Promise<ResultatExtension>;
+    relu(p: IdProjet, jeton: string): Promise<VueRelecture>;
+  };
 }
 
 /** Reçoit les messages de l'interface, après validation : tout message invalide est ignoré et journalisé. */
@@ -464,4 +511,149 @@ export function brancherIpc(g: Gestionnaires): void {
   ipcMain.on(CANAUX.demanderEtat, (e) => {
     if (g.fenetreDe(e)) e.sender.send(CANAUX.etat, g.magasin.etat);
   });
+  brancherDesign(g);
+  brancherExternes(g);
+  brancherRelecture(g);
+}
+
+type OrigineDesign = { cible: CibleDesign; origine: "fenetre" | "pastille" | "calque" };
+
+/** Mode design : chaque message est rattaché à sa cible d'après l'expéditeur ; projets et textes sont validés. */
+function brancherDesign(g: Gestionnaires): void {
+  const origine = (e: Pick<IpcMainEvent, "sender" | "senderFrame">): OrigineDesign | undefined => {
+    const f = g.fenetreDe(e);
+    if (f) return { cible: { type: "fenetre", fenetreId: f }, origine: "fenetre" };
+    if (!e.senderFrame || e.senderFrame !== e.sender.mainFrame) return undefined;
+    const dossier = g.pastille.dossierDe(e.sender);
+    if (dossier) return { cible: { type: "app", dossier }, origine: "pastille" };
+    const calque = g.design.calqueDe(e.sender);
+    return calque ? { cible: calque, origine: "calque" } : undefined;
+  };
+  /** La fenêtre principale voit tous les projets ; une pastille ou un calque, seulement celui de sa cible. */
+  const projetPermis = async (o: OrigineDesign, p: unknown): Promise<boolean> => {
+    if (typeof p !== "string" || !ID_PROJET.test(p)) return false;
+    if (o.origine === "fenetre") return true;
+    if (o.origine === "calque") return g.design.contexte(o.cible)?.projet === p;
+    return (await g.design.projetDe(o.cible)) === p;
+  };
+  const exiger = (e: Pick<IpcMainEvent, "sender" | "senderFrame">, permises: OrigineDesign["origine"][]) => {
+    const o = origine(e);
+    if (!o || !permises.includes(o.origine)) throw new Error("expéditeur inconnu");
+    return o;
+  };
+  const toutes: OrigineDesign["origine"][] = ["fenetre", "pastille", "calque"];
+  ipcMain.handle(CANAUX.designEtat, (e) => g.design.etat(exiger(e, ["fenetre", "pastille"]).cible));
+  ipcMain.on(CANAUX.designBasculer, (e) => {
+    const o = origine(e);
+    if (o && o.origine !== "calque") g.design.basculer(o.cible);
+  });
+  ipcMain.on(CANAUX.designRelire, (e) => {
+    const o = origine(e);
+    if (o && o.origine !== "calque") g.design.relire(o.cible);
+  });
+  ipcMain.on(CANAUX.designOuvrirPanier, (e) => {
+    const o = origine(e);
+    if (o?.origine === "pastille") g.design.ouvrirPanier(o.cible);
+  });
+  const invalide = { ok: false as const, erreur: "Demande invalide" };
+  ipcMain.handle(CANAUX.designPanier, async (e, p: unknown) => (await projetPermis(exiger(e, toutes), p) ? g.design.panier(p as IdProjet) : []));
+  ipcMain.handle(CANAUX.designLots, async (e, p: unknown) => (await projetPermis(exiger(e, toutes), p) ? g.design.lots(p as IdProjet) : []));
+  ipcMain.handle(CANAUX.designRetirer, async (e, p: unknown, id: unknown) => {
+    if ((await projetPermis(exiger(e, toutes), p)) && typeof id === "string" && id.length <= 64) await g.design.retirer(p as IdProjet, id);
+  });
+  ipcMain.handle(CANAUX.designTraite, async (e, p: unknown, lot: unknown) => {
+    if ((await projetPermis(exiger(e, toutes), p)) && typeof lot === "string" && lot.length <= 64) await g.design.traite(p as IdProjet, lot);
+  });
+  ipcMain.handle(CANAUX.designEnvoyer, async (e, p: unknown) => ((await projetPermis(exiger(e, toutes), p)) ? g.design.envoyer(p as IdProjet) : invalide));
+  ipcMain.handle(CANAUX.designContexte, (e) => g.design.contexte(exiger(e, ["calque"]).cible));
+  ipcMain.handle(CANAUX.designAjouter, (e, texte: unknown) => {
+    const o = exiger(e, ["calque"]);
+    return typeof texte === "string" && texte.length <= TEXTE_REMARQUE_MAX ? g.design.ajouter(o.cible, texte) : invalide;
+  });
+  ipcMain.on(CANAUX.designAnnuler, (e) => {
+    const o = origine(e);
+    if (o?.origine === "calque") g.design.annuler(o.cible);
+  });
+}
+
+const ID_EXTERNE = /^[0-9a-f]{16}$/;
+const ID_CLIENT = /^[0-9a-f-]{8,64}$/;
+
+/** « Projets externes » : la fenêtre principale seule ; ids et noms validés ici. */
+function brancherExternes(g: Gestionnaires): void {
+  const principale = (e: Pick<IpcMainEvent, "sender" | "senderFrame">) => {
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+  };
+  ipcMain.handle(CANAUX.externesListe, (e) => (principale(e), g.externes.liste()));
+  ipcMain.handle(CANAUX.externesBrancher, (e, nom: unknown) => {
+    principale(e);
+    if (typeof nom !== "string" || nom.length > 200) throw new Error("Nom invalide");
+    return g.externes.brancher(nom);
+  });
+  ipcMain.handle(CANAUX.externesRevoquer, async (e, id: unknown) => {
+    principale(e);
+    if (typeof id === "string" && ID_CLIENT.test(id)) await g.externes.revoquer(id);
+  });
+  ipcMain.handle(CANAUX.externesOublier, async (e, id: unknown) => {
+    principale(e);
+    if (typeof id === "string" && ID_EXTERNE.test(id)) await g.externes.oublier(id);
+  });
+  ipcMain.on(CANAUX.externesRelire, (e, id: unknown) => {
+    const f = g.fenetreDe(e);
+    if (f && typeof id === "string" && ID_EXTERNE.test(id)) g.externes.relire(f, id);
+  });
+}
+
+const CHEMIN_RELECTURE_MAX = 4096;
+const ID_COMMENTAIRE = /^c-[0-9a-f]{8}$/;
+const entier = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 1;
+
+/** Page Relecture : la fenêtre principale seule ; projet par `ID_PROJET`, chemin borné (le service le cherche dans la comparaison gardée). */
+function brancherRelecture(g: Gestionnaires): void {
+  const verifier = (e: Pick<IpcMainEvent, "sender" | "senderFrame">, p: unknown): IdProjet => {
+    if (!g.fenetreDe(e)) throw new Error("expéditeur inconnu");
+    if (typeof p !== "string" || !ID_PROJET.test(p)) throw new Error("projet invalide");
+    return p;
+  };
+  const chemin = (c: unknown): string => {
+    if (typeof c !== "string" || c === "" || c.length > CHEMIN_RELECTURE_MAX || c.includes("\0")) throw new Error("chemin invalide");
+    return c;
+  };
+  // Le jeton d'une comparaison : ses deux arbres (40 hex chacun), séparés par « : ».
+  const jeton = (j: unknown): string => {
+    if (typeof j !== "string" || !JETON_RELECTURE.test(j)) throw new Error("jeton invalide");
+    return j;
+  };
+  ipcMain.handle(CANAUX.relectureOuvrir, (e, p: unknown, j: unknown) => g.relecture.ouvrir(verifier(e, p), j === undefined || j === null ? undefined : jeton(j)));
+  ipcMain.handle(CANAUX.relectureFichier, (e, p: unknown, j: unknown, c: unknown) => g.relecture.fichier(verifier(e, p), jeton(j), chemin(c)));
+  ipcMain.handle(CANAUX.relectureLignes, (e, p: unknown, j: unknown, c: unknown, debut: unknown, fin: unknown) => {
+    const projet = verifier(e, p);
+    if (!entier(debut) || !entier(fin) || fin < debut) throw new Error("lignes invalides");
+    return g.relecture.lignes(projet, jeton(j), chemin(c), debut, fin);
+  });
+  // Commentaires : texte borné comme une remarque, id d'un commentaire `c-<8 hex>`.
+  const texte = (t: unknown): string => {
+    if (typeof t !== "string" || t.length > TEXTE_REMARQUE_MAX) throw new Error("texte invalide");
+    return t;
+  };
+  const idCommentaire = (id: unknown): string => {
+    if (typeof id !== "string" || !ID_COMMENTAIRE.test(id)) throw new Error("commentaire invalide");
+    return id;
+  };
+  ipcMain.handle(CANAUX.relectureCommentaires, (e, p: unknown) => g.relecture.commentaires(verifier(e, p)));
+  ipcMain.handle(CANAUX.relectureCommenter, (e, p: unknown, j: unknown, c: unknown) => {
+    const projet = verifier(e, p);
+    const o = (c ?? {}) as Record<string, unknown>;
+    if (typeof c !== "object" || c === null || !entier(o.debut) || !entier(o.fin) || o.fin < o.debut) throw new Error("lignes invalides");
+    return g.relecture.commenter(projet, jeton(j), { fichier: chemin(o.fichier), debut: o.debut, fin: o.fin, texte: texte(o.texte) });
+  });
+  ipcMain.handle(CANAUX.relectureModifier, (e, p: unknown, id: unknown, t: unknown) => g.relecture.modifierCommentaire(verifier(e, p), idCommentaire(id), texte(t)));
+  ipcMain.handle(CANAUX.relectureResoudre, (e, p: unknown, id: unknown, r: unknown) => {
+    const projet = verifier(e, p);
+    if (typeof r !== "boolean") throw new Error("résolu invalide");
+    return g.relecture.resoudre(projet, idCommentaire(id), r);
+  });
+  ipcMain.handle(CANAUX.relectureSupprimer, (e, p: unknown, id: unknown) => g.relecture.supprimerCommentaire(verifier(e, p), idCommentaire(id)));
+  ipcMain.handle(CANAUX.relectureEnvoyer, (e, p: unknown) => g.relecture.envoyer(verifier(e, p)));
+  ipcMain.handle(CANAUX.relectureRelu, (e, p: unknown, j: unknown) => g.relecture.relu(verifier(e, p), jeton(j)));
 }

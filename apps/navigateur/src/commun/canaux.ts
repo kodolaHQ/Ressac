@@ -134,6 +134,41 @@ export const CANAUX = {
   /** Diffusé quand une appli de site apparaît, change, s'ouvre ou se ferme (sans contenu : relire). */
   sitesChange: "webaios:sites-change",
   sitesAction: "webaios:sites-action",
+  /** Mode design : interface d'une fenêtre, pastille d'une fenêtre d'appli et calque (bulle ou panier). */
+  designEtat: "webaios:design-etat",
+  designBasculer: "webaios:design-basculer",
+  designPanier: "webaios:design-panier",
+  designRetirer: "webaios:design-retirer",
+  designEnvoyer: "webaios:design-envoyer",
+  designLots: "webaios:design-lots",
+  designTraite: "webaios:design-traite",
+  designRelire: "webaios:design-relire",
+  /** Diffusé quand un mode design, un panier ou un projet suivi change (sans contenu : relire). */
+  designChange: "webaios:design-change",
+  /** La pastille d'une fenêtre d'appli : « Panier », dans le calque de cette fenêtre. */
+  designOuvrirPanier: "webaios:design-ouvrir-panier",
+  designContexte: "webaios:design-contexte",
+  designAjouter: "webaios:design-ajouter",
+  designAnnuler: "webaios:design-annuler",
+  /** Page Applications : « Projets externes » (MCP externe, clients branchés). */
+  externesListe: "webaios:externes-liste",
+  externesBrancher: "webaios:externes-brancher",
+  externesRevoquer: "webaios:externes-revoquer",
+  externesOublier: "webaios:externes-oublier",
+  externesRelire: "webaios:externes-relire",
+  /** Diffusé quand un projet externe ou un client change (sans contenu : relire). */
+  externesChange: "webaios:externes-change",
+  /** Page Relecture (fenêtre principale seule) : comparaison gardée par projet, diff d'un fichier, lignes cachées. */
+  relectureOuvrir: "webaios:relecture-ouvrir",
+  relectureFichier: "webaios:relecture-fichier",
+  relectureLignes: "webaios:relecture-lignes",
+  relectureCommentaires: "webaios:relecture-commentaires",
+  relectureCommenter: "webaios:relecture-commenter",
+  relectureModifier: "webaios:relecture-modifier",
+  relectureResoudre: "webaios:relecture-resoudre",
+  relectureSupprimer: "webaios:relecture-supprimer",
+  relectureEnvoyer: "webaios:relecture-envoyer",
+  relectureRelu: "webaios:relecture-relu",
 } as const;
 
 export const ARG_FENETRE = "--webaios-fenetre=";
@@ -141,3 +176,5 @@ export const ARG_FENETRE = "--webaios-fenetre=";
 export const ARG_PASTILLE = "--webaios-pastille=";
 /** Argument de l'interface d'une fenêtre d'appli de site : l'id de l'appli (le process principal ne s'y fie jamais). */
 export const ARG_SITE = "--webaios-site=";
+/** Argument du calque du mode design (bulle ou panier) : `fenetre:<id>` ou `app:<dossier>` (le process principal ne s'y fie jamais). */
+export const ARG_CALQUE = "--webaios-calque=";

@@ -376,6 +376,13 @@ process.exit(3);
 `,
   muet: () => `setInterval(() => {}, 1000);
 `,
+  // Un formulaire d'inscription : la page des essais du mode design dans une fenêtre d'appli.
+  formulaire: () => `import { createServer } from "node:http";
+createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end('<title>Inscription</title><form id="inscription"><input id="email" class="champ" type="email"> <button id="envoyer" type="button">Envoyer</button></form>');
+}).listen(Number(process.env.PORT));
+`,
 };
 
 /**
@@ -550,4 +557,13 @@ export const servirWav = (wav: Buffer) => (req: import("node:http").IncomingMess
   const fin = plage[2] ? Math.min(Number(plage[2]), wav.length - 1) : wav.length - 1;
   res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": fin - debut + 1, "Content-Range": `bytes ${debut}-${fin}/${wav.length}`, "Accept-Ranges": "bytes" });
   res.end(wav.subarray(debut, fin + 1));
+};
+
+/** Le terminal du panneau agent d'une fenêtre (le texte affiché). */
+export const terminal = (fenetre: Page) => fenetre.getByTestId("panneau-agent").locator(".xterm-rows");
+
+/** Ce que le faux agent a reçu en entrée : un texte pré-rempli sans \r n'a jamais été envoyé. */
+export const entreeAgent = (racine: string) => {
+  const f = join(racine, "faux-agent-entree.txt");
+  return existsSync(f) ? readFileSync(f, "utf8") : "";
 };

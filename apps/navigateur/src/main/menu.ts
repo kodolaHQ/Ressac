@@ -26,6 +26,8 @@ export interface CiblesMenu {
   outilsInterface(fenetreId: IdFenetre): void;
   /** Agit sur la fenêtre d'application au premier plan, s'il y en a une ; vrai si c'est le cas. */
   surApplication(action: "recharger" | "outils" | "fermer"): boolean;
+  /** Mode design (⌘⇧D) ou relecture : la fenêtre d'appli au premier plan avant la fenêtre principale. */
+  design(action: "basculer" | "relire"): void;
 }
 
 /** Menu de l'application ; ses raccourcis marchent aussi quand une page web a le focus. Chaque entrée a un id (tests). */
@@ -161,6 +163,8 @@ export function installerMenu(c: CiblesMenu): void {
         entree("extensions", "Extensions", undefined, dansFenetre((f) => c.agir({ type: "ouvrirExtensions", fenetreId: f }))),
         { type: "separator" },
         entree("outils-page", "Outils de développement de la page", "Alt+CmdOrCtrl+I", appliOu("outils", surOnglet("outils"))),
+        entree("mode-design", "Mode design", "CmdOrCtrl+Shift+D", () => c.design("basculer")),
+        entree("relire-projet", "Relire ce projet", undefined, () => c.design("relire")),
         ...(app.isPackaged ? [] : [entree("outils-interface", "Outils de développement de l'interface", undefined, dansFenetre((f) => c.outilsInterface(f)))]),
       ],
     },

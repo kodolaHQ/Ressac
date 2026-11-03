@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import type { EtatLot, IdProjet, ProjetExterne, ProjetSuivi } from "@webaios/noyau";
+import { ID_PROJET, type Commentaire, type DiffFichier, type FichierModifie } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace, LigneExtensionSite } from "./extensions";
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
-export { ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "./canaux";
+export { ARG_CALQUE, ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "./canaux";
 
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
@@ -95,6 +97,8 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choisirMoteur"), moteur }),
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("largeurPanneauAgent"), largeur: z.number().finite() }),
+  /** Active la page Relecture du projet dans cette fenêtre, ou l'ouvre (une par projet et par fenêtre). */
+  z.object({ type: z.literal("ouvrirRelecture"), fenetreId: id, projet: z.string().regex(ID_PROJET), nom: z.string().max(80) }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
@@ -334,7 +338,12 @@ export interface ApiWebaios {
     /** « Couper le déblocage » de la console d'une extension de l'agent. */
     couperDeblocage(cle: string): Promise<ResultatExtension>;
   };
+  /** Mode design de l'onglet actif de cette fenêtre, et paniers de remarques. */
+  design: ApiDesign;
+  externes: ApiExternes;
+  relecture: ApiRelecture;
 }
+
 
 export type ResultatExtension = { ok: true } | { ok: false; erreur: string };
 
@@ -352,7 +361,7 @@ const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
 export const SchemaActionApplication = z
   .object({
     dossier: z.string(),
-    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier"]),
+    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
   })
   .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
@@ -562,10 +571,12 @@ export interface EtatIaAffiche {
   verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
 }
 
-/** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent, rien d'autre. */
+/** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent et le mode design de son appli. */
 export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
   /** Demande au process principal d'agrandir (bulle ouverte) ou de rétrécir la vue de la pastille. */
   pastilleTaille(ouverte: boolean): void;
+  /** Le mode design de la fenêtre d'appli ; « Panier » l'ouvre dans le calque de la fenêtre. */
+  design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
 };
 
 /**
@@ -620,4 +631,116 @@ export interface ApiSite {
     /** Le process principal demande de fermer le menu (clic dans la vue du site, plein écran) ; renvoie le désabonnement. */
     surFermer(rappel: () => void): () => void;
   };
+}
+
+/** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */
+export interface EtatDesign {
+  actif: boolean;
+  projet: ProjetSuivi | null;
+  /** Raison pour laquelle le mode design n'est pas proposé ici ; null s'il l'est. */
+  indisponible: string | null;
+  /** « l'agent », « Claude Code (<nom>) » ; null si personne ne peut recevoir les remarques. */
+  destination: string | null;
+  /** Pourquoi `destination` est null (aucun Claude Code branché). */
+  sansDestination: string | null;
+  /** Nombre de remarques dans le panier du projet. */
+  panier: number;
+  /** Nom du projet à afficher. */
+  nom: string;
+}
+/** Une remarque telle que le panier et l'historique l'affichent : du texte, jamais du HTML. */
+export interface ElementAffiche {
+  id: string;
+  type: "design" | "relecture";
+  etiquette: string;
+  texte: string;
+  source: string | null;
+  traite: { quand: string; note?: string } | null;
+}
+export interface LotAffiche {
+  id: string;
+  cree: string;
+  etat: EtatLot;
+  destination: "agent" | "mcp";
+  elements: ElementAffiche[];
+}
+export interface ApiDesign {
+  etat(): Promise<EtatDesign>;
+  /** ⌘⇧D : sans effet là où le mode est indisponible. */
+  basculer(): void;
+  panier(projet: IdProjet): Promise<ElementAffiche[]>;
+  retirer(projet: IdProjet, id: string): Promise<void>;
+  envoyer(projet: IdProjet): Promise<ResultatExtension>;
+  lots(projet: IdProjet): Promise<LotAffiche[]>;
+  traite(projet: IdProjet, lot: string): Promise<void>;
+  /** « Relire ce projet » (projets `app` et `externe`). */
+  relire(): void;
+  surChange(rappel: () => void): () => void;
+}
+/** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
+export interface ContexteCalque {
+  mode: "bulle" | "panier";
+  projet: IdProjet;
+  etiquette: string;
+  source: string | null;
+  destination: string | null;
+  sansDestination: string | null;
+}
+/** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
+export type ApiCalque = {
+  contexte(): Promise<ContexteCalque | null>;
+  ajouter(texte: string): Promise<ResultatExtension>;
+  /** Échap ou « Annuler » dans la bulle ; « Fermer » du panier. */
+  annuler(): void;
+} & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
+/** Texte d'une remarque : borné à l'entrée du process principal. */
+export const TEXTE_REMARQUE_MAX = 4000;
+
+/** Section « Projets externes » de la page Applications : le MCP externe, ses projets et ses clients (jamais un jeton). */
+export interface EtatExternes {
+  serveur: { etat: "pret"; port: number } | { etat: "eteint"; raison: string };
+  projets: (ProjetExterne & { client: string | null; nomClient: string | null })[];
+  clients: { id: string; nom: string; cree: string }[];
+}
+export interface ApiExternes {
+  liste(): Promise<EtatExternes>;
+  /** La commande à copier dans le terminal du Claude Code : le jeton n'y paraît qu'une fois. */
+  brancher(nom: string): Promise<{ commande: string }>;
+  revoquer(id: string): Promise<void>;
+  oublier(id: string): Promise<void>;
+  /** « Relire » : la page de relecture du projet. */
+  relire(id: string): void;
+  surChange(rappel: () => void): () => void;
+}
+
+/** Page Relecture : ce qu'elle montre d'un projet (le diff depuis la dernière relecture), ou pourquoi elle ne le peut pas. */
+export type VueRelecture =
+  | {
+      etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[];
+      /** À qui vont les commentaires (« l'agent », « Claude Code (…) ») ; sinon pourquoi ils ne peuvent pas partir. */
+      destination: string | null; sansDestination: string | null;
+    }
+  | { etat: "indisponible"; nom: string; raison: string };
+export type { DiffFichier, FichierModifie, Commentaire };
+export interface ApiRelecture {
+  /**
+   * Compare le projet à sa dernière relecture et rend le jeton de cette comparaison (gardée par le process principal).
+   * Avec le jeton d'une comparaison encore gardée : celle-là, sans comparer de nouveau ; « Rafraîchir » n'en passe pas.
+   */
+  ouvrir(projet: IdProjet, jeton?: string): Promise<VueRelecture>;
+  /** Le diff d'un fichier de la comparaison du jeton (jamais un autre chemin) ; un jeton qui n'est plus gardé est refusé. */
+  fichier(projet: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
+  /** Lignes `debut`..`fin` (à partir de 1) de la version courante d'un fichier de la comparaison du jeton. */
+  lignes(projet: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
+  /** Les commentaires du projet, tels qu'enregistrés. */
+  commentaires(projet: IdProjet): Promise<Commentaire[]>;
+  /** Un commentaire sur des lignes d'un seul bloc du diff du jeton ; les lignes sont lues par le process principal. */
+  commenter(projet: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
+  modifierCommentaire(projet: IdProjet, id: string, texte: string): Promise<void>;
+  resoudre(projet: IdProjet, id: string, resolu: boolean): Promise<void>;
+  supprimerCommentaire(projet: IdProjet, id: string): Promise<void>;
+  /** Les commentaires non résolus partent en un lot (agent : pré-rempli, jamais envoyé ; externe : file du MCP). */
+  envoyer(projet: IdProjet): Promise<ResultatExtension>;
+  /** « Marquer comme relu » : retient l'arbre montré par la comparaison du jeton, puis rend une nouvelle comparaison. */
+  relu(projet: IdProjet, jeton: string): Promise<VueRelecture>;
 }

@@ -230,13 +230,15 @@ export function demarrerAgent(o: {
   });
   // Ouvrir le panneau (⌘J ou bouton ✦) sur un onglet le donne à l'agent et pré-remplit le contexte, sans
   // l'envoyer (spec §8). À la toute première ouverture la session démarre : sa saisie n'est pas encore prête.
+  // Un pré-remplissage (Déboguer, remarques de l'utilisateur) ouvre le panneau avec son propre texte : pas de contexte en plus.
+  let preRemplissage = false;
   o.magasin.abonner((etat, avant) => {
     for (const f of etat.fenetres) {
       const ouvert = !avant.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert && f.panneauAgentOuvert;
       const actif = ouvert ? ongletActifDe(etat, f.id) : null;
       if (!actif) continue;
       noyau?.politique.interactionUtilisateur(actif);
-      if (sessions.active(f.id)) sessions.ecrire(f.id, prefixeContexte(actif.titre, actif.url));
+      if (!preRemplissage && sessions.active(f.id)) sessions.ecrire(f.id, prefixeContexte(actif.titre, actif.url));
     }
   });
   return {
@@ -254,7 +256,14 @@ export function demarrerAgent(o: {
     },
     sessions,
     preRemplir(f, texte, acces) {
-      if (o.magasin.etat.fenetres.find((x) => x.id === f)?.panneauAgentOuvert === false) o.magasin.agir({ type: "basculerPanneauAgent", fenetreId: f });
+      if (o.magasin.etat.fenetres.find((x) => x.id === f)?.panneauAgentOuvert === false) {
+        preRemplissage = true;
+        try {
+          o.magasin.agir({ type: "basculerPanneauAgent", fenetreId: f });
+        } finally {
+          preRemplissage = false;
+        }
+      }
       sessions.preRemplir(
         f,
         texte,

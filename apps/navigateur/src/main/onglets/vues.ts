@@ -293,6 +293,14 @@ export class GestionnaireVues {
     }
   }
 
+  /** La vue de l'onglet affiché dans la fenêtre, et ses bornes dans la fenêtre ; null s'il n'y en a pas. */
+  vueAffichee(fenetreId: IdFenetre): { wc: WebContents; bornes: Electron.Rectangle } | null {
+    const id = this.attachees.get(fenetreId);
+    const v = id ? this.vues.get(id) : undefined;
+    if (!v || v.webContents.isDestroyed()) return null;
+    return { wc: v.webContents, bornes: v.getBounds() };
+  }
+
   vue(id: IdOnglet): WebContents | null {
     return this.vues.get(id)?.webContents ?? null;
   }

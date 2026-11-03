@@ -27,9 +27,13 @@ function sessionApplication(dossier: string): Electron.Session {
   return s;
 }
 
-/** Pastille d'accès : 12 px des bords, 48×28 fermée, 300×320 bulle ouverte (cinq lignes au plus : la lecture et les quatre droits, sous la pastille). */
+/**
+ * Pastille d'une fenêtre d'appli, toujours montrée : 12 px des bords ; fermée, 48×28 (le bouton WebAiOs seul) ou 88×28
+ * avec l'accès de l'agent ; 300×320 bulle ou menu ouvert (cinq lignes au plus : la lecture et les quatre droits).
+ */
 const MARGE_PASTILLE = 12;
 const PASTILLE_FERMEE = { largeur: 48, hauteur: 28 };
+const PASTILLE_FERMEE_ACCES = { largeur: 88, hauteur: 28 };
 const PASTILLE_OUVERTE = { largeur: 300, hauteur: 320 };
 
 /** La vue de la pastille d'une fenêtre d'appli. */
@@ -37,7 +41,7 @@ interface Pastille {
   vue: WebContentsView;
   fenetre: BrowserWindow;
   ouverte: boolean;
-  /** L'agent a-t-il un accès à l'appli ? Sinon la vue est cachée. */
+  /** L'agent a-t-il un accès à l'appli ? La pastille d'accès est alors montrée à côté du bouton WebAiOs. */
   active: boolean;
 }
 
@@ -183,7 +187,6 @@ export class FenetresApplications {
     vue.setBackgroundColor("#00000000");
     const p: Pastille = { vue, fenetre: f, ouverte: false, active: false };
     this.pastilles.set(dossier, p);
-    vue.setVisible(false);
     f.contentView.addChildView(vue);
     this.placerPastille(p);
     const id = `app:${dossier}`;
@@ -204,20 +207,18 @@ export class FenetresApplications {
   private placerPastille(p: Pastille): void {
     if (p.fenetre.isDestroyed()) return;
     const largeurFenetre = p.fenetre.getContentSize()[0] ?? 0;
-    const t = p.ouverte ? PASTILLE_OUVERTE : PASTILLE_FERMEE;
+    const t = p.ouverte ? PASTILLE_OUVERTE : p.active ? PASTILLE_FERMEE_ACCES : PASTILLE_FERMEE;
     p.vue.setBounds({ x: Math.max(0, largeurFenetre - MARGE_PASTILLE - t.largeur), y: MARGE_PASTILLE, width: t.largeur, height: t.hauteur });
   }
 
-  /** Cachée sans accès de l'agent : une vue cachée ne reçoit aucun clic. */
+  /** La vue grandit avec la pastille d'accès quand l'agent a un accès à l'appli. */
   private appliquerAcces(dossier: string, p: Pastille): void {
     const e = this.acces?.onglets[`app:${dossier}`];
     p.active = !!e && (e.lecture || e.droits.length > 0);
-    if (!p.active) p.ouverte = false;
     this.placerPastille(p);
-    p.vue.setVisible(p.active);
   }
 
-  /** L'accès de l'agent a changé : chaque pastille se montre ou se cache, et reçoit l'état de sa seule appli. */
+  /** L'accès de l'agent a changé : chaque pastille change de taille, et reçoit l'état de sa seule appli. */
   diffuserAcces(e: EtatAcces): void {
     this.acces = e;
     for (const [dossier, p] of this.pastilles) {
@@ -239,11 +240,11 @@ export class FenetresApplications {
     return undefined;
   }
 
-  /** La bulle de la pastille s'ouvre ou se ferme : la vue grandit ou rétrécit. */
+  /** La bulle ou le menu de la pastille s'ouvre ou se ferme : la vue grandit ou rétrécit. */
   redimensionnerPastille(dossier: string, ouverte: boolean): void {
     const p = this.pastilles.get(dossier);
     if (!p) return;
-    p.ouverte = ouverte && p.active;
+    p.ouverte = ouverte;
     this.placerPastille(p);
   }
 
@@ -265,6 +266,19 @@ export class FenetresApplications {
     this.fermeturesVoulues.add(f);
     this.noterCadre(dossier, f);
     f.destroy();
+  }
+
+  /** La fenêtre de l'appli, si elle est ouverte. */
+  fenetre(dossier: string): BrowserWindow | undefined {
+    const f = this.fenetres.get(dossier);
+    return f && !f.isDestroyed() ? f : undefined;
+  }
+
+  /** Le dossier de l'appli dont la fenêtre est au premier plan ; undefined si ce n'en est pas une. */
+  dossierAuPremierPlan(): string | undefined {
+    const focus = BrowserWindow.getFocusedWindow();
+    for (const [dossier, f] of this.fenetres) if (f === focus && !f.isDestroyed()) return dossier;
+    return undefined;
   }
 
   webContents(dossier: string): WebContents | undefined {

@@ -459,8 +459,9 @@ test("fenêtre d'appli : la pastille ⚡ est affichée ; Couper l'accès la reti
   const pastille = await pagePastille(app);
   await expect(pastille.getByTestId(PASTILLE)).toHaveAttribute("data-niveau", "agir");
   await expect(pastille.getByTestId(PASTILLE)).toContainText("⚡");
-  // Fermée : 48×28, et l'état reçu ne parle que de sa propre appli.
-  expect(await pastille.evaluate(() => [innerWidth, innerHeight])).toEqual([48, 28]);
+  // Fermée, avec l'accès de l'agent : 88×28 (la pastille d'accès et celle de WebAiOs), et l'état reçu ne parle que de
+  // sa propre appli.
+  await expect.poll(() => pastille.evaluate(() => [innerWidth, innerHeight])).toEqual([88, 28]);
   expect(await pastille.evaluate(async () => Object.keys((await window.webaios.acces.etat()).onglets))).toEqual(["app:essai"]);
   await pastille.getByTestId(PASTILLE).click();
   await expect(pastille.getByTestId(BULLE)).toContainText("Agir sur la page");

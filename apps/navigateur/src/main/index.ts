@@ -59,6 +59,14 @@ import { brancherPagesAgent } from "./extensions/reseau";
 import { ExtensionsProfils, servirIconesExtensions } from "./extensions/sessions";
 import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
 import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
+// Mode design et relecture (plan 17).
+import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
+import { ServiceDesign } from "./design/service";
+import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
+import { creerEnvoi } from "./design/envoi";
+import { demarrerExternes, raisonEchec, type ServiceExternes } from "./design/externes";
+import { ServiceRelecture } from "./design/relecture";
+import { homedir } from "node:os";
 
 declare const __RESSOURCES_NOYAU__: string;
 
@@ -203,6 +211,7 @@ function creerFenetre(id: IdFenetre, magasin: Magasin, vues: GestionnaireVues, p
     questionsFenetreFermee(id);
     boutonsFenetre.delete(id);
     selectionsConstructeur.delete(id);
+    design?.oublier({ type: "fenetre", fenetreId: id });
     void agent?.sessions.fermerFenetre(id);
     if (!enSortie && magasin.etat.fenetres.length > 1) magasin.agir({ type: "fermerFenetre", id });
     // Dernière fenêtre (gardée dans l'état) : ses pages se ferment, elles reviendront avec elle.
@@ -283,9 +292,26 @@ const fileEcritures = new FileEcritures();
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 let applications: ServiceApplications | undefined;
 let sites: ServiceSites | undefined;
+/** Mode design des onglets et des fenêtres d'appli ; créé avec les applis (il lit leurs ports). */
+let design: ServiceDesign | undefined;
+/** Le MCP externe et ses projets (page Applications) ; prêt une fois le registre ouvert. */
+let externes: ServiceExternes | undefined;
+/** Le registre des projets externes illisible (ou le MCP externe en échec) : la raison montrée dans la section. */
+let echecExternes: string | null = null;
+/** Page Relecture : photos de prise en charge des applis, comparaison gardée par projet. */
+let relecture: ServiceRelecture | undefined;
+/** La relecture, ou une erreur tant qu'elle n'est pas prête. */
+function prete(): ServiceRelecture {
+  if (!relecture) throw new Error("la relecture n'est pas prête");
+  return relecture;
+}
+let minuteurPriseEnCharge: NodeJS.Timeout | undefined;
+/** Reprend la prise en charge des applis après 1 s de calme ; branché quand la relecture est prête. */
+let planifierPriseEnCharge = (): void => undefined;
 let magasinGlobal: Magasin | undefined;
 let historique: Historique | undefined;
 let minuteurPurge: NodeJS.Timeout | undefined;
+let minuteurPurgeLots: NodeJS.Timeout | undefined;
 /** Arrête la vérification périodique des mises à jour du Store. */
 let arreterMisesAJour: (() => void) | undefined;
 const serviceExtensions = new ServiceExtensions();
@@ -858,6 +884,63 @@ app.whenReady().then(async () => {
         diffuser(CANAUX.permissions, enAttente());
       },
     },
+    design: {
+      calqueDe: (sender) => design?.cibleDeCalque(sender),
+      etat: async (c) => {
+        if (!design) throw new Error("mode design pas prêt");
+        return design.etat(c);
+      },
+      basculer: (c) => void design?.basculer(c),
+      relire: (c) => void design?.relire(c),
+      ouvrirPanier: (c) => void design?.ouvrirPanier(c),
+      projetDe: async (c) => (await design?.projetCourant(c))?.projet ?? null,
+      contexte: (c) => design?.contexteCalque(c) ?? null,
+      ajouter: async (c, texte) => (await design?.ajouter(c, texte)) ?? { ok: false, erreur: "mode design pas prêt" },
+      annuler: (c) => design?.annuler(c),
+      panier: async (p) => (await design?.panier(p)) ?? [],
+      retirer: async (p, id) => design?.retirer(p, id),
+      envoyer: async (p) => (await design?.envoyer(p)) ?? { ok: false, erreur: "mode design pas prêt" },
+      lots: async (p) => (await design?.lots(p)) ?? [],
+      traite: async (p, lot) => design?.traite(p, lot),
+    },
+    externes: {
+      liste: async () => (await externes?.etat()) ?? { serveur: { etat: "eteint", raison: echecExternes ?? "Le MCP externe démarre" }, projets: [], clients: [] },
+      brancher: async (nom) => {
+        if (!externes) throw new Error(echecExternes ?? "Le MCP externe démarre");
+        return externes.brancher(nom);
+      },
+      revoquer: async (id) => void (await externes?.revoquer(id)),
+      oublier: async (id) => {
+        await externes?.oublier(id);
+        relecture?.oublier(`ext-${id}`);
+      },
+      // « Relire » : la page Relecture du projet, dans la fenêtre qui l'a demandée.
+      relire: (f, id) =>
+        void design?.projetSuivi(`ext-${id}`).then((p) => {
+          if (p?.type === "externe") ouvrirRelecture(f, p.projet, p.nom);
+        }),
+    },
+    relecture: {
+      ouvrir: async (p, jeton) => {
+        if (!relecture) throw new Error("la relecture n'est pas prête");
+        return relecture.ouvrir(p, jeton);
+      },
+      fichier: async (p, jeton, chemin) => {
+        if (!relecture) throw new Error("la relecture n'est pas prête");
+        return relecture.fichier(p, jeton, chemin);
+      },
+      lignes: async (p, jeton, chemin, debut, fin) => {
+        if (!relecture) throw new Error("la relecture n'est pas prête");
+        return relecture.lignes(p, jeton, chemin, debut, fin);
+      },
+      commentaires: async (p) => prete().commentaires(p),
+      commenter: async (p, jeton, c) => prete().commenter(p, jeton, c),
+      modifierCommentaire: async (p, id, texte) => prete().modifierCommentaire(p, id, texte),
+      resoudre: async (p, id, resolu) => prete().resoudre(p, id, resolu),
+      supprimerCommentaire: async (p, id) => prete().supprimerCommentaire(p, id),
+      envoyer: async (p) => prete().envoyer(p),
+      relu: async (p, jeton) => prete().relu(p, jeton),
+    },
   });
   const cibles: CiblesMenu = {
     fenetreActive: () => {
@@ -898,6 +981,16 @@ app.whenReady().then(async () => {
     rouvrirFenetres: () => rouvrirFenetres(),
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
     surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
+    design: (action) => {
+      const dossier = applications?.fenetres.dossierAuPremierPlan();
+      // Une autre fenêtre au premier plan (appli de site…) : rien, jamais l'onglet de la fenêtre principale derrière.
+      const auPremierPlan = BrowserWindow.getFocusedWindow();
+      if (!dossier && auPremierPlan && ![...fenetres.values()].includes(auPremierPlan)) return;
+      const f = dossier ? undefined : cibles.fenetreActive();
+      const cible = dossier ? ({ type: "app", dossier } as const) : f ? ({ type: "fenetre", fenetreId: f } as const) : undefined;
+      if (!cible || !design) return;
+      void (action === "basculer" ? design.basculer(cible) : design.relire(cible));
+    },
   };
   installerMenu(cibles);
   // La coche du moteur de recherche suit l'état.
@@ -941,11 +1034,16 @@ app.whenReady().then(async () => {
     atelier,
     dossierProfil: dossier,
     ouvrirOnglet: ouvrirDansOnglet,
-    // La page Applications relit la liste.
-    diffuser: () => diffuser(CANAUX.applicationsChange, null),
-    // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre.
+    // La page Applications relit la liste ; le mode design aussi (les ports des applis en marche ont pu changer).
+    diffuser: () => {
+      diffuser(CANAUX.applicationsChange, null);
+      diffuser(CANAUX.designChange, null);
+      planifierPriseEnCharge();
+    },
+    // L'accès de l'agent à « app:<dossier> » tombe avec la fenêtre, son mode design aussi.
     surFenetreFermee: (dossier) => {
       agent?.noyau()?.politique.ongletFerme(`app:${dossier}`);
+      design?.oublier({ type: "app", dossier });
       ecarterQuestionsCaduques();
     },
     // Une fenêtre d'appli montre toujours ce que l'agent a construit : de nouveau « construite » sur sa nouvelle origine.
@@ -962,7 +1060,129 @@ app.whenReady().then(async () => {
       agent?.preRemplir(f, texte, acces);
       cibles.raccourci(f, "agent");
     },
+    relire: (f, dossier, nom) => ouvrirRelecture(f, `app-${dossier}`, nom),
   });
+  // Mode design. Les paniers et lots des applis et des démos vont dans l'espace (l'agent les lit) ; les registres des
+  // projets externes et des clients, dans le profil du navigateur (jamais monté dans le conteneur).
+  const dossiersDesign = { remarquesEspace: join(chemins.interne, "remarques"), prive: join(dossier, "design") };
+  const remarques = new Remarques({ dossiers: dossiersDesign });
+  let registreExternes: RegistreExternes | null = null;
+  const diffuserDesign = () => {
+    diffuser(CANAUX.designChange, null);
+    diffuser(CANAUX.externesChange, null);
+    design?.calques.notifier();
+  };
+  // Les clients et projets branchés par un Claude Code : une notification à la première déclaration d'un projet.
+  const notifierExterne = creerNotifieur({
+    creer: (opts) => new Notification(opts),
+    auClic: () => {
+      const id = fenetreAgent();
+      const f = id ? fenetres.get(id) : undefined;
+      if (!f || INVISIBLE) return;
+      if (f.isMinimized()) f.restore();
+      f.focus();
+    },
+    ...(process.env.WEBAIOS_TEST_NOTIFICATIONS ? { fichierTest: process.env.WEBAIOS_TEST_NOTIFICATIONS } : {}),
+    invisible: INVISIBLE,
+  });
+  // Le lot envoyé à l'agent (mode design, relecture) : une ligne pré-remplie dans sa session, jamais envoyée.
+  const envoiLot = creerEnvoi({
+    chemins,
+    fenetreAgent,
+    rouvrir: () => void rouvrirFenetres(),
+    dossierLot: (p, l) => remarques.dossierLot(p, l),
+    preRemplir: (f, texte) => agent?.preRemplir(f, texte),
+    donnerLeTerminal: (f) => cibles.raccourci(f, "agent"),
+    devant: (f) => {
+      const fenetre = fenetres.get(f);
+      if (!fenetre || fenetre.isDestroyed() || INVISIBLE) return;
+      if (fenetre.isMinimized()) fenetre.restore();
+      fenetre.focus();
+    },
+  });
+  design = new ServiceDesign({
+    remarques,
+    registre: () => registreExternes,
+    applis: async () =>
+      ((await applications?.gestionnaire.liste()) ?? []).flatMap((a) =>
+        a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : [],
+      ),
+    plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS),
+    vueOnglet: (f) => {
+      const fenetre = fenetres.get(f);
+      const v = vues.vueAffichee(f);
+      return fenetre && !fenetre.isDestroyed() && v ? { ...v, fenetre, url: v.wc.getURL() } : null;
+    },
+    fenetreApp: (d) => applications?.fenetres.fenetre(d) ?? null,
+    diffuser: diffuserDesign,
+    // « Relire ce projet » (bouton, menu, pastille) : la page Relecture dans la fenêtre principale (celle de l'onglet, ou l'active).
+    relire: (p, c) => {
+      if (p.type !== "demo") ouvrirRelecture(c.type === "fenetre" ? c.fenetreId : undefined, p.projet, p.nom);
+    },
+    envoyer: envoiLot,
+  });
+  // Relecture : la première photo de chaque appli au démarrage, puis à chaque changement de la liste (après 1 s de calme).
+  relecture = new ServiceRelecture({
+    dossiers: dossiersDesign,
+    chemins,
+    registre: () => registreExternes,
+    applis: async () => (await applications?.gestionnaire.liste()) ?? [],
+    remarques,
+    envoyer: envoiLot,
+  });
+  const prendreEnCharge = () =>
+    void applications?.gestionnaire
+      .liste()
+      .then((l) => relecture?.priseEnCharge(l.map((a) => a.dossier)))
+      .catch((e) => console.error("[relecture] prise en charge :", e));
+  planifierPriseEnCharge = () => {
+    clearTimeout(minuteurPriseEnCharge);
+    minuteurPriseEnCharge = setTimeout(prendreEnCharge, 1000);
+  };
+  prendreEnCharge();
+  // Les lots traités ou trop anciens sont purgés au démarrage puis toutes les 24 heures.
+  void remarques.purger().catch(() => undefined);
+  minuteurPurgeLots = setInterval(() => void remarques.purger().catch(() => undefined), 24 * 60 * 60 * 1000);
+  remarques.surChange(diffuserDesign);
+  RegistreExternes.ouvrir(dossiersDesign.prive)
+    .then((r) => {
+      registreExternes = r;
+      r.surChange(diffuserDesign);
+      // Port demandé, sinon celui de tout le monde ; jamais un autre port si celui-là est pris.
+      return demarrerExternes({
+        registre: r,
+        remarques,
+        dossiers: dossiersDesign,
+        port: Number(process.env.WEBAIOS_PORT_MCP_EXTERNE ?? PORT_MCP_EXTERNE),
+        plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS),
+        racineEspace: chemins.racine,
+        maison: homedir(),
+        notifier: (n) => notifierExterne({ widget: "externes", ...n }),
+      }).then((service) => {
+        externes = service;
+        diffuserDesign();
+      });
+    })
+    .catch((e) => {
+      console.error("[design] projets externes indisponibles :", e);
+      echecExternes = raisonEchec(e);
+      diffuserDesign();
+    });
+  /** La page Relecture d'un projet dans la fenêtre `f` (sinon la fenêtre principale active, rouverte au besoin), mise devant. */
+  function ouvrirRelecture(f: IdFenetre | undefined, projet: string, nom: string): void {
+    if (!f) {
+      if (!fenetreAgent()) rouvrirFenetres();
+      f = fenetreAgent();
+    }
+    if (!f) return;
+    magasin.agir({ type: "ouvrirRelecture", fenetreId: f, projet, nom: nom.slice(0, 80) });
+    const fenetre = fenetres.get(f);
+    if (!fenetre || fenetre.isDestroyed() || INVISIBLE) return;
+    if (fenetre.isMinimized()) fenetre.restore();
+    fenetre.focus();
+  }
+  // Un autre onglet affiché (ou l'onglet fermé) arrête le mode design de la fenêtre ; après la synchro des vues.
+  magasin.abonner(() => design?.verifierOnglets());
   // Les applis de site : leurs fenêtres n'attendent ni Docker ni l'agent.
   sites = demarrerSites({
     chemins,
@@ -1003,6 +1223,10 @@ app.whenReady().then(async () => {
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
     (globalThis as { __webaiosErreursRetouches?: (id: string) => unknown }).__webaiosErreursRetouches = (id) => sites?.erreurs(id) ?? [];
+  }
+  // Mode design, tests seulement : le viseur est appelé directement par les e2e (l'interface le branche à la tâche suivante).
+  if (INVISIBLE) {
+    (globalThis as { __webaiosViseur?: unknown }).__webaiosViseur = { armer: armerViseur, desarmer: desarmerViseur, lireSource, capturer: capturerElement };
   }
   /**
    * Où s'affiche une question de l'agent : sa fenêtre (ou `champs.fenetreId`, la fenêtre d'un clic de l'utilisateur), quel que
@@ -1172,6 +1396,9 @@ app.on("activate", () => rouvrirFenetres());
 
 app.on("will-quit", () => {
   clearInterval(minuteurPurge);
+  clearInterval(minuteurPurgeLots);
+  clearTimeout(minuteurPriseEnCharge);
+  void externes?.arreter();
   arreterMisesAJour?.();
   historique?.fermer();
 });

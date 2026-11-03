@@ -120,6 +120,8 @@ export function demarrerApplications(o: {
    * la fenêtre de l'appli en marche si elle est encore ouverte.
    */
   deboguer(fenetreId: IdFenetre, texte: string, acces?: () => OngletInfo | undefined): void;
+  /** « Relire » : la page Relecture de l'appli dans cette fenêtre (plan 17). */
+  relire?(fenetreId: IdFenetre, dossier: string, nom: string): void;
 }): ServiceApplications {
   const memoire = new MemoireApplications(o.dossierProfil);
   /** Lancements en cours par dossier : une appli relancée passe par « arretee » sans que sa fenêtre doive se fermer. */
@@ -268,6 +270,16 @@ export function demarrerApplications(o: {
           return;
         case "deboguer":
           void deboguer(dossier, fenetreId).catch(signaler(dossier, "déboguée"));
+          return;
+        // Une appli sans fiche n'a pas de relecture.
+        case "relire":
+          void gestionnaire
+            .liste()
+            .then((l) => {
+              const a = l.find((x) => x.dossier === dossier);
+              if (a && a.type !== "sans-fiche") o.relire?.(fenetreId, dossier, a.nom);
+            })
+            .catch(signaler(dossier, "relue"));
           return;
       }
     },

@@ -3,6 +3,7 @@
   import { confirmerOubli, confirmerSuppressionSite, OUBLIER_MEMOIRE, type ActionSite, type SiteAffiche } from "../../commun/sites";
   import { api } from "../etat.svelte";
   import Icone from "./Icone.svelte";
+  import ProjetsExternes from "./ProjetsExternes.svelte";
   import { ouvrirMenu, type EntreeMenu } from "./menu.svelte";
 
   type Filtre = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
@@ -164,20 +165,21 @@
     switch (a.etat) {
       case "preparation":
       case "lancement":
-        return { boutons: [{ libelle: "Arrêter", action: "arreter" }], menu: [entree("Déboguer", "deboguer")] };
+        return { boutons: [{ libelle: "Arrêter", action: "arreter" }], menu: [entree("Déboguer", "deboguer"), entree("Relire", "relire")] };
       case "en-marche":
         return {
           boutons: [
             { libelle: "Ouvrir", action: "ouvrir" },
             { libelle: "Arrêter", action: "arreter" },
           ],
-          menu: [entree("Relancer", "relancer"), entree("Déboguer", "deboguer")],
+          menu: [entree("Relancer", "relancer"), entree("Déboguer", "deboguer"), entree("Relire", "relire")],
         };
       case "erreur":
         return {
           boutons: [
             { libelle: "Relancer", action: "relancer", lance: true },
             { libelle: "Déboguer", action: "deboguer" },
+            { libelle: "Relire", action: "relire" },
           ],
           menu: [entree("Supprimer", "supprimer"), ...promouvoir],
         };
@@ -186,6 +188,7 @@
           boutons: [
             { libelle: "Lancer", action: "lancer", lance: true },
             { libelle: "Déboguer", action: "deboguer" },
+            { libelle: "Relire", action: "relire" },
           ],
           menu: [entree("Supprimer", "supprimer"), ...promouvoir, entree("Afficher le dossier", "dossier")],
         };
@@ -291,6 +294,7 @@
         </ul>
       </section>
     {/if}
+    <ProjetsExternes />
   </div>
 </section>
 
