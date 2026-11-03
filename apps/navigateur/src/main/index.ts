@@ -54,6 +54,10 @@ import {
 import { profilsLisibles } from "./agent/lecture-invisible";
 import { couperReseauInterface, repondreIcone, SCHEMA_ICONE } from "./reseau-interface";
 import { brancherPagesAgent } from "./extensions/reseau";
+import { ExtensionsProfils } from "./extensions/sessions";
+import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
+import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
+// Mode design et relecture (plan 17).
 import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
 import { ServiceDesign } from "./design/service";
 import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
@@ -61,9 +65,6 @@ import { creerEnvoi } from "./design/envoi";
 import { demarrerExternes, raisonEchec, type ServiceExternes } from "./design/externes";
 import { ServiceRelecture } from "./design/relecture";
 import { homedir } from "node:os";
-import { ExtensionsProfils } from "./extensions/sessions";
-import { ouvrirOngletPourExtension, ServiceExtensions } from "./extensions/service";
-import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions/store";
 
 declare const __RESSOURCES_NOYAU__: string;
 
