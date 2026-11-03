@@ -69,7 +69,7 @@ test("au plus 8 comparaisons gardées par projet : la plus ancienne tombe", asyn
   }
   await expect(service.fichier("app-essai", jetons[0]!, "a.txt")).rejects.toThrow(COMPARAISON_INCONNUE);
   expect((await service.fichier("app-essai", jetons[1]!, "a.txt")).chemin).toBe("a.txt");
-});
+}, 20_000); // 9 vraies comparaisons git : dépasse 5 s quand toute la suite tourne en parallèle
 
 const TRENTE = Array.from({ length: 30 }, (_, i) => `ligne ${i + 1}`);
 /** a.txt de 30 lignes, avec les lignes `modifiees` (numéros) réécrites. */
