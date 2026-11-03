@@ -13,6 +13,8 @@ interface Calque {
   /** Ce que montre le calque ; null : retiré de la fenêtre. */
   bulle: { place: Rectangle; contexte: ContexteCalque } | null;
   panier: ContexteCalque | null;
+  /** Retire les écouteurs posés sur la fenêtre (un calque recréé n'en ajoute pas à chaque fois). */
+  detacher: () => void;
 }
 
 /**
@@ -38,17 +40,24 @@ export class Calques {
       },
     });
     vue.setBackgroundColor("#00000000");
-    const c: Calque = { vue, fenetre, bulle: null, panier: null };
+    const c: Calque = { vue, fenetre, bulle: null, panier: null, detacher: () => undefined };
     this.calques.set(cle, c);
     const query = { cible: cle };
     if (process.env.ELECTRON_RENDERER_URL) void vue.webContents.loadURL(`${process.env.ELECTRON_RENDERER_URL}/design.html?cible=${encodeURIComponent(cle)}`).catch(() => {});
     else void vue.webContents.loadFile(join(__dirname, "../renderer/design.html"), { query }).catch(() => {});
-    fenetre.on("resize", () => {
+    const redimensionner = (): void => {
       if (this.calques.get(cle) === c) this.placer(c);
-    });
-    fenetre.once("closed", () => {
+    };
+    const fermee = (): void => {
       if (this.calques.get(cle) === c) this.oublier(cle);
-    });
+    };
+    fenetre.on("resize", redimensionner);
+    fenetre.once("closed", fermee);
+    c.detacher = () => {
+      if (fenetre.isDestroyed()) return;
+      fenetre.off("resize", redimensionner);
+      fenetre.off("closed", fermee);
+    };
     return c;
   }
 
@@ -126,6 +135,7 @@ export class Calques {
     const c = this.calques.get(cle);
     if (!c) return;
     this.calques.delete(cle);
+    c.detacher();
     if (!c.fenetre.isDestroyed() && c.fenetre.contentView.children.includes(c.vue)) c.fenetre.contentView.removeChildView(c.vue);
     if (!c.vue.webContents.isDestroyed()) c.vue.webContents.close();
   }
