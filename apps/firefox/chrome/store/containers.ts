@@ -13,10 +13,8 @@ export function containerFor(profile: IdProfil): number {
   return (found ?? ContextualIdentityService.create(name, "fence", "blue")).userContextId;
 }
 
-/** Removes the container of a login profile and wipes its cookies and storage. */
-export async function removeContainer(profile: IdProfil): Promise<void> {
+/** Removes the container of a login profile. ContextualIdentityService.remove also wipes the container's cookies and storage. */
+export function removeContainer(profile: IdProfil): void {
   const found = ContextualIdentityService.getPublicIdentities().find((i: { name: string }) => i.name === nameOf(profile));
-  if (!found) return;
-  ContextualIdentityService.remove(found.userContextId);
-  await Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId: found.userContextId });
+  if (found) ContextualIdentityService.remove(found.userContextId);
 }
