@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, realpathSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -48,5 +48,24 @@ describe("engine.sh prune", () => {
     expect(exists(path.join(dir, "dangling-ours"))).toBe(false);
     expect(exists(path.join(dir, "dangling-other"))).toBe(true);
     expect(exists(path.join(dir, "alive"))).toBe(true);
+  });
+
+  it("also removes live links into another checkout, so surfer import relinks every file to this one", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "webaios-prune-"));
+    mkdirSync(path.join(root, "scripts"));
+    mkdirSync(path.join(root, "src/browser"), { recursive: true });
+    copyFileSync(new URL("../scripts/engine.sh", import.meta.url), path.join(root, "scripts/engine.sh"));
+    const dir = path.join(root, "engine/browser/base");
+    mkdirSync(dir, { recursive: true });
+    const other = mkdtempSync(path.join(os.tmpdir(), "webaios-main-"));
+    mkdirSync(path.join(other, "apps/firefox/src"), { recursive: true });
+    writeFileSync(path.join(other, "apps/firefox/src/x.js"), "");
+    writeFileSync(path.join(root, "src/browser/y.js"), "");
+    symlinkSync(path.join(other, "apps/firefox/src/x.js"), path.join(dir, "other-checkout"));
+    symlinkSync(path.join(realpathSync(root), "src/browser/y.js"), path.join(dir, "this-checkout"));
+    execFileSync("zsh", [path.join(root, "scripts/engine.sh"), "prune"]);
+    const exists = (p: string) => { try { return !!lstatSync(p); } catch { return false; } };
+    expect(exists(path.join(dir, "other-checkout"))).toBe(false);
+    expect(exists(path.join(dir, "this-checkout"))).toBe(true);
   });
 });

@@ -2,7 +2,8 @@
 # The Firefox sources (~23 GB) live outside the repository, in ~/WebAiOs-firefox/engine; engine/ is a symlink to them.
 #   install: download Firefox (surfer download), move it out of the repository and create the link.
 #   link:    only create the link (new checkout, worktree).
-#   prune:   remove dangling links into a WebAiOs checkout (left by a deleted worktree that ran the import).
+#   prune:   remove links into another WebAiOs checkout, dangling or not: surfer import never replaces an existing link,
+#            so after another checkout (or a deleted worktree) ran the import, its files would stay in the build.
 set -e
 cd "${0:A:h}/.."
 TARGET="$HOME/WebAiOs-firefox/engine"
@@ -21,10 +22,12 @@ case "$1" in
     ;;
   prune)
     # Our links only live under the top-level directories of src/ (engine/browser resolves through the engine link).
+    own="$PWD/src/"
     for d in src/*(/N); do
-      find "engine/${d#src/}" -type l ! -exec test -e {} \; -print 2>/dev/null |
+      find "engine/${d#src/}" -type l -print 2>/dev/null |
         while IFS= read -r l; do
-          if [[ "$(readlink "$l")" == */apps/firefox/src/* ]]; then rm "$l" || echo "warning: could not remove $l" >&2; fi
+          t="$(readlink "$l")"
+          if [[ "$t" == */apps/firefox/src/* && ( "$t" != "$own"* || ! -e "$l" ) ]]; then rm "$l" || echo "warning: could not remove $l" >&2; fi
         done
     done
     ;;
