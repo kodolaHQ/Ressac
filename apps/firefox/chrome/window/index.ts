@@ -7,10 +7,10 @@
 window.addEventListener(
   "DOMContentLoaded",
   () => {
-    const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe");
+    const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     frame.id = "webaios-sidebar";
     frame.src = "chrome://browser/content/webaios/sidebar.html";
-    document.getElementById("browser").prepend(frame);
+    document.getElementById("browser")!.prepend(frame);
   },
   { once: true }
 );

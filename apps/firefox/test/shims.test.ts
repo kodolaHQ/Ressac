@@ -1,0 +1,44 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import * as fs from "../chrome/shims/fs";
+import { join } from "../chrome/shims/path";
+
+const files = new Map<string, string>();
+const notFound = (): Error => Object.assign(new Error("missing"), { name: "NotFoundError" });
+const g = globalThis as Record<string, unknown>;
+
+beforeEach(() => {
+  files.clear();
+  g.IOUtils = {
+    readUTF8: async (p: string) => files.get(p) ?? Promise.reject(notFound()),
+    writeUTF8: async (p: string, t: string) => (files.set(p, t), t.length),
+    exists: async (p: string) => files.has(p),
+    move: async (a: string, b: string) => {
+      if (!files.has(a)) throw notFound();
+      files.set(b, files.get(a)!);
+      files.delete(a);
+    },
+    makeDirectory: async () => {},
+    remove: async (p: string) => void files.delete(p),
+  };
+  g.PathUtils = { join: (...p: string[]) => p.join("/") };
+});
+
+describe("node shims", () => {
+  it("reports a missing file with code ENOENT", async () => {
+    await expect(fs.readFile("/x", "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.access("/x")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("writes through open, then reads back", async () => {
+    const f = await fs.open("/a", "w");
+    await f.writeFile("hello");
+    await f.sync();
+    await f.close();
+    expect(await fs.readFile("/a", "utf8")).toBe("hello");
+  });
+  it("renames", async () => {
+    files.set("/a", "1");
+    await fs.rename("/a", "/b");
+    expect([files.has("/a"), files.get("/b")]).toEqual([false, "1"]);
+  });
+  it("joins paths", () => expect(join("a", "b")).toBe("a/b"));
+});

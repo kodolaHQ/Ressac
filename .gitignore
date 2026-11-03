@@ -12,3 +12,5 @@ apps/firefox/engine
 apps/firefox/.surfer/
 apps/firefox/src/browser/base/content/webaios/sidebar.js
 apps/firefox/src/browser/base/content/webaios/sidebar.css
+apps/firefox/src/browser/base/content/webaios/window.js
+apps/firefox/src/browser/base/content/webaios/store.sys.mjs

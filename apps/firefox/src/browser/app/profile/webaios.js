@@ -19,3 +19,13 @@ pref("browser.startup.homepage_override.mstone", "ignore");
 pref("startup.homepage_welcome_url", "");
 pref("datareporting.policy.dataSubmissionEnabled", false);
 pref("browser.migrate.showBookmarksToolbarAfterMigration", false);
+
+// Our tabs have a single source of truth (ours): no Firefox start page, new-tab page, session restore or tab-close behaviour.
+pref("browser.startup.page", 0);
+pref("browser.startup.homepage", "about:blank");
+pref("browser.newtabpage.enabled", false);
+pref("browser.sessionstore.resume_from_crash", false);
+pref("browser.sessionstore.max_tabs_undo", 0);
+pref("browser.tabs.closeWindowWithLastTab", false);
+pref("browser.tabs.warnOnClose", false);
+pref("browser.ctrlTab.sortByRecentlyUsed", false);
