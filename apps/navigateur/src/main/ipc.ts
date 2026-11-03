@@ -516,7 +516,7 @@ export function brancherIpc(g: Gestionnaires): void {
   brancherRelecture(g);
 }
 
-type OrigineDesign = { cible: CibleDesign; origine: "fenetre" | "pastille" | "calque" };
+type OrigineDesign = { cible: CibleDesign; origine: "fenetre" | "pastille" | "site" | "calque" };
 
 /** Mode design : chaque message est rattaché à sa cible d'après l'expéditeur ; projets et textes sont validés. */
 function brancherDesign(g: Gestionnaires): void {
@@ -526,6 +526,9 @@ function brancherDesign(g: Gestionnaires): void {
     if (!e.senderFrame || e.senderFrame !== e.sender.mainFrame) return undefined;
     const dossier = g.pastille.dossierDe(e.sender);
     if (dossier) return { cible: { type: "app", dossier }, origine: "pastille" };
+    // L'interface de la fenêtre d'une appli de site (son cadre principal, vérifié plus haut) : l'appli vient de l'expéditeur.
+    const site = g.site.idDe(e.sender);
+    if (site) return { cible: { type: "site", id: site }, origine: "site" };
     const calque = g.design.calqueDe(e.sender);
     return calque ? { cible: calque, origine: "calque" } : undefined;
   };
@@ -541,8 +544,9 @@ function brancherDesign(g: Gestionnaires): void {
     if (!o || !permises.includes(o.origine)) throw new Error("expéditeur inconnu");
     return o;
   };
+  // Panier, lots et envoi : jamais l'interface d'une appli de site (ils restent au calque).
   const toutes: OrigineDesign["origine"][] = ["fenetre", "pastille", "calque"];
-  ipcMain.handle(CANAUX.designEtat, (e) => g.design.etat(exiger(e, ["fenetre", "pastille"]).cible));
+  ipcMain.handle(CANAUX.designEtat, (e) => g.design.etat(exiger(e, ["fenetre", "pastille", "site"]).cible));
   ipcMain.on(CANAUX.designBasculer, (e) => {
     const o = origine(e);
     if (o && o.origine !== "calque") g.design.basculer(o.cible);
@@ -553,7 +557,7 @@ function brancherDesign(g: Gestionnaires): void {
   });
   ipcMain.on(CANAUX.designOuvrirPanier, (e) => {
     const o = origine(e);
-    if (o?.origine === "pastille") g.design.ouvrirPanier(o.cible);
+    if (o?.origine === "pastille" || o?.origine === "site") g.design.ouvrirPanier(o.cible);
   });
   const invalide = { ok: false as const, erreur: "Demande invalide" };
   ipcMain.handle(CANAUX.designPanier, async (e, p: unknown) => (await projetPermis(exiger(e, toutes), p) ? g.design.panier(p as IdProjet) : []));

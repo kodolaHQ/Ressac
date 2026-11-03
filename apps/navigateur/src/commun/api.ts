@@ -631,6 +631,17 @@ export interface ApiSite {
     /** Le process principal demande de fermer le menu (clic dans la vue du site, plein écran) ; renvoie le désabonnement. */
     surFermer(rappel: () => void): () => void;
   };
+  /**
+   * Le mode design de l'appli (plan 18), bouton ✎ et chevron de la barre : le process principal reconnaît l'appli à
+   * l'expéditeur. `surChange` écoute seulement `CANAUX.designChange` (le compteur suit), sans aucune action.
+   */
+  design: {
+    etat(): Promise<EtatDesign>;
+    basculer(): void;
+    relire(): void;
+    ouvrirPanier(): void;
+    surChange(rappel: () => void): () => void;
+  };
 }
 
 /** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */

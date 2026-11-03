@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icone from "../composants/Icone.svelte";
+  import BoutonDesignSite from "./BoutonDesignSite.svelte";
   import BoutonsExtensionsSite from "./BoutonsExtensionsSite.svelte";
   import MenuExtensionsSite from "./MenuExtensionsSite.svelte";
   import { HAUTEUR_BARRE_SITE, CHERCHER_ADRESSE, lienBloque, OUVRIR_DANS_UN_ONGLET, type EtatFenetreSite } from "../../commun/sites";
@@ -9,6 +10,8 @@
   /** macOS : les boutons de la fenêtre sont dans la barre, à gauche. */
   const mac = navigator.userAgent.includes("Mac");
   const surSite = $derived(etat.vue === "site");
+  /** Le chevron du mode design déplie ses entrées à la place du titre. */
+  let menuDesign = $state(false);
 </script>
 
 <!-- Le fond se glisse (déplace la fenêtre) ; chaque bouton et la mention sont cliquables (no-drag). -->
@@ -22,8 +25,10 @@
     <button data-testid="site-recharger" aria-label="Recharger" disabled={!surSite} onclick={() => api.recharger()}><Icone nom="recharger" /></button>
   </nav>
   <div class="titre">
-    <span data-testid="site-nom" class="nom">{etat.nom}</span>
-    <span data-testid="site-domaine" class="domaine">{etat.domaine}</span>
+    {#if !menuDesign}
+      <span data-testid="site-nom" class="nom">{etat.nom}</span>
+      <span data-testid="site-domaine" class="domaine">{etat.domaine}</span>
+    {/if}
   </div>
   {#if etat.suivi && surSite}
     <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{CHERCHER_ADRESSE}</button>
@@ -38,8 +43,10 @@
       {/if}
     </div>
   {/if}
-  <!-- À droite : les boutons des extensions actives (vue « site » seulement), puis le menu « Extensions » (toutes vues). -->
+  <!-- À droite : le mode design (toutes vues), les boutons des extensions actives (vue « site » seulement), puis le menu
+       « Extensions » (toutes vues). -->
   <div class="extensions">
+    <BoutonDesignSite {api} {etat} bind:menuOuvert={menuDesign} />
     <BoutonsExtensionsSite {api} {surSite} />
     <MenuExtensionsSite {api} />
   </div>

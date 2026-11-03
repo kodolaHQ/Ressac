@@ -1079,6 +1079,8 @@ app.whenReady().then(async () => {
   const diffuserDesign = () => {
     diffuser(CANAUX.designChange, null);
     diffuser(CANAUX.externesChange, null);
+    // La barre des applis de site : le bouton ✎ et le compteur de leur panier.
+    sites?.fenetres.diffuserATous(CANAUX.designChange, null);
     design?.calques.notifier();
   };
   // Les clients et projets branchés par un Claude Code : une notification à la première déclaration d'un projet.
@@ -1129,6 +1131,11 @@ app.whenReady().then(async () => {
       if (p.type !== "demo") ouvrirRelecture(c.type === "fenetre" ? c.fenetreId : undefined, p.projet, p.nom);
     },
     envoyer: envoiLot,
+    // Les applis de site (plan 18) : `sites` démarre plus loin, d'où ces fermetures paresseuses.
+    vueSite: (id) => sites?.fenetres.vueDesign(id) ?? null,
+    sites: async () => ((await sites?.liste()) ?? []).map(({ id, nom }) => ({ id, nom })),
+    messageSite: (id, t) => sites?.fenetres.avisInfo(id, t),
+    fermerMenuSite: async (id) => sites?.fenetres.fermerMenu(id),
   });
   // Relecture : la première photo de chaque appli au démarrage, puis à chaque changement de la liste (après 1 s de calme).
   relecture = new ServiceRelecture({
@@ -1213,7 +1220,11 @@ app.whenReady().then(async () => {
     surFermee: (id) => {
       agent?.noyau()?.politique.ongletFerme(`${PREFIXE_SITE}${id}`);
       ecarterQuestionsCaduques();
+      // Son mode design s'arrête et son calque est fermé (le panier reste).
+      design?.oublier({ type: "site", id });
     },
+    // L'accueil (⌂), la carte d'accord, le plein écran d'un élément ou le menu « Extensions » arrêtent son mode design.
+    surInterruption: (id) => void design?.arreter({ type: "site", id }),
     // Supprimée : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée au même id redemande la carte).
     surSupprimee: (id) => agent?.noyau()?.politique.retirerLectureSite(id),
     // Les extensions du Store activées dans l'appli (plan 16) : chargées avant sa première page, et seulement pendant

@@ -238,6 +238,13 @@ const site: ApiSite = {
     panneau: (hauteur) => ipcRenderer.send(CANAUX.siteExtensionsPanneau, hauteur),
     surFermer: (rappel) => ecouter(CANAUX.siteExtensionsFermer, () => rappel()),
   },
+  design: {
+    etat: () => ipcRenderer.invoke(CANAUX.designEtat),
+    basculer: () => ipcRenderer.send(CANAUX.designBasculer),
+    relire: () => ipcRenderer.send(CANAUX.designRelire),
+    ouvrirPanier: () => ipcRenderer.send(CANAUX.designOuvrirPanier),
+    surChange: (rappel) => ecouter(CANAUX.designChange, () => rappel()),
+  },
 };
 
 /**
