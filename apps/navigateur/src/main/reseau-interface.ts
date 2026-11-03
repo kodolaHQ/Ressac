@@ -40,8 +40,15 @@ export async function trouNoir(): Promise<{ port: number; fermer(): void }> {
 
 /** Coupe le réseau de la session de l'interface ; à attendre avant d'ouvrir une fenêtre. */
 export async function couperReseauInterface(s: Session, urlDev: string | undefined): Promise<void> {
-  const { port } = await trouNoir();
-  await s.setProxy({ mode: "fixed_servers", proxyRules: `http://127.0.0.1:${port}`, proxyBypassRules: reglesContournement(urlDev) });
+  const proxyBypassRules = reglesContournement(urlDev);
+  try {
+    const { port } = await trouNoir();
+    await s.setProxy({ mode: "fixed_servers", proxyRules: `http://127.0.0.1:${port}`, proxyBypassRules });
+  } catch (e) {
+    console.error("[webaios] filet réseau de l'interface indisponible, proxy injoignable à la place :", e);
+    // Sans filet, jamais de réseau réel : un proxy injoignable fait échouer chaque connexion (Chromium ne repasse pas en direct).
+    await s.setProxy({ mode: "fixed_servers", proxyRules: "http://0.0.0.0:1", proxyBypassRules });
+  }
 }
 
 export { SCHEMA_ICONE, urlIcone };

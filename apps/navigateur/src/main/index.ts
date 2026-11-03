@@ -6,7 +6,6 @@ import {
   contexteHistorique,
   profilsChanges,
   profilDOnglet,
-  type Decision,
   type Issue,
   type Demande,
   type DemandeEnAttente,
@@ -421,10 +420,9 @@ app.whenReady().then(async () => {
   const questions = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
   const enAttente = () => [...questions.values()].map((q) => q.demande);
   const demander = (d: Demande) =>
-    new Promise<Decision>((repondre) => {
+    new Promise<Issue>((repondre) => {
       const id = randomUUID();
-      // Une question de site retirée vaut refus.
-      questions.set(id, { demande: { ...d, id }, repondre: (r) => repondre(r === "autoriser" ? "autoriser" : "refuser") });
+      questions.set(id, { demande: { ...d, id }, repondre: (r) => repondre(r) });
       diffuser(CANAUX.permissions, enAttente());
     });
   /** Autorisations des sites, une instance par profil de connexion. */

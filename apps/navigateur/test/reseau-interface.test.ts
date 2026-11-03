@@ -1,6 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { connect } from "node:net";
-import { cibleIcone, reglesContournement, repondreIcone, trouNoir, urlIcone } from "../src/main/reseau-interface";
+import { cibleIcone, couperReseauInterface, reglesContournement, repondreIcone, trouNoir, urlIcone } from "../src/main/reseau-interface";
 
 test("reglesContournement : rien n'échappe au filet, sauf le serveur de développement à son adresse exacte", () => {
   expect(reglesContournement(undefined)).toBe("<-loopback>");
@@ -20,6 +20,15 @@ test("trouNoir ferme toute connexion sans rien répondre", async () => {
   });
   expect(recu).toBe("");
   fermer();
+});
+
+test("couperReseauInterface : filet en échec → proxy injoignable, jamais le réseau réel", async () => {
+  const proxys: unknown[] = [];
+  const s = { setProxy: async (c: unknown) => (proxys.push(c), proxys.length === 1 ? Promise.reject(new Error("refusé")) : undefined) };
+  const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+  await couperReseauInterface(s as unknown as Parameters<typeof couperReseauInterface>[0], "http://localhost:5173");
+  erreur.mockRestore();
+  expect(proxys.at(-1)).toEqual({ mode: "fixed_servers", proxyRules: "http://0.0.0.0:1", proxyBypassRules: "<-loopback>;localhost:5173" });
 });
 
 test("urlIcone et cibleIcone : http(s) passe par webaios-icone:, data:image reste, le reste est refusé", () => {

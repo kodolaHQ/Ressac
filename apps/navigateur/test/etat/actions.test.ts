@@ -87,6 +87,24 @@ test("ouvrirOnglet avec apres insère juste après ; un nouvel onglet a des vale
   });
 });
 
+test("lien ouvert depuis un onglet d'un espace en arrière-plan : il reste dans cet espace ; depuis un essentiel affiché, dans l'espace affiché", () => {
+  const a = ouvrir("https://a.test/");
+  const g = ouvrir("https://mail.google.com/");
+  ag({ type: "ajouterEssentiel", id: g });
+  ag({ type: "creerEspace", nom: "Privé", icone: "🔒", prive: true, profil: "defaut", fenetreId: F });
+  const B = e.espaces[1]!.id;
+  const c = ouvrir("https://c.test/", { apres: a });
+  expect(e.onglets[c]!.espaceId).toBe(P);
+  expect(ordre(P)).toEqual([a, c]);
+  expect(ordre(B)).toEqual([]);
+  expect(fen().espaceActif).toBe(B);
+  ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
+  const D = e.espaces[2]!.id;
+  ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
+  const m = ouvrir("https://m.test/", { apres: g });
+  expect(e.onglets[m]!.espaceId).toBe(D);
+});
+
 test("onglet ouvert par l'agent : ouvertParAgent vrai", () => {
   const a = ouvrir("http://localhost:5280/", { ouvertParAgent: true });
   expect(e.onglets[a]!.ouvertParAgent).toBe(true);

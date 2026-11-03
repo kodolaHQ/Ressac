@@ -59,7 +59,10 @@ function ouvrir(
   f: EtatFenetre,
   a: { url: string; espaceId?: IdEspace; activer?: boolean; ouvertParAgent?: boolean; apres?: IdOnglet },
 ): Onglet | null {
-  const esp = a.espaceId ?? f.espaceActif;
+  // Un lien ouvert depuis un onglet reste dans l'espace de cet onglet (son profil de connexion), même en arrière-plan ;
+  // un essentiel, partagé entre espaces, ouvre dans l'espace affiché s'il y est l'onglet actif.
+  const parent = a.apres && f.actif[f.espaceActif] !== a.apres ? d.onglets[a.apres]?.espaceId : undefined;
+  const esp = a.espaceId ?? parent ?? f.espaceActif;
   if (!d.espaces.some((e) => e.id === esp)) return null;
   const o = creerOnglet(d, genId, { fenetreId: f.id, espaceId: esp, url: a.url, ouvertParAgent: a.ouvertParAgent ?? false });
   const l = liste(f, esp);
