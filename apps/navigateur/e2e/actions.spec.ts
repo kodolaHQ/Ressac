@@ -909,6 +909,33 @@ test("« leboncoin » puis Entrée : page avec le champ de saisie, rien de lanc�
   }
 });
 
+test("barre de commande : « leboncoin », Entrée demande la saisie ; « clio », Entrée lance avec elle", async () => {
+  test.setTimeout(90_000);
+  const { app, fenetre, profil, fermer } = await lancerAvecSuggestions();
+  try {
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById("nouvel-onglet")!.click());
+    const saisie = fenetre.getByTestId("saisie-commande");
+    await saisie.fill("leboncoin");
+    await expect(fenetre.locator('[data-testid="ligne-commande"][data-type="action"]')).toHaveCount(1);
+    await saisie.press("ArrowDown");
+    await saisie.press("Enter");
+    const parametre = fenetre.getByTestId("parametre-commande");
+    await expect(parametre).toBeFocused();
+    // Sur l'accueil, aucune page web : rien de prérempli.
+    await expect(parametre).toHaveValue("");
+    await expect(parametre).toHaveAttribute("placeholder", "Recherche");
+    await parametre.fill("clio");
+    await parametre.press("Enter");
+    await expect(fenetre.getByTestId("page-action")).toBeVisible();
+    await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+    await expect.poll(() => executionsSurDisque(profil, "leboncoin"), { timeout: 60_000 }).toHaveLength(1);
+    const [fichier] = executionsSurDisque(profil, "leboncoin");
+    expect(JSON.parse(readFileSync(join(dossierActions(profil), "leboncoin", "executions", fichier!), "utf8")).saisie).toBe("clio");
+  } finally {
+    await fermer();
+  }
+});
+
 /** Une action de plus : le noyau signale le changement (`api.actions.surChange`), que PageVide n'écoute qu'hors espace privé. */
 const ajouterAction = (racine: string, id: string) =>
   ecrireActionExecutable(racine, id, { nom: `Autre ${id}`, code: "export default async () => [];" });

@@ -207,6 +207,75 @@ test("une action se lance depuis la modale", async () => {
   await fermer();
 });
 
+test("une action qui attend sa saisie : Entrée la demande, préremplie avec l'URL active toute sélectionnée ; Échap et ⌫ reviennent à la liste", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "resume", { nom: "Résumé vidéo", saisie: { libelle: "Vidéo" } });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.some((a) => a.id === "resume"))), { timeout: 30_000 }).toBe(true);
+  const url = `${serveur.url}/a.html`;
+  await ouvrirOnglet(fenetre, url);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await saisie.fill("résumé");
+  await expect(lignes(fenetre, "action")).toHaveCount(1);
+  await expect(lignes(fenetre, "action")).toContainText("Vidéo");
+  await saisie.press("ArrowDown");
+  await saisie.press("Enter");
+  const parametre = fenetre.getByTestId("parametre-commande");
+  await expect(fenetre.getByTestId("pastille-commande")).toHaveText("Résumé vidéo");
+  await expect(parametre).toBeFocused();
+  await expect(parametre).toHaveValue(url);
+  expect(await parametre.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, url.length]);
+  await expect(lignes(fenetre, "action")).toHaveCount(0);
+  // Échap revient à la liste, le texte tapé intact, la barre reste ouverte.
+  await parametre.press("Escape");
+  await expect(saisie).toBeFocused();
+  await expect(saisie).toHaveValue("résumé");
+  await expect(fenetre.getByTestId("barre-commande")).toBeVisible();
+  // L'action reste choisie : Tab la demande aussi ; ⌫ efface la sélection, puis ⌫ sur le champ vide revient à la liste.
+  await expect(lignes(fenetre, "action")).toHaveAttribute("aria-selected", "true");
+  await saisie.press("Tab");
+  await expect(parametre).toHaveValue(url);
+  await parametre.press("Backspace");
+  await expect(parametre).toHaveValue("");
+  await parametre.press("Backspace");
+  await expect(saisie).toBeFocused();
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await fermer();
+});
+
+test("une action qui attend sa saisie, tapée avec elle (« résumé vidéo x ») : lancée sans la redemander", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "resume", { nom: "Résumé vidéo", saisie: { libelle: "Vidéo" } });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.some((a) => a.id === "resume"))), { timeout: 30_000 }).toBe(true);
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await saisie.fill("résumé vidéo https://y.fr/v");
+  await expect(lignes(fenetre, "action")).toContainText("« https://y.fr/v »");
+  await saisie.press("ArrowDown");
+  await saisie.press("Enter");
+  await expect(fenetre.getByTestId("page-action")).toBeVisible({ timeout: 30_000 });
+  await expect(fenetre.getByTestId("parametre-commande")).toHaveCount(0);
+  await fermer();
+});
+
+test("les lignes sont rangées sous un titre par section, chacune avec son icône", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "sans-workflow", { nom: "Page action" });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.length > 0)), { timeout: 30_000 }).toBe(true);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await menu(app, "nouvel-onglet");
+  await fenetre.getByTestId("saisie-commande").fill("Page");
+  await expect(lignes(fenetre, "onglet")).toHaveCount(1);
+  await expect(fenetre.getByTestId("section-commande")).toHaveText(["Actions", "Onglets ouverts"]);
+  for (const l of await fenetre.locator('[data-testid="ligne-commande"]').all()) await expect(l.locator(".pictogramme")).toHaveCount(1);
+  await fermer();
+});
+
 test("un onglet ouvert s'active, sans nouvel onglet", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);

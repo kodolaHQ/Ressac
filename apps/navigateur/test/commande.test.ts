@@ -3,7 +3,7 @@ import type { ActionAffichee } from "../src/commun/actions";
 import type { ApplicationAffichee } from "../src/commun/api";
 import type { Visite } from "../src/commun/modele";
 import type { SiteAffiche } from "../src/commun/sites";
-import { appliSourceDeProjet, appliSourceDeSite, lignesCommande, type AppliSource, type OngletSource, type SourcesCommande } from "../src/renderer/composants/commande";
+import { appliSourceDeProjet, appliSourceDeSite, demandeParametre, lignesCommande, parametreParDefaut, titreAvant, type AppliSource, type OngletSource, type SourcesCommande } from "../src/renderer/composants/commande";
 
 const action = (id: string, nom: string): ActionAffichee => ({ id, nom, description: "", motsCles: [], saisie: null, compte: [], publiques: [], accord: true, dernier: null });
 const onglet = (id: string, titre: string, url = `https://${id}.fr/`): OngletSource => ({ id, titre, url, favicon: null });
@@ -66,4 +66,34 @@ test("appliSourceDeProjet", () => {
 test("appliSourceDeSite", () => {
   const s: SiteAffiche = { id: "s", nom: "S", description: "", domaine: null, icone: "i.png", ouverte: false };
   expect(appliSourceDeSite(s)).toEqual({ genre: "site", id: "s", nom: "S", action: "ouvrir", favicon: "i.png" });
+});
+
+const avecSaisie = (id: string, nom: string, libelle: string): ActionAffichee => ({ ...action(id, nom), saisie: { libelle } });
+
+test("une action qui attend une saisie porte son libellé ; tapée avec sa saisie, elle n'en demande plus", () => {
+  const S: SourcesCommande = { ...VIDE, actions: [avecSaisie("r", "Résumé YouTube", "Vidéo"), action("t", "Résumé tickets")] };
+  const l = lignesCommande("résumé", S, null).filter((x) => x.type === "action");
+  expect(l).toEqual([
+    { type: "action", id: "t", nom: "Résumé tickets", saisie: null, parametre: null },
+    { type: "action", id: "r", nom: "Résumé YouTube", saisie: null, parametre: "Vidéo" },
+  ]);
+  expect(l.map(demandeParametre)).toEqual([false, true]);
+  const tapee = lignesCommande("résumé youtube https://y.fr/v", S, null).find((x) => x.type === "action")!;
+  expect(tapee).toMatchObject({ id: "r", saisie: "https://y.fr/v", parametre: "Vidéo" });
+  expect(demandeParametre(tapee)).toBe(false);
+});
+
+test("titres : un par section, à sa première ligne ; aucun pour la ligne par défaut", () => {
+  const S: SourcesCommande = { actions: [action("a", "Chat action")], onglets: [onglet("o", "chat"), onglet("p", "chat 2")], applis: [], historique: [visite("https://h.fr/", "chat h")] };
+  const l = lignesCommande("chat", S, null);
+  expect(l.map((_, i) => titreAvant(l, i))).toEqual([null, "Actions", "Onglets ouverts", null, "Historique"]);
+});
+
+test("paramètre par défaut : l'adresse web affichée sans ancre, rien pour une page interne ou trop longue", () => {
+  expect(parametreParDefaut("https://www.youtube.com/watch?v=abc#t=3")).toBe("https://www.youtube.com/watch?v=abc");
+  expect(parametreParDefaut("http://exemple.fr/")).toBe("http://exemple.fr/");
+  expect(parametreParDefaut("webaios://historique")).toBe("");
+  expect(parametreParDefaut("about:blank")).toBe("");
+  expect(parametreParDefaut(undefined)).toBe("");
+  expect(parametreParDefaut(`https://x.fr/?q=${"a".repeat(2000)}`)).toBe("");
 });

@@ -3,11 +3,25 @@
   import type { EtatFenetre, Onglet } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import { fermerCommande, commande, focusPageVide } from "./commande.svelte";
-  import { LIMITES, appliSourceDeProjet, appliSourceDeSite, lignesCommande, type AppliSource, type LigneCommande, type OngletSource, type SourcesCommande } from "./commande";
+  import {
+    LIMITES,
+    PARAMETRE_MAX,
+    appliSourceDeProjet,
+    appliSourceDeSite,
+    demandeParametre,
+    lignesCommande,
+    parametreParDefaut,
+    titreAvant,
+    type AppliSource,
+    type LigneCommande,
+    type OngletSource,
+    type SourcesCommande,
+  } from "./commande";
   import { ongletsParcourables } from "../../commun/onglets-parcourables";
   import type { ActionAffichee } from "../../commun/actions";
   import type { Visite } from "../../commun/modele";
   import IconeSite from "./IconeSite.svelte";
+  import Icone, { type NomIcone } from "./Icone.svelte";
 
   /**
    * Barre de commande (⌘T, ⌘L) : une boîte au-dessus de la page figée et floutée (FondFige, monté par App). Le champ est
@@ -89,7 +103,12 @@
   });
 
   let choisieBrute = $state(0);
-  let champ: HTMLInputElement;
+  let champ: HTMLInputElement | undefined = $state();
+
+  /** Une action choisie qui attend sa saisie : la barre la demande dans un second champ, la liste se cache. */
+  let parametre = $state<{ id: string; nom: string; libelle: string } | null>(null);
+  let valeurParametre = $state("");
+  let champParametre: HTMLInputElement | undefined = $state();
 
   const mode = $derived(commande.ouverte?.mode ?? "nouveau");
   const lignes: LigneCommande[] = $derived(lignesCommande(texte, sources, mode === "actif" ? (ongletActif?.url ?? null) : null));
@@ -106,6 +125,7 @@
     const o = commande.ouverte;
     if (!o) return;
     actionEnCours = false;
+    parametre = null;
     texte = o.texte;
     choisieBrute = 0;
     refus = "";
@@ -128,23 +148,8 @@
       return;
     }
     if (l.type === "action") {
-      if (actionEnCours) return;
-      const o = commande.ouverte;
-      actionEnCours = true;
-      refus = "";
-      void api.actions.ouvrir(l.id, l.saisie).then(
-        (r) => {
-          if (o !== commande.ouverte) return;
-          actionEnCours = false;
-          if (r.ok) fermerCommande();
-          else refus = r.erreur;
-        },
-        () => {
-          if (o !== commande.ouverte) return;
-          actionEnCours = false;
-          refus = "Le service des actions ne répond pas";
-        },
-      );
+      if (demandeParametre(l)) entrerParametre(l);
+      else lancerAction(l.id, l.saisie);
       return;
     }
     if (l.type === "defaut") api.naviguer(cible, l.texte);
@@ -156,6 +161,55 @@
     } else if (l.appli.genre === "projet") api.applications.agir(l.appli.id, l.appli.action);
     else api.sites.agir(l.appli.id, "ouvrir");
     fermerCommande(true);
+  }
+
+  /** Ouvre la page de l'action et la lance avec `saisie` (sans saisie requise et absente : la page la demande). */
+  function lancerAction(id: string, saisie: string | null) {
+    if (actionEnCours) return;
+    const o = commande.ouverte;
+    actionEnCours = true;
+    refus = "";
+    void api.actions.ouvrir(id, saisie).then(
+      (r) => {
+        if (o !== commande.ouverte) return;
+        actionEnCours = false;
+        if (r.ok) fermerCommande();
+        else refus = r.erreur;
+      },
+      () => {
+        if (o !== commande.ouverte) return;
+        actionEnCours = false;
+        refus = "Le service des actions ne répond pas";
+      },
+    );
+  }
+
+  /** Passe à la saisie de l'action, préremplie avec l'adresse de la page affichée, toute sélectionnée. */
+  function entrerParametre(l: Extract<LigneCommande, { type: "action" }> & { parametre: string }) {
+    parametre = { id: l.id, nom: l.nom, libelle: l.parametre };
+    valeurParametre = parametreParDefaut(ongletActif?.url);
+    refus = "";
+    void tick().then(() => {
+      champParametre?.focus();
+      champParametre?.select();
+    });
+  }
+
+  /** Revient à la liste, le texte tapé intact. */
+  function sortirParametre() {
+    parametre = null;
+    refus = "";
+    void tick().then(() => champ?.focus());
+  }
+
+  function toucheParametre(e: KeyboardEvent) {
+    if (e.isComposing || !parametre) return;
+    if (e.key === "Enter") {
+      if (!e.repeat) lancerAction(parametre.id, valeurParametre.trim() || null);
+    } else if (e.key === "Backspace" && valeurParametre === "") sortirParametre();
+    else if (e.key !== "Tab") return;
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   /**
@@ -170,7 +224,11 @@
     else if (e.key === "Enter") {
       const l = lignes[choisie];
       if (l && !e.repeat) executer(l);
-    } else if (e.key !== "Tab") return;
+    } else if (e.key === "Tab") {
+      // Tab sur une action qui attend sa saisie : on la donne tout de suite, comme Entrée.
+      const l = lignes[choisie];
+      if (l && demandeParametre(l) && !e.shiftKey) entrerParametre(l);
+    } else return;
     e.preventDefault();
     e.stopPropagation();
   }
@@ -180,7 +238,30 @@
   const favicon = (l: LigneCommande): string | null => (l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : null);
   const etiquette = (l: LigneCommande): string =>
     l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
-  const detail = (l: LigneCommande): string => (l.type === "onglet" ? l.onglet.url : l.type === "historique" ? l.url : "");
+  const detail = (l: LigneCommande): string =>
+    l.type === "onglet"
+      ? l.onglet.url
+      : l.type === "historique"
+        ? l.url
+        : l.type === "action"
+          ? l.saisie !== null
+            ? `« ${l.saisie} »`
+            : (l.parametre ?? "")
+          : "";
+  const pictogramme = (l: LigneCommande): NomIcone =>
+    l.type === "defaut"
+      ? l.texte === ""
+        ? "accueil"
+        : /^\S+\.\S+$/.test(l.texte)
+          ? "globe"
+          : "chercher"
+      : l.type === "action"
+        ? "actions"
+        : l.type === "onglet"
+          ? "onglet"
+          : l.type === "appli"
+            ? "applications"
+            : "horloge";
 </script>
 
 <!-- En capture : la barre passe avant tout le reste (modale, historique…), et Échap ne ferme qu'elle. -->
@@ -190,14 +271,35 @@
     if (e.key !== "Escape" || cede) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    fermerCommande(true);
+    // Dans la saisie d'une action, Échap revient d'abord à la liste.
+    if (parametre) sortirParametre();
+    else fermerCommande(true);
   }}
 />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="fond" onclick={(e) => e.target === e.currentTarget && fermerCommande(true)}>
   <!-- Un clic dans la boîte hors du champ (marge, lignes, refus) ne lui prend pas le focus ; le clic d'une ligne agit quand même. -->
-  <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => e.target !== champ && e.preventDefault()}>
+  <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
+    {#if parametre}
+      <div class="ligne-parametre">
+        <span class="pastille" data-testid="pastille-commande"><Icone nom="actions" taille={13} />{parametre.nom}</span>
+        <input
+          bind:this={champParametre}
+          bind:value={valeurParametre}
+          oninput={() => (refus = "")}
+          onkeydown={toucheParametre}
+          data-testid="parametre-commande"
+          placeholder={parametre.libelle}
+          aria-label={parametre.libelle}
+          maxlength={PARAMETRE_MAX}
+          spellcheck="false"
+          autocomplete="off"
+        />
+      </div>
+      <p class="aide" data-testid="aide-parametre">{parametre.libelle} · Entrée pour lancer · Échap pour revenir</p>
+      {#if refus}<p class="refus" data-testid="refus-commande">{refus}</p>{/if}
+    {:else}
     <input
       bind:this={champ}
       bind:value={texte}
@@ -211,9 +313,13 @@
     {#if refus}<p class="refus" data-testid="refus-commande">{refus}</p>{/if}
     <ul role="listbox">
       {#each lignes as l, i (i)}
+        {@const titre = titreAvant(lignes, i)}
+        {#if titre}<li role="presentation" class="section" data-testid="section-commande">{titre}</li>{/if}
         <li role="option" aria-selected={i === choisie} data-testid="ligne-commande" data-type={l.type}>
           <button type="button" tabindex="-1" class:choisie={i === choisie} onmousemove={() => choisir(i)} onclick={() => executer(l)}>
-            {#if favicon(l)}<IconeSite favicon={favicon(l)} titre={libelle(l)} />{/if}
+            <span class="pictogramme" data-type={l.type}>
+              {#if favicon(l)}<IconeSite favicon={favicon(l)} titre={libelle(l)} />{:else}<Icone nom={pictogramme(l)} taille={14} />{/if}
+            </span>
             <span class="libelle">{libelle(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}
             {#if etiquette(l)}<span class="etiquette">{etiquette(l)}</span>{/if}
@@ -221,6 +327,7 @@
         </li>
       {/each}
     </ul>
+    {/if}
   </div>
 </div>
 
@@ -241,10 +348,19 @@
   input { width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--texte); background: var(--fond); border: 1px solid var(--bord); border-radius: 8px; outline: none; }
   input:focus { border-color: var(--accent); }
   ul { list-style: none; margin: 6px 0 0; padding: 0; }
-  button { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
   button.choisie { background: var(--fond); }
   .libelle { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .refus { margin: 6px 2px 0; color: var(--en-erreur); font-size: 13px; }
+  .section { margin: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--texte-doux); }
+  .section:first-child { margin-top: 4px; }
+  .pictogramme { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 6px; background: var(--fond); color: var(--texte-doux); }
+  button.choisie .pictogramme { background: var(--fond-actif); }
+  .pictogramme[data-type="action"] { color: var(--accent); }
+  .ligne-parametre { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px; background: var(--fond); border: 1px solid var(--accent); border-radius: 8px; }
+  .ligne-parametre input { border: 0; padding: 6px 4px; background: none; }
+  .pastille { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 45%; padding: 3px 8px; border-radius: 6px; background: var(--fond-actif); color: var(--accent); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aide { margin: 8px 4px 2px; font-size: 12px; color: var(--texte-doux); }
   .etiquette { margin-left: auto; flex: none; opacity: 0.5; font-size: 11px; }
   .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.6; font-size: 12px; }
 </style>
