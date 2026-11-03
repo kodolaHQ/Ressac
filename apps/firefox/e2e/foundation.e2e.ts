@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import os from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, state, waitFor } from "./firefox";
-import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import { FAKE_TOOLS, launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 
 describe("WebAiOs-Firefox foundation", () => {
   let w: LaunchedWebAiOs;
@@ -111,6 +111,18 @@ describe("several WebAiOs-Firefox instances", () => {
       expect(started[0]!.profile).not.toBe(started[1]!.profile);
     } finally {
       await Promise.all(started.map((w) => w.close()));
+    }
+  });
+
+  it("passes extra environment variables and puts the fake docker first on PATH", async () => {
+    const p = await launchWebAiOs({ env: { WEBAIOS_PROBE: "1" } });
+    try {
+      await p.marionette.setContext("chrome");
+      const [probe, path] = await p.marionette.execute<[string, string]>("return [Services.env.get('WEBAIOS_PROBE'), Services.env.get('PATH')]");
+      expect(probe).toBe("1");
+      expect(path.startsWith(FAKE_TOOLS + ":")).toBe(true);
+    } finally {
+      await p.close();
     }
   });
 });

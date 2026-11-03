@@ -9,7 +9,7 @@ const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.me
 describe("package scripts", () => {
   it("builds the three bundles before surfer import, build and build:ui", () => {
     for (const s of ["engine:import", "build", "build:ui"]) expect(scripts[s]).toMatch(/^zsh scripts\/ui\.sh && /);
-    expect(readFileSync(new URL("../scripts/ui.sh", import.meta.url), "utf8")).toMatch(/for mode in sidebar window store/);
+    expect(readFileSync(new URL("../scripts/ui.sh", import.meta.url), "utf8")).toMatch(/for mode in sidebar window store agent actor/);
   });
 
   it("prunes dangling links before surfer import", () => {
@@ -18,6 +18,15 @@ describe("package scripts", () => {
 
   it("sets the brand in every checkout before importing or building (surfer keeps it in the untracked .surfer/)", () => {
     for (const s of ["engine:import", "build", "build:ui"]) expect(scripts[s]).toMatch(/surfer set brand webaios && zsh scripts\/env\.sh surfer (import|build)/);
+  });
+});
+
+describe("agent scaffolding", () => {
+  it("builds the agent panel and the page actor", () => {
+    const ui = readFileSync(new URL("../scripts/ui.sh", import.meta.url), "utf8");
+    const jar = readFileSync(new URL("../src/browser/base/content/webaios/jar.inc.mn", import.meta.url), "utf8");
+    for (const m of ["agent", "actor"]) expect(ui).toMatch(new RegExp(`\\b${m}\\b`));
+    for (const f of ["agent.html", "agent.js", "agent.css", "page-actor.sys.mjs"]) expect(jar).toContain(`content/webaios/${f})`);
   });
 });
 

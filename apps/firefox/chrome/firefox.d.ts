@@ -11,3 +11,7 @@ declare const PathUtils: { join(...parts: string[]): string };
 declare const Services: any;
 declare const Ci: any;
 declare const ChromeUtils: { importESModule(url: string): any };
+// Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
+declare const __WEBAIOS_NODE__: string;
+declare const __WEBAIOS_TSX__: string;
+declare const __WEBAIOS_HOST__: string;

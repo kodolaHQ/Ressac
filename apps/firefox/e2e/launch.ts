@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { Marionette } from "./marionette";
 
+// Fake docker shared with the Electron e2e: no test ever touches a real container.
+export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../../navigateur/e2e/outils");
 const DIST = path.resolve(import.meta.dirname, "../engine/obj-aarch64-apple-darwin/dist");
 
 export interface LaunchedWebAiOs {
@@ -36,7 +38,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
  * Launches WebAiOs-Firefox headless. Folders passed in are reused and kept (to restart on the same data); the others
  * are temporary and deleted on close. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  */
-export async function launchWebAiOs(o: { width?: number; height?: number; dataDir?: string; profile?: string } = {}): Promise<LaunchedWebAiOs> {
+export async function launchWebAiOs(o: { width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string> } = {}): Promise<LaunchedWebAiOs> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
   const cleanup = () =>
@@ -49,7 +51,13 @@ export async function launchWebAiOs(o: { width?: number; height?: number; dataDi
     binary(),
     ["--marionette", "--headless", "--no-remote", "--profile", profile, "--width", String(o.width ?? 1280), "--height", String(o.height ?? 800)],
     // The chrome context (the browser's own UI) is only reachable over Marionette with system access enabled.
-    { stdio: "ignore", env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1", WEBAIOS_DATA_DIR: dataDir } },
+    { stdio: "ignore", env: {
+        ...process.env,
+        MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1",
+        WEBAIOS_DATA_DIR: dataDir,
+        ...o.env,
+        PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
+      }, },
   );
   const exited = new Promise<void>((r) => proc.once("exit", () => r()));
   try {
