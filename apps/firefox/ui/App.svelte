@@ -8,11 +8,13 @@
   import MenuContextuel from "../../navigateur/src/renderer/composants/MenuContextuel.svelte";
   import ModaleEspace from "../../navigateur/src/renderer/composants/ModaleEspace.svelte";
   import PageVide from "../../navigateur/src/renderer/composants/PageVide.svelte";
+  import PanneauOnglets from "../../navigateur/src/renderer/composants/PanneauOnglets.svelte";
   import { commande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { api, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
   import { aUneVue } from "../../navigateur/src/commun/modele";
+  import type { PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
 
   const win = window.parent.webaiosWindow!;
@@ -29,6 +31,16 @@
     void idActif;
     untrack(() => (commande.ouverte = null));
   });
+  /** The ⌃Tab panel sent by the controller (null: closed). */
+  let tabPanel = $state<TabPanel | null>(null);
+  // Ready: the backdrop is in place (no page capture in step 2, it is ready at once).
+  let tabPanelReady = $state(false);
+  $effect(() =>
+    api.surPanneauOnglets((p) => {
+      tabPanel = p;
+      if (!p) tabPanelReady = false;
+    }),
+  );
   $effect(() =>
     api.surRaccourci((r) => {
       if (r === "fermerOnglet") {
@@ -40,7 +52,7 @@
       }
     }),
   );
-  $effect(() => win.setFullWindow(!pageWeb || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte));
+  $effect(() => win.setFullWindow(!pageWeb || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel));
 </script>
 
 <!-- A tab switch to the parking tab blurs the field the empty page had just focused; the controller then focuses this
@@ -66,10 +78,14 @@
   <!-- No page capture under the modal in step 2: the web page shows through the veil. -->
   <ModaleEspace fenetreId={fenetre.id} ongletId={null} />
 {/if}
+{#if tabPanel}
+  <FondFige ongletId={ongletActif?.id ?? null} surPret={() => (tabPanelReady = true)} />
+  {#if tabPanelReady}<PanneauOnglets panneau={tabPanel} />{/if}
+{/if}
 {#if commande.ouverte && fenetre}
   <div class="couche-commande">
     <FondFige ongletId={ongletActif?.id ?? null} surPret={() => {}} />
-    <BarreCommande {fenetre} {ongletActif} cede={false} fermerPanneau={() => {}} />
+    <BarreCommande {fenetre} {ongletActif} cede={!!tabPanel} fermerPanneau={() => {}} />
   </div>
 {/if}
 

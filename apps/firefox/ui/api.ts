@@ -37,6 +37,12 @@ export function createApi(win: WindowController): ApiWebaios {
       window.addEventListener("unload", unsubscribe, { once: true });
       return unsubscribe;
     },
+    surPanneauOnglets(callback) {
+      const unsubscribe = win.onTabPanel((p) => callback(p && structuredClone(p)));
+      window.addEventListener("unload", unsubscribe, { once: true });
+      return unsubscribe;
+    },
+    parcoursOnglets: (m) => win.tabSwitch(m),
     naviguer: (id, input) => win.navigate(id, input),
     // shortcut: zoom, find in page and devtools are out of step 2 and do nothing.
     commande: (id, c) => void (typeof c === "string" && c !== "finRecherche" && c !== "outils" && win.command(id, c)),

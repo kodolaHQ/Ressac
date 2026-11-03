@@ -1,6 +1,7 @@
-import type { Raccourci } from "../../../navigateur/src/commun/api";
+import type { MessageParcours, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
 import type { IdFenetre, IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
+import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
 import type { WebAiOsStore } from "../store";
 import { FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
@@ -18,6 +19,10 @@ export interface WindowController {
   setFullWindow(full: boolean): void;
   /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
   onShortcut(cb: (r: Raccourci) => void): () => void;
+  /** Electron's surPanneauOnglets: the ⌃Tab panel to show (null: closed). */
+  onTabPanel(cb: (p: PanneauOnglets | null) => void): () => void;
+  /** Electron's parcoursOnglets: mouse, Escape and ⌃ release from the ⌃Tab panel. */
+  tabSwitch(m: MessageParcours): void;
 }
 
 /** Binds the main browser window to the first window of the state. */
@@ -32,6 +37,25 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
   });
   const browserOf = (id: IdOnglet) => tabs.tab(id)?.linkedBrowser;
   const shortcutListeners = new Set<(r: Raccourci) => void>();
+  const panelListeners = new Set<(p: PanneauOnglets | null) => void>();
+  // ⌃Tab: recent order and the walk in progress, as in Electron. No page previews in step 2: cards show the icon.
+  const walk = new ParcoursOnglets({
+    etat: () => store.state,
+    agir: (a) => store.dispatch(a),
+    envoyer: (_, p) => {
+      // Escape and the ⌃ release must reach the panel, as FondFige's capture does in Electron.
+      if (p && document.activeElement !== frame) frame.focus();
+      for (const cb of panelListeners) cb(p);
+    },
+    apercu: () => null,
+    capturer: () => Promise.resolve(),
+    // Once the UI has dropped the panel: a command bar still open keeps the keyboard (Electron: the view is hidden).
+    rendreFocus: () => void setTimeout(() => !frame.hasAttribute("full") && controller.focusPage()),
+    // Headless (e2e), no window ever has the focus: the walk is still tested there.
+    estFocalisee: () => Services.focus.activeWindow === window || Services.env.exists("MOZ_HEADLESS"),
+  });
+  walk.surEtat(store.state);
+  store.subscribe((state) => walk.surEtat(state));
 
   const run = (s: Shortcut) => {
     const state = store.state;
@@ -49,8 +73,8 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
       if (espace) store.dispatch({ type: "activerEspace", fenetreId, id: espace.id });
     } else if (s.type === "naviguer") {
       if (active) controller.command(active, s.c);
-    }
-    // shortcut: ⌃Tab ("parcourir") is swallowed and does nothing until the tab switcher panel exists; ⌘N ("rien") is single-window.
+    } else if (s.type === "parcourir") walk.parcourir(fenetreId, s.delta);
+    // ⌘N ("rien") is single-window: it does nothing.
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
   const onKeyDown = (e: KeyboardEvent) => {
@@ -60,9 +84,19 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
     e.stopImmediatePropagation();
     run(s);
   };
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (e.key === "Control") walk.toucheRelachee(fenetreId);
+  };
   window.addEventListener("keydown", onKeyDown, true);
+  window.addEventListener("keyup", onKeyUp, true);
   // The UI document's events stop at its own window: listen there too, on each load.
-  frame.addEventListener("load", () => frame.contentWindow!.addEventListener("keydown", onKeyDown, true));
+  frame.addEventListener("load", () => {
+    frame.contentWindow!.addEventListener("keydown", onKeyDown, true);
+    frame.contentWindow!.addEventListener("keyup", onKeyUp, true);
+  });
+  // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
+  // blurs the window too.
+  window.addEventListener("deactivate", () => walk.fenetreQuittee(fenetreId));
   for (const id of FIREFOX_KEYS) document.getElementById(id)?.setAttribute("disabled", "true");
 
   const controller: WindowController = {
@@ -97,6 +131,11 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
       shortcutListeners.add(cb);
       return () => void shortcutListeners.delete(cb);
     },
+    onTabPanel(cb) {
+      panelListeners.add(cb);
+      return () => void panelListeners.delete(cb);
+    },
+    tabSwitch: (m) => walk.message(fenetreId, m),
   };
   return controller;
 }
