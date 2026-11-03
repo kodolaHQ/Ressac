@@ -1,0 +1,10 @@
+#!/bin/sh
+# Wraps the Electron e2e fake docker: logs each call to $FAUX_DOCKER_JOURNAL, then maps the Firefox container name
+# back to the one the fake knows (it locates `docker exec` arguments by the literal "webaios-atelier").
+[ -n "$FAUX_DOCKER_JOURNAL" ] && printf '%s\n' "$*" >> "$FAUX_DOCKER_JOURNAL"
+for a; do
+  shift
+  [ "$a" = webaios-atelier-firefox ] && a=webaios-atelier
+  set -- "$@" "$a"
+done
+exec "$(dirname "$0")/../../../navigateur/e2e/outils/docker" "$@"

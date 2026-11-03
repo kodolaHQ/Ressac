@@ -4,8 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"],
     "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
-  "include": ["test", "e2e", "ui", "chrome", "*.ts"]
+  "include": ["test", "e2e", "ui", "chrome", "shared", "noyau", "*.ts"]
 }

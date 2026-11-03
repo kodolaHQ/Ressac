@@ -1,0 +1,160 @@
+import type { Noyau, OngletInfo } from "../../../packages/noyau/src/index.ts";
+import type { TailleTerminal } from "../../navigateur/src/commun/api.ts";
+
+// The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
+// stdout carries only the RPC: anything else written there would corrupt it, so it goes to stderr.
+const writeStdout = process.stdout.write.bind(process.stdout);
+process.stdout.write = process.stderr.write.bind(process.stderr) as typeof process.stdout.write;
+console.log = console.info = console.debug = console.error;
+// Firefox gone: its pipe breaks, and the end of stdin stops everything below.
+process.stdout.on("error", () => {});
+process.on("unhandledRejection", (e) => console.error("[webaios] rejet non géré :", e));
+
+process.env.WEBAIOS_CONTENEUR ||= "webaios-atelier-firefox";
+
+const { join } = await import("node:path");
+const { createInterface } = await import("node:readline");
+// Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
+const { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
+const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
+const { createRpc } = await import("../shared/rpc.ts");
+const { RemoteBridge } = await import("./remote-bridge.ts");
+
+const dataDir = process.env.WEBAIOS_DATA_DIR;
+if (!dataDir) {
+  console.error("[webaios] WEBAIOS_DATA_DIR manquant");
+  process.exit(2);
+}
+const racine = join(dataDir, "espace");
+const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
+
+let noyau: Noyau | null = null;
+let erreur: string | null = null;
+let pret: Promise<Noyau | null> = Promise.resolve(null);
+let unsubscribe: (() => void) | undefined;
+let accesTimer: NodeJS.Timeout | undefined;
+
+const etatAcces = () => ({ agent: noyau?.agent ?? "L'agent", onglets: noyau?.politique.etat() ?? {} });
+// A burst of policy changes gives one notification per 50 ms.
+const diffuserAcces = () => {
+  accesTimer ??= setTimeout(() => {
+    accesTimer = undefined;
+    rpc.notify("acces", etatAcces());
+  }, 50);
+};
+
+const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
+  erreur = null;
+  return creerNoyau({
+    pont: bridge,
+    profilId,
+    racine,
+    dossierWidgets: join(dataDir, "widgets"),
+    dossierActions: join(dataDir, "actions"),
+    dossierProfilage: join(dataDir, "profilage"),
+    ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}),
+    ...(duckduckgo ? { urlRecherche: duckduckgo } : {}),
+  }).then(
+    (n) => {
+      noyau = n;
+      unsubscribe = n.politique.surChange(diffuserAcces);
+      diffuserAcces();
+      return n;
+    },
+    (e: Error) => {
+      erreur = e.message;
+      console.error("[webaios] le noyau n'a pas pu démarrer :", e);
+      return null;
+    },
+  );
+};
+
+const arreterNoyau = async (n: Noyau | null) => {
+  noyau = null;
+  unsubscribe?.();
+  unsubscribe = undefined;
+  diffuserAcces();
+  await n?.arreter();
+};
+
+const demarrer = async () => {
+  const n = await pret;
+  if (!n) throw new Error(erreur ?? "le noyau de l'agent n'a pas démarré");
+  return { agent: n.agent };
+};
+
+let stopping: Promise<void> | undefined;
+const arreter = () =>
+  (stopping ??= (async () => {
+    await sessions.toutArreter();
+    await arreterNoyau(await pret);
+  })());
+
+const sessions = new SessionsAgent({
+  async ouvrir(f, t) {
+    const n = await pret;
+    if (!n) throw new Error(erreur ?? "le noyau de l'agent n'a pas démarré");
+    return n.ouvrirSessionAgent({ ...t, fenetre: f });
+  },
+  // The user talks to the agent from the tab on screen: it is given to the agent.
+  surEnvoi: (f) => {
+    rpc.request<OngletInfo | null>("ongletActif", [f]).then(
+      (o) => o && noyau?.politique.interactionUtilisateur(o),
+      () => {},
+    );
+  },
+  envoyer: (fenetre, canal, v) => rpc.notify(canal === "donnees" ? "agent.donnees" : "agent.etat", canal === "donnees" ? { fenetre, d: v } : { fenetre, e: v }),
+});
+
+const rpc = createRpc({
+  send: (line) => void writeStdout(line + "\n"),
+  handlers: {
+    // Called twice, the previous noyau is stopped first: never two MCP servers writing the same mcp.json.
+    demarrer: (p: { profilAgent: string }) => {
+      pret = pret.then(arreterNoyau).then(() => lancerNoyau(p.profilAgent));
+      return demarrer();
+    },
+    // Another profile: a new noyau (command, MCP config) and a new agent in every panel.
+    changerProfil: (p: { profilAgent: string }) => {
+      pret = pret.then(arreterNoyau).then(() => lancerNoyau(p.profilAgent));
+      void sessions.relancerTout();
+      return demarrer();
+    },
+    "agent.demarrer": (p: { fenetre: string; taille: TailleTerminal }) => sessions.demarrer(p.fenetre, p.taille),
+    "agent.profils": async () => {
+      try {
+        return (await chargerProfils(cheminsEspace(racine))).profils.map((x) => ({ id: x.id, nom: x.nom }));
+      } catch {
+        return [];
+      }
+    },
+    "acces.etat": etatAcces,
+    arreter: async () => {
+      await arreter();
+      // Exit once the answer is flushed: stdout is an asynchronous pipe on macOS.
+      setImmediate(() => writeStdout("", () => process.exit(0)));
+    },
+    "agent.ecrire": (p: { fenetre: string; d: string }) => sessions.ecrire(p.fenetre, p.d),
+    "agent.redimensionner": (p: { fenetre: string; taille: TailleTerminal }) => sessions.redimensionner(p.fenetre, p.taille),
+    "agent.fermerFenetre": (p: { fenetre: string }) => void sessions.fermerFenetre(p.fenetre),
+    prives: (p: { prives: string[]; actifPrive: boolean }) => bridge.setPrivate(p),
+    "politique.navigue": (p: { id: string; url: string }) => noyau?.politique.ongletNavigue(p.id, p.url),
+    "politique.ferme": (p: { id: string }) => noyau?.politique.ongletFerme(p.id),
+    "politique.couper": (p: { id: string; droit?: Parameters<Noyau["politique"]["couper"]>[1] }) => noyau?.politique.couper(p.id, p.droit),
+    "agent.envoi": (p: { onglet: OngletInfo | null }) => void (p.onglet && noyau?.politique.interactionUtilisateur(p.onglet)),
+    // Opening the panel on a tab gives it to the agent and pre-fills the context, without sending it.
+    "agent.panneauOuvert": (p: { fenetre: string; onglet: OngletInfo }) => {
+      noyau?.politique.interactionUtilisateur(p.onglet);
+      if (sessions.active(p.fenetre)) sessions.ecrire(p.fenetre, prefixeContexte(p.onglet.titre, p.onglet.url));
+    },
+    ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
+  },
+});
+const bridge = new RemoteBridge(rpc);
+
+createInterface({ input: process.stdin, crlfDelay: Infinity })
+  .on("line", (l) => rpc.receive(l))
+  .on("close", () => {
+    rpc.close("Firefox s'est arrêté");
+    void arreter().finally(() => process.exit(0));
+  });
