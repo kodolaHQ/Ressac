@@ -32,9 +32,9 @@ describe("agent scaffolding", () => {
   it("copies the page actor into the build: the content sandbox cannot follow a link into a checkout", () => {
     const jar = readFileSync(new URL("../src/browser/base/content/webaios/jar.inc.mn", import.meta.url), "utf8");
     expect(jar).toMatch(/^\*\s+content\/browser\/webaios\/page-actor\.sys\.mjs/m);
-    // `*` runs Mozilla's preprocessor: a line starting with # would be read as a directive.
+    // `*` runs Mozilla's preprocessor: it needs one directive, and any other line starting with # would be read as one.
     const built = new URL("../src/browser/base/content/webaios/page-actor.sys.mjs", import.meta.url);
-    if (existsSync(built)) expect(readFileSync(built, "utf8")).not.toMatch(/^\s*#/m);
+    if (existsSync(built)) expect(readFileSync(built, "utf8").match(/^\s*#.*$/gm)).toEqual(["#define WEBAIOS_PAGE_ACTOR"]);
   });
 });
 

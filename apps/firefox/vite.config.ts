@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
@@ -56,6 +57,17 @@ export default defineConfig(({ mode }) => {
         minify: false,
         lib: { entry: "chrome/agent/page-actor.ts", formats: ["es"], fileName: () => "page-actor.sys.mjs" },
       },
+      // The jar copies this file through Mozilla's preprocessor, which refuses a file without any directive (the
+      // preprocessor drops the line). Added after writing: the bundler would parse a banner as JavaScript.
+      plugins: [
+        {
+          name: "preprocessor-directive",
+          writeBundle(o: { dir?: string }) {
+            const file = `${o.dir}/page-actor.sys.mjs`;
+            writeFileSync(file, `#define WEBAIOS_PAGE_ACTOR\n${readFileSync(file, "utf8")}`);
+          },
+        },
+      ],
     };
   if (mode === "window")
     return {
