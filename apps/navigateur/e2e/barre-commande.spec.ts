@@ -371,6 +371,28 @@ test("historique proposé après une visite", async () => {
   await fermer();
 });
 
+test("une page qui n'est plus ouverte vient de l'historique seul ; Entrée l'ouvre dans un nouvel onglet", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect.poll(() => dansLaVue(app, "b.html", "document.title")).toBe("Page B");
+  await expect
+    .poll(() => fenetre.evaluate(() => window.webaios.historique.rechercher("b.html", 5, true).then((v) => v.length)), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  // L'onglet part ailleurs : b.html n'est plus ouverte nulle part.
+  await dansLaVue(app, "b.html", `location.href = "${serveur.url}/a.html"`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBeTruthy();
+  await menu(app, "nouvel-onglet");
+  await fenetre.getByTestId("saisie-commande").fill("b.html");
+  await expect(lignes(fenetre, "historique")).toHaveCount(1);
+  await expect(lignes(fenetre, "historique")).toContainText("Page B");
+  await expect(lignes(fenetre, "onglet")).toHaveCount(0);
+  await fenetre.getByTestId("saisie-commande").press("ArrowDown");
+  await fenetre.getByTestId("saisie-commande").press("Enter");
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+  await expect.poll(() => dansLaVue(app, "b.html", "document.title")).toBe("Page B");
+  await fermer();
+});
+
 test("espace privé : pas d'action proposée", async () => {
   const racine = nouvelleRacine();
   ecrireAction(racine, "sans-workflow", { nom: "Zorglub" });
