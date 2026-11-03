@@ -849,7 +849,7 @@ une consigne. Le texte pré-rempli te renvoie à `/workspace/sites/<id>/`. Trait
 l'appli : une feuille CSS pour cacher ou agrandir, du JS avec `MutationObserver` pour ajouter un élément. Choisis des
 sélecteurs robustes (attributs stables plutôt que classes générées). Ne touche ni à `accueil/` ni au reste de l'appli,
 sauf si l'utilisateur le demande. La carte d'accord de l'appli réapparaît à la première retouche d'une appli qui n'en avait
-pas et quand tu ajoutes un motif `cadres` : préviens l'utilisateur. C'est lui qui marque le lot traité (« Marquer traité »
+pas et quand tu ajoutes un motif `cadres` : préviens l'utilisateur. C'est lui qui marque le lot traité (« Traité »
 dans le panier), pas toi.
 
 ### Deux exemples d'applis de site
