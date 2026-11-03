@@ -2,13 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* Only the WebAiOs window: popups stay plain Firefox windows. */
+
 /* Firefox's tab strip, navigation bar and bookmarks bar give way to the WebAiOs UI. */
-#navigator-toolbox {
+:root[webaios-main] #navigator-toolbox {
   display: none !important;
 }
 
-#webaios-sidebar {
-  width: var(--webaios-sidebar-width, 240px);
+/* The UI column on the left; `full` (overlays, empty page) covers the whole window. */
+:root[webaios-main] #webaios-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 240px;
   border: none;
-  flex: none;
+}
+
+:root[webaios-main] #webaios-sidebar[full] {
+  width: 100%;
+}
+
+:root[webaios-main] #tabbrowser-tabbox {
+  margin-inline-start: 240px;
 }
