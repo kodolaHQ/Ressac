@@ -100,6 +100,16 @@ test("JSON invalide → état initial et ancien fichier gardé de côté (….co
   expect(readFileSync(join(d, garde!), "utf8")).toBe("{ pas du json");
 });
 
+test("session corrompue : le nom du fichier gardé de côté est rendu pour prévenir l'utilisateur, rien sans fichier", async () => {
+  const d = dossier();
+  const garde = vi.fn();
+  await chargerSession(d, garde);
+  expect(garde).not.toHaveBeenCalled();
+  writeFileSync(join(d, "session.json"), "{ pas du json");
+  await chargerSession(d, garde);
+  expect(garde).toHaveBeenCalledWith(join(d, mis_de_cote(d, ".corrompu")[0]!));
+});
+
 test("version inconnue → état initial et fichier gardé de côté", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 3 }));

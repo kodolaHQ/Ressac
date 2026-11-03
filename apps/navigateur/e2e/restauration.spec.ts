@@ -1,5 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { creerEspace, dansLaVue, lancer, nombreWebContents, ouvrirOnglet, serveurTest } from "./aide";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { creerEspace, dansLaVue, lancer, lireNotifications, nombreWebContents, nouveauProfil, ouvrirOnglet, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -112,4 +114,14 @@ test("la taille et la position de la fenêtre sont restaurées", async () => {
   const second = await lancer({ profil: premier.profil });
   expect(await second.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getBounds())).toEqual(cadre);
   await second.fermer();
+});
+
+test("une session corrompue : L'utilisateur est prévenu une fois, avec l'endroit où l'ancienne est gardée", async () => {
+  const profil = nouveauProfil();
+  writeFileSync(join(profil, "session.json"), "{ pas du json");
+  const { fermer } = await lancer({ profil });
+  await expect.poll(() => lireNotifications(profil)).toEqual([
+    { titre: "Session précédente illisible", texte: expect.stringMatching(new RegExp(`gardée dans ${profil}/session\\.json\\..*\\.corrompu$`)) },
+  ]);
+  await fermer();
 });
