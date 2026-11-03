@@ -7,7 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { RegistreExternes } from "./externes.js";
 import { projetExterne, type ClientExterne, type IdProjet, type ProjetExterne } from "./projets.js";
-import type { Lot, Remarques } from "./remarques.js";
+import { etatLot, type Lot, type Remarques } from "./remarques.js";
 
 export const PORT_MCP_EXTERNE = 5279;
 export const DELAI_ATTENTE = { defaut: 60, max: 300 };
@@ -129,13 +129,14 @@ function creerServeur(o: {
       if (o.signal.aborted) arret.abort();
       const attente = remarques.attendre(id, delai * 1000, arret.signal);
       try {
-        let lots = await remarques.aLire(id);
-        if (lots.length === 0) {
+        // Seul un lot encore jamais lu rend tout de suite : des lots déjà « lu » mais non traités feraient sinon
+        // tourner en boucle un agent qui rappelle attendre_remarques.
+        const nouveau = (await remarques.lots(id)).some((l) => l.destination === "mcp" && etatLot(l) === "en-attente");
+        if (!nouveau) {
           await attente;
           if (o.signal.aborted) return texte(AUCUNE_REMARQUE);
-          lots = await remarques.aLire(id);
         }
-        return await rendre(projet, lots);
+        return await rendre(projet, await remarques.aLire(id));
       } finally {
         arret.abort();
         o.signal.removeEventListener("abort", coupe);

@@ -254,6 +254,30 @@ describe("serveur MCP externe", () => {
     expect(espion.mock.calls.map((x) => x[1])).toEqual([1000, 300_000, 60_000]);
   });
 
+  test("des lots déjà « lu » et non traités ne réveillent pas attendre_remarques : il attend le délai (ou un nouveau lot), puis les rend", async () => {
+    const k = await cadre();
+    const { c, client } = await k.brancher();
+    const dossier = await k.dossierProjet("site");
+    await appel(c, "declarer_projet", { dossier, ports: [3000] });
+    const id = projetExterne((await k.registre.projetDe(client.id, dossier))!.id);
+    await k.remarques.ajouterAuPanier(id, { texte: "déjà lue", contexte: ctx(), capture: null });
+    await k.remarques.envoyerPanier(id, { destination: "mcp", client: client.id });
+    expect(texte(await appel(c, "lire_remarques", { dossier }))).toContain("déjà lue");
+    const t0 = Date.now();
+    expect(texte(await appel(c, "attendre_remarques", { dossier, delai_s: 1 }))).toContain("déjà lue");
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
+    // Un nouveau lot réveille l'attente tout de suite, et tout ce qui n'est pas traité est rendu.
+    const attente = appel(c, "attendre_remarques", { dossier, delai_s: 30 });
+    await vi.waitFor(() => expect(k.remarques.nombreAttentes()).toBe(1));
+    await k.remarques.ajouterAuPanier(id, { texte: "nouvelle", contexte: ctx(), capture: null });
+    const t1 = Date.now();
+    await k.remarques.envoyerPanier(id, { destination: "mcp", client: client.id });
+    const t = texte(await attente);
+    expect(Date.now() - t1).toBeLessThan(2000);
+    expect(t).toContain("nouvelle");
+    expect(t).toContain("déjà lue");
+  });
+
   test("attendre_remarques rend tout de suite ce qui est déjà à lire", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
