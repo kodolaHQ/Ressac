@@ -198,7 +198,16 @@ describe("executerWorkflow", () => {
     // Le journal global garde ce que le code écrit (stderr), comme avant les workflows.
     expect(r.journal).toContain("bonjour 2");
     expect(b.commandes[0]).toEqual(["docker", "run", "essai", b.ctx.dossierFichiers, MOTEUR]);
-    expect(b.supprimes).toEqual([]);
+    expect(b.supprimes).toEqual(["essai"]);
+  });
+
+  it("un conteneur du même nom laissé par un arrêt brutal est supprimé avant le lancement", async () => {
+    const b = await banc(chaine("a"), { "a.mjs": `export default () => 1;` });
+    const lancer = b.infra.lancer!;
+    let avant: string[] = [];
+    b.infra.lancer = (cmd, args) => ((avant = [...b.supprimes]), lancer(cmd, args));
+    await executerWorkflow(b.ctx, b.infra);
+    expect(avant).toEqual(["essai"]);
   });
 
   it("un bloc partiel donne une exécution partielle", async () => {
@@ -385,7 +394,7 @@ describe("executerWorkflow", () => {
     expect(r.execution).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
     expect(r.execution.blocs[0]!.statut).toBe("echoue");
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(0);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(b.supprimes).toEqual(["essai", "essai"]);
   });
 
   it("ProfilRefuse : surProfilRefuse appelé, arrêt PROFIL_REFUSE", async () => {
@@ -425,7 +434,7 @@ describe("executerWorkflow", () => {
     expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(r.execution.statut).toBe("accord-requis");
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(1);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(b.supprimes).toEqual(["essai", "essai"]);
   });
 
   it("lirePage avec compte et accord : le pont reçoit le profil et les domaines déclarés", async () => {
@@ -508,7 +517,7 @@ describe("executerWorkflow", () => {
     expect(r.execution).toMatchObject({ statut: "echouee", erreur: "Délai dépassé", erreurNoyau: true });
     expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance"]);
     expect(b.tues).toBeGreaterThan(0);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(b.supprimes).toEqual(["essai", "essai"]);
     expect(DELAI_EXECUTION_MS).toBe(200_000);
   });
 
@@ -1739,7 +1748,7 @@ describe("executerWorkflow : saisie, avancement, lectures et arrêt (actions)", 
     expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: ACTION_ARRETEE });
     expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
     expect(r.execution.blocs[0]!.statut).toBe("interrompu");
-    expect(b.supprimes).toEqual(["action:gitlab"]);
+    expect(b.supprimes).toEqual(["action:gitlab", "action:gitlab"]);
   });
 
   it("un signal déjà levé : rien n'est lancé, exécution interrompue", async () => {

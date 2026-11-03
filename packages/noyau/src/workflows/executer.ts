@@ -328,6 +328,9 @@ export async function executerWorkflow(
     return conclure({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
   }
 
+  // Un conteneur du même nom laissé par un arrêt brutal ferait échouer `docker run` (125) ; les files n'en lancent
+  // qu'un par propriétaire, celui-ci ne peut donc être qu'un reste. Avant le test du signal, levé peut-être pendant.
+  await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
   // Arrêtée avant même de partir : rien n'est lancé.
   if (ctx.signal?.aborted) {
     arreteeParSignal = true;
