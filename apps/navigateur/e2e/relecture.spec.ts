@@ -400,3 +400,22 @@ test("projet externe (déclaré comme à la tâche 10) : « Envoyer 1 commentair
     await fermer();
   }
 });
+
+test("rouvrir le fichier déjà affiché (second clic dans la liste) ne ferme pas le commentaire en cours", async () => {
+  const racine = racineEssai();
+  const { app, fenetre, fermer } = await demarrer(racine);
+  try {
+    const page = await pageSurAppJs(app, fenetre, racine, 15);
+    await plus(page, 15).click();
+    const f = page.getByTestId("formulaire-commentaire");
+    await expect(f).toBeVisible();
+    await f.locator("textarea").fill("en cours");
+    await fichier(page, "app.js").click();
+    await new Promise((r) => setTimeout(r, 500));
+    await expect(f).toBeVisible();
+    await expect(f.locator("textarea")).toHaveValue("en cours");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});

@@ -103,6 +103,7 @@
     }
   }
 
+  /** Rouvrir le fichier déjà affiché relit le même diff (même jeton) : l'affichage, avec son commentaire en cours, n'est pas remonté. */
   async function afficher(chemin: string | null) {
     const n = ++requeteDiff;
     choisi = chemin;
@@ -180,7 +181,7 @@
         {#if erreurDiff}
           <p class="vide">{erreurDiff}</p>
         {:else if diff && jeton}
-          {#key diff}<DiffFichier {projet} {jeton} {diff} commentaires={duFichier} surChange={() => void rechargerCommentaires()} />{/key}
+          {#key `${jeton}\n${diff.chemin}`}<DiffFichier {projet} {jeton} {diff} commentaires={duFichier} surChange={() => void rechargerCommentaires()} />{/key}
         {/if}
       </div>
     </div>
