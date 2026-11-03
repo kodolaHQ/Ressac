@@ -109,10 +109,9 @@ export class TabSync {
       tab.setAttribute(PARKING, "");
       return;
     }
-    const opener = tab.openerTab ?? this.gBrowser.selectedTab;
-    const apres = opener?.getAttribute(ID);
-    // Only pages open tabs we adopt: a tab opened over the parking tab (about:newtab…) is Firefox's own.
-    if (!apres) return;
+    const apres = tab.openerTab?.getAttribute(ID);
+    // Only pages open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
+    if (!apres) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
     const id: IdOnglet = crypto.randomUUID();
     tab.setAttribute(ID, id);
     this.tabs.set(id, tab);

@@ -52,3 +52,25 @@ export const FIREFOX_KEYS = [
   ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `key_selectTab${n}`),
   "key_selectLastTab",
 ];
+
+/**
+ * Firefox's <command>s (and macOS menu items) that open or close tabs and windows behind the store's back: disabling a
+ * <key> leaves the native menu bar running them. ⌘T, ⌘W and ⇧⌘T keep working through shortcutFor.
+ */
+export const FIREFOX_COMMANDS = [
+  "cmd_newNavigatorTab",
+  "cmd_newNavigatorTabNoEvent",
+  "Browser:NewUserContextTab",
+  "cmd_newNavigator",
+  "Tools:PrivateBrowsing",
+  "Tools:AIWindow",
+  "Tools:ClassicWindow",
+  "cmd_close",
+  "cmd_closeWindow",
+  "History:UndoCloseTab",
+  "History:UndoCloseWindow",
+  "History:RestoreLastClosedTabOrWindowOrSession",
+  // ⌘, (Settings): opens about:preferences as a Firefox tab.
+  "menu_preferences",
+  "menu_settings",
+];

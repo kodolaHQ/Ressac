@@ -4,7 +4,7 @@ import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
 import type { WebAiOsStore } from "../store";
-import { FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
 
 export interface WindowController {
@@ -99,7 +99,7 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
   window.addEventListener("deactivate", () => walk.fenetreQuittee(fenetreId));
-  for (const id of FIREFOX_KEYS) document.getElementById(id)?.setAttribute("disabled", "true");
+  for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
 
   const controller: WindowController = {
     fenetreId,
