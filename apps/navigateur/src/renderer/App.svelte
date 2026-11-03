@@ -236,13 +236,17 @@
 {:else if reglagesEspace.brouillon && fenetre}
   <ModaleEspace fenetreId={fenetre.id} ongletId={panneau ? null : (ongletActif?.id ?? null)} />
 {/if}
-<!-- Au-dessus des modales (100, plus haut dans le DOM : celle-ci passe devant), sous le panneau ⌃Tab (101). -->
+<!-- Une couche à z-index 100, montée après les modales (même niveau, plus tard dans le DOM : elle passe devant, fond
+     et boîte ensemble), sous le panneau ⌃Tab (101). -->
 {#if commande.ouverte && fenetre}
-  <FondFige ongletId={panneau ? null : (ongletActif?.id ?? null)} surPret={() => {}} />
-  <BarreCommande {fenetre} {ongletActif} />
+  <div class="couche-commande">
+    <FondFige ongletId={panneau ? null : (ongletActif?.id ?? null)} surPret={() => {}} />
+    <BarreCommande {fenetre} {ongletActif} cede={!!panneauOnglets} fermerPanneau={() => (panneau = null)} />
+  </div>
 {/if}
 
 <style>
+  .couche-commande { position: fixed; inset: 0; z-index: 100; }
   .fenetre {
     display: grid;
     grid-template-columns: 240px 1fr;

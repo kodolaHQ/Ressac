@@ -1,4 +1,4 @@
-import { expect, test, type ElectronApplication } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
@@ -98,5 +98,91 @@ test("frappe pendant la capture conservée", async () => {
   await menu(app, "nouvel-onglet");
   await fenetre.keyboard.type("abc");
   await expect(fenetre.getByTestId("saisie-commande")).toHaveValue("abc");
+  await fermer();
+});
+
+const deuxOnglets = async (fenetre: Page) => {
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+};
+
+test("se ferme quand l'onglet actif change pendant qu'elle est ouverte", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await deuxOnglets(fenetre);
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("barre-commande")).toBeVisible();
+  await fenetre.locator(onglets).nth(0).evaluate((el: HTMLElement) => el.click());
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await fermer();
+});
+
+test("un clic sur le voile ferme la barre", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("barre-commande")).toBeVisible();
+  await fenetre.mouse.click(5, 5);
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await fermer();
+});
+
+test("⌃Tab par-dessus la barre : Échap annule le panneau ⌃Tab, la barre reste", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await deuxOnglets(fenetre);
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("barre-commande")).toBeVisible();
+  await menu(app, "onglet-suivant");
+  const panneau = fenetre.getByTestId("panneau-onglets");
+  await expect(panneau).toBeVisible();
+  await fenetre.keyboard.press("Escape");
+  await expect(panneau).toHaveCount(0);
+  await expect(fenetre.getByTestId("barre-commande")).toBeVisible();
+  await fenetre.keyboard.press("Escape");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await fermer();
+});
+
+test("Entrée à vide sur l'accueil avec l'historique ouvert : l'accueil, sans panneau", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await menu(app, "historique");
+  await expect(fenetre.getByTestId("historique")).toBeVisible();
+  await menu(app, "nouvel-onglet");
+  await fenetre.getByTestId("saisie-commande").press("Enter");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await expect(fenetre.getByTestId("historique")).toHaveCount(0);
+  await expect(fenetre.getByTestId("page-vide")).toBeVisible();
+  await fermer();
+});
+
+test("Échap rend le clavier à la page affichée", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBe("Page A");
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await app.evaluate(({ webContents }) => {
+    const g = globalThis as { focusVues?: number[] };
+    g.focusVues = [];
+    for (const wc of webContents.getAllWebContents()) {
+      const focus = wc.focus.bind(wc);
+      wc.focus = () => {
+        g.focusVues!.push(wc.id);
+        focus();
+      };
+    }
+  });
+  await fenetre.keyboard.press("Escape");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        const appels = (globalThis as { focusVues?: number[] }).focusVues ?? [];
+        const affichee = BrowserWindow.getAllWindows()[0]!.contentView.children.map((v) => (v as Electron.WebContentsView).webContents).find(Boolean);
+        return appels.length > 0 && appels.at(-1) === affichee?.id;
+      }),
+    )
+    .toBe(true);
   await fermer();
 });

@@ -9,7 +9,19 @@
    * Barre de commande (⌘T, ⌘L) : une boîte au-dessus de la page figée et floutée (FondFige, monté par App). Le champ est
    * monté tout de suite : la frappe qui suit le raccourci n'attend pas la capture.
    */
-  let { fenetre, ongletActif }: { fenetre: EtatFenetre; ongletActif: Onglet | undefined } = $props();
+  let {
+    fenetre,
+    ongletActif,
+    cede,
+    fermerPanneau,
+  }: {
+    fenetre: EtatFenetre;
+    ongletActif: Onglet | undefined;
+    /** Le panneau ⌃Tab est ouvert par-dessus : il garde Échap. */
+    cede: boolean;
+    /** Ferme le panneau de l'interface (historique…) posé sur la page. */
+    fermerPanneau: () => void;
+  } = $props();
 
   // Les sources viennent d'ici (actions, onglets, applis, historique) : une seule déclaration à remplir.
   const sources: SourcesCommande = { actions: [], onglets: [], applis: [], historique: [] };
@@ -37,13 +49,10 @@
   function executer(l: LigneCommande) {
     const cible = mode === "actif" ? (ongletActif?.id ?? null) : null;
     if (l.type === "defaut" && l.texte === "") {
-      // Accueil : depuis un onglet (ou sous un panneau de l'interface) on y revient ; sinon on y est déjà.
-      if (ongletActif || document.querySelector('[data-testid="page-vide"]') === null) {
-        api.agir({ type: "afficherPageVide", fenetreId: fenetre.id });
-      }
+      // Accueil : sans effet s'il est déjà affiché ; un panneau de l'interface posé dessus se referme.
+      api.agir({ type: "afficherPageVide", fenetreId: fenetre.id });
+      fermerPanneau();
       fermerCommande();
-      // L'accueil garde le clavier dans son champ.
-      void tick().then(() => document.querySelector<HTMLInputElement>('[data-testid="saisie-page-vide"]')?.focus());
       return;
     }
     if (l.type === "defaut") api.naviguer(cible, l.texte);
@@ -75,7 +84,7 @@
 <svelte:window
   onblur={() => fermerCommande()}
   onkeydowncapture={(e) => {
-    if (e.key !== "Escape") return;
+    if (e.key !== "Escape" || cede) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     fermerCommande(true);
@@ -109,7 +118,7 @@
 </div>
 
 <style>
-  .fond { position: fixed; inset: 0; z-index: 100; display: flex; justify-content: center; align-items: flex-start; padding: 14vh 16px 0; -webkit-app-region: no-drag; }
+  .fond { position: fixed; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: 14vh 16px 0; -webkit-app-region: no-drag; }
   .boite {
     width: min(640px, 100%);
     max-height: 70vh;
