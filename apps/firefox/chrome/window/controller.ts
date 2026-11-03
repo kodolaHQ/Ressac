@@ -12,6 +12,8 @@ export interface WindowController {
   readonly store: WebAiOsStore;
   /** Electron's naviguer: versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(ongletId: IdOnglet | null, input: string): void;
+  /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
+  ensure(ongletId: IdOnglet): Promise<any>;
   command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
@@ -114,6 +116,7 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
       browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
       browser.focus();
     },
+    ensure: (ongletId) => tabs.ensure(ongletId),
     command(ongletId, c) {
       const browser = browserOf(ongletId);
       if (!browser) return;

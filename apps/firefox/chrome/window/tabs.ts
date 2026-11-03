@@ -52,6 +52,36 @@ export class TabSync {
     return this.tabs.get(id);
   }
 
+  /**
+   * The browser of a WebAiOs tab for the agent, even one never displayed: its XUL tab is created in the background
+   * (not selected), then loaded (15 s at most, as Electron's assurerVue).
+   */
+  async ensure(id: IdOnglet): Promise<any> {
+    const state = this.store.state;
+    const o = state.onglets[id];
+    if (!o) throw new Error(`Onglet introuvable : ${id}`);
+    if (!this.tabs.has(id)) this.create(state, o);
+    const browser = this.tabs.get(id).linkedBrowser;
+    // A tab just created is still on its initial about:blank, its load not started yet.
+    const pending = () => browser.webProgress?.isLoadingDocument || (browser.currentURI?.spec === "about:blank" && o.url !== "about:blank");
+    if (!pending()) return browser;
+    await new Promise<void>((resolve) => {
+      const listener = {
+        onStateChange: (b: any, progress: any, _request: unknown, flags: number) => {
+          if (b === browser && progress.isTopLevel && flags & STATE_STOP && flags & STATE_IS_NETWORK && !pending()) done();
+        },
+      };
+      const done = () => {
+        clearTimeout(timer);
+        this.gBrowser.removeTabsProgressListener(listener);
+        resolve();
+      };
+      const timer = setTimeout(done, 15_000);
+      this.gBrowser.addTabsProgressListener(listener);
+    });
+    return browser;
+  }
+
   /** The WebAiOs tab displayed in the window, or null when the parking tab is. */
   displayed(): IdOnglet | null {
     return this.gBrowser.selectedTab.getAttribute(ID);

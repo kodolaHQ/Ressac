@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { Marionette } from "./marionette";
 
-// Fake docker shared with the Electron e2e: no test ever touches a real container.
-export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../../navigateur/e2e/outils");
+// Fake docker (a wrapper of Electron's, which knows the Firefox container name): no test ever touches a real container.
+export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../test/outils");
 const DIST = path.resolve(import.meta.dirname, "../engine/obj-aarch64-apple-darwin/dist");
 
 export interface LaunchedWebAiOs {
@@ -55,6 +55,8 @@ export async function launchWebAiOs(o: { width?: number; height?: number; dataDi
         ...process.env,
         MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1",
         WEBAIOS_DATA_DIR: dataDir,
+        // The fake agent writes its traces there.
+        WEBAIOS_RACINE: path.join(dataDir, "espace"),
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },
@@ -68,14 +70,17 @@ export async function launchWebAiOs(o: { width?: number; height?: number; dataDi
     );
     const marionette = await Marionette.connect(port);
     await marionette.command("WebDriver:NewSession", {});
-    const close = async () => {
-      await marionette.command("Marionette:Quit", { flags: ["eForceQuit"] }).catch(() => {});
-      marionette.close();
-      const timer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-      await exited;
-      clearTimeout(timer);
-      await cleanup();
-    };
+    let closing: Promise<void> | undefined;
+    // Idempotent: a test may close early (to check what quitting does), afterEach closes again.
+    const close = () =>
+      (closing ??= (async () => {
+        await marionette.command("Marionette:Quit", { flags: ["eForceQuit"] }).catch(() => {});
+        marionette.close();
+        const timer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
+        await exited;
+        clearTimeout(timer);
+        await cleanup();
+      })());
     return { marionette, profile, dataDir, pid: proc.pid!, close };
   } catch (e) {
     proc.kill("SIGKILL");

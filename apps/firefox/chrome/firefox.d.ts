@@ -10,7 +10,12 @@ declare const IOUtils: {
 declare const PathUtils: { join(...parts: string[]): string };
 declare const Services: any;
 declare const Ci: any;
-declare const ChromeUtils: { importESModule(url: string): any };
+declare const ChromeUtils: { importESModule(url: string): any; registerWindowActor(name: string, options: object): void };
+declare class JSWindowActorParent {}
+declare class JSWindowActorChild {
+  readonly document: Document;
+  readonly contentWindow: Window;
+}
 // Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
 declare const __WEBAIOS_NODE__: string;
 declare const __WEBAIOS_TSX__: string;
