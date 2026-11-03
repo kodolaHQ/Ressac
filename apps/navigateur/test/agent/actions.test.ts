@@ -488,6 +488,23 @@ test("un refus de lancement survit à la fermeture de l'appli ; relancer l'effac
   await expect.poll(async () => (await rouvrir(issue).liste(F)).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
 });
 
+test("supprimer efface aussi le refus du disque : une action recréée sous le même id n'en a pas au démarrage suivant", async () => {
+  const issue: ResultatLancement = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
+  const { s, F, c, dossierActions, etat } = service({ issue });
+  await s.ouvrir(F, "gitlab", null);
+  await expect.poll(async () => (await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBe("Docker n'est pas démarré");
+  const declaration = readFileSync(join(c.actions, "gitlab", "action.json"));
+  expect(await s.supprimer(F, "gitlab")).toEqual({ ok: true });
+  mkdirSync(join(c.actions, "gitlab"), { recursive: true });
+  writeFileSync(join(c.actions, "gitlab", "action.json"), declaration);
+  const apres = () => creerServiceActions({ etat, agir: () => {}, noyau: () => fauxNoyau().noyau, chemins: () => c, dossierActions });
+  const refusDe = async () => {
+    const a = (await apres().liste(F)).find((x) => x.id === "gitlab");
+    return a ? (a.refus ?? "aucun") : "absente";
+  };
+  await expect.poll(refusDe).toBe("aucun");
+});
+
 test("lancer (Relancer) note aussi un refus sans exécution ; une issue avec exécution n'en laisse pas", async () => {
   const { s, F, changes } = service({ issue: { statut: "invalide", erreur: "Cette action n'a pas de workflow.json", erreurNoyau: true } });
   await s.ouvrir(F, "gitlab", null);

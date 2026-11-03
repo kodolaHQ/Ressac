@@ -325,7 +325,9 @@ export function creerServiceActions(o: {
       if (!(await lire(id))) return { ok: false, erreur: ACTION_INCONNUE };
       // Arrêtée d'abord : sinon elle tournerait jusqu'à sa durée maximale, sans que rien ne permette plus de l'arrêter.
       o.noyau()?.actions.arreter(id);
-      refusLancement.delete(id);
+      // Retiré du disque aussi : une action recréée sous le même id ne retrouverait pas ce refus au prochain démarrage.
+      await charge;
+      if (refusLancement.delete(id)) enregistrerRefus();
       lancementsSuivis.delete(id);
       const oublier = async (x: string) => {
         const noyau = o.noyau();
