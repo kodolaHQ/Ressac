@@ -1,4 +1,4 @@
-import type { BrowserWindow, Rectangle, WebContents } from "electron";
+import type { BrowserWindow, Input, Rectangle, WebContents } from "electron";
 import {
   AVERTISSEMENT_CAPTURE_SITE,
   destinationDe,
@@ -33,6 +33,10 @@ export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
 /** La bulle dans une appli de site : 20 px de plus pour la ligne d'avertissement. */
 export const TAILLE_BULLE_SITE = { largeur: 320, hauteur: 190 };
 const ECART_BULLE = 6;
+/** Le message d'indisponibilité de la fenêtre principale : 360×56, à 12 px du haut et de la droite de la vue de l'onglet. */
+const LARGEUR_MESSAGE = 360;
+const HAUTEUR_MESSAGE = 56;
+const MARGE_MESSAGE = 12;
 
 /** Clé d'une cible, aussi l'argument de son calque. */
 export const cleCible = (c: CibleDesign): string =>
@@ -131,6 +135,8 @@ export interface OptionsServiceDesign {
  */
 export class ServiceDesign {
   private readonly sessions = new Map<string, Session>();
+  /** Message d'indisponibilité montré, par clé : la page et l'interface écoutées, et de quoi retirer l'écoute. */
+  private readonly ecoutesMessage = new Map<string, { wc: WebContents; detacher: () => void }>();
   readonly calques = new Calques();
 
   constructor(private readonly o: OptionsServiceDesign) {}
@@ -211,6 +217,8 @@ export class ServiceDesign {
       const v = this.vue(c);
       if (!v) return null;
       const projet = await this.projetDe(c, v.url);
+      // Onglet hors des projets suivis : on dit pourquoi rien ne se passe.
+      if (!projet && c.type === "fenetre") this.montrerIndisponible(cleCible(c), v);
       return projet ? { v, projet } : null;
     }
     const avant = this.vueSite(c.id);
@@ -262,6 +270,42 @@ export class ServiceDesign {
     void this.armer(s);
   }
 
+  /**
+   * Le message d'indisponibilité en haut à droite de la vue de l'onglet. La frappe suivante (dans la page ou dans
+   * l'interface de la fenêtre) le ferme : l'écoute est posée une fois et retirée quand le message disparaît.
+   */
+  private montrerIndisponible(cle: string, v: VueCible): void {
+    if (this.sessions.has(cle)) return;
+    const ecoute = this.ecoutesMessage.get(cle);
+    if (ecoute && ecoute.wc !== v.wc) this.oublierEcouteMessage(cle);
+    if (!this.ecoutesMessage.has(cle)) {
+      const interfaceFenetre = v.fenetre.webContents;
+      const frappe = (_e: unknown, entree: Input) => {
+        if (entree.type !== "keyDown") return;
+        this.oublierEcouteMessage(cle);
+        this.calques.fermerMessage(cle);
+      };
+      v.wc.on("before-input-event", frappe);
+      interfaceFenetre.on("before-input-event", frappe);
+      this.ecoutesMessage.set(cle, {
+        wc: v.wc,
+        detacher: () => {
+          if (!v.wc.isDestroyed()) v.wc.off("before-input-event", frappe);
+          if (!interfaceFenetre.isDestroyed()) interfaceFenetre.off("before-input-event", frappe);
+        },
+      });
+    }
+    const place = { x: v.bornes.x + v.bornes.width - MARGE_MESSAGE - LARGEUR_MESSAGE, y: v.bornes.y + MARGE_MESSAGE, width: LARGEUR_MESSAGE, height: HAUTEUR_MESSAGE };
+    this.calques.montrerMessage(cle, v.fenetre, place, INDISPONIBLE_DESIGN, () => this.oublierEcouteMessage(cle));
+  }
+
+  private oublierEcouteMessage(cle: string): void {
+    const e = this.ecoutesMessage.get(cle);
+    if (!e) return;
+    this.ecoutesMessage.delete(cle);
+    e.detacher();
+  }
+
   /** Rend le clavier à la page de la session (et sa fenêtre d'appli au premier plan, hors tests invisibles). */
   private rendreClavier(s: Session): void {
     if ((s.cible.type === "app" || s.cible.type === "site") && process.env.WEBAIOS_INVISIBLE !== "1" && !s.fenetre.isDestroyed()) s.fenetre.focus();
@@ -297,6 +341,7 @@ export class ServiceDesign {
     const place = placeBulle(rect, zoom, v.bornes, [l, h], site ? { hautMin: v.bornes.y, hauteur: TAILLE_BULLE_SITE.hauteur } : {});
     this.calques.montrerBulle(s.cle, s.fenetre, place, {
       mode: "bulle",
+      message: null,
       projet: s.projet.projet,
       etiquette: contexte.etiquette,
       source: sourceTexte(source),
@@ -337,10 +382,15 @@ export class ServiceDesign {
     return { ok: true };
   }
 
-  /** « Annuler » (Échap) de la bulle : rien n'est ajouté, le viseur est réarmé. Sans bulle : ferme le panier du calque. */
+  /** « Annuler » (Échap) de la bulle : rien n'est ajouté, le viseur est réarmé. Sans bulle : ferme le message et le panier du calque. */
   annuler(c: CibleDesign): void {
     const s = this.sessions.get(cleCible(c));
-    if (!s?.attente) return this.calques.fermerPanier(cleCible(c));
+    if (!s?.attente) {
+      // Clic sur le message d'indisponibilité, « Fermer » du panier.
+      this.oublierEcouteMessage(cleCible(c));
+      this.calques.fermerMessage(cleCible(c));
+      return this.calques.fermerPanier(cleCible(c));
+    }
     s.attente = null;
     this.calques.fermerBulle(s.cle);
     this.rendreClavier(s);
@@ -359,6 +409,7 @@ export class ServiceDesign {
   /** La fenêtre de la cible est fermée : le mode s'arrête et le calque est fermé. */
   oublier(c: CibleDesign): void {
     void this.arreter(c);
+    this.oublierEcouteMessage(cleCible(c));
     this.calques.oublier(cleCible(c));
   }
 
@@ -367,7 +418,7 @@ export class ServiceDesign {
     const v = this.vue(c);
     const projet = await this.projetCourant(c);
     if (!v || !projet) return;
-    const contexte: ContexteCalque = { mode: "panier", projet: projet.projet, etiquette: "", source: null, ...this.destination(projet), avertissement: null };
+    const contexte: ContexteCalque = { mode: "panier", message: null, projet: projet.projet, etiquette: "", source: null, ...this.destination(projet), avertissement: null };
     const site = c.type === "site" ? this.vueSite(c.id) : null;
     if (site) this.calques.montrerPanier(cleCible(c), v.fenetre, contexte, site.barre + 12);
     else this.calques.montrerPanier(cleCible(c), v.fenetre, contexte);

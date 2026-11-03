@@ -679,7 +679,10 @@ export interface ApiDesign {
 }
 /** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
 export interface ContexteCalque {
-  mode: "bulle" | "panier";
+  /** « message » : pourquoi ⌘⇧D ne fait rien dans l'onglet (projet vide, jamais de panier). */
+  mode: "bulle" | "panier" | "message";
+  /** Le texte du mode « message » ; null ailleurs. */
+  message: string | null;
   projet: IdProjet;
   etiquette: string;
   source: string | null;

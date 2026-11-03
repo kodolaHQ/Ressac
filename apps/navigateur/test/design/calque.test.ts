@@ -20,7 +20,11 @@ function fausseFenetre() {
   Object.assign(f, {
     isDestroyed: () => false,
     getContentSize: () => [800, 600],
-    contentView: { children: enfants, addChildView: (v: unknown) => enfants.push(v), removeChildView: (v: unknown) => enfants.splice(enfants.indexOf(v), 1) },
+    contentView: { children: enfants, addChildView: (v: unknown) => {
+        // Comme Electron : une vue rajoutée passe au-dessus, sans doublon.
+        if (enfants.includes(v)) enfants.splice(enfants.indexOf(v), 1);
+        enfants.push(v);
+      }, removeChildView: (v: unknown) => enfants.splice(enfants.indexOf(v), 1) },
   });
   return f;
 }
@@ -52,4 +56,45 @@ test("montrerPanier avec la marge 48 dans une fenêtre 800×600 : sous la barre 
   const g = fausseFenetre();
   calques.montrerPanier("app:essai", g as never, {} as never);
   expect((g.contentView as { children: { bornes: unknown }[] }).children[0]!.bornes).toEqual({ x: 448, y: 12, width: 340, height: 576 });
+});
+
+test("montrerMessage : vue ajoutée aux bornes données, contexte mode message ; retirée après 4 000 ms ; fermerMessage la retire tout de suite ; pendant une bulle, montrerMessage ne change rien", () => {
+  vi.useFakeTimers();
+  try {
+    const calques = new Calques();
+    const f = fausseFenetre();
+    const enfants = (f.contentView as { children: { bornes: unknown }[] }).children;
+    const place = { x: 428, y: 12, width: 360, height: 56 };
+    calques.montrerMessage("fenetre:1", f as never, place, "Indisponible");
+    expect(enfants).toHaveLength(1);
+    expect(enfants[0]!.bornes).toEqual(place);
+    expect(calques.contexte("fenetre:1")).toEqual({ mode: "message", message: "Indisponible", projet: "", etiquette: "", source: null, destination: null, sansDestination: null, avertissement: null });
+    vi.advanceTimersByTime(3999);
+    expect(enfants).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(enfants).toHaveLength(0);
+    expect(calques.contexte("fenetre:1")).toBeNull();
+
+    // Un nouveau message relance la minuterie.
+    calques.montrerMessage("fenetre:1", f as never, place, "Indisponible");
+    vi.advanceTimersByTime(3000);
+    calques.montrerMessage("fenetre:1", f as never, place, "Indisponible");
+    vi.advanceTimersByTime(3000);
+    expect(enfants).toHaveLength(1);
+    calques.fermerMessage("fenetre:1");
+    expect(enfants).toHaveLength(0);
+    expect(calques.contexte("fenetre:1")).toBeNull();
+
+    // Pendant une bulle : rien ne change.
+    const bulle = { mode: "bulle" } as never;
+    const placeBulle = { x: 0, y: 0, width: 320, height: 170 };
+    calques.montrerBulle("fenetre:1", f as never, placeBulle, bulle);
+    calques.montrerMessage("fenetre:1", f as never, place, "Indisponible");
+    expect(calques.contexte("fenetre:1")).toBe(bulle);
+    expect(enfants[enfants.length - 1]!.bornes).toEqual(placeBulle);
+    calques.fermerBulle("fenetre:1");
+    expect(calques.contexte("fenetre:1")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });

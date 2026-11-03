@@ -252,7 +252,7 @@ test("lireSource écarte les valeurs de la page qui n'ont pas la bonne forme", a
 });
 
 // Le mode design branché dans l'interface : bouton, ⌘⇧D, bulle (calque design.html), panier.
-const INDISPONIBLE = "Le mode design marche sur les applis de l'agent et les projets branchés par un Claude Code";
+const INDISPONIBLE = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
 const menu = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
 const viseurs = (app: ElectronApplication) => dansPage<number>(app, `document.querySelectorAll("webaios-viseur").length`);
 
@@ -301,6 +301,35 @@ test("onglet hors des projets suivis : bouton désactivé, ⌘⇧D ne pose aucun
     await new Promise((r) => setTimeout(r, 400));
     expect(await dansLaVue(app, "/design.html", `document.querySelectorAll("webaios-viseur").length`)).toBe(0);
     await expect(bouton).toHaveAttribute("aria-pressed", "false");
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+    await serveur.fermer();
+  }
+});
+
+test("onglet hors projet : ⌘⇧D (menu mode-design) n'injecte aucun viseur et le calque montre message-design = INDISPONIBLE, puis plus rien après 4 s", async () => {
+  const serveur = await serveurTest();
+  const { app, fenetre, fermer } = await lancer({ env: ENV });
+  try {
+    await ouvrirOnglet(fenetre, `${serveur.url}/design.html`);
+    await expect.poll(() => dansLaVue(app, "/design.html", "document.readyState")).toBe("complete");
+    await menu(app, "mode-design");
+    let calque: Page | undefined;
+    for (const fin = Date.now() + 10_000; !calque && Date.now() < fin; await new Promise((r) => setTimeout(r, 100)))
+      calque = app.windows().find((x) => !x.url().startsWith("http") && x.url().includes("design.html"));
+    expect(calque).toBeDefined();
+    await expect(calque!.getByTestId("message-design")).toHaveText(INDISPONIBLE);
+    expect(await dansLaVue(app, "/design.html", `document.querySelectorAll("webaios-viseur").length`)).toBe(0);
+    await expect(fenetre.getByTestId("bouton-design")).toHaveAttribute("aria-pressed", "false");
+    // Fermé seul au bout de 4 s : le calque est retiré de la fenêtre.
+    const calqueAttache = () =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some((w) => w.contentView.children.some((v) => { const u = (v as Electron.WebContentsView).webContents?.getURL() ?? ""; return !u.startsWith("http") && u.includes("design.html"); })),
+      );
+    expect(await calqueAttache()).toBe(true);
+    await expect.poll(calqueAttache, { timeout: 8_000 }).toBe(false);
+    await expect(calque!.getByTestId("message-design")).toHaveCount(0);
     await aucuneFenetreVisible(app);
   } finally {
     await fermer();

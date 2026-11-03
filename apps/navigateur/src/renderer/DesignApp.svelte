@@ -58,6 +58,10 @@
       <button class="ajouter" onclick={() => void ajouter()}>Ajouter au panier <kbd>⌘↩</kbd></button>
     </div>
   </div>
+{:else if contexte?.mode === "message"}
+  <!-- Non interactif : seul le clic le ferme (comme la frappe suivante, côté process principal). -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+  <div class="message" data-testid="message-design" role="status" onclick={() => api.annuler()}>{contexte.message}</div>
 {:else if contexte?.mode === "panier"}
   <div class="volet">
     <PanierDesign {api} projet={contexte.projet} destination={contexte.destination} sansDestination={contexte.sansDestination} fermer={() => api.annuler()} />
@@ -80,5 +84,6 @@
   .annuler:hover { background: var(--fond-survol); color: var(--texte); }
   .ajouter { background: var(--accent); color: #fff; font-weight: 600; }
   kbd { font: inherit; opacity: 0.8; margin-left: 4px; }
+  .message { box-sizing: border-box; height: 100%; display: flex; align-items: center; padding: 8px 12px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 8px; font-size: 12px; line-height: 1.35; cursor: default; overflow: hidden; }
   .volet { height: 100%; border-radius: 8px; overflow: hidden; }
 </style>

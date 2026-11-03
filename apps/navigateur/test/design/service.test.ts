@@ -19,7 +19,7 @@ vi.mock("../../src/main/design/viseur", () => ({
 }));
 
 /** Le calque simulé : on note ce qu'il montre. */
-const calques: { bulles: unknown[]; fermees: string[]; paniers: unknown[][] } = { bulles: [], fermees: [], paniers: [] };
+const calques: { bulles: unknown[]; fermees: string[]; paniers: unknown[][]; messages: unknown[][]; messagesFermes: string[] } = { bulles: [], fermees: [], paniers: [], messages: [], messagesFermes: [] };
 vi.mock("../../src/main/design/calque", () => ({
   Calques: class {
     montrerBulle(cle: string, _f: unknown, place: unknown, contexte: unknown) {
@@ -32,6 +32,12 @@ vi.mock("../../src/main/design/calque", () => ({
       calques.paniers.push(args);
     }
     fermerPanier() {}
+    montrerMessage(...args: unknown[]) {
+      calques.messages.push(args);
+    }
+    fermerMessage(cle: string) {
+      calques.messagesFermes.push(cle);
+    }
     estOuvert() {
       return false;
     }
@@ -54,6 +60,9 @@ afterEach(() => {
   calques.bulles = [];
   calques.fermees = [];
   calques.paniers = [];
+  calques.messages = [];
+  calques.messagesFermes = [];
+  fenetre.webContents.removeAllListeners();
   vi.mocked(viseur.armerViseur).mockClear();
   vi.mocked(viseur.lireSource).mockClear();
 });
@@ -74,7 +83,7 @@ class FauxWc extends EventEmitter {
   focus = vi.fn();
 }
 
-const fenetre = { getContentSize: () => [1200, 800], isDestroyed: () => false, once: () => {}, on: () => {} };
+const fenetre = { getContentSize: () => [1200, 800], isDestroyed: () => false, once: () => {}, on: () => {}, webContents: new FauxWc("app://interface") };
 
 function service(url: string, o: { externes?: ProjetExterne[] } = {}) {
   const wc = new FauxWc(url);
@@ -94,6 +103,7 @@ function service(url: string, o: { externes?: ProjetExterne[] } = {}) {
 }
 
 const CIBLE = { type: "fenetre", fenetreId: "f1" } as const;
+const entreeClavier = (type: string) => ({ type, key: "a" });
 const capture = {
   selecteur: "#email", etiquette: "input#email.champ", html: '<input id="email">', voisinage: { parent: "form#inscription", freres: [] },
   styles: {}, rect: { x: 10, y: 20, largeur: 100, hauteur: 30 }, adresse: "http://localhost:15283/", vue: { largeur: 900, hauteur: 750 },
@@ -391,4 +401,31 @@ test("ouvrirPanier(site) : montrerPanier reçoit la marge 48, sans avertissement
   expect(f).toBe(x.fenetreSite);
   expect(contexte).toMatchObject({ mode: "panier", projet: "site-tuning", destination: "l'agent", avertissement: null });
   expect(marge).toBe(48);
+});
+
+test("basculer sur https://exemple.fr : montrerMessage avec INDISPONIBLE_DESIGN, placé en haut à droite de la vue ({ x: 828, y: 62, width: 360, height: 56 }) ; basculer sur la démo 15283 : aucun montrerMessage", async () => {
+  const { s, wc } = service("https://exemple.fr/");
+  await s.basculer(CIBLE);
+  await s.basculer(CIBLE);
+  expect(calques.messages).toHaveLength(2);
+  const [cle, f, place, texte] = calques.messages[0]!;
+  expect(cle).toBe("fenetre:f1");
+  expect(f).toBe(fenetre);
+  expect(place).toEqual({ x: 828, y: 62, width: 360, height: 56 });
+  expect(texte).toBe(INDISPONIBLE_DESIGN);
+  // La frappe suivante le ferme ; l'écouteur est posé une seule fois, sur la page et sur l'interface.
+  expect(wc.listenerCount("before-input-event")).toBe(1);
+  expect(fenetre.webContents.listenerCount("before-input-event")).toBe(1);
+  wc.emit("before-input-event", {}, entreeClavier("keyUp"));
+  expect(calques.messagesFermes).toEqual([]);
+  fenetre.webContents.emit("before-input-event", {}, entreeClavier("keyDown"));
+  expect(calques.messagesFermes).toEqual(["fenetre:f1"]);
+  expect(wc.listenerCount("before-input-event")).toBe(0);
+  expect(fenetre.webContents.listenerCount("before-input-event")).toBe(0);
+
+  const demo = service("http://localhost:15283/");
+  await demo.s.basculer(CIBLE);
+  await attendre();
+  expect(calques.messages).toHaveLength(2);
+  expect(demo.wc.listenerCount("before-input-event")).toBe(0);
 });

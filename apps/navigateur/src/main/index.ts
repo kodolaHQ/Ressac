@@ -62,7 +62,8 @@ import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions
 // Mode design et relecture (plan 17).
 import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
 import { ServiceDesign } from "./design/service";
-import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
+import { choisirCibleDesign } from "./design/premier-plan";
+import { INDISPONIBLE_DESIGN_SITE, plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
 import { creerEnvoi } from "./design/envoi";
 import { demarrerExternes, raisonEchec, type ServiceExternes } from "./design/externes";
 import { ServiceRelecture } from "./design/relecture";
@@ -982,14 +983,22 @@ app.whenReady().then(async () => {
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
     surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
     design: (action) => {
-      const dossier = applications?.fenetres.dossierAuPremierPlan();
-      // Une autre fenêtre au premier plan (appli de site…) : rien, jamais l'onglet de la fenêtre principale derrière.
+      // Appli de l'agent, appli de site, petite fenêtre d'une appli de site, autre fenêtre (rien, jamais l'onglet de la
+      // fenêtre principale derrière), sinon la fenêtre principale active (spec §4.3).
       const auPremierPlan = BrowserWindow.getFocusedWindow();
-      if (!dossier && auPremierPlan && ![...fenetres.values()].includes(auPremierPlan)) return;
-      const f = dossier ? undefined : cibles.fenetreActive();
-      const cible = dossier ? ({ type: "app", dossier } as const) : f ? ({ type: "fenetre", fenetreId: f } as const) : undefined;
-      if (!cible || !design) return;
-      void (action === "basculer" ? design.basculer(cible) : design.relire(cible));
+      const choix = choisirCibleDesign({
+        appli: applications?.fenetres.dossierAuPremierPlan(),
+        site: sites?.fenetres.idAuPremierPlan(),
+        petiteDeSite: sites?.fenetres.idDePetiteAuPremierPlan(),
+        autreFenetre: !!auPremierPlan && ![...fenetres.values()].includes(auPremierPlan),
+        fenetreActive: cibles.fenetreActive(),
+      });
+      if (choix.type === "avis-site") {
+        if (action === "basculer") sites?.fenetres.avisInfo(choix.id, INDISPONIBLE_DESIGN_SITE);
+        return;
+      }
+      if (choix.type !== "cible" || !design) return;
+      void (action === "basculer" ? design.basculer(choix.cible) : design.relire(choix.cible));
     },
   };
   installerMenu(cibles);
