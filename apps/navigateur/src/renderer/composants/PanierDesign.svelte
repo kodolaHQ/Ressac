@@ -37,8 +37,14 @@
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   };
+  const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
   async function marquerTraite(lot: string) {
-    await api.traite(projet, lot);
+    erreur = null;
+    try {
+      await api.traite(projet, lot);
+    } catch (e) {
+      erreur = message(e);
+    }
     void relire();
   }
 
@@ -54,9 +60,14 @@
   async function envoyer() {
     envoi = true;
     erreur = null;
-    const r = await api.envoyer(projet);
-    envoi = false;
-    if (!r.ok) erreur = r.erreur;
+    try {
+      const r = await api.envoyer(projet);
+      if (!r.ok) erreur = r.erreur;
+    } catch (e) {
+      erreur = message(e);
+    } finally {
+      envoi = false;
+    }
     void relire();
   }
 
