@@ -31,11 +31,16 @@ window.addEventListener(
     const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     frame.id = "webaios-sidebar";
     document.getElementById("browser")!.prepend(frame);
+    // The agent panel, on the right: a second iframe, so that the web page between both keeps the mouse.
+    const agentFrame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
+    agentFrame.id = "webaios-agent";
+    agentFrame.hidden = true;
+    document.getElementById("browser")!.append(agentFrame);
     // The store is a shared module: imported at runtime, never bundled here (that would make a second copy).
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
-      window.webaiosWindow = createController(window.gBrowser, frame, store);
+      window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store);
       // Once per start, in the main window only: the unreadable session was kept aside.
       if (store.setAside) {
         void window.gNotificationBox.appendNotification(
@@ -49,6 +54,7 @@ window.addEventListener(
       }
       // The UI reads window.webaiosWindow as it loads.
       frame.src = "chrome://browser/content/webaios/sidebar.html";
+      agentFrame.src = "chrome://browser/content/webaios/agent.html";
     });
   },
   { once: true },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shortcutFor } from "../chrome/window/keys";
+import { FIREFOX_KEYS, shortcutFor } from "../chrome/window/keys";
 
 const key = (key: string, code: string, mods: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) =>
   shortcutFor({ key, code, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift, altKey: !!mods.alt });
@@ -28,6 +28,11 @@ describe("shortcutFor", () => {
   it("walks the tabs with ⌃Tab", () => {
     expect(key("Tab", "Tab", { ctrl: true })).toEqual({ type: "parcourir", delta: 1 });
     expect(key("Tab", "Tab", { ctrl: true, shift: true })).toEqual({ type: "parcourir", delta: -1 });
+  });
+
+  it("⌘J is the agent shortcut", () => {
+    expect(key("j", "KeyJ", { meta: true })).toEqual({ type: "agent" });
+    expect(FIREFOX_KEYS).toContain("key_openDownloads");
   });
 
   it("leaves other keys alone", () => {

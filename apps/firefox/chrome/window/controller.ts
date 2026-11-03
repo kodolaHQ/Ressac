@@ -1,5 +1,5 @@
 import type { MessageParcours, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
-import type { IdFenetre, IdOnglet } from "../../../navigateur/src/commun/modele";
+import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
@@ -22,8 +22,10 @@ export interface WindowController {
   command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
-  /** The UI iframe covers the whole window (overlays, empty page) or only its 240 px column. */
+  /** The UI iframe covers the window left of the agent panel (overlays, empty page) or only its 240 px column. */
   setFullWindow(full: boolean): void;
+  /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
+  setAgentWidth(px: number): void;
   /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
   onShortcut(cb: (r: Raccourci) => void): () => void;
   /** Electron's surPanneauOnglets: the ⌃Tab panel to show (null: closed). */
@@ -33,13 +35,37 @@ export interface WindowController {
 }
 
 /** Binds the main browser window to the first window of the state. */
-export function createController(gBrowser: any, frame: HTMLIFrameElement, store: WebAiOsStore): WindowController {
+export function createController(gBrowser: any, frame: HTMLIFrameElement, agentFrame: HTMLIFrameElement, store: WebAiOsStore): WindowController {
   const fenetreId = store.state.fenetres[0]!.id;
   const tabs = new TabSync(gBrowser, store, fenetreId);
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes.
   const unsubscribe = [store.subscribe((state) => tabs.sync(state))];
-  window.addEventListener("unload", () => unsubscribe.forEach((u) => u()), { once: true });
+  window.addEventListener(
+    "unload",
+    () => {
+      unsubscribe.forEach((u) => u());
+      store.agent.notify("agent.fermerFenetre", { fenetre: fenetreId });
+    },
+    { once: true },
+  );
+  // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
+  const agentOpen = (state: EtatNavigateur) => !!state.fenetres.find((x) => x.id === fenetreId)?.panneauAgentOuvert;
+  const showAgent = (state: EtatNavigateur) => {
+    const open = agentOpen(state);
+    agentFrame.hidden = !open;
+    const width = Math.min(LARGEUR_AGENT_MAX, Math.max(LARGEUR_AGENT_MIN, state.reglages.largeurPanneauAgent));
+    document.documentElement.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
+    // Laid out now: the panel focuses its terminal right after this change, which needs the iframe visible.
+    agentFrame.getBoundingClientRect();
+  };
+  showAgent(store.state);
+  // Only on a change of its own: an unrelated action while the handle is dragged keeps the dragged width.
+  unsubscribe.push(
+    store.subscribe((state, previous) => {
+      if (agentOpen(state) !== agentOpen(previous) || state.reglages.largeurPanneauAgent !== previous.reglages.largeurPanneauAgent) showAgent(state);
+    }),
+  );
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
@@ -83,6 +109,14 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
     } else if (s.type === "naviguer") {
       if (active) controller.command(active, s.c);
     } else if (s.type === "parcourir") walk.parcourir(fenetreId, s.delta);
+    else if (s.type === "agent") {
+      // Electron's menu: toggle, then, opened from a web page, the keyboard goes to the terminal.
+      store.dispatch({ type: "basculerPanneauAgent", fenetreId });
+      if (agentOpen(store.state)) {
+        agentFrame.focus();
+        for (const cb of shortcutListeners) cb("agent");
+      }
+    }
     // ⌘N ("rien") is single-window: it does nothing.
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
@@ -98,11 +132,12 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
   };
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
-  // The UI document's events stop at its own window: listen there too, on each load.
-  frame.addEventListener("load", () => {
-    frame.contentWindow!.addEventListener("keydown", onKeyDown, true);
-    frame.contentWindow!.addEventListener("keyup", onKeyUp, true);
-  });
+  // The UI documents' events stop at their own window: listen there too, on each load.
+  for (const f of [frame, agentFrame])
+    f.addEventListener("load", () => {
+      f.contentWindow!.addEventListener("keydown", onKeyDown, true);
+      f.contentWindow!.addEventListener("keyup", onKeyUp, true);
+    });
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
   window.addEventListener("deactivate", () => walk.fenetreQuittee(fenetreId));
@@ -144,6 +179,9 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
     },
     setFullWindow(full) {
       frame.toggleAttribute("full", full);
+    },
+    setAgentWidth(px) {
+      if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
     },
     onShortcut(cb) {
       shortcutListeners.add(cb);

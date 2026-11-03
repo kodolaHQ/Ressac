@@ -7,6 +7,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
+import { waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
@@ -25,6 +26,8 @@ beforeEach(async () => {
   const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+  // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
 });
 afterEach(() => w?.close());
 

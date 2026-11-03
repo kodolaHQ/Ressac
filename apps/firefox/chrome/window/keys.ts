@@ -7,6 +7,8 @@ export type Shortcut =
   | { type: "espace"; n: number }
   | { type: "naviguer"; c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" }
   | { type: "parcourir"; delta: 1 | -1 }
+  /** ⌘J: the agent panel (Electron's menu item « Panneau agent »). */
+  | { type: "agent" }
   | { type: "rien" };
 
 type Keys = { key: string; code: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
@@ -19,6 +21,7 @@ const COMMAND: Record<string, Shortcut> = {
   "]": { type: "naviguer", c: "avancer" },
   r: { type: "naviguer", c: "recharger" },
   n: { type: "rien" },
+  j: { type: "agent" },
 };
 const SHIFT_COMMAND: Record<string, Shortcut> = {
   t: { type: "rouvrir" },
@@ -51,6 +54,8 @@ export const FIREFOX_KEYS = [
   "key_reload_skip_cache",
   ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `key_selectTab${n}`),
   "key_selectLastTab",
+  // ⌘J: Downloads in Firefox.
+  "key_openDownloads",
 ];
 
 /**

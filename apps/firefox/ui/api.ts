@@ -1,4 +1,5 @@
-import type { ApiWebaios } from "../../navigateur/src/commun/api";
+import type { ApiWebaios, EtatPanneauAgent } from "../../navigateur/src/commun/api";
+import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 
 declare global {
@@ -14,12 +15,22 @@ const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 /**
- * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (agent, access,
+ * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (access,
  * history, downloads, permissions, extensions, actions) answers empty; any other member is recorded in
  * `window.webaiosMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiWebaios {
   const missing = (window.webaiosMissingApi ??= new Set());
+  // The store outlives this document: a listener into a dead document would throw on every call.
+  const untilUnload = (unsubscribe: () => void) => {
+    window.addEventListener("unload", unsubscribe, { once: true });
+    return unsubscribe;
+  };
+  const host = win.store.agent;
+  const fenetre = win.fenetreId;
+  /** States this document makes itself: the host did not start, or stopped. */
+  const localStates = new Set<(e: EtatPanneauAgent) => void>();
+  const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
   const api: Partial<ApiWebaios> = {
     fenetreId: win.fenetreId,
     agir: (action) => void win.store.dispatch(action),
@@ -27,20 +38,33 @@ export function createApi(win: WindowController): ApiWebaios {
       // The state lives in the store's realm: the UI always gets its own copy, made in this realm.
       const send = () => callback(structuredClone(win.store.state));
       if (win.store.state) send();
-      const unsubscribe = win.store.subscribe(send);
-      // The store outlives this document: a listener into a dead document would throw on every dispatch.
-      window.addEventListener("unload", unsubscribe, { once: true });
-      return unsubscribe;
+      return untilUnload(win.store.subscribe(send));
     },
-    surRaccourci(callback) {
-      const unsubscribe = win.onShortcut(callback);
-      window.addEventListener("unload", unsubscribe, { once: true });
-      return unsubscribe;
-    },
-    surPanneauOnglets(callback) {
-      const unsubscribe = win.onTabPanel((p) => callback(p && structuredClone(p)));
-      window.addEventListener("unload", unsubscribe, { once: true });
-      return unsubscribe;
+    surRaccourci: (callback) => untilUnload(win.onShortcut(callback)),
+    surPanneauOnglets: (callback) => untilUnload(win.onTabPanel((p) => callback(p && structuredClone(p)))),
+    // The window's terminal session, in the noyau host. Its output and states are routed by window.
+    agent: {
+      demarrer(taille) {
+        // Starts the host again if it stopped (Réessayer after a crash).
+        host
+          .ensure()
+          .then(() => host.request("agent.demarrer", { fenetre, taille }))
+          .catch((e) => failed(e instanceof Error ? e.message : String(e)));
+      },
+      ecrire: (d) => host.notify("agent.ecrire", { fenetre, d }),
+      redimensionner: (taille) => host.notify("agent.redimensionner", { fenetre, taille }),
+      surDonnees: (callback) => untilUnload(host.on("agent.donnees", (p) => p.fenetre === fenetre && callback(String(p.d)))),
+      surEtat(callback) {
+        localStates.add(callback);
+        const offState = host.on("agent.etat", (p) => p.fenetre === fenetre && callback(structuredClone(p.e)));
+        const offExit = host.on(HOST_EXITED, (p) => callback({ etat: "erreur", message: p.message }));
+        return untilUnload(() => {
+          localStates.delete(callback);
+          offState();
+          offExit();
+        });
+      },
+      profils: () => host.request<{ id: string; nom: string }[]>("agent.profils").then((p) => structuredClone(p), () => []),
     },
     parcoursOnglets: (m) => win.tabSwitch(m),
     naviguer: (id, input) => win.navigate(id, input),

@@ -120,6 +120,12 @@ export function trackState(store: Store, host: AgentHost): void {
     const { navigues, fermes } = changementsPolitique(previous, state);
     for (const n of navigues) host.notify("politique.navigue", n);
     for (const id of fermes) host.notify("politique.ferme", { id });
+    // Opening the agent panel on a tab gives it to the agent and pre-fills its context (Electron's agent.ts).
+    for (const f of state.fenetres) {
+      const opened = f.panneauAgentOuvert && !previous.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert;
+      const onglet = opened && ongletActifDe(state, f.id);
+      if (onglet) host.notify("agent.panneauOuvert", { fenetre: f.id, onglet });
+    }
     if (state.reglages.profilAgent !== previous.reglages.profilAgent)
       host.request("changerProfil", { profilAgent: state.reglages.profilAgent }).catch((e) => console.error("[agent] profile change failed:", e));
   });

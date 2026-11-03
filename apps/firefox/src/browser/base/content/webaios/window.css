@@ -22,9 +22,29 @@
 }
 
 :root[webaios-main] #webaios-sidebar[full] {
-  width: 100%;
+  /* The agent panel stays beside it. */
+  width: calc(100% - var(--webaios-agent, 0px));
+}
+
+/* The agent panel on the right, --webaios-agent wide (0 when closed): the page sits between both iframes. */
+:root[webaios-main] #webaios-agent {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: var(--webaios-agent, 0px);
+  border: none;
+  z-index: 3;
+}
+
+/* Not display: none, which drops the panel document's layout: on reopening, the terminal could not take the keyboard
+   until it is rebuilt. */
+:root[webaios-main] #webaios-agent[hidden] {
+  display: inline;
+  visibility: hidden;
 }
 
 :root[webaios-main] #tabbrowser-tabbox {
   margin-inline-start: 240px;
+  margin-inline-end: var(--webaios-agent, 0px);
 }

@@ -73,27 +73,30 @@ describe("WebAiOs-Firefox foundation", () => {
     expect(root?.text).toContain("Nouvel onglet");
   });
 
-  it("covers the window with the UI while no page is shown, then keeps the left 240 px", async () => {
+  it("covers the window left of the agent panel with the UI while no page is shown, then keeps the left 240 px", async () => {
     const rect = "const r = document.getElementById('webaios-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null";
-    expect(await w.marionette.execute(rect)).toEqual({ left: 0, width: 1280 });
+    // The home page opens the 420 px agent panel.
+    await waitFor(w.marionette, rect, (r: { left: number; width: number } | null) => r?.left === 0 && r.width === 1280 - 420);
     const f = (await state(w.marionette)).fenetres[0]!;
     await dispatch(w.marionette, { type: "ouvrirOnglet", fenetreId: f.id, url: "data:text/html,<title>t</title>t" });
     await waitFor(w.marionette, rect, (r: { width: number } | null) => r?.width === 240);
   });
 
   it("gives the page the rest of the window", async () => {
-    const r = await w.marionette.execute<{ title: string; left: number; right: number; inner: number }>(`return (async () => {
+    const r = await w.marionette.execute<{ title: string; left: number; right: number; edge: number }>(`return (async () => {
       const b = gBrowser.selectedBrowser;
       b.loadURI(Services.io.newURI("data:text/html,<title>essai</title>ok"), {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
       for (let i = 0; i < 100 && b.contentTitle !== "essai"; i++) await new Promise((res) => setTimeout(res, 100));
       const rect = b.getBoundingClientRect();
-      return { title: b.contentTitle, left: rect.left, right: rect.left + rect.width, inner: window.innerWidth };
+      const agent = document.getElementById("webaios-agent");
+      return { title: b.contentTitle, left: rect.left, right: rect.left + rect.width, edge: agent.hidden ? window.innerWidth : agent.getBoundingClientRect().left };
     })();`);
     expect(r.title).toBe("essai");
     expect(r.left).toBeGreaterThanOrEqual(240);
-    expect(Math.abs(r.right - r.inner)).toBeLessThanOrEqual(1);
+    // Up to the agent panel, open on the home page.
+    expect(Math.abs(r.right - r.edge)).toBeLessThanOrEqual(1);
   });
 });
 

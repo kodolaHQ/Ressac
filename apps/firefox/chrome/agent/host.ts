@@ -1,9 +1,9 @@
 import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
 import { lineSplitter } from "./lines";
 
-const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
-
 export const HOST_STOPPED = "Le noyau de l'agent s'est arrêté.";
+/** Pseudo-notification sent to `on()` listeners when the host process exits (no automatic restart). */
+export const HOST_EXITED = "$/exited";
 const STOP_TIMEOUT_MS = 5_000;
 
 /** The Node process running the noyau (apps/firefox/noyau/host.ts), spoken to in JSON-RPC over its stdin and stdout. */
@@ -51,6 +51,8 @@ export function createHost(o: {
   let pid: number | null = null;
 
   const spawn = async (): Promise<Running> => {
+    // Imported here, not at the top: the UI bundles import this file's constants.
+    const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
     const proc = await Subprocess.call({
       command: __WEBAIOS_NODE__,
       arguments: ["--import", __WEBAIOS_TSX__, __WEBAIOS_HOST__],
@@ -69,6 +71,7 @@ export function createHost(o: {
         pid = null;
         current = null;
       }
+      for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: HOST_STOPPED });
     });
     return { proc, rpc };
   };

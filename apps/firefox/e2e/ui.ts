@@ -1,14 +1,22 @@
 import type { Marionette } from "./marionette";
 
+/** The two UI iframes: the sidebar (`#webaios-sidebar`) and the agent panel (`#webaios-agent`), with what shows each is mounted. */
+const FRAMES = {
+  sidebar: { id: "webaios-sidebar", mounted: '[data-testid="barre-laterale"]' },
+  agent: { id: "webaios-agent", mounted: '[data-testid="panneau-agent"]' },
+};
+export type Frame = keyof typeof FRAMES;
+
 /**
- * Runs `body` (an async function body, chrome context) with `doc` = the document of the WebAiOs UI iframe and `ui` = its
- * window. `arguments[i]` are the args. Waits up to 10 s for the UI to be mounted.
+ * Runs `body` (an async function body, chrome context) with `doc` = the document of a WebAiOs UI iframe (the sidebar by
+ * default) and `ui` = its window. `arguments[i]` are the args. Waits up to 10 s for the UI to be mounted.
  */
-export function inUi<T = unknown>(m: Marionette, body: string, args: unknown[] = []): Promise<T> {
+export function inUi<T = unknown>(m: Marionette, body: string, args: unknown[] = [], frame: Frame = "sidebar"): Promise<T> {
+  const f = FRAMES[frame];
   return m.execute<T>(
     `return (async () => {
-      const frame = document.getElementById("webaios-sidebar");
-      for (let i = 0; i < 100 && !frame?.contentDocument?.querySelector('[data-testid="barre-laterale"]'); i++) await new Promise((r) => setTimeout(r, 100));
+      const frame = document.getElementById(${JSON.stringify(f.id)});
+      for (let i = 0; i < 100 && !frame?.contentDocument?.querySelector(${JSON.stringify(f.mounted)}); i++) await new Promise((r) => setTimeout(r, 100));
       const doc = frame.contentDocument;
       const ui = doc.defaultView;
       ${body}
@@ -18,12 +26,12 @@ export function inUi<T = unknown>(m: Marionette, body: string, args: unknown[] =
 }
 
 /** Polls `body` (see inUi) until it returns a truthy value; returns it. */
-export async function waitUi<T = unknown>(m: Marionette, body: string, args: unknown[] = [], ms = 10_000): Promise<T> {
+export async function waitUi<T = unknown>(m: Marionette, body: string, args: unknown[] = [], ms = 10_000, frame: Frame = "sidebar"): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
-    const v = await inUi<T>(m, body, args);
+    const v = await inUi<T>(m, body, args, frame);
     if (v) return v;
-    if (Date.now() > deadline) throw new Error(`timed out waiting in the UI on: ${body}`);
+    if (Date.now() > deadline) throw new Error(`timed out waiting in the ${frame} UI on: ${body}`);
     await new Promise((r) => setTimeout(r, 100));
   }
 }
@@ -32,9 +40,9 @@ export async function waitUi<T = unknown>(m: Marionette, body: string, args: unk
  * A trusted mouse click (`button` 0) or right click (2: contextmenu) at the centre of the first element matching
  * `selector` in the UI, and whose text contains `text` if given. Waits for it to appear.
  */
-export async function click(m: Marionette, selector: string, o: { button?: 0 | 2; text?: string } = {}): Promise<void> {
+export async function click(m: Marionette, selector: string, o: { button?: 0 | 2; text?: string; frame?: Frame } = {}): Promise<void> {
   const find = "const el = [...doc.querySelectorAll(arguments[0])].find((e) => !arguments[1] || e.textContent.includes(arguments[1]));";
-  await waitUi(m, `${find} return !!el;`, [selector, o.text ?? null]);
+  await waitUi(m, `${find} return !!el;`, [selector, o.text ?? null], 10_000, o.frame);
   await inUi(
     m,
     `${find}
@@ -43,6 +51,7 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
      if (arguments[2] === 2) ui.synthesizeMouseEvent("contextmenu", x, y, { button: 2 });
      else for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, x, y, { button: 0, clickCount: 1 });`,
     [selector, o.text ?? null, o.button ?? 0],
+    o.frame,
   );
 }
 
@@ -65,6 +74,11 @@ export async function pressKeys(m: Marionette, combo: string): Promise<void> {
   const keys = combo.split("+");
   for (const k of keys) await keyDown(m, k);
   for (const k of keys.reverse()) await keyUp(m, k);
+}
+
+/** Types `text` key by key where the keyboard is (trusted keys). */
+export async function typeText(m: Marionette, text: string): Promise<void> {
+  for (const k of text) await pressKeys(m, k);
 }
 
 /** ApiWebaios members the UI reached that the Firefox api does not implement. */
