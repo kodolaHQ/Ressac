@@ -10,7 +10,9 @@ declare const IOUtils: {
 declare const PathUtils: { join(...parts: string[]): string };
 declare const Services: any;
 declare const Ci: any;
-declare const ChromeUtils: { importESModule(url: string): any; registerWindowActor(name: string, options: object): void };
+declare const Cr: any;
+declare const Components: { isSuccessCode(status: number): boolean };
+declare const ChromeUtils: { importESModule(url: string): any; registerWindowActor(name: string, options: object): void; getXPCOMErrorName(status: number): string; generateQI(interfaces: string[]): unknown };
 declare class JSWindowActorParent {}
 declare class JSWindowActorChild {
   readonly document: Document;

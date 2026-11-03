@@ -12,10 +12,31 @@ const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
 /**
  * Serves the Electron e2e pages read-only; /cookie sets a persistent cookie, /lire-cookie shows the cookies in its title,
  * /icone is a page with an http favicon (/icone.png) and a pure red background, /avale a page that swallows every key.
+ * Invisible reading: /sous-ressources?vers=<base> has a frame, an image and a fetch on <base>, /redirige?vers=<url>
+ * answers 302, /dialogues calls print() and alert() while loading, /lent never answers.
+ * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
  */
-export async function startServer(): Promise<{ url: string; close(): Promise<void> }> {
+export async function startServer(o: { host?: string } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
+  const paths: string[] = [];
   const server = createServer((req, res) => {
-    const route = new URL(req.url ?? "/", "http://x").pathname;
+    const asked = new URL(req.url ?? "/", "http://x");
+    const route = asked.pathname;
+    paths.push(route);
+    const to = asked.searchParams.get("vers") ?? "";
+    if (route === "/sous-ressources") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end(
+        `<title>sous-ressources</title><p>Texte public</p><iframe src="${to}/cadre"></iframe><img src="${to}/image">` +
+          `<script>fetch("${to}/fetch").catch(() => {})</script>`,
+      );
+    }
+    if (route === "/redirige") return res.writeHead(302, { Location: to }).end();
+    if (route === "/dialogues") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end("<title>dialogues</title><script>print(); alert('a'); confirm('b'); prompt('c')</script><p>Après les dialogues</p>");
+    }
+    // Never answers: the read is aborted or times out. Its closed connection is noted as "/lent:fermée".
+    if (route === "/lent") return void req.socket.once("close", () => paths.push("/lent:fermée"));
     if (route === "/cookie") {
       res.writeHead(200, { "Set-Cookie": "essai=1; Max-Age=86400; Path=/", "Content-Type": "text/html" });
       return res.end("<title>cookie</title>ok");
@@ -38,9 +59,13 @@ export async function startServer(): Promise<{ url: string; close(): Promise<voi
     res.writeHead(200, { "Content-Type": TYPES[path.extname(file)] ?? "application/octet-stream" });
     res.end(readFileSync(file));
   });
-  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+  const host = o.host ?? "127.0.0.1";
+  await new Promise<void>((ok) => server.listen(0, host, ok));
+  const port = (server.address() as AddressInfo).port;
   return {
-    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    url: `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
+    port,
+    paths,
     close: () =>
       new Promise((ok) => {
         server.close(() => ok());

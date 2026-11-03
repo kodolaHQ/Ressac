@@ -1,4 +1,4 @@
-import { OngletIntrouvable, OngletPrive, type OngletInfo } from "../shims/noyau";
+import { OngletIntrouvable, OngletPrive, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
 import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/commun/modele";
 import { ongletPrive } from "../../../navigateur/src/commun/modele";
 import { changementsPolitique, infosOnglets, ongletActifDe, origineDe, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
@@ -6,6 +6,7 @@ import type { Handler } from "../../shared/rpc";
 import type { Store } from "../store/store";
 import type { WindowController } from "../window/controller";
 import type { AgentHost } from "./host";
+import { readHtml, readPage } from "./invisible";
 import type { Questions } from "./questions";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
@@ -106,12 +107,8 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
       const f = activeWindow(store.state);
       return f ? questions.ask(o, f, signal) : false;
     },
-    lirePageInvisible: () => {
-      throw new Error("Lecture invisible indisponible");
-    },
-    lireHtmlInvisible: () => {
-      throw new Error("Lecture invisible indisponible");
-    },
+    lirePageInvisible: ([url, o]: [string, OptionsLecturePage], signal) => readPage(store, url, o, signal),
+    lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
   };
 }
 

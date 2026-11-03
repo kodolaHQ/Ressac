@@ -3,7 +3,9 @@ import { profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
+import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
+import type { OptionsLecturePage, PageLue } from "../shims/noyau";
 import { containerFor, removeContainer } from "./containers";
 import { createStore, type Store } from "./store";
 
@@ -22,6 +24,9 @@ export interface WebAiOsStore extends Store {
   readonly questions: Questions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
+  /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
+  readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
+  readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
 }
 
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
@@ -84,6 +89,8 @@ async function start(): Promise<WebAiOsStore> {
     get access() {
       return access;
     },
+    readPage: (url, o, signal) => readPage(store, url, o, signal),
+    readHtml: (url, o, signal) => readHtml(store, url, o, signal),
   };
 }
 
