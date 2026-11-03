@@ -87,6 +87,18 @@ test("question retirée sans réponse (onglet fermé) : refusée cette fois, rie
   expect(demandes).toHaveLength(2);
 });
 
+test("caméra puis caméra + micro avant toute réponse : la caméra n'est demandée qu'une fois", async () => {
+  const reponses: ((d: Issue) => void)[] = [];
+  const p = new Permissions({ fichier, demander: (d) => (demandes.push(d), new Promise((ok) => reponses.push(ok))) });
+  const video = p.traiter({ ongletId: "o1", origine: meet, permission: "media", mediaTypes: ["video"] });
+  const lesDeux = p.traiter({ ongletId: "o1", origine: meet, permission: "media", mediaTypes: ["video", "audio"] });
+  expect(demandes.map((d) => d.permissions)).toEqual([["media-camera"], ["media-micro"]]);
+  reponses[0]!("autoriser");
+  reponses[1]!("refuser");
+  expect([await video, await lesDeux]).toEqual([true, false]);
+  expect(p.decisions()).toEqual({ [`${meet} media-camera`]: "autoriser", [`${meet} media-micro`]: "refuser" });
+});
+
 test("decisions survivent à un rechargement du fichier", async () => {
   await creer().traiter({ ongletId: "o1", origine: meet, permission: "geolocation" });
   const p = creer();
