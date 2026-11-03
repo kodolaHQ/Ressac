@@ -2,7 +2,7 @@
   import BarreLaterale from "./composants/BarreLaterale.svelte";
   import MenuContextuel from "./composants/MenuContextuel.svelte";
   import BarreCommande from "./composants/BarreCommande.svelte";
-  import { commande, ouvrirCommande } from "./composants/commande.svelte";
+  import { commande, fermerCommande, ouvrirCommande } from "./composants/commande.svelte";
   import { focusAgent } from "./composants/agent.svelte";
   import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
@@ -98,6 +98,12 @@
   // l'interface, la page n'est pas affichée : pas de capture à montrer derrière.
   const demande = $derived(demandeDe(fenetre, ongletActif));
   const demandeAgent = $derived(demande && estDemandeAgent(demande) ? demande : undefined);
+  // Une demande de l'agent qui arrive pendant que la barre de commande est ouverte passe avant : la barre se ferme, la
+  // modale de la demande prend le clavier.
+  const idDemandeAgent = $derived(demandeAgent?.id);
+  $effect(() => {
+    if (idDemandeAgent !== undefined) untrack(() => fermerCommande());
+  });
   const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
   $effect(() => api.surPanneau(basculerPanneau));
   // Activer un autre onglet referme le panneau et la recherche (pas un simple changement d'état ailleurs).

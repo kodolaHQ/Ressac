@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { dansLaVue, ecrireAction, ecrireSite, fenetreSite, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurSites, serveurTest } from "./aide";
+import { appelerOutil, dansLaVue, ecrireAction, ecrireSite, fenetreSite, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurSites, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -287,5 +289,108 @@ test("espace privé : pas d'action proposée", async () => {
   await expect(lignes(fenetre, "defaut")).toHaveCount(1);
   await fenetre.waitForTimeout(500);
   await expect(lignes(fenetre, "action")).toHaveCount(0);
+  await fermer();
+});
+
+/** Un onglet tiers ouvert, l'agent du panneau démarré : de quoi lui faire demander la lecture de l'onglet. */
+async function avecAgentEtOnglet() {
+  const l = await lancer();
+  await expect.poll(() => existsSync(join(l.racine, ".webaios", "mcp.json"))).toBe(true);
+  await expect.poll(() => existsSync(join(l.racine, "faux-agent-pid")), { timeout: 10_000 }).toBe(true);
+  await ouvrirOnglet(l.fenetre, `${serveur.url}/texte.html`);
+  await expect.poll(() => dansLaVue(l.app, "texte.html", "document.title")).toBe("Texte");
+  const titre = l.fenetre.locator(onglets, { hasText: "Texte" });
+  await expect(titre).toHaveCount(1);
+  const id = (await titre.getAttribute("data-testid"))!.slice("onglet-".length);
+  return { ...l, id };
+}
+/** Lecture demandée par l'agent : la promesse ne rejette pas quand l'appli se ferme en fin de test. */
+const lireOnglet = (racine: string, id: string) => {
+  const p = appelerOutil(racine, "lire_onglet", { id }).then((r) => r.texte);
+  p.catch(() => {});
+  return p;
+};
+const enAttente = (p: Promise<unknown>, ms = 1500) => Promise.race([p.then(() => "répondue"), new Promise((ok) => setTimeout(() => ok("en attente"), ms))]);
+
+test("Entrée dans la barre n'autorise pas la demande de l'agent cachée dessous", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecAgentEtOnglet();
+  const lecture = lireOnglet(racine, id);
+  const modale = fenetre.getByTestId("modale-demande");
+  await expect(modale).toHaveAttribute("data-armee");
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await expect(saisie).toBeFocused();
+  await saisie.fill(`${serveur.url}/b.html`);
+  await saisie.press("Enter");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  expect(await enAttente(lecture)).toBe("en attente");
+  await fermer();
+});
+
+test("Entrée dans la barre ne valide pas le brouillon des réglages d'espace caché dessous", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  const boutonsEspace = fenetre.locator('[data-testid^="espace-"]');
+  const avant = await boutonsEspace.count();
+  await fenetre.getByTestId("nouvel-espace").click();
+  const modale = fenetre.getByRole("dialog", { name: "Nouvel espace" });
+  await modale.getByLabel("Nom de l'espace").fill("Jeux");
+  await modale.getByLabel("Profil de connexion").selectOption({ label: "Nouveau profil" });
+  await expect(modale.getByRole("button", { name: "Créer" })).toBeEnabled();
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await expect(saisie).toBeFocused();
+  await saisie.fill(`${serveur.url}/b.html`);
+  await saisie.press("Enter");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await fenetre.waitForTimeout(500);
+  await expect(modale).toBeVisible();
+  await expect(boutonsEspace).toHaveCount(avant);
+  await fermer();
+});
+
+test("une demande de l'agent qui arrive pendant que la barre est ouverte la ferme, la demande est affichée", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecAgentEtOnglet();
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  const lecture = lireOnglet(racine, id);
+  await expect(fenetre.getByTestId("modale-demande")).toBeVisible();
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await expect.poll(() => fenetre.evaluate(() => !!document.activeElement?.closest('[data-testid="modale-demande"]'))).toBe(true);
+  expect(await enAttente(lecture, 300)).toBe("en attente");
+  await fermer();
+});
+
+test("sur l'accueil, Échap rend le clavier au champ de la page vide", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await expect(fenetre.getByTestId("saisie-page-vide")).toBeFocused();
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await fenetre.keyboard.press("Escape");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await expect(fenetre.getByTestId("saisie-page-vide")).toBeFocused();
+  await fermer();
+});
+
+test("Tab et ⇧Tab laissent le clavier dans le champ de la barre", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await expect(saisie).toBeFocused();
+  for (const t of ["Tab", "Tab", "Shift+Tab", "Tab"]) {
+    await fenetre.keyboard.press(t);
+    await expect(saisie).toBeFocused();
+  }
+  await fermer();
+});
+
+test("sur l'accueil, un clic sur le voile rend le clavier au champ de la page vide", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await fenetre.mouse.click(5, 5);
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await expect(fenetre.getByTestId("saisie-page-vide")).toBeFocused();
   await fermer();
 });

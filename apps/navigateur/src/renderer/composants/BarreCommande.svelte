@@ -2,9 +2,9 @@
   import { tick } from "svelte";
   import type { EtatFenetre, Onglet } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
-  import { fermerCommande, commande } from "./commande.svelte";
+  import { fermerCommande, commande, focusPageVide } from "./commande.svelte";
   import { LIMITES, appliSourceDeProjet, appliSourceDeSite, lignesCommande, type AppliSource, type LigneCommande, type OngletSource, type SourcesCommande } from "./commande";
-  import { ongletsParcourables } from "../../main/recents";
+  import { ongletsParcourables } from "../../commun/onglets-parcourables";
   import type { ActionAffichee } from "../../commun/actions";
   import type { Visite } from "../../commun/modele";
   import IconeSite from "./IconeSite.svelte";
@@ -88,18 +88,26 @@
     );
   });
 
-  let choisie = $state(0);
+  let choisieBrute = $state(0);
   let champ: HTMLInputElement;
 
   const mode = $derived(commande.ouverte?.mode ?? "nouveau");
   const lignes: LigneCommande[] = $derived(lignesCommande(texte, sources, mode === "actif" ? (ongletActif?.url ?? null) : null));
+  // Une source arrivée tard peut raccourcir la liste : la sélection reste sur une ligne qui existe (la première sinon).
+  const choisie = $derived(choisieBrute >= 0 && choisieBrute < lignes.length ? choisieBrute : 0);
+  const choisir = (i: number) => (choisieBrute = i);
+
+  // Une action lancée : une seconde Entrée ne la relance pas, et sa réponse arrivée après une fermeture ou une autre
+  // ouverture (chacune est un nouvel objet) est ignorée.
+  let actionEnCours = false;
 
   // À chaque ouverture (la première, ou une réouverture dans l'autre mode) : saisie de départ, tout sélectionné en mode « actif ».
   $effect(() => {
     const o = commande.ouverte;
     if (!o) return;
+    actionEnCours = false;
     texte = o.texte;
-    choisie = 0;
+    choisieBrute = 0;
     refus = "";
     void tick().then(() => {
       champ?.focus();
@@ -115,12 +123,27 @@
       api.agir({ type: "afficherPageVide", fenetreId: fenetre.id });
       fermerPanneau();
       fermerCommande();
+      // Déjà sur l'accueil, il n'est pas remonté : son champ reprend le clavier (et le prend en se montant sinon).
+      focusPageVide.n++;
       return;
     }
     if (l.type === "action") {
+      if (actionEnCours) return;
+      const o = commande.ouverte;
+      actionEnCours = true;
+      refus = "";
       void api.actions.ouvrir(l.id, l.saisie).then(
-        (r) => (r.ok ? fermerCommande() : (refus = r.erreur)),
-        () => (refus = "Le service des actions ne répond pas"),
+        (r) => {
+          if (o !== commande.ouverte) return;
+          actionEnCours = false;
+          if (r.ok) fermerCommande();
+          else refus = r.erreur;
+        },
+        () => {
+          if (o !== commande.ouverte) return;
+          actionEnCours = false;
+          refus = "Le service des actions ne répond pas";
+        },
       );
       return;
     }
@@ -135,18 +158,21 @@
     fermerCommande(true);
   }
 
+  /**
+   * Les touches que la barre traite s'arrêtent ici : les modales cachées dessous (demande de l'agent, réglages d'un
+   * espace) écoutent la fenêtre et agiraient sinon sur ce qu'on ne voit pas. Tab et ⇧Tab ne font rien : le clavier
+   * reste dans le champ, rien derrière le voile ne peut le prendre.
+   */
   function touche(e: KeyboardEvent) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      choisie = (choisie + 1) % lignes.length;
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      choisie = (choisie - 1 + lignes.length) % lignes.length;
-    } else if (e.key === "Enter") {
-      e.preventDefault();
+    if (e.isComposing) return;
+    if (e.key === "ArrowDown") choisir((choisie + 1) % Math.max(lignes.length, 1));
+    else if (e.key === "ArrowUp") choisir((choisie - 1 + lignes.length) % Math.max(lignes.length, 1));
+    else if (e.key === "Enter") {
       const l = lignes[choisie];
-      if (l) executer(l);
-    }
+      if (l && !e.repeat) executer(l);
+    } else if (e.key !== "Tab") return;
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   const libelle = (l: LigneCommande): string =>
@@ -174,7 +200,7 @@
     <input
       bind:this={champ}
       bind:value={texte}
-      oninput={() => ((choisie = 0), (refus = ""))}
+      oninput={() => (choisir(0), (refus = ""))}
       onkeydown={touche}
       data-testid="saisie-commande"
       placeholder="Rechercher ou saisir une adresse"
@@ -185,7 +211,7 @@
     <ul role="listbox">
       {#each lignes as l, i (i)}
         <li role="option" aria-selected={i === choisie} data-testid="ligne-commande" data-type={l.type}>
-          <button type="button" tabindex="-1" class:choisie={i === choisie} onmousemove={() => (choisie = i)} onclick={() => executer(l)}>
+          <button type="button" tabindex="-1" class:choisie={i === choisie} onmousemove={() => choisir(i)} onclick={() => executer(l)}>
             {#if favicon(l)}<IconeSite favicon={favicon(l)} titre={libelle(l)} />{/if}
             <span class="libelle">{libelle(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}

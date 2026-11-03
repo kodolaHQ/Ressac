@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EtatFenetre } from "../../commun/modele";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { focusPageVide } from "./commande.svelte";
   import { api, etat } from "../etat.svelte";
   import Accueil from "./Accueil.svelte";
   import Essentiels from "./Essentiels.svelte";
@@ -14,6 +15,10 @@
   let champ: HTMLInputElement;
 
   onMount(() => champ.focus());
+  // La barre de commande refermée sur l'accueil y rend le clavier.
+  $effect(() => {
+    if (focusPageVide.n > 0) untrack(() => champ?.focus());
+  });
 
   // Les actions ne sont pas disponibles dans un espace privé (un espace introuvable compte comme privé) : la liste n'est
   // alors même pas demandée.

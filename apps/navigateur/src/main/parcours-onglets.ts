@@ -1,7 +1,8 @@
 import type { Action, MessageParcours, PanneauOnglets } from "../commun/api";
 import type { EtatNavigateur, IdFenetre, IdOnglet } from "../commun/modele";
 import { creerRegroupeur } from "./onglets/regroupeur";
-import { avancer, demarrer, fenetreVisible, noterUtilisation, ongletsParcourables, ordreRecent, retirer, type Parcours } from "./recents";
+import { ongletsParcourables } from "../commun/onglets-parcourables";
+import { avancer, demarrer, fenetreVisible, noterUtilisation, ordreRecent, retirer, type Parcours } from "./recents";
 
 /** Le panneau n'apparaît que si ⌃ est encore enfoncé après ce délai (un aller-retour rapide ne le fait pas clignoter). */
 const DELAI_PANNEAU_MS = 200;
