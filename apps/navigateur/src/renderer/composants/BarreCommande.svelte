@@ -119,6 +119,8 @@
   // Une action lancée : une seconde Entrée ne la relance pas, et sa réponse arrivée après une fermeture ou une autre
   // ouverture (chacune est un nouvel objet) est ignorée.
   let actionEnCours = false;
+  /** Change à chaque lancement et à chaque passage liste ↔ saisie : la réponse d'un lancement abandonné est ignorée. */
+  let lancement = 0;
 
   // À chaque ouverture (la première, ou une réouverture dans l'autre mode) : saisie de départ, tout sélectionné en mode « actif ».
   $effect(() => {
@@ -167,17 +169,18 @@
   function lancerAction(id: string, saisie: string | null) {
     if (actionEnCours) return;
     const o = commande.ouverte;
+    const n = ++lancement;
     actionEnCours = true;
     refus = "";
     void api.actions.ouvrir(id, saisie).then(
       (r) => {
-        if (o !== commande.ouverte) return;
+        if (o !== commande.ouverte || n !== lancement) return;
         actionEnCours = false;
         if (r.ok) fermerCommande();
         else refus = r.erreur;
       },
       () => {
-        if (o !== commande.ouverte) return;
+        if (o !== commande.ouverte || n !== lancement) return;
         actionEnCours = false;
         refus = "Le service des actions ne répond pas";
       },
@@ -186,6 +189,8 @@
 
   /** Passe à la saisie de l'action, préremplie avec l'adresse de la page affichée, toute sélectionnée. */
   function entrerParametre(l: Extract<LigneCommande, { type: "action" }> & { parametre: string }) {
+    lancement++;
+    actionEnCours = false;
     parametre = { id: l.id, nom: l.nom, libelle: l.parametre };
     valeurParametre = parametreParDefaut(ongletActif?.url);
     refus = "";
@@ -197,6 +202,8 @@
 
   /** Revient à la liste, le texte tapé intact. */
   function sortirParametre() {
+    lancement++;
+    actionEnCours = false;
     parametre = null;
     refus = "";
     void tick().then(() => champ?.focus());
@@ -206,7 +213,10 @@
     if (e.isComposing || !parametre) return;
     if (e.key === "Enter") {
       if (!e.repeat) lancerAction(parametre.id, valeurParametre.trim() || null);
-    } else if (e.key === "Backspace" && valeurParametre === "") sortirParametre();
+    } else if (e.key === "Backspace" && valeurParametre === "") {
+      // Une touche tenue efface le champ sans revenir à la liste (ni effacer ensuite le texte tapé).
+      if (!e.repeat) sortirParametre();
+    }
     else if (e.key !== "Tab") return;
     e.preventDefault();
     e.stopPropagation();
@@ -227,7 +237,7 @@
     } else if (e.key === "Tab") {
       // Tab sur une action qui attend sa saisie : on la donne tout de suite, comme Entrée.
       const l = lignes[choisie];
-      if (l && demandeParametre(l) && !e.shiftKey) entrerParametre(l);
+      if (l && demandeParametre(l) && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) entrerParametre(l);
     } else return;
     e.preventDefault();
     e.stopPropagation();
@@ -272,8 +282,10 @@
     e.preventDefault();
     e.stopImmediatePropagation();
     // Dans la saisie d'une action, Échap revient d'abord à la liste.
-    if (parametre) sortirParametre();
-    else fermerCommande(true);
+    // Une touche tenue ne fait que ce premier pas.
+    if (parametre) {
+      if (!e.repeat) sortirParametre();
+    } else if (!e.repeat) fermerCommande(true);
   }}
 />
 

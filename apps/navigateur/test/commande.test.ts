@@ -92,6 +92,7 @@ test("titres : un par section, à sa première ligne ; aucun pour la ligne par d
 test("paramètre par défaut : l'adresse web affichée sans ancre, rien pour une page interne ou trop longue", () => {
   expect(parametreParDefaut("https://www.youtube.com/watch?v=abc#t=3")).toBe("https://www.youtube.com/watch?v=abc");
   expect(parametreParDefaut("http://exemple.fr/")).toBe("http://exemple.fr/");
+  expect(parametreParDefaut("https://moi:secret@exemple.fr/p")).toBe("https://exemple.fr/p");
   expect(parametreParDefaut("webaios://historique")).toBe("");
   expect(parametreParDefaut("about:blank")).toBe("");
   expect(parametreParDefaut(undefined)).toBe("");

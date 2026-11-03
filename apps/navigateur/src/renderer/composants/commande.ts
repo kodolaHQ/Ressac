@@ -70,6 +70,9 @@ export function parametreParDefaut(url: string | null | undefined): string {
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return "";
   u.hash = "";
+  // Des identifiants dans l'adresse ne partent pas vers l'action.
+  u.username = "";
+  u.password = "";
   const texte = u.toString();
   return texte.length <= PARAMETRE_MAX ? texte : "";
 }

@@ -237,10 +237,15 @@ test("une action qui attend sa saisie : Entrée la demande, préremplie avec l'U
   await expect(lignes(fenetre, "action")).toHaveAttribute("aria-selected", "true");
   await saisie.press("Tab");
   await expect(parametre).toHaveValue(url);
-  await parametre.press("Backspace");
+  // Tenue, ⌫ vide le champ sans revenir à la liste ; relâchée puis frappée de nouveau, elle y revient, texte intact.
+  await fenetre.keyboard.down("Backspace");
+  await fenetre.keyboard.down("Backspace");
+  await fenetre.keyboard.up("Backspace");
   await expect(parametre).toHaveValue("");
+  await expect(parametre).toBeFocused();
   await parametre.press("Backspace");
   await expect(saisie).toBeFocused();
+  await expect(saisie).toHaveValue("résumé");
   await expect(fenetre.locator(onglets)).toHaveCount(1);
   await fermer();
 });
