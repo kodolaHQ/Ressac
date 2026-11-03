@@ -67,6 +67,8 @@ export class ServiceRelecture {
   /** Par projet, les comparaisons gardées, la plus récente en premier. */
   private readonly comparaisons = new Map<IdProjet, { jeton: string; depot: DepotRelecture; comparaison: Comparaison }[]>();
   private priseEnCours: Promise<void> = Promise.resolve();
+  /** Les commentaires de chaque projet (une instance par projet). */
+  private readonly listes = new Map<IdProjet, CommentairesRelecture>();
 
   constructor(
     private readonly o: {
@@ -173,7 +175,8 @@ export class ServiceRelecture {
   async fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier> {
     const g = this.garde(p, jeton, chemin);
     const diff = await g.depot.fichier(g.comparaison, chemin);
-    await this.commentairesDe(p).recollerFichier(chemin, diff.affichable === true ? diff : null);
+    // Non affichable : ses commentaires restent tels quels.
+    if (diff.affichable === true) await this.commentairesDe(p).recollerFichier(chemin, diff);
     return diff;
   }
 
@@ -190,18 +193,28 @@ export class ServiceRelecture {
     return l.at(-1) === "" ? l.slice(0, -1) : l;
   }
 
+  /** Une seule instance par projet : sa file d'écriture sérialise toutes les modifications de ses commentaires. */
   private commentairesDe(p: IdProjet): CommentairesRelecture {
-    return new CommentairesRelecture(fichierCommentaires(this.o.dossiers, p));
+    let c = this.listes.get(p);
+    if (!c) {
+      c = new CommentairesRelecture(fichierCommentaires(this.o.dossiers, p));
+      this.listes.set(p, c);
+    }
+    return c;
   }
 
-  /** Les commentaires recollés au diff de la comparaison montrée ; ceux d'un fichier qui n'y est plus, « ligne changée ». */
+  /**
+   * Les commentaires recollés au diff de la comparaison montrée. Ceux d'un fichier absent de la comparaison (relu,
+   * inchangé depuis) ou non affichable restent tels quels : rien ne dit que leurs lignes ont changé.
+   */
   private async recollerTout(p: IdProjet, g: { depot: DepotRelecture; comparaison: Comparaison }): Promise<Commentaire[]> {
     const commentaires = this.commentairesDe(p);
     const fichiers = new Set((await commentaires.liste()).map((c) => c.fichier));
     for (const chemin of fichiers) {
       const f = g.comparaison.fichiers.find((x) => x.chemin === chemin);
-      const diff = f && f.affichable === true ? await g.depot.fichier(g.comparaison, chemin).catch(() => null) : null;
-      await commentaires.recollerFichier(chemin, diff);
+      if (!f || f.affichable !== true) continue;
+      const diff = await g.depot.fichier(g.comparaison, chemin).catch(() => null);
+      if (diff && diff.affichable === true) await commentaires.recollerFichier(chemin, diff);
     }
     return commentaires.liste();
   }
@@ -272,7 +285,8 @@ export class ServiceRelecture {
         a.map((c) => ({ texte: c.texte, contexte: { fichier: c.fichier, debut: c.debut, fin: c.fin, lignes: c.lignes } })),
         destination,
       );
-      await commentaires.marquerEnvoyes(a.map((c) => c.id));
+      // Un commentaire modifié pendant l'envoi garde « non envoyé » : son nouveau texte n'est pas parti.
+      await commentaires.marquerEnvoyesSiInchanges(a.map((c) => ({ id: c.id, texte: c.texte })));
       await this.o.envoyer(s, lot);
       return { ok: true };
     } catch (e) {
@@ -297,5 +311,6 @@ export class ServiceRelecture {
   /** Un projet oublié : ses comparaisons gardées tombent. */
   oublier(p: IdProjet): void {
     this.comparaisons.delete(p);
+    this.listes.delete(p);
   }
 }

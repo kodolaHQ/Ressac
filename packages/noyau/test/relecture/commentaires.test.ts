@@ -40,6 +40,11 @@ describe("recoller", () => {
     const r = recoller(com(2, [L("-", "b")]), blocs);
     expect([r.debut, r.ligneChangee]).toEqual([2, false]);
   });
+  test("fenêtre comparée sur le texte seul : une ligne « + » devenue contexte après relecture est retrouvée, ligneChangee faux", () => {
+    const blocs = parserDiff(patch(20, ctx(["x", "nouveau", "y"])));
+    const r = recoller({ ...com(15, [L("+", "nouveau"), L(" ", "y")]), ligneChangee: true }, blocs);
+    expect([r.debut, r.fin, r.ligneChangee]).toEqual([21, 22, false]);
+  });
   test("sans aucun bloc : inchangé, ligneChangee vrai", () => {
     const r = recoller(com(7, [L(" ", "a")]), []);
     expect([r.debut, r.fin, r.ligneChangee]).toEqual([7, 7, true]);
@@ -89,6 +94,17 @@ describe("CommentairesRelecture", () => {
     await r.resoudre(a.id, true);
     await r.apresRelu();
     expect((await r.liste()).map((c) => c.id)).toEqual([b.id]);
+  });
+  test("marquerEnvoyesSiInchanges : un commentaire modifié depuis la lecture n'est pas marqué envoyé", async () => {
+    const r = new CommentairesRelecture((await depot()).fichier);
+    const a = await r.ajouter(brut);
+    const b = await r.ajouter(brut);
+    const lus = await r.aEnvoyer();
+    await r.modifier(b.id, "texte changé");
+    await r.marquerEnvoyesSiInchanges(lus.map((c) => ({ id: c.id, texte: c.texte })));
+    const l = await r.liste();
+    expect(l.find((c) => c.id === a.id)!.envoye).toBe(true);
+    expect(l.find((c) => c.id === b.id)).toMatchObject({ envoye: false, texte: "texte changé" });
   });
   test("modifier et supprimer", async () => {
     const r = new CommentairesRelecture((await depot()).fichier);

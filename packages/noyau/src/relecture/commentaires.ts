@@ -38,7 +38,8 @@ export function recoller(c: Commentaire, blocs: Bloc[]): Commentaire {
   if (n > 0) {
     for (let i = 0; i + n <= lignes.length; i++) {
       const f = lignes.slice(i, i + n);
-      if (f.every((l, k) => l.bloc === f[0]!.bloc && l.marque === c.lignes[k]!.marque && l.texte === c.lignes[k]!.texte)) fenetres.push(f);
+      // Le texte seul : une ligne « + » redevient du contexte après « Marquer comme relu ».
+      if (f.every((l, k) => l.bloc === f[0]!.bloc && l.texte === c.lignes[k]!.texte)) fenetres.push(f);
     }
   }
   if (fenetres.length > 0) {
@@ -123,6 +124,15 @@ export class CommentairesRelecture {
   marquerEnvoyes(ids: string[]): Promise<void> {
     const ensemble = new Set(ids);
     return this.transformer((liste) => ({ liste: liste.map((c) => (ensemble.has(c.id) ? { ...c, envoye: true } : c)), resultat: undefined }));
+  }
+
+  /** Marque envoyés ceux dont le texte est encore celui qui est parti (une modification entre-temps reste à envoyer). */
+  marquerEnvoyesSiInchanges(envoyes: { id: string; texte: string }[]): Promise<void> {
+    const textes = new Map(envoyes.map((e) => [e.id, e.texte]));
+    return this.transformer((liste) => ({
+      liste: liste.map((c) => (textes.get(c.id) === c.texte ? { ...c, envoye: true } : c)),
+      resultat: undefined,
+    }));
   }
 
   apresRelu(): Promise<void> {

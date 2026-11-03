@@ -160,3 +160,41 @@ test("envoyer : un lot relecture avec fichier, debut, fin, lignes marquées ; le
   const second = tous.find((l) => l.id !== lots[0]!.id)!;
   expect(second.elements.map((e) => e.texte)).toEqual(["et ici"]);
 });
+
+test("opérations simultanées sur les commentaires d'un projet : aucune n'en écrase une autre", async () => {
+  const { service, ecrire } = preparer();
+  ecrire(trente());
+  await service.priseEnCharge(["essai"]);
+  ecrire(trente(15));
+  const v = await ouvert(service);
+  for (let i = 0; i < 8; i++) await service.commenter("app-essai", v.jeton, { fichier: "a.txt", debut: 15, fin: 15, texte: `n${i}` });
+  const ids = (await service.commentaires("app-essai")).map((c) => c.id);
+  await Promise.all([
+    ...ids.slice(0, 4).map((id) => service.resoudre("app-essai", id, true)),
+    ...ids.slice(4).map((id, i) => service.modifierCommentaire("app-essai", id, `modifié ${i}`)),
+    service.ouvrir("app-essai", v.jeton),
+    service.commenter("app-essai", v.jeton, { fichier: "a.txt", debut: 13, fin: 14, texte: "nouveau" }),
+  ]);
+  const l = await service.commentaires("app-essai");
+  expect(l).toHaveLength(9);
+  expect(l.filter((c) => c.resolu).map((c) => c.id)).toEqual(ids.slice(0, 4));
+  expect(l.filter((c) => c.texte.startsWith("modifié")).map((c) => c.id)).toEqual(ids.slice(4));
+});
+
+test("relu avec un commentaire non résolu : position gardée, ligneChangee faux ; une autre partie modifiée puis Rafraîchir : toujours sur sa ligne, ligneChangee faux", async () => {
+  const { service, ecrire } = preparer();
+  ecrire(trente());
+  await service.priseEnCharge(["essai"]);
+  ecrire(trente(15));
+  const v = await ouvert(service);
+  await service.commenter("app-essai", v.jeton, { fichier: "a.txt", debut: 16, fin: 17, texte: "garder" });
+  const apres = await service.relu("app-essai", v.jeton);
+  if (apres.etat !== "ok") throw new Error(apres.raison);
+  expect(apres.commentaires.map((c) => [c.debut, c.fin, c.ligneChangee])).toEqual([[16, 17, false]]);
+  // Trois lignes en tête et la ligne 18 réécrite : le commentaire suit ses lignes (16–17 → 19–20).
+  ecrire(["a", "b", "c", ...trente(15, 18).trimEnd().split("\n")].join("\n") + "\n");
+  const v2 = await ouvert(service);
+  expect(v2.commentaires.map((c) => [c.debut, c.fin, c.ligneChangee])).toEqual([[19, 20, false]]);
+  await service.fichier("app-essai", v2.jeton, "a.txt");
+  expect((await service.commentaires("app-essai")).map((c) => [c.debut, c.fin, c.ligneChangee])).toEqual([[19, 20, false]]);
+});
