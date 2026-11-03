@@ -28,6 +28,14 @@ describe("agent scaffolding", () => {
     for (const m of ["agent", "actor"]) expect(ui).toMatch(new RegExp(`\\b${m}\\b`));
     for (const f of ["agent.html", "agent.js", "agent.css", "page-actor.sys.mjs"]) expect(jar).toContain(`content/webaios/${f})`);
   });
+
+  it("copies the page actor into the build: the content sandbox cannot follow a link into a checkout", () => {
+    const jar = readFileSync(new URL("../src/browser/base/content/webaios/jar.inc.mn", import.meta.url), "utf8");
+    expect(jar).toMatch(/^\*\s+content\/browser\/webaios\/page-actor\.sys\.mjs/m);
+    // `*` runs Mozilla's preprocessor: a line starting with # would be read as a directive.
+    const built = new URL("../src/browser/base/content/webaios/page-actor.sys.mjs", import.meta.url);
+    if (existsSync(built)) expect(readFileSync(built, "utf8")).not.toMatch(/^\s*#/m);
+  });
 });
 
 describe("engine.sh prune", () => {

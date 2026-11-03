@@ -11,4 +11,4 @@
         content/browser/webaios/agent.html            (content/webaios/agent.html)
         content/browser/webaios/agent.js              (content/webaios/agent.js)
         content/browser/webaios/agent.css             (content/webaios/agent.css)
-        content/browser/webaios/page-actor.sys.mjs    (content/webaios/page-actor.sys.mjs)
+*       content/browser/webaios/page-actor.sys.mjs    (content/webaios/page-actor.sys.mjs)
