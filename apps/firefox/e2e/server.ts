@@ -11,7 +11,7 @@ const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
 
 /**
  * Serves the Electron e2e pages read-only; /cookie sets a persistent cookie, /lire-cookie shows the cookies in its title,
- * /icone is a page with an http favicon (/icone.png) and a pure red background.
+ * /icone is a page with an http favicon (/icone.png) and a pure red background, /avale a page that swallows every key.
  */
 export async function startServer(): Promise<{ url: string; close(): Promise<void> }> {
   const server = createServer((req, res) => {
@@ -27,6 +27,10 @@ export async function startServer(): Promise<{ url: string; close(): Promise<voi
     if (route === "/icone") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end('<title>icone</title><link rel="icon" href="/icone.png"><body style="background: rgb(255, 0, 0)">');
+    }
+    if (route === "/avale") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end('<title>avale</title><script>addEventListener("keydown", (e) => e.preventDefault(), true)</script><input autofocus>');
     }
     if (route === "/icone.png") return res.writeHead(200, { "Content-Type": "image/png" }).end(ICON);
     const file = path.join(PAGES, path.normalize(route));

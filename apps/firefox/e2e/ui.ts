@@ -48,7 +48,8 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
 
 const TIP = `const tip = (window.webaiosTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
   tip.beginInputTransactionForTests(window);
-  const ev = (key) => new KeyboardEvent("", { key, code: key.length === 1 ? "Key" + key.toUpperCase() : key });`;
+  const CODES = { "[": "BracketLeft", "]": "BracketRight", Meta: "MetaLeft", Control: "ControlLeft", Shift: "ShiftLeft", Alt: "AltLeft" };
+  const ev = (key) => new KeyboardEvent("", { key, code: CODES[key] ?? (/^[0-9]$/.test(key) ? "Digit" + key : key.length === 1 ? "Key" + key.toUpperCase() : key) });`;
 
 /** Holds a key down in the browser window (trusted, nsITextInputProcessor): "Control", "Meta", "Tab"… */
 export function keyDown(m: Marionette, key: string): Promise<unknown> {

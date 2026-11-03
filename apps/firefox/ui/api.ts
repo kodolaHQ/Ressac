@@ -32,6 +32,11 @@ export function createApi(win: WindowController): ApiWebaios {
       window.addEventListener("unload", unsubscribe, { once: true });
       return unsubscribe;
     },
+    surRaccourci(callback) {
+      const unsubscribe = win.onShortcut(callback);
+      window.addEventListener("unload", unsubscribe, { once: true });
+      return unsubscribe;
+    },
     naviguer: (id, input) => win.navigate(id, input),
     // shortcut: zoom, find in page and devtools are out of step 2 and do nothing.
     commande: (id, c) => void (typeof c === "string" && c !== "finRecherche" && c !== "outils" && win.command(id, c)),
@@ -44,7 +49,10 @@ export function createApi(win: WindowController): ApiWebaios {
     surPermissions: off,
     acces: { etat: async () => ({ onglets: {}, agent: "L'agent" }), couper() {} },
     surAcces: off,
-    // Only what the reused space modal and empty page call.
+    // The command bar's sources besides tabs: none in step 2.
+    applications: { liste: async () => ({ atelier: "ok", applications: [] }), surChange: off, agir() {} },
+    sites: { liste: none, surChange: off, agir() {} },
+    // Only what the reused space modal, empty page and command bar call.
     extensions: { pourEspace: none, surChange: off, basculer: unavailable } as unknown as ApiWebaios["extensions"],
     actions: { liste: none, surChange: off, ouvrir: unavailable } as unknown as ApiWebaios["actions"],
   };
