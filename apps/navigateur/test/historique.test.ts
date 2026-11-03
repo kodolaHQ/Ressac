@@ -143,6 +143,19 @@ test("rechercher en mode distinct : une URL vue dans deux espaces sort une fois,
   expect(h.rechercher("page", 2, true).map((v) => v.url).sort()).toEqual(["https://a.fr/", "https://b.fr/"]);
 });
 
+test("rechercher en mode distinct garde par URL la ligne la plus visitée, puis la plus récente, dans l'ordre et la limite", () => {
+  const noter = (url: string, espaceId: string, fois: number, iso: string) => {
+    for (let i = 0; i < fois; i++) h.noter({ url, titre: "page", espaceId, prive: false, date: date(iso) });
+  };
+  noter("https://a.fr/", "A", 1, "2026-10-05T00:00:00Z");
+  noter("https://a.fr/", "B", 3, "2026-10-01T00:00:00Z"); // plus visitée : gagne malgré la date
+  noter("https://b.fr/", "A", 2, "2026-10-01T00:00:00Z");
+  noter("https://b.fr/", "B", 2, "2026-10-03T00:00:00Z"); // égalité de visites : la plus récente gagne
+  noter("https://c.fr/", "A", 1, "2026-10-09T00:00:00Z");
+  expect(h.rechercher("page", 2, true).map((v) => [v.url, v.espaceId])).toEqual([["https://a.fr/", "B"], ["https://b.fr/", "B"]]);
+  expect(h.rechercher("page", 50, true).map((v) => v.url)).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
+});
+
 test("une ligne privée qui redevient non privée repart à une visite, avec titre et date neufs", () => {
   h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "A", prive: true, date: date("2026-10-01T00:00:00Z") });
   h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "A", prive: true, date: date("2026-10-02T00:00:00Z") });

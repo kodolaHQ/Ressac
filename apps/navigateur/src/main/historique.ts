@@ -24,7 +24,7 @@ const plier = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCa
 export class Historique {
   private db: DatabaseSync;
   private req: Record<
-    | "noter" | "majTitre" | "rechercher" | "recents" | "effacerDepuis" | "toutEffacer" | "rendrePrive"
+    | "noter" | "majTitre" | "rechercher" | "rechercherDistinctes" | "recents" | "effacerDepuis" | "toutEffacer" | "rendrePrive"
     | "retenir" | "majTitreTexte" | "estPrive" | "oublierTexte" | "oublierTextesEspace" | "effacerTextesDepuis"
     | "effacerTextesOrphelins" | "toutEffacerTextes" | "purgerAvant" | "totalOctets" | "textesAnciens" | "oublierTexteId"
     | "texteRetenu" | "visitesDe" | "extrait",
@@ -48,6 +48,14 @@ export class Historique {
       rechercher: this.db.prepare(`
         SELECT ${COLONNES} FROM visites
         WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
+        ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
+      // Une seule ligne par URL, la mieux classée, choisie en SQL pour que le LIMIT compte des URL.
+      rechercherDistinctes: this.db.prepare(`
+        SELECT ${COLONNES} FROM (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY url ORDER BY visites DESC, derniere_visite DESC) AS rang FROM visites
+          WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
+        ) AS visites
+        WHERE rang = 1
         ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
       recents: this.db.prepare(`SELECT ${COLONNES} FROM visites ORDER BY derniere_visite DESC LIMIT ?`),
       effacerDepuis: this.db.prepare("DELETE FROM visites WHERE derniere_visite >= ?"),
@@ -261,12 +269,7 @@ export class Historique {
   rechercher(texte: string, limite = 50, distinctes = false): Visite[] {
     if (!this.db.isOpen) return [];
     const motif = `%${plier(texte).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    if (!distinctes) return this.lignes(this.req.rechercher.all(motif, motif, limite));
-    // Une seule ligne par URL (la mieux classée) : le LIMIT SQL compterait les doublons d'espaces.
-    const vues = new Set<string>();
-    return this.lignes(this.req.rechercher.all(motif, motif, -1))
-      .filter((v) => !vues.has(v.url) && vues.add(v.url))
-      .slice(0, limite);
+    return this.lignes(this.req[distinctes ? "rechercherDistinctes" : "rechercher"].all(motif, motif, limite));
   }
 
   recents(limite = 100): Visite[] {
