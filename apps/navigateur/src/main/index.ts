@@ -1138,6 +1138,7 @@ app.whenReady().then(async () => {
     },
     // Les applis de site (plan 18) : `sites` démarre plus loin, d'où ces fermetures paresseuses.
     vueSite: (id) => sites?.fenetres.vueDesign(id) ?? null,
+    bornesAccueilSite: async (id) => (await sites?.fenetres.bornesAccueil(id)) ?? null,
     sites: async () => ((await sites?.liste()) ?? []).map(({ id, nom }) => ({ id, nom })),
     messageSite: (id, t) => sites?.fenetres.avisInfo(id, t),
     fermerMenuSite: async (id) => sites?.fenetres.fermerMenu(id),

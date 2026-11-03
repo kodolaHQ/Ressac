@@ -241,10 +241,15 @@ test("placeBulle sans options : résultats du plan 17 inchangés", () => {
 });
 
 /** Une appli de site « Tuning » (id tuning) : sa vue sous la barre de 36 px, disponibilité réglable. */
-function serviceSite(o: { disponible?: boolean; sites?: { id: string; nom: string }[] } = {}) {
+function serviceSite(o: { disponible?: boolean; sites?: { id: string; nom: string }[]; accueil?: boolean } = {}) {
   const wc = new FauxWc("https://tuning-a.localhost/");
+  // L'accueil : l'interface de la fenêtre et son cadre (id 7), posé sous la barre au-dessus du bouton « Entrer ».
+  const ui = new FauxWc("app://site");
+  const cadre = { frameTreeNodeId: 7, url: "webaios-site://tuning/index.html", isDestroyed: () => false, send: vi.fn(), executeJavaScript: vi.fn() };
+  const bornesCadre = { x: 0, y: 36, width: 1200, height: 710 };
+  const bornesAccueilSite = vi.fn(async () => (etat.accueil ? bornesCadre : null));
   const fenetreSite = { getContentSize: () => [1200, 800], isDestroyed: () => false, once: () => {}, on: () => {}, focus: vi.fn() };
-  const etat = { disponible: o.disponible ?? true };
+  const etat = { disponible: o.disponible ?? true, accueil: o.accueil ?? false };
   const remarques = new Remarques({ dossiers: { remarquesEspace: mkdtempSync(join(tmpdir(), "design-")), prive: mkdtempSync(join(tmpdir(), "design-prive-")) } });
   const ordre: string[] = [];
   let libererMenu: () => void = () => {};
@@ -260,9 +265,11 @@ function serviceSite(o: { disponible?: boolean; sites?: { id: string; nom: strin
       }),
   );
   const vueSite = vi.fn((id: string) =>
-    id === "tuning"
-      ? { wc: wc as never, bornes: { x: 0, y: 36, width: 1200, height: 764 }, fenetre: fenetreSite as never, url: wc.url, nom: "Tuning", barre: 36, disponible: etat.disponible }
-      : null,
+    id !== "tuning"
+      ? null
+      : etat.accueil
+        ? { wc: ui as never, cadre: cadre as never, bornes: { x: 0, y: 36, width: 1200, height: 764 }, fenetre: fenetreSite as never, url: cadre.url, nom: "Tuning", barre: 36, disponible: etat.disponible }
+        : { wc: wc as never, cadre: null, bornes: { x: 0, y: 36, width: 1200, height: 764 }, fenetre: fenetreSite as never, url: wc.url, nom: "Tuning", barre: 36, disponible: etat.disponible },
   );
   const s = new ServiceDesign({
     remarques,
@@ -277,8 +284,9 @@ function serviceSite(o: { disponible?: boolean; sites?: { id: string; nom: strin
     sites: async () => o.sites ?? [{ id: "tuning", nom: "Tuning" }],
     messageSite,
     fermerMenuSite,
+    bornesAccueilSite,
   });
-  return { s, wc, remarques, etat, messageSite, fermerMenuSite, vueSite, ordre, liberer: () => libererMenu(), fenetreSite };
+  return { s, wc, ui, cadre, remarques, etat, messageSite, fermerMenuSite, vueSite, bornesAccueilSite, ordre, liberer: () => libererMenu(), fenetreSite };
 }
 
 const SITE = { type: "site", id: "tuning" } as const;
@@ -385,6 +393,46 @@ test("site : navigation dans le même document : le mode reste, le viseur est r�
   await attendre();
   expect((await x.s.etat(SITE)).actif).toBe(true);
   expect(viseur.armerViseur).toHaveBeenCalledTimes(2);
+});
+
+test("accueil : le viseur vise son cadre, la source y est lue, capture décalée du cadre, bulle sans avertissement", async () => {
+  const x = serviceSite({ accueil: true });
+  await basculerSite(x);
+  expect(viseur.armerViseur).toHaveBeenCalledWith(x.ui, x.cadre);
+  armements[0]!({ ...captureSite, adresse: "webaios-site://tuning/index.html", vue: { largeur: 1200, hauteur: 710 } });
+  await attendre();
+  expect(viseur.lireSource).toHaveBeenCalledWith(x.ui, captureSite.selecteur, x.cadre);
+  expect(viseur.capturerElement).toHaveBeenCalledWith(x.ui, captureSite.rect, { largeur: 1200, hauteur: 710 }, { x: 0, y: 36, width: 1200, height: 710 });
+  const b = calques.bulles[0] as { place: unknown; contexte: { source: unknown; avertissement: unknown } };
+  expect(b.place).toEqual({ x: 10, y: 92, width: 320, height: 170 });
+  expect(b.contexte.avertissement).toBeNull();
+  expect(b.contexte.source).toBe("src/Inscription.svelte:12");
+  expect(await x.s.ajouter(SITE, "Titre plus gros")).toEqual({ ok: true });
+  const [e] = await x.remarques.panier("site-tuning");
+  expect(e?.type === "design" && e.contexte.adresse).toBe("webaios-site://tuning/index.html");
+});
+
+test("accueil : une navigation de son cadre arrête le mode ; celle d'un autre cadre ou de la page de l'interface, non", async () => {
+  const x = serviceSite({ accueil: true });
+  await basculerSite(x);
+  x.ui.emit("did-start-navigation", { isMainFrame: false, isSameDocument: false, frame: { frameTreeNodeId: 99 } });
+  x.ui.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false, frame: { frameTreeNodeId: 1 } });
+  await attendre();
+  expect((await x.s.etat(SITE)).actif).toBe(true);
+  x.ui.emit("did-start-navigation", { isMainFrame: false, isSameDocument: false, frame: { frameTreeNodeId: 7 } });
+  await attendre();
+  expect((await x.s.etat(SITE)).actif).toBe(false);
+  expect(viseur.desarmerViseur).toHaveBeenCalledWith(x.ui, x.cadre);
+});
+
+test("accueil quitté pendant la visée (bornes du cadre introuvables) : le mode s'arrête, aucune bulle", async () => {
+  const x = serviceSite({ accueil: true });
+  await basculerSite(x);
+  x.etat.accueil = false;
+  armements[0]!(captureSite);
+  await attendre();
+  expect(calques.bulles).toHaveLength(0);
+  expect((await x.s.etat(SITE)).actif).toBe(false);
 });
 
 test("projetSuivi(site-tuning) : nom de sites() ; absent de sites() → null", async () => {

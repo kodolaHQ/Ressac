@@ -151,6 +151,9 @@ export const CANAUX = {
   designContexte: "webaios:design-contexte",
   designAjouter: "webaios:design-ajouter",
   designAnnuler: "webaios:design-annuler",
+  /** Le viseur dans le cadre de l'accueil d'une appli de site : le code vers son preload, et le résultat en retour. */
+  designViseurCadre: "webaios:design-viseur-cadre",
+  designViseurResultat: "webaios:design-viseur-resultat",
   /** Page Applications : « Projets externes » (MCP externe, clients branchés). */
   externesListe: "webaios:externes-liste",
   externesBrancher: "webaios:externes-brancher",

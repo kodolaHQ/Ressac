@@ -24,7 +24,7 @@ import type { ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatEx
 import type { IdFenetre } from "../../commun/modele";
 import type { VueDesignSite } from "../sites/fenetres";
 import { Calques } from "./calque";
-import { armerViseur, capturerElement, desarmerViseur, lireSource, type CaptureViseur } from "./viseur";
+import { armerViseur, capturerElement, desarmerViseur, lireSource, type CadreViseur, type CaptureViseur } from "./viseur";
 
 export type CibleDesign = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string } | { type: "site"; id: string };
 
@@ -84,6 +84,8 @@ interface VueCible {
   bornes: Rectangle;
   fenetre: BrowserWindow;
   url: string;
+  /** L'accueil d'une appli de site : le cadre où viser, dans la page de `wc`. */
+  cadre?: CadreViseur | null;
 }
 
 /** Un mode design en cours sur une cible. */
@@ -92,6 +94,8 @@ interface Session {
   cle: string;
   projet: ProjetSuivi;
   wc: WebContents;
+  /** L'accueil d'une appli de site : le viseur vise ce cadre de `wc`, pas sa page. */
+  cadre: CadreViseur | null;
   fenetre: BrowserWindow;
   /** Chaque armement a son numéro : le résultat d'un armement dépassé est ignoré. */
   generation: number;
@@ -123,6 +127,8 @@ export interface OptionsServiceDesign {
   sites?(): Promise<{ id: string; nom: string }[]>;
   /** La mention info de la barre d'une appli de site. */
   messageSite?(id: string, texte: string): void;
+  /** Les bornes du cadre de l'accueil d'une appli de site dans sa fenêtre ; null s'il n'est plus affiché. */
+  bornesAccueilSite?(id: string): Promise<Rectangle | null>;
   /** Replie le menu du chevron d'une appli de site (la vue reprend sa place) avant d'armer le viseur. */
   fermerMenuSite?(id: string): Promise<void>;
 }
@@ -245,8 +251,10 @@ export class ServiceDesign {
     // Indisponible : rien n'est injecté dans la page.
     if (!pret || this.sessions.has(cle) || pret.v.wc.isDestroyed()) return;
     const { v, projet } = pret;
-    const surNavigation = (d: { isMainFrame: boolean; isSameDocument: boolean }) => {
-      if (!d.isMainFrame) return;
+    const cadre = v.cadre ?? null;
+    // Sur l'accueil, c'est son cadre qui compte : l'interface de la fenêtre ne navigue jamais.
+    const surNavigation = (d: { isMainFrame: boolean; isSameDocument: boolean; frame?: { frameTreeNodeId: number } | null }) => {
+      if (cadre ? d.frame?.frameTreeNodeId !== cadre.frameTreeNodeId : !d.isMainFrame) return;
       if (d.isSameDocument) s.memeDocument = true;
       else void this.arreter(c);
     };
@@ -255,7 +263,7 @@ export class ServiceDesign {
     v.wc.on("destroyed", surFin);
     v.wc.on("render-process-gone", surFin);
     const s: Session = {
-      cible: c, cle, projet, wc: v.wc, fenetre: v.fenetre, generation: 0, memeDocument: false, attente: null,
+      cible: c, cle, projet, wc: v.wc, cadre, fenetre: v.fenetre, generation: 0, memeDocument: false, attente: null,
       nettoyer: () => {
         if (v.wc.isDestroyed()) return;
         v.wc.off("did-start-navigation", surNavigation);
@@ -319,7 +327,7 @@ export class ServiceDesign {
   private async armer(s: Session): Promise<void> {
     const g = ++s.generation;
     s.memeDocument = false;
-    const capture = await armerViseur(s.wc);
+    const capture = await armerViseur(s.wc, s.cadre);
     if (!this.actuelle(s, g)) return;
     if (!capture) {
       // Navigation dans le même document : le viseur s'est arrêté, le mode continue.
@@ -327,18 +335,26 @@ export class ServiceDesign {
       // Échap dans la page, page partie : le mode s'arrête.
       return this.arreter(s.cible);
     }
-    // Appli de site : rien n'est lu dans le monde de la page, la source reste inconnue.
+    // Pages d'une appli de site : rien n'est lu dans le monde de la page, la source reste inconnue. Son accueil est le
+    // code de l'agent : la source y est lue comme dans une appli.
     const site = s.cible.type === "site";
-    const source = site ? null : await lireSource(s.wc, capture.selecteur);
-    const png = await capturerElement(s.wc, capture.rect, capture.vue);
+    const tiers = site && !s.cadre;
+    // L'accueil est un cadre de l'interface : ses bornes exactes situent la capture et la bulle dans la fenêtre.
+    const cadreBornes = s.cadre && s.cible.type === "site" ? await this.o.bornesAccueilSite?.(s.cible.id) : null;
+    if (!this.actuelle(s, g)) return;
+    if (s.cadre && !cadreBornes) return this.arreter(s.cible);
+    const source = tiers ? null : await lireSource(s.wc, capture.selecteur, s.cadre);
+    const png = await capturerElement(s.wc, capture.rect, capture.vue, cadreBornes ?? undefined);
     if (!this.actuelle(s, g)) return;
     const { rect, ...contexte } = capture;
     s.attente = { contexte: { ...contexte, source }, capture: png };
     const v = this.vue(s.cible);
-    if (!v || v.wc !== s.wc || s.fenetre.isDestroyed()) return this.arreter(s.cible);
+    const memeCadre = (v?.cadre?.frameTreeNodeId ?? null) === (s.cadre?.frameTreeNodeId ?? null);
+    if (!v || v.wc !== s.wc || !memeCadre || s.fenetre.isDestroyed()) return this.arreter(s.cible);
     const [l = 0, h = 0] = s.fenetre.getContentSize();
     const zoom = s.wc.isDestroyed() ? 1 : s.wc.getZoomFactor();
-    const place = placeBulle(rect, zoom, v.bornes, [l, h], site ? { hautMin: v.bornes.y, hauteur: TAILLE_BULLE_SITE.hauteur } : {});
+    const bornes = cadreBornes ?? v.bornes;
+    const place = placeBulle(rect, zoom, bornes, [l, h], site ? { hautMin: bornes.y, ...(tiers ? { hauteur: TAILLE_BULLE_SITE.hauteur } : {}) } : {});
     this.calques.montrerBulle(s.cle, s.fenetre, place, {
       mode: "bulle",
       message: null,
@@ -346,7 +362,7 @@ export class ServiceDesign {
       etiquette: contexte.etiquette,
       source: sourceTexte(source),
       ...this.destination(s.projet),
-      avertissement: site ? AVERTISSEMENT_CAPTURE_SITE : null,
+      avertissement: tiers ? AVERTISSEMENT_CAPTURE_SITE : null,
     });
   }
 
@@ -360,7 +376,7 @@ export class ServiceDesign {
     s.nettoyer();
     this.calques.fermerBulle(s.cle);
     this.o.diffuser();
-    if (!s.wc.isDestroyed()) await desarmerViseur(s.wc);
+    if (!s.wc.isDestroyed()) await desarmerViseur(s.wc, s.cadre);
   }
 
   /** Depuis la bulle : la capture en attente et le texte vont au panier, puis le viseur est réarmé. */
