@@ -1,0 +1,15 @@
+# WebAiOs : notes pour Claude
+
+## Chercher dans le code : LSP ou grep
+
+Deux serveurs LSP tournent via l'outil `LSP` (plugins locaux dans `.claude/marketplace-local`) :
+- `tsgo-lsp` : `tsc --lsp` de TypeScript 7 (pas de tsserver, d'où ce plugin). Ne voit **pas** les `.svelte`.
+- `svelte-lsp` : svelte-language-server avec son propre TypeScript 6. Ne voit que les `.svelte` ouverts.
+
+Règle :
+- **« Qui appelle cette méthode ? » sur un nom courant** (`fermer`, `ouvrir`…) → `LSP findReferences` sur la définition. Ex. `Vues.fermer` : 3 appels exacts, contre 120 lignes pour grep `.fermer(`.
+- **Appels situés dans des `.svelte`** → lancer la requête depuis un fichier `.svelte` qui utilise le symbole, pas depuis le `.ts` de définition.
+- **Type ou nom utilisé dans plusieurs `.svelte`, chaînes, canaux IPC, points d'entrée** → grep. Le LSP en rate.
+
+Si `apps/navigateur/node_modules/typescript` change de place, mettre à jour le chemin dans `.claude/marketplace-local/plugins/tsgo-lsp/.lsp.json`.
+Après un clone : `npm ci` dans `.claude/marketplace-local/plugins/svelte-lsp`.

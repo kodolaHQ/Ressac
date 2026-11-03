@@ -1,0 +1,1 @@
+{"name":"svelte-lsp-deps","private":true,"dependencies":{"svelte-language-server":"^0.18.6","typescript":"^6.0.3"}}

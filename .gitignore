@@ -4,3 +4,6 @@ node_modules/
 out/
 test-results/
 playwright-report/
+
+# Claude Code : worktrees jetables
+.claude/worktrees/

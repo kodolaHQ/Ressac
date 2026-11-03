@@ -1,0 +1,10 @@
+{
+  "typescript": {
+    "command": "/Users/user/Documents/projet-perso/WebAiOs/apps/navigateur/node_modules/typescript/bin/tsc",
+    "args": ["--lsp", "--stdio"],
+    "extensionToLanguage": {
+      ".ts": "typescript", ".tsx": "typescriptreact", ".mts": "typescript", ".cts": "typescript",
+      ".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript"
+    }
+  }
+}
