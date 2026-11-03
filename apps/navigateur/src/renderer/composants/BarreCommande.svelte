@@ -111,7 +111,7 @@
   let champParametre: HTMLInputElement | undefined = $state();
 
   const mode = $derived(commande.ouverte?.mode ?? "nouveau");
-  const lignes: LigneCommande[] = $derived(lignesCommande(texte, sources, mode === "actif" ? (ongletActif?.url ?? null) : null));
+  const lignes: LigneCommande[] = $derived(lignesCommande(texte, sources, mode === "actif" ? (ongletActif?.url ?? null) : null, ongletActif?.id ?? null));
   // Une source arrivée tard peut raccourcir la liste : la sélection reste sur une ligne qui existe (la première sinon).
   const choisie = $derived(choisieBrute >= 0 && choisieBrute < lignes.length ? choisieBrute : 0);
   const choisir = (i: number) => (choisieBrute = i);

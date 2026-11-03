@@ -16,13 +16,31 @@ export type LigneCommande =
   | { type: "historique"; url: string; titre: string };
 
 export const LIMITES = { actions: 3, onglets: 3, applis: 3, historique: 5 } as const;
+/** Champ vide : ce que la barre propose avant toute frappe. */
+export const LIMITES_VIDE = { actions: 4, onglets: 5 } as const;
 
-/** Les lignes de la barre de commande, dans l'ordre : défaut, actions, onglets, applis, historique. */
-export function lignesCommande(texte: string, sources: SourcesCommande, urlActive: string | null): LigneCommande[] {
+/** Les actions proposées champ vide : les dernières lancées d'abord, puis les autres par nom ; les invalides écartées. */
+function actionsRecentes(actions: ActionAffichee[]): ActionAffichee[] {
+  return actions
+    .filter((a) => !a.erreur)
+    .sort((x, y) => (y.dernier?.debut ?? "").localeCompare(x.dernier?.debut ?? "") || normaliser(x.nom).localeCompare(normaliser(y.nom)))
+    .slice(0, LIMITES_VIDE.actions);
+}
+
+/**
+ * Les lignes de la barre de commande, dans l'ordre : défaut, actions, onglets, applis, historique. Champ vide : l'accueil
+ * en tête (Entrée y mène), puis des actions et les onglets ouverts, sans l'onglet affiché (`ongletAffiche`).
+ */
+export function lignesCommande(texte: string, sources: SourcesCommande, urlActive: string | null, ongletAffiche: IdOnglet | null = null): LigneCommande[] {
   const t = texte.trim();
   const libelle = !t ? "Page d'accueil" : /^\S+\.\S+$/.test(t) ? `Ouvrir ${t}` : `Rechercher « ${t} »`;
   const lignes: LigneCommande[] = [{ type: "defaut", texte: t, libelle }];
-  if (!t || (urlActive !== null && t === urlActive)) return lignes;
+  if (!t) {
+    for (const a of actionsRecentes(sources.actions)) lignes.push({ type: "action", id: a.id, nom: a.nom, saisie: null, parametre: a.saisie?.libelle ?? null });
+    for (const onglet of sources.onglets.filter((o) => o.id !== ongletAffiche).slice(0, LIMITES_VIDE.onglets)) lignes.push({ type: "onglet", onglet });
+    return lignes;
+  }
+  if (urlActive !== null && t === urlActive) return lignes;
 
   const q = normaliser(t);
   for (const a of suggestionsActions(t, sources.actions).slice(0, LIMITES.actions)) {

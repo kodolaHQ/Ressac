@@ -11,7 +11,7 @@ const visite = (url: string, titre = url): Visite => ({ url, titre, derniereVisi
 const appli = (id: string, nom: string): AppliSource => ({ genre: "site", id, nom, action: "ouvrir", favicon: null });
 const VIDE: SourcesCommande = { actions: [], onglets: [], applis: [], historique: [] };
 
-test("texte vide : une seule ligne défaut « Page d'accueil »", () => {
+test("texte vide sans sources : une seule ligne défaut « Page d'accueil »", () => {
   expect(lignesCommande("", VIDE, null)).toEqual([{ type: "defaut", texte: "", libelle: "Page d'accueil" }]);
 });
 
@@ -97,4 +97,21 @@ test("paramètre par défaut : l'adresse web affichée sans ancre, rien pour une
   expect(parametreParDefaut("about:blank")).toBe("");
   expect(parametreParDefaut(undefined)).toBe("");
   expect(parametreParDefaut(`https://x.fr/?q=${"a".repeat(2000)}`)).toBe("");
+});
+
+test("champ vide : l'accueil en tête, puis les actions (dernières lancées d'abord) et les onglets ouverts sans l'onglet affiché", () => {
+  const lancee = (id: string, nom: string, debut: string): ActionAffichee => ({ ...action(id, nom), dernier: { execution: debut, debut, statut: "reussie" } as ActionAffichee["dernier"] });
+  const S: SourcesCommande = {
+    actions: [action("b", "Bravo"), lancee("z", "Zulu", "2026-11-02T10:00:00Z"), action("a", "Alpha"), { ...action("x", "Cassée"), erreur: "invalide" }, avecSaisie("r", "Résumé", "Vidéo"), action("c", "Charlie")],
+    onglets: [1, 2, 3, 4, 5, 6, 7].map((i) => onglet(`o${i}`, `Onglet ${i}`)),
+    applis: [appli("p", "Appli")],
+    historique: [visite("https://h.fr/")],
+  };
+  const l = lignesCommande("", S, null, "o2");
+  expect(l[0]).toEqual({ type: "defaut", texte: "", libelle: "Page d'accueil" });
+  expect(l.filter((x) => x.type === "action").map((x) => (x as { id: string }).id)).toEqual(["z", "a", "b", "c"]);
+  expect(l.filter((x) => x.type === "onglet").map((x) => (x as { onglet: OngletSource }).onglet.id)).toEqual(["o1", "o3", "o4", "o5", "o6"]);
+  expect(l.some((x) => x.type === "appli" || x.type === "historique")).toBe(false);
+  const r = lignesCommande("", { ...VIDE, actions: [avecSaisie("r", "Résumé", "Vidéo")] }, null).find((x) => x.type === "action")!;
+  expect(demandeParametre(r)).toBe(true);
 });

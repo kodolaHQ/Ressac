@@ -281,6 +281,25 @@ test("les lignes sont rangées sous un titre par section, chacune avec son icôn
   await fermer();
 });
 
+test("⌘T sans rien taper : l'accueil, puis les actions et les autres onglets ouverts ; Entrée mène toujours à l'accueil", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "sans-workflow", { nom: "Zorglub" });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.length > 0)), { timeout: 30_000 }).toBe(true);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect(fenetre.locator(actif)).toContainText("Page B");
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("section-commande")).toHaveText(["Actions", "Onglets ouverts"]);
+  await expect(lignes(fenetre, "action")).toHaveText(/Zorglub/);
+  // L'onglet affiché n'est pas proposé.
+  await expect(lignes(fenetre, "onglet")).toHaveCount(1);
+  await expect(lignes(fenetre, "onglet")).toContainText("Page A");
+  await fenetre.getByTestId("saisie-commande").press("Enter");
+  await expect(fenetre.getByTestId("page-vide")).toBeVisible();
+  await fermer();
+});
+
 test("un onglet ouvert s'active, sans nouvel onglet", async () => {
   const { app, fenetre, fermer } = await lancer();
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
