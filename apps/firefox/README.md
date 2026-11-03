@@ -34,7 +34,7 @@ In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The
 
 The noyau (`@webaios/noyau`) runs in a separate Node process, `noyau/host.ts`, started by Firefox and spoken to in JSON-RPC over stdio (one message per line). Its console output goes to Firefox's console prefixed `[noyau]`; stdout carries only the protocol. The Node and tsx paths are frozen at build time (`scripts/paths.ts`): a dev build only runs on the machine that built it.
 
-The agent's workshop container is `webaios-atelier-firefox` (`WEBAIOS_CONTENEUR`), so it never touches the Electron app's `webaios-atelier`. Both share the `webaios-home` volume.
+The agent's workshop container is `webaios-atelier-firefox` (`WEBAIOS_CONTENEUR`), so it never touches the Electron app's `webaios-atelier`. It publishes ports 5300-5319 (`WEBAIOS_PORTS_CONTENEUR`), since the Electron app's container holds 5280-5299. Both share the `webaios-home` volume.
 
 Invisible reads run in a windowless browser, in a private container cleared before and after each read. Every request from a reading container is checked: an address that is local, or a name that resolves to one (or fails to resolve), is refused. Known limits, marked `shortcut:` in `chrome/agent/local-guard.ts` and `invisible.ts`: custom-scheme navigations, preconnects, Alt-Svc, WebRTC, and service workers in a login profile's container.
 

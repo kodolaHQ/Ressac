@@ -11,6 +11,8 @@ process.stdout.on("error", () => {});
 process.on("unhandledRejection", (e) => console.error("[webaios] rejet non géré :", e));
 
 process.env.WEBAIOS_CONTENEUR ||= "webaios-atelier-firefox";
+// Two containers cannot publish the same host ports: the Electron app keeps 5280-5299.
+process.env.WEBAIOS_PORTS_CONTENEUR ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");

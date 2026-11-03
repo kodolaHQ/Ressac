@@ -35,7 +35,7 @@ function startHost(env: Record<string, string> = {}): Host {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
   const racine = join(dataDir, "espace");
   const journal = join(dataDir, "docker.log");
-  const { WEBAIOS_CONTENEUR: _, ...parent } = process.env;
+  const { WEBAIOS_CONTENEUR: _, WEBAIOS_PORTS_CONTENEUR: __, ...parent } = process.env;
   const child = spawn(nodePath, ["--import", tsxPath, hostPath], {
     env: {
       ...parent,
@@ -182,6 +182,16 @@ describe("agent host", { timeout: 30_000 }, () => {
     const lignes = readFileSync(h.journal, "utf8").split("\n");
     expect(lignes.some((l) => l.includes("webaios-atelier-firefox"))).toBe(true);
     expect(lignes.filter((l) => / webaios-atelier( |$)/.test(l))).toEqual([]);
+  });
+
+  it("publishes its own port range, apart from the Electron app's 5280-5299", async () => {
+    const h = startHost({ FAUX_DOCKER_SANS_CONTENEUR: "1" });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    const run = readFileSync(h.journal, "utf8").split("\n").find((l) => l.startsWith("run -d"));
+    expect(run).toContain("127.0.0.1:5300-5319:5300-5319");
+    expect(run).toContain("WEBAIOS_PORTS=5300-5319");
   });
 
   it("arreter stops sessions, then the process exits 0", async () => {
