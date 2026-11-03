@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   ID_PROJET, INDISPONIBLE_DESIGN, INDISPONIBLE_DESIGN_SITE, AVERTISSEMENT_CAPTURE_SITE, SANS_CLIENT, depotRelecture, destinationDe, dossierRemarques, fichierCommentaires, idExterne,
   plagesConteneur, projetApp, projetDemo, projetExterne, projetPourAdresse, projetPourFenetreApp, projetPourSite,
@@ -37,6 +37,14 @@ describe("plagesConteneur", () => {
     expect(plagesConteneur("15280-15284")).toEqual([[5280, 5299], [15280, 15284]]);
     expect(plagesConteneur("n'importe")).toEqual([[5280, 5299]]);
     expect(plagesConteneur("5280-5299")).toEqual([[5280, 5299]]);
+  });
+  test("honours WEBAIOS_PORTS_CONTENEUR", () => {
+    vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
+    try {
+      expect(plagesConteneur(undefined)).toEqual([[5300, 5319]]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { DROITS_DEV, PolitiqueAcces } from "../../src/acces/politique.js";
 import type { OngletInfo } from "../../src/mcp/pont.js";
 
@@ -106,6 +106,21 @@ test("construite : app:<dossier> et localhost:5285 ouvert par l'agent ont les qu
   expect(p.estConstruite(demo5285)).toBe(true);
   expect(p.droitsDev(port3000)).toEqual([]);
   expect(p.estConstruite(port3000)).toBe(false);
+});
+
+test("built: the default demo range follows WEBAIOS_PORTS_CONTENEUR", () => {
+  vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
+  try {
+    const q = new PolitiqueAcces();
+    const d5305 = { ...demo, url: "http://localhost:5305/" };
+    const d5285 = { ...demo, id: "6", url: "http://localhost:5285/" };
+    q.ongletOuvertParAgent(d5305);
+    q.ongletOuvertParAgent(d5285);
+    expect(q.estConstruite(d5305)).toBe(true);
+    expect(q.estConstruite(d5285)).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 test("construite : le prédicat de port est configurable", () => {

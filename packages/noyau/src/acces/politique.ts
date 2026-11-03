@@ -1,4 +1,5 @@
 import type { OngletInfo } from "../mcp/pont.js";
+import { plagePortsConteneur } from "../conteneur/atelier.js";
 
 function origine(url: string): string | null {
   try {
@@ -28,8 +29,11 @@ export interface EtatAccesOnglet {
   enCours: boolean;
 }
 
-/** Ports des démos de l'agent par défaut (5280–5299). */
-const portDemo = (port: number): boolean => port >= 5280 && port <= 5299;
+/** Ports des démos de l'agent par défaut : ceux du conteneur. */
+const portDemo = (port: number): boolean => {
+  const [min, max] = plagePortsConteneur();
+  return port >= min && port <= max;
+};
 
 /**
  * Ce que l'agent a le droit de lire (spec §8.2) : un onglet que l'utilisateur lui a donné, depuis lequel

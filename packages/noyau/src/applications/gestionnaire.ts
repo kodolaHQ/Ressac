@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { request } from "node:http";
 import { join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
-import { PORTS, type Atelier } from "../conteneur/atelier.js";
+import { plagePortsConteneur, type Atelier } from "../conteneur/atelier.js";
 import { dossierValide, lireProjets, surveillerProjets, type ProjetLu } from "./manifeste.js";
 
 /** Délai laissé à une appli pour répondre sur son port avant « En erreur ». */
@@ -115,7 +115,7 @@ export class GestionnaireApplications {
     this.chemins = o.chemins;
     this.atelier = o.atelier;
     this.lanceur = o.lanceur ?? lanceurParDefaut;
-    this.ports = o.ports ?? (PORTS.split("-").map(Number) as [number, number]);
+    this.ports = o.ports ?? plagePortsConteneur();
     this.delaiPretMs = o.delaiPretMs ?? DELAI_PRET_MS;
     this.intervalleSondeMs = o.intervalleSondeMs ?? INTERVALLE_SONDE_MS;
     this.sonder = o.sonder ?? sonderParDefaut;

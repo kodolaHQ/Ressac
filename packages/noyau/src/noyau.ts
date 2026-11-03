@@ -261,7 +261,7 @@ export async function creerNoyau(o: {
   atelier?: Atelier;
   /** Outils MCP des applications (lancer, arrêter, journal). */
   applications?: OutilsApplications;
-  /** Ports sur lesquels une démo locale ouverte par l'agent est « construite » (par défaut 5280–5299). */
+  /** Ports sur lesquels une démo locale ouverte par l'agent est « construite » (par défaut ceux du conteneur, plagePortsConteneur). */
   portConstruit?: (port: number) => boolean;
   /**
    * Dossier de l'hôte, hors de l'espace monté, pour les profils bruts des sites que l'agent n'a pas construits (le

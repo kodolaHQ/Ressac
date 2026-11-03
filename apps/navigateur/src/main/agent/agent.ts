@@ -5,7 +5,7 @@ import {
   chargerProfils,
   cheminsEspace,
   creerNoyau,
-  PORTS,
+  plagePortsConteneur,
   prefixeContexte,
   surveillerAccueil,
   surveillerActions,
@@ -35,11 +35,11 @@ import { plageDePorts } from "../applications/service";
 declare const __RESSOURCES_NOYAU__: string;
 
 /**
- * Ports où une page locale ouverte par l'agent est « construite » : ceux des démos (5280–5299, plage du conteneur) et
+ * Ports où une page locale ouverte par l'agent est « construite » : ceux des démos (plage du conteneur) et
  * ceux des applis (WEBAIOS_PORTS_APPS dans les tests, sinon la même plage).
  */
 function portConstruit(): (port: number) => boolean {
-  const plages = [PORTS.split("-").map(Number) as [number, number], plageDePorts(process.env.WEBAIOS_PORTS_APPS)].filter((p) => p !== undefined);
+  const plages = [plagePortsConteneur(), plageDePorts(process.env.WEBAIOS_PORTS_APPS)].filter((p) => p !== undefined);
   return (port) => plages.some(([min, max]) => port >= min && port <= max);
 }
 

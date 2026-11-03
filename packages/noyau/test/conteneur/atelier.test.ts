@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Atelier, DELAI_CONSTRUCTION_MS, IMAGE, empreinteDockerfile, nomRecolte, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
+import { Atelier, DELAI_CONSTRUCTION_MS, IMAGE, empreinteDockerfile, nomRecolte, plagePortsConteneur, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -360,4 +360,42 @@ test("defaults to webaios-atelier", async () => {
   } finally {
     vi.unstubAllEnvs();
   }
+});
+
+test("WEBAIOS_PORTS_CONTENEUR gives the published range and tells it to the container; invalid falls back to 5280-5299", async () => {
+  const runArgs = async () => {
+    const { executer, appels } = executeurFactice([
+      [/ image inspect /, { code: 0 }],
+      [/ inspect -f/, { code: 1 }],
+    ]);
+    await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
+    return appels.find((a) => a.args[0] === "run")!.args;
+  };
+  try {
+    vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
+    expect(plagePortsConteneur()).toEqual([5300, 5319]);
+    expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5300-5319:5300-5319", "WEBAIOS_PORTS=5300-5319"]));
+    for (const invalide of ["", "abc", "5319-5300", "80-90"]) {
+      vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", invalide);
+      expect(plagePortsConteneur()).toEqual([5280, 5299]);
+    }
+    expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5280-5299:5280-5299", "WEBAIOS_PORTS=5280-5299"]));
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+test("a failed docker run removes the half-created container, so the next start retries instead of reusing it", async () => {
+  let runs = 0;
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 0 }],
+    [/ inspect -f/, { code: 1 }],
+    [/ run /, () => (++runs === 1 ? { code: 125, stderr: "port is already allocated" } : { code: 0 })],
+  ]);
+  const atelier = new Atelier({ chemins, docker: "docker", executer });
+  await expect(atelier.assurerDemarre()).rejects.toThrow("port is already allocated");
+  const iRun = appels.findIndex((a) => a.args[0] === "run");
+  expect(appels.slice(iRun + 1).some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
+  await atelier.assurerDemarre();
+  expect(runs).toBe(2);
 });

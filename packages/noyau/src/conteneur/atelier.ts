@@ -11,8 +11,16 @@ export const NOM_CONTENEUR = "webaios-atelier";
 export const nomConteneur = (): string => process.env.WEBAIOS_CONTENEUR || NOM_CONTENEUR;
 export const IMAGE = "webaios-atelier:1";
 export const VOLUME_HOME = "webaios-home";
-/** Hors de la plage de Vite (5173, 5174…) pour ne pas entrer en conflit avec un serveur lancé sur le Mac. */
-export const PORTS = "5280-5299";
+/**
+ * Ports published by the container, the same on the Mac and inside: 5280-5299 by default, out of Vite's range (5173…).
+ * Two containers cannot publish the same ports, so a second app (Firefox build) sets WEBAIOS_PORTS_CONTENEUR (`min-max`).
+ * Read on every call, like nomConteneur().
+ */
+export function plagePortsConteneur(): [number, number] {
+  const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.WEBAIOS_PORTS_CONTENEUR ?? "");
+  const [min, max] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+  return min >= 1024 && max <= 65535 && min <= max ? [min, max] : [5280, 5299];
+}
 /** Les sondes docker ne doivent pas bloquer si Docker Desktop est coincé au démarrage. */
 const DELAI_SONDE_MS = 30_000;
 /** Première construction : téléchargement de l'image de base et installation de l'agent. Au-delà, c'est bloqué. */
@@ -181,18 +189,25 @@ export class Atelier {
       const build = await this.lancer(["build", "-t", IMAGE, "--label", `${LABEL_EMPREINTE}=${empreinte}`, "-f", dockerfile(this.dossierDocker), this.dossierDocker], DELAI_CONSTRUCTION_MS);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }
+    const ports = plagePortsConteneur().join("-");
     const run = await this.lancer([
       "run", "-d",
       "--name", nomConteneur(),
       "--add-host", "host.docker.internal:host-gateway",
       "-v", `${this.chemins.racine}:${CHEMIN_CONTENEUR}`,
       "-v", `${VOLUME_HOME}:/home/node`,
-      "-p", `127.0.0.1:${PORTS}:${PORTS}`,
+      "-p", `127.0.0.1:${ports}:${ports}`,
+      // AGENTS.md tells the agent to keep its hand-run servers in this range.
+      "-e", `WEBAIOS_PORTS=${ports}`,
       "-w", CHEMIN_CONTENEUR,
       IMAGE,
       "sleep", "infinity",
     ], DELAI_SONDE_MS);
-    if (run.code !== 0) throw new Error(`Démarrage du conteneur ${nomConteneur()} impossible : ${run.stderr}`);
+    if (run.code !== 0) {
+      // A failed run (port already taken…) can leave the container created without network: the next start must not reuse it.
+      await this.lancer(["rm", "-f", nomConteneur()], DELAI_SONDE_MS);
+      throw new Error(`Démarrage du conteneur ${nomConteneur()} impossible : ${run.stderr}`);
+    }
     return this.etat();
   }
 

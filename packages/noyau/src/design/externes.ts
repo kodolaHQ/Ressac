@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, copyFile, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
+import { plagePortsConteneur } from "../conteneur/atelier.js";
 import { genererJeton } from "../mcp/serveur.js";
 import { ecrireJsonPrive } from "./ecriture-atomique.js";
 import { idExterne, type ClientExterne, type ProjetExterne } from "./projets.js";
@@ -12,7 +13,7 @@ export const DOSSIER_TROP_LARGE = "Ce dossier est trop large : ni /, ni le dossi
 export const DOSSIER_ESPACE = "Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.";
 export const AVERTISSEMENT_ILLISIBLE = "WebAiOs ne peut pas lire ce dossier : la relecture sera indisponible tant que l'utilisateur n'a pas donné l'accès";
 export const portRefuse = (p: number): string =>
-  `Port ${p} refusé : entre 1024 et 65535, hors des ports du conteneur de WebAiOs (5280–5299 et ceux des applis).`;
+  `Port ${p} refusé : entre 1024 et 65535, hors des ports du conteneur de WebAiOs (${plagePortsConteneur().join("–")} et ceux des applis).`;
 
 const SchemaProjet = z.object({
   id: z.string().regex(/^[0-9a-f]{16}$/),

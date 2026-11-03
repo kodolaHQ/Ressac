@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { PORTS } from "../conteneur/atelier.js";
+import { plagePortsConteneur } from "../conteneur/atelier.js";
 
 export const ID_PROJET = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
-export const PLAGE_DEMOS: [number, number] = [5280, 5299];
 
 export const INDISPONIBLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
 export const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
@@ -52,7 +51,7 @@ function lirePlage(texte: string): [number, number] | null {
 }
 
 export function plagesConteneur(portsApps: string | undefined): [number, number][] {
-  const base = lirePlage(PORTS) ?? PLAGE_DEMOS;
+  const base = plagePortsConteneur();
   const plages: [number, number][] = [base];
   const autre = portsApps === undefined ? null : lirePlage(portsApps);
   if (autre && (autre[0] !== base[0] || autre[1] !== base[1])) plages.push(autre);

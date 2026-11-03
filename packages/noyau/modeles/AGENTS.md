@@ -404,8 +404,9 @@ l'URL par un autre moyen).
 - Pour montrer une appli, appelle `lancer_application("<dossier>")` au lieu de lancer le serveur
   toi-même. En cas d'erreur, lis `journal_application("<dossier>")` ou
   `/workspace/.webaios/journaux/<dossier>.log`.
-- Un serveur lancé à la main pour un essai rapide garde un port **entre 5280 et 5299** (seuls ces
-  ports sont visibles depuis le navigateur), et s'arrête avec la fenêtre de l'agent.
+- Un serveur lancé à la main pour un essai rapide garde un port de la plage **`$WEBAIOS_PORTS`**
+  (5280-5299 si elle est vide ; seuls ces ports sont visibles depuis le navigateur), et s'arrête avec
+  la fenêtre de l'agent.
 
 ## Extensions
 
@@ -502,7 +503,7 @@ WebRTC (`RTCPeerConnection`…) est absent.
   `executer_js` ou un instantané.
 
 **Tester** : `recharger_extension`, puis `console_extension` pour lire les erreurs, sur une page locale
-(un projet servi sur un port 5280–5299) ou une démo ouverte par `ouvrir_onglet`.
+(un projet servi sur un port de `$WEBAIOS_PORTS`) ou une démo ouverte par `ouvrir_onglet`.
 
 - `console_extension` montre le service worker, les pages de l'extension et ses scripts de contenu.
   Les messages venus d'onglets que tu ne peux pas lire sont masqués et comptés. La console du service
@@ -989,7 +990,7 @@ parent.postMessage({ type: "pret" }, "*");
 | `page_courante` | URL, titre, texte principal et sélection de l'onglet actif |
 | `lister_onglets` | Onglets ouverts (id, titre, URL, espace) ; un onglet non partagé apparaît comme « onglet non partagé », ceux des espaces privés n'apparaissent pas |
 | `lire_onglet(id)` | Texte principal d'un onglet donné |
-| `ouvrir_onglet(url, espace?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:5280` |
+| `ouvrir_onglet(url, espace?)` | Ouvre un onglet, par exemple sur une démo `http://localhost:<port de $WEBAIOS_PORTS>` |
 | `naviguer(id, url)` | Change l'URL d'un onglet (y compris recharger une démo) |
 | `capture_ecran(id)` | Capture d'écran d'un onglet, pour vérifier visuellement une démo |
 | `lancer_application(dossier)` | Lance le projet `/workspace/projets/<dossier>` d'après son `webaios.json` et ouvre sa fenêtre |
@@ -1037,7 +1038,7 @@ les pages prometteuses avec `lire_historique`.
 ## Outils de développement
 
 Droits : `console`, `reseau`, `performances`, `agir`. Sur tes applications (onglets `app:<dossier>`) et
-tes démos (ports 5280–5299), tu les as tous sans demander, sauf si l'utilisateur les a coupés.
+tes démos (ports de `$WEBAIOS_PORTS`), tu les as tous sans demander, sauf si l'utilisateur les a coupés.
 
 | Outil | Droit | Rôle |
 |---|---|---|
