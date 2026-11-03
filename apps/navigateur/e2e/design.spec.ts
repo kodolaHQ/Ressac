@@ -597,7 +597,7 @@ test("réussite de la spec : remarques sur l'appli inscription, envoi, modificat
     await calque.getByTestId("envoyer-remarques").click();
     await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
     await expect(terminal(fenetre)).toContainText("faux agent prêt>");
-    await expect.poll(() => entreeAgent(racine)).toContain("1) input#email.champ : « refuser une adresse sans domaine »");
+    await expect.poll(() => entreeAgent(racine)).toContain(`1) "input#email.champ" : « refuser une adresse sans domaine »`);
     expect(entreeAgent(racine)).toContain("2) button#envoyer");
     expect(entreeAgent(racine)).toMatch(/\/workspace\/\.webaios\/remarques\/app-inscription\/\d{8}T\d{6}Z-[0-9a-f]{4}\/lot\.json/);
     await new Promise((r) => setTimeout(r, 300));

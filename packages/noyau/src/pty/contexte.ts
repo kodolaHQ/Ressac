@@ -33,6 +33,10 @@ export function prefixeApplication(a: { nom: string; dossier: string; sansFiche:
 
 const LONGUEUR_REMARQUE = 200;
 const LONGUEUR_REMARQUES_MAX = 2000;
+const LONGUEUR_DONNEE = 120;
+
+/** Ce qui vient de la page ou du projet (étiquette, fichier) : coupé, et rendu en chaîne JSON, jamais en texte libre. */
+const donnee = (v: string): string => JSON.stringify(tronquer(nettoyer(v), LONGUEUR_DONNEE));
 
 /**
  * Texte pré-rempli après l'envoi d'un panier à l'agent, jamais envoyé : une seule ligne, les remarques numérotées,
@@ -51,17 +55,18 @@ export function prefixeRemarques(r: {
   const queue = ` — détail et captures : ${nettoyer(r.cheminLot)}/lot.json] `;
   const items = r.lot.elements.map((e, i) => {
     const texte = tronquer(nettoyer(e.texte), LONGUEUR_REMARQUE);
-    if (e.type === "relecture") return nettoyer(`${i + 1}) ${e.contexte.fichier}:${e.contexte.debut}-${e.contexte.fin} : « ${texte} »`);
+    if (e.type === "relecture") return nettoyer(`${i + 1}) ${donnee(e.contexte.fichier)}:${Math.trunc(e.contexte.debut)}-${Math.trunc(e.contexte.fin)} : « ${texte} »`);
     const s = e.contexte.source;
-    const source = s ? ` (${s.fichier}${s.ligne !== undefined ? `:${s.ligne}` : ""})` : "";
-    return nettoyer(`${i + 1}) ${e.contexte.etiquette} : « ${texte} »${source}`);
+    const source = s ? ` (${donnee(`${s.fichier}${s.ligne !== undefined ? `:${Math.trunc(s.ligne)}` : ""}`)})` : "";
+    return nettoyer(`${i + 1}) ${donnee(e.contexte.etiquette)} : « ${texte} »${source}`);
   });
   // Place gardée pour « … (+N) » : jusqu'à 4 chiffres.
   const place = LONGUEUR_REMARQUES_MAX - tete.length - queue.length - " … (+9999)".length;
   let gardees = 0;
   let longueur = 0;
   for (const it of items) {
-    if (longueur + 1 + it.length > place && gardees < items.length) break;
+    // La première remarque est toujours gardée : chaque morceau est borné, elle tient.
+    if (gardees > 0 && longueur + 1 + it.length > place) break;
     longueur += 1 + it.length;
     gardees++;
   }

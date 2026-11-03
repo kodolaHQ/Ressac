@@ -264,7 +264,7 @@ test("+ sur la ligne 15 de app.js, « garder l'ancien nom » : un commentaire so
     const envoyer = page.getByTestId("envoyer-commentaires");
     await expect(envoyer).toHaveText("Envoyer 1 commentaire à l'agent");
     await envoyer.click();
-    await expect.poll(() => entreeAgent(racine)).toContain("1) app.js:15-15 : « garder l'ancien nom »");
+    await expect.poll(() => entreeAgent(racine)).toContain(`1) "app.js":15-15 : « garder l'ancien nom »`);
     expect(entreeAgent(racine)).toContain("/workspace/.webaios/remarques/app-essai/");
     await new Promise((r) => setTimeout(r, 300));
     expect(entreeAgent(racine)).not.toContain("\r");
