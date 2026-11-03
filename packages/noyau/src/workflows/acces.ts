@@ -1,4 +1,7 @@
-import { isIP } from "node:net";
+import dns from "node:dns";
+import http, { type IncomingMessage } from "node:http";
+import https from "node:https";
+import { isIP, type LookupFunction } from "node:net";
 import type { ChangerHote } from "./menagement.js";
 import type { PageLue } from "./protocole.js";
 
@@ -22,7 +25,10 @@ export const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n -
 /** Le message d'une exception, ou sa valeur en texte. */
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** Adresse de la machine ou du réseau local, écrite telle quelle dans l'URL (le nom n'est pas résolu). */
+/**
+ * Adresse de la machine ou du réseau local, d'après son texte seul (le nom n'est pas résolu : `recuperer` revérifie
+ * l'adresse résolue à la connexion, avec `lookupSansLocal`).
+ */
 export function adresseLocale(hote: string): boolean {
   // « localhost. » (point final) désigne la même machine que « localhost ».
   const h = hote.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
@@ -58,25 +64,44 @@ export function verifierUrl(brute: string, domaines: readonly string[] | null, a
   return u;
 }
 
-async function lireCorps(r: Response): Promise<Buffer> {
-  const annonce = Number(r.headers.get("content-length"));
-  if (Number.isFinite(annonce) && annonce > RECUPERER_MAX_OCTETS) {
-    await r.body?.cancel().catch(() => {});
+/**
+ * Résolution faite à la connexion : un nom qui mène à la machine ou au réseau local (« 127.0.0.1.nip.io », rebinding
+ * DNS) est refusé, même si une seule de ses adresses l'est.
+ */
+export const lookupSansLocal: LookupFunction = (hote, options, rappel) => {
+  dns.lookup(hote, { ...options, all: true }, (err, adresses) => {
+    if (err) return rappel(err, "");
+    const locale = adresses.find((a) => adresseLocale(a.address));
+    if (locale) return rappel(new Error(`Adresse locale refusée : ${hote} (${locale.address})`), "");
+    if (options.all) return rappel(null, adresses);
+    const [premiere] = adresses;
+    if (!premiere) return rappel(new Error(`Nom introuvable : ${hote}`), "");
+    rappel(null, premiere.address, premiere.family);
+  });
+};
+
+// http(s) plutôt que fetch : fetch (undici) ne laisse pas choisir la résolution sans le paquet undici.
+function demander(url: URL, adressesLocales: boolean, signal: AbortSignal): Promise<IncomingMessage> {
+  return new Promise((ok, ko) => {
+    const options = { signal, headers: { "user-agent": "node", accept: "*/*" }, ...(adressesLocales ? {} : { lookup: lookupSansLocal }) };
+    (url.protocol === "https:" ? https : http).get(url, options, ok).on("error", ko);
+  });
+}
+
+async function lireCorps(r: IncomingMessage): Promise<Buffer> {
+  if (Number(r.headers["content-length"]) > RECUPERER_MAX_OCTETS) {
+    r.destroy();
     throw new Error("Réponse trop grande (5 Mo maximum)");
   }
-  if (!r.body) return Buffer.alloc(0);
   const morceaux: Buffer[] = [];
   let taille = 0;
-  const lecteur = r.body.getReader();
-  for (;;) {
-    const { done, value } = await lecteur.read();
-    if (done) break;
-    taille += value.byteLength;
+  for await (const morceau of r as AsyncIterable<Buffer>) {
+    taille += morceau.byteLength;
     if (taille > RECUPERER_MAX_OCTETS) {
-      await lecteur.cancel().catch(() => {});
+      r.destroy();
       throw new Error("Réponse trop grande (5 Mo maximum)");
     }
-    morceaux.push(Buffer.from(value));
+    morceaux.push(morceau);
   }
   return Buffer.concat(morceaux);
 }
@@ -109,10 +134,11 @@ export async function recuperer(
   let url = verifierUrl(brute, domaines, adressesLocales);
   try {
     for (let redirections = 0; ; redirections++) {
-      const r = await fetch(url, { redirect: "manual", credentials: "omit", signal: echeance });
-      const cible = r.headers.get("location");
-      if (r.status >= 300 && r.status < 400 && cible) {
-        await r.body?.cancel().catch(() => {});
+      const r = await demander(url, adressesLocales, echeance);
+      const cible = r.headers.location;
+      const statut = r.statusCode ?? 0;
+      if (statut >= 300 && statut < 400 && cible) {
+        r.destroy();
         if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
         const suivante = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
         // L'attente du tour de l'autre site compte dans le délai, et cède à l'arrêt.
@@ -120,9 +146,9 @@ export async function recuperer(
         url = suivante;
         continue;
       }
-      if (!r.ok) {
-        await r.body?.cancel().catch(() => {});
-        throw new Error(`HTTP ${r.status}`);
+      if (statut < 200 || statut >= 300) {
+        r.destroy();
+        throw new Error(`HTTP ${statut}`);
       }
       const texte = (await lireCorps(r)).toString("utf8");
       if (format === "texte") return texte;

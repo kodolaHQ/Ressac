@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { spawn } from "node:child_process";
+import dns from "node:dns";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
@@ -936,6 +937,19 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
     arret.abort(new Error("Exécution arrêtée"));
     await expect(p).rejects.toThrow("Exécution arrêtée");
     expect(web.requetes).toEqual(["/vers-localhost"]);
+  });
+
+  it("recuperer : un nom qui se résout vers la machine est refusé à la connexion, sans requête", async () => {
+    const web = await serveurWeb({ "/": (res) => res.end("ok") });
+    // Comme 127.0.0.1.nip.io, sans réseau : le nom passe la vérification du texte, son adresse est locale.
+    const resolution = vi.spyOn(dns, "lookup").mockImplementation(((_h: string, _o: unknown, rappel: (e: null, a: dns.LookupAddress[]) => void) =>
+      rappel(null, [{ address: "127.0.0.1", family: 4 }])) as unknown as typeof dns.lookup);
+    try {
+      await expect(recuperer(`http://piege.example:${web.port}/`, "texte", null, false)).rejects.toThrow("Adresse locale refusée");
+    } finally {
+      resolution.mockRestore();
+    }
+    expect(web.requetes).toEqual([]);
   });
 
   it("widget sans web : 150 lectures passent, aucune attente du ménagement", async () => {
