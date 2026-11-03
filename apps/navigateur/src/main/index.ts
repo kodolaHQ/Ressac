@@ -896,6 +896,9 @@ app.whenReady().then(async () => {
     surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
     design: (action) => {
       const dossier = applications?.fenetres.dossierAuPremierPlan();
+      // Une autre fenêtre au premier plan (appli de site…) : rien, jamais l'onglet de la fenêtre principale derrière.
+      const auPremierPlan = BrowserWindow.getFocusedWindow();
+      if (!dossier && auPremierPlan && ![...fenetres.values()].includes(auPremierPlan)) return;
       const f = dossier ? undefined : cibles.fenetreActive();
       const cible = dossier ? ({ type: "app", dossier } as const) : f ? ({ type: "fenetre", fenetreId: f } as const) : undefined;
       if (!cible || !design) return;
