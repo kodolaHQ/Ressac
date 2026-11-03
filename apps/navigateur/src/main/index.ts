@@ -999,6 +999,7 @@ app.whenReady().then(async () => {
   const envoiLot = creerEnvoi({
     chemins,
     fenetreAgent,
+    rouvrir: () => void rouvrirFenetres(),
     dossierLot: (p, l) => remarques.dossierLot(p, l),
     preRemplir: (f, texte) => agent?.preRemplir(f, texte),
     donnerLeTerminal: (f) => cibles.raccourci(f, "agent"),

@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { cheminsEspace, type Lot, type ProjetSuivi } from "@webaios/noyau";
-import { creerEnvoi } from "../../src/main/design/envoi";
+import { AUCUNE_FENETRE, creerEnvoi } from "../../src/main/design/envoi";
 
 const lot: Lot = {
   id: "20261102T101500Z-ab12",
@@ -48,9 +48,17 @@ test("app : preRemplir reçoit la fenêtre de l'agent et le texte, jamais de \r 
   expect(o.preRemplir).toHaveBeenCalledTimes(1);
 });
 
-test("sans fenêtre principale, rien n'est pré-rempli", async () => {
+test("sans fenêtre principale : une fenêtre est rouverte et reçoit le texte ; si aucune ne s'ouvre, l'envoi échoue (jamais « ok » sans rien)", async () => {
   const { o, envoyer } = monter();
+  o.fenetreAgent.mockReturnValueOnce(undefined as never);
+  const rouvrir = vi.fn();
+  const avecRouvrir = creerEnvoi({ ...o, rouvrir });
+  await avecRouvrir({ type: "demo", projet: "demo-15283", port: 15283 }, lot);
+  expect(rouvrir).toHaveBeenCalledTimes(1);
+  expect(o.preRemplir).toHaveBeenCalledWith("f7", expect.stringContaining("[remarques de l'utilisateur"));
+  o.preRemplir.mockClear();
   o.fenetreAgent.mockReturnValue(undefined as never);
-  await envoyer({ type: "demo", projet: "demo-15283", port: 15283 }, lot);
+  await expect(avecRouvrir({ type: "demo", projet: "demo-15283", port: 15283 }, lot)).rejects.toThrow(AUCUNE_FENETRE);
+  await expect(envoyer({ type: "demo", projet: "demo-15283", port: 15283 }, lot)).rejects.toThrow(AUCUNE_FENETRE);
   expect(o.preRemplir).not.toHaveBeenCalled();
 });
