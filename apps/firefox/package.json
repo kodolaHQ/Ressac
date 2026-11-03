@@ -10,6 +10,7 @@
     "build": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand webaios && zsh scripts/env.sh surfer build",
     "build:ui": "zsh scripts/ui.sh && zsh scripts/env.sh surfer set brand webaios && zsh scripts/env.sh surfer build --ui",
     "test": "vitest run",
+    "bench": "node scripts/bench.ts",
     "e2e": "vitest run -c vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "ui": "zsh scripts/ui.sh"
