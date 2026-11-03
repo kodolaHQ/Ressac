@@ -21,10 +21,6 @@ const CALME_DEFILEMENT_MS = 1_000;
 const RELEVE_MS = 250;
 const DEFILER_MAX = 20;
 
-/** Every read's page: no dialog, print, popup nor download (nsSandboxFlags.h; frames inherit them). */
-const SANDBOXED_AUXILIARY_NAVIGATION = 0x2;
-const SANDBOXED_MODALS = 0x800;
-const SANDBOXED_DOWNLOADS = 0x10000;
 /** An empty privileged page that hosts the <browser>, as BackgroundPageThumbs does. */
 const HOST_PAGE = "chrome://global/content/backgroundPageThumbs.xhtml";
 const PUBLIC_IDENTITY = "userContextIdInternal.webaios-reading";
@@ -145,7 +141,12 @@ async function createBrowser(userContextId: number): Promise<{ browser: any; clo
     browser.style.width = "1280px";
     browser.style.height = "900px";
     doc.documentElement.appendChild(browser);
-    browser.browsingContext.sandboxFlags = SANDBOXED_AUXILIARY_NAVIGATION | SANDBOXED_MODALS | SANDBOXED_DOWNLOADS;
+    // No sandbox flags on the read's top document: Firefox refuses a COOP page in a sandboxed one (Google, YouTube).
+    // Without them, print() and alert() open no window and do not hang the read, popups need a user gesture a read
+    // never makes (both checked by e2e); downloads are refused by WebAiOsReadingChild, asked here first.
+    for (const until = Date.now() + 5_000; !browser.browsingContext.currentWindowGlobal; await new Promise((r) => setTimeout(r, 10)))
+      if (Date.now() > until) throw new Error("Préparation de la page impossible");
+    await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsReading").sendQuery("prepare");
     browser.browsingContext.mediaController?.mute();
     // Not throttled as a background tab (Electron's backgroundThrottling: false).
     browser.docShellIsActive = true;

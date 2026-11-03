@@ -27,6 +27,11 @@ beforeAll(async () => {
   // The home page's agent session settles first: quitting during its start-up leaves writers in the data dir.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("localtest.me", "::1");`);
+  // Should a download slip through, it lands in the test's data dir, never in ~/Downloads.
+  await m.execute(
+    `Services.prefs.setIntPref("browser.download.folderList", 2); Services.prefs.setStringPref("browser.download.dir", arguments[0]);`,
+    [w.dataDir],
+  );
 });
 afterAll(async () => {
   await w?.close();
@@ -51,6 +56,10 @@ const readPage = (url: string, o: object = { profil: null }) =>
       try { return { ok: await s.readPage(arguments[0], arguments[1]) }; } catch (e) { return { err: String(e?.message ?? e), name: String(e?.name) }; }
     })();`,
     [url, o],
+  );
+const downloads = () =>
+  m.execute<string[]>(
+    `return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).map((d) => d.source.url); })();`,
   );
 const windows = () => m.execute<number>("return [...Services.wm.getEnumerator(null)].length");
 async function newSpace(prive: boolean): Promise<string> {
@@ -141,4 +150,22 @@ it("a service worker fetch after the read never reaches the trap", async () => {
   expect(page.paths).toContain("/sw.js");
   await new Promise((r) => setTimeout(r, 6_000));
   expect(trap.paths).toEqual([]);
+});
+
+it("reads a page sent with Cross-Origin-Opener-Policy (Google, YouTube)", async () => {
+  expect(await readPage(`${page.url}/coop`)).toMatchObject({ ok: { titre: "coop", texte: "Page isolée" } });
+});
+
+it("window.open from a read opens no window", async () => {
+  const before = await windows();
+  expect(await readPage(`${page.url}/fenetres`)).toMatchObject({ ok: { titre: "fenetres" } });
+  expect(await windows()).toBe(before);
+  expect(page.paths).not.toContain("/a.html");
+});
+
+it("a read never downloads: not the page, nor a frame, nor a download link", async () => {
+  expect(await readPage(`${page.url}/telecharge-cadre`)).toMatchObject({ ok: { titre: "telecharge" } });
+  expect(await readPage(`${page.url}/telecharge`)).toHaveProperty("err");
+  await new Promise((r) => setTimeout(r, 1_000));
+  expect(await downloads()).toEqual([]);
 });

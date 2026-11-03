@@ -59,6 +59,14 @@ async function start(): Promise<WebAiOsStore> {
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["browsers", "webaios-reading"],
   });
+  ChromeUtils.registerWindowActor("WebAiOsReading", {
+    parent: { esModuleURI: PAGE_ACTOR },
+    child: { esModuleURI: PAGE_ACTOR, events: { DOMWindowCreated: {} } },
+    allFrames: true,
+    // Only turns retargeting off in its own frame: nothing it answers makes the parent act.
+    safeForUntrustedWebProcess: true,
+    messageManagerGroups: ["webaios-reading"],
+  });
   const questions = new Questions(store);
   const agent = createHost({
     dataDir,

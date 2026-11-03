@@ -41,3 +41,19 @@ export class WebAiOsPageChild extends JSWindowActorChild {
     return undefined;
   }
 }
+
+/**
+ * Invisible reads only (messagemanagergroup webaios-reading), in every frame: what a page cannot display is refused
+ * (DONT_RETARGET), never downloaded nor handed to an app. Set on each new document, the parent also asks it once
+ * before the read loads: a browsing context replaced by a navigation starts without it.
+ */
+export class WebAiOsReadingParent extends JSWindowActorParent {}
+export class WebAiOsReadingChild extends JSWindowActorChild {
+  handleEvent() {
+    this.docShell.allowContentRetargeting = false;
+  }
+  receiveMessage() {
+    this.docShell.allowContentRetargeting = false;
+    return true;
+  }
+}

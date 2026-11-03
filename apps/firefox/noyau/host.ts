@@ -165,5 +165,7 @@ createInterface({ input: process.stdin, crlfDelay: Infinity })
   .on("line", (l) => rpc.receive(l))
   .on("close", () => {
     rpc.close("Firefox s'est arrêté");
+    // A stop that hangs (docker, a session) must not keep an orphan host alive.
+    setTimeout(() => process.exit(0), 5_000).unref();
     void arreter().finally(() => process.exit(0));
   });

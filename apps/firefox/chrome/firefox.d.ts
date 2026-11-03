@@ -19,6 +19,7 @@ declare class JSWindowActorParent {}
 declare class JSWindowActorChild {
   readonly document: Document;
   readonly contentWindow: Window;
+  readonly docShell: any;
 }
 // Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
 declare const __WEBAIOS_NODE__: string;

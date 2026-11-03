@@ -14,7 +14,8 @@ const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
  * /icone is a page with an http favicon (/icone.png) and a pure red background, /avale a page that swallows every key.
  * Invisible reading: /sous-ressources?vers=<base> has a frame, an image and a fetch on <base>, /redirige?vers=<url>
  * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to
- * <base>/balise on pagehide, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
+ * <base>/balise on pagehide, /coop is sent with Cross-Origin-Opener-Policy: same-origin, /fenetres calls open(),
+ * /telecharge is an attachment, /telecharge-cadre has it in a frame and clicks a download link to it, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
  * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
  */
 export async function startServer(o: { host?: string } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
@@ -32,6 +33,19 @@ export async function startServer(o: { host?: string } = {}): Promise<{ url: str
       );
     }
     if (route === "/redirige") return res.writeHead(302, { Location: to }).end();
+    if (route === "/fenetres") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end('<title>fenetres</title><script>open("/a.html"); open("/b.html", "x", "width=300,height=300")</script><p>Ouvre</p>');
+    }
+    if (route === "/telecharge") return res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": 'attachment; filename="lu.bin"' }).end("x");
+    if (route === "/telecharge-cadre") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end('<title>telecharge</title><iframe src="/telecharge"></iframe><a id="t" href="/telecharge" download>t</a><script>document.getElementById("t").click()</script>');
+    }
+    if (route === "/coop") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cross-Origin-Opener-Policy": "same-origin" });
+      return res.end("<title>coop</title><p>Page isolée</p>");
+    }
     if (route === "/balise") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end(`<title>balise</title><script>addEventListener("pagehide", () => navigator.sendBeacon("${to}/balise"))</script>`);

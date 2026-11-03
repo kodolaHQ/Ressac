@@ -61,11 +61,11 @@ export function createHost(o: {
       stderr: "pipe",
     });
     const rpc = createRpc({ send: (line) => void proc.stdin.write(line + "\n").catch(() => {}), handlers });
-    void readLines(proc.stdout, (l) => rpc.receive(l));
-    void readLines(proc.stderr, (l) => console.warn(`[noyau] ${l}`));
-    o.onStart((method, params) => rpc.notify(method, params));
-    pid = proc.pid;
-    void proc.wait().then(() => {
+    let gone = false;
+    // stdout closing is the host going: dropped at once, so Réessayer spawns a new one instead of hitting this rpc.
+    const exited = () => {
+      if (gone) return;
+      gone = true;
       rpc.close(HOST_STOPPED);
       if (pid === proc.pid) {
         pid = null;
@@ -73,7 +73,12 @@ export function createHost(o: {
         // Only the current host: an old one exiting late must not report a stop over its successor.
         for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: HOST_STOPPED });
       }
-    });
+    };
+    void readLines(proc.stdout, (l) => rpc.receive(l)).then(exited);
+    void readLines(proc.stderr, (l) => console.warn(`[noyau] ${l}`));
+    o.onStart((method, params) => rpc.notify(method, params));
+    pid = proc.pid;
+    void proc.wait().then(exited);
     return { proc, rpc };
   };
 
