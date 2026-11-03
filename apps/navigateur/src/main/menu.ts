@@ -88,10 +88,7 @@ export function installerMenu(c: CiblesMenu): void {
     {
       label: "Fichier",
       submenu: [
-        entree("nouvel-onglet", "Nouvel onglet", "CmdOrCtrl+T", dansFenetre((f) => {
-          c.agir({ type: "afficherPageVide", fenetreId: f });
-          c.raccourci(f, "adresse");
-        })),
+        entree("nouvel-onglet", "Nouvel onglet", "CmdOrCtrl+T", dansFenetre((f) => c.raccourci(f, "commande"))),
         entree("nouvelle-fenetre", "Nouvelle fenêtre", "CmdOrCtrl+N", () => {
           if (c.rouvrirFenetres()) return;
           const f = c.fenetreActive();

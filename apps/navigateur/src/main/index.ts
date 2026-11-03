@@ -667,6 +667,7 @@ app.whenReady().then(async () => {
     apercu: (f, id) => vues.apercu(f, id),
     fermerOnglet: (id) => vues.fermer(id),
     parcoursOnglets: (f, m) => parcours.message(f, m),
+    rendreFocusPage: (f) => vues.focaliserAffiche(f),
     historique,
     telechargements,
     accueil: {

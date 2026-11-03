@@ -1,7 +1,8 @@
 <script lang="ts">
   import BarreLaterale from "./composants/BarreLaterale.svelte";
   import MenuContextuel from "./composants/MenuContextuel.svelte";
-  import { adresse } from "./composants/adresse.svelte";
+  import BarreCommande from "./composants/BarreCommande.svelte";
+  import { commande, ouvrirCommande } from "./composants/commande.svelte";
   import { focusAgent } from "./composants/agent.svelte";
   import { recherche } from "./composants/recherche.svelte";
   import ZoneContenu from "./composants/ZoneContenu.svelte";
@@ -106,13 +107,19 @@
     panneau = null;
     recherche.ouverte = false;
     recherche.resultat = null;
+    // La barre de commande vise l'onglet actif à son ouverture : si un autre s'affiche, elle se ferme.
+    untrack(() => (commande.ouverte = null));
   });
 
   $effect(() =>
     api.surRaccourci((r) => {
       if (r === "fermerOnglet") {
         if (ongletActif) fermerOnglet(ongletActif.id);
-      } else if (r === "adresse") adresse.focus++;
+      } else if (r === "commande") ouvrirCommande("nouveau");
+      else if (r === "adresse") {
+        if (ongletActif) ouvrirCommande("actif", ongletActif.url);
+        else ouvrirCommande("nouveau");
+      }
       else if (r === "agent") {
         if (ongletConstructeur) agentDuConstructeur();
         else focusAgent.n++;
@@ -228,6 +235,11 @@
   <ModaleDemande demande={demandeAgent} ongletId={panneau ? null : (ongletActif?.id ?? null)} />
 {:else if reglagesEspace.brouillon && fenetre}
   <ModaleEspace fenetreId={fenetre.id} ongletId={panneau ? null : (ongletActif?.id ?? null)} />
+{/if}
+<!-- Au-dessus des modales (100, plus haut dans le DOM : celle-ci passe devant), sous le panneau ⌃Tab (101). -->
+{#if commande.ouverte && fenetre}
+  <FondFige ongletId={panneau ? null : (ongletActif?.id ?? null)} surPret={() => {}} />
+  <BarreCommande {fenetre} {ongletActif} />
 {/if}
 
 <style>

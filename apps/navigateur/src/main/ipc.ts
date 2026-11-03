@@ -55,6 +55,8 @@ export interface Gestionnaires {
   fermerOnglet(ongletId: IdOnglet): void;
   /** Le panneau ⌃Tab de la fenêtre agit sur son parcours (voir ParcoursOnglets.message). */
   parcoursOnglets(fenetreId: IdFenetre, m: MessageParcours): void;
+  /** La page affichée dans la fenêtre reprend le clavier (voir GestionnaireVues.focaliserAffiche). */
+  rendreFocusPage(fenetreId: IdFenetre): void;
   historique: Historique;
   telechargements: Telechargements;
   permissions: { enAttente(): DemandeEnAttente[]; repondre(id: string, d: Decision, droits?: DroitDev[], confirme?: boolean): void };
@@ -218,6 +220,7 @@ export function brancherIpc(g: Gestionnaires): void {
   recevoir(CANAUX.commande, zod(SchemaCommande), (v) => g.commande(v.ongletId, v.c));
   recevoir(CANAUX.bornes, zod(SchemaBornes), (b, f) => g.bornes(f, b));
   recevoir(CANAUX.boutonsFenetre, zod(SchemaBoutonsFenetre), ({ visibles }, f) => g.boutonsFenetre(f, visibles));
+  recevoir(CANAUX.rendreFocusPage, () => true, (_v, f) => g.rendreFocusPage(f));
   recevoir(CANAUX.parcoursOnglets, zod<MessageParcours>(SchemaMessageParcours), (m, f) => g.parcoursOnglets(f, m));
   const repondre = (canal: string, traiter: (...args: unknown[]) => unknown) =>
     ipcMain.handle(canal, (e, ...args: unknown[]) => {

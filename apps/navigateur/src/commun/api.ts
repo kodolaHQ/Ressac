@@ -118,7 +118,7 @@ export type Panneau = "historique" | "telechargements";
  * Raccourcis du menu destinés à l'interface (la page web a souvent le focus). `fermerOnglet` : ⌘W sur le constructeur,
  * qui demande d'abord si du code n'est pas enregistré.
  */
-export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "agent" | "fermerOnglet";
+export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "commande" | "agent" | "fermerOnglet";
 export interface ResultatRecherche {
   ongletId: IdOnglet;
   actif: number;
@@ -175,6 +175,8 @@ export interface ApiWebaios {
   surPanneauOnglets(rappel: (p: PanneauOnglets | null) => void): () => void;
   /** Le panneau ⌃Tab agit sur le parcours en cours (sans effet hors parcours). */
   parcoursOnglets(m: MessageParcours): void;
+  /** La barre de commande se ferme : le clavier retourne à la page affichée (dès que l'interface la remontre). */
+  rendreFocusPage(): void;
   /** Terminal de l'agent de cette fenêtre. */
   agent: {
     /** Démarre la session (ou la retrouve : son état et sa sortie récente sont renvoyés). */

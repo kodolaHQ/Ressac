@@ -63,6 +63,7 @@ const api: ApiWebaios = {
   apercuPage: (ongletId) => ipcRenderer.invoke(CANAUX.apercuPage, { ongletId }),
   surPanneauOnglets: (rappel) => ecouter(CANAUX.panneauOnglets, rappel),
   parcoursOnglets: (m) => ipcRenderer.send(CANAUX.parcoursOnglets, m),
+  rendreFocusPage: () => ipcRenderer.send(CANAUX.rendreFocusPage),
   surPermissions(rappel) {
     const ecouteur = (_: unknown, liste: Parameters<typeof rappel>[0]) => rappel(liste);
     ipcRenderer.on(CANAUX.permissions, ecouteur);

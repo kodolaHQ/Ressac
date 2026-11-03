@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { EtatFenetre } from "../../commun/modele";
+  import { onMount } from "svelte";
   import { api, etat } from "../etat.svelte";
-  import { adresse } from "./adresse.svelte";
   import Accueil from "./Accueil.svelte";
   import Essentiels from "./Essentiels.svelte";
   import IaLocale from "./IaLocale.svelte";
@@ -13,10 +13,7 @@
   let saisie = $state("");
   let champ: HTMLInputElement;
 
-  $effect(() => {
-    void adresse.focus;
-    champ.focus();
-  });
+  onMount(() => champ.focus());
 
   // Les actions ne sont pas disponibles dans un espace privé (un espace introuvable compte comme privé) : la liste n'est
   // alors même pas demandée.
