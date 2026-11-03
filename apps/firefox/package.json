@@ -5,7 +5,7 @@
   "scripts": {
     "engine:install": "zsh scripts/env.sh zsh scripts/engine.sh install",
     "engine:link": "zsh scripts/env.sh zsh scripts/engine.sh link",
-    "engine:import": "zsh scripts/ui.sh && zsh scripts/env.sh surfer import",
+    "engine:import": "zsh scripts/ui.sh && zsh scripts/engine.sh prune && zsh scripts/env.sh surfer import",
     "engine:bootstrap": "zsh scripts/env.sh zsh -c 'cd engine && ./mach --no-interactive bootstrap --application-choice browser'",
     "build": "zsh scripts/ui.sh && zsh scripts/env.sh surfer build",
     "build:ui": "zsh scripts/ui.sh && zsh scripts/env.sh surfer build --ui",

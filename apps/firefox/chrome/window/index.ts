@@ -10,6 +10,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 declare global {
   interface Window {
     gBrowser: any;
+    gNotificationBox: any;
     webaiosWindow?: import("./controller").WindowController;
   }
 }
@@ -34,6 +35,17 @@ window.addEventListener(
     const loaded = new Promise((r) => window.addEventListener("load", r, { once: true }));
     void Promise.all([ready, loaded]).then(([store]) => {
       window.webaiosWindow = createController(window.gBrowser, frame, store);
+      // Once per start, in the main window only: the unreadable session was kept aside.
+      if (store.setAside) {
+        void window.gNotificationBox.appendNotification(
+          "webaios-session-set-aside",
+          {
+            label: `WebAiOs repart avec une session neuve. L'ancienne est gardée dans ${store.setAside}`,
+            priority: window.gNotificationBox.PRIORITY_WARNING_HIGH,
+          },
+          [],
+        );
+      }
       // The UI reads window.webaiosWindow as it loads.
       frame.src = "chrome://browser/content/webaios/sidebar.html";
     });
