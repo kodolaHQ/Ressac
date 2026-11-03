@@ -6,7 +6,7 @@ export const ID_PROJET = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo
 export const PLAGE_DEMOS: [number, number] = [5280, 5299];
 
 export const INDISPONIBLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
-export const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site, pas sur l'accueil, la carte d'accord, une page de connexion ni en plein écran";
+export const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
 export const AVERTISSEMENT_CAPTURE_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 export const SANS_CLIENT = "Aucun Claude Code branché pour ce projet : il doit le redéclarer";
 

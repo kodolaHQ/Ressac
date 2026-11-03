@@ -8,7 +8,7 @@ import { ecrireSite, entreeAgent, etatVueSite, fenetreSite, lancer, nouvelleRaci
 /** Les hôtes de test `*.localhost` sont permis (http compris) ; jamais une vraie adresse. */
 const ENV = { WEBAIOS_TEST_ADRESSES_LOCALES: "1" };
 const BARRE = 36;
-const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site, pas sur l'accueil, la carte d'accord, une page de connexion ni en plein écran";
+const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
 const AVERTISSEMENT_CAPTURE_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 
 let serveur: Awaited<ReturnType<typeof serveurSites>>;
