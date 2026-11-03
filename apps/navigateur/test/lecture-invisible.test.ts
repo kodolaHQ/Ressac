@@ -311,6 +311,31 @@ function plusieursFenetres() {
 }
 const urls = (x: ReturnType<typeof fausseFenetre>) => x.wc.loadURL.mock.calls.map((c) => c[0]);
 
+test("deux lectures publiques en même temps ont chacune leur session ; une session rendue resert à la suivante", async () => {
+  vi.useFakeTimers();
+  const { liste, deps } = plusieursFenetres();
+  const sessions: object[] = [];
+  deps.sessionPublique = vi.fn(() => {
+    const s = { clearStorageData: async () => {}, clearCache: async () => {} };
+    sessions.push(s);
+    return s as never;
+  });
+  const ra = lirePageInvisible("https://exemple.test/a", { profil: null }, deps);
+  const rb = lirePageInvisible("https://exemple.test/b", { profil: null }, deps);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(deps.creerFenetre.mock.calls.map((c) => (c as unknown[])[0])).toEqual(sessions);
+  expect(sessions).toHaveLength(2);
+  for (const x of liste) x.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await Promise.all([ra, rb]);
+  const rc = lirePageInvisible("https://exemple.test/c", { profil: null }, deps);
+  await vi.advanceTimersByTimeAsync(0);
+  liste[2]!.wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(rc).resolves.toMatchObject({ url: "https://exemple.test/c" });
+  expect(sessions).toHaveLength(2);
+});
+
 test("lecture ménagée : une redirection vers un autre site ferme la fenêtre et rend sa place, attend changerHote, puis lit la cible dans une nouvelle fenêtre", async () => {
   vi.useFakeTimers();
   const { liste, deps, vidages } = plusieursFenetres();

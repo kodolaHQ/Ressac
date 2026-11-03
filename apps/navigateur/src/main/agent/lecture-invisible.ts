@@ -3,7 +3,10 @@ import { adresseLocale, ProfilRefuse, siteMenage, type ChangerHote, type Options
 import type { EtatNavigateur, IdProfil } from "../../commun/modele";
 import { marquerInvisible } from "../contenus-invisibles";
 
-/** Session des lectures publiques : sans `persist:`, rien n'est écrit sur le disque ; vidée avant chaque lecture. */
+/**
+ * Sessions des lectures publiques (celle-ci, puis `-2`, `-3`… s'il en faut plus à la fois) : sans `persist:`, rien
+ * n'est écrit sur le disque ; une par lecture en cours, vidée avant chaque lecture.
+ */
 export const PARTITION_PUBLIQUE = "webaios-lecture-publique";
 const DELAI_TOTAL_MS = 30_000;
 const TROP_LENTE = "Page trop lente : 30 s dépassées";
@@ -74,28 +77,30 @@ export interface DepsLecture {
   etat: () => EtatNavigateur;
   /** La session d'un profil de connexion (SessionsProfils.session), partagée avec les onglets de ce profil. */
   sessionProfil: (id: IdProfil) => Session;
-  /** Par défaut, la session `webaios-lecture-publique`. */
+  /** Crée une session publique de plus ; par défaut, `webaios-lecture-publique`, puis `-2`… Celles rendues resservent. */
   sessionPublique?: () => Session;
   /** Par défaut, une fenêtre cachée verrouillée (voir `creerFenetre`). */
   creerFenetre?: (s: Session) => BrowserWindow;
 }
 
-let publique: Session | undefined;
+let publiques = 0;
+/**
+ * Les sessions publiques libres, par fabrique : deux lectures en même temps ne se vident pas leurs cookies. Électron ne
+ * libère jamais une session : elles sont réutilisées, au plus autant que de lectures publiques à la fois.
+ */
+const libres = new WeakMap<() => Session, Session[]>();
 
-/** La session publique, verrouillée une fois : elle n'est qu'à ces lectures, tout y est refusé. */
+/** Une session publique de plus, verrouillée : elle n'est qu'à ces lectures, tout y est refusé. */
 function sessionLecturePublique(): Session {
-  if (!publique) {
-    const s = session.fromPartition(PARTITION_PUBLIQUE);
-    s.setPermissionRequestHandler((_wc, _permission, rappel) => rappel(false));
-    s.setPermissionCheckHandler(() => false);
-    s.setDevicePermissionHandler(() => false);
-    s.on("will-download", (e, item) => {
-      e.preventDefault();
-      item.cancel();
-    });
-    publique = s;
-  }
-  return publique;
+  const s = session.fromPartition(publiques++ ? `${PARTITION_PUBLIQUE}-${publiques}` : PARTITION_PUBLIQUE);
+  s.setPermissionRequestHandler((_wc, _permission, rappel) => rappel(false));
+  s.setPermissionCheckHandler(() => false);
+  s.setDevicePermissionHandler(() => false);
+  s.on("will-download", (e, item) => {
+    e.preventDefault();
+    item.cancel();
+  });
+  return s;
 }
 
 /**
@@ -191,11 +196,25 @@ interface Lecture<T> {
  * `signal` levé (l'exécution qui lit est arrêtée) : la lecture, en attente d'une place ou en cours, est abandonnée,
  * sa fenêtre fermée, et la promesse rejetée avec `signal.reason`.
  */
-async function lireFenetre<T>(
+async function lireFenetre<T>(url: string, o: OptionsLecturePage, deps: DepsLecture, lecture: Lecture<T>): Promise<T> {
+  const fabrique = deps.sessionPublique ?? sessionLecturePublique;
+  const pool = libres.get(fabrique) ?? [];
+  libres.set(fabrique, pool);
+  let prise: Session | undefined;
+  try {
+    return await chargerEtLire(url, o, deps, lecture, () => (prise ??= pool.pop() ?? fabrique()));
+  } finally {
+    if (prise) pool.push(prise);
+  }
+}
+
+/** `lireFenetre`, avec `publique` : la session publique de cette lecture, prise au premier appel. */
+async function chargerEtLire<T>(
   url: string,
   o: OptionsLecturePage,
   deps: DepsLecture,
   lecture: Lecture<T>,
+  publique: () => Session,
 ): Promise<T> {
   const { profil, domaines, signal } = o;
   const permise = (u: string) => urlPermise(u, domaines, o.adressesLocales === true);
@@ -219,7 +238,7 @@ async function lireFenetre<T>(
       signal?.throwIfAborted();
       let s: Session;
       if (profil === null) {
-        s = (deps.sessionPublique ?? sessionLecturePublique)();
+        s = publique();
         // Vidée une seule fois : après une redirection ménagée, la page cible voit les cookies posés par le
         // redirecteur, comme une redirection ordinaire.
         if (premiere) {
