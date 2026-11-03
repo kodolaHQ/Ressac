@@ -127,6 +127,8 @@ it("⌘J opens the panel and focuses the terminal", async () => {
   await waitFor(m, "return 1", () => read(input).includes(`[contexte : Page A — ${server.url}/a.html] clavier\r`));
   await pressKeys(m, "Meta+j");
   await hidden();
+  // Closed from the terminal: the keyboard goes back to the page.
+  await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
 });
 
 it("the page narrows by the panel width", async () => {

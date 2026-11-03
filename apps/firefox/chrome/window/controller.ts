@@ -53,6 +53,11 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, agentF
   const agentOpen = (state: EtatNavigateur) => !!state.fenetres.find((x) => x.id === fenetreId)?.panneauAgentOuvert;
   const showAgent = (state: EtatNavigateur) => {
     const open = agentOpen(state);
+    // Closed while the terminal had the keyboard (⌘J, ✦): it goes back to the page, or to the UI when no page shows.
+    if (!open && document.activeElement === agentFrame) {
+      if (tabs.displayed()) gBrowser.selectedBrowser.focus();
+      else frame.focus();
+    }
     agentFrame.hidden = !open;
     const width = Math.min(LARGEUR_AGENT_MAX, Math.max(LARGEUR_AGENT_MIN, state.reglages.largeurPanneauAgent));
     document.documentElement.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");

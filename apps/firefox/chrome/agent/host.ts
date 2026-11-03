@@ -70,8 +70,9 @@ export function createHost(o: {
       if (pid === proc.pid) {
         pid = null;
         current = null;
+        // Only the current host: an old one exiting late must not report a stop over its successor.
+        for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: HOST_STOPPED });
       }
-      for (const l of listeners.get(HOST_EXITED) ?? []) l({ message: HOST_STOPPED });
     });
     return { proc, rpc };
   };
