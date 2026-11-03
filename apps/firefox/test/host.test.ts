@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -128,6 +128,36 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.donnees().includes("faux agent prêt>"));
     h.rpc.notify("agent.ecrire", { fenetre: "f1", d: "bonjour\r" });
     await until(() => h.donnees().includes("bonjour"));
+  });
+
+  it("a repeat demarrer with the same profile keeps the noyau and its sessions", async () => {
+    const h = startHost();
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    const mcp = readFileSync(join(h.racine, ".webaios", "mcp.json"), "utf8");
+    const arrets = readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8"); // start-up orphan sweep only
+    expect(await h.rpc.request("demarrer", { profilAgent: "claude" })).toEqual({ agent: expect.any(String) });
+    expect(readFileSync(join(h.racine, ".webaios", "mcp.json"), "utf8")).toBe(mcp);
+    h.rpc.notify("agent.ecrire", { fenetre: "f1", d: "encore\r" });
+    await until(() => h.donnees().includes("encore"));
+    expect(readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8")).toBe(arrets);
+  });
+
+  it("demarrer with another profile restarts the sessions", async () => {
+    const h = startHost();
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    const profils = join(h.racine, ".webaios", "profils");
+    writeFileSync(join(profils, "autre.json"), readFileSync(join(profils, "claude.json"), "utf8").replace('"id": "claude"', '"id": "autre"'));
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    const arrets = join(h.racine, "faux-docker-arrets.log");
+    const avant = readFileSync(arrets, "utf8");
+    h.etats.length = 0;
+    await h.rpc.request("demarrer", { profilAgent: "autre" });
+    await until(() => h.etats.some((e) => (e as { etat: string }).etat === "actif"));
+    // The old session was stopped in the container.
+    await until(() => readFileSync(arrets, "utf8").slice(avant.length).includes("webaios-session-"));
   });
 
   it("docker absent → etat docker-absent", async () => {

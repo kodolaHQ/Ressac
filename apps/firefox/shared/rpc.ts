@@ -39,7 +39,13 @@ export function createRpc(o: { send(line: string): void; handlers: Record<string
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       // Own enumerable properties carry the error's fields (OngletIntrouvable.id, ProfilRefuse.profil…).
-      send({ id, error: { code: -32000, message: err.message, data: { ...err, name: err.name } } });
+      const error = { code: -32000, message: err.message };
+      try {
+        send({ id, error: { ...error, data: { ...err, name: err.name } } });
+      } catch {
+        // A property JSON cannot encode (cycle, BigInt): the name alone still reaches the requester.
+        send({ id, error: { ...error, data: { name: err.name } } });
+      }
     } finally {
       running.delete(id);
     }

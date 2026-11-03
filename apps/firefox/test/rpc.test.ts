@@ -27,6 +27,17 @@ describe("rpc", () => {
     expect(e).toMatchObject({ name: "OngletIntrouvable", id: "t9", message: "Onglet introuvable : t9" });
   });
 
+  it("an error with a non-serializable property still reaches the requester", async () => {
+    const { a } = pair({
+      read: () => {
+        const e = Object.assign(new Error("boom"), { name: "Circular" }) as Error & { self?: unknown };
+        e.self = e;
+        throw e;
+      },
+    });
+    await expect(a.request("read")).rejects.toMatchObject({ message: "boom", name: "Circular" });
+  });
+
   it("unknown method", async () => {
     const { a, sent } = pair({});
     await expect(a.request("nope")).rejects.toThrow();

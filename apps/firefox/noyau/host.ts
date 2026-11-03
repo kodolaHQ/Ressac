@@ -83,6 +83,17 @@ const demarrer = async () => {
   return { agent: n.agent };
 };
 
+let profil: string | null = null;
+// Another profile: a new noyau (command, MCP config) and a new agent in every panel. Never two noyaux at once:
+// two MCP servers would write the same mcp.json.
+const changerProfil = (profilAgent: string) => {
+  const relancer = profil !== null;
+  profil = profilAgent;
+  pret = pret.then(arreterNoyau).then(() => lancerNoyau(profilAgent));
+  if (relancer) void sessions.relancerTout();
+  return demarrer();
+};
+
 let stopping: Promise<void> | undefined;
 const arreter = () =>
   (stopping ??= (async () => {
@@ -109,17 +120,12 @@ const sessions = new SessionsAgent({
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
-    // Called twice, the previous noyau is stopped first: never two MCP servers writing the same mcp.json.
-    demarrer: (p: { profilAgent: string }) => {
-      pret = pret.then(arreterNoyau).then(() => lancerNoyau(p.profilAgent));
-      return demarrer();
+    // Repeated with the same profile: the running noyau stays (its sessions with it); a failed start is retried.
+    demarrer: async (p: { profilAgent: string }) => {
+      if (profil === p.profilAgent && (await pret)) return demarrer();
+      return changerProfil(p.profilAgent);
     },
-    // Another profile: a new noyau (command, MCP config) and a new agent in every panel.
-    changerProfil: (p: { profilAgent: string }) => {
-      pret = pret.then(arreterNoyau).then(() => lancerNoyau(p.profilAgent));
-      void sessions.relancerTout();
-      return demarrer();
-    },
+    changerProfil: (p: { profilAgent: string }) => changerProfil(p.profilAgent),
     "agent.demarrer": (p: { fenetre: string; taille: TailleTerminal }) => sessions.demarrer(p.fenetre, p.taille),
     "agent.profils": async () => {
       try {
@@ -130,9 +136,12 @@ const rpc = createRpc({
     },
     "acces.etat": etatAcces,
     arreter: async () => {
-      await arreter();
-      // Exit once the answer is flushed: stdout is an asynchronous pipe on macOS.
-      setImmediate(() => writeStdout("", () => process.exit(0)));
+      try {
+        await arreter();
+      } finally {
+        // Exit once the answer (or the error) is flushed: stdout is an asynchronous pipe on macOS.
+        setImmediate(() => writeStdout("", () => process.exit(0)));
+      }
     },
     "agent.ecrire": (p: { fenetre: string; d: string }) => sessions.ecrire(p.fenetre, p.d),
     "agent.redimensionner": (p: { fenetre: string; taille: TailleTerminal }) => sessions.redimensionner(p.fenetre, p.taille),
