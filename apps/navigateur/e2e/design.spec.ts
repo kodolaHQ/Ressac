@@ -598,7 +598,7 @@ test("réussite de la spec : remarques sur l'appli inscription, envoi, modificat
     await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
     await expect(terminal(fenetre)).toContainText("faux agent prêt>");
     await expect.poll(() => entreeAgent(racine)).toContain(`1) "input#email.champ" : « refuser une adresse sans domaine »`);
-    expect(entreeAgent(racine)).toContain("2) button#envoyer");
+    expect(entreeAgent(racine)).toContain(`2) "button#envoyer"`);
     expect(entreeAgent(racine)).toMatch(/\/workspace\/\.webaios\/remarques\/app-inscription\/\d{8}T\d{6}Z-[0-9a-f]{4}\/lot\.json/);
     await new Promise((r) => setTimeout(r, 300));
     expect(entreeAgent(racine)).not.toContain("\r");
@@ -620,7 +620,7 @@ test("réussite de la spec : remarques sur l'appli inscription, envoi, modificat
     await formulaire.locator("textarea").fill("garder le mot Envoyer");
     await formulaire.getByRole("button", { name: "Commenter" }).click();
     await page.getByTestId("envoyer-commentaires").click();
-    await expect.poll(() => entreeAgent(racine)).toContain("serveur.mjs:");
+    await expect.poll(() => entreeAgent(racine)).toContain(`"serveur.mjs":`);
     expect(entreeAgent(racine)).toContain("« garder le mot Envoyer »");
     await expect(page.getByTestId("commentaire")).toContainText("envoyé");
     await page.getByTestId("marquer-relu").click();
