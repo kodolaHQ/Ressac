@@ -296,9 +296,14 @@ function readIn<T>(
         } else if (state & L.STATE_STOP) {
           loading = false;
           // NS_BINDING_ABORTED: a navigation replaced by another (script redirect, meta refresh), not a failure.
-          if (!Components.isSuccessCode(status) && status !== Cr.NS_BINDING_ABORTED)
+          // NS_ERROR_WONT_HANDLE_CONTENT: a download refused (WebAiOsReadingChild), e.g. a link with `download`; the page
+          // already shown stays and is read. With nothing shown yet, the read itself was the download: it fails.
+          // Not in Cr: compared by name.
+          const refused = ChromeUtils.getXPCOMErrorName(status) === "NS_ERROR_WONT_HANDLE_CONTENT" && current() !== "about:blank";
+          if (!Components.isSuccessCode(status) && status !== Cr.NS_BINDING_ABORTED && !refused)
             return finish({ error: new Error(`Page non chargée : ${ChromeUtils.getXPCOMErrorName(status)}`) });
-          if (!Components.isSuccessCode(status)) return;
+          // The shown page stays: its calm, cut by this navigation's start, resumes.
+          if (!Components.isSuccessCode(status)) return void (loaded && waitCalm());
           const first = !loaded;
           loaded = true;
           // Past the forced-read time already (slow page): read as is.
