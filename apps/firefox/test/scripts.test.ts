@@ -13,7 +13,11 @@ describe("package scripts", () => {
   });
 
   it("prunes dangling links before surfer import", () => {
-    expect(scripts["engine:import"]).toMatch(/ui\.sh && zsh scripts\/engine\.sh prune && zsh scripts\/env\.sh surfer import$/);
+    expect(scripts["engine:import"]).toMatch(/ui\.sh && zsh scripts\/engine\.sh prune && zsh scripts\/env\.sh surfer set brand webaios && zsh scripts\/env\.sh surfer import$/);
+  });
+
+  it("sets the brand in every checkout before importing or building (surfer keeps it in the untracked .surfer/)", () => {
+    for (const s of ["engine:import", "build", "build:ui"]) expect(scripts[s]).toMatch(/surfer set brand webaios && zsh scripts\/env\.sh surfer (import|build)/);
   });
 });
 

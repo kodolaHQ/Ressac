@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -16,9 +16,9 @@ export interface LaunchedWebAiOs {
 }
 
 function binary(): string {
-  const app = existsSync(DIST) ? readdirSync(DIST).find((n) => n.endsWith(".app")) : undefined;
-  const file = app && path.join(DIST, app, "Contents/MacOS/webaios");
-  if (!file || !existsSync(file)) throw new Error("build missing: pnpm --filter firefox-webaios build");
+  // The same app a person launches: an unbranded build (Nightly.app) is a misconfigured checkout, not a fallback.
+  const file = path.join(DIST, "WebAiOs.app/Contents/MacOS/webaios");
+  if (!existsSync(file)) throw new Error("build missing: pnpm --filter firefox-webaios build");
   return file;
 }
 
