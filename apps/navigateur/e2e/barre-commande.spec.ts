@@ -394,3 +394,67 @@ test("sur l'accueil, un clic sur le voile rend le clavier au champ de la page vi
   await expect(fenetre.getByTestId("saisie-page-vide")).toBeFocused();
   await fermer();
 });
+
+/** Un clic dans la marge de la boîte, hors du champ et des lignes. */
+const clicMarge = (fenetre: Page) => fenetre.getByTestId("barre-commande").click({ position: { x: 3, y: 3 } });
+
+test("un clic dans la marge de la barre puis Entrée n'autorise pas la demande de l'agent dessous", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecAgentEtOnglet();
+  const lecture = lireOnglet(racine, id);
+  await expect(fenetre.getByTestId("modale-demande")).toHaveAttribute("data-armee");
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await expect(saisie).toBeFocused();
+  await clicMarge(fenetre);
+  await expect(saisie).toBeFocused();
+  await fenetre.keyboard.press("Enter");
+  expect(await enAttente(lecture)).toBe("en attente");
+  await fermer();
+});
+
+test("un clic dans la marge de la barre, Tab puis Espace n'autorisent pas la demande de l'agent dessous", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecAgentEtOnglet();
+  const lecture = lireOnglet(racine, id);
+  await expect(fenetre.getByTestId("modale-demande")).toHaveAttribute("data-armee");
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await clicMarge(fenetre);
+  await fenetre.keyboard.press("Tab");
+  await fenetre.keyboard.press("Space");
+  expect(await fenetre.evaluate(() => !!document.activeElement?.closest('[data-testid="modale-demande"]'))).toBe(false);
+  expect(await enAttente(lecture)).toBe("en attente");
+  await fermer();
+});
+
+test("barre ouverte, clavier hors du champ : Entrée et Espace n'atteignent pas la demande de l'agent dessous", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecAgentEtOnglet();
+  const lecture = lireOnglet(racine, id);
+  await expect(fenetre.getByTestId("modale-demande")).toHaveAttribute("data-armee");
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  // Le filet : même si le clavier quitte le champ, la modale cachée ne réagit pas tant que la barre est ouverte.
+  await fenetre.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (const t of ["Enter", "Space", "Enter"]) await fenetre.keyboard.press(t);
+  await expect(fenetre.getByTestId("barre-commande")).toBeVisible();
+  expect(await enAttente(lecture)).toBe("en attente");
+  await fermer();
+});
+
+test("un clic dans la marge de la barre puis Entrée ne valide pas le brouillon des réglages d'espace dessous", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  const boutonsEspace = fenetre.locator('[data-testid^="espace-"]');
+  const avant = await boutonsEspace.count();
+  await fenetre.getByTestId("nouvel-espace").click();
+  const modale = fenetre.getByRole("dialog", { name: "Nouvel espace" });
+  await modale.getByLabel("Nom de l'espace").fill("Jeux");
+  await modale.getByLabel("Profil de connexion").selectOption({ label: "Nouveau profil" });
+  await expect(modale.getByRole("button", { name: "Créer" })).toBeEnabled();
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await clicMarge(fenetre);
+  await fenetre.keyboard.press("Enter");
+  await fenetre.waitForTimeout(500);
+  await expect(modale).toBeVisible();
+  await expect(boutonsEspace).toHaveCount(avant);
+  await fermer();
+});

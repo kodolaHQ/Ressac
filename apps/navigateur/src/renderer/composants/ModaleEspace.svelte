@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { commande } from "./commande.svelte";
   import { onMount, untrack } from "svelte";
   import type { LigneExtensionEspace } from "../../commun/extensions";
   import type { IdFenetre, IdOnglet } from "../../commun/modele";
@@ -99,7 +100,9 @@
 
   // La page web n'a pas le focus clavier (l'aperçu le rend à l'interface) : Entrée vaut tout de suite validation.
   function clavier(e: KeyboardEvent) {
-    if (e.isComposing) return;
+    // La barre de commande ouverte par-dessus garde le clavier : la modale cachée ne réagit à rien, même si le focus a
+    // quitté le champ de la barre (ni Entrée, ni Échap avant que le panneau ⌃Tab ne prenne la main, ni Tab).
+    if (commande.ouverte || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       fermer();
@@ -124,7 +127,8 @@
 
 <svelte:window onkeydown={clavier} />
 
-<div class="modale" class:prete data-testid="modale-espace">
+<!-- Sous la barre de commande, rien de la modale ne peut prendre le focus (Tab natif depuis le corps de la page). -->
+<div class="modale" class:prete data-testid="modale-espace" inert={!!commande.ouverte}>
   <FondFige {ongletId} surPret={() => (prete = true)} />
   <div class="carte" bind:this={carte} role="dialog" aria-modal="true" aria-labelledby="titre-espace">
     <form onsubmit={valider}>

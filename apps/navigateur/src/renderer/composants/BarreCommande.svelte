@@ -196,7 +196,8 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="fond" onclick={(e) => e.target === e.currentTarget && fermerCommande(true)}>
-  <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande">
+  <!-- Un clic dans la boîte hors du champ (marge, lignes, refus) ne lui prend pas le focus ; le clic d'une ligne agit quand même. -->
+  <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => e.target !== champ && e.preventDefault()}>
     <input
       bind:this={champ}
       bind:value={texte}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { commande } from "./commande.svelte";
   import { onMount, tick, untrack } from "svelte";
   import { LONGUEUR_RAISON_DEBLOCAGE, texteDeblocageConsole } from "../../commun/extensions-messages";
   import { siteDe, type DemandeEnAttente, type IdOnglet } from "../../commun/modele";
@@ -63,7 +64,9 @@
     [...carte.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
   function clavier(e: KeyboardEvent) {
-    if (e.isComposing) return;
+    // La barre de commande ouverte par-dessus garde le clavier : la modale cachée ne réagit à rien, même si le focus a
+    // quitté le champ de la barre (ni Entrée, ni Échap avant que le panneau ⌃Tab ne prenne la main, ni Tab).
+    if (commande.ouverte || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       refuser();
@@ -90,7 +93,8 @@
 
 <svelte:window onkeydown={clavier} />
 
-<div class="modale" class:prete data-testid="modale-demande" data-armee={armee || undefined}>
+<!-- Sous la barre de commande, rien de la modale ne peut prendre le focus (Tab natif depuis le corps de la page). -->
+<div class="modale" class:prete data-testid="modale-demande" data-armee={armee || undefined} inert={!!commande.ouverte}>
   <FondFige
     {ongletId}
     surPret={() => {
