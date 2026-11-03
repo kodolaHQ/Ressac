@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { spawn } from "node:child_process";
+import dns from "node:dns";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
@@ -197,7 +198,16 @@ describe("executerWorkflow", () => {
     // Le journal global garde ce que le code écrit (stderr), comme avant les workflows.
     expect(r.journal).toContain("bonjour 2");
     expect(b.commandes[0]).toEqual(["docker", "run", "essai", b.ctx.dossierFichiers, MOTEUR]);
-    expect(b.supprimes).toEqual([]);
+    expect(b.supprimes).toEqual(["essai"]);
+  });
+
+  it("un conteneur du même nom laissé par un arrêt brutal est supprimé avant le lancement", async () => {
+    const b = await banc(chaine("a"), { "a.mjs": `export default () => 1;` });
+    const lancer = b.infra.lancer!;
+    let avant: string[] = [];
+    b.infra.lancer = (cmd, args) => ((avant = [...b.supprimes]), lancer(cmd, args));
+    await executerWorkflow(b.ctx, b.infra);
+    expect(avant).toEqual(["essai"]);
   });
 
   it("un bloc partiel donne une exécution partielle", async () => {
@@ -384,7 +394,7 @@ describe("executerWorkflow", () => {
     expect(r.execution).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
     expect(r.execution.blocs[0]!.statut).toBe("echoue");
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(0);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(b.supprimes).toEqual(["essai", "essai"]);
   });
 
   it("ProfilRefuse : surProfilRefuse appelé, arrêt PROFIL_REFUSE", async () => {
@@ -424,7 +434,7 @@ describe("executerWorkflow", () => {
     expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(r.execution.statut).toBe("accord-requis");
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(1);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(b.supprimes).toEqual(["essai", "essai"]);
   });
 
   it("lirePage avec compte et accord : le pont reçoit le profil et les domaines déclarés", async () => {
@@ -485,6 +495,19 @@ describe("executerWorkflow", () => {
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(0);
   });
 
+  it("délai dépassé : les appels à l'IA en vol sont abandonnés", async () => {
+    const b = await banc(chaine("a"), { "a.mjs": `export default (e, w) => Promise.all([w.kev("s", {}), w.gemma("p")]);` }, { delaiMs: 600 });
+    const signaux: (AbortSignal | undefined)[] = [];
+    b.infra.ia = {
+      kev: (_c, o) => (signaux.push(o?.signal), new Promise(() => {})),
+      gemma: (g) => (signaux.push(g.signal), new Promise(() => {})),
+    };
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "arret", erreur: "Délai dépassé" });
+    expect(signaux).toHaveLength(2);
+    expect(signaux.every((s) => s?.aborted)).toBe(true);
+  });
+
   it("délai dépassé : arrêt « Délai dépassé » et conteneur supprimé", async () => {
     const b = await banc(chaine("a"), { "a.mjs": `export default () => new Promise(() => {});` }, { delaiMs: 600 });
     const debut = Date.now();
@@ -494,7 +517,7 @@ describe("executerWorkflow", () => {
     expect(r.execution).toMatchObject({ statut: "echouee", erreur: "Délai dépassé", erreurNoyau: true });
     expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance"]);
     expect(b.tues).toBeGreaterThan(0);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(b.supprimes).toEqual(["essai", "essai"]);
     expect(DELAI_EXECUTION_MS).toBe(200_000);
   });
 
@@ -936,6 +959,19 @@ describe("executerWorkflow : recherche web et lectures ouvertes", () => {
     arret.abort(new Error("Exécution arrêtée"));
     await expect(p).rejects.toThrow("Exécution arrêtée");
     expect(web.requetes).toEqual(["/vers-localhost"]);
+  });
+
+  it("recuperer : un nom qui se résout vers la machine est refusé à la connexion, sans requête", async () => {
+    const web = await serveurWeb({ "/": (res) => res.end("ok") });
+    // Comme 127.0.0.1.nip.io, sans réseau : le nom passe la vérification du texte, son adresse est locale.
+    const resolution = vi.spyOn(dns, "lookup").mockImplementation(((_h: string, _o: unknown, rappel: (e: null, a: dns.LookupAddress[]) => void) =>
+      rappel(null, [{ address: "127.0.0.1", family: 4 }])) as unknown as typeof dns.lookup);
+    try {
+      await expect(recuperer(`http://piege.example:${web.port}/`, "texte", null, false)).rejects.toThrow("Adresse locale refusée");
+    } finally {
+      resolution.mockRestore();
+    }
+    expect(web.requetes).toEqual([]);
   });
 
   it("widget sans web : 150 lectures passent, aucune attente du ménagement", async () => {
@@ -1712,7 +1748,7 @@ describe("executerWorkflow : saisie, avancement, lectures et arrêt (actions)", 
     expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: ACTION_ARRETEE });
     expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
     expect(r.execution.blocs[0]!.statut).toBe("interrompu");
-    expect(b.supprimes).toEqual(["action:gitlab"]);
+    expect(b.supprimes).toEqual(["action:gitlab", "action:gitlab"]);
   });
 
   it("un signal déjà levé : rien n'est lancé, exécution interrompue", async () => {

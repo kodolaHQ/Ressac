@@ -328,6 +328,9 @@ export async function executerWorkflow(
     return conclure({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
   }
 
+  // Un conteneur du même nom laissé par un arrêt brutal ferait échouer `docker run` (125) ; les files n'en lancent
+  // qu'un par propriétaire, celui-ci ne peut donc être qu'un reste. Avant le test du signal, levé peut-être pendant.
+  await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
   // Arrêtée avant même de partir : rien n'est lancé.
   if (ctx.signal?.aborted) {
     arreteeParSignal = true;
@@ -523,12 +526,13 @@ export async function executerWorkflow(
       case "kev": {
         const corps = args(ArgsKev, a, "kev");
         if (!infra.ia) throw new Error("IA locale indisponible");
-        return infra.ia.kev(corps);
+        // Arrêt ou délai : l'appel en vol est abandonné et rend sa place à l'IA partagée.
+        return infra.ia.kev(corps, { signal: finExecution.signal });
       }
       case "gemma": {
         const g = args(ArgsGemma, a, "gemma");
         if (!infra.ia) throw new Error("IA locale indisponible");
-        return infra.ia.gemma(g);
+        return infra.ia.gemma({ ...g, signal: finExecution.signal });
       }
       default:
         throw new Error(`Fonction inconnue : ${f}`);
