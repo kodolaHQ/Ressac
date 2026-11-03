@@ -1,4 +1,5 @@
 import { createRpc, type Handler, type Rpc } from "../../shared/rpc";
+import { lineSplitter } from "./lines";
 
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
@@ -25,14 +26,11 @@ interface Running {
   rpc: Rpc;
 }
 
-/** Calls `cb` with each line of a Subprocess pipe until it ends. */
+/** Calls `cb` with each line of a Subprocess pipe until it ends. Not readString(): it gives "" for a chunk holding only part of a character. */
 async function readLines(pipe: any, cb: (line: string) => void): Promise<void> {
-  let buffer = "";
+  const push = lineSplitter(cb);
   try {
-    for (let s: string; (s = await pipe.readString()); ) {
-      buffer += s;
-      for (let i: number; (i = buffer.indexOf("\n")) >= 0; buffer = buffer.slice(i + 1)) cb(buffer.slice(0, i));
-    }
+    for (let chunk: ArrayBuffer; (chunk = await pipe.read()).byteLength; ) push(chunk);
   } catch {
     // The pipe closed with the process.
   }
@@ -43,8 +41,8 @@ export function createHost(o: {
   profilAgent: () => string;
   /** The requests the host sends to Firefox (the browser bridge). */
   handlers: Record<string, Handler>;
-  /** Each new process: what the host must know before anything else (private tabs mirror). */
-  onStart(host: AgentHost): void;
+  /** Each new process, before any other message: what the host must know first (private tabs mirror). */
+  onStart(notify: (method: string, params?: unknown) => void): void;
 }): AgentHost {
   const listeners = new Map<string, Set<(params: any) => void>>();
   // createRpc looks handlers up on each message: notifications listened to with on() are added here.
@@ -63,6 +61,7 @@ export function createHost(o: {
     const rpc = createRpc({ send: (line) => void proc.stdin.write(line + "\n").catch(() => {}), handlers });
     void readLines(proc.stdout, (l) => rpc.receive(l));
     void readLines(proc.stderr, (l) => console.warn(`[noyau] ${l}`));
+    o.onStart((method, params) => rpc.notify(method, params));
     pid = proc.pid;
     void proc.wait().then(() => {
       rpc.close(HOST_STOPPED);
@@ -94,10 +93,7 @@ export function createHost(o: {
     async ensure() {
       if (!current) {
         current = spawn();
-        current.then(
-          () => o.onStart(host),
-          () => (current = null),
-        );
+        current.catch(() => (current = null));
       }
       await host.request("demarrer", { profilAgent: o.profilAgent() });
     },

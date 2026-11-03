@@ -53,7 +53,7 @@ async function start(): Promise<WebAiOsStore> {
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
     handlers: bridgeHandlers(store),
-    onStart: (host) => sendMirror(store, host),
+    onStart: (notify) => sendMirror(store, notify),
   });
   trackState(store, agent);
   agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));

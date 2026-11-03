@@ -8,6 +8,8 @@ import type { WindowController } from "../window/controller";
 import type { AgentHost } from "./host";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
+/** As the page actor and Electron. */
+const TEXT_MAX = 100_000;
 
 /** The main WebAiOs window and its controller, if one is open (macOS keeps running without a window). */
 export function mainWindow(): { window: Window; controller: WindowController } | undefined {
@@ -75,12 +77,15 @@ export function bridgeHandlers(store: Store): Record<string, Handler> {
     },
     naviguer: ([id, url]: [string, string]) => {
       tab(id);
-      needWindow().controller.navigate(id, url);
+      needWindow().controller.navigateForAgent(id, url);
     },
     lireTexte: ([id]: [string]) =>
       outsidePrivate(id, async (browser) => {
         const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
-        return r.selection ? { texte: r.texte, selection: r.selection } : { texte: r.texte };
+        // The child runs in a web process: its answer is not trusted.
+        const texte = String(r?.texte ?? "").slice(0, TEXT_MAX);
+        const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
+        return selection ? { texte, selection } : { texte };
       }),
     capturer: ([id]: [string]) =>
       outsidePrivate(id, async (browser) => {
@@ -121,4 +126,4 @@ export function trackState(store: Store, host: AgentHost): void {
 }
 
 /** The private mirror a new host starts from. */
-export const sendMirror = (store: Store, host: AgentHost) => host.notify("prives", privateMirror(store.state));
+export const sendMirror = (store: Store, notify: (method: string, params: unknown) => void) => notify("prives", privateMirror(store.state));

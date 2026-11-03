@@ -60,6 +60,7 @@ export class TabSync {
     const state = this.store.state;
     const o = state.onglets[id];
     if (!o) throw new Error(`Onglet introuvable : ${id}`);
+    // shortcut: a XUL tab created for reading lives until its tab leaves the state (as Electron's views), upgrade when memory matters.
     if (!this.tabs.has(id)) this.create(state, o);
     const browser = this.tabs.get(id).linkedBrowser;
     // A tab just created is still on its initial about:blank, its load not started yet.

@@ -12,6 +12,11 @@ export interface WindowController {
   readonly store: WebAiOsStore;
   /** Electron's naviguer: versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(ongletId: IdOnglet | null, input: string): void;
+  /**
+   * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
+   * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}.
+   */
+  navigateForAgent(ongletId: IdOnglet, url: string): void;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(ongletId: IdOnglet): Promise<any>;
   command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
@@ -115,6 +120,14 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
       // What the user typed in the address bar: Firefox loads it with the system principal too.
       browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
       browser.focus();
+    },
+    navigateForAgent(ongletId, url) {
+      const uri = Services.io.newURI(url);
+      if (!uri.schemeIs("http") && !uri.schemeIs("https")) throw new Error(`URL refusée (http ou https uniquement) : ${url}`);
+      const tab = tabs.tab(ongletId);
+      if (!tab) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
+      const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
+      tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
     },
     ensure: (ongletId) => tabs.ensure(ongletId),
     command(ongletId, c) {

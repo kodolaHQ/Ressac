@@ -82,6 +82,15 @@ it("an agent tab sent to the background stays readable and capturable", async ()
   expect((await call("capture_ecran", { id: first })).image!.length).toBeGreaterThan(1000);
 });
 
+it("naviguer loads the agent tab and leaves the keyboard where it was", async () => {
+  const { texte: id } = await call("ouvrir_onglet", { url: `${server.url}/a.html` });
+  await loaded("/a.html");
+  await m.execute("document.getElementById('webaios-sidebar').focus()");
+  expect((await call("naviguer", { id, url: `${server.url}/b.html` })).erreur).toBe(false);
+  await loaded("/b.html");
+  expect(await m.execute("return document.activeElement?.id")).toBe("webaios-sidebar");
+});
+
 it("private space: the tab disappears from lister_onglets, lire_onglet / capture_ecran / page_courante answer TEXTE_PRIVE, ouvrir_onglet is refused", async () => {
   const { texte: id } = await call("ouvrir_onglet", { url: `${server.url}/texte.html` });
   expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
