@@ -5,8 +5,11 @@ import { join } from "node:path";
 import { cheminsEspace, ecrireExecution, idExecution, type EtatAccueil, type Execution } from "@webaios/noyau";
 import { SchemaIdExecution } from "../../src/commun/api";
 import type { EtatNavigateur } from "../../src/commun/modele";
+import { execFileSync } from "node:child_process";
 import {
   AFFICHAGE_REFUSE,
+  lireConfine,
+  lireFichierSeul,
   CSP_WIDGET,
   executionWidget,
   executionsWidget,
@@ -78,6 +81,20 @@ test("webaios-widget sert affichage.html avec la CSP sans réseau, refuse tout a
   expect((await repondreWidget(c2.widgets, "webaios-widget://x/affichage.html")).status).toBe(404);
   // Noyau pas prêt : rien n'est servi.
   expect((await repondreWidget(null, "webaios-widget://meteo/affichage.html")).status).toBe(404);
+});
+
+test("lireConfine : un tube nommé est refusé sans bloquer ; un lien posé après la vérification n'est pas suivi", async () => {
+  const racine = mkdtempSync(join(tmpdir(), "webaios-confine-"));
+  mkdirSync(join(racine, "w"));
+  execFileSync("mkfifo", [join(racine, "w", "affichage.html")]);
+  expect(await lireConfine(racine, join(racine, "w", "affichage.html"))).toBeNull();
+  const dehors = mkdtempSync(join(tmpdir(), "webaios-secret-"));
+  writeFileSync(join(dehors, "cle"), "secret");
+  symlinkSync(join(dehors, "cle"), join(racine, "w", "lien"));
+  await expect(lireFichierSeul(join(racine, "w", "lien"))).rejects.toMatchObject({ code: "ELOOP" });
+  writeFileSync(join(racine, "w", "ok.html"), "ok");
+  expect(await lireConfine(racine, join(racine, "w", "ok.html"), 1)).toBeNull();
+  expect(await lireConfine(racine, join(racine, "w", "ok.html"), 2)).toBe("ok");
 });
 
 test("webaios-widget sert un affichage refusé à la place d'un affichage avec <link>, <meta http-equiv> ou des règles de spéculation", async () => {

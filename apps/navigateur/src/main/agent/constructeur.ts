@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import {
   ACTION_INCONNUE,
@@ -24,6 +24,7 @@ import { cibleDeUrlWorkflow, type EtatNavigateur, type IdFenetre } from "../../c
 import type { Brouillon, EditionWorkflow, SelectionConstructeur } from "../../commun/api";
 import { ACTION_TOURNE_DEJA, ACTIONS_EN_ESPACE_PRIVE } from "../../commun/actions";
 import { espaceActifPrive } from "./actions";
+import { lireFichierSeul } from "./accueil";
 
 export type { SelectionConstructeur };
 
@@ -103,7 +104,9 @@ export async function lireDeclaration(chemins: CheminsEspace, id: string): Promi
   try {
     const [racine, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, "widget.json"))]);
     if (!reel.startsWith(racine + sep)) return { invalide: "widget.json sort du dossier du widget" };
-    return { declaration: DeclarationWidget.parse(JSON.parse(await readFile(reel, "utf8"))), dossier };
+    const texte = await lireFichierSeul(reel);
+    if (texte === null) return { invalide: "widget.json n'est pas un fichier" };
+    return { declaration: DeclarationWidget.parse(JSON.parse(texte)), dossier };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return { absent: true };
     return { invalide: (e as Error).message };

@@ -1,7 +1,7 @@
 import { protocol } from "electron";
-import { existsSync } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { lireExecution, listerExecutions, placerManquants, type CheminsEspace, type EtatAccueil, type Execution, type ResumeExecution } from "@webaios/noyau";
 import { SchemaIdExecution, SchemaIdWidget, SchemaPlacements, type Placement, type ProfilPourAccord, type WidgetAffiche } from "../../commun/api";
@@ -161,10 +161,24 @@ export async function lireConfine(racine: string, chemin: string, max?: number):
     const reelle = await realpath(racine);
     const [dossier, reel] = await Promise.all([realpath(join(chemin, "..")), realpath(chemin)]);
     if (!dossier.startsWith(reelle + sep) || !reel.startsWith(dossier + sep)) return null;
-    if (max !== undefined && (await stat(reel)).size > max) return null;
-    return await readFile(reel, "utf8");
+    return await lireFichierSeul(reel, max);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Le fichier `chemin` déjà vérifié, lu sans suivre de lien (un lien posé après la vérification ne mène nulle part) ni
+ * bloquer sur un tube ; null si ce n'est pas un fichier ordinaire ou s'il dépasse `max` octets. Lève si l'ouverture échoue.
+ */
+export async function lireFichierSeul(chemin: string, max?: number): Promise<string | null> {
+  const f = await open(chemin, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const s = await f.stat();
+    if (!s.isFile() || (max !== undefined && s.size > max)) return null;
+    return await f.readFile("utf8");
+  } finally {
+    await f.close();
   }
 }
 
