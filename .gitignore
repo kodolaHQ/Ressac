@@ -8,3 +8,7 @@ playwright-report/
 # Claude Code : worktrees jetables
 .claude/worktrees/
 .claude/settings.local.json
+apps/firefox/engine
+apps/firefox/.surfer/
+apps/firefox/src/browser/base/content/webaios/sidebar.js
+apps/firefox/src/browser/base/content/webaios/sidebar.css

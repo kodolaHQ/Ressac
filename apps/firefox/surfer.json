@@ -1,0 +1,31 @@
+{
+  "name": "WebAiOs",
+  "vendor": "WebAiOs",
+  "appId": "fr.webaios.navigateur",
+  "binaryName": "webaios",
+  "version": {
+    "product": "firefox",
+    "version": "159.0.1"
+  },
+  "buildOptions": {
+    "generateBranding": true
+  },
+  "addons": {},
+  "brands": {
+    "webaios": {
+      "backgroundColor": "#1e1e22",
+      "brandShorterName": "WebAiOs",
+      "brandShortName": "WebAiOs",
+      "brandFullName": "WebAiOs",
+      "release": {
+        "displayVersion": "0.1.0"
+      }
+    }
+  },
+  "license": {
+    "ignoredFiles": [
+      ".*\\.json"
+    ],
+    "licenseType": "MPL-2.0"
+  }
+}

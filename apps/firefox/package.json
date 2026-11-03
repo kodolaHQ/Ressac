@@ -1,0 +1,25 @@
+{
+  "name": "firefox-webaios",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "engine:install": "zsh scripts/env.sh zsh scripts/engine.sh install",
+    "engine:link": "zsh scripts/env.sh zsh scripts/engine.sh link",
+    "engine:import": "zsh scripts/env.sh surfer import",
+    "engine:bootstrap": "zsh scripts/env.sh zsh -c 'cd engine && ./mach --no-interactive bootstrap --application-choice browser'",
+    "build": "zsh scripts/env.sh surfer build",
+    "build:ui": "zsh scripts/env.sh surfer build --ui",
+    "test": "vitest run",
+    "e2e": "vitest run -c vitest.e2e.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@zen-browser/surfer": "1.14.9",
+    "vitest": "^5.0.5",
+    "typescript": "^7.0.2",
+    "@types/node": "^26.6.5",
+    "svelte": "^5.57.2",
+    "vite": "^8.3.5",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1"
+  }
+}
