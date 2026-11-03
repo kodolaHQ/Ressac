@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Remarques, type CheminsEspace, type Lot, type ProjetSuivi } from "@webaios/noyau";
@@ -27,7 +27,7 @@ function preparer() {
     envoyer: async (projet, lot) => void envois.push({ projet, lot }),
   });
   return {
-    service, remarques, envois,
+    service, remarques, envois, racine, projets, dossiersDesign,
     ecrire: (texte: string, nom = "a.txt") => writeFileSync(join(projets, "essai", nom), texte),
   };
 }
@@ -197,4 +197,35 @@ test("relu avec un commentaire non résolu : position gardée, ligneChangee faux
   expect(v2.commentaires.map((c) => [c.debut, c.fin, c.ligneChangee])).toEqual([[19, 20, false]]);
   await service.fichier("app-essai", v2.jeton, "a.txt");
   expect((await service.commentaires("app-essai")).map((c) => [c.debut, c.fin, c.ligneChangee])).toEqual([[19, 20, false]]);
+});
+
+test("un dossier d'appli qui est un lien symbolique (vers dehors ou dedans) : projet inconnu, aucun dépôt de relecture créé", async () => {
+  const { service, racine, projets, dossiersDesign } = preparer();
+  const dehors = join(racine, "dehors");
+  mkdirSync(dehors);
+  writeFileSync(join(dehors, "secret.txt"), "x\n");
+  symlinkSync(dehors, join(projets, "lien"));
+  symlinkSync(join(projets, "essai"), join(projets, "lien-dedans"));
+  await service.priseEnCharge(["lien", "lien-dedans"]);
+  expect(await service.ouvrir("app-lien")).toMatchObject({ etat: "indisponible", raison: "projet inconnu" });
+  expect(await service.ouvrir("app-lien-dedans")).toMatchObject({ etat: "indisponible", raison: "projet inconnu" });
+  expect(await service.projet("app-lien")).toBeNull();
+  expect(existsSync(join(dossiersDesign.prive, "relecture", "app-lien.git"))).toBe(false);
+  expect(existsSync(join(dossiersDesign.prive, "relecture", "app-lien-dedans.git"))).toBe(false);
+  // Le dossier réel reste relisible.
+  expect(await service.ouvrir("app-essai")).toMatchObject({ etat: "ok" });
+});
+
+test("le dossier des projets lui-même derrière un lien : une appli dedans reste relisible", async () => {
+  const { racine } = preparer();
+  const vrai = join(racine, "vrais-projets");
+  mkdirSync(join(vrai, "essai"), { recursive: true });
+  writeFileSync(join(vrai, "essai", "a.txt"), "un\n");
+  symlinkSync(vrai, join(racine, "projets-lien"));
+  const dossiersDesign = { remarquesEspace: join(racine, "r2"), prive: join(racine, "p2") };
+  const service = new ServiceRelecture({
+    dossiers: dossiersDesign, chemins: { projets: join(racine, "projets-lien") } as CheminsEspace, registre: () => null,
+    remarques: new Remarques({ dossiers: dossiersDesign }), envoyer: async () => undefined,
+  });
+  expect(await service.ouvrir("app-essai")).toMatchObject({ etat: "ok" });
 });

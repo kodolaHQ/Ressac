@@ -1,5 +1,5 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, realpath } from "node:fs/promises";
+import { join, sep } from "node:path";
 import {
   CommentairesRelecture,
   DepotRelecture,
@@ -89,6 +89,21 @@ export class ServiceRelecture {
     return new DepotRelecture({ depot: depotRelecture(this.o.dossiers, p), dossier, ...(this.o.git ? { git: this.o.git } : {}) });
   }
 
+  /**
+   * Le dossier d'une appli de l'agent, s'il est un vrai dossier sous le dossier des projets : jamais un lien symbolique
+   * (le conteneur écrit dans ~/WebAiOs/projets et pourrait y poser un lien vers le dossier personnel).
+   */
+  private async dossierApp(d: string): Promise<string | null> {
+    const dossier = join(this.o.chemins.projets, d);
+    try {
+      if (!(await lstat(dossier)).isDirectory()) return null;
+      const [reel, base] = await Promise.all([realpath(dossier), realpath(this.o.chemins.projets)]);
+      return reel.startsWith(base + sep) ? dossier : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** La première photo de chaque appli (une seule fois par appli), une à la fois, en tâche de fond. */
   priseEnCharge(dossiers: string[]): Promise<void> {
     const suite = this.priseEnCours.then(async () => {
@@ -96,7 +111,9 @@ export class ServiceRelecture {
         const p = `app-${d}`;
         if (!ID_PROJET.test(p)) continue;
         try {
-          await this.depot(p, join(this.o.chemins.projets, d)).assurerReference();
+          const dossier = await this.dossierApp(d);
+          if (!dossier) continue;
+          await this.depot(p, dossier).assurerReference();
         } catch (e) {
           // git absent, dossier illisible ou disparu : la page le dira à l'ouverture.
           if (!(e instanceof ErreurRelecture)) console.error(`[relecture] prise en charge de ${d} :`, e);
@@ -112,12 +129,8 @@ export class ServiceRelecture {
     if (!ID_PROJET.test(p)) return null;
     if (p.startsWith("app-")) {
       const d = p.slice(4);
-      const dossier = join(this.o.chemins.projets, d);
-      try {
-        if (!(await stat(dossier)).isDirectory()) return null;
-      } catch {
-        return null;
-      }
+      const dossier = await this.dossierApp(d);
+      if (!dossier) return null;
       const nom = (await this.o.applis?.().catch(() => []))?.find((a) => a.dossier === d)?.nom ?? d;
       return { nom, dossier };
     }
