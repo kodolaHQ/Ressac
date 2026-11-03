@@ -7,6 +7,7 @@ Deux serveurs LSP tournent via l'outil `LSP` (plugins locaux dans `.claude/marke
 - `svelte-lsp` : svelte-language-server avec son propre TypeScript 6. Ne voit que les `.svelte` ouverts.
 
 Règle :
+- **Avant de modifier une fonction, un composant ou un type exporté** → `LSP findReferences` sur sa définition (depuis un `.svelte` qui l'utilise si des appelants sont en Svelte), pour connaître tous les appelants avant d'écrire.
 - **« Qui appelle cette méthode ? » sur un nom courant** (`fermer`, `ouvrir`…) → `LSP findReferences` sur la définition. Ex. `Vues.fermer` : 3 appels exacts, contre 120 lignes pour grep `.fermer(`.
 - **Appels situés dans des `.svelte`** → lancer la requête depuis un fichier `.svelte` qui utilise le symbole, pas depuis le `.ts` de définition.
 - **Type ou nom utilisé dans plusieurs `.svelte`, chaînes, canaux IPC, points d'entrée** → grep. Le LSP en rate.
