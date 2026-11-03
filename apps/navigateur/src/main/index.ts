@@ -62,7 +62,8 @@ import { avantInstallation, idDepuisSaisie, SAISIE_INVALIDE } from "./extensions
 // Mode design et relecture (plan 17).
 import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./design/viseur";
 import { ServiceDesign } from "./design/service";
-import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
+import { choisirCibleDesign } from "./design/premier-plan";
+import { INDISPONIBLE_DESIGN_SITE, plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
 import { creerEnvoi } from "./design/envoi";
 import { demarrerExternes, raisonEchec, type ServiceExternes } from "./design/externes";
 import { ServiceRelecture } from "./design/relecture";
@@ -983,14 +984,22 @@ app.whenReady().then(async () => {
     outilsInterface: (id) => fenetres.get(id)?.webContents.toggleDevTools(),
     surApplication: (action) => (applications?.fenetres.surPremierPlan(action) || sites?.fenetres.surPremierPlan(action)) ?? false,
     design: (action) => {
-      const dossier = applications?.fenetres.dossierAuPremierPlan();
-      // Une autre fenêtre au premier plan (appli de site…) : rien, jamais l'onglet de la fenêtre principale derrière.
+      // Appli de l'agent, appli de site, petite fenêtre d'une appli de site, autre fenêtre (rien, jamais l'onglet de la
+      // fenêtre principale derrière), sinon la fenêtre principale active (spec §4.3).
       const auPremierPlan = BrowserWindow.getFocusedWindow();
-      if (!dossier && auPremierPlan && ![...fenetres.values()].includes(auPremierPlan)) return;
-      const f = dossier ? undefined : cibles.fenetreActive();
-      const cible = dossier ? ({ type: "app", dossier } as const) : f ? ({ type: "fenetre", fenetreId: f } as const) : undefined;
-      if (!cible || !design) return;
-      void (action === "basculer" ? design.basculer(cible) : design.relire(cible));
+      const choix = choisirCibleDesign({
+        appli: applications?.fenetres.dossierAuPremierPlan(),
+        site: sites?.fenetres.idAuPremierPlan(),
+        petiteDeSite: sites?.fenetres.idDePetiteAuPremierPlan(),
+        autreFenetre: !!auPremierPlan && ![...fenetres.values()].includes(auPremierPlan),
+        fenetreActive: cibles.fenetreActive(),
+      });
+      if (choix.type === "avis-site") {
+        if (action === "basculer") sites?.fenetres.avisInfo(choix.id, INDISPONIBLE_DESIGN_SITE);
+        return;
+      }
+      if (choix.type !== "cible" || !design) return;
+      void (action === "basculer" ? design.basculer(choix.cible) : design.relire(choix.cible));
     },
   };
   installerMenu(cibles);
@@ -1071,6 +1080,8 @@ app.whenReady().then(async () => {
   const diffuserDesign = () => {
     diffuser(CANAUX.designChange, null);
     diffuser(CANAUX.externesChange, null);
+    // La barre des applis de site : le bouton ✎ et le compteur de leur panier.
+    sites?.fenetres.diffuserATous(CANAUX.designChange, null);
     design?.calques.notifier();
   };
   // Les clients et projets branchés par un Claude Code : une notification à la première déclaration d'un projet.
@@ -1120,7 +1131,16 @@ app.whenReady().then(async () => {
     relire: (p, c) => {
       if (p.type !== "demo") ouvrirRelecture(c.type === "fenetre" ? c.fenetreId : undefined, p.projet, p.nom);
     },
-    envoyer: envoiLot,
+    // Avant le premier lot d'une appli de site, sa première photo de relecture (sans elle, rien à relire ensuite).
+    envoyer: async (p, lot) => {
+      if (p.type === "site") await relecture?.assurer(p.projet).catch(() => undefined);
+      await envoiLot(p, lot);
+    },
+    // Les applis de site (plan 18) : `sites` démarre plus loin, d'où ces fermetures paresseuses.
+    vueSite: (id) => sites?.fenetres.vueDesign(id) ?? null,
+    sites: async () => ((await sites?.liste()) ?? []).map(({ id, nom }) => ({ id, nom })),
+    messageSite: (id, t) => sites?.fenetres.avisInfo(id, t),
+    fermerMenuSite: async (id) => sites?.fenetres.fermerMenu(id),
   });
   // Relecture : la première photo de chaque appli au démarrage, puis à chaque changement de la liste (après 1 s de calme).
   relecture = new ServiceRelecture({
@@ -1128,14 +1148,21 @@ app.whenReady().then(async () => {
     chemins,
     registre: () => registreExternes,
     applis: async () => (await applications?.gestionnaire.liste()) ?? [],
+    sites: async () => ((await sites?.liste()) ?? []).map(({ id, nom }) => ({ id, nom })),
     remarques,
     envoyer: envoiLot,
   });
-  const prendreEnCharge = () =>
+  const prendreEnCharge = () => {
     void applications?.gestionnaire
       .liste()
       .then((l) => relecture?.priseEnCharge(l.map((a) => a.dossier)))
       .catch((e) => console.error("[relecture] prise en charge :", e));
+    // Les applis de site aussi (plan 18) : `sites` démarre plus loin, leur liste suit à chaque changement.
+    void sites
+      ?.liste()
+      .then((l) => relecture?.priseEnChargeSites(l.map((s) => s.id)))
+      .catch((e) => console.error("[relecture] prise en charge des sites :", e));
+  };
   planifierPriseEnCharge = () => {
     clearTimeout(minuteurPriseEnCharge);
     minuteurPriseEnCharge = setTimeout(prendreEnCharge, 1000);
@@ -1198,16 +1225,39 @@ app.whenReady().then(async () => {
       agent?.preRemplir(f, texte);
       cibles.raccourci(f, "agent");
     },
-    // La section « Sites » de la page Applications relit la liste.
-    diffuser: () => diffuser(CANAUX.sitesChange, null),
+    // La section « Sites » de la page Applications relit la liste ; la relecture prend la photo d'une nouvelle appli.
+    diffuser: () => {
+      diffuser(CANAUX.sitesChange, null);
+      planifierPriseEnCharge();
+    },
+    // « Relire » de la carte : la page Relecture du dossier de l'appli, sous son nom.
+    relire: (f, id) =>
+      void sites
+        ?.liste()
+        .then((l) => ouvrirRelecture(f, `site-${id}`, l.find((s) => s.id === id)?.nom ?? id))
+        .catch((e) => console.error("[relecture] relire un site :", e)),
     // L'agent perd ses outils de développement sur la fenêtre fermée ; ses cartes d'outils sur elle tombent. La carte de
     // l'appli et son accord, eux, valent pour l'appli et la conversation (rouverte, elle reste ouverte à l'agent).
     surFermee: (id) => {
       agent?.noyau()?.politique.ongletFerme(`${PREFIXE_SITE}${id}`);
       ecarterQuestionsCaduques();
+      // Son mode design s'arrête et son calque est fermé (le panier reste).
+      design?.oublier({ type: "site", id });
     },
+    // L'accueil (⌂), la carte d'accord, le plein écran d'un élément ou le menu « Extensions » arrêtent son mode design.
+    surInterruption: (id) => void design?.arreter({ type: "site", id }),
     // Supprimée : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée au même id redemande la carte).
-    surSupprimee: (id) => agent?.noyau()?.politique.retirerLectureSite(id),
+    // Son mode design, son panier, ses lots, son dépôt de relecture et ses commentaires sont effacés avec elle.
+    surSupprimee: (id) => {
+      agent?.noyau()?.politique.retirerLectureSite(id);
+      design?.oublier({ type: "site", id });
+      void remarques.oublier(`site-${id}`).catch((e) => console.error(`[design] remarques de ${id} non effacées :`, e));
+      void relecture?.effacer(`site-${id}`).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e));
+    },
+    // Le dossier est à la corbeille : la fermeture de la fenêtre a diffusé, et une prise en charge a pu photographier
+    // l'ancien dossier entre-temps. Effacée de nouveau, après elle (même file) : une appli recréée repart de sa photo.
+    apresSuppression: (id) =>
+      void relecture?.effacer(`site-${id}`).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e)),
     // Les extensions du Store activées dans l'appli (plan 16) : chargées avant sa première page, et seulement pendant
     // qu'elle est ouverte ; la vue du site est leur seul onglet ; retirées (stockage effacé) à la suppression.
     extensions: {
@@ -1221,6 +1271,11 @@ app.whenReady().then(async () => {
       },
     },
   });
+  // La première photo de relecture des applis de site déjà là (la prise en charge du démarrage les précède).
+  void sites
+    .liste()
+    .then((l) => relecture?.priseEnChargeSites(l.map((s) => s.id)))
+    .catch((e) => console.error("[relecture] prise en charge des sites :", e));
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
     (globalThis as { __webaiosErreursRetouches?: (id: string) => unknown }).__webaiosErreursRetouches = (id) => sites?.erreurs(id) ?? [];

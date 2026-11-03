@@ -1,4 +1,4 @@
-import { lstat, realpath } from "node:fs/promises";
+import { lstat, realpath, rm } from "node:fs/promises";
 import { join, sep } from "node:path";
 import {
   CommentairesRelecture,
@@ -8,6 +8,8 @@ import {
   ErreurRelecture,
   fichierCommentaires,
   ID_PROJET,
+  ID_SITE,
+  projetPourSite,
   positionNouvelle,
   REMARQUE_VIDE,
   SANS_CLIENT,
@@ -78,6 +80,8 @@ export class ServiceRelecture {
       git?: string;
       /** Les noms des applis de l'agent (leur fiche) ; le nom de dossier sinon. */
       applis?: () => Promise<{ dossier: string; nom: string }[]>;
+      /** Les noms des applis de site (leur site.json) ; leur id sinon. */
+      sites?: () => Promise<{ id: string; nom: string }[]>;
       /** Les lots des commentaires envoyés. */
       remarques: Remarques;
       /** Après l'écriture d'un lot (comme le mode design : pré-remplir la session de l'agent ; rien pour un projet externe). */
@@ -104,24 +108,82 @@ export class ServiceRelecture {
     }
   }
 
+  /**
+   * Le dossier d'une appli de site (`~/WebAiOs/sites/<id>`), s'il est un vrai dossier sous le dossier des sites :
+   * jamais un lien symbolique (l'agent écrit dans ~/WebAiOs/sites et pourrait y poser un lien vers le dossier personnel).
+   */
+  private async dossierSite(id: string): Promise<string | null> {
+    if (!ID_SITE.test(id)) return null;
+    const dossier = join(this.o.chemins.sites, id);
+    try {
+      if (!(await lstat(dossier)).isDirectory()) return null;
+      const [reel, base] = await Promise.all([realpath(dossier), realpath(this.o.chemins.sites)]);
+      return reel.startsWith(base + sep) ? dossier : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Une tâche de la file des photos (prises en charge, `assurer`, `effacer`) : une à la fois, dans l'ordre. */
+  private enFile(f: () => Promise<void>): Promise<void> {
+    const suite = this.priseEnCours.then(f);
+    this.priseEnCours = suite.catch(() => undefined);
+    return suite;
+  }
+
+  /** La première photo d'un projet dans son dossier, si elle manque ; une erreur est tue (la page la dira). */
+  private async photo(p: IdProjet, dossier: string | null): Promise<void> {
+    if (!dossier) return;
+    try {
+      await this.depot(p, dossier).assurerReference();
+    } catch (e) {
+      // git absent, dossier illisible ou disparu : la page le dira à l'ouverture.
+      if (!(e instanceof ErreurRelecture)) console.error(`[relecture] prise en charge de ${p} :`, e);
+    }
+  }
+
   /** La première photo de chaque appli (une seule fois par appli), une à la fois, en tâche de fond. */
   priseEnCharge(dossiers: string[]): Promise<void> {
-    const suite = this.priseEnCours.then(async () => {
+    return this.enFile(async () => {
       for (const d of dossiers) {
         const p = `app-${d}`;
         if (!ID_PROJET.test(p)) continue;
-        try {
-          const dossier = await this.dossierApp(d);
-          if (!dossier) continue;
-          await this.depot(p, dossier).assurerReference();
-        } catch (e) {
-          // git absent, dossier illisible ou disparu : la page le dira à l'ouverture.
-          if (!(e instanceof ErreurRelecture)) console.error(`[relecture] prise en charge de ${d} :`, e);
-        }
+        await this.photo(p, await this.dossierApp(d));
       }
     });
-    this.priseEnCours = suite.catch(() => undefined);
-    return suite;
+  }
+
+  /** La première photo de chaque appli de site, par la même file ; un id hors `ID_SITE` est ignoré. */
+  priseEnChargeSites(ids: string[]): Promise<void> {
+    return this.enFile(async () => {
+      for (const id of ids) {
+        if (!ID_SITE.test(id)) continue;
+        await this.photo(`site-${id}`, await this.dossierSite(id));
+      }
+    });
+  }
+
+  /** La première photo d'une appli de site si elle manque (avant l'envoi d'un lot), par la même file ; sans effet sinon. */
+  assurer(p: IdProjet): Promise<void> {
+    if (!ID_PROJET.test(p) || !p.startsWith("site-")) return Promise.resolve();
+    const id = p.slice(5);
+    return this.enFile(async () => this.photo(p, await this.dossierSite(id)));
+  }
+
+  /**
+   * Une appli de site supprimée : ses comparaisons et commentaires oubliés, son dépôt de relecture et son fichier de
+   * commentaires effacés. Après les photos en file (qui sinon recréeraient le dépôt), et par la file du dépôt.
+   */
+  effacer(p: IdProjet): Promise<void> {
+    if (!ID_PROJET.test(p)) return Promise.resolve();
+    this.oublier(p);
+    return this.enFile(async () => {
+      this.oublier(p);
+      await Promise.all([
+        new DepotRelecture({ depot: depotRelecture(this.o.dossiers, p), dossier: this.o.chemins.sites, ...(this.o.git ? { git: this.o.git } : {}) }).supprimer(),
+        rm(fichierCommentaires(this.o.dossiers, p), { force: true }),
+      ]);
+    });
   }
 
   /** Le nom et le dossier d'un projet relisible ; null pour une démo, un projet externe oublié ou un dossier absent. */
@@ -137,6 +199,13 @@ export class ServiceRelecture {
     if (p.startsWith("ext-")) {
       const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
       return e ? { nom: e.nom, dossier: e.dossier } : null;
+    }
+    if (p.startsWith("site-")) {
+      const id = p.slice(5);
+      const dossier = await this.dossierSite(id);
+      if (!dossier) return null;
+      const nom = (await this.o.sites?.().catch(() => []))?.find((s) => s.id === id)?.nom ?? id;
+      return { nom, dossier };
     }
     return null;
   }
@@ -237,6 +306,7 @@ export class ServiceRelecture {
     const projet = await this.projet(p);
     if (!projet) return null;
     if (p.startsWith("app-")) return { type: "app", projet: p, dossier: p.slice(4), nom: projet.nom };
+    if (p.startsWith("site-")) return projetPourSite(p.slice(5), projet.nom);
     const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
     return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
   }

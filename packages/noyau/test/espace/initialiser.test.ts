@@ -390,6 +390,13 @@ test("un AGENTS.md identique au modèle c19ad8d (avant les applis de site) est r
   }
 });
 
+test("le modèle AGENTS.md décrit les remarques du mode design des applis de site", async () => {
+  const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  for (const motif of ["Remarques du mode design", "/workspace/.webaios/remarques/site-<id>/", "MutationObserver", "site-tiers", "accueil/"]) {
+    expect(texte, motif).toContain(motif);
+  }
+});
+
 test("les site.json donnés en exemple dans AGENTS.md (YouTube, Vidola) sont valides pour le schéma des applis de site", async () => {
   const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
   const blocs = [...texte.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ nom: m[1]!, json: m[2]! }));

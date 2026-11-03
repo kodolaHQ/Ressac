@@ -567,3 +567,32 @@ export const entreeAgent = (racine: string) => {
   const f = join(racine, "faux-agent-entree.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
+
+/**
+ * En test invisible, aucune fenêtre n'a le focus de macOS : `BrowserWindow.getFocusedWindow` est remplacé dans le
+ * process principal par une fonction qui rend la fenêtre de l'appli de site `site` (`site.html?id=<site>`), comme si
+ * elle était au premier plan (⌘⇧D, ⌘R…). L'original est gardé dans `globalThis.__focusOriginal` ; `null` le remet.
+ */
+export async function simulerPremierPlan(app: ElectronApplication, site: string | null): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, site) => {
+    const g = globalThis as unknown as { __focusOriginal?: typeof BrowserWindow.getFocusedWindow };
+    g.__focusOriginal ??= BrowserWindow.getFocusedWindow;
+    if (site === null) {
+      BrowserWindow.getFocusedWindow = g.__focusOriginal;
+      return;
+    }
+    BrowserWindow.getFocusedWindow = () =>
+      BrowserWindow.getAllWindows().find((w) => {
+        if (w.isDestroyed() || w.webContents.isDestroyed()) return false;
+        const u = w.webContents.getURL();
+        return u.includes("/renderer/site.html") && new URL(u).searchParams.get("id") === site;
+      }) ?? null;
+  }, site);
+  // Electron peut refuser l'affectation : le test le saurait ici plutôt que par un ⌘⇧D sans effet.
+  const ok = await app.evaluate(({ BrowserWindow }, site) => {
+    const w = BrowserWindow.getFocusedWindow();
+    if (site === null) return true;
+    return !!w && new URL(w.webContents.getURL()).searchParams.get("id") === site;
+  }, site);
+  if (!ok) throw new Error("BrowserWindow.getFocusedWindow n'a pas pu être remplacé");
+}

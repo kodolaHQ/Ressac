@@ -157,12 +157,21 @@ export function demarrerSites(o: {
   ouvrirOnglet(url: string): void;
   /** Pré-remplit le terminal de l'agent de la fenêtre (« Modifier avec l'agent »). */
   deboguer(fenetreId: IdFenetre, texte: string): void;
+  /** « Relire » de la carte : la page Relecture du dossier de l'appli dans la fenêtre principale `fenetreId`. */
+  relire?(fenetreId: IdFenetre, id: string): void;
   /** La liste ou l'état des applis de site a changé. */
   diffuser(): void;
   /** La fenêtre de l'appli s'est fermée (l'agent perd ses outils de développement dessus, ses cartes tombent). */
   surFermee?(id: string): void;
   /** Une suppression commence : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée le redemande). */
   surSupprimee?(id: string): void;
+  /**
+   * La suppression commencée par `surSupprimee` est finie : le dossier est à la corbeille (ou y a échoué). Une photo de
+   * relecture prise entre les deux (la fermeture de la fenêtre diffuse) est effacée ici.
+   */
+  apresSuppression?(id: string): void;
+  /** Ce que montre la fenêtre de l'appli change sous le mode design (accueil, carte, plein écran, menu « Extensions »). */
+  surInterruption?(id: string): void;
   /**
    * Les extensions du Store activées dans l'appli (plan 16, `ServiceExtensions`). `ouverture` : l'appli s'ouvre, ou
    * les domaines de son site.json changent (`empreinteExtensionsSite`) ; attendue, sans limite de temps, avant la
@@ -268,6 +277,7 @@ export function demarrerSites(o: {
     surFavicon: () => o.diffuser(),
     surSuivi: (id, url) => void chercherAdresse(id, url),
     ...(o.extensions?.surVue ? { surVue: o.extensions.surVue } : {}),
+    ...(o.surInterruption ? { surInterruption: (id: string) => o.surInterruption?.(id) } : {}),
   });
 
   // La page de référence est lue par la session publique, sans profil : jamais un cookie de l'appli ni de l'utilisateur.
@@ -547,8 +557,10 @@ export function demarrerSites(o: {
     if (suppressions.has(id)) return;
     suppressions.add(id);
     suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
+    let commencee = false;
     try {
       if (!(await connue(id))) return;
+      commencee = true;
       o.surSupprimee?.(id);
       recherches.get(id)?.abort();
       notes.annulerNotes(id);
@@ -586,6 +598,7 @@ export function demarrerSites(o: {
       }
     } finally {
       suppressions.delete(id);
+      if (commencee) o.apresSuppression?.(id);
       o.diffuser();
     }
   }
@@ -679,6 +692,9 @@ export function demarrerSites(o: {
           return;
         case "supprimer":
           return supprimer(id);
+        case "relire":
+          o.relire?.(fenetreId, id);
+          return;
       }
     },
     ouvrirParId,

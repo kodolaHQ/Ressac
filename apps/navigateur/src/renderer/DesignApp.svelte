@@ -50,6 +50,7 @@
       <code class="etiquette">{contexte.etiquette}</code>
       {#if contexte.source}<span class="source">{contexte.source}</span>{/if}
     </div>
+    {#if contexte.avertissement}<p class="avertissement" data-testid="avertissement-bulle">{contexte.avertissement}</p>{/if}
     <textarea bind:this={champ} bind:value={texte} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
     {#if erreur}<p class="erreur" role="alert">{erreur}</p>{/if}
     <div class="actions">
@@ -57,6 +58,10 @@
       <button class="ajouter" onclick={() => void ajouter()}>Ajouter au panier <kbd>⌘↩</kbd></button>
     </div>
   </div>
+{:else if contexte?.mode === "message"}
+  <!-- Non interactif : seul le clic le ferme (comme la frappe suivante, côté process principal). -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+  <div class="message" data-testid="message-design" role="status" onclick={() => api.annuler()}>{contexte.message}</div>
 {:else if contexte?.mode === "panier"}
   <div class="volet">
     <PanierDesign {api} projet={contexte.projet} destination={contexte.destination} sansDestination={contexte.sansDestination} fermer={() => api.annuler()} />
@@ -71,6 +76,7 @@
   .source { color: var(--texte-doux); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   textarea { flex: 1; resize: none; box-sizing: border-box; width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--bord); background: var(--fond); color: var(--texte); font: inherit; outline: none; }
   textarea:focus { border-color: var(--accent); }
+  .avertissement { margin: 0; color: var(--texte-doux); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .erreur { margin: 0; color: var(--en-erreur); }
   .actions { display: flex; justify-content: flex-end; gap: 6px; }
   button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 5px; }
@@ -78,5 +84,6 @@
   .annuler:hover { background: var(--fond-survol); color: var(--texte); }
   .ajouter { background: var(--accent); color: #fff; font-weight: 600; }
   kbd { font: inherit; opacity: 0.8; margin-left: 4px; }
+  .message { box-sizing: border-box; height: 100%; display: flex; align-items: center; padding: 8px 12px; background: var(--fond-actif); color: var(--texte); border: 1px solid var(--bord); border-radius: 8px; font-size: 12px; line-height: 1.35; cursor: default; overflow: hidden; }
   .volet { height: 100%; border-radius: 8px; overflow: hidden; }
 </style>

@@ -371,7 +371,7 @@ export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"
 /** Une action sur une appli de site : son id suit `ID_SITE` (jamais un chemin). */
 export const SchemaActionSite = z.object({
   id: z.string().regex(ID_SITE),
-  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer"]),
+  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
 });
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
@@ -633,6 +633,17 @@ export interface ApiSite {
     /** Le process principal demande de fermer le menu (clic dans la vue du site, plein écran) ; renvoie le désabonnement. */
     surFermer(rappel: () => void): () => void;
   };
+  /**
+   * Le mode design de l'appli (plan 18), bouton ✎ et chevron de la barre : le process principal reconnaît l'appli à
+   * l'expéditeur. `surChange` écoute seulement `CANAUX.designChange` (le compteur suit), sans aucune action.
+   */
+  design: {
+    etat(): Promise<EtatDesign>;
+    basculer(): void;
+    relire(): void;
+    ouvrirPanier(): void;
+    surChange(rappel: () => void): () => void;
+  };
 }
 
 /** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */
@@ -681,12 +692,17 @@ export interface ApiDesign {
 }
 /** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
 export interface ContexteCalque {
-  mode: "bulle" | "panier";
+  /** « message » : pourquoi ⌘⇧D ne fait rien dans l'onglet (projet vide, jamais de panier). */
+  mode: "bulle" | "panier" | "message";
+  /** Le texte du mode « message » ; null ailleurs. */
+  message: string | null;
   projet: IdProjet;
   etiquette: string;
   source: string | null;
   destination: string | null;
   sansDestination: string | null;
+  /** Bulle d'une appli de site : ce qui ira à l'agent (extrait, capture) ; null ailleurs. */
+  avertissement: string | null;
 }
 /** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
 export type ApiCalque = {

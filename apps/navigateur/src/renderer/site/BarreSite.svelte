@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icone from "../composants/Icone.svelte";
+  import BoutonDesignSite from "./BoutonDesignSite.svelte";
   import BoutonsExtensionsSite from "./BoutonsExtensionsSite.svelte";
   import MenuExtensionsSite from "./MenuExtensionsSite.svelte";
   import { HAUTEUR_BARRE_SITE, CHERCHER_ADRESSE, lienBloque, OUVRIR_DANS_UN_ONGLET, type EtatFenetreSite } from "../../commun/sites";
@@ -9,6 +10,8 @@
   /** macOS : les boutons de la fenêtre sont dans la barre, à gauche. */
   const mac = navigator.userAgent.includes("Mac");
   const surSite = $derived(etat.vue === "site");
+  /** Le chevron du mode design déplie ses entrées à la place du titre. */
+  let menuDesign = $state(false);
 </script>
 
 <!-- Le fond se glisse (déplace la fenêtre) ; chaque bouton et la mention sont cliquables (no-drag). -->
@@ -22,14 +25,16 @@
     <button data-testid="site-recharger" aria-label="Recharger" disabled={!surSite} onclick={() => api.recharger()}><Icone nom="recharger" /></button>
   </nav>
   <div class="titre">
-    <span data-testid="site-nom" class="nom">{etat.nom}</span>
-    <span data-testid="site-domaine" class="domaine">{etat.domaine}</span>
+    {#if !menuDesign}
+      <span data-testid="site-nom" class="nom">{etat.nom}</span>
+      <span data-testid="site-domaine" class="domaine">{etat.domaine}</span>
+    {/if}
   </div>
   {#if etat.suivi && surSite}
     <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{CHERCHER_ADRESSE}</button>
   {/if}
   {#if etat.avis}
-    <div data-testid="site-avis" class="avis" role="status">
+    <div data-testid="site-avis" class="avis" data-genre={etat.avis.genre} role="status">
       {#if etat.avis.genre === "lien-bloque"}
         <span>{lienBloque(etat.avis.domaine)}</span>
         <button data-testid="site-ouvrir-onglet" onclick={() => api.ouvrirBloque()}>{OUVRIR_DANS_UN_ONGLET}</button>
@@ -38,8 +43,10 @@
       {/if}
     </div>
   {/if}
-  <!-- À droite : les boutons des extensions actives (vue « site » seulement), puis le menu « Extensions » (toutes vues). -->
+  <!-- À droite : le mode design (toutes vues), les boutons des extensions actives (vue « site » seulement), puis le menu
+       « Extensions » (toutes vues). -->
   <div class="extensions">
+    <BoutonDesignSite {api} {etat} bind:menuOuvert={menuDesign} />
     <BoutonsExtensionsSite {api} {surSite} />
     <MenuExtensionsSite {api} />
   </div>
@@ -60,6 +67,8 @@
   .chercher:disabled { opacity: 0.5; }
   .chercher:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
   .avis { display: flex; align-items: center; gap: 8px; flex: none; max-width: 60%; padding: 3px 4px 3px 10px; border-radius: 6px; background: var(--attention-fond); color: var(--texte); font-size: 12px; -webkit-app-region: no-drag; }
+  /* Une mention passagère (info) : sans fond d'alerte. */
+  .avis[data-genre="info"] { background: none; color: var(--texte-doux); }
   .avis span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .avis button { all: unset; padding: 2px 8px; border-radius: 5px; background: var(--fond-actif); color: var(--texte); white-space: nowrap; -webkit-app-region: no-drag; }
   .avis button:hover { background: var(--fond-survol); }
