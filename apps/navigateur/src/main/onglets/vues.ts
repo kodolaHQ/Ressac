@@ -327,6 +327,7 @@ export class GestionnaireVues {
     const minuterie = setTimeout(retirer, 5000);
     const fini = () => {
       clearTimeout(minuterie);
+      this.abandons.delete(wc); // sans beforeunload, will-prevent-unload ne vient jamais la retirer
       retirer();
     };
     wc.once("destroyed", fini);
