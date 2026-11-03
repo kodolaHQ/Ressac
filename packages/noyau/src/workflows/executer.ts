@@ -523,12 +523,13 @@ export async function executerWorkflow(
       case "kev": {
         const corps = args(ArgsKev, a, "kev");
         if (!infra.ia) throw new Error("IA locale indisponible");
-        return infra.ia.kev(corps);
+        // Arrêt ou délai : l'appel en vol est abandonné et rend sa place à l'IA partagée.
+        return infra.ia.kev(corps, { signal: finExecution.signal });
       }
       case "gemma": {
         const g = args(ArgsGemma, a, "gemma");
         if (!infra.ia) throw new Error("IA locale indisponible");
-        return infra.ia.gemma(g);
+        return infra.ia.gemma({ ...g, signal: finExecution.signal });
       }
       default:
         throw new Error(`Fonction inconnue : ${f}`);

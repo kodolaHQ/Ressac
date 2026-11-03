@@ -486,6 +486,19 @@ describe("executerWorkflow", () => {
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(0);
   });
 
+  it("délai dépassé : les appels à l'IA en vol sont abandonnés", async () => {
+    const b = await banc(chaine("a"), { "a.mjs": `export default (e, w) => Promise.all([w.kev("s", {}), w.gemma("p")]);` }, { delaiMs: 600 });
+    const signaux: (AbortSignal | undefined)[] = [];
+    b.infra.ia = {
+      kev: (_c, o) => (signaux.push(o?.signal), new Promise(() => {})),
+      gemma: (g) => (signaux.push(g.signal), new Promise(() => {})),
+    };
+    const r = await executerWorkflow(b.ctx, b.infra);
+    expect(r.issue).toMatchObject({ t: "arret", erreur: "Délai dépassé" });
+    expect(signaux).toHaveLength(2);
+    expect(signaux.every((s) => s?.aborted)).toBe(true);
+  });
+
   it("délai dépassé : arrêt « Délai dépassé » et conteneur supprimé", async () => {
     const b = await banc(chaine("a"), { "a.mjs": `export default () => new Promise(() => {});` }, { delaiMs: 600 });
     const debut = Date.now();
