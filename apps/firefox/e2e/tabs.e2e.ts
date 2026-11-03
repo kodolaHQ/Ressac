@@ -191,9 +191,13 @@ describe("window controller", () => {
     const profileB = (await state(m)).espaces.find((e) => e.id === spaceB)!.profil;
     await waitTitle(await open("/lire-cookie"), "aucun");
     await waitTitle(await open("/cookie"), "cookie");
+    const containerB = await m.execute<number>("return gBrowser.selectedTab.userContextId");
+    const cookiesB = `return Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId: ${containerB} })).length`;
+    expect(await m.execute(cookiesB)).toBe(1);
     await dispatch(m, { type: "activerEspace", fenetreId, id: spaceA });
     await waitTitle(await open("/lire-cookie"), "essai=1");
     await dispatch(m, { type: "supprimerEspace", id: spaceB });
+    await waitFor(m, cookiesB, (n) => n === 0, 3_000);
     await dispatch(m, { type: "creerEspace", nom: "C", icone: "©", prive: false, profil: "nouveau", fenetreId });
     await waitTitle(await open("/lire-cookie"), "aucun");
     const names = await m.execute<string[]>(`
