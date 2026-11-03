@@ -106,6 +106,14 @@ describe("comparer et fichier", () => {
     expect(par).toEqual({ "bin.dat": "binaire", "gros.txt": "trop-gros", "long.txt": "trop-gros", "limite.txt": true });
     for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.fichier(c, n)).blocs).toEqual([]);
   });
+  test("un nom qui commence par « : » ou contient « * » passe aussi le contrôle de taille", async () => {
+    await r.assurerReference();
+    await ecrire(":gros.txt", Buffer.alloc(1048577, 97));
+    await ecrire("gr*s.txt", Buffer.alloc(1048577, 98));
+    const c = await r.comparer();
+    const par = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
+    expect(par).toEqual({ ":gros.txt": "trop-gros", "gr*s.txt": "trop-gros" });
+  });
   test("lignes(arbreCourant, chemin, 10, 12) rend ces trois lignes", async () => {
     await r.assurerReference();
     await ecrire("t.txt", numerotees(30));

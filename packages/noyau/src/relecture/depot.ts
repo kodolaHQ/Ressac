@@ -204,7 +204,7 @@ export class DepotRelecture {
       for (const [arbre, filtre] of [[relu, (c: string) => statuts.get(c) === "supprime"], [courant, (c: string) => statuts.get(c) !== "supprime"]] as const) {
         const voulus = chemins.filter(filtre);
         for (let i = 0; i < voulus.length; i += LOT_CHEMINS) {
-          const sortie = await this.g(["ls-tree", "-r", "-l", "-z", arbre, "--", ...voulus.slice(i, i + LOT_CHEMINS)]);
+          const sortie = await this.g(["ls-tree", "-r", "-l", "-z", arbre, "--", ...voulus.slice(i, i + LOT_CHEMINS).map((c) => `:(literal)${c}`)]);
           for (const ligne of sortie.split("\0")) {
             const t = ligne.indexOf("\t");
             if (t < 0) continue;
