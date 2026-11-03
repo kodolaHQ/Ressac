@@ -32,6 +32,8 @@ function fausseWc() {
     /** Comme une page qui a navigué d'elle-même (sans `loadURL`). */
     poserURL: (u: string) => void (url = u),
     navigationHistory: { canGoBack: () => false, canGoForward: () => false },
+    /** Les cadres de la page (l'accueil d'une appli, dans l'interface de sa fenêtre). */
+    mainFrame: { frames: [] as { url: string; isDestroyed: () => boolean }[] },
   };
   return wc;
 }
@@ -152,13 +154,34 @@ test("vueDesign : null quand la vue est détruite ou la fenêtre fermée", () =>
   expect(f.vueDesign("tuning")).toBeNull();
 });
 
-test("vueDesign : indisponible sur l'accueil, sur la carte d'accord, en plein écran d'un élément, sur une page de connexion, sur about:blank et \"\"", () => {
+test("vueDesign sur l'accueil : l'interface et le cadre de son accueil (pas celui d'une autre appli) ; indisponible tant que le cadre manque", () => {
+  const { f, fenetre } = ouvrirSur("https://tuning.test/x", { ...site, aAccueil: true });
+  expect(f.vueDesign("tuning")!.disponible).toBe(false);
+  const autre = { url: "webaios-site://vidola/index.html", isDestroyed: () => false };
+  const sien = { url: "webaios-site://tuning/index.html", isDestroyed: () => false };
+  fenetre.webContents.mainFrame.frames.push(autre);
+  expect(f.vueDesign("tuning")!.disponible).toBe(false);
+  fenetre.webContents.mainFrame.frames.push(sien);
+  const v = f.vueDesign("tuning")!;
+  expect(v.disponible).toBe(true);
+  expect(v.wc).toBe(fenetre.webContents);
+  expect(v.cadre).toBe(sien);
+  expect(v.url).toBe("webaios-site://tuning/index.html");
+  // Entrer dans le site depuis l'accueil interrompt le mode ; la vue du site reprend, sans cadre.
+  surInterruption.mockClear();
+  f.entrer("tuning");
+  expect(surInterruption).toHaveBeenCalledWith("tuning");
+  expect(f.vueDesign("tuning")!.cadre).toBeNull();
+});
+
+test("vueDesign : indisponible sur la carte d'accord, en plein écran d'un élément, sur une page de connexion, sur about:blank et \"\"", () => {
   // L'accueil (⌂).
   const a = ouvrirSur("https://tuning.test/x", { ...site, aAccueil: true });
   a.f.entrer("tuning");
   a.vue.poserURL("https://tuning.test/x");
   expect(a.f.vueDesign("tuning")!.disponible).toBe(true);
   a.f.accueil("tuning");
+  // Accueil affiché mais son cadre pas encore là.
   expect(a.f.vueDesign("tuning")!.disponible).toBe(false);
   a.fenetre.destroy();
 
@@ -219,8 +242,11 @@ test("vueDesign.bornes et barre : sous la barre, repoussées par le menu « Exte
   expect(f.vueDesign("tuning")!.bornes.y).toBe(0);
 });
 
-test("surInterruption : une fois pour accueil(), pour enter-html-full-screen, pour l'ouverture du menu (pas une seconde hauteur, ni 0), et quand mettreAJour passe à la carte", () => {
+test("surInterruption : une fois pour entrer() depuis l'accueil et pour accueil(), pour enter-html-full-screen, pour l'ouverture du menu (pas une seconde hauteur, ni 0), et quand mettreAJour passe à la carte", () => {
   const a = ouvrirSur("https://tuning.test/x", { ...site, aAccueil: true });
+  a.f.entrer("tuning");
+  expect(surInterruption).toHaveBeenCalledTimes(1);
+  surInterruption.mockClear();
   a.f.entrer("tuning");
   expect(surInterruption).not.toHaveBeenCalled();
   a.f.accueil("tuning");

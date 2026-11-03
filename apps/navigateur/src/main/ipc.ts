@@ -14,6 +14,7 @@ import { TEXTE_REMARQUE_MAX, type ContexteCalque, type ElementAffiche, type Etat
 import type { Commentaire, DiffFichier, VueRelecture } from "../commun/api";
 import type { CibleDesign } from "./design/service";
 import { JETON_RELECTURE } from "./design/relecture";
+import { resultatViseurCadre } from "./design/viseur";
 
 /** Les boutons de la barre d'une fenêtre d'appli de site. */
 export type GesteSite = "entrer" | "accueil" | "precedent" | "suivant" | "recharger" | "ouvrirBloque" | "chercherAdresse";
@@ -476,6 +477,8 @@ export function brancherIpc(g: Gestionnaires): void {
     const id = gesteAccueilDuCadre(e.senderFrame, e.sender.mainFrame, g.site.idDe(e.sender));
     if (id) g.site.gesteAccueil(id);
   });
+  // Le résultat du viseur dans le cadre de l'accueil : retenu seulement s'il vient du cadre où il a été lancé.
+  ipcMain.on(CANAUX.designViseurResultat, (e, jeton: unknown, r: unknown) => resultatViseurCadre(e.senderFrame, jeton, r));
   ipcMain.handle(CANAUX.siteAccueilImage, (e, url: unknown) => {
     const id = siteDe(e);
     if (!id) throw new Error("expéditeur inconnu");

@@ -89,7 +89,7 @@ describe("projet de site", () => {
     expect(projetPourSite("tuning", "Tuning")).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });
     expect(destinationDe(projetPourSite("tuning", "Tuning"), [])).toEqual({ libelle: "l'agent" });
     expect(INDISPONIBLE_DESIGN).toBe("Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code");
-    expect(INDISPONIBLE_DESIGN_SITE).toBe("Le mode design marche dans les pages du site, pas sur l'accueil, la carte d'accord, une page de connexion ni en plein écran");
+    expect(INDISPONIBLE_DESIGN_SITE).toBe("Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran");
     expect(AVERTISSEMENT_CAPTURE_SITE).toBe("L'extrait et la capture de cet élément iront à l'agent.");
   });
 });

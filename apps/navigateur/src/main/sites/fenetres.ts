@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView, type Rectangle, type WebContents } from "electron";
+import { BrowserWindow, WebContentsView, type Rectangle, type WebContents, type WebFrameMain } from "electron";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { adresseRelative, droitsDe, empreinteLectureSite, hoteDansSite, type DeclarationSite } from "@webaios/noyau";
@@ -9,6 +9,7 @@ import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
 import type { MemoireApplications } from "../applications/service";
 import { decisionNavigation, decisionOuverture, erreurDeReseau, type ContexteNavigation } from "./navigation";
+import { accueilSiteDuCadre } from "./cadre-accueil";
 import { ajouterConsoleRetouche } from "./injection";
 import { preferencesSite, sessionSite } from "./session";
 
@@ -38,7 +39,10 @@ export const DELAI_FERMETURE_MENU_MS = 500;
  * « site », hors plein écran d'un élément, sur une page des domaines de l'appli qui n'est pas une page de connexion.
  */
 export interface VueDesignSite {
+  /** La vue du site, ou l'interface de la fenêtre quand l'accueil est affiché. */
   wc: WebContents;
+  /** Le cadre de l'accueil quand il est affiché (le viseur y passe par le preload), sinon null. */
+  cadre: WebFrameMain | null;
   bornes: Rectangle;
   fenetre: BrowserWindow;
   url: string;
@@ -202,8 +206,8 @@ export class FenetresSites {
        */
       surVue?: (id: string, quoi: "creee" | "detruite", wc: WebContents, fenetre: BrowserWindow) => void;
       /**
-       * Ce que montre la fenêtre change sous le mode design : l'accueil (⌂), la carte d'accord, le plein écran d'un
-       * élément, ou le menu « Extensions » qui s'ouvre. Le mode design de l'appli s'arrête.
+       * Ce que montre la fenêtre change sous le mode design : l'accueil (⌂) ou le site depuis l'accueil, la carte
+       * d'accord, le plein écran d'un élément, ou le menu « Extensions » qui s'ouvre. Le mode design de l'appli s'arrête.
        */
       surInterruption?: (id: string) => void;
     },
@@ -319,6 +323,10 @@ export class FenetresSites {
     ui.on("will-navigate", (e) => e.preventDefault());
     ui.on("will-frame-navigate", (e) => {
       if (!e.isMainFrame && !navigationCadrePermise(e.frame?.url ?? "", e.url, id)) e.preventDefault();
+    });
+    // Le cadre de l'accueil chargé : la barre relit la disponibilité du mode design (elle suit l'état diffusé).
+    ui.on("did-frame-finish-load", (_e, principal) => {
+      if (!principal && o.affichee === "accueil") this.diffuserEtat(o);
     });
     ui.setWindowOpenHandler(() => ({ action: "deny" }));
     // Comme les widgets : WebRTC (s'il échappait à la garde) ne passe que par le proxy de la session, qui ne mène nulle part.
@@ -647,7 +655,10 @@ export class FenetresSites {
         rechargee = true;
       }
     } else if (o.affichee === "accord" && !s.accordRequis) this.vueSuivante(o);
-    else if (o.affichee === "accueil" && !s.aAccueil) this.vueSuivante(o);
+    else if (o.affichee === "accueil" && !s.aAccueil) {
+      this.vueSuivante(o);
+      interrompue = true;
+    }
     this.placer(o);
     this.diffuserEtat(o);
     if (interrompue) this.interrompre(o);
@@ -724,10 +735,12 @@ export class FenetresSites {
   entrer(id: string): void {
     const o = this.ouverte(id);
     if (!o || o.affichee === "accord") return;
+    const depuisAccueil = o.affichee === "accueil";
     o.affichee = "site";
     if (!o.chargee) this.aller(id, o.site.depart);
     this.placer(o);
     this.diffuserEtat(o);
+    if (depuisAccueil) this.interrompre(o);
   }
 
   /** ⌂ : l'écran d'accueil ; la page du site reste chargée, cachée dessous. */
@@ -795,11 +808,13 @@ export class FenetresSites {
       return "en-attente";
     }
     this.aller(id, url);
-    if (o.affichee === "accueil") {
+    const depuisAccueil = o.affichee === "accueil";
+    if (depuisAccueil) {
       o.affichee = "site";
       this.placer(o);
     }
     this.diffuserEtat(o);
+    if (depuisAccueil) this.interrompre(o);
     return "charge";
   }
 
@@ -1034,17 +1049,49 @@ export class FenetresSites {
 
   // ——— Le mode design dans l'appli (plan 18) ———
 
-  /** La vue du site de l'appli ouverte pour le mode design, et s'il y est disponible ; null si elle n'est pas ouverte. */
+  /**
+   * Où viser pour le mode design dans l'appli ouverte, et s'il y est disponible ; null si elle n'est pas ouverte. Sur
+   * l'accueil : l'interface de la fenêtre et le cadre de l'accueil (`cadre`), dont les bornes exactes viennent de
+   * `bornesAccueil` ; sinon la vue du site.
+   */
   vueDesign(id: string): VueDesignSite | null {
     const o = this.ouverte(id);
     if (!o || o.vue.webContents.isDestroyed()) return null;
+    const barre = HAUTEUR_BARRE_SITE + o.panneau;
+    const cadre = o.affichee === "accueil" ? this.cadreAccueil(o) : null;
+    if (cadre) {
+      const ui = o.fenetre.webContents;
+      return { wc: ui, cadre, bornes: o.vue.getBounds(), fenetre: o.fenetre, url: cadre.url, nom: o.site.declaration.nom, barre, disponible: !o.pleinEcran };
+    }
     const wc = o.vue.webContents;
     const url = wc.getURL();
     const hote = hoteHttp(url);
     // Un domaine de l'appli qui est aussi (ou sous) un domaine de connexion : jamais de mode design sur une connexion.
     const disponible =
       o.affichee === "site" && !o.pleinEcran && this.adressePermise(id, url) && hote !== null && !hoteDansSite(hote, o.site.declaration.connexion);
-    return { wc, bornes: o.vue.getBounds(), fenetre: o.fenetre, url, nom: o.site.declaration.nom, barre: HAUTEUR_BARRE_SITE + o.panneau, disponible };
+    return { wc, cadre: null, bornes: o.vue.getBounds(), fenetre: o.fenetre, url, nom: o.site.declaration.nom, barre, disponible };
+  }
+
+  /** Le cadre de l'accueil, posé directement dans la page de la fenêtre et montrant l'accueil de cette appli ; sinon null. */
+  private cadreAccueil(o: Ouverte): WebFrameMain | null {
+    const ui = o.fenetre.webContents;
+    if (o.fenetre.isDestroyed() || ui.isDestroyed()) return null;
+    return ui.mainFrame.frames.find((f) => !f.isDestroyed() && accueilSiteDuCadre(f.url) === o.site.id) ?? null;
+  }
+
+  /** Les bornes du cadre de l'accueil dans la fenêtre (lues dans l'interface) ; null s'il n'est pas affiché. */
+  async bornesAccueil(id: string): Promise<Rectangle | null> {
+    const o = this.ouverte(id);
+    if (!o || o.affichee !== "accueil" || o.fenetre.webContents.isDestroyed()) return null;
+    try {
+      const r = (await o.fenetre.webContents.executeJavaScript(
+        `(() => { const c = document.querySelector('[data-testid="site-cadre-accueil"]'); if (!c) return null; const r = c.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })()`,
+      )) as Rectangle | null;
+      if (!r || ![r.x, r.y, r.width, r.height].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+      return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+    } catch {
+      return null;
+    }
   }
 
   /** L'appli dont la fenêtre est au premier plan, sinon undefined. */

@@ -1,5 +1,6 @@
-import type { Rectangle, WebContents } from "electron";
+import type { Rectangle, WebContents, WebFrameMain } from "electron";
 import { HTML_MAX, MARGE_CAPTURE, MONDE_VISEUR, STYLES_UTILES, TRONQUE, tronquerHtml, type ContexteDesign } from "@webaios/noyau";
+import { CANAUX } from "../../commun/canaux";
 
 export interface CaptureViseur extends Omit<ContexteDesign, "source"> {
   rect: { x: number; y: number; largeur: number; hauteur: number };
@@ -141,14 +142,64 @@ function propreCapture(v: unknown): CaptureViseur | null {
   return c as CaptureViseur;
 }
 
+/**
+ * Le cadre de l'accueil d'une appli de site. Le monde isolé d'un cadre n'est pas joignable d'ici : le code y passe par
+ * le preload du cadre (canal `designViseurCadre`), qui le lance dans `MONDE_VISEUR` et renvoie le résultat
+ * (`designViseurResultat`, reçu par `resultatViseurCadre`).
+ */
+export type CadreViseur = Pick<WebFrameMain, "send" | "executeJavaScript" | "isDestroyed" | "frameTreeNodeId">;
+
+let jetonCadre = 0;
+/** Les codes lancés dans un cadre, en attente de leur résultat, par jeton. */
+const attentesCadre = new Map<number, { cadre: number; ok: (r: unknown) => void }>();
+
+function executerDansCadre(cadre: CadreViseur, code: string): Promise<unknown> {
+  if (cadre.isDestroyed()) return Promise.resolve(null);
+  const jeton = ++jetonCadre;
+  return new Promise((ok) => {
+    attentesCadre.set(jeton, { cadre: cadre.frameTreeNodeId, ok });
+    try {
+      cadre.send(CANAUX.designViseurCadre, { jeton, monde: MONDE_VISEUR, code });
+    } catch {
+      attentesCadre.delete(jeton);
+      ok(null);
+    }
+  });
+}
+
+/** Le résultat renvoyé par le preload d'un cadre : retenu seulement s'il vient du cadre où le code a été lancé. */
+export function resultatViseurCadre(expediteur: { frameTreeNodeId: number } | null, jeton: unknown, r: unknown): void {
+  if (typeof jeton !== "number") return;
+  const a = attentesCadre.get(jeton);
+  if (!a || !expediteur || expediteur.frameTreeNodeId !== a.cadre) return;
+  attentesCadre.delete(jeton);
+  a.ok(r);
+}
+
+/** Le cadre est parti (vue changée, fenêtre fermée) : ses attentes se résolvent à null. */
+function abandonnerCadre(cadre: CadreViseur): void {
+  for (const [jeton, a] of attentesCadre) if (a.cadre === cadre.frameTreeNodeId) {
+    attentesCadre.delete(jeton);
+    a.ok(null);
+  }
+}
+
+const dansLeMonde = (wc: WebContents, cadre: CadreViseur | null, code: string): Promise<unknown> =>
+  cadre ? executerDansCadre(cadre, code) : wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code }]);
+
 const armes = new Map<WebContents, () => void>();
 
-/** Arme le viseur ; null : Échap, désarmement, navigation ou page détruite. */
-export async function armerViseur(wc: WebContents): Promise<CaptureViseur | null> {
+/**
+ * Arme le viseur dans la page de `wc`, ou dans son cadre `cadre` (l'accueil d'une appli de site) ; null : Échap,
+ * désarmement, navigation (de la page ou du cadre) ou page détruite.
+ */
+export async function armerViseur(wc: WebContents, cadre: CadreViseur | null = null): Promise<CaptureViseur | null> {
   armes.get(wc)?.();
   return new Promise<CaptureViseur | null>((resolve) => {
     let fini = false;
-    const surNavigationDetails = (details: { isMainFrame: boolean }) => { if (details.isMainFrame) clore(null); };
+    const surNavigationDetails = (details: { isMainFrame: boolean; frame?: { frameTreeNodeId: number } | null }) => {
+      if (cadre ? details.frame?.frameTreeNodeId === cadre.frameTreeNodeId : details.isMainFrame) clore(null);
+    };
     const clore = (v: CaptureViseur | null) => {
       if (fini) return;
       fini = true;
@@ -159,7 +210,8 @@ export async function armerViseur(wc: WebContents): Promise<CaptureViseur | null
         wc.off("destroyed", surMort);
       }
       // Navigation sans changement de document, ou qui n'aboutit pas : le script tourne encore, on l'arrête.
-      if (!v && !wc.isDestroyed()) void wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code: ARRET }]).catch(() => {});
+      if (!v && !wc.isDestroyed()) void dansLeMonde(wc, cadre, ARRET).catch(() => {});
+      if (!v && cadre) abandonnerCadre(cadre);
       const propre = v ? propreCapture(v) : null;
       resolve(propre ? { ...propre, html: tronquerHtml(propre.html) } : null);
     };
@@ -170,17 +222,25 @@ export async function armerViseur(wc: WebContents): Promise<CaptureViseur | null
     wc.on("render-process-gone", surMort);
     wc.on("destroyed", surMort);
     if (wc.isDestroyed()) return clore(null);
-    wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code: scriptViseur() }]).then(
+    dansLeMonde(wc, cadre, scriptViseur()).then(
       (r) => clore((r as CaptureViseur | null) ?? null),
       () => clore(null),
     );
   });
 }
 
-export async function desarmerViseur(wc: WebContents): Promise<void> {
+export async function desarmerViseur(wc: WebContents, cadre: CadreViseur | null = null): Promise<void> {
   if (wc.isDestroyed()) return;
+  // Un cadre peut déjà être retiré de la page (vue changée) : sa réponse ne viendrait jamais, on ne l'attend pas.
+  if (cadre) {
+    const annuler = armes.get(wc);
+    if (annuler) annuler();
+    else void executerDansCadre(cadre, ARRET);
+    abandonnerCadre(cadre);
+    return;
+  }
   try {
-    await wc.executeJavaScriptInIsolatedWorld(MONDE_VISEUR, [{ code: ARRET }]);
+    await dansLeMonde(wc, cadre, ARRET);
   } catch {
     // page déjà partie : rien à retirer
   }
@@ -196,8 +256,11 @@ function sourceSaine(r: unknown): ContexteDesign["source"] {
   return { fichier: o.fichier, ...(entierPositif(o.ligne) ? { ligne: o.ligne } : {}), ...(entierPositif(o.colonne) ? { colonne: o.colonne } : {}) };
 }
 
-/** Source de l'élément, lue dans le monde de la page par une expression sans effet ni global ; null si inconnue. */
-export async function lireSource(wc: WebContents, selecteur: string): Promise<ContexteDesign["source"]> {
+/**
+ * Source de l'élément, lue dans le monde de la page (ou du cadre `cadre`) par une expression sans effet ni global ; null
+ * si inconnue.
+ */
+export async function lireSource(wc: WebContents, selecteur: string, cadre: CadreViseur | null = null): Promise<ContexteDesign["source"]> {
   const code = `(() => {
     try {
       const el = document.querySelector(${JSON.stringify(selecteur)});
@@ -221,7 +284,7 @@ export async function lireSource(wc: WebContents, selecteur: string): Promise<Co
   })()`;
   try {
     const r = await Promise.race([
-      wc.executeJavaScript(code) as Promise<unknown>,
+      (cadre ? cadre.executeJavaScript(code) : wc.executeJavaScript(code)) as Promise<unknown>,
       new Promise<null>((ok) => setTimeout(() => ok(null), 1500)),
     ]);
     return sourceSaine(r);
@@ -230,19 +293,27 @@ export async function lireSource(wc: WebContents, selecteur: string): Promise<Co
   }
 }
 
-/** Rect CSS de l'élément élargi de la marge, en pixels de la vue (× zoom), borné à la vue et arrondi. */
-export function rectCapture(rect: RectCss, vue: { largeur: number; hauteur: number }, zoom: number): Rectangle {
+/**
+ * Rect CSS de l'élément élargi de la marge, en pixels de la vue (× zoom), borné à la vue et arrondi, puis décalé de
+ * `decalage` (la place d'un cadre dans sa page).
+ */
+export function rectCapture(rect: RectCss, vue: { largeur: number; hauteur: number }, zoom: number, decalage = { x: 0, y: 0 }): Rectangle {
   const gauche = Math.max(0, Math.round(rect.x * zoom - MARGE_CAPTURE));
   const haut = Math.max(0, Math.round(rect.y * zoom - MARGE_CAPTURE));
   const droite = Math.min(Math.round(vue.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + MARGE_CAPTURE));
   const bas = Math.min(Math.round(vue.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + MARGE_CAPTURE));
-  return { x: gauche, y: haut, width: Math.max(0, droite - gauche), height: Math.max(0, bas - haut) };
+  return { x: gauche + Math.round(decalage.x * zoom), y: haut + Math.round(decalage.y * zoom), width: Math.max(0, droite - gauche), height: Math.max(0, bas - haut) };
 }
 
-export async function capturerElement(wc: WebContents, rect: RectCss, vue: { largeur: number; hauteur: number }): Promise<Buffer | null> {
+export async function capturerElement(
+  wc: WebContents,
+  rect: RectCss,
+  vue: { largeur: number; hauteur: number },
+  decalage = { x: 0, y: 0 },
+): Promise<Buffer | null> {
   if (wc.isDestroyed()) return null;
   try {
-    const r = rectCapture(rect, vue, wc.getZoomFactor());
+    const r = rectCapture(rect, vue, wc.getZoomFactor(), decalage);
     if (r.width <= 0 || r.height <= 0) return null;
     const image = await wc.capturePage(r, { stayHidden: true });
     return image.isEmpty() ? null : image.toPNG();

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { injectBrowserAction } from "electron-chrome-extensions/browser-action";
 import type { ApiCalque, ApiDesign, ApiPastille, ApiSite, ApiWebaios } from "../commun/api";
 import { ARG_CALQUE, ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "../commun/canaux";
@@ -290,7 +290,23 @@ if (!cadrePrincipal && location.protocol === "webaios-site:") {
   // Écran d'accueil d'une appli de site : comme pour un widget, un vrai appui (souris, ou Entrée et Espace au clavier,
   // `isTrusted`, que le code de l'accueil ne peut pas produire) est signalé au process principal, qui seul permet alors
   // à l'accueil d'ouvrir une adresse du site. Écouté en capture, avant tout écouteur de l'accueil.
-  const signaler = () => ipcRenderer.send(CANAUX.siteAccueilGeste);
+  // Pendant le mode design (et 600 ms après une visée, le temps que le viseur avale la fin du clic), un appui ne vaut pas
+  // geste : il vise un élément, l'accueil n'en reçoit rien.
+  let visees = 0;
+  const signaler = () => visees === 0 && ipcRenderer.send(CANAUX.siteAccueilGeste);
   addEventListener("pointerdown", (e) => e.isTrusted && signaler(), true);
   addEventListener("keydown", (e) => e.isTrusted && !e.repeat && (e.key === "Enter" || e.key === " ") && signaler(), true);
+  // Le viseur du mode design : seul le process principal envoie sur ce canal (jamais l'accueil, qui ne voit pas ce monde).
+  // Le code tourne dans le monde isolé du viseur de ce cadre ; le résultat repart avec son jeton.
+  ipcRenderer.on(CANAUX.designViseurCadre, (_e, m: { jeton: number; monde: number; code: string }) => {
+    visees++;
+    window.focus();
+    void webFrame
+      .executeJavaScriptInIsolatedWorld(m.monde, [{ code: m.code }])
+      .then((r: unknown) => r ?? null, () => null)
+      .then((r) => {
+        setTimeout(() => visees--, 600);
+        ipcRenderer.send(CANAUX.designViseurResultat, m.jeton, r);
+      });
+  });
 }

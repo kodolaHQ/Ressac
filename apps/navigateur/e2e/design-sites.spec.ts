@@ -8,7 +8,7 @@ import { ecrireSite, entreeAgent, etatVueSite, fenetreSite, lancer, nouvelleRaci
 /** Les hôtes de test `*.localhost` sont permis (http compris) ; jamais une vraie adresse. */
 const ENV = { WEBAIOS_TEST_ADRESSES_LOCALES: "1" };
 const BARRE = 36;
-const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site, pas sur l'accueil, la carte d'accord, une page de connexion ni en plein écran";
+const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
 const AVERTISSEMENT_CAPTURE_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 
 let serveur: Awaited<ReturnType<typeof serveurSites>>;
@@ -46,7 +46,7 @@ async function demarrer() {
   ecrireSite(racine, "tuning", { declaration: declarationTuning(), fichiers: { "retouches/tuning.css": "/* rien */" } });
   ecrireSite(racine, "avec-accueil", {
     declaration: { nom: "Avec accueil", adresse: serveur.url("tuning-a.localhost", "/"), domaines: ["tuning-a.localhost"], connexion: ["compte-tuning.localhost"] },
-    fichiers: { "accueil/index.html": "<!doctype html><title>Accueil</title>" },
+    fichiers: { "accueil/index.html": '<!doctype html><title>Accueil</title><h1 id="titre">Bienvenue</h1><p class="intro">Reprendre la série</p>' },
   });
   ecrireSite(racine, "sans-accord", { declaration: { ...declarationTuning(), nom: "Sans accord" }, fichiers: { "retouches/tuning.css": "/* rien */" } });
   const l = await lancer({ env: ENV, racine });
@@ -246,16 +246,62 @@ async function verifierIndisponible(app: ElectronApplication, page: Page, id: st
   expect(await viseursSiChargee(app, id)).toBe(0);
 }
 
-test("indisponible sur l'accueil (le message s'efface après 5 s) et sur la carte d'accord ; ⌂ arrête le mode", async () => {
+/** Le cadre de l'accueil dans l'interface de la fenêtre de l'appli. */
+const cadreAccueil = (page: Page) => page.frameLocator('[data-testid="site-cadre-accueil"]');
+const viseursAccueil = (page: Page) => cadreAccueil(page).locator("webaios-viseur").count();
+
+test("accueil : ⌘⇧D vise dans son cadre, bulle sans avertissement, « Entrer dans le site » arrête le mode ; l'envoi marque la remarque [accueil]", async () => {
+  const { app, fenetre, racine, fermer } = await demarrer();
+  try {
+    await ouvrirSite(fenetre, "avec-accueil");
+    const accueil = await fenetreSite(app, "avec-accueil");
+    await expect(cadreAccueil(accueil).locator("#titre")).toHaveText("Bienvenue");
+    await expect(accueil.getByTestId("site-bouton-design")).toBeEnabled();
+    await modeDesign(app, "avec-accueil");
+    await expect(accueil.getByTestId("site-bouton-design")).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => viseursAccueil(accueil)).toBe(1);
+    // Rien d'injecté dans la vue du site, cachée dessous.
+    expect(await viseursSiChargee(app, "avec-accueil")).toBe(0);
+    await cadreAccueil(accueil).locator("#titre").click();
+    const calque = await calqueSite(app, "avec-accueil");
+    const bulle = calque.getByTestId("bulle-design");
+    await expect(bulle).toContainText("h1#titre");
+    await expect(calque.getByTestId("avertissement-bulle")).toHaveCount(0);
+    expect((await bornesCalque(app, "avec-accueil"))!.y).toBeGreaterThanOrEqual(BARRE);
+    await bulle.locator("textarea").fill("Titre plus gros");
+    await bulle.locator("textarea").press("Meta+Enter");
+    await expect(accueil.getByTestId("site-compteur-panier")).toHaveText("1");
+    await expect.poll(() => viseursAccueil(accueil)).toBe(1);
+    // « Entrer dans le site » : la vue change, le mode s'arrête, le viseur est retiré.
+    await accueil.getByTestId("site-entrer").click();
+    await expect(accueil.getByTestId("site-bouton-design")).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(async () => (await etatVueSite(app, "avec-accueil"))?.url).toBe(serveur.url("tuning-a.localhost", "/"));
+    // L'envoi : le texte pré-rempli renvoie à accueil/ et marque la remarque.
+    await accueil.getByTestId("site-menu-design").click();
+    await accueil.getByTestId("site-menu-design-panier").click();
+    await calque.getByTestId("envoyer-remarques").click();
+    await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+    await expect.poll(() => entreeAgent(racine)).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans accueil/");
+    expect(entreeAgent(racine)).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
+    const dossier = join(racine, ".webaios", "remarques", "site-avec-accueil");
+    const [lot] = readdirSync(dossier).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
+    const contenu = JSON.parse(readFileSync(join(dossier, lot!, "lot.json"), "utf8"));
+    expect(contenu.elements[0].contexte.adresse).toBe("webaios-site://avec-accueil/index.html");
+    // La capture de l'élément est prise dans l'interface, à la place du cadre.
+    expect(readdirSync(join(dossier, lot!)).filter((n) => n.endsWith(".png"))).toHaveLength(1);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("indisponible sur la carte d'accord (le message s'efface après 5 s) ; ⌂ arrête le mode", async () => {
   const { app, fenetre, fermer } = await demarrer();
   try {
-    // (a) avec-accueil sur son accueil.
+    // (a) avec-accueil : le site ouvert depuis l'accueil, mode lancé, puis ⌂ : le mode s'arrête.
     await ouvrirSite(fenetre, "avec-accueil");
     const accueil = await fenetreSite(app, "avec-accueil");
     await expect(accueil.getByTestId("site-entrer")).toBeVisible();
-    await verifierIndisponible(app, accueil, "avec-accueil");
-    await expect(accueil.getByTestId("site-avis")).toHaveCount(0, { timeout: 7000 });
-    // Le site ouvert depuis l'accueil, mode lancé, puis ⌂ : le mode s'arrête.
     await accueil.getByTestId("site-entrer").click();
     await expect.poll(async () => (await etatVueSite(app, "avec-accueil"))?.url).toBe(serveur.url("tuning-a.localhost", "/"));
     await expect.poll(() => vueSite(app, "avec-accueil", "document.readyState")).toBe("complete");
@@ -270,6 +316,7 @@ test("indisponible sur l'accueil (le message s'efface après 5 s) et sur la cart
     const carte = await fenetreSite(app, "sans-accord");
     await expect(carte.getByTestId("carte-accord-site")).toBeVisible();
     await verifierIndisponible(app, carte, "sans-accord");
+    await expect(carte.getByTestId("site-avis")).toHaveCount(0, { timeout: 7000 });
     await aucuneFenetreVisible(app);
   } finally {
     await fermer();
