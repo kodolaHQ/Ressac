@@ -45,30 +45,40 @@ const cardText = () => waitUi<string>(m, `return doc.querySelector(${JSON.string
 const cardGone = () => waitUi(m, `return !doc.querySelector(${JSON.stringify(CARD)})`);
 const answer = (button: "Refuser" | "Autoriser une fois") => click(m, `${CARD} button`, { text: button });
 
-it("Refuser: the agent gets the refusal", async () => {
+it("Refuser: the agent gets the refusal, and the page gets the keyboard back", async () => {
   const id = await openTab("/a.html");
+  await m.execute("gBrowser.selectedBrowser.focus()");
   const reading = call("lire_onglet", { id });
   expect(await cardText()).toContain("L'agent veut lire l'onglet « Page A »");
   await answer("Refuser");
   expect((await reading).texte).toBe(REFUSED);
   await cardGone();
+  await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
 });
 
-it("the card covers the whole window, agent panel included", async () => {
+it("the card covers the whole window, agent panel included, and gives the terminal the keyboard back", async () => {
   const id = await openTab("/a.html");
   // The panel opened on another tab: only that one is shared with the agent.
   await openTab("/b.html");
   if (!(await state(m)).fenetres[0]!.panneauAgentOuvert) await dispatch(m, { type: "basculerPanneauAgent", fenetreId: (await state(m)).fenetres[0]!.id });
   await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v > 0);
+  await m.execute("document.getElementById('webaios-agent').focus()");
+  expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
   const reading = call("lire_onglet", { id });
   await cardText();
-  const sizes = await m.execute<{ frame: number; window: number }>(
-    "return { frame: document.getElementById('webaios-sidebar').getBoundingClientRect().width, window: window.innerWidth };",
+  const sizes = await m.execute<{ frame: number; window: number; over: string }>(
+    `return {
+      frame: document.getElementById('webaios-sidebar').getBoundingClientRect().width,
+      window: window.innerWidth,
+      over: document.elementFromPoint(innerWidth - 10, innerHeight / 2)?.id,
+    };`,
   );
   expect(sizes.frame).toBe(sizes.window);
+  expect(sizes.over).toBe("webaios-sidebar");
   await answer("Refuser");
   await reading;
   await cardGone();
+  await waitFor(m, "return document.activeElement?.id", (v) => v === "webaios-agent");
 });
 
 it("Autoriser une fois: the page is read and the question does not come back for the same site", async () => {

@@ -27,6 +27,11 @@ export interface WindowController {
    * the window left of the agent panel (true: empty and internal pages) or only its 240 px column (false).
    */
   setFullWindow(full: boolean | "window"): void;
+  /**
+   * Notes whether the terminal or the page has the keyboard (an agent card is about to take it) and returns what gives
+   * it back: the UI document only knows its own focus, which is its body in both cases.
+   */
+  rememberFocus(): () => void;
   /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
   setAgentWidth(px: number): void;
   /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
@@ -188,6 +193,13 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, agentF
     setFullWindow(full) {
       frame.toggleAttribute("full", !!full);
       frame.toggleAttribute("over", full === "window");
+    },
+    rememberFocus() {
+      const had = document.activeElement;
+      return () => {
+        if (had === agentFrame && agentOpen(store.state)) agentFrame.focus();
+        else if (had !== frame) controller.focusPage();
+      };
     },
     setAgentWidth(px) {
       if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);

@@ -25,15 +25,17 @@ export class Questions {
   }
 
   /** Shows the card in the window and waits for the answer; false after DELAI_QUESTION_MS, or when `signal` aborts. */
+  // shortcut: a question whose window closes is not moved to another window (Electron's questionsFenetreFermee): it is
+  // refused after DELAI_QUESTION_MS or when the host goes; upgrade with multi-window in step 5.
   ask(o: OngletInfo, fenetreId: IdFenetre, signal?: AbortSignal): Promise<boolean> {
+    const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
+    const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["lire-onglet" as const], titre: o.titre, cible: o.id };
+    // Already stale (tab closed, private, gone elsewhere): no card, which no state change would ever take down.
+    if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve(false);
     return attendreReponse(
       (repondre) => {
         const id = crypto.randomUUID();
-        const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
-        this.open.set(id, {
-          demande: { id, ongletId, fenetreId, origine: origineDe(o.url), permissions: ["lire-onglet"], titre: o.titre, cible: o.id },
-          repondre,
-        });
+        this.open.set(id, { demande: { id, ...fields }, repondre });
         this.changed();
         return () => {
           if (this.open.delete(id)) this.changed();

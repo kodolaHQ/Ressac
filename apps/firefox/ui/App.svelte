@@ -40,6 +40,13 @@
   $effect(() => {
     if (idDemandeAgent !== undefined) untrack(() => fermerCommande());
   });
+  // Before the card mounts and takes the keyboard: the terminal or the page gets it back once the last card goes.
+  const carteAgent = $derived(idDemandeAgent !== undefined);
+  $effect.pre(() => {
+    if (!carteAgent) return;
+    const giveBack = untrack(() => win.rememberFocus());
+    return () => setTimeout(giveBack);
+  });
   /** The ⌃Tab panel sent by the controller (null: closed). */
   let tabPanel = $state<TabPanel | null>(null);
   // Ready: the backdrop is in place (no page capture in step 2, it is ready at once).
