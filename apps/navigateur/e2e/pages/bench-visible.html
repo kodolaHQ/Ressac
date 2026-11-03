@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>bench</title>
+<p>Bench page.</p>
+<script>
+  // "n<i>" once loaded; "v<wall clock ms>" at the 2nd frame after the page is shown again (the benches' end signal).
+  document.title = "n" + new URLSearchParams(location.search).get("n");
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible")
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.title = "v" + Math.round(performance.timeOrigin + performance.now());
+      }));
+  });
+</script>
