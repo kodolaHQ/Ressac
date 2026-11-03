@@ -6,13 +6,15 @@
   import BarreLaterale from "../../navigateur/src/renderer/composants/BarreLaterale.svelte";
   import FondFige from "../../navigateur/src/renderer/composants/FondFige.svelte";
   import MenuContextuel from "../../navigateur/src/renderer/composants/MenuContextuel.svelte";
+  import ModaleDemande from "../../navigateur/src/renderer/composants/ModaleDemande.svelte";
   import ModaleEspace from "../../navigateur/src/renderer/composants/ModaleEspace.svelte";
   import PageVide from "../../navigateur/src/renderer/composants/PageVide.svelte";
   import PanneauOnglets from "../../navigateur/src/renderer/composants/PanneauOnglets.svelte";
-  import { commande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
+  import { commande, fermerCommande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
+  import { estDemandeAgent } from "../../navigateur/src/renderer/composants/modale.svelte";
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
-  import { api, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
+  import { api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
   import { aUneVue } from "../../navigateur/src/commun/modele";
   import type { PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
@@ -30,6 +32,13 @@
   $effect(() => {
     void idActif;
     untrack(() => (commande.ouverte = null));
+  });
+  // An agent's question covers the whole window, agent panel included. It comes before an open command bar, which closes.
+  const demande = $derived(demandeDe(fenetre, ongletActif));
+  const demandeAgent = $derived(demande && estDemandeAgent(demande) ? demande : undefined);
+  const idDemandeAgent = $derived(demandeAgent?.id);
+  $effect(() => {
+    if (idDemandeAgent !== undefined) untrack(() => fermerCommande());
   });
   /** The ⌃Tab panel sent by the controller (null: closed). */
   let tabPanel = $state<TabPanel | null>(null);
@@ -52,14 +61,16 @@
       }
     }),
   );
-  $effect(() => win.setFullWindow(!pageWeb || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel));
+  // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
+  const overlay = $derived(!!demandeAgent || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel);
+  $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb));
 </script>
 
 <!-- A tab switch to the parking tab blurs the field the empty page had just focused; the controller then focuses this
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusPageVide.n++} />
 
-<div class="fenetre" inert={!!reglagesEspace.brouillon || !!commande.ouverte}>
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte}>
   {#if fenetre}
     <BarreLaterale {fenetre} />
   {:else}
@@ -74,8 +85,11 @@
   </main>
 </div>
 <MenuContextuel />
-{#if reglagesEspace.brouillon && fenetre}
-  <!-- No page capture under the modal in step 2: the web page shows through the veil. -->
+<!-- No page capture under the modals in step 2: the web page shows through the veil. An agent's question comes before
+     the space settings, which come back with their draft. -->
+{#if demandeAgent}
+  <ModaleDemande demande={demandeAgent} ongletId={null} />
+{:else if reglagesEspace.brouillon && fenetre}
   <ModaleEspace fenetreId={fenetre.id} ongletId={null} />
 {/if}
 {#if tabPanel}

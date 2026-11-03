@@ -6,6 +6,7 @@ import type { Handler } from "../../shared/rpc";
 import type { Store } from "../store/store";
 import type { WindowController } from "../window/controller";
 import type { AgentHost } from "./host";
+import type { Questions } from "./questions";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** As the page actor and Electron. */
@@ -36,7 +37,7 @@ function privateMirror(state: EtatNavigateur): { prives: string[]; actifPrive: b
 }
 
 /** The noyau's PontNavigateur, answered on the store and the tabs of the main window (Electron's PontElectron). */
-export function bridgeHandlers(store: Store): Record<string, Handler> {
+export function bridgeHandlers(store: Store, questions: Questions): Record<string, Handler> {
   /** Throws OngletPrive for a tab in a private space: a call that crosses the switch to private reads nothing. */
   const tab = (id: string): Onglet => {
     const state = store.state;
@@ -100,8 +101,11 @@ export function bridgeHandlers(store: Store): Record<string, Handler> {
           bitmap.close();
         }
       }),
-    // shortcut: the « lire l'onglet » card comes with task 6; until then every request is refused.
-    demanderAutorisation: () => false,
+    // « L'agent veut lire l'onglet … » in the active window. The signal aborts when the host goes: the card falls.
+    demanderAutorisation: ([o]: [OngletInfo], signal) => {
+      const f = activeWindow(store.state);
+      return f ? questions.ask(o, f, signal) : false;
+    },
     lirePageInvisible: () => {
       throw new Error("Lecture invisible indisponible");
     },

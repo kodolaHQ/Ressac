@@ -15,8 +15,8 @@ const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 /**
- * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (access,
- * history, downloads, permissions, extensions, actions) answers empty; any other member is recorded in
+ * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (history,
+ * downloads, extensions, actions) answers empty; any other member is recorded in
  * `window.webaiosMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiWebaios {
@@ -75,10 +75,25 @@ export function createApi(win: WindowController): ApiWebaios {
     historique: { rechercher: none, recents: none, effacer: async () => {}, oublierTexte: async () => {} },
     telechargements: { liste: none, ouvrir() {}, montrer() {}, annuler() {} },
     surTelechargements: off,
-    permissions: { enAttente: none, repondre() {} },
-    surPermissions: off,
-    acces: { etat: async () => ({ onglets: {}, agent: "L'agent" }), couper() {} },
-    surAcces: off,
+    // The agent's cards and access badges live in the store's realm: the UI gets copies made in this realm.
+    permissions: {
+      enAttente: async () => structuredClone(win.store.questions.pending()),
+      repondre: (id, d, _droits, o) => win.store.questions.answer(id, d, o),
+    },
+    surPermissions: (callback) => untilUnload(win.store.questions.onChange((l) => callback(structuredClone(l)))),
+    acces: {
+      etat: async () => structuredClone(win.store.access),
+      couper: (id, droit) => host.notify("politique.couper", { id, droit }),
+    },
+    surAcces(callback) {
+      const send = () => callback(structuredClone(win.store.access));
+      const offAccess = host.on("acces", send);
+      const offExit = host.on(HOST_EXITED, send);
+      return untilUnload(() => {
+        offAccess();
+        offExit();
+      });
+    },
     // The command bar's sources besides tabs: none in step 2.
     applications: { liste: async () => ({ atelier: "ok", applications: [] }), surChange: off, agir() {} },
     sites: { liste: none, surChange: off, agir() {} },

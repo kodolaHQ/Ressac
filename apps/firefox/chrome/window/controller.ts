@@ -22,8 +22,11 @@ export interface WindowController {
   command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
-  /** The UI iframe covers the window left of the agent panel (overlays, empty page) or only its 240 px column. */
-  setFullWindow(full: boolean): void;
+  /**
+   * The UI iframe covers the whole window, agent panel included ("window": overlays, as Electron's single document),
+   * the window left of the agent panel (true: empty and internal pages) or only its 240 px column (false).
+   */
+  setFullWindow(full: boolean | "window"): void;
   /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
   setAgentWidth(px: number): void;
   /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
@@ -183,7 +186,8 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, agentF
       if (tabs.displayed()) gBrowser.selectedBrowser.focus();
     },
     setFullWindow(full) {
-      frame.toggleAttribute("full", full);
+      frame.toggleAttribute("full", !!full);
+      frame.toggleAttribute("over", full === "window");
     },
     setAgentWidth(px) {
       if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);

@@ -26,6 +26,12 @@
   width: calc(100% - var(--webaios-agent, 0px));
 }
 
+/* Overlays (command bar, modals, ⌃Tab panel) cover the agent panel too. */
+:root[webaios-main] #webaios-sidebar[full][over] {
+  width: 100%;
+  z-index: 4;
+}
+
 /* The agent panel on the right, --webaios-agent wide (0 when closed): the page sits between both iframes. */
 :root[webaios-main] #webaios-agent {
   position: fixed;
