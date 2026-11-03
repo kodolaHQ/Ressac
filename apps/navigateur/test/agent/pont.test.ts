@@ -342,6 +342,34 @@ test("PontElectron : un onglet devenu privé pendant sa lecture ou sa capture ne
   await expect(pont.capturer(a)).rejects.toBeInstanceOf(OngletPrive);
 });
 
+test("PontElectron : un onglet parti sur une autre origine pendant sa lecture ou sa capture ne rend rien", async () => {
+  const { e, ag, F } = preparer();
+  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
+  let reelle = "https://a.test/page";
+  const vues = {
+    lireTexte: vi.fn(async () => (ag({ type: "majOnglet", id: a, champs: { url: "https://banque.test/" } }), { texte: "solde" })),
+    capturer: vi.fn(async () => Buffer.from("png")),
+    vue: vi.fn(() => ({ getURL: () => reelle }) as never),
+  };
+  const pont = pontSur(e, ag, F, vues);
+  await expect(pont.lireTexte(a)).rejects.toThrow("changé de site");
+  ag({ type: "majOnglet", id: a, champs: { url: "https://a.test/" } });
+  expect((await pont.capturer(a)).toString()).toBe("png");
+  // L'état n'a pas encore suivi la redirection, la vue si.
+  reelle = "https://banque.test/";
+  await expect(pont.capturer(a)).rejects.toThrow("changé de site");
+});
+
+test("questionCaduque : une carte de lecture tombe quand son onglet change d'origine", () => {
+  const { e, ag, F } = preparer();
+  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
+  const lecture = { id: "q", ongletId: a, fenetreId: F, cible: a, origine: "https://a.test", permissions: ["lire-onglet" as const] };
+  ag({ type: "majOnglet", id: a, champs: { url: "https://a.test/autre" } });
+  expect(questionCaduque(lecture, e())).toBe(false);
+  ag({ type: "majOnglet", id: a, champs: { url: "https://banque.test/" } });
+  expect(questionCaduque(lecture, e())).toBe(true);
+});
+
 test("espacesDevenusPrives : seulement le passage de non privé à privé", () => {
   const { e, ag } = preparer();
   const id = e().espaces[0]!.id;

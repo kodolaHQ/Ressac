@@ -85,7 +85,7 @@ export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): bool
   // Passé dans un espace privé : l'agent n'y a plus accès, la question n'a plus d'objet.
   if (onglet && ongletPrive(etat, onglet)) return true;
   // Les droits portent sur le site que l'utilisateur a vu : l'onglet est parti ailleurs, la carte tombe.
-  if (onglet && d.permissions.includes("outils-dev") && origineDe(onglet.url) !== d.origine) return true;
+  if (onglet && (d.permissions.includes("outils-dev") || d.permissions.includes("lire-onglet")) && origineDe(onglet.url) !== d.origine) return true;
   return !d.fenetreId && d.ongletId !== null && !etat.onglets[d.ongletId];
 }
 
@@ -328,10 +328,19 @@ export class PontElectron implements PontNavigateur {
     return o;
   }
 
-  /** Lit ou capture l'onglet, puis vérifie qu'il n'est pas devenu privé entre-temps. */
+  /**
+   * Lit ou capture l'onglet, puis vérifie qu'il n'est pas devenu privé ni parti sur une autre origine entre-temps :
+   * l'accès a été vérifié sur l'URL d'avant, et la lecture attend la fin d'un chargement (redirection comprise).
+   */
   private async horsPrive<T>(id: string, f: (o: Onglet) => Promise<T>): Promise<T> {
-    const r = await f(this.onglet(id));
-    this.onglet(id);
+    const avant = this.onglet(id);
+    const r = await f(avant);
+    const origine = origineDe(avant.url);
+    const apres = this.onglet(id).url;
+    const reelle = this.o.vues.vue(id)?.getURL();
+    if (origineDe(apres) !== origine || (reelle !== undefined && origineDe(reelle) !== origine)) {
+      throw new Error("L'onglet a changé de site pendant la lecture : rien n'est rendu.");
+    }
     return r;
   }
 
