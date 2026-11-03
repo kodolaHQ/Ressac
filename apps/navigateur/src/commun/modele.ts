@@ -297,7 +297,7 @@ export const MARGE_BARRE = 40;
 /** Page Relecture d'un projet (plan 17) : `webaios://relecture/<projet>`, une par projet et par fenêtre. */
 export const PREFIXE_RELECTURE = "webaios://relecture/";
 /** Copie de `ID_PROJET` du noyau (l'interface n'importe pas ses valeurs) ; un test vérifie qu'elles s'accordent. */
-const ID_PROJET_PAGE = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5})$/;
+const ID_PROJET_PAGE = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const urlRelecture = (projet: string) => PREFIXE_RELECTURE + projet;
 /** Le projet d'une page Relecture, ou null si l'URL n'en est pas une (jamais un chemin). */
 export function projetDeUrlRelecture(url: string): string | null {

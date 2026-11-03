@@ -760,6 +760,6 @@ test("projetDeUrlRelecture refuse webaios://relecture/../x et webaios://relectur
   const { LIGNE_CHANGEE_PAGE } = await import("../../src/commun/modele");
   const { LIGNE_CHANGEE } = await import("@webaios/noyau");
   expect(LIGNE_CHANGEE_PAGE).toBe(LIGNE_CHANGEE);
-  for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b"])
+  for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b", "site-tuning", "site-", "site-A", "site-../x"])
     expect(projetDeUrlRelecture(`webaios://relecture/${p}`) !== null).toBe(ID_PROJET.test(p));
 });

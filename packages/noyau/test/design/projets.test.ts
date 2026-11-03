@@ -1,7 +1,8 @@
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
-  ID_PROJET, SANS_CLIENT, depotRelecture, destinationDe, dossierRemarques, fichierCommentaires, idExterne,
-  plagesConteneur, projetApp, projetDemo, projetExterne, projetPourAdresse, projetPourFenetreApp,
+  ID_PROJET, INDISPONIBLE_DESIGN, INDISPONIBLE_DESIGN_SITE, AVERTISSEMENT_CAPTURE_SITE, SANS_CLIENT, depotRelecture, destinationDe, dossierRemarques, fichierCommentaires, idExterne,
+  plagesConteneur, projetApp, projetDemo, projetExterne, projetPourAdresse, projetPourFenetreApp, projetPourSite,
   type ContexteDisponibilite, type DossiersDesign, type ProjetExterne,
 } from "../../src/design/projets.js";
 
@@ -74,5 +75,21 @@ describe("destinationDe et fenêtre d'appli", () => {
     expect(destinationDe({ ...ext, client: "c1" }, clients)).toEqual({ libelle: "Claude Code (Mac de l'utilisateur)" });
     expect(destinationDe({ ...ext, client: null }, clients)).toEqual({ indisponible: SANS_CLIENT });
     expect(destinationDe({ ...ext, client: "révoqué" }, clients)).toEqual({ indisponible: SANS_CLIENT });
+  });
+});
+
+describe("projet de site", () => {
+  test("ID_PROJET accepte site-tuning, site-a, site-<60 car.> ; refuse site-, site-A, site-../x, site--x, site-<61 car.>, site-a_b", () => {
+    for (const ok of ["site-tuning", "site-a", `site-${"a".repeat(60)}`]) expect(ID_PROJET.test(ok)).toBe(true);
+    for (const ko of ["site-", "site-A", "site-../x", "site--x", `site-${"a".repeat(61)}`, "site-a_b"]) expect(ID_PROJET.test(ko)).toBe(false);
+  });
+  test("dossierRemarques côté espace, destination l'agent, messages exacts", () => {
+    const d: DossiersDesign = { remarquesEspace: "/e/remarques", prive: "/p" };
+    expect(dossierRemarques(d, "site-tuning")).toBe(join(d.remarquesEspace, "site-tuning"));
+    expect(projetPourSite("tuning", "Tuning")).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });
+    expect(destinationDe(projetPourSite("tuning", "Tuning"), [])).toEqual({ libelle: "l'agent" });
+    expect(INDISPONIBLE_DESIGN).toBe("Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code");
+    expect(INDISPONIBLE_DESIGN_SITE).toBe("Le mode design marche dans les pages du site, pas sur l'accueil, la carte d'accord, une page de connexion ni en plein écran");
+    expect(AVERTISSEMENT_CAPTURE_SITE).toBe("L'extrait et la capture de cet élément iront à l'agent.");
   });
 });

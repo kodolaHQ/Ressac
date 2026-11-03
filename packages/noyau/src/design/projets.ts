@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { PORTS } from "../conteneur/atelier.js";
 
-export const ID_PROJET = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5})$/;
+export const ID_PROJET = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const PLAGE_DEMOS: [number, number] = [5280, 5299];
 
-export const INDISPONIBLE_DESIGN = "Le mode design marche sur les applis de l'agent et les projets branchés par un Claude Code";
+export const INDISPONIBLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
+export const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site, pas sur l'accueil, la carte d'accord, une page de connexion ni en plein écran";
+export const AVERTISSEMENT_CAPTURE_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 export const SANS_CLIENT = "Aucun Claude Code branché pour ce projet : il doit le redéclarer";
 
 export type IdProjet = string;
@@ -13,6 +15,7 @@ export type IdProjet = string;
 export type ProjetSuivi =
   | { type: "app"; projet: IdProjet; dossier: string; nom: string }
   | { type: "demo"; projet: IdProjet; port: number }
+  | { type: "site"; projet: IdProjet; id: string; nom: string }
   | { type: "externe"; projet: IdProjet; dossier: string; nom: string; client: string | null };
 
 export interface ProjetExterne { id: string; nom: string; dossier: string; ports: number[]; client: string | null; declare: string }
@@ -31,6 +34,7 @@ export interface ContexteDisponibilite {
 
 export const projetApp = (dossier: string): IdProjet => `app-${dossier}`;
 export const projetExterne = (id: string): IdProjet => `ext-${id}`;
+export const projetSite = (id: string): IdProjet => `site-${id}`;
 export const projetDemo = (port: number): IdProjet => `demo-${port}`;
 export const idExterne = (dossierReel: string): string => createHash("sha256").update(dossierReel).digest("hex").slice(0, 16);
 
@@ -70,6 +74,10 @@ export function projetPourAdresse(url: string, c: ContexteDisponibilite): Projet
 
 export function projetPourFenetreApp(dossier: string, nom: string): ProjetSuivi {
   return { type: "app", projet: projetApp(dossier), dossier, nom };
+}
+
+export function projetPourSite(id: string, nom: string): ProjetSuivi {
+  return { type: "site", projet: projetSite(id), id, nom };
 }
 
 export function destinationDe(p: ProjetSuivi, clients: ClientExterne[]): { libelle: string } | { indisponible: string } {

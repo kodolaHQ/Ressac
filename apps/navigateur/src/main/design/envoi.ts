@@ -33,7 +33,10 @@ export function creerEnvoi(o: OptionsEnvoi): (p: ProjetSuivi, lot: Lot) => Promi
     }
     if (f === undefined) throw new Error(AUCUNE_FENETRE);
     const cheminLot = cheminDansConteneur(o.dossierLot(lot.projet, lot.id), o.chemins);
-    const projet = p.type === "app" ? ({ type: "app", nom: p.nom, dossier: p.dossier } as const) : ({ type: "demo", port: p.port } as const);
+    const projet =
+      p.type === "app" ? ({ type: "app", nom: p.nom, dossier: p.dossier } as const)
+      : p.type === "site" ? ({ type: "site", nom: p.nom, id: p.id } as const)
+      : ({ type: "demo", port: p.port } as const);
     o.preRemplir(f, prefixeRemarques({ projet, lot, cheminLot }));
     o.donnerLeTerminal(f);
     o.devant(f);
