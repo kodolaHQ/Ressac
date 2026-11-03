@@ -8,3 +8,6 @@ declare const IOUtils: {
   remove(path: string, options?: { ignoreAbsent?: boolean }): Promise<void>;
 };
 declare const PathUtils: { join(...parts: string[]): string };
+declare const Services: any;
+declare const Ci: any;
+declare const ChromeUtils: { importESModule(url: string): any };
