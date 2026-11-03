@@ -26,7 +26,13 @@ async function start(): Promise<WebAiOsStore> {
   store.subscribe((state, previous) => {
     recorder.planifier(state);
     const used = profilsEnUsage(state);
-    for (const id of profilsEnUsage(previous)) if (!used.has(id)) removeContainer(id);
+    for (const id of profilsEnUsage(previous)) if (!used.has(id)) {
+        try {
+          removeContainer(id);
+        } catch (e) {
+          console.error("[store] container removal failed:", e);
+        }
+      }
   });
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: save the session", flush);
   return {
