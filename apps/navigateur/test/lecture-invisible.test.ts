@@ -90,7 +90,7 @@ function fausseFenetre(urlFinale: () => string, lecture: () => Promise<unknown> 
       attach: vi.fn(),
       isAttached: () => true,
       detach: vi.fn(),
-      sendCommand: vi.fn(async (m: string) => void wc.commandes.push(m)),
+      sendCommand: vi.fn(async (m: string, ..._args: unknown[]) => void wc.commandes.push(m)),
     }),
   });
   const f = { webContents: wc, isDestroyed: vi.fn(() => false), destroy: vi.fn() };
@@ -115,6 +115,39 @@ test("window.print neutralisé avant les scripts de la page, cadres compris", as
   await vi.advanceTimersByTimeAsync(2_000);
   await expect(r).resolves.toMatchObject({ url: "https://exemple.test/", titre: "T" });
   expect(f.destroy).toHaveBeenCalled();
+});
+
+test("une requête dont le nom public résout vers une adresse locale échoue, redirection comprise ; les autres repartent", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "https://exemple.test/");
+  const adresses: Record<string, string> = { "exemple.test": "93.184.216.34", "piege.test": "127.0.0.1", "box.test": "192.168.1.1" };
+  const s = { clearStorageData: async () => {}, clearCache: async () => {}, resolveHost: vi.fn(async (h: string) => ({ endpoints: [{ address: adresses[h] }] })) };
+  const r = lirePageInvisible("https://exemple.test/", { profil: null }, { ...depsAvec(f), sessionPublique: vi.fn(() => s as never) });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(wc.commandes).toContain("Fetch.enable");
+  const reponse = async (requestId: string, url: string, sessionId?: string) => {
+    wc.debugger.emit("message", {}, "Fetch.requestPaused", { requestId, request: { url } }, sessionId);
+    await vi.advanceTimersByTimeAsync(0);
+    return wc.debugger.sendCommand.mock.calls.find((c) => (c[1] as { requestId?: string } | undefined)?.requestId === requestId);
+  };
+  expect(await reponse("1", "https://exemple.test/")).toEqual(["Fetch.continueRequest", { requestId: "1" }, undefined]);
+  expect(await reponse("2", "https://piege.test/admin")).toEqual(["Fetch.failRequest", { requestId: "2", errorReason: "AddressUnreachable" }, undefined]);
+  // Redirection, ou cadre d'un autre processus (sa session DevTools).
+  expect(await reponse("3", "http://box.test/", "cadre")).toEqual(["Fetch.failRequest", { requestId: "3", errorReason: "AddressUnreachable" }, "cadre"]);
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ titre: "T" });
+});
+
+test("avec adressesLocales (tests), les requêtes ne sont pas retenues", async () => {
+  vi.useFakeTimers();
+  const { wc, f } = fausseFenetre(() => "http://127.0.0.1/");
+  const r = lirePageInvisible("http://127.0.0.1/", { profil: null, adressesLocales: true }, depsAvec(f));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(wc.commandes).not.toContain("Fetch.enable");
+  wc.emit("did-finish-load");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(r).resolves.toMatchObject({ titre: "T" });
 });
 
 test("un cadre qui charge tard repousse la lecture à 2 s après la fin de tout chargement, pas à la lecture forcée", async () => {

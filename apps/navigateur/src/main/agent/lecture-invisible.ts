@@ -250,7 +250,7 @@ async function chargerEtLire<T>(
       }
       const f = (deps.creerFenetre ?? creerFenetre)(s);
       try {
-        await jusquAuSignal(neutraliserImpression(f.webContents), signal);
+        await jusquAuSignal(neutraliserImpression(f.webContents, o.adressesLocales === true ? null : s), signal);
         echeance ??= Date.now() + DELAI_TOTAL_MS;
         const page = await lireDans(f.webContents, cible, permise, lecture, echeance, signal, o.changerHote, ecrans(o.defiler));
         // Le profil est passé à un espace privé pendant la lecture : ce qui a été lu ne sort pas.
@@ -481,29 +481,63 @@ const DELAI_PREPARATION_MS = 5_000;
  * remplacé, par le protocole DevTools de cette seule page. Les cadres attendent le débogueur à leur création, le temps
  * de recevoir le script. Le débogueur ne répond qu'après un premier chargement : d'où `about:blank`. Un échec fait
  * échouer la lecture. Vérifié à la main (Electron 45) : sans cela, `print()` bloque le rendu de la page, cadre ou non.
+ * Avec `resolution` : chaque requête (page, redirection, cadre, ressource) attend la résolution de son hôte par cette
+ * session, et échoue si une adresse est locale (voir `requeteRetenue`).
  */
-async function neutraliserImpression(wc: WebContents): Promise<void> {
+async function neutraliserImpression(wc: WebContents, resolution: Session | null): Promise<void> {
   let minuterie: NodeJS.Timeout | undefined;
   const delai = new Promise<never>((_ok, ko) => {
     minuterie = setTimeout(() => ko(new Error("Préparation de la page impossible")), DELAI_PREPARATION_MS);
   });
   try {
-    await Promise.race([preparer(wc), delai]);
+    await Promise.race([preparer(wc, resolution), delai]);
   } finally {
     clearTimeout(minuterie);
   }
 }
 
-async function preparer(wc: WebContents): Promise<void> {
+/** L'hôte d'une URL http(s) mène-t-il à une adresse locale, d'après le résolveur de la session (celui de Chromium) ? */
+async function hoteLocal(s: Session, url: string): Promise<boolean> {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  if (adresseLocale(u.hostname)) return true;
+  // Un échec de résolution n'a rien de local : Chromium échouera de lui-même.
+  const r = await s.resolveHost(u.hostname.replace(/^\[|\]$/g, "")).catch(() => ({ endpoints: [] }));
+  return r.endpoints.some((e) => adresseLocale(e.address));
+}
+
+/**
+ * `Fetch.requestPaused` : la requête repart, ou échoue si son hôte résout vers une adresse locale (un nom public vers
+ * 127.0.0.1 ou 192.168.x, rebinding DNS, redirection). Le résolveur de la session partage son cache avec la connexion.
+ */
+function requeteRetenue(d: Electron.Debugger, s: Session, params: { requestId: string; request: { url: string } }, sessionId?: string): void {
+  const { requestId } = params;
+  hoteLocal(s, params.request.url)
+    .then((local) =>
+      local
+        ? d.sendCommand("Fetch.failRequest", { requestId, errorReason: "AddressUnreachable" }, sessionId)
+        : d.sendCommand("Fetch.continueRequest", { requestId }, sessionId),
+    )
+    .catch(() => {}); // fenêtre déjà fermée
+}
+
+async function preparer(wc: WebContents, resolution: Session | null): Promise<void> {
   await wc.loadURL("about:blank");
   const d = wc.debugger;
   d.attach("1.3");
   const cible = async (sessionId?: string) => {
     await d.sendCommand("Page.enable", {}, sessionId);
     await d.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: SANS_IMPRESSION }, sessionId);
+    if (resolution) await d.sendCommand("Fetch.enable", { patterns: [{ urlPattern: "*" }] }, sessionId);
     await d.sendCommand("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId);
   };
-  d.on("message", (_e, methode, params: { sessionId?: string }) => {
+  d.on("message", (_e, methode, params, sessionId?: string) => {
+    if (methode === "Fetch.requestPaused" && resolution) return requeteRetenue(d, resolution, params, sessionId || undefined);
     if (methode !== "Target.attachedToTarget" || !params.sessionId) return;
     const id = params.sessionId;
     cible(id)
