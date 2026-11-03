@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { REMARQUE_VIDE } from "../relecture/commentaires.js";
 import { ecrireJsonPrive } from "./ecriture-atomique.js";
@@ -18,6 +18,8 @@ export const STYLES_UTILES = [
 ] as const;
 export const TRONQUE = "… [tronqué]";
 export const JOURS_PURGE = 30;
+/** Un dossier des remarques côté espace est un lien symbolique (le conteneur y écrit) : rien n'est écrit au bout. */
+export const DOSSIER_LIEN = "dossier des remarques refusé : lien symbolique";
 
 export interface ContexteDesign {
   selecteur: string; etiquette: string; html: string;
@@ -100,6 +102,20 @@ export class Remarques {
   }
   private estPrive(p: IdProjet): boolean { return p.startsWith("ext-"); }
 
+  /**
+   * Avant d'écrire côté espace (monté en écriture dans le conteneur) : ni `.webaios`, ni la racine des remarques, ni le
+   * dossier du projet, ni celui du lot ne sont des liens symboliques (un absent sera créé en vrai dossier).
+   */
+  private async sansLien(p: IdProjet, lot?: string): Promise<void> {
+    if (this.estPrive(p)) return;
+    const racine = this.dossiers.remarquesEspace;
+    const chemins = [dirname(racine), racine, this.dossier(p), ...(lot ? [this.dossierLot(p, lot)] : [])];
+    for (const c of chemins) {
+      const s = await lstat(c).catch(() => null);
+      if (s && !s.isDirectory()) throw new Error(DOSSIER_LIEN);
+    }
+  }
+
   private serialiser<T>(p: IdProjet, f: () => Promise<T>): Promise<T> {
     const precedent = this.files.get(p) ?? Promise.resolve();
     const suite = precedent.then(f, f);
@@ -115,12 +131,14 @@ export class Remarques {
     const v = await lireJson<Element[]>(join(this.dossier(p), "panier.json"));
     return assainir(v);
   }
-  private ecrirePanier(p: IdProjet, panier: Element[]): Promise<void> {
+  private async ecrirePanier(p: IdProjet, panier: Element[]): Promise<void> {
     const f = join(this.dossier(p), "panier.json");
+    await this.sansLien(p);
     return this.estPrive(p) ? ecrireJsonPrive(f, panier) : ecrireAtomique(f, JSON.stringify(panier, null, 2), false);
   }
-  private ecrireLot(l: Lot): Promise<void> {
+  private async ecrireLot(l: Lot): Promise<void> {
     const f = join(this.dossierLot(l.projet, l.id), "lot.json");
+    await this.sansLien(l.projet, l.id);
     return this.estPrive(l.projet) ? ecrireJsonPrive(f, l) : ecrireAtomique(f, JSON.stringify(l, null, 2), false);
   }
   private async lireLots(p: IdProjet): Promise<Lot[]> {
@@ -149,6 +167,7 @@ export class Remarques {
     if (e.texte.trim() === "") return Promise.reject(new Error(REMARQUE_VIDE));
     return this.serialiser(p, async () => {
       const id = `e-${randomBytes(4).toString("hex")}`;
+      await this.sansLien(p);
       if (e.capture) await ecrireAtomique(join(this.dossier(p), `${id}.png`), e.capture, this.estPrive(p));
       const element: Element = {
         id, type: "design", texte: e.texte, contexte: { ...e.contexte, html: tronquerHtml(e.contexte.html) },
@@ -196,6 +215,7 @@ export class Remarques {
       if (panier.length === 0) throw new Error(PANIER_VIDE);
       const lot = this.creerLot(p, panier, d);
       const cible = this.dossierLot(p, lot.id);
+      await this.sansLien(p, lot.id);
       await mkdir(cible, { recursive: true, ...(this.estPrive(p) ? { mode: 0o700 } : {}) });
       for (const e of panier) {
         if (e.type === "design" && e.capture) await rename(join(this.dossier(p), e.capture), join(cible, e.capture)).catch(() => undefined);

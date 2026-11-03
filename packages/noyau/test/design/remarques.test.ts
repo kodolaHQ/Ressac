@@ -1,7 +1,7 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { HTML_MAX, PANIER_VIDE, Remarques, TRONQUE, etatLot, tronquerHtml, type ContexteDesign, type ContexteRelecture } from "../../src/design/remarques.js";
+import { DOSSIER_LIEN, HTML_MAX, PANIER_VIDE, Remarques, TRONQUE, etatLot, tronquerHtml, type ContexteDesign, type ContexteRelecture } from "../../src/design/remarques.js";
 import { REMARQUE_VIDE } from "../../src/relecture/commentaires.js";
 import { dossierRemarques, type DossiersDesign } from "../../src/design/projets.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -285,6 +285,34 @@ describe("Remarques", () => {
     expect(await existe(join(dossiers.remarquesEspace, "app-essai"))).toBe(false);
     expect(await r.lots("app-essai")).toEqual([]);
     await mkdir(dossiers.remarquesEspace, { recursive: true });
+  });
+
+  test("dossier des remarques, d'un projet ou d'un lot posé en lien symbolique (le conteneur y écrit) : rien n'est écrit au bout du lien", async () => {
+    const { dossiers, r } = await cadre();
+    const dehors = join(dossiers.prive, "..", "dehors");
+    await mkdir(dehors, { recursive: true });
+    // Le dossier d'un projet est un lien.
+    await mkdir(dossiers.remarquesEspace, { recursive: true });
+    await symlink(dehors, join(dossiers.remarquesEspace, "app-lien"));
+    await expect(r.ajouterAuPanier("app-lien", { texte: "x", contexte: ctx(), capture: PNG })).rejects.toThrow(DOSSIER_LIEN);
+    await expect(r.envoyerRelecture("app-lien", [{ texte: "x", contexte: rel }], { destination: "agent" })).rejects.toThrow(DOSSIER_LIEN);
+    // La racine des remarques elle-même est un lien.
+    const autre = await cadre();
+    await mkdir(join(autre.dossiers.remarquesEspace, ".."), { recursive: true });
+    await symlink(dehors, autre.dossiers.remarquesEspace);
+    await expect(autre.r.ajouterAuPanier("app-essai", { texte: "x", contexte: ctx(), capture: null })).rejects.toThrow(DOSSIER_LIEN);
+    expect(await readdir(dehors)).toEqual([]);
+    // Le dossier d'un lot est un lien : son lot.json au bout du lien n'est pas réécrit.
+    const lot = await r.envoyerRelecture("app-essai", [{ texte: "y", contexte: rel }], { destination: "agent" });
+    const dossierLot = r.dossierLot("app-essai", lot.id);
+    const contenu = await readFile(join(dossierLot, "lot.json"), "utf8");
+    await rm(dossierLot, { recursive: true });
+    const dehorsLot = join(dehors, "..", "dehors-lot");
+    await mkdir(dehorsLot);
+    await writeFile(join(dehorsLot, "lot.json"), contenu);
+    await symlink(dehorsLot, dossierLot);
+    await expect(r.marquerLotTraite("app-essai", lot.id)).rejects.toThrow(DOSSIER_LIEN);
+    expect(await readFile(join(dehorsLot, "lot.json"), "utf8")).toBe(contenu);
   });
 
   test("identifiant de projet invalide refusé", async () => {
