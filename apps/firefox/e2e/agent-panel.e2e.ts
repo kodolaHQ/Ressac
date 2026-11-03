@@ -75,6 +75,62 @@ it("typing reaches the agent", async () => {
   await terminalShows("reçu: bonjour");
 });
 
+it("each key reaches the agent once and shows once, also after closing and reopening the panel", async () => {
+  await launch();
+  await homeAgent();
+  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  await typeText(m, "xyz");
+  await terminalShows("prêt> xyz");
+  // Time for a second copy to arrive.
+  await new Promise((r) => setTimeout(r, 500));
+  expect(read(input)).toBe("xyz");
+  expect(await terminalText()).not.toContain("xxyy");
+  await toggleWithButton();
+  await hidden();
+  await toggleWithButton();
+  await shown();
+  await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
+  await typeText(m, "uv");
+  await terminalShows("xyzuv");
+  await new Promise((r) => setTimeout(r, 500));
+  expect(read(input)).toBe("xyzuv");
+  expect(await terminalText()).not.toContain("uuvv");
+});
+
+it("a keypress after a keydown the terminal consumed is not sent again (macOS, parent-process document)", async () => {
+  await launch();
+  await homeAgent();
+  // Gecko's macOS widget still fires keypress for a printable key whose keydown was consumed, when the focused document
+  // is in the parent process (BrowserChild drops it for web content). Headless has no native widget: the pair is replayed.
+  await inUi(
+    m,
+    `const t = doc.querySelector(".xterm-helper-textarea");
+     for (const c of "xyz") {
+       t.dispatchEvent(new ui.KeyboardEvent("keydown", { key: c, code: "Key" + c.toUpperCase(), keyCode: c.toUpperCase().charCodeAt(0), bubbles: true, cancelable: true }));
+       t.dispatchEvent(new ui.KeyboardEvent("keypress", { key: c, code: "Key" + c.toUpperCase(), charCode: c.charCodeAt(0), bubbles: true, cancelable: true }));
+     }`,
+    [],
+    "agent",
+  );
+  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  await waitFor(m, "return 1", () => read(input).length >= 3);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(read(input)).toBe("xyz");
+});
+
+it("after Réessayer, each key still reaches the agent once and shows once", async () => {
+  await launch({ FAUX_DOCKER_SANS_CONTENEUR: "1", FAUX_DOCKER_RUN_ECHOUE: "1" });
+  await shown();
+  await click(m, "button", { text: "Réessayer", frame: "agent" });
+  await homeAgent();
+  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  await typeText(m, "xyz");
+  await terminalShows("prêt> xyz");
+  await new Promise((r) => setTimeout(r, 500));
+  expect(read(input)).toBe("xyz");
+  expect(await terminalText()).not.toContain("xxyy");
+});
+
 it("agent quits → Relancer starts a new one", async () => {
   await launch();
   await homeAgent();
