@@ -190,6 +190,18 @@ test("vider() attend l'écriture en cours : rien n'est perdu à la sortie, aucun
   expect(readdirSync(d).filter((f) => f.endsWith(".tmp"))).toEqual([]);
 });
 
+test("une écriture ratée ne laisse pas de fichier temporaire et l'état est réécrit au vider() suivant", async () => {
+  const d = dossier();
+  const espion = vi.spyOn(fsp, "rename").mockRejectedValueOnce(new Error("disque plein"));
+  const enr = new EnregistreurSession(d, 10_000);
+  enr.planifier(etatRiche());
+  await enr.vider();
+  expect(readdirSync(d)).toEqual([]);
+  await enr.vider();
+  expect(Object.keys(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).onglets)).toHaveLength(2);
+  espion.mockRestore();
+});
+
 test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {
   const d = dossier();
   let e = etatRiche();

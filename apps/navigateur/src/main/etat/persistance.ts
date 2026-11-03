@@ -130,7 +130,15 @@ export class EnregistreurSession {
     this.minuterie = undefined;
     const etat = this.enAttente;
     this.enAttente = null;
-    if (etat) this.ecriture = this.ecriture.then(() => this.ecrire(etat)).catch((e) => console.error("[session] écriture impossible :", e));
+    if (etat) {
+      this.ecriture = this.ecriture
+        .then(() => this.ecrire(etat))
+        .catch((e) => {
+          console.error("[session] écriture impossible :", e);
+          // Réessayé à la prochaine écriture ou à la sortie, sauf si un état plus récent est déjà là.
+          this.enAttente ??= etat;
+        });
+    }
     return this.ecriture;
   }
 
@@ -141,13 +149,18 @@ export class EnregistreurSession {
     const cible = join(this.dossier, FICHIER);
     const temporaire = `${cible}.${process.pid}.${++this.numero}.tmp`;
     await fs.mkdir(this.dossier, { recursive: true });
-    const fichier = await fs.open(temporaire, "w");
     try {
-      await fichier.writeFile(JSON.stringify({ ...etat, onglets }, null, 2));
-      await fichier.sync(); // sur disque avant le rename : une coupure de courant ne laisse pas un fichier vide
-    } finally {
-      await fichier.close();
+      const fichier = await fs.open(temporaire, "w");
+      try {
+        await fichier.writeFile(JSON.stringify({ ...etat, onglets }, null, 2));
+        await fichier.sync(); // sur disque avant le rename : une coupure de courant ne laisse pas un fichier vide
+      } finally {
+        await fichier.close();
+      }
+      await fs.rename(temporaire, cible);
+    } catch (e) {
+      await fs.rm(temporaire, { force: true });
+      throw e;
     }
-    await fs.rename(temporaire, cible);
   }
 }
