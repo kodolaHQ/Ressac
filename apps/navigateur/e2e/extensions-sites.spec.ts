@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { dansLaVue, ecrireSite, etatVueSite, fenetreSite, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurSites, servirWav, silenceWav, vueSite, type SiteTest } from "./aide";
 import { ecrireExtensionAgent, installerStoreFactice } from "./extensions/fixtures";
@@ -950,6 +950,9 @@ test.describe("de bout en bout", () => {
     const { id } = installerStoreFactice(profil, "ublock-factice", { profils: [] });
     ecrireSite(racine, "vidola", vidolaBout());
     const lance = await lancer({ profil, racine, env: ENV });
+    // L'accord est écrit après `lancer` : cela suffit seulement parce que le service des sites relit sites-accords.json à
+    // chaque ouverture d'appli (`lireAccordsSites` dans l'ouverture), jamais une fois pour toutes au démarrage. Si cette
+    // lecture devenait unique, l'écrire avant `lancer`.
     if (o.accord) writeFileSync(join(profil, "sites-accords.json"), JSON.stringify(ACCORD_BOUT));
     await expect.poll(() => lance.app.evaluate(() => (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes === true)).toBe(true);
     return { ...lance, id, cle: `store:${id}` };
@@ -994,7 +997,8 @@ test.describe("de bout en bout", () => {
       expect(pubsDemandees()).toEqual([]);
       expect(serveur.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
       expect(await banniere(app)).toBe("none");
-      expect(await vueSite(app, "vidola", "document.documentElement.dataset.ublock ?? null")).toBe("1");
+      // `contenu.js` est un `document_idle` : son marqueur peut suivre `readyState === "complete"`.
+      await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.ublock ?? null")).toBe("1");
 
       // Son bouton dans la barre, sa popup (cachée) qui voit la vue du site comme son seul onglet.
       const bouton = page.getByTestId("action-extension-site");
@@ -1017,6 +1021,11 @@ test.describe("de bout en bout", () => {
       await ouvrirSite(fenetre, "vidola");
       const page = await fenetreSite(app, "vidola");
       await surLaSerie(app);
+      // Le premier chargement (sans l'extension) a déjà retenu l'épisode : sa date est notée, puis memoire.json est
+      // supprimé juste avant le geste. Ce qui est relu ensuite vient donc d'une écriture faite avec l'extension active.
+      await expect.poll(() => memoire(profil)?.valeurs["encours.the-bear"] ?? null).toMatchObject({ valeur: RETENU });
+      const retenuAvant = (memoire(profil)!.valeurs["encours.the-bear"] as { quand?: string }).quand ?? "";
+      rmSync(join(profil, "sites", "vidola", "memoire.json"), { force: true });
       await ouvrirMenu(page);
       await interrupteurEtAttendre(app, page, true);
       await page.keyboard.press("Escape");
@@ -1028,6 +1037,8 @@ test.describe("de bout en bout", () => {
       expect(await vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
       await expect.poll(() => vueSite(app, "vidola", "document.documentElement.dataset.retenu")).toBe("oui");
       await expect.poll(() => memoire(profil)?.valeurs["encours.the-bear"] ?? null).toMatchObject({ valeur: RETENU, adresse: SERIE });
+      // Retenu à nouveau par la page rechargée avec l'extension (sa date change), pas seulement réécrit de la mémoire.
+      await expect.poll(() => (memoire(profil)?.valeurs["encours.the-bear"] as { quand?: string } | undefined)?.quand ?? "").not.toBe(retenuAvant);
 
       // La garde des retouches : un hôte que l'extension ne bloque pas est refusé par la garde elle-même (son message),
       // sans qu'aucune requête n'y parte ; pub.localhost aussi (avant même le DNR de l'extension) ; le site, permis.
@@ -1057,8 +1068,9 @@ test.describe("de bout en bout", () => {
       await surLaSerie(app);
       expect(pubsDemandees()).toEqual([]);
       expect(await banniere(app)).toBe("none");
-      await expect.poll(() => video(app, "v && v.currentTime >= 64.9 && !v.paused"), { timeout: 10_000 }).toBe(true);
-      expect(await video(app, "v.currentTime")).toBeLessThan(69);
+      // Les deux bornes lues dans une seule évaluation : ni repartie de 0, ni restée à 70 (une machine chargée ne grignote
+      // pas la marge entre deux lectures).
+      await expect.poll(() => video(app, "v && !v.paused && v.currentTime >= 64.9 && v.currentTime < 69"), { timeout: 10_000 }).toBe(true);
       expect(await vueSite(app, "vidola", 'getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
       expect(registre(profil).extensions[cle]!.applis?.vidola).toBeTruthy();
       await aucuneVisible(app);
@@ -1082,13 +1094,12 @@ test.describe("de bout en bout", () => {
       await premier.fermer();
     }
 
-    // C17 : même profil, sans réinstaller l'extension (ce qui effacerait `applis`). C1 : l'appli est ouverte sans
-    // attendre la fin du démarrage des extensions ; c'est l'ouverture qui l'attend.
+    // C17 : même profil, sans réinstaller l'extension (ce qui effacerait `applis`). L'appli est ouverte sans attendre
+    // ici `__webaiosExtensionsPretes` ; ce test ne dit rien de l'attente elle-même (C1 : couverte par l'unitaire de
+    // service.test.ts), seulement que la page est bloquée dès son premier chargement.
     serveur.requetes.splice(0);
     const second = await lancer({ profil, racine, env: ENV });
     try {
-      const pretes = await second.app.evaluate(() => (globalThis as { __webaiosExtensionsPretes?: boolean }).__webaiosExtensionsPretes === true);
-      test.info().annotations.push({ type: "extensions prêtes à l'ouverture", description: String(pretes) });
       await ouvrirSite(second.fenetre, "vidola");
       const page = await fenetreSite(second.app, "vidola");
       await surLaSerie(second.app);
@@ -1096,7 +1107,7 @@ test.describe("de bout en bout", () => {
       expect(serveur.requetes.filter((r) => r.hote === "vidola-a.localhost" && r.chemin === SERIE)).toHaveLength(1);
       expect(pubsDemandees()).toEqual([]);
       expect(await banniere(second.app)).toBe("none");
-      expect(await vueSite(second.app, "vidola", "document.documentElement.dataset.ublock ?? null")).toBe("1");
+      await expect.poll(() => vueSite(second.app, "vidola", "document.documentElement.dataset.ublock ?? null")).toBe("1");
       expect(await extensionsDe(second.app, "persist:site-vidola")).toEqual(["uBlock factice"]);
       await expect(page.getByTestId("action-extension-site")).toHaveCount(1);
       await aucuneVisible(second.app);
