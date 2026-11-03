@@ -292,3 +292,16 @@ test("port tenu par ailleurs : la section affiche portPris(port) et rien d'autre
     await new Promise<void>((ok) => tenu.close(() => ok()));
   }
 });
+
+test("port invalide (WEBAIOS_PORT_MCP_EXTERNE=abc) : la section dit que le MCP externe n'a pas pu démarrer, pas « démarre »", async () => {
+  const { app, fenetre, fermer } = await lancer({ env: { ...ENV, WEBAIOS_PORT_MCP_EXTERNE: "abc" } });
+  try {
+    await menu(app, "applications");
+    const section = fenetre.getByTestId("projets-externes");
+    await expect(section.getByTestId("raison-externes")).toContainText("Le MCP externe n'a pas pu démarrer : ");
+    await expect(section.getByTestId("brancher-externe")).toBeDisabled();
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});

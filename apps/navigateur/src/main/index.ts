@@ -58,7 +58,7 @@ import { armerViseur, capturerElement, desarmerViseur, lireSource } from "./desi
 import { ServiceDesign } from "./design/service";
 import { plagesConteneur, PORT_MCP_EXTERNE, RegistreExternes, Remarques } from "@webaios/noyau";
 import { creerEnvoi } from "./design/envoi";
-import { demarrerExternes, type ServiceExternes } from "./design/externes";
+import { demarrerExternes, raisonEchec, type ServiceExternes } from "./design/externes";
 import { ServiceRelecture } from "./design/relecture";
 import { homedir } from "node:os";
 import { ExtensionsProfils } from "./extensions/sessions";
@@ -282,6 +282,8 @@ let sites: ServiceSites | undefined;
 let design: ServiceDesign | undefined;
 /** Le MCP externe et ses projets (page Applications) ; prêt une fois le registre ouvert. */
 let externes: ServiceExternes | undefined;
+/** Le registre des projets externes illisible (ou le MCP externe en échec) : la raison montrée dans la section. */
+let echecExternes: string | null = null;
 /** Page Relecture : photos de prise en charge des applis, comparaison gardée par projet. */
 let relecture: ServiceRelecture | undefined;
 /** La relecture, ou une erreur tant qu'elle n'est pas prête. */
@@ -816,9 +818,9 @@ app.whenReady().then(async () => {
       traite: async (p, lot) => design?.traite(p, lot),
     },
     externes: {
-      liste: async () => (await externes?.etat()) ?? { serveur: { etat: "eteint", raison: "Le MCP externe démarre" }, projets: [], clients: [] },
+      liste: async () => (await externes?.etat()) ?? { serveur: { etat: "eteint", raison: echecExternes ?? "Le MCP externe démarre" }, projets: [], clients: [] },
       brancher: async (nom) => {
-        if (!externes) throw new Error("Le MCP externe démarre");
+        if (!externes) throw new Error(echecExternes ?? "Le MCP externe démarre");
         return externes.brancher(nom);
       },
       revoquer: async (id) => void (await externes?.revoquer(id)),
@@ -1070,7 +1072,11 @@ app.whenReady().then(async () => {
         diffuserDesign();
       });
     })
-    .catch((e) => console.error("[design] projets externes indisponibles :", e));
+    .catch((e) => {
+      console.error("[design] projets externes indisponibles :", e);
+      echecExternes = raisonEchec(e);
+      diffuserDesign();
+    });
   /** La page Relecture d'un projet dans la fenêtre `f` (sinon la fenêtre principale active, rouverte au besoin), mise devant. */
   function ouvrirRelecture(f: IdFenetre | undefined, projet: string, nom: string): void {
     if (!f) {

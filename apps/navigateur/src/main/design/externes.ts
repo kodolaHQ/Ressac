@@ -18,6 +18,9 @@ import type { EtatExternes } from "../../commun/api";
 const NOM_PAR_DEFAUT = "Claude Code";
 const NOM_MAX = 60;
 
+/** Raison affichée quand le MCP externe ne démarre pas (autrement qu'un port pris) ou que son registre est illisible. */
+export const raisonEchec = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
+
 export interface ServiceExternes {
   etat(): EtatExternes;
   brancher(nom: string): Promise<{ commande: string }>;
@@ -63,8 +66,12 @@ export async function demarrerExternes(o: {
     });
     etatServeur = { etat: "pret", port: serveur.port };
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
-    etatServeur = { etat: "eteint", raison: portPris(o.port) };
+    // Port pris ou toute autre erreur : la section le dit, jamais « démarre » sans fin.
+    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") etatServeur = { etat: "eteint", raison: portPris(o.port) };
+    else {
+      console.error("[externes] démarrage impossible :", e);
+      etatServeur = { etat: "eteint", raison: raisonEchec(e) };
+    }
   }
 
   return {
@@ -88,7 +95,8 @@ export async function demarrerExternes(o: {
       await o.registre.oublier(id);
       await o.remarques.oublier(projet);
       await Promise.all([
-        rm(depotRelecture(o.dossiers, projet), { recursive: true, force: true }),
+        // Par la file du dépôt : passe après une première photo en cours, qui sinon le recréerait.
+        new DepotRelecture({ depot: depotRelecture(o.dossiers, projet), dossier: o.racineEspace }).supprimer(),
         rm(fichierCommentaires(o.dossiers, projet), { force: true }),
       ]);
     },
