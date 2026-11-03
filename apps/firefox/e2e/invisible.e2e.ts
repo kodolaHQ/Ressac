@@ -19,6 +19,7 @@ beforeAll(async () => {
   page = await startServer();
   trap = await startServer({ host: "::1" });
   trapBase = `http://localtest.me:${trap.port}`;
+  // Honoured by Firefox only under automation (Marionette running).
   w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1" } });
   m = w.marionette;
   await m.setContext("chrome");
@@ -126,4 +127,18 @@ it("a redirect outside the allowed domains stops the read", async () => {
   const r = await readPage(`${page.url}/redirige?vers=${encodeURIComponent(`http://public.test:${page.port}/a.html`)}`, { profil: null, domaines: ["127.0.0.1"] });
   expect(r).toMatchObject({ err: "Navigation bloquée : public.test est hors des domaines permis" });
   expect(page.paths).toEqual(["/redirige"]);
+});
+
+it("a beacon sent on pagehide never reaches the trap", async () => {
+  const profil = await newSpace(false);
+  for (const o of [{ profil: null }, { profil }]) expect(await readPage(`${page.url}/balise?vers=${encodeURIComponent(trapBase)}`, o)).toHaveProperty("ok");
+  await new Promise((r) => setTimeout(r, 2_000));
+  expect(trap.paths).toEqual([]);
+});
+
+it("a service worker fetch after the read never reaches the trap", async () => {
+  expect(await readPage(`${page.url}/travailleur?vers=${encodeURIComponent(trapBase)}`)).toHaveProperty("ok");
+  expect(page.paths).toContain("/sw.js");
+  await new Promise((r) => setTimeout(r, 6_000));
+  expect(trap.paths).toEqual([]);
 });

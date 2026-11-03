@@ -3,7 +3,7 @@ import { cumulerParties, HTML_MAX, profilsLisibles, urlPermise } from "../../../
 import { ProfilRefuse, type OptionsLecturePage, type PageLue } from "../shims/noyau";
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";
-import { localLiteral, watchReading } from "./local-guard";
+import { guardContainer, localLiteral, watchReading } from "./local-guard";
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 
@@ -103,7 +103,9 @@ function takePublic(): number {
   if (free !== undefined) return free;
   const name = publicCount++ ? `${PUBLIC_IDENTITY}-${publicCount}` : PUBLIC_IDENTITY;
   // Firefox has no API to create a named private identity other than this one; it is kept across restarts.
-  return (ContextualIdentityService.getPrivateIdentity(name) ?? ContextualIdentityService.createForPolicy(name)).userContextId;
+  const id: number = (ContextualIdentityService.getPrivateIdentity(name) ?? ContextualIdentityService.createForPolicy(name)).userContextId;
+  guardContainer(id);
+  return id;
 }
 
 const clearContainer = (userContextId: number) =>
@@ -178,13 +180,17 @@ async function load<T>(store: Store, url: string, o: OptionsLecturePage, signal:
     if (profil === null) await untilSignal(clearContainer((publicId = takePublic())), signal);
     // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
     opened = await createBrowser(publicId ?? containerFor(profil as IdProfil));
-    const page = await readIn(opened.browser, url, { allowed, allowLocal, publicId }, reading, Date.now() + DELAI_TOTAL_MS, signal, screens);
+    const page = await readIn(opened.browser, url, { allowed, allowLocal }, reading, Date.now() + DELAI_TOTAL_MS, signal, screens);
     // The profile went to a private space during the read: what was read does not leave.
     checkProfile();
     return page;
   } finally {
     opened?.close();
-    if (publicId !== undefined) freePublic.push(publicId);
+    // Emptied after the read too, once its page is gone: no cookie, storage nor service worker waits for the next one.
+    if (publicId !== undefined) {
+      await clearContainer(publicId);
+      freePublic.push(publicId);
+    }
     givePlace();
   }
 }
@@ -235,7 +241,7 @@ export function readHtml(store: Store, url: string, o: { adressesLocales?: boole
 function readIn<T>(
   browser: any,
   url: string,
-  g: { allowed: (u: string) => boolean; allowLocal: boolean; publicId?: number },
+  g: { allowed: (u: string) => boolean; allowLocal: boolean },
   reading: Reading<T>,
   deadline: number,
   signal: AbortSignal | undefined,
@@ -270,7 +276,8 @@ function readIn<T>(
     const current = () => browser.currentURI?.spec ?? "";
     const actor = () => browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
 
-    const unwatch = watchReading(browser, { allowLocal: g.allowLocal, userContextId: g.publicId, allowTop: g.allowed, onBlocked: block });
+    // Ended on finish: the browser stays guarded for local addresses (its unload, a pagehide beacon, comes later).
+    const unwatch = watchReading(browser, { allowLocal: g.allowLocal, allowTop: g.allowed, onBlocked: block });
     const waitCalm = () => {
       clearTimeout(calm);
       calm = setTimeout(() => void (screens > 0 ? scrollThenRead() : read()), CALME_MS);
@@ -380,10 +387,16 @@ function readIn<T>(
     const limit = setTimeout(() => finish({ error: new Error(TROP_LENTE) }), Math.max(0, deadline - Date.now()));
     if (signal?.aborted) return abort();
     signal?.addEventListener("abort", abort, { once: true });
-    const uri = Services.io.newURI(url);
-    browser.loadURI(uri, {
-      triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: Number(browser.getAttribute("usercontextid")) }),
-      loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY,
-    });
+    // shortcut: a top-level navigation to a custom scheme (mailto:, an app's own) may show the external app dialog,
+    // nothing blocks it in the reading browser; upgrade with a content-dispatch guard if reads hit such pages.
+    try {
+      const uri = Services.io.newURI(url);
+      browser.loadURI(uri, {
+        triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: Number(browser.getAttribute("usercontextid")) }),
+        loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY,
+      });
+    } catch (e) {
+      finish({ error: e instanceof Error ? e : new Error(String(e)) });
+    }
   });
 }

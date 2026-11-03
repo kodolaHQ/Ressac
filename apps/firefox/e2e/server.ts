@@ -13,7 +13,8 @@ const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
  * Serves the Electron e2e pages read-only; /cookie sets a persistent cookie, /lire-cookie shows the cookies in its title,
  * /icone is a page with an http favicon (/icone.png) and a pure red background, /avale a page that swallows every key.
  * Invisible reading: /sous-ressources?vers=<base> has a frame, an image and a fetch on <base>, /redirige?vers=<url>
- * answers 302, /dialogues calls print() and alert() while loading, /lent never answers.
+ * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to
+ * <base>/balise on pagehide, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
  * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
  */
 export async function startServer(o: { host?: string } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
@@ -31,6 +32,21 @@ export async function startServer(o: { host?: string } = {}): Promise<{ url: str
       );
     }
     if (route === "/redirige") return res.writeHead(302, { Location: to }).end();
+    if (route === "/balise") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end(`<title>balise</title><script>addEventListener("pagehide", () => navigator.sendBeacon("${to}/balise"))</script>`);
+    }
+    // A service worker that fetches <base>/sw 4 s after it installs, long after the read is over.
+    if (route === "/travailleur") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end(`<title>travailleur</title><script>navigator.serviceWorker.register("/sw.js?vers=${encodeURIComponent(to)}")</script>`);
+    }
+    if (route === "/sw.js") {
+      res.writeHead(200, { "Content-Type": "text/javascript" });
+      return res.end(
+        `addEventListener("install", (e) => e.waitUntil(new Promise((r) => setTimeout(r, 4000)).then(() => fetch(${JSON.stringify(`${to}/sw`)}).catch(() => {}))));`,
+      );
+    }
     if (route === "/dialogues") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end("<title>dialogues</title><script>print(); alert('a'); confirm('b'); prompt('c')</script><p>Après les dialogues</p>");

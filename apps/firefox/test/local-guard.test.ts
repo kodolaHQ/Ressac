@@ -24,3 +24,8 @@ it("WEBAIOS_TEST_ADRESSES_PUBLIQUES makes 127.0.0.1 public", async () => {
   expect(await isLocalHost("page.test", resolver(["127.0.0.1"]))).toBe(false);
   expect(await isLocalHost("localtest.me", resolver(["::1"]))).toBe(true);
 });
+
+it("a failed or empty resolution is refused (fail closed)", async () => {
+  expect(await isLocalHost("down.example", vi.fn(async () => Promise.reject(new Error("NXDOMAIN"))))).toBe(true);
+  expect(await isLocalHost("empty.example", resolver([]))).toBe(true);
+});
