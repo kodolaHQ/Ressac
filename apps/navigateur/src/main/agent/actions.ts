@@ -1,4 +1,4 @@
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ACTION_INCONNUE,
@@ -180,17 +180,40 @@ export function creerServiceActions(o: {
    * page ne peut pas le relire sur le disque, `liste` le lui donne tant qu'aucune exécution plus récente n'existe.
    */
   const refusLancement = new Map<string, { erreur: string; quand: string }>();
+  // Gardé sur le disque à côté des exécutions : un refus survit à la fermeture de l'appli.
+  const fichierRefus = join(o.dossierActions, "refus-lancement.json");
+  const charge = readFile(fichierRefus, "utf8").then(
+    (t) => {
+      const lu: unknown = JSON.parse(t);
+      if (typeof lu !== "object" || lu === null) return;
+      for (const [id, v] of Object.entries(lu)) {
+        const { erreur, quand } = (v ?? {}) as { erreur?: unknown; quand?: unknown };
+        if (typeof erreur === "string" && typeof quand === "string") refusLancement.set(id, { erreur, quand });
+      }
+    },
+    () => {},
+  );
+  let ecriture = Promise.resolve();
+  const enregistrerRefus = () => {
+    const t = JSON.stringify(Object.fromEntries(refusLancement));
+    ecriture = ecriture
+      .then(() => mkdir(o.dossierActions, { recursive: true }))
+      .then(() => writeFile(fichierRefus, t))
+      .catch((e) => console.error("[webaios] refus des actions non enregistrés :", e));
+  };
   /** Lancements suivis, par action : une suppression les oublie, leur fin ne note plus rien (action recréée sous le même id). */
   const lancementsSuivis = new Map<string, Set<Promise<ResultatLancement>>>();
   const suivreLancement = (id: string, fin: Promise<ResultatLancement>): Promise<ResultatLancement> => {
-    refusLancement.delete(id);
+    const pret = charge.then(() => refusLancement.delete(id) && enregistrerRefus());
     const suivis = lancementsSuivis.get(id) ?? new Set();
     lancementsSuivis.set(id, suivis.add(fin));
-    return fin.then((r) => {
+    return fin.then(async (r) => {
+      await pret;
       const suivi = lancementsSuivis.get(id)?.delete(fin) ?? false;
       if (lancementsSuivis.get(id)?.size === 0) lancementsSuivis.delete(id);
       if (suivi && !r.execution) {
         refusLancement.set(id, { erreur: r.erreur ?? "L'action n'a pas pu être lancée", quand: new Date(maintenant()).toISOString() });
+        enregistrerRefus();
         o.surChange?.();
       }
       return r;
@@ -209,6 +232,7 @@ export function creerServiceActions(o: {
     async liste(f) {
       const c = o.chemins();
       if (prive(f) || !c) return [];
+      await charge;
       return (await lireActionsAffichees(c, o.dossierActions)).map((a) => {
         const r = refusLancement.get(a.id);
         return r && (!a.dernier || a.dernier.debut < r.quand) ? { ...a, refus: r.erreur } : a;

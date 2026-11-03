@@ -473,6 +473,21 @@ test("ouvrir : un lancement refusé sans exécution écrite (atelier arrêté…
   expect((await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
 });
 
+test("un refus de lancement survit à la fermeture de l'appli ; relancer l'efface aussi du disque", async () => {
+  const issue: ResultatLancement = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
+  const { s, F, c, dossierActions, etat } = service({ issue });
+  await s.ouvrir(F, "gitlab", null);
+  await expect.poll(async () => (await s.liste(F)).find((a) => a.id === "gitlab")?.refus).toBe("Docker n'est pas démarré");
+  // Une nouvelle session de l'appli (même profil) relit le refus.
+  const rouvrir = (issue: ResultatLancement) =>
+    creerServiceActions({ etat, agir: () => {}, noyau: () => fauxNoyau(undefined, issue).noyau, chemins: () => c, dossierActions });
+  const apres = rouvrir({ statut: "reussie", execution: "x" });
+  await expect.poll(async () => (await apres.liste(F)).find((a) => a.id === "gitlab")?.refus).toBe("Docker n'est pas démarré");
+  // Relancé avec succès : le refus disparaît, aussi pour la session suivante.
+  await apres.lancer(F, "gitlab", null);
+  await expect.poll(async () => (await rouvrir(issue).liste(F)).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
+});
+
 test("lancer (Relancer) note aussi un refus sans exécution ; une issue avec exécution n'en laisse pas", async () => {
   const { s, F, changes } = service({ issue: { statut: "invalide", erreur: "Cette action n'a pas de workflow.json", erreurNoyau: true } });
   await s.ouvrir(F, "gitlab", null);
