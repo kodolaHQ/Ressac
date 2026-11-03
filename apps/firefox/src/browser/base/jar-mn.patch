@@ -1,0 +1,10 @@
+diff --git a/browser/base/jar.mn b/browser/base/jar.mn
+index b2b5db6040..c6e6a39e06 100644
+--- a/browser/base/jar.mn
++++ b/browser/base/jar.mn
+@@ -104,3 +104,5 @@ browser.jar:
+ 
+ # L10n resources and overrides.
+ % override chrome://global/locale/appstrings.properties chrome://browser/locale/appstrings.properties
++
++#include content/webaios/jar.inc.mn

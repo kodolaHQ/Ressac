@@ -34,6 +34,48 @@ describe("WebAiOs-Firefox foundation", () => {
       ),
     ).toEqual([true, true, 0]);
   });
+
+  it("hides Firefox's toolbars", async () => {
+    expect(await w.marionette.execute("return getComputedStyle(document.getElementById('navigator-toolbox')).display")).toBe("none");
+  });
+
+  it("renders the sidebar as HTML", async () => {
+    // Waits for the sidebar iframe to load, then reads its root element.
+    const root = await w.marionette.execute<{ ns: string; text: string } | null>(`return (async () => {
+      const frame = document.getElementById("webaios-sidebar");
+      if (!frame) return null;
+      for (let i = 0; i < 100; i++) {
+        const el = frame.contentDocument?.querySelector('[data-webaios="sidebar"]');
+        if (el) return { ns: el.namespaceURI, text: el.textContent };
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return null;
+    })();`);
+    expect(root?.ns).toBe("http://www.w3.org/1999/xhtml");
+    expect(root?.text).toContain("WebAiOs");
+  });
+
+  it("puts the sidebar on the left, 240 px wide", async () => {
+    const rect = await w.marionette.execute<{ left: number; width: number } | null>(
+      "const r = document.getElementById('webaios-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null",
+    );
+    expect(rect).toEqual({ left: 0, width: 240 });
+  });
+
+  it("gives the page the rest of the window", async () => {
+    const r = await w.marionette.execute<{ title: string; left: number; right: number; inner: number }>(`return (async () => {
+      const b = gBrowser.selectedBrowser;
+      b.loadURI(Services.io.newURI("data:text/html,<title>essai</title>ok"), {
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      });
+      for (let i = 0; i < 100 && b.contentTitle !== "essai"; i++) await new Promise((res) => setTimeout(res, 100));
+      const rect = b.getBoundingClientRect();
+      return { title: b.contentTitle, left: rect.left, right: rect.left + rect.width, inner: window.innerWidth };
+    })();`);
+    expect(r.title).toBe("essai");
+    expect(r.left).toBeGreaterThanOrEqual(240);
+    expect(Math.abs(r.right - r.inner)).toBeLessThanOrEqual(1);
+  });
 });
 
 describe("several WebAiOs-Firefox instances", () => {

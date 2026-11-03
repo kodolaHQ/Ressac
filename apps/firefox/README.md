@@ -20,9 +20,16 @@ pnpm build                                     # full build (~20 min)
 
 In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The `engine` tree is shared between checkouts: run `engine:import` in the checkout you work in before building.
 
+## Work loop
+
+- Changed `ui/` or a `src/**` `.js`/`.css`/`.html` file: `pnpm build:ui` (~17 s: Vite, then `mach build faster`).
+- Added a file to `src/`: `pnpm engine:import`, then `pnpm build:ui`.
+- Changed a `*.patch`, or anything compiled (C++, Rust, `jar.mn`): `pnpm engine:import`, then `pnpm build`.
+- Tests: `pnpm test` (unit), `pnpm e2e` (headless Firefox with a temporary profile, driven over Marionette).
+
 ## Measured times (M5 Pro, 2026-11-03, Firefox 159 + Zen patches)
 
-Full build 20 min; `build:ui` after a JS change 14 s; one C++ or Objective-C++ file 23–25 s; build with no change 21 s.
+Full build 20–23 min; `build:ui` after a UI change 17 s; adding the sidebar files (`jar.mn` + `browser.xhtml` patches) 21 s; one C++ or Objective-C++ file 23–25 s; build with no change 21 s.
 
 ## Pitfalls
 

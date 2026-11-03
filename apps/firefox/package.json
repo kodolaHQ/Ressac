@@ -7,11 +7,12 @@
     "engine:link": "zsh scripts/env.sh zsh scripts/engine.sh link",
     "engine:import": "zsh scripts/env.sh surfer import",
     "engine:bootstrap": "zsh scripts/env.sh zsh -c 'cd engine && ./mach --no-interactive bootstrap --application-choice browser'",
-    "build": "zsh scripts/env.sh surfer build",
-    "build:ui": "zsh scripts/env.sh surfer build --ui",
+    "build": "vite build && zsh scripts/env.sh surfer build",
+    "build:ui": "vite build && zsh scripts/env.sh surfer build --ui",
     "test": "vitest run",
     "e2e": "vitest run -c vitest.e2e.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "ui": "vite build"
   },
   "devDependencies": {
     "@zen-browser/surfer": "1.14.9",
