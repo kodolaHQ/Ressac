@@ -20,13 +20,23 @@ pnpm build                                     # full build (~20 min)
 
 In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The `engine` tree is shared between checkouts: run `engine:import` in the checkout you work in before building.
 
-## The three bundles
+## The bundles
 
-`scripts/ui.sh` builds three bundles with Vite from `ui/` and `chrome/`, into `src/browser/base/content/webaios/` (generated, git-ignored):
+`scripts/ui.sh` builds five bundles with Vite from `ui/` and `chrome/`, into `src/browser/base/content/webaios/` (generated, git-ignored):
 
 - `sidebar`: the Svelte UI, loaded in an iframe of the browser window;
 - `window`: the window controller (syncs WebAiOs tabs and spaces with Firefox tabs and containers, shortcuts);
-- `store`: the shared state module (`store.sys.mjs`: session file, containers, shutdown save), imported by the window at runtime.
+- `store`: the shared state module (`store.sys.mjs`: session file, containers, shutdown save, the agent host), imported by the window at runtime;
+- `agent`: the agent panel (terminal), a second iframe on the right of the window;
+- `actor`: the page JSWindowActor (`page-actor.sys.mjs`). This one is **copied** into the build, not linked (the macOS content sandbox cannot read a file outside the source and object trees): after changing `chrome/agent/page-actor.ts`, run `pnpm build:ui`.
+
+## The agent
+
+The noyau (`@webaios/noyau`) runs in a separate Node process, `noyau/host.ts`, started by Firefox and spoken to in JSON-RPC over stdio (one message per line). Its console output goes to Firefox's console prefixed `[noyau]`; stdout carries only the protocol. The Node and tsx paths are frozen at build time (`scripts/paths.ts`): a dev build only runs on the machine that built it.
+
+The agent's workshop container is `webaios-atelier-firefox` (`WEBAIOS_CONTENEUR`), so it never touches the Electron app's `webaios-atelier`. Both share the `webaios-home` volume.
+
+Invisible reads run in a windowless browser, in a private container cleared before and after each read. Every request from a reading container is checked: an address that is local, or a name that resolves to one (or fails to resolve), is refused. Known limits, marked `shortcut:` in `chrome/agent/local-guard.ts` and `invisible.ts`: custom-scheme navigations, preconnects, Alt-Svc, WebRTC, and service workers in a login profile's container.
 
 ## Work loop
 
@@ -42,11 +52,13 @@ The WebAiOs state (session, settings) lives in `~/WebAiOs-firefox/data` by defau
 
 Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
 
-## Not migrated yet (step 2)
+## Not migrated yet (step 3)
 
 - several windows: ⌘N does nothing;
 - compact mode;
-- agent panel, agent access, badges;
+- the agent's dev tools, history access, widget data and site-app permission checks;
+- « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
+- the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - history: suggestions are empty;
 - downloads, permissions, extensions, design mode;
 - internal `webaios:` pages: a "not available yet" message;
