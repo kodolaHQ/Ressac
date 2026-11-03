@@ -438,3 +438,96 @@ test("page /csp (CSP stricte et Trusted Types) : ⌘⇧D arme le viseur, clic su
     await fermer();
   }
 });
+
+// Relecture du dossier d'une appli de site (tâche 7).
+
+const menuApp = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
+/** La référence de la dernière relecture de tuning, dans le profil (hors de portée du conteneur). */
+const refReluSite = (profil: string) => join(profil, "design", "relecture", "site-tuning.git", "refs", "webaios", "relu");
+
+test("au démarrage, <profil>/design/relecture/site-tuning.git/refs/webaios/relu apparaît ; aucun .git dans sites/tuning", async () => {
+  const { app, profil, racine, fermer } = await demarrer();
+  try {
+    await expect.poll(() => existsSync(refReluSite(profil)), { timeout: 15_000 }).toBe(true);
+    expect(existsSync(join(racine, "sites", "tuning", ".git"))).toBe(false);
+    expect(existsSync(join(racine, "sites", ".git"))).toBe(false);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("site.json et retouches/tuning.css modifiés, puis « Relire » de la carte site-tuning : page-relecture les liste ; « Relire ce projet » du chevron ramène la même page, sans second onglet", async () => {
+  const { app, fenetre, profil, racine, fermer } = await demarrer();
+  try {
+    await expect.poll(() => existsSync(refReluSite(profil)), { timeout: 15_000 }).toBe(true);
+    writeFileSync(join(racine, "sites", "tuning", "site.json"), JSON.stringify({ ...declarationTuning(), description: "Sans bannière" }));
+    writeFileSync(join(racine, "sites", "tuning", "retouches", "tuning.css"), "#banniere { display: none }");
+    await menuApp(app, "applications");
+    await fenetre.getByTestId("site-tuning-relire").click();
+    const relecture = fenetre.getByTestId("page-relecture");
+    await expect(relecture).toBeVisible();
+    const onglets = fenetre.getByRole("tab", { name: /Relecture — Tuning/ });
+    await expect(onglets).toHaveCount(1);
+    const fichiers = relecture.getByTestId("fichier-relecture");
+    await expect(fichiers).toHaveCount(2);
+    await expect(fichiers.filter({ hasText: "site.json" })).toHaveCount(1);
+    await expect(fichiers.filter({ hasText: "retouches/tuning.css" })).toHaveCount(1);
+    // Un autre onglet, puis « Relire ce projet » du chevron dans la fenêtre de l'appli : la même page revient.
+    await menuApp(app, "applications");
+    await expect(relecture).toHaveCount(0);
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await page.getByTestId("site-menu-design").click();
+    await page.getByTestId("site-menu-design-relire").click();
+    await expect(relecture).toBeVisible();
+    await expect(onglets).toHaveCount(1);
+    await expect(relecture.getByTestId("fichier-relecture")).toHaveCount(2);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+test("« Supprimer » avec une remarque au panier et un lot envoyé : remarques et dépôt de relecture effacés ; tuning recréée : panier vide, nouvelle référence", async () => {
+  const { app, fenetre, profil, racine, fermer } = await demarrer();
+  try {
+    await expect.poll(() => existsSync(refReluSite(profil)), { timeout: 15_000 }).toBe(true);
+    const ancienne = readFileSync(refReluSite(profil), "utf8");
+    const page = await ouvrirEtAttendre(app, fenetre);
+    await demarrerMode(app, page);
+    // Un lot envoyé…
+    await remarquerDansSite(app, page, "#banniere", "div#banniere.cookies", "cache ça", "1");
+    await echapDansSite(app, "tuning");
+    await page.getByTestId("site-menu-design").click();
+    await page.getByTestId("site-menu-design-panier").click();
+    const calque = await calqueSite(app, "tuning");
+    await calque.getByTestId("envoyer-remarques").click();
+    await expect(page.getByTestId("site-compteur-panier")).toHaveCount(0);
+    const remarques = join(racine, ".webaios", "remarques", "site-tuning");
+    await expect.poll(() => (existsSync(remarques) ? readdirSync(remarques).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n)).length : 0)).toBe(1);
+    // … puis une remarque au panier, mode en marche.
+    await demarrerMode(app, page);
+    await remarquerDansSite(app, page, "#films", "li.affiche", "affiches plus grandes", "1");
+    // La fenêtre principale de nouveau au premier plan : le menu « Applications » y va.
+    await simulerPremierPlan(app, null);
+    await menuApp(app, "applications");
+    await fenetre.getByTestId("site-tuning-supprimer").click();
+    await fenetre.getByTestId("confirmer-suppression-site").click();
+    await expect(fenetre.getByTestId("site-tuning")).toHaveCount(0);
+    await expect.poll(() => existsSync(remarques)).toBe(false);
+    await expect.poll(() => existsSync(join(profil, "design", "relecture", "site-tuning.git"))).toBe(false);
+    expect(existsSync(join(profil, "design", "relecture", "site-tuning.commentaires.json"))).toBe(false);
+    // Recréée au même id (une retouche différente : un autre arbre, donc une autre photo si l'ancienne est bien partie).
+    ecrireSite(racine, "tuning", { declaration: declarationTuning(), fichiers: { "retouches/tuning.css": "/* neuve */" } });
+    await expect(fenetre.getByTestId("site-tuning")).toHaveCount(1);
+    await expect.poll(() => existsSync(refReluSite(profil)), { timeout: 15_000 }).toBe(true);
+    expect(readFileSync(refReluSite(profil), "utf8")).not.toBe(ancienne);
+    await ouvrirSite(fenetre, "tuning");
+    const neuve = await fenetreSite(app, "tuning");
+    await expect(neuve.getByTestId("site-bouton-design")).toBeVisible();
+    await expect(neuve.getByTestId("site-compteur-panier")).toHaveCount(0);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});

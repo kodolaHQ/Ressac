@@ -1130,7 +1130,11 @@ app.whenReady().then(async () => {
     relire: (p, c) => {
       if (p.type !== "demo") ouvrirRelecture(c.type === "fenetre" ? c.fenetreId : undefined, p.projet, p.nom);
     },
-    envoyer: envoiLot,
+    // Avant le premier lot d'une appli de site, sa première photo de relecture (sans elle, rien à relire ensuite).
+    envoyer: async (p, lot) => {
+      if (p.type === "site") await relecture?.assurer(p.projet).catch(() => undefined);
+      await envoiLot(p, lot);
+    },
     // Les applis de site (plan 18) : `sites` démarre plus loin, d'où ces fermetures paresseuses.
     vueSite: (id) => sites?.fenetres.vueDesign(id) ?? null,
     sites: async () => ((await sites?.liste()) ?? []).map(({ id, nom }) => ({ id, nom })),
@@ -1143,14 +1147,21 @@ app.whenReady().then(async () => {
     chemins,
     registre: () => registreExternes,
     applis: async () => (await applications?.gestionnaire.liste()) ?? [],
+    sites: async () => ((await sites?.liste()) ?? []).map(({ id, nom }) => ({ id, nom })),
     remarques,
     envoyer: envoiLot,
   });
-  const prendreEnCharge = () =>
+  const prendreEnCharge = () => {
     void applications?.gestionnaire
       .liste()
       .then((l) => relecture?.priseEnCharge(l.map((a) => a.dossier)))
       .catch((e) => console.error("[relecture] prise en charge :", e));
+    // Les applis de site aussi (plan 18) : `sites` démarre plus loin, leur liste suit à chaque changement.
+    void sites
+      ?.liste()
+      .then((l) => relecture?.priseEnChargeSites(l.map((s) => s.id)))
+      .catch((e) => console.error("[relecture] prise en charge des sites :", e));
+  };
   planifierPriseEnCharge = () => {
     clearTimeout(minuteurPriseEnCharge);
     minuteurPriseEnCharge = setTimeout(prendreEnCharge, 1000);
@@ -1213,8 +1224,17 @@ app.whenReady().then(async () => {
       agent?.preRemplir(f, texte);
       cibles.raccourci(f, "agent");
     },
-    // La section « Sites » de la page Applications relit la liste.
-    diffuser: () => diffuser(CANAUX.sitesChange, null),
+    // La section « Sites » de la page Applications relit la liste ; la relecture prend la photo d'une nouvelle appli.
+    diffuser: () => {
+      diffuser(CANAUX.sitesChange, null);
+      planifierPriseEnCharge();
+    },
+    // « Relire » de la carte : la page Relecture du dossier de l'appli, sous son nom.
+    relire: (f, id) =>
+      void sites
+        ?.liste()
+        .then((l) => ouvrirRelecture(f, `site-${id}`, l.find((s) => s.id === id)?.nom ?? id))
+        .catch((e) => console.error("[relecture] relire un site :", e)),
     // L'agent perd ses outils de développement sur la fenêtre fermée ; ses cartes d'outils sur elle tombent. La carte de
     // l'appli et son accord, eux, valent pour l'appli et la conversation (rouverte, elle reste ouverte à l'agent).
     surFermee: (id) => {
@@ -1226,7 +1246,13 @@ app.whenReady().then(async () => {
     // L'accueil (⌂), la carte d'accord, le plein écran d'un élément ou le menu « Extensions » arrêtent son mode design.
     surInterruption: (id) => void design?.arreter({ type: "site", id }),
     // Supprimée : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée au même id redemande la carte).
-    surSupprimee: (id) => agent?.noyau()?.politique.retirerLectureSite(id),
+    // Son mode design, son panier, ses lots, son dépôt de relecture et ses commentaires sont effacés avec elle.
+    surSupprimee: (id) => {
+      agent?.noyau()?.politique.retirerLectureSite(id);
+      design?.oublier({ type: "site", id });
+      void remarques.oublier(`site-${id}`).catch((e) => console.error(`[design] remarques de ${id} non effacées :`, e));
+      void relecture?.effacer(`site-${id}`).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e));
+    },
     // Les extensions du Store activées dans l'appli (plan 16) : chargées avant sa première page, et seulement pendant
     // qu'elle est ouverte ; la vue du site est leur seul onglet ; retirées (stockage effacé) à la suppression.
     extensions: {
@@ -1240,6 +1266,11 @@ app.whenReady().then(async () => {
       },
     },
   });
+  // La première photo de relecture des applis de site déjà là (la prise en charge du démarrage les précède).
+  void sites
+    .liste()
+    .then((l) => relecture?.priseEnChargeSites(l.map((s) => s.id)))
+    .catch((e) => console.error("[relecture] prise en charge des sites :", e));
   // Tests seulement : la console des retouches, lue par les e2e (l'agent la lit par son outil MCP).
   if (process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1") {
     (globalThis as { __webaiosErreursRetouches?: (id: string) => unknown }).__webaiosErreursRetouches = (id) => sites?.erreurs(id) ?? [];

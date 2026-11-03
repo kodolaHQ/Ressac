@@ -286,6 +286,7 @@
                 <button data-testid="site-{s.id}-modifier" onclick={() => agirSite(s, "modifier")}>Modifier avec l'agent</button>
                 <button data-testid="site-{s.id}-oublier" onclick={() => (siteAOublier = s)}>{OUBLIER_MEMOIRE}</button>
                 <button data-testid="site-{s.id}-dossier" onclick={() => agirSite(s, "dossier")}>Afficher le dossier</button>
+                <button data-testid="site-{s.id}-relire" onclick={() => agirSite(s, "relire")}>Relire</button>
                 <button data-testid="site-{s.id}-supprimer" onclick={() => (siteASupprimer = s)}>Supprimer</button>
               </div>
               {/if}

@@ -369,7 +369,7 @@ export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"
 /** Une action sur une appli de site : son id suit `ID_SITE` (jamais un chemin). */
 export const SchemaActionSite = z.object({
   id: z.string().regex(ID_SITE),
-  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer"]),
+  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
 });
 
 export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });

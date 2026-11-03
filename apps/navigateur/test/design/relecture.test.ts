@@ -229,3 +229,110 @@ test("le dossier des projets lui-même derrière un lien : une appli dedans rest
   });
   expect(await service.ouvrir("app-essai")).toMatchObject({ etat: "ok" });
 });
+
+/** Une relecture avec un dossier de sites : sites/tuning (« Tuning ») vrai dossier. */
+function preparerSites() {
+  const racine = realpathSync(mkdtempSync(join(tmpdir(), "webaios-relecture-sites-")));
+  dossiers.push(racine);
+  const sites = join(racine, "sites");
+  mkdirSync(join(sites, "tuning", "retouches"), { recursive: true });
+  writeFileSync(join(sites, "tuning", "site.json"), "{}\n");
+  writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), "/* rien */\n");
+  const dossiersDesign = { remarquesEspace: join(racine, "remarques"), prive: join(racine, "prive") };
+  const remarques = new Remarques({ dossiers: dossiersDesign });
+  const envois: { projet: ProjetSuivi; lot: Lot }[] = [];
+  const service = new ServiceRelecture({
+    dossiers: dossiersDesign,
+    chemins: { projets: join(racine, "projets"), sites } as CheminsEspace,
+    registre: () => null,
+    sites: async () => [{ id: "tuning", nom: "Tuning" }],
+    remarques,
+    envoyer: async (projet, lot) => void envois.push({ projet, lot }),
+  });
+  const relecture = join(dossiersDesign.prive, "relecture");
+  return { service, remarques, envois, racine, sites, dossiersDesign, relecture };
+}
+
+test("site-tuning dont sites/tuning est un lien symbolique (vers dehors ou vers sites/autre) : projet null, aucun dépôt créé", async () => {
+  for (const vers of ["dehors", "dedans"] as const) {
+    const { service, racine, sites, relecture } = preparerSites();
+    rmSync(join(sites, "tuning"), { recursive: true });
+    const cible = vers === "dehors" ? join(racine, "dehors") : join(sites, "autre");
+    mkdirSync(cible);
+    writeFileSync(join(cible, "secret.txt"), "x\n");
+    symlinkSync(cible, join(sites, "tuning"));
+    expect(await service.projet("site-tuning")).toBeNull();
+    await service.priseEnChargeSites(["tuning"]);
+    await service.assurer("site-tuning");
+    expect(await service.ouvrir("site-tuning")).toMatchObject({ etat: "indisponible", raison: "projet inconnu" });
+    expect(existsSync(join(relecture, "site-tuning.git"))).toBe(false);
+  }
+});
+
+test("sites/tuning vrai dossier : projet → { nom: \"Tuning\", dossier } ; un site absent de sites/ → null", async () => {
+  const { service, sites } = preparerSites();
+  expect(await service.projet("site-tuning")).toEqual({ nom: "Tuning", dossier: join(sites, "tuning") });
+  expect(await service.projet("site-absent")).toBeNull();
+  // Un site présent mais pas (ou plus) dans la liste : son id pour nom.
+  mkdirSync(join(sites, "autre"));
+  expect(await service.projet("site-autre")).toEqual({ nom: "autre", dossier: join(sites, "autre") });
+});
+
+test("priseEnChargeSites([\"tuning\", \"../x\"]) : une référence pour site-tuning seulement ; assurer(\"site-tuning\") une seconde fois ne la déplace pas", async () => {
+  const { service, sites, relecture } = preparerSites();
+  await service.priseEnChargeSites(["tuning", "../x"]);
+  const ref = join(relecture, "site-tuning.git", "refs", "webaios", "relu");
+  expect(existsSync(ref)).toBe(true);
+  const { readdirSync, readFileSync } = await import("node:fs");
+  expect(readdirSync(relecture).filter((n) => n.endsWith(".git"))).toEqual(["site-tuning.git"]);
+  const avant = readFileSync(ref, "utf8");
+  writeFileSync(join(sites, "tuning", "site.json"), "{\"nom\":\"Tuning\"}\n");
+  await service.assurer("site-tuning");
+  expect(readFileSync(ref, "utf8")).toBe(avant);
+  // Aucun .git dans le dossier du site.
+  expect(existsSync(join(sites, "tuning", ".git"))).toBe(false);
+  const v = await service.ouvrir("site-tuning");
+  if (v.etat !== "ok") throw new Error(v.raison);
+  expect(v.comparaison.fichiers.map((f) => f.chemin)).toEqual(["site.json"]);
+  expect(v).toMatchObject({ nom: "Tuning", destination: "l'agent", sansDestination: null });
+});
+
+test("assurer d'un site sans photo la prend ; d'un id d'appli ou inconnu : sans effet", async () => {
+  const { service, relecture } = preparerSites();
+  await service.assurer("app-essai");
+  await service.assurer("site-absent");
+  expect(existsSync(relecture)).toBe(false);
+  await service.assurer("site-tuning");
+  expect(existsSync(join(relecture, "site-tuning.git", "refs", "webaios", "relu"))).toBe(true);
+});
+
+test("envoyer d'un site : le projet suivi est projetPourSite(id, nom)", async () => {
+  const { service, sites, envois } = preparerSites();
+  writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), Array.from({ length: 5 }, (_, i) => `/* ${i} */`).join("\n") + "\n");
+  await service.priseEnChargeSites(["tuning"]);
+  writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), ["/* 0 */", "/* 1 */", "a { color: red }", "/* 3 */", "/* 4 */"].join("\n") + "\n");
+  const v = await service.ouvrir("site-tuning");
+  if (v.etat !== "ok") throw new Error(v.raison);
+  expect(await service.commenter("site-tuning", v.jeton, { fichier: "retouches/tuning.css", debut: 3, fin: 3, texte: "plus doux" })).toEqual({ ok: true });
+  expect(await service.envoyer("site-tuning")).toEqual({ ok: true });
+  expect(envois[0]!.projet).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });
+});
+
+test("effacer(\"site-tuning\") : plus de site-tuning.git ni de site-tuning.commentaires.json sous prive/relecture", async () => {
+  const { service, sites, relecture } = preparerSites();
+  await service.priseEnChargeSites(["tuning"]);
+  writeFileSync(join(sites, "tuning", "site.json"), "{\"a\":1}\n");
+  const v = await service.ouvrir("site-tuning");
+  if (v.etat !== "ok") throw new Error(v.raison);
+  expect(await service.commenter("site-tuning", v.jeton, { fichier: "site.json", debut: 1, fin: 1, texte: "à voir" })).toEqual({ ok: true });
+  expect(existsSync(join(relecture, "site-tuning.commentaires.json"))).toBe(true);
+  await service.effacer("site-tuning");
+  expect(existsSync(join(relecture, "site-tuning.git"))).toBe(false);
+  expect(existsSync(join(relecture, "site-tuning.commentaires.json"))).toBe(false);
+  // Les comparaisons gardées tombent avec lui ; une appli recréée repart d'une nouvelle photo.
+  await expect(service.fichier("site-tuning", v.jeton, "site.json")).rejects.toThrow(COMPARAISON_INCONNUE);
+  expect(await service.commentaires("site-tuning")).toEqual([]);
+  await service.assurer("site-tuning");
+  const v2 = await service.ouvrir("site-tuning");
+  expect(v2).toMatchObject({ etat: "ok", comparaison: { fichiers: [] } });
+});

@@ -157,6 +157,8 @@ export function demarrerSites(o: {
   ouvrirOnglet(url: string): void;
   /** Pré-remplit le terminal de l'agent de la fenêtre (« Modifier avec l'agent »). */
   deboguer(fenetreId: IdFenetre, texte: string): void;
+  /** « Relire » de la carte : la page Relecture du dossier de l'appli dans la fenêtre principale `fenetreId`. */
+  relire?(fenetreId: IdFenetre, id: string): void;
   /** La liste ou l'état des applis de site a changé. */
   diffuser(): void;
   /** La fenêtre de l'appli s'est fermée (l'agent perd ses outils de développement dessus, ses cartes tombent). */
@@ -682,6 +684,9 @@ export function demarrerSites(o: {
           return;
         case "supprimer":
           return supprimer(id);
+        case "relire":
+          o.relire?.(fenetreId, id);
+          return;
       }
     },
     ouvrirParId,

@@ -118,4 +118,4 @@ export type InjectionCadre = { css: string[]; js: { code: string; nom: string }[
 
 export type SiteAffiche = { id: string; nom: string; description: string; domaine: string | null; icone: string | null; ouverte: boolean; erreur?: string; erreurAction?: string; sansActions?: true };
 
-export type ActionSite = "ouvrir" | "modifier" | "oublier" | "dossier" | "supprimer";
+export type ActionSite = "ouvrir" | "modifier" | "oublier" | "dossier" | "supprimer" | "relire";
