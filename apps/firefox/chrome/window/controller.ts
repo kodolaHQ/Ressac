@@ -30,7 +30,9 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
   const fenetreId = store.state.fenetres[0]!.id;
   const tabs = new TabSync(gBrowser, store, fenetreId);
   tabs.sync(store.state);
-  store.subscribe((state) => tabs.sync(state));
+  // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes.
+  const unsubscribe = [store.subscribe((state) => tabs.sync(state))];
+  window.addEventListener("unload", () => unsubscribe.forEach((u) => u()), { once: true });
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
   window.addEventListener("TabSwitchDone", () => {
     if (!tabs.displayed()) frame.focus();
@@ -55,7 +57,7 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, store:
     estFocalisee: () => Services.focus.activeWindow === window || Services.env.exists("MOZ_HEADLESS"),
   });
   walk.surEtat(store.state);
-  store.subscribe((state) => walk.surEtat(state));
+  unsubscribe.push(store.subscribe((state) => walk.surEtat(state)));
 
   const run = (s: Shortcut) => {
     const state = store.state;

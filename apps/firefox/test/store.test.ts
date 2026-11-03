@@ -37,4 +37,18 @@ describe("createStore", () => {
     store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0]!.id, url: "x" }, () => "t1");
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it("a throwing listener neither skips the next ones nor fails the dispatch", () => {
+    const store = createStore(etatInitial());
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const next = vi.fn();
+    store.subscribe(() => {
+      throw new Error("dead window");
+    });
+    store.subscribe(next);
+    store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0]!.id, url: "x" }, () => "t1");
+    expect(next).toHaveBeenCalled();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });

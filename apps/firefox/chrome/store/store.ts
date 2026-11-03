@@ -22,7 +22,15 @@ export function createStore(initial: EtatNavigateur): Store {
       const previous = state;
       // structuredClone: an action from another realm (Marionette, a window) must not alias our state.
       state = appliquer(previous, structuredClone(action), genId);
-      if (state !== previous) for (const l of [...listeners]) l(state, previous);
+      if (state !== previous)
+        for (const l of [...listeners]) {
+          // One failing listener (a closing window…) must not skip the others nor fail the dispatch.
+          try {
+            l(state, previous);
+          } catch (e) {
+            console.error("[store] listener failed:", e);
+          }
+        }
       return state;
     },
     subscribe(listener) {
