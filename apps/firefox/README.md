@@ -40,6 +40,8 @@ In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The
 
 The WebAiOs state (session, settings) lives in `~/WebAiOs-firefox/data` by default, next to `engine/`, never in `~/WebAiOs`. Set `WEBAIOS_DATA_DIR` to use another folder. The e2e always sets it to a temporary folder.
 
+Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
+
 ## Not migrated yet (step 2)
 
 - several windows: ⌘N does nothing;
