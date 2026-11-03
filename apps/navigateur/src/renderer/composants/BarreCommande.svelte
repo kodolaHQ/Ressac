@@ -1,9 +1,13 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { EtatFenetre, Onglet } from "../../commun/modele";
-  import { api } from "../etat.svelte";
+  import { api, etat } from "../etat.svelte";
   import { fermerCommande, commande } from "./commande.svelte";
-  import { lignesCommande, type LigneCommande, type SourcesCommande } from "./commande";
+  import { LIMITES, appliSourceDeProjet, appliSourceDeSite, lignesCommande, type AppliSource, type LigneCommande, type OngletSource, type SourcesCommande } from "./commande";
+  import { ongletsParcourables } from "../../main/recents";
+  import type { ActionAffichee } from "../../commun/actions";
+  import type { Visite } from "../../commun/modele";
+  import IconeSite from "./IconeSite.svelte";
 
   /**
    * Barre de commande (⌘T, ⌘L) : une boîte au-dessus de la page figée et floutée (FondFige, monté par App). Le champ est
@@ -23,10 +27,67 @@
     fermerPanneau: () => void;
   } = $props();
 
-  // Les sources viennent d'ici (actions, onglets, applis, historique) : une seule déclaration à remplir.
-  const sources: SourcesCommande = { actions: [], onglets: [], applis: [], historique: [] };
+  // Les actions ne sont pas disponibles dans un espace privé (un espace introuvable compte comme privé), comme sur la page vide.
+  const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
+  let actions = $state.raw<ActionAffichee[]>([]);
+  let projets = $state.raw<AppliSource[]>([]);
+  let sites = $state.raw<AppliSource[]>([]);
+  let historique = $state.raw<Visite[]>([]);
+
+  /** Relit une source au démarrage et à chacun de ses changements ; seule la dernière réponse compte. */
+  function suivre<T>(lire: () => Promise<T>, poser: (v: T) => void, surChange: (rappel: () => void) => () => void): () => void {
+    let derniere = 0;
+    const charger = () => {
+      const n = ++derniere;
+      lire().then(
+        (v) => n === derniere && poser(v),
+        () => {},
+      );
+    };
+    charger();
+    return surChange(charger);
+  }
+
+  $effect(() => {
+    if (enPrive) {
+      actions = [];
+      return;
+    }
+    return suivre(() => api.actions.liste(), (l) => (actions = l), (r) => api.actions.surChange(r));
+  });
+  $effect(() => suivre(() => api.applications.liste(), (l) => (projets = l.applications.map(appliSourceDeProjet).filter((a) => a !== null)), (r) => api.applications.surChange(r)));
+  $effect(() => suivre(() => api.sites.liste(), (l) => (sites = l.map(appliSourceDeSite)), (r) => api.sites.surChange(r)));
+
+  // Les onglets que l'espace actif affiche : même portée que ⌃Tab.
+  const onglets = $derived.by<OngletSource[]>(() => {
+    const e = etat.valeur;
+    if (!e) return [];
+    return ongletsParcourables(e, fenetre.id).flatMap((id) => {
+      const o = e.onglets[id];
+      return o ? [{ id: o.id, titre: o.titre, url: o.url, favicon: o.favicon }] : [];
+    });
+  });
+
+  const sources: SourcesCommande = $derived({ actions, onglets, applis: [...projets, ...sites], historique });
 
   let texte = $state("");
+  let refus = $state("");
+  let requete = 0;
+
+  // L'historique est redemandé à chaque frappe ; une réponse arrivée après une frappe plus récente est ignorée.
+  $effect(() => {
+    const t = texte.trim();
+    const n = ++requete;
+    if (!t) {
+      historique = [];
+      return;
+    }
+    api.historique.rechercher(t, LIMITES.historique, true).then(
+      (v) => n === requete && (historique = v),
+      () => n === requete && (historique = []),
+    );
+  });
+
   let choisie = $state(0);
   let champ: HTMLInputElement;
 
@@ -39,6 +100,7 @@
     if (!o) return;
     texte = o.texte;
     choisie = 0;
+    refus = "";
     void tick().then(() => {
       champ?.focus();
       if (o.mode === "actif") champ?.select();
@@ -55,9 +117,21 @@
       fermerCommande();
       return;
     }
+    if (l.type === "action") {
+      void api.actions.ouvrir(l.id, l.saisie).then(
+        (r) => (r.ok ? fermerCommande() : (refus = r.erreur)),
+        () => (refus = "Le service des actions ne répond pas"),
+      );
+      return;
+    }
     if (l.type === "defaut") api.naviguer(cible, l.texte);
     else if (l.type === "historique") api.naviguer(cible, l.url);
-    else return; // les autres types : branchés avec leurs sources
+    else if (l.type === "onglet") {
+      // Comme la barre latérale et ⌃Tab : un essentiel s'ouvre par son favori (son onglet peut être celui d'un espace frère).
+      const lien = etat.valeur?.onglets[l.onglet.id]?.lien;
+      api.agir(lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: fenetre.id, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id: l.onglet.id });
+    } else if (l.appli.genre === "projet") api.applications.agir(l.appli.id, l.appli.action);
+    else api.sites.agir(l.appli.id, "ouvrir");
     fermerCommande(true);
   }
 
@@ -77,6 +151,9 @@
 
   const libelle = (l: LigneCommande): string =>
     l.type === "defaut" ? l.libelle : l.type === "action" ? l.nom : l.type === "onglet" ? l.onglet.titre : l.type === "appli" ? l.appli.nom : l.titre || l.url;
+  const favicon = (l: LigneCommande): string | null => (l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : null);
+  const etiquette = (l: LigneCommande): string =>
+    l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
   const detail = (l: LigneCommande): string => (l.type === "onglet" ? l.onglet.url : l.type === "historique" ? l.url : "");
 </script>
 
@@ -97,19 +174,22 @@
     <input
       bind:this={champ}
       bind:value={texte}
-      oninput={() => (choisie = 0)}
+      oninput={() => ((choisie = 0), (refus = ""))}
       onkeydown={touche}
       data-testid="saisie-commande"
       placeholder="Rechercher ou saisir une adresse"
       spellcheck="false"
       autocomplete="off"
     />
+    {#if refus}<p class="refus" data-testid="refus-commande">{refus}</p>{/if}
     <ul role="listbox">
       {#each lignes as l, i (i)}
         <li role="option" aria-selected={i === choisie} data-testid="ligne-commande" data-type={l.type}>
           <button type="button" tabindex="-1" class:choisie={i === choisie} onmousemove={() => (choisie = i)} onclick={() => executer(l)}>
+            {#if favicon(l)}<IconeSite favicon={favicon(l)} titre={libelle(l)} />{/if}
             <span class="libelle">{libelle(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}
+            {#if etiquette(l)}<span class="etiquette">{etiquette(l)}</span>{/if}
           </button>
         </li>
       {/each}
@@ -137,5 +217,7 @@
   button { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
   button.choisie { background: var(--fond); }
   .libelle { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .refus { margin: 6px 2px 0; color: var(--en-erreur); font-size: 13px; }
+  .etiquette { margin-left: auto; flex: none; opacity: 0.5; font-size: 11px; }
   .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.6; font-size: 12px; }
 </style>

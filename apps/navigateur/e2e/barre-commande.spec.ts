@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
+import { dansLaVue, ecrireAction, ecrireSite, fenetreSite, lancer, nouvelleRacine, ouvrirOnglet, reglerEspaceActifPrive, serveurSites, serveurTest } from "./aide";
 
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
@@ -184,5 +184,108 @@ test("Échap rend le clavier à la page affichée", async () => {
       }),
     )
     .toBe(true);
+  await fermer();
+});
+
+const lignes = (fenetre: Page, type: string) => fenetre.locator(`[data-testid="ligne-commande"][data-type="${type}"]`);
+
+test("une action se lance depuis la modale", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "sans-workflow", { nom: "Zorglub" });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.some((a) => a.id === "sans-workflow"))), { timeout: 30_000 }).toBe(true);
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await saisie.fill("Zorglub");
+  await expect(lignes(fenetre, "action")).toHaveCount(1);
+  await saisie.press("ArrowDown");
+  await saisie.press("Enter");
+  await expect(fenetre.getByTestId("page-action")).toBeVisible({ timeout: 30_000 });
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  await fermer();
+});
+
+test("un onglet ouvert s'active, sans nouvel onglet", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+  await expect(fenetre.locator(actif)).toContainText("Page B");
+  await expect(fenetre.locator(onglets).filter({ hasText: "Page A" })).toHaveCount(1);
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await saisie.fill("Page A");
+  await expect(lignes(fenetre, "onglet")).toHaveCount(1);
+  await saisie.press("ArrowDown");
+  await saisie.press("Enter");
+  await expect(fenetre.locator(actif)).toContainText("Page A");
+  await expect(fenetre.locator(onglets)).toHaveCount(2);
+  await fermer();
+});
+
+test("↑ et ↓ font une boucle sur les lignes", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect(fenetre.locator(onglets)).toHaveCount(1);
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await saisie.fill("Page A");
+  await expect(lignes(fenetre, "onglet")).toHaveCount(1);
+  const choisie = fenetre.locator('[data-testid="ligne-commande"][aria-selected="true"]');
+  await expect(choisie).toHaveAttribute("data-type", "defaut");
+  await saisie.press("ArrowUp");
+  await expect(choisie).toHaveAttribute("data-type", "onglet");
+  await saisie.press("ArrowDown");
+  await expect(choisie).toHaveAttribute("data-type", "defaut");
+  await fermer();
+});
+
+test("une appli de site s'ouvre", async () => {
+  const sites = await serveurSites();
+  try {
+    sites.definir("vidola-a.localhost", "/", "<title>Vidola A</title>");
+    const racine = nouvelleRacine();
+    ecrireSite(racine, "vidola", {
+      declaration: { nom: "Vidola", adresse: sites.url("vidola-a.localhost", "/"), domaines: ["vidola-a.localhost"], connexion: [] },
+    });
+    const { app, fenetre, fermer } = await lancer({ racine, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+    await expect.poll(() => fenetre.evaluate(() => window.webaios.sites.liste().then((l) => l.some((s) => s.id === "vidola"))), { timeout: 30_000 }).toBe(true);
+    await menu(app, "nouvel-onglet");
+    const saisie = fenetre.getByTestId("saisie-commande");
+    await saisie.fill("Vidola");
+    await expect(lignes(fenetre, "appli")).toHaveCount(1);
+    await lignes(fenetre, "appli").locator("button").click();
+    await fenetreSite(app, "vidola");
+    await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+    await fermer();
+  } finally {
+    await sites.fermer();
+  }
+});
+
+test("historique proposé après une visite", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await ouvrirOnglet(fenetre, `${serveur.url}/b.html`);
+  await expect.poll(() => dansLaVue(app, "b.html", "document.title")).toBe("Page B");
+  await expect
+    .poll(() => fenetre.evaluate(() => window.webaios.historique.rechercher("b.html", 5, true).then((v) => v.length)), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  await menu(app, "nouvel-onglet");
+  await fenetre.getByTestId("saisie-commande").fill("b.html");
+  await expect(fenetre.locator('[data-testid="ligne-commande"][data-type="historique"], [data-testid="ligne-commande"][data-type="onglet"]').first()).toBeVisible();
+  await fermer();
+});
+
+test("espace privé : pas d'action proposée", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "sans-workflow", { nom: "Zorglub" });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.some((a) => a.id === "sans-workflow"))), { timeout: 30_000 }).toBe(true);
+  await reglerEspaceActifPrive(fenetre, true);
+  await menu(app, "nouvel-onglet");
+  await fenetre.getByTestId("saisie-commande").fill("Zorglub");
+  await expect(lignes(fenetre, "defaut")).toHaveCount(1);
+  await fenetre.waitForTimeout(500);
+  await expect(lignes(fenetre, "action")).toHaveCount(0);
   await fermer();
 });
