@@ -1,0 +1,10 @@
+diff --git a/browser/app/profile/firefox.js b/browser/app/profile/firefox.js
+index 0f4b291..cf5bf1b 100644
+--- a/browser/app/profile/firefox.js
++++ b/browser/app/profile/firefox.js
+@@ -3878,3 +3878,5 @@ pref("distribution.mozillaonline.ignore", true);
+ #ifdef XP_MACOSX
+   pref("browser.macAppMenu.setAsDefaultShown", false);
+ #endif
++
++#include webaios.js
