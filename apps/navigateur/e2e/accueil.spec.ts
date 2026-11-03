@@ -377,7 +377,7 @@ test("un lien cliqué dans un widget ouvre un onglet, un second clic un second o
   await fermer();
 });
 
-test("un widget qui vole le focus n'obtient aucun lien par Espace ou Entrée tapés par l'utilisateur", async () => {
+test("un widget qui vole le focus le rend : la frappe de l'utilisateur reste dans le champ de l'accueil, aucun lien", async () => {
   const racine = nouvelleRacine();
   // Un bouton qui reprend le focus sans cesse : une touche tapée ailleurs l'active (clic « isTrusted », sans appui).
   ecrireWidget(racine, "voleur", {
@@ -395,11 +395,10 @@ test("un widget qui vole le focus n'obtient aucun lien par Espace ou Entrée tap
   await expect(cadre(fenetre, "voleur").locator("#b")).toBeVisible();
   await attendre(500);
   await fenetre.keyboard.press("Space");
-  await expect.poll(() => journal).toContain("ignoré (pas de clic dans le widget) : https://exemple.invalid/vol-1");
-  await attendre(1100);
-  await fenetre.keyboard.press("Enter");
-  await expect.poll(() => journal).toContain("ignoré (pas de clic dans le widget) : https://exemple.invalid/vol-2");
+  await fenetre.keyboard.type("abc");
+  await expect(fenetre.getByTestId("saisie-page-vide")).toHaveValue(" abc");
   await attendre(1000);
+  expect(journal).not.toContain("https://exemple.invalid/vol-");
   await expect(fenetre.locator(onglets)).toHaveCount(0);
   await fermer();
 });

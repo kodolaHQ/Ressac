@@ -41,6 +41,20 @@
     envoyer();
   });
 
+  // Le widget ne prend le clavier que sous le pointeur (un clic de l'utilisateur) : un focus() de son code est rendu à
+  // l'élément de l'interface qui l'avait.
+  let avant = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  function surFocusin(e: FocusEvent) {
+    if (e.target instanceof HTMLElement && e.target !== iframe) avant = e.target;
+  }
+  function surBlur() {
+    setTimeout(() => {
+      if (!iframe || !document.hasFocus() || document.activeElement !== iframe || iframe.matches(":hover")) return;
+      if (avant?.isConnected) avant.focus();
+      else iframe.blur();
+    });
+  }
+
   function surMessage(e: MessageEvent) {
     if (!iframe || e.source !== iframe.contentWindow) return;
     const d: unknown = e.data;
@@ -52,7 +66,7 @@
   }
 </script>
 
-<svelte:window onmessage={surMessage} />
+<svelte:window onmessage={surMessage} onfocusin={surFocusin} onblur={surBlur} />
 
 <div class="contenu" bind:clientWidth={largeur} bind:clientHeight={hauteur}>
   {#if widget.src}
