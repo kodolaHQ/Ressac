@@ -7,6 +7,8 @@ import type { Proprietaire } from "../workflows/schema.js";
 import { executeurParDefaut, type Executeur } from "./executeur.js";
 
 export const NOM_CONTENEUR = "webaios-atelier";
+// Read on every call so a second app (Firefox build) can run its own container.
+export const nomConteneur = (): string => process.env.WEBAIOS_CONTENEUR || NOM_CONTENEUR;
 export const IMAGE = "webaios-atelier:1";
 export const VOLUME_HOME = "webaios-home";
 /** Hors de la plage de Vite (5173, 5174…) pour ne pas entrer en conflit avec un serveur lancé sur le Mac. */
@@ -141,7 +143,7 @@ export class Atelier {
 
   async etat(): Promise<EtatAtelier> {
     if (!this.docker || (await this.lancer(["info"], DELAI_SONDE_MS)).code !== 0) return "docker-absent";
-    const r = await this.lancer(["inspect", "-f", "{{.State.Running}}", NOM_CONTENEUR], DELAI_SONDE_MS);
+    const r = await this.lancer(["inspect", "-f", "{{.State.Running}}", nomConteneur()], DELAI_SONDE_MS);
     if (r.code !== 0) return "absent";
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
   }
@@ -149,7 +151,7 @@ export class Atelier {
   /** Le conteneur existant est-il monté sur la bonne racine et construit depuis le Dockerfile actuel ? */
   private async conteneurAJour(empreinte: string): Promise<boolean> {
     const format = `{{range .Mounts}}{{if eq .Destination "${CHEMIN_CONTENEUR}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${LABEL_EMPREINTE}"}}`;
-    const r = await this.lancer(["inspect", "-f", format, NOM_CONTENEUR], DELAI_SONDE_MS);
+    const r = await this.lancer(["inspect", "-f", format, nomConteneur()], DELAI_SONDE_MS);
     const [source = "", label = ""] = r.stdout.trim().split("|");
     return r.code === 0 && normaliser(source) === normaliser(this.chemins.racine) && label === empreinte;
   }
@@ -166,12 +168,12 @@ export class Atelier {
     // Un conteneur créé sur un autre dossier ou avec un ancien Dockerfile est recréé ; /workspace et
     // le volume des identifiants sont conservés, seule la couche du conteneur est perdue.
     if (etat !== "absent" && !(await this.conteneurAJour(empreinte))) {
-      await this.lancer(["rm", "-f", NOM_CONTENEUR], DELAI_SONDE_MS);
+      await this.lancer(["rm", "-f", nomConteneur()], DELAI_SONDE_MS);
       etat = "absent";
     }
     if (etat === "demarre") return etat;
     if (etat === "arrete") {
-      await this.lancer(["start", NOM_CONTENEUR], DELAI_SONDE_MS);
+      await this.lancer(["start", nomConteneur()], DELAI_SONDE_MS);
       return this.etat();
     }
     const image = await this.lancer(["image", "inspect", "-f", `{{index .Config.Labels "${LABEL_EMPREINTE}"}}`, IMAGE], DELAI_SONDE_MS);
@@ -181,7 +183,7 @@ export class Atelier {
     }
     const run = await this.lancer([
       "run", "-d",
-      "--name", NOM_CONTENEUR,
+      "--name", nomConteneur(),
       "--add-host", "host.docker.internal:host-gateway",
       "-v", `${this.chemins.racine}:${CHEMIN_CONTENEUR}`,
       "-v", `${VOLUME_HOME}:/home/node`,
@@ -190,7 +192,7 @@ export class Atelier {
       IMAGE,
       "sleep", "infinity",
     ], DELAI_SONDE_MS);
-    if (run.code !== 0) throw new Error(`Démarrage du conteneur ${NOM_CONTENEUR} impossible : ${run.stderr}`);
+    if (run.code !== 0) throw new Error(`Démarrage du conteneur ${nomConteneur()} impossible : ${run.stderr}`);
     return this.etat();
   }
 
@@ -235,7 +237,7 @@ export class Atelier {
 
   async arreterSession(id: string): Promise<void> {
     if (!this.docker) return;
-    await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", scriptArretSession(fichierSession(id), id)], DELAI_SONDE_MS);
+    await this.lancer(["exec", nomConteneur(), "sh", "-c", scriptArretSession(fichierSession(id), id)], DELAI_SONDE_MS);
   }
 
   /**
@@ -243,7 +245,7 @@ export class Atelier {
    * plantée) n'ont plus de fenêtre. Une seule app tourne à la fois sur l'atelier.
    */
   async arreterSessionsOrphelines(): Promise<void> {
-    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", scriptArretOrphelins()], DELAI_SONDE_MS);
+    if (this.docker) await this.lancer(["exec", nomConteneur(), "sh", "-c", scriptArretOrphelins()], DELAI_SONDE_MS);
   }
 
   /**
@@ -262,17 +264,17 @@ export class Atelier {
 
   /** Arrête l'appli `dossier` : tout processus qui porte sa marque, même détaché du shell qui l'a lancée. */
   async arreterApplication(dossier: string): Promise<void> {
-    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${litteral(dossierApplication(dossier))}`)).join("\n")], DELAI_SONDE_MS);
+    if (this.docker) await this.lancer(["exec", nomConteneur(), "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${litteral(dossierApplication(dossier))}`)).join("\n")], DELAI_SONDE_MS);
   }
 
   /** Au lancement du navigateur : les applis d'une vie précédente n'ont plus personne pour les suivre. */
   async arreterApplicationsOrphelines(): Promise<void> {
-    if (this.docker) await this.lancer(["exec", NOM_CONTENEUR, "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=.*`)).join("\n")], DELAI_SONDE_MS);
+    if (this.docker) await this.lancer(["exec", nomConteneur(), "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=.*`)).join("\n")], DELAI_SONDE_MS);
   }
 
   commandeExec(argv: string[], o: { interactif: boolean; env?: Record<string, string>; dossier?: string }): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-    return [this.docker, "exec", ...(o.interactif ? ["-it"] : []), ...env, "-w", o.dossier ?? CHEMIN_CONTENEUR, NOM_CONTENEUR, ...argv];
+    return [this.docker, "exec", ...(o.interactif ? ["-it"] : []), ...env, "-w", o.dossier ?? CHEMIN_CONTENEUR, nomConteneur(), ...argv];
   }
 }

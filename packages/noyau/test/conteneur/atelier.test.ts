@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { cheminsEspace } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -326,4 +326,38 @@ test("commandeRecolte avec delaiS 1830 : timeout -k 5 1830", () => {
   // Sans délai donné : 180 s comme avant.
   const d = atelier.commandeRecolte("veille", "/d", "/app/docker/moteur");
   expect(d.slice(d.indexOf("timeout"), d.indexOf("timeout") + 4)).toEqual(["timeout", "-k", "5", "180"]);
+});
+
+async function nomsCites(): Promise<string[]> {
+  let lance = false;
+  const { executer, appels } = executeurFactice([
+    [/ image inspect /, { code: 0 }],
+    [/ inspect /, () => ({ code: lance ? 0 : 1, stdout: "true\n" })],
+    [/ run /, () => ((lance = true), { code: 0 })],
+  ]);
+  const atelier = new Atelier({ chemins, docker: "docker", executer });
+  await atelier.assurerDemarre();
+  await atelier.arreterSessionsOrphelines();
+  // the image is also called webaios-atelier:1, so only container-name positions count
+  return appels.flatMap((a) => a.args.filter((x, i) => /^webaios-atelier(-test)?$/.test(x) && a.args[i - 1] !== "-t"));
+}
+
+test("uses WEBAIOS_CONTENEUR for every docker command", async () => {
+  vi.stubEnv("WEBAIOS_CONTENEUR", "webaios-atelier-test");
+  try {
+    const noms = await nomsCites();
+    expect(noms.length).toBeGreaterThan(2);
+    expect(new Set(noms)).toEqual(new Set(["webaios-atelier-test"]));
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+test("defaults to webaios-atelier", async () => {
+  vi.stubEnv("WEBAIOS_CONTENEUR", "");
+  try {
+    expect(new Set(await nomsCites())).toEqual(new Set(["webaios-atelier"]));
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
