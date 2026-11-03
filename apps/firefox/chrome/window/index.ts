@@ -11,6 +11,7 @@ declare global {
   interface Window {
     gBrowser: any;
     gNotificationBox: any;
+    delayedStartupPromise: Promise<void>;
     webaiosWindow?: import("./controller").WindowController;
   }
 }
@@ -32,8 +33,8 @@ window.addEventListener(
     document.getElementById("browser")!.prepend(frame);
     // The store is a shared module: imported at runtime, never bundled here (that would make a second copy).
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
-    const loaded = new Promise((r) => window.addEventListener("load", r, { once: true }));
-    void Promise.all([ready, loaded]).then(([store]) => {
+    // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
+    void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
       window.webaiosWindow = createController(window.gBrowser, frame, store);
       // Once per start, in the main window only: the unreadable session was kept aside.
       if (store.setAside) {

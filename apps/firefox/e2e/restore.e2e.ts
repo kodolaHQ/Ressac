@@ -77,8 +77,15 @@ describe("restore at startup", () => {
     expect(f.actif).toEqual(before.fenetres[0]!.actif);
     expect(f.actif[boulot.id]).toBe(c);
     expect(f.ordre).toEqual(before.fenetres[0]!.ordre);
-    // The active tab of the active space is displayed.
+    const urls = (s: typeof before) => Object.fromEntries(Object.values(s.onglets).map((o) => [o.id, o.url]));
+    expect(urls(after)).toEqual(urls(before));
+    // The active tab of the active space is displayed, on its page.
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === c);
+    await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => v === server.url + "/b.html?n=1");
+    // Pages loaded in this run keep their URL at the next start too (no about:blank written back while quitting).
+    await quit();
+    m = await start();
+    expect(urls(await state(m))).toEqual(urls(before));
   });
 
   it("keeps a cookie set by a local server, in the space's own container found by name", async () => {
