@@ -551,3 +551,48 @@ test("un clic dans la marge de la barre puis Entrée ne valide pas le brouillon 
   await expect(boutonsEspace).toHaveCount(avant);
   await fermer();
 });
+
+test("Entrée deux fois de suite dans la barre n'autorise pas la demande de l'agent dessous", async () => {
+  const { app, fenetre, racine, id, fermer } = await avecAgentEtOnglet();
+  const lecture = lireOnglet(racine, id);
+  await expect(fenetre.getByTestId("modale-demande")).toHaveAttribute("data-armee");
+  await menu(app, "nouvel-onglet");
+  const saisie = fenetre.getByTestId("saisie-commande");
+  await saisie.fill(`${serveur.url}/b.html`);
+  await fenetre.keyboard.press("Enter");
+  await fenetre.keyboard.press("Enter");
+  await expect(fenetre.getByTestId("barre-commande")).toHaveCount(0);
+  expect(await enAttente(lecture)).toBe("en attente");
+  await fermer();
+});
+
+test("barre ouverte : la fenêtre dessous est inerte", async () => {
+  const { app, fenetre, fermer } = await lancer();
+  await menu(app, "nouvel-onglet");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await expect(fenetre.locator(".fenetre")).toHaveAttribute("inert");
+  await fenetre.keyboard.press("Escape");
+  await expect(fenetre.locator(".fenetre")).not.toHaveAttribute("inert");
+  await fermer();
+});
+
+test("saisie d'une action : l'adresse proposée suit la page qui navigue, pas une fois retouchée", async () => {
+  const racine = nouvelleRacine();
+  ecrireAction(racine, "resume", { nom: "Résumé vidéo", saisie: { libelle: "Vidéo" } });
+  const { app, fenetre, fermer } = await lancer({ racine });
+  await expect.poll(() => fenetre.evaluate(() => window.webaios.actions.liste().then((l) => l.some((a) => a.id === "resume"))), { timeout: 30_000 }).toBe(true);
+  await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBeTruthy();
+  await menu(app, "nouvel-onglet");
+  await fenetre.getByTestId("saisie-commande").fill("résumé");
+  await lignes(fenetre, "action").click();
+  const parametre = fenetre.getByTestId("parametre-commande");
+  await expect(parametre).toHaveValue(`${serveur.url}/a.html`);
+  await dansLaVue(app, "a.html", `location.href = "${serveur.url}/b.html"`);
+  await expect(parametre).toHaveValue(`${serveur.url}/b.html`);
+  await parametre.fill("ma vidéo");
+  await dansLaVue(app, "b.html", `location.href = "${serveur.url}/a.html"`);
+  await expect.poll(() => dansLaVue(app, "a.html", "document.title")).toBeTruthy();
+  await expect(parametre).toHaveValue("ma vidéo");
+  await fermer();
+});

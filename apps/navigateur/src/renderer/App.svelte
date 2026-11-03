@@ -216,7 +216,7 @@
   onmouseout={(e) => !e.relatedTarget && surZoneSouris(zoneSortie(dernierX))}
 />
 
-<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon} class:compact={!barreVisible} class:agent={agentLateral} style:--agent="{largeurAgent}px">
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact={!barreVisible} class:agent={agentLateral} style:--agent="{largeurAgent}px">
   {#if fenetre}
     <BarreLaterale
       {fenetre}

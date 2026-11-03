@@ -59,6 +59,12 @@
     });
   });
 
+  // La barre de commande ouverte ou refermée par-dessus réarme Entrée : la frappe qui l'a fermée ne vaut pas accord.
+  $effect(() => {
+    void commande.ouverte;
+    untrack(armer);
+  });
+
   const refuser = () => api.permissions.repondre(demande.id, "refuser");
   const focusables = () =>
     [...carte.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));

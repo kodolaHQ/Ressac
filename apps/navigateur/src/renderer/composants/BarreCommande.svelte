@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { EtatFenetre, Onglet } from "../../commun/modele";
   import { api, etat } from "../etat.svelte";
   import { fermerCommande, commande, focusPageVide } from "./commande.svelte";
@@ -192,13 +192,27 @@
     lancement++;
     actionEnCours = false;
     parametre = { id: l.id, nom: l.nom, libelle: l.parametre };
-    valeurParametre = parametreParDefaut(ongletActif?.url);
+    valeurParametre = defautParametre;
     refus = "";
     void tick().then(() => {
       champParametre?.focus();
       champParametre?.select();
     });
   }
+
+  // La page affichée navigue pendant la saisie : l'adresse proposée suit, tant que l'utilisateur ne l'a pas retouchée.
+  const defautParametre = $derived(parametreParDefaut(ongletActif?.url));
+  let prerempli = "";
+  $effect(() => {
+    const d = defautParametre;
+    untrack(() => {
+      if (parametre && valeurParametre === prerempli && d !== prerempli) {
+        valeurParametre = d;
+        void tick().then(() => champParametre?.select());
+      }
+      prerempli = d;
+    });
+  });
 
   /** Revient à la liste, le texte tapé intact. */
   function sortirParametre() {
@@ -245,7 +259,11 @@
 
   const libelle = (l: LigneCommande): string =>
     l.type === "defaut" ? l.libelle : l.type === "action" ? l.nom : l.type === "onglet" ? l.onglet.titre : l.type === "appli" ? l.appli.nom : l.titre || l.url;
-  const favicon = (l: LigneCommande): string | null => (l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : null);
+  // L'historique ne retient pas de favicon : celui du site, à l'adresse habituelle (sauf visite privée, rien n'en sort).
+  const faviconVisite = (url: string): string | null =>
+    /^https?:\/\//i.test(url) && historique.some((v) => v.url === url && !v.prive) ? `${new URL(url).origin}/favicon.ico` : null;
+  const favicon = (l: LigneCommande): string | null =>
+    l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : l.type === "historique" ? faviconVisite(l.url) : null;
   const etiquette = (l: LigneCommande): string =>
     l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
   const detail = (l: LigneCommande): string =>
