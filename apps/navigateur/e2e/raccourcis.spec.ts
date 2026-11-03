@@ -20,9 +20,9 @@ test("⌘T puis ⌘W : l'onglet s'ouvre puis se ferme ; ⇧⌘T le rouvre avec s
   await ouvrirOnglet(fenetre, `${serveur.url}/a.html`);
   await expect(fenetre.locator(onglets)).toHaveCount(1);
   await menu(app, "nouvel-onglet");
-  await expect(fenetre.getByTestId("saisie-page-vide")).toBeFocused();
-  await fenetre.getByTestId("saisie-page-vide").fill(`${serveur.url}/b.html`);
-  await fenetre.getByTestId("saisie-page-vide").press("Enter");
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
+  await fenetre.getByTestId("saisie-commande").fill(`${serveur.url}/b.html`);
+  await fenetre.getByTestId("saisie-commande").press("Enter");
   await expect(fenetre.locator(onglets)).toHaveCount(2);
   await menu(app, "fermer-onglet");
   await expect(fenetre.locator(onglets)).toHaveCount(1);
@@ -30,7 +30,7 @@ test("⌘T puis ⌘W : l'onglet s'ouvre puis se ferme ; ⇧⌘T le rouvre avec s
   await expect(fenetre.locator(onglets)).toHaveCount(2);
   await expect.poll(() => dansLaVue(app, "b.html", "document.title")).toBe("Page B");
   await menu(app, "adresse");
-  await expect(fenetre.getByTestId("barre-adresse")).toBeFocused();
+  await expect(fenetre.getByTestId("saisie-commande")).toBeFocused();
   await fermer();
 });
 
