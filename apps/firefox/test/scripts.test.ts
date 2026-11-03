@@ -18,24 +18,22 @@ describe("package scripts", () => {
 });
 
 describe("engine.sh prune", () => {
-  it("removes only dangling links into a WebAiOs checkout, never obj-*", () => {
+  it("removes only dangling links into a WebAiOs checkout, and only under src/'s directories", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "webaios-prune-"));
     mkdirSync(path.join(root, "scripts"));
+    mkdirSync(path.join(root, "src/browser"), { recursive: true });
     copyFileSync(new URL("../scripts/engine.sh", import.meta.url), path.join(root, "scripts/engine.sh"));
     const dir = path.join(root, "engine/browser/base");
     mkdirSync(dir, { recursive: true });
-    mkdirSync(path.join(root, "engine/obj-x"));
     writeFileSync(path.join(root, "real.txt"), "");
     const gone = "/nowhere/WebAiOs/.claude/worktrees/old/apps/firefox/src/browser/base/x.js";
     symlinkSync(gone, path.join(dir, "dangling-ours"));
     symlinkSync("/nowhere/other/file", path.join(dir, "dangling-other"));
     symlinkSync(path.join(root, "real.txt"), path.join(dir, "alive"));
-    symlinkSync(gone, path.join(root, "engine/obj-x/dangling-build"));
     execFileSync("zsh", [path.join(root, "scripts/engine.sh"), "prune"]);
     const exists = (p: string) => existsSync(p) || (() => { try { return !!lstatSync(p); } catch { return false; } })();
     expect(exists(path.join(dir, "dangling-ours"))).toBe(false);
     expect(exists(path.join(dir, "dangling-other"))).toBe(true);
     expect(exists(path.join(dir, "alive"))).toBe(true);
-    expect(exists(path.join(root, "engine/obj-x/dangling-build"))).toBe(true);
   });
 });

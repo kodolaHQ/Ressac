@@ -20,9 +20,13 @@ case "$1" in
     ln -s "$TARGET" engine
     ;;
   prune)
-    # -L engine follows the symlink; links under obj-* are the build's own.
-    find -L engine -path 'engine/obj-*' -prune -o -type l ! -exec test -e {} \; -print 2>/dev/null |
-      while read -r l; do if [[ "$(readlink "$l")" == */apps/firefox/src/* ]]; then rm "$l"; fi; done
+    # Our links only live under the top-level directories of src/ (engine/browser resolves through the engine link).
+    for d in src/*(/N); do
+      find "engine/${d#src/}" -type l ! -exec test -e {} \; -print 2>/dev/null |
+        while IFS= read -r l; do
+          if [[ "$(readlink "$l")" == */apps/firefox/src/* ]]; then rm "$l" || echo "warning: could not remove $l" >&2; fi
+        done
+    done
     ;;
   *) echo "usage: engine.sh install|link|prune" >&2; exit 1 ;;
 esac

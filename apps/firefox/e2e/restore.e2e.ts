@@ -163,6 +163,9 @@ describe("restore at startup", () => {
       `return (async () => { const nb = window.gNotificationBox; return [...nb.allNotifications].filter((n) => n.getAttribute("value") === "webaios-session-set-aside").map((n) => n.label?.textContent ?? n.messageText?.textContent ?? n.label ?? ""); })();`,
       (v) => v.length > 0,
     );
+    await new Promise((r) => setTimeout(r, 500)); // a duplicate would show up by now
+    const again = await m.execute<number>(`return [...window.gNotificationBox.allNotifications].filter((n) => n.getAttribute("value") === "webaios-session-set-aside").length`);
+    expect(again).toBe(1);
     expect(text).toHaveLength(1);
     expect(text[0]).toContain(path.join(dataDir, aside));
     expect(text[0]).toContain("WebAiOs repart avec une session neuve");
