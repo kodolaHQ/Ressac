@@ -231,6 +231,14 @@ export async function armerViseur(wc: WebContents, cadre: CadreViseur | null = n
 
 export async function desarmerViseur(wc: WebContents, cadre: CadreViseur | null = null): Promise<void> {
   if (wc.isDestroyed()) return;
+  // Un cadre peut déjà être retiré de la page (vue changée) : sa réponse ne viendrait jamais, on ne l'attend pas.
+  if (cadre) {
+    const annuler = armes.get(wc);
+    if (annuler) annuler();
+    else void executerDansCadre(cadre, ARRET);
+    abandonnerCadre(cadre);
+    return;
+  }
   try {
     await dansLeMonde(wc, cadre, ARRET);
   } catch {
@@ -294,7 +302,7 @@ export function rectCapture(rect: RectCss, vue: { largeur: number; hauteur: numb
   const haut = Math.max(0, Math.round(rect.y * zoom - MARGE_CAPTURE));
   const droite = Math.min(Math.round(vue.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + MARGE_CAPTURE));
   const bas = Math.min(Math.round(vue.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + MARGE_CAPTURE));
-  return { x: gauche + decalage.x, y: haut + decalage.y, width: Math.max(0, droite - gauche), height: Math.max(0, bas - haut) };
+  return { x: gauche + Math.round(decalage.x * zoom), y: haut + Math.round(decalage.y * zoom), width: Math.max(0, droite - gauche), height: Math.max(0, bas - haut) };
 }
 
 export async function capturerElement(

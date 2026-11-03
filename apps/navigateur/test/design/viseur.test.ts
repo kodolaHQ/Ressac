@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { expect, test, vi } from "vitest";
-import { armerViseur, rectCapture, resultatViseurCadre } from "../../src/main/design/viseur";
+import { armerViseur, desarmerViseur, rectCapture, resultatViseurCadre } from "../../src/main/design/viseur";
 
 test("rectCapture : marge de 16 de chaque côté, bornée à la vue", () => {
   expect(rectCapture({ x: 10, y: 10, largeur: 100, hauteur: 20 }, { largeur: 800, hauteur: 600 }, 1)).toEqual({ x: 0, y: 0, width: 126, height: 46 });
@@ -62,4 +62,15 @@ test("armerViseur dans un cadre : la navigation de ce cadre l'arrête (null) ; c
   expect(await p).toBeNull();
   // L'arrêt est aussi envoyé au cadre.
   expect(envois).toHaveLength(2);
+});
+
+test("desarmerViseur dans un cadre déjà retiré : rend la main sans réponse du cadre, l'armement en cours rend null", async () => {
+  const { cadre, wc, envois } = fauxCadre();
+  const p = armerViseur(wc as never, cadre);
+  await desarmerViseur(wc as never, cadre);
+  expect(await p).toBeNull();
+  // L'arrêt est tout de même envoyé ; les réponses tardives sont ignorées.
+  expect(envois.length).toBeGreaterThanOrEqual(2);
+  resultatViseurCadre({ frameTreeNodeId: 7 }, envois[0]!.jeton, { selecteur: "x" });
+  await desarmerViseur(wc as never, cadre);
 });
