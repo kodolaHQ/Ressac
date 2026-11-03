@@ -29,7 +29,7 @@
     <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{CHERCHER_ADRESSE}</button>
   {/if}
   {#if etat.avis}
-    <div data-testid="site-avis" class="avis" role="status">
+    <div data-testid="site-avis" class="avis" data-genre={etat.avis.genre} role="status">
       {#if etat.avis.genre === "lien-bloque"}
         <span>{lienBloque(etat.avis.domaine)}</span>
         <button data-testid="site-ouvrir-onglet" onclick={() => api.ouvrirBloque()}>{OUVRIR_DANS_UN_ONGLET}</button>
@@ -60,6 +60,8 @@
   .chercher:disabled { opacity: 0.5; }
   .chercher:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
   .avis { display: flex; align-items: center; gap: 8px; flex: none; max-width: 60%; padding: 3px 4px 3px 10px; border-radius: 6px; background: var(--attention-fond); color: var(--texte); font-size: 12px; -webkit-app-region: no-drag; }
+  /* Une mention passagère (info) : sans fond d'alerte. */
+  .avis[data-genre="info"] { background: none; color: var(--texte-doux); }
   .avis span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .avis button { all: unset; padding: 2px 8px; border-radius: 5px; background: var(--fond-actif); color: var(--texte); white-space: nowrap; -webkit-app-region: no-drag; }
   .avis button:hover { background: var(--fond-survol); }

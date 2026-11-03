@@ -163,6 +163,8 @@ export function demarrerSites(o: {
   surFermee?(id: string): void;
   /** Une suppression commence : l'accord de lecture de l'agent sur l'appli tombe (une appli recréée le redemande). */
   surSupprimee?(id: string): void;
+  /** Ce que montre la fenêtre de l'appli change sous le mode design (accueil, carte, plein écran, menu « Extensions »). */
+  surInterruption?(id: string): void;
   /**
    * Les extensions du Store activées dans l'appli (plan 16, `ServiceExtensions`). `ouverture` : l'appli s'ouvre, ou
    * les domaines de son site.json changent (`empreinteExtensionsSite`) ; attendue, sans limite de temps, avant la
@@ -268,6 +270,7 @@ export function demarrerSites(o: {
     surFavicon: () => o.diffuser(),
     surSuivi: (id, url) => void chercherAdresse(id, url),
     ...(o.extensions?.surVue ? { surVue: o.extensions.surVue } : {}),
+    ...(o.surInterruption ? { surInterruption: (id: string) => o.surInterruption?.(id) } : {}),
   });
 
   // La page de référence est lue par la session publique, sans profil : jamais un cookie de l'appli ni de l'utilisateur.

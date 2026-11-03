@@ -37,7 +37,12 @@ export const modifierAvecAgent = (id: string) => `Appli de site ~/WebAiOs/sites/
 
 export type AvisBarre =
   | { genre: "lien-bloque"; domaine: string } // l'URL bloquée reste dans le main
-  | { genre: "adresse-changee" | "introuvable" | "inchangee"; texte: string };
+  | { genre: "adresse-changee" | "introuvable" | "inchangee"; texte: string }
+  /** Une mention passagère (le mode design indisponible ici…), effacée après `DUREE_AVIS_INFO_MS` ou à la page suivante. */
+  | { genre: "info"; texte: string };
+
+/** Durée d'affichage d'une mention `info` dans la barre, en ms. */
+export const DUREE_AVIS_INFO_MS = 5000;
 
 export type DemandeAccordSite = {
   nom: string;

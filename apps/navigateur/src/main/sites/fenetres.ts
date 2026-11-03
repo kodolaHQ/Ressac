@@ -1,9 +1,9 @@
-import { BrowserWindow, WebContentsView, type WebContents } from "electron";
+import { BrowserWindow, WebContentsView, type Rectangle, type WebContents } from "electron";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { adresseRelative, droitsDe, empreinteLectureSite, type DeclarationSite } from "@webaios/noyau";
+import { adresseRelative, droitsDe, empreinteLectureSite, hoteDansSite, type DeclarationSite } from "@webaios/noyau";
 import { ARG_SITE, CANAUX } from "../../commun/canaux";
-import { HAUTEUR_BARRE_SITE, PANNEAU_EXTENSIONS_MAX, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
+import { DUREE_AVIS_INFO_MS, HAUTEUR_BARRE_SITE, PANNEAU_EXTENSIONS_MAX, sourceRetouche, type AvisBarre, type DemandeAccordSite, type EtatFenetreSite } from "../../commun/sites";
 import { navigationCadrePermise } from "../agent/accueil";
 import { faviconEnDonnees } from "../applications/favicon";
 import { cadreVisible } from "../applications/fenetres";
@@ -27,6 +27,24 @@ export function detruireVue(wc: Pick<WebContents, "isDestroyed" | "close" | "for
   } catch (e) {
     console.error("[sites] vue non détruite :", e);
   }
+}
+
+/** Attente au plus de la fermeture du menu « Extensions » demandée par `fermerMenu` (l'interface répond par la hauteur 0). */
+export const DELAI_FERMETURE_MENU_MS = 500;
+
+/**
+ * Ce que le mode design lit de la fenêtre d'une appli de site : la vue du site, ses bornes dans la fenêtre, l'adresse
+ * affichée et le nom de l'appli. `barre` : le bas de la barre et du menu « Extensions » ouvert. `disponible` : vue
+ * « site », hors plein écran d'un élément, sur une page des domaines de l'appli qui n'est pas une page de connexion.
+ */
+export interface VueDesignSite {
+  wc: WebContents;
+  bornes: Rectangle;
+  fenetre: BrowserWindow;
+  url: string;
+  nom: string;
+  barre: number;
+  disponible: boolean;
 }
 
 /** Écart minimal entre deux diffusions d'un changement de la mention « lien bloqué ». */
@@ -80,6 +98,10 @@ interface Ouverte {
   /** Dernière diffusion d'un changement de mention (un cadre hostile peut en provoquer des centaines). */
   avisDiffuse: number;
   minuterieAvis: NodeJS.Timeout | undefined;
+  /** Efface la mention `info` après `DUREE_AVIS_INFO_MS` (si c'est encore elle). */
+  minuterieInfo: NodeJS.Timeout | undefined;
+  /** `fermerMenu` en attente de la hauteur 0 du panneau. */
+  attentesMenu: (() => void)[];
   /** Petites fenêtres de connexion ouvertes par la page, et pages d'extension : fermées avec l'appli. */
   petites: Set<BrowserWindow>;
   /** Les petites fenêtres des pages d'extension (plan 16), seules que `fermerPageExtension` ferme. */
@@ -179,6 +201,11 @@ export class FenetresSites {
        * (plan 16), c'est son seul onglet web, dans la fenêtre de l'appli.
        */
       surVue?: (id: string, quoi: "creee" | "detruite", wc: WebContents, fenetre: BrowserWindow) => void;
+      /**
+       * Ce que montre la fenêtre change sous le mode design : l'accueil (⌂), la carte d'accord, le plein écran d'un
+       * élément, ou le menu « Extensions » qui s'ouvre. Le mode design de l'appli s'arrête.
+       */
+      surInterruption?: (id: string) => void;
     },
   ) {}
 
@@ -187,6 +214,14 @@ export class FenetresSites {
       this.o.surVue?.(id, quoi, wc, fenetre);
     } catch (e) {
       console.error(`[sites] vue de ${id} (${quoi}) non signalée aux extensions :`, e);
+    }
+  }
+
+  private interrompre(o: Ouverte): void {
+    try {
+      this.o.surInterruption?.(o.site.id);
+    } catch (e) {
+      console.error(`[sites] interruption de ${o.site.id} non signalée au mode design :`, e);
     }
   }
 
@@ -202,8 +237,10 @@ export class FenetresSites {
       return;
     }
     const o = this.creer(s);
-    if (s.accordRequis) o.affichee = "accord";
-    else if (s.aAccueil) o.affichee = "accueil";
+    if (s.accordRequis) {
+      o.affichee = "accord";
+      this.interrompre(o);
+    } else if (s.aAccueil) o.affichee = "accueil";
     else {
       o.affichee = "site";
       this.aller(s.id, s.depart);
@@ -253,7 +290,7 @@ export class FenetresSites {
     vue.setBackgroundColor("#ffffff");
     vue.setVisible(false);
     f.contentView.addChildView(vue);
-    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, aChargerAgent: false, cible: null, pleinEcran: false, petites: new Set(), pagesExtension: new Set(), panneau: 0, avisDiffuse: 0, minuterieAvis: undefined, erreurs: [] };
+    const o: Ouverte = { site: s, fenetre: f, vue, affichee: "site", chargee: false, avis: null, bloquee: null, voulue: null, attendVoulu: false, chargementVoulu: false, recherche: false, aCharger: null, aChargerAgent: false, cible: null, pleinEcran: false, petites: new Set(), pagesExtension: new Set(), panneau: 0, avisDiffuse: 0, minuterieAvis: undefined, minuterieInfo: undefined, attentesMenu: [], erreurs: [] };
     this.ouvertesParId.set(id, o);
 
     // Le titre de la fenêtre est le nom de l'appli, jamais celui de la page.
@@ -265,6 +302,8 @@ export class FenetresSites {
     f.on("close", noterCadre);
     f.on("closed", () => {
       clearTimeout(o.minuterieAvis);
+      clearTimeout(o.minuterieInfo);
+      for (const ok of o.attentesMenu.splice(0)) ok();
       for (const p of o.petites) if (!p.isDestroyed()) p.destroy();
       if (!vue.webContents.isDestroyed()) {
         this.signalerVue(id, "detruite", vue.webContents, f);
@@ -307,6 +346,12 @@ export class FenetresSites {
       if (o.avis?.genre === "lien-bloque") {
         o.avis = null;
         o.bloquee = null;
+      }
+      // La mention passagère aussi.
+      if (o.avis?.genre === "info") {
+        o.avis = null;
+        clearTimeout(o.minuterieInfo);
+        o.minuterieInfo = undefined;
       }
       diffuser();
     });
@@ -411,6 +456,8 @@ export class FenetresSites {
       o.pleinEcran = true;
       this.fermerPanneau(o);
       this.placer(o);
+      this.diffuserEtat(o);
+      this.interrompre(o);
     });
     // m2 : un clic dans la vue du site (ou le focus qu'elle prend) ferme le menu « Extensions » de la barre.
     wc.on("focus", () => this.fermerPanneau(o));
@@ -420,6 +467,7 @@ export class FenetresSites {
     wc.on("leave-html-full-screen", () => {
       o.pleinEcran = false;
       this.placer(o);
+      this.diffuserEtat(o);
     });
   }
 
@@ -590,8 +638,10 @@ export class FenetresSites {
     o.site = s;
     let rechargee = false;
     const droitsGrandis = JSON.stringify(droitsDe(avant.declaration)) !== JSON.stringify(droitsDe(s.declaration));
+    let interrompue = false;
     if (s.accordRequis && o.affichee !== "accord" && (!avant.accordRequis || droitsGrandis)) {
       o.affichee = "accord";
+      interrompue = true;
       if (o.chargee && !o.vue.webContents.isDestroyed()) {
         this.recharge(o);
         rechargee = true;
@@ -600,6 +650,7 @@ export class FenetresSites {
     else if (o.affichee === "accueil" && !s.aAccueil) this.vueSuivante(o);
     this.placer(o);
     this.diffuserEtat(o);
+    if (interrompue) this.interrompre(o);
     return rechargee;
   }
 
@@ -686,6 +737,7 @@ export class FenetresSites {
     o.affichee = "accueil";
     this.placer(o);
     this.diffuserEtat(o);
+    this.interrompre(o);
   }
 
   precedent(id: string): void {
@@ -957,8 +1009,11 @@ export class FenetresSites {
   panneauExtensions(id: string, hauteur: number): void {
     const o = this.ouverte(id);
     if (!o) return;
+    const avant = o.panneau;
     o.panneau = Number.isFinite(hauteur) ? Math.round(Math.min(PANNEAU_EXTENSIONS_MAX, Math.max(0, hauteur))) : 0;
     this.placer(o);
+    if (o.panneau === 0) for (const ok of o.attentesMenu.splice(0)) ok();
+    else if (avant === 0) this.interrompre(o);
   }
 
   /** Envoie un message à l'interface de chaque appli ouverte (`CANAUX.extensionsChange`). */
@@ -975,5 +1030,75 @@ export class FenetresSites {
     else if (action === "outils") o.vue.webContents.toggleDevTools();
     else o.fenetre.close();
     return true;
+  }
+
+  // ——— Le mode design dans l'appli (plan 18) ———
+
+  /** La vue du site de l'appli ouverte pour le mode design, et s'il y est disponible ; null si elle n'est pas ouverte. */
+  vueDesign(id: string): VueDesignSite | null {
+    const o = this.ouverte(id);
+    if (!o || o.vue.webContents.isDestroyed()) return null;
+    const wc = o.vue.webContents;
+    const url = wc.getURL();
+    const hote = hoteHttp(url);
+    // Un domaine de l'appli qui est aussi (ou sous) un domaine de connexion : jamais de mode design sur une connexion.
+    const disponible =
+      o.affichee === "site" && !o.pleinEcran && this.adressePermise(id, url) && hote !== null && !hoteDansSite(hote, o.site.declaration.connexion);
+    return { wc, bornes: o.vue.getBounds(), fenetre: o.fenetre, url, nom: o.site.declaration.nom, barre: HAUTEUR_BARRE_SITE + o.panneau, disponible };
+  }
+
+  /** L'appli dont la fenêtre est au premier plan, sinon undefined. */
+  idAuPremierPlan(): string | undefined {
+    const focus = BrowserWindow.getFocusedWindow();
+    if (!focus) return undefined;
+    for (const [id, o] of this.ouvertesParId) if (o.fenetre === focus && !o.fenetre.isDestroyed()) return id;
+    return undefined;
+  }
+
+  /** L'appli dont une petite fenêtre (connexion, page d'extension) est au premier plan, sinon undefined. */
+  idDePetiteAuPremierPlan(): string | undefined {
+    const focus = BrowserWindow.getFocusedWindow();
+    if (!focus) return undefined;
+    for (const [id, o] of this.ouvertesParId) if (!o.fenetre.isDestroyed() && o.petites.has(focus)) return id;
+    return undefined;
+  }
+
+  /**
+   * Une mention passagère dans la barre, effacée après `DUREE_AVIS_INFO_MS` (si c'est encore elle) ou à la page
+   * suivante. Une mention « lien bloqué » affichée reste : elle porte « Ouvrir dans un onglet ».
+   */
+  avisInfo(id: string, texte: string): void {
+    const o = this.ouverte(id);
+    if (!o || o.avis?.genre === "lien-bloque") return;
+    const avis: AvisBarre = { genre: "info", texte };
+    o.avis = avis;
+    clearTimeout(o.minuterieInfo);
+    o.minuterieInfo = setTimeout(() => {
+      o.minuterieInfo = undefined;
+      if (o.avis !== avis || o.fenetre.isDestroyed()) return;
+      o.avis = null;
+      this.diffuserEtat(o);
+    }, DUREE_AVIS_INFO_MS);
+    this.diffuserEtat(o);
+  }
+
+  /**
+   * Ferme le menu « Extensions » s'il est ouvert : résolue quand l'interface rend la hauteur 0 du panneau, ou au plus
+   * après `DELAI_FERMETURE_MENU_MS` ; tout de suite s'il est fermé (ou l'appli fermée).
+   */
+  fermerMenu(id: string): Promise<void> {
+    const o = this.ouverte(id);
+    if (!o || o.panneau === 0) return Promise.resolve();
+    return new Promise<void>((ok) => {
+      const fin = () => {
+        clearTimeout(minuterie);
+        const i = o.attentesMenu.indexOf(fin);
+        if (i >= 0) o.attentesMenu.splice(i, 1);
+        ok();
+      };
+      const minuterie = setTimeout(fin, DELAI_FERMETURE_MENU_MS);
+      o.attentesMenu.push(fin);
+      this.fermerPanneau(o);
+    });
   }
 }
