@@ -1,6 +1,6 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { dansLaVue, ecrireProjet, entreeAgent, lancer, nouveauProfil, nouvelleRacine, ouvrirOnglet, serveurTest, terminal } from "./aide";
 
@@ -538,6 +538,93 @@ test("fenêtre d'appli essai : l'envoi depuis le calque pré-remplit le terminal
     await new Promise((r) => setTimeout(r, 300));
     expect(entreeAgent(racine)).not.toContain("\r");
     await expect(calque.getByTestId("lot-envoye")).toHaveCount(1);
+    await aucuneFenetreVisible(app);
+  } finally {
+    await fermer();
+  }
+});
+
+// De bout en bout : remarques de design dans la fenêtre d'appli, envoi à l'agent, relecture du changement, commentaire.
+test("réussite de la spec : remarques sur l'appli inscription, envoi, modification par l'agent, relecture, commentaire, marquer comme relu", async () => {
+  test.setTimeout(90_000);
+  const racine = nouvelleRacine();
+  ecrireProjet(racine, "inscription", { manifeste: { nom: "Inscription" }, serveur: "formulaire" });
+  const { app, fenetre, profil, fermer } = await lancer({ racine, env: { ...ENV, WEBAIOS_PORT_MCP_EXTERNE: "0" } });
+  try {
+    // La première photo du projet est prise avant que « l'agent » ne le modifie.
+    await expect.poll(() => existsSync(join(profil, "design", "relecture", "app-inscription.git", "refs", "webaios", "relu")), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => app.evaluate(({ Menu }) => !!Menu.getApplicationMenu()?.getMenuItemById("applications"))).toBe(true);
+    await menu(app, "applications");
+    const carte = fenetre.getByTestId("appli-inscription");
+    await carte.getByRole("button", { name: "Lancer" }).click();
+    await expect(carte).toHaveAttribute("data-etat", "en-marche", { timeout: 15_000 });
+    const dansAppli = <T>(code: string) =>
+      app.evaluate(({ webContents }, code) => webContents.getAllWebContents().find((w) => /^http:\/\/localhost:1528\d\//.test(w.getURL()))?.executeJavaScript(code) as Promise<T>, code);
+    await expect.poll(() => dansAppli<string>("document.title")).toBe("Inscription");
+    const cliquerAppli = async (selecteur: string) => {
+      const c = await dansAppli<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(selecteur)}).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+      await app.evaluate(async ({ webContents }, c) => {
+        const wc = webContents.getAllWebContents().find((w) => /^http:\/\/localhost:1528\d\//.test(w.getURL()))!;
+        wc.sendInputEvent({ type: "mouseMove", x: c.x, y: c.y });
+        await new Promise((r) => setTimeout(r, 50));
+        wc.sendInputEvent({ type: "mouseDown", x: c.x, y: c.y, button: "left", clickCount: 1 });
+        wc.sendInputEvent({ type: "mouseUp", x: c.x, y: c.y, button: "left", clickCount: 1 });
+      }, c);
+    };
+    let pastille: Page | undefined;
+    for (const fin = Date.now() + 10_000; !pastille && Date.now() < fin; await new Promise((r) => setTimeout(r, 100)))
+      pastille = app.windows().find((x) => x.url().includes("pastille.html"));
+    expect(pastille).toBeTruthy();
+    await pastille!.getByTestId("pastille-webaios").click();
+    await pastille!.getByRole("menuitem", { name: /Mode design/ }).click();
+    await expect.poll(() => dansAppli<number>(`document.querySelectorAll("webaios-viseur").length`)).toBe(1);
+    const remarquerAppli = async (selecteur: string, etiquette: string, texte: string) => {
+      await cliquerAppli(selecteur);
+      const calque = await pageCalque(app);
+      const bulle = calque.getByTestId("bulle-design");
+      await expect(bulle).toContainText(etiquette);
+      await bulle.locator("textarea").fill(texte);
+      await bulle.locator("textarea").press("Meta+Enter");
+      await expect.poll(() => dansAppli<number>(`document.querySelectorAll("webaios-viseur").length`)).toBe(1);
+      return calque;
+    };
+    const calque = await remarquerAppli("#email", "input#email.champ", "refuser une adresse sans domaine");
+    await new Promise((r) => setTimeout(r, 600));
+    await remarquerAppli("#envoyer", "button#envoyer", "Bouton en vert");
+    await pastille!.getByTestId("pastille-webaios").click();
+    await pastille!.getByRole("menuitem", { name: "Panier (2)" }).click();
+    await expect(calque.getByTestId("remarque-panier")).toHaveCount(2);
+    await calque.getByTestId("envoyer-remarques").click();
+    await expect(fenetre.getByTestId("panneau-agent")).toBeVisible();
+    await expect(terminal(fenetre)).toContainText("faux agent prêt>");
+    await expect.poll(() => entreeAgent(racine)).toContain("1) input#email.champ : « refuser une adresse sans domaine »");
+    expect(entreeAgent(racine)).toContain("2) button#envoyer");
+    expect(entreeAgent(racine)).toMatch(/\/workspace\/\.webaios\/remarques\/app-inscription\/\d{8}T\d{6}Z-[0-9a-f]{4}\/lot\.json/);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(entreeAgent(racine)).not.toContain("\r");
+    // L'agent modifie le projet.
+    const serveurMjs = join(racine, "projets", "inscription", "serveur.mjs");
+    writeFileSync(serveurMjs, readFileSync(serveurMjs, "utf8").replace(">Envoyer<", ">Valider<"));
+    await pastille!.getByTestId("pastille-webaios").click();
+    await pastille!.getByRole("menuitem", { name: "Relire ce projet" }).click();
+    const page = fenetre.getByTestId("page-relecture");
+    await expect(page).toBeVisible();
+    const fichierServeur = page.getByTestId("fichier-relecture").filter({ hasText: "serveur.mjs" });
+    await expect(fichierServeur).toHaveCount(1);
+    await fichierServeur.click();
+    await expect(page.locator('[data-testid="ligne-diff"].ajout')).toContainText([">Valider<"]);
+    const ligneAjout = page.locator('[data-testid="ligne-diff"].ajout').first();
+    await ligneAjout.getByTestId("ajouter-commentaire").click();
+    await expect(page.getByTestId("formulaire-commentaire")).toBeVisible();
+    const formulaire = page.getByTestId("formulaire-commentaire");
+    await formulaire.locator("textarea").fill("garder le mot Envoyer");
+    await formulaire.getByRole("button", { name: "Commenter" }).click();
+    await page.getByTestId("envoyer-commentaires").click();
+    await expect.poll(() => entreeAgent(racine)).toContain("serveur.mjs:");
+    expect(entreeAgent(racine)).toContain("« garder le mot Envoyer »");
+    await expect(page.getByTestId("commentaire")).toContainText("envoyé");
+    await page.getByTestId("marquer-relu").click();
+    await expect(page.getByTestId("fichier-relecture")).toHaveCount(0);
     await aucuneFenetreVisible(app);
   } finally {
     await fermer();
