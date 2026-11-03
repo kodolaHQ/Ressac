@@ -10,6 +10,7 @@ const DIST = path.resolve(import.meta.dirname, "../engine/obj-aarch64-apple-darw
 export interface LaunchedWebAiOs {
   marionette: Marionette;
   profile: string;
+  pid: number;
   close(): Promise<void>;
 }
 
@@ -58,7 +59,7 @@ export async function launchWebAiOs(o: { width?: number; height?: number } = {})
       clearTimeout(timer);
       await rm(profile, { recursive: true, force: true });
     };
-    return { marionette, profile, close };
+    return { marionette, profile, pid: proc.pid!, close };
   } catch (e) {
     proc.kill("SIGKILL");
     await exited;

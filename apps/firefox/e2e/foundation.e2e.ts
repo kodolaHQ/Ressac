@@ -35,6 +35,23 @@ describe("WebAiOs-Firefox foundation", () => {
     ).toEqual([true, true, 0]);
   });
 
+  it("ships the first-run prefs as defaults, not only through Marionette", async () => {
+    // Marionette's recommended prefs already set these at runtime, so read the default branch that real users get.
+    expect(
+      await w.marionette.execute(`
+        const d = Services.prefs.getDefaultBranch("");
+        return [
+          d.getBoolPref("browser.shell.checkDefaultBrowser"),
+          d.getBoolPref("browser.aboutwelcome.enabled"),
+          d.getBoolPref("browser.preonboarding.enabled"),
+          d.getBoolPref("termsofuse.bypassNotification"),
+          d.getBoolPref("datareporting.policy.dataSubmissionEnabled"),
+          d.getCharPref("browser.startup.homepage_override.mstone"),
+        ];
+      `),
+    ).toEqual([false, false, false, true, false, "ignore"]);
+  });
+
   it("hides Firefox's toolbars", async () => {
     expect(await w.marionette.execute("return getComputedStyle(document.getElementById('navigator-toolbox')).display")).toBe("none");
   });
@@ -80,15 +97,18 @@ describe("WebAiOs-Firefox foundation", () => {
 
 describe("several WebAiOs-Firefox instances", () => {
   it("two launches in parallel", async () => {
-    const [a, b] = await Promise.all([launchWebAiOs(), launchWebAiOs()]);
+    // allSettled: if one launch fails, the other one is still closed.
+    const launches = await Promise.allSettled([launchWebAiOs(), launchWebAiOs()]);
+    const started = launches.flatMap((l) => (l.status === "fulfilled" ? [l.value] : []));
     try {
-      for (const w of [a, b]) {
+      expect(started).toHaveLength(2);
+      for (const w of started) {
         await w.marionette.setContext("chrome");
         expect(await w.marionette.execute("return Services.appinfo.name")).toBe("WebAiOs");
       }
-      expect(a.profile).not.toBe(b.profile);
+      expect(started[0]!.profile).not.toBe(started[1]!.profile);
     } finally {
-      await Promise.all([a.close(), b.close()]);
+      await Promise.all(started.map((w) => w.close()));
     }
   });
 });
