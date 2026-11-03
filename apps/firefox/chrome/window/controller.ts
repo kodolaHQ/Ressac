@@ -16,11 +16,15 @@ export interface WindowController {
 }
 
 /** Binds the main browser window to the first window of the state. */
-export function createController(gBrowser: any, frame: Element, store: WebAiOsStore): WindowController {
+export function createController(gBrowser: any, frame: HTMLElement, store: WebAiOsStore): WindowController {
   const fenetreId = store.state.fenetres[0]!.id;
   const tabs = new TabSync(gBrowser, store, fenetreId);
   tabs.sync(store.state);
   store.subscribe((state) => tabs.sync(state));
+  // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
+  window.addEventListener("TabSwitchDone", () => {
+    if (!tabs.displayed()) frame.focus();
+  });
   const browserOf = (id: IdOnglet) => tabs.tab(id)?.linkedBrowser;
   return {
     fenetreId,

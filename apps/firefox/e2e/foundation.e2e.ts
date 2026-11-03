@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import os from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 
 describe("WebAiOs-Firefox foundation", () => {
@@ -62,21 +63,22 @@ describe("WebAiOs-Firefox foundation", () => {
       const frame = document.getElementById("webaios-sidebar");
       if (!frame) return null;
       for (let i = 0; i < 100; i++) {
-        const el = frame.contentDocument?.querySelector('[data-webaios="sidebar"]');
+        const el = frame.contentDocument?.querySelector('[data-testid="barre-laterale"]');
         if (el) return { ns: el.namespaceURI, text: el.textContent };
         await new Promise((r) => setTimeout(r, 100));
       }
       return null;
     })();`);
     expect(root?.ns).toBe("http://www.w3.org/1999/xhtml");
-    expect(root?.text).toContain("WebAiOs");
+    expect(root?.text).toContain("Nouvel onglet");
   });
 
-  it("puts the sidebar on the left, 240 px wide", async () => {
-    const rect = await w.marionette.execute<{ left: number; width: number } | null>(
-      "const r = document.getElementById('webaios-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null",
-    );
-    expect(rect).toEqual({ left: 0, width: 240 });
+  it("covers the window with the UI while no page is shown, then keeps the left 240 px", async () => {
+    const rect = "const r = document.getElementById('webaios-sidebar')?.getBoundingClientRect(); return r ? { left: r.left, width: r.width } : null";
+    expect(await w.marionette.execute(rect)).toEqual({ left: 0, width: 1280 });
+    const f = (await state(w.marionette)).fenetres[0]!;
+    await dispatch(w.marionette, { type: "ouvrirOnglet", fenetreId: f.id, url: "data:text/html,<title>t</title>t" });
+    await waitFor(w.marionette, rect, (r: { width: number } | null) => r?.width === 240);
   });
 
   it("gives the page the rest of the window", async () => {

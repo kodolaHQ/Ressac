@@ -3,6 +3,8 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
+// Electron components that step 2 does not migrate (imported as ./Name.svelte by the reused ones): Unavailable.svelte shows nothing.
+const UNMIGRATED = ["Accueil", "IaLocale", "BarreExtensions", "BoutonDesign", "PastilleAcces"];
 
 // Three bundles, one per `--mode` (scripts/ui.sh builds all of them):
 // - sidebar: privileged Firefox page (chrome://browser/content/webaios/sidebar.html), one script and one stylesheet
@@ -32,6 +34,9 @@ export default defineConfig(({ mode }) => {
     };
   return {
     plugins: [svelte()],
+    resolve: {
+      alias: UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) })),
+    },
     build: {
       outDir,
       emptyOutDir: false,

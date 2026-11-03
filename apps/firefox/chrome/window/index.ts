@@ -28,13 +28,14 @@ window.addEventListener(
     // where document.createElement would build XUL elements.
     const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     frame.id = "webaios-sidebar";
-    frame.src = "chrome://browser/content/webaios/sidebar.html";
     document.getElementById("browser")!.prepend(frame);
     // The store is a shared module: imported at runtime, never bundled here (that would make a second copy).
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     const loaded = new Promise((r) => window.addEventListener("load", r, { once: true }));
     void Promise.all([ready, loaded]).then(([store]) => {
       window.webaiosWindow = createController(window.gBrowser, frame, store);
+      // The UI reads window.webaiosWindow as it loads.
+      frame.src = "chrome://browser/content/webaios/sidebar.html";
     });
   },
   { once: true },
