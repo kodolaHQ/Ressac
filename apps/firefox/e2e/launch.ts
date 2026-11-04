@@ -36,9 +36,9 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
 
 /**
  * Launches WebAiOs-Firefox headless (`headed` shows its window: the bench's visible pass only). Folders passed in are reused and kept (to restart on the same data); the others
- * are temporary and deleted on close. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
+ * are temporary and deleted on close. `prefs` are appended to the profile's user.js. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  */
-export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string> } = {}): Promise<LaunchedWebAiOs> {
+export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string>; prefs?: Record<string, string | number | boolean> } = {}): Promise<LaunchedWebAiOs> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
   const cleanup = () =>
@@ -46,7 +46,11 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
   // A reused profile may hold the previous run's port file.
   await rm(path.join(profile, "MarionetteActivePort"), { force: true });
   // Port 0: Firefox picks a free port and writes it to MarionetteActivePort, so parallel launches never collide.
-  await writeFile(path.join(profile, "user.js"), 'user_pref("marionette.port", 0);\nuser_pref("browser.sessionstore.resume_from_crash", false);\n');
+  await writeFile(
+    path.join(profile, "user.js"),
+    'user_pref("marionette.port", 0);\nuser_pref("browser.sessionstore.resume_from_crash", false);\n' +
+      Object.entries(o.prefs ?? {}).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});\n`).join(""),
+  );
   const proc = spawn(
     binary(),
     ["--marionette", ...(o.headed ? [] : ["--headless"]), "--no-remote", "--profile", profile, "--width", String(o.width ?? 1280), "--height", String(o.height ?? 800)],
