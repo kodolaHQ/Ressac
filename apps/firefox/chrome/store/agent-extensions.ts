@@ -435,7 +435,8 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
   let pinged: ReturnType<typeof ChromeUtils.getAllDOMProcesses>[number] | undefined;
   const testWindow = Number(Services.env.get("WEBAIOS_TEST_WATCHDOG_MS"));
   const watchdog = createWatchdog({
-    ...(testWindow > 0 ? { windowMs: testWindow } : {}),
+    // e2e only (three kills in 60 s); floored so it can never make the watchdog trigger-happy.
+    ...(testWindow > 0 ? { windowMs: Math.max(testWindow, 2_000) } : {}),
     now: () => ChromeUtils.now(),
     setTimer: (f, ms) => setTimeout(f, ms),
     clearTimer: (t) => clearTimeout(t),
@@ -449,7 +450,7 @@ function watchCrashes(crashed: (addonId: string) => void): { backgroundError(add
       if (!pinged?.canSend || running.size === 0) return;
       // Firefox stops respawning the extension process past its threshold of crashes (none comes back until a restart).
       const timeframe = Services.prefs.getIntPref("extensions.webextensions.crash.timeframe", 30_000);
-      const recent = ExtensionProcessCrashObserver.lastCrashTimestamps.filter((t: number) => ChromeUtils.now() - t < timeframe).length;
+      const recent = (ExtensionProcessCrashObserver.lastCrashTimestamps ?? []).filter((t: number) => ChromeUtils.now() - t < timeframe).length;
       if (recent >= Services.prefs.getIntPref("extensions.webextensions.crash.threshold", 5) - 1) {
         console.error("[extensions] the extension process stopped answering, not killed: Firefox would stop respawning it");
         return;
