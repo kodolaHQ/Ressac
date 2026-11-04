@@ -16,7 +16,8 @@ export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
  * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to
  * <base>/balise on pagehide, /coop is sent with Cross-Origin-Opener-Policy: same-origin, /fenetres calls open(),
  * /telecharge is an attachment, /telecharge-cadre has it in a frame and clicks a download link to it, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
- * /geo asks for the position as it loads.
+ * /geo asks for the position as it loads. /telecharger/<name> serves a page file as an attachment, /fichier-lent starts a 1 MB
+ * attachment, writes 1 KB and stalls (its closed connection is noted as "/fichier-lent:fermée").
  * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
  */
 export async function startServer(o: { host?: string } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
@@ -68,6 +69,18 @@ export async function startServer(o: { host?: string } = {}): Promise<{ url: str
     }
     // Never answers: the read is aborted or times out. Its closed connection is noted as "/lent:fermée".
     if (route === "/lent") return void req.socket.once("close", () => paths.push("/lent:fermée"));
+    if (route.startsWith("/telecharger/")) {
+      const name = path.basename(route);
+      const file = path.join(PAGES, name);
+      if (!existsSync(file)) return res.writeHead(404).end();
+      res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${name}"` });
+      return res.end(readFileSync(file));
+    }
+    if (route === "/fichier-lent") {
+      res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": 'attachment; filename="lent.bin"', "Content-Length": "1000000" });
+      res.write(Buffer.alloc(1000));
+      return void req.socket.once("close", () => paths.push("/fichier-lent:fermée"));
+    }
     if (route === "/cookie") {
       res.writeHead(200, { "Set-Cookie": "essai=1; Max-Age=86400; Path=/", "Content-Type": "text/html" });
       return res.end("<title>cookie</title>ok");
