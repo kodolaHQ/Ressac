@@ -104,12 +104,21 @@ function takePublic(): number {
   return id;
 }
 
+// Private browsing data is tied to privateBrowsingId: a pattern without it leaves a private read's cookies behind.
 const clearContainer = (userContextId: number) =>
-  new Promise<void>((ok) => Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId }, { onDataDeleted: () => ok() }));
+  new Promise<void>((ok) =>
+    Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId, privateBrowsingId: 1 }, { onDataDeleted: () => ok() }),
+  );
 
-/** A windowless browser hosting one remote <browser> in `userContextId` (BackgroundPageThumbs.sys.mjs). */
-async function createBrowser(userContextId: number): Promise<{ browser: any; close(): void }> {
-  const flags = Ci.nsIWebBrowserChrome.CHROME_REMOTE_WINDOW | Ci.nsIWebBrowserChrome.CHROME_FISSION_WINDOW;
+/**
+ * A windowless browser hosting one remote <browser> in `userContextId` (BackgroundPageThumbs.sys.mjs).
+ * `private`: Firefox's private browsing, so that add-ons without private access (webRequest included) never see the page.
+ */
+async function createBrowser(userContextId: number, o: { private: boolean }): Promise<{ browser: any; close(): void }> {
+  const flags =
+    Ci.nsIWebBrowserChrome.CHROME_REMOTE_WINDOW |
+    Ci.nsIWebBrowserChrome.CHROME_FISSION_WINDOW |
+    (o.private ? Ci.nsIWebBrowserChrome.CHROME_PRIVATE_WINDOW | Ci.nsIWebBrowserChrome.CHROME_PRIVATE_LIFETIME : 0);
   const windowless = Services.appShell.createWindowlessBrowser(true, flags);
   const close = () => windowless.close();
   try {
@@ -180,7 +189,7 @@ async function load<T>(store: Store, url: string, o: OptionsLecturePage, signal:
     signal?.throwIfAborted();
     if (profil === null) await untilSignal(clearContainer((publicId = takePublic())), signal);
     // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
-    opened = await createBrowser(publicId ?? containerFor(profil as IdProfil));
+    opened = await createBrowser(publicId ?? containerFor(profil as IdProfil), { private: profil === null });
     const page = await readIn(opened.browser, url, { allowed, allowLocal }, reading, Date.now() + DELAI_TOTAL_MS, signal, screens);
     // The profile went to a private space during the read: what was read does not leave.
     checkProfile();

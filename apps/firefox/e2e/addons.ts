@@ -161,3 +161,25 @@ export function identities(base: string): Fixture {
     },
   };
 }
+
+/** A content script on every page (document_end) that appends <p id="addon-mark">MARQUE-MODULE</p>. */
+export function marker(): Fixture {
+  const id = "marker@webaios.test";
+  return {
+    id,
+    manifest: { ...gecko(id), name: "Marqueur", content_scripts: [{ matches: ["<all_urls>"], js: ["content.js"], run_at: "document_end" }] },
+    files: { "content.js": 'document.body.insertAdjacentHTML("beforeend", \'<p id="addon-mark">MARQUE-MODULE</p>\');' },
+  };
+}
+
+/** Notes `seen` to `base`/note/ for each request its webRequest listener observes on /texte.html. */
+export function watcher(base: string): Fixture {
+  const id = "watcher@webaios.test";
+  return {
+    id,
+    manifest: { ...gecko(id), name: "Guetteur", permissions: ["webRequest", "<all_urls>"], background: { scripts: ["background.js"] } },
+    files: {
+      "background.js": `browser.webRequest.onBeforeRequest.addListener(() => { fetch(${JSON.stringify(base)} + "/note/seen").catch(() => {}); }, { urls: ["*://*/texte.html"] });`,
+    },
+  };
+}

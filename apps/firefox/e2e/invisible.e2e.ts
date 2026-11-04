@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
+import { cleanupXpis, installAddon, marker, uninstallAddon, watcher } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -35,6 +36,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await w?.close();
+  await cleanupXpis();
   await Promise.all([page?.close(), trap?.close()]);
 });
 beforeEach(() => {
@@ -168,4 +170,39 @@ it("a read never downloads: not the page, nor a frame, nor a download link", asy
   expect(await readPage(`${page.url}/telecharge`)).toHaveProperty("err");
   await new Promise((r) => setTimeout(r, 1_000));
   expect(await downloads()).toEqual([]);
+});
+
+describe("add-ons", () => {
+  const seen = () => page.paths.filter((p) => p === "/note/seen").length;
+  const pause = () => new Promise((r) => setTimeout(r, 1_000));
+  let id: string;
+  beforeAll(async () => {
+    id = await installAddon(m, watcher(page.url));
+  });
+  afterAll(() => uninstallAddon(m, id));
+
+  it("a public read is invisible to add-ons: no webRequest, no content script", async () => {
+    const mark = await installAddon(m, marker());
+    try {
+      const r = await readPage(`${page.url}/texte.html`);
+      expect(r).toHaveProperty("ok");
+      expect((r as { ok: Page }).ok.texte).not.toContain("MARQUE-MODULE");
+      await pause();
+      expect(seen()).toBe(0);
+    } finally {
+      await uninstallAddon(m, mark);
+    }
+  });
+
+  it("a login-profile read keeps add-ons (webRequest sees it)", async () => {
+    const profil = await newSpace(false);
+    expect(await readPage(`${page.url}/texte.html`, { profil })).toHaveProperty("ok");
+    await pause();
+    expect(seen()).toBeGreaterThan(0);
+  });
+
+  it("a public read leaves no cookie behind", async () => {
+    expect(await readPage(`${page.url}/cookie`)).toHaveProperty("ok");
+    expect(await readPage(`${page.url}/lire-cookie`)).toMatchObject({ ok: { titre: "aucun" } });
+  });
 });
