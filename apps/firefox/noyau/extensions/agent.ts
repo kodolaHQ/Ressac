@@ -151,9 +151,9 @@ export class ExtensionsAgent {
   private readonly consoles = new ConsolesExtensions({ surPlantages: () => {} });
   /** Consoles unlocked for the agent, by key: in memory only (quitting ends them), as Electron. */
   private readonly deblocages = new Map<string, LienDeblocage>();
-  /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
   /** The last refused startup or reload of each key (Electron's erreursAgent), shown until one passes. */
   private readonly erreursEnvoi = new Map<string, string>();
+  /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
   private readonly cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: LienDeblocage; attentes: number }>();
 
   constructor(private readonly o: { dossier: string; dossierAgent: string; rpc: Rpc; env?: NodeJS.ProcessEnv }) {
