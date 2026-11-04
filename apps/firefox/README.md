@@ -77,14 +77,32 @@ Limits:
 - An add-on sees the parking tab and only the tabs already shown (`tabs.query`).
 - `lister_extensions` does not see add-ons yet; themes do not restyle our UI.
 
+## History and downloads
+
+- The history is `historique.sqlite` in the data folder, kept by the noyau host with Electron's `Historique` class (the later import is a file copy). The window talks to it through the `historique.*` messages.
+- Firefox's own Places is turned off at runtime (`places.history.enabled=false` on the default branch, set when the store starts): it records no visit, so there is no `:visited` colour. Tab history, favicons and reopening closed tabs still work.
+- Visits are noted by `chrome/window/visits.ts`; the page text the agent can search is retained through the actor's `getText` message (`body.innerText` only). Private spaces are replayed to the host on each host start.
+- The download list is Firefox's (`Downloads.getList`), shown in the reused Electron panel; it is kept for the session only.
+- Native keys and commands that would open Firefox's own history, bookmarks or downloads UI are disabled (⌘Y, ⇧⌘H, ⇧⌘O, `Browser:ShowAllHistory`, `Browser:ShowAllBookmarks`, `Tools:Downloads`).
+- After a Firefox upgrade, rerun the probes: `WEBAIOS_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/history-spike.e2e.ts --silent=false`. Details: `docs/superpowers/notes/2026-11-04-historique-telechargements-essai.md`.
+
+Limits:
+
+- Firefox picks the free name of a repeated download: `file(1).txt`, without Electron's space.
+- The retained text has no `meta` description and no YouTube parts.
+- A visit or text sent while the host is down is lost.
+- The download list is not kept across a restart (the panel says « Aucun téléchargement pendant cette session. »).
+- A download from a private space stays in the list.
+- A file Firefox blocks shows « Interrompu », without « Garder quand même »; a blocked or cancelled download may leave its partial file in the folder.
+- `/coupee` (truncated page) is not ported: Firefox may count a cut page as loaded.
+
 ## Not migrated yet (step 4)
 
 - compact mode;
-- the agent's dev tools, history access, widget data and site-app permission checks;
+- the agent's dev tools, widget data and site-app permission checks;
 - « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
-- history: suggestions are empty;
-- downloads, design mode;
+- design mode;
 - internal `webaios:` pages: a "not available yet" message;
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;

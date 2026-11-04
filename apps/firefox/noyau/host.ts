@@ -32,6 +32,7 @@ const racine = join(dataDir, "espace");
 // Outside the agent's noyau: the history works even when the noyau does not start.
 // Electron's retenable (capture-texte.ts) can't be imported here: it needs the extensionless "../historique" import, which Node refuses.
 const MEMOIRE_BOUCLE = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
+// Keep in sync with apps/navigateur/src/main/onglets/capture-texte.ts.
 const retenable = (url: string) => {
   try {
     const u = new URL(url);

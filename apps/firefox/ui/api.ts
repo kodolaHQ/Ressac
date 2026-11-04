@@ -15,8 +15,8 @@ const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 /**
- * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (extensions, actions) answers empty; any other member is recorded in
- * `window.webaiosMissingApi` and is undefined.
+ * The Electron preload's `window.webaios`, on the Firefox window controller. What is not migrated yet (applications, sites,
+ * extensions, actions) answers empty; any other member is recorded in `window.webaiosMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiWebaios {
   const missing = (window.webaiosMissingApi ??= new Set());
