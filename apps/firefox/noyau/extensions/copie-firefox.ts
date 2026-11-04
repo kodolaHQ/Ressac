@@ -16,10 +16,11 @@ const objet = (v: unknown): Record<string, any> | undefined => (v && typeof v ==
 
 /**
  * The rights an agent extension may hold in Firefox: those Electron's agent extensions can use (the `connus` of
- * packages/noyau/src/extensions/manifeste.ts, but notifications, which Electron never shows), plus declarativeNetRequest*.
+ * packages/noyau/src/extensions/manifeste.ts, but notifications, which Electron never shows, and activeTab, which Electron
+ * lists as unsupported and with which Firefox lets a click capture a tab), plus declarativeNetRequest*.
  * Firefox has more (identity, dns, find, menus…), which Electron's guards never had to close: refused.
  */
-const DROITS_PERMIS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "activeTab"]);
+const DROITS_PERMIS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite"]);
 /** Firefox manifest keys that grant a power outside the guards (a search engine, URL handlers, user scripts, privileged APIs, the address bar). */
 const CLES_REFUSEES = ["chrome_settings_overrides", "protocol_handlers", "user_scripts", "experiment_apis", "theme_experiment", "omnibox"];
 /** Not in Electron: new text (decision 9's style). */
@@ -62,7 +63,8 @@ export function manifesteFirefox(m: Record<string, unknown>, dossier: string, n:
   // address, target=_blank). Firefox: its pages are sandboxed without allow-popups (the same origin, scripts and the
   // extension API kept).
   const csp = objet(m.content_security_policy);
-  if (typeof csp?.extension_pages === "string") copie.content_security_policy = { ...csp, extension_pages: `${csp.extension_pages}; ${SANDBOX}` };
+  // preparerCopie always writes a string CSP; without one, the sandbox is still set (never dropped silently).
+  copie.content_security_policy = { ...csp, extension_pages: typeof csp?.extension_pages === "string" ? `${csp.extension_pages}; ${SANDBOX}` : `script-src 'self'; ${SANDBOX}` };
   if (fond?.service_worker === FOND && fond.type === "module") copie.background = { scripts: [FOND], type: "module" };
   else if (fond?.service_worker === FOND && fondOriginal) copie.background = { scripts: [GARDE_FOND, fondOriginal.replace(/^(\.\/|\/)+/, "")] };
   else copie.background = { scripts: [GARDE_FOND] };

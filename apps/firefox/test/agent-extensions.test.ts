@@ -1,10 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ID = "reseau@agent.webaios";
 const ACCORD = { permissions: [], hotes: ["https://hote.test/*"], reseau: ["accorde.test"], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
 const HOST = "0f7c6f4e-1111-4222-8333-444455556666";
 
 let observer: (subject: unknown) => void = () => {};
+/** Firefox's ParentAPIManager: contexts by childId (their add-on id), the calls that reached Firefox, the results sent back. */
+const contexts: Record<number, string> = { 1: ID, 2: "autre@mozilla.org" };
+const parentApi = {
+  reached: [] as string[],
+  sent: [] as unknown[],
+  getContextUnchecked: (childId: number) => (contexts[childId] ? { extension: { id: contexts[childId] } } : undefined),
+  conduit: { sendCallResult: (_: number, r: unknown) => parentApi.sent.push(r), recv: new Map<string, (data: { path: string }, meta: unknown) => unknown>() },
+};
+const firefoxRecv = (data: { path: string }) => void parentApi.reached.push(data.path);
 /** A request as http-on-modify-request hands it: true if the observer cancelled it. */
 const request = (url: string, o: { loading?: string | null; triggering?: string | null }) => {
   let cancelled = false;
@@ -21,6 +30,7 @@ async function load(tabs: Record<number, { attrs: string[]; url: string }> = {})
       AddonManager: { addAddonListener: () => {} },
       FileUtils: {},
       ExtensionParent: {
+        ParentAPIManager: parentApi,
         apiManager: {
           on: () => {},
           global: {
@@ -47,12 +57,26 @@ async function load(tabs: Record<number, { attrs: string[]; url: string }> = {})
 const grant = (x: Awaited<ReturnType<typeof load>>, actif = true) =>
   x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif } }, new AbortController().signal);
 
+beforeEach(() => parentApi.conduit.recv.set("APICall", firefoxRecv));
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetModules();
 });
 
 describe("agent extension checkpoints", () => {
+  it("tabs.captureVisibleTab, captureTab and detectLanguage of an agent extension never reach Firefox; another add-on's do", async () => {
+    await load();
+    parentApi.reached = [];
+    parentApi.sent = [];
+    const call = (childId: number, path: string, callId = 7) => parentApi.conduit.recv.get("APICall")!({ childId, callId, path } as never, {});
+    for (const path of ["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage"]) call(1, path);
+    call(1, "tabs.query");
+    call(2, "tabs.captureVisibleTab");
+    expect(parentApi.reached).toEqual(["tabs.query", "tabs.captureVisibleTab"]);
+    expect(parentApi.sent).toHaveLength(3);
+    expect(parentApi.sent[0]).toEqual({ childId: 1, callId: 7, path: "tabs.captureVisibleTab", error: { message: "tabs.captureVisibleTab non pris en charge par WebAiOs" } });
+  });
+
   it("check: urlPermise accepts its own moz-extension host and a granted network domain only", async () => {
     const x = await load();
     grant(x);

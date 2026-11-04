@@ -14,6 +14,7 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 
 // Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
 const SUFFIX = "@agent.webaios";
+const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
@@ -177,6 +178,19 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     const addonId: string = info.loadingPrincipal?.addonId || info.triggeringPrincipal?.addonId || "";
     if (addonId.endsWith(SUFFIX) && !check(addonId, "urlPermise", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
   }, "http-on-modify-request");
+  // Electron has none of these, and Firefox grants activeTab to an MV3 extension on a click of its button, its menu
+  // item or its command even without the right (originControls): refused in the parent, for every page of the agent's
+  // extensions (background, popup, tabs), before Firefox looks at the call.
+  // The conduit bound its recv methods at startup: its APICall entry is the one to wrap.
+  const api = ExtensionParent.ParentAPIManager;
+  const recvAPICall = api.conduit.recv.get("APICall");
+  api.conduit.recv.set("APICall", (data: { childId: number; callId?: number; path: string }, meta: unknown) => {
+    if (REFUSED_CALLS.has(data.path) && api.getContextUnchecked(data.childId)?.extension?.id?.endsWith(SUFFIX)) {
+      if (data.callId) api.conduit.sendCallResult(data.childId, { childId: data.childId, callId: data.callId, path: data.path, error: { message: `${data.path} non pris en charge par WebAiOs` } });
+      return;
+    }
+    return recvAPICall(data, meta);
+  });
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
   // urlPermise then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
   const guardUninstallUrl = (extension: { id: string; uninstallURL: string | null }) => {

@@ -132,6 +132,8 @@ chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
       await chrome.action.openPopup().catch(() => {});
     } else if (m === "popup-cadres") {
       await chrome.action.setPopup({ popup: "cadre.html" });
+    } else if (m === "popup-capture") {
+      await chrome.action.setPopup({ popup: "capture.html" });
     } else if (m === "clients-type") {
       repondre(typeof clients);
       return;
@@ -351,6 +353,18 @@ a.target = "_blank";
 document.body.appendChild(a);
 a.click();
 document.title = JSON.stringify(vu);
+`,
+  "capture.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="capture.js"></script></body></html>',
+  "capture.js": `(async () => {
+  const vu = {};
+  const essai = async (nom, f) => { try { const r = await f(); vu[nom] = { ok: typeof r === "string" ? r.slice(0, 22) : r ?? null }; } catch (e) { vu[nom] = { erreur: String(e && e.message) }; } };
+  const [t] = await chrome.tabs.query({ active: true, currentWindow: true });
+  vu.url = t && t.url;
+  await essai("visible", () => chrome.tabs.captureVisibleTab());
+  await essai("onglet", () => chrome.tabs.captureTab(t.id));
+  await essai("langue", () => chrome.tabs.detectLanguage(t.id));
+  document.title = JSON.stringify(vu);
+})().catch((e) => (document.title = "erreur " + e));
 `,
   "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
   "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
@@ -610,6 +624,29 @@ describe("agent extensions: network guard", () => {
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/cadre.html`, 0);
     console.log(`[mesure] cadres : ${page.titre}`);
     checkFrames(page.titre);
+  });
+
+  // Firefox grants activeTab to an MV3 extension on a click of its button, of its menu item or on its command, even
+  // without the right; Electron has no captureVisibleTab, captureTab nor detectLanguage: refused for every agent page.
+  it("after a click on its button, the popup cannot capture nor read the language of a tab outside its hosts", async () => {
+    const w = await launchReseau();
+    const m = w.marionette;
+    await backgroundResults(w);
+    expect(await order(w, "popup-capture")).toBe("fait");
+    await openTab(m, "https://autre.test/lisible");
+    await until(() => hitsTo("autre.test", "/lisible").length > 0);
+    await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
+    await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
+    const titre = await waitFor<string | null>(
+      m,
+      `const b = [...document.querySelectorAll("browser")].find((b) => b.currentURI?.spec.endsWith("/capture.html"));
+       return b ? b.contentTitle : null;`,
+      (t) => !!t && t !== "attente",
+      15_000,
+    );
+    const vu = JSON.parse(titre!);
+    expect(vu.url).toBe("https://autre.test/lisible");
+    for (const nom of ["visible", "onglet", "langue"]) expect(vu[nom], nom).toHaveProperty("erreur");
   });
 
   it("in its popup too (setPopup cadre.html, then a click on its button)", async () => {
