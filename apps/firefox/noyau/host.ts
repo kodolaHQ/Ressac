@@ -213,6 +213,13 @@ const rpc = createRpc({
     "extensions.horsWebaios": (p: { addonId: string; quoi: "desinstallee" | "desactivee" }) =>
       extensions.horsWebaios(p.addonId, p.quoi),
     "extensions.aTourne": (p: { addonId: string; profil: string; lisible: boolean }) => extensions.aTourne(p.addonId, p.profil, p.lisible),
+    "extensions.profilsPrives": (p: { prives?: unknown }) =>
+      extensions.profilsPrives(Array.isArray(p?.prives) ? p.prives.filter((x): x is string => typeof x === "string") : []),
+    "extensions.pourEspace": (p: { espaceId?: unknown }) => (typeof p?.espaceId === "string" ? extensions.pourEspace(p.espaceId) : []),
+    "extensions.basculer": (p: { cle?: unknown; espaceId?: unknown; actif?: unknown; fenetre?: unknown }) =>
+      typeof p?.cle === "string" && typeof p.espaceId === "string"
+        ? extensions.basculer(p.cle, p.espaceId, p.actif === true, typeof p.fenetre === "string" ? p.fenetre : null)
+        : { ok: false, erreur: "Paramètres invalides" },
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });

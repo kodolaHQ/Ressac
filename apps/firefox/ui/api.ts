@@ -1,4 +1,5 @@
 import type { ApiWebaios, EtatPanneauAgent } from "../../navigateur/src/commun/api";
+import type { LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
 import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 
@@ -110,8 +111,15 @@ export function createApi(win: WindowController): ApiWebaios {
     // The command bar's sources besides tabs: none in step 2.
     applications: { liste: async () => ({ atelier: "ok", applications: [] }), surChange: off, agir() {} },
     sites: { liste: none, surChange: off, agir() {} },
-    // Only what the reused space modal, empty page and command bar call.
-    extensions: { pourEspace: none, surChange: off, basculer: unavailable } as unknown as ApiWebaios["extensions"],
+    // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
+    extensions: {
+      pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),
+      basculer: (cle, espaceId, actif) =>
+        host
+          .request<{ ok: true } | { ok: false; erreur: string }>("extensions.basculer", { cle, espaceId, actif, fenetre })
+          .then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) })),
+      surChange: (callback) => untilUnload(host.on("extensions.change", () => callback())),
+    } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
     actions: { liste: none, surChange: off, ouvrir: unavailable } as unknown as ApiWebaios["actions"],
   };
   return new Proxy(api, {

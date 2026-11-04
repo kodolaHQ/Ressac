@@ -350,6 +350,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       cartes: [] as CarteExtension[],
       /** Every extensions.portees notification, in order. */
       portees: [] as Record<string, unknown>[],
+      /** Every extensions.rechargerOnglets notification. */
+      recharges: [] as unknown[],
       reponse: (c: CarteExtension): ReponseAccord => ({ accepte: true, empreinte: c.empreinte }),
       handlers: {} as Record<string, Handler>,
     };
@@ -368,6 +370,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       "extensions.accord": (p: { carte: CarteExtension }) => (f.cartes.push(p.carte), f.reponse(p.carte)),
       "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [{ id: "f1", espaceActif: "e1" }], premierPlan: "f1" }),
       "extensions.portees": (p: Record<string, unknown>) => void f.portees.push(p),
+      "extensions.rechargerOnglets": (p: unknown) => void f.recharges.push(p),
     };
     return f;
   };
@@ -548,6 +551,45 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare });
     expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toContain(installationImpossible("boom"));
     expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"))).toBe(false);
+  });
+
+  it("extensions.profilsPrives: the profile leaves the grant, its tabs reloaded, the add-on disabled; a profile not in use changes nothing", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    h.rpc.notify("extensions.profilsPrives", { prives: ["autre"] });
+    f.espaces[0]!.prive = true;
+    h.rpc.notify("extensions.profilsPrives", { prives: ["defaut"] });
+    await until(() => f.activations.at(-1)?.actif === false);
+    expect(entree(h.dataDir).profils).toEqual([]);
+    expect(f.recharges).toEqual([{ addonId: ID, profils: ["defaut"] }]);
+  });
+
+  it("pourEspace and basculer: the space's lines; off then on in the same profile, at once; refused in a private one", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.espaces.push({ id: "e2", nom: "Lecture", profil: "defaut", prive: false }, { id: "e3", nom: "Secret", profil: "secret", prive: true });
+    const h = launch(amo, f, { prepare: (d) => (prepare(d), mkdirSync(join(d, "espace", "extensions", "jamais"), { recursive: true })) });
+    await h.rpc.request("extensions.pret", {});
+    const ligne = { cle: "agent:ma-ext", nom: "Cacheur", source: "agent", active: true, aussiDans: ["Lecture"], grisee: null, profils: ["defaut"] };
+    const jamais = { cle: "agent:jamais", nom: "jamais", source: "agent", active: false, aussiDans: [], grisee: null, profils: [] };
+    expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e1" })).toEqual([ligne, jamais]);
+    expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e3" })).toEqual([
+      { ...ligne, active: false, aussiDans: [], grisee: ERREUR_PROFIL_PRIVE },
+      { ...jamais, grisee: ERREUR_PROFIL_PRIVE },
+    ]);
+    expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e3", actif: true })).toEqual({ ok: false, erreur: ERREUR_PROFIL_PRIVE });
+    expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e1", actif: false })).toEqual({ ok: true });
+    expect(entree(h.dataDir).profils).toEqual([]);
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
+    expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e2", actif: true })).toEqual({ ok: true });
+    expect(entree(h.dataDir).profils).toEqual(["defaut"]);
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
+    expect(f.cartes).toEqual([]);
+    // Never granted: through its card.
+    f.reponse = (c) => ({ accepte: false, empreinte: c.empreinte });
+    expect(await h.rpc.request("extensions.basculer", { cle: "agent:jamais", espaceId: "e1", actif: true })).toMatchObject({ ok: false });
   });
 
   it("a profile used by a private space is taken out of the grant's profiles", async () => {

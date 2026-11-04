@@ -2,8 +2,10 @@ import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from
 import { join } from "node:path";
 import {
   activer,
+  appliquerProfilsPrives,
   cleExtension,
   DEMANDE_RETIREE,
+  desactiver,
   desactiverPartout,
   ERREUR_PROFIL_PRIVE,
   GARDES_PAR_DEFAUT,
@@ -20,7 +22,7 @@ import {
   type Portee,
   type ResultatDemandeExtension,
 } from "../../../../packages/noyau/src/index.ts";
-import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
+import type { CarteExtension, LigneExtensionEspace, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
 import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../../navigateur/src/commun/extensions-messages.ts";
 import type { Espace } from "../../../navigateur/src/commun/modele.ts";
 import type { Rpc } from "../../shared/rpc.ts";
@@ -331,6 +333,87 @@ export class ExtensionsAgent {
     );
   }
 
+  /**
+   * The chrome's private profiles (`extensions.profilsPrives`, as Electron's appliquerProfilsPrives): each agent extension
+   * active in one is taken out of it, the tabs of those profiles where it ran are reloaded (A7: its scripts stop), and
+   * it is disabled where it is active nowhere else.
+   */
+  async profilsPrives(prives: string[]): Promise<void> {
+    const { retirees } = appliquerProfilsPrives(await lireEtatExtensions(this.o.dossier), new Set(prives));
+    if (retirees.length === 0) return;
+    await this.modifier((e) => e);
+    const parCle = new Map<string, string[]>();
+    for (const r of retirees) parCle.set(r.cle, [...(parCle.get(r.cle) ?? []), r.profil]);
+    for (const [cle, profils] of parCle) {
+      const id = this.id(cle);
+      if (!id) continue;
+      this.o.rpc.notify("extensions.rechargerOnglets", { addonId: addonIdDe(id), profils });
+      await this.enFile(cle, () => this.appliquer(id, cle));
+    }
+  }
+
+  /**
+   * The « Extensions » section of a space's settings (Electron's pourEspace, the agent's only): registry entries and the
+   * agent's folders never granted (their names only), seen from that space's profile.
+   */
+  async pourEspace(espaceId: string): Promise<LigneExtensionEspace[]> {
+    const nav = await this.navigateur();
+    const espace = nav.espaces.find((e) => e.id === espaceId);
+    if (!espace) return [];
+    const etat = await lireEtatExtensions(this.o.dossier);
+    const autres = nav.espaces.filter((e) => e.id !== espace.id && e.profil === espace.profil).map((e) => e.nom);
+    const grisee = profilsPrivesDe(nav).has(espace.profil) ? ERREUR_PROFIL_PRIVE : null;
+    const lignes: LigneExtensionEspace[] = Object.entries(etat.extensions)
+      .filter(([, x]) => x.source === "agent")
+      .map(([cle, x]) => {
+        const active = x.profils.includes(espace.profil);
+        return { cle, nom: x.nom, source: "agent", active, aussiDans: active ? autres : [], grisee, profils: [...x.profils] };
+      });
+    for (const d of await readdir(this.o.dossierAgent, { withFileTypes: true }).catch(() => [])) {
+      const cle = this.cle(d.name);
+      if (!d.isDirectory() || !cle || cle in etat.extensions) continue;
+      lignes.push({ cle, nom: d.name, source: "agent", active: false, aussiDans: [], grisee, profils: [] });
+    }
+    return lignes.sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /**
+   * A space settings' switch (Electron's basculer): off → taken out of the space's profile; on → refused in a private
+   * profile, through the card without a grant (or disabled for a broadened scope), else active there at once.
+   */
+  async basculer(cle: string, espaceId: string, actif: boolean, fenetre: string | null): Promise<{ ok: true } | { ok: false; erreur: string }> {
+    const id = this.id(cle);
+    if (!id) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    const nav = await this.navigateur();
+    const espace = nav.espaces.find((e) => e.id === espaceId);
+    if (!espace) return { ok: false, erreur: "Espace inconnu" };
+    const profil = espace.profil;
+    const ecrire = (changer: (e: EtatExtensions, prives: ReadonlySet<string>) => EtatExtensions) =>
+      this.enFile(cle, async () => {
+        await this.modifier(changer);
+        await this.appliquer(id, cle);
+      }).then(
+        () => ({ ok: true as const }),
+        (e: unknown) => ({ ok: false as const, erreur: (e as Error).message }),
+      );
+    if (!actif) return ecrire((e) => (cle in e.extensions ? desactiver(e, cle, profil) : e));
+    if (profilsPrivesDe(nav).has(profil)) return { ok: false, erreur: ERREUR_PROFIL_PRIVE };
+    const etat = await lireEtatExtensions(this.o.dossier);
+    if (etat.toutesCoupees) return { ok: false, erreur: TOUTES_COUPEES_AGENT };
+    const x = etat.extensions[cle];
+    if (!(x?.accord && x.desactivee === null)) {
+      const r = await this.demander(id, { espace: espace.id, fenetre });
+      return r.ok ? { ok: true } : { ok: false, erreur: r.erreur };
+    }
+    // Checked again in the serialized write: everything cut, or a disabling, may have come in between.
+    return ecrire((e, prives) => {
+      if (e.toutesCoupees) throw new Error(TOUTES_COUPEES_AGENT);
+      const d = e.extensions[cle]?.desactivee;
+      if (d) throw new Error(d.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE);
+      return activer(e, cle, profil, prives);
+    });
+  }
+
   /** Quitting: a signing in progress is dropped (its version number stays taken; the change is signed again at the next startup). */
   arreter(): void {
     this.arret.abort();
@@ -364,6 +447,7 @@ export class ExtensionsAgent {
     const prives = profilsPrivesDe(await this.navigateur());
     const e = await modifierEtatExtensions(this.o.dossier, changer, () => prives);
     this.o.rpc.notify("extensions.portees", porteesDe(e));
+    this.o.rpc.notify("extensions.change");
     return e;
   }
 

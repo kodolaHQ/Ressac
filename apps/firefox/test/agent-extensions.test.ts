@@ -23,8 +23,30 @@ const request = (url: string, o: { loading?: string | null; triggering?: string 
   return cancelled;
 };
 
+/** The tabs reloaded by extensions.rechargerOnglets, by id. */
+const reloads: number[] = [];
+/** One tab element per id, as Firefox's tabTracker hands it: its attributes, address, container (default 0) and document. */
+type FakeTab = { attrs: string[]; url: string; ctx?: number; doc?: number };
+const tabElements = new Map<number, unknown>();
+const tabElement = (id: number, t: FakeTab) => {
+  if (!tabElements.has(id))
+    tabElements.set(id, {
+      hasAttribute: (a: string) => t.attrs.includes(a),
+      getAttribute: (a: string) => (t.attrs.includes(a) ? `onglet-${id}` : null),
+      userContextId: t.ctx ?? 0,
+      isConnected: true,
+      linkedBrowser: { currentURI: { spec: t.url }, get innerWindowID() { return t.doc ?? 1; }, reload: () => reloads.push(id) },
+    });
+  return tabElements.get(id);
+};
+
 /** The chrome module with Firefox simulated: one policy (ID → HOST), tabs by id with their attributes and address. */
-async function load(tabs: Record<number, { attrs: string[]; url: string }> = {}, o: { lecture?: string[]; requests?: unknown[][] } = {}) {
+async function load(
+  tabs: Record<number, FakeTab> = {},
+  o: { lecture?: string[]; requests?: unknown[][]; notified?: unknown[][]; running?: unknown[] } = {},
+) {
+  reloads.length = 0;
+  tabElements.clear();
   vi.stubGlobal("ChromeUtils", {
     importESModule: () => ({
       AddonManager: { addAddonListener: () => {} },
@@ -38,11 +60,7 @@ async function load(tabs: Record<number, { attrs: string[]; url: string }> = {},
               getTab: (id: number) => {
                 const t = tabs[id];
                 if (!t) throw new Error(`Invalid tab ID: ${id}`);
-                return {
-                  hasAttribute: (a: string) => t.attrs.includes(a),
-                  getAttribute: (a: string) => (t.attrs.includes(a) ? `onglet-${id}` : null),
-                  linkedBrowser: { currentURI: { spec: t.url } },
-                };
+                return tabElement(id, t);
               },
             },
           },
@@ -50,22 +68,26 @@ async function load(tabs: Record<number, { attrs: string[]; url: string }> = {},
       },
     }),
   });
-  vi.stubGlobal("WebExtensionPolicy", { getByID: (id: string) => (id === ID ? { mozExtensionHostname: HOST } : null), getActiveExtensions: () => [] });
+  vi.stubGlobal("WebExtensionPolicy", { getByID: (id: string) => (id === ID ? { mozExtensionHostname: HOST } : null), getActiveExtensions: () => (o.running ?? []).map((extension) => ({ extension })) });
   vi.stubGlobal("Ci", { nsIHttpChannel: {} });
   vi.stubGlobal("Cr", { NS_BINDING_ABORTED: 0x804b0002 });
   vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) } });
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
-  // WebAiOs tabs onglet-<n>: 5 is in a private space, the others in the default one.
+  // WebAiOs tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
   const espaces = [
     { id: "e1", prive: false, profil: "defaut" },
     { id: "e2", prive: true, profil: "secret" },
+    { id: "e3", prive: false, profil: "autre" },
   ];
-  const onglets = Object.fromEntries([1, 2, 3, 4, 5].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, espaceId: n === 5 ? "e2" : "e1" }]));
-  const store = { state: { espaces, onglets } };
+  const onglets = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, espaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
+  const listeners: (() => void)[] = [];
+  const store = { state: { espaces, onglets }, subscribe: (l: () => void) => void listeners.push(l) };
   const access = () => ({ agent: "L'agent", onglets: Object.fromEntries((o.lecture ?? []).map((id) => [id, { lecture: true, droits: [], construite: false, enCours: false }])) });
-  const host = { request: (...a: unknown[]) => (o.requests?.push(a), Promise.resolve()) };
+  const host = { request: (...a: unknown[]) => (o.requests?.push(a), Promise.resolve()), notify: (...a: unknown[]) => void o.notified?.push(a) };
   const x = createAgentExtensions(store as never, {} as never, {} as never, () => host as never, access as never);
-  return x;
+  /** A new state, as the store sends it to its subscribers. */
+  const setSpaces = (e: typeof espaces) => ((store.state = { ...store.state, espaces: e }), listeners.forEach((l) => l()));
+  return Object.assign(x, { setSpaces });
 }
 const grant = (x: Awaited<ReturnType<typeof load>>, actif = true) =>
   x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif } }, new AbortController().signal);
@@ -154,6 +176,46 @@ describe("agent extension checkpoints", () => {
     expect(x.check(ID, "estOnglet", 2)).toBe(true);
     expect(x.check(ID, "estOnglet", 2)).toBe(true);
     expect(requests).toEqual([["extensions.aTourne", { addonId: ID, profil: "defaut", lisible: false }]]);
+  });
+
+  it("check: estOnglet is false in a profile where the extension is not active, or in a container not its space's", async () => {
+    const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/a", ctx: 3 }, 6: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" } });
+    grant(x);
+    expect([1, 2, 6].map((t) => x.check(ID, "estOnglet", t))).toEqual([true, false, false]);
+  });
+
+  it("extensions.rechargerOnglets reloads, once, the tabs of those profiles its scripts were let into, unless their page changed", async () => {
+    const tab3: FakeTab = { attrs: ["webaios-tab-id"], url: "https://hote.test/c" };
+    const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" }, 3: tab3, 4: { attrs: ["webaios-tab-id"], url: "https://hote.test/d" } });
+    grant(x);
+    for (const t of [1, 3, 4]) x.check(ID, "estOnglet", t);
+    tab3.doc = 2;
+    const reload = (p: unknown) => x.handlers["extensions.rechargerOnglets"]!(p, new AbortController().signal);
+    reload({ addonId: "autre@agent.webaios", profils: ["defaut"] });
+    expect(reloads).toEqual([]);
+    reload({ addonId: ID, profils: ["defaut"] });
+    expect(reloads).toEqual([1, 4]);
+    reload({ addonId: ID, profils: ["defaut"] });
+    expect(reloads).toEqual([1, 4]);
+  });
+
+  it("extensions.profilsPrives is sent when the set of private profiles changes, and at a host start", async () => {
+    const notified: unknown[][] = [];
+    const x = await load({}, { notified });
+    x.setSpaces([{ id: "e1", prive: false, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }]);
+    expect(notified).toEqual([]);
+    x.setSpaces([{ id: "e1", prive: true, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }]);
+    expect(notified).toEqual([["extensions.profilsPrives", { prives: ["defaut", "secret"] }]]);
+    x.hostStarted();
+    expect(notified.at(-1)).toEqual(["extensions.profilsPrives", { prives: ["defaut", "secret"] }]);
+  });
+
+  it("an agent extension's TabManager never reaches the parking tab nor a private space's tab", async () => {
+    const extension = { id: ID, uninstallURL: null, tabManager: { canAccessTab: (_: unknown) => true } };
+    const tab = (attrs: string[]) => ({ attrs, url: "https://hote.test/a" });
+    await load({ 1: tab(["webaios-tab-id"]), 3: tab(["webaios-tab-id", "webaios-parking"]), 5: tab(["webaios-tab-id"]), 6: tab(["webaios-tab-id"]) }, { running: [extension] });
+    const { tabTracker } = (globalThis as any).ChromeUtils.importESModule().ExtensionParent.apiManager.global;
+    expect([1, 3, 5, 6].map((id) => extension.tabManager.canAccessTab(tabTracker.getTab(id)))).toEqual([true, false, false, true]);
   });
 
   it("every request an agent extension loads or starts is checked, whatever its type: a notification icon outside the grant is cancelled", async () => {

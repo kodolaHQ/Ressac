@@ -5,6 +5,7 @@ import type { EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele"
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
+import { containerFor } from "./containers";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -139,6 +140,41 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     }
   };
 
+  /** A WebAiOs tab's state entry and space; never the parking tab, never an invisible read (not a tab at all). */
+  const ongletDe = (tab: any) => {
+    const onglet = !tab || tab.hasAttribute?.(PARKING) ? undefined : store.state.onglets[tab.getAttribute?.(TAB_ID) ?? ""];
+    const espace = onglet && store.state.espaces.find((e) => e.id === onglet.espaceId);
+    return onglet && espace ? { onglet, espace } : null;
+  };
+
+  // The tabs each agent extension's scripts were let into, with the document they were let into: reloaded when the
+  // profile turns private (as Electron's suivreOnglet / rechargerOngletsAgent), unless that document is gone.
+  const ran = new Map<string, Map<any, number>>();
+  handlers["extensions.rechargerOnglets"] = (p: { addonId: string; profils: IdProfil[] }) => {
+    const tabs = ran.get(p.addonId);
+    if (!tabs || !Array.isArray(p.profils)) return;
+    const containers = new Set(p.profils.map((profil) => containerFor(profil)));
+    for (const [tab, windowId] of tabs) {
+      const browser = tab.linkedBrowser;
+      if (!browser || browser.innerWindowID !== windowId) tabs.delete(tab);
+      else if (containers.has(tab.userContextId)) {
+        tabs.delete(tab);
+        browser.reload();
+      }
+    }
+  };
+
+  // The extensions leave a profile turned private (noyau): sent at each change of that set, and at each host start.
+  const privateProfiles = () => [...new Set(store.state.espaces.filter((e) => e.prive).map((e) => e.profil))].sort();
+  const sendPrivate = () => host().notify("extensions.profilsPrives", { prives: privateProfiles() });
+  let lastPrivate = JSON.stringify(privateProfiles());
+  store.subscribe(() => {
+    const now = JSON.stringify(privateProfiles());
+    if (now === lastPrivate) return;
+    lastPrivate = now;
+    sendPrivate();
+  });
+
   // Once per extension and profile; a request that fails (no host) is sent again on the next check.
   const maskedSent = new Set<string>();
   const masked = (addonId: string, profil: IdProfil) => {
@@ -171,13 +207,16 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         return typeof spec === "string" && hotePermisAgent(spec, scope.accord);
       }
       case "estOnglet": {
-        // A WebAiOs tab of a non-private space only: never the parking tab, never an invisible read (not a tab at all).
+        // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
+        // 2: its content scripts follow its spaces; Electron loads it in that profile's session only).
         const tab = tabOf(value);
-        const onglet = tab?.hasAttribute?.(PARKING) ? undefined : store.state.onglets[tab?.getAttribute?.(TAB_ID) ?? ""];
-        const espace = onglet && store.state.espaces.find((e) => e.id === onglet.espaceId);
-        if (!onglet || !espace || espace.prive) return false;
+        const t = ongletDe(tab);
+        if (!t || t.espace.prive || !scope.profils.includes(t.espace.profil) || tab.userContextId !== containerFor(t.espace.profil)) return false;
         // Its scripts will run there: a tab the agent cannot read masks its console for good (as Electron's aTourneDansOnglet).
-        if (!access().onglets[onglet.id]?.lecture) masked(addonId, espace.profil);
+        if (!access().onglets[t.onglet.id]?.lecture) masked(addonId, t.espace.profil);
+        const tabs = ran.get(addonId) ?? new Map();
+        for (const [other] of tabs) if (!other.isConnected) tabs.delete(other);
+        ran.set(addonId, tabs.set(tab, tab.linkedBrowser?.innerWindowID));
         return true;
       }
     }
@@ -210,12 +249,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
   // urlPermise then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
   // The parking tab is no tab for Electron: tabs.query, tabs.get, windows.getAll and the tab events never list it, even with the
-  // tabs right. canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
+  // tabs right. Nor a tab of a private space: Electron never loads an agent extension in a private profile's session.
+  // canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
   const guardExtension = (extension: { id: string; uninstallURL: string | null; tabManager: { canAccessTab(tab: any): boolean } }) => {
     if (!extension?.id?.endsWith(SUFFIX)) return;
     const manager = extension.tabManager;
     const canAccess = manager.canAccessTab.bind(manager);
-    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && canAccess(tab);
+    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !ongletDe(tab)?.espace.prive && canAccess(tab);
     let url = extension.uninstallURL;
     Object.defineProperty(extension, "uninstallURL", {
       get: () => (url && check(extension.id, "urlPermise", url) ? url : null),
@@ -234,6 +274,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     scopesKnown,
     check,
     hostStarted() {
+      sendPrivate();
       const sent = [...pending].map(([addonId, quoi]) => ({ addonId, quoi }));
       host()
         .request("extensions.pret", { horsWebaios: sent })
