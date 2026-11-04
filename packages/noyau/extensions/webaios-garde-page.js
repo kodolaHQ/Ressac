@@ -568,15 +568,27 @@
       return appliquer(balise, this, [u, ...reste]);
     });
   }
-  const dOuvrir = descripteur(g, "open") || (g.Window && descripteur(g.Window.prototype, "open"));
+  // Firefox: a content script's global is a sandbox; its `window` (also `self`, `frames`) is the page's window seen
+  // through an Xray, which holds `open`: guarded on both.
+  const fenetre = g.window && g.window !== g ? g.window : null;
+  const dOuvrir = descripteur(g, "open") || (fenetre && descripteur(fenetre, "open")) || (g.Window && descripteur(g.Window.prototype, "open"));
   const ouvrirFenetre = dOuvrir && typeof dOuvrir.value === "function" ? dOuvrir.value : null;
   if (ouvrirFenetre) {
     // Une fenêtre vide pourrait ensuite être menée ailleurs (sa `location` est écrivable d'une autre origine) : refusée.
-    figerSur(g, "open", function open(url, ...reste) {
+    const open = function open(url, ...reste) {
       const u = url === undefined ? "" : texte(url);
       if (!permise(u === "" ? "about:blank" : u, true)) return null;
-      return appliquer(ouvrirFenetre, this, [u, ...reste]);
-    });
+      return appliquer(ouvrirFenetre, this === g ? fenetre || g : this, [u, ...reste]);
+    };
+    figerSur(g, "open", open);
+  }
+  // On the Xray window, the page's own fetch, XMLHttpRequest, WebSocket… would send unguarded: the guarded ones replace them.
+  if (fenetre) {
+    const noms = ["open", "fetch", "XMLHttpRequest", "WebSocket", "EventSource"];
+    for (let i = 0; i < noms.length; i++) {
+      const d = descripteur(g, noms[i]);
+      if (d && "value" in d && fenetre[noms[i]] !== d.value) figerSur(fenetre, noms[i], d.value);
+    }
   }
   /** Les setters d'adresse d'une classe d'éléments. */
   const garderSetters = (classe, noms) => {

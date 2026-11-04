@@ -488,6 +488,24 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ "ma-ext": 1 });
   });
 
+  it("aTourne: an unreadable tab masks its console in that profile and by add-on id, once; a readable one changes nothing", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    const registre = () => JSON.parse(readFileSync(join(h.dataDir, "extensions", "etat.json"), "utf8"));
+    await h.rpc.request("extensions.aTourne", { addonId: ID, profil: "defaut", lisible: true });
+    expect(entree(h.dataDir)?.consoleMasquee).toBeUndefined();
+    for (let i = 0; i < 2; i++) await h.rpc.request("extensions.aTourne", { addonId: ID, profil: "defaut", lisible: false });
+    await h.rpc.request("extensions.aTourne", { addonId: "autre@mozilla.org", profil: "defaut", lisible: false });
+    expect(entree(h.dataDir)?.consoleMasquee).toEqual(["defaut"]);
+    expect(registre().consolesMasquees).toEqual([ID]);
+    // Never emptied: it outlives « Supprimer ».
+    h.rpc.notify("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
+    await until(() => entree(h.dataDir) === undefined);
+    expect(registre().consolesMasquees).toEqual([ID]);
+  });
+
   it("a first install of an inactive grant never makes the add-on active", async () => {
     const amo = await fakeAmo();
     const f = firefox();

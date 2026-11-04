@@ -122,7 +122,9 @@ async function start(): Promise<WebAiOsStore> {
     // The agent follows the focused window at once, as Electron reads it live.
     onActivate: () => refreshMirror(),
   });
-  const agentExtensions = createAgentExtensions(store, windows, questions, () => agent);
+  // The agent's access to tabs, as the host last sent it (no access while no host runs).
+  let access: EtatAcces = { agent: "L'agent", onglets: {} };
+  const agentExtensions = createAgentExtensions(store, windows, questions, () => agent, () => access);
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
@@ -138,7 +140,6 @@ async function start(): Promise<WebAiOsStore> {
   const downloads = await createDownloads();
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
-  let access: EtatAcces = { agent: "L'agent", onglets: {} };
   agent.on("acces", (e: EtatAcces) => (access = e));
   agent.on(HOST_EXITED, () => (access = { agent: access.agent, onglets: {} }));
   agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));

@@ -312,6 +312,25 @@ export class ExtensionsAgent {
     await this.enFile(cle, () => this.modifier((e) => (cle in e.extensions ? desactiverPartout(e, cle) : e)));
   }
 
+  /**
+   * The chrome saw it about to run in a tab of `profil` the agent cannot read (as Electron's aTourneDansOnglet): its
+   * console stays masked to the agent there (`consoleMasquee`), and by add-on id (`consolesMasquees`, never emptied).
+   */
+  async aTourne(addonId: string, profil: string, lisible: boolean): Promise<void> {
+    if (lisible || typeof addonId !== "string" || typeof profil !== "string" || !addonId.endsWith(SUFFIXE_ID)) return;
+    const cle = this.cle(addonId.slice(0, -SUFFIXE_ID.length));
+    if (!cle) return;
+    await this.enFile(cle, () =>
+      this.modifier((e) => {
+        const x = e.extensions[cle];
+        if (x?.source !== "agent") return e;
+        const masquees = e.consolesMasquees?.includes(addonId) ? e.consolesMasquees : [...(e.consolesMasquees ?? []), addonId];
+        const profils = x.consoleMasquee?.includes(profil) ? x.consoleMasquee : [...(x.consoleMasquee ?? []), profil];
+        return { ...e, consolesMasquees: masquees, extensions: { ...e.extensions, [cle]: { ...x, consoleMasquee: profils } } };
+      }),
+    );
+  }
+
   /** Quitting: a signing in progress is dropped (its version number stays taken; the change is signed again at the next startup). */
   arreter(): void {
     this.arret.abort();

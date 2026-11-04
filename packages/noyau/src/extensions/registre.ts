@@ -98,6 +98,8 @@ export interface EtatExtensions {
 
 const ID_STORE = /^[a-p]{32}$/;
 const ID_AGENT = /^[a-z0-9-]{1,40}$/;
+/** WebAiOs-Firefox: an agent extension's add-on id (`<id>@agent.webaios`), its id in `consolesMasquees`. */
+const ID_FIREFOX_AGENT = /^[a-z0-9-]{1,40}@agent\.webaios$/;
 
 export function lireCle(cle: string): { source: SourceExtension; id: string } | null {
   const i = cle.indexOf(":");
@@ -275,7 +277,7 @@ async function lire(dossier: string): Promise<Lecture> {
       else abime = true;
     }
   } else if (b.extensions !== undefined) abime = true;
-  const masquees = Array.isArray(b.consolesMasquees) ? b.consolesMasquees.filter((x): x is string => typeof x === "string" && ID_STORE.test(x)) : [];
+  const masquees = Array.isArray(b.consolesMasquees) ? b.consolesMasquees.filter((x): x is string => typeof x === "string" && (ID_STORE.test(x) || ID_FIREFOX_AGENT.test(x))) : [];
   const etat: EtatExtensions = { version: 1, toutesCoupees: b.toutesCoupees === true, extensions };
   if (masquees.length) etat.consolesMasquees = [...new Set(masquees)];
   return { etat, abime, futur: false };

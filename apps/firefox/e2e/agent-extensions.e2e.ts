@@ -95,6 +95,8 @@ describe("agent extensions: registry, signed install, restart", () => {
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     expect(w.amo.envois.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
+    // The registry is written once Firefox installed it: a moment after the add-on shows.
+    await until(() => (registry(f.dataDir)["agent:cacheur"] as { idChrome?: string }).idChrome === ID);
     expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
   });
 

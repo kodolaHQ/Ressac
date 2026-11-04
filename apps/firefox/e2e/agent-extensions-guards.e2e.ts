@@ -8,7 +8,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
 import { installAddon } from "./addons";
-import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
+import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -34,8 +34,11 @@ beforeAll(async () => {
   const tls = createHttpsServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
     note(req.headers.host, req.url);
     req.resume();
+    const chemin = (req.url ?? "").split("?")[0];
+    // The read's image delays its load end (as Electron's /lent.png).
+    if (chemin === "/lent.png") return void setTimeout(() => res.writeHead(200, { "Content-Type": "image/png" }).end(), 4000);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" });
-    res.end(`<title>${req.url}</title>ok`);
+    res.end(chemin === "/formulaire" ? PAGE_FORMULAIRE : chemin === "/lecture" ? PAGE_LECTURE : `<title>${req.url}</title>ok`);
   });
   tls.on("upgrade", (req, socket) => {
     note(req.headers.host, req.url);
@@ -380,6 +383,157 @@ const ACCORD_RESEAU = {
   scripts: false,
 };
 
+
+/** Electron's PAGE_FORMULAIRE: a form the page fills itself (as a password manager would). */
+const PAGE_FORMULAIRE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
+<form id="f" action="/envoi"><input type="text" id="texte" name="texte"><input type="password" id="mdp" name="mdp"></form>
+<script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";
+// Comme React : la valeur recopiée dans l'attribut \`value\`.
+document.getElementById("texte").setAttribute("value", "visible"); document.getElementById("mdp").setAttribute("value", "secret");</script>
+</body></html>`;
+/** Electron's PAGE_LECTURE: its image delays the load end, so the invisible read stays open a few seconds. */
+const PAGE_LECTURE = `<!doctype html><html><head><meta charset="utf-8"><title>lecture</title></head><body><p>Texte lu</p><img src="/lent.png"></body></html>`;
+
+/**
+ * Electron's EXTENSION_GARDE (extensions-agent.spec.ts), unchanged: a content script in two files on hote.test (one
+ * scope), which reads the fields, listens to the keyboard, sends to hote.test, accorde.test (`reseau`) and autre.test,
+ * then marks `<html data-agent-vu>` and appends « AGENT-VU » to the text; what it saw is in `data-agent` (JSON). Its
+ * background runs the orders of `ordre.html?<order>` (executeScript).
+ */
+const EXTENSION_GARDE = {
+  "manifest.json": {
+    manifest_version: 3,
+    name: "Garde de l'agent",
+    version: "1.0.0",
+    permissions: ["scripting", "tabs"],
+    host_permissions: ["https://hote.test/*"],
+    background: { service_worker: "fond.js" },
+    content_scripts: [
+      { matches: ["https://hote.test/*"], js: ["outils.js", "contenu.js"], run_at: "document_end" },
+      { matches: ["https://hote.test/*"], js: ["evade.js"], css: ["fuite.css"], run_at: "document_start" },
+    ],
+  },
+  "webaios.json": { reseau: ["accorde.test"] },
+  // Écrit pour sortir d'une enveloppe textuelle (`});` … `(() => {`) : ne tourne nulle part, ni avant la réponse du fond.
+  "evade.js": '});\ndocument.documentElement.setAttribute("data-evade", "1");\nglobalThis.__webaiosApres(() => {\n',
+  // Une feuille de l'agent qui charge une image d'autre.test : jamais demandée depuis une lecture invisible.
+  "fuite.css": "html { background-image: url(https://autre.test/cs-css); }\n",
+  // Sans déclaration lexicale : relancé dans le même monde, il compterait chaque passage (contenu.js, lui, lèverait sur ses `const`).
+  "outils.js": `document.documentElement.setAttribute("data-agent-compte", String(Number(document.documentElement.getAttribute("data-agent-compte") || 0) + 1));
+function noter(cle, valeur) {
+  const r = JSON.parse(document.documentElement.getAttribute("data-agent") || "{}");
+  r[cle] = valeur;
+  document.documentElement.setAttribute("data-agent", JSON.stringify(r));
+}
+`,
+  "contenu.js": `const mdp = document.getElementById("mdp");
+const champ = document.getElementById("texte");
+if (mdp) {
+  noter("mdp", mdp.value);
+  noter("texte", champ.value);
+  const fd = new FormData(document.getElementById("f"));
+  noter("formMdp", fd.get("mdp"));
+  noter("formTexte", fd.get("texte"));
+  console.log("agent:" + JSON.stringify({ mdp: mdp.value, texte: champ.value }));
+  const touches = [];
+  const voir = (x) => { touches.push(x); noter("touches", touches); };
+  document.addEventListener("keydown", (e) => voir(e.target.id + ":" + e.key), true);
+  window.addEventListener("keypress", (e) => voir("keypress:" + e.target.id));
+  mdp.onkeyup = (e) => voir("onkeyup:" + e.key);
+  champ.onkeyup = (e) => voir("onkeyup-texte:" + e.key);
+  for (const el of [champ, mdp]) el.addEventListener("input", { handleEvent: (e) => voir("input:" + e.target.id) });
+  noter("ecoute", true);
+  const essais = {};
+  const essayer = (nom, f) => {
+    try {
+      const r = f();
+      essais[nom] = "parti";
+      if (r && typeof r.then === "function") r.then(() => {}, (e) => { essais[nom] = String(e && e.message); noter("reseau", essais); });
+    } catch (e) {
+      essais[nom] = String(e && e.message);
+    }
+  };
+  for (const h of ["hote.test", "accorde.test", "autre.test"]) {
+    essayer("fetch-" + h, () => fetch("https://" + h + "/cs-fetch"));
+    essayer("image-" + h, () => { new Image().src = "https://" + h + "/cs-image"; });
+  }
+  essayer("xhr-autre", () => { const x = new XMLHttpRequest(); x.open("GET", "https://autre.test/cs-xhr"); x.send(); });
+  essayer("beacon-autre", () => { if (!navigator.sendBeacon("https://autre.test/cs-beacon", "x")) throw new Error("refusé"); });
+  essayer("ws-autre", () => new WebSocket("wss://autre.test/cs-ws"));
+  essayer("source-autre", () => new EventSource("https://autre.test/cs-source"));
+  essayer("attribut-autre", () => document.createElement("img").setAttribute("src", "https://autre.test/cs-attribut"));
+  essayer("lien-autre", () => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://autre.test/cs-lien"; document.head.appendChild(l); });
+  essayer("ouvrir-autre", () => { if (window.open("https://autre.test/cs-ouvre") === null) throw new Error("null"); });
+  noter("reseau", essais);
+}
+document.documentElement.setAttribute("data-agent-vu", "1");
+document.body.append(" AGENT-VU ");
+`,
+  "vide.html": '<!doctype html><html><head><meta charset="utf-8"><title>vide</title></head><body>page de l\'agent</body></html>',
+  "injecte.js": `document.getElementById("mdp").value + "|" + document.getElementById("texte").value;\n`,
+  "fond.js": `// Il tente de répondre « onglet » à la garde de page à sa place : le garde du fond ne le lui laisse pas voir.
+chrome.runtime.onMessage.addListener((m, _e, repondre) => {
+  if (m && m.webaios === "contexte") repondre({ onglet: true });
+});
+// Et par la méthode du prototype de l'événement, prise à part.
+let porteur = chrome.runtime.onMessage;
+while (porteur && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(porteur) || {}, "addListener")) porteur = Object.getPrototypeOf(porteur);
+const ajouterNatif = porteur ? Object.getPrototypeOf(porteur).addListener : chrome.runtime.onMessage.addListener;
+ajouterNatif.call(chrome.runtime.onMessage, (m, _e, repondre) => {
+  if (m && m.webaios === "contexte") repondre({ onglet: true });
+});
+// Où sont les méthodes de l'événement, et sont-elles celles du garde (non configurables) ?
+const porteurs = [];
+for (let o = chrome.runtime.onMessage; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+  const d = Object.getOwnPropertyDescriptor(o, "addListener");
+  porteurs.push(d ? (d.configurable ? "configurable" : "figee") : "-");
+}
+chrome.runtime.onMessage.addListener((m, _e, repondre) => {
+  if (typeof m !== "string") return;
+  (async () => {
+    if (m.startsWith("executer:")) {
+      const tabId = Number(m.slice("executer:".length));
+      return chrome.scripting.executeScript({ target: { tabId }, func: () => document.documentElement.getAttribute("data-agent-vu") })
+        .then((r) => "ok " + JSON.stringify(r.map((x) => x.result)), (e) => "erreur " + e.message);
+    }
+    if (m === "executer-onglet") {
+      const [onglet] = await chrome.tabs.query({ url: "https://hote.test/formulaire*" });
+      const fichiers = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, files: ["injecte.js"] });
+      const fonction = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, func: () => document.getElementById("mdp").value + "|" + document.getElementById("texte").value });
+      return JSON.stringify({ fichiers: fichiers.map((x) => x.result), fonction: fonction.map((x) => x.result), documentId: typeof fonction[0].documentId });
+    }
+    if (m === "attributs-onglet") {
+      const [onglet] = await chrome.tabs.query({ url: "https://hote.test/formulaire*" });
+      const r = await chrome.scripting.executeScript({ target: { tabId: onglet.id }, func: () => {
+        const lire = (el) => {
+          const n = el.getAttributeNode("value");
+          return [el.getAttribute("value"), el.getAttributeNS(null, "value"), n && n.value, n && n.nodeValue, n && n.textContent,
+            el.attributes.value && el.attributes.value.value, el.attributes.getNamedItem("value").nodeValue,
+            Array.from(el.attributes).map((a) => a.value + "/" + a.nodeValue + "/" + a.textContent).join(","), el.defaultValue];
+        };
+        return JSON.stringify({ mdp: lire(document.getElementById("mdp")), texte: lire(document.getElementById("texte")) });
+      } });
+      return r[0].result;
+    }
+    if (m === "porteurs") return JSON.stringify({ porteurs, priseAPartEstCelleDuGarde: ajouterNatif === chrome.runtime.onMessage.addListener });
+    return "inconnu";
+  })().then(repondre, (e) => repondre("erreur " + (e && e.message)));
+  return true;
+});
+`,
+  "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
+  "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
+`,
+};
+const ACCORD_GARDE = {
+  permissions: ["scripting", "tabs"],
+  hotes: ["https://hote.test/*"],
+  reseau: ["accorde.test"],
+  tousLesSites: false,
+  scriptsTousLesSites: false,
+  scripts: true,
+};
+
 const dirs: string[] = [];
 const opened: LaunchedWebAiOs[] = [];
 afterEach(async () => {
@@ -388,11 +542,15 @@ afterEach(async () => {
 });
 
 /** The « réseau » extension granted, WebAiOs launched behind the recording proxy; resolves once it is installed and running. */
-async function launchReseau(): Promise<LaunchedWebAiOs & { uuid: string }> {
+const launchReseau = () => launchAgent("reseau", EXTENSION_RESEAU, ACCORD_RESEAU);
+
+/** Agent extension `nom` granted, WebAiOs launched behind the recording proxy; resolves once it is installed and running. */
+async function launchAgent(nom: string, fichiers: Record<string, string | object>, accord: object): Promise<LaunchedWebAiOs & { uuid: string; dataDir: string }> {
+  const id = `${nom}@agent.webaios`;
   const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
   dirs.push(f.dataDir, f.profile);
-  ecrireExtensionAgent(path.join(f.dataDir, "espace"), "reseau", EXTENSION_RESEAU);
-  grant(f.dataDir, "reseau", ACCORD_RESEAU);
+  ecrireExtensionAgent(path.join(f.dataDir, "espace"), nom, fichiers);
+  grant(f.dataDir, nom, accord);
   const prefs = {
     "network.proxy.type": 1,
     "network.proxy.http": "127.0.0.1",
@@ -410,13 +568,13 @@ async function launchReseau(): Promise<LaunchedWebAiOs & { uuid: string }> {
     w.marionette,
     `return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
-      const a = await AddonManager.getAddonByID(${JSON.stringify(ID)});
-      return a?.isActive ? WebExtensionPolicy.getByID(${JSON.stringify(ID)})?.mozExtensionHostname ?? null : null;
+      const a = await AddonManager.getAddonByID(${JSON.stringify(id)});
+      return a?.isActive ? WebExtensionPolicy.getByID(${JSON.stringify(id)})?.mozExtensionHostname ?? null : null;
     })();`,
     (v) => !!v,
     30_000,
   );
-  return { ...w, uuid: uuid! };
+  return { ...w, uuid: uuid!, dataDir: f.dataDir };
 }
 
 /** The background's startup tries are over (its block rule set): the results it kept, read from its page. */
@@ -690,5 +848,225 @@ describe("agent extensions: network guard", () => {
     if (srcdoc !== "aucun") expect(srcdoc).toMatchObject({ chrome: "undefined", rtc: "undefined", dnr: "refusee", ouvre: "null" });
     expect(hitsTo("hote.test", "/cadre-ouvre")).toEqual([]);
     expect(hitsTo("autre.test")).toEqual([]);
+  });
+});
+
+// Ported from Electron's extensions-agent.spec.ts :918 to :1022 and :1521: the agent's content scripts.
+describe("agent extensions: content scripts", () => {
+  const launchGarde = () => launchAgent("garde", EXTENSION_GARDE, ACCORD_GARDE);
+  /** What the agent's content script noted in WebAiOs tab `tab` (null: nothing). */
+  const seenByAgent = async (m: Marionette, tab: string) => {
+    const raw = await inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-agent')");
+    return typeof raw === "string" ? (JSON.parse(raw) as Record<string, any>) : null;
+  };
+  async function poll<T>(f: () => Promise<T>, ok: (v: T) => boolean, ms = 15_000): Promise<T> {
+    const deadline = Date.now() + ms;
+    let v = await f();
+    while (!ok(v) && Date.now() < deadline) {
+      await sleep(200);
+      v = await f();
+    }
+    return v;
+  }
+
+  it("on a page, a filled password field's value is empty for the agent's script, a text field's is not; no password keydown reaches it; executeScript runs after the guard", async () => {
+    const w = await launchGarde();
+    const m = w.marionette;
+    const tab = await openTab(m, "https://hote.test/formulaire");
+    expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
+    // The page sees its own value.
+    expect(await inPage(m, tab, "return document.getElementById('mdp').value")).toBe("secret");
+    expect(await seenByAgent(m, tab)).toMatchObject({ mdp: "", texte: "visible", formMdp: null, formTexte: "visible" });
+    // The keyboard, simulated by the page: what targets the text field arrives, nothing that targets the password.
+    await inPage(
+      m,
+      tab,
+      `const ev = (el, type, key) => el.dispatchEvent(type === "input" ? new InputEvent("input", { bubbles: true, data: key }) : new KeyboardEvent(type, { key, bubbles: true }));
+       const t = document.getElementById("texte"), p = document.getElementById("mdp");
+       ev(t, "keydown", "a"); ev(t, "keypress", "a"); ev(t, "input", "a"); ev(t, "keyup", "a");
+       ev(p, "keydown", "b"); ev(p, "keypress", "b"); ev(p, "input", "b"); ev(p, "keyup", "b");`,
+    );
+    const touches = ["texte:a", "keypress:texte", "input:texte", "onkeyup-texte:a"];
+    expect((await poll(() => seenByAgent(m, tab), (v) => v?.touches?.length === 4))?.touches).toEqual(touches);
+    await sleep(300);
+    expect((await seenByAgent(m, tab))?.touches).toEqual(touches);
+    // executeScript from the background: files and function run after the guard.
+    const r = await order(w, "executer-onglet");
+    console.log(`[mesure] executeScript dans un onglet : ${r}`);
+    expect(JSON.parse(r)).toMatchObject({ fichiers: ["|visible"], fonction: ["|visible"] });
+    // I4: the value copied into the attribute (React) is not readable either.
+    const a = await order(w, "attributs-onglet");
+    const lu = JSON.parse(a) as { mdp: unknown[]; texte: unknown[] };
+    expect(a).not.toContain("secret");
+    expect(lu.mdp.slice(0, 7)).toEqual(Array(7).fill(""));
+    expect(lu.mdp[8]).toBe("");
+    expect(lu.texte.slice(0, 7)).toEqual(Array(7).fill("visible"));
+    expect(lu.texte[8]).toBe("visible");
+  });
+
+  // Electron keeps an agent page open in a hidden window; here in a tab outside the store.
+  it("with a page of the agent open, its content script runs only once in a tab", async () => {
+    const w = await launchGarde();
+    const m = w.marionette;
+    await m.execute("window.agentPage = gBrowser.addTab(arguments[0], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });", [
+      `moz-extension://${w.uuid}/vide.html`,
+    ]);
+    await waitFor(m, "return window.agentPage.linkedBrowser.contentTitle", (t) => t === "vide");
+    const tab = await openTab(m, "https://hote.test/formulaire?compte");
+    const count = () => inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-agent-compte')");
+    expect(await poll(count, (v) => v === "1")).toBe("1");
+    await sleep(1500);
+    expect(await count()).toBe("1");
+    expect(await m.execute("return window.agentPage.linkedBrowser.currentURI.spec")).toBe(`moz-extension://${w.uuid}/vide.html`);
+  });
+
+  it("fetch and new Image().src to a domain not granted from the content script: nothing reaches the server; to the page's site and to reseau: sent", async () => {
+    const w = await launchGarde();
+    const m = w.marionette;
+    const tab = await openTab(m, "https://hote.test/formulaire?reseau");
+    await until(() => hitsTo("hote.test", "/cs-fetch").length > 0);
+    await until(() => hitsTo("hote.test", "/cs-image").length > 0);
+    await until(() => hitsTo("accorde.test", "/cs-fetch").length > 0);
+    await sleep(1500);
+    const vu = (await seenByAgent(m, tab))!;
+    console.log(`[mesure] réseau du script de contenu : ${JSON.stringify(vu.reseau)}`);
+    for (const chemin of ["/cs-fetch", "/cs-image", "/cs-xhr", "/cs-beacon", "/cs-ws", "/cs-source", "/cs-attribut", "/cs-lien", "/cs-ouvre"])
+      expect(hitsTo("autre.test", chemin), chemin).toEqual([]);
+    expect(vu.reseau).toMatchObject({
+      "fetch-autre.test": "URL refusée par WebAiOs",
+      "image-autre.test": "URL refusée par WebAiOs",
+      "xhr-autre": "URL refusée par WebAiOs",
+      "beacon-autre": "refusé",
+      "ws-autre": "URL refusée par WebAiOs",
+      "source-autre": "URL refusée par WebAiOs",
+      "attribut-autre": "URL refusée par WebAiOs",
+      "lien-autre": "URL refusée par WebAiOs",
+      "ouvrir-autre": "null",
+      "fetch-hote.test": "parti",
+      "image-hote.test": "parti",
+      "fetch-accorde.test": "parti",
+    });
+  });
+
+  // Electron's widget read with an account is the store's readPage in the profile here (spike S4: no content script
+  // runs in an invisible read, so it has no tab id). The Store extension half is left out.
+  it("in an invisible read of the same profile, data-agent-vu is absent and executeScript to it is refused; in a tab of that profile it is present", async () => {
+    const w = await launchGarde();
+    const m = w.marionette;
+    // adressesLocales: hote.test only resolves through the test proxy (the read's local guard would refuse it).
+    // The read's browser, caught on its request, and the id Firefox's tabTracker gives it.
+    await m.execute(`window.readingTabId = null;
+      const o = (subject) => {
+        const c = subject.QueryInterface(Ci.nsIHttpChannel);
+        if (!c.URI.spec.startsWith("https://hote.test/lecture")) return;
+        const b = c.loadInfo.browsingContext?.top?.embedderElement;
+        if (b) window.readingTabId = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs").ExtensionParent.apiManager.global.tabTracker.getBrowserData(b).tabId;
+        Services.obs.removeObserver(o, "http-on-modify-request");
+      };
+      Services.obs.addObserver(o, "http-on-modify-request");`);
+    await m.execute(`window.reading = null;
+      ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready
+        .then((s) => s.readPage("https://hote.test/lecture", { profil: "defaut", domaines: ["hote.test"], adressesLocales: true }))
+        .then((p) => (window.reading = { ok: p }), (e) => (window.reading = { err: String(e?.message ?? e) }));`);
+    const readingTabId = await waitFor<number | null>(m, "return window.readingTabId", (v) => v !== null);
+    // While the read is open (its image is slow): executeScript from the background, then the tabs it may see.
+    const ordre = await order(w, `executer:${readingTabId}`);
+    console.log(`[mesure] lecture invisible : tabId ${readingTabId}, executeScript : ${ordre}`);
+    expect(ordre).toMatch(/^erreur /);
+    const read = await waitFor<{ ok?: { texte: string }; err?: string } | null>(m, "return window.reading", (v) => v !== null, 30_000);
+    expect(read?.err).toBeUndefined();
+    expect(read!.ok!.texte).toContain("Texte lu");
+    expect(read!.ok!.texte).not.toContain("AGENT-VU");
+    expect(hitsTo("autre.test", "/cs-css")).toEqual([]);
+    // Witness: in a tab of the same profile, the agent's script runs, its sheet is set, the escape file still does not run.
+    const tab = await openTab(m, "https://hote.test/lecture?onglet");
+    expect(await poll(() => inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-agent-vu')"), (v) => v === "1")).toBe("1");
+    // Its sheet is set; Firefox loads its image with the extension's principal, so the network guard cancels it
+    // (Electron loads it): stricter, and no read of the sheet's request.
+    const sheet = () => inPage<string>(m, tab, "return getComputedStyle(document.documentElement).backgroundImage");
+    expect(await poll(sheet, (v) => v.includes("cs-css"))).toContain("https://autre.test/cs-css");
+    expect(await inPage(m, tab, "return document.documentElement.getAttribute('data-evade')")).toBeNull();
+  });
+
+  // Firefox only: a content script's global is a sandbox, its `window` the page's window through an Xray, which has the
+  // page's own open, fetch, XMLHttpRequest, WebSocket and EventSource.
+  it("through window (the page's window in Firefox), the content script's open, fetch, XMLHttpRequest, WebSocket and EventSource are guarded too", async () => {
+    const w = await launchAgent(
+      "sonde",
+      {
+        "manifest.json": { manifest_version: 3, name: "Sonde", version: "1.0.0", host_permissions: ["https://hote.test/*"], content_scripts: [{ matches: ["https://hote.test/*"], js: ["a.js"] }] },
+        "a.js": `const r = {};
+const essai = (nom, f) => { try { const v = f(); r[nom] = v === null ? "null" : "parti"; if (v && typeof v.then === "function") v.then(() => {}, (e) => { r[nom] = String(e && e.message); document.documentElement.setAttribute("data-sonde", JSON.stringify(r)); }); } catch (e) { r[nom] = String(e && e.message); } };
+essai("open", () => window.open("https://autre.test/w-open"));
+essai("selfOpen", () => self.open("https://autre.test/w-self-open"));
+essai("open-nu", () => open("https://autre.test/w-open-nu"));
+essai("fetch", () => window.fetch("https://autre.test/w-fetch"));
+essai("xhr", () => { const x = new window.XMLHttpRequest(); x.open("GET", "https://autre.test/w-xhr"); x.send(); });
+essai("ws", () => new window.WebSocket("wss://autre.test/w-ws"));
+essai("source", () => new window.EventSource("https://autre.test/w-source"));
+essai("fetch-hote", () => window.fetch("https://hote.test/w-fetch"));
+document.documentElement.setAttribute("data-sonde", JSON.stringify(r));`,
+      },
+      { permissions: [], hotes: ["https://hote.test/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true },
+    );
+    const m = w.marionette;
+    const tab = await openTab(m, "https://hote.test/sonde");
+    await until(() => hitsTo("hote.test", "/w-fetch").length > 0);
+    await sleep(1000);
+    const vu = JSON.parse((await inPage<string>(m, tab, "return document.documentElement.getAttribute('data-sonde')"))!);
+    expect(vu).toEqual({
+      open: "null",
+      selfOpen: "null",
+      "open-nu": "null",
+      fetch: "URL refusée par WebAiOs",
+      xhr: "URL refusée par WebAiOs",
+      ws: "URL refusée par WebAiOs",
+      source: "URL refusée par WebAiOs",
+      "fetch-hote": "parti",
+    });
+    expect(hitsTo("autre.test")).toEqual([]);
+    expect(await m.execute<number>("return gBrowser.tabs.filter((t) => t.linkedBrowser.currentURI.spec.includes('autre.test')).length")).toBe(0);
+  });
+
+  // Electron reads the shared world in the extension's console (task 9 here): read from the page instead.
+  it("I2 all the files of its content scripts share one world: a var of one entry is read in another, a redeclared const throws", async () => {
+    const w = await launchAgent(
+      "monde",
+      {
+        "manifest.json": {
+          manifest_version: 3,
+          name: "Monde de l'agent",
+          version: "1.0.0",
+          host_permissions: ["https://hote.test/*"],
+          content_scripts: [
+            { matches: ["https://hote.test/*"], js: ["a.js"] },
+            { matches: ["https://hote.test/*"], js: ["b.js"] },
+            { matches: ["https://hote.test/*"], js: ["c.js"] },
+          ],
+        },
+        "a.js": 'var partage = "de a";\nconst doublon = 1;\n',
+        "b.js": 'document.documentElement.setAttribute("data-b", "b voit:" + partage);\n',
+        "c.js": 'const doublon = 2;\ndocument.documentElement.setAttribute("data-c", "c fini");\n',
+      },
+      { permissions: [], hotes: ["https://hote.test/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true },
+    );
+    const m = w.marionette;
+    const tab = await openTab(m, "https://hote.test/monde");
+    const marks = () => inPage<(string | null)[]>(m, tab, "return ['data-b', 'data-c'].map((a) => document.documentElement.getAttribute(a))");
+    expect(await poll(marks, (v) => v[0] !== null)).toEqual(["b voit:de a", null]);
+    await sleep(500);
+    expect(await marks()).toEqual(["b voit:de a", null]);
+  });
+
+  it("an unreadable tab marks the extension's console as masked, for good", async () => {
+    const w = await launchGarde();
+    const m = w.marionette;
+    // A tab the agent was never given: not readable.
+    const tab = await openTab(m, "https://hote.test/formulaire?masque");
+    expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
+    const registry = () => JSON.parse(readFileSync(path.join(w.dataDir, "extensions", "etat.json"), "utf8"));
+    await until(() => registry().consolesMasquees?.includes("garde@agent.webaios"));
+    expect(registry().extensions["agent:garde"].consoleMasquee).toEqual(["defaut"]);
+    expect(registry().consolesMasquees).toEqual(["garde@agent.webaios"]);
   });
 });

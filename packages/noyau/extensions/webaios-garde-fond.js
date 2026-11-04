@@ -455,6 +455,9 @@
     return vu;
   };
   const scripting = c.scripting;
+  // On Firefox (the only one with getBrowserInfo), one executeScript per file: Firefox drops a whole call when one of
+  // its files fails to compile, Chromium only that file. Same world either way.
+  const unParFichier = !!c.runtime && typeof c.runtime.getBrowserInfo === "function";
   // Saisis avant d'être remplacés : le fond s'en sert pour injecter les fichiers des scripts de contenu.
   const executerNatif = scripting && typeof scripting.executeScript === "function" ? scripting.executeScript : null;
   const cssNatif = scripting && typeof scripting.insertCSS === "function" ? scripting.insertCSS : null;
@@ -752,16 +755,25 @@
               appliquer(journal, console, ["[webaios] fichiers des scripts de contenu non injectés :", e]);
               ok(true);
             };
+            let i = 0;
             const scripts = () => {
-              if (js.length === 0 || !executerNatif) return ok(true);
+              if (i >= js.length || !executerNatif) return ok(true);
               const d = creer(null);
               d.target = cible;
-              d.files = gardesPuis(js);
+              if (unParFichier) d.files = gardesPuis([js[i++]]);
+              else {
+                d.files = gardesPuis(js);
+                i = js.length;
+              }
               d.injectImmediately = true;
+              const suivant = (e) => {
+                appliquer(journal, console, ["[webaios] fichiers des scripts de contenu non injectés :", e]);
+                scripts();
+              };
               try {
-                ensuite(appliquer(executerNatif, scripting, [d]), () => ok(true), ko);
+                ensuite(appliquer(executerNatif, scripting, [d]), () => scripts(), suivant);
               } catch (e) {
-                ko(e);
+                suivant(e);
               }
             };
             if (css.length === 0 || !cssNatif) return scripts();

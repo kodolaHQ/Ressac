@@ -212,6 +212,7 @@ const rpc = createRpc({
     },
     "extensions.horsWebaios": (p: { addonId: string; quoi: "desinstallee" | "desactivee" }) =>
       extensions.horsWebaios(p.addonId, p.quoi),
+    "extensions.aTourne": (p: { addonId: string; profil: string; lisible: boolean }) => extensions.aTourne(p.addonId, p.profil, p.lisible),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });

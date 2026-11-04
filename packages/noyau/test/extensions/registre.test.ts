@@ -240,15 +240,15 @@ describe("fichier etat.json", () => {
     const id = "b".repeat(32);
     await writeFile(
       join(dossier, "etat.json"),
-      JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [A]: entree("agent") }, consolesMasquees: [id, "pas-un-id", 3] }),
+      JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [A]: entree("agent") }, consolesMasquees: [id, "pas-un-id", 3, "garde@agent.webaios", "garde@autre.org"] }),
     );
     const lu = await lireEtatExtensions(dossier);
-    expect(lu.consolesMasquees).toEqual([id]);
-    expect(retirer(lu, A).consolesMasquees).toEqual([id]);
+    expect(lu.consolesMasquees).toEqual([id, "garde@agent.webaios"]);
+    expect(retirer(lu, A).consolesMasquees).toEqual([id, "garde@agent.webaios"]);
     await modifierEtatExtensions(dossier, (e) => retirer(e, A), () => aucun);
     const relu = await lireEtatExtensions(dossier);
     expect(relu.extensions).toEqual({});
-    expect(relu.consolesMasquees).toEqual([id]);
+    expect(relu.consolesMasquees).toEqual([id, "garde@agent.webaios"]);
   });
 
   const ecrit = (dossier: string, contenu: string) => writeFile(join(dossier, "etat.json"), contenu);

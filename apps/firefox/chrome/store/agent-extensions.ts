@@ -1,7 +1,7 @@
 import type { Portee } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../../navigateur/src/commun/extensions";
 import { hotePermisAgent, urlPermiseAgent } from "../../../navigateur/src/main/extensions/reseau";
-import type { IdProfil } from "../../../navigateur/src/commun/modele";
+import type { EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
@@ -39,7 +39,7 @@ export interface AgentExtensions {
 }
 
 /** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
-export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost): AgentExtensions {
+export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => EtatAcces): AgentExtensions {
   // Add-ons this module is changing: their AddonManager events are ours, not about:addons'.
   const ours = new Set<string>();
   const own = async <T>(addonId: string, f: () => Promise<T>): Promise<T> => {
@@ -139,6 +139,17 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     }
   };
 
+  // Once per extension and profile; a request that fails (no host) is sent again on the next check.
+  const maskedSent = new Set<string>();
+  const masked = (addonId: string, profil: IdProfil) => {
+    const key = `${addonId}|${profil}`;
+    if (maskedSent.has(key)) return;
+    maskedSent.add(key);
+    host()
+      .request("extensions.aTourne", { addonId, profil, lisible: false })
+      .catch(() => maskedSent.delete(key));
+  };
+
   function check(addonId: string, kind: CheckKind, value: unknown): boolean {
     const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
     if (!scope?.actif) return false;
@@ -160,9 +171,14 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         return typeof spec === "string" && hotePermisAgent(spec, scope.accord);
       }
       case "estOnglet": {
-        // A WebAiOs tab only: never the parking tab, never an invisible read (not a tab at all).
+        // A WebAiOs tab of a non-private space only: never the parking tab, never an invisible read (not a tab at all).
         const tab = tabOf(value);
-        return !!tab?.hasAttribute?.(TAB_ID) && !tab.hasAttribute(PARKING);
+        const onglet = tab?.hasAttribute?.(PARKING) ? undefined : store.state.onglets[tab?.getAttribute?.(TAB_ID) ?? ""];
+        const espace = onglet && store.state.espaces.find((e) => e.id === onglet.espaceId);
+        if (!onglet || !espace || espace.prive) return false;
+        // Its scripts will run there: a tab the agent cannot read masks its console for good (as Electron's aTourneDansOnglet).
+        if (!access().onglets[onglet.id]?.lecture) masked(addonId, espace.profil);
+        return true;
       }
     }
     return false;
