@@ -4,6 +4,7 @@ import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
 import type { WebAiOsStore } from "../store";
+import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
@@ -61,6 +62,7 @@ export function createController(
   const tabs = new TabSync(gBrowser, store, fenetreId);
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
+  routeAddonsManager(window, store, fenetreId, tabs);
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).

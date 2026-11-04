@@ -1,0 +1,25 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import type { IdFenetre, IdOnglet } from "../../../navigateur/src/commun/modele";
+import type { WebAiOsStore } from "../store";
+import type { TabSync } from "./tabs";
+
+/** Replaces win.BrowserAddonUI.openAddonsMgr: about:addons is a WebAiOs tab of this window's active space. */
+export function routeAddonsManager(win: Window, store: WebAiOsStore, fenetreId: IdFenetre, tabs: TabSync): void {
+  (win as any).BrowserAddonUI.openAddonsMgr = async (view?: string): Promise<Window> => {
+    const state = store.state;
+    const f = state.fenetres.find((x) => x.id === fenetreId);
+    const existing = f && (f.ordre[f.espaceActif] ?? []).find((id) => state.onglets[id]?.url.startsWith("about:addons"));
+    const id: IdOnglet = existing || crypto.randomUUID();
+    if (existing) store.dispatch({ type: "activerOnglet", id });
+    else store.dispatch({ type: "ouvrirOnglet", fenetreId, url: "about:addons" }, () => id);
+    const browser = await tabs.ensure(id);
+    // The page defines loadView once its script ran, after the load ensure waits for may have ended.
+    for (const end = Date.now() + 5000; typeof browser.contentWindow?.loadView !== "function" && Date.now() < end; )
+      await new Promise((r) => setTimeout(r, 50));
+    browser.contentWindow.loadView(view ?? "addons://list/extension");
+    return browser.contentWindow;
+  };
+}

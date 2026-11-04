@@ -102,3 +102,47 @@ note("started");`,
     },
   };
 }
+
+/**
+ * Electron's sonde, the part that opens tabs: on a page whose URL has `ouvrir-onglet`, its background calls tabs.create with
+ * that URL, `ouverte-par-sonde` in place; on `ouvrir-actif`, tabs.create({ active: true }) with `ouverte-active`.
+ */
+export function probe(): Fixture {
+  const id = "probe@webaios.test";
+  return {
+    id,
+    manifest: {
+      ...gecko(id),
+      name: "Sonde",
+      background: { scripts: ["background.js"] },
+      content_scripts: [{ matches: ["<all_urls>"], js: ["content.js"] }],
+    },
+    files: {
+      "background.js": "browser.runtime.onMessage.addListener((m) => void browser.tabs.create(m));",
+      "content.js": `const u = location.href;
+if (u.includes("ouvrir-onglet")) browser.runtime.sendMessage({ url: u.replace("ouvrir-onglet", "ouverte-par-sonde") });
+else if (u.includes("ouvrir-actif")) browser.runtime.sendMessage({ url: u.replace("ouvrir-actif", "ouverte-active"), active: true });`,
+    },
+  };
+}
+
+/** An options page (options_ui, open_in_tab as asked); a page whose query is `?options` makes its background call runtime.openOptionsPage(). */
+export function options(o: { inTab: boolean }): Fixture {
+  const id = `options-${o.inTab ? "tab" : "embedded"}@webaios.test`;
+  return {
+    id,
+    manifest: {
+      ...gecko(id),
+      name: "Options",
+      options_ui: { page: "options.html", open_in_tab: o.inTab },
+      background: { scripts: ["background.js"] },
+      content_scripts: [{ matches: ["<all_urls>"], js: ["content.js"] }],
+    },
+    files: {
+      "options.html": '<!doctype html><meta charset="utf-8"><title>Options de test</title><p>Options</p>',
+      // Content scripts have no runtime.openOptionsPage.
+      "background.js": "browser.runtime.onMessage.addListener(() => void browser.runtime.openOptionsPage());",
+      "content.js": 'if (location.search === "?options") browser.runtime.sendMessage("options");',
+    },
+  };
+}

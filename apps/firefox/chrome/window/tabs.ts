@@ -19,7 +19,7 @@ type Champs = Extract<Action, { type: "majOnglet" }>["champs"];
 /**
  * Keeps the XUL tabs of one window in line with its WebAiOs tabs, like Electron's views: a XUL tab is created when its
  * WebAiOs tab first becomes active, kept until it leaves the state, and the startup tab parks the window (about:blank,
- * never removed) while no web page is displayed. Page events come back as majOnglet; tabs opened by pages are adopted.
+ * never removed) while no web page is displayed. Page events come back as majOnglet; tabs opened by pages and add-ons are adopted.
  */
 export class TabSync {
   private readonly tabs = new Map<IdOnglet, any>();
@@ -27,6 +27,8 @@ export class TabSync {
   private creating = false;
   /** While a popup's link opens here: the WebAiOs tab behind the popup. */
   private fromPopup: IdOnglet | undefined;
+  /** While an add-on opens a tab here (tabs.create, its options page): they load with its principal. */
+  private fromAddon = false;
   /** The status of each browser's last failed load, until its next one starts. */
   private readonly failures = new WeakMap<object, number>();
 
@@ -40,12 +42,14 @@ export class TabSync {
     // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
     // shortcut: the tab lands in Firefox's most recent window, not always the source tab's; upgrade if several windows make it wrong in use
     const addTab = gBrowser.addTab.bind(gBrowser);
-    gBrowser.addTab = (uri: string, options?: { openerBrowser?: any }) => {
+    gBrowser.addTab = (uri: string, options?: { openerBrowser?: any; triggeringPrincipal?: any }) => {
       this.fromPopup = options?.openerBrowser?.ownerDocument.defaultView?.webaiosPopupSource;
+      this.fromAddon = !!options?.triggeringPrincipal?.addonId;
       try {
         return addTab(uri, options);
       } finally {
         this.fromPopup = undefined;
+        this.fromAddon = false;
       }
     };
     const strip = gBrowser.tabContainer;
@@ -203,16 +207,20 @@ export class TabSync {
       tab.setAttribute(PARKING, "");
       return;
     }
-    const apres = this.fromPopup ?? tab.openerTab?.getAttribute(ID);
-    // Only pages open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
-    if (!apres) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
+    const opener = this.fromPopup ?? tab.openerTab?.getAttribute(ID);
+    // Only pages and add-ons open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
+    if (!opener && !this.fromAddon) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
+    // A page's tab opens next to its source; an add-on's in the window's active space.
+    const f = this.store.state.fenetres.find((x) => x.id === this.fenetreId);
+    const apres = opener ?? f?.actif[f.espaceActif];
     const id: IdOnglet = crypto.randomUUID();
     tab.setAttribute(ID, id);
     this.tabs.set(id, tab);
     // Firefox selects a foreground tab right after TabOpen, in the same task: read it once that is done.
     queueMicrotask(() => {
       if (this.tabs.get(id) !== tab) return;
-      const url = tab.linkedBrowser.currentURI?.spec ?? "about:blank";
+      // The URL addTab is loading: sync replaces a tab opened in another container than its space's before it loads.
+      const url = tab.linkedBrowser.userTypedValue || (tab.linkedBrowser.currentURI?.spec ?? "about:blank");
       this.store.dispatch({ type: "ouvrirOnglet", fenetreId: this.fenetreId, url, apres, activer: tab.selected }, () => id);
     });
   }
