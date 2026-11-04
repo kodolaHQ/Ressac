@@ -31,8 +31,9 @@ interface Host {
 
 const hosts: Host[] = [];
 
-function startHost(env: Record<string, string> = {}): Host {
+function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void): Host {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
+  prepare?.(dataDir);
   const racine = join(dataDir, "espace");
   const journal = join(dataDir, "docker.log");
   const { WEBAIOS_CONTENEUR: _, WEBAIOS_PORTS_CONTENEUR: __, ...parent } = process.env;
@@ -265,6 +266,18 @@ describe("history", { timeout: 30_000 }, () => {
     expect((await appelerOutil(h.racine, "lire_historique", { url: "https://a.test/" })).texte).toContain("Le chat dort");
     const recents = (await h.rpc.request("historique.recents", {})) as { url: string; retenu: boolean }[];
     expect(recents.find((v) => v.url === "http://127.0.0.1/x")?.retenu).toBe(false);
+  });
+
+  it("an unreadable history database leaves the host and the agent running, without history", async () => {
+    // A directory where the SQLite file should be: opening it throws.
+    const h = startHost({}, (d) => mkdirSync(join(d, "historique.sqlite")));
+    visit(h, "https://a.test/", "Page A");
+    expect(await h.rpc.request("historique.recents", {})).toEqual([]);
+    expect(await h.rpc.request("historique.rechercher", { texte: "page" })).toEqual([]);
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    expect(h.stderr()).toContain("historique");
   });
 
   it("a space turned private marks its visits", async () => {

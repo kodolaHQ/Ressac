@@ -41,9 +41,18 @@ const retenable = (url: string) => {
     return false;
   }
 };
-const historique = new Historique(join(dataDir, "historique.sqlite"));
-historique.purger();
-const purge = setInterval(() => historique.purger(), 6 * 60 * 60 * 1000);
+// A broken database must not take the agent down: no history then (empty answers, no agent tools).
+const historique = (() => {
+  try {
+    const h = new Historique(join(dataDir, "historique.sqlite"));
+    h.purger();
+    return h;
+  } catch (e) {
+    console.error("[webaios] l'historique n'a pas pu s'ouvrir :", e);
+    return undefined;
+  }
+})();
+const purge = setInterval(() => historique?.purger(), 6 * 60 * 60 * 1000);
 purge.unref();
 const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
 
@@ -119,7 +128,7 @@ const arreter = () =>
     await sessions.toutArreter();
     await arreterNoyau(await pret);
     clearInterval(purge);
-    historique.fermer();
+    historique?.fermer();
   })());
 
 const sessions = new SessionsAgent({
@@ -158,16 +167,16 @@ const rpc = createRpc({
       }
     },
     "acces.etat": etatAcces,
-    "historique.noter": (p: Parameters<typeof historique.noter>[0]) => historique.noter(p),
-    "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique.majTitre(p.url, p.espaceId, p.titre),
+    "historique.noter": (p: Parameters<InstanceType<typeof Historique>["noter"]>[0]) => historique?.noter(p),
+    "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique?.majTitre(p.url, p.espaceId, p.titre),
     "historique.retenir": (p: { url: string; espaceId: string; titre: string; texte: string }) => {
-      if (retenable(p.url)) historique.retenir({ ...p, texte: String(p.texte) });
+      if (retenable(p.url)) historique?.retenir({ ...p, texte: String(p.texte) });
     },
-    "historique.rendrePrive": (p: { espaceId: string }) => historique.rendrePrive(p.espaceId),
-    "historique.rechercher": (p: { texte: string; limite?: number; distinctes?: boolean }) => historique.rechercher(p.texte, p.limite, p.distinctes),
-    "historique.recents": () => historique.recents(),
-    "historique.effacer": (p: { depuis?: string }) => historique.effacer(p.depuis ? new Date(p.depuis) : undefined),
-    "historique.oublierTexte": (p: { url: string; espaceId: string }) => historique.oublierTexte(p.url, p.espaceId),
+    "historique.rendrePrive": (p: { espaceId: string }) => historique?.rendrePrive(p.espaceId),
+    "historique.rechercher": (p: { texte: string; limite?: number; distinctes?: boolean }) => historique?.rechercher(p.texte, p.limite, p.distinctes) ?? [],
+    "historique.recents": () => historique?.recents() ?? [],
+    "historique.effacer": (p: { depuis?: string }) => historique?.effacer(p.depuis ? new Date(p.depuis) : undefined),
+    "historique.oublierTexte": (p: { url: string; espaceId: string }) => historique?.oublierTexte(p.url, p.espaceId),
     arreter: async () => {
       try {
         await arreter();
