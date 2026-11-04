@@ -217,12 +217,17 @@ export class TabSync {
 
   /** Firefox selected one of our tabs itself (switchToTabHavingURI: an options page already open): the state follows, space included. */
   private onSelect(tab: any): void {
-    const id = tab.getAttribute(ID);
-    if (this.selecting || !id || this.tabs.get(id) !== tab) return;
-    const state = this.store.state;
-    const f = state.fenetres.find((x) => x.id === this.fenetreId);
-    // Not yet in the state: a tab being adopted, its ouvrirOnglet follows.
-    if (f && state.onglets[id] && f.actif[f.espaceActif] !== id) this.store.dispatch({ type: "activerOnglet", id });
+    if (this.selecting) return;
+    // Closing the selected tab, Firefox first selects a neighbour (#blurTab), maybe another space's, then sends TabClose:
+    // by the microtask, onClose's fermerOnglet has synced the selection back.
+    queueMicrotask(() => {
+      const id = tab.getAttribute(ID);
+      if (!tab.selected || !id || this.tabs.get(id) !== tab) return;
+      const state = this.store.state;
+      const f = state.fenetres.find((x) => x.id === this.fenetreId);
+      // Not yet in the state: a tab being adopted, its ouvrirOnglet follows.
+      if (f && state.onglets[id] && f.actif[f.espaceActif] !== id) this.store.dispatch({ type: "activerOnglet", id });
+    });
   }
 
   private history(browser: any): Pick<Champs, "peutReculer" | "peutAvancer"> {

@@ -288,6 +288,21 @@ describe("window controller", () => {
     expect(await markedTabs()).toBe(1);
   });
 
+  it("a tab Firefox closes itself keeps its space active", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    const fenetreId = (await win()).id;
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId });
+    const spaceB = (await win()).espaceActif;
+    const b = await open("/b.html");
+    await waitTitle(b, "Page B");
+    // As an add-on's tabs.remove: Firefox first selects a neighbour, here the other space's tab.
+    await m.execute("gBrowser.removeTab(gBrowser.selectedTab)");
+    await waitState((s) => !!s.onglets[b], (v) => !v);
+    expect((await win()).espaceActif).toBe(spaceB);
+    expect(await m.execute<boolean>("return gBrowser.selectedTab.hasAttribute('webaios-parking')")).toBe(true);
+  });
+
   it("opens a window.open popup with dimensions as a separate window; closing it keeps the app", async () => {
     const a = await open("/popup.html");
     await waitTitle(a, "Popup source");
