@@ -4,6 +4,8 @@ export class WebAiOsPageParent extends JSWindowActorParent {}
 
 /** Electron reads the same in an isolated world. */
 const TEXT_MAX = 100_000;
+/** Electron's TEXTE_MAX (historique.ts): the body kept for the agent's memory. */
+const MEMORY_TEXT_MAX = 20_000;
 
 export class WebAiOsPageChild extends JSWindowActorChild {
   receiveMessage(m: { name: string; data?: any }) {
@@ -13,6 +15,21 @@ export class WebAiOsPageChild extends JSWindowActorChild {
     switch (m.name) {
       case "getText":
         return { texte: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), selection: String(win.getSelection() ?? "") };
+      // The parts of the page retained for the agent's memory: Electron's capture-texte.ts `lecture` script.
+      case "getParts": {
+        const text = (sel: string) => (doc.querySelector(sel) as HTMLElement | null)?.innerText ?? "";
+        const description = (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content ?? "";
+        if (m.data?.video)
+          return {
+            corps: "",
+            video: {
+              titre: text("h1.ytd-watch-metadata") || doc.title,
+              chaine: text("ytd-watch-metadata #channel-name a") || text("#owner #channel-name a"),
+              description: text("#description") || description,
+            },
+          };
+        return { description, corps: (doc.body?.innerText ?? "").slice(0, MEMORY_TEXT_MAX) };
+      }
       // Invisible reading, Electron's lecture-invisible.ts scripts. The parent bounds and checks what comes back.
       case "read": {
         const vus = new Set<string>();

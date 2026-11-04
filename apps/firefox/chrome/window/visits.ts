@@ -1,3 +1,4 @@
+import { composeText, isYoutubeVideo, type PageParts } from "../../shared/page-text";
 import type { History } from "../store/history";
 import { TAB_ID } from "./tabs";
 
@@ -66,8 +67,10 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
       return browser.currentURI?.spec === url && c && !c.prive && c.espaceId === espaceId;
     };
     if (!stillHere()) return;
-    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
-    const texte = String(r?.texte ?? "");
+    const actor = browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
+    const parts: PageParts | undefined = await actor.sendQuery("getParts", { video: isYoutubeVideo(url) });
+    // An actor built before getParts existed answers nothing: fall back to the body text alone.
+    const texte = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.texte ?? "");
     if (stillHere() && texte.trim()) history.retain({ url, espaceId, titre: browser.contentTitle || url, texte });
   };
   gBrowser.addTabsProgressListener({

@@ -89,7 +89,7 @@ Limits:
 Limits:
 
 - Firefox picks the free name of a repeated download: `file(1).txt`, without Electron's space.
-- The retained text has no `meta` description and no YouTube parts.
+- The retained text matches Electron's (`meta` description then body; title, channel and description on a YouTube watch page, composition in `shared/page-text.ts`). The page actor must be rebuilt (`pnpm build:ui`): an older build silently retains the body text alone.
 - A visit or text sent while the host is down is lost.
 - The download list is not kept across a restart (the panel says « Aucun téléchargement pendant cette session. »).
 - A download from a private space stays in the list.

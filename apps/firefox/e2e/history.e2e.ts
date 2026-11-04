@@ -178,6 +178,15 @@ describe("the agent's memory retains page text", () => {
     await waitUi(m, `const l = [...doc.querySelectorAll(arguments[0] + " li")].find((e) => e.textContent.includes("texte.html") || e.textContent.includes("Texte")); return l?.dataset.retenu === "true" && !!l.querySelector(arguments[1])`, [PANEL, '[aria-label="Texte retenu pour l\'agent"]']);
   });
 
+  // Needs the rebuilt page actor (getParts): fails until `pnpm build:ui`. YouTube parts are covered by unit tests only
+  // (a watch page can't be served from youtube.com offline).
+  it("the meta description is retained before the body", async () => {
+    await open(`${base}/description`);
+    await retained("/description");
+    const lu = (await callTool(w.dataDir, "lire_historique", { url: `${base}/description` })).texte;
+    expect(lu).toMatch(/Resume des licornes\n\nCorps des licornes/);
+  });
+
   it("nothing from a private space", async () => {
     await setActiveSpacePrivate(true);
     await open(`${base}/a.html`);
