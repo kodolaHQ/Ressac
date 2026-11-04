@@ -1028,6 +1028,47 @@ document.documentElement.setAttribute("data-sonde", JSON.stringify(r));`,
     expect(await m.execute<number>("return gBrowser.tabs.filter((t) => t.linkedBrowser.currentURI.spec.includes('autre.test')).length")).toBe(0);
   });
 
+  // Firefox only: FormData and the on… handlers of the page's window (own members of a [Global] window), not the sandbox's.
+  it("through window, FormData drops the password and the window's on… handlers get none of its events", async () => {
+    const w = await launchAgent(
+      "sonde",
+      {
+        "manifest.json": { manifest_version: 3, name: "Sonde", version: "1.0.0", host_permissions: ["https://hote.test/*"], content_scripts: [{ matches: ["https://hote.test/*"], js: ["a.js"] }] },
+        "a.js": `const r = { touches: [] };
+const noter = () => document.documentElement.setAttribute("data-sonde", JSON.stringify(r));
+const f = document.getElementById("f");
+r.window = new window.FormData(f).get("mdp");
+r.self = new self.FormData(f).get("mdp");
+r.nu = new FormData(f).get("mdp");
+const voir = (nom) => (e) => { r.touches.push(nom + ":" + e.target.id); noter(); };
+window.onkeydown = voir("window.onkeydown");
+self.oninput = voir("self.oninput");
+document.defaultView.onkeypress = voir("defaultView.onkeypress");
+onkeyup = voir("onkeyup");
+noter();`,
+      },
+      { permissions: [], hotes: ["https://hote.test/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true },
+    );
+    const m = w.marionette;
+    const tab = await openTab(m, "https://hote.test/formulaire?sonde");
+    const vu = () => inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-sonde')");
+    await poll(vu, (v) => v !== null);
+    await inPage(
+      m,
+      tab,
+      `const ev = (el, type, key) => el.dispatchEvent(type === "input" ? new InputEvent("input", { bubbles: true, data: key }) : new KeyboardEvent(type, { key, bubbles: true }));
+       const t = document.getElementById("texte"), p = document.getElementById("mdp");
+       for (const type of ["keydown", "keypress", "input", "keyup"]) { ev(p, type, "b"); ev(t, type, "a"); }`,
+    );
+    await sleep(300);
+    expect(JSON.parse((await vu())!)).toEqual({
+      window: null,
+      self: null,
+      nu: null,
+      touches: ["window.onkeydown:texte", "defaultView.onkeypress:texte", "self.oninput:texte", "onkeyup:texte"],
+    });
+  });
+
   // Electron reads the shared world in the extension's console (task 9 here): read from the page instead.
   it("I2 all the files of its content scripts share one world: a var of one entry is read in another, a redeclared const throws", async () => {
     const w = await launchAgent(

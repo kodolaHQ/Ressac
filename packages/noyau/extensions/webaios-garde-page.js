@@ -29,6 +29,8 @@
 // - code dans le monde de la page : un `<script>` en ligne inséré (`createElement("script")`, `textContent`, `append`),
 //   ou un attribut `on…` posé par `setAttribute`, tourne sans aucune garde (lit les mots de passe, envoie où la CSP de
 //   la page le permet) ; le refus de `world: "MAIN"` se contourne ainsi ;
+//   (Firefox: the same door through `wrappedJSObject` and `XPCNativeWrapper.unwrap`, the page's objects without the
+//   Xray: password values, listeners, the page's `fetch` and `open`.)
 // - un `Worker` créé depuis un `blob:` : son `fetch` n'a pas de garde ;
 // - `RTCPeerConnection` du monde isolé, avec des `iceServers` (STUN/TURN vers n'importe quel hôte) ;
 // - `SVGAElement.href.baseVal`, `SVGImageElement.href.baseVal` (adresse posée sans setter gardé) ;
@@ -97,6 +99,14 @@
       if (journal) appliquer(journal, g.console, [`[webaios] garde de page non posée sur ${nom} :`, e]);
       return false;
     }
+  };
+  // Firefox: a content script's global is a sandbox; its `window` (also `self`, `document.defaultView`) is the page's
+  // window seen through an Xray, whose own members (`open`, `fetch`, `FormData`, the `on…` handlers…) are the page's.
+  // Every member guarded on the global goes through `surGlobal`, which guards it on that window too.
+  const fenetre = g.window && g.window !== g ? g.window : null;
+  const surGlobal = (nom, valeur) => {
+    figerSur(g, nom, valeur);
+    if (fenetre) figerSur(fenetre, nom, valeur);
   };
   /** Liste de chaînes, recopiée (lue une fois, propriétés propres). */
   const chaines = (v) => {
@@ -390,7 +400,7 @@
     };
     definir(Enveloppe, "prototype", { __proto__: null, value: FD.prototype, writable: false, configurable: false, enumerable: false });
     figerSur(FD.prototype, "constructor", Enveloppe);
-    figerSur(g, "FormData", Enveloppe);
+    surGlobal("FormData", Enveloppe);
   }
 
   const lireCible = g.Event && lireDe(g.Event.prototype, "target");
@@ -504,6 +514,7 @@
     for (let i = 0; i < NOMS_ON.length; i++) {
       for (let j = 0; j < protos.length; j++) surProto(protos[j] && protos[j].prototype, NOMS_ON[i]);
       surProto(g, NOMS_ON[i]);
+      if (fenetre) surProto(fenetre, NOMS_ON[i]);
     }
   }
 
@@ -513,7 +524,7 @@
   const reqUrl = g.Request && lireDe(g.Request.prototype, "url");
   const fetchNatif = typeof g.fetch === "function" ? g.fetch : null;
   if (fetchNatif && P) {
-    figerSur(g, "fetch", function fetch(entree, init) {
+    surGlobal("fetch", function fetch(entree, init) {
       let u = null;
       if (reqUrl && entree !== null && typeof entree === "object") {
         try {
@@ -536,6 +547,8 @@
       if (!permise(u, false)) throw refusee();
       return appliquer(ouvrir, this, [methode, u, ...reste]);
     });
+    // Firefox: the sandbox's own XMLHttpRequest (guarded prototype) replaces the page's on the Xray window.
+    if (fenetre && fenetre.XMLHttpRequest !== XHR) figerSur(fenetre, "XMLHttpRequest", XHR);
   }
   /** Remplace un constructeur (`WebSocket`, `EventSource`) : l'adresse (premier argument) est vérifiée d'abord. */
   const garderConstructeur = (nom) => {
@@ -555,7 +568,7 @@
       if (d) definir(Enveloppe, constantes[i], { __proto__: null, value: d.value, enumerable: true });
     }
     figerSur(C.prototype, "constructor", Enveloppe);
-    figerSur(g, nom, Enveloppe);
+    surGlobal(nom, Enveloppe);
   };
   garderConstructeur("WebSocket");
   garderConstructeur("EventSource");
@@ -568,9 +581,6 @@
       return appliquer(balise, this, [u, ...reste]);
     });
   }
-  // Firefox: a content script's global is a sandbox; its `window` (also `self`, `frames`) is the page's window seen
-  // through an Xray, which holds `open`: guarded on both.
-  const fenetre = g.window && g.window !== g ? g.window : null;
   const dOuvrir = descripteur(g, "open") || (fenetre && descripteur(fenetre, "open")) || (g.Window && descripteur(g.Window.prototype, "open"));
   const ouvrirFenetre = dOuvrir && typeof dOuvrir.value === "function" ? dOuvrir.value : null;
   if (ouvrirFenetre) {
@@ -580,15 +590,7 @@
       if (!permise(u === "" ? "about:blank" : u, true)) return null;
       return appliquer(ouvrirFenetre, this === g ? fenetre || g : this, [u, ...reste]);
     };
-    figerSur(g, "open", open);
-  }
-  // On the Xray window, the page's own fetch, XMLHttpRequest, WebSocket… would send unguarded: the guarded ones replace them.
-  if (fenetre) {
-    const noms = ["open", "fetch", "XMLHttpRequest", "WebSocket", "EventSource"];
-    for (let i = 0; i < noms.length; i++) {
-      const d = descripteur(g, noms[i]);
-      if (d && "value" in d && fenetre[noms[i]] !== d.value) figerSur(fenetre, noms[i], d.value);
-    }
+    surGlobal("open", open);
   }
   /** Les setters d'adresse d'une classe d'éléments. */
   const garderSetters = (classe, noms) => {
