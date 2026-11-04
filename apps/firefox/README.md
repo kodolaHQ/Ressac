@@ -45,6 +45,7 @@ Invisible reads run in a windowless browser, in a private container cleared befo
 - Added a file to `src/`: `pnpm engine:import` (builds the UI first, so the generated sidebar files get linked), then `pnpm build:ui`.
 - Changed a `*.patch`, or anything compiled (C++, Rust, `jar.mn`): `pnpm engine:import`, then `pnpm build`.
 - Tests: `pnpm test` (unit), `pnpm e2e` (headless Firefox with a temporary profile, driven over Marionette).
+- Bench against the Electron app: `pnpm bench -- --out <file>.json` (invisible reads), `pnpm bench -- --headed --out <file>.json` (tab and space switches; opens windows and takes the focus). It runs Electron, Firefox, Electron, Firefox, Electron, Firefox, never together, and compares the medians. The bench tests are skipped unless `WEBAIOS_BENCH` is set.
 
 ## Data
 
@@ -52,9 +53,8 @@ The WebAiOs state (session, settings) lives in `~/WebAiOs-firefox/data` by defau
 
 Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
 
-## Not migrated yet (step 3)
+## Not migrated yet (step 4)
 
-- several windows: ⌘N does nothing;
 - compact mode;
 - the agent's dev tools, history access, widget data and site-app permission checks;
 - « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
@@ -64,8 +64,6 @@ Two instances must never share a data folder: the session's temporary file name 
 - internal `webaios:` pages: a "not available yet" message;
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
-- custom error and crash pages: Firefox's own are shown;
-- the `beforeunload` confirmation when closing a tab.
 
 ## Worktrees
 
