@@ -146,10 +146,14 @@ describe("WebAiOs shortcuts", () => {
   // raccourcis.spec.ts:258
   it("⇧⌘J toggles the downloads panel", async () => {
     const shown = (v: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"telechargements\"]') === arguments[0]", [v]);
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
     await pressKeys(m, "Meta+Shift+j");
     await shown(true);
     await pressKeys(m, "Meta+Shift+j");
     await shown(false);
+    // The toggle gives the keyboard back to the page, as the panel's own close does.
+    await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
   });
 
   it("⇧⌘H and the native history commands open nothing", async () => {

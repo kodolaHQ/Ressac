@@ -33,11 +33,11 @@
   const pageWeb = $derived(!!ongletActif && aUneVue(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
   /** The history or downloads panel over the content area (⌘Y, ⇧⌘J, the sidebar's button); another tab closes it. */
   let panneau = $state<Panneau | null>(null);
-  const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
   const fermerPanneau = () => {
     panneau = null;
     api.rendreFocusPage();
   };
+  const basculerPanneau = (p: Panneau) => (panneau === p ? fermerPanneau() : (panneau = p));
   $effect(() => api.surPanneau(basculerPanneau));
   // The command bar targets the tab active when it opened: if another one shows, it closes.
   const idActif = $derived(ongletActif?.id);
