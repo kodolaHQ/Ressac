@@ -173,5 +173,11 @@ describe("WebAiOs shortcuts", () => {
       await m.execute(`return { sidebar: SidebarController.isOpen, organizer: !!Services.wm.getMostRecentWindow("Places:Organizer"), sanitize: !!gDialogBox.isOpen || [...Services.wm.getEnumerator(null)].some((w) => w.location.href.includes("sanitize")) };`,
       ),
     ).toEqual({ sidebar: false, organizer: false, sanitize: false });
+    // The macOS menu bar fires View › Sidebar items by their key (⇧⌘H) without the disabled <key>: the items are off.
+    const items = await m.execute<{ id: string; disabled: boolean }[]>(
+      `return [...document.getElementById("viewSidebarMenu").children].map((i) => ({ id: i.id, disabled: i.getAttribute("disabled") === "true" }));`,
+    );
+    expect(items.map((i) => i.id)).toContain("menu_historySidebar");
+    expect(items.filter((i) => !i.disabled)).toEqual([]);
   });
 });

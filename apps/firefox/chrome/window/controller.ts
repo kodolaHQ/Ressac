@@ -241,6 +241,18 @@ export function createController(
   /** Tabs whose page is being asked: a second ⌘W must not ask again. */
   const asking = new Set<IdOnglet>();
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
+  // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; Electron has
+  // no native sidebar, so every item is off, including the ones SidebarController adds or re-enables later.
+  const sidebarMenu = document.getElementById("viewSidebarMenu");
+  if (sidebarMenu) {
+    const disableItems = () => {
+      for (const item of sidebarMenu.children) if (item.getAttribute("disabled") !== "true") item.setAttribute("disabled", "true");
+    };
+    disableItems();
+    const observer = new MutationObserver(disableItems);
+    observer.observe(sidebarMenu, { childList: true, subtree: true, attributeFilter: ["disabled"] });
+    unsubscribe.push(() => observer.disconnect());
+  }
 
   const controller: WindowController = {
     fenetreId,
