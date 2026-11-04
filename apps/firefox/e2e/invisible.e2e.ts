@@ -184,11 +184,22 @@ describe("add-ons", () => {
   it("a public read is invisible to add-ons: no webRequest, no content script", async () => {
     const mark = await installAddon(m, marker());
     try {
+      // Positive control: a normal tab on the same page does get the mark, so its absence below means something.
+      await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${page.url}/texte.html` });
+      await waitFor(
+        m,
+        `return (async () => {
+          try { return (await gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("html", { max: 100000 })).includes("addon-mark"); } catch { return false; }
+        })();`,
+        (v) => v === true,
+      );
+      await pause();
+      const before = seen(); // the control tab's own request was seen
       const r = await readPage(`${page.url}/texte.html`);
       expect(r).toHaveProperty("ok");
       expect((r as { ok: Page }).ok.texte).not.toContain("MARQUE-MODULE");
       await pause();
-      expect(seen()).toBe(0);
+      expect(seen()).toBe(before);
     } finally {
       await uninstallAddon(m, mark);
     }

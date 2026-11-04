@@ -112,13 +112,13 @@ const clearContainer = (userContextId: number) =>
 
 /**
  * A windowless browser hosting one remote <browser> in `userContextId` (BackgroundPageThumbs.sys.mjs).
- * `private`: Firefox's private browsing, so that add-ons without private access (webRequest included) never see the page.
+ * `private`: a private window, so that add-ons without private access (webRequest included) never see the page.
  */
 async function createBrowser(userContextId: number, o: { private: boolean }): Promise<{ browser: any; close(): void }> {
   const flags =
     Ci.nsIWebBrowserChrome.CHROME_REMOTE_WINDOW |
     Ci.nsIWebBrowserChrome.CHROME_FISSION_WINDOW |
-    (o.private ? Ci.nsIWebBrowserChrome.CHROME_PRIVATE_WINDOW | Ci.nsIWebBrowserChrome.CHROME_PRIVATE_LIFETIME : 0);
+    (o.private ? Ci.nsIWebBrowserChrome.CHROME_PRIVATE_WINDOW : 0);
   const windowless = Services.appShell.createWindowlessBrowser(true, flags);
   const close = () => windowless.close();
   try {
