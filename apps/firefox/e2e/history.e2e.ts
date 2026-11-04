@@ -208,6 +208,16 @@ describe("the agent's memory retains page text", () => {
     expect(await lines_("injoignable")).toEqual([]);
   });
 
+  it("nothing from an HTTP-authenticated page", async () => {
+    // Credentials in the URL answer the 401 without a prompt; above 1 character Firefox asks to confirm them first.
+    await m.execute(`Services.prefs.setIntPref("network.http.phishy-userpass-length", 255);`);
+    await open(`${base.replace("http://", "http://u:p@")}/prive/auth`);
+    await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.contentTitle === "auth")`, (v) => v === true);
+    await open(`${base}/b.html`);
+    await retained("b.html");
+    expect(await lines_("/auth")).toEqual([{ retenu: false, prive: false }]);
+  });
+
   it("a space turned private forgets its text", async () => {
     await open(`${base}/a.html`);
     await retained("a.html");

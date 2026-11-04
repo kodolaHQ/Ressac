@@ -16,7 +16,7 @@ export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
  * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to
  * <base>/balise on pagehide, /coop is sent with Cross-Origin-Opener-Policy: same-origin, /fenetres calls open(),
  * /telecharge is an attachment, /telecharge-cadre has it in a frame and clicks a download link to it, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
- * /geo asks for the position as it loads. /telecharger/<name> serves a page file as an attachment, /fichier-lent starts a 1 MB
+ * /geo asks for the position as it loads. /prive/auth asks for HTTP Basic authentication (401) and, with any credentials, is a page with text (under /prive/: Firefox sends the credentials again to that directory only). /telecharger/<name> serves a page file as an attachment, /fichier-lent starts a 1 MB
  * attachment, writes 1 KB and stalls (its closed connection is noted as "/fichier-lent:fermée").
  * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
  */
@@ -100,6 +100,11 @@ export async function startServer(o: { host?: string } = {}): Promise<{ url: str
     if (route === "/geo") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end("<title>geo</title><script>navigator.geolocation.getCurrentPosition(() => {}, () => {})</script>");
+    }
+    if (route === "/prive/auth") {
+      if (!req.headers.authorization) return res.writeHead(401, { "WWW-Authenticate": 'Basic realm="essai"' }).end();
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return res.end("<title>auth</title><p>Page protégée par un mot de passe</p>");
     }
     if (route === "/icone.png") return res.writeHead(200, { "Content-Type": "image/png" }).end(ICON);
     const file = path.join(PAGES, path.normalize(route));

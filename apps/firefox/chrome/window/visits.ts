@@ -8,14 +8,20 @@ const CAPTURE_DELAY_MS = 1500;
 
 type Context = { espaceId: string; prive: boolean } | null;
 
-/** Whether the response was asked for with an Authorization header (an HTTP-authenticated page: nothing retained). */
-function authenticated(request: any): boolean {
+/**
+ * For a top-level document response: its browser, and whether it is HTTP-authenticated (sent an Authorization header
+ * or got a 401), as Electron's capture-texte.ts refuses a page after a `login` event. Parent-side: the progress
+ * listener only sees a RemoteWebProgressRequest, which has no request headers.
+ */
+function topDocumentResponse(subject: any): { browser: any; auth: boolean } | null {
+  const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+  const bc = channel.loadInfo.browsingContext;
+  if (!channel.isDocument || !bc || bc.parent || !bc.embedderElement) return null;
+  let auth = channel.responseStatus === 401;
   try {
-    request.QueryInterface(Ci.nsIHttpChannel).getRequestHeader("Authorization");
-    return true;
-  } catch {
-    return false;
-  }
+    auth ||= !!channel.getRequestHeader("Authorization");
+  } catch {}
+  return { browser: bc.embedderElement, auth };
 }
 
 /**
@@ -29,10 +35,22 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
   // Per browser: the pending read, and whether this page must not be retained (error page, authentication).
   const timers = new WeakMap<object, number>();
   const skipped = new WeakSet<object>();
+  // Per browser, whether its last top-level document response was authenticated. Separate from `skipped`: the response
+  // comes before the parent's STATE_START, which resets `skipped`.
+  const authenticated = new WeakSet<object>();
   const cancel = (browser: any) => {
     window.clearTimeout(timers.get(browser));
     timers.delete(browser);
   };
+  const observer = {
+    observe(subject: any) {
+      const r = topDocumentResponse(subject);
+      if (r?.auth) authenticated.add(r.browser);
+      else if (r) authenticated.delete(r.browser);
+    },
+  };
+  Services.obs.addObserver(observer, "http-on-examine-response");
+  window.addEventListener("unload", () => Services.obs.removeObserver(observer, "http-on-examine-response"), { once: true });
   const plan = (browser: any) => {
     cancel(browser);
     const url: string = browser.currentURI?.spec ?? "";
@@ -53,13 +71,13 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     if (stillHere() && texte.trim()) history.retain({ url, espaceId, titre: browser.contentTitle || url, texte });
   };
   gBrowser.addTabsProgressListener({
-    onStateChange: (browser: any, progress: any, request: any, flags: number, status: number) => {
+    onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {
       if (!progress.isTopLevel || !(flags & STATE_IS_NETWORK)) return;
       if (flags & STATE_START) {
         cancel(browser);
         skipped.delete(browser);
       } else if (flags & STATE_STOP) {
-        if (!Components.isSuccessCode(status) || authenticated(request)) skipped.add(browser);
+        if (!Components.isSuccessCode(status) || authenticated.has(browser)) skipped.add(browser);
         else plan(browser);
       }
     },
