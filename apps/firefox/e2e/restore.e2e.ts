@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { dispatch, inWindow, newWindow, state, waitFor, waitReady, waitWindowCou
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { inUi, pressKeys, waitUi } from "./ui";
+import { click, inUi, pressKeys, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let dataDir: string;
@@ -190,6 +190,48 @@ describe("restore at startup", () => {
     await quit(); // straight after the dispatch
     m = await start();
     expect((await state(m)).reglages.moteur).toBe("qwant");
+  });
+
+  it("a v1 session (before configurable spaces) gets its tabs and essential back, and is rewritten as v2", async () => {
+    fresh();
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+    const tab = (id: string, url: string, lien: unknown = null) => ({ id, fenetreId: "f1", espaceId: "e1", url, titre: id, favicon: null, lien, ouvertParAgent: false, zoom: 1 });
+    const v1 = {
+      version: 1,
+      espaces: [{ id: "e1", nom: "Perso", icone: "🏠", epingles: [] }],
+      essentiels: [{ id: "fav-c", url: `${server.url}/texte.html`, titre: "Texte", favicon: null }],
+      onglets: {
+        "o-a": tab("o-a", `${server.url}/a.html`),
+        "o-b": tab("o-b", `${server.url}/b.html`),
+        "o-c": tab("o-c", `${server.url}/texte.html`, { type: "essentiel", id: "fav-c" }),
+      },
+      fenetres: [
+        { id: "f1", espaceActif: "e1", ordre: { e1: ["o-a", "o-b"] }, actif: { e1: "o-b" }, compact: false, panneauAgentOuvert: false, fermesRecemment: [], cadre: null },
+      ],
+      reglages: { moteur: "google", profilAgent: "claude", largeurPanneauAgent: 420 },
+    };
+    const file = path.join(dataDir, "session.json");
+    await writeFile(file, JSON.stringify(v1));
+    const m = await start();
+    await waitUi(m, "return doc.querySelectorAll('[data-testid^=\"onglet-\"]').length === 2");
+    await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (t) => t === "Page B");
+    const read = async () => JSON.parse(await readFile(file, "utf8"));
+    for (const end = Date.now() + 10_000; (await read()).version !== 2; await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > end) throw new Error("the session was not rewritten as v2");
+    const written = await read();
+    expect(written.profils).toEqual([{ id: "defaut" }]);
+    expect(Object.keys(written.onglets).sort()).toEqual(["o-a", "o-b", "o-c"]);
+    expect(written.essentiels).toEqual(v1.essentiels);
+    expect(written.onglets["o-c"].lien).toEqual({ type: "essentiel", id: "fav-c" });
+    // The essential opens on its tab from before, in the default container.
+    await click(m, '[data-testid="favori-fav-c"]');
+    const shown = await waitFor<{ url: string; title: string; ctx: number }>(
+      m,
+      "return { url: gBrowser.selectedBrowser.currentURI.spec, title: gBrowser.selectedBrowser.contentTitle, ctx: gBrowser.selectedTab.userContextId }",
+      (v) => v.title === "Texte",
+    );
+    expect(shown).toEqual({ url: `${server.url}/texte.html`, title: "Texte", ctx: 0 });
+    expect(Object.keys((await state(m)).onglets)).toHaveLength(3);
   });
 
   it("an unreadable session: one notification, with the .corrompu path", async () => {
