@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { button, cleanupXpis, installAddon, uninstallAddon } from "./addons";
-import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
+import { dispatch, inWindow, newWindow, state, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -132,6 +132,23 @@ describe("add-on strip, window side", () => {
     expect(await inWindow(m, second, () => buttons().then((l) => l[0]?.pinned))).toBe(true);
   });
 
+  it("a badge change still reaches a window once the first window is closed", async () => {
+    await installAddon(m, button());
+    // The first window reads its buttons first: whatever it sets up must not outlive it.
+    await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 1);
+    const second = await newWindow(m);
+    await m.execute("window.close()");
+    await waitWindowCount(m, 1);
+    await m.command("WebDriver:SwitchToWindow", { handle: second, focus: false });
+    await m.execute(`window.changes = 0; ${A}.onChange(() => window.changes++); window.webaiosErrors = [];
+      Services.console.registerListener({ observe: (e) => e instanceof Ci.nsIScriptError && !(e.flags & Ci.nsIScriptError.warningFlag) && e.sourceName.includes("webaios") && window.webaiosErrors.push(e.errorMessage) });`);
+    await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 1);
+    await m.execute("gUnifiedExtensions.browserActionFor(WebExtensionPolicy.getByID(arguments[0])).action.setPropertyFromDetails({}, 'badgeText', '7')", [ID]);
+    await waitFor(m, "return window.changes", (n: number) => n > 0);
+    expect((await buttons())[0].badge).toBe("7");
+    expect(await m.execute("return window.webaiosErrors")).toEqual([]);
+  });
+
   it("an uninstalled pinned add-on leaves the strip", async () => {
     // Errors reported by the window's script (chrome://browser/content/webaios/…) while the add-on goes.
     await m.execute(`window.webaiosErrors = [];
@@ -147,6 +164,10 @@ describe("add-on strip, window side", () => {
     await m.execute(`const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
       return AddonManager.getAddonByID(arguments[0]).then((a) => a.enable()).then(() => 0);`, [ID]);
     await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l[0]?.pinned === true);
+    // Restarted, the add-on has a new button node: its changes are still seen.
+    seen = await changes();
+    await m.execute("gUnifiedExtensions.browserActionFor(WebExtensionPolicy.getByID(arguments[0])).action.setPropertyFromDetails({}, 'badgeText', '5')", [ID]);
+    await waitFor(m, "return window.changes", (n: number) => n > seen);
     seen = await changes();
     await uninstallAddon(m, ID);
     await waitFor(m, `return ${A}.buttons()`, (l: any[]) => l.length === 0);
@@ -170,7 +191,8 @@ describe("add-on strip, window side", () => {
     })();`);
     const r = await clickAndWait({ x: 10, y: 80, width: 24, height: 24 });
     expect(r.title).toBe("Popup de test prête");
-    expect(await m.execute("return PopupNotifications.panel.anchorNode?.id")).toBe("webaios-anchor");
+    // anchorNode alone can name the old anchor of a closed panel.
+    expect(await m.execute("return [PopupNotifications.panel.state, PopupNotifications.panel.anchorNode?.id]")).toEqual(["open", "webaios-anchor"]);
     await m.execute(CLOSE_POPUP);
   });
 

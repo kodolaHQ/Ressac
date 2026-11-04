@@ -47,8 +47,6 @@ export interface WindowAddons {
   reviewUpdate(id: string): void;
 }
 
-/** On a browser action (shared by every window): the windows' callbacks run after each of its updateButton calls. */
-const UPDATE_HOOK = Symbol.for("webaios.updateButton");
 const rgba = (c: number[] | null | undefined) => (c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3]! / 255})` : null);
 
 export function createAddons(o: {
@@ -71,23 +69,25 @@ export function createAddons(o: {
       for (const cb of listeners) cb();
     });
   };
-  const hooked = new Set<any>();
-  /** The browser action of `policy`, its updateButton reporting to this window. */
+  /** By add-on id: an observer on its button node in this window, which updateButton rewrites (badge, title, icon, disabled). */
+  const watched = new Map<string, { node: Element; observer: MutationObserver }>();
+  /** The browser action of `policy`, its button in this window watched. Per window: dies with it, wraps nothing shared. */
   const actionOf = (policy: any) => {
     const ba = w.gUnifiedExtensions.browserActionFor(policy);
-    if (!ba || hooked.has(ba)) return ba;
-    if (!ba[UPDATE_HOOK]) {
-      const callbacks = new Set<() => void>();
-      const update = ba.updateButton;
-      ba.updateButton = function (...args: unknown[]) {
-        update.apply(this, args);
-        for (const cb of callbacks) cb();
-      };
-      ba[UPDATE_HOOK] = callbacks;
+    const node = ba?.widget.forWindow(o.win).node;
+    // A restarted add-on (enable, update) has a new node: the old one's observer goes.
+    if (node && watched.get(policy.id)?.node !== node) {
+      unwatch(policy.id);
+      const observer = new w.MutationObserver(notify);
+      observer.observe(node, { attributes: true, subtree: true });
+      watched.set(policy.id, { node, observer });
     }
-    ba[UPDATE_HOOK].add(notify);
-    hooked.add(ba);
     return ba;
+  };
+  /** A shut-down extension's button goes with its action: the next start makes a new one. */
+  const unwatch = (id: string) => {
+    watched.get(id)?.observer.disconnect();
+    watched.delete(id);
   };
   const pinned = () => parsePinned(Services.prefs.getStringPref(PINNED_PREF, "[]"));
 
@@ -122,10 +122,14 @@ export function createAddons(o: {
     if (panel.anchorNode === o.anchors.action) panel.moveToAnchor(o.anchors.action, "bottomleft topleft");
   };
   const extensionListener = () => notify();
+  const shutdownListener = (_: string, extension: { id: string }) => {
+    unwatch(extension.id);
+    notify();
+  };
   const addonListener = { onEnabled: notify, onDisabled: notify, onUninstalled: notify };
   const prefObserver = { observe: notify };
   ExtensionParent.apiManager.on("ready", extensionListener);
-  ExtensionParent.apiManager.on("shutdown", extensionListener);
+  ExtensionParent.apiManager.on("shutdown", shutdownListener);
   AddonManager.addAddonListener(addonListener);
   ExtensionsUI.on("change", extensionListener);
   Services.prefs.addObserver(PINNED_PREF, prefObserver);
@@ -135,11 +139,11 @@ export function createAddons(o: {
     "unload",
     () => {
       ExtensionParent.apiManager.off("ready", extensionListener);
-      ExtensionParent.apiManager.off("shutdown", extensionListener);
+      ExtensionParent.apiManager.off("shutdown", shutdownListener);
       AddonManager.removeAddonListener(addonListener);
       ExtensionsUI.off("change", extensionListener);
       Services.prefs.removeObserver(PINNED_PREF, prefObserver);
-      for (const ba of hooked) ba[UPDATE_HOOK].delete(notify);
+      for (const id of [...watched.keys()]) unwatch(id);
       listeners.clear();
     },
     { once: true },
