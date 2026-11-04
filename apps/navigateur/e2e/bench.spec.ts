@@ -3,7 +3,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   appelerOutil,
-  creerEspace,
   dansLaVue,
   ecrireEtatWidget,
   ecrireWidget,
@@ -21,43 +20,6 @@ test.skip(!process.env.WEBAIOS_BENCH, "bench only");
 let serveur: Awaited<ReturnType<typeof serveurTest>>;
 test.beforeAll(async () => (serveur = await serveurTest()));
 test.afterAll(() => serveur.fermer());
-
-const titre = (app: Parameters<typeof dansLaVue>[0], n: number) => dansLaVue(app, `?n=${n}`, "document.title") as Promise<string | undefined>;
-/** Whether the page's rAF runs, within 1 s. */
-const rafTourne = (app: Parameters<typeof dansLaVue>[0], n: number) =>
-  dansLaVue(app, `?n=${n}`, "new Promise((r) => { requestAnimationFrame(() => r(true)); setTimeout(() => r(false), 1000); })");
-
-test("probe: a tab shown again fires visibilitychange and two rAF", async () => {
-  // In a hidden window a background tab stays "visible" with rAF running, so the signal never fires (plan 22, task 1):
-  // this probe only checks the headed bench pass, which shows a window.
-  test.skip(!process.env.WEBAIOS_BENCH_HEADED, "headed bench pass only");
-  const { app, fenetre, fermer } = await lancer({ visible: true });
-  try {
-    await ouvrirOnglet(fenetre, `${serveur.url}/bench-visible.html?n=1`);
-    await expect.poll(() => titre(app, 1)).toBe("n1");
-    await ouvrirOnglet(fenetre, `${serveur.url}/bench-visible.html?n=2`);
-    await expect.poll(() => titre(app, 2)).toBe("n2");
-    const avant = { visibilityState: await dansLaVue(app, "?n=1", "document.visibilityState"), rafHiddenTab: await rafTourne(app, 1) };
-    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById("onglet-1")!.click());
-    const vu = await expect
-      .poll(() => titre(app, 1), { timeout: 5_000 })
-      .toMatch(/^v\d+$/)
-      .then(() => true, () => false);
-    console.log(
-      "probe E:",
-      JSON.stringify({
-        signal: vu,
-        avant,
-        titre: await titre(app, 1),
-        visibilityState: await dansLaVue(app, "?n=1", "document.visibilityState"),
-        rafShownTab: await rafTourne(app, 1),
-      }),
-    );
-    expect(vu).toBe(true);
-  } finally {
-    await fermer();
-  }
-});
 
 /** Merges one measure into WEBAIOS_BENCH_OUT (same JSON as apps/firefox/scripts/bench-stats.ts BenchFile). */
 function record(name: string, xs: number[]): void {
@@ -169,15 +131,9 @@ async function itemOnglet(fenetre: Page, morceau: string): Promise<string> {
   return `onglet-${n}`;
 }
 
-/**
- * Waits until the page whose URL contains `morceau` is hidden, before a warm switch to it: a page shown again before its
- * own visibility update has run never goes hidden and writes no `v<ms>` (seen on Firefox). Electron's hidden window never
- * reports "hidden" (plan 22, task 1), so this only matters in the headed pass, the only one running the switch benches.
- */
-const attendreCachee = (app: ElectronApplication, morceau: string) =>
-  expect.poll(() => dansLaVue(app, morceau, "document.visibilityState"), { timeout: 10_000, intervals: [10] }).toBe("hidden");
-
 /** Clicks a menu item in the main process; returns the time from the click to the `v<ms>` of the page shown. */
+// Warm tab and space switches are Firefox-only: a hidden Electron view still reports "visible" with rAF running, even
+// headed (plan 22 visible pass), so the page has no signal for being shown again.
 async function basculer(app: ElectronApplication, item: string, morceau: string): Promise<number> {
   const t = await app.evaluate(({ Menu }, item) => {
     const t = performance.timeOrigin + performance.now();
@@ -191,30 +147,6 @@ async function basculer(app: ElectronApplication, item: string, morceau: string)
   }
 }
 
-test("bench: tab switch", async () => {
-  test.skip(!headed, "visible pass only");
-  test.setTimeout(300_000);
-  const { app, fenetre, fermer } = await lancerBench({ visible: headed });
-  try {
-    const pages = ["bench-visible.html?n=1", "bench-visible.html?n=2"];
-    for (const [i, p] of pages.entries()) {
-      await ouvrirOnglet(fenetre, `${serveur.url}/${p}`);
-      await expect.poll(() => titre(app, i + 1)).toBe(`n${i + 1}`);
-    }
-    const items = [await itemOnglet(fenetre, pages[0]!), await itemOnglet(fenetre, pages[1]!)];
-    const ms: number[] = [];
-    // Tab 2 is shown: 2 round trips of warm-up (4 switches), then 50.
-    for (let k = 0; k < 54; k++) {
-      await attendreCachee(app, pages[k % 2]!);
-      const r = await basculer(app, items[k % 2]!, pages[k % 2]!);
-      if (k >= 4) ms.push(r);
-    }
-    record("tabSwitch", ms);
-  } finally {
-    await fermer();
-  }
-});
-
 test("bench: cold tab switch", async () => {
   test.skip(!headed, "visible pass only");
   test.setTimeout(300_000);
@@ -226,33 +158,6 @@ test("bench: cold tab switch", async () => {
     const ms: number[] = [];
     for (const p of pages) ms.push(await basculer(app, await itemOnglet(fenetre, p), p));
     record("tabSwitchCold", ms);
-  } finally {
-    await fermer();
-  }
-});
-
-test("bench: space switch", async () => {
-  test.skip(!headed, "visible pass only");
-  test.setTimeout(300_000);
-  const { app, fenetre, fermer } = await lancerBench({ visible: headed });
-  try {
-    const pages = ["bench-visible.html?n=1", "bench-visible.html?n=2"];
-    await ouvrirOnglet(fenetre, `${serveur.url}/${pages[0]}`);
-    await expect.poll(() => titre(app, 1)).toBe("n1");
-    await creerEspace(fenetre, "Bench", "💼");
-    await expect.poll(async () => (await etat(fenetre)).espaces.length).toBe(2);
-    await ouvrirOnglet(fenetre, `${serveur.url}/${pages[1]}`);
-    await expect.poll(() => titre(app, 2)).toBe("n2");
-    const e = await etat(fenetre);
-    expect(e.fenetres[0]!.espaceActif).toBe(e.espaces[1]!.id);
-    const ms: number[] = [];
-    // Space 2 is shown: 2 alternations of warm-up, then 50.
-    for (let k = 0; k < 52; k++) {
-      await attendreCachee(app, pages[k % 2]!);
-      const r = await basculer(app, `espace-${(k % 2) + 1}`, pages[k % 2]!);
-      if (k >= 2) ms.push(r);
-    }
-    record("spaceSwitch", ms);
   } finally {
     await fermer();
   }
