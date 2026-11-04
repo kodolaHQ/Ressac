@@ -284,4 +284,43 @@ describe("one agent session per window", () => {
     await stopped(pid);
     expect(alive(first)).toBe(true);
   });
+
+  it("focusing another window moves the agent there at once: page_courante reads its public tab, not the other's private one", async () => {
+    await launch();
+    await shown();
+    await terminalShows("faux agent prêt>");
+    const a = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+    const second = await newWindow(m);
+    const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+    const active = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
+    const focus = async (h: string) => {
+      await m.command("WebDriver:SwitchToWindow", { handle: h, focus: true });
+      const id = await m.execute<string>("return window.webaiosWindow.fenetreId");
+      for (const end = Date.now() + 10_000; (await active()) !== id; await new Promise((r) => setTimeout(r, 100)))
+        if (Date.now() > end) throw new Error("the window did not become active");
+      return id;
+    };
+    // B: its session up, then a public tab shared through the panel.
+    const b = await inWindow(m, second, async () => {
+      await shown();
+      await terminalShows("faux agent prêt>");
+      return m.execute<string>("return window.webaiosWindow.fenetreId");
+    });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: b, url: `${server.url}/texte.html` });
+    await dispatch(m, { type: "basculerPanneauAgent", fenetreId: b });
+    // A, focused: a tab in a private space; the private mirror is computed while A is active.
+    const idA = await focus(a);
+    const s = await dispatch(m, { type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: idA });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: idA, url: `${server.url}/a.html`, espaceId: s.espaces.at(-1)!.id });
+    // Both pages loaded: no late title change may refresh the mirror after the focus.
+    for (const end = Date.now() + 10_000; ; await new Promise((r) => setTimeout(r, 100))) {
+      const titles = Object.values((await state(m)).onglets).map((o) => o.titre).sort();
+      if (titles.join() === "Page A,Texte") break;
+      if (Date.now() > end) throw new Error(`pages not loaded: ${titles}`);
+    }
+    expect((await callTool(w!.dataDir, "page_courante")).texte).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
+    // Focus B, with no state change.
+    await focus(second);
+    expect((await callTool(w!.dataDir, "page_courante")).texte).toContain("Le chat dort");
+  });
 });

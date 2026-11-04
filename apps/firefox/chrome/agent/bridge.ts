@@ -14,13 +14,11 @@ const XHTML = "http://www.w3.org/1999/xhtml";
 const TEXT_MAX = 100_000;
 
 const internal = (o: Onglet) => o.url.startsWith("webaios:");
-/** Decision 3: the window the agent acts in. */
-const activeWindow = (state: EtatNavigateur, windows: WindowRegistry): IdFenetre | undefined => windows.active() ?? state.fenetres[0]?.id;
 
 /** What the host's bridge mirrors for its two synchronous methods (estPrive, ongletActifPrive). */
 function privateMirror(state: EtatNavigateur, windows: WindowRegistry): { prives: string[]; actifPrive: boolean } {
   const isPrivate = (o: Onglet | undefined) => !!o && !internal(o) && ongletPrive(state, o);
-  const f = state.fenetres.find((x) => x.id === activeWindow(state, windows));
+  const f = state.fenetres.find((x) => x.id === windows.active());
   const active = f && f.actif[f.espaceActif];
   return { prives: Object.values(state.onglets).filter(isPrivate).map((o) => o.id), actifPrive: isPrivate(active ? state.onglets[active] : undefined) };
 }
@@ -56,12 +54,13 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
   };
 
   return {
-    ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? activeWindow(store.state, windows)),
+    // Decision 3, as Electron's fenetreAgent: no window open (the last one kept), no active tab.
+    ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? windows.active()),
     listerOnglets: () => infosOnglets(store.state),
-    // The agent's demos open in the foreground, marked ✦.
+    // The agent's demos open in the foreground, marked ✦. With no window open, in the kept one, as Electron.
     ouvrirOnglet: ([url, espace]: [string, string?]): OngletInfo => {
       const state = store.state;
-      const f = state.fenetres.find((x) => x.id === activeWindow(state, windows)) ?? state.fenetres[0];
+      const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
       if (!f) throw new Error("Aucune fenêtre ouverte");
       const espaceId = resoudreEspace(state, f, espace);
       if (state.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
@@ -96,9 +95,10 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
           bitmap.close();
         }
       }),
-    // « L'agent veut lire l'onglet … » in the active window. The signal aborts when the host goes: the card falls.
+    // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
+    // host goes: the card falls.
     demanderAutorisation: ([o]: [OngletInfo], signal) => {
-      const f = activeWindow(store.state, windows);
+      const f = windows.active();
       return f ? questions.ask(o, f, signal) : false;
     },
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage], signal) => readPage(store, url, o, signal),
@@ -107,15 +107,17 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
 }
 
 /**
- * Tells the host what the access policy and the private mirror must learn from each state change.
- * shortcut: focusing another window changes no state, so actifPrive may lag until the next change (the bridge still
- * refuses a private tab on read); send the mirror on window activation too if the noyau ever trusts it alone.
+ * Tells the host what the access policy and the private mirror must learn from each state change. Returns the mirror's
+ * refresh, for what moves the active window without a state change (focus, a window closing).
  */
-export function trackState(store: Store, host: AgentHost, windows: WindowRegistry): void {
+export function trackState(store: Store, host: AgentHost, windows: WindowRegistry): () => void {
   let mirror = JSON.stringify(privateMirror(store.state, windows));
-  store.subscribe((state, previous) => {
-    const next = JSON.stringify(privateMirror(state, windows));
+  const refresh = () => {
+    const next = JSON.stringify(privateMirror(store.state, windows));
     if (next !== mirror) host.notify("prives", JSON.parse((mirror = next)));
+  };
+  store.subscribe((state, previous) => {
+    refresh();
     const { navigues, fermes } = changementsPolitique(previous, state);
     for (const n of navigues) host.notify("politique.navigue", n);
     for (const id of fermes) host.notify("politique.ferme", { id });
@@ -128,6 +130,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     if (state.reglages.profilAgent !== previous.reglages.profilAgent)
       host.request("changerProfil", { profilAgent: state.reglages.profilAgent }).catch((e) => console.error("[agent] profile change failed:", e));
   });
+  return refresh;
 }
 
 /** The private mirror a new host starts from. */

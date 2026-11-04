@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
-import { dispatch, inWindow, newWindow, state, waitFor, waitWindowCount } from "./firefox";
+import { dispatch, inWindow, newWindow, pressClosing, state, waitFor, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
@@ -211,5 +211,15 @@ describe("several windows", () => {
     await m.execute("window.close()");
     expect((await reading).texte).toBe(REFUSED);
     expect(settled - closed).toBeLessThan(2000);
+  });
+
+  it("with the last window closed (kept), the agent sees no active tab and a read is refused at once", async () => {
+    const id = await openTab("/a.html");
+    await pressClosing(m, "Meta+Shift+w");
+    await waitWindowCount(m, 0);
+    const start = Date.now();
+    expect((await call("lire_onglet", { id })).texte).toBe(REFUSED);
+    expect(Date.now() - start).toBeLessThan(2000);
+    expect((await call("page_courante")).texte).toBe("Aucun onglet actif.");
   });
 });

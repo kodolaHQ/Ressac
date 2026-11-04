@@ -72,6 +72,7 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["webaios-reading"],
   });
   const questions = new Questions(store);
+  let refreshMirror = () => {};
   const windows = createWindowRegistry({
     store,
     open: () => BrowserWindowTracker.openWindow(),
@@ -79,7 +80,10 @@ async function start(): Promise<WebAiOsStore> {
     onRelease: (fenetre) => {
       agent.notify("agent.fermerFenetre", { fenetre });
       questions.windowClosed(fenetre, windows.active());
+      refreshMirror();
     },
+    // The agent follows the focused window at once, as Electron reads it live.
+    onActivate: () => refreshMirror(),
   });
   const agent = createHost({
     dataDir,
@@ -87,7 +91,7 @@ async function start(): Promise<WebAiOsStore> {
     handlers: bridgeHandlers(store, questions, windows),
     onStart: (notify) => sendMirror(store, windows, notify),
   });
-  trackState(store, agent, windows);
+  refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   let access: EtatAcces = { agent: "L'agent", onglets: {} };
   agent.on("acces", (e: EtatAcces) => (access = e));

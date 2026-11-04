@@ -24,7 +24,13 @@ export interface WindowRegistry {
 }
 
 /** Electron's synchroniserFenetres and gardees: one full Firefox window per state window. */
-export function createWindowRegistry(o: { store: Store; open(): Window | undefined; onRelease(fenetreId: IdFenetre): void }): WindowRegistry {
+export function createWindowRegistry(o: {
+  store: Store;
+  open(): Window | undefined;
+  onRelease(fenetreId: IdFenetre): void;
+  /** A bound window came to the front: active() may have changed. */
+  onActivate?(fenetreId: IdFenetre): void;
+}): WindowRegistry {
   const { store } = o;
   const bound = new Map<IdFenetre, Window>();
   let kept: IdFenetre | null = null;
@@ -79,7 +85,10 @@ export function createWindowRegistry(o: { store: Store; open(): Window | undefin
         fenetreId = id;
       }
       const id = fenetreId;
-      win.addEventListener("activate", () => (lastActive = id));
+      win.addEventListener("activate", () => {
+        lastActive = id;
+        o.onActivate?.(id);
+      });
       openMissing(store.state);
       return { fenetreId: id, first };
     },
