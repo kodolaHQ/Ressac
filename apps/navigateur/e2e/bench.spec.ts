@@ -169,6 +169,14 @@ async function itemOnglet(fenetre: Page, morceau: string): Promise<string> {
   return `onglet-${n}`;
 }
 
+/**
+ * Waits until the page whose URL contains `morceau` is hidden, before a warm switch to it: a page shown again before its
+ * own visibility update has run never goes hidden and writes no `v<ms>` (seen on Firefox). Electron's hidden window never
+ * reports "hidden" (plan 22, task 1), so this only matters in the headed pass, the only one running the switch benches.
+ */
+const attendreCachee = (app: ElectronApplication, morceau: string) =>
+  expect.poll(() => dansLaVue(app, morceau, "document.visibilityState"), { timeout: 10_000, intervals: [10] }).toBe("hidden");
+
 /** Clicks a menu item in the main process; returns the time from the click to the `v<ms>` of the page shown. */
 async function basculer(app: ElectronApplication, item: string, morceau: string): Promise<number> {
   const t = await app.evaluate(({ Menu }, item) => {
@@ -197,6 +205,7 @@ test("bench: tab switch", async () => {
     const ms: number[] = [];
     // Tab 2 is shown: 2 round trips of warm-up (4 switches), then 50.
     for (let k = 0; k < 54; k++) {
+      await attendreCachee(app, pages[k % 2]!);
       const r = await basculer(app, items[k % 2]!, pages[k % 2]!);
       if (k >= 4) ms.push(r);
     }
@@ -239,6 +248,7 @@ test("bench: space switch", async () => {
     const ms: number[] = [];
     // Space 2 is shown: 2 alternations of warm-up, then 50.
     for (let k = 0; k < 52; k++) {
+      await attendreCachee(app, pages[k % 2]!);
       const r = await basculer(app, `espace-${(k % 2) + 1}`, pages[k % 2]!);
       if (k >= 2) ms.push(r);
     }
