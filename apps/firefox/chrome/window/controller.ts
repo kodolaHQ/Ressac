@@ -4,6 +4,7 @@ import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
 import type { WebAiOsStore } from "../store";
+import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
 import { visibleFrame } from "./frame";
@@ -49,6 +50,8 @@ export interface WindowController {
   onTabPanel(cb: (p: PanneauOnglets | null) => void): () => void;
   /** Electron's parcoursOnglets: mouse, Escape and ⌃ release from the ⌃Tab panel. */
   tabSwitch(m: MessageParcours): void;
+  /** The sidebar's add-on strip: buttons, pins, popups and pending updates. */
+  readonly addons: WindowAddons;
 }
 
 /** Binds this browser window to the state window it claimed (store.windows.claim). */
@@ -332,6 +335,7 @@ export function createController(
       return () => void panelListeners.delete(cb);
     },
     tabSwitch: (m) => walk.message(fenetreId, m),
+    addons: createAddons({ win: window, gBrowser, tabs, anchors, store, fenetreId }),
   };
   return controller;
 }
