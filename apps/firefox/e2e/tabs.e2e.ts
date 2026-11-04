@@ -530,5 +530,7 @@ describe("leaving a page with unsaved changes", () => {
       );
     expect(await dialogs(false)).toBe(1);
     expect(await dialogs(true)).toBe(0);
+    // That quit never happened (no quit() after it, as when a window's page keeps it): closing the window asks again.
+    expect(await dialogs(false)).toBe(1);
   });
 });

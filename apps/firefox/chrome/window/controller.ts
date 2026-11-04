@@ -15,7 +15,8 @@ export interface WindowController {
   navigate(ongletId: IdOnglet | null, input: string): void;
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
-   * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}.
+   * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}, loaded the same
+   * way when TabSync creates its XUL tab.
    */
   navigateForAgent(ongletId: IdOnglet, url: string): void;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
@@ -208,7 +209,15 @@ export function createController(
   // Quitting asks no page, as Electron. Every quit path asks each window (CanClose) right after quit-application-requested,
   // unless an observer cancelled it. Closing one window keeps Firefox's question.
   let quit: { data: boolean } | undefined;
-  const quitObserver = { observe: (subject: any) => void (quit = subject.QueryInterface(Ci.nsISupportsPRBool)) };
+  // Every quit path calls Quit in the same task as its request (nsAppStartup::Quit, MacApplicationDelegate): a quit that a
+  // window keeps (its page's « Rester ») must not skip the questions of the next window close. A beforeunload prompt of a
+  // Firefox window spins the event loop first: the flag may go early, then our pages are asked (asks more, loses nothing).
+  const quitObserver = {
+    observe: (subject: any) => {
+      quit = subject.QueryInterface(Ci.nsISupportsPRBool);
+      Services.tm.dispatchToMainThread(() => (quit = undefined));
+    },
+  };
   Services.obs.addObserver(quitObserver, "quit-application-requested");
   unsubscribe.push(() => Services.obs.removeObserver(quitObserver, "quit-application-requested"));
   const canCloseWindow = window.CanCloseWindow;

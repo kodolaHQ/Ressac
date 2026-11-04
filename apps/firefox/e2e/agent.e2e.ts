@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
@@ -156,4 +157,56 @@ it("lire_onglet on a crashed tab answers an error within 15 s", async () => {
   );
   expect(principal).toEqual({ system: false, origin: new URL(server.url).origin });
   expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
+});
+
+const crash = (id: string) =>
+  m.execute(
+    `const b = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser;
+     Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(b.browsingContext.currentWindowGlobal.domProcess.osPid);`,
+    [id],
+  );
+const triggeringPrincipal = (id: string) =>
+  m.execute(
+    `const h = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser.browsingContext.sessionHistory;
+     const p = h.getEntryAtIndex(h.index).triggeringPrincipal;
+     return { system: p.isSystemPrincipal, origin: p.origin };`,
+    [id],
+  );
+
+it("naviguer on a crashed background tab loads the agent's URL with a content principal once read", async () => {
+  const { texte: id } = await call("ouvrir_onglet", { url: `${server.url}/plante.html` });
+  await loaded("/plante.html");
+  await call("ouvrir_onglet", { url: `${server.url}/b.html` });
+  await crash(id);
+  await poll(() => state(m), (s) => !!s.onglets[id]?.plante);
+  // Revived without a XUL tab (it is in the background): the URL waits in the state for the read to create one.
+  expect((await call("naviguer", { id, url: `${server.url}/texte.html` })).erreur).toBe(false);
+  expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
+  expect(await triggeringPrincipal(id)).toEqual({ system: false, origin: new URL(server.url).origin });
+});
+
+it("lire_onglet on a tab that crashes while loading answers the crash error at once", async () => {
+  const { texte: id } = await call("ouvrir_onglet", { url: `${server.url}/texte.html` });
+  await loaded("/texte.html");
+  // A load that never ends: the read waits for it.
+  await call("naviguer", { id, url: `${server.url}/lent` });
+  await poll(() => m.execute(`return gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser.webProgress.isLoadingDocument`, [id]), (v) => v === true);
+  const start = Date.now();
+  const read = call("lire_onglet", { id });
+  await new Promise((r) => setTimeout(r, 500));
+  await crash(id);
+  expect(await read).toEqual({ texte: "Erreur : La page a planté : rechargez-la.", erreur: true });
+  expect(Date.now() - start).toBeLessThan(5_000);
+});
+
+it("lire_onglet on a tab that failed to load answers an error, not Firefox's error page", async () => {
+  const closed = await new Promise<number>((resolve) => {
+    const srv = createServer().listen(0, "127.0.0.1", () => {
+      const { port } = srv.address() as AddressInfo;
+      srv.close(() => resolve(port));
+    });
+  });
+  const { texte: id } = await call("ouvrir_onglet", { url: `http://127.0.0.1:${closed}/` });
+  await poll(() => state(m), (s) => !!s.onglets[id]?.erreur);
+  expect(await call("lire_onglet", { id })).toEqual({ texte: "Erreur : La page n'a pas pu être chargée.", erreur: true });
 });

@@ -114,6 +114,8 @@ export class TabSync {
     const pending = () => browser.webProgress?.isLoadingDocument || (browser.currentURI?.spec === "about:blank" && o.url !== "about:blank");
     if (!pending()) return browser;
     await new Promise<void>((resolve) => {
+      // A crashed browser never stops loading, a closed tab neither: no need to wait the 15 s.
+      const unsubscribe = this.store.subscribe((s) => (!s.onglets[id] || s.onglets[id].plante) && done());
       const listener = {
         onStateChange: (b: any, progress: any, _request: unknown, flags: number) => {
           if (b === browser && progress.isTopLevel && flags & STATE_STOP && flags & STATE_IS_NETWORK && !pending()) done();
@@ -121,6 +123,7 @@ export class TabSync {
       };
       const done = () => {
         clearTimeout(timer);
+        unsubscribe();
         this.gBrowser.removeTabsProgressListener(listener);
         resolve();
       };
@@ -164,7 +167,13 @@ export class TabSync {
   private create(state: EtatNavigateur, o: Onglet): void {
     this.creating = true;
     try {
-      const tab = this.gBrowser.addTrustedTab(o.url, { userContextId: this.containerOf(state, o), skipAnimation: true });
+      const userContextId = this.containerOf(state, o);
+      // The URL may come from the agent (ouvrir_onglet, naviguer on a tab without one): a web page is never loaded with the
+      // system principal, whoever asked; internal pages (about:) need it.
+      const triggeringPrincipal = /^https?:/i.test(o.url)
+        ? Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(o.url), { userContextId })
+        : Services.scriptSecurityManager.getSystemPrincipal();
+      const tab = this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
       tab.setAttribute(ID, o.id);
       this.tabs.set(o.id, tab);
     } finally {

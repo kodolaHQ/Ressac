@@ -39,14 +39,21 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
     if (ongletPrive(state, o)) throw new OngletPrive(id);
     return o;
   };
+  /** A tab whose page can be read: Firefox's crash or error page is not the page. */
+  const loadedTab = (id: string): Onglet => {
+    const o = tab(id);
+    if (o.plante) throw new Error("La page a planté : rechargez-la.");
+    if (o.erreur) throw new Error("La page n'a pas pu être chargée.");
+    return o;
+  };
   /**
    * Reads the tab's page (its XUL tab created in the background and loaded if needed), then checks the tab did not
    * become private nor go to another origin meanwhile: access was checked on the URL from before.
    */
   const outsidePrivate = async <T>(id: string, read: (browser: any) => Promise<T>): Promise<T> => {
-    const before = tab(id);
-    if (before.plante) throw new Error("La page a planté : rechargez-la.");
+    const before = loadedTab(id);
     const browser = await windowOf(id).controller.ensure(id);
+    loadedTab(id); // crashed or failed while it loaded
     const r = await read(browser);
     const origin = origineDe(before.url);
     if (origineDe(tab(id).url) !== origin || origineDe(browser.currentURI.spec) !== origin)
