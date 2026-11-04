@@ -94,6 +94,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
       await m.execute("gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });", [b]);
       await loaded(b);
       await sleep(2500); // history writes are batched
+      note(`${tag} hasVisits a/icone/b`, [await hasVisits(a), await hasVisits(icone), await hasVisits(b)]);
+      note(`${tag} places.history.enabled`, await m.execute('return Services.prefs.getBoolPref("places.history.enabled")'));
       await pressKeys(m, "Meta+[");
       await loaded(icone).then(() => note(`${tag} Meta+[ goes back to /icone`, true), async () => note(`${tag} Meta+[`, { now: await current() }));
       await pressKeys(m, "Meta+]");
@@ -127,7 +129,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
     ));
   }
 
-  it("S2: downloads, cancel, restart", async () => {
+  it("S2: slow download and cancel", async () => {
     const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-profile-"));
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-data-"));
     dirs.push(profile, dataDir);
