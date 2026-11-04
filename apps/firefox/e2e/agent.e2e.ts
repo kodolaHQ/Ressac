@@ -145,5 +145,13 @@ it("lire_onglet on a crashed tab answers an error within 15 s", async () => {
   // naviguer revives it, as Electron's loadURL does a crashed page.
   expect((await call("naviguer", { id, url: `${server.url}/texte.html` })).erreur).toBe(false);
   await loaded("/texte.html");
+  // The agent's loads never use the system principal (step 3), revived tab included.
+  const principal = await m.execute(
+    `const h = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser.browsingContext.sessionHistory;
+     const p = h.getEntryAtIndex(h.index).triggeringPrincipal;
+     return { system: p.isSystemPrincipal, origin: p.origin };`,
+    [id],
+  );
+  expect(principal).toEqual({ system: false, origin: new URL(server.url).origin });
   expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
 });

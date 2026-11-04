@@ -219,7 +219,8 @@ export function createController(
     navigateForAgent(ongletId, url) {
       const uri = Services.io.newURI(url);
       if (!uri.schemeIs("http") && !uri.schemeIs("https")) throw new Error(`URL refusée (http ou https uniquement) : ${url}`);
-      if (revive(ongletId, url)) return;
+      // Revived at its old URL, then loaded below like any agent load: never with the system principal.
+      revive(ongletId);
       const tab = tabs.tab(ongletId);
       if (!tab) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
