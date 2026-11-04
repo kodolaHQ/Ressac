@@ -90,6 +90,12 @@ async function setPrivate(m: Marionette, prive: boolean): Promise<void> {
   const e = await activeSpace(m);
   await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
 }
+async function setSpacePrivate(m: Marionette, id: string): Promise<void> {
+  const e = (await state(m)).espaces.find((x) => x.id === id)!;
+  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+}
+const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const hostPid = (m: Marionette) => m.execute<number | null>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
 async function openSettings(m: Marionette, espaceId: string): Promise<void> {
   await click(m, `[data-testid="espace-${espaceId}"]`, { button: 2 });
   await click(m, '[role="menuitem"]', { text: "Réglages" });
@@ -208,6 +214,46 @@ describe("agent extensions per space", () => {
     ecrireExtensionAgent(w.racine, "tic", tic([HOTE, "https://exemple.com/*"]));
     expect((await w.call("recharger_extension", { id: "tic" })).texte).toContain("desactivee");
     await waitActive(m, "tic@agent.webaios", false);
+    await mark(m, a);
+    await setPrivate(m, true);
+    expect(await reloaded(m, a)).toBe(true);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await inPage(m, a, "return document.documentElement.getAttribute('data-tic')")).toBeNull();
+  });
+
+  // Electron's rechargerOngletsAgent reloads every agent-script tab of a profile turned private, « même ceux d'une
+  // extension déjà retirée sans rechargement »: here switched off in A, still active (and enabled) for B's profile.
+  it("switched off in A, active in B's profile: A turns private, the tab its script still runs in is reloaded", async () => {
+    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)));
+    const m = w.marionette;
+    await waitActive(m, "tic@agent.webaios", true);
+    const espaceA = (await activeSpace(m)).id;
+    const a = await openTab(m, `${server.url}/a.html`);
+    expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    const espaceB = (await activeSpace(m)).id;
+    const basculer = (espace: string, actif: boolean) =>
+      inUi(m, "return ui.webaios.extensions.basculer('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [espace, actif]);
+    expect(await basculer(espaceB, true)).toEqual({ ok: true });
+    expect(await basculer(espaceA, false)).toEqual({ ok: true });
+    await waitActive(m, "tic@agent.webaios", true);
+    const before = await ticks(m, a);
+    expect(await poll(() => ticks(m, a), (n) => n > before)).toBeGreaterThan(before);
+    await mark(m, a);
+    await setSpacePrivate(m, espaceA);
+    expect(await reloaded(m, a)).toBe(true);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await inPage(m, a, "return document.documentElement.getAttribute('data-tic')")).toBeNull();
+  });
+
+  it("the host down: a space turned private still reloads the tab an agent script runs in", async () => {
+    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)));
+    const m = w.marionette;
+    await waitActive(m, "tic@agent.webaios", true);
+    const a = await openTab(m, `${server.url}/a.html`);
+    expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
+    process.kill((await hostPid(m))!, "SIGKILL");
+    await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (v) => v === null);
     await mark(m, a);
     await setPrivate(m, true);
     expect(await reloaded(m, a)).toBe(true);

@@ -5,7 +5,7 @@ import type { EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele"
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
-import { containerFor } from "./containers";
+import { existingContainer } from "./containers";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -147,31 +147,38 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     return onglet && espace ? { onglet, espace } : null;
   };
 
-  // The tabs each agent extension's scripts were let into, with the document they were let into: reloaded when the
-  // profile turns private (as Electron's suivreOnglet / rechargerOngletsAgent), unless that document is gone.
-  const ran = new Map<string, Map<any, number>>();
-  handlers["extensions.rechargerOnglets"] = (p: { addonId: string; profils: IdProfil[] }) => {
-    const tabs = ran.get(p.addonId);
-    if (!tabs || !Array.isArray(p.profils)) return;
-    const containers = new Set(p.profils.map((profil) => containerFor(profil)));
-    for (const [tab, windowId] of tabs) {
-      const browser = tab.linkedBrowser;
-      if (!browser || browser.innerWindowID !== windowId) tabs.delete(tab);
-      else if (containers.has(tab.userContextId)) {
-        tabs.delete(tab);
-        browser.reload();
+  // The tabs each agent extension's scripts were let into (as Electron's suivreOnglet): a profile turned private reloads
+  // them (rechargerOngletsAgent), whatever the extension's state now: switched off there, its scripts still run.
+  const ran = new Map<string, Set<any>>();
+  /** Reloads the tabs of `profils` that `addonId` (every agent extension if null) ran in; forgets the closed ones. */
+  const reloadTabs = (addonId: string | null, profils: readonly IdProfil[]) => {
+    const containers = new Set(profils.map(existingContainer).filter((c) => c !== null));
+    for (const [id, tabs] of ran)
+      for (const tab of tabs) {
+        if (!tab.isConnected || !tab.linkedBrowser) tabs.delete(tab);
+        else if ((addonId === null || id === addonId) && containers.has(tab.userContextId)) {
+          tabs.delete(tab);
+          tab.linkedBrowser.reload();
+        }
       }
-    }
+  };
+  handlers["extensions.rechargerOnglets"] = (p: { addonId: string; profils: IdProfil[] }) => {
+    if (typeof p?.addonId === "string" && Array.isArray(p.profils)) reloadTabs(p.addonId, p.profils);
   };
 
-  // The extensions leave a profile turned private (noyau): sent at each change of that set, and at each host start.
+  // A profile turned private: its agent-script tabs reload here at once, host or not; the noyau takes it out of the
+  // registry (extensions.profilsPrives, sent at each change of that set, and at each host start).
   const privateProfiles = () => [...new Set(store.state.espaces.filter((e) => e.prive).map((e) => e.profil))].sort();
   const sendPrivate = () => host().notify("extensions.profilsPrives", { prives: privateProfiles() });
-  let lastPrivate = JSON.stringify(privateProfiles());
-  store.subscribe(() => {
-    const now = JSON.stringify(privateProfiles());
-    if (now === lastPrivate) return;
+  let lastPrivate = privateProfiles();
+  store.subscribe((state, previous) => {
+    const now = privateProfiles();
+    // A tab closed: forget it (its element would stay alive in `ran`).
+    if (Object.keys(state.onglets).length < Object.keys(previous.onglets).length) reloadTabs(null, []);
+    if (now.join("\n") === lastPrivate.join("\n")) return;
+    const turned = now.filter((p) => !lastPrivate.includes(p));
     lastPrivate = now;
+    if (turned.length > 0) reloadTabs(null, turned);
     sendPrivate();
   });
 
@@ -211,12 +218,10 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         // 2: its content scripts follow its spaces; Electron loads it in that profile's session only).
         const tab = tabOf(value);
         const t = ongletDe(tab);
-        if (!t || t.espace.prive || !scope.profils.includes(t.espace.profil) || tab.userContextId !== containerFor(t.espace.profil)) return false;
+        if (!t || t.espace.prive || !scope.profils.includes(t.espace.profil) || tab.userContextId !== existingContainer(t.espace.profil)) return false;
         // Its scripts will run there: a tab the agent cannot read masks its console for good (as Electron's aTourneDansOnglet).
         if (!access().onglets[t.onglet.id]?.lecture) masked(addonId, t.espace.profil);
-        const tabs = ran.get(addonId) ?? new Map();
-        for (const [other] of tabs) if (!other.isConnected) tabs.delete(other);
-        ran.set(addonId, tabs.set(tab, tab.linkedBrowser?.innerWindowID));
+        ran.set(addonId, (ran.get(addonId) ?? new Set()).add(tab));
         return true;
       }
     }

@@ -23,6 +23,12 @@ export function containerFor(profile: IdProfil): number {
   return userContextId;
 }
 
+/** userContextId of a login profile's container if it exists (0 for the default one), else null: never creates one. */
+export function existingContainer(profile: IdProfil): number | null {
+  if (profile === PROFIL_DEFAUT) return 0;
+  return ContextualIdentityService.getPrivateIdentity(internalName(profile))?.userContextId ?? null;
+}
+
 /** Removes the container of a login profile and wipes its cookies and storage, as removePolicyIdentity does. */
 export function removeContainer(profile: IdProfil): void {
   const { _identities: list } = ContextualIdentityService;

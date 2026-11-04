@@ -80,13 +80,18 @@ async function load(
     { id: "e3", prive: false, profil: "autre" },
   ];
   const onglets = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, espaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
-  const listeners: (() => void)[] = [];
-  const store = { state: { espaces, onglets }, subscribe: (l: () => void) => void listeners.push(l) };
+  type State = { espaces: typeof espaces; onglets: typeof onglets };
+  const listeners: ((state: State, previous: State) => void)[] = [];
+  const store = { state: { espaces, onglets } as State, subscribe: (l: (state: State, previous: State) => void) => void listeners.push(l) };
   const access = () => ({ agent: "L'agent", onglets: Object.fromEntries((o.lecture ?? []).map((id) => [id, { lecture: true, droits: [], construite: false, enCours: false }])) });
   const host = { request: (...a: unknown[]) => (o.requests?.push(a), Promise.resolve()), notify: (...a: unknown[]) => void o.notified?.push(a) };
   const x = createAgentExtensions(store as never, {} as never, {} as never, () => host as never, access as never);
   /** A new state, as the store sends it to its subscribers. */
-  const setSpaces = (e: typeof espaces) => ((store.state = { ...store.state, espaces: e }), listeners.forEach((l) => l()));
+  const setSpaces = (e: typeof espaces) => {
+    const previous = store.state;
+    store.state = { ...previous, espaces: e };
+    listeners.forEach((l) => l(store.state, previous));
+  };
   return Object.assign(x, { setSpaces });
 }
 const grant = (x: Awaited<ReturnType<typeof load>>, actif = true) =>
@@ -184,7 +189,7 @@ describe("agent extension checkpoints", () => {
     expect([1, 2, 6].map((t) => x.check(ID, "estOnglet", t))).toEqual([true, false, false]);
   });
 
-  it("extensions.rechargerOnglets reloads, once, the tabs of those profiles its scripts were let into, unless their page changed", async () => {
+  it("extensions.rechargerOnglets reloads, once, the tabs of those profiles its scripts were let into, even after a navigation", async () => {
     const tab3: FakeTab = { attrs: ["webaios-tab-id"], url: "https://hote.test/c" };
     const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" }, 3: tab3, 4: { attrs: ["webaios-tab-id"], url: "https://hote.test/d" } });
     grant(x);
@@ -194,9 +199,25 @@ describe("agent extension checkpoints", () => {
     reload({ addonId: "autre@agent.webaios", profils: ["defaut"] });
     expect(reloads).toEqual([]);
     reload({ addonId: ID, profils: ["defaut"] });
-    expect(reloads).toEqual([1, 4]);
+    expect(reloads).toEqual([1, 3, 4]);
     reload({ addonId: ID, profils: ["defaut"] });
-    expect(reloads).toEqual([1, 4]);
+    expect(reloads).toEqual([1, 3, 4]);
+  });
+
+  it("a profile turned private reloads at once, without the host, every tab an agent script was let into there", async () => {
+    const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" } });
+    x.handlers["extensions.portees"]!(
+      { [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif: true }, "autre@agent.webaios": { cle: "agent:autre", accord: ACCORD, profils: ["defaut"], actif: true } },
+      new AbortController().signal,
+    );
+    x.check(ID, "estOnglet", 1);
+    x.check("autre@agent.webaios", "estOnglet", 2);
+    // Switched off there since (out of its profiles): its script still runs, the tab reloads all the same.
+    grant(x);
+    x.setSpaces([{ id: "e1", prive: false, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }, { id: "e3", prive: false, profil: "autre" }]);
+    expect(reloads).toEqual([]);
+    x.setSpaces([{ id: "e1", prive: true, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }, { id: "e3", prive: false, profil: "autre" }]);
+    expect(reloads).toEqual([1, 2]);
   });
 
   it("extensions.profilsPrives is sent when the set of private profiles changes, and at a host start", async () => {
