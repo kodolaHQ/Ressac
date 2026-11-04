@@ -1,5 +1,7 @@
+import type { CarteExtension } from "../../../navigateur/src/commun/extensions";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
+import type { Questions } from "../agent/questions";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -19,7 +21,7 @@ export interface AgentExtensions {
 }
 
 /** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
-export function createAgentExtensions(store: Store, windows: WindowRegistry, host: () => AgentHost): AgentExtensions {
+export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost): AgentExtensions {
   // Add-ons this module is changing: their AddonManager events are ours, not about:addons'.
   const ours = new Set<string>();
   const own = async <T>(addonId: string, f: () => Promise<T>): Promise<T> => {
@@ -69,6 +71,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, hos
     "extensions.desinstaller": async (p: { addonId: string }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (addon) await own(addon.id, () => addon.uninstall());
+    },
+    // The grant card, in that window if still open, else the active one; no window: it falls at once.
+    "extensions.accord": (p: { carte: CarteExtension; fenetre: string | null }, signal) => {
+      const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
+      return f ? questions.askExtension(p.carte, f, signal) : { accepte: false, empreinte: p.carte.empreinte, retiree: true };
     },
     "navigateur.espaces": () => ({
       espaces: store.state.espaces,

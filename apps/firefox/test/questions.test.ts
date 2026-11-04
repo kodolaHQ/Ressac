@@ -27,3 +27,30 @@ it("a question of a closed window moves to the other, or is refused without one"
   expect(questions.pending()).toEqual([]);
   expect(await answer).toBe(false);
 });
+
+it("an extension card: Activer answers accepte with the card's empreinte; a renforcée one needs confirme", async () => {
+  const store = createStore(etatInitial());
+  const questions = new Questions(store);
+  const fenetre = store.state.fenetres[0]!.id;
+  const espace = store.state.espaces[0]!;
+  const carte = {
+    cle: "agent:essai", nom: "Essai", source: "agent" as const, version: "1.0.0", droits: [], sites: [], tousLesSites: false, reseau: [],
+    renforce: false, espace: espace.nom, espaceId: espace.id, autresEspaces: [], remplaceAussi: [], maj: null, empreinte: "e".repeat(64),
+  };
+  let answer = questions.askExtension(carte, fenetre);
+  expect(questions.pending()).toMatchObject([{ fenetreId: fenetre, ongletId: null, permissions: ["extension"], extension: carte }]);
+  questions.answer(questions.pending()[0]!.id, "autoriser");
+  expect(await answer).toEqual({ accepte: true, empreinte: carte.empreinte });
+
+  answer = questions.askExtension({ ...carte, renforce: true }, fenetre);
+  questions.answer(questions.pending()[0]!.id, "autoriser");
+  expect(await answer).toEqual({ accepte: false, empreinte: carte.empreinte });
+
+  answer = questions.askExtension({ ...carte, renforce: true }, fenetre);
+  questions.answer(questions.pending()[0]!.id, "autoriser", { confirme: true });
+  expect(await answer).toEqual({ accepte: true, empreinte: carte.empreinte });
+
+  // Its space gone: the card falls, « retirée ».
+  expect(await questions.askExtension({ ...carte, espaceId: "gone" }, fenetre)).toEqual({ accepte: false, empreinte: carte.empreinte, retiree: true });
+  expect(questions.pending()).toEqual([]);
+});

@@ -9,7 +9,8 @@ import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
 import { installationImpossible } from "../noyau/extensions/agent";
-import { signatureRefusee } from "../noyau/extensions/amo";
+import { CLES_ABSENTES, signatureRefusee } from "../noyau/extensions/amo";
+import type { CarteExtension, ReponseAccord } from "../../navigateur/src/commun/extensions";
 import { startFakeAmo } from "./fake-amo";
 import { appelerOutil } from "./mcp";
 
@@ -344,6 +345,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       presents,
       casse: false,
       espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: false }] as { id: string; nom: string; profil: string; prive: boolean }[],
+      /** The grant cards asked, and the answer given to each (default: Activer). */
+      cartes: [] as CarteExtension[],
+      reponse: (c: CarteExtension): ReponseAccord => ({ accepte: true, empreinte: c.empreinte }),
       handlers: {} as Record<string, Handler>,
     };
     f.handlers = {
@@ -358,15 +362,23 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       },
       "extensions.activer": (p: { addonId: string; actif: boolean }) => void activations.push(p),
       "extensions.desinstaller": (p: { addonId: string }) => void (desinstallations.push(p.addonId), presents.delete(p.addonId)),
-      "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [], premierPlan: null }),
+      "extensions.accord": (p: { carte: CarteExtension }) => (f.cartes.push(p.carte), f.reponse(p.carte)),
+      "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [{ id: "f1", espaceActif: "e1" }], premierPlan: "f1" }),
     };
     return f;
   };
 
   // Temporary add-ons are gone after a quit.
-  const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void } = {}) => {
+  // `cles: false`: no AMO keys.
+  const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void; cles?: false } = {}) => {
     f.presents.clear();
-    return startHost({ WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+    const cles: Record<string, string> = o.cles === false ? {} : { WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" };
+    return startHost({ WEBAIOS_TEST_AMO_URL: amo.url, ...cles }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+  };
+  /** An agent tool, once the noyau runs. */
+  const outil = async (h: Host, nom: string, args: Record<string, unknown> = {}) => {
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    return (await appelerOutil(h.racine, nom, args)).texte;
   };
   const stop = async (h: Host) => {
     await h.rpc.request("arreter");
@@ -428,8 +440,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo({ delaiMs: 500 });
     const f = firefox();
     const h = launch(amo, f, { prepare });
-    const [a, b] = await Promise.all([h.rpc.request("extensions.recharger", { id: "ma-ext" }), h.rpc.request("extensions.recharger", { id: "ma-ext" })]);
-    expect([a, b]).toEqual([expect.objectContaining({ ok: true }), expect.objectContaining({ ok: true })]);
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    const [a, b] = await Promise.all([outil(h, "recharger_extension", { id: "ma-ext" }), outil(h, "recharger_extension", { id: "ma-ext" })]);
+    expect([a, b]).toEqual(["etat : rechargee", "etat : rechargee"]);
     expect(amo.envois.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.installs.at(-1)!.version).toBe("1.0.0.2");
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.2");
@@ -442,9 +455,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await stop(h);
     source(h.dataDir, { css: "#reste { display: none }\n" });
     h = launch(await fakeAmo({ refus: "Validation failed: eval" }), f, { dataDir: h.dataDir });
-    const r = await h.rpc.request<{ ok: boolean; erreur: string }>("extensions.recharger", { id: "ma-ext" });
-    expect(r).toEqual({ ok: false, erreur: signatureRefusee("Validation failed: eval") });
-    expect(r.erreur).not.toContain("test-secret");
+    const r = await outil(h, "recharger_extension", { id: "ma-ext" });
+    expect(r).toContain("etat : refusee");
+    expect(r).toContain(signatureRefusee("Validation failed: eval"));
+    expect(r).not.toContain("test-secret");
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.1");
     expect(f.installs).toHaveLength(1);
     expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
@@ -505,7 +519,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     f.casse = true;
     const h = launch(amo, f, { prepare });
-    expect(await h.rpc.request("extensions.recharger", { id: "ma-ext" })).toEqual({ ok: false, erreur: installationImpossible("boom") });
+    expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toContain(installationImpossible("boom"));
     expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"))).toBe(false);
   });
 
@@ -516,5 +530,77 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, ["defaut", "secret"])) });
     await h.rpc.request("extensions.pret", {});
     expect(entree(h.dataDir).profils).toEqual(["defaut"]);
+  });
+
+  it("demander_extension: refused, nothing sent; Activer: signed and installed, then granted, « Activée »", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    // Nothing granted while the card shows, nor while it installs: the grant is written after the install.
+    const accord = f.handlers["extensions.accord"]!;
+    const installer = f.handlers["extensions.installer"]!;
+    const sansAccord: boolean[] = [];
+    const nonAccordee = () => !existsSync(join(h.dataDir, "extensions", "etat.json")) || !entree(h.dataDir)?.accord;
+    f.handlers["extensions.accord"] = (p, s) => (sansAccord.push(nonAccordee()), accord(p, s));
+    f.handlers["extensions.installer"] = (p, s) => (sansAccord.push(nonAccordee()), installer(p, s));
+    const h = launch(amo, f, { prepare: source });
+    f.reponse = (c) => ({ accepte: false, empreinte: c.empreinte });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Refusée par l'utilisateur.");
+    expect(amo.envois).toEqual([]);
+    f.reponse = (c) => ({ accepte: true, empreinte: c.empreinte });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    expect(f.cartes[1]).toMatchObject({ cle: "agent:ma-ext", nom: "Cacheur", espace: "Perso", espaceId: "e1", sites: [HOTE], reseau: [] });
+    expect(f.installs).toEqual([expect.objectContaining({ version: "1.0.0.1" })]);
+    // Two cards, the signed install; then appliquer's call (same version: a no-op) once granted.
+    expect(sansAccord).toEqual([true, true, true, false]);
+    expect(entree(h.dataDir)).toMatchObject({ idChrome: ID, accord: ACCORD, profils: ["defaut"], desactivee: null });
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
+    // Already granted and active there: nothing asked again.
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    expect(f.cartes).toHaveLength(2);
+    expect(await outil(h, "lister_extensions")).toContain("agent:ma-ext · Cacheur · 1.0.0 · agent · actives dans : Perso · erreurs : aucune");
+  });
+
+  it("demander_extension without AMO keys: clear error, no card asked, nothing sent", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare: source, cles: false });
+    const r = await outil(h, "demander_extension", { id: "ma-ext" });
+    expect(r).toContain("Clés AMO absentes");
+    expect(r).toBe(CLES_ABSENTES);
+    expect(f.cartes).toEqual([]);
+    expect(amo.envois).toEqual([]);
+  });
+
+  it("nativeMessaging is refused by the copy, before any card", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, {
+      prepare: (d) => {
+        source(d);
+        const chemin = join(d, "espace", "extensions", "ma-ext", "manifest.json");
+        writeFileSync(chemin, JSON.stringify({ ...JSON.parse(readFileSync(chemin, "utf8")), permissions: ["nativeMessaging"] }));
+      },
+    });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toContain("Droit refusé : nativeMessaging");
+    expect(f.cartes).toEqual([]);
+    expect(amo.envois).toEqual([]);
+  });
+
+  it("recharger_extension: a new site disables it (grant kept), the card comes back", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare: source });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    source(h.dataDir, { hotes: [HOTE, "https://exemple.com/*"] });
+    const r = await outil(h, "recharger_extension", { id: "ma-ext" });
+    expect(r).toContain("etat : desactivee");
+    expect(r).toContain("demander_extension");
+    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, desactivee: { raison: "portee-elargie" } });
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    expect(f.cartes).toHaveLength(2);
+    expect(entree(h.dataDir)).toMatchObject({ accord: { hotes: [HOTE, "https://exemple.com/*"] }, desactivee: null });
+    expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
   });
 });

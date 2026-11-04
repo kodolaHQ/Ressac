@@ -1,11 +1,12 @@
 import type { OngletInfo } from "../shims/noyau";
+import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions";
 import type { Decision, DemandeEnAttente, IdFenetre, Issue } from "../../../navigateur/src/commun/modele";
-import { attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque } from "../../../navigateur/src/main/agent/pont";
+import { attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque } from "../../../navigateur/src/main/agent/pont";
 import type { Store } from "../store/store";
 
 type Listener = (pending: DemandeEnAttente[]) => void;
 
-/** The agent's « lire l'onglet » cards waiting for the user (Electron's `questions` in main/index.ts). */
+/** The agent's « lire l'onglet » and extension grant cards waiting for the user (Electron's `questions` in main/index.ts). */
 export class Questions {
   private readonly open = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue) => void }>();
   private readonly listeners = new Set<Listener>();
@@ -30,18 +31,28 @@ export class Questions {
     const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["lire-onglet" as const], titre: o.titre, cible: o.id };
     // Already stale (tab closed, private, gone elsewhere): no card, which no state change would ever take down.
     if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve(false);
-    return attendreReponse(
-      (repondre) => {
-        const id = crypto.randomUUID();
-        this.open.set(id, { demande: { id, ...fields }, repondre });
-        this.changed();
-        return () => {
-          if (this.open.delete(id)) this.changed();
-        };
-      },
-      DELAI_QUESTION_MS,
-      signal,
-    );
+    return attendreReponse((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
+  }
+
+  /**
+   * Shows the grant card of an agent extension (DemandeExtension) in the window; it falls (« retirée ») after
+   * DELAI_QUESTION_MS, on `signal`, or when its space goes or turns private. A renforcée card needs « Je comprends ».
+   */
+  async askExtension(carte: CarteExtension, fenetreId: IdFenetre, signal?: AbortSignal): Promise<ReponseAccord> {
+    const fields = { ongletId: null, fenetreId, origine: carte.cle, permissions: ["extension" as const], extension: carte };
+    const issue = questionCaduque({ id: "", ...fields }, this.store.state)
+      ? "retiree"
+      : await attendreIssue((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
+    return { accepte: issue === "autoriser", empreinte: carte.empreinte, ...(issue === "retiree" ? { retiree: true } : {}) };
+  }
+
+  private pose(fields: Omit<DemandeEnAttente, "id">, repondre: (d: Issue) => void): () => void {
+    const id = crypto.randomUUID();
+    this.open.set(id, { demande: { id, ...fields }, repondre });
+    this.changed();
+    return () => {
+      if (this.open.delete(id)) this.changed();
+    };
   }
 
   /** A window closed: its questions move to `to` (on its active tab), or are refused without one (Electron's questionsFenetreFermee). */

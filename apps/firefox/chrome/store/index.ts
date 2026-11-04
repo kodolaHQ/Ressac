@@ -98,7 +98,7 @@ async function start(): Promise<WebAiOsStore> {
     // The agent follows the focused window at once, as Electron reads it live.
     onActivate: () => refreshMirror(),
   });
-  const agentExtensions = createAgentExtensions(store, windows, () => agent);
+  const agentExtensions = createAgentExtensions(store, windows, questions, () => agent);
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,

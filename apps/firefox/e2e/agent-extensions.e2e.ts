@@ -6,9 +6,10 @@ import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
 import { agentAddons, grant, launchWithAmo } from "./agent-extensions";
 import { waitFor } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
+import { callTool } from "./mcp";
 
-// Ported from Electron's extensions-agent.spec.ts. No agent tool yet (task 4): grants are written to the registry before
-// the launch, and the effects checked after a restart.
+// Ported from Electron's extensions-agent.spec.ts: grants are written to the registry before the launch, and the effects
+// checked after a restart (the agent's tools and their card: agent-extensions-cards.e2e.ts).
 const HOTE = "http://127.0.0.1/*";
 const manifeste = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 const CACHE = "#cache-moi { display: none !important; }\n";
@@ -103,14 +104,15 @@ describe("agent extensions: registry, signed install, restart", () => {
     let w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     await w.close();
+    // Written again by the next noyau: its own port and token.
+    rmSync(path.join(racine(f.dataDir), ".webaios", "mcp.json"));
 
     w = await launch({ ...f, amo: { delaiMs: 60_000 } });
     await waitAddon(w, "1.0.0.1");
     ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "cache.css": CACHE_TOUT });
-    await w.marionette.execute(`return (async () => {
-      const store = await ChromeUtils.importESModule("${STORE}").ready;
-      store.agent.request("extensions.recharger", { id: "cacheur" }).catch(() => {});
-    })();`);
+    await until(() => existsSync(path.join(racine(f.dataDir), ".webaios", "mcp.json")));
+    // Never answered: the app quits during the signature.
+    callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
     const amo = w.amo;
     await until(() => amo.envois.some((e) => e.version === "1.0.0.2"));
     expect(await agentAddons(w.marionette)).toEqual([{ id: ID, version: "1.0.0.1", isActive: true }]);

@@ -1,8 +1,11 @@
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  activer,
   cleExtension,
+  DEMANDE_RETIREE,
   desactiverPartout,
+  ERREUR_PROFIL_PRIVE,
   GARDES_PAR_DEFAUT,
   lireEtatExtensions,
   modifierEtatExtensions,
@@ -12,22 +15,36 @@ import {
   type AnalyseManifeste,
   type EntreeExtension,
   type EtatExtensions,
+  type ExtensionPourAgent,
+  type OutilsExtensions,
   type Portee,
+  type ResultatDemandeExtension,
 } from "../../../../packages/noyau/src/index.ts";
-import { DESACTIVEE_PORTEE } from "../../../navigateur/src/commun/extensions-messages.ts";
+import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
+import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../../navigateur/src/commun/extensions-messages.ts";
+import type { Espace } from "../../../navigateur/src/commun/modele.ts";
 import type { Rpc } from "../../shared/rpc.ts";
 import { AMO_URL, CLES_ABSENTES, ErreurSignature, lireCleAmo, signatureImpossible, signer } from "./amo.ts";
+import { carteDe } from "./carte.ts";
 import { addonIdDe, manifesteFirefox, prochaineVersion, refusFirefox, SUFFIXE_ID, zipper } from "./copie-firefox.ts";
 
 // Keep in sync with apps/navigateur/src/main/extensions/agent.ts (texts and reperesDuChemin).
 export const DOSSIER_ABSENT = "Dossier absent";
 export const ACTIVATION_REFUSEE = "Activation refusée";
+export const ACTIVATION_RETIREE = DEMANDE_RETIREE;
+export const TOUTES_COUPEES_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
+const RETIREE_PENDANT_CARTE = "Extension retirée pendant la carte : rien n'est activé";
 export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
 export const SANS_ACCORD = "Extension sans accord : demande d'abord son activation";
 /** Firefox refused the signed .xpi (no Electron text: new, like decision 9's). */
 export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
 
+/** Until the console relay (task 9): console_extension, debloquer_console and refermer_console answer this. */
+const CONSOLE_A_VENIR = "Console des extensions pas encore disponible dans WebAiOs-Firefox";
+
 export type ResultatEnvoi = { ok: true; analyse: AnalyseManifeste } | { ok: false; erreur: string; refus?: string[] };
+
+type Preparation = { ok: true; analyse: AnalyseManifeste; empreinte: string; staging: string; fondOriginal: string | undefined };
 
 interface Repere {
   chemin: string;
@@ -53,6 +70,14 @@ async function reperesDuChemin(dossierAgent: string, id: string): Promise<Repere
   return reperes;
 }
 
+/** What Firefox answers to navigateur.espaces. */
+interface Navigateur {
+  espaces: Espace[];
+  fenetres: { id: string; espaceActif: string }[];
+  premierPlan: string | null;
+}
+const profilsPrivesDe = (n: Navigateur) => new Set(n.espaces.filter((e) => e.prive).map((e) => e.profil));
+
 const memesReperes = (a: Repere[], b: Repere[]) =>
   a.length === b.length && a.every((x, i) => x.chemin === b[i]!.chemin && x.dev === b[i]!.dev && x.ino === b[i]!.ino);
 
@@ -65,6 +90,8 @@ const actifDans = (e: EtatExtensions, x: EntreeExtension | undefined) => !!x?.ac
  */
 export class ExtensionsAgent {
   private readonly files = new Map<string, Promise<unknown>>();
+  /** The grant card open for each key: a reload or a removal takes it down (it holds the key's queue). */
+  private readonly cartes = new Map<string, AbortController>();
   private readonly arret = new AbortController();
   private readonly env: NodeJS.ProcessEnv;
 
@@ -106,10 +133,155 @@ export class ExtensionsAgent {
     return this.enFile(cle, () => this.envoi(id, cle, o));
   }
 
+  /** The agent's extension tools (Electron's outilsAgent, service.ts). */
+  outils(): OutilsExtensions {
+    return {
+      lister: () => this.lister(),
+      demander: (id, x) => this.demander(id, x),
+      recharger: (id) => this.recharger(id),
+      // shortcut: no console relay before task 9; these tools answer an error until then.
+      console: () => Promise.reject(new Error(CONSOLE_A_VENIR)),
+      debloquerConsole: () => Promise.reject(new Error(CONSOLE_A_VENIR)),
+      refermerConsole: () => Promise.reject(new Error(CONSOLE_A_VENIR)),
+    };
+  }
+
+  /** Each registry entry: the non-private spaces where it is active (named), the private ones (counted), its disabling. */
+  private async lister(): Promise<ExtensionPourAgent[]> {
+    const [nav, etat] = await Promise.all([this.navigateur(), lireEtatExtensions(this.o.dossier)]);
+    return Object.entries(etat.extensions)
+      .map(([cle, x]): ExtensionPourAgent => {
+        const espaces = nav.espaces.filter((e) => x.profils.includes(e.profil));
+        return {
+          cle,
+          source: x.source,
+          nom: x.nom,
+          version: x.version,
+          espaces: espaces.filter((e) => !e.prive).map((e) => e.nom),
+          espacesPrives: espaces.filter((e) => e.prive).length,
+          erreurs: x.desactivee ? [x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE] : [],
+        };
+      })
+      .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /**
+   * `demander_extension` (Electron's demanderPourAgent): the space named (id or name, never a private one), else the
+   * active space of the agent's window (or the foreground one); then the card, in that window.
+   */
+  private async demander(id: string, x: { espace?: string; fenetre: string | null; signal?: AbortSignal }): Promise<ResultatDemandeExtension> {
+    const cle = this.cle(id);
+    if (!cle) return { ok: false, erreur: `Identifiant d'extension invalide : ${id}` };
+    const nav = await this.navigateur();
+    const f = nav.fenetres.find((w) => w.id === x.fenetre) ?? nav.fenetres.find((w) => w.id === nav.premierPlan) ?? nav.fenetres[0];
+    let espace: Espace | undefined;
+    if (x.espace !== undefined) {
+      const ouverts = nav.espaces.filter((e) => !e.prive);
+      espace = ouverts.find((e) => e.id === x.espace) ?? ouverts.find((e) => e.nom.toLowerCase() === x.espace!.toLowerCase());
+      if (!espace) return { ok: false, erreur: `Espace inconnu : ${x.espace}` };
+    } else espace = nav.espaces.find((e) => e.id === f?.espaceActif);
+    if (!espace) return { ok: false, erreur: "Aucun espace actif" };
+    const choisi = espace;
+    const r = await this.enFile(cle, () => this.activation(id, cle, choisi, f?.id ?? null, x.signal));
+    if (r.ok) return { ok: true, espace: espace.nom };
+    if (r.erreur === ACTIVATION_REFUSEE) return { ok: false, erreur: r.erreur, refusee: true };
+    if (r.erreur === ACTIVATION_RETIREE) return { ok: false, erreur: r.erreur, retiree: true };
+    return r;
+  }
+
+  /**
+   * As Electron's activation (agent.ts): private profile → refused without a card; already granted and active there →
+   * nothing asked. Else the copy is prepared and its card shown; accepted (the scope shown, the space still there and
+   * not private), it is signed and installed on that scope, and only then granted and active in the space's profile.
+   */
+  private async activation(id: string, cle: string, espace: Espace, fenetre: string | null, signal?: AbortSignal): Promise<{ ok: true } | { ok: false; erreur: string }> {
+    const profil = espace.profil;
+    const nav = await this.navigateur();
+    if (profilsPrivesDe(nav).has(profil)) return { ok: false, erreur: ERREUR_PROFIL_PRIVE };
+    const etat = await lireEtatExtensions(this.o.dossier);
+    if (etat.toutesCoupees) return { ok: false, erreur: TOUTES_COUPEES_AGENT };
+    const connue = etat.extensions[cle];
+    if (connue?.desactivee?.raison === "plantages") return { ok: false, erreur: DESACTIVEE_PLANTAGES };
+    if (connue?.accord && !connue.desactivee && connue.profils.includes(profil)) {
+      // Already granted and active: nothing asked again, but a folder gone is said.
+      const chemin = await reperesDuChemin(this.o.dossierAgent, id);
+      if (typeof chemin === "string") return { ok: false, erreur: chemin === DOSSIER_ABSENT ? dossierAbsent(id) : chemin };
+      return { ok: true };
+    }
+
+    const p = await this.preparer(id);
+    if (!p.ok) return { ok: false, erreur: p.refus.map((r) => (r === DOSSIER_ABSENT ? dossierAbsent(id) : r)).join(" ; ") };
+    const effacer = () => rm(p.staging, { recursive: true, force: true });
+    // A signing will be needed: without keys, nothing is shown and nothing leaves.
+    if ((await this.garde(id))?.empreinte !== p.empreinte && !(await lireCleAmo(this.env))) {
+      await effacer();
+      return { ok: false, erreur: CLES_ABSENTES };
+    }
+    // Already active elsewhere with a narrower grant: the new copy replaces it there too, the card says so.
+    const autresProfils = connue?.accord && porteeElargie(connue.accord, p.analyse.portee) ? connue.profils.filter((x) => x !== profil) : [];
+    const remplaceAussi = nav.espaces.filter((e) => !e.prive && autresProfils.includes(e.profil)).map((e) => e.nom);
+    const carte = carteDe(p.analyse, { cle, espace, espaces: nav.espaces, remplaceAussi });
+    const r = await this.demanderAccord(cle, carte, fenetre, signal);
+    if (!(r.accepte && r.empreinte === carte.empreinte)) {
+      await effacer();
+      return { ok: false, erreur: r.retiree ? ACTIVATION_RETIREE : ACTIVATION_REFUSEE };
+    }
+    // The state may have changed during the card: checked again on « yes ».
+    const apres = await this.navigateur();
+    const ici = apres.espaces.find((e) => e.id === espace.id);
+    const etatApres = await lireEtatExtensions(this.o.dossier);
+    const refus = !ici
+      ? "Espace disparu pendant la carte : rien n'est activé"
+      : ici.profil !== profil || profilsPrivesDe(apres).has(profil)
+        ? ERREUR_PROFIL_PRIVE
+        : etatApres.toutesCoupees
+          ? TOUTES_COUPEES_AGENT
+          : connue && !(cle in etatApres.extensions)
+            ? RETIREE_PENDANT_CARTE
+            : null;
+    if (refus) {
+      await effacer();
+      return { ok: false, erreur: refus };
+    }
+    const e = await this.envoi(id, cle, { accord: p.analyse.portee, activer: { profil, connue: !!connue } }, p);
+    return e.ok ? { ok: true } : { ok: false, erreur: e.erreur };
+  }
+
+  /** The card in the chrome (`extensions.accord`); fallen, aborted or unanswerable: « retirée », never a refusal. */
+  private async demanderAccord(cle: string, carte: CarteExtension, fenetre: string | null, signal?: AbortSignal): Promise<ReponseAccord> {
+    const retrait = new AbortController();
+    this.cartes.set(cle, retrait);
+    try {
+      const signaux = [retrait.signal, this.arret.signal, ...(signal ? [signal] : [])];
+      return await this.o.rpc.request<ReponseAccord>("extensions.accord", { carte, fenetre }, AbortSignal.any(signaux));
+    } catch {
+      return { accepte: false, empreinte: carte.empreinte, retiree: true };
+    } finally {
+      if (this.cartes.get(cle) === retrait) this.cartes.delete(cle);
+    }
+  }
+
+  /** `recharger_extension`: within its grant, signed and installed without a card; broadened, disabled (grant kept). */
+  private recharger(id: string): Promise<{ etat: "rechargee" | "desactivee" | "refusee"; detail: string[] }> {
+    const cle = this.cle(id);
+    if (!cle) return Promise.resolve({ etat: "refusee", detail: [`Identifiant d'extension invalide : ${id}`] });
+    // A card left open for it holds its queue: it falls first.
+    this.cartes.get(cle)?.abort();
+    return this.enFile(cle, async () => {
+      const accord = (await lireEtatExtensions(this.o.dossier)).extensions[cle]?.accord;
+      if (!accord) return { etat: "refusee" as const, detail: [SANS_ACCORD] };
+      const r = await this.envoi(id, cle, { accord });
+      if (r.ok) return { etat: "rechargee" as const, detail: [] };
+      if (r.erreur === DESACTIVEE_PORTEE) return { etat: "desactivee" as const, detail: [DESACTIVEE_PORTEE] };
+      return { etat: "refusee" as const, detail: r.refus ?? [r.erreur] };
+    });
+  }
+
   /** « Supprimer »: uninstalled, copy and signed .xpi deleted, registry entry removed; amo-versions.json kept (AMO never reuses a number). */
   supprimer(cle: string): Promise<void> {
     const id = this.id(cle);
     if (!id) return Promise.reject(new Error(`Identifiant d'extension invalide : ${cle}`));
+    this.cartes.get(cle)?.abort();
     return this.enFile(cle, async () => {
       // Uninstalled first: an entry gone while the add-on stays installed would run without a grant.
       await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) });
@@ -157,10 +329,13 @@ export class ExtensionsAgent {
   }
 
   /** Registry change; the profiles of private spaces (asked from Firefox) are taken out of every agent extension. */
-  private async modifier(changer: (e: EtatExtensions) => EtatExtensions): Promise<EtatExtensions> {
-    const { espaces } = await this.o.rpc.request<{ espaces: { profil: string; prive: boolean }[] }>("navigateur.espaces", {});
-    const prives = new Set(espaces.filter((e) => e.prive).map((e) => e.profil));
+  private async modifier(changer: (e: EtatExtensions, prives: ReadonlySet<string>) => EtatExtensions): Promise<EtatExtensions> {
+    const prives = profilsPrivesDe(await this.navigateur());
     return modifierEtatExtensions(this.o.dossier, changer, () => prives);
+  }
+
+  private navigateur(): Promise<Navigateur> {
+    return this.o.rpc.request<Navigateur>("navigateur.espaces", {});
   }
 
   private async actif(cle: string): Promise<boolean> {
@@ -188,8 +363,17 @@ export class ExtensionsAgent {
     return this.o.rpc.request("extensions.installer", { addonId: addonIdDe(id), xpi, temporaire: !!this.env.WEBAIOS_TEST_AMO_URL, version, actif });
   }
 
-  private async envoi(id: string, cle: string, o: { accord: Portee; demarrage?: boolean }): Promise<ResultatEnvoi> {
-    const p = await this.preparer(id);
+  /**
+   * `activer`: a grant card was accepted for `accord` (the scope shown) in `profil`: installed active, and only once
+   * installed is the grant written (`connue`: an entry existed when the card was shown). A failure leaves no grant.
+   */
+  private async envoi(
+    id: string,
+    cle: string,
+    o: { accord: Portee; demarrage?: boolean; activer?: { profil: string; connue: boolean } },
+    prepare?: Preparation,
+  ): Promise<ResultatEnvoi> {
+    const p = prepare ?? (await this.preparer(id));
     if (!p.ok) {
       // As Electron: only a missing folder stops the running version.
       if (p.refus.includes(DOSSIER_ABSENT)) await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: false });
@@ -210,12 +394,13 @@ export class ExtensionsAgent {
 
     const signes = join(this.o.dossier, "signes");
     let change = true;
-    // Unchanged: appliquer below reinstalls the kept .xpi if it is missing.
-    if (o.demarrage && (await this.garde(id))?.empreinte === empreinte) {
+    // Unchanged since the last signing (startup, or a grant in another profile): appliquer below reinstalls the kept
+    // .xpi if it is missing, nothing is sent.
+    if ((o.demarrage || o.activer) && (await this.garde(id))?.empreinte === empreinte) {
       await effacer();
       change = false;
     } else {
-      const r = await this.signerEtInstaller(id, p, await this.actif(cle));
+      const r = await this.signerEtInstaller(id, p, o.activer ? true : await this.actif(cle));
       if (!r.ok) {
         await effacer();
         return r;
@@ -225,6 +410,47 @@ export class ExtensionsAgent {
       await rm(copie, { recursive: true, force: true });
       await rename(staging, copie);
     }
+    const maintenant = new Date().toISOString();
+    const a = o.activer;
+    if (a) {
+      try {
+        await this.modifier((e, prives) => {
+          if (e.toutesCoupees) throw new Error(TOUTES_COUPEES_AGENT);
+          const x = e.extensions[cle];
+          if (a.connue && !x) throw new Error(RETIREE_PENDANT_CARTE);
+          const base: EntreeExtension = x ?? {
+            source: "agent",
+            idChrome: null,
+            nom: analyse.nom,
+            version: analyse.version,
+            accord: null,
+            profils: [],
+            epinglee: false,
+            modifieeLe: null,
+            desactivee: null,
+            majEnAttente: null,
+            vues: {},
+          };
+          const entree: EntreeExtension = {
+            ...base,
+            idChrome: addonIdDe(id),
+            nom: analyse.nom,
+            version: analyse.version,
+            accord: o.accord,
+            modifieeLe: maintenant,
+            desactivee: base.desactivee?.raison === "plantages" ? base.desactivee : null,
+          };
+          return activer({ ...e, extensions: { ...e.extensions, [cle]: entree } }, cle, a.profil, prives);
+        });
+      } catch (err) {
+        // Not granted: the add-on installed for this card does not stay (an older grant gets its own state back).
+        if (cle in (await lireEtatExtensions(this.o.dossier)).extensions) await this.appliquer(id, cle);
+        else await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) });
+        return { ok: false, erreur: (err as Error).message };
+      }
+      await this.appliquer(id, cle);
+      return { ok: true, analyse };
+    }
     await this.modifier((e) => {
       const x = e.extensions[cle];
       if (!x?.accord) return e;
@@ -233,7 +459,7 @@ export class ExtensionsAgent {
         idChrome: addonIdDe(id),
         nom: analyse.nom,
         version: analyse.version,
-        modifieeLe: change || !x.modifieeLe ? new Date().toISOString() : x.modifieeLe,
+        modifieeLe: change || !x.modifieeLe ? maintenant : x.modifieeLe,
         // Back within its grant: it runs again. Not after crashes (re-enabled by hand).
         desactivee: x.desactivee?.raison === "portee-elargie" && !porteeElargie(x.accord, analyse.portee) ? null : x.desactivee,
       };
@@ -279,9 +505,7 @@ export class ExtensionsAgent {
    * The controlled copy of `<dossierAgent>/<id>` in `copies/<id>.attente` (as Electron's preparerAgent: path without
    * links, checked before and after), plus the Firefox refusals. A refusal leaves no staging copy.
    */
-  private async preparer(
-    id: string,
-  ): Promise<{ ok: true; analyse: AnalyseManifeste; empreinte: string; staging: string; fondOriginal: string | undefined } | { ok: false; refus: string[] }> {
+  private async preparer(id: string): Promise<Preparation | { ok: false; refus: string[] }> {
     const staging = join(this.o.dossier, "copies", `${id}.attente`);
     const refuser = async (refus: string[]) => (await rm(staging, { recursive: true, force: true }), { ok: false as const, refus });
     await rm(staging, { recursive: true, force: true });
