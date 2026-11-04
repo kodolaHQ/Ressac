@@ -59,6 +59,9 @@ async function type(text: string): Promise<void> {
   await inUi(m, `const f = doc.activeElement; f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
 }
 const selectedType = () => inUi<string | undefined>(m, "return doc.querySelector('[data-testid=\"ligne-commande\"][aria-selected=\"true\"]')?.dataset.type");
+/** The history has `part` (a visit is noted a moment after the load). */
+const visited = (part: string) =>
+  waitUi(m, "return (await ui.webaios.historique.rechercher(arguments[0], 5, true)).length > 0", [part], 15_000);
 async function withPageA(): Promise<string> {
   const a = await open("/a.html");
   await waitTitle(a, "Page A");
@@ -388,5 +391,50 @@ describe("Command bar", () => {
     await pressKeys(m, "Enter");
     await waitBar(false);
     await stillPending(reading);
+  });
+
+  // barre-commande.spec.ts:361
+  it("the bar offers a visited page", async () => {
+    const id = await open("/b.html");
+    await waitTitle(id, "Page B");
+    await visited("b.html");
+    await pressKeys(m, "Meta+t");
+    await type("b.html");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="ligne-commande"][data-type="historique"], [data-testid="ligne-commande"][data-type="onglet"]')`);
+  });
+
+  // barre-commande.spec.ts:374
+  it("a page no longer open comes from the history; Enter opens it in a new tab", async () => {
+    const id = await open("/b.html");
+    await waitTitle(id, "Page B");
+    await visited("b.html");
+    await inUi(m, "ui.webaios.naviguer(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
+    await waitTitle(id, "Page A");
+    await pressKeys(m, "Meta+t");
+    await type("b.html");
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length === 1`);
+    expect(await inUi(m, `return doc.querySelector('[data-testid="ligne-commande"][data-type="historique"]').textContent`)).toContain("Page B");
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="onglet"]').length`)).toBe(0);
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    const s = await waitState((s) => Object.values(s.onglets), (o) => o.length === 2 && o.some((t) => t.url.endsWith("/b.html")));
+    expect(s).toHaveLength(2);
+  });
+
+  // historique.spec.ts:81
+  it("a URL visited in two spaces is offered once", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
+    const b = await open("/a.html");
+    await waitTitle(b, "Page A");
+    await waitUi(m, "return (await ui.webaios.historique.recents()).length === 2", [], 15_000);
+    // Open tabs hide their own history line: close both.
+    for (const id of [a, b]) await dispatch(m, { type: "fermerOnglet", id });
+    await pressKeys(m, "Meta+t");
+    await type("page a");
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length === 1`);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length`)).toBe(1);
   });
 });

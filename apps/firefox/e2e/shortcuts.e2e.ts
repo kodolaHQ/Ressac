@@ -142,4 +142,28 @@ describe("WebAiOs shortcuts", () => {
     await waitState((s) => Object.keys(s.onglets).length, (n) => n === 0);
     expect(await barOpen()).toBe(false);
   });
+
+  // raccourcis.spec.ts:258
+  it("⇧⌘J toggles the downloads panel", async () => {
+    const shown = (v: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"telechargements\"]') === arguments[0]", [v]);
+    await pressKeys(m, "Meta+Shift+j");
+    await shown(true);
+    await pressKeys(m, "Meta+Shift+j");
+    await shown(false);
+  });
+
+  it("⇧⌘H and the native history commands open nothing", async () => {
+    for (const k of ["Meta+Shift+h", "Meta+y", "Meta+Shift+o", "Meta+j"]) await pressKeys(m, k);
+    await pressKeys(m, "Escape"); // our ⌘Y panel
+    // doCommand() ignores `disabled`: the commands are checked disabled, the keys by pressing them.
+    expect(
+      await m.execute<boolean[]>(
+        `return ["Browser:ShowAllHistory", "Browser:ShowAllBookmarks", "Tools:Downloads"].map((id) => document.getElementById(id).getAttribute("disabled") === "true");`,
+      ),
+    ).toEqual([true, true, true]);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(
+      await m.execute(`return { sidebar: SidebarController.isOpen, organizer: !!Services.wm.getMostRecentWindow("Places:Organizer") };`),
+    ).toEqual({ sidebar: false, organizer: false });
+  });
 });

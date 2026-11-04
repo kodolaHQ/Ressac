@@ -1,6 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Historique } from "../src/main/historique";
 import {
   appelerOutil,
   dansLaVue,
@@ -94,6 +95,31 @@ test("bench: lire_onglet on an agent tab", async () => {
       expect(lu.texte).toContain("Le chat dort");
     }
     record("tabRead", ms.slice(3));
+  } finally {
+    await fermer();
+  }
+});
+
+test("bench: command bar suggestions", async () => {
+  test.setTimeout(300_000);
+  const profil = nouveauProfil();
+  const h = new Historique(join(profil, "historique.sqlite"));
+  for (let i = 0; i < 2000; i++) h.noter({ url: `https://site-${i}.test/page`, titre: `Page ${i}`, espaceId: "e", prive: false });
+  h.fermer();
+  const { fenetre, fermer } = await lancerBench({ profil });
+  try {
+    // The UI's own call, as the bar makes it on each keystroke: renderer, main process and back.
+    const ms = await fenetre.evaluate(async () => {
+      const w = window as unknown as { webaios: { historique: { rechercher(t: string, l: number, d: boolean): Promise<unknown> } } };
+      const xs: number[] = [];
+      for (let k = 0; k < 30; k++) {
+        const t0 = performance.now();
+        await w.webaios.historique.rechercher("page 1", 5, true);
+        xs.push(performance.now() - t0);
+      }
+      return xs;
+    });
+    record("suggestions", ms);
   } finally {
     await fermer();
   }

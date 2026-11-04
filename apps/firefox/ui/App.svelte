@@ -5,10 +5,12 @@
   import BarreCommande from "../../navigateur/src/renderer/composants/BarreCommande.svelte";
   import BarreLaterale from "../../navigateur/src/renderer/composants/BarreLaterale.svelte";
   import FondFige from "../../navigateur/src/renderer/composants/FondFige.svelte";
+  import Historique from "../../navigateur/src/renderer/composants/Historique.svelte";
   import MenuContextuel from "../../navigateur/src/renderer/composants/MenuContextuel.svelte";
   import ModaleDemande from "../../navigateur/src/renderer/composants/ModaleDemande.svelte";
   import ModaleEspace from "../../navigateur/src/renderer/composants/ModaleEspace.svelte";
   import PageVide from "../../navigateur/src/renderer/composants/PageVide.svelte";
+  import Telechargements from "../../navigateur/src/renderer/composants/Telechargements.svelte";
   import PanneauOnglets from "../../navigateur/src/renderer/composants/PanneauOnglets.svelte";
   import { commande, fermerCommande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
   import { estDemandeAgent } from "../../navigateur/src/renderer/composants/modale.svelte";
@@ -16,7 +18,7 @@
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
   import { aUneVue } from "../../navigateur/src/commun/modele";
-  import type { PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
+  import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
 
@@ -29,11 +31,22 @@
   });
   // A crashed or failed page shows our message instead (the window parks, as Electron detaches its view).
   const pageWeb = $derived(!!ongletActif && aUneVue(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
+  /** The history or downloads panel over the content area (⌘Y, ⇧⌘J, the sidebar's button); another tab closes it. */
+  let panneau = $state<Panneau | null>(null);
+  const basculerPanneau = (p: Panneau) => (panneau = panneau === p ? null : p);
+  const fermerPanneau = () => {
+    panneau = null;
+    api.rendreFocusPage();
+  };
+  $effect(() => api.surPanneau(basculerPanneau));
   // The command bar targets the tab active when it opened: if another one shows, it closes.
   const idActif = $derived(ongletActif?.id);
   $effect(() => {
     void idActif;
-    untrack(() => (commande.ouverte = null));
+    untrack(() => {
+      commande.ouverte = null;
+      panneau = null;
+    });
   });
   // An agent's question covers the whole window, agent panel included. It comes before an open command bar, which closes.
   const demande = $derived(demandeDe(fenetre, ongletActif));
@@ -72,7 +85,7 @@
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
   const overlay = $derived(!!demandeAgent || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel);
-  $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb));
+  $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panneau));
 </script>
 
 <!-- A tab switch to the parking tab blurs the field the empty page had just focused; the controller then focuses this
@@ -81,12 +94,16 @@
 
 <div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte}>
   {#if fenetre}
-    <BarreLaterale {fenetre} />
+    <BarreLaterale {fenetre} {basculerPanneau} />
   {:else}
     <aside data-testid="barre-laterale"></aside>
   {/if}
-  <main class="contenu" class:opaque={!pageWeb} data-testid="zone-contenu">
-    {#if fenetre && !ongletActif}
+  <main class="contenu" class:opaque={!pageWeb || !!panneau} data-testid="zone-contenu">
+    {#if fenetre && panneau === "historique"}
+      <Historique {fenetre} fermer={fermerPanneau} />
+    {:else if panneau === "telechargements"}
+      <Telechargements fermer={fermerPanneau} />
+    {:else if fenetre && !ongletActif}
       <PageVide {fenetre} />
     {:else if ongletActif && (ongletActif.plante || ongletActif.erreur)}
       <PageError onglet={ongletActif} />
@@ -110,7 +127,7 @@
 {#if commande.ouverte && fenetre}
   <div class="couche-commande">
     <FondFige ongletId={ongletActif?.id ?? null} surPret={() => {}} />
-    <BarreCommande {fenetre} {ongletActif} cede={!!tabPanel} fermerPanneau={() => {}} />
+    <BarreCommande {fenetre} {ongletActif} cede={!!tabPanel} fermerPanneau={() => (panneau = null)} />
   </div>
 {/if}
 

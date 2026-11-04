@@ -42,6 +42,7 @@ export function createApi(win: WindowController): ApiWebaios {
       return untilUnload(win.store.subscribe(send));
     },
     surRaccourci: (callback) => untilUnload(win.onShortcut(callback)),
+    surPanneau: (callback) => untilUnload(win.onPanel(callback)),
     surPanneauOnglets: (callback) => untilUnload(win.onTabPanel((p) => callback(p && structuredClone(p)))),
     // The window's terminal session, in the noyau host. Its output and states are routed by window.
     agent: {

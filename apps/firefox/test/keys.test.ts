@@ -56,6 +56,13 @@ describe("shortcutFor", () => {
     expect(FIREFOX_KEYS).toContain("key_openDownloads");
   });
 
+  it("⌘Y opens the history, ⇧⌘J the downloads", () => {
+    expect(key("y", "KeyY", { meta: true })).toEqual({ type: "panneau", p: "historique" });
+    expect(key("J", "KeyJ", { meta: true, shift: true })).toEqual({ type: "panneau", p: "telechargements" });
+    expect(FIREFOX_KEYS).toEqual(expect.arrayContaining(["key_gotoHistory", "showAllHistoryKb", "manBookmarkKb"]));
+    expect(FIREFOX_COMMANDS).toEqual(expect.arrayContaining(["Browser:ShowAllHistory", "Browser:ShowAllBookmarks", "Tools:Downloads"]));
+  });
+
   it("leaves other keys alone", () => {
     expect(key("t", "KeyT")).toBeNull();
     expect(key("t", "KeyT", { meta: true, alt: true })).toBeNull();

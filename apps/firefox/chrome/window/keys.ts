@@ -1,4 +1,4 @@
-import type { Raccourci } from "../../../navigateur/src/commun/api";
+import type { Panneau, Raccourci } from "../../../navigateur/src/commun/api";
 
 export type Shortcut =
   | { type: "raccourci"; r: Extract<Raccourci, "commande" | "adresse" | "fermerOnglet"> }
@@ -9,6 +9,8 @@ export type Shortcut =
   | { type: "parcourir"; delta: 1 | -1 }
   /** ⌘J: the agent panel (Electron's menu item « Panneau agent »). */
   | { type: "agent" }
+  /** ⌘Y, ⇧⌘J: a UI panel (Electron's menu items « Historique » and « Téléchargements »). */
+  | { type: "panneau"; p: Panneau }
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
   | { type: "fenetre" }
   | { type: "fermerFenetre" }
@@ -26,11 +28,13 @@ const COMMAND: Record<string, Shortcut> = {
   r: { type: "naviguer", c: "recharger" },
   n: { type: "fenetre" },
   j: { type: "agent" },
+  y: { type: "panneau", p: "historique" },
 };
 const SHIFT_COMMAND: Record<string, Shortcut> = {
   t: { type: "rouvrir" },
   r: { type: "naviguer", c: "rechargerSansCache" },
   w: { type: "fermerFenetre" },
+  j: { type: "panneau", p: "telechargements" },
 };
 
 /** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
@@ -69,6 +73,10 @@ export const FIREFOX_KEYS = [
   "key_selectLastTab",
   // ⌘J: Downloads in Firefox.
   "key_openDownloads",
+  // ⌘Y, ⇧⌘H (no command: disabling its command is not enough) and ⇧⌘O: Places' library and history sidebar.
+  "showAllHistoryKb",
+  "key_gotoHistory",
+  "manBookmarkKb",
 ];
 
 /**
@@ -90,4 +98,8 @@ export const FIREFOX_COMMANDS = [
   // ⌘, (Settings): opens about:preferences as a Firefox tab.
   "menu_preferences",
   "menu_settings",
+  // The native menu items for history, bookmarks and downloads (all open Places' library window).
+  "Browser:ShowAllHistory",
+  "Browser:ShowAllBookmarks",
+  "Tools:Downloads",
 ];

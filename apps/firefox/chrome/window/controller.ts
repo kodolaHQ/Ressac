@@ -1,4 +1,4 @@
-import type { MessageParcours, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
+import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
 import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
@@ -47,6 +47,8 @@ export interface WindowController {
   setAgentWidth(px: number): void;
   /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
   onShortcut(cb: (r: Raccourci) => void): () => void;
+  /** Electron's surPanneau: ⌘Y, ⇧⌘J (a second press closes it, the UI toggles). */
+  onPanel(cb: (p: Panneau) => void): () => void;
   /** Electron's surPanneauOnglets: the ⌃Tab panel to show (null: closed). */
   onTabPanel(cb: (p: PanneauOnglets | null) => void): () => void;
   /** Electron's parcoursOnglets: mouse, Escape and ⌃ release from the ⌃Tab panel. */
@@ -138,6 +140,7 @@ export function createController(
     return true;
   };
   const shortcutListeners = new Set<(r: Raccourci) => void>();
+  const panelKeyListeners = new Set<(p: Panneau) => void>();
   const panelListeners = new Set<(p: PanneauOnglets | null) => void>();
   // ⌃Tab: recent order and the walk in progress, as in Electron. No page previews in step 2: cards show the icon.
   const walk = new ParcoursOnglets({
@@ -168,6 +171,9 @@ export function createController(
     else if (s.type === "raccourci") {
       frame.focus(); // the UI field must get the keys typed next, even from a web page
       for (const cb of shortcutListeners) cb(s.r);
+    } else if (s.type === "panneau") {
+      frame.focus();
+      for (const cb of panelKeyListeners) cb(s.p);
     } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", fenetreId });
     else if (s.type === "nieme") {
       const action = versNieme(state, fenetreId, s.n);
@@ -331,6 +337,10 @@ export function createController(
     onShortcut(cb) {
       shortcutListeners.add(cb);
       return () => void shortcutListeners.delete(cb);
+    },
+    onPanel(cb) {
+      panelKeyListeners.add(cb);
+      return () => void panelKeyListeners.delete(cb);
     },
     onTabPanel(cb) {
       panelListeners.add(cb);

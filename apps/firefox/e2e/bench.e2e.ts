@@ -8,7 +8,8 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { waitUi } from "./ui";
+import { Historique } from "../../navigateur/src/main/historique";
+import { inUi, waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
@@ -210,6 +211,31 @@ describe.skipIf(!process.env.WEBAIOS_BENCH)("bench", () => {
     const shown = await waitTitle(m, target, (s) => /^v\d+$/.test(s ?? "") && Number(s!.slice(1)) >= Math.floor(t), `tab ${target} not shown`);
     return { ms: Number(shown.slice(1)) - t, container };
   };
+
+  it("bench: command bar suggestions", async () => {
+    const dataDir = mkdtempSync(join(os.tmpdir(), "webaios-data-"));
+    try {
+      const h = new Historique(join(dataDir, "historique.sqlite"));
+      for (let i = 0; i < 2000; i++) h.noter({ url: `https://site-${i}.test/page`, titre: `Page ${i}`, espaceId: "e", prive: false });
+      h.fermer();
+      const m = (await launchBench({ dataDir })).marionette;
+      // The UI's own call, as the bar makes it on each keystroke: the chrome, the noyau host and back.
+      const ms = await inUi<number[]>(
+        m,
+        `const xs = [];
+         for (let k = 0; k < 30; k++) {
+           const t0 = performance.now();
+           await ui.webaios.historique.rechercher("page 1", 5, true);
+           xs.push(performance.now() - t0);
+         }
+         return xs;`,
+      );
+      record("suggestions", ms);
+    } finally {
+      await w?.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 300_000);
 
   it("bench: tab switch", async () => {
     const m = (await launchBench({ headed })).marionette;

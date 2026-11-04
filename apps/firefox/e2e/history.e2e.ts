@@ -8,7 +8,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { inUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
@@ -28,7 +28,13 @@ beforeEach(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
 });
-afterEach(() => w?.close());
+afterEach(async () => {
+  try {
+    expect(await missingApi(m)).toEqual([]);
+  } finally {
+    await w?.close();
+  }
+});
 
 const recents = () => inUi<Visite[]>(m, "return JSON.parse(JSON.stringify(await ui.webaios.historique.recents()));");
 const urls = async () => (await recents()).map((v) => v.url).sort();
@@ -149,5 +155,104 @@ describe("history noted in the noyau", () => {
     await host("await h.ensure();");
     expect((await until(recents, (r) => r.length === 1))[0]!.prive).toBe(true);
     expect((await callTool(w.dataDir, "chercher_historique", { requete: "Page A" })).texte).not.toContain("a.html");
+  });
+});
+
+const PANEL = '[data-testid="historique"]';
+const panelOpen = (open: boolean) => waitUi(m, `return !!doc.querySelector(arguments[0]) === arguments[1]`, [PANEL, open]);
+const panelLinks = () => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0] + " a")].map((a) => a.querySelector(".titre").textContent)`, [PANEL]);
+const bar = () => waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')");
+const field = async (text: string) => {
+  await waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-commande'");
+  await inUi(m, `const f = doc.activeElement; f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
+};
+const lines = (type: string) =>
+  inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="ligne-commande"][data-type="' + arguments[0] + '"]')].map((l) => l.textContent)`, [type]);
+/** a.html then b.html visited, the first tab closed. */
+async function visitedAB() {
+  await open(`${base}/a.html`);
+  await loaded("/a.html");
+  const s = await open(`${base}/b.html`);
+  await loaded("/b.html");
+  await until(recents, (r) => r.length === 2 && r.every((x) => x.titre.startsWith("Page")));
+  const [first] = Object.keys(s.onglets);
+  await dispatch(m, { type: "fermerOnglet", id: first! } as Action);
+}
+
+describe("history panel", () => {
+  it("⌘Y lists visited pages; a click reopens one and closes the panel", async () => {
+    await visitedAB();
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    expect((await panelLinks()).sort()).toEqual(["Page A", "Page B"]);
+    await click(m, `${PANEL} a`, { text: "Page A" });
+    await panelOpen(false);
+    const s = await state(m);
+    expect(Object.keys(s.onglets)).toHaveLength(2);
+    await until(async () => (await state(m)).onglets, (o) => Object.values(o).some((t) => t.titre === "Page A" && t.id === s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif]));
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    await pressKeys(m, "Escape");
+    await panelOpen(false);
+  });
+
+  it("the search filters; Effacer l'historique › Tout empties it", async () => {
+    await visitedAB();
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    const search = (v: string) =>
+      inUi(m, `const f = doc.querySelector('${PANEL} [type=search]'); f.value = arguments[0]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [v]);
+    await search("page b");
+    await until(panelLinks, (l) => l.length === 1);
+    await search("");
+    await until(panelLinks, (l) => l.length === 2);
+    await click(m, `${PANEL} button`, { text: "Effacer l'historique" });
+    await click(m, `${PANEL} button`, { text: "Tout" });
+    await until(panelLinks, (l) => l.length === 0);
+  });
+
+  it("⌘Y shows a lock on private visits only", async () => {
+    await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await until(recents, (r) => r.length === 1);
+    const s = await state(m);
+    const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
+    await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+    await open(`${base}/b.html`);
+    await loaded("/b.html");
+    await until(recents, (r) => r.length === 2 && r.every((x) => x.prive));
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    const text = (sel: string) => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((l) => l.textContent)`, [sel]);
+    expect(await text(`${PANEL} [data-prive="true"]`)).toHaveLength(2);
+    expect((await text(`${PANEL} [data-prive="true"]`)).find((t) => t.includes("Page B"))).toContain("🔒");
+    expect((await text(`${PANEL} [data-prive="false"]`)).filter((t) => t.includes("🔒"))).toEqual([]);
+  });
+
+  it("switching tab closes the panel", async () => {
+    await open(`${base}/a.html`);
+    const s = await open(`${base}/b.html`);
+    const [first] = Object.keys(s.onglets);
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    await dispatch(m, { type: "activerOnglet", id: first! } as Action);
+    await panelOpen(false);
+  });
+
+  it("with the host down the panel opens empty and the bar still suggests tabs", async () => {
+    await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await until(recents, (r) => r.length === 1);
+    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.stop(); })();`);
+    expect(await recents()).toEqual([]);
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    expect(await panelLinks()).toEqual([]);
+    await pressKeys(m, "Escape");
+    await panelOpen(false);
+    await pressKeys(m, "Meta+t");
+    await bar();
+    await field("Page");
+    await until(() => lines("onglet"), (l) => l.length > 0);
   });
 });
