@@ -358,6 +358,18 @@ describe("window controller", () => {
     expect(await missingApi(m)).toEqual([]);
   });
 
+  it("navigating a crashed tab elsewhere loads the new page in a new XUL tab", async () => {
+    const id = await open("/plante.html");
+    await waitTitle(id, "Plante");
+    await crash(id);
+    await waitUi(m, `return ${CONTENT_TEXT}.includes("Cette page a planté.")`);
+    await m.execute("window.webaiosWindow.navigate(arguments[0], arguments[1])", [id, server.url + "/a.html"]);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === id);
+    await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (t) => t === "Page A");
+    await waitUi(m, `return !${CONTENT_TEXT}.includes("Cette page a planté.")`);
+    expect((await state(m)).onglets[id]?.plante).toBe(false);
+  });
+
   it("an unreachable page shows an error message and Recharger", async () => {
     const id = await opened({ type: "ouvrirOnglet", fenetreId: (await win()).id, url: "http://127.0.0.1:1/" });
     const text = await waitUi<string>(m, `const t = ${CONTENT_TEXT}; return t.includes("Impossible d'ouvrir cette page.") && t;`);

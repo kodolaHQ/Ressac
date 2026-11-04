@@ -140,5 +140,10 @@ it("lire_onglet on a crashed tab answers an error within 15 s", async () => {
   const start = Date.now();
   const lu = await call("lire_onglet", { id });
   expect(Date.now() - start).toBeLessThan(15_000);
-  expect(lu.erreur).toBe(true);
+  expect(lu).toEqual({ texte: "Erreur : La page a planté : rechargez-la.", erreur: true });
+  expect(await call("capture_ecran", { id })).toEqual({ texte: "Erreur : La page a planté : rechargez-la.", erreur: true });
+  // naviguer revives it, as Electron's loadURL does a crashed page.
+  expect((await call("naviguer", { id, url: `${server.url}/texte.html` })).erreur).toBe(false);
+  await loaded("/texte.html");
+  expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
 });

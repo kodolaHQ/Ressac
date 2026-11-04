@@ -45,6 +45,7 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
    */
   const outsidePrivate = async <T>(id: string, read: (browser: any) => Promise<T>): Promise<T> => {
     const before = tab(id);
+    if (before.plante) throw new Error("La page a planté : rechargez-la.");
     const browser = await windowOf(id).controller.ensure(id);
     const r = await read(browser);
     const origin = origineDe(before.url);

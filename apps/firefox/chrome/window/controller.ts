@@ -111,6 +111,16 @@ export function createController(
     if (!tabs.displayed()) frame.focus();
   });
   const browserOf = (id: IdOnglet) => tabs.tab(id)?.linkedBrowser;
+  /**
+   * A crashed browser loads nothing: any navigation or command on a crashed tab puts a new XUL tab in its place, at `url`
+   * or the tab's own (as Electron's loadURL revives a crashed page). Back/forward history is lost with it.
+   */
+  const revive = (id: IdOnglet, url?: string): boolean => {
+    if (!store.state.onglets[id]?.plante) return false;
+    tabs.recreate(id);
+    store.dispatch({ type: "majOnglet", id, champs: { plante: false, ...(url ? { url } : {}) } });
+    return true;
+  };
   const shortcutListeners = new Set<(r: Raccourci) => void>();
   const panelListeners = new Set<(p: PanneauOnglets | null) => void>();
   // ⌃Tab: recent order and the walk in progress, as in Electron. No page previews in step 2: cards show the icon.
@@ -199,6 +209,7 @@ export function createController(
       const url = versUrl(input, store.state.reglages.moteur);
       if (!url) return;
       if (!ongletId) return void store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
+      if (revive(ongletId, url)) return;
       const browser = browserOf(ongletId);
       if (!browser) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
       // What the user typed in the address bar: Firefox loads it with the system principal too.
@@ -208,6 +219,7 @@ export function createController(
     navigateForAgent(ongletId, url) {
       const uri = Services.io.newURI(url);
       if (!uri.schemeIs("http") && !uri.schemeIs("https")) throw new Error(`URL refusée (http ou https uniquement) : ${url}`);
+      if (revive(ongletId, url)) return;
       const tab = tabs.tab(ongletId);
       if (!tab) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
@@ -215,11 +227,7 @@ export function createController(
     },
     ensure: (ongletId) => tabs.ensure(ongletId),
     command(ongletId, c) {
-      // A crashed browser does not reload: a new XUL tab takes its place, at the tab's URL.
-      if (c === "recharger" && store.state.onglets[ongletId]?.plante) {
-        tabs.recreate(ongletId);
-        return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { plante: false } });
-      }
+      if (c !== "arreter" && revive(ongletId)) return;
       const browser = browserOf(ongletId);
       if (!browser) return;
       if (c === "reculer") browser.goBack();

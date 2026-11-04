@@ -62,9 +62,9 @@ export class TabSync {
         // Only a load that ends on Firefox's error page shows our message: a download or a mailto: also stops with a failure.
         // Its failed STATE_STOP comes first; a load refused before it started (a banned port…) has none, its error page names it.
         const failure = this.failures.get(browser);
-        const erreur = flags & LOCATION_CHANGE_ERROR_PAGE
-          ? failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(new URL(browser.documentURI.spec).searchParams.get("e"))
-          : undefined;
+        this.failures.delete(browser); // read once: an older failure (a download) must not name a later error page
+        const code = browser.documentURI ? new URL(browser.documentURI.spec).searchParams.get("e") : null;
+        const erreur = flags & LOCATION_CHANGE_ERROR_PAGE ? (failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(code)) : undefined;
         this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(erreur ? { erreur, chargement: false } : {}) });
       },
       onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {
