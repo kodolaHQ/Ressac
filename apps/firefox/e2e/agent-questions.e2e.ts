@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
-import { dispatch, state, waitFor } from "./firefox";
+import { dispatch, inWindow, newWindow, state, waitFor, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
@@ -141,4 +141,75 @@ it("the access badge shows on a tab the agent reads and Couper removes it", asyn
   await answer("Refuser");
   expect((await again).texte).toBe(REFUSED);
   expect(await missingApi(m)).toEqual([]);
+});
+
+const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+/** The handle of each open window, by its state window id. */
+async function handlesById(): Promise<Record<string, string>> {
+  const r: Record<string, string> = {};
+  for (const h of await m.command<string[]>("WebDriver:GetWindowHandles"))
+    r[await inWindow(m, h, () => m.execute<string>("return window.webaiosWindow.fenetreId"))] = h;
+  return r;
+}
+const activeId = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
+const hasCard = (h: string) => inWindow(m, h, () => inUi<boolean>(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`));
+
+describe("several windows", () => {
+  it("a read question shows only in the active window", async () => {
+    const id = await openTab("/a.html");
+    await newWindow(m);
+    const handles = await handlesById();
+    const active = await activeId();
+    const other = Object.keys(handles).find((x) => x !== active)!;
+    // Never answered: it falls when the app closes.
+    call("lire_onglet", { id }).catch(() => {});
+    await inWindow(m, handles[active]!, cardText);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await hasCard(handles[other]!)).toBe(false);
+  });
+
+  it("a new agent session in another window resets access: the agent asks again", async () => {
+    const id = await openTab("/texte.html");
+    // Opening the panel on the tab gives it to the agent.
+    if (!(await state(m)).fenetres[0]!.panneauAgentOuvert) await dispatch(m, { type: "basculerPanneauAgent", fenetreId: (await state(m)).fenetres[0]!.id });
+    await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
+    expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
+    const second = await newWindow(m);
+    await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent"));
+    const reading = call("lire_onglet", { id });
+    const handles = Object.values(await handlesById());
+    // One window at a time: Marionette has a single current window.
+    const withCard = async () => {
+      const r: string[] = [];
+      for (const h of handles) if (await hasCard(h)) r.push(h);
+      return r;
+    };
+    for (const deadline = Date.now() + 10_000; (await withCard()).length !== 1; await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > deadline) throw new Error(`expected one card, got ${(await withCard()).length}`);
+    await inWindow(m, (await withCard())[0]!, () => answer("Refuser"));
+    expect((await reading).texte).toBe(REFUSED);
+  });
+
+  it("closing the window that shows a question moves the card to the other window; closing the last one refuses it at once", async () => {
+    await newWindow(m);
+    const handles = await handlesById();
+    const active = await activeId();
+    const other = Object.keys(handles).find((x) => x !== active)!;
+    // The tab lives in the window that stays: closing the card's window must not close it.
+    const before = new Set(Object.keys((await state(m)).onglets));
+    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: other, url: `${server.url}/a.html` });
+    const id = Object.keys(s.onglets).find((x) => !before.has(x))!;
+    let settled = 0;
+    const reading = call("lire_onglet", { id }).finally(() => (settled = Date.now()));
+    await inWindow(m, handles[active]!, cardText);
+    await inWindow(m, handles[active]!, () => m.execute("window.close()"));
+    await waitWindowCount(m, 1);
+    await m.command("WebDriver:SwitchToWindow", { handle: handles[other]!, focus: false });
+    expect(await cardText()).toContain("L'agent veut lire l'onglet");
+    expect(settled).toBe(0);
+    const closed = Date.now();
+    await m.execute("window.close()");
+    expect((await reading).texte).toBe(REFUSED);
+    expect(settled - closed).toBeLessThan(2000);
+  });
 });

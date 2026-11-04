@@ -1,6 +1,7 @@
 import type { Action } from "../../navigateur/src/commun/api";
 import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
 import type { Marionette } from "./marionette";
+import { pressKeys, waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 
@@ -51,4 +52,25 @@ export async function inWindow<T>(m: Marionette, handle: string, fn: () => Promi
     // The window left may have closed meanwhile.
     if ((await windowHandles(m)).includes(previous)) await m.command("WebDriver:SwitchToWindow", { handle: previous, focus: false });
   }
+}
+
+/** The current window is WebAiOs: its controller, its parking tab and its sidebar are up. */
+export async function waitReady(m: Marionette): Promise<void> {
+  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+}
+
+/** A key that closes the current window: its key-ups have no window left to go to. */
+export const pressClosing = (m: Marionette, combo: string) =>
+  pressKeys(m, combo).catch((e) => {
+    if (!/no such window/.test(String(e))) throw e;
+  });
+
+/** ⌘N from the current window (one open): waits for the second WebAiOs window to be up; returns its handle. */
+export async function newWindow(m: Marionette): Promise<string> {
+  const old = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+  await pressKeys(m, "Meta+n");
+  const other = (await waitWindowCount(m, 2)).find((h) => h !== old)!;
+  await inWindow(m, other, () => waitReady(m));
+  return other;
 }

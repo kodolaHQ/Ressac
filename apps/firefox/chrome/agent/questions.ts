@@ -25,8 +25,6 @@ export class Questions {
   }
 
   /** Shows the card in the window and waits for the answer; false after DELAI_QUESTION_MS, or when `signal` aborts. */
-  // shortcut: a question whose window closes is not moved to another window (Electron's questionsFenetreFermee): it is
-  // refused after DELAI_QUESTION_MS or when the host goes; upgrade with multi-window in step 5.
   ask(o: OngletInfo, fenetreId: IdFenetre, signal?: AbortSignal): Promise<boolean> {
     const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
     const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["lire-onglet" as const], titre: o.titre, cible: o.id };
@@ -44,6 +42,21 @@ export class Questions {
       DELAI_QUESTION_MS,
       signal,
     );
+  }
+
+  /** A window closed: its questions move to `to` (on its active tab), or are refused without one (Electron's questionsFenetreFermee). */
+  windowClosed(closed: IdFenetre, to: IdFenetre | undefined): void {
+    let changed = false;
+    for (const [id, q] of this.open) {
+      if (q.demande.fenetreId !== closed) continue;
+      changed = true;
+      if (to) q.demande = { ...q.demande, fenetreId: to, ongletId: ongletActifDe(this.store.state, to)?.id ?? null };
+      else {
+        this.open.delete(id);
+        q.repondre("retiree");
+      }
+    }
+    if (changed) this.changed();
   }
 
   pending(): DemandeEnAttente[] {

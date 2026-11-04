@@ -75,16 +75,19 @@ async function start(): Promise<WebAiOsStore> {
   const windows = createWindowRegistry({
     store,
     open: () => BrowserWindowTracker.openWindow(),
-    // The window's agent session stops with it.
-    onRelease: (fenetre) => agent.notify("agent.fermerFenetre", { fenetre }),
+    // The window's agent session stops with it; its questions go to the active window, or are refused.
+    onRelease: (fenetre) => {
+      agent.notify("agent.fermerFenetre", { fenetre });
+      questions.windowClosed(fenetre, windows.active());
+    },
   });
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: bridgeHandlers(store, questions),
-    onStart: (notify) => sendMirror(store, notify),
+    handlers: bridgeHandlers(store, questions, windows),
+    onStart: (notify) => sendMirror(store, windows, notify),
   });
-  trackState(store, agent);
+  trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   let access: EtatAcces = { agent: "L'agent", onglets: {} };
   agent.on("acces", (e: EtatAcces) => (access = e));

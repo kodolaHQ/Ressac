@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { dispatch, inWindow, state, waitFor, waitWindowCount, windowHandles } from "./firefox";
+import { dispatch, inWindow, newWindow as newWindowIn, pressClosing as pressClosingIn, state, waitFor, waitReady as waitReadyIn, waitWindowCount, windowHandles } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -10,11 +10,7 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
-/** The current window is WebAiOs: its controller, its parking tab and its sidebar are up. */
-async function waitReady(): Promise<void> {
-  await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
-}
+const waitReady = () => waitReadyIn(m);
 beforeEach(async () => {
   w = await launchWebAiOs();
   m = w.marionette;
@@ -26,24 +22,13 @@ afterEach(() => w?.close());
 const fenetreId = async () => (await state(m)).fenetres[0]!.id;
 const handle = async () => (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** A key that closes the current window: its key-ups have no window left to go to. */
-const pressClosing = (combo: string) =>
-  pressKeys(m, combo).catch((e) => {
-    if (!/no such window/.test(String(e))) throw e;
-  });
+const pressClosing = (combo: string) => pressClosingIn(m, combo);
 async function openTab(fenetre: string, path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).onglets));
   const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: fenetre, url: server.url + path });
   return Object.keys(after.onglets).find((x) => !before.has(x))!;
 }
-/** ⌘N from the current window: waits for the second WebAiOs window to be up; returns its handle. */
-async function newWindow(): Promise<string> {
-  const old = await handle();
-  await pressKeys(m, "Meta+n");
-  const other = (await waitWindowCount(m, 2)).find((h) => h !== old)!;
-  await inWindow(m, other, waitReady);
-  return other;
-}
+const newWindow = () => newWindowIn(m);
 /**
  * Closes the only window, then, from a module timer (Marionette has no window to run in meanwhile): counts the browser
  * windows, dispatches `choisirMoteur`, counts again 300 ms later into the pref `webaios.test.closed`, and runs `reopen`.

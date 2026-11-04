@@ -4,7 +4,7 @@ import { ongletPrive } from "../../../navigateur/src/commun/modele";
 import { changementsPolitique, infosOnglets, ongletActifDe, origineDe, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { Store } from "../store/store";
-import type { WindowController } from "../window/controller";
+import type { WindowRegistry } from "../store/windows";
 import type { AgentHost } from "./host";
 import { readHtml, readPage } from "./invisible";
 import type { Questions } from "./questions";
@@ -13,32 +13,26 @@ const XHTML = "http://www.w3.org/1999/xhtml";
 /** As the page actor and Electron. */
 const TEXT_MAX = 100_000;
 
-/** The main WebAiOs window and its controller, if one is open (macOS keeps running without a window). */
-export function mainWindow(): { window: Window; controller: WindowController } | undefined {
-  for (const w of Services.wm.getEnumerator("navigator:browser"))
-    if (w.document.documentElement.hasAttribute("webaios-main") && w.webaiosWindow) return { window: w, controller: w.webaiosWindow };
-  return undefined;
-}
-
-function needWindow() {
-  const m = mainWindow();
-  if (!m) throw new Error("Aucune fenêtre ouverte");
-  return m;
-}
-
 const internal = (o: Onglet) => o.url.startsWith("webaios:");
-const activeWindow = (state: EtatNavigateur): IdFenetre | undefined => mainWindow()?.controller.fenetreId ?? state.fenetres[0]?.id;
+/** Decision 3: the window the agent acts in. */
+const activeWindow = (state: EtatNavigateur, windows: WindowRegistry): IdFenetre | undefined => windows.active() ?? state.fenetres[0]?.id;
 
 /** What the host's bridge mirrors for its two synchronous methods (estPrive, ongletActifPrive). */
-function privateMirror(state: EtatNavigateur): { prives: string[]; actifPrive: boolean } {
+function privateMirror(state: EtatNavigateur, windows: WindowRegistry): { prives: string[]; actifPrive: boolean } {
   const isPrivate = (o: Onglet | undefined) => !!o && !internal(o) && ongletPrive(state, o);
-  const f = state.fenetres.find((x) => x.id === activeWindow(state));
+  const f = state.fenetres.find((x) => x.id === activeWindow(state, windows));
   const active = f && f.actif[f.espaceActif];
   return { prives: Object.values(state.onglets).filter(isPrivate).map((o) => o.id), actifPrive: isPrivate(active ? state.onglets[active] : undefined) };
 }
 
-/** The noyau's PontNavigateur, answered on the store and the tabs of the main window (Electron's PontElectron). */
-export function bridgeHandlers(store: Store, questions: Questions): Record<string, Handler> {
+/** The noyau's PontNavigateur, answered on the store and the windows' tabs (Electron's PontElectron). */
+export function bridgeHandlers(store: Store, questions: Questions, windows: WindowRegistry): Record<string, Handler> {
+  /** The open window that holds the tab. */
+  const windowOf = (id: string) => {
+    const m = windows.get(store.state.onglets[id]?.fenetreId ?? "");
+    if (!m) throw new Error("Aucune fenêtre ouverte");
+    return m;
+  };
   /** Throws OngletPrive for a tab in a private space: a call that crosses the switch to private reads nothing. */
   const tab = (id: string): Onglet => {
     const state = store.state;
@@ -53,7 +47,7 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
    */
   const outsidePrivate = async <T>(id: string, read: (browser: any) => Promise<T>): Promise<T> => {
     const before = tab(id);
-    const browser = await needWindow().controller.ensure(id);
+    const browser = await windowOf(id).controller.ensure(id);
     const r = await read(browser);
     const origin = origineDe(before.url);
     if (origineDe(tab(id).url) !== origin || origineDe(browser.currentURI.spec) !== origin)
@@ -62,12 +56,12 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
   };
 
   return {
-    ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? activeWindow(store.state)),
+    ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? activeWindow(store.state, windows)),
     listerOnglets: () => infosOnglets(store.state),
     // The agent's demos open in the foreground, marked ✦.
     ouvrirOnglet: ([url, espace]: [string, string?]): OngletInfo => {
       const state = store.state;
-      const f = state.fenetres.find((x) => x.id === activeWindow(state)) ?? state.fenetres[0];
+      const f = state.fenetres.find((x) => x.id === activeWindow(state, windows)) ?? state.fenetres[0];
       if (!f) throw new Error("Aucune fenêtre ouverte");
       const espaceId = resoudreEspace(state, f, espace);
       if (state.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
@@ -79,7 +73,7 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
     },
     naviguer: ([id, url]: [string, string]) => {
       tab(id);
-      needWindow().controller.navigateForAgent(id, url);
+      windowOf(id).controller.navigateForAgent(id, url);
     },
     lireTexte: ([id]: [string]) =>
       outsidePrivate(id, async (browser) => {
@@ -93,7 +87,7 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
       outsidePrivate(id, async (browser) => {
         const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
         try {
-          const canvas = needWindow().window.document.createElementNS(XHTML, "canvas") as HTMLCanvasElement;
+          const canvas = windowOf(id).window.document.createElementNS(XHTML, "canvas") as HTMLCanvasElement;
           canvas.width = bitmap.width;
           canvas.height = bitmap.height;
           canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
@@ -104,7 +98,7 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
       }),
     // « L'agent veut lire l'onglet … » in the active window. The signal aborts when the host goes: the card falls.
     demanderAutorisation: ([o]: [OngletInfo], signal) => {
-      const f = activeWindow(store.state);
+      const f = activeWindow(store.state, windows);
       return f ? questions.ask(o, f, signal) : false;
     },
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage], signal) => readPage(store, url, o, signal),
@@ -112,11 +106,15 @@ export function bridgeHandlers(store: Store, questions: Questions): Record<strin
   };
 }
 
-/** Tells the host what the access policy and the private mirror must learn from each state change. */
-export function trackState(store: Store, host: AgentHost): void {
-  let mirror = JSON.stringify(privateMirror(store.state));
+/**
+ * Tells the host what the access policy and the private mirror must learn from each state change.
+ * shortcut: focusing another window changes no state, so actifPrive may lag until the next change (the bridge still
+ * refuses a private tab on read); send the mirror on window activation too if the noyau ever trusts it alone.
+ */
+export function trackState(store: Store, host: AgentHost, windows: WindowRegistry): void {
+  let mirror = JSON.stringify(privateMirror(store.state, windows));
   store.subscribe((state, previous) => {
-    const next = JSON.stringify(privateMirror(state));
+    const next = JSON.stringify(privateMirror(state, windows));
     if (next !== mirror) host.notify("prives", JSON.parse((mirror = next)));
     const { navigues, fermes } = changementsPolitique(previous, state);
     for (const n of navigues) host.notify("politique.navigue", n);
@@ -133,4 +131,5 @@ export function trackState(store: Store, host: AgentHost): void {
 }
 
 /** The private mirror a new host starts from. */
-export const sendMirror = (store: Store, notify: (method: string, params: unknown) => void) => notify("prives", privateMirror(store.state));
+export const sendMirror = (store: Store, windows: WindowRegistry, notify: (method: string, params: unknown) => void) =>
+  notify("prives", privateMirror(store.state, windows));

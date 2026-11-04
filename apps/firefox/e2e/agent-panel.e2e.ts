@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { dispatch, state, waitFor } from "./firefox";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { dispatch, inWindow, newWindow, pressClosing, state, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
@@ -205,4 +205,83 @@ it("opening the panel on a tab shares it: page_courante reads without asking", a
   await toggleWithButton();
   await shown();
   expect((await callTool(w!.dataDir, "page_courante")).texte).toContain("Le chat dort");
+});
+
+describe("one agent session per window", () => {
+  const pidFile = () => join(w!.dataDir, "espace", "faux-agent-pid");
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  /** The agent is killed, in the container too (the fake docker logs it). Polled here: there may be no window left to run in. */
+  const stopped = async (pid: number) => {
+    const deadline = Date.now() + 10_000;
+    while (alive(pid)) {
+      if (Date.now() > deadline) throw new Error(`the agent ${pid} still runs`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const log = join(w!.dataDir, "espace", "faux-docker-arrets.log");
+    for (const end = Date.now() + 10_000; !/webaios-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > end) throw new Error(`no kill logged: ${read(log)}`);
+  };
+
+  it("⌘W on the empty page of the last window closes it and stops its agent", async () => {
+    await launch();
+    await shown();
+    await terminalShows("faux agent prêt>");
+    const pid = Number(read(pidFile()));
+    await pressClosing(m, "Meta+w");
+    await waitWindowCount(m, 0);
+    await stopped(pid);
+  });
+
+  it("⇧⌘W on the last window with a tab stops its agent; reopening it (Dock) starts a new one", async () => {
+    await launch();
+    await shown();
+    await terminalShows("faux agent prêt>");
+    const pid = Number(read(pidFile()));
+    await openTab("/a.html");
+    // A module timer outlives the window: once it is gone, it reopens one as the Dock would.
+    await m.execute(
+      `const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
+       const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
+       const reopen = () => [...Services.wm.getEnumerator("navigator:browser")].length ? setTimeout(reopen, 100) : setTimeout(() => BrowserWindowTracker.openWindow(), 500);
+       setTimeout(reopen, 100);`,
+    );
+    const old = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+    await pressClosing(m, "Meta+Shift+w");
+    await stopped(pid);
+    const reopened = (await waitWindowCount(m, 1, 20_000)).find((h) => h !== old)!;
+    await m.command("WebDriver:SwitchToWindow", { handle: reopened, focus: false });
+    await waitReady(m);
+    await toggleWithButton();
+    await shown();
+    await terminalShows("faux agent prêt>");
+    const next = Number(read(pidFile()));
+    expect(next).not.toBe(pid);
+    expect(alive(next)).toBe(true);
+  });
+
+  it("closing a window stops its agent", async () => {
+    await launch();
+    // The first window's agent first: faux-agent-pid then becomes the second's.
+    await shown();
+    await terminalShows("faux agent prêt>");
+    const first = Number(read(pidFile()));
+    const second = await newWindow(m);
+    const pid = await inWindow(m, second, async () => {
+      await shown();
+      await terminalShows("faux agent prêt>");
+      await waitFor(m, "return 1", () => Number(read(pidFile())) !== first);
+      return Number(read(pidFile()));
+    });
+    await inWindow(m, second, () => m.execute("window.close()"));
+    await waitWindowCount(m, 1);
+    await stopped(pid);
+    expect(alive(first)).toBe(true);
+  });
 });
