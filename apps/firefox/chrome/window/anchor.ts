@@ -61,8 +61,10 @@ export function setupAnchors(win: Window, frame: HTMLIFrameElement): Anchors {
     const anchor = placePrompt();
     return el?.checkVisibility({ visibilityProperty: true }) ? el : anchor;
   };
-  // On a tab switch PopupNotifications dismisses the open panel (_update, then _dismiss), which removes a removeOnDismissal
-  // prompt: an add-on's permissions, refused. Hidden first as its suppression hides it (no dismissal), it comes back with its tab.
+  // Stock Firefox dismisses the open prompt on a tab switch, which cancels a removeOnDismissal one (upstream test
+  // browser_permissions_dismiss.js, test_tab_switch_dismiss); a dismissed prompt is then reached from its urlbar icon.
+  // WebAiOs has no urlbar icon, so it keeps every prompt (sites' too) and it comes back with its tab: hidden here without
+  // dismissal. Relies on the private _hidePanel/_ignoreDismissal: re-check on Firefox upgrades.
   w.gBrowser.tabContainer.addEventListener("TabSelect", () => w.PopupNotifications.isPanelOpen && w.PopupNotifications._hidePanel(), true);
   const panelAnchor = w.PanelUI._getPanelAnchor;
   w.PanelUI._getPanelAnchor = (c: Element) => (c === w.PanelUI.menuButton ? placePrompt() : panelAnchor.call(w.PanelUI, c));
