@@ -149,3 +149,15 @@ export function options(o: { inTab: boolean }): Fixture {
     },
   };
 }
+
+/** Notes `ci-` + encodeURIComponent(JSON.stringify(names)) of the contextual identities it can see, to `base`/note/. */
+export function identities(base: string): Fixture {
+  const id = "identities@webaios.test";
+  return {
+    id,
+    manifest: { ...gecko(id), name: "Identités", permissions: ["contextualIdentities", "cookies", "<all_urls>"], background: { scripts: ["background.js"] } },
+    files: {
+      "background.js": `browser.contextualIdentities.query({}).then((l) => fetch(${JSON.stringify(base)} + "/note/ci-" + encodeURIComponent(JSON.stringify(l.map((i) => i.name)))));`,
+    },
+  };
+}

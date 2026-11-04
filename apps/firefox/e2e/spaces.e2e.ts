@@ -231,9 +231,9 @@ describe("space settings", () => {
     await m.command("WebDriver:SwitchToWindow", { handle: win, focus: false });
     const oldCookies = `return Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId: ${before.ctx} })).length`;
     expect(await m.execute(oldCookies)).toBe(1);
-    const containers = `const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
-      return ContextualIdentityService.getPublicIdentities().map((i) => i.name);`;
-    expect(await m.execute(containers)).toContain(`webaios-${travail.profil}`);
+    const container = `const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
+      return !!ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-${travail.profil}");`;
+    expect(await m.execute(container)).toBe(true);
     await openSettings(travail.id);
     await choose("Partagé avec « Perso »");
     await click(m, `${MODAL} button[type="submit"]`, { text: "Enregistrer" });
@@ -243,6 +243,6 @@ describe("space settings", () => {
     expect(after.url).toBe(server.url + "/lire-cookie");
     // No space uses the old profile any more: it is wiped, its container gone.
     await waitFor(m, oldCookies, (n) => n === 0, 3_000);
-    expect(await m.execute(containers)).not.toContain(`webaios-${travail.profil}`);
+    expect(await m.execute(container)).toBe(false);
   });
 });

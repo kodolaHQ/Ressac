@@ -272,10 +272,10 @@ describe("window controller", () => {
     await waitFor(m, cookiesB, (n) => n === 0, 3_000);
     await dispatch(m, { type: "creerEspace", nom: "C", icone: "©", prive: false, profil: "nouveau", fenetreId });
     await waitTitle(await open("/lire-cookie"), "aucun");
-    const names = await m.execute<string[]>(`
+    const gone = await m.execute<boolean>(`
       const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
-      return ContextualIdentityService.getPublicIdentities().map((i) => i.name);`);
-    expect(names).not.toContain(`webaios-${profileB}`);
+      return !ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-" + arguments[0]);`, [profileB]);
+    expect(gone).toBe(true);
   });
 
   it("drops a page that closes itself", async () => {

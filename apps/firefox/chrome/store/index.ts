@@ -6,7 +6,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
-import { containerFor, removeContainer } from "./containers";
+import { containerFor, migrateContainers, removeContainer } from "./containers";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 
@@ -18,7 +18,7 @@ export interface WebAiOsStore extends Store {
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
   flush(): Promise<void>;
-  /** userContextId of a login profile: 0 for PROFIL_DEFAUT, a container named `webaios-<id>` otherwise (created on first use). */
+  /** userContextId of a login profile: 0 for PROFIL_DEFAUT, an internal container otherwise (created on first use). */
   containerFor(profile: IdProfil): number;
   /** The Node host running the noyau, started with the store. */
   readonly agent: AgentHost;
@@ -39,6 +39,7 @@ const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
 async function start(): Promise<WebAiOsStore> {
+  migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
   const recorder = new EnregistreurSession(dataDir);

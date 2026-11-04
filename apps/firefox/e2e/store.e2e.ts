@@ -33,17 +33,19 @@ describe("state store", () => {
   });
 
   it("maps login profiles to containers", async () => {
-    const r = await w.marionette.execute<{ def: number; a: number; b: number; named: boolean }>(`return (async () => {
+    const r = await w.marionette.execute<{ def: number; a: number; b: number; named: boolean; leaked: boolean }>(`return (async () => {
       const store = await ChromeUtils.importESModule("${STORE}").ready;
       const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
       const a = store.containerFor("p1");
       return { def: store.containerFor("defaut"), a, b: store.containerFor("p1"),
-        named: ContextualIdentityService.getPublicIdentities().some((i) => i.name === "webaios-p1" && i.userContextId === a) };
+        named: ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-p1")?.userContextId === a,
+        leaked: ContextualIdentityService.getPublicIdentities().some((i) => i.name?.startsWith("webaios-")) };
     })();`);
     expect(r.def).toBe(0);
     expect(r.a).not.toBe(0);
     expect(r.b).toBe(r.a);
     expect(r.named).toBe(true);
+    expect(r.leaked).toBe(false);
   });
 });
 
