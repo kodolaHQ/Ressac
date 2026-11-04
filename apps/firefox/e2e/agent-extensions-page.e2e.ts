@@ -1,0 +1,265 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { button, cleanupXpis, installAddon } from "./addons";
+import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
+import { state, waitFor } from "./firefox";
+import type { LaunchedWebAiOs } from "./launch";
+import type { Marionette } from "./marionette";
+import { callTool } from "./mcp";
+import { startServer } from "./server";
+import { click, inUi, missingApi, waitUi } from "./ui";
+
+// Ported from Electron's extensions-interface.spec.ts (the Extensions page) and extensions-agent.spec.ts (:1210, the
+// unlock on the page; Supprimer and Désactiver partout of an agent extension). The page lists the agent's extensions only
+// (plan decision 8); lister_extensions lists AMO add-ons too (decision 7).
+const HOTE = "http://127.0.0.1/*";
+const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const CACHEUR = {
+  "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.2", content_scripts: [{ matches: [HOTE], css: ["cache.css"] }] },
+  "cache.css": "#cache-moi { display: none !important; }\n",
+};
+const JOURNAL = {
+  "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOTE], js: ["contenu.js"] }] },
+  "fond.js": 'console.log("fond démarré");\n',
+  "contenu.js": 'console.log("contenu:" + location.pathname);\n',
+};
+/** Its background logs what chrome.storage.local holds, then writes a value there once. */
+const MEMOIRE = {
+  "manifest.json": { manifest_version: 3, name: "Mémoire de l'agent", version: "1.0.0", permissions: ["storage"], background: { service_worker: "fond.js" } },
+  "fond.js": `chrome.storage.local.get(null).then((l) => {
+  console.log("lu:" + JSON.stringify(l));
+  if (!l.k) chrome.storage.local.set({ k: "gardé" });
+});
+`,
+};
+const PAGE = '[data-testid="page-extensions"]';
+const LIGNE = '[data-testid="extension-page"]';
+const CARTE = '[data-testid="demande-extension"]';
+const DEBLOCAGE = '[data-testid="demande-console-extension"]';
+const MASQUES = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
+
+let server: Awaited<ReturnType<typeof startServer>>;
+beforeAll(async () => (server = await startServer()));
+afterAll(() => server?.close());
+
+const dirs: string[] = [];
+const opened: LaunchedWebAiOs[] = [];
+afterEach(async () => {
+  for (const w of opened.splice(0)) await w.close();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  await cleanupXpis();
+});
+
+/** WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the agent's session started. */
+async function launch(o: { prepare?: (racine: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string } } = {}) {
+  const d = o.dirs ?? { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+  if (!o.dirs) dirs.push(d.dataDir, d.profile);
+  const racine = path.join(d.dataDir, "espace");
+  o.prepare?.(racine, d.dataDir);
+  const w = await launchWithAmo(d);
+  opened.push(w);
+  if (o.agent) {
+    const config = path.join(racine, ".webaios", "mcp.json");
+    for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+    await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  }
+  return { ...w, ...d, racine, call: (name: string, args: Record<string, unknown> = {}) => callTool(d.dataDir, name, args) };
+}
+type Launched = Awaited<ReturnType<typeof launch>>;
+
+const registry = (dataDir: string) => {
+  const f = path.join(dataDir, "extensions", "etat.json");
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { toutesCoupees: boolean; extensions: Record<string, { profils: string[] }> }) : { toutesCoupees: false, extensions: {} };
+};
+const waitActive = (m: Marionette, id: string, active: boolean) =>
+  waitFor(m, `return (async () => {
+    const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+    return !!(await AddonManager.getAddonByID(${JSON.stringify(id)}))?.isActive;
+  })();`, (v) => v === active, 30_000);
+const activeSpace = async (m: Marionette) => {
+  const s = await state(m);
+  return s.espaces.find((e) => e.id === s.fenetres[0]!.espaceActif)!;
+};
+
+/** The strip's menu, then one of its buttons. */
+async function fromStrip(m: Marionette, text: string): Promise<void> {
+  await click(m, '[data-testid="menu-extensions"]');
+  await click(m, '[data-testid="panneau-extensions"] button', { text });
+}
+/** Opens the Extensions page from the strip's « Extensions de l'agent ». */
+async function openPage(m: Marionette): Promise<void> {
+  await fromStrip(m, "Extensions de l'agent");
+  await waitUi(m, `return !!doc.querySelector(${JSON.stringify(PAGE)})`);
+}
+/** The page's row naming `nom` (its text), or null. */
+const row = (m: Marionette, nom: string) =>
+  inUi<string | null>(m, `return [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1])?.textContent ?? null`, [LIGNE, nom]);
+/** Waits until the row naming `nom` is there (`present`) or gone. */
+const waitRow = (m: Marionette, nom: string, present: boolean) =>
+  waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1]) === arguments[2]`, [LIGNE, nom, present], 15_000);
+/** Clicks the button `text` in the row naming `nom`. */
+async function rowButton(m: Marionette, nom: string, text: string): Promise<void> {
+  await waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1])`, [LIGNE, nom]);
+  await inUi(m, `const l = [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1]); l.setAttribute("data-cible", "1");`, [LIGNE, nom]);
+  await click(m, `${LIGNE}[data-cible="1"] button`, { text });
+  await inUi(m, `doc.querySelector('[data-cible="1"]')?.removeAttribute("data-cible")`);
+}
+/** Supprimer, then its confirmation. */
+async function supprimer(m: Marionette, nom: string): Promise<void> {
+  await rowButton(m, nom, "Supprimer");
+  await click(m, '[data-testid="confirmation-suppression-extension"] button.confirmer');
+}
+/** demander_extension, then « Activer » on its card. */
+async function activerParLAgent(w: Launched, id: string, nom: string): Promise<string> {
+  const appel = w.call("demander_extension", { id });
+  expect(await waitUi<string>(w.marionette, `return doc.querySelector(${JSON.stringify(CARTE)})?.textContent`, [], 15_000)).toContain(nom);
+  await click(w.marionette, `${CARTE} button`, { text: "Activer" });
+  return (await appel).texte;
+}
+/** console_extension until it contains `expected`. */
+async function consoleUntil(w: Launched, id: string, expected: string): Promise<string> {
+  let texte = "";
+  for (const deadline = Date.now() + 20_000; !texte.includes(expected); await new Promise((r) => setTimeout(r, 200))) {
+    if (Date.now() > deadline) throw new Error(`console_extension never said ${JSON.stringify(expected)}: ${texte}`);
+    texte = (await w.call("console_extension", { id })).texte;
+  }
+  return texte;
+}
+
+describe("the Extensions page", () => {
+  // extensions-interface.spec.ts:545
+  it("lists source, the agent's version (without the counter), rights, sites and spaces; Détails opens", async () => {
+    const w = await launch({ prepare: (racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)) });
+    const m = w.marionette;
+    await waitActive(m, "cacheur@agent.webaios", true);
+    expect((await agentAddons(m))[0]!.version).toBe("1.2.0.1");
+    await openPage(m);
+    await waitRow(m, "Cacheur de l'agent", true);
+    const text = (await row(m, "Cacheur de l'agent"))!;
+    expect(text).toContain("Écrite par l'agent · 1.2");
+    expect(text).not.toContain("1.2.0.1");
+    expect(text).toContain("Droits : ");
+    expect(text).toContain(`Sites : ${HOTE}`);
+    expect(text).toContain(`« ${(await activeSpace(m)).nom} » (profil defaut)`);
+    await rowButton(m, "Cacheur de l'agent", "Détails");
+    await waitUi(m, `return !!doc.querySelector('${LIGNE} [data-testid="details-extension"]')`);
+    expect(await missingApi(m)).toEqual([]);
+  });
+
+  it("the strip's menu opens the page; Gérer les extensions still opens about:addons", async () => {
+    const w = await launch();
+    const m = w.marionette;
+    await openPage(m);
+    expect(Object.values((await state(m)).onglets).map((o) => o.url)).toContain("webaios://extensions");
+    expect(await inUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent`)).toContain("Aucune extension.");
+    await fromStrip(m, "Gérer les extensions");
+    await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => typeof v === "string" && v.startsWith("about:addons"));
+    expect(await missingApi(m)).toEqual([]);
+  });
+
+  // extensions-interface.spec.ts:577
+  it("« Désactiver toutes les extensions »: the agent's add-ons disabled, still after a restart; unticked, they run again", async () => {
+    const first = await launch({ prepare: (racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)) });
+    let m = first.marionette;
+    await waitActive(m, "cacheur@agent.webaios", true);
+    await openPage(m);
+    await click(m, '[data-testid="couper-extensions"]');
+    await waitUi(m, `return doc.querySelector('[data-testid="couper-extensions"]').checked`);
+    await waitActive(m, "cacheur@agent.webaios", false);
+    expect(registry(first.dataDir).toutesCoupees).toBe(true);
+    // Disabled, never uninstalled (decision 4): its grant stays.
+    expect(registry(first.dataDir).extensions["agent:cacheur"]?.profils).toEqual(["defaut"]);
+    await first.close();
+
+    const w = await launch({ dirs: { dataDir: first.dataDir, profile: first.profile } });
+    m = w.marionette;
+    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agentExtensions.ready; })();`);
+    expect((await agentAddons(m)).filter((a) => a.isActive)).toEqual([]);
+    await openPage(m);
+    await waitUi(m, `return doc.querySelector('[data-testid="couper-extensions"]')?.checked`);
+    await waitRow(m, "Cacheur de l'agent", true);
+    await click(m, '[data-testid="couper-extensions"]');
+    await waitActive(m, "cacheur@agent.webaios", true);
+    expect(registry(w.dataDir).toutesCoupees).toBe(false);
+  });
+
+  it("Désactiver partout keeps its storage: granted again, it reads what it wrote", async () => {
+    const w = await launch({ agent: true });
+    const m = w.marionette;
+    ecrireExtensionAgent(w.racine, "memoire", MEMOIRE);
+    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    await consoleUntil(w, "memoire", "lu:{}");
+    await openPage(m);
+    await rowButton(m, "Mémoire de l'agent", "Désactiver partout");
+    await waitActive(m, "memoire@agent.webaios", false);
+    expect(registry(w.dataDir).extensions["agent:memoire"]?.profils).toEqual([]);
+    await waitRow(m, "Mémoire de l'agent", true);
+    expect(await row(m, "Mémoire de l'agent")).toContain("Espaces : Active nulle part");
+    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    await waitActive(m, "memoire@agent.webaios", true);
+    await consoleUntil(w, "memoire", 'lu:{"k":"gardé"}');
+  });
+
+  it("Supprimer uninstalls it and wipes its storage; the agent folder stays", async () => {
+    const w = await launch({ agent: true });
+    const m = w.marionette;
+    ecrireExtensionAgent(w.racine, "memoire", MEMOIRE);
+    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    await consoleUntil(w, "memoire", "lu:{}");
+    await openPage(m);
+    await supprimer(m, "Mémoire de l'agent");
+    await waitRow(m, "Mémoire de l'agent", false);
+    expect(await agentAddons(m)).toEqual([]);
+    expect("agent:memoire" in registry(w.dataDir).extensions).toBe(false);
+    expect(existsSync(path.join(w.racine, "extensions", "memoire", "manifest.json"))).toBe(true);
+    expect(existsSync(path.join(w.dataDir, "extensions", "copies", "memoire"))).toBe(false);
+    // Granted again: a fresh storage, and the next version number (amo-versions.json is never cleared).
+    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    await waitActive(m, "memoire@agent.webaios", true);
+    expect((await agentAddons(m))[0]!.version).toBe("1.0.0.2");
+    expect(await consoleUntil(w, "memoire", "lu:")).not.toContain("gardé");
+  });
+
+  // extensions-agent.spec.ts:1210, with the page open before: the unlock's start and end refresh it.
+  it("says « Console débloquée pour l'agent »; « Couper le déblocage » and refermer_console close it", async () => {
+    const w = await launch({ agent: true });
+    const m = w.marionette;
+    ecrireExtensionAgent(w.racine, "journal", JOURNAL);
+    expect(await activerParLAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
+    await openTab(m, `${server.url}/a.html`);
+    await consoleUntil(w, "journal", MASQUES);
+    await openPage(m);
+    await waitRow(m, "Journal de l'agent", true);
+    const debloquer = async () => {
+      const appel = w.call("debloquer_console", { id: "journal", raison: "r" });
+      await click(m, `${DEBLOCAGE} button`, { text: "Débloquer" });
+      expect((await appel).texte).toContain("Console débloquée");
+      await waitUi(m, `return doc.querySelector('${LIGNE} [data-testid="console-debloquee"]')?.textContent === "Console débloquée pour l'agent"`);
+    };
+    const closed = () => waitUi(m, `return !doc.querySelector('${LIGNE} [data-testid="console-debloquee"]')`);
+    await debloquer();
+    await rowButton(m, "Journal de l'agent", "Couper le déblocage");
+    await closed();
+    expect((await w.call("console_extension", { id: "journal" })).texte).not.toContain("contenu:/a.html");
+    await debloquer();
+    expect((await w.call("refermer_console", { id: "journal" })).texte).toContain("refermée");
+    await closed();
+  });
+});
+
+describe("lister_extensions", () => {
+  it("lists an AMO add-on with source store", async () => {
+    const w = await launch({ agent: true });
+    const m = w.marionette;
+    const id = await installAddon(m, button());
+    const espace = (await activeSpace(m)).nom;
+    expect((await w.call("lister_extensions")).texte).toContain(`store:${id} · Bouton de test · 1.0 · store · actives dans : ${espace} · erreurs : aucune`);
+    // Never on the page, which lists the agent's extensions only.
+    await openPage(m);
+    await waitUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent.includes("Aucune extension.")`);
+  });
+});

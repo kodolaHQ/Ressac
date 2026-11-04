@@ -2,13 +2,16 @@ import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from
 import { join } from "node:path";
 import {
   activer,
+  analyserManifeste,
   appliquerProfilsPrives,
   cleExtension,
+  couperTout,
   DEMANDE_RETIREE,
   desactiver,
   desactiverPartout,
   ERREUR_PROFIL_PRIVE,
   GARDES_PAR_DEFAUT,
+  libellesPortee,
   lireEtatExtensions,
   modifierEtatExtensions,
   porteeElargie,
@@ -25,13 +28,14 @@ import {
   type ResultatConsoleExtension,
   type ResultatDemandeExtension,
 } from "../../../../packages/noyau/src/index.ts";
-import type { CarteExtension, LigneExtensionEspace, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
+import type { CarteExtension, LigneExtension, LigneExtensionEspace, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
+import type { ResultatExtension } from "../../../navigateur/src/commun/api.ts";
 import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, LONGUEUR_RAISON_DEBLOCAGE } from "../../../navigateur/src/commun/extensions-messages.ts";
 import type { Espace, Issue } from "../../../navigateur/src/commun/modele.ts";
 import { ConsolesExtensions, type FiltreAgent } from "../../../navigateur/src/main/extensions/consoles.ts";
 import type { Rpc } from "../../shared/rpc.ts";
 import { AMO_URL, CLES_ABSENTES, ErreurSignature, lireCleAmo, signatureImpossible, signer } from "./amo.ts";
-import { carteDe } from "./carte.ts";
+import { carteDe, nonPrisEnCharge } from "./carte.ts";
 import { addonIdDe, manifesteFirefox, prochaineVersion, refusFirefox, SUFFIXE_ID, zipper } from "./copie-firefox.ts";
 
 // Keep in sync with apps/navigateur/src/main/extensions/agent.ts (texts and reperesDuChemin).
@@ -51,6 +55,9 @@ export const CONSOLE_PROFIL_PRIVE = "Extension active dans le profil d'un espace
 export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
 export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
 const DEBLOCAGE_REFUSE = "Déblocage refusé";
+export const REVOIR_PENDANT_COUPURE = "Les extensions sont toutes désactivées : réactive-les pour revoir cette extension";
+export const RIEN_A_REVOIR = "Rien à revoir pour cette extension";
+const ERREURS_CONSOLE_PAGE = 20;
 /** Rights that see tabs or navigation: with one, sites or all sites, the background's and pages' console stays masked. */
 export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks", "activeTab", "clipboardRead", "contextMenus",
   "declarativeNetRequestFeedback"];
@@ -198,8 +205,7 @@ export class ExtensionsAgent {
       refermerConsole: async (id) => {
         const cle = this.cleAgent(id);
         if (!cle) return { ok: false, erreur: `Extension inconnue : ${id}` };
-        this.deblocages.delete(cle);
-        return { ok: true };
+        return this.couperDeblocage(cle);
       },
     };
   }
@@ -305,6 +311,13 @@ export class ExtensionsAgent {
     const apres = await lireEtatExtensions(this.o.dossier);
     if (refusDeblocage(apres, profilsPrivesDe(await this.navigateur()), cle) || lienRompu(apres, cle, ouverte.lien)) return { ok: false, erreur: DEBLOCAGE_CHANGE };
     this.deblocages.set(cle, ouverte.lien);
+    this.o.rpc.notify("extensions.change");
+    return { ok: true };
+  }
+
+  /** « Couper le déblocage » (Extensions page) or `refermer_console`: its console is filtered again. */
+  couperDeblocage(cle: string): ResultatExtension {
+    if (this.deblocages.delete(cle)) this.o.rpc.notify("extensions.change");
     return { ok: true };
   }
 
@@ -319,10 +332,22 @@ export class ExtensionsAgent {
     return this.cle(id.startsWith("agent:") ? id.slice("agent:".length) : id);
   }
 
-  /** Each registry entry: the non-private spaces where it is active (named), the private ones (counted), its disabling. */
+  /**
+   * Each registry entry: the non-private spaces where it is active (named), the private ones (counted), its disabling;
+   * then Firefox's AMO add-ons (decision 7): global, so active in every space, with no error.
+   */
   private async lister(): Promise<ExtensionPourAgent[]> {
-    const [nav, etat] = await Promise.all([this.navigateur(), lireEtatExtensions(this.o.dossier)]);
-    return Object.entries(etat.extensions)
+    const [nav, etat, amo] = await Promise.all([
+      this.navigateur(),
+      lireEtatExtensions(this.o.dossier),
+      this.o.rpc.request<{ id: string; nom: string; version: string; actif: boolean }[]>("extensions.amo", {}),
+    ]);
+    const prives = nav.espaces.filter((e) => e.prive).length;
+    const ouverts = nav.espaces.filter((e) => !e.prive).map((e) => e.nom);
+    const modules = amo
+      .map((a): ExtensionPourAgent => ({ cle: `store:${a.id}`, source: "store", nom: a.nom, version: a.version, espaces: a.actif ? ouverts : [], espacesPrives: a.actif ? prives : 0, erreurs: [] }))
+      .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+    const agent = Object.entries(etat.extensions)
       .map(([cle, x]): ExtensionPourAgent => {
         const espaces = nav.espaces.filter((e) => x.profils.includes(e.profil));
         return {
@@ -336,6 +361,111 @@ export class ExtensionsAgent {
         };
       })
       .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+    return [...agent, ...modules];
+  }
+
+  /** The Extensions page (Electron's liste, the agent's only): one row per registry entry, by name. */
+  async liste(): Promise<LigneExtension[]> {
+    const [nav, etat] = await Promise.all([this.navigateur(), lireEtatExtensions(this.o.dossier)]);
+    const prives = profilsPrivesDe(nav);
+    const lignes: LigneExtension[] = [];
+    for (const [cle, x] of Object.entries(etat.extensions)) {
+      const id = this.id(cle);
+      if (!id || x.source !== "agent") continue;
+      const manifeste = await readFile(join(this.o.dossier, "copies", id, "manifest.json"), "utf8").then((t) => JSON.parse(t) as unknown, () => null);
+      // The granted scope; without a grant (never for a loaded entry), the manifest's on disk.
+      const portee = x.accord ?? analyserManifeste(manifeste, { source: "agent" }).portee;
+      const desactivee = x.desactivee ? (x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE) : null;
+      lignes.push({
+        cle,
+        nom: x.nom,
+        source: "agent",
+        version: x.version,
+        droits: libellesPortee(portee, "agent"),
+        sites: [...portee.hotes],
+        tousLesSites: portee.tousLesSites,
+        espaces: nav.espaces.filter((e) => x.profils.includes(e.profil) && !prives.has(e.profil)).map((e) => ({ nom: e.nom, profil: e.profil })),
+        erreurs: this.consoles.erreurs(addonIdDe(id)).slice(-ERREURS_CONSOLE_PAGE),
+        modifieeLe: x.modifieeLe,
+        desactivee,
+        majEnAttente: null,
+        nonPrisEnCharge: nonPrisEnCharge(manifeste),
+        epinglee: x.epinglee,
+        consoleDebloquee: this.deblocages.has(cle),
+        applis: [],
+      });
+    }
+    return lignes.sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+  }
+
+  /** « Désactiver toutes les extensions » is on. */
+  async coupees(): Promise<boolean> {
+    return (await lireEtatExtensions(this.o.dossier)).toutesCoupees;
+  }
+
+  /** « Désactiver toutes les extensions » (kept in the registry, so across a restart): every agent add-on disabled, never uninstalled. */
+  async toutCouper(oui: boolean): Promise<ResultatExtension> {
+    try {
+      const e = await this.modifier((e) => couperTout(e, oui));
+      for (const cle of Object.keys(e.extensions)) {
+        const id = this.id(cle);
+        if (id) await this.enFile(cle, () => this.appliquer(id, cle));
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erreur: (e as Error).message };
+    }
+  }
+
+  /** « Désactiver partout »: out of every profile, the add-on disabled; its grant and storage stay (decision 4). */
+  desactiverPartout(cle: string): Promise<ResultatExtension> {
+    return this.ecrireCle(cle, (e) => desactiverPartout(e, cle));
+  }
+
+  /** « Réactiver » after crashes: it runs again in the profiles where it was active. */
+  async reactiver(cle: string): Promise<ResultatExtension> {
+    const r = await this.ecrireCle(cle, (e) => {
+      const x = e.extensions[cle]!;
+      return x.desactivee?.raison === "plantages" ? { ...e, extensions: { ...e.extensions, [cle]: { ...x, desactivee: null } } } : e;
+    });
+    const id = this.id(cle);
+    if (r.ok && id) this.consoles.oublier(addonIdDe(id));
+    return r;
+  }
+
+  /** « Revoir l'accord » (disabled for a broadened scope): the card, in `fenetre`'s active space if the extension is active there. */
+  async revoir(cle: string, fenetre: string | null): Promise<ResultatExtension> {
+    const id = this.id(cle);
+    const etat = await lireEtatExtensions(this.o.dossier);
+    const x = etat.extensions[cle];
+    if (!id || !x) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    if (etat.toutesCoupees) return { ok: false, erreur: REVOIR_PENDANT_COUPURE };
+    if (x.desactivee?.raison !== "portee-elargie") return { ok: false, erreur: RIEN_A_REVOIR };
+    const nav = await this.navigateur();
+    const prives = profilsPrivesDe(nav);
+    const actif = nav.fenetres.find((f) => f.id === fenetre)?.espaceActif;
+    const espace =
+      nav.espaces.find((e) => e.id === actif && x.profils.includes(e.profil)) ??
+      nav.espaces.find((e) => x.profils.includes(e.profil) && !prives.has(e.profil)) ??
+      nav.espaces.find((e) => e.id === actif);
+    if (!espace) return { ok: false, erreur: "Aucun espace où la revoir" };
+    const r = await this.demander(id, { espace: espace.id, fenetre });
+    return r.ok ? { ok: true } : { ok: false, erreur: r.erreur };
+  }
+
+  /** A registry write for a known agent key, in its queue, then applied to its add-on; an error comes back as text. */
+  private async ecrireCle(cle: string, changer: (e: EtatExtensions) => EtatExtensions): Promise<ResultatExtension> {
+    const id = this.id(cle);
+    if (!id || !(cle in (await lireEtatExtensions(this.o.dossier)).extensions)) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    try {
+      await this.enFile(cle, async () => {
+        await this.modifier((e) => (cle in e.extensions ? changer(e) : e));
+        await this.appliquer(id, cle);
+      });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erreur: (e as Error).message };
+    }
   }
 
   /**
@@ -448,6 +578,15 @@ export class ExtensionsAgent {
       if (r.erreur === DESACTIVEE_PORTEE) return { etat: "desactivee" as const, detail: [DESACTIVEE_PORTEE] };
       return { etat: "refusee" as const, detail: r.refus ?? [r.erreur] };
     });
+  }
+
+  /** The Extensions page's « Supprimer »: its storage goes with the add-on, the agent's folder stays. */
+  async supprimerPage(cle: string): Promise<ResultatExtension> {
+    if (!(cle in (await lireEtatExtensions(this.o.dossier)).extensions)) return { ok: false, erreur: `Extension inconnue : ${cle}` };
+    return this.supprimer(cle).then(
+      () => ({ ok: true as const }),
+      (e: unknown) => ({ ok: false as const, erreur: (e as Error).message }),
+    );
   }
 
   /** « Supprimer »: uninstalled, copy and signed .xpi deleted, registry entry removed; amo-versions.json kept (AMO never reuses a number). */

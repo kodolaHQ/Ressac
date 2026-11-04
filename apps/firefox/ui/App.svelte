@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
   import BarreCommande from "../../navigateur/src/renderer/composants/BarreCommande.svelte";
   import BarreLaterale from "../../navigateur/src/renderer/composants/BarreLaterale.svelte";
+  import Extensions from "../../navigateur/src/renderer/composants/Extensions.svelte";
   import FondFige from "../../navigateur/src/renderer/composants/FondFige.svelte";
   import Historique from "../../navigateur/src/renderer/composants/Historique.svelte";
   import MenuContextuel from "../../navigateur/src/renderer/composants/MenuContextuel.svelte";
@@ -17,7 +18,7 @@
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
-  import { aUneVue } from "../../navigateur/src/commun/modele";
+  import { aUneVue, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
@@ -107,6 +108,8 @@
       <PageVide {fenetre} />
     {:else if ongletActif && (ongletActif.plante || ongletActif.erreur)}
       <PageError onglet={ongletActif} />
+    {:else if ongletActif?.url === URL_EXTENSIONS}
+      <Extensions />
     {:else if ongletActif && !pageWeb}
       <InternalPage />
     {/if}

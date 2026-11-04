@@ -106,6 +106,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
       return f ? questions.askConsole(p, f, signal) : "retiree";
     },
+    // Firefox's own add-ons for lister_extensions (decision 7): AMO extensions, not the agent's, nor built-in, system or hidden ones.
+    "extensions.amo": async () =>
+      (await AddonManager.getAddonsByTypes(["extension"]))
+        .filter((a: { id: string; isBuiltin: boolean; isSystem: boolean; hidden: boolean }) => !a.id.endsWith(SUFFIX) && !a.isBuiltin && !a.isSystem && !a.hidden)
+        .map((a: { id: string; name: string; version: string; isActive: boolean }) => ({ id: a.id, nom: a.name, version: a.version, actif: a.isActive })),
     "navigateur.espaces": () => ({
       espaces: store.state.espaces,
       fenetres: store.state.fenetres.filter((f) => windows.get(f.id)).map((f) => ({ id: f.id, espaceActif: f.espaceActif })),

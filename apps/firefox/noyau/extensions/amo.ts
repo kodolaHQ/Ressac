@@ -16,6 +16,7 @@ export const SIGNATURE_LENTE = "Signature trop longue : addons.mozilla.org n'a p
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;
 export const VERSION_QUATRE = "version : trois nombres au plus (WebAiOs ajoute le quatrième)";
 export const GECKO_ID = "browser_specific_settings.gecko.id refusé : WebAiOs pose l'identifiant";
+export const STORE_ABSENT = "Le Chrome Web Store n'est pas pris en charge : installe tes modules depuis addons.mozilla.org.";
 
 export interface CleAmo {
   emetteur: string;

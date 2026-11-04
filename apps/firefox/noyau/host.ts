@@ -23,6 +23,7 @@ const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
+const { STORE_ABSENT } = await import("./extensions/amo.ts");
 
 const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {
@@ -227,10 +228,23 @@ const rpc = createRpc({
       typeof p?.cle === "string" && typeof p.espaceId === "string"
         ? extensions.basculer(p.cle, p.espaceId, p.actif === true, typeof p.fenetre === "string" ? p.fenetre : null)
         : { ok: false, erreur: "Paramètres invalides" },
+    // The Extensions page (the agent's extensions only, decision 8).
+    "extensions.liste": () => extensions.liste(),
+    "extensions.coupees": () => extensions.coupees(),
+    "extensions.supprimer": (p: { cle?: unknown }) => parCle(p, (cle) => extensions.supprimerPage(cle)),
+    "extensions.desactiverPartout": (p: { cle?: unknown }) => parCle(p, (cle) => extensions.desactiverPartout(cle)),
+    "extensions.reactiver": (p: { cle?: unknown }) => parCle(p, (cle) => extensions.reactiver(cle)),
+    "extensions.couperDeblocage": (p: { cle?: unknown }) => parCle(p, (cle) => extensions.couperDeblocage(cle)),
+    "extensions.revoir": (p: { cle?: unknown; fenetre?: unknown }) =>
+      parCle(p, (cle) => extensions.revoir(cle, typeof p.fenetre === "string" ? p.fenetre : null)),
+    "extensions.toutCouper": (p: { oui?: unknown }) => extensions.toutCouper(p?.oui === true),
+    "extensions.installerStore": () => ({ ok: false, erreur: STORE_ABSENT }),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
 const bridge = new RemoteBridge(rpc, historique);
+/** A page request on one extension key: a malformed one is refused as text. */
+const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
 // Outside the agent's noyau, like the history: granted extensions run even when the noyau does not start.
 const extensions = new ExtensionsAgent({ dossier: join(dataDir, "extensions"), dossierAgent: cheminsEspace(racine).extensions, rpc });
 let demarrageExtensions: Promise<void> | undefined;

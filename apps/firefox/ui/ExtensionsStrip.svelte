@@ -1,9 +1,11 @@
 <script lang="ts">
+  import type { EtatFenetre } from "../../navigateur/src/commun/modele";
+  import { api } from "../../navigateur/src/renderer/etat.svelte";
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
-  // `fenetre` is unused: the window announces changes itself (onChange, every tab switch: keep the handler cheap).
-  let { fenetre: _ }: { fenetre?: unknown } = $props();
+  // `fenetre` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
+  let { fenetre }: { fenetre: EtatFenetre } = $props();
   const addons = window.parent.webaiosWindow!.addons;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
   let updates = $state<PendingUpdate[]>(structuredClone(addons.updates()));
@@ -78,6 +80,7 @@
       {/each}
     </ul>
     <button class="gerer" onclick={act(() => addons.manage())}>Gérer les extensions</button>
+    <button class="gerer" onclick={act(() => api.agir({ type: "ouvrirExtensions", fenetreId: fenetre.id }))}>Extensions de l'agent</button>
     <button class="gerer" onclick={act(() => addons.findMore())}>Trouver des modules</button>
   </div>
 {/if}

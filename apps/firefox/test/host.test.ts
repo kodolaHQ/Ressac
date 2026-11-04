@@ -371,6 +371,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [{ id: "f1", espaceActif: "e1" }], premierPlan: "f1" }),
       "extensions.portees": (p: Record<string, unknown>) => void f.portees.push(p),
       "extensions.rechargerOnglets": (p: unknown) => void f.recharges.push(p),
+      "extensions.amo": () => [{ id: "amo@exemple.org", nom: "Module d'AMO", version: "2.0", actif: true }],
     };
     return f;
   };
@@ -682,7 +683,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     // Already granted and active there: nothing asked again.
     expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
     expect(f.cartes).toHaveLength(2);
-    expect(await outil(h, "lister_extensions")).toContain("agent:ma-ext · Cacheur · 1.0.0 · agent · actives dans : Perso · erreurs : aucune");
+    const liste = await outil(h, "lister_extensions");
+    expect(liste).toContain("agent:ma-ext · Cacheur · 1.0.0 · agent · actives dans : Perso · erreurs : aucune");
+    // Then Firefox's AMO add-ons, global (decision 7).
+    expect(liste).toMatch(/agent:ma-ext .*\nstore:amo@exemple\.org · Module d'AMO · 2\.0 · store · actives dans : Perso · erreurs : aucune$/);
   });
 
   it("demander_extension without AMO keys: clear error, no card asked, nothing sent", async () => {

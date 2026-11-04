@@ -27,3 +27,19 @@ export function carteDe(
     empreinte: empreintePortee(p),
   };
 }
+
+// Keep in sync with apps/navigateur/src/commun/extensions.ts nonPrisEnCharge (the Extensions page's « Non pris en charge »).
+const DROITS_NON_PRIS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
+const CLES_NON_PRISES: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
+
+/** What the manifest asks for that WebAiOs does not support, in list order, without duplicates (pure). */
+export function nonPrisEnCharge(manifeste: unknown): string[] {
+  if (typeof manifeste !== "object" || manifeste === null) return [];
+  const m = manifeste as Record<string, unknown>;
+  const droits = new Set<string>();
+  for (const champ of ["permissions", "optional_permissions"])
+    if (Array.isArray(m[champ])) for (const d of m[champ] as unknown[]) if (typeof d === "string") droits.add(d);
+  const r: string[] = DROITS_NON_PRIS.filter((d) => droits.has(d));
+  for (const [cle, nom] of Object.entries(CLES_NON_PRISES)) if (Object.hasOwn(m, cle) && !r.includes(nom)) r.push(nom);
+  return r;
+}

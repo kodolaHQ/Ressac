@@ -1,5 +1,5 @@
-import type { ApiWebaios, EtatPanneauAgent } from "../../navigateur/src/commun/api";
-import type { LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
+import type { ApiWebaios, EtatPanneauAgent, ResultatExtension } from "../../navigateur/src/commun/api";
+import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
 import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 
@@ -31,6 +31,9 @@ export function createApi(win: WindowController): ApiWebaios {
   /** States this document makes itself: the host did not start, or stopped. */
   const localStates = new Set<(e: EtatPanneauAgent) => void>();
   const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
+  /** An extension action in the noyau host; its answer copied into this realm, a failure given back as text. */
+  const extension = (method: string, params: Record<string, unknown>) =>
+    host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
   const api: Partial<ApiWebaios> = {
     fenetreId: win.fenetreId,
     // A tab the user closes may ask first (Electron's ipc.ts sends fermerOnglet to Vues.fermer).
@@ -114,11 +117,18 @@ export function createApi(win: WindowController): ApiWebaios {
     // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
     extensions: {
       pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),
-      basculer: (cle, espaceId, actif) =>
-        host
-          .request<{ ok: true } | { ok: false; erreur: string }>("extensions.basculer", { cle, espaceId, actif, fenetre })
-          .then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) })),
+      basculer: (cle, espaceId, actif) => extension("extensions.basculer", { cle, espaceId, actif, fenetre }),
       surChange: (callback) => untilUnload(host.on("extensions.change", () => callback())),
+      // The Extensions page: the agent's extensions only (decision 8); AMO add-ons stay in about:addons.
+      liste: () => host.request<LigneExtension[]>("extensions.liste").then((l) => structuredClone(l), () => []),
+      coupees: () => host.request<boolean>("extensions.coupees").then((b) => b === true, () => false),
+      desactiverPartout: (cle) => extension("extensions.desactiverPartout", { cle }),
+      supprimer: (cle) => extension("extensions.supprimer", { cle }),
+      toutCouper: (oui) => extension("extensions.toutCouper", { oui }),
+      revoir: (cle) => extension("extensions.revoir", { cle, fenetre }),
+      reactiver: (cle) => extension("extensions.reactiver", { cle }),
+      couperDeblocage: (cle) => extension("extensions.couperDeblocage", { cle }),
+      installerStore: () => extension("extensions.installerStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
     actions: { liste: none, surChange: off, ouvrir: unavailable } as unknown as ApiWebaios["actions"],
   };
