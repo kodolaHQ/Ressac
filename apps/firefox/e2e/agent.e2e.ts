@@ -127,3 +127,18 @@ it("quitting stops the host", async () => {
     5_000,
   );
 });
+
+it("lire_onglet on a crashed tab answers an error within 15 s", async () => {
+  const { texte: id } = await call("ouvrir_onglet", { url: `${server.url}/plante.html` });
+  await loaded("/plante.html");
+  await m.execute(
+    `const b = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser;
+     Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(b.browsingContext.currentWindowGlobal.domProcess.osPid);`,
+    [id],
+  );
+  await poll(() => state(m), (s) => !!s.onglets[id]?.plante);
+  const start = Date.now();
+  const lu = await call("lire_onglet", { id });
+  expect(Date.now() - start).toBeLessThan(15_000);
+  expect(lu.erreur).toBe(true);
+});

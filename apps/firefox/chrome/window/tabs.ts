@@ -5,7 +5,14 @@ import type { WebAiOsStore } from "../store";
 
 const ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
-const { STATE_START, STATE_STOP, STATE_IS_NETWORK } = Ci.nsIWebProgressListener;
+const { STATE_START, STATE_STOP, STATE_IS_NETWORK, LOCATION_CHANGE_ERROR_PAGE } = Ci.nsIWebProgressListener;
+/** The errors refused before any request, by their about:neterror code (nsDocShell::DisplayLoadError); others keep the code. */
+const REFUSED: Record<string, string> = {
+  deniedPortAccess: "NS_ERROR_PORT_ACCESS_NOT_ALLOWED",
+  malformedURI: "NS_ERROR_MALFORMED_URI",
+  unknownProtocolFound: "NS_ERROR_UNKNOWN_PROTOCOL",
+};
+const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Erreur");
 
 type Champs = Extract<Action, { type: "majOnglet" }>["champs"];
 
@@ -20,6 +27,8 @@ export class TabSync {
   private creating = false;
   /** While a popup's link opens here: the WebAiOs tab behind the popup. */
   private fromPopup: IdOnglet | undefined;
+  /** The status of each browser's last failed load, until its next one starts. */
+  private readonly failures = new WeakMap<object, number>();
 
   constructor(
     private readonly gBrowser: any,
@@ -48,16 +57,41 @@ export class TabSync {
       if (changed.includes("label") || changed.includes("image")) this.update(tab, { titre: tab.label, favicon: tab.getAttribute("image") || null });
     });
     gBrowser.addTabsProgressListener({
-      onLocationChange: (browser: any, progress: any, _request: unknown, location: any) => {
-        if (progress.isTopLevel) this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser) });
+      onLocationChange: (browser: any, progress: any, _request: unknown, location: any, flags: number) => {
+        if (!progress.isTopLevel) return;
+        // Only a load that ends on Firefox's error page shows our message: a download or a mailto: also stops with a failure.
+        // Its failed STATE_STOP comes first; a load refused before it started (a banned port…) has none, its error page names it.
+        const failure = this.failures.get(browser);
+        const erreur = flags & LOCATION_CHANGE_ERROR_PAGE
+          ? failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(new URL(browser.documentURI.spec).searchParams.get("e"))
+          : undefined;
+        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(erreur ? { erreur, chargement: false } : {}) });
       },
-      onStateChange: (browser: any, progress: any, _request: unknown, flags: number) => {
+      onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {
         if (!progress.isTopLevel || !(flags & STATE_IS_NETWORK)) return;
         const tab = gBrowser.getTabForBrowser(browser);
-        if (flags & STATE_START) this.update(tab, { chargement: true });
-        else if (flags & STATE_STOP) this.update(tab, { chargement: false, ...this.history(browser) });
+        if (flags & STATE_START) {
+          this.failures.delete(browser);
+          this.update(tab, { chargement: true, plante: false, erreur: null });
+        } else if (flags & STATE_STOP) {
+          if (Components.isSuccessCode(status)) this.failures.delete(browser);
+          else this.failures.set(browser, status);
+          this.update(tab, { chargement: false, ...this.history(browser) });
+        }
       },
     });
+    // Captured before Firefox's own handler, which would load about:tabcrashed: our UI shows its message instead.
+    gBrowser.tabpanels.addEventListener(
+      "oop-browser-crashed",
+      (e: any) => {
+        const tab = e.isTrusted && e.isTopFrame && gBrowser.getTabForBrowser(e.originalTarget);
+        const id = tab?.getAttribute(ID);
+        if (!id || this.tabs.get(id) !== tab) return;
+        e.stopPropagation();
+        this.update(tab, { plante: true, chargement: false });
+      },
+      true,
+    );
   }
 
   /** The XUL tab of a WebAiOs tab, if it has one. */
@@ -112,8 +146,15 @@ export class TabSync {
       if (!o || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
-    const target = web ? this.tabs.get(web.id) : this.parking;
+    // A crashed or failed page is replaced by the UI's message (Electron's vues.ts).
+    const target = web && !web.plante && !web.erreur ? this.tabs.get(web.id) : this.parking;
     if (this.gBrowser.selectedTab !== target) this.gBrowser.selectedTab = target;
+  }
+
+  /** Drops the XUL tab of `id` (a crashed browser cannot reload): the next sync creates a new one at the tab's URL. */
+  recreate(id: IdOnglet): void {
+    const tab = this.tabs.get(id);
+    if (tab) this.remove(id, tab);
   }
 
   private containerOf(state: EtatNavigateur, o: Onglet): number {

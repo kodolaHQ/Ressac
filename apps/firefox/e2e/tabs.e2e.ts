@@ -1,3 +1,4 @@
+import { createServer, type AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
 import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
@@ -5,6 +6,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
+import { click as clickUi, missingApi, waitUi } from "./ui";
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
@@ -119,6 +121,16 @@ async function inPopup<T>(url: string, fn: () => Promise<T>): Promise<T> {
 }
 
 const clickInPopup = (url: string, selector: string) => inPopup(url, () => clickHere(selector));
+
+/** Kills the content process of WebAiOs tab `id`, as a crash would. */
+const crash = (id: string) =>
+  m.execute(
+    `const b = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser;
+     Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(b.browsingContext.currentWindowGlobal.domProcess.osPid);`,
+    [id],
+  );
+/** The text of the UI's content area (an expression for waitUi). */
+const CONTENT_TEXT = `(doc.querySelector('[data-testid="zone-contenu"]')?.textContent ?? "")`;
 
 const windowCount = () => m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length");
 
@@ -327,5 +339,42 @@ describe("window controller", () => {
       () => (window.most = Math.max(window.most, [...Services.wm.getEnumerator("navigator:browser")].length)), { once: true }), "domwindowopened");`);
     await clickInPopup("popup-reste", "#sous-popup");
     await waitFor(m, "return window.most", (n) => n === 3);
+  });
+
+  it("a crashed page shows the message and Recharger works; the rest of the browser keeps running", async () => {
+    const id = await open("/plante.html");
+    await waitTitle(id, "Plante");
+    await crash(id);
+    await waitUi(m, `return ${CONTENT_TEXT}.includes("Cette page a planté.")`);
+    expect(await selected()).toEqual({ id: null, parking: true });
+    const a = await open("/a.html", { activer: false });
+    await waitUi(m, "return doc.querySelector('[data-testid=\"barre-laterale\"]').textContent.includes(arguments[0])", ["a.html"]);
+    expect((await state(m)).onglets[a]).toBeDefined();
+    await clickUi(m, '[data-testid="zone-contenu"] button', { text: "Recharger" });
+    await waitUi(m, `return !${CONTENT_TEXT}.includes("Cette page a planté.")`);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === id);
+    await waitState((s) => s.onglets[id]?.plante, (p) => p === false);
+    await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (t) => t === "Plante");
+    expect(await missingApi(m)).toEqual([]);
+  });
+
+  it("an unreachable page shows an error message and Recharger", async () => {
+    const id = await opened({ type: "ouvrirOnglet", fenetreId: (await win()).id, url: "http://127.0.0.1:1/" });
+    const text = await waitUi<string>(m, `const t = ${CONTENT_TEXT}; return t.includes("Impossible d'ouvrir cette page.") && t;`);
+    expect(text).toMatch(/NS_ERROR_[A-Z_]+/);
+    expect(text).toContain("http://127.0.0.1:1/");
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"zone-contenu\"] button')].some((b) => b.textContent === 'Recharger')");
+    expect(await selected()).toEqual({ id: null, parking: true });
+    expect((await state(m)).onglets[id]?.chargement).toBe(false);
+    // A refused connection names its failed load's status (port 1 above is refused before any request).
+    const closed = await new Promise<number>((resolve) => {
+      const srv = createServer().listen(0, "127.0.0.1", () => {
+        const { port } = srv.address() as AddressInfo;
+        srv.close(() => resolve(port));
+      });
+    });
+    const refused = await opened({ type: "ouvrirOnglet", fenetreId: (await win()).id, url: `http://127.0.0.1:${closed}/` });
+    await waitState((s) => s.onglets[refused]?.erreur, (e) => e === "NS_ERROR_CONNECTION_REFUSED");
+    expect(await missingApi(m)).toEqual([]);
   });
 });

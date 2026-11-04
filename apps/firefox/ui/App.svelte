@@ -18,6 +18,7 @@
   import { aUneVue } from "../../navigateur/src/commun/modele";
   import type { PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
+  import PageError from "./PageError.svelte";
 
   const win = window.parent.webaiosWindow!;
 
@@ -26,7 +27,8 @@
     const id = fenetre?.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;
   });
-  const pageWeb = $derived(!!ongletActif && aUneVue(ongletActif.url));
+  // A crashed or failed page shows our message instead (the window parks, as Electron detaches its view).
+  const pageWeb = $derived(!!ongletActif && aUneVue(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
   // The command bar targets the tab active when it opened: if another one shows, it closes.
   const idActif = $derived(ongletActif?.id);
   $effect(() => {
@@ -83,9 +85,11 @@
   {:else}
     <aside data-testid="barre-laterale"></aside>
   {/if}
-  <main class="contenu" class:opaque={!pageWeb}>
+  <main class="contenu" class:opaque={!pageWeb} data-testid="zone-contenu">
     {#if fenetre && !ongletActif}
       <PageVide {fenetre} />
+    {:else if ongletActif && (ongletActif.plante || ongletActif.erreur)}
+      <PageError onglet={ongletActif} />
     {:else if ongletActif && !pageWeb}
       <InternalPage />
     {/if}

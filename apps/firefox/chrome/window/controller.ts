@@ -215,6 +215,11 @@ export function createController(
     },
     ensure: (ongletId) => tabs.ensure(ongletId),
     command(ongletId, c) {
+      // A crashed browser does not reload: a new XUL tab takes its place, at the tab's URL.
+      if (c === "recharger" && store.state.onglets[ongletId]?.plante) {
+        tabs.recreate(ongletId);
+        return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { plante: false } });
+      }
       const browser = browserOf(ongletId);
       if (!browser) return;
       if (c === "reculer") browser.goBack();
