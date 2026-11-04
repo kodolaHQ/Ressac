@@ -1,10 +1,13 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
+import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { inUi, missingApi, pixel, pressKeys, waitUi } from "./ui";
+import { click, inUi, missingApi, pixel, pressKeys, typeText, waitUi } from "./ui";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -60,6 +63,63 @@ async function withPageA(): Promise<string> {
   const a = await open("/a.html");
   await waitTitle(a, "Page A");
   return a;
+}
+
+/** The empty page's field has the keyboard. */
+const emptyPageFocused = () =>
+  waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-page-vide' && document.activeElement === document.getElementById('webaios-sidebar')");
+const veilClick = () => inUi(m, `for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, 5, 5, { button: 0, clickCount: 1 });`);
+/** A click in the bar's box margin, off the field and the lines (Electron: 3, 3, which Gecko hit-tests outside the 12 px rounded corner). */
+const marginClick = () =>
+  inUi(
+    m,
+    `const r = doc.querySelector('[data-testid="barre-commande"]').getBoundingClientRect();
+     for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + 6, r.top + 6, { button: 0, clickCount: 1 });`,
+  );
+const cardInFocus = () => inUi<boolean>(m, "return !!doc.activeElement?.closest('[data-testid=\"modale-demande\"]')");
+/** The agent is up and a user tab (not shared with it) is shown: what makes it ask to read the tab. */
+async function withAgentAndTab(): Promise<string> {
+  const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
+  for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+  // The home page's panel starts the agent's session, which takes back every access: the tool is called after it.
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
+  const id = await open("/texte.html");
+  await waitTitle(id, "Texte");
+  return id;
+}
+/** The agent asks to read the tab; the promise never rejects when the app closes at the end of the test. */
+function readTab(id: string): Promise<unknown> {
+  const p = callTool(w.dataDir, "lire_onglet", { id });
+  p.catch(() => {});
+  return p;
+}
+const armedCard = () => waitUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"][data-armee]')");
+const pending = (p: Promise<unknown>, ms = 1500) => Promise.race([p.then(() => "answered"), new Promise((r) => setTimeout(() => r("pending"), ms))]);
+/** The card is still pending and still shown. */
+async function stillPending(reading: Promise<unknown>): Promise<void> {
+  expect(await pending(reading)).toBe("pending");
+  expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"]')")).toBe(true);
+}
+/** « Nouvel espace » open with a draft ready to be created; returns the space count. */
+async function newSpaceDraft(): Promise<number> {
+  const count = (await state(m)).espaces.length;
+  const MODAL = '[data-testid="modale-espace"]';
+  await click(m, '[data-testid="nouvel-espace"]');
+  await waitUi(m, "return doc.querySelector(arguments[0] + ' h2')?.textContent === 'Nouvel espace'", [MODAL]);
+  await inUi(m, `const f = doc.querySelector(arguments[0] + ' [aria-label="Nom de l\\'espace"]'); f.value = "Jeux"; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [MODAL]);
+  await inUi(
+    m,
+    `const s = doc.querySelector(arguments[0] + " select"); s.value = [...s.options].find((o) => o.textContent === "Nouveau profil").value; s.dispatchEvent(new ui.Event("change", { bubbles: true }));`,
+    [MODAL],
+  );
+  await waitUi(m, "return !doc.querySelector(arguments[0] + ' button[type=submit]').disabled", [MODAL]);
+  return count;
+}
+async function draftKept(count: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, 500));
+  expect(await inUi(m, "return doc.querySelector('[data-testid=\"modale-espace\"] h2')?.textContent")).toBe("Nouvel espace");
+  expect((await state(m)).espaces.length).toBe(count);
 }
 
 describe("Command bar", () => {
@@ -188,5 +248,145 @@ describe("Command bar", () => {
     const [r, g, b] = await pixel(m, 900, 700);
     expect(r).toBeLessThan(255);
     expect(r).toBeGreaterThan(2 * Math.max(g, b, 20));
+  });
+
+  // barre-commande.spec.ts:96
+  it("keys typed right after ⌘T land in the field", async () => {
+    await withPageA();
+    await pressKeys(m, "Meta+t");
+    await typeText(m, "abc");
+    await fieldFocused();
+    expect(await fieldValue()).toBe("abc");
+  });
+
+  // barre-commande.spec.ts:284
+  it("an empty ⌘T lists the other open tabs, not the shown one; Enter shows the empty page", async () => {
+    await withPageA();
+    const b = await open("/b.html");
+    await waitTitle(b, "Page B");
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"section-commande\"]')].some((e) => e.textContent === 'Onglets ouverts')");
+    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]')].map((e) => e.textContent)")).toEqual([
+      expect.stringContaining("Page A"),
+    ]);
+    await pressKeys(m, "Enter");
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')");
+  });
+
+  // barre-commande.spec.ts:430
+  it("Enter in the bar does not allow the agent's request hidden under it", async () => {
+    const id = await withAgentAndTab();
+    const reading = readTab(id);
+    await armedCard();
+    await pressKeys(m, "Meta+t");
+    await type(server.url + "/b.html");
+    await pressKeys(m, "Enter");
+    await waitBar(false);
+    await stillPending(reading);
+  });
+
+  // barre-commande.spec.ts:445
+  it("Enter in the bar does not submit the space settings draft hidden under it", async () => {
+    const count = await newSpaceDraft();
+    await pressKeys(m, "Meta+t");
+    await type(server.url + "/b.html");
+    await pressKeys(m, "Enter");
+    await waitBar(false);
+    await draftKept(count);
+  });
+
+  // barre-commande.spec.ts:466
+  it("an agent request arriving while the bar is open closes it, shows the card and gives it the keyboard", async () => {
+    const id = await withAgentAndTab();
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    const reading = readTab(id);
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"]')");
+    await waitBar(false);
+    await waitUi(m, "return !!doc.activeElement?.closest('[data-testid=\"modale-demande\"]') && document.activeElement === document.getElementById('webaios-sidebar')");
+    expect(await pending(reading, 300)).toBe("pending");
+  });
+
+  // barre-commande.spec.ts:478
+  it("on the empty page, Escape gives the keyboard back to the empty page's field", async () => {
+    // Electron first checks the field has the keyboard at start: here Marionette's NewSession focuses the selected browser.
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await pressKeys(m, "Escape");
+    await waitBar(false);
+    await emptyPageFocused();
+  });
+
+  // barre-commande.spec.ts:503
+  it("on the empty page, a click on the veil gives the keyboard back to the empty page's field", async () => {
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await veilClick();
+    await waitBar(false);
+    await emptyPageFocused();
+  });
+
+  // barre-commande.spec.ts:516
+  it("a click in the bar's margin then Enter does not allow the agent's request under it", async () => {
+    const id = await withAgentAndTab();
+    const reading = readTab(id);
+    await armedCard();
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await marginClick();
+    await fieldFocused();
+    await pressKeys(m, "Enter");
+    await stillPending(reading);
+  });
+
+  // barre-commande.spec.ts:530
+  it("a click in the bar's margin, Tab then Space do not allow the agent's request under it", async () => {
+    const id = await withAgentAndTab();
+    const reading = readTab(id);
+    await armedCard();
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await marginClick();
+    await pressKeys(m, "Tab");
+    await pressKeys(m, " ");
+    expect(await cardInFocus()).toBe(false);
+    await stillPending(reading);
+  });
+
+  // barre-commande.spec.ts:544
+  it("bar open, keyboard off the field: Enter and Space do not reach the agent's request under it", async () => {
+    const id = await withAgentAndTab();
+    const reading = readTab(id);
+    await armedCard();
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await inUi(m, "doc.activeElement?.blur()");
+    for (const k of ["Enter", " ", "Enter"]) await pressKeys(m, k);
+    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')")).toBe(true);
+    await stillPending(reading);
+  });
+
+  // barre-commande.spec.ts:558
+  it("a click in the bar's margin then Enter does not submit the space settings draft under it", async () => {
+    const count = await newSpaceDraft();
+    await pressKeys(m, "Meta+t");
+    await fieldFocused();
+    await marginClick();
+    await pressKeys(m, "Enter");
+    await draftKept(count);
+  });
+
+  // barre-commande.spec.ts:577
+  it("Enter twice in a row in the bar does not allow the agent's request under it", async () => {
+    const id = await withAgentAndTab();
+    const reading = readTab(id);
+    await armedCard();
+    await pressKeys(m, "Meta+t");
+    await type(server.url + "/b.html");
+    await pressKeys(m, "Enter");
+    await pressKeys(m, "Enter");
+    await waitBar(false);
+    await stillPending(reading);
   });
 });

@@ -118,6 +118,14 @@ describe("⌃Tab", () => {
     await keyUp(m, "Control");
     await waitPanel(false);
     await waitFor(m, "return Services.focus.focusedElement === gBrowser.selectedBrowser", (v) => v === true);
+    // raccourcis.spec.ts:145, brief press: the UI never took the keyboard, so it gives nothing back.
+    await m.execute(`window.webaiosTestUiFocus = 0;
+      document.getElementById("webaios-sidebar").addEventListener("focus", () => window.webaiosTestUiFocus++);`);
+    await pressKeys(m, "Control+Tab");
+    await waitActive(c);
+    await sleep(300);
+    expect(await m.execute("return window.webaiosTestUiFocus")).toBe(0);
+    expect(await pageFocused()).toBe(true);
   });
 
   it("over the command bar, Escape closes the panel only", async () => {
@@ -153,5 +161,41 @@ describe("⌃Tab", () => {
     await keyUp(m, "Control");
     await waitPanel(false);
     await waitActive(a);
+  });
+
+  // raccourcis.spec.ts:173
+  it("a card under a motionless mouse does not take the selection; a real move does", async () => {
+    const [, , c] = await threeTabs();
+    await focusPage();
+    // Where the first card is, then close without changing anything.
+    await keyDown(m, "Control");
+    await pressKeys(m, "Tab");
+    await waitCards(1, 3);
+    const box = await inUi<{ x: number; y: number }>(
+      m,
+      `const r = doc.querySelector('${PANEL} [data-testid="carte-onglet"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`,
+    );
+    await pressKeys(m, "Escape");
+    await waitPanel(false);
+    await keyUp(m, "Control");
+    const move = (x: number, y: number) => m.execute("window.synthesizeMouseEvent('mousemove', arguments[0], arguments[1], {})", [x, y]);
+    await move(box.x, box.y);
+    // The panel shows up under the motionless mouse: the selection stays the keyboard's.
+    await keyDown(m, "Control");
+    await pressKeys(m, "Tab");
+    await waitCards(1, 3);
+    await sleep(300);
+    expect(await cards()).toEqual([1, 3]);
+    // Its content changes (next step) under the still motionless mouse: same.
+    await pressKeys(m, "Tab");
+    await waitCards(2, 3);
+    await sleep(300);
+    expect(await cards()).toEqual([2, 3]);
+    // A real move over the card selects it.
+    for (let i = 1; i <= 3; i++) await move(box.x + 2 * i, box.y + i);
+    await waitCards(0, 3);
+    await keyUp(m, "Control");
+    await waitPanel(false);
+    await waitActive(c);
   });
 });
