@@ -1,12 +1,13 @@
 import type { Portee } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../../navigateur/src/commun/extensions";
-import { niveauConsole } from "../../../navigateur/src/main/extensions/consoles";
 import { hotePermisAgent, urlPermiseAgent } from "../../../navigateur/src/main/extensions/reseau";
 import type { EtatAcces, IdFenetre, IdProfil } from "../../../navigateur/src/commun/modele";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
 import { existingContainer } from "./containers";
+import { createWatchdog } from "./crash-watchdog";
+import { niveauConsole, PLANTAGES_MAX } from "../../../navigateur/src/main/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -23,14 +24,11 @@ const PARKING = "webaios-parking";
 // Keep in sync with LONGUEUR_CONSOLE_MAX (packages/noyau/src/mcp/extensions.ts): a message is never longer than an answer.
 const CONSOLE_TEXT_MAX = 100_000;
 
-/** An uncaught error this close to its background's start is a failed load (spike S7). */
+/** An uncaught error of its background window this close to its start is a failed load (spike S7). */
 const LOAD_WINDOW_MS = 1_000;
-/** While an agent background runs, the extension process is pinged this often... */
-export const PING_EVERY_MS = 5_000;
-/** ...and killed if it does not answer within this (a hung background freezes the whole process: spike S7). */
-export const HUNG_AFTER_MS = 5_000;
 /** A background stopped this shortly before the extension process crash was running in it (its status comes first). */
 const STOPPED_BY_CRASH_MS = 2_000;
+const BACKGROUND_PAGE = "/_generated_background_page.html";
 
 /** How long a checkpoint waits for the first grants (the host starting) before it refuses. */
 export const SCOPES_WAIT_MS = 5_000;
@@ -264,6 +262,12 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (typeof d.addonId !== "string" || !d.addonId.endsWith(SUFFIX) || !WebExtensionPolicy.getByID(d.addonId)) return;
     if (typeof d.niveau !== "string" || typeof d.texte !== "string") return;
     let onglet: { ongletId: string | null; url: string } | null = null;
+    if (from.remoteType === "extension" && d.niveau === "error") {
+      // Its background window's error (or console.error): half of a load error, the parent's console has the other.
+      const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
+      const spec = wgp?.domProcess?.childID === from.childID && wgp.documentPrincipal?.addonId === d.addonId ? wgp.documentURI?.spec : null;
+      if (typeof spec === "string" && new URL(spec).pathname === BACKGROUND_PAGE) crashes.backgroundError(d.addonId, String((d as { source?: unknown }).source ?? ""), d.texte);
+    }
     if (from.remoteType !== "extension") {
       const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
       const browser = wgp?.domProcess?.childID === from.childID ? wgp.browsingContext.top.embedderElement : null;
@@ -319,7 +323,18 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   ExtensionParent.apiManager.on("startup", (_: string, extension: any) => guardExtension(extension));
   for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardExtension(policy.extension);
 
-  watchCrashes((addonId) => host().notify("extensions.plantage", { addonId }));
+  // Crashes not acknowledged by a host: sent again with the next extensions.pret, at most PLANTAGES_MAX per extension.
+  const crashesPending: { addonId: string; le: number }[] = [];
+  const crashes = watchCrashes((addonId) => {
+    const c = { addonId, le: Date.now() };
+    crashesPending.push(c);
+    const mine = crashesPending.filter((x) => x.addonId === addonId);
+    if (mine.length > PLANTAGES_MAX) crashesPending.splice(crashesPending.indexOf(mine[0]!), 1);
+    host()
+      .request("extensions.plantage", c)
+      .then(() => crashesPending.includes(c) && crashesPending.splice(crashesPending.indexOf(c), 1))
+      .catch(() => {});
+  });
 
   let settle = () => {};
   const ready = new Promise<void>((r) => (settle = r));
@@ -332,10 +347,14 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     hostStarted() {
       sendPrivate();
       const sent = [...pending].map(([addonId, quoi]) => ({ addonId, quoi }));
+      const plantages = [...crashesPending];
       host()
-        .request("extensions.pret", { horsWebaios: sent })
+        .request("extensions.pret", { horsWebaios: sent, plantages })
         .then(
-          () => sent.forEach((h) => pending.get(h.addonId) === h.quoi && pending.delete(h.addonId)),
+          () => {
+            sent.forEach((h) => pending.get(h.addonId) === h.quoi && pending.delete(h.addonId));
+            for (const c of plantages) if (crashesPending.includes(c)) crashesPending.splice(crashesPending.indexOf(c), 1);
+          },
           (e) => console.error("[extensions] agent extensions not started:", e),
         )
         .finally(settle);
@@ -345,23 +364,38 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
 /**
  * The agent's extensions' crashes, as Firefox shows them (spike S7: no platform event names the extension), each one
- * `crashed(addonId)` once: an uncaught error as its background loads; the extension process crashing while its
- * background runs; that process hung while it runs (pinged by the console actor every PING_EVERY_MS, killed after
- * HUNG_AFTER_MS without an answer, which is the crash above). The whole process stops every background in it: each
- * agent one running is counted, whichever of them caused it.
+ * `crashed(addonId)` once: an uncaught error of its background window within LOAD_WINDOW_MS of its start; the extension
+ * process crashing while its background runs; that process hung while it runs (the watchdog kills it, which is the crash
+ * above). The whole process stops every background in it: each agent one running is counted, whichever caused it.
  */
-function watchCrashes(crashed: (addonId: string) => void): void {
+function watchCrashes(crashed: (addonId: string) => void): { backgroundError(addonId: string, source: string, text: string): void } {
   const running = new Set<string>();
   const stopped = new Map<string, number>();
-  // Its background's last start and its last uncaught error, either may come first: one crash when both are close.
-  const loads = new Map<string, { started: number | null; error: number | null }>();
+  // Its background's last start and its last load error, either may come first: one crash per start.
+  const loads = new Map<string, { started: number | null; error: number | null; counted: boolean }>();
   const load = (addonId: string, what: "started" | "error") => {
-    const l = { started: null, error: null, ...loads.get(addonId), [what]: Date.now() };
+    const l = loads.get(addonId) ?? { started: null, error: null, counted: false };
     loads.set(addonId, l);
+    if (what === "started") Object.assign(l, { started: ChromeUtils.now(), counted: false });
+    else if (l.counted) return;
+    else l.error = ChromeUtils.now();
     if (l.started !== null && l.error !== null && Math.abs(l.started - l.error) <= LOAD_WINDOW_MS) {
-      loads.delete(addonId);
+      Object.assign(l, { error: null, counted: true });
       crashed(addonId);
     }
+  };
+  // The same uncaught error arrives twice: in the parent's console (uncaught for sure, but with no window: spike S6) and
+  // relayed by the console actor (its window, but a console.error looks the same). Both halves, by file and text: a load error.
+  const halves = new Map<string, { side: "uncaught" | "window"; at: number }>();
+  const half = (addonId: string, source: string, text: string, side: "uncaught" | "window") => {
+    const now = ChromeUtils.now();
+    for (const [k, h] of halves) if (now - h.at > LOAD_WINDOW_MS) halves.delete(k);
+    const key = `${addonId}\n${source}\n${text}`;
+    const other = halves.get(key);
+    if (other && other.side !== side) {
+      halves.delete(key);
+      load(addonId, "error");
+    } else halves.set(key, { side, at: now });
   };
 
   Services.obs.addObserver((subject: any) => {
@@ -371,48 +405,60 @@ function watchCrashes(crashed: (addonId: string) => void): void {
       running.add(addonId);
       stopped.delete(addonId);
       load(addonId, "started");
-      watch();
-    } else if (running.delete(addonId)) stopped.set(addonId, Date.now());
+      watchdog.start();
+    } else if (running.delete(addonId)) {
+      stopped.set(addonId, ChromeUtils.now());
+      if (running.size === 0) watchdog.stop();
+    }
   }, "extension:background-script-status");
 
   Services.console.registerListener({
     observe(m: any) {
       if (!(m instanceof Ci.nsIScriptError) || m.flags & Ci.nsIScriptError.warningFlag) return;
-      const u = /^(moz-extension:\/\/([^/]+)\/)[^?#]*/.exec(String(m.sourceName));
-      const extension = u ? WebExtensionPolicy.getByHostname(u[2]!)?.extension : null;
-      if (!extension?.id?.endsWith(SUFFIX)) return;
-      // A background file: listed in `scripts`; a module imports the copy's original, so any file but a content script's.
-      const url = (f: string) => new URL(f, u![1]).href;
-      const bg = extension.manifest.background ?? {};
-      const contentFiles = new Set((extension.manifest.content_scripts ?? []).flatMap((c: { js?: string[] }) => (c.js ?? []).map(url)));
-      if (bg.type === "module" ? !contentFiles.has(u![0]) : (bg.scripts ?? []).map(url).includes(u![0])) load(extension.id, "error");
+      const source = String(m.sourceName);
+      const host = /^moz-extension:\/\/([^/]+)\//.exec(source)?.[1];
+      const id = host ? WebExtensionPolicy.getByHostname(host)?.id : null;
+      if (id?.endsWith(SUFFIX)) half(id, source, String(m.errorMessage), "uncaught");
     },
   });
 
-  const { Management } = ChromeUtils.importESModule("resource://gre/modules/Extension.sys.mjs");
+  const { Management, ExtensionProcessCrashObserver } = ChromeUtils.importESModule("resource://gre/modules/Extension.sys.mjs");
   Management.on("extension-process-crash", () => {
-    const now = Date.now();
+    const now = ChromeUtils.now();
     for (const [addonId, at] of stopped) if (now - at <= STOPPED_BY_CRASH_MS) running.add(addonId);
     stopped.clear();
     for (const addonId of running) crashed(addonId);
     running.clear();
+    watchdog.stop();
   });
 
-  // Never running while no agent background runs; one ping at a time (no setInterval in a system module).
-  let scheduled = false;
-  function watch() {
-    if (scheduled) return;
-    scheduled = true;
-    setTimeout(() => void ping().catch((e) => console.error("[extensions] extension process not pinged:", e)).finally(() => ((scheduled = false), running.size > 0 && watch())), PING_EVERY_MS);
-  }
-  async function ping() {
-    const p = ChromeUtils.getAllDOMProcesses().find((x) => x.remoteType === "extension");
-    if (!p || running.size === 0 || Services.startup.shuttingDown) return;
-    // No actor there, or the process went: an answer, not a hang.
-    const answer = p.getActor("WebAiOsConsole").sendQuery("ping").then(() => true, () => true);
-    const answered = await Promise.race([answer, new Promise<boolean>((r) => setTimeout(() => r(false), HUNG_AFTER_MS))]);
-    if (answered || running.size === 0 || !p.canSend) return;
-    console.error("[extensions] the extension process stopped answering while an agent extension ran: killed");
-    Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).kill(p.osPid);
-  }
+  let pinged: ReturnType<typeof ChromeUtils.getAllDOMProcesses>[number] | undefined;
+  const testWindow = Number(Services.env.get("WEBAIOS_TEST_WATCHDOG_MS"));
+  const watchdog = createWatchdog({
+    ...(testWindow > 0 ? { windowMs: testWindow } : {}),
+    now: () => ChromeUtils.now(),
+    setTimer: (f, ms) => setTimeout(f, ms),
+    clearTimer: (t) => clearTimeout(t),
+    active: () => running.size > 0 && !Services.startup.shuttingDown,
+    ping: () => {
+      pinged = ChromeUtils.getAllDOMProcesses().find((x) => x.remoteType === "extension");
+      const p = pinged;
+      return p ? Promise.resolve().then(() => p.getActor("WebAiOsConsole").sendQuery("ping")) : Promise.resolve();
+    },
+    kill: () => {
+      if (!pinged?.canSend || running.size === 0) return;
+      // Firefox stops respawning the extension process past its threshold of crashes (none comes back until a restart).
+      const timeframe = Services.prefs.getIntPref("extensions.webextensions.crash.timeframe", 30_000);
+      const recent = ExtensionProcessCrashObserver.lastCrashTimestamps.filter((t: number) => ChromeUtils.now() - t < timeframe).length;
+      if (recent >= Services.prefs.getIntPref("extensions.webextensions.crash.threshold", 5) - 1) {
+        console.error("[extensions] the extension process stopped answering, not killed: Firefox would stop respawning it");
+        return;
+      }
+      console.error("[extensions] the extension process stopped answering while an agent extension ran: killed");
+      Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).kill(pinged.osPid);
+    },
+  });
+  Services.obs.addObserver(() => watchdog.wake(), "wake_notification");
+
+  return { backgroundError: (addonId, source, text) => half(addonId, source, text, "window") };
 }

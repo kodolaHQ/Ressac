@@ -17,6 +17,8 @@ declare const Cc: any;
 declare const Components: { isSuccessCode(status: number): boolean };
 declare const ChromeUtils: {
   importESModule(url: string): any;
+  /** Milliseconds, monotonic. */
+  now(): number;
   registerWindowActor(name: string, options: object): void;
   registerProcessActor(name: string, options: object): void;
   getAllDOMProcesses(): {

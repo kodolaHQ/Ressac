@@ -46,6 +46,13 @@ const BOUCLE = {
   "manifest.json": { manifest_version: 3, name: "Fond qui boucle", version: "1.0.0", background: { service_worker: "fond.js" } },
   "fond.js": "setTimeout(() => { while (true) {} }, 500);\n",
 };
+/** A module background that loads its popup in a frame at once: the popup throws within its first second, the background does not. */
+const POPUP_CASSEE = {
+  "manifest.json": { manifest_version: 3, name: "Popup cassée", version: "1.0.0", background: { service_worker: "fond.js", type: "module" }, action: { default_popup: "popup.html" } },
+  "fond.js": 'const f = document.createElement("iframe");\nf.src = "popup.html";\ndocument.body.append(f);\n',
+  "popup.html": '<!doctype html><script src="popup.js"></script>',
+  "popup.js": 'throw new Error("popup-cassee");\n',
+};
 const PAGE = '[data-testid="page-extensions"]';
 const LIGNE = '[data-testid="extension-page"]';
 const CARTE = '[data-testid="demande-extension"]';
@@ -65,12 +72,12 @@ afterEach(async () => {
 });
 
 /** WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the agent's session started. */
-async function launch(o: { prepare?: (racine: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string } } = {}) {
+async function launch(o: { prepare?: (racine: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string }; env?: Record<string, string> } = {}) {
   const d = o.dirs ?? { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
   if (!o.dirs) dirs.push(d.dataDir, d.profile);
   const racine = path.join(d.dataDir, "espace");
   o.prepare?.(racine, d.dataDir);
-  const w = await launchWithAmo(d);
+  const w = await launchWithAmo({ ...d, env: o.env });
   opened.push(w);
   if (o.agent) {
     const config = path.join(racine, ".webaios", "mcp.json");
@@ -311,12 +318,35 @@ describe("crashes", () => {
     await disabledThenReactivated(w, "cassee", "Fond cassé");
   });
 
-  it("a background that hangs the extension process: killed, and the third time disabled", { timeout: 150_000 }, async () => {
+  it("a module background's popup that throws in its first second is no crash", { timeout: 120_000 }, async () => {
     const w = await launch({ agent: true });
+    ecrireExtensionAgent(w.racine, "popup", POPUP_CASSEE);
+    const errors = async (n: number) => {
+      for (const deadline = Date.now() + 20_000; ; await new Promise((r) => setTimeout(r, 200))) {
+        const texte = (await w.call("console_extension", { id: "popup" })).texte;
+        if (texte.split("popup-cassee").length - 1 >= n) return;
+        if (Date.now() > deadline) throw new Error(`fewer than ${n} popup errors: ${texte}`);
+      }
+    };
+    expect(await activerParLAgent(w, "popup", "Popup cassée")).toMatch(/^Activée/);
+    await errors(1);
+    for (let n = 2; n <= 3; n++) {
+      expect((await w.call("recharger_extension", { id: "popup" })).texte).toBe("etat : rechargee");
+      await errors(n);
+    }
+    // Time for a crash count to reach the noyau.
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(registry(w.dataDir).extensions["agent:popup"]?.desactivee).toBeNull();
+    expect(await agentAddons(w.marionette)).toEqual([expect.objectContaining({ id: "popup@agent.webaios", isActive: true })]);
+  });
+
+  it("a background that hangs the extension process: killed, and the third time disabled", { timeout: 150_000 }, async () => {
+    // Three kills must fit in a minute: 3 s windows here instead of 10 s.
+    const w = await launch({ agent: true, env: { WEBAIOS_TEST_WATCHDOG_MS: "3000" } });
     const m = w.marionette;
     ecrireExtensionAgent(w.racine, "boucle", BOUCLE);
     const extensionProcess = () => m.execute<number | null>(`return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`);
-    /** The hung extension process is killed by the watchdog, and a new one replaces it. */
+    /** The hung extension process is killed by the watchdog (two missed windows), and a new one replaces it. */
     const killed = async () => {
       const before = await extensionProcess();
       await waitFor(m, `return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`, (v) => v !== null && v !== before, 30_000);
@@ -326,6 +356,7 @@ describe("crashes", () => {
     expect((await w.call("recharger_extension", { id: "boucle" })).texte).toBe("etat : rechargee");
     await killed();
     expect((await w.call("recharger_extension", { id: "boucle" })).texte).toBe("etat : rechargee");
+    await killed();
     await disabledThenReactivated(w, "boucle", "Fond qui boucle");
   });
 });

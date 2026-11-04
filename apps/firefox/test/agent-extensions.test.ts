@@ -72,7 +72,7 @@ async function load(
   vi.stubGlobal("WebExtensionPolicy", { getByID: (id: string) => (id === ID ? { mozExtensionHostname: HOST } : null), getActiveExtensions: () => (o.running ?? []).map((extension) => ({ extension })) });
   vi.stubGlobal("Ci", { nsIHttpChannel: {} });
   vi.stubGlobal("Cr", { NS_BINDING_ABORTED: 0x804b0002 });
-  vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) }, console: { registerListener: () => {} } });
+  vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) }, console: { registerListener: () => {} }, env: { get: () => "" } });
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
   // WebAiOs tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
   const espaces = [

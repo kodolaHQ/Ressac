@@ -204,7 +204,8 @@ const rpc = createRpc({
     },
     // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
     // never reinstalled); answered when every granted extension is handled. A failed start is retried by the next one.
-    "extensions.pret": async (p: { horsWebaios?: { addonId: string; quoi: "desinstallee" | "desactivee" }[] }) => {
+    "extensions.pret": async (p: { horsWebaios?: { addonId: string; quoi: "desinstallee" | "desactivee" }[]; plantages?: { addonId?: unknown; le?: unknown }[] }) => {
+      for (const c of Array.isArray(p?.plantages) ? p.plantages : []) extensions.plantage(c?.addonId, c?.le);
       for (const h of p?.horsWebaios ?? []) await extensions.horsWebaios(h.addonId, h.quoi);
       return (demarrageExtensions ??= extensions.demarrer().catch((e) => {
         demarrageExtensions = undefined;
@@ -221,7 +222,7 @@ const rpc = createRpc({
       const lisible = !!o && typeof o.ongletId === "string" && typeof o.url === "string" && noyau?.politique.peutLire({ id: o.ongletId, url: o.url, titre: "", espace: "" }) === true;
       extensions.noterConsole(p?.addonId, p?.m, o ? { lisible } : null);
     },
-    "extensions.plantage": (p: { addonId?: unknown }) => extensions.plantage(p?.addonId),
+    "extensions.plantage": (p: { addonId?: unknown; le?: unknown }) => extensions.plantage(p?.addonId, p?.le),
     "extensions.profilsPrives": (p: { prives?: unknown }) =>
       extensions.profilsPrives(Array.isArray(p?.prives) ? p.prives.filter((x): x is string => typeof x === "string") : []),
     "extensions.pourEspace": (p: { espaceId?: unknown }) => (typeof p?.espaceId === "string" ? extensions.pourEspace(p.espaceId) : []),

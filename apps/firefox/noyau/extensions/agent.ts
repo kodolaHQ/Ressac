@@ -232,10 +232,12 @@ export class ExtensionsAgent {
     this.consoles.noter(addonId, { horodatage: x.horodatage, niveau: x.niveau!, texte: x.texte }, o ? { lisible: o.lisible === true } : undefined);
   }
 
-  /** A crash the chrome saw (`extensions.plantage`, spike S7): the `PLANTAGES_MAX`-th in `FENETRE_PLANTAGES_MS` disables it everywhere. */
-  plantage(addonId: unknown): void {
+  /** A crash the chrome saw (`extensions.plantage`, or queued in `extensions.pret`; spike S7): the `PLANTAGES_MAX`-th in `FENETRE_PLANTAGES_MS` disables it everywhere. */
+  plantage(addonId: unknown, le?: unknown): void {
     if (typeof addonId !== "string" || !addonId.endsWith(SUFFIXE_ID) || !this.cle(addonId.slice(0, -SUFFIXE_ID.length))) return;
-    this.consoles.plantage(addonId, Date.now());
+    // When the chrome saw it (a crash queued while no host ran), never later than now.
+    const maintenant = Date.now();
+    this.consoles.plantage(addonId, typeof le === "number" && le <= maintenant ? le : maintenant);
   }
 
   /** As Electron's desactiverPlantages: disabled everywhere (`DESACTIVEE_PLANTAGES`), shown on the page with « Réactiver ». */

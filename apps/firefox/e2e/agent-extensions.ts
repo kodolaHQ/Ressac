@@ -29,7 +29,7 @@ function testActor(profile: string): { env: Record<string, string>; prefs: Recor
 }
 
 /** A fake AMO, then WebAiOs launched against it (fake keys), in the chrome context with its first window ready. close() stops both. */
-export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean> }): Promise<LaunchedWebAiOs & { amo: FakeAmo }> {
+export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean>; env?: Record<string, string> }): Promise<LaunchedWebAiOs & { amo: FakeAmo }> {
   const amo = await startFakeAmo(o.amo);
   let w: LaunchedWebAiOs;
   try {
@@ -37,7 +37,7 @@ export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0
     w = await launchWebAiOs({
       dataDir: o.dataDir,
       profile: o.profile,
-      env: { WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret", ...actor.env },
+      env: { WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret", ...actor.env, ...o.env },
       prefs: { ...actor.prefs, ...o.prefs },
     });
   } catch (e) {

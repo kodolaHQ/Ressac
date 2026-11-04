@@ -854,4 +854,16 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     for (let i = 0; i < 2; i++) h.rpc.notify("extensions.plantage", { addonId: ID });
     expect(await outil(h, "lister_extensions")).toContain("erreurs : aucune");
   });
+  it("crashes seen while no host ran come with extensions.pret, counted at their own time", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare });
+    const t = Date.now();
+    // Three crashes, but spread over more than a minute: not disabled.
+    await h.rpc.request("extensions.pret", { plantages: [-130_000, -50_000, -20_000].map((d) => ({ addonId: ID, le: t + d })) });
+    expect(entree(h.dataDir)).toMatchObject({ desactivee: null });
+    h.rpc.notify("extensions.plantage", { addonId: ID, le: t + 1000 });
+    await until(() => f.activations.at(-1)?.actif === false);
+    expect(entree(h.dataDir)).toMatchObject({ desactivee: { raison: "plantages" } });
+  });
 });
