@@ -89,9 +89,9 @@ test("bench: invisible read", async () => {
     config: { base: serveur.url },
     code: `export default async (webaios) => {
   const ms = [];
-  for (let k = 0; k < 22; k++) {
+  for (let k = 0; k < 11; k++) {
     const t = Date.now();
-    await webaios.lirePage(\`\${webaios.config.base}/texte.html?i=\${k}\`);
+    await webaios.lirePage(\`\${webaios.config.base}/texte.html?i=\${Date.now()}-\${k}\`);
     ms.push(Date.now() - t);
   }
   return { ms };
@@ -100,11 +100,17 @@ test("bench: invisible read", async () => {
   ecrireEtatWidget(profil, "bench-lecture");
   const { fermer } = await lancerBench({ racine, profil });
   try {
-    const r = await appelerOutil(racine, "recolter_widget", { id: "bench-lecture" });
-    const result = JSON.parse(r.texte.slice(r.texte.indexOf("\n") + 1));
-    expect(result.statut, r.texte).toBe("ok");
-    expect(result.donnees.ms).toHaveLength(22);
-    record("invisibleRead", result.donnees.ms.slice(2));
+    // Two harvests of 11 reads: one of 22 takes about 46 s, close to the MCP SDK's 60 s request timeout.
+    const ms: number[] = [];
+    for (let call = 0; call < 2; call++) {
+      const r = await appelerOutil(racine, "recolter_widget", { id: "bench-lecture" });
+      const result = JSON.parse(r.texte.slice(r.texte.indexOf("\n") + 1));
+      expect(result.statut, r.texte).toBe("ok");
+      expect(result.donnees.ms).toHaveLength(11);
+      ms.push(...result.donnees.ms);
+    }
+    // The first 2 reads are the warm-up.
+    record("invisibleRead", ms.slice(2));
   } finally {
     await fermer();
   }
