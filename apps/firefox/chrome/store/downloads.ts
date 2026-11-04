@@ -23,7 +23,7 @@ export interface DownloadsList {
   /** Newest first (startTime). */
   list(): Telechargement[];
   onChange(cb: (l: Telechargement[]) => void): () => void;
-  /** termine only: download.launch(). */
+  /** termine only: download.launch() with the system's app (Electron: shell.openPath). */
   open(id: string): void;
   /** download.showContainingDirectory(). */
   show(id: string): void;
@@ -31,7 +31,7 @@ export interface DownloadsList {
   cancel(id: string): void;
 }
 
-type FirefoxDownload = DownloadLike & { launch(): Promise<void>; showContainingDirectory(): Promise<void>; cancel(): Promise<void> };
+type FirefoxDownload = DownloadLike & { launch(options?: { useSystemDefault?: boolean }): Promise<void>; showContainingDirectory(): Promise<void>; cancel(): Promise<void> };
 
 /** Follows Downloads.getList(Downloads.ALL) with addView; ids are crypto.randomUUID() kept in a WeakMap per Download. */
 export async function createDownloads(): Promise<DownloadsList> {
@@ -75,7 +75,7 @@ export async function createDownloads(): Promise<DownloadsList> {
     },
     open(id) {
       const d = find(id);
-      if (d?.succeeded) d.launch().catch(fail);
+      if (d?.succeeded) d.launch({ useSystemDefault: true }).catch(fail);
     },
     show(id) {
       find(id)?.showContainingDirectory().catch(fail);
