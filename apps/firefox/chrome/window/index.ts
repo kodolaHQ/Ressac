@@ -4,6 +4,7 @@
 
 import type { WebAiOsStore } from "../store";
 import { createController } from "./controller";
+import { popupSource, setupPopup } from "./popup";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -14,10 +15,13 @@ declare global {
     gNotificationBox: any;
     delayedStartupPromise: Promise<void>;
     OpenBrowserWindow(): Window;
+    openLinkIn(url: string, where: string, params: any): void;
     readonly windowState: number;
     readonly STATE_MINIMIZED: number;
     readonly STATE_FULLSCREEN: number;
     readonly windowRoot: EventTarget;
+    /** In a popup: the WebAiOs tab it was opened from (setupPopup). */
+    webaiosPopupSource?: import("../../../navigateur/src/commun/modele").IdOnglet;
     webaiosWindow?: import("./controller").WindowController;
   }
 }
@@ -27,7 +31,14 @@ window.addEventListener(
   () => {
     // Every full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows, and a
     // private window (Dock, ⇧⌘P) stays Firefox's: it must not take the session's windows into private browsing.
-    if (!window.toolbar.visible || PrivateBrowsingUtils.isWindowPrivate(window)) return;
+    if (PrivateBrowsingUtils.isWindowPrivate(window)) return;
+    if (!window.toolbar.visible) {
+      void Promise.all([ChromeUtils.importESModule(STORE).ready as Promise<WebAiOsStore>, window.delayedStartupPromise]).then(([store]) => {
+        const source = popupSource(window, store);
+        if (source) setupPopup(window, source);
+      });
+      return;
+    }
     document.documentElement.setAttribute("webaios-main", "");
     // The sidebar is a privileged HTML page in an iframe: browser.xhtml defaults to the XUL namespace,
     // where document.createElement would build XUL elements.

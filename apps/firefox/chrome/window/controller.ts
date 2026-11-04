@@ -184,6 +184,12 @@ export function createController(
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
   window.addEventListener("deactivate", () => walk.fenetreQuittee(fenetreId));
+  // ⇧click asks Firefox for a new window: a page's link opens a background tab instead, as ⌘click (TabSync adopts it).
+  const openLinkIn = window.openLinkIn;
+  window.openLinkIn = (url, where, params) => {
+    const fromTab = params?.openerBrowser && gBrowser.getTabForBrowser(params.openerBrowser)?.hasAttribute("webaios-tab-id");
+    openLinkIn(url, where === "window" && fromTab ? "tab" : where, params);
+  };
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
 
   const controller: WindowController = {

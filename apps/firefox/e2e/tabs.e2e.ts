@@ -72,14 +72,53 @@ async function inPage<T>(id: string, script: string): Promise<T> {
 /** Clicks `selector` in the page of tab `id`, as a user would (Marionette's element click). */
 async function click(id: string, selector: string): Promise<void> {
   await inPage(id, "return 0");
+  await clickHere(selector);
+}
+
+/** A trusted click (WebDriver actions, so a user gesture) on `selector` in the current content page, ⇧ held if `shift`. */
+async function clickHere(selector: string, shift = false): Promise<void> {
   await m.setContext("content");
   try {
     const found = await m.command<{ value: Record<string, string> }>("WebDriver:FindElement", { using: "css selector", value: selector });
-    await m.command("WebDriver:ElementClick", { id: Object.values(found.value)[0] });
+    const SHIFT = "\uE008";
+    const keys = shift ? [{ type: "keyDown", value: SHIFT }, { type: "pause" }, { type: "pause" }, { type: "pause" }, { type: "keyUp", value: SHIFT }] : [];
+    const pointer = [
+      ...(shift ? [{ type: "pause" }] : []),
+      { type: "pointerMove", origin: found.value, x: 0, y: 0 },
+      { type: "pointerDown", button: 0 },
+      { type: "pointerUp", button: 0 },
+    ];
+    await m.command("WebDriver:PerformActions", {
+      actions: [
+        { type: "key", id: "kb", actions: keys },
+        { type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: pointer },
+      ],
+    });
+    await m.command("WebDriver:ReleaseActions");
   } finally {
     await m.setContext("chrome");
   }
 }
+
+const POPUPS = "[...Services.wm.getEnumerator('navigator:browser')].filter((w) => !w.document.documentElement.hasAttribute('webaios-main'))";
+
+/** Clicks `selector` in the popup whose URL contains `url`, then comes back to the WebAiOs window. */
+async function clickInPopup(url: string, selector: string): Promise<void> {
+  const main = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+  const handle = await m.execute<string>(
+    `const b = ${POPUPS}.map((w) => w.gBrowser.selectedBrowser).find((b) => b.currentURI.spec.includes(arguments[0]));
+     return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(b);`,
+    [url],
+  );
+  await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+  try {
+    await clickHere(selector);
+  } finally {
+    await m.command("WebDriver:SwitchToWindow", { handle: main, focus: false });
+  }
+}
+
+const windowCount = () => m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length");
 
 describe("window controller", () => {
   it("loads a tab opened by dispatch and reports its title", async () => {
@@ -216,17 +255,50 @@ describe("window controller", () => {
     expect(await markedTabs()).toBe(1);
   });
 
-  it("opens a window.open popup with dimensions as a separate window", async () => {
+  it("opens a window.open popup with dimensions as a separate window; closing it keeps the app", async () => {
     const a = await open("/popup.html");
     await waitTitle(a, "Popup source");
-    await click(a, "#ouvrir-reste");
-    const popups = await waitFor<boolean[]>(
-      m,
-      "return [...Services.wm.getEnumerator('navigator:browser')].map((w) => w.document.documentElement.hasAttribute('webaios-main'))",
-      (v) => v.length === 2,
-    );
-    expect(popups.sort()).toEqual([false, true]);
+    await click(a, "#ouvrir");
+    // popup-fermer.html closes itself 300 ms after loading.
+    await waitFor(m, `return ${POPUPS}.length`, (n) => n === 1);
+    await waitFor(m, `return ${POPUPS}.length`, (n) => n === 0);
     await new Promise((r) => setTimeout(r, 500));
+    expect(await windowCount()).toBe(1);
+    expect(await m.execute("return !!window.webaiosWindow")).toBe(true);
     expect(Object.keys((await state(m)).onglets)).toEqual([a]);
+  });
+
+  it("⇧click on a link opens a tab, not a window", async () => {
+    const a = await open("/lien.html");
+    await waitTitle(a, "Lien");
+    await inPage(a, "return 0");
+    await clickHere("#lien", true);
+    await waitState((s) => Object.keys(s.onglets).length, (n) => n === 2);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await windowCount()).toBe(1);
+  });
+
+  it("popup: its title shows the site; a target=_blank link in it opens a tab; a further step stays a popup", async () => {
+    const a = await open("/popup.html");
+    await waitTitle(a, "Popup source");
+    const other = await open("/a.html", { activer: false });
+    await click(a, "#ouvrir-reste");
+    await waitFor(m, `return ${POPUPS}.length`, (n) => n === 1);
+    const host = new URL(server.url).host;
+    await waitFor(m, `return ${POPUPS}[0].document.title`, (t) => t === `${host} — Connexion`);
+    // Another tab shown meanwhile: the link still goes right after the popup's source.
+    await dispatch(m, { type: "activerOnglet", id: other });
+    await waitTitle(other, "Page A");
+    await clickInPopup("popup-reste", "#lien-blank");
+    const f = await waitState((s) => s.fenetres[0]!, (f) => f.ordre[f.espaceActif]!.length === 3);
+    expect(f.ordre[f.espaceActif]![0]).toBe(a);
+    expect(f.ordre[f.espaceActif]![2]).toBe(other);
+    await waitTitle(f.ordre[f.espaceActif]![1]!, "Page B");
+    expect(await windowCount()).toBe(2);
+    // The next step (popup-fermer.html) closes itself 300 ms after loading: count the windows as each opens.
+    await m.execute(`window.most = 0; Services.obs.addObserver((w) => w.addEventListener("load",
+      () => (window.most = Math.max(window.most, [...Services.wm.getEnumerator("navigator:browser")].length)), { once: true }), "domwindowopened");`);
+    await clickInPopup("popup-reste", "#sous-popup");
+    await waitFor(m, "return window.most", (n) => n === 3);
   });
 });

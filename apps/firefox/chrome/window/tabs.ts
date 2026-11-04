@@ -18,6 +18,8 @@ export class TabSync {
   private readonly tabs = new Map<IdOnglet, any>();
   private parking: any;
   private creating = false;
+  /** While a popup's link opens here: the WebAiOs tab behind the popup. */
+  private fromPopup: IdOnglet | undefined;
 
   constructor(
     private readonly gBrowser: any,
@@ -26,6 +28,17 @@ export class TabSync {
   ) {
     this.parking = gBrowser.tabs[0];
     this.parking.setAttribute(PARKING, "");
+    // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
+    // shortcut: the tab lands in Firefox's most recent window, not always the source tab's; upgrade if several windows make it wrong in use
+    const addTab = gBrowser.addTab.bind(gBrowser);
+    gBrowser.addTab = (uri: string, options?: { openerBrowser?: any }) => {
+      this.fromPopup = options?.openerBrowser?.ownerDocument.defaultView?.webaiosPopupSource;
+      try {
+        return addTab(uri, options);
+      } finally {
+        this.fromPopup = undefined;
+      }
+    };
     const strip = gBrowser.tabContainer;
     strip.addEventListener("TabOpen", (e: Event) => this.onOpen(e.target));
     strip.addEventListener("TabClose", (e: Event) => this.onClose(e.target));
@@ -140,7 +153,7 @@ export class TabSync {
       tab.setAttribute(PARKING, "");
       return;
     }
-    const apres = tab.openerTab?.getAttribute(ID);
+    const apres = this.fromPopup ?? tab.openerTab?.getAttribute(ID);
     // Only pages open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
     if (!apres) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
     const id: IdOnglet = crypto.randomUUID();
