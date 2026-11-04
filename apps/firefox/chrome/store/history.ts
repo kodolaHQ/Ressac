@@ -7,6 +7,8 @@ export interface History {
   /** A committed top-level navigation of a WebAiOs tab; private and space read from the state now. http(s) only. */
   visit(id: IdOnglet, url: string, titre: string): void;
   title(id: IdOnglet, url: string, titre: string): void;
+  /** The agent's memory of a page: dropped by the noyau for a private visit or a loopback URL. */
+  retain(r: { url: string; espaceId: string; titre: string; texte: string }): void;
   /** Never rejects: [] while the host is down. */
   search(texte: string, limite?: number, distinctes?: boolean): Promise<Visite[]>;
   recent(): Promise<Visite[]>;
@@ -33,6 +35,7 @@ export function createHistory(store: Store, host: AgentHost): History {
       const c = context(id, url);
       if (c) host.notify("historique.titre", { url, espaceId: c.espaceId, titre });
     },
+    retain: (r) => host.notify("historique.retenir", r),
     search: (texte, limite, distinctes) => ask("historique.rechercher", { texte, limite, distinctes }, []),
     recent: () => ask("historique.recents", {}, []),
     clear: (depuis) => ask("historique.effacer", { depuis }, undefined),

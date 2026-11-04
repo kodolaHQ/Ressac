@@ -30,6 +30,16 @@ if (!dataDir) {
 }
 const racine = join(dataDir, "espace");
 // Outside the agent's noyau: the history works even when the noyau does not start.
+// Electron's retenable (capture-texte.ts) can't be imported here: it needs the extensionless "../historique" import, which Node refuses.
+const MEMOIRE_BOUCLE = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
+const retenable = (url: string) => {
+  try {
+    const u = new URL(url);
+    return (u.protocol === "http:" || u.protocol === "https:") && (MEMOIRE_BOUCLE || !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname));
+  } catch {
+    return false;
+  }
+};
 const historique = new Historique(join(dataDir, "historique.sqlite"));
 historique.purger();
 const purge = setInterval(() => historique.purger(), 6 * 60 * 60 * 1000);
@@ -149,6 +159,9 @@ const rpc = createRpc({
     "acces.etat": etatAcces,
     "historique.noter": (p: Parameters<typeof historique.noter>[0]) => historique.noter(p),
     "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique.majTitre(p.url, p.espaceId, p.titre),
+    "historique.retenir": (p: { url: string; espaceId: string; titre: string; texte: string }) => {
+      if (retenable(p.url)) historique.retenir({ ...p, texte: String(p.texte) });
+    },
     "historique.rendrePrive": (p: { espaceId: string }) => historique.rendrePrive(p.espaceId),
     "historique.rechercher": (p: { texte: string; limite?: number; distinctes?: boolean }) => historique.rechercher(p.texte, p.limite, p.distinctes),
     "historique.recents": () => historique.recents(),

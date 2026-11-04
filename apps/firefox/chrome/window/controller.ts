@@ -1,5 +1,5 @@
 import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
-import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
+import { contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
@@ -66,7 +66,7 @@ export function createController(
   fenetreId: IdFenetre,
 ): WindowController {
   const tabs = new TabSync(gBrowser, store, fenetreId);
-  trackVisits(gBrowser, store.history);
+  trackVisits(gBrowser, store.history, (id) => contexteHistorique(store.state, id));
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
   routeAddonsManager(window, store, fenetreId, tabs);

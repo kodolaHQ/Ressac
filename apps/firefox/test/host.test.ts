@@ -253,6 +253,20 @@ describe("history", { timeout: 30_000 }, () => {
     expect((await appelerOutil(h.racine, "lire_historique", { url: "https://a.test/" })).texte).toBe("Rien de retenu pour cette page.");
   });
 
+  it("retained text is found by the agent, never for a loopback URL", async () => {
+    const h = startHost();
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    visit(h, "https://a.test/", "Alpha");
+    h.rpc.notify("historique.retenir", { url: "https://a.test/", espaceId: "e1", titre: "Alpha", texte: "Le chat dort" });
+    visit(h, "http://127.0.0.1/x", "Local");
+    h.rpc.notify("historique.retenir", { url: "http://127.0.0.1/x", espaceId: "e1", titre: "Local", texte: "Le chien veille" });
+    await settle(h);
+    expect((await appelerOutil(h.racine, "chercher_historique", { requete: "chat" })).texte).toContain("a.test");
+    expect((await appelerOutil(h.racine, "lire_historique", { url: "https://a.test/" })).texte).toContain("Le chat dort");
+    const recents = (await h.rpc.request("historique.recents", {})) as { url: string; retenu: boolean }[];
+    expect(recents.find((v) => v.url === "http://127.0.0.1/x")?.retenu).toBe(false);
+  });
+
   it("a space turned private marks its visits", async () => {
     const h = startHost();
     visit(h, "https://a.test/", "Page A");

@@ -23,7 +23,7 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1" } });
+  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1", WEBAIOS_MEMOIRE_BOUCLE: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -155,6 +155,64 @@ describe("history noted in the noyau", () => {
     await host("await h.ensure();");
     expect((await until(recents, (r) => r.length === 1))[0]!.prive).toBe(true);
     expect((await callTool(w.dataDir, "chercher_historique", { requete: "Page A" })).texte).not.toContain("a.html");
+  });
+});
+
+/** The history lines whose URL contains `part`, as the UI sees them (one per URL and space). */
+const lines_ = async (part: string) =>
+  (await recents()).filter((v) => v.url.includes(part)).map((v) => ({ retenu: v.retenu, prive: v.prive }));
+const retained = (part: string) => until(() => lines_(part), (l) => l.length === 1 && l[0]!.retenu);
+async function setActiveSpacePrivate(prive: boolean) {
+  const s = await state(m);
+  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
+  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+}
+const newSpace = async () => dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: await fenetre() });
+
+describe("the agent's memory retains page text", () => {
+  it("a page's text is retained and marked in ⌘Y", async () => {
+    await open(`${base}/texte.html`);
+    expect(await retained("texte.html")).toEqual([{ retenu: true, prive: false }]);
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    await waitUi(m, `const l = [...doc.querySelectorAll(arguments[0] + " li")].find((e) => e.textContent.includes("texte.html") || e.textContent.includes("Texte")); return l?.dataset.retenu === "true" && !!l.querySelector(arguments[1])`, [PANEL, '[aria-label="Texte retenu pour l\'agent"]']);
+  });
+
+  it("nothing from a private space", async () => {
+    await setActiveSpacePrivate(true);
+    await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await newSpace();
+    await open(`${base}/b.html`);
+    await retained("b.html");
+    expect(await lines_("a.html")).toEqual([{ retenu: false, prive: true }]);
+  });
+
+  it("Oublier le texte retenu keeps the visit", async () => {
+    await open(`${base}/a.html`);
+    await retained("a.html");
+    await pressKeys(m, "Meta+y");
+    await panelOpen(true);
+    await click(m, `${PANEL} li`, { text: "Page A", button: 2 });
+    await click(m, '[role="menuitem"]', { text: "Oublier le texte retenu" });
+    await until(() => lines_("a.html"), (l) => l.length === 1 && !l[0]!.retenu);
+    expect(await lines_("a.html")).toEqual([{ retenu: false, prive: false }]);
+    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0] + " li")].some((l) => l.dataset.retenu === "true")`, [PANEL]);
+  });
+
+  it("nothing from a page that failed", async () => {
+    await open("http://127.0.0.1:1/injoignable.html");
+    await until(async () => (await state(m)).onglets, (o) => Object.values(o).some((t) => t.erreur), 15_000);
+    await open(`${base}/b.html`);
+    await retained("b.html");
+    expect(await lines_("injoignable")).toEqual([]);
+  });
+
+  it("a space turned private forgets its text", async () => {
+    await open(`${base}/a.html`);
+    await retained("a.html");
+    await setActiveSpacePrivate(true);
+    expect(await until(() => lines_("a.html"), (l) => l[0]?.prive === true)).toEqual([{ retenu: false, prive: true }]);
   });
 });
 
