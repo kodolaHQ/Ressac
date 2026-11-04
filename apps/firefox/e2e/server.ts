@@ -16,6 +16,7 @@ export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
  * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to
  * <base>/balise on pagehide, /coop is sent with Cross-Origin-Opener-Policy: same-origin, /fenetres calls open(),
  * /telecharge is an attachment, /telecharge-cadre has it in a frame and clicks a download link to it, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
+ * /geo asks for the position as it loads.
  * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
  */
 export async function startServer(o: { host?: string } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
@@ -82,6 +83,10 @@ export async function startServer(o: { host?: string } = {}): Promise<{ url: str
     if (route === "/avale") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end('<title>avale</title><script>addEventListener("keydown", (e) => e.preventDefault(), true)</script><input autofocus>');
+    }
+    if (route === "/geo") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      return res.end("<title>geo</title><script>navigator.geolocation.getCurrentPosition(() => {}, () => {})</script>");
     }
     if (route === "/icone.png") return res.writeHead(200, { "Content-Type": "image/png" }).end(ICON);
     const file = path.join(PAGES, path.normalize(route));
