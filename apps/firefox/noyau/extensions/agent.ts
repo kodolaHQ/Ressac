@@ -34,6 +34,7 @@ export const ACTIVATION_REFUSEE = "Activation refusée";
 export const ACTIVATION_RETIREE = DEMANDE_RETIREE;
 export const TOUTES_COUPEES_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
 const RETIREE_PENDANT_CARTE = "Extension retirée pendant la carte : rien n'est activé";
+const ESPACE_DISPARU = "Espace disparu pendant la carte : rien n'est activé";
 export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
 export const SANS_ACCORD = "Extension sans accord : demande d'abord son activation";
 /** Firefox refused the signed .xpi (no Electron text: new, like decision 9's). */
@@ -231,7 +232,7 @@ export class ExtensionsAgent {
     const ici = apres.espaces.find((e) => e.id === espace.id);
     const etatApres = await lireEtatExtensions(this.o.dossier);
     const refus = !ici
-      ? "Espace disparu pendant la carte : rien n'est activé"
+      ? ESPACE_DISPARU
       : ici.profil !== profil || profilsPrivesDe(apres).has(profil)
         ? ERREUR_PROFIL_PRIVE
         : etatApres.toutesCoupees
@@ -243,7 +244,7 @@ export class ExtensionsAgent {
       await effacer();
       return { ok: false, erreur: refus };
     }
-    const e = await this.envoi(id, cle, { accord: p.analyse.portee, activer: { profil, connue: !!connue } }, p);
+    const e = await this.envoi(id, cle, { accord: p.analyse.portee, activer: { espaceId: espace.id, profil, connue: !!connue } }, p);
     return e.ok ? { ok: true } : { ok: false, erreur: e.erreur };
   }
 
@@ -370,7 +371,7 @@ export class ExtensionsAgent {
   private async envoi(
     id: string,
     cle: string,
-    o: { accord: Portee; demarrage?: boolean; activer?: { profil: string; connue: boolean } },
+    o: { accord: Portee; demarrage?: boolean; activer?: { espaceId: string; profil: string; connue: boolean } },
     prepare?: Preparation,
   ): Promise<ResultatEnvoi> {
     const p = prepare ?? (await this.preparer(id));
@@ -414,6 +415,11 @@ export class ExtensionsAgent {
     const a = o.activer;
     if (a) {
       try {
+        // The signing takes minutes: the space is checked again before anything is granted for it.
+        const nav = await this.navigateur();
+        const ici = nav.espaces.find((e) => e.id === a.espaceId);
+        if (!ici) throw new Error(ESPACE_DISPARU);
+        if (ici.profil !== a.profil || profilsPrivesDe(nav).has(a.profil)) throw new Error(ERREUR_PROFIL_PRIVE);
         await this.modifier((e, prives) => {
           if (e.toutesCoupees) throw new Error(TOUTES_COUPEES_AGENT);
           const x = e.extensions[cle];
@@ -443,9 +449,7 @@ export class ExtensionsAgent {
           return activer({ ...e, extensions: { ...e.extensions, [cle]: entree } }, cle, a.profil, prives);
         });
       } catch (err) {
-        // Not granted: the add-on installed for this card does not stay (an older grant gets its own state back).
-        if (cle in (await lireEtatExtensions(this.o.dossier)).extensions) await this.appliquer(id, cle);
-        else await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) });
+        await this.nonAccordee(id, cle, analyse.portee);
         return { ok: false, erreur: (err as Error).message };
       }
       await this.appliquer(id, cle);
@@ -467,6 +471,27 @@ export class ExtensionsAgent {
     });
     await this.appliquer(id, cle);
     return { ok: true, analyse };
+  }
+
+  /**
+   * A card's grant could not be written after its install: that add-on never runs beyond a grant. No entry →
+   * uninstalled; an older, narrower grant → disabled for a broadened scope (grant kept); anything failing → disabled.
+   */
+  private async nonAccordee(id: string, cle: string, portee: Portee): Promise<void> {
+    try {
+      const x = (await lireEtatExtensions(this.o.dossier)).extensions[cle];
+      if (!x) return void (await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) }));
+      if (!x.accord || porteeElargie(x.accord, portee))
+        await this.modifier((e) => {
+          const y = e.extensions[cle];
+          if (!y || y.desactivee) return e;
+          return { ...e, extensions: { ...e.extensions, [cle]: { ...y, desactivee: { raison: "portee-elargie", le: new Date().toISOString() } } } };
+        });
+      await this.appliquer(id, cle);
+    } catch (e) {
+      console.error(`[extensions] ${cle} : accord non écrit, désactivée :`, e);
+      await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: false }).catch(() => {});
+    }
   }
 
   /** prochaineVersion → manifesteFirefox → zipper → signer (signes/<id>.attente.xpi) → extensions.installer → signes/<id>.xpi. */

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
+import { DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE } from "../../../packages/noyau/src/index";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
@@ -602,5 +603,55 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(entree(h.dataDir)).toMatchObject({ accord: { hotes: [HOTE, "https://exemple.com/*"] }, desactivee: null });
     expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
+  });
+
+  it("a space made private during the signing: error, the broader version does not run under the narrower grant", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.espaces.push({ id: "e2", nom: "Travail", profil: "travail", prive: false });
+    const installer = f.handlers["extensions.installer"]!;
+    // Turns Travail private as the broader version (1.0.0.2) is installed.
+    f.handlers["extensions.installer"] = (p, s) => {
+      if (p.version === "1.0.0.2") f.espaces[1]!.prive = true;
+      return installer(p, s);
+    };
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    source(h.dataDir, { hotes: [HOTE, "https://exemple.com/*"] });
+    expect(await outil(h, "demander_extension", { id: "ma-ext", espace: "Travail" })).toBe(ERREUR_PROFIL_PRIVE);
+    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, profils: ["defaut"], desactivee: { raison: "portee-elargie" } });
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
+  });
+
+  it("a space deleted during the signing: error, nothing granted, the add-on removed", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.espaces.push({ id: "e2", nom: "Travail", profil: "travail", prive: false });
+    const installer = f.handlers["extensions.installer"]!;
+    f.handlers["extensions.installer"] = (p, s) => {
+      f.espaces.splice(1);
+      return installer(p, s);
+    };
+    const h = launch(amo, f, { prepare: source });
+    expect(await outil(h, "demander_extension", { id: "ma-ext", espace: "Travail" })).toBe("Espace disparu pendant la carte : rien n'est activé");
+    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entree(h.dataDir)).toBeFalsy();
+    expect(f.desinstallations).toEqual([ID]);
+  });
+
+  it("a new conversation drops the card: « retirée », nothing sent, no grant", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.handlers["extensions.accord"] = (p: { carte: CarteExtension }, signal) => {
+      f.cartes.push(p.carte);
+      return new Promise((r) => signal.addEventListener("abort", () => r({ accepte: true, empreinte: p.carte.empreinte })));
+    };
+    const h = launch(amo, f, { prepare: source });
+    const appel = outil(h, "demander_extension", { id: "ma-ext" });
+    await until(() => f.cartes.length === 1);
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    expect(await appel).toBe(DEMANDE_RETIREE);
+    expect(amo.envois).toEqual([]);
+    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entree(h.dataDir)).toBeFalsy();
+    expect(existsSync(join(h.dataDir, "extensions", "copies", "ma-ext.attente"))).toBe(false);
   });
 });
