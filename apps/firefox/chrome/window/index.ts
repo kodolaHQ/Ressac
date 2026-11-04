@@ -6,6 +6,7 @@ import type { WebAiOsStore } from "../store";
 import { createController } from "./controller";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
 
 declare global {
   interface Window {
@@ -20,8 +21,9 @@ declare global {
 window.addEventListener(
   "DOMContentLoaded",
   () => {
-    // Every full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows.
-    if (!window.toolbar.visible) return;
+    // Every full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows, and a
+    // private window (Dock, ⇧⌘P) stays Firefox's: it must not take the session's windows into private browsing.
+    if (!window.toolbar.visible || PrivateBrowsingUtils.isWindowPrivate(window)) return;
     document.documentElement.setAttribute("webaios-main", "");
     // The sidebar is a privileged HTML page in an iframe: browser.xhtml defaults to the XUL namespace,
     // where document.createElement would build XUL elements.
@@ -38,7 +40,13 @@ window.addEventListener(
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
       const { fenetreId, first } = store.windows.claim(window);
-      window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store, fenetreId);
+      try {
+        window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store, fenetreId);
+      } catch (e) {
+        // Not a WebAiOs window after all: its state window must not stay bound to it.
+        store.windows.release(fenetreId);
+        throw e;
+      }
       // Once per start, in the first window only: the unreadable session was kept aside.
       if (first && store.setAside) {
         void window.gNotificationBox.appendNotification(

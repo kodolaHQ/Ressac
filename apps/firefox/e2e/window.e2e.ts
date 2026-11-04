@@ -147,6 +147,57 @@ describe("the WebAiOs window", () => {
     expect(() => process.kill(w.pid, 0)).not.toThrow();
   });
 
+  it("a private window is never WebAiOs, with a WebAiOs window open or after the last one closed", async () => {
+    const id = await fenetreId();
+    const old = await handle();
+    const notWebAiOs = "return [document.documentElement.hasAttribute('webaios-main'), !!window.webaiosWindow]";
+    await m.execute("OpenBrowserWindow({ private: true })");
+    const priv = (await waitWindowCount(m, 2)).find((h) => h !== old)!;
+    await inWindow(m, priv, async () => {
+      await m.execute("return delayedStartupPromise.then(() => new Promise((r) => setTimeout(r, 500)))");
+      expect(await m.execute(notWebAiOs)).toEqual([false, false]);
+      await m.execute("window.close()");
+    });
+    await waitWindowCount(m, 1);
+    expect((await state(m)).fenetres.map((f) => f.id)).toEqual([id]);
+    // The last window closed: the hidden window's ⇧⌘P opens a private window, which must not take the kept one.
+    await m.execute(
+      `return (async () => {
+        const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
+        const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
+        const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
+        window.close();
+        setTimeout(() => {
+          const p = Services.appShell.hiddenDOMWindow.OpenBrowserWindow({ private: true });
+          // Its delayedStartupPromise does not exist yet: give it time to start (and to claim, if it would).
+          setTimeout(() => {
+            Services.prefs.setStringPref("webaios.test.private", JSON.stringify({
+              adopted: p.document.documentElement.hasAttribute("webaios-main"),
+              fenetres: store.state.fenetres.map((f) => f.id),
+            }));
+            p.close();
+            BrowserWindowTracker.openWindow();
+          }, 2000);
+        }, 500);
+      })();`,
+    );
+    // The private window shows alone for a while: wait for the WebAiOs one.
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      const handles = await windowHandles(m);
+      if (handles.length === 1 && handles[0] !== old && handles[0] !== priv) {
+        await m.command("WebDriver:SwitchToWindow", { handle: handles[0], focus: false });
+        if (await m.execute("return !!window.webaiosWindow").catch(() => false)) break;
+      }
+      if (Date.now() > deadline) throw new Error("the WebAiOs window did not come back");
+      await sleep(100);
+    }
+    expect(JSON.parse(await m.execute<string>(`return Services.prefs.getStringPref("webaios.test.private")`))).toEqual({ adopted: false, fenetres: [id] });
+    // The kept window was not consumed: the next window takes it back.
+    expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
+    expect((await state(m)).fenetres.map((f) => f.id)).toEqual([id]);
+  });
+
   it("Firefox's menu commands add no tabs; New Window and Close Window lead to WebAiOs windows", async () => {
     const tab = await openTab(await fenetreId(), "/a.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === tab);

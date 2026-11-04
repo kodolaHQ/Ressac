@@ -24,7 +24,7 @@ export interface WindowRegistry {
 }
 
 /** Electron's synchroniserFenetres and gardees: one full Firefox window per state window. */
-export function createWindowRegistry(o: { store: Store; open(): void; onRelease(fenetreId: IdFenetre): void }): WindowRegistry {
+export function createWindowRegistry(o: { store: Store; open(): Window | undefined; onRelease(fenetreId: IdFenetre): void }): WindowRegistry {
   const { store } = o;
   const bound = new Map<IdFenetre, Window>();
   let kept: IdFenetre | null = null;
@@ -32,14 +32,31 @@ export function createWindowRegistry(o: { store: Store; open(): void; onRelease(
   let claimed = false;
   let lastActive: IdFenetre | undefined;
 
+  // A state window whose Firefox window is gone: among other open windows it leaves the state, the last one is kept
+  // (macOS: the Dock or ⌘N bring it back). While quitting every window stays, for the restore.
+  const forget = (id: IdFenetre) => {
+    if (!Services.startup.shuttingDown && bound.size > 0) store.dispatch({ type: "fermerFenetre", id });
+    else kept = id;
+  };
+
   // A state window with no Firefox window (restored, or added by an action) gets one, unless kept closed (macOS).
   const openMissing = (state: EtatNavigateur) => {
     if (!claimed || Services.startup.shuttingDown) return;
     opening = opening.filter((id) => !bound.has(id) && state.fenetres.some((f) => f.id === id));
     for (const f of state.fenetres)
       if (!bound.has(f.id) && f.id !== kept && !opening.includes(f.id)) {
-        opening.push(f.id);
-        o.open();
+        const id = f.id;
+        opening.push(id);
+        // Closed before it could claim (before Firefox's delayed startup): its state window is gone as well.
+        o.open()?.addEventListener(
+          "unload",
+          () => {
+            if (!opening.includes(id)) return;
+            opening = opening.filter((x) => x !== id);
+            forget(id);
+          },
+          { once: true },
+        );
       }
   };
   store.subscribe(openMissing);
@@ -70,8 +87,7 @@ export function createWindowRegistry(o: { store: Store; open(): void; onRelease(
       if (!bound.delete(fenetreId)) return;
       if (lastActive === fenetreId) lastActive = undefined;
       o.onRelease(fenetreId);
-      if (!Services.startup.shuttingDown && store.state.fenetres.length > 1) store.dispatch({ type: "fermerFenetre", id: fenetreId });
-      else kept = fenetreId;
+      forget(fenetreId);
     },
     active() {
       const focused = Services.focus.activeWindow;
