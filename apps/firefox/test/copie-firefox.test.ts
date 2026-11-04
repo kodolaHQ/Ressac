@@ -14,8 +14,8 @@ describe("Firefox copy", () => {
     expect(classique.background).toEqual({ scripts: ["webaios-garde-fond.js", "fond.js"] });
     expect(classique.version).toBe("1.2.0.7");
     expect(classique.browser_specific_settings).toEqual({ gecko: { id: "ma-ext@agent.webaios", data_collection_permissions: { required: ["none"] } } });
-    expect(manifesteFirefox({ version: "1.2", background: { service_worker: "webaios-fond.js", type: "module" } }, "ma-ext", 1).background).toEqual({ scripts: ["webaios-fond.js"], type: "module" });
-    expect(manifesteFirefox({ version: "1", background: { service_worker: "webaios-fond.js" } }, "ma-ext", 1).background).toEqual({ scripts: ["webaios-garde-fond.js"] });
+    expect(manifesteFirefox({ version: "1.2", background: { service_worker: "webaios-fond.js", type: "module" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["webaios-fond.js"], type: "module" });
+    expect(manifesteFirefox({ version: "1", background: { service_worker: "webaios-fond.js" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["webaios-garde-fond.js"] });
   });
 
   it("refusals: gecko id written by the agent, four-part version, generated page name", () => {

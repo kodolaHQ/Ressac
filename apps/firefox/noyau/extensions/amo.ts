@@ -98,9 +98,12 @@ export async function signer(o: {
   const refus = (r: { status: number; body: any }) => new ErreurSignature(signatureRefusee(typeof r.body === "string" ? r.body : JSON.stringify(r.body)));
   const attendre = async () => {
     if (Date.now() + pas > fin) throw new ErreurSignature(SIGNATURE_LENTE);
+    o.signal?.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(resolve, pas);
-      o.signal?.addEventListener("abort", () => (clearTimeout(t), reject(o.signal!.reason)), { once: true });
+      const fini = () => (clearTimeout(t), o.signal?.removeEventListener("abort", annule), resolve());
+      const annule = () => (clearTimeout(t), reject(o.signal!.reason));
+      const t = setTimeout(fini, pas);
+      o.signal?.addEventListener("abort", annule, { once: true });
     });
   };
 
@@ -112,7 +115,9 @@ export async function signer(o: {
   let u = envoi.body;
   while (!u.processed) {
     await attendre();
-    u = (await amo("GET", `/addons/upload/${u.uuid}/`)).body;
+    const r = await amo("GET", `/addons/upload/${u.uuid}/`);
+    if (r.status >= 300) throw new ErreurSignature(signatureImpossible(`HTTP ${r.status}`));
+    u = r.body;
   }
   if (!u.valid) {
     const messages: { type?: string; message?: string }[] = u.validation?.messages ?? [];
@@ -127,7 +132,10 @@ export async function signer(o: {
 
   let v: any;
   for (;;) {
-    v = (await amo("GET", `${addon}versions/v${o.version}/`)).body;
+    const r = await amo("GET", `${addon}versions/v${o.version}/`);
+    // A 404 may just mean the version is not visible yet.
+    if (r.status >= 300 && r.status !== 404) throw new ErreurSignature(signatureImpossible(`HTTP ${r.status}`));
+    v = r.body;
     if (v?.file?.status === "public") break;
     await attendre();
   }

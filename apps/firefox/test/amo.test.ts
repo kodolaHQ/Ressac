@@ -61,6 +61,7 @@ describe("AMO client", () => {
     };
     expect(await erreur({ refus: "Invalid manifest" })).toBe(signatureRefusee("Invalid manifest"));
     expect(await erreur({ delaiMs: 5000 }, { delai: 200 })).toBe(SIGNATURE_LENTE);
+    expect(await erreur({ erreurSondage: 403 }, { delai: 300 })).toBe(signatureImpossible("HTTP 403"));
     expect(await erreur({ erreurHttp: 500 })).toBe(signatureImpossible("HTTP 500"));
   });
 

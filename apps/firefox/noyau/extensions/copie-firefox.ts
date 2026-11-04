@@ -26,10 +26,10 @@ export function refusFirefox(manifeste: Record<string, unknown>, fichiers: reado
 
 /**
  * The copy's manifest for Firefox (decisions 2, 3): gecko id, background.scripts, version `<a>.<b>.<c>.<n>`. Pure.
- * `m` is preparerCopie's manifest; `fondOriginal` is the agent's `background.service_worker` (only the generated
+ * `m` is preparerCopie's manifest; `fondOriginal` (required, so a forgotten argument cannot drop the background) is the agent's `background.service_worker` (only the generated
  * webaios-fond.js knows it after the copy), used for a classic background.
  */
-export function manifesteFirefox(m: Record<string, unknown>, dossier: string, n: number, fondOriginal?: string): Record<string, unknown> {
+export function manifesteFirefox(m: Record<string, unknown>, dossier: string, n: number, fondOriginal: string | undefined): Record<string, unknown> {
   const fond = objet(m.background);
   const nombres = String(m.version ?? "").split(".");
   const version = [0, 1, 2].map((i) => nombres[i] || "0").concat(String(n)).join(".");

@@ -10,9 +10,9 @@ import { promisify } from "node:util";
 /**
  * A fake addons.mozilla.org following the v5 flow of plan 25's spike (upload, validation, PUT addon / POST versions,
  * version polling, download). The .xpi it hands back is the one received, unsigned.
- * `refus`: the validation fails with that message; `delaiMs`: the version turns public that late; `erreurHttp`: the upload answers that code.
+ * `refus`: the validation fails with that message; `delaiMs`: the version turns public that late; `erreurHttp`: the upload answers that code; `erreurSondage`: the upload and version polls answer that code.
  */
-export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreurHttp?: number } = {}) {
+export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreurHttp?: number; erreurSondage?: number } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-fake-amo-"));
   const envois: { guid: string; version: string; auth: string; methode: string }[] = [];
   const uploads = new Map<string, string>();
@@ -41,6 +41,7 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
       return rendre(201, { uuid, processed: false, valid: false });
     }
     if (req.method === "GET" && (m = /^\/api\/v5\/addons\/upload\/([^/]+)\/$/.exec(url.pathname))) {
+      if (o.erreurSondage) return rendre(o.erreurSondage, {});
       if (!uploads.has(m[1]!)) return rendre(404, {});
       const messages = o.refus ? [{ type: "error", message: o.refus }] : [];
       return rendre(200, { uuid: m[1], processed: true, valid: !o.refus, validation: { messages } });
@@ -53,6 +54,7 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
       } else if (m[3] === undefined) {
         if (req.method === "POST" && guids.has(guid)) return await creer(guid, "POST", JSON.parse(corps.toString()).upload);
       } else if (req.method === "GET") {
+        if (o.erreurSondage) return rendre(o.erreurSondage, {});
         const v = versions.get(`${guid}@${m[3]}`);
         if (!v) return rendre(404, {});
         return rendre(200, { file: { status: Date.now() >= v.pret ? "public" : "unreviewed", url: `${base}/download/${encodeURIComponent(guid)}/${m[3]}` } });
