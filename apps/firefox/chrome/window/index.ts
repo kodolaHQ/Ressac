@@ -16,6 +16,8 @@ declare global {
     delayedStartupPromise: Promise<void>;
     OpenBrowserWindow(): Window;
     openLinkIn(url: string, where: string, params: any): void;
+    /** browser.js: asks each tab's page before the window closes or the app quits (BrowserDOMWindow.canClose). */
+    CanCloseWindow(): boolean;
     readonly windowState: number;
     readonly STATE_MINIMIZED: number;
     readonly STATE_FULLSCREEN: number;

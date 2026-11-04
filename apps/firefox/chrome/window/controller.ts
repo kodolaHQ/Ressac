@@ -21,6 +21,11 @@ export interface WindowController {
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
   ensure(ongletId: IdOnglet): Promise<any>;
   command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
+  /**
+   * Electron's Vues.fermer: a tab the user closes. A page with unsaved changes (beforeunload) gets « Quitter ce site ? »
+   * first; a page that does not answer within 5 s is closed anyway. A crashed tab or one without a XUL tab closes now.
+   */
+  closeTab(ongletId: IdOnglet): Promise<void>;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
   /**
@@ -200,6 +205,16 @@ export function createController(
     const fromTab = params?.openerBrowser && gBrowser.getTabForBrowser(params.openerBrowser)?.hasAttribute("webaios-tab-id");
     openLinkIn(url, where === "window" && fromTab ? "tab" : where, params);
   };
+  // Quitting asks no page, as Electron. Every quit path asks each window (CanClose) right after quit-application-requested,
+  // unless an observer cancelled it. Closing one window keeps Firefox's question.
+  let quit: { data: boolean } | undefined;
+  const quitObserver = { observe: (subject: any) => void (quit = subject.QueryInterface(Ci.nsISupportsPRBool)) };
+  Services.obs.addObserver(quitObserver, "quit-application-requested");
+  unsubscribe.push(() => Services.obs.removeObserver(quitObserver, "quit-application-requested"));
+  const canCloseWindow = window.CanCloseWindow;
+  window.CanCloseWindow = () => (quit && !quit.data) || canCloseWindow();
+  /** Tabs whose page is being asked: a second ⌘W must not ask again. */
+  const asking = new Set<IdOnglet>();
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
 
   const controller: WindowController = {
@@ -236,6 +251,39 @@ export function createController(
       else if (c === "recharger") browser.reload();
       else if (c === "rechargerSansCache") browser.reloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
       else browser.stop();
+    },
+    async closeTab(ongletId) {
+      const close = () => void store.dispatch({ type: "fermerOnglet", id: ongletId });
+      const browser = browserOf(ongletId);
+      if (!browser || store.state.onglets[ongletId]?.plante || !browser.hasBeforeUnload) return close();
+      if (asking.has(ongletId)) return;
+      asking.add(ongletId);
+      try {
+        // "dontUnload" only runs the page's beforeunload; false: it wants to ask. A failure (crash meanwhile) lets it go.
+        const answer = browser.asyncPermitUnload("dontUnload").then((r: { permitUnload: boolean }) => r.permitUnload, () => true);
+        const permit = await Promise.race([answer, new Promise<boolean>((r) => setTimeout(() => r(true), 5000))]);
+        if (permit) return close();
+        // Firefox selects the tab its question opens on: the state follows, or the sidebar would show another tab as active.
+        if (tabs.displayed() !== ongletId) store.dispatch({ type: "activerOnglet", id: ongletId });
+        const { prompt } = Services;
+        const flags =
+          prompt.BUTTON_POS_0 * prompt.BUTTON_TITLE_IS_STRING + prompt.BUTTON_POS_1 * prompt.BUTTON_TITLE_IS_STRING + prompt.BUTTON_POS_1_DEFAULT;
+        const result = await prompt.asyncConfirmEx(
+          browser.browsingContext,
+          prompt.MODAL_TYPE_TAB,
+          "Quitter ce site ?",
+          "Les modifications que vous avez faites ne seront peut-être pas enregistrées.",
+          flags,
+          "Quitter",
+          "Rester",
+          null,
+          null,
+          {},
+        );
+        if (result.getProperty("buttonNumClicked") === 0) close();
+      } finally {
+        asking.delete(ongletId);
+      }
     },
     focusPage() {
       if (tabs.displayed()) gBrowser.selectedBrowser.focus();

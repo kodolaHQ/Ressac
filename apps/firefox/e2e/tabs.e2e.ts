@@ -6,7 +6,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
-import { click as clickUi, missingApi, waitUi } from "./ui";
+import { click as clickUi, missingApi, pressKeys, waitUi } from "./ui";
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
@@ -388,5 +388,121 @@ describe("window controller", () => {
     const refused = await opened({ type: "ouvrirOnglet", fenetreId: (await win()).id, url: `http://127.0.0.1:${closed}/` });
     await waitState((s) => s.onglets[refused]?.erreur, (e) => e === "NS_ERROR_CONNECTION_REFUSED");
     expect(await missingApi(m)).toEqual([]);
+  });
+});
+
+describe("leaving a page with unsaved changes", () => {
+  /** formulaire.html with its beforeunload armed, displayed. */
+  async function unsavedForm(): Promise<string> {
+    // Firefox only lets a page the user interacted with ask: a script's armer() is no interaction.
+    await m.execute("Services.prefs.setBoolPref('dom.require_user_interaction_for_beforeunload', false)");
+    const id = await open("/formulaire.html");
+    await waitTitle(id, "Formulaire");
+    await inPage(id, "armer(); return 0");
+    return id;
+  }
+
+  /**
+   * Runs a WebDriver alert command on the page of the browser `handle` (content context). A chrome-context script would
+   * fail while the prompt is open: the handle is read before.
+   */
+  async function onAlert<T>(handle: string, command: "WebDriver:GetAlertText" | "WebDriver:DismissAlert" | "WebDriver:AcceptAlert"): Promise<T | null> {
+    await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+    await m.setContext("content");
+    try {
+      return (await m.command<{ value: T }>(command)).value;
+    } catch (e) {
+      if (/no such alert/.test(String(e))) return null;
+      throw e;
+    } finally {
+      await m.setContext("chrome");
+    }
+  }
+
+  // Electron onglets 173. Rester is button 1 (dismiss), Quitter button 0 (accept).
+  for (const [label, button] of [["Rester", 1], ["Quitter", 0]] as const) {
+    it(`closing a tab with an unsaved form asks (${label})`, async () => {
+      // Marionette would dismiss the prompt at the next command: this session leaves prompts to the test.
+      await m.command("WebDriver:DeleteSession");
+      await m.command("WebDriver:NewSession", { unhandledPromptBehavior: "ignore" });
+      await m.setContext("chrome");
+      const id = await unsavedForm();
+      const handle = await m.execute<string>(
+        `return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser);`,
+        [id],
+      );
+      await pressKeys(m, "Meta+w");
+      const deadline = Date.now() + 5_000;
+      let text: string | null = null;
+      while (!(text = await onAlert<string>(handle, "WebDriver:GetAlertText")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+      expect(text).toContain("Les modifications que vous avez faites");
+      await onAlert(handle, button === 1 ? "WebDriver:DismissAlert" : "WebDriver:AcceptAlert");
+      await new Promise((r) => setTimeout(r, 500));
+      expect(Object.keys((await state(m)).onglets)).toHaveLength(button === 1 ? 1 : 0);
+      // Only one question: none is left open.
+      if (button === 1) expect(await onAlert(handle, "WebDriver:GetAlertText")).toBeNull();
+    });
+  }
+
+  it("closing a background tab with an unsaved form brings it to the front to ask", async () => {
+    await m.command("WebDriver:DeleteSession");
+    await m.command("WebDriver:NewSession", { unhandledPromptBehavior: "ignore" });
+    await m.setContext("chrome");
+    const id = await unsavedForm();
+    const handle = await m.execute<string>(
+      `return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]).linkedBrowser);`,
+      [id],
+    );
+    const b = await open("/b.html");
+    await waitTitle(b, "Page B");
+    // The sidebar's close button on the form's row.
+    await m.execute("window.webaiosWindow.closeTab(arguments[0])", [id]);
+    const deadline = Date.now() + 5_000;
+    let text: string | null = null;
+    while (!(text = await onAlert<string>(handle, "WebDriver:GetAlertText")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    expect(text).toContain("Les modifications que vous avez faites");
+    await onAlert(handle, "WebDriver:DismissAlert");
+    const f = await win();
+    expect(f.actif[f.espaceActif]).toBe(id);
+    expect(await selected()).toEqual({ id, parking: false });
+  });
+
+  it("a page frozen in beforeunload is closed after 5 s", async () => {
+    const id = await open("/frozen-unload.html");
+    await waitTitle(id, "Figée");
+    const start = Date.now();
+    await pressKeys(m, "Meta+w");
+    await waitState((s) => s.onglets[id], (o) => !o, 7_000);
+    expect(Date.now() - start).toBeLessThan(7_000);
+  });
+
+  it("a crashed tab closes without asking", async () => {
+    const id = await unsavedForm();
+    await crash(id);
+    await waitUi(m, `return ${CONTENT_TEXT}.includes("Cette page a planté.")`);
+    await pressKeys(m, "Meta+w");
+    await waitState((s) => s.onglets[id], (o) => !o, 2_000);
+  });
+
+  // Marionette accepts Firefox's own beforeunload prompts by itself: the test counts the dialogs that open.
+  it("quitting asks nothing, as in Electron; closing the window still asks, as Firefox", async () => {
+    await unsavedForm();
+    // What every quit path does (nsAppStartup::Quit): quit-application-requested, then each window's CanClose, same task.
+    const dialogs = (quitting: boolean) =>
+      m.execute<number>(
+        `let n = 0;
+         const count = { observe: () => n++ };
+         Services.obs.addObserver(count, "common-dialog-loaded");
+         try {
+           if (arguments[0]) Services.obs.notifyObservers(Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool), "quit-application-requested");
+           window.CanCloseWindow();
+         } finally {
+           Services.obs.removeObserver(count, "common-dialog-loaded");
+         }
+         return n;`,
+        [quitting],
+      );
+    expect(await dialogs(false)).toBe(1);
+    expect(await dialogs(true)).toBe(0);
   });
 });

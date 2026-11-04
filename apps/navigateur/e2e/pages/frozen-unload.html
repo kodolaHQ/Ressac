@@ -1,0 +1,9 @@
+<!doctype html><title>Figée</title>
+<script>
+  // Frozen in beforeunload: the page never answers whether it may leave (10 s busy loop).
+  addEventListener("beforeunload", (e) => {
+    const end = Date.now() + 10000;
+    while (Date.now() < end);
+    e.preventDefault();
+  });
+</script>

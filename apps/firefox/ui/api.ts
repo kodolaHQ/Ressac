@@ -33,7 +33,8 @@ export function createApi(win: WindowController): ApiWebaios {
   const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
   const api: Partial<ApiWebaios> = {
     fenetreId: win.fenetreId,
-    agir: (action) => void win.store.dispatch(action),
+    // A tab the user closes may ask first (Electron's ipc.ts sends fermerOnglet to Vues.fermer).
+    agir: (action) => void (action.type === "fermerOnglet" ? win.closeTab(action.id) : win.store.dispatch(action)),
     surEtat(callback) {
       // The state lives in the store's realm: the UI always gets its own copy, made in this realm.
       const send = () => callback(structuredClone(win.store.state));
