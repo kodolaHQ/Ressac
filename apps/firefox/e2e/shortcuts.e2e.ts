@@ -159,15 +159,19 @@ describe("WebAiOs shortcuts", () => {
   it("⇧⌘H and the native history commands open nothing", async () => {
     for (const k of ["Meta+Shift+h", "Meta+y", "Meta+Shift+o", "Meta+j"]) await pressKeys(m, k);
     await pressKeys(m, "Escape"); // our ⌘Y panel
+    // ⇧⌘⌫ (Clear Recent History) from the page, after the Escape, which would close its dialog.
+    await focusPage();
+    await pressKeys(m, "Meta+Shift+Backspace");
     // doCommand() ignores `disabled`: the commands are checked disabled, the keys by pressing them.
     expect(
       await m.execute<boolean[]>(
-        `return ["Browser:ShowAllHistory", "Browser:ShowAllBookmarks", "Tools:Downloads"].map((id) => document.getElementById(id).getAttribute("disabled") === "true");`,
+        `return ["Browser:ShowAllHistory", "Browser:ShowAllBookmarks", "Tools:Downloads", "Tools:Sanitize"].map((id) => document.getElementById(id).getAttribute("disabled") === "true");`,
       ),
-    ).toEqual([true, true, true]);
+    ).toEqual([true, true, true, true]);
     await new Promise((r) => setTimeout(r, 1000));
     expect(
-      await m.execute(`return { sidebar: SidebarController.isOpen, organizer: !!Services.wm.getMostRecentWindow("Places:Organizer") };`),
-    ).toEqual({ sidebar: false, organizer: false });
+      await m.execute(`return { sidebar: SidebarController.isOpen, organizer: !!Services.wm.getMostRecentWindow("Places:Organizer"), sanitize: !!gDialogBox.isOpen || [...Services.wm.getEnumerator(null)].some((w) => w.location.href.includes("sanitize")) };`,
+      ),
+    ).toEqual({ sidebar: false, organizer: false, sanitize: false });
   });
 });

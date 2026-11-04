@@ -102,4 +102,6 @@ export const FIREFOX_COMMANDS = [
   "Browser:ShowAllHistory",
   "Browser:ShowAllBookmarks",
   "Tools:Downloads",
+  // ⇧⌘⌫ (key_sanitize_mac) and History > Clear Recent History: Firefox's sanitize dialog.
+  "Tools:Sanitize",
 ];
