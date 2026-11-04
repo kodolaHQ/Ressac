@@ -209,8 +209,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   });
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
   // urlPermise then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
-  const guardUninstallUrl = (extension: { id: string; uninstallURL: string | null }) => {
+  // The parking tab is no tab for Electron: tabs.query, tabs.get, windows.getAll and the tab events never list it, even with the
+  // tabs right. canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
+  const guardExtension = (extension: { id: string; uninstallURL: string | null; tabManager: { canAccessTab(tab: any): boolean } }) => {
     if (!extension?.id?.endsWith(SUFFIX)) return;
+    const manager = extension.tabManager;
+    const canAccess = manager.canAccessTab.bind(manager);
+    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && canAccess(tab);
     let url = extension.uninstallURL;
     Object.defineProperty(extension, "uninstallURL", {
       get: () => (url && check(extension.id, "urlPermise", url) ? url : null),
@@ -218,8 +223,8 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       configurable: true,
     });
   };
-  ExtensionParent.apiManager.on("startup", (_: string, extension: { id: string; uninstallURL: string | null }) => guardUninstallUrl(extension));
-  for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardUninstallUrl(policy.extension);
+  ExtensionParent.apiManager.on("startup", (_: string, extension: any) => guardExtension(extension));
+  for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardExtension(policy.extension);
 
   let settle = () => {};
   const ready = new Promise<void>((r) => (settle = r));

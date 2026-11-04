@@ -1111,3 +1111,90 @@ noter();`,
     expect(registry().consolesMasquees).toEqual(["garde@agent.webaios"]);
   });
 });
+
+describe("agent extensions: tabs without the tabs right or a host", () => {
+  /**
+   * Electron's fondEspion (extensions-agent.spec.ts :1366): what the background sees of the tabs by tabs.query, tabs.get,
+   * windows.getAll({ populate: true }) and the onUpdated/onCreated events; `ordre.html?snap` returns it.
+   */
+  const spy = (manifest: object) => ({
+    "manifest.json": { manifest_version: 3, name: "Espion de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, ...manifest },
+    "webaios.json": { reseau: [] },
+    "fond.js": `const montrer = (t) => ({ id: t.id, url: t.url ?? null, title: t.title ?? null, favIconUrl: t.favIconUrl ?? null, pendingUrl: t.pendingUrl ?? null });
+const events = [];
+chrome.tabs.onUpdated.addListener((id, c, t) => events.push({ maj: c, tab: montrer(t) }));
+chrome.tabs.onCreated.addListener((t) => events.push({ cree: montrer(t) }));
+chrome.runtime.onMessage.addListener((m, _e, repondre) => {
+  if (m !== "snap") return;
+  (async () => {
+    const query = (await chrome.tabs.query({})).map(montrer);
+    const gets = [];
+    for (const t of query) gets.push(montrer(await chrome.tabs.get(t.id)));
+    const fenetres = (await chrome.windows.getAll({ populate: true })).flatMap((f) => (f.tabs ?? []).map(montrer));
+    return JSON.stringify({ query, gets, fenetres, events });
+  })().then(repondre, (e) => repondre("erreur " + (e && e.message)));
+  return true;
+});
+`,
+    "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
+    "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
+`,
+  });
+  const grantOf = (permissions: string[], hotes: string[]) => ({ permissions, hotes, reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false });
+  type Seen = { id: number; url: string | null; title: string | null; favIconUrl: string | null; pendingUrl: string | null };
+  const snap = async (w: LaunchedWebAiOs & { uuid: string }) =>
+    JSON.parse(await order(w, "snap")) as { query: Seen[]; gets: Seen[]; fenetres: Seen[]; events: ({ maj?: object; tab: Seen } | { cree: Seen })[] };
+  const everything = (v: object) => JSON.stringify(v);
+
+  /** Opens an own-site and a foreign tab, waits for the proxy to have served both. */
+  async function openBoth(w: LaunchedWebAiOs) {
+    await openTab(w.marionette, "https://hote.test/a");
+    await until(() => hitsTo("hote.test", "/a").length > 0);
+    await openTab(w.marionette, "https://autre.test/b");
+    await until(() => hitsTo("autre.test", "/b").length > 0);
+    await sleep(1000);
+  }
+
+  // Electron :1382.
+  it("without tabs nor a host: no address nor title in tabs.query, tabs.get, onUpdated, onCreated, windows populate", async () => {
+    const w = await launchAgent("espion", spy({}), grantOf([], []));
+    await openBoth(w);
+    const seen = await snap(w);
+    expect(seen.query.length).toBeGreaterThan(1);
+    for (const part of [seen.query, seen.gets, seen.fenetres, seen.events]) {
+      const text = everything(part);
+      for (const secret of ["hote.test", "autre.test", "/a\"", "/b\"", "about:blank"]) expect(text, secret).not.toContain(secret);
+    }
+    expect(seen.events.length).toBeGreaterThan(0);
+  });
+
+  // Electron :1406.
+  it("with a host: the address and title of that site's tabs only", async () => {
+    const w = await launchAgent("espion", spy({ host_permissions: ["https://hote.test/*"] }), grantOf([], ["https://hote.test/*"]));
+    await openBoth(w);
+    const seen = await snap(w);
+    for (const [name, part] of Object.entries({ query: seen.query, gets: seen.gets, fenetres: seen.fenetres, events: seen.events })) {
+      const text = everything(part);
+      expect(text, name).toContain('"https://hote.test/a"');
+      expect(text, name).not.toContain("autre.test");
+    }
+    expect(seen.query.find((t) => t.url === "https://hote.test/a")?.title).toBe("/a");
+  });
+
+  // Electron's voitOnglet: « tabs » shows every address. The parking tab and the invisible reads are no tab of Electron's.
+  it("the parking tab and reading browsers are never listed", async () => {
+    const w = await launchAgent("espion", spy({ permissions: ["tabs"] }), grantOf(["tabs"], []));
+    await openTab(w.marionette, "https://hote.test/a");
+    await until(() => hitsTo("hote.test", "/a").length > 0);
+    const seen = await snap(w);
+    // Only the tab opened and the extension's own page (the snap's): the parking tab (about:blank) is not listed, nor is its id.
+    const urls = seen.query.map((t) => t.url ?? "");
+    expect(urls.length).toBe(2);
+    expect(urls).toContain("https://hote.test/a");
+    expect(urls.filter((u) => /^moz-extension:\/\/[^/]+\/ordre\.html\?snap$/.test(u)).length).toBe(1);
+    const ids = new Set(seen.query.map((t) => t.id));
+    const eventIds = seen.events.map((e) => ("cree" in e ? e.cree.id : e.tab.id));
+    for (const id of [...seen.gets.map((t) => t.id), ...seen.fenetres.map((t) => t.id), ...eventIds]) expect(ids.has(id), `tab ${id}`).toBe(true);
+    expect(seen.fenetres.length).toBe(seen.query.length);
+  });
+});
