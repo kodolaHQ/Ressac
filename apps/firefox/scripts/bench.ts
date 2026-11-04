@@ -1,7 +1,7 @@
 // Usage: node scripts/bench.ts [--headed] [--out <file>]
 // Runs the Electron then Firefox bench e2e 3 times, one at a time, and compares the medians.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { compare, type BenchFile } from "./bench-stats.ts";
@@ -29,8 +29,15 @@ for (let i = 1; i <= 3; i++) {
   for (const app of ["electron", "firefox"] as const) {
     const file = join(tmp, `bench-${app}-${i}.json`);
     const env: Record<string, string> = { WEBAIOS_BENCH: "1", WEBAIOS_BENCH_OUT: file, ...(headed ? { WEBAIOS_BENCH_HEADED: "1" } : {}) };
-    if (app === "electron") run("corepack", ["pnpm", "exec", "playwright", "test", "e2e/bench.spec.ts", "--workers", "1"], electronDir, env);
-    else run("corepack", ["pnpm", "exec", "vitest", "run", "-c", "vitest.e2e.config.ts", "e2e/bench.e2e.ts"], firefoxDir, env);
+    try {
+      if (app === "electron") run("corepack", ["pnpm", "exec", "playwright", "test", "e2e/bench.spec.ts", "--workers", "1"], electronDir, env);
+      else run("corepack", ["pnpm", "exec", "vitest", "run", "-c", "vitest.e2e.config.ts", "e2e/bench.e2e.ts"], firefoxDir, env);
+    } catch (e) {
+      // Keep what was measured so far (earlier runs, and this run's passed benches) before giving up.
+      if (existsSync(file)) files.push(JSON.parse(readFileSync(file, "utf8")) as BenchFile);
+      if (out) writeFileSync(out, JSON.stringify({ headed, files, error: `${app} run ${i}: ${(e as Error).message}` }, null, 2));
+      throw e;
+    }
     files.push(JSON.parse(readFileSync(file, "utf8")) as BenchFile);
   }
 }

@@ -11,6 +11,7 @@ import { startServer } from "./server";
 import { waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
 // Benchmarks: run only with WEBAIOS_BENCH (see docs/superpowers/notes/2026-11-04-point-de-controle-firefox.md).
 describe.skipIf(!process.env.WEBAIOS_BENCH)("bench", () => {
@@ -171,6 +172,27 @@ describe.skipIf(!process.env.WEBAIOS_BENCH)("bench", () => {
   };
 
   /**
+   * Waits until the page of tab `id` is hidden. A page left and shown again before its own visibility update has run
+   * (Document::UpdateVisibilityState, a runnable that reads the current state) never goes hidden, so it fires no
+   * visibilitychange and writes no `v<ms>`: a warm switch is only measured from a page that really is hidden.
+   */
+  const waitHidden = async (m: LaunchedWebAiOs["marionette"], id: string) => {
+    const handle = await m.execute<string>(
+      `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+       return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
+      [id],
+    );
+    await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+    await m.setContext("content");
+    try {
+      for (const deadline = Date.now() + 10_000; (await m.execute<string>("return document.visibilityState")) !== "hidden"; await new Promise((r) => setTimeout(r, 10)))
+        if (Date.now() > deadline) throw new Error(`tab ${id} never hidden`);
+    } finally {
+      await m.setContext("chrome");
+    }
+  };
+
+  /**
    * Dispatches `action` from chrome and returns the time from the dispatch to the `v<ms>` the target page writes once
    * shown, plus the time spent in store.containerFor during the dispatch (when the bench wraps it).
    */
@@ -212,6 +234,7 @@ describe.skipIf(!process.env.WEBAIOS_BENCH)("bench", () => {
       // Tab 2 is shown: 2 round trips of warm-up (4 switches), then 50.
       for (let k = 0; k < 54; k++) {
         const id = ids[k % 2]!;
+        await waitHidden(m, id);
         const r = await switchTo(m, { type: "activerOnglet", id }, id);
         if (k < 4) continue;
         ms.push(r.ms);
@@ -253,6 +276,7 @@ describe.skipIf(!process.env.WEBAIOS_BENCH)("bench", () => {
     const ms: number[] = [];
     // Space 2 is shown: 2 alternations of warm-up, then 50.
     for (let k = 0; k < 52; k++) {
+      await waitHidden(m, tabs[k % 2]!);
       const r = await switchTo(m, { type: "activerEspace", fenetreId, id: spaces[k % 2]! }, tabs[k % 2]!);
       if (k >= 2) ms.push(r.ms);
     }
