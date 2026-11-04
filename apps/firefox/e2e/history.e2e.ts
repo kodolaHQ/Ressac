@@ -135,4 +135,19 @@ describe("history noted in the noyau", () => {
     await until(recents, (r) => r.some((x) => x.titre === "Page A"));
     expect((await callTool(w.dataDir, "chercher_historique", { requete: "Page A" })).texte).toContain(`${base}/a.html`);
   });
+
+  it("a space turned private while the host is down marks its visits once the host is back", async () => {
+    await open(`${base}/a.html`);
+    await loaded("/a.html");
+    await until(recents, (r) => r.some((x) => x.titre === "Page A"));
+    const host = (body: string) => m.execute<unknown>(`return (async () => { const h = (await ChromeUtils.importESModule("${STORE}").ready).agent; ${body} })();`);
+    await host("await h.stop();");
+    await until(() => host("return h.pid;"), (pid) => pid === null);
+    const s = await state(m);
+    const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
+    await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+    await host("await h.ensure();");
+    expect((await until(recents, (r) => r.length === 1))[0]!.prive).toBe(true);
+    expect((await callTool(w.dataDir, "chercher_historique", { requete: "Page A" })).texte).not.toContain("a.html");
+  });
 });

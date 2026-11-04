@@ -96,7 +96,11 @@ async function start(): Promise<WebAiOsStore> {
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
     handlers: bridgeHandlers(store, questions, windows),
-    onStart: (notify) => sendMirror(store, windows, notify),
+    onStart: (notify) => {
+      sendMirror(store, windows, notify);
+      // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
+      for (const e of store.state.espaces) if (e.prive) notify("historique.rendrePrive", { espaceId: e.id });
+    },
   });
   const history = createHistory(store, agent);
   refreshMirror = trackState(store, agent, windows);
