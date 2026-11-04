@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeAmo } from "../test/fake-amo";
-import { waitFor } from "./firefox";
+import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 
@@ -14,12 +14,32 @@ export function grant(dataDir: string, id: string, accord: unknown, profils: str
 
 export type FakeAmo = Awaited<ReturnType<typeof startFakeAmo>>;
 
+const BUILT_ACTOR = path.resolve(import.meta.dirname, "../src/browser/base/content/webaios/extension-actor.sys.mjs");
+
+/**
+ * The extension actor as `pnpm ui` built it, without its preprocessor line, in a folder of the profile: the store loads
+ * it by a resource:// substitution, which the content sandbox reads with the testing_read_path1 pref (spike S5). So
+ * these tests need no rebuild of the app.
+ */
+function testActor(profile: string): { env: Record<string, string>; prefs: Record<string, string> } {
+  const dir = path.join(realpathSync(profile), "extension-actor");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "extension-actor.sys.mjs"), readFileSync(BUILT_ACTOR, "utf8").replace(/^#define .*\n/, ""));
+  return { env: { WEBAIOS_TEST_EXTENSION_ACTOR: dir }, prefs: { "security.sandbox.content.mac.testing_read_path1": dir } };
+}
+
 /** A fake AMO, then WebAiOs launched against it (fake keys), in the chrome context with its first window ready. close() stops both. */
-export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string }): Promise<LaunchedWebAiOs & { amo: FakeAmo }> {
+export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0]; dataDir: string; profile: string; prefs?: Record<string, string | number | boolean> }): Promise<LaunchedWebAiOs & { amo: FakeAmo }> {
   const amo = await startFakeAmo(o.amo);
   let w: LaunchedWebAiOs;
   try {
-    w = await launchWebAiOs({ dataDir: o.dataDir, profile: o.profile, env: { WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" } });
+    const actor = testActor(o.profile);
+    w = await launchWebAiOs({
+      dataDir: o.dataDir,
+      profile: o.profile,
+      env: { WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret", ...actor.env },
+      prefs: { ...actor.prefs, ...o.prefs },
+    });
   } catch (e) {
     await amo.close();
     throw e;
@@ -35,3 +55,29 @@ export const agentAddons = (m: Marionette) =>
     const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
     return (await AddonManager.getAddonsByTypes(["extension"])).filter((a) => a.id.endsWith("@agent.webaios")).map((a) => ({ id: a.id, version: a.version, isActive: a.isActive }));
   })();`);
+
+const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
+
+/** Opens `url` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
+export async function openTab(m: Marionette, url: string): Promise<string> {
+  const before = new Set(Object.keys((await state(m)).onglets));
+  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec !== 'about:blank'", (v) => v === true);
+  return Object.keys(s.onglets).find((id) => !before.has(id))!;
+}
+
+/** Runs `script` in the content page of WebAiOs tab `id`, then comes back to the chrome context. */
+export async function inPage<T>(m: Marionette, id: string, script: string): Promise<T> {
+  const handle = await m.execute<string>(
+    `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
+     return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
+    [id],
+  );
+  await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+  await m.setContext("content");
+  try {
+    return await m.execute<T>(script);
+  } finally {
+    await m.setContext("chrome");
+  }
+}

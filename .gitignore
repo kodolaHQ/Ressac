@@ -17,3 +17,4 @@ apps/firefox/src/browser/base/content/webaios/store.sys.mjs
 apps/firefox/src/browser/base/content/webaios/agent.js
 apps/firefox/src/browser/base/content/webaios/agent.css
 apps/firefox/src/browser/base/content/webaios/page-actor.sys.mjs
+apps/firefox/src/browser/base/content/webaios/extension-actor.sys.mjs

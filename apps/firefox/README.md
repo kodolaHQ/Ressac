@@ -28,7 +28,7 @@ In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The
 - `window`: the window controller (syncs WebAiOs tabs and spaces with Firefox tabs and containers, shortcuts);
 - `store`: the shared state module (`store.sys.mjs`: session file, containers, shutdown save, the agent host), imported by the window at runtime;
 - `agent`: the agent panel (terminal), a second iframe on the right of the window;
-- `actor`: the page JSWindowActor (`page-actor.sys.mjs`). This one is **copied** into the build, not linked (the macOS content sandbox cannot read a file outside the source and object trees): after changing `chrome/agent/page-actor.ts`, run `pnpm build:ui`.
+- `actor`: the page and extension JSWindowActors (`page-actor.sys.mjs`, `extension-actor.sys.mjs`). These are **copied** into the build, not linked (the macOS content sandbox cannot read a file outside the source and object trees): after changing `chrome/agent/page-actor.ts` or `extension-actor.ts`, run `pnpm build:ui`. The e2e load the extension actor as `pnpm ui` built it, through a `resource://` substitution (`WEBAIOS_TEST_EXTENSION_ACTOR` plus the `security.sandbox.content.mac.testing_read_path1` pref), so they need no rebuild.
 
 ## The agent
 
@@ -76,6 +76,15 @@ Limits:
 - `page_action` and `sidebar_action` are not supported.
 - An add-on sees the parking tab and only the tabs already shown (`tabs.query`).
 - `lister_extensions` does not see add-ons yet; themes do not restyle our UI.
+
+## The agent's extensions
+
+Each is copied, signed by AMO (unlisted) and installed as an add-on (`<folder>@agent.webaios`); the noyau host keeps the registry and sends the grants to the chrome (`extensions.portees`). The guards of the copy (`webaios-garde-*.js`) ask the chrome through the extension actor (`window.__webaios`, defined on the agent's extension pages before their first script); the chrome also refuses the page and frame loads an agent extension starts outside its grant (an `http-on-modify-request` observer), the `window.open` of its pages, and a `runtime.setUninstallURL` outside its grant.
+
+Limits:
+
+- An `about:blank` frame of an agent page is not matched by the extension actor, and Firefox gives it the whole extension API without the guard (a DNR redirect from it is accepted) and `RTCPeerConnection`; its `window.open` is not refused. A frame of the extension's own page loaded into it keeps no `__webaios` (its guard refuses what it would ask). Electron's frame tests (`extensions-agent.spec.ts:613`, `:657`) are `it.todo`.
+- Before the first host sent the grants, the actor's answers wait; the load observer refuses (fail closed).
 
 ## History and downloads
 

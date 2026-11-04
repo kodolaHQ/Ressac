@@ -1,12 +1,13 @@
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
-import { agentAddons, grant, launchWithAmo } from "./agent-extensions";
+import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
 import { callTool } from "./mcp";
+import { startServer } from "./server";
 
 // Ported from Electron's extensions-agent.spec.ts: grants are written to the registry before the launch, and the effects
 // checked after a restart (the agent's tools and their card: agent-extensions-cards.e2e.ts).
@@ -16,6 +17,10 @@ const CACHE = "#cache-moi { display: none !important; }\n";
 const CACHE_TOUT = "#cache-moi, #reste { display: none !important; }\n";
 const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
 const ID = "cacheur@agent.webaios";
+
+let server: Awaited<ReturnType<typeof startServer>>;
+beforeAll(async () => (server = await startServer()));
+afterAll(() => server?.close());
 
 const dirs: string[] = [];
 const opened: LaunchedWebAiOs[] = [];
@@ -93,9 +98,24 @@ describe("agent extensions: registry, signed install, restart", () => {
     expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
   });
 
-  // The page half of extensions-agent.spec.ts:102: the guard injects the content script once the extension actor
-  // answers estOnglet (task 5).
-  it.todo("granted: its content script hides #cache-moi");
+  // The page half of extensions-agent.spec.ts:102: the page guard asks the background, which injects the CSS once the
+  // extension actor answers estOnglet for this WebAiOs tab.
+  it("granted: its content script hides #cache-moi", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    const w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    const tab = await openTab(w.marionette, `${server.url}/cache.html`);
+    const display = "return [getComputedStyle(document.getElementById('cache-moi')).display, getComputedStyle(document.getElementById('reste')).display].join()";
+    const deadline = Date.now() + 10_000;
+    let seen = await inPage<string>(w.marionette, tab, display);
+    while (seen !== "none,block" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200));
+      seen = await inPage<string>(w.marionette, tab, display);
+    }
+    expect(seen).toBe("none,block");
+  });
 
   it("quit during a signature: the previous version runs after restart, the change is signed again", async () => {
     const f = folders();

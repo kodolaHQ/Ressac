@@ -13,7 +13,7 @@ const UNMIGRATED = ["Accueil", "IaLocale", "BoutonDesign"];
 //   with fixed names, no eval (privileged documents have a strict CSP);
 // - window: script loaded in every browser window;
 // - agent: the agent panel, same kind of page as the sidebar (agent.html, agent.js, agent.css);
-// - actor: ES module for the page JSWindowActor (page-actor.sys.mjs);
+// - actor: ES modules for the page and extension JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs);
 // - store: ES module loaded by resource://, the Node state code bundled with shims for node:fs/crypto/path.
 export default defineConfig(({ mode }) => {
   const outDir = "src/browser/base/content/webaios";
@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
         alias: {
           "node:crypto": shim("crypto"),
           "node:fs/promises": shim("fs"),
+          "node:fs": shim("fs"),
           "node:path": shim("path"),
           electron: shim("electron"),
           "@webaios/noyau": shim("noyau"),
@@ -55,7 +56,11 @@ export default defineConfig(({ mode }) => {
         outDir,
         emptyOutDir: false,
         minify: false,
-        lib: { entry: "chrome/agent/page-actor.ts", formats: ["es"], fileName: () => "page-actor.sys.mjs" },
+        lib: {
+          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts" },
+          formats: ["es"],
+          fileName: (_format, name) => `${name}.sys.mjs`,
+        },
       },
       // The jar copies this file through Mozilla's preprocessor, which refuses a file without any directive (the
       // preprocessor drops the line). Added after writing: the bundler would parse a banner as JavaScript.
@@ -63,8 +68,10 @@ export default defineConfig(({ mode }) => {
         {
           name: "preprocessor-directive",
           writeBundle(o: { dir?: string }) {
-            const file = `${o.dir}/page-actor.sys.mjs`;
-            writeFileSync(file, `#define WEBAIOS_PAGE_ACTOR\n${readFileSync(file, "utf8")}`);
+            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"]]) {
+              const file = `${o.dir}/${name}.sys.mjs`;
+              writeFileSync(file, `#define ${define}\n${readFileSync(file, "utf8")}`);
+            }
           },
         },
       ],

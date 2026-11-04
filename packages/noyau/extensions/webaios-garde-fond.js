@@ -66,7 +66,7 @@
   // Le service worker seul répond à la garde de page et injecte : une page de l'extension ouverte (popup, options)
   // recevrait aussi le message, et injecterait une seconde fois. Saisi avant tout script de l'extension.
   const SWGS = g.ServiceWorkerGlobalScope;
-  const estFond = typeof SWGS === "function" ? g instanceof SWGS : typeof g.document === "undefined";
+  const estFond = typeof SWGS === "function" ? g instanceof SWGS : typeof g.document === "undefined" || (!!g.location && g.location.pathname === "/_generated_background_page.html");
 
   const figer = (objet, nom, valeur) => {
     try {

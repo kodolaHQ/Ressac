@@ -1,4 +1,7 @@
+import type { Portee } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../../navigateur/src/commun/extensions";
+import { hotePermisAgent, urlPermiseAgent } from "../../../navigateur/src/main/extensions/reseau";
+import type { IdProfil } from "../../../navigateur/src/commun/modele";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
@@ -7,9 +10,16 @@ import type { WindowRegistry } from "./windows";
 
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
 const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
+const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
 
 // Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
 const SUFFIX = "@agent.webaios";
+// Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
+const TAB_ID = "webaios-tab-id";
+const PARKING = "webaios-parking";
+
+export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
+type Scopes = Record<string, { cle: string; accord: Portee; profils: IdProfil[]; actif: boolean }>;
 
 export interface AgentExtensions {
   /** The requests the noyau host sends about its extensions (extensions.*, navigateur.espaces). */
@@ -18,6 +28,10 @@ export interface AgentExtensions {
   hostStarted(): void;
   /** Settled once the first host answered extensions.pret (the granted extensions handled). */
   readonly ready: Promise<void>;
+  /** Settled once a host sent the grants (extensions.portees): the checkpoints wait for it, never answer from nothing. */
+  readonly scopesKnown: Promise<void>;
+  /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
+  check(addonId: string, kind: CheckKind, value: unknown): boolean;
 }
 
 /** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
@@ -102,11 +116,84 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     void send(addon.id, quoi);
   }
 
+  let scopes: Scopes = {};
+  let scopesSettle = () => {};
+  const scopesKnown = new Promise<void>((r) => (scopesSettle = r));
+  handlers["extensions.portees"] = (p: Scopes) => {
+    scopes = p;
+    scopesSettle();
+  };
+  const tabOf = (tabId: unknown) => {
+    if (typeof tabId !== "number") return null;
+    try {
+      return ExtensionParent.apiManager.global.tabTracker.getTab(tabId);
+    } catch {
+      return null; // Unknown id: getTab throws.
+    }
+  };
+
+  function check(addonId: string, kind: CheckKind, value: unknown): boolean {
+    const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
+    if (!scope?.actif) return false;
+    switch (kind) {
+      case "urlPermise": {
+        // Relative: within the extension. Its own pages only; anything else as Electron's urlPermiseAgent.
+        const host = WebExtensionPolicy.getByID(addonId)?.mozExtensionHostname;
+        if (typeof value !== "string" || !host) return false;
+        let u: URL;
+        try {
+          u = new URL(value, `moz-extension://${host}/`);
+        } catch {
+          return false;
+        }
+        return u.protocol === "moz-extension:" ? u.host === host : urlPermiseAgent(u.href, scope.accord, "");
+      }
+      case "hotePermis": {
+        const spec = tabOf(value)?.linkedBrowser?.currentURI?.spec;
+        return typeof spec === "string" && hotePermisAgent(spec, scope.accord);
+      }
+      case "estOnglet": {
+        // A WebAiOs tab only: never the parking tab, never an invisible read (not a tab at all).
+        const tab = tabOf(value);
+        return !!tab?.hasAttribute?.(TAB_ID) && !tab.hasAttribute(PARKING);
+      }
+    }
+    return false;
+  }
+
+  // The network guard beyond the copy's CSP (which bounds fetch, WebSocket, beacons), as Electron's equiperPagesAgent:
+  // a page or frame load an agent extension starts (navigation, window.open, a redirect of one) goes only where
+  // urlPermise says.
+  const { TYPE_DOCUMENT, TYPE_SUBDOCUMENT } = Ci.nsIContentPolicy;
+  Services.obs.addObserver((subject: any) => {
+    const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    const info = channel.loadInfo;
+    const type = info.externalContentPolicyType;
+    if (type !== TYPE_DOCUMENT && type !== TYPE_SUBDOCUMENT) return;
+    const addonId: string = info.triggeringPrincipal?.addonId ?? "";
+    if (addonId.endsWith(SUFFIX) && !check(addonId, "urlPermise", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
+  }, "http-on-modify-request");
+  // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
+  // urlPermise then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
+  const guardUninstallUrl = (extension: { id: string; uninstallURL: string | null }) => {
+    if (!extension?.id?.endsWith(SUFFIX)) return;
+    let url = extension.uninstallURL;
+    Object.defineProperty(extension, "uninstallURL", {
+      get: () => (url && check(extension.id, "urlPermise", url) ? url : null),
+      set: (v: string | null) => void (url = v),
+      configurable: true,
+    });
+  };
+  ExtensionParent.apiManager.on("startup", (_: string, extension: { id: string; uninstallURL: string | null }) => guardUninstallUrl(extension));
+  for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardUninstallUrl(policy.extension);
+
   let settle = () => {};
   const ready = new Promise<void>((r) => (settle = r));
   return {
     handlers,
     ready,
+    scopesKnown,
+    check,
     hostStarted() {
       const sent = [...pending].map(([addonId, quoi]) => ({ addonId, quoi }));
       host()

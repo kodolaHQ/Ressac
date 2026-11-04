@@ -44,6 +44,19 @@ export interface WebAiOsStore extends Store {
 
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
 
+/**
+ * The extension actor's module. Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding it, served by a
+ * resource:// substitution (the content sandbox reads it only with security.sandbox.content.mac.testing_read_path1
+ * set to that folder: spike S5), so the e2e run without a rebuild of the app.
+ */
+function extensionActorModule(): string {
+  const dir = Services.env.get("WEBAIOS_TEST_EXTENSION_ACTOR");
+  if (!dir) return "chrome://browser/content/webaios/extension-actor.sys.mjs";
+  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
+  Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("webaios-test", Services.io.newFileURI(new FileUtils.File(dir)));
+  return "resource://webaios-test/extension-actor.sys.mjs";
+}
+
 const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
@@ -83,6 +96,16 @@ async function start(): Promise<WebAiOsStore> {
     // Only turns retargeting off in its own frame: nothing it answers makes the parent act.
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["webaios-reading"],
+  });
+  const extensionActor = extensionActorModule();
+  // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers).
+  ChromeUtils.registerWindowActor("WebAiOsExtension", {
+    parent: { esModuleURI: extensionActor },
+    child: { esModuleURI: extensionActor, events: { DOMWindowCreated: {} } },
+    matches: ["moz-extension://*/*"],
+    remoteTypes: ["extension"],
+    messageManagerGroups: ["webext-browsers", "browsers"],
+    allFrames: true,
   });
   const questions = new Questions(store);
   let refreshMirror = () => {};

@@ -16,11 +16,15 @@ declare const Cu: any;
 declare const Cc: any;
 declare const Components: { isSuccessCode(status: number): boolean };
 declare const ChromeUtils: { importESModule(url: string): any; registerWindowActor(name: string, options: object): void; getXPCOMErrorName(status: number): string; generateQI(interfaces: string[]): unknown };
-declare class JSWindowActorParent {}
+declare const WebExtensionPolicy: { getByID(id: string): { mozExtensionHostname: string } | null; getActiveExtensions(): { extension?: any }[] };
+declare class JSWindowActorParent {
+  readonly manager: any;
+}
 declare class JSWindowActorChild {
   readonly document: Document;
   readonly contentWindow: Window;
   readonly docShell: any;
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
 }
 // Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
 declare const __WEBAIOS_NODE__: string;

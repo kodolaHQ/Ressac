@@ -348,6 +348,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: false }] as { id: string; nom: string; profil: string; prive: boolean }[],
       /** The grant cards asked, and the answer given to each (default: Activer). */
       cartes: [] as CarteExtension[],
+      /** Every extensions.portees notification, in order. */
+      portees: [] as Record<string, unknown>[],
       reponse: (c: CarteExtension): ReponseAccord => ({ accepte: true, empreinte: c.empreinte }),
       handlers: {} as Record<string, Handler>,
     };
@@ -365,6 +367,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       "extensions.desinstaller": (p: { addonId: string }) => void (desinstallations.push(p.addonId), presents.delete(p.addonId)),
       "extensions.accord": (p: { carte: CarteExtension }) => (f.cartes.push(p.carte), f.reponse(p.carte)),
       "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [{ id: "f1", espaceActif: "e1" }], premierPlan: "f1" }),
+      "extensions.portees": (p: Record<string, unknown>) => void f.portees.push(p),
     };
     return f;
   };
@@ -396,6 +399,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.installs).toEqual([expect.objectContaining({ addonId: ID, version: "1.0.0.1", temporaire: true })]);
     expect(f.activations).toEqual([{ addonId: ID, actif: true }]);
     expect(entree(h.dataDir)).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
+    // Sent first at startup (before the install), then after each registry change.
+    const portee = { [ID]: { cle: "agent:ma-ext", accord: ACCORD, profils: ["defaut"], actif: true } };
+    expect(f.portees[0]).toEqual(portee);
+    expect(f.portees.at(-1)).toEqual(portee);
     await stop(h);
 
     h = launch(amo, f, { dataDir: h.dataDir });
@@ -472,6 +479,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     h.rpc.notify("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
     await until(() => entree(h.dataDir) === undefined);
+    await until(() => JSON.stringify(f.portees.at(-1)) === "{}");
     expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(false);
     await stop(h);
     h = launch(amo, f, { dataDir: h.dataDir });

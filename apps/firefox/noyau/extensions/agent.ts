@@ -85,6 +85,15 @@ const memesReperes = (a: Repere[], b: Repere[]) =>
 /** Decision 4: installed but disabled unless granted, active in a profile, not disabled, and not everything cut. */
 const actifDans = (e: EtatExtensions, x: EntreeExtension | undefined) => !!x?.accord && x.profils.length > 0 && !x.desactivee && !e.toutesCoupees;
 
+/** What the chrome's guard checkpoints read (`extensions.portees`): each granted agent extension by its add-on id. */
+export type Portees = Record<string, { cle: string; accord: Portee; profils: string[]; actif: boolean }>;
+export function porteesDe(e: EtatExtensions): Portees {
+  const r: Portees = {};
+  for (const [cle, x] of Object.entries(e.extensions))
+    if (x.source === "agent" && x.accord) r[addonIdDe(cle.slice("agent:".length))] = { cle, accord: x.accord, profils: x.profils, actif: actifDans(e, x) };
+  return r;
+}
+
 /**
  * The agent's extensions (registry `<dossier>/etat.json`, copies, signed .xpi), kept in the noyau host; the chrome
  * installs, enables, disables or uninstalls by RPC. One operation at a time per extension.
@@ -102,6 +111,8 @@ export class ExtensionsAgent {
 
   /** Startup (decision 5): leftovers deleted, every granted one recopied, signed again only if its source changed, then installed. */
   async demarrer(): Promise<void> {
+    // First: the chrome's checkpoints wait for it (an add-on kept by Firefox starts before this host).
+    this.o.rpc.notify("extensions.portees", porteesDe(await lireEtatExtensions(this.o.dossier)));
     for (const [sous, reste] of [
       ["copies", /\.(tmp|ancienne|attente)$/],
       ["signes", /\.(attente|envoi)\.xpi$/],
@@ -332,7 +343,9 @@ export class ExtensionsAgent {
   /** Registry change; the profiles of private spaces (asked from Firefox) are taken out of every agent extension. */
   private async modifier(changer: (e: EtatExtensions, prives: ReadonlySet<string>) => EtatExtensions): Promise<EtatExtensions> {
     const prives = profilsPrivesDe(await this.navigateur());
-    return modifierEtatExtensions(this.o.dossier, changer, () => prives);
+    const e = await modifierEtatExtensions(this.o.dossier, changer, () => prives);
+    this.o.rpc.notify("extensions.portees", porteesDe(e));
+    return e;
   }
 
   private navigateur(): Promise<Navigateur> {
