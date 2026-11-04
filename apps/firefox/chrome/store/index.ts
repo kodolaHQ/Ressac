@@ -108,6 +108,20 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["webext-browsers", "browsers"],
     allFrames: true,
   });
+  // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
+  // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
+  ChromeUtils.registerProcessActor("WebAiOsConsole", {
+    parent: { esModuleURI: extensionActor },
+    child: { esModuleURI: extensionActor, observers: ["content-document-global-created"] },
+    safeForUntrustedWebProcess: true,
+  });
+  for (const p of ChromeUtils.getAllDOMProcesses())
+    if (p.remoteType)
+      try {
+        p.getActor("WebAiOsConsole").sendAsyncMessage("start");
+      } catch (e) {
+        console.error("[extensions] console relay not started:", e);
+      }
   const questions = new Questions(store);
   let refreshMirror = () => {};
   const windows = createWindowRegistry({

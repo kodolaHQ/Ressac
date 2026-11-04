@@ -1,7 +1,8 @@
 import type { Portee } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../../navigateur/src/commun/extensions";
+import { niveauConsole } from "../../../navigateur/src/main/extensions/consoles";
 import { hotePermisAgent, urlPermiseAgent } from "../../../navigateur/src/main/extensions/reseau";
-import type { EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
+import type { EtatAcces, IdFenetre, IdProfil } from "../../../navigateur/src/commun/modele";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
@@ -19,6 +20,8 @@ const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tab
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
+// Keep in sync with LONGUEUR_CONSOLE_MAX (packages/noyau/src/mcp/extensions.ts): a message is never longer than an answer.
+const CONSOLE_TEXT_MAX = 100_000;
 
 /** How long a checkpoint waits for the first grants (the host starting) before it refuses. */
 export const SCOPES_WAIT_MS = 5_000;
@@ -37,6 +40,8 @@ export interface AgentExtensions {
   scopesKnown(): Promise<void>;
   /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
   check(addonId: string, kind: CheckKind, value: unknown): boolean;
+  /** The console actor's message from content process `from`: relayed to the noyau for an installed agent extension. */
+  relayConsole(from: { childID: number; remoteType: string }, data: unknown): void;
 }
 
 /** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
@@ -95,6 +100,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     "extensions.accord": (p: { carte: CarteExtension; fenetre: string | null }, signal) => {
       const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
       return f ? questions.askExtension(p.carte, f, signal) : { accepte: false, empreinte: p.carte.empreinte, retiree: true };
+    },
+    // The console unlock card, in that window if still open, else the active one; no window: it falls at once.
+    "extensions.deblocage": (p: { nom: string; espaces: string[]; raison: string; agent: string; fenetre: IdFenetre | null }, signal) => {
+      const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
+      return f ? questions.askConsole(p, f, signal) : "retiree";
     },
     "navigateur.espaces": () => ({
       espaces: store.state.espaces,
@@ -228,6 +238,30 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     return false;
   }
 
+  /**
+   * A console message an agent extension wrote in a content process (spike S6), as Electron notes it: from the extension
+   * process, its own pages (`onglet` null); from a web process, a content script: the WebAiOs tab of a non-private space
+   * it came from (else none), whose readability the noyau decides as it notes it (its policy, as Electron's
+   * ongletLisibleParAgent). A web process is untrusted: the window must be one of its own, looked up here.
+   */
+  function relayConsole(from: { childID: number; remoteType: string }, data: unknown): void {
+    const d = (data ?? {}) as { addonId?: unknown; niveau?: unknown; texte?: unknown; innerWindowID?: unknown };
+    // Any installed agent add-on (its background runs before its grant is written): never an invented id.
+    if (typeof d.addonId !== "string" || !d.addonId.endsWith(SUFFIX) || !WebExtensionPolicy.getByID(d.addonId)) return;
+    if (typeof d.niveau !== "string" || typeof d.texte !== "string") return;
+    let onglet: { ongletId: string | null; url: string } | null = null;
+    if (from.remoteType !== "extension") {
+      const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
+      const browser = wgp?.domProcess?.childID === from.childID ? wgp.browsingContext.top.embedderElement : null;
+      const t = ongletDe(browser?.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser(browser));
+      // The address of the page that wrote it, as the parent knows it: never a later one the tab moved to.
+      const url = wgp?.topWindowContext?.documentURI?.spec;
+      onglet = t && !t.espace.prive && typeof url === "string" ? { ongletId: t.onglet.id, url } : { ongletId: null, url: "" };
+    }
+    const m = { horodatage: Date.now(), niveau: niveauConsole(d.niveau === "warn" ? "warning" : d.niveau), texte: d.texte.slice(0, CONSOLE_TEXT_MAX) };
+    host().notify("extensions.console", { addonId: d.addonId, m, onglet });
+  }
+
   // The network guard beyond the copy's CSP, as Electron's equiperPagesAgent and more: every http(s) request an agent
   // extension loads or starts, of any type (navigation, window, a redirect of one, but also what Firefox's parent loads
   // for it, such as a notification icon, which no CSP sees), goes only where urlPermise says. Fail closed before the
@@ -278,6 +312,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     ready,
     scopesKnown,
     check,
+    relayConsole,
     hostStarted() {
       sendPrivate();
       const sent = [...pending].map(([addonId, quoi]) => ({ addonId, quoi }));

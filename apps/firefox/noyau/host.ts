@@ -213,6 +213,13 @@ const rpc = createRpc({
     "extensions.horsWebaios": (p: { addonId: string; quoi: "desinstallee" | "desactivee" }) =>
       extensions.horsWebaios(p.addonId, p.quoi),
     "extensions.aTourne": (p: { addonId: string; profil: string; lisible: boolean }) => extensions.aTourne(p.addonId, p.profil, p.lisible),
+    // A content script's message is readable only from a tab the agent can read as it is noted (Electron's
+    // ongletLisibleParAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
+    "extensions.console": (p: { addonId?: unknown; m?: unknown; onglet?: { ongletId?: unknown; url?: unknown } | null }) => {
+      const o = p?.onglet;
+      const lisible = !!o && typeof o.ongletId === "string" && typeof o.url === "string" && noyau?.politique.peutLire({ id: o.ongletId, url: o.url, titre: "", espace: "" }) === true;
+      extensions.noterConsole(p?.addonId, p?.m, o ? { lisible } : null);
+    },
     "extensions.profilsPrives": (p: { prives?: unknown }) =>
       extensions.profilsPrives(Array.isArray(p?.prives) ? p.prives.filter((x): x is string => typeof x === "string") : []),
     "extensions.pourEspace": (p: { espaceId?: unknown }) => (typeof p?.espaceId === "string" ? extensions.pourEspace(p.espaceId) : []),

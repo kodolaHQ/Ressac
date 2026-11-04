@@ -15,10 +15,28 @@ declare const Cr: any;
 declare const Cu: any;
 declare const Cc: any;
 declare const Components: { isSuccessCode(status: number): boolean };
-declare const ChromeUtils: { importESModule(url: string): any; registerWindowActor(name: string, options: object): void; getXPCOMErrorName(status: number): string; generateQI(interfaces: string[]): unknown };
-declare const WebExtensionPolicy: { getByID(id: string): { mozExtensionHostname: string } | null; getActiveExtensions(): { extension?: any }[] };
+declare const ChromeUtils: {
+  importESModule(url: string): any;
+  registerWindowActor(name: string, options: object): void;
+  registerProcessActor(name: string, options: object): void;
+  getAllDOMProcesses(): { remoteType: string | null; getActor(name: string): { sendAsyncMessage(name: string, data?: unknown): void } }[];
+  getXPCOMErrorName(status: number): string;
+  generateQI(interfaces: string[]): unknown;
+};
+declare const WebExtensionPolicy: {
+  getByID(id: string): { mozExtensionHostname: string } | null;
+  getByHostname(hostname: string): { id: string } | null;
+  getActiveExtensions(): { extension?: any }[];
+};
+declare const WindowGlobalParent: { getByInnerWindowId(id: number): any };
 declare class JSWindowActorParent {
   readonly manager: any;
+}
+declare class JSProcessActorParent {
+  readonly manager: { childID: number; remoteType: string };
+}
+declare class JSProcessActorChild {
+  sendAsyncMessage(name: string, data?: unknown): void;
 }
 declare class JSWindowActorChild {
   readonly document: Document;

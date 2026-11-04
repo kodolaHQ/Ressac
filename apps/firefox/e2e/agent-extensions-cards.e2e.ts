@@ -1,15 +1,17 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
 import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, PREFIXE_CONSOLE_EXTENSION } from "../../../packages/noyau/src/index";
 import { signatureRefusee } from "../noyau/extensions/amo";
-import { agentAddons, launchWithAmo } from "./agent-extensions";
+import { agentAddons, launchWithAmo, openTab } from "./agent-extensions";
 import { dispatch, newWindow, state, waitFor, waitWindowCount } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
+import { startServer } from "./server";
 import { click, inUi, pressKeys, waitUi } from "./ui";
 
 // Ported from Electron's extensions-agent.spec.ts (the agent's tools and their card) and extensions-interface.spec.ts
@@ -23,6 +25,14 @@ const FOND_SEUL = {
   "manifest.json": { manifest_version: 3, name: "Fond de l'agent", version: "1.0.0", background: { service_worker: "fond.js" } },
   "fond.js": 'console.log("fond démarré");\n',
 };
+/** A background and a content script on HOTE that both write to the console (Electron's JOURNAL). */
+const JOURNAL = {
+  "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOTE], js: ["contenu.js"] }] },
+  "fond.js": 'console.log("fond démarré");\n',
+  "contenu.js": 'console.log("contenu:" + location.pathname);\n',
+};
+const MASQUES = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
+const DEBLOCAGE = '[data-testid="demande-console-extension"]';
 const cacheur = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 
 const dirs: string[] = [];
@@ -67,6 +77,16 @@ async function activerParLAgent(w: Awaited<ReturnType<typeof launch>>, id: strin
   return (await appel).texte;
 }
 
+/** console_extension until it contains `expected`. */
+async function consoleUntil(w: { call: (n: string, a: Record<string, unknown>) => Promise<{ texte: string }> }, id: string, expected: string): Promise<string> {
+  let texte = "";
+  for (const deadline = Date.now() + 15_000; !texte.includes(expected); await new Promise((r) => setTimeout(r, 200))) {
+    if (Date.now() > deadline) throw new Error(`console_extension never said ${JSON.stringify(expected)}: ${texte}`);
+    texte = (await w.call("console_extension", { id })).texte;
+  }
+  return texte;
+}
+
 describe("the agent's tools and their card", () => {
   it("demander_extension shows the card; Activer: signed, installed, « Activée » ; lister_extensions shows it active", async () => {
     const w = await launch();
@@ -75,6 +95,10 @@ describe("the agent's tools and their card", () => {
     expect(await agentAddons(w.marionette)).toEqual([{ id: "fond@agent.webaios", version: "1.0.0.1", isActive: true }]);
     await cardGone(w.marionette);
     expect((await w.call("lister_extensions")).texte).toMatch(/^agent:fond · Fond de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
+    // console_extension gives its background's console.log.
+    const texte = await consoleUntil(w, "fond", "fond démarré");
+    expect(texte.startsWith(PREFIXE_CONSOLE_EXTENSION)).toBe(true);
+    expect((await w.call("console_extension", { id: `store:${"a".repeat(32)}` })).texte).toBe("Réservé aux extensions que tu as écrites.");
   });
 
   it("demander_extension in a private space: refused without a card", async () => {
@@ -256,5 +280,131 @@ describe("the grant card", () => {
     await dispatch(m, { type: "supprimerEspace", id: lecture.id } as Action);
     expect(await attendre()).toMatchObject({ accepte: false, retiree: true });
     await cardGone(m);
+  });
+});
+
+describe("the console", () => {
+  let server: Awaited<ReturnType<typeof startServer>>;
+  beforeAll(async () => (server = await startServer()));
+  afterAll(() => server?.close());
+
+  /** The journal granted by its card, then a.html opened in a tab of the user's (not shared): its script writes there. */
+  async function journalInAnUnsharedTab() {
+    const w = await launch();
+    ecrireExtensionAgent(w.racine, "journal", JOURNAL);
+    expect(await activerParLAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
+    await cardGone(w.marionette);
+    await openTab(w.marionette, `${server.url}/a.html`);
+    await consoleUntil(w, "journal", MASQUES);
+    return w;
+  }
+  /** debloquer_console, then « Débloquer » on its card. */
+  async function debloquer(w: Awaited<ReturnType<typeof launch>>, id: string) {
+    const appel = w.call("debloquer_console", { id, raison: "r" });
+    await waitUi(w.marionette, `return !!doc.querySelector(${JSON.stringify(DEBLOCAGE)})`, [], 15_000);
+    await click(w.marionette, `${DEBLOCAGE} button`, { text: "Débloquer" });
+    expect((await appel).texte).toContain("Console débloquée");
+  }
+
+  it("console_extension leaves out a content script's console.log in an unshared tab, and counts it", async () => {
+    const w = await journalInAnUnsharedTab();
+    let texte = (await w.call("console_extension", { id: "journal" })).texte;
+    expect(texte).not.toContain("contenu:/a.html");
+    // It ran in an unshared tab: its background is masked too.
+    expect(texte).toContain(CONSOLE_FOND_MASQUEE);
+    expect(texte).not.toContain("fond démarré");
+    // A tab the agent opens itself is readable: its message passes, the other stays masked.
+    await w.call("ouvrir_onglet", { url: `${server.url}/b.html` });
+    texte = await consoleUntil(w, "journal", "contenu:/b.html");
+    expect(texte).not.toContain("contenu:/a.html");
+    expect(texte).toMatch(/^1 message\(s\) masqué\(s\)/m);
+    // A reload does not reset the masking (its storage may have kept what it read).
+    expect((await w.call("recharger_extension", { id: "journal" })).texte).toBe("etat : rechargee");
+    expect((await w.call("console_extension", { id: "journal" })).texte).toContain(CONSOLE_FOND_MASQUEE);
+  });
+
+  it("debloquer_console granted → whole; refermer_console → masked again", async () => {
+    const w = await journalInAnUnsharedTab();
+    const m = w.marionette;
+    const appel = w.call("debloquer_console", { id: "journal", raison: "le script de contenu ne trouve pas le bouton" });
+    const carte = await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(DEBLOCAGE)})?.textContent`, [], 15_000);
+    const s = await state(m);
+    const espace = s.espaces.find((e) => e.id === s.fenetres[0]!.espaceActif)!.nom;
+    expect(carte).toContain(
+      `L'agent demande à voir toute la console de « Journal de l'agent » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets de l'espace « ${espace} », y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.`,
+    );
+    expect(carte).toContain("le script de contenu ne trouve pas le bouton");
+    // Refuser is the default button (Enter).
+    expect(await inUi(m, `return [...doc.querySelectorAll('${DEBLOCAGE} button')].find((b) => b.textContent.includes("Refuser")).hasAttribute("data-principal")`)).toBe(true);
+    await click(m, `${DEBLOCAGE} button`, { text: "Débloquer" });
+    expect((await appel).texte).toContain("Console débloquée");
+    let texte = await consoleUntil(w, "journal", "contenu:/a.html");
+    expect(texte).toContain("fond démarré");
+    expect(texte).not.toContain("message(s) masqué(s)");
+    expect(texte).not.toContain(CONSOLE_FOND_MASQUEE);
+    expect((await w.call("refermer_console", { id: "journal" })).texte).toContain("refermée");
+    texte = (await w.call("console_extension", { id: "journal" })).texte;
+    expect(texte).not.toContain("contenu:/a.html");
+    expect(texte).toContain("message(s) masqué(s)");
+  });
+
+  it("with a right that observes tabs (hosts), its background's console is always masked, even without an unshared tab, and the tool says why; unlocked, it passes", async () => {
+    const w = await launch();
+    ecrireExtensionAgent(w.racine, "veilleur", {
+      "manifest.json": { manifest_version: 3, name: "Veilleur de l'agent", version: "1.0.0", host_permissions: [HOTE], background: { service_worker: "fond.js" } },
+      "fond.js": 'setInterval(() => console.log("tic du fond"), 300);\n',
+    });
+    expect(await activerParLAgent(w, "veilleur", "Veilleur de l'agent")).toMatch(/^Activée/);
+    await cardGone(w.marionette);
+    await consoleUntil(w, "veilleur", CONSOLE_FOND_OBSERVE);
+    await new Promise((r) => setTimeout(r, 1000));
+    const texte = (await w.call("console_extension", { id: "veilleur" })).texte;
+    expect(texte).not.toContain("tic du fond");
+    expect(texte).toContain("debloquer_console");
+    await debloquer(w, "veilleur");
+    await consoleUntil(w, "veilleur", "tic du fond");
+  });
+
+  it("removed then recreated in the same place: nothing of its old storage, and its console stays masked (it ran in an unshared tab)", async () => {
+    const w = await launch();
+    const m = w.marionette;
+    ecrireExtensionAgent(w.racine, "journal", {
+      ...JOURNAL,
+      "manifest.json": { ...JOURNAL["manifest.json"], permissions: ["storage"] },
+      "fond.js": `chrome.storage.local.set({ k: "secret-local" });
+const r = indexedDB.open("b", 1);
+r.onupgradeneeded = () => r.result.createObjectStore("s");
+r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.objectStore("s").put("secret-idb", "k"); t.oncomplete = () => console.log("écrit"); };
+`,
+    });
+    expect(await activerParLAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
+    await cardGone(m);
+    await openTab(m, `${server.url}/a.html`);
+    await consoleUntil(w, "journal", MASQUES);
+    // Removed from about:addons: « Supprimer » (decision 6).
+    await m.execute(`return (async () => {
+      const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+      await (await AddonManager.getAddonByID("journal@agent.webaios")).uninstall();
+    })();`);
+    for (const deadline = Date.now() + 15_000; "agent:journal" in registry(w.dataDir); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > deadline) throw new Error("not removed");
+    // Recreated in the same place, without content script nor site: it reads what would be left.
+    rmSync(path.join(w.racine, "extensions", "journal"), { recursive: true, force: true });
+    ecrireExtensionAgent(w.racine, "journal", {
+      "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "2.0.0", permissions: ["storage"], background: { service_worker: "fond.js" } },
+      "fond.js": `(async () => {
+  const l = await chrome.storage.local.get(null);
+  const idb = await new Promise((ok) => { const r = indexedDB.open("b", 1); r.onupgradeneeded = () => r.result.createObjectStore("s"); r.onsuccess = () => { const g = r.result.transaction("s").objectStore("s").get("k"); g.onsuccess = () => ok(g.result ?? null); }; });
+  console.log("lu:" + JSON.stringify({ l, idb }));
+})();
+`,
+    });
+    expect(await activerParLAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
+    await cardGone(m);
+    // Its console stays masked: the old one ran in an unshared tab (same add-on id).
+    expect(await consoleUntil(w, "journal", CONSOLE_FOND_MASQUEE)).not.toContain("lu:");
+    // Unlocked: what it read, nothing of the old one.
+    await debloquer(w, "journal");
+    expect(await consoleUntil(w, "journal", 'lu:{"l":{},"idb":null}')).not.toContain("secret");
   });
 });

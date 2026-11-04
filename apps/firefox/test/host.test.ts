@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE } from "../../../packages/noyau/src/index";
+import { CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets } from "../../../packages/noyau/src/index";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
@@ -320,9 +320,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     writeFileSync(join(dir, "fond.js"), "console.log('fond');\n");
     writeFileSync(join(dir, "cache.css"), o.css ?? "#cache-moi { display: none }\n");
   };
-  const grant = (dataDir: string, profils = ["defaut"]) => {
+  const grant = (dataDir: string, profils = ["defaut"], accord: unknown = ACCORD) => {
     mkdirSync(join(dataDir, "extensions"), { recursive: true });
-    const entree = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord: ACCORD, profils, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
+    const entree = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord, profils, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
     writeFileSync(join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:ma-ext": entree } }));
   };
   const entree = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
@@ -507,6 +507,62 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     h.rpc.notify("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
     await until(() => entree(h.dataDir) === undefined);
     expect(registre().consolesMasquees).toEqual([ID]);
+  });
+
+  it("console: content-script messages from unreadable tabs are counted, background masked once it ran there", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    // No site nor observing right: its background's console shows until it runs in a tab the agent cannot read.
+    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...ACCORD, hotes: [], scripts: false }) });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    const m = (texte: string) => ({ horodatage: Date.now(), niveau: "log", texte });
+    h.rpc.notify("extensions.console", { addonId: ID, m: m("fond démarré"), onglet: null });
+    // The user gives t1 to the agent; t2 is not shared; null: no WebAiOs tab (a reading, a private space).
+    await h.rpc.request("agent.envoi", { onglet: tabs[0] });
+    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu:/a.html"), onglet: { ongletId: "t2", url: tabs[1]!.url } });
+    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu:/lecture"), onglet: { ongletId: null, url: "" } });
+    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu:/b.html"), onglet: { ongletId: "t1", url: tabs[0]!.url } });
+    let t = await outil(h, "console_extension", { id: "ma-ext" });
+    expect(t).toContain("fond démarré");
+    expect(t).toContain("contenu:/b.html");
+    expect(t).not.toContain("contenu:/a.html");
+    expect(t).not.toContain("contenu:/lecture");
+    expect(t).toContain(masquesOnglets(2));
+    expect(t).not.toContain(CONSOLE_FOND_MASQUEE);
+    await h.rpc.request("extensions.aTourne", { addonId: ID, profil: "defaut", lisible: false });
+    t = await outil(h, "console_extension", { id: "agent:ma-ext" });
+    expect(t).toContain(CONSOLE_FOND_MASQUEE);
+    expect(t).not.toContain("fond démarré");
+    expect(t).toContain("contenu:/b.html");
+  });
+
+  it("debloquer_console: the card names the spaces; granted, nothing masked until refermer_console or a reload", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const demandes: unknown[] = [];
+    let issue = "autoriser";
+    f.handlers["extensions.deblocage"] = (p: unknown) => (demandes.push(p), issue);
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    h.rpc.notify("extensions.console", { addonId: ID, m: { horodatage: Date.now(), niveau: "log", texte: "fond démarré" }, onglet: null });
+    // A site: its background is always masked (observing right).
+    expect(await outil(h, "console_extension", { id: "ma-ext" })).toContain(CONSOLE_FOND_OBSERVE);
+    expect(await outil(h, "debloquer_console", { id: "ma-ext", raison: "r".repeat(300) })).toContain("Console débloquée");
+    expect(demandes).toEqual([{ nom: "Cacheur", espaces: ["Perso"], raison: "r".repeat(200), agent: expect.any(String), fenetre: null }]);
+    let t = await outil(h, "console_extension", { id: "ma-ext" });
+    expect(t).toContain("fond démarré");
+    expect(t).toContain(CONSOLE_DEBLOQUEE);
+    expect(await outil(h, "refermer_console", { id: "ma-ext" })).toContain("refermée");
+    expect(await outil(h, "console_extension", { id: "ma-ext" })).toContain(CONSOLE_FOND_OBSERVE);
+    // Unlocked again, then reloaded (a new copy): masked again.
+    await outil(h, "debloquer_console", { id: "ma-ext", raison: "r" });
+    expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toBe("etat : rechargee");
+    t = await outil(h, "console_extension", { id: "ma-ext" });
+    expect(t).not.toContain("fond démarré");
+    expect(t).toContain(CONSOLE_FOND_OBSERVE);
+    // Refused: « Déblocage refusé » said as Electron says it.
+    issue = "refuser";
+    expect(await outil(h, "debloquer_console", { id: "ma-ext", raison: "r" })).toBe("Refusée par l'utilisateur.");
   });
 
   it("a first install of an inactive grant never makes the add-on active", async () => {

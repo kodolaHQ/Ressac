@@ -15,16 +15,20 @@ import {
   preparerCopie,
   retirer,
   type AnalyseManifeste,
+  type ConsolePourAgent,
   type EntreeExtension,
   type EtatExtensions,
   type ExtensionPourAgent,
+  type MessageConsole,
   type OutilsExtensions,
   type Portee,
+  type ResultatConsoleExtension,
   type ResultatDemandeExtension,
 } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension, LigneExtensionEspace, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
-import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE } from "../../../navigateur/src/commun/extensions-messages.ts";
-import type { Espace } from "../../../navigateur/src/commun/modele.ts";
+import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, LONGUEUR_RAISON_DEBLOCAGE } from "../../../navigateur/src/commun/extensions-messages.ts";
+import type { Espace, Issue } from "../../../navigateur/src/commun/modele.ts";
+import { ConsolesExtensions, type FiltreAgent } from "../../../navigateur/src/main/extensions/consoles.ts";
 import type { Rpc } from "../../shared/rpc.ts";
 import { AMO_URL, CLES_ABSENTES, ErreurSignature, lireCleAmo, signatureImpossible, signer } from "./amo.ts";
 import { carteDe } from "./carte.ts";
@@ -42,8 +46,23 @@ export const SANS_ACCORD = "Extension sans accord : demande d'abord son activati
 /** Firefox refused the signed .xpi (no Electron text: new, like decision 9's). */
 export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
 
-/** Until the console relay (task 9): console_extension, debloquer_console and refermer_console answer this. */
-const CONSOLE_A_VENIR = "Console des extensions pas encore disponible dans WebAiOs-Firefox";
+// Keep in sync with apps/navigateur/src/main/extensions/service.ts (console unlock texts, DROITS_OBSERVATEURS).
+export const CONSOLE_PROFIL_PRIVE = "Extension active dans le profil d'un espace privé : sa console n'est jamais montrée à l'agent";
+export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
+export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
+const DEBLOCAGE_REFUSE = "Déblocage refusé";
+/** Rights that see tabs or navigation: with one, sites or all sites, the background's and pages' console stays masked. */
+export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history", "topSites", "sessions", "bookmarks", "activeTab", "clipboardRead", "contextMenus",
+  "declarativeNetRequestFeedback"];
+const NIVEAUX: readonly string[] = ["log", "info", "warn", "error", "debug"] satisfies MessageConsole["niveau"][];
+
+/** What the unlock card showed (Electron's LienDeblocage): the unlock holds only for that. */
+interface LienDeblocage {
+  /** The profiles where it was active: active in another one ends it. */
+  profils: string[];
+  /** `modifieeLe`: a new copy (reloaded, recreated) ends it. */
+  marque: string | null;
+}
 
 export type ResultatEnvoi = { ok: true; analyse: AnalyseManifeste } | { ok: false; erreur: string; refus?: string[] };
 
@@ -84,6 +103,21 @@ const profilsPrivesDe = (n: Navigateur) => new Set(n.espaces.filter((e) => e.pri
 const memesReperes = (a: Repere[], b: Repere[]) =>
   a.length === b.length && a.every((x, i) => x.chemin === b[i]!.chemin && x.dev === b[i]!.dev && x.ino === b[i]!.ino);
 
+/** Why the console of `cle` cannot (or no longer) be unlocked, or null (Electron's refusDeblocage). */
+function refusDeblocage(e: EtatExtensions, prives: ReadonlySet<string>, cle: string): string | null {
+  const x = e.extensions[cle];
+  if (!x || x.source !== "agent") return `Extension inconnue : ${cle}`;
+  if (x.profils.some((p) => prives.has(p))) return CONSOLE_PROFIL_PRIVE;
+  if (e.toutesCoupees || x.desactivee || x.profils.length === 0) return DEBLOCAGE_INACTIVE;
+  return null;
+}
+
+/** True if `cle` is no longer what the card showed: a new copy, or active in another profile (the add-on id never changes here). */
+function lienRompu(e: EtatExtensions, cle: string, lien: LienDeblocage): boolean {
+  const x = e.extensions[cle];
+  return !x || x.modifieeLe !== lien.marque || x.profils.some((p) => !lien.profils.includes(p));
+}
+
 /** Decision 4: installed but disabled unless granted, active in a profile, not disabled, and not everything cut. */
 const actifDans = (e: EtatExtensions, x: EntreeExtension | undefined) => !!x?.accord && x.profils.length > 0 && !x.desactivee && !e.toutesCoupees;
 
@@ -106,6 +140,12 @@ export class ExtensionsAgent {
   private readonly cartes = new Map<string, AbortController>();
   private readonly arret = new AbortController();
   private readonly env: NodeJS.ProcessEnv;
+  /** The agent's extensions' consoles, by add-on id, in memory (crash counting comes with the crash signals). */
+  private readonly consoles = new ConsolesExtensions({ surPlantages: () => {} });
+  /** Consoles unlocked for the agent, by key: in memory only (quitting ends them), as Electron. */
+  private readonly deblocages = new Map<string, LienDeblocage>();
+  /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
+  private readonly cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: LienDeblocage; attentes: number }>();
 
   constructor(private readonly o: { dossier: string; dossierAgent: string; rpc: Rpc; env?: NodeJS.ProcessEnv }) {
     this.env = o.env ?? process.env;
@@ -153,11 +193,130 @@ export class ExtensionsAgent {
       lister: () => this.lister(),
       demander: (id, x) => this.demander(id, x),
       recharger: (id) => this.recharger(id),
-      // shortcut: no console relay before task 9; these tools answer an error until then.
-      console: () => Promise.reject(new Error(CONSOLE_A_VENIR)),
-      debloquerConsole: () => Promise.reject(new Error(CONSOLE_A_VENIR)),
-      refermerConsole: () => Promise.reject(new Error(CONSOLE_A_VENIR)),
+      console: (id, depuis) => this.consolePourAgent(id, depuis),
+      debloquerConsole: (id, raison, x) => this.debloquerConsole(id, raison, x),
+      refermerConsole: async (id) => {
+        const cle = this.cleAgent(id);
+        if (!cle) return { ok: false, erreur: `Extension inconnue : ${id}` };
+        this.deblocages.delete(cle);
+        return { ok: true };
+      },
     };
+  }
+
+  /** A console message the chrome relayed (`extensions.console`); `onglet`: a content script's, readable by the agent or not. */
+  noterConsole(addonId: unknown, m: unknown, onglet: unknown): void {
+    const x = m as Partial<MessageConsole> | null;
+    if (typeof addonId !== "string" || !addonId.endsWith(SUFFIXE_ID) || !this.cle(addonId.slice(0, -SUFFIXE_ID.length))) return;
+    if (!x || typeof x.horodatage !== "number" || typeof x.texte !== "string" || !NIVEAUX.includes(x.niveau as string)) return;
+    const o = onglet as { lisible?: unknown } | null;
+    this.consoles.noter(addonId, { horodatage: x.horodatage, niveau: x.niveau!, texte: x.texte }, o ? { lisible: o.lisible === true } : undefined);
+  }
+
+  /** `console_extension` (Electron's consolePourAgent): filtered (unlocked: whole); null if not in the registry. */
+  private async consolePourAgent(id: string, depuis?: number): Promise<ConsolePourAgent | null> {
+    const cle = this.cleAgent(id);
+    const etat = await lireEtatExtensions(this.o.dossier);
+    const x = cle ? etat.extensions[cle] : undefined;
+    if (!cle || !x) return null;
+    const prives = profilsPrivesDe(await this.navigateur());
+    if (x.profils.some((p) => prives.has(p))) throw new Error(CONSOLE_PROFIL_PRIVE);
+    return this.consoles.pourAgent(addonIdDe(this.id(cle)!), this.filtreAgent(etat, cle, depuis));
+  }
+
+  /** Electron's filtreAgent: unlocked; ran in an unreadable tab (entry flag, or its add-on id kept after a removal); observing right. */
+  private filtreAgent(etat: EtatExtensions, cle: string, depuis?: number): FiltreAgent {
+    const x = etat.extensions[cle];
+    const a = x?.accord;
+    return {
+      ...(depuis !== undefined ? { depuis } : {}),
+      debloquee: this.deblocages.has(cle),
+      tourneIllisible: (x?.consoleMasquee?.length ?? 0) > 0 || !!etat.consolesMasquees?.includes(addonIdDe(this.id(cle)!)),
+      observateur: !a || a.tousLesSites || a.scriptsTousLesSites || a.hotes.length > 0 || a.permissions.some((p) => DROITS_OBSERVATEURS.includes(p)),
+    };
+  }
+
+  /**
+   * `debloquer_console` (Electron's debloquerConsole): the unlock card, for an agent extension active somewhere, never
+   * in a private space's profile, naming the spaces of its profiles. Granted: its console is whole for what the card
+   * showed, until refermer_console or a registry write that ends it (verifierDeblocages).
+   */
+  private async debloquerConsole(id: string, raison: string, x: { fenetre: string | null; agent: string; signal?: AbortSignal }): Promise<ResultatConsoleExtension> {
+    const cle = this.cleAgent(id);
+    const etat = await lireEtatExtensions(this.o.dossier);
+    const entree = cle ? etat.extensions[cle] : undefined;
+    if (!cle || !entree) return { ok: false, erreur: `Extension inconnue : ${id}` };
+    const nav = await this.navigateur();
+    const refus = refusDeblocage(etat, profilsPrivesDe(nav), cle);
+    if (refus) return { ok: false, erreur: refus };
+    if (this.deblocages.has(cle)) return { ok: true };
+    let carte = this.cartesDeblocage.get(cle);
+    if (!carte) {
+      const retrait = new AbortController();
+      const lien = { profils: [...entree.profils], marque: entree.modifieeLe };
+      const demande = {
+        nom: entree.nom,
+        espaces: nav.espaces.filter((e) => lien.profils.includes(e.profil) && !e.prive).map((e) => e.nom),
+        raison: raison.slice(0, LONGUEUR_RAISON_DEBLOCAGE),
+        agent: x.agent,
+        fenetre: x.fenetre,
+      };
+      const nouvelle = {
+        retrait,
+        lien,
+        attentes: 0,
+        reponse: this.o.rpc
+          .request<Issue>("extensions.deblocage", demande, AbortSignal.any([retrait.signal, this.arret.signal]))
+          .catch((): Issue => "retiree")
+          .finally(() => {
+            if (this.cartesDeblocage.get(cle) === nouvelle) this.cartesDeblocage.delete(cle);
+          }),
+      };
+      this.cartesDeblocage.set(cle, nouvelle);
+      carte = nouvelle;
+    }
+    const ouverte = carte;
+    ouverte.attentes++;
+    // This call dropped (new conversation) takes the card down only if it is the last one waiting for it.
+    let abandonner: () => void = () => {};
+    const abandon = new Promise<Issue>((ok) => (abandonner = () => ok("retiree")));
+    let parti = false;
+    const partir = () => {
+      if (parti) return;
+      parti = true;
+      if (--ouverte.attentes === 0) ouverte.retrait.abort();
+      abandonner();
+    };
+    if (x.signal?.aborted) partir();
+    x.signal?.addEventListener("abort", partir, { once: true });
+    let issue: Issue;
+    try {
+      issue = await Promise.race([ouverte.reponse, abandon]);
+    } finally {
+      x.signal?.removeEventListener("abort", partir);
+      if (!parti) {
+        parti = true;
+        ouverte.attentes--;
+      }
+    }
+    if (issue === "retiree") return { ok: false, erreur: DEMANDE_RETIREE, retiree: true };
+    if (issue !== "autoriser") return { ok: false, erreur: DEBLOCAGE_REFUSE, refusee: true };
+    // The state may have changed during the card: checked again on « yes », against what the card showed.
+    const apres = await lireEtatExtensions(this.o.dossier);
+    if (refusDeblocage(apres, profilsPrivesDe(await this.navigateur()), cle) || lienRompu(apres, cle, ouverte.lien)) return { ok: false, erreur: DEBLOCAGE_CHANGE };
+    this.deblocages.set(cle, ouverte.lien);
+    return { ok: true };
+  }
+
+  /** After each registry write: an unlock whose extension left, was disabled, cut, activated elsewhere or recopied ends; its card falls. */
+  private verifierDeblocages(e: EtatExtensions, prives: ReadonlySet<string>): void {
+    for (const [cle, lien] of [...this.deblocages]) if (refusDeblocage(e, prives, cle) || lienRompu(e, cle, lien)) this.deblocages.delete(cle);
+    for (const [cle, carte] of this.cartesDeblocage) if (refusDeblocage(e, prives, cle) || lienRompu(e, cle, carte.lien)) carte.retrait.abort();
+  }
+
+  /** `<id>` or `agent:<id>`, as Electron's cleAgentPour. */
+  private cleAgent(id: string): string | null {
+    return this.cle(id.startsWith("agent:") ? id.slice("agent:".length) : id);
   }
 
   /** Each registry entry: the non-private spaces where it is active (named), the private ones (counted), its disabling. */
@@ -300,6 +459,7 @@ export class ExtensionsAgent {
       // Uninstalled first: an entry gone while the add-on stays installed would run without a grant.
       await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) });
       await this.modifier((e) => (cle in e.extensions ? retirer(e, cle) : e));
+      this.consoles.oublier(addonIdDe(id));
       for (const f of [join("copies", id), join("copies", `${id}.attente`), join("signes", `${id}.xpi`), join("signes", `${id}.json`)])
         await rm(join(this.o.dossier, f), { recursive: true, force: true });
     });
@@ -446,6 +606,7 @@ export class ExtensionsAgent {
   private async modifier(changer: (e: EtatExtensions, prives: ReadonlySet<string>) => EtatExtensions): Promise<EtatExtensions> {
     const prives = profilsPrivesDe(await this.navigateur());
     const e = await modifierEtatExtensions(this.o.dossier, changer, () => prives);
+    this.verifierDeblocages(e, prives);
     this.o.rpc.notify("extensions.portees", porteesDe(e));
     this.o.rpc.notify("extensions.change");
     return e;

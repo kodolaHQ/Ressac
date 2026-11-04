@@ -46,6 +46,12 @@ export class Questions {
     return { accepte: issue === "autoriser", empreinte: carte.empreinte, ...(issue === "retiree" ? { retiree: true } : {}) };
   }
 
+  /** The console unlock card of an agent extension (Electron's debloquerConsole): Refuser is the default; it falls after DELAI_QUESTION_MS or on `signal`. */
+  askConsole(o: { nom: string; espaces: string[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<Issue> {
+    const fields = { ongletId: null, fenetreId, origine: o.nom, permissions: ["console-extension" as const], titre: o.nom, raison: o.raison, agent: o.agent, espaces: o.espaces };
+    return attendreIssue((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
+  }
+
   private pose(fields: Omit<DemandeEnAttente, "id">, repondre: (d: Issue) => void): () => void {
     const id = crypto.randomUUID();
     this.open.set(id, { demande: { id, ...fields }, repondre });
