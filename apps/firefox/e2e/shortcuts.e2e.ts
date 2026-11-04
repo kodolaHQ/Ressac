@@ -90,6 +90,22 @@ describe("WebAiOs shortcuts", () => {
     await waitState((s) => s.fenetres[0]!.espaceActif, (e) => e === second);
   });
 
+  it("Firefox's next/previous tab keys do not leave the space", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
+    const second = (await win()).espaceActif;
+    const b = await open("/b.html");
+    await waitTitle(b, "Page B");
+    await focusPage();
+    for (const combo of ["Control+PageUp", "Control+PageDown", "Meta+Alt+ArrowLeft", "Meta+Alt+ArrowRight", "Meta+Shift+{", "Meta+Shift+}"]) {
+      await pressKeys(m, combo);
+      await new Promise((r) => setTimeout(r, 200));
+      expect([combo, (await win()).espaceActif, await activeId()]).toEqual([combo, second, b]);
+      expect(await m.execute<string | null>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(b);
+    }
+  });
+
   it("⌘[ and ⌘] follow the tab's history", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");

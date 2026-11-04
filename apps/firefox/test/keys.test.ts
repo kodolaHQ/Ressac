@@ -38,6 +38,19 @@ describe("shortcutFor", () => {
     expect(key("Tab", "Tab", { ctrl: true, shift: true })).toEqual({ type: "parcourir", delta: -1 });
   });
 
+  it("swallows Firefox's other tab keys, which walk every space's tabs", () => {
+    const swallowed = { type: "ignorer" };
+    expect(key("PageDown", "PageDown", { ctrl: true })).toEqual(swallowed);
+    expect(key("PageUp", "PageUp", { ctrl: true })).toEqual(swallowed);
+    // ⌃⇧PageUp/PageDown move the tab among them.
+    expect(key("PageUp", "PageUp", { ctrl: true, shift: true })).toEqual(swallowed);
+    for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) expect(key(k, k, { meta: true, alt: true })).toEqual(swallowed);
+    expect(key("}", "BracketRight", { meta: true, shift: true })).toEqual(swallowed);
+    expect(key("{", "BracketLeft", { meta: true, shift: true })).toEqual(swallowed);
+    expect(key("PageDown", "PageDown")).toBeNull();
+    expect(key("ArrowLeft", "ArrowLeft", { meta: true })).toBeNull();
+  });
+
   it("⌘J is the agent shortcut", () => {
     expect(key("j", "KeyJ", { meta: true })).toEqual({ type: "agent" });
     expect(FIREFOX_KEYS).toContain("key_openDownloads");

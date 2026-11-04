@@ -11,7 +11,9 @@ export type Shortcut =
   | { type: "agent" }
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
   | { type: "fenetre" }
-  | { type: "fermerFenetre" };
+  | { type: "fermerFenetre" }
+  /** Firefox's next/previous tab keys walk every XUL tab, other spaces' too: consumed, nothing done. */
+  | { type: "ignorer" };
 
 type Keys = { key: string; code: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
 
@@ -33,6 +35,13 @@ const SHIFT_COMMAND: Record<string, Shortcut> = {
 
 /** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
 export function shortcutFor(e: Keys): Shortcut | null {
+  // ShortcutUtils' PREVIOUS_TAB/NEXT_TAB (and ⌃⇧PageUp/PageDown, which move the tab) on macOS.
+  if (
+    (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "PageUp" || e.key === "PageDown")) ||
+    (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.key.startsWith("Arrow")) ||
+    (e.metaKey && !e.altKey && !e.ctrlKey && (e.key === "{" || e.key === "}"))
+  )
+    return { type: "ignorer" };
   if (e.altKey || (e.metaKey && e.ctrlKey)) return null;
   const digit = !e.shiftKey && /^Digit([1-9])$/.exec(e.code)?.[1];
   if (e.ctrlKey) {
