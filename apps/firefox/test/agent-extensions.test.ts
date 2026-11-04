@@ -58,9 +58,27 @@ describe("agent extension checkpoints", () => {
     expect(ok("https://accorde.test/")).toBe(false);
   });
 
-  it("check: nothing passes before the grants are known", async () => {
+  it("check: nothing passes before the grants are known; a checkpoint waits for them at most SCOPES_WAIT_MS", async () => {
     const x = await load();
     expect(x.check(ID, "urlPermise", "https://accorde.test/")).toBe(false);
+    vi.useFakeTimers();
+    try {
+      let waited = false;
+      void x.scopesKnown().then(() => (waited = true));
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(waited).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(waited).toBe(true);
+      expect(x.check(ID, "urlPermise", "https://accorde.test/")).toBe(false);
+      // Once sent, no wait.
+      grant(x);
+      let now = false;
+      void x.scopesKnown().then(() => (now = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(now).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("check: hotePermis reads the tab's address, estOnglet a WebAiOs tab only (never the parking tab)", async () => {

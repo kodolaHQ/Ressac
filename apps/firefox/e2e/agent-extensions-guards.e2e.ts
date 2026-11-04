@@ -129,6 +129,8 @@ chrome.runtime.onMessage.addListener((m, _expediteur, repondre) => {
     if (m === "popup-fuite") {
       await chrome.action.setPopup({ popup: "https://autre.test/popup-fuite" });
       await chrome.action.openPopup().catch(() => {});
+    } else if (m === "popup-cadres") {
+      await chrome.action.setPopup({ popup: "cadre.html" });
     } else if (m === "clients-type") {
       repondre(typeof clients);
       return;
@@ -198,6 +200,144 @@ document.title = JSON.stringify(vu);
   document.title = JSON.stringify(r);
 })();
 `,
+  "cadre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="cadre.js"></script></body></html>',
+  "cadre.js": `(async () => {
+ try {
+  const sonderNu = async (w, nom) => {
+    const c = w.chrome;
+    const d = c && c.declarativeNetRequest && Object.getOwnPropertyDescriptor(c.declarativeNetRequest, "updateDynamicRules");
+    let dnr;
+    try {
+      await c.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [7], addRules: [{ id: 7, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/fuite-" + nom } }, condition: { urlFilter: "/rien-cadre", resourceTypes: ["xmlhttprequest"] } }] });
+      dnr = "acceptee";
+    } catch (e) { dnr = String(e && e.message); }
+    let rtc;
+    try { new w.RTCPeerConnection(); rtc = "creee"; } catch (e) { rtc = String(e && e.message); }
+    return { chrome: typeof c, tabs: typeof (c && c.tabs), dnrFige: d ? d.configurable === false : null, dnr, rtc: typeof w.RTCPeerConnection, rtcEssai: rtc, webaios: typeof w.__webaios, protocole: w.location.protocol };
+  };
+  // Firefox: a frame that is cross-origin to the page (srcdoc) is out of its reach.
+  const sonder = async (w, nom) => { try { return await sonderNu(w, nom); } catch (e) { if (e && e.name === "SecurityError") return { inaccessible: true }; throw e; } };
+  const vu = {};
+  const vide = document.body.appendChild(document.createElement("iframe"));
+  vu.blank = await sonder(vide.contentWindow, "blank");
+  document.body.appendChild(document.createElement("iframe"));
+  vu.index = await sonder(window[1], "index");
+  const hote = document.body.appendChild(document.createElement("div")).attachShadow({ mode: "open" });
+  hote.appendChild(document.createElement("iframe"));
+  vu.ombre = await sonder(hote.querySelector("iframe").contentWindow, "ombre");
+  const imbrique = document.body.appendChild(document.createElement("iframe"));
+  imbrique.srcdoc = "<p>x</p>";
+  vu.srcdocTot = await sonder(window[2], "srcdocTot");
+  await new Promise((ok) => imbrique.addEventListener("load", ok, { once: true }));
+  // Firefox: the srcdoc frame is cross-origin to the page, its own frame out of reach.
+  try {
+    window[2].document.body.appendChild(window[2].document.createElement("iframe"));
+    vu.petit = await sonder(window[2][0], "petit");
+  } catch (e) {
+    if (!e || e.name !== "SecurityError") throw e;
+    vu.petit = { inaccessible: true };
+  }
+  const doc = document.createElement("iframe");
+  doc.srcdoc = "<p>x</p>";
+  document.body.appendChild(doc);
+  await new Promise((ok) => doc.addEventListener("load", ok, { once: true }));
+  vu.srcdoc = await sonder(window[3], "srcdoc");
+  // contentWindow masqué sur l'élément : le cadre n'est atteint que par window[4], lu dans la même tâche.
+  const masque = document.createElement("iframe");
+  Object.defineProperty(masque, "contentWindow", { get: () => null });
+  Object.defineProperty(masque, "contentDocument", { get: () => null });
+  document.body.appendChild(masque);
+  vu.masqueTot = typeof window[4].RTCPeerConnection;
+  vu.masque = await sonder(window[4], "masque");
+  // Racine fantôme déclarative (setHTMLUnsafe), que attachShadow ne voit jamais.
+  const declare = document.body.appendChild(document.createElement("div"));
+  declare.setHTMLUnsafe('<div><template shadowrootmode="open"><iframe></iframe></template></div>');
+  const dansDeclare = declare.firstElementChild.shadowRoot.querySelector("iframe");
+  vu.declareTot = typeof dansDeclare.contentWindow.RTCPeerConnection;
+  vu.declare = await sonder(dansDeclare.contentWindow, "declare");
+  // Même tâche, accès indexé seulement : racine déclarative (setHTMLUnsafe), cadre en clair par setHTMLUnsafe et par
+  // innerHTML. Puis toutes les fenêtres filles.
+  const avantDeclare = window.length;
+  document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="open"><iframe></iframe></template></div><iframe></iframe>');
+  vu.declareLongueur = window.length - avantDeclare;
+  vu.declareIndexes = [];
+  for (let i = avantDeclare; i < window.length; i++) vu.declareIndexes.push(typeof window[i].RTCPeerConnection);
+  const avantInterieur = window.length;
+  document.body.appendChild(document.createElement("div")).innerHTML = "<iframe></iframe>";
+  vu.interieur = window.length > avantInterieur ? typeof window[avantInterieur].RTCPeerConnection : "absent";
+  // Par son nom : window.open("", nom) rend un cadre existant sans ouvrir de fenêtre, même dans une racine fermée.
+  document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="closed"><iframe name="nomme-ombre"></iframe></template></div><iframe name="nomme-clair"></iframe>');
+  for (const nom of ["nomme-ombre", "nomme-clair"]) {
+    let f = null;
+    try { f = window.open("", nom); } catch (e) { f = null; }
+    let rtc = "absent";
+    try { rtc = f ? typeof f.RTCPeerConnection : "absent"; } catch (e) { rtc = "inaccessible"; }
+    vu[nom] = rtc;
+  }
+  // Par son nom, sans window.open : document.open(url, nom, options) (forme à trois arguments), l'accès nommé
+  // (window[nom], frames[nom]). Chaque cadre nommé est neuf, dans une racine déclarative fermée.
+  const parNom = (nom, prendre) => {
+    document.body.appendChild(document.createElement("div")).setHTMLUnsafe('<div><template shadowrootmode="closed"><iframe name="' + nom + '"></iframe></template></div>');
+    let f = null;
+    try { f = prendre(nom); } catch (e) { f = null; }
+    try { return f ? typeof f.RTCPeerConnection : "absent"; } catch (e) { return "inaccessible"; }
+  };
+  vu["docOpen-ombre"] = parNom("doc-ouvre-ombre", (nom) => document.open("", nom, ""));
+  vu["nomme-index"] = parNom("nomme-index", (nom) => window[nom]);
+  vu["nomme-frames"] = parNom("nomme-frames", (nom) => window.frames[nom]);
+  vu.docOpenDeux = (() => { const d = document.implementation.createHTMLDocument(""); try { return d.open("text/html", "") === d ? "document" : "autre"; } catch (e) { return "erreur"; } })();
+  vu.tousIndexes = [];
+  // Firefox: a cross-origin (srcdoc) frame is « inaccessible ».
+  for (let i = 0; i < window.length; i++) { try { vu.tousIndexes.push(typeof window[i].RTCPeerConnection); } catch (e) { vu.tousIndexes.push("inaccessible"); } }
+  vu.nombre = window.length;
+  vu.frames = typeof window[0];
+  vu.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.action.type);
+  document.title = JSON.stringify(vu);
+ } catch (e) { document.title = "erreur " + e.stack; }
+})();
+`,
+  "ecrit.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ecrit.js"></script></body></html>',
+  "ecrit.js": `const vu = {};
+const avant = window.length;
+document.write('<div id="hote-ecrit"><template shadowrootmode="open"><iframe></iframe></template></div><iframe></iframe>');
+vu.longueur = window.length - avant;
+vu.indexes = [];
+for (let i = 0; i < window.length; i++) vu.indexes.push(typeof window[i].RTCPeerConnection);
+const hote = document.getElementById("hote-ecrit");
+vu.ombre = hote && hote.shadowRoot ? "ouverte" : "absente";
+document.title = JSON.stringify(vu);
+`,
+  "blanc.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="blanc.js"></script></body></html>',
+  "blanc.js": `(async () => {
+  const w = document.body.appendChild(document.createElement("iframe")).contentWindow;
+  const vu = {};
+  try { await w.chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [6], addRules: [{ id: 6, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/fuite-blanc" } }, condition: { urlFilter: "/rien-blanc", resourceTypes: ["xmlhttprequest"] } }] }); vu.dnr = "acceptee"; } catch (e) { vu.dnr = "refusee"; }
+  try { new w.RTCPeerConnection(); vu.rtc = "creee"; } catch (e) { vu.rtc = "refusee"; }
+  for (const h of ["hote.test", "autre.test"]) { try { vu["ouvre-" + h] = String(w.open("https://" + h + "/cadre-ouvre")); } catch (e) { vu["ouvre-" + h] = "erreur"; } }
+  // A srcdoc frame (cross-origin to the page in Firefox) running a script of the extension: what it gets, by message.
+  const recu = new Promise((ok) => { addEventListener("message", (e) => ok(e.data), { once: true }); setTimeout(() => ok("aucun"), 2000); });
+  const s = document.createElement("iframe");
+  s.srcdoc = '<script src="srcdoc.js"></' + 'script>';
+  document.body.appendChild(s);
+  vu.srcdoc = await recu;
+  // One of its own pages in a frame: Firefox may reuse the initial about:blank window for it.
+  const propre = document.createElement("iframe");
+  propre.src = "ordre.html?rien";
+  document.body.appendChild(propre);
+  await new Promise((ok) => propre.addEventListener("load", ok, { once: true }));
+  await new Promise((ok) => setTimeout(ok, 500));
+  vu.propre = { titre: propre.contentDocument.title, chrome: typeof propre.contentWindow.chrome, webaios: typeof propre.contentWindow.__webaios };
+  vu.regles = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.action.type);
+  document.title = JSON.stringify(vu);
+})().catch((e) => (document.title = "erreur " + e));
+`,
+  "srcdoc.js": `(async () => {
+  const vu = { chrome: typeof chrome, webaios: typeof __webaios, rtc: typeof RTCPeerConnection };
+  try { await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [5], addRules: [{ id: 5, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/fuite-srcdoc" } }, condition: { urlFilter: "/rien-srcdoc", resourceTypes: ["xmlhttprequest"] } }] }); vu.dnr = "acceptee"; } catch (e) { vu.dnr = "refusee"; }
+  try { vu.ouvre = String(open("https://autre.test/srcdoc-ouvre")); } catch (e) { vu.ouvre = "erreur"; }
+  parent.postMessage(vu, "*");
+})();
+`,
   "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
   "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
 `,
@@ -251,6 +391,10 @@ async function launchReseau(): Promise<LaunchedWebAiOs & { uuid: string }> {
   return { ...w, uuid: uuid! };
 }
 
+/** The background's startup tries are over (its block rule set): the results it kept, read from its page. */
+const backgroundResults = async (w: LaunchedWebAiOs & { uuid: string }) =>
+  JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/resultats.html`, 0)).titre) as Record<string, unknown>;
+
 /**
  * Opens a page of the extension in a tab, waits until its title leaves « attente », then `ms` more; returns its title
  * and address, then closes it.
@@ -264,6 +408,30 @@ async function extensionPage(m: Marionette, url: string, ms = 1500): Promise<{ t
   );
   await m.execute("gBrowser.removeTab(window.extensionTab);");
   return r;
+}
+
+/** Electron :613's expectations on cadre.js's report; a frame out of the page's reach (cross-origin) passes. */
+function checkFrames(titre: string): void {
+  const vu = JSON.parse(titre) as Record<string, any>;
+  for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc", "masque", "declare"]) {
+    if (vu[cadre]?.inaccessible) continue;
+    expect(vu[cadre].protocole, cadre).toBe("about:");
+    expect(vu[cadre].rtc, cadre).toBe("undefined");
+    expect(vu[cadre].rtcEssai, cadre).not.toBe("creee");
+    expect(vu[cadre].tabs, cadre).toBe("undefined");
+    expect(vu[cadre].dnr, cadre).not.toBe("acceptee");
+  }
+  expect(vu.masqueTot).toBe("undefined");
+  expect(vu.declareLongueur).toBeGreaterThan(0);
+  expect(vu.declareIndexes.every((t: string) => t === "undefined")).toBe(true);
+  expect(vu.interieur).toBe("undefined");
+  for (const nom of ["nomme-ombre", "nomme-clair", "docOpen-ombre"]) expect(["undefined", "absent"], nom).toContain(vu[nom]);
+  for (const nom of ["nomme-index", "nomme-frames"]) expect(["undefined", "absent"], nom).toContain(vu[nom]);
+  expect(vu.tousIndexes.length).toBe(vu.nombre);
+  expect(vu.tousIndexes.every((t: string) => t === "undefined" || t === "inaccessible")).toBe(true);
+  expect(vu.declareTot).toBe("undefined");
+  // No redirect set: only the block rule of the start.
+  expect(vu.regles).toEqual(["block"]);
 }
 
 const order = async (w: LaunchedWebAiOs & { uuid: string }, what: string) => (await extensionPage(w.marionette, `moz-extension://${w.uuid}/ordre.html?${what}`, 0)).titre;
@@ -292,7 +460,7 @@ describe("agent extensions: network guard", () => {
 
   it("tabs.create to a domain not granted is refused, to a site of its hosts opened; a DNR redirect is refused, a block accepted", async () => {
     const w = await launchReseau();
-    const r = JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/resultats.html`, 0)).titre);
+    const r = await backgroundResults(w);
     expect(r).toMatchObject({
       ongletRefuse: { erreur: "URL refusée par WebAiOs" },
       ongletDonnees: { erreur: "URL refusée par WebAiOs" },
@@ -363,6 +531,7 @@ describe("agent extensions: network guard", () => {
   // extension's holey list is refused without the prototype's getter being read. The agent half only.
   it("updateDynamicRules with a holey list: the agent's guard refuses it", async () => {
     const w = await launchReseau();
+    await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/tableaux.html`, 0);
     expect(JSON.parse(page.titre)).toEqual({ erreur: "Règle DNR refusée par WebAiOs (tableau à trous)", lus: 0, regles: ["block"] });
   });
@@ -387,9 +556,57 @@ describe("agent extensions: network guard", () => {
     expect(hitsTo("autre.test")).toEqual([]);
   });
 
-  // Electron's :613 and :657. Measured (task 5): an about:blank frame of an agent page is not matched by the extension
-  // actor (no __webaios, window.open not refused), and Firefox gives it the whole extension API without the guard
-  // (a DNR redirect is accepted) and RTCPeerConnection; srcdoc frames are cross-origin. Limit in the README.
-  it.todo("in its popup, an about:blank, srcdoc, nested or shadow-root frame has neither RTCPeerConnection nor a way to set a DNR redirect");
-  it.todo("document.write of a frame while loading: no child window has RTCPeerConnection in the same task");
+  // Electron's :613, in a tab of the extension (its popup: the next test). Firefox: a srcdoc frame is cross-origin to the
+  // page (out of its reach); the about:blank ones are reached by the extension actor, which takes the extension API
+  // and WebRTC out of them.
+  it("in its page, an about:blank, srcdoc, nested or shadow-root frame has neither RTCPeerConnection nor a way to set a DNR redirect", async () => {
+    const w = await launchReseau();
+    await backgroundResults(w);
+    const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/cadre.html`, 0);
+    console.log(`[mesure] cadres : ${page.titre}`);
+    checkFrames(page.titre);
+  });
+
+  it("in its popup too (setPopup cadre.html, then a click on its button)", async () => {
+    const w = await launchReseau();
+    const m = w.marionette;
+    await backgroundResults(w);
+    await openTab(m, "https://hote.test/ancre-cadres");
+    await until(() => hitsTo("hote.test", "/ancre-cadres").length > 0);
+    expect(await order(w, "popup-cadres")).toBe("fait");
+    await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
+    await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
+    // The popup's browser (webext-browsers) on cadre.html: its title is the report.
+    const titre = await waitFor<string | null>(
+      m,
+      `const b = [...document.querySelectorAll("browser")].find((b) => b.currentURI?.spec.endsWith("/cadre.html"));
+       return b ? b.contentTitle : null;`,
+      (t) => !!t && t !== "attente",
+      15_000,
+    );
+    checkFrames(titre!);
+  });
+
+  it("document.write of a frame while loading (in the clear and in a declarative shadow root): no child window has RTCPeerConnection in the same task", async () => {
+    const w = await launchReseau();
+    const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/ecrit.html`, 0);
+    console.log(`[mesure] document.write : ${page.titre}`);
+    const vu = JSON.parse(page.titre) as { longueur: number; indexes: string[]; ombre: string };
+    expect(vu.ombre).toBe("ouverte");
+    expect(vu.longueur).toBeGreaterThan(0);
+    expect(vu.indexes.every((t) => t === "undefined")).toBe(true);
+  });
+
+  it("from an about:blank frame of its page: a DNR redirect, RTCPeerConnection and window.open are refused", async () => {
+    const w = await launchReseau();
+    await backgroundResults(w);
+    const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/blanc.html`);
+    console.log(`[mesure] about:blank, srcdoc : ${page.titre}`);
+    expect(JSON.parse(page.titre)).toMatchObject({ dnr: "refusee", rtc: "refusee", "ouvre-hote.test": "null", "ouvre-autre.test": "null", regles: ["block"] });
+    // A srcdoc frame runs none of its scripts (measured « aucun »); if it ever does, it must get nothing either.
+    const srcdoc = JSON.parse(page.titre).srcdoc;
+    if (srcdoc !== "aucun") expect(srcdoc).toMatchObject({ chrome: "undefined", rtc: "undefined", dnr: "refusee", ouvre: "null" });
+    expect(hitsTo("hote.test", "/cadre-ouvre")).toEqual([]);
+    expect(hitsTo("autre.test")).toEqual([]);
+  });
 });

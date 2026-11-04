@@ -98,11 +98,12 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["webaios-reading"],
   });
   const extensionActor = extensionActorModule();
-  // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers).
+  // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
+  // `matches`: the about:blank frames that inherit an agent page's principal must be reached too (the child filters
+  // on the document's principal).
   ChromeUtils.registerWindowActor("WebAiOsExtension", {
     parent: { esModuleURI: extensionActor },
     child: { esModuleURI: extensionActor, events: { DOMWindowCreated: {} } },
-    matches: ["moz-extension://*/*"],
     remoteTypes: ["extension"],
     messageManagerGroups: ["webext-browsers", "browsers"],
     allFrames: true,

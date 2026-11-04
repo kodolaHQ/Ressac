@@ -18,6 +18,9 @@ const SUFFIX = "@agent.webaios";
 const TAB_ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
 
+/** How long a checkpoint waits for the first grants (the host starting) before it refuses. */
+export const SCOPES_WAIT_MS = 5_000;
+
 export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
 type Scopes = Record<string, { cle: string; accord: Portee; profils: IdProfil[]; actif: boolean }>;
 
@@ -28,8 +31,8 @@ export interface AgentExtensions {
   hostStarted(): void;
   /** Settled once the first host answered extensions.pret (the granted extensions handled). */
   readonly ready: Promise<void>;
-  /** Settled once a host sent the grants (extensions.portees): the checkpoints wait for it, never answer from nothing. */
-  readonly scopesKnown: Promise<void>;
+  /** Settled once a host sent the grants (extensions.portees), or after SCOPES_WAIT_MS: then check refuses what it does not know. */
+  scopesKnown(): Promise<void>;
   /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
   check(addonId: string, kind: CheckKind, value: unknown): boolean;
 }
@@ -118,7 +121,8 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   let scopes: Scopes = {};
   let scopesSettle = () => {};
-  const scopesKnown = new Promise<void>((r) => (scopesSettle = r));
+  const scopesSent = new Promise<void>((r) => (scopesSettle = r));
+  const scopesKnown = () => Promise.race([scopesSent, new Promise<void>((r) => setTimeout(r, SCOPES_WAIT_MS))]);
   handlers["extensions.portees"] = (p: Scopes) => {
     scopes = p;
     scopesSettle();

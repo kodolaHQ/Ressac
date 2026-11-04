@@ -83,8 +83,8 @@ Each is copied, signed by AMO (unlisted) and installed as an add-on (`<folder>@a
 
 Limits:
 
-- An `about:blank` frame of an agent page is not matched by the extension actor, and Firefox gives it the whole extension API without the guard (a DNR redirect from it is accepted) and `RTCPeerConnection`; its `window.open` is not refused. A frame of the extension's own page loaded into it keeps no `__webaios` (its guard refuses what it would ask). Electron's frame tests (`extensions-agent.spec.ts:613`, `:657`) are `it.todo`.
-- Before the first host sent the grants, the actor's answers wait; the load observer refuses (fail closed).
+- An `about:blank` frame of an agent page inherits its principal, and Firefox would give it the whole extension API without the guard: the extension actor (registered without `matches`, so it reaches those frames) defines `__webaios` there and takes out `chrome`, `browser`, `window.open` and WebRTC, before the page's script reads the frame. A page of the extension loaded in a frame reuses that window: it keeps no extension API (its guard then does nothing; its scripts cannot call `chrome.*`). A `srcdoc` frame is cross-origin to the page and runs none of its scripts.
+- Before the first host sent the grants, the actor's answers wait 5 s at most, then refuse; the load observer refuses at once (fail closed).
 
 ## History and downloads
 
