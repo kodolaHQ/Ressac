@@ -1,8 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   appelerOutil,
+  creerEspace,
   dansLaVue,
   ecrireEtatWidget,
   ecrireWidget,
@@ -70,7 +71,7 @@ function record(name: string, xs: number[]): void {
 const pret = (racine: string) => expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
 
 /** Launches with local addresses allowed, waits for the MCP server and the agent, then one second of calm. */
-async function lancerBench(o: { racine?: string; profil?: string } = {}) {
+async function lancerBench(o: { racine?: string; profil?: string; visible?: boolean } = {}) {
   const l = await lancer({ ...o, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
   await pret(l.racine);
   await expect(terminal(l.fenetre)).toContainText("faux agent prêt>", { timeout: 20_000 });
@@ -131,6 +132,117 @@ test("bench: lire_onglet on an agent tab", async () => {
       expect(lu.texte).toContain("Le chat dort");
     }
     record("tabRead", ms.slice(3));
+  } finally {
+    await fermer();
+  }
+});
+
+// The switch benches need a shown window: hidden, every view reports "visible" and no page signal fires, and capturePage
+// of a detached view still returns its pixels (plan 22, task 4). They run only in the visible pass.
+const headed = !!process.env.WEBAIOS_BENCH_HEADED;
+
+type EtatBench = {
+  espaces: { id: string; epingles: unknown[] }[];
+  fenetres: { espaceActif: string; ordre: Record<string, string[]> }[];
+  onglets: Record<string, { url: string }>;
+};
+/** The state, as the interface receives it. */
+const etat = (fenetre: Page) =>
+  fenetre.evaluate(
+    () =>
+      new Promise<EtatBench>((ok) => {
+        const w = window as unknown as { webaios: { surEtat(r: (e: EtatBench) => void): () => void } };
+        const fin = w.webaios.surEtat((e) => {
+          setTimeout(() => fin());
+          ok(e);
+        });
+      }),
+  );
+/** The ⌘N menu item that shows the tab whose URL contains `morceau` (pinned items come first, as in versNieme). */
+async function itemOnglet(fenetre: Page, morceau: string): Promise<string> {
+  const e = await etat(fenetre);
+  const f = e.fenetres[0]!;
+  const espace = e.espaces.find((x) => x.id === f.espaceActif)!;
+  const n = espace.epingles.length + (f.ordre[espace.id] ?? []).findIndex((id) => e.onglets[id]!.url.includes(morceau)) + 1;
+  expect(n, morceau).toBeGreaterThan(espace.epingles.length);
+  expect(n).toBeLessThan(9);
+  return `onglet-${n}`;
+}
+
+/** Clicks a menu item in the main process; returns the time from the click to the `v<ms>` of the page shown. */
+async function basculer(app: ElectronApplication, item: string, morceau: string): Promise<number> {
+  const t = await app.evaluate(({ Menu }, item) => {
+    const t = performance.timeOrigin + performance.now();
+    Menu.getApplicationMenu()!.getMenuItemById(item)!.click();
+    return t;
+  }, item);
+  for (const fin = Date.now() + 10_000; ; await new Promise((r) => setTimeout(r, 10))) {
+    const titre = (await dansLaVue(app, morceau, "document.title")) as string | undefined;
+    if (/^v\d+$/.test(titre ?? "") && Number(titre!.slice(1)) >= Math.floor(t)) return Number(titre!.slice(1)) - t;
+    if (Date.now() > fin) throw new Error(`${morceau} not shown after ${item}: last title ${titre}`);
+  }
+}
+
+test("bench: tab switch", async () => {
+  test.skip(!headed, "visible pass only");
+  test.setTimeout(300_000);
+  const { app, fenetre, fermer } = await lancerBench({ visible: headed });
+  try {
+    const pages = ["bench-visible.html?n=1", "bench-visible.html?n=2"];
+    for (const [i, p] of pages.entries()) {
+      await ouvrirOnglet(fenetre, `${serveur.url}/${p}`);
+      await expect.poll(() => titre(app, i + 1)).toBe(`n${i + 1}`);
+    }
+    const items = [await itemOnglet(fenetre, pages[0]!), await itemOnglet(fenetre, pages[1]!)];
+    const ms: number[] = [];
+    // Tab 2 is shown: 2 round trips of warm-up (4 switches), then 50.
+    for (let k = 0; k < 54; k++) {
+      const r = await basculer(app, items[k % 2]!, pages[k % 2]!);
+      if (k >= 4) ms.push(r);
+    }
+    record("tabSwitch", ms);
+  } finally {
+    await fermer();
+  }
+});
+
+test("bench: cold tab switch", async () => {
+  test.skip(!headed, "visible pass only");
+  test.setTimeout(300_000);
+  const { app, fenetre, fermer } = await lancerBench({ visible: headed });
+  try {
+    const pages = [1, 2, 3, 4, 5].map((i) => `bench-visible.html?n=c${i}&cold`);
+    for (const p of pages) await ouvrirOnglet(fenetre, `${serveur.url}/${p}`, { activer: false });
+    await expect.poll(async () => Object.keys((await etat(fenetre)).onglets).length).toBeGreaterThanOrEqual(5);
+    const ms: number[] = [];
+    for (const p of pages) ms.push(await basculer(app, await itemOnglet(fenetre, p), p));
+    record("tabSwitchCold", ms);
+  } finally {
+    await fermer();
+  }
+});
+
+test("bench: space switch", async () => {
+  test.skip(!headed, "visible pass only");
+  test.setTimeout(300_000);
+  const { app, fenetre, fermer } = await lancerBench({ visible: headed });
+  try {
+    const pages = ["bench-visible.html?n=1", "bench-visible.html?n=2"];
+    await ouvrirOnglet(fenetre, `${serveur.url}/${pages[0]}`);
+    await expect.poll(() => titre(app, 1)).toBe("n1");
+    await creerEspace(fenetre, "Bench", "💼");
+    await expect.poll(async () => (await etat(fenetre)).espaces.length).toBe(2);
+    await ouvrirOnglet(fenetre, `${serveur.url}/${pages[1]}`);
+    await expect.poll(() => titre(app, 2)).toBe("n2");
+    const e = await etat(fenetre);
+    expect(e.fenetres[0]!.espaceActif).toBe(e.espaces[1]!.id);
+    const ms: number[] = [];
+    // Space 2 is shown: 2 alternations of warm-up, then 50.
+    for (let k = 0; k < 52; k++) {
+      const r = await basculer(app, `espace-${(k % 2) + 1}`, pages[k % 2]!);
+      if (k >= 2) ms.push(r);
+    }
+    record("spaceSwitch", ms);
   } finally {
     await fermer();
   }

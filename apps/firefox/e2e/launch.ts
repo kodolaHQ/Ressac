@@ -35,10 +35,10 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
 }
 
 /**
- * Launches WebAiOs-Firefox headless. Folders passed in are reused and kept (to restart on the same data); the others
+ * Launches WebAiOs-Firefox headless (`headed` shows its window: the bench's visible pass only). Folders passed in are reused and kept (to restart on the same data); the others
  * are temporary and deleted on close. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  */
-export async function launchWebAiOs(o: { width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string> } = {}): Promise<LaunchedWebAiOs> {
+export async function launchWebAiOs(o: { headed?: boolean; width?: number; height?: number; dataDir?: string; profile?: string; env?: Record<string, string> } = {}): Promise<LaunchedWebAiOs> {
   const profile = o.profile ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-")));
   const dataDir = o.dataDir ?? (await mkdtemp(path.join(os.tmpdir(), "webaios-data-")));
   const cleanup = () =>
@@ -49,7 +49,7 @@ export async function launchWebAiOs(o: { width?: number; height?: number; dataDi
   await writeFile(path.join(profile, "user.js"), 'user_pref("marionette.port", 0);\nuser_pref("browser.sessionstore.resume_from_crash", false);\n');
   const proc = spawn(
     binary(),
-    ["--marionette", "--headless", "--no-remote", "--profile", profile, "--width", String(o.width ?? 1280), "--height", String(o.height ?? 800)],
+    ["--marionette", ...(o.headed ? [] : ["--headless"]), "--no-remote", "--profile", profile, "--width", String(o.width ?? 1280), "--height", String(o.height ?? 800)],
     // The chrome context (the browser's own UI) is only reachable over Marionette with system access enabled.
     { stdio: "ignore", env: {
         ...process.env,
