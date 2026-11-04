@@ -24,3 +24,31 @@ export async function waitFor<T>(m: Marionette, script: string, predicate: (v: T
     await new Promise((r) => setTimeout(r, 100));
   }
 }
+
+/** The handles of the open browser windows (chrome context). */
+export async function windowHandles(m: Marionette): Promise<string[]> {
+  return m.command<string[]>("WebDriver:GetWindowHandles");
+}
+
+/** Waits until exactly `n` browser windows are open; returns their handles. */
+export async function waitWindowCount(m: Marionette, n: number, ms = 10_000): Promise<string[]> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const handles = await windowHandles(m);
+    if (handles.length === n) return handles;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${n} windows: ${handles.length} open`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** Runs `fn` with the window `handle` current (without focusing it), then switches back to the window it left. */
+export async function inWindow<T>(m: Marionette, handle: string, fn: () => Promise<T>): Promise<T> {
+  const previous = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+  await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
+  try {
+    return await fn();
+  } finally {
+    // The window left may have closed meanwhile.
+    if ((await windowHandles(m)).includes(previous)) await m.command("WebDriver:SwitchToWindow", { handle: previous, focus: false });
+  }
+}

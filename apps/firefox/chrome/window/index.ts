@@ -12,19 +12,16 @@ declare global {
     gBrowser: any;
     gNotificationBox: any;
     delayedStartupPromise: Promise<void>;
+    OpenBrowserWindow(): Window;
     webaiosWindow?: import("./controller").WindowController;
   }
 }
 
-// Only the first full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows.
-const isMain = () =>
-  window.toolbar.visible &&
-  ![...Services.wm.getEnumerator("navigator:browser")].some((w: Window) => w !== window && w.document.documentElement.hasAttribute("webaios-main"));
-
 window.addEventListener(
   "DOMContentLoaded",
   () => {
-    if (!isMain()) return;
+    // Every full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows.
+    if (!window.toolbar.visible) return;
     document.documentElement.setAttribute("webaios-main", "");
     // The sidebar is a privileged HTML page in an iframe: browser.xhtml defaults to the XUL namespace,
     // where document.createElement would build XUL elements.
@@ -40,9 +37,10 @@ window.addEventListener(
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
-      window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store);
-      // Once per start, in the main window only: the unreadable session was kept aside.
-      if (store.setAside) {
+      const { fenetreId, first } = store.windows.claim(window);
+      window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store, fenetreId);
+      // Once per start, in the first window only: the unreadable session was kept aside.
+      if (first && store.setAside) {
         void window.gNotificationBox.appendNotification(
           "webaios-session-set-aside",
           {

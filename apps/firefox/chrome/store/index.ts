@@ -8,8 +8,10 @@ import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
 import { containerFor, removeContainer } from "./containers";
 import { createStore, type Store } from "./store";
+import { createWindowRegistry, type WindowRegistry } from "./windows";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
+const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
 
 export interface WebAiOsStore extends Store {
   readonly dataDir: string;
@@ -22,6 +24,8 @@ export interface WebAiOsStore extends Store {
   readonly agent: AgentHost;
   /** The agent's « lire l'onglet » cards waiting for an answer. */
   readonly questions: Questions;
+  /** The WebAiOs windows open: each full browser window claims a window of the state. */
+  readonly windows: WindowRegistry;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
@@ -68,6 +72,12 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["webaios-reading"],
   });
   const questions = new Questions(store);
+  const windows = createWindowRegistry({
+    store,
+    open: () => BrowserWindowTracker.openWindow(),
+    // The window's agent session stops with it.
+    onRelease: (fenetre) => agent.notify("agent.fermerFenetre", { fenetre }),
+  });
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
@@ -94,6 +104,7 @@ async function start(): Promise<WebAiOsStore> {
     containerFor,
     agent,
     questions,
+    windows,
     get access() {
       return access;
     },

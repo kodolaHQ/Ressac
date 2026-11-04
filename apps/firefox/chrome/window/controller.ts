@@ -42,18 +42,24 @@ export interface WindowController {
   tabSwitch(m: MessageParcours): void;
 }
 
-/** Binds the main browser window to the first window of the state. */
-export function createController(gBrowser: any, frame: HTMLIFrameElement, agentFrame: HTMLIFrameElement, store: WebAiOsStore): WindowController {
-  const fenetreId = store.state.fenetres[0]!.id;
+/** Binds this browser window to the state window it claimed (store.windows.claim). */
+export function createController(
+  gBrowser: any,
+  frame: HTMLIFrameElement,
+  agentFrame: HTMLIFrameElement,
+  store: WebAiOsStore,
+  fenetreId: IdFenetre,
+): WindowController {
   const tabs = new TabSync(gBrowser, store, fenetreId);
   tabs.sync(store.state);
-  // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes.
+  // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
+  // its state window (its tabs leave with it).
   const unsubscribe = [store.subscribe((state) => tabs.sync(state))];
   window.addEventListener(
     "unload",
     () => {
       unsubscribe.forEach((u) => u());
-      store.agent.notify("agent.fermerFenetre", { fenetre: fenetreId });
+      store.windows.release(fenetreId);
     },
     { once: true },
   );
@@ -109,7 +115,10 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, agentF
     const state = store.state;
     const f = state.fenetres.find((x) => x.id === fenetreId);
     const active = f?.actif[f.espaceActif];
-    if (s.type === "raccourci") {
+    // Electron's menu: ⌘W on the empty page closes the window, only if none of its spaces has a tab.
+    if (s.type === "raccourci" && s.r === "fermerOnglet" && !active && !Object.values(state.onglets).some((o) => o.fenetreId === fenetreId))
+      window.close();
+    else if (s.type === "raccourci") {
       frame.focus(); // the UI field must get the keys typed next, even from a web page
       for (const cb of shortcutListeners) cb(s.r);
     } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", fenetreId });
@@ -129,8 +138,8 @@ export function createController(gBrowser: any, frame: HTMLIFrameElement, agentF
         agentFrame.focus();
         for (const cb of shortcutListeners) cb("agent");
       }
-    }
-    // ⌘N ("rien") is single-window: it does nothing.
+    } else if (s.type === "fenetre") window.OpenBrowserWindow();
+    else if (s.type === "fermerFenetre") window.close();
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
   const onKeyDown = (e: KeyboardEvent) => {

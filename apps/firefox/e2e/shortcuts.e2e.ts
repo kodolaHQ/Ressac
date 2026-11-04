@@ -112,13 +112,6 @@ describe("WebAiOs shortcuts", () => {
     await waitState((s) => s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif], (id) => id === c);
   });
 
-  it("⌘N opens no window", async () => {
-    await pressKeys(m, "Meta+n");
-    await new Promise((r) => setTimeout(r, 500));
-    expect(await m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length")).toBe(1);
-    expect((await state(m)).fenetres).toHaveLength(1);
-  });
-
   it("a page that swallows every key: ⌘T still opens the bar and ⌘W still closes the tab", async () => {
     const id = await open("/avale");
     await waitTitle(id, "avale");

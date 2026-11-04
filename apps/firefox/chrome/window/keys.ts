@@ -9,7 +9,9 @@ export type Shortcut =
   | { type: "parcourir"; delta: 1 | -1 }
   /** ⌘J: the agent panel (Electron's menu item « Panneau agent »). */
   | { type: "agent" }
-  | { type: "rien" };
+  /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
+  | { type: "fenetre" }
+  | { type: "fermerFenetre" };
 
 type Keys = { key: string; code: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
 
@@ -20,12 +22,13 @@ const COMMAND: Record<string, Shortcut> = {
   "[": { type: "naviguer", c: "reculer" },
   "]": { type: "naviguer", c: "avancer" },
   r: { type: "naviguer", c: "recharger" },
-  n: { type: "rien" },
+  n: { type: "fenetre" },
   j: { type: "agent" },
 };
 const SHIFT_COMMAND: Record<string, Shortcut> = {
   t: { type: "rouvrir" },
   r: { type: "naviguer", c: "rechargerSansCache" },
+  w: { type: "fermerFenetre" },
 };
 
 /** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
@@ -47,6 +50,7 @@ export const FIREFOX_KEYS = [
   "focusURLBar",
   "key_close",
   "key_newNavigator",
+  "key_closeWindow",
   "key_restoreLastClosedTabOrWindowOrSession",
   "goBackKb2",
   "goForwardKb2",
@@ -60,18 +64,17 @@ export const FIREFOX_KEYS = [
 
 /**
  * Firefox's <command>s (and macOS menu items) that open or close tabs and windows behind the store's back: disabling a
- * <key> leaves the native menu bar running them. ⌘T, ⌘W and ⇧⌘T keep working through shortcutFor.
+ * <key> leaves the native menu bar running them. ⌘T, ⌘W and ⇧⌘T keep working through shortcutFor. New Window and Close
+ * Window stay: a new full window becomes a WebAiOs window (the window registry), a closed one leaves it.
  */
 export const FIREFOX_COMMANDS = [
   "cmd_newNavigatorTab",
   "cmd_newNavigatorTabNoEvent",
   "Browser:NewUserContextTab",
-  "cmd_newNavigator",
   "Tools:PrivateBrowsing",
   "Tools:AIWindow",
   "Tools:ClassicWindow",
   "cmd_close",
-  "cmd_closeWindow",
   "History:UndoCloseTab",
   "History:UndoCloseWindow",
   "History:RestoreLastClosedTabOrWindowOrSession",

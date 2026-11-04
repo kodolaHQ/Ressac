@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIREFOX_KEYS, shortcutFor } from "../chrome/window/keys";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "../chrome/window/keys";
 
 const key = (key: string, code: string, mods: { meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) =>
   shortcutFor({ key, code, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift, altKey: !!mods.alt });
@@ -14,7 +14,15 @@ describe("shortcutFor", () => {
     expect(key("]", "BracketRight", { meta: true })).toEqual({ type: "naviguer", c: "avancer" });
     expect(key("r", "KeyR", { meta: true })).toEqual({ type: "naviguer", c: "recharger" });
     expect(key("R", "KeyR", { meta: true, shift: true })).toEqual({ type: "naviguer", c: "rechargerSansCache" });
-    expect(key("n", "KeyN", { meta: true })).toEqual({ type: "rien" });
+  });
+
+  it("⌘N opens a window, ⇧⌘W closes it", () => {
+    expect(key("n", "KeyN", { meta: true })).toEqual({ type: "fenetre" });
+    expect(key("W", "KeyW", { meta: true, shift: true })).toEqual({ type: "fermerFenetre" });
+    // The native menu items lead to the window registry; only their keys are ours.
+    expect(FIREFOX_KEYS).toContain("key_closeWindow");
+    expect(FIREFOX_COMMANDS).not.toContain("cmd_newNavigator");
+    expect(FIREFOX_COMMANDS).not.toContain("cmd_closeWindow");
   });
 
   it("reads digits on the physical key", () => {
