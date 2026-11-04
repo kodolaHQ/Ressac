@@ -1,9 +1,10 @@
 import type { MessageParcours, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
-import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
+import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
 import type { WebAiOsStore } from "../store";
+import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
 
@@ -55,10 +56,30 @@ export function createController(
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
   const unsubscribe = [store.subscribe((state) => tabs.sync(state))];
+  applyFrame(store.state.fenetres.find((f) => f.id === fenetreId)?.cadre ?? null);
+  // Size and position kept for the next start (grouped: a drag fires dozens of events), as Electron's noterCadre.
+  let frameTimer: ReturnType<typeof setTimeout> | undefined;
+  const recordFrame = () => {
+    clearTimeout(frameTimer);
+    if (window.windowState === window.STATE_FULLSCREEN || window.windowState === window.STATE_MINIMIZED) return;
+    const cadre = { x: window.screenX, y: window.screenY, largeur: window.outerWidth, hauteur: window.outerHeight };
+    const old = store.state.fenetres.find((f) => f.id === fenetreId)?.cadre;
+    if (old && (Object.keys(cadre) as (keyof typeof cadre)[]).every((k) => old[k] === cadre[k])) return;
+    store.dispatch({ type: "cadrerFenetre", id: fenetreId, cadre });
+  };
+  const planFrame = () => {
+    clearTimeout(frameTimer);
+    frameTimer = setTimeout(recordFrame, 300);
+  };
+  window.addEventListener("resize", planFrame);
+  // A move fires no DOM event on the window itself: the app window sends this chrome event to its root.
+  window.windowRoot.addEventListener("MozUpdateWindowPos", planFrame);
   window.addEventListener(
     "unload",
     () => {
       unsubscribe.forEach((u) => u());
+      // ⌘Q: the session is written after the windows close, their frame must be in it.
+      recordFrame();
       store.windows.release(fenetreId);
     },
     { once: true },
@@ -224,4 +245,18 @@ export function createController(
     tabSwitch: (m) => walk.message(fenetreId, m),
   };
   return controller;
+}
+
+/** Puts the window where the state last saw it, if that frame still overlaps a screen. */
+function applyFrame(c: Cadre | null): void {
+  if (!c) return;
+  const screen = Cc["@mozilla.org/gfx/screenmanager;1"]
+    .getService(Ci.nsIScreenManager)
+    .screenForRect(Math.round(c.x), Math.round(c.y), Math.round(c.largeur), Math.round(c.hauteur));
+  const [x, y, width, height] = [{ value: 0 }, { value: 0 }, { value: 0 }, { value: 0 }];
+  screen.GetAvailRectDisplayPix(x, y, width, height);
+  const frame = visibleFrame(c, [{ x: x.value, y: y.value, width: width.value, height: height.value }]);
+  if (!frame) return;
+  window.moveTo(frame.x, frame.y);
+  window.resizeTo(frame.largeur, frame.hauteur);
 }

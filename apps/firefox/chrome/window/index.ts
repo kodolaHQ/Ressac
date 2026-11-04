@@ -14,6 +14,10 @@ declare global {
     gNotificationBox: any;
     delayedStartupPromise: Promise<void>;
     OpenBrowserWindow(): Window;
+    readonly windowState: number;
+    readonly STATE_MINIMIZED: number;
+    readonly STATE_FULLSCREEN: number;
+    readonly windowRoot: EventTarget;
     webaiosWindow?: import("./controller").WindowController;
   }
 }

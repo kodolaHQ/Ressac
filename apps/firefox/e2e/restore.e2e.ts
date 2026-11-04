@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
-import { dispatch, state, waitFor } from "./firefox";
+import { dispatch, inWindow, newWindow, state, waitFor, waitReady, waitWindowCount, windowHandles } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
@@ -65,11 +65,31 @@ describe("restore at startup", () => {
     await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId } as Action);
     const boulot = (await state(m)).espaces.find((e) => e.nom === "Boulot")!;
     const c = await open("/b.html?n=1", true);
+    await newWindow(m);
     const before = await state(m);
     await quit();
 
     m = await start();
+    // Both windows come back, and no third one appears while the second is still opening (Review Focus 1 and 3).
+    const handles = await waitWindowCount(m, 2);
+    await new Promise((r) => setTimeout(r, 2000));
+    expect(await windowHandles(m)).toHaveLength(2);
     const after = await state(m);
+    expect(after.fenetres).toHaveLength(2);
+    // Each window gets its own active space back: the first one is on Boulot, with its tab.
+    const seen: { handle: string; id: string; pair: unknown }[] = [];
+    for (const handle of handles)
+      seen.push(
+        await inWindow(m, handle, async () => {
+          await waitReady(m);
+          const id = await m.execute<string>("return window.webaiosWindow.fenetreId");
+          const pair = await inUi(m, `return [doc.querySelector('[data-testid^="espace-"][aria-current="true"]')?.textContent.trim(), doc.querySelectorAll('[data-testid^="onglet-"]').length]`);
+          return { handle, id, pair };
+        }),
+      );
+    expect(seen.map((x) => x.pair)).toContainEqual(["💼", 1]);
+    // The checks below are on the first state window, whichever window Marionette started on.
+    await m.command("WebDriver:SwitchToWindow", { handle: seen.find((x) => x.id === after.fenetres[0]!.id)!.handle, focus: false });
     expect(after.espaces.map((e) => [e.nom, e.icone, e.epingles.length])).toEqual(before.espaces.map((e) => [e.nom, e.icone, e.epingles.length]));
     expect(after.essentiels).toEqual(before.essentiels);
     const f = after.fenetres[0]!;
@@ -86,6 +106,19 @@ describe("restore at startup", () => {
     await quit();
     m = await start();
     expect(urls(await state(m))).toEqual(urls(before));
+  });
+
+  it("a window's size is recorded and restored", async () => {
+    fresh();
+    let m = await start();
+    const fenetreId = (await win(m)).id;
+    await m.execute("window.resizeTo(1000, 700)");
+    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.fenetres.find((f) => f.id === ${JSON.stringify(fenetreId)})?.cadre?.largeur)();`;
+    await waitFor(m, width, (v) => v === 1000);
+    await quit();
+
+    m = await start();
+    await waitFor(m, "return [window.outerWidth, window.outerHeight]", (v: number[]) => v[0] === 1000 && v[1] === 700);
   });
 
   it("keeps a cookie set by a local server, in the space's own container found by name", async () => {
