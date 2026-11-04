@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
+import { AMO_URL, lireCleAmo, signer } from "../noyau/extensions/amo";
 import { GARDES_PAR_DEFAUT, preparerCopie } from "../../../packages/noyau/src/extensions/copie.ts";
 import { writeXpi, type Fixture } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
@@ -24,7 +25,6 @@ const run = promisify(execFile);
 
 /** Signed .xpi files of S1 are kept here (they hold no secret), so S3 can rerun without new uploads. */
 const SIGNED = path.join(os.tmpdir(), "webaios-extensions-spike-signed");
-const AMO = "https://addons.mozilla.org/api/v5";
 const SPIKE_ID = `spike-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}@agent.webaios`;
 
 // --- The extension the agent would write (MV3 for Chrome), and the copy Firefox gets ----------------------------
@@ -97,106 +97,6 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const xpi = path.join(dir, `copy-${o.n}.xpi`);
   await run("zip", ["-qr", xpi, "."], { cwd: cible });
   return { xpi, manifest };
-}
-
-// --- The AMO signing client (task 2 moves it to noyau/extensions/amo.ts) -----------------------------------------
-
-interface Keys {
-  issuer: string;
-  secret: string;
-}
-
-/** The AMO keys from the macOS keychain (service webaios-amo: account = JWT issuer, password = secret); null if absent. */
-async function keychainKeys(): Promise<Keys | null> {
-  try {
-    const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([
-      run("security", ["find-generic-password", "-s", "webaios-amo"]),
-      run("security", ["find-generic-password", "-s", "webaios-amo", "-w"]),
-    ]);
-    const issuer = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
-    return issuer && secret.trim() ? { issuer, secret: secret.trim() } : null;
-  } catch {
-    return null;
-  }
-}
-
-const b64url = (b: Buffer | string) => Buffer.from(b).toString("base64url");
-
-/** A fresh HS256 JWT (never logged). */
-function jwt(k: Keys): string {
-  const iat = Math.floor(Date.now() / 1000);
-  const head = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const body = b64url(JSON.stringify({ iss: k.issuer, jti: randomUUID(), iat, exp: iat + 60 }));
-  return `${head}.${body}.${b64url(createHmac("sha256", k.secret).update(`${head}.${body}`).digest())}`;
-}
-
-/** What the probe keeps of each HTTP exchange: method, path, status, Retry-After, body (no header of ours). */
-const exchanges: { at: number; method: string; path: string; status: number; retryAfter: string | null; body: unknown }[] = [];
-
-async function amo(k: Keys, method: string, url: string, body?: FormData | object): Promise<{ status: number; body: any; res: Response }> {
-  const res = await fetch(url.startsWith("http") ? url : AMO + url, {
-    method,
-    headers: { Authorization: `JWT ${jwt(k)}`, ...(body && !(body instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
-    body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
-  });
-  const text = res.headers.get("content-type")?.includes("json") ? await res.text() : "";
-  let parsed: unknown = text;
-  try {
-    parsed = JSON.parse(text);
-  } catch {}
-  exchanges.push({ at: Date.now(), method, path: new URL(res.url).pathname, status: res.status, retryAfter: res.headers.get("retry-after"), body: parsed });
-  return { status: res.status, body: parsed, res };
-}
-
-interface SignResult {
-  ok: boolean;
-  step: string;
-  ms: number;
-  steps: Record<string, number>;
-  messages?: unknown;
-  error?: unknown;
-  xpi?: string;
-}
-
-/** The `web-ext sign` v5 flow: upload (unlisted), wait for validation, create the add-on or a version, wait for the signed file, download it. */
-async function sign(k: Keys, xpi: string, guid: string, version: string, isNew: boolean): Promise<SignResult> {
-  const t0 = Date.now();
-  const steps: Record<string, number> = {};
-  const lap = (s: string) => (steps[s] = Date.now() - t0);
-  const form = new FormData();
-  form.append("upload", new Blob([await readFile(xpi)]), path.basename(xpi));
-  form.append("channel", "unlisted");
-  const up = await amo(k, "POST", "/addons/upload/", form);
-  lap("uploaded");
-  if (up.status >= 300) return { ok: false, step: "upload", ms: Date.now() - t0, steps, error: { status: up.status, body: up.body } };
-  let u = up.body;
-  while (!u.processed) {
-    await sleep(1000);
-    u = (await amo(k, "GET", `/addons/upload/${u.uuid}/`)).body;
-  }
-  lap("validated");
-  const messages = (u.validation?.messages ?? []).map((m: any) => ({ type: m.type, id: m.id, message: m.message, description: m.description, file: m.file }));
-  if (!u.valid) return { ok: false, step: "validation", ms: Date.now() - t0, steps, messages };
-  const created = isNew
-    ? await amo(k, "PUT", `/addons/addon/${encodeURIComponent(guid)}/`, { version: { upload: u.uuid } })
-    : await amo(k, "POST", `/addons/addon/${encodeURIComponent(guid)}/versions/`, { upload: u.uuid });
-  lap("versionCreated");
-  if (created.status >= 300) return { ok: false, step: isNew ? "addon PUT" : "versions POST", ms: Date.now() - t0, steps, messages, error: { status: created.status, body: created.body } };
-  let v: any;
-  for (const deadline = Date.now() + 20 * 60_000; ; ) {
-    v = (await amo(k, "GET", `/addons/addon/${encodeURIComponent(guid)}/versions/v${version}/`)).body;
-    if (v?.file?.status === "public") break;
-    if (Date.now() > deadline) return { ok: false, step: "signing timeout", ms: Date.now() - t0, steps, messages, error: v?.file };
-    await sleep(2000);
-  }
-  lap("signed");
-  const dl = await fetch(v.file.url, { headers: { Authorization: `JWT ${jwt(k)}` } });
-  if (!dl.ok) return { ok: false, step: "download", ms: Date.now() - t0, steps, messages, error: dl.status };
-  await mkdir(SIGNED, { recursive: true });
-  const out = path.join(SIGNED, `${guid}-${version}.xpi`);
-  await writeFile(out, Buffer.from(await dl.arrayBuffer()));
-  lap("downloaded");
-  return { ok: true, step: "done", ms: Date.now() - t0, steps, messages, xpi: out };
 }
 
 // --- Firefox side -------------------------------------------------------------------------------------------------
@@ -389,9 +289,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
   afterAll(() => server?.close());
 
   it.skipIf(!process.env.WEBAIOS_AMO)("S1: real unlisted signing on addons.mozilla.org", { timeout: 90 * 60_000 }, async () => {
-    const keys = await keychainKeys();
+    const keys = await lireCleAmo({});
     if (!keys) return note("S1", "not done: keys absent");
-    note("S1 issuer", keys.issuer.replace(/[^:]+$/, "…"));
+    note("S1 issuer", keys.emetteur.replace(/[^:]+$/, "…"));
     note("S1 guid", SPIKE_ID);
     // Plan 25 decision 2: `1.0` → `1.0.0.<n>`. WEBAIOS_SPIKE_EXTRA (JSON) is merged into the copy's manifest, for
     // what a first upload shows AMO requires (rerun with it rather than guess).
@@ -402,28 +302,17 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
     const times: number[] = [];
     for (let n = first; n < first + count; n++) {
       const { xpi, manifest } = await firefoxCopy({ id: SPIKE_ID, n, extra });
-      if (n === first) note("S1 copy manifest", manifest);
-      const r = await sign(keys, xpi, SPIKE_ID, manifest.version, n === 1);
-      note(`S1 sign ${manifest.version}`, r);
-      if (!r.ok) {
-        note("S1 exchanges", exchanges.filter((e) => e.status >= 300 || e.path.includes("/upload/")).slice(-3));
+      const t0 = Date.now();
+      try {
+        await signer({ xpi, guid: SPIKE_ID, version: manifest.version, cle: keys, base: AMO_URL, sortie: path.join(SIGNED, `${SPIKE_ID}-${manifest.version}.xpi`) });
+      } catch (e) {
+        note(`S1 sign ${manifest.version}`, (e as Error).message);
         break;
       }
-      times.push(r.ms);
+      times.push(Date.now() - t0);
     }
-    if (times.length === count) {
-      // The last number again, then one lower than any sent.
-      for (const [label, n] of [["same number", first + count - 1], ["lower number", 0]] as const) {
-        const { xpi, manifest } = await firefoxCopy({ id: SPIKE_ID, n, extra });
-        note(`S1 ${label} ${manifest.version}`, await sign(keys, xpi, SPIKE_ID, manifest.version, false));
-      }
-    }
-    const list = await amo(keys, "GET", `/addons/addon/${encodeURIComponent(SPIKE_ID)}/versions/?filter=all_with_unlisted`);
-    note("S1 versions on AMO", { status: list.status, versions: list.body?.results?.map((v: any) => ({ version: v.version, channel: v.channel, created: v.file?.created, status: v.file?.status })) });
     const sorted = [...times].sort((a, b) => a - b);
     note("S1 times ms", { times, median: sorted[Math.floor(sorted.length / 2)], worst: sorted.at(-1) });
-    note("S1 rate limits", exchanges.filter((e) => e.status === 429 || e.retryAfter));
-    note("S1 statuses", exchanges.map((e) => `${e.method} ${e.path.replace(/[0-9a-f]{32}/, "<uuid>")} ${e.status}`).filter((s, i, a) => a.indexOf(s) === i));
   });
   it("S2: the copy's background as Firefox scripts (temporary install, no network)", { timeout: 120_000 }, async () => {
     const id = "s2-spike@agent.webaios";
