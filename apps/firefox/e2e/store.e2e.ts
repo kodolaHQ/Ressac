@@ -27,9 +27,11 @@ describe("state store", () => {
     const s = await state(w.marionette);
     await dispatch(w.marionette, { type: "ouvrirOnglet", fenetreId: s.fenetres[0]!.id, url: "https://exemple.test/" });
     const file = path.join(w.dataDir, "session.json");
-    for (let i = 0; i < 20 && !existsSync(file); i++) await new Promise((r) => setTimeout(r, 100));
-    const saved = JSON.parse(await readFile(file, "utf8"));
-    expect(Object.values<{ url: string }>(saved.onglets).map((o) => o.url)).toEqual(["https://exemple.test/"]);
+    // Waits for the content, not the file: an earlier save may already have written it, without the tab.
+    const urls = async () =>
+      existsSync(file) ? Object.values<{ url: string }>(JSON.parse(await readFile(file, "utf8")).onglets).map((o) => o.url) : [];
+    for (let i = 0; i < 20 && (await urls()).length === 0; i++) await new Promise((r) => setTimeout(r, 100));
+    expect(await urls()).toEqual(["https://exemple.test/"]);
   });
 
   it("maps login profiles to containers", async () => {

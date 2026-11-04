@@ -14,3 +14,10 @@ Règle :
 
 Si `apps/navigateur/node_modules/typescript` change de place, mettre à jour le chemin dans `.claude/marketplace-local/plugins/tsgo-lsp/.lsp.json`.
 Après un clone : `npm ci` dans `.claude/marketplace-local/plugins/svelte-lsp`.
+
+## Tests e2e de WebAiOs-Firefox
+
+- La suite tourne 6 fichiers en parallèle (`maxWorkers: 6`, environ 2 min). À 9, des tests sensibles au temps cassent : ne pas monter sans les rendre robustes.
+- **Pendant une tâche d'un plan** : lancer seulement les fichiers e2e que la tâche touche ou dont elle change le code testé (`corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/<fichier>`).
+- **La suite complète** : une fois à la fin du plan, avant la relecture finale, et après la passe de corrections finale.
+- Ne pas lancer la suite pendant un `build:ui` du propriétaire : le binaire disparaît et tout échoue en « build missing ».
