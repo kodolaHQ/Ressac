@@ -4,7 +4,7 @@
 
 import type { WebAiOsStore } from "../store";
 import { createController } from "./controller";
-import { popupSource, setupPopup } from "./popup";
+import { setupPopup } from "./popup";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -32,13 +32,7 @@ window.addEventListener(
     // Every full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows, and a
     // private window (Dock, ⇧⌘P) stays Firefox's: it must not take the session's windows into private browsing.
     if (PrivateBrowsingUtils.isWindowPrivate(window)) return;
-    if (!window.toolbar.visible) {
-      void Promise.all([ChromeUtils.importESModule(STORE).ready as Promise<WebAiOsStore>, window.delayedStartupPromise]).then(([store]) => {
-        const source = popupSource(window, store);
-        if (source) setupPopup(window, source);
-      });
-      return;
-    }
+    if (!window.toolbar.visible) return setupPopup(window);
     document.documentElement.setAttribute("webaios-main", "");
     // The sidebar is a privileged HTML page in an iframe: browser.xhtml defaults to the XUL namespace,
     // where document.createElement would build XUL elements.

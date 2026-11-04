@@ -102,8 +102,8 @@ async function clickHere(selector: string, shift = false): Promise<void> {
 
 const POPUPS = "[...Services.wm.getEnumerator('navigator:browser')].filter((w) => !w.document.documentElement.hasAttribute('webaios-main'))";
 
-/** Clicks `selector` in the popup whose URL contains `url`, then comes back to the WebAiOs window. */
-async function clickInPopup(url: string, selector: string): Promise<void> {
+/** Runs `fn` in the content of the popup whose URL contains `url`, then comes back to the WebAiOs window. */
+async function inPopup<T>(url: string, fn: () => Promise<T>): Promise<T> {
   const main = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
   const handle = await m.execute<string>(
     `const b = ${POPUPS}.map((w) => w.gBrowser.selectedBrowser).find((b) => b.currentURI.spec.includes(arguments[0]));
@@ -112,11 +112,13 @@ async function clickInPopup(url: string, selector: string): Promise<void> {
   );
   await m.command("WebDriver:SwitchToWindow", { handle, focus: false });
   try {
-    await clickHere(selector);
+    return await fn();
   } finally {
     await m.command("WebDriver:SwitchToWindow", { handle: main, focus: false });
   }
 }
+
+const clickInPopup = (url: string, selector: string) => inPopup(url, () => clickHere(selector));
 
 const windowCount = () => m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length");
 
@@ -276,6 +278,31 @@ describe("window controller", () => {
     await waitState((s) => Object.keys(s.onglets).length, (n) => n === 2);
     await new Promise((r) => setTimeout(r, 500));
     expect(await windowCount()).toBe(1);
+  });
+
+  it("a popup shows its site even once its source tab and its opener are gone", async () => {
+    const a = await open("/popup.html");
+    await waitTitle(a, "Popup source");
+    await click(a, "#ouvrir-reste");
+    await waitFor(m, `return ${POPUPS}.length`, (n) => n === 1);
+    await dispatch(m, { type: "fermerOnglet", id: a });
+    // Step 1 opens step 2, then closes itself.
+    await inPopup("popup-reste", async () => {
+      await m.setContext("content");
+      try {
+        await m.execute("window.open('a.html', 'etape2', 'width=400,height=500'); setTimeout(() => window.close(), 100); return 0");
+      } finally {
+        await m.setContext("chrome");
+      }
+    });
+    await waitFor(m, "return " + POPUPS + ".map((w) => w.document.title)", (t: string[]) => t.length === 1 && t[0] === `${new URL(server.url).host} — Page A`);
+  });
+
+  it("an about:blank popup written by its opener shows about:blank, not only the title it was given", async () => {
+    const a = await open("/popup.html");
+    await waitTitle(a, "Popup source");
+    await inPage(a, "const w = window.open('', 'ecrite', 'width=400,height=500'); w.document.write('<title>accounts.example.com</title>'); w.document.close(); return 0");
+    await waitFor(m, "return " + POPUPS + ".map((w) => w.document.title)", (t: string[]) => t.length === 1 && t[0] === "about:blank — accounts.example.com");
   });
 
   it("popup: its title shows the site; a target=_blank link in it opens a tab; a further step stays a popup", async () => {
