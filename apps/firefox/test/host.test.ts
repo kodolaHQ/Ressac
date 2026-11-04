@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +7,9 @@ import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
-import { createRpc, type Rpc } from "../shared/rpc";
+import { createRpc, type Handler, type Rpc } from "../shared/rpc";
+import { signatureRefusee } from "../noyau/extensions/amo";
+import { startFakeAmo } from "./fake-amo";
 import { appelerOutil } from "./mcp";
 
 const outils = join(import.meta.dirname, "outils");
@@ -31,8 +34,9 @@ interface Host {
 
 const hosts: Host[] = [];
 
-function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void): Host {
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
+/** `o.dataDir`: restart on that folder; `o.handlers`: more requests answered as Firefox. */
+function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void, o: { dataDir?: string; handlers?: Record<string, Handler> } = {}): Host {
+  const dataDir = o.dataDir ?? realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
   prepare?.(dataDir);
   const racine = join(dataDir, "espace");
   const journal = join(dataDir, "docker.log");
@@ -63,6 +67,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       demanderAutorisation: () => true,
       "agent.donnees": (p: { d: string }) => void (donnees += p.d),
       "agent.etat": (p: { e: unknown }) => void etats.push(p.e),
+      ...o.handlers,
     },
   });
   createInterface({ input: child.stdout }).on("line", (l) => rpc.receive(l));
@@ -286,5 +291,152 @@ describe("history", { timeout: 30_000 }, () => {
     h.rpc.notify("historique.rendrePrive", { espaceId: "e1" });
     await settle(h);
     expect(await h.rpc.request("historique.recents", {})).toEqual([expect.objectContaining({ espaceId: "e1", prive: true })]);
+  });
+});
+
+describe("agent extensions", { timeout: 60_000 }, () => {
+  const HOTE = "http://127.0.0.1/*";
+  const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+  const ID = "ma-ext@agent.webaios";
+  const amos: Awaited<ReturnType<typeof startFakeAmo>>[] = [];
+  afterEach(async () => {
+    for (const a of amos.splice(0)) await a.close();
+  });
+  const fakeAmo = async (o?: Parameters<typeof startFakeAmo>[0]) => {
+    const a = await startFakeAmo(o);
+    amos.push(a);
+    return a;
+  };
+
+  /** The agent's source in `<dataDir>/espace/extensions/ma-ext`: a classic service worker and a content script CSS. */
+  const source = (dataDir: string, o: { hotes?: string[]; css?: string } = {}) => {
+    const dir = join(dataDir, "espace", "extensions", "ma-ext");
+    mkdirSync(dir, { recursive: true });
+    const manifest = { manifest_version: 3, name: "Cacheur", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: o.hotes ?? [HOTE], css: ["cache.css"] }] };
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
+    writeFileSync(join(dir, "fond.js"), "console.log('fond');\n");
+    writeFileSync(join(dir, "cache.css"), o.css ?? "#cache-moi { display: none }\n");
+  };
+  const grant = (dataDir: string) => {
+    mkdirSync(join(dataDir, "extensions"), { recursive: true });
+    const entree = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord: ACCORD, profils: ["defaut"], epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
+    writeFileSync(join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:ma-ext": entree } }));
+  };
+  const entree = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
+
+  /** Firefox's side: notes each install (with the .xpi's hash and manifest, read before the noyau moves it), activation and uninstall. */
+  const firefox = () => {
+    const installs: { addonId: string; version: string; temporaire: boolean; sha: string; manifeste: any }[] = [];
+    const activations: { addonId: string; actif: boolean }[] = [];
+    const desinstallations: string[] = [];
+    const handlers: Record<string, Handler> = {
+      "extensions.installer": (p: { addonId: string; xpi: string; temporaire: boolean; version: string }) => {
+        const manifeste = JSON.parse(execFileSync("unzip", ["-p", p.xpi, "manifest.json"]).toString());
+        installs.push({ addonId: p.addonId, version: p.version, temporaire: p.temporaire, sha: createHash("sha256").update(readFileSync(p.xpi)).digest("hex"), manifeste });
+        return { version: p.version };
+      },
+      "extensions.activer": (p: { addonId: string; actif: boolean }) => void activations.push(p),
+      "extensions.desinstaller": (p: { addonId: string }) => void desinstallations.push(p.addonId),
+    };
+    return { installs, activations, desinstallations, handlers };
+  };
+
+  const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void } = {}) =>
+    startHost({ WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+  const stop = async (h: Host) => {
+    await h.rpc.request("arreter");
+    await h.exited;
+  };
+  const prepare = (d: string) => (source(d), grant(d));
+
+  it("a granted extension is copied, signed, installed; restart with an unchanged source sends nothing", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    let h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    expect(amo.envois.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
+    expect(f.installs).toEqual([expect.objectContaining({ addonId: ID, version: "1.0.0.1", temporaire: true })]);
+    expect(f.activations).toEqual([{ addonId: ID, actif: true }]);
+    expect(entree(h.dataDir)).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
+    await stop(h);
+
+    h = launch(amo, f, { dataDir: h.dataDir });
+    await h.rpc.request("extensions.pret", {});
+    expect(amo.envois).toHaveLength(1);
+    expect(f.installs).toHaveLength(2);
+    expect(f.installs[1]).toMatchObject({ version: "1.0.0.1", sha: f.installs[0]!.sha });
+  });
+
+  it("a classic service_worker background becomes background.scripts [guard, original] in the signed copy", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    expect(f.installs[0]!.manifeste.background).toEqual({ scripts: ["webaios-garde-fond.js", "fond.js"] });
+    expect(f.installs[0]!.manifeste.browser_specific_settings.gecko.id).toBe(ID);
+  });
+
+  it("source changed while closed: signed again at startup; a new site disables it, grant kept", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    let h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    await stop(h);
+    source(h.dataDir, { css: "#cache-moi, #reste { display: none }\n" });
+    h = launch(amo, f, { dataDir: h.dataDir });
+    await h.rpc.request("extensions.pret", {});
+    expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(entree(h.dataDir).desactivee).toBeNull();
+    await stop(h);
+
+    source(h.dataDir, { hotes: [HOTE, "https://exemple.com/*"] });
+    f.activations.length = 0;
+    h = launch(amo, f, { dataDir: h.dataDir });
+    await h.rpc.request("extensions.pret", {});
+    expect(amo.envois).toHaveLength(2);
+    expect(f.installs).toHaveLength(2);
+    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, desactivee: { raison: "portee-elargie" } });
+    expect(f.activations).toEqual([{ addonId: ID, actif: false }]);
+  });
+
+  it("two reloads in a row: serialized, strictly increasing, the last one installed", async () => {
+    const amo = await fakeAmo({ delaiMs: 500 });
+    const f = firefox();
+    const h = launch(amo, f, { prepare });
+    const [a, b] = await Promise.all([h.rpc.request("extensions.recharger", { id: "ma-ext" }), h.rpc.request("extensions.recharger", { id: "ma-ext" })]);
+    expect([a, b]).toEqual([expect.objectContaining({ ok: true }), expect.objectContaining({ ok: true })]);
+    expect(amo.envois.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(f.installs.at(-1)!.version).toBe("1.0.0.2");
+    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.2");
+  });
+
+  it("a failed signature leaves the running version", async () => {
+    const f = firefox();
+    let h = launch(await fakeAmo(), f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    await stop(h);
+    source(h.dataDir, { css: "#reste { display: none }\n" });
+    h = launch(await fakeAmo({ refus: "Validation failed: eval" }), f, { dataDir: h.dataDir });
+    const r = await h.rpc.request<{ ok: boolean; erreur: string }>("extensions.recharger", { id: "ma-ext" });
+    expect(r).toEqual({ ok: false, erreur: signatureRefusee("Validation failed: eval") });
+    expect(r.erreur).not.toContain("test-secret");
+    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.1");
+    expect(f.installs).toHaveLength(1);
+    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
+  });
+
+  it("removed from about:addons: grant deleted, never reinstalled", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    let h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    h.rpc.notify("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
+    await until(() => entree(h.dataDir) === undefined);
+    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(false);
+    await stop(h);
+    h = launch(amo, f, { dataDir: h.dataDir });
+    await h.rpc.request("extensions.pret", {});
+    expect(f.installs).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ "ma-ext": 1 });
   });
 });

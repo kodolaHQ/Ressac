@@ -1,0 +1,138 @@
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { agentAddons, grant, launchWithAmo } from "./agent-extensions";
+import { waitFor } from "./firefox";
+import type { LaunchedWebAiOs } from "./launch";
+
+// Ported from Electron's extensions-agent.spec.ts. No agent tool yet (task 4): grants are written to the registry before
+// the launch, and the effects checked after a restart.
+const HOTE = "http://127.0.0.1/*";
+const manifeste = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
+const CACHE = "#cache-moi { display: none !important; }\n";
+const CACHE_TOUT = "#cache-moi, #reste { display: none !important; }\n";
+const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const ID = "cacheur@agent.webaios";
+
+const dirs: string[] = [];
+const opened: LaunchedWebAiOs[] = [];
+afterEach(async () => {
+  for (const w of opened.splice(0)) await w.close();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+/** A data folder (the agent's ~/WebAiOs is its espace/) and a profile, kept across restarts. */
+const folders = () => {
+  const d = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+  dirs.push(d.dataDir, d.profile);
+  return d;
+};
+const racine = (dataDir: string) => path.join(dataDir, "espace");
+const launch = async (o: Parameters<typeof launchWithAmo>[0]) => {
+  const w = await launchWithAmo(o);
+  opened.push(w);
+  return w;
+};
+const registry = (dataDir: string) =>
+  (JSON.parse(readFileSync(path.join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, unknown> }).extensions;
+/** The noyau answers extensions.pret once every granted extension is handled: a startup without one leaves nothing to wait for. */
+const settle = () => new Promise((r) => setTimeout(r, 3000));
+const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+/** The agent's add-on installed, active, at `version` (a signing with the fake AMO takes a few seconds). */
+const waitAddon = (w: LaunchedWebAiOs, version: string) =>
+  waitFor(w.marionette, `return (async () => {
+    const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+    const a = await AddonManager.getAddonByID(${JSON.stringify(ID)});
+    return a && a.isActive ? a.version : null;
+  })();`, (v) => v === version, 30_000);
+async function until(ok: () => boolean, ms = 15_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > deadline) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+describe("agent extensions: registry, signed install, restart", () => {
+  it("an agent extension laid in the folder is never loaded without a grant (restart included)", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    for (let i = 0; i < 2; i++) {
+      const w = await launch(f);
+      await settle();
+      expect(await agentAddons(w.marionette)).toEqual([]);
+      expect(w.amo.envois).toEqual([]);
+      await w.close();
+    }
+    expect(existsSync(path.join(f.dataDir, "extensions", "copies", "cacheur"))).toBe(false);
+  });
+
+  it("a fake grant written in the agent folder activates nothing", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    // The registry as WebAiOs would write it, but in the agent's folder (and in the extension's own).
+    grant(racine(f.dataDir), "cacheur", ACCORD);
+    copyFileSync(path.join(racine(f.dataDir), "extensions", "etat.json"), path.join(racine(f.dataDir), "extensions", "cacheur", "etat.json"));
+    const w = await launch(f);
+    await settle();
+    expect(await agentAddons(w.marionette)).toEqual([]);
+    expect(w.amo.envois).toEqual([]);
+    expect(existsSync(path.join(f.dataDir, "extensions", "copies", "cacheur"))).toBe(false);
+  });
+
+  it("granted: installed and active, version <agent version>.<counter>", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    const w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    expect(w.amo.envois.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
+    expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
+  });
+
+  // The page half of extensions-agent.spec.ts:102: the guard injects the content script once the extension actor
+  // answers estOnglet (task 5).
+  it.todo("granted: its content script hides #cache-moi");
+
+  it("quit during a signature: the previous version runs after restart, the change is signed again", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    let w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    await w.close();
+
+    w = await launch({ ...f, amo: { delaiMs: 60_000 } });
+    await waitAddon(w, "1.0.0.1");
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "cache.css": CACHE_TOUT });
+    await w.marionette.execute(`return (async () => {
+      const store = await ChromeUtils.importESModule("${STORE}").ready;
+      store.agent.request("extensions.recharger", { id: "cacheur" }).catch(() => {});
+    })();`);
+    const amo = w.amo;
+    await until(() => amo.envois.some((e) => e.version === "1.0.0.2"));
+    expect(await agentAddons(w.marionette)).toEqual([{ id: ID, version: "1.0.0.1", isActive: true }]);
+    await w.close();
+    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "signes", "cacheur.json"), "utf8")).version).toBe("1.0.0.1");
+
+    w = await launch(f);
+    await waitAddon(w, "1.0.0.3");
+    expect(w.amo.envois.map((e) => e.version)).toEqual(["1.0.0.3"]);
+    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ cacheur: 3 });
+  });
+
+  it("uninstalled from about:addons: gone from the registry", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    const w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    await w.marionette.execute(`return (async () => {
+      const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+      await (await AddonManager.getAddonByID(${JSON.stringify(ID)})).uninstall();
+    })();`);
+    await until(() => !("agent:cacheur" in registry(f.dataDir)));
+    expect(await agentAddons(w.marionette)).toEqual([]);
+  });
+});

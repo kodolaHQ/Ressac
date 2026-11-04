@@ -17,11 +17,12 @@ process.env.WEBAIOS_PORTS_CONTENEUR ||= "5300-5319";
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
+const { chargerProfils, cheminsEspace, creerNoyau, lireEtatExtensions, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
+const { ExtensionsAgent, SANS_ACCORD } = await import("./extensions/agent.ts");
 
 const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {
@@ -125,6 +126,7 @@ const changerProfil = (profilAgent: string) => {
 let stopping: Promise<void> | undefined;
 const arreter = () =>
   (stopping ??= (async () => {
+    extensions.arreter();
     await sessions.toutArreter();
     await arreterNoyau(await pret);
     clearInterval(purge);
@@ -198,10 +200,27 @@ const rpc = createRpc({
       noyau?.politique.interactionUtilisateur(p.onglet);
       if (sessions.active(p.fenetre)) sessions.ecrire(p.fenetre, prefixeContexte(p.onglet.titre, p.onglet.url));
     },
+    // Sent by the chrome once its add-on listeners are set; answered when every granted extension is installed.
+    "extensions.pret": () => (demarrageExtensions ??= extensions.demarrer()),
+    "extensions.horsWebaios": (p: { addonId: string; quoi: "desinstallee" | "desactivee" }) =>
+      extensions.horsWebaios(p.addonId, p.quoi).catch((e) => console.error("[extensions] hors de WebAiOs :", e)),
+    // Tests only, until the agent's recharger_extension tool: reloads a granted extension within its grant.
+    ...(process.env.WEBAIOS_TEST_AMO_URL
+      ? {
+          "extensions.recharger": async (p: { id: string }) => {
+            const accord = (await lireEtatExtensions(dossierExtensions)).extensions[`agent:${p.id}`]?.accord;
+            return accord ? extensions.preparerEtInstaller(p.id, { accord }) : { ok: false, erreur: SANS_ACCORD };
+          },
+        }
+      : {}),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
 const bridge = new RemoteBridge(rpc, historique);
+// Outside the agent's noyau, like the history: granted extensions run even when the noyau does not start.
+const dossierExtensions = join(dataDir, "extensions");
+const extensions = new ExtensionsAgent({ dossier: dossierExtensions, dossierAgent: cheminsEspace(racine).extensions, rpc });
+let demarrageExtensions: Promise<void> | undefined;
 
 createInterface({ input: process.stdin, crlfDelay: Infinity })
   .on("line", (l) => rpc.receive(l))

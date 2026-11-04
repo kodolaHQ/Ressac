@@ -4,10 +4,11 @@ declare const IOUtils: {
   writeUTF8(path: string, text: string, options?: { flush?: boolean }): Promise<number>;
   exists(path: string): Promise<boolean>;
   move(from: string, to: string): Promise<void>;
+  copy(from: string, to: string): Promise<void>;
   makeDirectory(path: string, options?: { createAncestors?: boolean; ignoreExisting?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean }): Promise<void>;
 };
-declare const PathUtils: { join(...parts: string[]): string };
+declare const PathUtils: { join(...parts: string[]): string; readonly tempDir: string };
 declare const Services: any;
 declare const Ci: any;
 declare const Cr: any;

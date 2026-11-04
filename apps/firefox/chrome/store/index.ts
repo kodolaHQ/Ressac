@@ -6,6 +6,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { containerFor, migrateContainers, removeContainer } from "./containers";
@@ -32,6 +33,8 @@ export interface WebAiOsStore extends Store {
   readonly questions: Questions;
   /** The WebAiOs windows open: each full browser window claims a window of the state. */
   readonly windows: WindowRegistry;
+  /** The agent's extensions as Firefox add-ons, installed and switched as the noyau host says. */
+  readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
@@ -95,10 +98,11 @@ async function start(): Promise<WebAiOsStore> {
     // The agent follows the focused window at once, as Electron reads it live.
     onActivate: () => refreshMirror(),
   });
+  const agentExtensions = createAgentExtensions(store, windows);
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: bridgeHandlers(store, questions, windows),
+    handlers: { ...bridgeHandlers(store, questions, windows), ...agentExtensions.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
@@ -113,6 +117,7 @@ async function start(): Promise<WebAiOsStore> {
   agent.on("acces", (e: EtatAcces) => (access = e));
   agent.on(HOST_EXITED, () => (access = { agent: access.agent, onglets: {} }));
   agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));
+  agentExtensions.start(agent);
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
   return {
@@ -130,6 +135,7 @@ async function start(): Promise<WebAiOsStore> {
     downloads,
     questions,
     windows,
+    agentExtensions,
     get access() {
       return access;
     },
