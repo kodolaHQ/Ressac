@@ -105,7 +105,8 @@ note("started");`,
 
 /**
  * Electron's sonde, the part that opens tabs: on a page whose URL has `ouvrir-onglet`, its background calls tabs.create with
- * that URL, `ouverte-par-sonde` in place; on `ouvrir-actif`, tabs.create({ active: true }) with `ouverte-active`.
+ * that URL, `ouverte-par-sonde` in place; on `ouvrir-actif`, tabs.create({ active: true }) with `ouverte-active`; on
+ * `ouvrir-page`, tabs.create({ url: "page.html" }) (its own page « Page de la sonde », by a relative URL).
  */
 export function probe(): Fixture {
   const id = "probe@webaios.test";
@@ -121,7 +122,9 @@ export function probe(): Fixture {
       "background.js": "browser.runtime.onMessage.addListener((m) => void browser.tabs.create(m));",
       "content.js": `const u = location.href;
 if (u.includes("ouvrir-onglet")) browser.runtime.sendMessage({ url: u.replace("ouvrir-onglet", "ouverte-par-sonde") });
-else if (u.includes("ouvrir-actif")) browser.runtime.sendMessage({ url: u.replace("ouvrir-actif", "ouverte-active"), active: true });`,
+else if (u.includes("ouvrir-actif")) browser.runtime.sendMessage({ url: u.replace("ouvrir-actif", "ouverte-active"), active: true });
+else if (u.includes("ouvrir-page")) browser.runtime.sendMessage({ url: "page.html" });`,
+      "page.html": '<!doctype html><meta charset="utf-8"><title>Page de la sonde</title><p>Sonde</p>',
     },
   };
 }

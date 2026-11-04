@@ -29,6 +29,8 @@ export class TabSync {
   private fromPopup: IdOnglet | undefined;
   /** While an add-on opens a tab here (tabs.create, its options page): they load with its principal. */
   private fromAddon = false;
+  /** While TabSync selects or removes a XUL tab: what Firefox selects then is not the user's choice. */
+  private selecting = false;
   /** The status of each browser's last failed load, until its next one starts. */
   private readonly failures = new WeakMap<object, number>();
 
@@ -37,14 +39,20 @@ export class TabSync {
     private readonly store: WebAiOsStore,
     private readonly fenetreId: IdFenetre,
   ) {
-    this.parking = gBrowser.tabs[0];
-    this.parking.setAttribute(PARKING, "");
+    this.park(gBrowser.tabs[0]);
     // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
     // shortcut: the tab lands in Firefox's most recent window, not always the source tab's; upgrade if several windows make it wrong in use
     const addTab = gBrowser.addTab.bind(gBrowser);
-    gBrowser.addTab = (uri: string, options?: { openerBrowser?: any; triggeringPrincipal?: any }) => {
+    gBrowser.addTab = (uri: string, options?: { openerBrowser?: any; triggeringPrincipal?: any; userContextId?: number }) => {
       this.fromPopup = options?.openerBrowser?.ownerDocument.defaultView?.webaiosPopupSource;
       this.fromAddon = !!options?.triggeringPrincipal?.addonId;
+      // An add-on's tab joins the active space: loaded in its container from the first request (unless the add-on chose one).
+      if (this.fromAddon && options!.userContextId === undefined) {
+        const state = this.store.state;
+        const f = state.fenetres.find((x) => x.id === this.fenetreId);
+        const espace = f && state.espaces.find((e) => e.id === f.espaceActif);
+        if (espace) options!.userContextId = this.store.containerFor(espace.profil);
+      }
       try {
         return addTab(uri, options);
       } finally {
@@ -55,6 +63,7 @@ export class TabSync {
     const strip = gBrowser.tabContainer;
     strip.addEventListener("TabOpen", (e: Event) => this.onOpen(e.target));
     strip.addEventListener("TabClose", (e: Event) => this.onClose(e.target));
+    strip.addEventListener("TabSelect", (e: Event) => this.onSelect(e.target));
     strip.addEventListener("TabAttrModified", (e: CustomEvent) => {
       const changed: string[] = e.detail.changed;
       const tab: any = e.target;
@@ -96,6 +105,13 @@ export class TabSync {
       },
       true,
     );
+  }
+
+  /** Marks `tab` as the window's parking tab. Never empty to Firefox: it would load a page there (switchToTabHavingURI). */
+  private park(tab: any): void {
+    this.parking = tab;
+    tab.setAttribute(PARKING, "");
+    Object.defineProperties(tab, { isEmpty: { get: () => false }, isEmptyIgnoringLoad: { get: () => false } });
   }
 
   /** The XUL tab of a WebAiOs tab, if it has one. */
@@ -155,7 +171,7 @@ export class TabSync {
     if (web && !this.tabs.has(web.id)) this.create(state, web);
     // A crashed or failed page is replaced by the UI's message (Electron's vues.ts).
     const target = web && !web.plante && !web.erreur ? this.tabs.get(web.id) : this.parking;
-    if (this.gBrowser.selectedTab !== target) this.gBrowser.selectedTab = target;
+    if (this.gBrowser.selectedTab !== target) this.select(() => (this.gBrowser.selectedTab = target));
   }
 
   /** Drops the XUL tab of `id` (a crashed browser cannot reload): the next sync creates a new one at the tab's URL. */
@@ -187,7 +203,26 @@ export class TabSync {
 
   private remove(id: IdOnglet, tab: any): void {
     this.tabs.delete(id); // first: onClose then knows we closed it
-    this.gBrowser.removeTab(tab, { skipPermitUnload: true, animate: false });
+    this.select(() => this.gBrowser.removeTab(tab, { skipPermitUnload: true, animate: false }));
+  }
+
+  private select(change: () => void): void {
+    this.selecting = true;
+    try {
+      change();
+    } finally {
+      this.selecting = false;
+    }
+  }
+
+  /** Firefox selected one of our tabs itself (switchToTabHavingURI: an options page already open): the state follows, space included. */
+  private onSelect(tab: any): void {
+    const id = tab.getAttribute(ID);
+    if (this.selecting || !id || this.tabs.get(id) !== tab) return;
+    const state = this.store.state;
+    const f = state.fenetres.find((x) => x.id === this.fenetreId);
+    // Not yet in the state: a tab being adopted, its ouvrirOnglet follows.
+    if (f && state.onglets[id] && f.actif[f.espaceActif] !== id) this.store.dispatch({ type: "activerOnglet", id });
   }
 
   private history(browser: any): Pick<Champs, "peutReculer" | "peutAvancer"> {
@@ -203,8 +238,7 @@ export class TabSync {
     if (this.creating || tab.hasAttribute(ID)) return;
     // Firefox replaces a closing last tab: the replacement parks the window instead.
     if (this.parking.closing) {
-      this.parking = tab;
-      tab.setAttribute(PARKING, "");
+      this.park(tab);
       return;
     }
     const opener = this.fromPopup ?? tab.openerTab?.getAttribute(ID);
@@ -232,8 +266,7 @@ export class TabSync {
         if (this.parking !== tab) return;
         this.creating = true;
         try {
-          this.parking = this.gBrowser.addTrustedTab("about:blank", { skipAnimation: true });
-          this.parking.setAttribute(PARKING, "");
+          this.park(this.gBrowser.addTrustedTab("about:blank", { skipAnimation: true }));
         } finally {
           this.creating = false;
         }

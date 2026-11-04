@@ -76,6 +76,8 @@ describe("tabs opened by add-ons", () => {
 
   it("an add-on tab in a space of another profile loads in that space's container", async () => {
     await installAddon(m, probe());
+    // Recreated in the right container, its first request would have gone out with the default profile's cookies.
+    await m.execute("window.closedTabs = 0; gBrowser.tabContainer.addEventListener('TabClose', () => window.closedTabs++)");
     const { b } = await triggerFromA("ouvrir-onglet", "nouveau");
     const opened = await tabWith("ouverte-par-sonde");
     expect(opened.espaceId).toBe(b);
@@ -88,6 +90,52 @@ describe("tabs opened by add-ons", () => {
       (v: { userContextId: number; url: string } | undefined) => !!v?.url.includes("ouverte-par-sonde"),
     );
     expect(xul!.userContextId).toBe(container);
+    expect(await m.execute("return window.closedTabs")).toBe(0);
+  });
+
+  it("tabs.create with a URL relative to the add-on is adopted", async () => {
+    await installAddon(m, probe());
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: `${server.url}/a.html?ouvrir-page` });
+    const page = await tabWith("/page.html");
+    expect(page.url).toMatch(/^moz-extension:\/\/.+\/page\.html$/);
+    await waitState((s) => s.onglets[page.id]?.titre, (t) => t === "Page de la sonde");
+  });
+});
+
+/** The add-on's runtime.openOptionsPage(), called from the parent process as the API does. */
+const openOptionsPage = (id: string) =>
+  m.execute(
+    `const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
+     return ExtensionParent.apiManager.global.openOptionsPage(ExtensionParent.GlobalManager.getExtension(arguments[0])).then(() => 0);`,
+    [id],
+  );
+
+describe("options pages in a tab", () => {
+  it("open as a visible WebAiOs tab when no page is displayed, every time", async () => {
+    const id = await installAddon(m, options({ inTab: true }));
+    for (let i = 0; i < 2; i++) {
+      await openOptionsPage(id);
+      const page = await tabWith("/options.html");
+      await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === page.id);
+      expect(await m.execute("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-parking')).map((t) => t.linkedBrowser.currentURI.spec)")).toEqual(["about:blank"]);
+      await dispatch(m, { type: "fermerOnglet", id: page.id });
+    }
+  });
+
+  it("an options page already open comes back in the state, in its own space", async () => {
+    const id = await installAddon(m, options({ inTab: true }));
+    await openOptionsPage(id);
+    const page = await tabWith("/options.html");
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === page.id);
+    const fenetreId = (await win()).id;
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/a.html` });
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/b.html` });
+    await openOptionsPage(id);
+    const f = await waitState((s) => s.fenetres[0]!, (x) => x.espaceActif === page.espaceId && x.actif[page.espaceId] === page.id);
+    expect(f.actif[f.espaceActif]).toBe(page.id);
+    expect(await selectedId()).toBe(page.id);
+    expect(Object.values((await state(m)).onglets).filter((o) => o.url.includes("/options.html"))).toHaveLength(1);
   });
 });
 
