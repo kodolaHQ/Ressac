@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
+import { installationImpossible } from "../noyau/extensions/agent";
 import { signatureRefusee } from "../noyau/extensions/amo";
 import { startFakeAmo } from "./fake-amo";
 import { appelerOutil } from "./mcp";
@@ -317,32 +318,56 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     writeFileSync(join(dir, "fond.js"), "console.log('fond');\n");
     writeFileSync(join(dir, "cache.css"), o.css ?? "#cache-moi { display: none }\n");
   };
-  const grant = (dataDir: string) => {
+  const grant = (dataDir: string, profils = ["defaut"]) => {
     mkdirSync(join(dataDir, "extensions"), { recursive: true });
-    const entree = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord: ACCORD, profils: ["defaut"], epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
+    const entree = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord: ACCORD, profils, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
     writeFileSync(join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:ma-ext": entree } }));
   };
   const entree = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
 
-  /** Firefox's side: notes each install (with the .xpi's hash and manifest, read before the noyau moves it), activation and uninstall. */
+  /**
+   * Firefox's side, as the chrome does it: an inactive add-on is never installed fresh, the same version is not
+   * reinstalled. Notes each real install (with the .xpi's hash and manifest, read before the noyau moves it), every
+   * installer call, activation and uninstall. `casse`: installs throw.
+   */
   const firefox = () => {
     const installs: { addonId: string; version: string; temporaire: boolean; sha: string; manifeste: any }[] = [];
+    const appels: { version: string; actif: boolean }[] = [];
     const activations: { addonId: string; actif: boolean }[] = [];
     const desinstallations: string[] = [];
-    const handlers: Record<string, Handler> = {
-      "extensions.installer": (p: { addonId: string; xpi: string; temporaire: boolean; version: string }) => {
+    const presents = new Map<string, string>();
+    const f = {
+      installs,
+      appels,
+      activations,
+      desinstallations,
+      presents,
+      casse: false,
+      espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: false }] as { id: string; nom: string; profil: string; prive: boolean }[],
+      handlers: {} as Record<string, Handler>,
+    };
+    f.handlers = {
+      "extensions.installer": (p: { addonId: string; xpi: string; temporaire: boolean; version: string; actif: boolean }) => {
+        appels.push({ version: p.version, actif: p.actif });
+        if ((!p.actif && !presents.has(p.addonId)) || presents.get(p.addonId) === p.version) return null;
+        if (f.casse) throw new Error("boom");
         const manifeste = JSON.parse(execFileSync("unzip", ["-p", p.xpi, "manifest.json"]).toString());
         installs.push({ addonId: p.addonId, version: p.version, temporaire: p.temporaire, sha: createHash("sha256").update(readFileSync(p.xpi)).digest("hex"), manifeste });
+        presents.set(p.addonId, p.version);
         return { version: p.version };
       },
       "extensions.activer": (p: { addonId: string; actif: boolean }) => void activations.push(p),
-      "extensions.desinstaller": (p: { addonId: string }) => void desinstallations.push(p.addonId),
+      "extensions.desinstaller": (p: { addonId: string }) => void (desinstallations.push(p.addonId), presents.delete(p.addonId)),
+      "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [], premierPlan: null }),
     };
-    return { installs, activations, desinstallations, handlers };
+    return f;
   };
 
-  const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void } = {}) =>
-    startHost({ WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+  // Temporary add-ons are gone after a quit.
+  const launch = (amo: { url: string }, f: ReturnType<typeof firefox>, o: { dataDir?: string; prepare?: (d: string) => void } = {}) => {
+    f.presents.clear();
+    return startHost({ WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
+  };
   const stop = async (h: Host) => {
     await h.rpc.request("arreter");
     await h.exited;
@@ -438,5 +463,58 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     expect(f.installs).toHaveLength(1);
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ "ma-ext": 1 });
+  });
+
+  it("a first install of an inactive grant never makes the add-on active", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, [])) });
+    await h.rpc.request("extensions.pret", {});
+    expect(amo.envois).toHaveLength(1);
+    expect(f.appels.length).toBeGreaterThan(0);
+    expect(f.appels.every((a) => a.actif === false)).toBe(true);
+    expect(f.installs).toEqual([]);
+    expect(f.activations.some((a) => a.actif)).toBe(false);
+    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
+  });
+
+  it("a removal seen while the host was down comes with pret: not reinstalled, grant deleted", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", { horsWebaios: [{ addonId: ID, quoi: "desinstallee" }] });
+    expect(f.installs).toEqual([]);
+    expect(amo.envois).toEqual([]);
+    expect(entree(h.dataDir)).toBeUndefined();
+  });
+
+  it("a failed startup can be retried by a later pret", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    // A directory where the registry should be: reading it throws.
+    const h = launch(amo, f, { prepare: (d) => (source(d), mkdirSync(join(d, "extensions", "etat.json"), { recursive: true })) });
+    await expect(h.rpc.request("extensions.pret", {})).rejects.toThrow();
+    rmSync(join(h.dataDir, "extensions", "etat.json"), { recursive: true });
+    grant(h.dataDir);
+    await h.rpc.request("extensions.pret", {});
+    expect(f.installs).toHaveLength(1);
+  });
+
+  it("a failed install gives a bounded French text and keeps nothing", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.casse = true;
+    const h = launch(amo, f, { prepare });
+    expect(await h.rpc.request("extensions.recharger", { id: "ma-ext" })).toEqual({ ok: false, erreur: installationImpossible("boom") });
+    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"))).toBe(false);
+  });
+
+  it("a profile used by a private space is taken out of the grant's profiles", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.espaces.push({ id: "e2", nom: "Secret", profil: "secret", prive: true });
+    const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, ["defaut", "secret"])) });
+    await h.rpc.request("extensions.pret", {});
+    expect(entree(h.dataDir).profils).toEqual(["defaut"]);
   });
 });

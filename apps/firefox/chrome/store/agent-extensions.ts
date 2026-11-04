@@ -12,12 +12,14 @@ const SUFFIX = "@agent.webaios";
 export interface AgentExtensions {
   /** The requests the noyau host sends about its extensions (extensions.*, navigateur.espaces). */
   readonly handlers: Record<string, Handler>;
-  /** Listens to AddonManager, then tells the host it may install the granted extensions (extensions.pret). */
-  start(host: AgentHost): void;
+  /** Each new host process: extensions.pret, with the about:addons changes it has not acknowledged yet. */
+  hostStarted(): void;
+  /** Settled once the first host answered extensions.pret (the granted extensions handled). */
+  readonly ready: Promise<void>;
 }
 
 /** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
-export function createAgentExtensions(store: Store, windows: WindowRegistry): AgentExtensions {
+export function createAgentExtensions(store: Store, windows: WindowRegistry, host: () => AgentHost): AgentExtensions {
   // Add-ons this module is changing: their AddonManager events are ours, not about:addons'.
   const ours = new Set<string>();
   const own = async <T>(addonId: string, f: () => Promise<T>): Promise<T> => {
@@ -34,11 +36,14 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry): Ag
   };
 
   const handlers: Record<string, Handler> = {
-    "extensions.installer": async (p: { addonId: string; xpi: string; temporaire: boolean; version: string }) => {
+    // Inactive (decision 4): never installed fresh; an upgrade keeps the disabled state, so it is disabled first.
+    "extensions.installer": async (p: { addonId: string; xpi: string; temporaire: boolean; version: string; actif: boolean }) => {
       const id = agentId(p.addonId);
       const present = await AddonManager.getAddonByID(id);
+      if (!p.actif && !present) return null;
       if (present && present.version === p.version) return { version: present.version };
       return own(id, async () => {
+        if (!p.actif && !present.userDisabled) await present.disable();
         let path = p.xpi;
         if (p.temporaire) {
           // A temporary add-on is read from its file for as long as it runs: a copy of ours, which the noyau moves.
@@ -72,19 +77,38 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry): Ag
     }),
   };
 
+  // about:addons changes not acknowledged by a host: sent again with the next extensions.pret, so none is lost while no host runs.
+  const pending = new Map<string, "desinstallee" | "desactivee">();
+  const send = (addonId: string, quoi: "desinstallee" | "desactivee") =>
+    host()
+      .request("extensions.horsWebaios", { addonId, quoi })
+      .then(() => pending.get(addonId) === quoi && pending.delete(addonId))
+      .catch(() => {});
+  AddonManager.addAddonListener({
+    onUninstalled: (a: { id: string }) => outside(a, "desinstallee"),
+    onDisabled: (a: { id: string }) => outside(a, "desactivee"),
+  });
+  function outside(addon: { id: string }, quoi: "desinstallee" | "desactivee") {
+    // Quitting unloads temporary add-ons: not a choice made in about:addons.
+    if (!addon.id.endsWith(SUFFIX) || ours.has(addon.id) || Services.startup.shuttingDown) return;
+    pending.set(addon.id, quoi);
+    void send(addon.id, quoi);
+  }
+
+  let settle = () => {};
+  const ready = new Promise<void>((r) => (settle = r));
   return {
     handlers,
-    start(host) {
-      const outside = (addon: { id: string }, quoi: "desinstallee" | "desactivee") => {
-        // Quitting unloads temporary add-ons: not a choice made in about:addons.
-        if (!addon.id.endsWith(SUFFIX) || ours.has(addon.id) || Services.startup.shuttingDown) return;
-        host.notify("extensions.horsWebaios", { addonId: addon.id, quoi });
-      };
-      AddonManager.addAddonListener({
-        onUninstalled: (a: { id: string }) => outside(a, "desinstallee"),
-        onDisabled: (a: { id: string }) => outside(a, "desactivee"),
-      });
-      host.request("extensions.pret", {}).catch((e) => console.error("[extensions] agent extensions not started:", e));
+    ready,
+    hostStarted() {
+      const sent = [...pending].map(([addonId, quoi]) => ({ addonId, quoi }));
+      host()
+        .request("extensions.pret", { horsWebaios: sent })
+        .then(
+          () => sent.forEach((h) => pending.get(h.addonId) === h.quoi && pending.delete(h.addonId)),
+          (e) => console.error("[extensions] agent extensions not started:", e),
+        )
+        .finally(settle);
     },
   };
 }

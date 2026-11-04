@@ -200,10 +200,17 @@ const rpc = createRpc({
       noyau?.politique.interactionUtilisateur(p.onglet);
       if (sessions.active(p.fenetre)) sessions.ecrire(p.fenetre, prefixeContexte(p.onglet.titre, p.onglet.url));
     },
-    // Sent by the chrome once its add-on listeners are set; answered when every granted extension is installed.
-    "extensions.pret": () => (demarrageExtensions ??= extensions.demarrer()),
+    // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
+    // never reinstalled); answered when every granted extension is handled. A failed start is retried by the next one.
+    "extensions.pret": async (p: { horsWebaios?: { addonId: string; quoi: "desinstallee" | "desactivee" }[] }) => {
+      for (const h of p?.horsWebaios ?? []) await extensions.horsWebaios(h.addonId, h.quoi);
+      return (demarrageExtensions ??= extensions.demarrer().catch((e) => {
+        demarrageExtensions = undefined;
+        throw e;
+      }));
+    },
     "extensions.horsWebaios": (p: { addonId: string; quoi: "desinstallee" | "desactivee" }) =>
-      extensions.horsWebaios(p.addonId, p.quoi).catch((e) => console.error("[extensions] hors de WebAiOs :", e)),
+      extensions.horsWebaios(p.addonId, p.quoi),
     // Tests only, until the agent's recharger_extension tool: reloads a granted extension within its grant.
     ...(process.env.WEBAIOS_TEST_AMO_URL
       ? {

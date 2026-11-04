@@ -36,9 +36,10 @@ const launch = async (o: Parameters<typeof launchWithAmo>[0]) => {
 };
 const registry = (dataDir: string) =>
   (JSON.parse(readFileSync(path.join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, unknown> }).extensions;
-/** The noyau answers extensions.pret once every granted extension is handled: a startup without one leaves nothing to wait for. */
-const settle = () => new Promise((r) => setTimeout(r, 3000));
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+/** The first host answered extensions.pret: every granted extension is handled. */
+const settle = (w: LaunchedWebAiOs) =>
+  w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agentExtensions.ready; })();`);
 /** The agent's add-on installed, active, at `version` (a signing with the fake AMO takes a few seconds). */
 const waitAddon = (w: LaunchedWebAiOs, version: string) =>
   waitFor(w.marionette, `return (async () => {
@@ -60,7 +61,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
     for (let i = 0; i < 2; i++) {
       const w = await launch(f);
-      await settle();
+      await settle(w);
       expect(await agentAddons(w.marionette)).toEqual([]);
       expect(w.amo.envois).toEqual([]);
       await w.close();
@@ -75,7 +76,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     grant(racine(f.dataDir), "cacheur", ACCORD);
     copyFileSync(path.join(racine(f.dataDir), "extensions", "etat.json"), path.join(racine(f.dataDir), "extensions", "cacheur", "etat.json"));
     const w = await launch(f);
-    await settle();
+    await settle(w);
     expect(await agentAddons(w.marionette)).toEqual([]);
     expect(w.amo.envois).toEqual([]);
     expect(existsSync(path.join(f.dataDir, "extensions", "copies", "cacheur"))).toBe(false);
@@ -132,6 +133,35 @@ describe("agent extensions: registry, signed install, restart", () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
       await (await AddonManager.getAddonByID(${JSON.stringify(ID)})).uninstall();
     })();`);
+    await until(() => !("agent:cacheur" in registry(f.dataDir)));
+    expect(await agentAddons(w.marionette)).toEqual([]);
+  });
+
+  it("an inactive grant is never installed nor active", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD, []);
+    const w = await launch(f);
+    await settle(w);
+    expect(w.amo.envois.map((e) => e.version)).toEqual(["1.0.0.1"]);
+    expect(await agentAddons(w.marionette)).toEqual([]);
+  });
+
+  it("uninstalled from about:addons while the host is down: not reinstalled when it starts again", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    const w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    const pid = await w.marionette.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
+    process.kill(pid, "SIGKILL");
+    await waitFor(w.marionette, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (v) => v === null);
+    await w.marionette.execute(`return (async () => {
+      const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+      await (await AddonManager.getAddonByID(${JSON.stringify(ID)})).uninstall();
+    })();`);
+    expect("agent:cacheur" in registry(f.dataDir)).toBe(true);
+    await w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure().catch(() => {}); })();`);
     await until(() => !("agent:cacheur" in registry(f.dataDir)));
     expect(await agentAddons(w.marionette)).toEqual([]);
   });

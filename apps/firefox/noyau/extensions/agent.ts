@@ -24,6 +24,8 @@ export const DOSSIER_ABSENT = "Dossier absent";
 export const ACTIVATION_REFUSEE = "Activation refusée";
 export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
 export const SANS_ACCORD = "Extension sans accord : demande d'abord son activation";
+/** Firefox refused the signed .xpi (no Electron text: new, like decision 9's). */
+export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
 
 export type ResultatEnvoi = { ok: true; analyse: AnalyseManifeste } | { ok: false; erreur: string; refus?: string[] };
 
@@ -154,19 +156,36 @@ export class ExtensionsAgent {
     return suivante;
   }
 
-  // shortcut: private profiles are not known to the noyau yet (no agent extension is active in one), the space tasks pass them.
-  private modifier(changer: (e: EtatExtensions) => EtatExtensions): Promise<EtatExtensions> {
-    return modifierEtatExtensions(this.o.dossier, changer, () => new Set());
+  /** Registry change; the profiles of private spaces (asked from Firefox) are taken out of every agent extension. */
+  private async modifier(changer: (e: EtatExtensions) => EtatExtensions): Promise<EtatExtensions> {
+    const { espaces } = await this.o.rpc.request<{ espaces: { profil: string; prive: boolean }[] }>("navigateur.espaces", {});
+    const prives = new Set(espaces.filter((e) => e.prive).map((e) => e.profil));
+    return modifierEtatExtensions(this.o.dossier, changer, () => prives);
   }
 
-  /** Enables or disables the installed add-on as the registry says (decision 4). */
-  private async appliquer(id: string, cle: string): Promise<void> {
+  private async actif(cle: string): Promise<boolean> {
     const e = await lireEtatExtensions(this.o.dossier);
-    await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: actifDans(e, e.extensions[cle]) });
+    return actifDans(e, e.extensions[cle]);
   }
 
-  private installer(id: string, xpi: string, version: string): Promise<{ version: string }> {
-    return this.o.rpc.request("extensions.installer", { addonId: addonIdDe(id), xpi, temporaire: !!this.env.WEBAIOS_TEST_AMO_URL, version });
+  /** As the registry says (decision 4): active → the kept signed .xpi installed if missing, then enabled; inactive → disabled, never installed fresh. */
+  private async appliquer(id: string, cle: string): Promise<void> {
+    const actif = await this.actif(cle);
+    const garde = await this.garde(id);
+    if (garde) await this.installer(id, join(this.o.dossier, "signes", `${id}.xpi`), garde.version, actif);
+    await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif });
+  }
+
+  /** The last signed and installed version (`signes/<id>.json`), if its .xpi is there. */
+  private async garde(id: string): Promise<{ version: string; empreinte: string } | null> {
+    const signes = join(this.o.dossier, "signes");
+    if (!(await lstat(join(signes, `${id}.xpi`)).then(() => true, () => false))) return null;
+    return readFile(join(signes, `${id}.json`), "utf8").then((t) => JSON.parse(t) as { version: string; empreinte: string }, () => null);
+  }
+
+  /** `actif` false: Firefox installs it only over a present add-on (disabled first), never fresh. */
+  private installer(id: string, xpi: string, version: string, actif: boolean): Promise<{ version: string } | null> {
+    return this.o.rpc.request("extensions.installer", { addonId: addonIdDe(id), xpi, temporaire: !!this.env.WEBAIOS_TEST_AMO_URL, version, actif });
   }
 
   private async envoi(id: string, cle: string, o: { accord: Portee; demarrage?: boolean }): Promise<ResultatEnvoi> {
@@ -190,15 +209,13 @@ export class ExtensionsAgent {
     }
 
     const signes = join(this.o.dossier, "signes");
-    const final = join(signes, `${id}.xpi`);
-    const garde = await readFile(join(signes, `${id}.json`), "utf8").then((t) => JSON.parse(t) as { version: string; empreinte: string }, () => null);
     let change = true;
-    if (o.demarrage && garde?.empreinte === empreinte && (await lstat(final).then(() => true, () => false))) {
+    // Unchanged: appliquer below reinstalls the kept .xpi if it is missing.
+    if (o.demarrage && (await this.garde(id))?.empreinte === empreinte) {
       await effacer();
-      await this.installer(id, final, garde.version);
       change = false;
     } else {
-      const r = await this.signerEtInstaller(id, p);
+      const r = await this.signerEtInstaller(id, p, await this.actif(cle));
       if (!r.ok) {
         await effacer();
         return r;
@@ -227,7 +244,7 @@ export class ExtensionsAgent {
   }
 
   /** prochaineVersion → manifesteFirefox → zipper → signer (signes/<id>.attente.xpi) → extensions.installer → signes/<id>.xpi. */
-  private async signerEtInstaller(id: string, p: { staging: string; fondOriginal: string | undefined }): Promise<{ ok: true; version: string } | { ok: false; erreur: string }> {
+  private async signerEtInstaller(id: string, p: { staging: string; fondOriginal: string | undefined }, actif: boolean): Promise<{ ok: true; version: string } | { ok: false; erreur: string }> {
     const cleAmo = await lireCleAmo(this.env);
     if (!cleAmo) return { ok: false, erreur: CLES_ABSENTES };
     const n = await prochaineVersion(this.o.dossier, id);
@@ -249,10 +266,10 @@ export class ExtensionsAgent {
       await rm(envoi, { force: true });
     }
     try {
-      await this.installer(id, attente, version);
+      await this.installer(id, attente, version, actif);
     } catch (e) {
       await rm(attente, { force: true });
-      return { ok: false, erreur: (e as Error).message };
+      return { ok: false, erreur: installationImpossible((e as Error).message) };
     }
     await rename(attente, join(signes, `${id}.xpi`));
     return { ok: true, version };

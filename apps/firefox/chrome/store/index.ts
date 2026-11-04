@@ -98,7 +98,7 @@ async function start(): Promise<WebAiOsStore> {
     // The agent follows the focused window at once, as Electron reads it live.
     onActivate: () => refreshMirror(),
   });
-  const agentExtensions = createAgentExtensions(store, windows);
+  const agentExtensions = createAgentExtensions(store, windows, () => agent);
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
@@ -107,6 +107,7 @@ async function start(): Promise<WebAiOsStore> {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.espaces) if (e.prive) notify("historique.rendrePrive", { espaceId: e.id });
+      agentExtensions.hostStarted();
     },
   });
   const history = createHistory(store, agent);
@@ -117,7 +118,6 @@ async function start(): Promise<WebAiOsStore> {
   agent.on("acces", (e: EtatAcces) => (access = e));
   agent.on(HOST_EXITED, () => (access = { agent: access.agent, onglets: {} }));
   agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));
-  agentExtensions.start(agent);
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
   return {
