@@ -152,6 +152,8 @@ export class ExtensionsAgent {
   /** Consoles unlocked for the agent, by key: in memory only (quitting ends them), as Electron. */
   private readonly deblocages = new Map<string, LienDeblocage>();
   /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
+  /** The last refused startup or reload of each key (Electron's erreursAgent), shown until one passes. */
+  private readonly erreursEnvoi = new Map<string, string>();
   private readonly cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: LienDeblocage; attentes: number }>();
 
   constructor(private readonly o: { dossier: string; dossierAgent: string; rpc: Rpc; env?: NodeJS.ProcessEnv }) {
@@ -191,7 +193,16 @@ export class ExtensionsAgent {
   preparerEtInstaller(id: string, o: { accord: Portee; demarrage?: boolean }): Promise<ResultatEnvoi> {
     const cle = this.cle(id);
     if (!cle) return Promise.resolve({ ok: false, erreur: `Identifiant d'extension invalide : ${id}` });
-    return this.enFile(cle, () => this.envoi(id, cle, o));
+    return this.enFile(cle, () => this.envoi(id, cle, o).then((r) => this.noterEnvoi(cle, r)));
+  }
+
+  /** Keeps a refused copy, signing or install as the key's error; a success or a disabling clears it. */
+  private noterEnvoi<T extends ResultatEnvoi>(cle: string, r: T): T {
+    const avant = this.erreursEnvoi.get(cle);
+    if (r.ok || r.erreur === DESACTIVEE_PORTEE) this.erreursEnvoi.delete(cle);
+    else this.erreursEnvoi.set(cle, r.erreur);
+    if (avant !== this.erreursEnvoi.get(cle)) this.o.rpc.notify("extensions.change");
+    return r;
   }
 
   /** The agent's extension tools (Electron's outilsAgent, service.ts). */
@@ -340,16 +351,25 @@ export class ExtensionsAgent {
     const [nav, etat, amo] = await Promise.all([
       this.navigateur(),
       lireEtatExtensions(this.o.dossier),
-      this.o.rpc.request<{ id: string; nom: string; version: string; actif: boolean }[]>("extensions.amo", {}),
+      // An extra source: the agent keeps its own rows if Firefox cannot list its add-ons.
+      this.o.rpc.request<{ id: string; nom: string; version: string; actif: boolean }[]>("extensions.amo", {}).catch((e: unknown) => {
+        console.error("[extensions] modules d'AMO non listés :", e);
+        return [];
+      }),
     ]);
     const prives = nav.espaces.filter((e) => e.prive).length;
     const ouverts = nav.espaces.filter((e) => !e.prive).map((e) => e.nom);
     const modules = amo
       .map((a): ExtensionPourAgent => ({ cle: `store:${a.id}`, source: "store", nom: a.nom, version: a.version, espaces: a.actif ? ouverts : [], espacesPrives: a.actif ? prives : 0, erreurs: [] }))
       .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
+    const profilsPrives = profilsPrivesDe(nav);
     const agent = Object.entries(etat.extensions)
       .map(([cle, x]): ExtensionPourAgent => {
         const espaces = nav.espaces.filter((e) => x.profils.includes(e.profil));
+        const id = this.id(cle);
+        // As Electron's listePourAgent: its kept error, its disabling, then its console's errors as console_extension filters them.
+        const erreurs = [...(this.erreursEnvoi.has(cle) ? [this.erreursEnvoi.get(cle)!] : []), ...(x.desactivee ? [x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE] : [])];
+        if (id && !x.profils.some((p) => profilsPrives.has(p))) erreurs.push(...this.consoles.erreursPourAgent(addonIdDe(id), this.filtreAgent(etat, cle)).slice(-ERREURS_CONSOLE_PAGE));
         return {
           cle,
           source: x.source,
@@ -357,7 +377,7 @@ export class ExtensionsAgent {
           version: x.version,
           espaces: espaces.filter((e) => !e.prive).map((e) => e.nom),
           espacesPrives: espaces.filter((e) => e.prive).length,
-          erreurs: x.desactivee ? [x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE] : [],
+          erreurs,
         };
       })
       .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
@@ -385,7 +405,7 @@ export class ExtensionsAgent {
         sites: [...portee.hotes],
         tousLesSites: portee.tousLesSites,
         espaces: nav.espaces.filter((e) => x.profils.includes(e.profil) && !prives.has(e.profil)).map((e) => ({ nom: e.nom, profil: e.profil })),
-        erreurs: this.consoles.erreurs(addonIdDe(id)).slice(-ERREURS_CONSOLE_PAGE),
+        erreurs: [...(this.erreursEnvoi.has(cle) ? [this.erreursEnvoi.get(cle)!] : []), ...this.consoles.erreurs(addonIdDe(id)).slice(-ERREURS_CONSOLE_PAGE)],
         modifieeLe: x.modifieeLe,
         desactivee,
         majEnAttente: null,
@@ -547,6 +567,7 @@ export class ExtensionsAgent {
       return { ok: false, erreur: refus };
     }
     const e = await this.envoi(id, cle, { accord: p.analyse.portee, activer: { espaceId: espace.id, profil, connue: !!connue } }, p);
+    if (e.ok) this.noterEnvoi(cle, e);
     return e.ok ? { ok: true } : { ok: false, erreur: e.erreur };
   }
 
@@ -573,7 +594,7 @@ export class ExtensionsAgent {
     return this.enFile(cle, async () => {
       const accord = (await lireEtatExtensions(this.o.dossier)).extensions[cle]?.accord;
       if (!accord) return { etat: "refusee" as const, detail: [SANS_ACCORD] };
-      const r = await this.envoi(id, cle, { accord });
+      const r = this.noterEnvoi(cle, await this.envoi(id, cle, { accord }));
       if (r.ok) return { etat: "rechargee" as const, detail: [] };
       if (r.erreur === DESACTIVEE_PORTEE) return { etat: "desactivee" as const, detail: [DESACTIVEE_PORTEE] };
       return { etat: "refusee" as const, detail: r.refus ?? [r.erreur] };
@@ -599,6 +620,7 @@ export class ExtensionsAgent {
       await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) });
       await this.modifier((e) => (cle in e.extensions ? retirer(e, cle) : e));
       this.consoles.oublier(addonIdDe(id));
+      this.erreursEnvoi.delete(cle);
       for (const f of [join("copies", id), join("copies", `${id}.attente`), join("signes", `${id}.xpi`), join("signes", `${id}.json`)])
         await rm(join(this.o.dossier, f), { recursive: true, force: true });
     });

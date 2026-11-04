@@ -9,7 +9,7 @@ import { CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
-import { installationImpossible } from "../noyau/extensions/agent";
+import { installationImpossible, RIEN_A_REVOIR } from "../noyau/extensions/agent";
 import { CLES_ABSENTES, signatureRefusee } from "../noyau/extensions/amo";
 import type { CarteExtension, ReponseAccord } from "../../navigateur/src/commun/extensions";
 import { startFakeAmo } from "./fake-amo";
@@ -730,6 +730,55 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.cartes).toHaveLength(2);
     expect(entree(h.dataDir)).toMatchObject({ accord: { hotes: [HOTE, "https://exemple.com/*"] }, desactivee: null });
     expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
+  });
+
+  it("lister_extensions gives an agent extension's console errors, filtered as console_extension; an AMO listing failure keeps the agent rows", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    f.handlers["extensions.amo"] = () => {
+      throw new Error("AddonManager absent");
+    };
+    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...ACCORD, hotes: [], scripts: false }) });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    const m = (texte: string) => ({ horodatage: Date.now(), niveau: "error", texte });
+    h.rpc.notify("extensions.console", { addonId: ID, m: m("fond cassé"), onglet: null });
+    // From a tab the agent cannot read: never in its list.
+    h.rpc.notify("extensions.console", { addonId: ID, m: m("contenu cassé"), onglet: { ongletId: "t2", url: tabs[1]!.url } });
+    const t = await outil(h, "lister_extensions");
+    expect(t).toContain("agent:ma-ext · Cacheur · 1.0.0 · agent · actives dans : Perso · erreurs : fond cassé");
+    expect(t).not.toContain("contenu cassé");
+  });
+
+  it("a refused reload is kept as the extension's error (lister_extensions and the page) until a reload passes", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare: source });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    const chemin = join(h.dataDir, "espace", "extensions", "ma-ext", "manifest.json");
+    const avant = readFileSync(chemin, "utf8");
+    writeFileSync(chemin, JSON.stringify({ ...JSON.parse(avant), permissions: ["nativeMessaging"] }));
+    expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toContain("etat : refusee");
+    expect(await outil(h, "lister_extensions")).toContain("erreurs : Droit refusé : nativeMessaging");
+    const page = await h.rpc.request<{ erreurs: string[] }[]>("extensions.liste");
+    expect(page[0]!.erreurs.join()).toContain("Droit refusé : nativeMessaging");
+    writeFileSync(chemin, avant);
+    expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toBe("etat : rechargee");
+    expect(await outil(h, "lister_extensions")).toContain("erreurs : aucune");
+  });
+
+  it("revoir: nothing to review within the grant; disabled for a broadened scope, the card comes back in the window's space", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare: source });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    expect(await h.rpc.request("extensions.revoir", { cle: "agent:ma-ext", fenetre: "f1" })).toEqual({ ok: false, erreur: RIEN_A_REVOIR });
+    source(h.dataDir, { hotes: [HOTE, "https://exemple.com/*"] });
+    expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toContain("etat : desactivee");
+    expect(await h.rpc.request("extensions.revoir", { cle: "agent:ma-ext", fenetre: "f1" })).toEqual({ ok: true });
+    expect(f.cartes).toHaveLength(2);
+    expect(f.cartes[1]).toMatchObject({ espaceId: "e1", sites: [HOTE, "https://exemple.com/*"] });
+    expect(entree(h.dataDir)).toMatchObject({ accord: { hotes: [HOTE, "https://exemple.com/*"] }, desactivee: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
   });
 
