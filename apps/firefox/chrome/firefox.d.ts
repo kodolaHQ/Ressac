@@ -19,13 +19,18 @@ declare const ChromeUtils: {
   importESModule(url: string): any;
   registerWindowActor(name: string, options: object): void;
   registerProcessActor(name: string, options: object): void;
-  getAllDOMProcesses(): { remoteType: string | null; getActor(name: string): { sendAsyncMessage(name: string, data?: unknown): void } }[];
+  getAllDOMProcesses(): {
+    remoteType: string | null;
+    osPid: number;
+    canSend: boolean;
+    getActor(name: string): { sendAsyncMessage(name: string, data?: unknown): void; sendQuery(name: string, data?: unknown): Promise<unknown> };
+  }[];
   getXPCOMErrorName(status: number): string;
   generateQI(interfaces: string[]): unknown;
 };
 declare const WebExtensionPolicy: {
   getByID(id: string): { mozExtensionHostname: string } | null;
-  getByHostname(hostname: string): { id: string } | null;
+  getByHostname(hostname: string): { id: string; extension?: any } | null;
   getActiveExtensions(): { extension?: any }[];
 };
 declare const WindowGlobalParent: { getByInnerWindowId(id: number): any };

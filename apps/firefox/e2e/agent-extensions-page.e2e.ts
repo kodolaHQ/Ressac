@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { DESACTIVEE_PLANTAGES } from "../../navigateur/src/commun/extensions-messages";
 import { button, cleanupXpis, installAddon } from "./addons";
 import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
 import { state, waitFor } from "./firefox";
@@ -34,6 +35,16 @@ const MEMOIRE = {
   if (!l.k) chrome.storage.local.set({ k: "gardé" });
 });
 `,
+};
+/** Its background throws as it loads: a failed start, counted as a crash. */
+const CASSEE = {
+  "manifest.json": { manifest_version: 3, name: "Fond cassé", version: "1.0.0", background: { service_worker: "fond.js" } },
+  "fond.js": 'throw new Error("fond-casse-au-chargement");\n',
+};
+/** Its background hangs the extension process soon after it starts. */
+const BOUCLE = {
+  "manifest.json": { manifest_version: 3, name: "Fond qui boucle", version: "1.0.0", background: { service_worker: "fond.js" } },
+  "fond.js": "setTimeout(() => { while (true) {} }, 500);\n",
 };
 const PAGE = '[data-testid="page-extensions"]';
 const LIGNE = '[data-testid="extension-page"]';
@@ -73,7 +84,7 @@ type Launched = Awaited<ReturnType<typeof launch>>;
 
 const registry = (dataDir: string) => {
   const f = path.join(dataDir, "extensions", "etat.json");
-  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { toutesCoupees: boolean; extensions: Record<string, { profils: string[] }> }) : { toutesCoupees: false, extensions: {} };
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { toutesCoupees: boolean; extensions: Record<string, { profils: string[]; desactivee?: unknown }> }) : { toutesCoupees: false, extensions: {} };
 };
 const waitActive = (m: Marionette, id: string, active: boolean) =>
   waitFor(m, `return (async () => {
@@ -261,5 +272,60 @@ describe("lister_extensions", () => {
     // Never on the page, which lists the agent's extensions only.
     await openPage(m);
     await waitUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent.includes("Aucune extension.")`);
+  });
+});
+
+describe("crashes", () => {
+  /** Waits until the page's row for `nom` says it was disabled for its crashes, then « Réactiver » brings it back. */
+  async function disabledThenReactivated(w: Launched, id: string, nom: string): Promise<void> {
+    const m = w.marionette;
+    await waitActive(m, `${id}@agent.webaios`, false);
+    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
+    expect((await w.call("lister_extensions")).texte).toContain(DESACTIVEE_PLANTAGES);
+    await openPage(m);
+    await waitRow(m, nom, true);
+    expect(await row(m, nom)).toContain(DESACTIVEE_PLANTAGES);
+    await rowButton(m, nom, "Réactiver");
+    await waitActive(m, `${id}@agent.webaios`, true);
+    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: null });
+    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LIGNE, DESACTIVEE_PLANTAGES]);
+  }
+
+  it("a background that throws at load three times is disabled", { timeout: 120_000 }, async () => {
+    const w = await launch({ agent: true });
+    ecrireExtensionAgent(w.racine, "cassee", CASSEE);
+    // Each load's error, seen in its console before the next load: one crash each.
+    const loads = async (n: number) => {
+      for (const deadline = Date.now() + 20_000; ; await new Promise((r) => setTimeout(r, 200))) {
+        const texte = (await w.call("console_extension", { id: "cassee" })).texte;
+        if (texte.split("fond-casse-au-chargement").length - 1 >= n) return;
+        if (Date.now() > deadline) throw new Error(`fewer than ${n} load errors: ${texte}`);
+      }
+    };
+    expect(await activerParLAgent(w, "cassee", "Fond cassé")).toMatch(/^Activée/);
+    await loads(1);
+    expect((await w.call("recharger_extension", { id: "cassee" })).texte).toBe("etat : rechargee");
+    await loads(2);
+    expect(registry(w.dataDir).extensions["agent:cassee"]?.desactivee).toBeNull();
+    expect((await w.call("recharger_extension", { id: "cassee" })).texte).toBe("etat : rechargee");
+    await disabledThenReactivated(w, "cassee", "Fond cassé");
+  });
+
+  it("a background that hangs the extension process: killed, and the third time disabled", { timeout: 150_000 }, async () => {
+    const w = await launch({ agent: true });
+    const m = w.marionette;
+    ecrireExtensionAgent(w.racine, "boucle", BOUCLE);
+    const extensionProcess = () => m.execute<number | null>(`return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`);
+    /** The hung extension process is killed by the watchdog, and a new one replaces it. */
+    const killed = async () => {
+      const before = await extensionProcess();
+      await waitFor(m, `return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`, (v) => v !== null && v !== before, 30_000);
+    };
+    expect(await activerParLAgent(w, "boucle", "Fond qui boucle")).toMatch(/^Activée/);
+    await killed();
+    expect((await w.call("recharger_extension", { id: "boucle" })).texte).toBe("etat : rechargee");
+    await killed();
+    expect((await w.call("recharger_extension", { id: "boucle" })).texte).toBe("etat : rechargee");
+    await disabledThenReactivated(w, "boucle", "Fond qui boucle");
   });
 });

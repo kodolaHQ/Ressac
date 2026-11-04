@@ -221,6 +221,7 @@ const rpc = createRpc({
       const lisible = !!o && typeof o.ongletId === "string" && typeof o.url === "string" && noyau?.politique.peutLire({ id: o.ongletId, url: o.url, titre: "", espace: "" }) === true;
       extensions.noterConsole(p?.addonId, p?.m, o ? { lisible } : null);
     },
+    "extensions.plantage": (p: { addonId?: unknown }) => extensions.plantage(p?.addonId),
     "extensions.profilsPrives": (p: { prives?: unknown }) =>
       extensions.profilsPrives(Array.isArray(p?.prives) ? p.prives.filter((x): x is string => typeof x === "string") : []),
     "extensions.pourEspace": (p: { espaceId?: unknown }) => (typeof p?.espaceId === "string" ? extensions.pourEspace(p.espaceId) : []),

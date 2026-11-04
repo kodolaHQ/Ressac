@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import { CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets } from "../../../packages/noyau/src/index";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
+import { DESACTIVEE_PLANTAGES } from "../../navigateur/src/commun/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
 import { installationImpossible, RIEN_A_REVOIR } from "../noyau/extensions/agent";
@@ -830,5 +831,27 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(amo.envois).toEqual([]);
     expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entree(h.dataDir)).toBeFalsy();
     expect(existsSync(join(h.dataDir, "extensions", "copies", "ma-ext.attente"))).toBe(false);
+  });
+  it("three crashes in a minute disable it everywhere; Réactiver brings it back", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = launch(amo, f, { prepare: source });
+    expect(await outil(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
+    // Not an agent extension, or not one of its keys: never counted.
+    for (const addonId of ["autre@exemple.org", "../x@agent.webaios", 3]) h.rpc.notify("extensions.plantage", { addonId });
+    for (let i = 0; i < 2; i++) h.rpc.notify("extensions.plantage", { addonId: ID });
+    expect(await outil(h, "lister_extensions")).toContain("erreurs : aucune");
+    h.rpc.notify("extensions.plantage", { addonId: ID });
+    await until(() => f.activations.at(-1)?.actif === false);
+    expect(entree(h.dataDir)).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
+    expect(await outil(h, "lister_extensions")).toContain(`erreurs : ${DESACTIVEE_PLANTAGES}`);
+    expect((await h.rpc.request<{ desactivee: string | null }[]>("extensions.liste"))[0]!.desactivee).toBe(DESACTIVEE_PLANTAGES);
+    expect(await h.rpc.request("extensions.reactiver", { cle: "agent:ma-ext" })).toEqual({ ok: true });
+    expect(entree(h.dataDir)).toMatchObject({ desactivee: null });
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
+    expect(await outil(h, "lister_extensions")).toContain("erreurs : aucune");
+    // The count starts again: two more crashes do not disable it.
+    for (let i = 0; i < 2; i++) h.rpc.notify("extensions.plantage", { addonId: ID });
+    expect(await outil(h, "lister_extensions")).toContain("erreurs : aucune");
   });
 });

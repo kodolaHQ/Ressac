@@ -147,8 +147,10 @@ export class ExtensionsAgent {
   private readonly cartes = new Map<string, AbortController>();
   private readonly arret = new AbortController();
   private readonly env: NodeJS.ProcessEnv;
-  /** The agent's extensions' consoles, by add-on id, in memory (crash counting comes with the crash signals). */
-  private readonly consoles = new ConsolesExtensions({ surPlantages: () => {} });
+  /** The agent's extensions' consoles and crash counts, by add-on id, in memory. */
+  private readonly consoles = new ConsolesExtensions({
+    surPlantages: (addonId) => void this.desactiverPlantages(addonId).catch((e: unknown) => console.error(`[extensions] ${addonId} non désactivée après ses plantages :`, e)),
+  });
   /** Consoles unlocked for the agent, by key: in memory only (quitting ends them), as Electron. */
   private readonly deblocages = new Map<string, LienDeblocage>();
   /** The last refused startup or reload of each key (Electron's erreursAgent), shown until one passes. */
@@ -228,6 +230,23 @@ export class ExtensionsAgent {
     if (!x || typeof x.horodatage !== "number" || typeof x.texte !== "string" || !NIVEAUX.includes(x.niveau as string)) return;
     const o = onglet as { lisible?: unknown } | null;
     this.consoles.noter(addonId, { horodatage: x.horodatage, niveau: x.niveau!, texte: x.texte }, o ? { lisible: o.lisible === true } : undefined);
+  }
+
+  /** A crash the chrome saw (`extensions.plantage`, spike S7): the `PLANTAGES_MAX`-th in `FENETRE_PLANTAGES_MS` disables it everywhere. */
+  plantage(addonId: unknown): void {
+    if (typeof addonId !== "string" || !addonId.endsWith(SUFFIXE_ID) || !this.cle(addonId.slice(0, -SUFFIXE_ID.length))) return;
+    this.consoles.plantage(addonId, Date.now());
+  }
+
+  /** As Electron's desactiverPlantages: disabled everywhere (`DESACTIVEE_PLANTAGES`), shown on the page with « Réactiver ». */
+  private async desactiverPlantages(addonId: string): Promise<void> {
+    const cle = this.cle(addonId.slice(0, -SUFFIXE_ID.length))!;
+    const r = await this.ecrireCle(cle, (e) => {
+      const x = e.extensions[cle]!;
+      return x.desactivee ? e : { ...e, extensions: { ...e.extensions, [cle]: { ...x, desactivee: { raison: "plantages" as const, le: new Date().toISOString() } } } };
+    });
+    if (!r.ok) throw new Error(r.erreur);
+    console.warn(`[extensions] ${cle} désactivée : ${DESACTIVEE_PLANTAGES}`);
   }
 
   /** `console_extension` (Electron's consolePourAgent): filtered (unlocked: whole); null if not in the registry. */
