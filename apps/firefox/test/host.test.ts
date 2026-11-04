@@ -220,3 +220,44 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.exited).toBe(0);
   });
 });
+
+describe("history", { timeout: 30_000 }, () => {
+  const visit = (h: Host, url: string, titre: string, o: { prive?: boolean; espaceId?: string } = {}) =>
+    h.rpc.notify("historique.noter", { url, titre, espaceId: o.espaceId ?? "e1", prive: o.prive ?? false });
+
+  // A notification runs a microtask after its line, a request at once: a round trip lets the notifications before it land.
+  const settle = (h: Host) => h.rpc.request("acces.etat");
+
+  it("noted visits are searched, cleared and survive the agent's noyau", async () => {
+    // No docker, no demarrer: the history must not need the agent's noyau.
+    const h = startHost();
+    visit(h, "https://a.test/", "Page A");
+    h.rpc.notify("historique.titre", { url: "https://a.test/", espaceId: "e1", titre: "Page A bis" });
+    await settle(h);
+    expect(await h.rpc.request("historique.rechercher", { texte: "page a" })).toEqual([
+      expect.objectContaining({ titre: "Page A bis", visites: 1, prive: false }),
+    ]);
+    await h.rpc.request("historique.effacer", {});
+    expect(await h.rpc.request("historique.recents", {})).toEqual([]);
+  });
+
+  it("chercher_historique finds a non-private visit, never a private one", async () => {
+    const h = startHost();
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    visit(h, "https://a.test/", "Alpha");
+    visit(h, "https://b.test/", "Alpha privé", { prive: true });
+    await settle(h);
+    const r = await appelerOutil(h.racine, "chercher_historique", { requete: "alpha" });
+    expect(r.texte).toContain("a.test");
+    expect(r.texte).not.toContain("b.test");
+    expect((await appelerOutil(h.racine, "lire_historique", { url: "https://a.test/" })).texte).toBe("Rien de retenu pour cette page.");
+  });
+
+  it("a space turned private marks its visits", async () => {
+    const h = startHost();
+    visit(h, "https://a.test/", "Page A");
+    h.rpc.notify("historique.rendrePrive", { espaceId: "e1" });
+    await settle(h);
+    expect(await h.rpc.request("historique.recents", {})).toEqual([expect.objectContaining({ espaceId: "e1", prive: true })]);
+  });
+});

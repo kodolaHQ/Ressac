@@ -6,6 +6,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import { createHistory, type History } from "./history";
 import { containerFor, migrateContainers, removeContainer } from "./containers";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
@@ -22,6 +23,8 @@ export interface WebAiOsStore extends Store {
   containerFor(profile: IdProfil): number;
   /** The Node host running the noyau, started with the store. */
   readonly agent: AgentHost;
+  /** The noted visits, kept by the noyau host. */
+  readonly history: History;
   /** The agent's « lire l'onglet » cards waiting for an answer. */
   readonly questions: Questions;
   /** The WebAiOs windows open: each full browser window claims a window of the state. */
@@ -39,6 +42,9 @@ const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
 async function start(): Promise<WebAiOsStore> {
+  // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
+  // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
+  Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
@@ -92,6 +98,7 @@ async function start(): Promise<WebAiOsStore> {
     handlers: bridgeHandlers(store, questions, windows),
     onStart: (notify) => sendMirror(store, windows, notify),
   });
+  const history = createHistory(store, agent);
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   let access: EtatAcces = { agent: "L'agent", onglets: {} };
@@ -111,6 +118,7 @@ async function start(): Promise<WebAiOsStore> {
     flush,
     containerFor,
     agent,
+    history,
     questions,
     windows,
     get access() {

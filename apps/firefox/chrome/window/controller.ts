@@ -10,6 +10,7 @@ import { setupAnchors } from "./anchor";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
+import { trackVisits } from "./visits";
 
 export interface WindowController {
   readonly fenetreId: IdFenetre;
@@ -63,6 +64,7 @@ export function createController(
   fenetreId: IdFenetre,
 ): WindowController {
   const tabs = new TabSync(gBrowser, store, fenetreId);
+  trackVisits(gBrowser, store.history);
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
   routeAddonsManager(window, store, fenetreId, tabs);

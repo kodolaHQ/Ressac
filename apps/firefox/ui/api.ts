@@ -15,9 +15,8 @@ const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 /**
- * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (history,
- * downloads, extensions, actions) answers empty; any other member is recorded in
- * `window.webaiosMissingApi` and is undefined.
+ * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (downloads, extensions, actions) answers empty; any other member
+ * is recorded in `window.webaiosMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiWebaios {
   const missing = (window.webaiosMissingApi ??= new Set());
@@ -73,7 +72,13 @@ export function createApi(win: WindowController): ApiWebaios {
     commande: (id, c) => void (typeof c === "string" && c !== "finRecherche" && c !== "outils" && win.command(id, c)),
     rendreFocusPage: () => win.focusPage(),
     apercuPage: async () => null,
-    historique: { rechercher: none, recents: none, effacer: async () => {}, oublierTexte: async () => {} },
+    // The visits live in the noyau host: the UI gets copies made in this realm.
+    historique: {
+      rechercher: (texte, limite, distinctes) => win.store.history.search(texte, limite, distinctes).then((v) => structuredClone(v)),
+      recents: () => win.store.history.recent().then((v) => structuredClone(v)),
+      effacer: (depuis) => win.store.history.clear(depuis),
+      oublierTexte: (url, espaceId) => win.store.history.forgetText(url, espaceId),
+    },
     telechargements: { liste: none, ouvrir() {}, montrer() {}, annuler() {} },
     surTelechargements: off,
     // The agent's cards and access badges live in the store's realm: the UI gets copies made in this realm.

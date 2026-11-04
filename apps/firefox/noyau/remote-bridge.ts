@@ -1,4 +1,5 @@
-import { OngletIntrouvable, OngletPrive, ProfilRefuse, type OngletInfo, type OptionsLecturePage, type PageLue, type PontNavigateur } from "../../../packages/noyau/src/index.ts";
+import { OngletIntrouvable, OngletPrive, ProfilRefuse, type HistoriqueNavigateur, type OngletInfo, type OptionsLecturePage, type PageLue, type PontNavigateur } from "../../../packages/noyau/src/index.ts";
+import type { Historique } from "../../navigateur/src/main/historique.ts";
 import type { Rpc } from "../shared/rpc.ts";
 
 /** The noyau's browser bridge, answered by Firefox over JSON-RPC. Only the private-tab mirror lives here. */
@@ -6,7 +7,26 @@ export class RemoteBridge implements PontNavigateur {
   private prives = new Set<string>();
   private actifPrive = false;
 
-  constructor(private readonly rpc: Rpc) {}
+  /** The agent's history tools; absent, it has none. Same mapping as Electron's PontElectron. */
+  readonly historique?: HistoriqueNavigateur;
+
+  constructor(
+    private readonly rpc: Rpc,
+    h?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">,
+  ) {
+    if (h)
+      this.historique = {
+        // The noyau checked the ISO dates and bounded the limit.
+        chercher: async ({ requete, depuis, jusqua, limite }) =>
+          h.rechercherPourAgent({
+            requete,
+            limite,
+            ...(depuis !== undefined ? { depuis: new Date(depuis) } : {}),
+            ...(jusqua !== undefined ? { jusqua: new Date(jusqua) } : {}),
+          }),
+        lire: async (url) => h.texteRetenu(url),
+      };
+  }
 
   setPrivate(m: { prives: string[]; actifPrive: boolean }): void {
     this.prives = new Set(m.prives);

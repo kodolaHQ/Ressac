@@ -19,6 +19,7 @@ const { createInterface } = await import("node:readline");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
 const { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
+const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 
@@ -28,6 +29,11 @@ if (!dataDir) {
   process.exit(2);
 }
 const racine = join(dataDir, "espace");
+// Outside the agent's noyau: the history works even when the noyau does not start.
+const historique = new Historique(join(dataDir, "historique.sqlite"));
+historique.purger();
+const purge = setInterval(() => historique.purger(), 6 * 60 * 60 * 1000);
+purge.unref();
 const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
 
 let noyau: Noyau | null = null;
@@ -101,6 +107,8 @@ const arreter = () =>
   (stopping ??= (async () => {
     await sessions.toutArreter();
     await arreterNoyau(await pret);
+    clearInterval(purge);
+    historique.fermer();
   })());
 
 const sessions = new SessionsAgent({
@@ -139,6 +147,13 @@ const rpc = createRpc({
       }
     },
     "acces.etat": etatAcces,
+    "historique.noter": (p: Parameters<typeof historique.noter>[0]) => historique.noter(p),
+    "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique.majTitre(p.url, p.espaceId, p.titre),
+    "historique.rendrePrive": (p: { espaceId: string }) => historique.rendrePrive(p.espaceId),
+    "historique.rechercher": (p: { texte: string; limite?: number; distinctes?: boolean }) => historique.rechercher(p.texte, p.limite, p.distinctes),
+    "historique.recents": () => historique.recents(),
+    "historique.effacer": (p: { depuis?: string }) => historique.effacer(p.depuis ? new Date(p.depuis) : undefined),
+    "historique.oublierTexte": (p: { url: string; espaceId: string }) => historique.oublierTexte(p.url, p.espaceId),
     arreter: async () => {
       try {
         await arreter();
@@ -163,7 +178,7 @@ const rpc = createRpc({
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
-const bridge = new RemoteBridge(rpc);
+const bridge = new RemoteBridge(rpc, historique);
 
 createInterface({ input: process.stdin, crlfDelay: Infinity })
   .on("line", (l) => rpc.receive(l))

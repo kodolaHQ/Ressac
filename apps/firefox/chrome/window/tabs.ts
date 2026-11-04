@@ -3,8 +3,8 @@ import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../../navig
 import { aUneVue, profilDOnglet } from "../../../navigateur/src/commun/modele";
 import type { WebAiOsStore } from "../store";
 
-const ID = "webaios-tab-id";
-const PARKING = "webaios-parking";
+export const TAB_ID = "webaios-tab-id";
+export const PARKING = "webaios-parking";
 const { STATE_START, STATE_STOP, STATE_IS_NETWORK, LOCATION_CHANGE_ERROR_PAGE } = Ci.nsIWebProgressListener;
 /** The errors refused before any request, by their about:neterror code (nsDocShell::DisplayLoadError); others keep the code. */
 const REFUSED: Record<string, string> = {
@@ -98,7 +98,7 @@ export class TabSync {
       "oop-browser-crashed",
       (e: any) => {
         const tab = e.isTrusted && e.isTopFrame && gBrowser.getTabForBrowser(e.originalTarget);
-        const id = tab?.getAttribute(ID);
+        const id = tab?.getAttribute(TAB_ID);
         if (!id || this.tabs.get(id) !== tab) return;
         e.stopPropagation();
         this.update(tab, { plante: true, chargement: false });
@@ -155,7 +155,7 @@ export class TabSync {
 
   /** The WebAiOs tab displayed in the window, or null when the parking tab is. */
   displayed(): IdOnglet | null {
-    return this.gBrowser.selectedTab.getAttribute(ID);
+    return this.gBrowser.selectedTab.getAttribute(TAB_ID);
   }
 
   sync(state: EtatNavigateur): void {
@@ -194,7 +194,7 @@ export class TabSync {
         ? Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(o.url), { userContextId })
         : Services.scriptSecurityManager.getSystemPrincipal();
       const tab = this.gBrowser.addTab(o.url, { triggeringPrincipal, userContextId, skipAnimation: true });
-      tab.setAttribute(ID, o.id);
+      tab.setAttribute(TAB_ID, o.id);
       this.tabs.set(o.id, tab);
     } finally {
       this.creating = false;
@@ -221,7 +221,7 @@ export class TabSync {
     // Closing the selected tab, Firefox first selects a neighbour (#blurTab), maybe another space's, then sends TabClose:
     // by the microtask, onClose's fermerOnglet has synced the selection back.
     queueMicrotask(() => {
-      const id = tab.getAttribute(ID);
+      const id = tab.getAttribute(TAB_ID);
       if (!tab.selected || !id || this.tabs.get(id) !== tab) return;
       const state = this.store.state;
       const f = state.fenetres.find((x) => x.id === this.fenetreId);
@@ -235,25 +235,25 @@ export class TabSync {
   }
 
   private update(tab: any, champs: Champs): void {
-    const id = tab?.getAttribute(ID);
+    const id = tab?.getAttribute(TAB_ID);
     if (id && this.tabs.get(id) === tab) this.store.dispatch({ type: "majOnglet", id, champs });
   }
 
   private onOpen(tab: any): void {
-    if (this.creating || tab.hasAttribute(ID)) return;
+    if (this.creating || tab.hasAttribute(TAB_ID)) return;
     // Firefox replaces a closing last tab: the replacement parks the window instead.
     if (this.parking.closing) {
       this.park(tab);
       return;
     }
-    const opener = this.fromPopup ?? tab.openerTab?.getAttribute(ID);
+    const opener = this.fromPopup ?? tab.openerTab?.getAttribute(TAB_ID);
     // Only pages and add-ons open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
     if (!opener && !this.fromAddon) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
     // A page's tab opens next to its source; an add-on's in the window's active space.
     const f = this.store.state.fenetres.find((x) => x.id === this.fenetreId);
     const apres = opener ?? f?.actif[f.espaceActif];
     const id: IdOnglet = crypto.randomUUID();
-    tab.setAttribute(ID, id);
+    tab.setAttribute(TAB_ID, id);
     this.tabs.set(id, tab);
     // Firefox selects a foreground tab right after TabOpen, in the same task: read it once that is done.
     queueMicrotask(() => {
@@ -278,7 +278,7 @@ export class TabSync {
       });
       return;
     }
-    const id = tab.getAttribute(ID);
+    const id = tab.getAttribute(TAB_ID);
     // A tab we did not remove ourselves: the page closed itself (window.close()).
     if (id && this.tabs.get(id) === tab) {
       this.tabs.delete(id);
