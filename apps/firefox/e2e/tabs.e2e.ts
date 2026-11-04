@@ -444,7 +444,7 @@ describe("leaving a page with unsaved changes", () => {
     });
   }
 
-  it("closing a background tab with an unsaved form brings it to the front to ask", async () => {
+  it("closing a background tab with an unsaved form brings it to the front to ask; Rester puts the previous tab back", async () => {
     await m.command("WebDriver:DeleteSession");
     await m.command("WebDriver:NewSession", { unhandledPromptBehavior: "ignore" });
     await m.setContext("chrome");
@@ -455,6 +455,10 @@ describe("leaving a page with unsaved changes", () => {
     );
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
+    // Every active tab of the state, from here on: no chrome script runs while the prompt is open.
+    await m.execute(`const c = window.webaiosWindow;
+      window.actives = [];
+      c.store.subscribe((s) => { const f = s.fenetres.find((x) => x.id === c.fenetreId); window.actives.push(f.actif[f.espaceActif]); });`);
     // The sidebar's close button on the form's row.
     await m.execute("window.webaiosWindow.closeTab(arguments[0])", [id]);
     const deadline = Date.now() + 5_000;
@@ -462,9 +466,12 @@ describe("leaving a page with unsaved changes", () => {
     while (!(text = await onAlert<string>(handle, "WebDriver:GetAlertText")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
     expect(text).toContain("Les modifications que vous avez faites");
     await onAlert(handle, "WebDriver:DismissAlert");
-    const f = await win();
-    expect(f.actif[f.espaceActif]).toBe(id);
-    expect(await selected()).toEqual({ id, parking: false });
+    // Asked in front, its own tab active in the state, then the previous one again.
+    expect(await m.execute<string[]>("return [...new Set(window.actives)]")).toEqual([id, b]);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === b);
+    const after = await win();
+    expect(after.actif[after.espaceActif]).toBe(b);
+    expect((await state(m)).onglets[id]).toBeDefined();
   });
 
   it("a page frozen in beforeunload is closed after 5 s", async () => {

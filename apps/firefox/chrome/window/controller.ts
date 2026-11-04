@@ -261,13 +261,18 @@ export function createController(
       try {
         // "dontUnload" only runs the page's beforeunload; false: it wants to ask. A failure (crash meanwhile) lets it go.
         const answer = browser.asyncPermitUnload("dontUnload").then((r: { permitUnload: boolean }) => r.permitUnload, () => true);
-        const permit = await Promise.race([answer, new Promise<boolean>((r) => setTimeout(() => r(true), 5000))]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const permit = await Promise.race([answer, new Promise<boolean>((r) => (timer = setTimeout(() => r(true), 5000)))]);
+        clearTimeout(timer);
         if (permit) return close();
         // Firefox selects the tab its question opens on: the state follows, or the sidebar would show another tab as active.
-        if (tabs.displayed() !== ongletId) store.dispatch({ type: "activerOnglet", id: ongletId });
+        const f = store.state.fenetres.find((x) => x.id === fenetreId);
+        const before = f?.actif[f.espaceActif];
+        if (before !== ongletId) store.dispatch({ type: "activerOnglet", id: ongletId });
         const { prompt } = Services;
         const flags =
           prompt.BUTTON_POS_0 * prompt.BUTTON_TITLE_IS_STRING + prompt.BUTTON_POS_1 * prompt.BUTTON_TITLE_IS_STRING + prompt.BUTTON_POS_1_DEFAULT;
+        // Rejected when the tab navigates or the window closes meanwhile: as Rester.
         const result = await prompt.asyncConfirmEx(
           browser.browsingContext,
           prompt.MODAL_TYPE_TAB,
@@ -279,8 +284,10 @@ export function createController(
           null,
           null,
           {},
-        );
-        if (result.getProperty("buttonNumClicked") === 0) close();
+        ).catch(() => null);
+        if (result?.getProperty("buttonNumClicked") === 0) close();
+        // Rester changes nothing, as Electron's window-modal dialog: the tab shown before comes back.
+        else if (before && before !== ongletId && store.state.onglets[before]) store.dispatch({ type: "activerOnglet", id: before });
       } finally {
         asking.delete(ongletId);
       }
