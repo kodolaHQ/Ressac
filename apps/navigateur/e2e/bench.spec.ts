@@ -1,5 +1,18 @@
 import { expect, test } from "@playwright/test";
-import { dansLaVue, lancer, ouvrirOnglet, serveurTest } from "./aide";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  appelerOutil,
+  dansLaVue,
+  ecrireEtatWidget,
+  ecrireWidget,
+  lancer,
+  nouveauProfil,
+  nouvelleRacine,
+  ouvrirOnglet,
+  serveurTest,
+  terminal,
+} from "./aide";
 
 // Benchmarks: run only with WEBAIOS_BENCH (see docs/superpowers/notes/2026-11-04-point-de-controle-firefox.md).
 test.skip(!process.env.WEBAIOS_BENCH, "bench only");
@@ -40,6 +53,78 @@ test("probe: a tab shown again fires visibilitychange and two rAF", async () => 
       }),
     );
     expect(vu).toBe(true);
+  } finally {
+    await fermer();
+  }
+});
+
+/** Merges one measure into WEBAIOS_BENCH_OUT (same JSON as apps/firefox/scripts/bench-stats.ts BenchFile). */
+function record(name: string, xs: number[]): void {
+  console.log(`bench E ${name}:`, JSON.stringify(xs));
+  const out = process.env.WEBAIOS_BENCH_OUT;
+  if (!out) return;
+  const measures = existsSync(out) ? JSON.parse(readFileSync(out, "utf8")).measures : {};
+  writeFileSync(out, JSON.stringify({ app: "electron", headed: !!process.env.WEBAIOS_BENCH_HEADED, measures: { ...measures, [name]: xs } }));
+}
+
+const pret = (racine: string) => expect.poll(() => existsSync(join(racine, ".webaios", "mcp.json"))).toBe(true);
+
+/** Launches with local addresses allowed, waits for the MCP server and the agent, then one second of calm. */
+async function lancerBench(o: { racine?: string; profil?: string } = {}) {
+  const l = await lancer({ ...o, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+  await pret(l.racine);
+  await expect(terminal(l.fenetre)).toContainText("faux agent prêt>", { timeout: 20_000 });
+  await new Promise((r) => setTimeout(r, 1_000));
+  return l;
+}
+
+test("bench: invisible read", async () => {
+  test.setTimeout(300_000);
+  const racine = nouvelleRacine();
+  const profil = nouveauProfil();
+  ecrireWidget(racine, "bench-lecture", {
+    nom: "Bench lecture",
+    recolte: { minutes: 60, dureeMaxMinutes: 5 },
+    sources: { publiques: ["127.0.0.1"] },
+    config: { base: serveur.url },
+    code: `export default async (webaios) => {
+  const ms = [];
+  for (let k = 0; k < 22; k++) {
+    const t = Date.now();
+    await webaios.lirePage(\`\${webaios.config.base}/texte.html?i=\${k}\`);
+    ms.push(Date.now() - t);
+  }
+  return { ms };
+};`,
+  });
+  ecrireEtatWidget(profil, "bench-lecture");
+  const { fermer } = await lancerBench({ racine, profil });
+  try {
+    const r = await appelerOutil(racine, "recolter_widget", { id: "bench-lecture" });
+    const result = JSON.parse(r.texte.slice(r.texte.indexOf("\n") + 1));
+    expect(result.statut, r.texte).toBe("ok");
+    expect(result.donnees.ms).toHaveLength(22);
+    record("invisibleRead", result.donnees.ms.slice(2));
+  } finally {
+    await fermer();
+  }
+});
+
+test("bench: lire_onglet on an agent tab", async () => {
+  test.setTimeout(300_000);
+  const { app, racine, fermer } = await lancerBench();
+  try {
+    const { texte: id, erreur } = await appelerOutil(racine, "ouvrir_onglet", { url: `${serveur.url}/texte.html` });
+    expect(erreur, id).toBe(false);
+    await expect.poll(() => dansLaVue(app, "texte.html", "document.title")).toBe("Texte");
+    const ms: number[] = [];
+    for (let k = 0; k < 33; k++) {
+      const t = performance.now();
+      const lu = await appelerOutil(racine, "lire_onglet", { id });
+      ms.push(performance.now() - t);
+      expect(lu.texte).toContain("Le chat dort");
+    }
+    record("tabRead", ms.slice(3));
   } finally {
     await fermer();
   }
