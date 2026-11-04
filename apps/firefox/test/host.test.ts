@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -142,6 +142,15 @@ describe("agent host", { timeout: 30_000 }, () => {
     h.rpc.notify("agent.ecrire", { fenetre: "f1", d: "encore\r" });
     await until(() => h.donnees().includes("encore"));
     expect(readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8")).toBe(arrets);
+  });
+
+  it("agent.profils asked while the noyau starts lists the default profile it prepares", async () => {
+    const h = startHost();
+    mkdirSync(join(h.racine, ".webaios", "profils"), { recursive: true });
+    writeFileSync(join(h.racine, ".webaios", "profils", "autre.json"), JSON.stringify({ id: "autre", nom: "Autre", interactif: ["a"], nonInteractif: ["a"], configMcp: "claude-json" }));
+    const started = h.rpc.request("demarrer", { profilAgent: "claude" });
+    expect((await h.rpc.request<{ id: string }[]>("agent.profils")).map((p) => p.id)).toEqual(["autre", "claude"]);
+    await started;
   });
 
   it("demarrer with another profile restarts the sessions", async () => {

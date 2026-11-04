@@ -170,12 +170,31 @@ describe("window controller", () => {
 
   it("opens a target=_blank link right after its source", async () => {
     const a = await open("/a.html");
+    const after = await open("/plante.html", { activer: false });
     await waitTitle(a, "Page A");
     await click(a, "#lien");
-    const f = await waitState((s) => s.fenetres[0]!, (f) => f.ordre[f.espaceActif]!.length === 2);
+    const f = await waitState((s) => s.fenetres[0]!, (f) => f.ordre[f.espaceActif]!.length === 3);
     const b = f.ordre[f.espaceActif]![1]!;
-    expect(f.ordre[f.espaceActif]![0]).toBe(a);
+    expect([f.ordre[f.espaceActif]![0], f.ordre[f.espaceActif]![2]]).toEqual([a, after]);
     await waitTitle(b, "Page B");
+  });
+
+  it("closing the tab a target=_blank link opened shows the source page again, attached and painted", async () => {
+    const a = await open("/a.html");
+    await waitTitle(a, "Page A");
+    await click(a, "#lien");
+    const b = (await waitState((s) => s.fenetres[0]!, (f) => f.ordre[f.espaceActif]!.length === 2)).ordre[(await win()).espaceActif]![1]!;
+    await waitTitle(b, "Page B");
+    await m.execute("window.webaiosWindow.closeTab(arguments[0])", [b]);
+    await waitState((s) => Object.keys(s.onglets), (ids) => ids.join() === a);
+    await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === a);
+    // Painted: the link's text darkens some pixel of the page's top-left corner (a snapshot, as Marionette's screenshot).
+    const corner = `const r = gBrowser.selectedBrowser.getBoundingClientRect();
+      const c = await window.browsingContext.currentWindowGlobal.drawSnapshot(new DOMRect(r.left, r.top, 120, 40), 1, "white");
+      const d = new OffscreenCanvas(120, 40).getContext("2d");
+      d.drawImage(c, 0, 0);
+      return [...d.getImageData(0, 0, 120, 40).data].some((v, i) => i % 4 < 3 && v < 128);`;
+    await waitFor(m, `return (async () => { ${corner} })()`, (v) => v === true);
   });
 
   it("keeps a link opened in a space with its own profile in that space and container", async () => {

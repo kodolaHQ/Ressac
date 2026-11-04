@@ -130,6 +130,8 @@ const rpc = createRpc({
     changerProfil: (p: { profilAgent: string }) => changerProfil(p.profilAgent),
     "agent.demarrer": (p: { fenetre: string; taille: TailleTerminal }) => sessions.demarrer(p.fenetre, p.taille),
     "agent.profils": async () => {
+      // The noyau writes the default profile while it starts: the panel may ask before that.
+      await pret;
       try {
         return (await chargerProfils(cheminsEspace(racine))).profils.map((x) => ({ id: x.id, nom: x.nom }));
       } catch {

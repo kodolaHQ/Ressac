@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { dispatch, inWindow, newWindow, pressClosing, state, waitFor, waitReady, waitWindowCount } from "./firefox";
@@ -15,8 +16,8 @@ beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 afterEach(() => w?.close());
 
-async function launch(env?: Record<string, string>): Promise<void> {
-  w = await launchWebAiOs({ env });
+async function launch(env?: Record<string, string>, dataDir?: string): Promise<void> {
+  w = await launchWebAiOs({ env, dataDir });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -56,6 +57,84 @@ it("the home page opens the panel, which runs the fake agent", async () => {
   await shown();
   await terminalShows("faux agent prêt>");
   expect(await inUi(m, "return [...(ui.webaiosMissingApi ?? [])]", [], "agent")).toEqual([]);
+});
+
+const SESSION_CONFIG = /^\/workspace\/\.webaios\/sessions\/[0-9a-f]{16}\.json$/;
+const panelShows = (text: string, ms = 20_000) =>
+  waitUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(arguments[0])", [text], ms, "agent");
+const retryButton = () => waitUi(m, "return [...doc.querySelectorAll('button')].some((b) => b.textContent === 'Réessayer')", [], 10_000, "agent");
+
+it("without Docker, browsing works", async () => {
+  await launch({ FAUX_DOCKER_ABSENT: "1" });
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}/a.html` });
+  await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
+});
+
+it("the home page's panel runs the real CLI with the session's MCP config", async () => {
+  await launch();
+  await shown();
+  await terminalShows("faux agent prêt>");
+  expect(JSON.parse(read(join(w!.dataDir, "espace", "faux-agent-args.json")))).toEqual([
+    "claude",
+    "--dangerously-skip-permissions",
+    "--mcp-config",
+    expect.stringMatching(SESSION_CONFIG),
+  ]);
+});
+
+it("a huge output does not freeze the UI", async () => {
+  await launch();
+  await homeAgent();
+  await send("inonder");
+  // 1 MB later, the command has scrolled off the screen and the prompt is back at the bottom.
+  await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("reçu: inonder") && t.includes("prêt>")`, [], 20_000, "agent");
+  expect(read(join(w!.dataDir, "espace", "faux-agent-entree.txt"))).toContain("inonder\r");
+  await click(m, '[data-testid="nouvel-onglet"]');
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')", [], 10_000);
+});
+
+it("a container that cannot start → error and Réessayer", async () => {
+  await launch({ FAUX_DOCKER_ECHEC: "1" });
+  await shown();
+  await panelShows("L'agent n'a pas pu démarrer :");
+  await panelShows("échec simulé");
+  await retryButton();
+});
+
+it("a second profile in .webaios/profils appears in the panel; choosing it restarts the agent with its command", async () => {
+  const dataDir = mkdtempSync(join(os.tmpdir(), "webaios-data-"));
+  try {
+    mkdirSync(join(dataDir, "espace", ".webaios", "profils"), { recursive: true });
+    writeFileSync(
+      join(dataDir, "espace", ".webaios", "profils", "autre.json"),
+      JSON.stringify({ id: "autre", nom: "Autre", interactif: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractif: ["autre-agent", "-p", "{consigne}"], configMcp: "claude-json" }),
+    );
+    await launch(undefined, dataDir);
+    await shown();
+    await terminalShows("faux agent prêt>");
+    const pidFile = join(dataDir, "espace", "faux-agent-pid");
+    const first = read(pidFile);
+    const select = '[data-testid="profil-agent"]';
+    expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
+      "Autre",
+      "Claude Code",
+    ]);
+    await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
+    await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
+    expect(JSON.parse(read(join(dataDir, "espace", "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
+    await terminalShows("faux agent prêt>");
+    expect(await inUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent", [], "agent")).not.toContain("L'agent s'est arrêté.");
+  } finally {
+    await w?.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+it("a single profile: no profile menu", async () => {
+  await launch();
+  await shown();
+  await terminalShows("faux agent prêt>");
+  expect(await inUi(m, "return doc.querySelectorAll('[data-testid=\"profil-agent\"]').length", [], "agent")).toBe(0);
 });
 
 it("the ✦ button opens and closes the panel", async () => {

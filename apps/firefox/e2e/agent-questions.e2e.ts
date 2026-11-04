@@ -7,7 +7,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { click, inUi, missingApi, waitUi } from "./ui";
+import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
 // Electron's agent.spec.ts « Read permission » tests, and the access badge of outils-dev.spec.ts.
 const REFUSED = "Accès refusé par l'utilisateur à cet onglet.";
@@ -153,6 +153,38 @@ async function handlesById(): Promise<Record<string, string>> {
 }
 const activeId = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
 const hasCard = (h: string) => inWindow(m, h, () => inUi<boolean>(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`));
+
+/** The ✦ button (what ⌘J and Electron's menu item do too), then waits for the panel to show or hide. */
+async function togglePanel(): Promise<void> {
+  const was = await m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
+  await click(m, '[data-testid="bouton-agent"]');
+  await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === !was);
+}
+
+it("a tab visited without talking to the agent: page_courante asks", async () => {
+  await openTab("/a.html");
+  await togglePanel();
+  await togglePanel();
+  await openTab("/b.html");
+  const reading = call("page_courante");
+  expect(await cardText()).toContain("L'agent veut lire l'onglet « Page B »");
+  await answer("Refuser");
+  expect((await reading).texte).toBe(REFUSED);
+});
+
+it("sending a message from a tab shares it", async () => {
+  // Closed then opened again on the home page (no tab, so no context): it stays open on the tab opened next.
+  await togglePanel();
+  await togglePanel();
+  await openTab("/texte.html");
+  expect(await m.execute("return !document.getElementById('webaios-agent').hidden")).toBe(true);
+  await click(m, ".xterm-screen", { frame: "agent" });
+  await typeText(m, "salut");
+  await pressKeys(m, "Enter");
+  await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.replace(/\\u00a0/g, ' ').includes('reçu: salut')", [], 10_000, "agent");
+  expect((await call("page_courante")).texte).toContain("Le chat dort");
+  expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
+});
 
 describe("several windows", () => {
   it("a read question shows only in the active window", async () => {

@@ -68,6 +68,8 @@ it("ouvrir_onglet opens an active agent tab, readable and capturable", async () 
   const s = await state(m);
   expect(s.onglets[id]?.ouvertParAgent).toBe(true);
   expect(s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif]).toBe(id);
+  // Its sidebar row is the current one and carries the agent's ✦.
+  await waitUi(m, "const li = doc.querySelector(arguments[0]); return li?.getAttribute('aria-current') === 'page' && li.querySelector('.agent')?.textContent === '✦'", [`[data-testid="onglet-${id}"]`]);
   const lu = await call("lire_onglet", { id });
   expect(lu.texte).toContain(`URL : ${server.url}/texte.html`);
   expect(lu.texte).toContain("Le chat dort");
