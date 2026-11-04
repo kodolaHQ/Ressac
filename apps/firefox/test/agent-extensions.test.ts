@@ -64,16 +64,16 @@ afterEach(() => {
 });
 
 describe("agent extension checkpoints", () => {
-  it("tabs.captureVisibleTab, captureTab and detectLanguage of an agent extension never reach Firefox; another add-on's do", async () => {
+  it("capture, language, print, PDF and reader-mode tab calls of an agent extension never reach Firefox; another add-on's do", async () => {
     await load();
     parentApi.reached = [];
     parentApi.sent = [];
     const call = (childId: number, path: string, callId = 7) => parentApi.conduit.recv.get("APICall")!({ childId, callId, path } as never, {});
-    for (const path of ["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage"]) call(1, path);
+    for (const path of ["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]) call(1, path);
     call(1, "tabs.query");
     call(2, "tabs.captureVisibleTab");
     expect(parentApi.reached).toEqual(["tabs.query", "tabs.captureVisibleTab"]);
-    expect(parentApi.sent).toHaveLength(3);
+    expect(parentApi.sent).toHaveLength(7);
     expect(parentApi.sent[0]).toEqual({ childId: 1, callId: 7, path: "tabs.captureVisibleTab", error: { message: "tabs.captureVisibleTab non pris en charge par WebAiOs" } });
   });
 

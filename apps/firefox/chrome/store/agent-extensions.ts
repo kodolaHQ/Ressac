@@ -14,7 +14,7 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 
 // Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
 const SUFFIX = "@agent.webaios";
-const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage"]);
+const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
