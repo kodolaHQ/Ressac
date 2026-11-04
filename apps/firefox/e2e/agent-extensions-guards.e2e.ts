@@ -8,7 +8,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
 import { installAddon } from "./addons";
-import { grant, launchWithAmo, openTab } from "./agent-extensions";
+import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -121,6 +121,7 @@ for (const h of ["accorde.test", "autre.test"]) {
   await essai("dnrEntetes", () => chrome.declarativeNetRequest.updateSessionRules(regle(2, { type: "modifyHeaders", requestHeaders: [{ header: "x", operation: "set", value: "y" }] })).then(() => "acceptee"));
   await essai("dnrBlock", () => chrome.declarativeNetRequest.updateDynamicRules(regle(3, { type: "block" })).then(() => "acceptee"));
   await essai("dnrRegles", () => chrome.declarativeNetRequest.getDynamicRules().then((r) => r.map((x) => x.action.type)));
+  await essai("permissionsDownloads", () => chrome.permissions.request({ permissions: ["downloads"] }));
   await essai("rtc", () => typeof globalThis.RTCPeerConnection);
   await chrome.storage.local.set({ resultats });
 })();
@@ -338,6 +339,19 @@ document.title = JSON.stringify(vu);
   parent.postMessage(vu, "*");
 })();
 `,
+  "fenetres.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="fenetres.js"></script></body></html>',
+  "fenetres.js": `const vu = {};
+const essai = (nom, f) => { try { const w = f(); vu[nom] = w === null || w === undefined ? "null" : typeof w; } catch (e) { vu[nom] = "erreur"; } };
+essai("docOpen", () => document.open("https://hote.test/doc-open", "_blank", ""));
+essai("docOpenBlank", () => document.open("about:blank", "_blank", ""));
+essai("fenetre", () => window.open("https://hote.test/fenetre-options", "x", "width=300,height=300"));
+const a = document.createElement("a");
+a.href = "https://hote.test/lien-blank";
+a.target = "_blank";
+document.body.appendChild(a);
+a.click();
+document.title = JSON.stringify(vu);
+`,
   "ordre.html": '<!doctype html><html><head><meta charset="utf-8"><title>attente</title></head><body><script src="ordre.js"></script></body></html>',
   "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
 `,
@@ -472,6 +486,8 @@ describe("agent extensions: network guard", () => {
       dnrRegles: { ok: ["block"] },
       rtc: { ok: "undefined" },
     });
+    // Electron answers false; Firefox refuses a permission not in optional_permissions (which the copy refuses anyway).
+    expect(r.permissionsDownloads).not.toEqual({ ok: true });
     await until(() => hitsTo("hote.test", "/onglet-permis").length > 0);
     expect(hitsTo("autre.test")).toEqual([]);
   });
@@ -554,6 +570,35 @@ describe("agent extensions: network guard", () => {
     await sleep(1500);
     expect(await m.execute<number>("return gBrowser.tabs.filter((t) => t.linkedBrowser.currentURI.spec.includes('autre.test')).length")).toBe(0);
     expect(hitsTo("autre.test")).toEqual([]);
+  });
+
+  it("document.open with an address, a window with features, <a target=_blank>: an agent page opens nothing (as Electron)", async () => {
+    const w = await launchReseau();
+    const m = w.marionette;
+    await backgroundResults(w);
+    const before = await m.execute<number>("return gBrowser.tabs.length");
+    const page = await extensionPage(m, `moz-extension://${w.uuid}/fenetres.html`);
+    // The CSP sandbox (no allow-popups) makes document.open(url, name, features) throw; either way no window.
+    const vu = JSON.parse(page.titre);
+    for (const nom of ["docOpen", "docOpenBlank", "fenetre"]) expect(["null", "erreur"]).toContain(vu[nom]);
+    expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(before);
+    expect(await m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length")).toBe(1);
+    for (const chemin of ["/doc-open", "/fenetre-options", "/lien-blank"]) expect(hitsTo("hote.test", chemin)).toEqual([]);
+  });
+
+  // Firefox has rights Electron never had to guard (review probe): refused at the copy, before any card or signature.
+  it("an agent extension asking identity, notifications, dns or find is refused at the copy: nothing signed, nothing installed", async () => {
+    const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
+    dirs.push(f.dataDir, f.profile);
+    const perms = ["cookies", "declarativeNetRequest", "storage", "tabs", "identity", "notifications", "dns", "find"];
+    ecrireExtensionAgent(path.join(f.dataDir, "espace"), "reseau", { ...EXTENSION_RESEAU, "manifest.json": { ...EXTENSION_RESEAU["manifest.json"], permissions: perms } });
+    grant(f.dataDir, "reseau", { ...ACCORD_RESEAU, permissions: perms });
+    const w = await launchWithAmo(f);
+    opened.push(w);
+    await w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agentExtensions.ready; })();`);
+    expect(w.amo.envois).toEqual([]);
+    expect(await agentAddons(w.marionette)).toEqual([]);
+    expect(proxy.hits.filter((h) => h.hote.endsWith("autre.test"))).toEqual([]);
   });
 
   // Electron's :613, in a tab of the extension (its popup: the next test). Firefox: a srcdoc frame is cross-origin to the

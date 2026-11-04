@@ -4,6 +4,16 @@ const ID = "reseau@agent.webaios";
 const ACCORD = { permissions: [], hotes: ["https://hote.test/*"], reseau: ["accorde.test"], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
 const HOST = "0f7c6f4e-1111-4222-8333-444455556666";
 
+let observer: (subject: unknown) => void = () => {};
+/** A request as http-on-modify-request hands it: true if the observer cancelled it. */
+const request = (url: string, o: { loading?: string | null; triggering?: string | null }) => {
+  let cancelled = false;
+  const principal = (id: string | null | undefined) => (id === undefined ? undefined : id === null ? null : { addonId: id });
+  const channel = { QueryInterface: () => channel, URI: { spec: url }, loadInfo: { loadingPrincipal: principal(o.loading), triggeringPrincipal: principal(o.triggering) }, cancel: () => (cancelled = true) };
+  observer(channel);
+  return cancelled;
+};
+
 /** The chrome module with Firefox simulated: one policy (ID → HOST), tabs by id with their attributes and address. */
 async function load(tabs: Record<number, { attrs: string[]; url: string }> = {}) {
   vi.stubGlobal("ChromeUtils", {
@@ -27,8 +37,9 @@ async function load(tabs: Record<number, { attrs: string[]; url: string }> = {})
     }),
   });
   vi.stubGlobal("WebExtensionPolicy", { getByID: (id: string) => (id === ID ? { mozExtensionHostname: HOST } : null), getActiveExtensions: () => [] });
-  vi.stubGlobal("Ci", { nsIContentPolicy: { TYPE_DOCUMENT: 6, TYPE_SUBDOCUMENT: 7 } });
-  vi.stubGlobal("Services", { obs: { addObserver: () => {} } });
+  vi.stubGlobal("Ci", { nsIHttpChannel: {} });
+  vi.stubGlobal("Cr", { NS_BINDING_ABORTED: 0x804b0002 });
+  vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) } });
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
   const x = createAgentExtensions({} as never, {} as never, {} as never, () => ({}) as never);
   return x;
@@ -70,10 +81,12 @@ describe("agent extension checkpoints", () => {
       await vi.advanceTimersByTimeAsync(200);
       expect(waited).toBe(true);
       expect(x.check(ID, "urlPermise", "https://accorde.test/")).toBe(false);
-      // Once sent, no wait.
+      // Once sent, no wait, and no timer armed per call.
       grant(x);
+      await vi.advanceTimersByTimeAsync(0);
       let now = false;
       void x.scopesKnown().then(() => (now = true));
+      expect(vi.getTimerCount()).toBe(0);
       await vi.advanceTimersByTimeAsync(0);
       expect(now).toBe(true);
     } finally {
@@ -91,5 +104,22 @@ describe("agent extension checkpoints", () => {
     grant(x);
     expect([1, 2, 4, 99, "1"].map((t) => x.check(ID, "hotePermis", t))).toEqual([true, false, true, false, false]);
     expect([1, 2, 3, 4, 99].map((t) => x.check(ID, "estOnglet", t))).toEqual([true, true, false, false, false]);
+  });
+
+  it("every request an agent extension loads or starts is checked, whatever its type: a notification icon outside the grant is cancelled", async () => {
+    const x = await load();
+    // Before the grants: refused.
+    expect(request("https://accorde.test/icone.png", { loading: ID, triggering: ID })).toBe(true);
+    grant(x);
+    // ext-notifications loads iconUrl with the extension as loadingPrincipal (an image, no document, no CSP).
+    expect(request("https://autre.test/notif-fuite.png", { loading: ID, triggering: ID })).toBe(true);
+    expect(request("https://accorde.test/icone.png", { loading: ID, triggering: ID })).toBe(false);
+    // A navigation: no loadingPrincipal, the extension triggers it.
+    expect(request("https://autre.test/page", { loading: null, triggering: ID })).toBe(true);
+    expect(request("https://hote.test/page", { loading: null, triggering: ID })).toBe(false);
+    // Another add-on, a page, a content script (expanded principal: no addonId), the system: not concerned.
+    expect(request("https://autre.test/x", { loading: "autre@webaios.test", triggering: "autre@webaios.test" })).toBe(false);
+    expect(request("https://autre.test/x", { loading: "", triggering: "" })).toBe(false);
+    expect(request("https://autre.test/x", { loading: null, triggering: undefined })).toBe(false);
   });
 });

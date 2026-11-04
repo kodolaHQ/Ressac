@@ -79,12 +79,16 @@ Limits:
 
 ## The agent's extensions
 
-Each is copied, signed by AMO (unlisted) and installed as an add-on (`<folder>@agent.webaios`); the noyau host keeps the registry and sends the grants to the chrome (`extensions.portees`). The guards of the copy (`webaios-garde-*.js`) ask the chrome through the extension actor (`window.__webaios`, defined on the agent's extension pages before their first script); the chrome also refuses the page and frame loads an agent extension starts outside its grant (an `http-on-modify-request` observer), the `window.open` of its pages, and a `runtime.setUninstallURL` outside its grant.
+Each is copied, signed by AMO (unlisted) and installed as an add-on (`<folder>@agent.webaios`); the noyau host keeps the registry and sends the grants to the chrome (`extensions.portees`). The guards of the copy (`webaios-garde-*.js`) ask the chrome through the extension actor (`window.__webaios`, defined on the agent's extension pages before their first script); the chrome also refuses every http request an agent extension loads or starts outside its grant, whatever its type (an `http-on-modify-request` observer on the loading or triggering principal, so a notification icon too), the `window.open` of its pages, and a `runtime.setUninstallURL` outside its grant.
+
+The copy accepts only the rights Electron's agent extensions can use (`scripting`, `storage`, `unlimitedStorage`, `tabs`, `contextMenus`, `cookies`, `webNavigation`, `alarms`, `offscreen`, `clipboardRead`, `clipboardWrite`, `activeTab`, `declarativeNetRequest*`), in `permissions` and `optional_permissions`; any other right, or a manifest key that grants a power (`chrome_settings_overrides`, `protocol_handlers`, `user_scripts`, `experiment_apis`, `theme_experiment`, `omnibox`), is refused before any card with « Droit non pris en charge par WebAiOs : <name> ». Firefox-only APIs (`identity`, `dns`, `find`, `notifications`, …) are thus out of reach. The copy's pages are sandboxed without `allow-popups` (`content_security_policy.extension_pages`): `document.open(url, "_blank")` and `<a target=_blank>` open nothing, as Electron refuses every window.
 
 Limits:
 
 - An `about:blank` frame of an agent page inherits its principal, and Firefox would give it the whole extension API without the guard: the extension actor (registered without `matches`, so it reaches those frames) defines `__webaios` there and takes out `chrome`, `browser`, `window.open` and WebRTC, before the page's script reads the frame. A page of the extension loaded in a frame reuses that window: it keeps no extension API (its guard then does nothing; its scripts cannot call `chrome.*`). A `srcdoc` frame is cross-origin to the page and runs none of its scripts.
-- Before the first host sent the grants, the actor's answers wait 5 s at most, then refuse; the load observer refuses at once (fail closed).
+- Before the first host sent the grants, the actor's answers wait 5 s at most, then refuse; the request observer refuses at once (fail closed): a background fetch right after a restart can be cancelled until `extensions.portees` arrives.
+- `action.setIcon` with an absolute address is accepted by Firefox; no load was seen headless (the strip does not render it yet). Recheck when the strip renders action icons.
+- After a Firefox upgrade, rerun `e2e/agent-extensions-guards.e2e.ts`: the `runtime.setUninstallURL` guard redefines the `uninstallURL` field Firefox reads (`ext-browser.js`); if Firefox makes it private or renames it, the guard does nothing and only the `setUninstallURL` test notices (measured: with the hook inert, it fails).
 
 ## History and downloads
 

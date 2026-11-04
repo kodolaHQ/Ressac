@@ -122,7 +122,9 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   let scopes: Scopes = {};
   let scopesSettle = () => {};
   const scopesSent = new Promise<void>((r) => (scopesSettle = r));
-  const scopesKnown = () => Promise.race([scopesSent, new Promise<void>((r) => setTimeout(r, SCOPES_WAIT_MS))]);
+  let scopesArrived = false;
+  void scopesSent.then(() => (scopesArrived = true));
+  const scopesKnown = () => (scopesArrived ? scopesSent : Promise.race([scopesSent, new Promise<void>((r) => setTimeout(r, SCOPES_WAIT_MS))]));
   handlers["extensions.portees"] = (p: Scopes) => {
     scopes = p;
     scopesSettle();
@@ -165,16 +167,14 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     return false;
   }
 
-  // The network guard beyond the copy's CSP (which bounds fetch, WebSocket, beacons), as Electron's equiperPagesAgent:
-  // a page or frame load an agent extension starts (navigation, window.open, a redirect of one) goes only where
-  // urlPermise says.
-  const { TYPE_DOCUMENT, TYPE_SUBDOCUMENT } = Ci.nsIContentPolicy;
+  // The network guard beyond the copy's CSP, as Electron's equiperPagesAgent and more: every http(s) request an agent
+  // extension loads or starts, of any type (navigation, window, a redirect of one, but also what Firefox's parent loads
+  // for it, such as a notification icon, which no CSP sees), goes only where urlPermise says. Fail closed before the
+  // grants arrive. Content scripts carry an expanded principal (no addonId): not concerned.
   Services.obs.addObserver((subject: any) => {
     const channel = subject.QueryInterface(Ci.nsIHttpChannel);
     const info = channel.loadInfo;
-    const type = info.externalContentPolicyType;
-    if (type !== TYPE_DOCUMENT && type !== TYPE_SUBDOCUMENT) return;
-    const addonId: string = info.triggeringPrincipal?.addonId ?? "";
+    const addonId: string = info.loadingPrincipal?.addonId || info.triggeringPrincipal?.addonId || "";
     if (addonId.endsWith(SUFFIX) && !check(addonId, "urlPermise", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
   }, "http-on-modify-request");
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through

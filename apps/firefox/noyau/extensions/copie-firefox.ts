@@ -10,12 +10,31 @@ export const addonIdDe = (dossier: string) => `${dossier}${SUFFIXE_ID}`;
 const GARDE_FOND = "webaios-garde-fond.js";
 const FOND = "webaios-fond.js";
 const PAGE_GENEREE = "_generated_background_page.html";
+const SANDBOX = "sandbox allow-scripts allow-same-origin allow-forms allow-modals";
 
 const objet = (v: unknown): Record<string, any> | undefined => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : undefined);
 
-/** Refusals preparerCopie does not make (GECKO_ID, VERSION_QUATRE, a file named _generated_background_page.html). */
+/**
+ * The rights an agent extension may hold in Firefox: those Electron's agent extensions can use (the `connus` of
+ * packages/noyau/src/extensions/manifeste.ts, but notifications, which Electron never shows), plus declarativeNetRequest*.
+ * Firefox has more (identity, dns, find, menus…), which Electron's guards never had to close: refused.
+ */
+const DROITS_PERMIS = new Set(["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "activeTab"]);
+/** Firefox manifest keys that grant a power outside the guards (a search engine, URL handlers, user scripts, privileged APIs, the address bar). */
+const CLES_REFUSEES = ["chrome_settings_overrides", "protocol_handlers", "user_scripts", "experiment_apis", "theme_experiment", "omnibox"];
+/** Not in Electron: new text (decision 9's style). */
+export const droitNonPrisEnCharge = (nom: string) => `Droit non pris en charge par WebAiOs : ${nom}`;
+
+/**
+ * Refusals preparerCopie does not make (GECKO_ID, VERSION_QUATRE, a file named _generated_background_page.html, a
+ * right or a key outside what Electron's agent extensions can use).
+ */
 export function refusFirefox(manifeste: Record<string, unknown>, fichiers: readonly string[]): string[] {
   const refus: string[] = [];
+  for (const cle of ["permissions", "optional_permissions"])
+    for (const droit of Array.isArray(manifeste[cle]) ? (manifeste[cle] as unknown[]) : [])
+      if (!(typeof droit === "string" && (DROITS_PERMIS.has(droit) || droit.startsWith("declarativeNetRequest")))) refus.push(droitNonPrisEnCharge(String(droit)));
+  for (const cle of CLES_REFUSEES) if (cle in manifeste) refus.push(droitNonPrisEnCharge(cle));
   const gecko = objet(objet(manifeste.browser_specific_settings)?.gecko) ?? objet(objet(manifeste.applications)?.gecko);
   if (gecko && "id" in gecko) refus.push(GECKO_ID);
   if (typeof manifeste.version === "string" && manifeste.version.split(".").length > 3) refus.push(VERSION_QUATRE);
@@ -39,6 +58,11 @@ export function manifesteFirefox(m: Record<string, unknown>, dossier: string, n:
     version,
     browser_specific_settings: { ...bss, gecko: { ...bss.gecko, id: addonIdDe(dossier), data_collection_permissions: { required: ["none"] } } },
   };
+  // Electron's window-open handler refuses every window an agent page opens (window.open, document.open with an
+  // address, target=_blank). Firefox: its pages are sandboxed without allow-popups (the same origin, scripts and the
+  // extension API kept).
+  const csp = objet(m.content_security_policy);
+  if (typeof csp?.extension_pages === "string") copie.content_security_policy = { ...csp, extension_pages: `${csp.extension_pages}; ${SANDBOX}` };
   if (fond?.service_worker === FOND && fond.type === "module") copie.background = { scripts: [FOND], type: "module" };
   else if (fond?.service_worker === FOND && fondOriginal) copie.background = { scripts: [GARDE_FOND, fondOriginal.replace(/^(\.\/|\/)+/, "")] };
   else copie.background = { scripts: [GARDE_FOND] };
