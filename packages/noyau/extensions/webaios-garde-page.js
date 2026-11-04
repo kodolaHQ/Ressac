@@ -46,6 +46,7 @@
 //   l'hôte) ;
 // - un autre cadre : le monde isolé d'un cadre `about:blank` créé par le script n'a pas cette garde, et ses prototypes
 //   d'origine s'appliquent aux éléments de la page.
+//   (Also a same-origin frame the page already has, reached through `frames[i]`: its own `FormData`, `fetch`, `XMLHttpRequest`.)
 // Ce qui protège vraiment est l'ensemble : cette garde, `webRequest` refusé, le réseau fermé de ses pages et de son fond
 // (CSP de la copie), jamais dans un profil privé, jamais dans une lecture invisible (ni JS ni CSS de l'agent n'y sont
 // injectés).
