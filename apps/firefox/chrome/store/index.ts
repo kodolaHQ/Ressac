@@ -6,6 +6,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { containerFor, migrateContainers, removeContainer } from "./containers";
 import { createStore, type Store } from "./store";
@@ -25,6 +26,8 @@ export interface WebAiOsStore extends Store {
   readonly agent: AgentHost;
   /** The noted visits, kept by the noyau host. */
   readonly history: History;
+  /** The session's downloads, followed from Firefox's own list (not kept across a restart). */
+  readonly downloads: DownloadsList;
   /** The agent's « lire l'onglet » cards waiting for an answer. */
   readonly questions: Questions;
   /** The WebAiOs windows open: each full browser window claims a window of the state. */
@@ -103,6 +106,7 @@ async function start(): Promise<WebAiOsStore> {
     },
   });
   const history = createHistory(store, agent);
+  const downloads = await createDownloads();
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   let access: EtatAcces = { agent: "L'agent", onglets: {} };
@@ -123,6 +127,7 @@ async function start(): Promise<WebAiOsStore> {
     containerFor,
     agent,
     history,
+    downloads,
     questions,
     windows,
     get access() {

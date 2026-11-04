@@ -15,8 +15,7 @@ const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 /**
- * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (downloads,
- * extensions, actions) answers empty; any other member is recorded in
+ * The Electron preload's `window.webaios`, on the Firefox window controller. What step 2 leaves out (extensions, actions) answers empty; any other member is recorded in
  * `window.webaiosMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiWebaios {
@@ -81,8 +80,14 @@ export function createApi(win: WindowController): ApiWebaios {
       effacer: (depuis) => win.store.history.clear(depuis),
       oublierTexte: (url, espaceId) => win.store.history.forgetText(url, espaceId),
     },
-    telechargements: { liste: none, ouvrir() {}, montrer() {}, annuler() {} },
-    surTelechargements: off,
+    // The list lives in the store's realm: the UI gets copies made in this realm.
+    telechargements: {
+      liste: async () => structuredClone(win.store.downloads.list()),
+      ouvrir: (id) => win.store.downloads.open(id),
+      montrer: (id) => win.store.downloads.show(id),
+      annuler: (id) => win.store.downloads.cancel(id),
+    },
+    surTelechargements: (callback) => untilUnload(win.store.downloads.onChange((l) => callback(structuredClone(l)))),
     // The agent's cards and access badges live in the store's realm: the UI gets copies made in this realm.
     permissions: {
       enAttente: async () => structuredClone(win.store.questions.pending()),
