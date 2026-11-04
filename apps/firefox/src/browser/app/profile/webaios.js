@@ -29,3 +29,6 @@ pref("browser.sessionstore.max_tabs_undo", 0);
 pref("browser.tabs.closeWindowWithLastTab", false);
 pref("browser.tabs.warnOnClose", false);
 pref("browser.ctrlTab.sortByRecentlyUsed", false);
+
+// AMO and many sites look for the Firefox/ token in the user agent: nsHttpHandler appends Firefox/<version> when this is on.
+pref("general.useragent.compatMode.firefox", true);

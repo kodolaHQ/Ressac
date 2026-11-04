@@ -53,6 +53,30 @@ The WebAiOs state (session, settings) lives in `~/WebAiOs-firefox/data` by defau
 
 Two instances must never share a data folder: the session's temporary file name is the same in both (no pid in Firefox), so they would overwrite each other's session.
 
+## Add-ons
+
+Add-ons are shared by every login profile. Signing is required (`MOZ_REQUIRE_SIGNING`), so the e2e install temporary add-ons (`Addon:Install`, `temporary: true`).
+
+- Anchors: the add-on popups and the permission and site prompts open on the address bar of the sidebar (`#webaios-anchor`); the toolbar buttons of the sidebar strip have their own anchor (`#webaios-action-anchor`). Three hooks make this work: `gUnifiedExtensions.getPopupAnchorID`, `PopupNotifications._getVisibleAnchorElement`, and the panel anchor lookup (`_getPanelAnchor`). Prompts follow their tab and stay open across tab switches (site prompts too).
+- `about:addons` is the management page: it opens as a WebAiOs tab (« Gérer » in the strip).
+- Pins: the `webaios.extensions.pinned` pref (add-on ids, in order); the ⧉ button lists the others.
+- Profile containers are internal (`userContextIdInternal.webaios-<id>`, private non-policy identities, so add-ons such as Multi-Account Containers never list them). `migrateContainers` converts the old public ones in place at startup; cookies are kept.
+- The agent's public reads run in a private windowless browser (`privateBrowsingId: 1`): add-ons (`webRequest` included) do not run there. Its cookies are cleared with `{ userContextId, privateBrowsingId: 1 }`.
+- The user agent has `Firefox/<version>` (`general.useragent.compatMode.firefox` in `webaios.js`, needs `pnpm build:ui`): AMO needs it to offer « Add to Firefox ».
+- After a Firefox upgrade, rerun the probes: `WEBAIOS_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/addons-spike.e2e.ts --silent=false`. Private fields we rely on: `lastClickInfo`, `openPopupWithoutUserInteraction`, `_getVisibleAnchorElement`, `_getPanelAnchor`, `_hidePanel` / `_ignoreDismissal`, `ContextualIdentityService._identities` / `_lastUserContextId`, the parking tab `isEmpty` override. Details and limits: `docs/superpowers/notes/2026-11-04-modules-firefox-essai.md`.
+
+Limits:
+
+- Add-ons also run in private spaces.
+- An add-on tab is recreated in the space's container when the add-on asks for another `cookieStoreId`.
+- `tabs.create({})` and `about:` URLs from add-ons are not adopted.
+- A selection Firefox makes of one of our tabs in another space switches to that space.
+- `ExtensionControlledPopup` is not hooked.
+- A closed prompt does not reopen (no icon in the address bar); the « added » doorhanger shows only if the window has focus.
+- `page_action` and `sidebar_action` are not supported.
+- An add-on sees the parking tab and only the tabs already shown (`tabs.query`).
+- `lister_extensions` does not see add-ons yet; themes do not restyle our UI.
+
 ## Not migrated yet (step 4)
 
 - compact mode;
@@ -60,7 +84,7 @@ Two instances must never share a data folder: the session's temporary file name 
 - « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - history: suggestions are empty;
-- downloads, permissions, extensions, design mode;
+- downloads, design mode;
 - internal `webaios:` pages: a "not available yet" message;
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
