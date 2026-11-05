@@ -45,6 +45,10 @@ export interface AgentExtensions {
   readonly ready: Promise<void>;
   /** Settled once a host sent the grants (extensions.portees), or after SCOPES_WAIT_MS: then check refuses what it does not know. */
   scopesKnown(): Promise<void>;
+  /** As Electron's bar, which lists what a profile's session loaded: an agent add-on only where it runs; any other everywhere. */
+  shownIn(addonId: string, profil: IdProfil, prive: boolean): boolean;
+  /** `cb` after each new set of grants (extensions.portees). */
+  onScopes(cb: () => void): () => void;
   /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
   check(addonId: string, kind: CheckKind, value: unknown): boolean;
   /** The console actor's message from content process `from`: relayed to the noyau for an installed agent extension. */
@@ -160,9 +164,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   let scopesArrived = false;
   void scopesSent.then(() => (scopesArrived = true));
   const scopesKnown = () => (scopesArrived ? scopesSent : Promise.race([scopesSent, new Promise<void>((r) => setTimeout(r, SCOPES_WAIT_MS))]));
+  const scopeListeners = new Set<() => void>();
   handlers["extensions.portees"] = (p: Scopes) => {
     scopes = p;
     scopesSettle();
+    for (const cb of scopeListeners) cb();
   };
   const tabOf = (tabId: unknown) => {
     if (typeof tabId !== "number") return null;
@@ -353,6 +359,15 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     handlers,
     ready,
     scopesKnown,
+    shownIn(addonId, profil, prive) {
+      if (!addonId.endsWith(SUFFIX)) return true;
+      const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
+      return !prive && !!scope?.actif && scope.profils.includes(profil);
+    },
+    onScopes(cb) {
+      scopeListeners.add(cb);
+      return () => void scopeListeners.delete(cb);
+    },
     check,
     relayConsole,
     hostStarted() {

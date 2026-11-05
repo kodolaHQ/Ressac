@@ -31,7 +31,7 @@ export interface PendingUpdate {
   name: string;
 }
 export interface WindowAddons {
-  /** Active, non-hidden extensions, in getActivePolicies order; one without a browser action is never enabled. */
+  /** Active, non-hidden extensions, in getActivePolicies order, an agent one only in the spaces where it runs; one without a browser action is never enabled. */
   buttons(): AddonButton[];
   /** ExtensionsUI.updates. */
   updates(): PendingUpdate[];
@@ -89,13 +89,19 @@ export function createAddons(o: {
     watched.get(id)?.observer.disconnect();
     watched.delete(id);
   };
+  const activeSpace = () => {
+    const f = o.store.state.fenetres.find((x) => x.id === o.fenetreId);
+    return f ? o.store.state.espaces.find((e) => e.id === f.espaceActif) : undefined;
+  };
   const pinned = () => parsePinned(Services.prefs.getStringPref(PINNED_PREF, "[]"));
 
   const buttons = (): AddonButton[] => {
     const tab = o.gBrowser.selectedTab;
     const page = !!o.tabs.displayed();
     const pins = pinned();
+    const espace = activeSpace();
     return w.gUnifiedExtensions.getActivePolicies().flatMap((policy: any) => {
+      if (espace && !o.store.agentExtensions.shownIn(policy.id, espace.profil, espace.prive)) return [];
       const ba = actionOf(policy);
       const { extension } = policy;
       // As Firefox's own panel and Electron's bar: an add-on without a button (content scripts only) is listed, greyed.
@@ -148,6 +154,14 @@ export function createAddons(o: {
   ExtensionsUI.on("change", extensionListener);
   Services.prefs.addObserver(PINNED_PREF, prefObserver);
   o.gBrowser.tabContainer.addEventListener("TabSelect", notify);
+  const offScopes = o.store.agentExtensions.onScopes(notify);
+  // Another space, or the same one turned private or given another profile.
+  let lastSpace = "";
+  const offStore = o.store.subscribe(() => {
+    const e = activeSpace();
+    const key = e ? `${e.id}|${e.profil}|${e.prive}` : "";
+    if (key !== lastSpace) (lastSpace = key), notify();
+  });
   w.addEventListener("popupshown", onShown, true);
   w.addEventListener(
     "unload",
@@ -157,6 +171,8 @@ export function createAddons(o: {
       AddonManager.removeAddonListener(addonListener);
       ExtensionsUI.off("change", extensionListener);
       Services.prefs.removeObserver(PINNED_PREF, prefObserver);
+      offScopes();
+      offStore();
       for (const id of [...watched.keys()]) unwatch(id);
       listeners.clear();
     },

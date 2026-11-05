@@ -132,6 +132,23 @@ describe("agent extensions per space", () => {
     expect(await display(m, b)).toBe("block,block");
   });
 
+  it("the extensions menu lists an agent extension only in the spaces where it runs", async () => {
+    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)));
+    const m = w.marionette;
+    await waitActive(m, "cacheur@agent.webaios", true);
+    await openTab(m, `${server.url}/cache.html`);
+    const listed = () =>
+      waitUi(m, `
+        if (!doc.querySelector('[data-testid="panneau-extensions"]')) doc.querySelector('[data-testid="menu-extensions"]').click();
+        const p = doc.querySelector('[data-testid="panneau-extensions"]');
+        return p ? p.textContent : null;`);
+    expect(await listed()).toContain("Cacheur");
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    await openTab(m, `${server.url}/cache.html`);
+    await waitUi(m, `return !doc.querySelector('[data-testid="panneau-extensions"]')?.textContent.includes("Cacheur") || null`);
+    expect(await listed()).not.toContain("Cacheur");
+  });
+
   // extensions-interface.spec.ts:278
   it("the switch of an agent extension is greyed in a private space, with ERREUR_PROFIL_PRIVE", async () => {
     const w = await launch((racine, dataDir) => {
