@@ -51,6 +51,61 @@
 }
 
 :root[webaios-main] #tabbrowser-tabbox {
+  /* Below the site question's banner, --webaios-banner high (0 without one). */
+  margin-top: var(--webaios-banner, 0px);
   margin-inline-start: 240px;
   margin-inline-end: var(--webaios-agent, 0px);
+}
+
+/* A site's question (Electron's DemandePermission), above the page; colours from the UI's theme.css. */
+:root[webaios-main] #webaios-banner {
+  --fond-actif: #3d3d47;
+  --fond-barre: #26262c;
+  --texte: #e8e8ee;
+  --accent: #8b7cf6;
+  --bord: #3a3a42;
+  position: fixed;
+  top: 0;
+  left: 240px;
+  right: var(--webaios-agent, 0px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--fond-actif);
+  border-bottom: 1px solid var(--bord);
+  color: var(--texte);
+  font: message-box;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[webaios-main] #webaios-banner {
+    --fond-actif: #cfcfd8;
+    --fond-barre: #e9e9ee;
+    --texte: #1e1e22;
+    --bord: #d0d0d8;
+  }
+}
+
+:root[webaios-main] #webaios-banner[hidden] {
+  display: none;
+}
+
+:root[webaios-main] #webaios-banner span {
+  flex: 1;
+}
+
+:root[webaios-main] #webaios-banner button {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bord);
+  background: var(--fond-barre);
+  color: var(--texte);
+}
+
+:root[webaios-main] #webaios-banner button.autoriser {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
 }

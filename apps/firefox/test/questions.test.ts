@@ -54,3 +54,28 @@ it("an extension card: Activer answers accepte with the card's empreinte; a renf
   expect(await questions.askExtension({ ...carte, espaceId: "gone" }, fenetre)).toEqual({ accepte: false, empreinte: carte.empreinte, retiree: true });
   expect(questions.pending()).toEqual([]);
 });
+
+it("a site's question waits without a delay; it falls (« retiree ») on its signal or when its tab closes", async () => {
+  const store = createStore(etatInitial());
+  const questions = new Questions(store);
+  const fenetre = store.state.fenetres[0]!.id;
+  store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: "https://a.test/", activer: true }, () => "t");
+  const site = { ongletId: "t", fenetreId: fenetre, origine: "https://a.test", permissions: ["notifications" as const] };
+  let answer = questions.askSite(site);
+  // Electron's site question: on its tab only (no fenetreId), shown as a banner.
+  expect(questions.pending()).toEqual([{ id: expect.any(String), ongletId: "t", origine: "https://a.test", permissions: ["notifications"] }]);
+  questions.answer(questions.pending()[0]!.id, "autoriser");
+  expect(await answer).toBe("autoriser");
+
+  const ac = new AbortController();
+  answer = questions.askSite(site, ac.signal);
+  ac.abort();
+  expect(await answer).toBe("retiree");
+  expect(questions.pending()).toEqual([]);
+
+  answer = questions.askSite(site);
+  store.dispatch({ type: "fermerOnglet", id: "t" });
+  expect(await answer).toBe("retiree");
+  expect(await questions.askSite(site)).toBe("retiree");
+  expect(questions.pending()).toEqual([]);
+});

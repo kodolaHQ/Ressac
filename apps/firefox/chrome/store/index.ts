@@ -1,5 +1,5 @@
 import type { Decision, EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
-import { profilsEnUsage } from "../../../navigateur/src/commun/modele";
+import { profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
@@ -10,6 +10,7 @@ import { createAgentExtensions, type AgentExtensions } from "./agent-extensions"
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
+import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
@@ -107,12 +108,22 @@ async function start(): Promise<WebAiOsStore> {
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
+  const questions = new Questions(store);
   const sitePermissions = createSitePermissions({
     dataDir,
     profiles: () => [...profilsEnUsage(store.state)],
-    // The banner arrives with the next task: until then every question is refused.
-    ask: async () => "refuser",
+    ask: (d, signal) => questions.askSite(d, signal),
     firefox: firefoxPermissions,
+  });
+  registerPermissionHooks({
+    sitePermissions,
+    tabOf: (browser) => {
+      const win = browser.ownerDocument.defaultView;
+      const ongletId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id") ?? win?.webaiosPopupSource;
+      const onglet = ongletId ? store.state.onglets[ongletId] : undefined;
+      return onglet ? { ongletId, fenetreId: onglet.fenetreId, profil: profilDOnglet(store.state, onglet) } : null;
+    },
+    isInvisible: (browser) => browser.getAttribute("messagemanagergroup") === "webaios-reading",
   });
   const recorder = new EnregistreurSession(dataDir);
   const flush = () => recorder.vider();
@@ -170,7 +181,6 @@ async function start(): Promise<WebAiOsStore> {
       } catch (e) {
         console.error("[extensions] console relay not started:", e);
       }
-  const questions = new Questions(store);
   let refreshMirror = () => {};
   const windows = createWindowRegistry({
     store,

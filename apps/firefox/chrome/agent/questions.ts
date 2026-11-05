@@ -1,7 +1,8 @@
 import type { OngletInfo } from "../shims/noyau";
 import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions";
-import type { Decision, DemandeEnAttente, IdFenetre, Issue } from "../../../navigateur/src/commun/modele";
+import type { Decision, DemandeEnAttente, IdFenetre, IdOnglet, Issue, Permission } from "../../../navigateur/src/commun/modele";
 import { attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque } from "../../../navigateur/src/main/agent/pont";
+import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 
 type Listener = (pending: DemandeEnAttente[]) => void;
@@ -50,6 +51,21 @@ export class Questions {
   askConsole(o: { nom: string; espaces: string[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<Issue> {
     const fields = { ongletId: null, fenetreId, origine: o.nom, permissions: ["console-extension" as const], titre: o.nom, raison: o.raison, agent: o.agent, espaces: o.espaces };
     return attendreIssue((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
+  }
+
+  /**
+   * A site's question, shown as the banner on its tab (Electron's `demander`): no delay, it waits for the answer; it falls
+   * (« retiree ») on `signal` or when its tab closes. `fenetreId` is not kept: Electron's site questions have none, which
+   * would show them on every tab of the window and move them with a closed window.
+   */
+  askSite(
+    d: { ongletId: IdOnglet | null; fenetreId: IdFenetre | null; origine: string; permissions: SitePermission[]; lien?: string },
+    signal?: AbortSignal,
+  ): Promise<Issue> {
+    // The three Firefox-only kinds are not Electron Permissions: the UI never shows a site question (estDemandeAgent).
+    const fields = { ongletId: d.ongletId, origine: d.origine, permissions: d.permissions as Permission[], ...(d.lien ? { lien: d.lien } : {}) };
+    if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve("retiree");
+    return attendreIssue((repondre) => this.pose(fields, repondre), Infinity, signal);
   }
 
   private pose(fields: Omit<DemandeEnAttente, "id">, repondre: (d: Issue) => void): () => void {

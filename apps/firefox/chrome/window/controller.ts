@@ -7,6 +7,7 @@ import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
 import { setupAnchors } from "./anchor";
+import { mountSiteBanner } from "./site-banner";
 import { visibleFrame } from "./frame";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor, type Shortcut } from "./keys";
 import { TabSync } from "./tabs";
@@ -73,7 +74,7 @@ export function createController(
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
-  const unsubscribe = [store.subscribe((state) => tabs.sync(state))];
+  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, fenetreId)];
   applyFrame(store.state.fenetres.find((f) => f.id === fenetreId)?.cadre ?? null);
   // Size and position kept for the next start (grouped: a drag fires dozens of events), as Electron's noterCadre.
   let frameTimer: ReturnType<typeof setTimeout> | undefined;

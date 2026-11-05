@@ -11,6 +11,8 @@ export interface SiteRequest {
   kind: string;
   mediaTypes?: readonly string[];
   lien?: string;
+  /** The request is gone (its page navigated or closed): its question falls. */
+  signal?: AbortSignal;
 }
 
 export interface SitePermissions {
@@ -82,7 +84,7 @@ const defaultFiles: Files = {
 export function createSitePermissions(o: {
   dataDir: string;
   profiles: () => IdProfil[];
-  ask: (d: { ongletId: IdOnglet | null; fenetreId: IdFenetre | null; origine: string; permissions: SitePermission[]; lien?: string }) => Promise<Issue>;
+  ask: (d: { ongletId: IdOnglet | null; fenetreId: IdFenetre | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Issue>;
   firefox: { set(profil: IdProfil, origine: string, p: SitePermission, d: Decision): void; remove(profil: IdProfil | null, origine: string | null): void };
   files?: Files;
 }): SitePermissions {
@@ -132,22 +134,22 @@ export function createSitePermissions(o: {
     async handle(r) {
       await ready;
       if (SANS_DEMANDE.has(r.kind)) return true;
-      const { ongletId, fenetreId, origine } = r;
+      const { ongletId, fenetreId, origine, signal } = r;
       // Handing a link to another application: asked every time, with the link in view.
       if (r.kind === "openExternal") {
         if (!r.lien) return false;
-        return (await o.ask({ ongletId, fenetreId, origine, permissions: ["ouvrir-application"], lien: r.lien })) === "autoriser";
+        return (await o.ask({ ongletId, fenetreId, origine, permissions: ["ouvrir-application"], lien: r.lien }, signal)) === "autoriser";
       }
       const permissions = translate(r.kind, r.mediaTypes);
       if (permissions.length === 0) return false;
-      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ ongletId, fenetreId, origine, permissions })) === "autoriser";
+      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ ongletId, fenetreId, origine, permissions }, signal)) === "autoriser";
       const decisions = of(r.profil);
       const k = (p: SitePermission) => `${r.profil}\n${key(origine, p)}`;
       const unknown = permissions.filter((p) => !decisions[key(origine, p)]);
       // One question pending per (profile, origin, permission): another banner already asks it.
       const fresh = unknown.filter((p) => !pending.has(k(p)));
       if (fresh.length) {
-        const answer = o.ask({ ongletId, fenetreId, origine, permissions: fresh });
+        const answer = o.ask({ ongletId, fenetreId, origine, permissions: fresh }, signal);
         for (const p of fresh) pending.set(k(p), answer);
         const done = () => fresh.forEach((p) => pending.delete(k(p)));
         void answer.then((d) => {
