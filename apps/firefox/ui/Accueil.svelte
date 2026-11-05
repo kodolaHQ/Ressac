@@ -124,7 +124,7 @@
     const dy = e.clientY - g.y0;
     const autres = g.depart.filter((q) => q.id !== g.id);
     const p = g.mode === "deplacer"
-      ? deplacerLibre({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, autres })
+      ? deplacerLibre({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, autres, largeurPx })
       : redimensionnerLibre({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.tailles.min, max: g.tailles.max, autres });
     apercu = g.depart.map((q) => (q.id === g.id ? p : q));
     guides = guidesLibres({ p, autres, largeurPx });

@@ -224,6 +224,8 @@ const rpc = createRpc({
         await placerWidgets(chemins, validerPlacements(p?.placements, ids));
       } catch (e) {
         console.error("[webaios] disposition non écrite :", e);
+        // L'interface a déjà montré l'aperçu du geste : elle relit l'ancienne disposition au lieu de le laisser à l'écran.
+        rpc.notify("accueil.change");
       }
     },
     "accueil.retirer": (p: { id?: unknown }) => {

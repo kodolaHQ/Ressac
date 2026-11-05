@@ -7,30 +7,38 @@ const place = (o: Partial<PlacementLibre> = {}): PlacementLibre => ({ id: "a", x
 describe("deplacerLibre", () => {
   it("s'arrête au bord d'un autre widget sans le déplacer", () => {
     const autre = place({ id: "b", x: 400 });
-    const r = deplacerLibre({ p: place(), x: 350, y: 0, autres: [autre] });
+    const r = deplacerLibre({ p: place(), x: 350, y: 0, autres: [autre], largeurPx: 1000 });
     expect(r).toEqual({ id: "a", x: 200, y: 0, l: 200, h: 180 });
     expect(autre).toEqual({ id: "b", x: 400, y: 0, l: 200, h: 180 });
   });
 
   it("ne sort jamais de x + l ≤ 1000", () => {
-    const r = deplacerLibre({ p: place({ x: 100 }), x: 950, y: 0, autres: [] });
+    const r = deplacerLibre({ p: place({ x: 100 }), x: 950, y: 0, autres: [], largeurPx: 1000 });
     expect(r.x + r.l).toBeLessThanOrEqual(LARGEUR_LIBRE);
     expect(r.x).toBe(800);
   });
 
   it("s'arrête aussi en venant de la droite et du bas", () => {
     const autre = place({ id: "b", x: 400, y: 200 });
-    expect(deplacerLibre({ p: place({ x: 700, y: 200 }), x: 450, y: 200, autres: [autre] }).x).toBe(600);
-    expect(deplacerLibre({ p: place({ x: 400, y: 0 }), x: 400, y: 300, autres: [autre] }).y).toBe(20);
+    expect(deplacerLibre({ p: place({ x: 700, y: 200 }), x: 450, y: 200, autres: [autre], largeurPx: 1000 }).x).toBe(600);
+    expect(deplacerLibre({ p: place({ x: 400, y: 0 }), x: 400, y: 300, autres: [autre], largeurPx: 1000 }).y).toBe(20);
   });
 
   it("ne téléporte pas l'aperçu sur un glisser diagonal : un seul axe se borne", () => {
     // Le voisin est en bas à droite ; l'axe horizontal a bougé le plus : son bord gauche gagne, y reste où le pointeur
     // l'a mis (pas de saut au coin (200, 20) du voisin).
     const autre = place({ id: "b", x: 400, y: 200 });
-    const r = deplacerLibre({ p: place(), x: 350, y: 304, autres: [autre] });
+    const r = deplacerLibre({ p: place(), x: 350, y: 304, autres: [autre], largeurPx: 1000 });
     expect(r.x).toBe(200);
     expect(r.y).toBe(304);
+  });
+
+  it("compare les deux axes en pixels : sur un accueil étroit, la verticale l'emporte", () => {
+    // 350 ‰ de 500 px = 175 px, moins que les 304 px verticaux : c'est le bord haut qui gagne.
+    const autre = place({ id: "b", x: 400, y: 200 });
+    const r = deplacerLibre({ p: place(), x: 350, y: 304, autres: [autre], largeurPx: 500 });
+    expect(r.x).toBe(350);
+    expect(r.y).toBe(20);
   });
 });
 
@@ -53,6 +61,25 @@ describe("redimensionnerLibre", () => {
     const r = redimensionnerLibre({ p: place(), l: 900, h: 180, min: { l: 167, h: 90 }, max: { l: 900, h: 360 }, autres: [autre] });
     expect(r.x + r.l).toBe(500);
     expect(r.l).toBe(500);
+  });
+
+  it("s'arrête au bord haut d'un voisin placé en bas à gauche (cas exact de la relecture)", () => {
+    // Le voisin croise la largeur du widget (300…600 contre 500…700) sans être à sa droite : grandir h le toucherait.
+    const p = place({ x: 500, y: 0, l: 200, h: 90 });
+    const autre = place({ id: "b", x: 300, y: 200, l: 300, h: 90 });
+    const r = redimensionnerLibre({ p, l: 200, h: 290, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [autre] });
+    expect(r.h).toBe(200);
+    expect(r.y + r.h).toBeLessThanOrEqual(autre.y);
+    expect(r.x < autre.x + autre.l && autre.x < r.x + r.l).toBe(true); // les largeurs se croisent bien
+  });
+
+  it("ne recule pas dans un voisin à sa gauche en glissant pour le minimum", () => {
+    // p = 900…1000, voisin à gauche = 750…850 : reculer pour tenir le minimum (200 ‰) ne doit pas le chevaucher.
+    const autre = place({ id: "b", x: 750, y: 0, l: 100, h: 180 });
+    const r = redimensionnerLibre({ p: place({ x: 900, l: 100, h: 180 }), l: 200, h: 180, min: { l: 200, h: 90 }, max: { l: 500, h: 360 }, autres: [autre] });
+    expect(r.x).toBeGreaterThanOrEqual(autre.x + autre.l);
+    expect(r.x + r.l).toBeLessThanOrEqual(LARGEUR_LIBRE);
+    expect(r.x < autre.x + autre.l && autre.x < r.x + r.l && r.y < autre.y + autre.h && autre.y < r.y + r.h).toBe(false);
   });
 
   it("recule au lieu de descendre sous le minimum près du bord droit", () => {

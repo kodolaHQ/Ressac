@@ -32,8 +32,8 @@ export function unitesLibres(t: { l: number; h: number }): { l: number; h: numbe
  * La place du widget `p` s'il était lâché en (x, y) : aimanté, dans l'accueil, et arrêté au bord d'un autre widget sans
  * le déplacer (le déplacement pousse l'aperçu hors des autres, il ne les tasse pas).
  */
-export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autres: readonly PlacementLibre[] }): PlacementLibre {
-  const { p, autres } = o;
+export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autres: readonly PlacementLibre[]; largeurPx: number }): PlacementLibre {
+  const { p, autres, largeurPx } = o;
   let x = borner(aimantX(o.x), 0, LARGEUR_LIBRE - p.l);
   let y = Math.max(0, aimantY(o.y));
   // Plusieurs murs peuvent se suivre : on refait un tour tant qu'un autre widget est touché.
@@ -51,8 +51,8 @@ export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autr
       else if (dy < 0) y = Math.min(p.y, Math.max(y, gene.y + gene.h));
     };
     // Le dernier bord touché gagne : l'axe qui a bougé le plus se borne d'abord, l'autre seulement si le chevauchement
-    // reste (un glisser diagonal ne saute pas au coin du voisin).
-    if (Math.abs(dx) >= Math.abs(dy)) {
+    // reste (un glisser diagonal ne saute pas au coin du voisin). Les deux axes se comparent en pixels.
+    if (Math.abs(dx) * largeurPx >= Math.abs(dy) * LARGEUR_LIBRE) {
       bornerX();
       if (chevauchent({ ...p, x, y }, gene)) bornerY();
     } else {
@@ -67,7 +67,8 @@ export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autr
 
 /**
  * La taille du widget `p` après un geste : bornée entre min et max, jamais au-delà du bord droit de l'accueil, et
- * arrêtée au bord gauche d'un voisin dont la hauteur croise la sienne (jamais de chevauchement écrit).
+ * arrêtée au bord gauche d'un voisin à sa droite ou au bord haut d'un voisin qui croise sa largeur, à gauche comme à
+ * droite (jamais de chevauchement écrit).
  */
 export function redimensionnerLibre(o: {
   p: PlacementLibre;
@@ -78,21 +79,30 @@ export function redimensionnerLibre(o: {
   autres: readonly PlacementLibre[];
 }): PlacementLibre {
   const { p, min, max, autres } = o;
-  const hL = borner(aimantY(o.h), Math.max(1, min.h), max.h);
   const minL = Math.max(1, Math.min(min.l, LARGEUR_LIBRE));
-  const vertical = (a: PlacementLibre) => a.id !== p.id && a.y < p.y + hL && p.y < a.y + a.h;
+  // Hauteur demandée : elle sert à savoir quels voisins croisent la hauteur pendant le calcul de la largeur.
+  const hSouhaite = borner(aimantY(o.h), Math.max(1, min.h), max.h);
+  // Seuls les voisins sur les rangées actuelles barrent la largeur : un voisin plus bas est arrêté par le calcul de h.
+  const vertical = (a: PlacementLibre) => a.id !== p.id && a.y < p.y + p.h && p.y < a.y + a.h;
   const bord = (depuis: number) => Math.min(LARGEUR_LIBRE, ...autres.filter((a) => vertical(a) && a.x >= depuis).map((a) => a.x));
   // Le minimum ne tient pas avant le voisin (ou le bord droit) : le widget recule au lieu de descendre sous son
-  // minimum, comme la grille d'Electron.
-  const x = Math.max(0, Math.min(p.x, bord(p.x) - minL));
+  // minimum, comme la grille d'Electron. Il recule sans entrer dans un voisin à sa gauche.
+  const gauche = Math.max(0, ...autres.filter((a) => vertical(a) && a.x + a.l <= p.x).map((a) => a.x + a.l));
+  const x = Math.max(gauche, Math.min(p.x, bord(p.x) - minL));
   const droite = bord(x);
-  const xFinal = Math.max(0, Math.min(x, droite - minL));
+  const xFinal = Math.max(gauche, Math.min(x, droite - minL));
   const maxL = Math.max(1, Math.min(max.l, droite - xFinal));
+  const l = borner(aimantX(o.l), Math.max(1, Math.min(minL, maxL)), maxL);
+  // Grandir vers le bas touche un voisin dès que les largeurs se croisent, qu'il soit à gauche ou à droite.
+  const dessous = autres
+    .filter((a) => a.id !== p.id && a.x < xFinal + l && xFinal < a.x + a.l && a.y >= p.y)
+    .map((a) => a.y - p.y);
+  const hMax = Math.max(1, Math.min(max.h, ...dessous));
   return {
     ...p,
     x: xFinal,
-    l: borner(aimantX(o.l), Math.max(1, Math.min(minL, maxL)), maxL),
-    h: hL,
+    l,
+    h: borner(hSouhaite, Math.max(1, min.h), hMax),
   };
 }
 
