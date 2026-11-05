@@ -341,6 +341,7 @@ const pressEnter = () => m.execute(
 );
 
 /** Console errors and uncaught exceptions of the sidebar UI from now on (Electron's erreursConsole). */
+// Only the sidebar's own console.error, error and unhandledrejection: unlike Playwright, not widget sub-frames or CSP reports.
 const trackErrors = () =>
   inUi(
     m,
@@ -366,8 +367,9 @@ const agent = (body: string) => m.execute(`return (async () => { const agent = (
 
 describe("the workflow builder's runs", () => {
   it("▶ Lancer : pastilles en cours puis éléments par bloc, nouvelle exécution choisie, aperçu à jour", async () => {
-    await builder("lancer");
+    await home();
     await trackErrors();
+    await builder("lancer");
     await waitVisible(tid("noeud-textes"));
     // No run: the preview shows the example, as the home page does.
     await click(m, tid("bouton-apercu"));
