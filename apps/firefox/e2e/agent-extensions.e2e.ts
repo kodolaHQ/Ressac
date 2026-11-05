@@ -172,7 +172,8 @@ describe("agent extensions: registry, signed install, restart", () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
       await (await AddonManager.getAddonByID(${JSON.stringify(ID)})).uninstall(true);
     })();`);
-    await until(() => !("agent:cacheur" in registry(f.dataDir)));
+    // The noyau writes the registry after a round trip: under the full parallel suite it can take more than 15 s.
+    await until(() => !("agent:cacheur" in registry(f.dataDir)), 30_000);
     expect(await agentAddons(w.marionette)).toEqual([]);
     await w.close();
     rmSync(path.join(racine(f.dataDir), ".webaios", "mcp.json"));
