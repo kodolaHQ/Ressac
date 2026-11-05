@@ -1,4 +1,4 @@
-import { contientIndiceReseau } from "../../shared/indices-reseau";
+import { MOTIF_INDICES_RESEAU, contientIndiceReseau } from "../../shared/indices-reseau";
 
 /**
  * Electron's CSP (main/agent/accueil.ts), copied: a resource:// file cannot carry a response header, so the CSP is
@@ -72,12 +72,162 @@ function cheminSource(dataDir: string, id: string): string | null {
   return reelDossier.startsWith(racine + "/") && reelFichier.startsWith(reelDossier + "/") ? reelFichier : null;
 }
 
-/** Le texte servi : la meta CSP d'abord (avant tout script) ; AFFICHAGE_REFUSE si le HTML contient un indice réseau. */
+/**
+ * Electron's `garde-widget.ts`, run in the page world from the served copy before the widget's own scripts. No
+ * `JSWindowActor`: measured, the actor's child never installs on these `resource://` frames in this Firefox. Self-contained
+ * (no imports, no `win`: it uses the page's `window`), serialized with `toString()`, the network-hint pattern passed as
+ * its argument. The WebRTC globals go last: if an earlier step throws, `RTCPeerConnection` is still there, and the UI
+ * (which only attaches its gesture listener when it is gone) records no click — the guard fails closed.
+ */
+function gardeWidget(motif: string): void {
+  const w = window as unknown as Record<string, any>;
+  const refuser = (quoi: string): never => {
+    throw new TypeError(`Refusé dans l'affichage d'un widget : ${quoi}`);
+  };
+  const indice = new RegExp(motif, "i");
+  const contientIndice = (html: string) => {
+    let avant: string;
+    let x = html;
+    do {
+      avant = x;
+      x = x.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));?/gi, (_m, dec?: string, hex?: string, nom?: string) => {
+        if (nom) return ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" } as Record<string, string>)[nom.toLowerCase()]!;
+        const n = dec !== undefined ? Number(dec) : parseInt(hex!, 16);
+        return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : String.fromCharCode(0xfffd);
+      });
+    } while (x !== avant);
+    return indice.test(x);
+  };
+  // No catch: a policy that cannot be created fails the whole guard, and no link then opens.
+  w.trustedTypes?.createPolicy("default", {
+    createHTML: (html: string) => (contientIndice(String(html)) ? refuser("<link>, <meta http-equiv> ou règles de spéculation") : html),
+    createScript: () => refuser("code en texte (URL javascript:, gestionnaire en attribut, texte d'un script)"),
+    createScriptURL: () => refuser("script externe"),
+  });
+  const balises = ["link", "meta"];
+  const nomLocal = (n: unknown) => String(n).toLowerCase().split(":").pop() ?? "";
+  const D = w.Document.prototype;
+  const creer = D.createElement;
+  const creerNS = D.createElementNS;
+  const remplacer = (proto: any, nom: string, f: (...a: any[]) => unknown) => {
+    Object.defineProperty(proto, nom, { configurable: true, writable: true, value: f });
+  };
+  remplacer(D, "createElement", function (this: unknown, nom: unknown, o?: unknown) {
+    if (balises.includes(nomLocal(nom))) return refuser(`<${String(nom)}>`);
+    return creer.call(this, nom, o);
+  });
+  remplacer(D, "createElementNS", function (this: unknown, ns: unknown, nom: unknown, o?: unknown) {
+    if (balises.includes(nomLocal(nom))) return refuser(`<${String(nom)}>`);
+    return creerNS.call(this, ns, nom, o);
+  });
+  // Structural rule, whatever the path (createDocument then adoptNode, DOMParser, template, cloneNode…): no <link>
+  // nor <meta>, alone or inside a fragment, enters a document. The accessors are taken now, before the widget.
+  const selecteur = balises.join(",");
+  const interditDans = (n: any): boolean => {
+    if (!n || typeof n !== "object") return false;
+    let t: number;
+    try {
+      t = n.nodeType;
+    } catch {
+      return false; // not a node (text given to append): nothing to check
+    }
+    if (t === 1) return balises.includes(String(n.localName).toLowerCase()) || n.querySelector(selecteur) !== null;
+    if (t === 11) return n.querySelector(selecteur) !== null;
+    return false;
+  };
+  const garder = (proto: any, noms: string[]) => {
+    if (!proto) return;
+    for (const nom of noms) {
+      const f = proto[nom];
+      if (typeof f !== "function") continue;
+      remplacer(proto, nom, function (this: unknown, ...a: unknown[]) {
+        if (a.some(interditDans)) return refuser("<link> ou <meta> inséré dans la page");
+        return f.apply(this, a);
+      });
+    }
+  };
+  garder(w.Node.prototype, ["appendChild", "insertBefore", "replaceChild"]);
+  const enfants = ["append", "prepend", "replaceChildren"];
+  const voisins = ["before", "after", "replaceWith"];
+  garder(w.Element.prototype, [...enfants, ...voisins, "insertAdjacentElement"]);
+  garder(D, enfants);
+  garder(w.DocumentFragment.prototype, enfants);
+  garder(w.CharacterData?.prototype, voisins);
+  garder(w.DocumentType?.prototype, voisins);
+  garder(w.Range?.prototype, ["insertNode", "surroundContents"]);
+  // execCommand("insertHTML") is not a Trusted Types sink.
+  const commande = D.execCommand;
+  if (typeof commande === "function")
+    remplacer(D, "execCommand", function (this: unknown, nom: unknown, ...a: unknown[]) {
+      if (String(nom).toLowerCase() === "inserthtml" && contientIndice(String(a[1] ?? ""))) return refuser("<link>, <meta http-equiv> ou règles de spéculation");
+      return commande.call(this, nom, ...a);
+    });
+  const R = w.CustomElementRegistry?.prototype;
+  if (R) {
+    const definir = R.define;
+    remplacer(R, "define", function (this: unknown, nom: unknown, classe: unknown, o?: { extends?: unknown }) {
+      if (o && balises.includes(nomLocal(o.extends))) return refuser(`élément qui étend <${String(o.extends)}>`);
+      return definir.call(this, nom, classe, o);
+    });
+  }
+  // Last: see the comment on gardeWidget.
+  const absents = [
+    "RTCPeerConnection",
+    "webkitRTCPeerConnection",
+    "RTCDataChannel",
+    "RTCSessionDescription",
+    "RTCIceCandidate",
+    "RTCRtpSender",
+    "RTCRtpReceiver",
+    "RTCRtpTransceiver",
+    "RTCDtlsTransport",
+    "RTCIceTransport",
+    "RTCSctpTransport",
+    "RTCCertificate",
+    "RTCDTMFSender",
+    "RTCEncodedAudioFrame",
+    "RTCEncodedVideoFrame",
+    "RTCRtpScriptTransform",
+    "RTCPeerConnectionIceEvent",
+    "RTCDataChannelEvent",
+    "RTCTrackEvent",
+    "XSLTProcessor",
+  ];
+  for (const nom of absents) {
+    try {
+      delete w[nom];
+    } catch {
+      // non-configurable property: nothing more to do
+    }
+  }
+  for (const [proto, nom] of [
+    [w.Element?.prototype, "setHTML"],
+    [w.ShadowRoot?.prototype, "setHTML"],
+    [w.Document, "parseHTML"],
+  ] as const) {
+    try {
+      if (proto) delete (proto as any)[nom];
+    } catch {
+      // ditto
+    }
+  }
+}
+
+/** The guard's `<script>`, injected into the served copy after the CSP meta: the page parser runs it first. */
+const SCRIPT_GARDE = `<script>(${gardeWidget.toString()})(${JSON.stringify(MOTIF_INDICES_RESEAU)});</script>`;
+
+/** Whitespace, leading comments and an optional doctype: everything the guard must be inserted after. */
+const PREFIXE_DOC = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
+
+/**
+ * Le texte servi : la meta CSP puis la garde, après un éventuel doctype (le doctype reste le premier jeton, pas de
+ * mode quirks) et avant tout autre élément ; AFFICHAGE_REFUSE si le HTML contient un indice réseau.
+ */
 export function affichageServi(html: string): string {
   if (contientIndiceReseau(html)) return AFFICHAGE_REFUSE;
+  const prefixe = html.match(PREFIXE_DOC)?.[0] ?? "";
   const meta = `<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}">`;
-  const doctype = html.match(/^\s*<!doctype[^>]*>/i);
-  return doctype ? `${doctype[0]}${meta}${html.slice(doctype[0].length)}` : meta + html;
+  return `${prefixe}${meta}${SCRIPT_GARDE}${html.slice(prefixe.length)}`;
 }
 
 /** La substitution resource:// du widget, ou `null` pour la retirer. */

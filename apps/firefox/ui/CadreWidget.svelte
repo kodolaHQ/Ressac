@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy, onMount } from "svelte";
   import { api } from "../../navigateur/src/renderer/etat.svelte";
 
   /**
@@ -65,6 +66,35 @@
     // Le process principal n'ouvre le lien que si un vrai clic de l'utilisateur vient de tomber dans ce widget (un lien par clic).
     api.accueil.ouvrir(url, widget.id);
   }
+
+  // La garde est un script en tête de la copie servie ; elle retire WebRTC en dernier, donc tant que RTCPeerConnection
+  // est là elle n'a pas pu s'installer entièrement : aucun appui n'est alors enregistré (échec fermé). Ce listener est
+  // posé par le chrome, que le widget ne peut ni retirer ni imiter (isTrusted).
+  let fenetreGeste: Window | null = null;
+  function geste(e: PointerEvent) {
+    if (e.isTrusted) api.accueil.geste(widget.id);
+  }
+  function detacherGeste() {
+    fenetreGeste?.removeEventListener("pointerdown", geste, true);
+    fenetreGeste = null;
+  }
+  function brancherGeste() {
+    detacherGeste();
+    const cadre = iframe?.contentWindow;
+    if (!cadre) return;
+    // wrappedJSObject : le global de la page, où la garde a réellement supprimé WebRTC (un Xray montrerait l'interface native).
+    const page = (cadre as unknown as { wrappedJSObject?: { RTCPeerConnection?: unknown; trustedTypes?: unknown } }).wrappedJSObject;
+    if (!page || page.RTCPeerConnection !== undefined || page.trustedTypes === undefined) return;
+    fenetreGeste = cadre;
+    cadre.addEventListener("pointerdown", geste, true);
+  }
+  onMount(brancherGeste);
+  onDestroy(detacherGeste);
+
+  function surCharge() {
+    envoyer();
+    brancherGeste();
+  }
 </script>
 
 <svelte:window onmessage={surMessage} onfocusin={surFocusin} onblur={surBlur} />
@@ -72,7 +102,7 @@
 <div class="contenu" bind:clientWidth={largeur} bind:clientHeight={hauteur}>
   {#if widget.src}
     <!-- Sans allow-same-origin : le code écrit par l'agent tourne dans une origine opaque, sans accès à l'interface. -->
-    <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts" onload={envoyer}></iframe>
+    <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts" onload={surCharge}></iframe>
   {:else}
     <p class="vide">L'agent n'a pas encore écrit l'affichage de ce widget.</p>
   {/if}

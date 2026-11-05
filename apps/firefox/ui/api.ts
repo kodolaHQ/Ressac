@@ -19,6 +19,8 @@ export interface ApiFirefox extends Omit<ApiWebaios, "accueil"> {
   accueil: Omit<ApiWebaios["accueil"], "lire" | "placer"> & {
     lire(): Promise<AccueilLu>;
     placer(placements: PlacementLibre[]): void;
+    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (no API in the frozen Electron type). */
+    geste(id: string): void;
   };
 }
 
@@ -176,6 +178,7 @@ export function createApi(win: WindowController): ApiFirefox {
       },
       surChange: (rappel) => untilUnload(host.on("accueil.change", () => rappel())),
       placer: (placements) => host.notify("accueil.placer", { placements }),
+      geste: (id) => win.store.gestesWidgets.geste(fenetre, id),
       retirer: (id) => host.notify("accueil.retirer", { id }),
       ouvrir: (url, id) => {
         // Only just after a real click in this widget's display (one link per click), and one per second at most: a

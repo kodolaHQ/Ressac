@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { WidgetAffiche } from "../../navigateur/src/commun/api";
 import { AFFICHAGE_REFUSE, CSP_WIDGET, affichageServi, cheminCopie, oublierWidget, preparerWidget, urlAffichage } from "../chrome/window/widget-frame";
+import { MOTIF_INDICES_RESEAU } from "../shared/indices-reseau";
 import { servirAffichages } from "../ui/api";
 
 let racine: string;
@@ -174,19 +175,33 @@ describe("servirAffichages", () => {
 describe("affichageServi", () => {
   const html = (corps: string) => `<!doctype html><html><head><title>démo</title></head><body>${corps}</body></html>`;
 
-  it("injecte la meta CSP avant le premier élément, HTML inchangé", () => {
+  it("injecte la meta CSP puis la garde après le doctype, avant tout élément du widget", () => {
     const source = html("<script>document.title = 'ok'</script>");
     const servi = affichageServi(source);
-    expect(servi).toContain(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}">`);
+    const prefixe = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><script>`;
+    expect(servi.startsWith(prefixe)).toBe(true);
     expect(servi).toContain("<script>document.title = 'ok'</script>");
-    // Le parseur doit lire la CSP avant tout script.
-    expect(servi.indexOf("Content-Security-Policy")).toBeLessThan(servi.indexOf("<script"));
-    expect(servi.startsWith("<!doctype html>")).toBe(true);
+    // Le parseur exécute la garde avant les scripts du widget ; le doctype reste le premier jeton.
+    const finGarde = servi.indexOf("</script>");
+    expect(servi.indexOf("<title>")).toBeGreaterThan(finGarde);
+    expect(servi.indexOf("<script>document.title")).toBeGreaterThan(finGarde);
+    // La règle des indices réseau est passée à la garde.
+    expect(servi).toContain(JSON.stringify(MOTIF_INDICES_RESEAU));
+    // Le script sérialisé est du JavaScript valide (compilé, pas exécuté).
+    const debut = servi.indexOf("<script>") + "<script>".length;
+    expect(() => new Function(servi.slice(debut, finGarde))).not.toThrow();
   });
 
-  it("injecte aussi la meta dans un HTML sans doctype", () => {
+  it("injecte le même préfixe dans un HTML sans doctype", () => {
     const servi = affichageServi("<p>nu</p>");
-    expect(servi).toBe(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><p>nu</p>`);
+    expect(servi.startsWith(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><script>`)).toBe(true);
+    expect(servi.endsWith("</script><p>nu</p>")).toBe(true);
+  });
+
+  it("garde les commentaires de tête et le doctype avant la meta et la garde", () => {
+    const servi = affichageServi("<!-- x -->\n<!doctype html><p>nu</p>");
+    expect(servi.startsWith(`<!-- x -->\n<!doctype html><meta http-equiv="Content-Security-Policy"`)).toBe(true);
+    expect(servi.endsWith("</script><p>nu</p>")).toBe(true);
   });
 
   it("remplace par AFFICHAGE_REFUSE un <link>", () => {

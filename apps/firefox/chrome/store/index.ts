@@ -43,7 +43,7 @@ export interface WebAiOsStore extends Store {
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
-  /** The real clicks in a widget's display: each lets that widget open one link (recorded by the widget frame actor). */
+  /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
@@ -51,7 +51,6 @@ export interface WebAiOsStore extends Store {
 }
 
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
-const WIDGET_ACTOR = "chrome://browser/content/webaios/widget-actor.sys.mjs";
 
 /**
  * The extension actor's module. Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding it, served by a
@@ -175,16 +174,6 @@ async function start(): Promise<WebAiOsStore> {
     // Only turns retargeting off in its own frame: nothing it answers makes the parent act.
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["webaios-reading"],
-  });
-  // The widget displays: copies served under resource://webaios-widget-<id>/ in a chrome subframe of the sidebar, in
-  // the parent process. The child filters on the document's URL; being a subframe of a chrome document, it also needs
-  // allFrames and includeChrome. Not marked safeForUntrustedWebProcess: it is then not created in web content processes
-  // at all (dom.jsipc.check_safeForUntrustedWebProcess), and those can never host the substitution.
-  ChromeUtils.registerWindowActor("WebAiOsWidget", {
-    parent: { esModuleURI: WIDGET_ACTOR },
-    child: { esModuleURI: WIDGET_ACTOR, events: { DOMWindowCreated: {} } },
-    allFrames: true,
-    includeChrome: true,
   });
   const extensionActor = extensionActorModule();
   // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
