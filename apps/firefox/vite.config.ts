@@ -6,7 +6,7 @@ import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
 // Electron components that step 2 does not migrate (imported as ./Name.svelte by the reused ones): Unavailable.svelte shows nothing.
-const UNMIGRATED = ["Accueil", "IaLocale", "BoutonDesign"];
+const UNMIGRATED = ["IaLocale", "BoutonDesign"];
 
 // Three bundles, one per `--mode` (scripts/ui.sh builds all of them):
 // - sidebar: privileged Firefox page (chrome://browser/content/webaios/sidebar.html), one script and one stylesheet
@@ -84,7 +84,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [svelte()],
     resolve: {
-      alias: [{ find: /^\.\/BarreExtensions\.svelte$/, replacement: fileURLToPath(new URL("ui/ExtensionsStrip.svelte", import.meta.url)) }].concat(UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) }))),
+      alias: [
+        // PageVide.svelte (frozen) imports ./Accueil.svelte: the home page has its own Firefox copy, so the name is
+        // redirected explicitly rather than left to resolve next to the frozen component.
+        { find: /^\.\/Accueil\.svelte$/, replacement: fileURLToPath(new URL("ui/Accueil.svelte", import.meta.url)) },
+        { find: /^\.\/BarreExtensions\.svelte$/, replacement: fileURLToPath(new URL("ui/ExtensionsStrip.svelte", import.meta.url)) },
+      ].concat(UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) }))),
     },
     build: {
       outDir,
