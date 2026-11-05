@@ -1,6 +1,7 @@
 import type { ApiWebaios, EtatPanneauAgent, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
 import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
 import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts";
+import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
@@ -12,9 +13,12 @@ export interface AccueilLu {
   theme: ThemeAccueil | null;
 }
 
-/** The Electron preload's API, with the home page's read widened to carry the theme (Task 7 applies it). */
+/** The Electron preload's API, with the home page's read widened to carry the theme and free placements (Task 7). */
 export interface ApiFirefox extends Omit<ApiWebaios, "accueil"> {
-  accueil: Omit<ApiWebaios["accueil"], "lire"> & { lire(): Promise<AccueilLu> };
+  accueil: Omit<ApiWebaios["accueil"], "lire" | "placer"> & {
+    lire(): Promise<AccueilLu>;
+    placer(placements: PlacementLibre[]): void;
+  };
 }
 
 declare global {
@@ -135,8 +139,9 @@ export function createApi(win: WindowController): ApiFirefox {
       surChange: (rappel) => untilUnload(host.on("accueil.change", () => rappel())),
       placer: (placements) => host.notify("accueil.placer", { placements }),
       retirer: (id) => host.notify("accueil.retirer", { id }),
-      ouvrir: (url) => {
-        // Task 6 adds the gesture check here (a real click just landed in this widget's frame).
+      ouvrir: (url, _id) => {
+        // Task 6 adds the gesture check here (a real click just landed in this widget's frame) and the one-link-per-second
+        // limit that keeps an affichage from opening links in a burst.
         if (!urlOuvrable(url)) return console.warn("[webaios] lien de widget refusé :", url);
         win.store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url, activer: true });
       },

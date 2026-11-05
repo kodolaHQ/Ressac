@@ -68,6 +68,7 @@ let noyau: Noyau | null = null;
 let erreur: string | null = null;
 let pret: Promise<Noyau | null> = Promise.resolve(null);
 let unsubscribe: (() => void) | undefined;
+let arretAccueil: (() => Promise<void>) | undefined;
 let accesTimer: NodeJS.Timeout | undefined;
 
 const etatAcces = () => ({ agent: noyau?.agent ?? "L'agent", onglets: noyau?.politique.etat() ?? {} });
@@ -103,6 +104,8 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     (n) => {
       noyau = n;
       unsubscribe = n.politique.surChange(diffuserAcces);
+      // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
+      arretAccueil = n.surveillerAccueil(() => rpc.notify("accueil.change"));
       diffuserAcces();
       return n;
     },
@@ -118,6 +121,8 @@ const arreterNoyau = async (n: Noyau | null) => {
   noyau = null;
   unsubscribe?.();
   unsubscribe = undefined;
+  await arretAccueil?.();
+  arretAccueil = undefined;
   diffuserAcces();
   await n?.arreter();
 };
