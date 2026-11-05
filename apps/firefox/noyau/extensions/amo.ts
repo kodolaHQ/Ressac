@@ -23,8 +23,14 @@ export interface CleAmo {
   secret: string;
 }
 
-/** Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_CLES ("emetteur:secret") or null; else the keychain (service webaios-amo), null when absent. */
-export async function lireCleAmo(env: NodeJS.ProcessEnv = process.env): Promise<CleAmo | null> {
+/** How long a keychain read may take (a locked keychain waits on a macOS prompt): past it, the keys count as absent. */
+export const DELAI_TROUSSEAU_MS = 10_000;
+
+/**
+ * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_CLES ("emetteur:secret") or null; else the keychain (service webaios-amo),
+ * null when absent or too slow. `commande` and `delai` are only there for tests.
+ */
+export async function lireCleAmo(env: NodeJS.ProcessEnv = process.env, o: { commande?: string; delai?: number } = {}): Promise<CleAmo | null> {
   if (env.WEBAIOS_TEST_AMO_URL) {
     const cles = env.WEBAIOS_TEST_AMO_CLES;
     // The issuer itself holds colons (user:<id>:<hash>): the secret is what follows the last one.
@@ -32,13 +38,12 @@ export async function lireCleAmo(env: NodeJS.ProcessEnv = process.env): Promise<
     return cles && i > 0 && i < cles.length - 1 ? { emetteur: cles.slice(0, i), secret: cles.slice(i + 1) } : null;
   }
   try {
-    const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([
-      run("security", ["find-generic-password", "-s", "webaios-amo"]),
-      run("security", ["find-generic-password", "-s", "webaios-amo", "-w"]),
-    ]);
+    const securite = (args: string[]) => run(o.commande ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delai ?? DELAI_TROUSSEAU_MS });
+    const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([securite([]), securite(["-w"])]);
     const emetteur = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
     return emetteur && secret.trim() ? { emetteur, secret: secret.trim() } : null;
   } catch {
+    // Absent, refused or timed out: the error holds the command's output, so it is never logged.
     return null;
   }
 }
@@ -138,6 +143,8 @@ export async function signer(o: {
     if (r.status >= 300 && r.status !== 404) throw new ErreurSignature(signatureImpossible(`HTTP ${r.status}`));
     v = r.body;
     if (v?.file?.status === "public") break;
+    // Rejected after validation (disabled…): it will never turn public.
+    if (v?.file?.status && v.file.status !== "unreviewed") throw refus(r);
     await attendre();
   }
   const dl = await fetch(v.file.url, { headers: { Authorization: `JWT ${jeton(o.cle)}` }, signal: o.signal }).catch((e) => {

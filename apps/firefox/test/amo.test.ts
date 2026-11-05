@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AMO_URL, ErreurSignature, SIGNATURE_LENTE, lireCleAmo, signatureImpossible, signatureRefusee, signer } from "../noyau/extensions/amo";
 import { zipper } from "../noyau/extensions/copie-firefox";
 import { startFakeAmo } from "./fake-amo";
@@ -63,6 +63,33 @@ describe("AMO client", () => {
     expect(await erreur({ delaiMs: 5000 }, { delai: 200 })).toBe(SIGNATURE_LENTE);
     expect(await erreur({ erreurSondage: 403 }, { delai: 300 })).toBe(signatureImpossible("HTTP 403"));
     expect(await erreur({ erreurHttp: 500 })).toBe(signatureImpossible("HTTP 500"));
+  });
+
+  it("a version AMO rejects after validation is refused at once, with AMO's text", async () => {
+    const amo = await fake({ statutFichier: "disabled" });
+    const a = await xpiDe("t@agent.webaios", "1.0.0.1");
+    const debut = Date.now();
+    const e = await signer({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", cle, base: amo.url, pasMs: 10, delai: 5000 }).then(() => null, (x) => x);
+    expect(e).toBeInstanceOf(ErreurSignature);
+    expect(e.message.startsWith(signatureRefusee(""))).toBe(true);
+    expect(e.message).toContain("disabled");
+    expect(Date.now() - debut).toBeLessThan(2000);
+  });
+
+  it("keychain: a `security` that hangs counts as keys absent, its output never shown", async () => {
+    const d = mkdtempSync(join(tmpdir(), "webaios-amo-test-"));
+    dirs.push(d);
+    const lent = join(d, "security");
+    writeFileSync(lent, "#!/bin/sh\necho 'keychain: \"acct\"<blob>=\"user:1:abc\"'\necho s3cr3t-do-not-leak\nexec sleep 30\n", { mode: 0o755 });
+    const erreurs: unknown[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a) => void erreurs.push(a));
+    const warn = vi.spyOn(console, "warn").mockImplementation((...a) => void erreurs.push(a));
+    const debut = Date.now();
+    expect(await lireCleAmo({}, { commande: lent, delai: 200 })).toBeNull();
+    expect(Date.now() - debut).toBeLessThan(5000);
+    spy.mockRestore();
+    warn.mockRestore();
+    expect(erreurs).toEqual([]);
   });
 
   it("keys: test env, absent", async () => {

@@ -10,9 +10,10 @@ import { promisify } from "node:util";
 /**
  * A fake addons.mozilla.org following the v5 flow of plan 25's spike (upload, validation, PUT addon / POST versions,
  * version polling, download). The .xpi it hands back is the one received, unsigned.
- * `refus`: the validation fails with that message; `delaiMs`: the version turns public that late; `erreurHttp`: the upload answers that code; `erreurSondage`: the upload and version polls answer that code.
+ * `refus`: the validation fails with that message; `delaiMs`: the version turns public that late; `erreurHttp`: the upload answers that code; `erreurSondage`: the upload and version polls answer that code;
+ * `statutFichier`: the version's file ends in that status ("disabled": AMO rejected it after validation).
  */
-export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreurHttp?: number; erreurSondage?: number } = {}) {
+export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreurHttp?: number; erreurSondage?: number; statutFichier?: string } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-fake-amo-"));
   const envois: { guid: string; version: string; auth: string; methode: string }[] = [];
   const uploads = new Map<string, string>();
@@ -57,7 +58,7 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
         if (o.erreurSondage) return rendre(o.erreurSondage, {});
         const v = versions.get(`${guid}@${m[3]}`);
         if (!v) return rendre(404, {});
-        return rendre(200, { file: { status: Date.now() >= v.pret ? "public" : "unreviewed", url: `${base}/download/${encodeURIComponent(guid)}/${m[3]}` } });
+        return rendre(200, { file: { status: o.statutFichier ?? (Date.now() >= v.pret ? "public" : "unreviewed"), url: `${base}/download/${encodeURIComponent(guid)}/${m[3]}` } });
       }
     }
     if (req.method === "GET" && (m = /^\/download\/([^/]+)\/(.+)$/.exec(url.pathname))) {
