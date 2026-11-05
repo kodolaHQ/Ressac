@@ -7,6 +7,9 @@ const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integ
 const KINDS: Record<string, string> = {
   "desktop-notification": "notifications",
   geolocation: "geolocation",
+  // media.eme.require-app-approval: one request per document (spike P4). MIDI SysEx is the same question (P1).
+  "media-key-system-access": "drm",
+  midi: "midi",
 };
 
 /** Calls `cb` once the browser's page goes (top-level navigation) or its window closes: Firefox tells a held request nothing (spike P1). */

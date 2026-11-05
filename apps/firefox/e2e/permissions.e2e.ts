@@ -29,6 +29,16 @@ const ACTIONS = {
   cam: () => gum({ video: true }),
   both: () => gum({ video: true, audio: true }),
   screen: async () => { const s = await navigator.mediaDevices.getDisplayMedia({ video: true }); s.getTracks().forEach((t) => t.stop()); return "shared"; },
+  midi: async () => { const a = await navigator.requestMIDIAccess(); return { inputs: a.inputs.size }; },
+  drm: () => navigator.requestMediaKeySystemAccess("org.w3.clearkey", [{ initDataTypes: ["webm"], videoCapabilities: [{ contentType: 'video/webm; codecs="vp8"' }] }]).then((a) => a.keySystem),
+  audio: async () => { const n = 8000, b = new DataView(new ArrayBuffer(44 + n * 2)); const s = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+    s(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); s(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+    b.setUint32(24, 8000, true); b.setUint32(28, 16000, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); s(36, "data"); b.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) b.setInt16(44 + i * 2, Math.sin(i / 3) * 8000, true);
+    const a = new Audio(URL.createObjectURL(new Blob([b], { type: "audio/wav" })));
+    // A refused play() rejects (NotAllowedError); in a background tab an allowed one may stay pending, so only the policy and the absence of a rejection count.
+    await Promise.race([a.play(), new Promise((ok) => setTimeout(ok, 1500))]); a.pause(); return navigator.getAutoplayPolicy("mediaelement"); },
+  blocked: async () => window.open("/p?do=none", "_blank") === null,
   proto: async () => { location.href = "webaios-test:hello"; return "navigated"; },
   popup: async () => !!window.open("/p?do=notif&auto&popup", "notif", "width=500,height=600"),
 };
@@ -45,6 +55,8 @@ const PREFS = {
   // Fake camera and microphone: no device, no macOS question (spike P2).
   "media.navigator.streams.fake": true,
   // Test geolocation provider on a data: URL, never CoreLocation (a macOS prompt).
+  // A test MIDI port, no real device (spike P1).
+  "midi.testing": true,
   "geo.provider.testing": true,
   "geo.provider.use_corelocation": false,
   "geo.provider.network.scan": false,
@@ -409,5 +421,44 @@ describe("site permissions", () => {
     await waitFor(m, `return ${browser(id)}.currentURI.spec`, (u: string) => u.includes("/handled?u="));
     expect(handled).toHaveLength(1);
     expect(Object.keys(await saved()).filter((k) => /ouvrir|application/.test(k))).toEqual([]);
+  });
+
+  it("DRM : le bandeau, puis navigator.requestMediaKeySystemAccess('org.w3.clearkey', …) réussit ; retenu", { timeout: 60_000 }, async () => {
+    const base = await origin();
+    const id = await open(base, "drm");
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut lire des contenus protégés \(DRM\)$/);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: "org.w3.clearkey" });
+    await reload(id);
+    expect(await result(id)).toEqual({ ok: "org.w3.clearkey" });
+    expect(await banner()).toBeNull();
+    expect(await saved()).toMatchObject({ [`${base} drm`]: "autoriser" });
+  });
+
+  it("MIDI : le bandeau, puis navigator.requestMIDIAccess() réussit ; aucun module dans about:addons", { timeout: 60_000 }, async () => {
+    const id = await open(await origin(), "midi");
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut utiliser vos appareils MIDI$/);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: { inputs: 1 } });
+    const addons = await chrome(`const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs"); return (await AddonManager.getAllAddons()).filter((a) => a.type === "sitepermission").map((a) => a.id);`);
+    expect(addons).toEqual([]);
+  });
+
+  it("un son se lit sans clic (lecture automatique autorisée)", async () => {
+    const id = await open(await origin(), "audio");
+    expect(await result(id)).toEqual({ ok: "allowed" });
+  });
+
+  it("une popup bloquée n'affiche aucune barre de Firefox", { timeout: 60_000 }, async () => {
+    // Marionette turns the popup blocker off: on again for this test, as for a person.
+    await m.execute("Services.prefs.setBoolPref('dom.disable_open_during_load', true);");
+    try {
+      const id = await open(await origin(), "blocked");
+      expect(await result(id)).toEqual({ ok: true });
+      await new Promise((r) => setTimeout(r, 1000));
+      expect(await m.execute(`return gBrowser.getNotificationBox(${browser(id)}).allNotifications.map((n) => n.getAttribute("value"));`)).toEqual([]);
+    } finally {
+      await m.execute("Services.prefs.setBoolPref('dom.disable_open_during_load', false);");
+    }
   });
 });

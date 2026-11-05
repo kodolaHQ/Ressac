@@ -105,6 +105,10 @@ async function start(): Promise<WebAiOsStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
   // A decision is per login profile: without this, one container's permission holds in all of them (spike P6).
   Services.prefs.getDefaultBranch("").setBoolPref("permissions.isolateBy.userContext", true);
+  // DRM asks through our hook (without it all DRM is refused); sounds play without a click; no popup-blocked bar (spike P4, P8).
+  Services.prefs.getDefaultBranch("").setBoolPref("media.eme.require-app-approval", true);
+  Services.prefs.getDefaultBranch("").setIntPref("media.autoplay.default", 0);
+  Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
