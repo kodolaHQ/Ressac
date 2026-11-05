@@ -186,13 +186,12 @@ Known limits:
 - Notifications: a finished harvest of a widget with `recolte.notifier` shows a macOS alert through Firefox's alerts service (`Cc["@mozilla.org/alerts-service;1"]`, never the XUL fallback): title = widget name, text = number of new items, never their content. The e2e write one JSON line per notification to `WEBAIOS_TEST_NOTIFICATIONS` and show nothing.
 - Host stopped: an action sent while the noyau host is stopped changes nothing; the card says « Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?) » after 6 s, and the page stays displayed.
 - Builder: « Voir / modifier le workflow » opens Electron's workflow builder on `webaios://workflow/<widget>`, in the sidebar frame. Its Agent tab, ⌘J and ✦ open the window's agent panel on the right (the same conversation) instead of hosting the terminal in the tab: the only visible difference with Electron (`e2e/builder-agent.e2e.ts`).
-- Tests: `e2e/accueil.e2e.ts`; the fake docker is `test/outils/docker` (the launcher puts it on `PATH`), so no test touches a real container.
+- Tests: `e2e/accueil.e2e.ts`, the watch and the notification click in `e2e/watch.e2e.ts`; the fake docker is `test/outils/docker` (the launcher puts it on `PATH`), so no test touches a real container.
 
 Limits:
 
 - One theme palette only (no light/dark variant), no free CSS; the sidebar, the agent and the panels keep the app's theme.
 - A login profile that becomes private or is deleted does not re-ask at once: the accord is refused at the widget's next scheduled harvest (as in Electron, at the next read; no observer).
-- A widget whose workflow reads a page that changes host still fails with « Lecture ménagée pas encore disponible ».
 - `affichage.html` is written by the agent: the CSP and the guard are deterrence, not proof (same limit as Electron).
 - One home page for every space (as in Electron): widgets, data and accords are not per space.
 

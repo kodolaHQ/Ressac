@@ -282,3 +282,5 @@ async function start(): Promise<WebAiOsStore> {
 }
 
 export const ready: Promise<WebAiOsStore> = start();
+// For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
+export { alertObserver } from "./notifications";
