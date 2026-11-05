@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
+import { contientIndiceReseau } from "../../shared/indices-reseau";
 
 /**
  * Electron's scheme and CSP (main/agent/accueil.ts), copied: Firefox has no way to set a response header for a custom
@@ -13,26 +14,6 @@ export const AFFICHAGE_REFUSE =
   '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color: #b44">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir AGENTS.md.</p>';
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
-/**
- * Ce qui, dans le HTML d'un affichage, ferait sortir quelque chose sans passer par la CSP : `<link>` (dns-prefetch),
- * `<meta http-equiv>` et les règles de spéculation. Copie de apps/navigateur/src/commun/indices-reseau.ts.
- */
-const MOTIF_INDICES_RESEAU = "<\\s*link(?![a-z0-9-])|http-equiv|speculationrules";
-
-/** Décode ce qui peut cacher un `<` dans un attribut (`srcdoc="&lt;link …"`, imbriqué : `&amp;lt;`) avant de chercher. */
-function contientIndiceReseau(html: string): boolean {
-  let avant: string;
-  let x = html;
-  do {
-    avant = x;
-    x = x.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));?/gi, (_m, dec?: string, hex?: string, nom?: string) => {
-      if (nom) return ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" } as Record<string, string>)[nom.toLowerCase()]!;
-      const n = dec !== undefined ? Number(dec) : parseInt(hex!, 16);
-      return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "�";
-    });
-  } while (x !== avant);
-  return new RegExp(MOTIF_INDICES_RESEAU, "i").test(x);
-}
 
 /**
  * `realpath`, en synchrone. Dans Firefox le store est un bundle où `node:fs` est un shim (le host n'a pas Node) :

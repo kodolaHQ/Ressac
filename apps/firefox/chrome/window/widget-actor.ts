@@ -4,11 +4,10 @@
 // page-actor.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
 import type { WebAiOsStore } from "../store";
+import { contientIndiceReseau } from "../../shared/indices-reseau";
 
 const SCHEMA = "webaios-widget:";
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-/** Copy of widget-frame.ts MOTIF_INDICES_RESEAU: the actor bundle has no node: shims, so it cannot import it. */
-const MOTIF_INDICES_RESEAU = "<\\s*link(?![a-z0-9-])|http-equiv|speculationrules";
 
 /** Electron's garde-widget.ts list: TURN over TCP or UDP and ICE ignore connect-src and would leak. */
 const REMOVED = [
@@ -76,29 +75,12 @@ function gardeWidget(win: any): void {
       // ditto
     }
   }
-  const indice = new RegExp(MOTIF_INDICES_RESEAU, "i");
-  const contientIndice = (html: string) => {
-    let avant: string;
-    let x = html;
-    do {
-      avant = x;
-      x = x.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(lt|gt|amp|quot|apos));?/gi, (_m, dec?: string, hex?: string, nom?: string) => {
-        if (nom) return ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" } as Record<string, string>)[nom.toLowerCase()]!;
-        const n = dec !== undefined ? Number(dec) : parseInt(hex!, 16);
-        return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : String.fromCharCode(0xfffd);
-      });
-    } while (x !== avant);
-    return indice.test(x);
-  };
   const politique = Cu.createObjectIn(win);
-  Cu.exportFunction((html: unknown) => (contientIndice(String(html)) ? refuser("<link>, <meta http-equiv> ou règles de spéculation") : String(html)), politique, { defineAs: "createHTML" });
+  Cu.exportFunction((html: unknown) => (contientIndiceReseau(String(html)) ? refuser("<link>, <meta http-equiv> ou règles de spéculation") : String(html)), politique, { defineAs: "createHTML" });
   Cu.exportFunction(() => refuser("code en texte (URL javascript:, gestionnaire en attribut, texte d'un script)"), politique, { defineAs: "createScript" });
   Cu.exportFunction(() => refuser("script externe"), politique, { defineAs: "createScriptURL" });
-  try {
-    w.trustedTypes?.createPolicy("default", politique);
-  } catch (e) {
-    console.error("[widget] Trusted Types policy not installed:", e);
-  }
+  // No catch: a policy that cannot be created fails the whole guard, and no link then opens (fail closed).
+  w.trustedTypes?.createPolicy("default", politique);
   const balises = ["link", "meta"];
   const nomLocal = (n: unknown) => String(n).toLowerCase().split(":").pop() ?? "";
   const D = w.Document.prototype;
@@ -155,7 +137,7 @@ function gardeWidget(win: any): void {
   const commande = D.execCommand;
   if (typeof commande === "function")
     remplacer(D, "execCommand", function (this: unknown, nom: unknown, ...a: unknown[]) {
-      if (String(nom).toLowerCase() === "inserthtml" && contientIndice(String(a[1] ?? ""))) return refuser("<link>, <meta http-equiv> ou règles de spéculation");
+      if (String(nom).toLowerCase() === "inserthtml" && contientIndiceReseau(String(a[1] ?? ""))) return refuser("<link>, <meta http-equiv> ou règles de spéculation");
       return commande.call(this, nom, ...a);
     });
   const R = w.CustomElementRegistry?.prototype;
@@ -176,10 +158,13 @@ export class WebAiOsWidgetChild extends JSWindowActorChild {
     if (!doc.documentURI.startsWith(SCHEMA)) return;
     const win = this.contentWindow as any;
     if (!win) return;
+    // Fail closed: a guard that did not install records no gesture, so ui/api.ts refuses every link. The CSP alone
+    // would not stop a dynamic <link>/<meta> nor WebRTC, so a half-installed guard must not let links out either.
     try {
       gardeWidget(win);
     } catch (e) {
-      console.error("[widget] guard not installed:", e);
+      console.error("[widget] guard not installed, links stay closed:", e);
+      return;
     }
     // Capture phase: the widget's own handlers may stop the event later. isTrusted keeps synthetic clicks out, and
     // the page cannot forge the flag.
