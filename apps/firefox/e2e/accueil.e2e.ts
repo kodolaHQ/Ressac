@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { state, waitFor, waitReady, waitWindowCount } from "./firefox";
+import { dispatch, state, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, waitUi } from "./ui";
@@ -115,6 +115,16 @@ function texteCadre(m: Marionette, id: string): Promise<string> {
     m,
     `const f = doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe');
      return f?.contentDocument?.body?.textContent ?? "";`,
+    [id],
+  );
+}
+
+/** Les données reçues par l'affichage (le `<pre id="donnees">` de AFFICHAGE_DONNEES), pas tout le corps du cadre. */
+function texteDonnees(m: Marionette, id: string): Promise<string> {
+  return inUi(
+    m,
+    `const f = doc.querySelector('[data-testid="widget-' + arguments[0] + '"] iframe');
+     return f?.contentDocument?.getElementById("donnees")?.textContent ?? "";`,
     [id],
   );
 }
@@ -337,6 +347,11 @@ describe("la page d'accueil", () => {
     );
     await attendre(urls, (us) => us.includes("https://exemple.invalid/clic"), "l'ouverture du lien");
     expect((await urls()).filter((u) => u.includes("/auto"))).toEqual([]);
+    // L'ouverture a activé un onglet : l'accueil n'est plus monté (PageVide). On le referme pour la suite.
+    const onglet = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
+    expect(onglet).toBeDefined();
+    await dispatch(m, { type: "fermerOnglet", id: onglet! });
+    await waitUi(m, `return !!doc.querySelector('[data-testid="accueil"]') && !!doc.querySelector('[data-testid="widget-alpha"]');`, [], 15_000);
   });
 
   it("un affichage de widget n'ouvre aucune fenêtre de Firefox", async () => {
@@ -359,21 +374,27 @@ describe("la page d'accueil", () => {
     expect(carte).toContain("exemple.invalid");
     expect(carte).toContain("ne contactera aucun autre site");
     // Le profil de l'espace actif (le profil par défaut) est coché.
-    expect(await inUi<[string, boolean][]>(m, `return [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')].map((r) => [r.value, r.checked]);`)).toEqual([
-      ["defaut", true],
-    ]);
+    const profils = await waitUi<[string, boolean][]>(
+      m,
+      `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')];
+       return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`,
+    );
+    expect(profils).toEqual([["defaut", true]]);
     await click(m, '[data-testid="carte-accord"] button', { text: "Autoriser" });
     // L'accord nomme les domaines montrés et le profil choisi ; la récolte démarre et ses données arrivent au cadre.
     const accord = await attendre(() => lireAccords(dataDir), (a) => a.compte?.profil === "defaut", "l'écriture de l'accord");
     expect(accord.compte).toEqual({ domaines: ["exemple.invalid"], publiques: [], profil: "defaut" });
     await attendre(() => (existsSync(DONNEES(dataDir, "compte")) ? lireJson<unknown>(DONNEES(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
     expect(await lireJson(DONNEES(dataDir, "compte"))).toEqual({ vu: "compte" });
-    await attendre(() => texteCadre(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
+    await attendre(() => texteDonnees(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`)).toBe(true);
   });
 
   it("Refuser ne revient pas : le bandeau reste caché après une relecture de la page", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`, [], 15_000);
+    // Un accord et des données d'avant (comme après un autre profil) : le refus doit vraiment les effacer.
+    await ecrireJson(ACCORDS(dataDir), { ...(await lireAccords(dataDir)), "sans-accord": { domaines: ["exemple.invalid"], publiques: [], profil: "defaut" } });
+    await ecrireJson(DONNEES(dataDir, "sans-accord"), { secret: "du compte" });
     await click(m, '[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"] button', { text: "Refuser" });
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(true);
     // Un widget ajouté force une relecture (accueil.change) : le refus vaut pour la session, le bandeau ne revient pas.
@@ -384,13 +405,14 @@ describe("la page d'accueil", () => {
       "la relecture après le refus",
     );
     expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(false);
+    await attendre(() => lireAccords(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
     expect(existsSync(DONNEES(dataDir, "sans-accord"))).toBe(false);
-    expect((await lireAccords(dataDir))["sans-accord"]).toBeUndefined();
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "sans-accord"))).toMatchObject({ statut: "accord-requis" });
   });
 
-  it("un autre profil que celui de l'accord redemande : la récolte le refuse, l'accord et ses données partent", async () => {
-    // L'accord nomme un profil de connexion ; un profil absent de la session le rend inutilisable.
+  it("un accord qui nomme un profil invalide redemande : la récolte le refuse, l'accord et ses données partent", async () => {
+    // L'accord nomme un profil de connexion ; un profil absent de la session le rend inutilisable. (Un profil qui
+    // devient privé ne redemande qu'à la prochaine récolte planifiée du widget : voir la limite du README.)
     const declaration = await lireJson<Record<string, unknown>>(path.join(ACCUEIL(dataDir), "widgets", "compte", "widget.json"));
     await ecrireJson(path.join(ACCUEIL(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { lire: true, url: "https://exemple.invalid/x" } });
     await ecrireJson(ACCORDS(dataDir), { ...(await lireAccords(dataDir)), compte: { domaines: ["exemple.invalid"], publiques: [], profil: "absent" } });
@@ -412,7 +434,7 @@ describe("la page d'accueil", () => {
     const avant = await attendre(
       async () => {
         try {
-          return JSON.parse(await texteCadre(m, "lent")) as { fait: number };
+          return JSON.parse(await texteDonnees(m, "lent")) as { fait: number };
         } catch {
           return null;
         }
@@ -426,7 +448,7 @@ describe("la page d'accueil", () => {
     const apres = await attendre(
       async () => {
         try {
-          return JSON.parse(await texteCadre(m, "lent")) as { fait: number };
+          return JSON.parse(await texteDonnees(m, "lent")) as { fait: number };
         } catch {
           return null;
         }
@@ -473,8 +495,12 @@ describe("la page d'accueil", () => {
     );
     expect(corbeille.some((n) => n.startsWith("retrait-"))).toBe(true);
     expect(existsSync(path.join(ACCUEIL(dataDir), "widgets", "retrait"))).toBe(false);
-    await attendre(() => lireAccords(dataDir), (a) => a.retrait === undefined, "le retrait de l'accord");
-    expect(existsSync(DONNEES(dataDir, "retrait"))).toBe(false);
+    // Le host retire l'accord puis les données : les deux ensemble.
+    await attendre(
+      async () => ({ accord: (await lireAccords(dataDir)).retrait, donnees: existsSync(DONNEES(dataDir, "retrait")) }),
+      (v) => v.accord === undefined && !v.donnees,
+      "le retrait de l'accord et des données",
+    );
   });
 
   it("host arrêté : les actions restent sans effet et la page reste affichée", async () => {
@@ -520,9 +546,9 @@ describe("la page d'accueil, atelier arrêté", () => {
   it("sans atelier, la récolte ne tourne pas : « atelier arrêté », les données gardées", async () => {
     await attendre(() => texteWidget(m, "veille"), (t) => t.includes("mise à jour impossible : atelier arrêté"), "l'atelier arrêté", 20_000);
     expect(await lireJson(DONNEES(dataDir, "veille"))).toEqual({ vieux: true });
-    // « Mettre à jour maintenant » ne lance rien non plus.
+    // « Mettre à jour maintenant » ne lance rien non plus : rien ne change, l'interface le dit après son délai.
     await recolter(m, "veille");
-    await new Promise((r) => setTimeout(r, 1000));
+    await attendre(() => texteWidget(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'action sans effet", 12_000);
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "veille"))).toMatchObject({ statut: "atelier-arrete" });
     expect(await lireJson(DONNEES(dataDir, "veille"))).toEqual({ vieux: true });
     // La page reste affichée.
