@@ -27,9 +27,11 @@ async function site(name: string): Promise<Site> {
     const to = u.searchParams.get("to") ?? "";
     if (u.pathname === "/bounce") return res.writeHead(302, { Location: self.peer }).end();
     if (u.pathname === "/302") return res.writeHead(302, { Location: to }).end();
+    const body = u.pathname === "/script" ? `<title>s</title><p>saut</p><script>location.href = ${JSON.stringify(to)}</script>` : `<title>${name}</title><p>Texte de ${name}</p>`;
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    if (u.pathname === "/script") return res.end(`<title>s</title><p>saut</p><script>location.href = ${JSON.stringify(to)}</script>`);
-    res.end(`<title>${name}</title><p>Texte de ${name}</p>`);
+    // ?slow holds the lane of a read for a while (one test only).
+    if (u.searchParams.has("slow")) setTimeout(() => res.end(body), 1500);
+    else res.end(body);
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   return Object.assign(self, {
@@ -132,8 +134,10 @@ describe("paced reads", () => {
   }, 60_000);
 
   it("another read gets a place while two others wait for site-b's turn", async () => {
-    await paced(urlB("/page"));
     const to = encodeURIComponent(urlB("/page"));
+    // A slow read of site-b holds its lane (1.5 s, then one gap): the waits below end long after the plain read.
+    const holder = paced(urlB("/page?slow"));
+    await waitFor(m, "return 0", () => b.hits.length === 1, 20_000);
     // Two sites, so the noyau queues neither before the chrome: both reads sit in the chrome's wait together
     // (site-b's lane serves them one gap apart, the first not before one gap after the read above).
     const waiting = [paced(urlA(`/302?to=${to}`)), paced(urlC(`/302?to=${to}`))];
@@ -145,5 +149,6 @@ describe("paced reads", () => {
     expect(texte(free)).toContain("Texte de site-a");
     const ends = (await Promise.all(waiting)).map((r) => r.at);
     expect(free.at).toBeLessThan(Math.min(...ends));
+    expect(texte(await holder)).toContain("Texte de site-b");
   }, 90_000);
 });
