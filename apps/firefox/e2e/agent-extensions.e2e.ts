@@ -161,6 +161,29 @@ describe("agent extensions: registry, signed install, restart", () => {
     expect(await agentAddons(w.marionette)).toEqual([]);
   });
 
+  // about:addons' Remove button: a pending uninstall (Undo shown), only onUninstalling until the page unloads.
+  it("removed with about:addons' Remove (pending uninstall): gone from the registry, not back after a restart", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    let w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    await w.marionette.execute(`return (async () => {
+      const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+      await (await AddonManager.getAddonByID(${JSON.stringify(ID)})).uninstall(true);
+    })();`);
+    await until(() => !("agent:cacheur" in registry(f.dataDir)));
+    expect(await agentAddons(w.marionette)).toEqual([]);
+    await w.close();
+    rmSync(path.join(racine(f.dataDir), ".webaios", "mcp.json"));
+
+    w = await launch(f);
+    await settle(w);
+    expect("agent:cacheur" in registry(f.dataDir)).toBe(false);
+    expect(await agentAddons(w.marionette)).toEqual([]);
+    expect(w.amo.envois).toEqual([]);
+  });
+
   it("an inactive grant is never installed nor active", async () => {
     const f = folders();
     ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });

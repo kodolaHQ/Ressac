@@ -157,6 +157,8 @@ export class ExtensionsAgent {
   private readonly erreursEnvoi = new Map<string, string>();
   /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
   private readonly cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: LienDeblocage; attentes: number }>();
+  /** Keys whose source changed while closed and that ran nowhere at startup: signed when next activated (appliquer). */
+  private readonly aSigner = new Set<string>();
 
   constructor(private readonly o: { dossier: string; dossierAgent: string; rpc: Rpc; env?: NodeJS.ProcessEnv }) {
     this.env = o.env ?? process.env;
@@ -631,14 +633,18 @@ export class ExtensionsAgent {
     );
   }
 
-  /** « Supprimer »: uninstalled, copy and signed .xpi deleted, registry entry removed; amo-versions.json kept (AMO never reuses a number). */
-  supprimer(cle: string): Promise<void> {
+  /**
+   * « Supprimer »: uninstalled, copy and signed .xpi deleted, registry entry removed; amo-versions.json kept (AMO never reuses a number).
+   * `horsWebaios`: about:addons' pending removal, which its Undo may have cancelled since: then nothing changes.
+   */
+  supprimer(cle: string, horsWebaios = false): Promise<void> {
     const id = this.id(cle);
     if (!id) return Promise.reject(new Error(`Identifiant d'extension invalide : ${cle}`));
     this.cartes.get(cle)?.abort();
     return this.enFile(cle, async () => {
       // Uninstalled first: an entry gone while the add-on stays installed would run without a grant.
-      await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) });
+      const fait = await this.o.rpc.request("extensions.desinstaller", horsWebaios ? { addonId: addonIdDe(id), unlessUndone: true } : { addonId: addonIdDe(id) });
+      if (fait === false) return;
       await this.modifier((e) => (cle in e.extensions ? retirer(e, cle) : e));
       this.consoles.oublier(addonIdDe(id));
       this.erreursEnvoi.delete(cle);
@@ -652,7 +658,7 @@ export class ExtensionsAgent {
     if (!addonId.endsWith(SUFFIXE_ID)) return;
     const cle = this.cle(addonId.slice(0, -SUFFIXE_ID.length));
     if (!cle || !(cle in (await lireEtatExtensions(this.o.dossier)).extensions)) return;
-    if (quoi === "desinstallee") return this.supprimer(cle);
+    if (quoi === "desinstallee") return this.supprimer(cle, true);
     await this.enFile(cle, () => this.modifier((e) => (cle in e.extensions ? desactiverPartout(e, cle) : e)));
   }
 
@@ -806,9 +812,25 @@ export class ExtensionsAgent {
   /** As the registry says (decision 4): active → the kept signed .xpi installed if missing, then enabled; inactive → disabled, never installed fresh. */
   private async appliquer(id: string, cle: string): Promise<void> {
     const actif = await this.actif(cle);
+    if (actif && this.aSigner.delete(cle)) return this.signerActivee(id, cle);
     const garde = await this.garde(id);
     if (garde) await this.installer(id, join(this.o.dossier, "signes", `${id}.xpi`), garde.version, actif);
     await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif });
+  }
+
+  /** Active again after a startup that did not sign its changed source: signed now, else the kept version runs. */
+  private async signerActivee(id: string, cle: string): Promise<void> {
+    const x = (await lireEtatExtensions(this.o.dossier)).extensions[cle];
+    const r = x?.accord ? this.noterEnvoi(cle, await this.envoi(id, cle, { accord: x.accord, demarrage: true })) : null;
+    // envoi applied it, or disabled it (broadened scope, folder gone); otherwise the kept version runs.
+    if (!r?.ok && r?.erreur !== DESACTIVEE_PORTEE && !r?.refus?.includes(DOSSIER_ABSENT)) await this.appliquer(id, cle);
+  }
+
+  /** Active once envoi is done: a scope-disabled one back within its grant runs again. */
+  private async actifApresEnvoi(cle: string): Promise<boolean> {
+    const e = await lireEtatExtensions(this.o.dossier);
+    const x = e.extensions[cle];
+    return actifDans(e, x?.desactivee?.raison === "portee-elargie" ? { ...x, desactivee: null } : x);
   }
 
   /** The last signed and installed version (`signes/<id>.json`), if its .xpi is there. */
@@ -856,15 +878,23 @@ export class ExtensionsAgent {
     let change = true;
     // Unchanged since the last signing (startup, or a grant in another profile): appliquer below reinstalls the kept
     // .xpi if it is missing, nothing is sent.
-    if ((o.demarrage || o.activer) && (await this.garde(id))?.empreinte === empreinte) {
+    const garde = o.demarrage || o.activer ? await this.garde(id) : null;
+    if (garde?.empreinte === empreinte) {
       await effacer();
       change = false;
+    } else if (o.demarrage && garde && !(await this.actifApresEnvoi(cle))) {
+      // Active nowhere: nothing leaves for AMO; the kept version stays until it is activated again.
+      await effacer();
+      this.aSigner.add(cle);
+      await this.appliquer(id, cle);
+      return { ok: true, analyse };
     } else {
       const r = await this.signerEtInstaller(id, p, o.activer ? true : await this.actif(cle));
       if (!r.ok) {
         await effacer();
         return r;
       }
+      this.aSigner.delete(cle);
       await writeFile(join(signes, `${id}.json`), JSON.stringify({ version: r.version, empreinte }));
       const copie = join(this.o.dossier, "copies", id);
       await rm(copie, { recursive: true, force: true });

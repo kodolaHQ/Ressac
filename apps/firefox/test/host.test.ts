@@ -493,6 +493,37 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ "ma-ext": 1 });
   });
 
+  it("removed from about:addons, then undone there before the removal ran: the grant stays", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const demandes: unknown[] = [];
+    // The chrome finds the add-on no longer pending uninstall (Undo): it keeps it and answers false.
+    f.handlers["extensions.desinstaller"] = (p: unknown) => (demandes.push(p), false);
+    const h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    await h.rpc.request("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
+    expect(demandes).toEqual([{ addonId: ID, unlessUndone: true }]);
+    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, profils: ["defaut"] });
+    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
+  });
+
+  it("source changed while closed, active nowhere: nothing sent at startup, signed when next activated", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    let h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.pret", {});
+    await stop(h);
+    grant(h.dataDir, []);
+    source(h.dataDir, { css: "#cache-moi, #reste { display: none }\n" });
+    h = launch(amo, f, { dataDir: h.dataDir });
+    await h.rpc.request("extensions.pret", {});
+    expect(amo.envois.map((e) => e.version)).toEqual(["1.0.0.1"]);
+    expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e1", actif: true, fenetre: null })).toEqual({ ok: true });
+    expect(amo.envois.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(f.installs.at(-1)).toMatchObject({ version: "1.0.0.2" });
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
+  });
+
   it("aTourne: an unreadable tab masks its console in that profile and by add-on id, once; a readable one changes nothing", async () => {
     const amo = await fakeAmo();
     const f = firefox();

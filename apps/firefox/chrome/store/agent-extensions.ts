@@ -99,9 +99,12 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       if (!addon || addon.userDisabled === !p.actif) return;
       await own(addon.id, () => (p.actif ? addon.enable() : addon.disable()));
     },
-    "extensions.desinstaller": async (p: { addonId: string }) => {
+    // `unlessUndone`: about:addons' Remove (a pending uninstall); its Undo came first if it is no longer pending: kept, false.
+    "extensions.desinstaller": async (p: { addonId: string; unlessUndone?: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
+      if (addon && p.unlessUndone && !(addon.pendingOperations & AddonManager.PENDING_UNINSTALL)) return false;
       if (addon) await own(addon.id, () => addon.uninstall());
+      return true;
     },
     // The grant card, in that window if still open, else the active one; no window: it falls at once.
     "extensions.accord": (p: { carte: CarteExtension; fenetre: string | null }, signal) => {
@@ -133,12 +136,15 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       .then(() => pending.get(addonId) === quoi && pending.delete(addonId))
       .catch(() => {});
   AddonManager.addAddonListener({
-    onUninstalled: (a: { id: string }) => outside(a, "desinstallee"),
-    onDisabled: (a: { id: string }) => outside(a, "desactivee"),
+    // about:addons' Remove is uninstall(true): only onUninstalling fires until the page unloads, maybe at quit. The
+    // removal is handled from it; the noyau completes the uninstall unless Undo came first.
+    onUninstalling: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desinstallee"),
+    onUninstalled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desinstallee"),
+    onDisabled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desactivee"),
   });
-  function outside(addon: { id: string }, quoi: "desinstallee" | "desactivee") {
+  function outside(addon: { id: string; temporarilyInstalled: boolean }, quoi: "desinstallee" | "desactivee") {
     // Quitting unloads temporary add-ons: not a choice made in about:addons.
-    if (!addon.id.endsWith(SUFFIX) || ours.has(addon.id) || Services.startup.shuttingDown) return;
+    if (!addon.id.endsWith(SUFFIX) || ours.has(addon.id) || (addon.temporarilyInstalled && Services.startup.shuttingDown)) return;
     pending.set(addon.id, quoi);
     void send(addon.id, quoi);
   }
