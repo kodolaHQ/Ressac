@@ -95,7 +95,7 @@ export function createApi(win: WindowController): ApiWebaios {
     // The agent's cards and access badges live in the store's realm: the UI gets copies made in this realm.
     permissions: {
       enAttente: async () => structuredClone(win.store.questions.pending()),
-      repondre: (id, d, _droits, o) => win.store.questions.answer(id, d, o),
+      repondre: (id, d, droits, o) => win.store.questions.answer(id, d, o, droits),
     },
     surPermissions: (callback) => untilUnload(win.store.questions.onChange((l) => callback(structuredClone(l)))),
     acces: {

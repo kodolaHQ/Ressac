@@ -3,6 +3,7 @@ import {
   OngletPrive,
   OutilsDevOccupes,
   ProfilRefuse,
+  type DroitDev,
   type HistoriqueNavigateur,
   type OngletInfo,
   type OptionsLecturePage,
@@ -67,6 +68,12 @@ export class RemoteBridge implements PontNavigateur {
   naviguer = (id: string, url: string) => this.call<void | "en-attente">("naviguer", [id, url]);
   capturer = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
   demanderAutorisation = (o: OngletInfo) => this.call<boolean>("demanderAutorisation", [o]);
+  // Taken down (signal) when a new conversation starts: no rights, as Electron's attendreDroits.
+  demanderOutilsDev = (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) =>
+    this.call<DroitDev[]>("demanderOutilsDev", [o, d], signal).catch((e) => {
+      if (signal?.aborted) return [];
+      throw e;
+    });
   estPrive = (id: string) => this.prives.has(id);
   ongletActifPrive = () => this.actifPrive;
 

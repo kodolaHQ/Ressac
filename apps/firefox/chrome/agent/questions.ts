@@ -1,7 +1,7 @@
-import type { OngletInfo } from "../shims/noyau";
+import type { DroitDev, OngletInfo } from "../shims/noyau";
 import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions";
 import type { Decision, DemandeEnAttente, IdFenetre, IdOnglet, Issue, Permission } from "../../../navigateur/src/commun/modele";
-import { attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque } from "../../../navigateur/src/main/agent/pont";
+import { attendreDroits, attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque } from "../../../navigateur/src/main/agent/pont";
 import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 
@@ -9,7 +9,7 @@ type Listener = (pending: DemandeEnAttente[]) => void;
 
 /** The agent's « lire l'onglet » and extension grant cards waiting for the user (Electron's `questions` in main/index.ts). */
 export class Questions {
-  private readonly open = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue) => void }>();
+  private readonly open = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
   private readonly listeners = new Set<Listener>();
 
   constructor(private readonly store: Store) {
@@ -33,6 +33,17 @@ export class Questions {
     // Already stale (tab closed, private, gone elsewhere): no card, which no state change would ever take down.
     if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve(false);
     return attendreReponse((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
+  }
+
+  /**
+   * The dev tools card (Electron's demanderOutilsDev): the rights ticked when allowed, `[]` on a refusal, after
+   * DELAI_QUESTION_MS, on `signal`, or when the tab closes, turns private or goes to another site.
+   */
+  askDevTools(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<DroitDev[]> {
+    const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
+    const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["outils-dev" as const], titre: o.titre, cible: o.id, droits: d.droits, raison: d.raison, agent: d.agent };
+    if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve([]);
+    return attendreDroits((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
   }
 
   /**
@@ -68,7 +79,7 @@ export class Questions {
     return attendreIssue((repondre) => this.pose(fields, repondre), Infinity, signal);
   }
 
-  private pose(fields: Omit<DemandeEnAttente, "id">, repondre: (d: Issue) => void): () => void {
+  private pose(fields: Omit<DemandeEnAttente, "id">, repondre: (d: Issue, droits?: DroitDev[]) => void): () => void {
     const id = crypto.randomUUID();
     this.open.set(id, { demande: { id, ...fields }, repondre });
     this.changed();
@@ -96,11 +107,13 @@ export class Questions {
     return [...this.open.values()].map((q) => q.demande);
   }
 
-  answer(id: string, d: Decision, o?: { confirme?: boolean }): void {
+  /** `droits`: the rights ticked on a dev tools card. */
+  answer(id: string, d: Decision, o?: { confirme?: boolean }, droits?: DroitDev[]): void {
     const q = this.open.get(id);
     if (!q) return;
     this.open.delete(id);
-    q.repondre(decisionPermise(q.demande, d, o?.confirme));
+    // Copied into this realm: the UI's array dies with its document.
+    q.repondre(decisionPermise(q.demande, d, o?.confirme), droits && Array.from(droits, String) as DroitDev[]);
     this.changed();
   }
 

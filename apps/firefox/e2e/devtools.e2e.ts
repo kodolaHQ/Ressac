@@ -12,10 +12,11 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
-import { inUi, waitUi } from "./ui";
+import { click, inUi, pressKeys, waitUi } from "./ui";
+import { TEXTE_COUPE } from "../../../packages/noyau/src/mcp/outils-dev";
 
 // The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): Electron's outils-dev.spec.ts for console, network,
-// evaluation and reload; task 4 for profiling and memory. The third-party halves (behind the consent card) come with task 5.
+// evaluation and reload; task 4 for profiling and memory; task 5 for the consent card of a third-party tab, the badge and cuts.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
@@ -60,6 +61,8 @@ async function listening(m: Marionette, w: LaunchedWebAiOs): Promise<string[]> {
 }
 
 let demo: Awaited<ReturnType<typeof startDemo>>;
+/** The same page on another random port: not a demo, a third-party site. */
+let third: Awaited<ReturnType<typeof startDemo>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 let before: string[];
@@ -72,6 +75,7 @@ async function noyauUp(): Promise<void> {
 
 beforeAll(async () => {
   demo = await startDemo();
+  third = await startDemo();
   w = await launchWebAiOs({ env: { WEBAIOS_PORTS_CONTENEUR: `${demo.port}-${demo.port}` } });
   m = w.marionette;
   await m.setContext("chrome");
@@ -84,6 +88,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await w?.close();
   await demo?.close();
+  await third?.close();
   await cleanupXpis();
 });
 
@@ -183,7 +188,6 @@ it("démo : un message de console de 1 Mo est tronqué avec mention", async () =
   expect(text.length).toBeLessThan(5000);
 });
 
-// The third-party half (masked behind a granted card) needs task 5's card: it is tested there.
 it("Cookie et Authorization montrés sur une démo", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "document.cookie = 'essai=1'; await (await fetch('/data.json?h=1', { headers: { Authorization: 'Bearer demo' } })).text()" });
@@ -300,6 +304,277 @@ it("changer de site vide les tampons", async () => {
   expect(await tool("lire_reseau", { id, filtre: "avant=1" })).toBe("Aucune requête.");
 });
 
+// The consent card, on a tab the user opened on a third-party site (Electron's outils-dev.spec.ts).
+const CARD = '[data-testid="demande-outils-dev"]';
+const MODAL = '[data-testid="modale-demande"]';
+const READ_CARD = '[data-testid="demande-permission"]';
+const BADGE = '[data-testid="pastille-acces"]';
+const BUBBLE = '[data-testid="bulle-acces"]';
+const REFUS = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
+let thirdTabs = 0;
+
+/** A tab the user opens on the third-party site, in the active space, loaded; its URL is unique. */
+async function openThird(): Promise<string> {
+  const url = `${third.url}/?tiers=${++thirdTabs}`;
+  const s0 = await state(m);
+  const known = new Set(Object.keys(s0.onglets));
+  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: s0.fenetres[0]!.id, url, activer: true } as Action);
+  const id = Object.keys(s.onglets).find((x) => !known.has(x))!;
+  await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec === ${JSON.stringify(url)} && t.linkedBrowser.contentTitle === "Démo")`, (v) => v === true);
+  return id;
+}
+const cardText = () => waitUi<string>(m, `return doc.querySelector('${CARD}')?.textContent`);
+const cardGone = () => waitUi(m, `return !doc.querySelector('${MODAL}')`);
+const answerCard = (button: "Refuser" | "Autoriser la sélection") => click(m, `${CARD} button`, { text: button });
+const checked = (droit: string) => inUi<boolean>(m, `return doc.querySelector('${CARD} input[data-droit="${droit}"]').checked`);
+/** Asks `droits` on the tab and allows them all on the card. */
+async function grant(id: string, droits: string[]): Promise<string> {
+  const pending = tool("demander_outils_dev", { id, droits, raison: "Essai de la pastille." });
+  await cardText();
+  await answerCard("Autoriser la sélection");
+  return pending;
+}
+const tabBadge = (id: string) => `[data-testid="onglet-${id}"] ${BADGE}`;
+/** Clicks the tab's badge, scrolled into view first: the tab list grows with every test. */
+async function clickBadge(id: string): Promise<void> {
+  await waitUi(m, "const b = doc.querySelector(arguments[0]); b?.scrollIntoView({ block: 'center' }); return !!b;", [tabBadge(id)]);
+  await click(m, tabBadge(id));
+}
+/** The card has the keyboard, and Enter is armed. */
+const armed = () => waitUi(m, `return !!doc.querySelector('${MODAL}[data-armee]') && !!doc.activeElement?.closest('${MODAL}')`);
+
+it("onglet tiers : lire_console affiche la carte avec « Console et erreurs » coché et la raison ; Autoriser la sélection → messages renvoyés", async () => {
+  const id = await openThird();
+  const pending = tool("lire_console", { id });
+  const text = await cardText();
+  expect(text).toContain("veut accéder aux outils de développement");
+  expect(text).toContain("Démo");
+  expect(text).toContain("« L'agent veut utiliser lire_console. »");
+  expect(text).toContain("Valable pour cette conversation · tombe si l'onglet change de site");
+  expect(await checked("console")).toBe(true);
+  for (const d of ["reseau", "performances", "agir"]) expect(await checked(d)).toBe(false);
+  await answerCard("Autoriser la sélection");
+  expect(await pending).toBe("Aucun message.");
+  await cardGone();
+});
+
+it("décocher Réseau dans une demande console+reseau : seul console est accordé ; lire_reseau suivant répond refusé sans carte", async () => {
+  const id = await openThird();
+  const pending = tool("demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Le bouton ne réagit pas." });
+  const text = await cardText();
+  expect(text).toContain("« Le bouton ne réagit pas. »");
+  expect(text).toContain("peut contenir des données de connexion");
+  expect(await checked("console")).toBe(true);
+  await click(m, `${CARD} input[data-droit="reseau"]`);
+  await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="reseau"]').checked`);
+  await answerCard("Autoriser la sélection");
+  expect(await pending).toBe("Droits accordés : console\nRefusés : reseau");
+  expect(await tool("lire_reseau", { id })).toBe(REFUS);
+  await noCard();
+});
+
+it("deux demandes : une seule carte à la fois, la seconde après réponse à la première", async () => {
+  const id = await openThird();
+  const other = await openThird();
+  const first = tool("demander_outils_dev", { id, droits: ["console"], raison: "Première." });
+  expect(await cardText()).toContain("Première.");
+  const second = tool("demander_outils_dev", { id: other, droits: ["console"], raison: "Seconde." });
+  await sleep(500);
+  expect(await inUi(m, `return doc.querySelectorAll('${CARD}').length`)).toBe(1);
+  expect(await cardText()).toContain("Première.");
+  await answerCard("Autoriser la sélection");
+  expect(await first).toBe("Droits accordés : console");
+  await waitUi(m, `return doc.querySelector('${CARD}')?.textContent.includes("Seconde.")`);
+  await answerCard("Refuser");
+  expect(await second).toBe(REFUS);
+  await cardGone();
+});
+
+it("Refuser : l'outil répond refusé", async () => {
+  const id = await openThird();
+  const pending = tool("lire_console", { id });
+  await cardText();
+  await answerCard("Refuser");
+  expect(await pending).toBe(REFUS);
+  await cardGone();
+});
+
+it("Cookie et Authorization masqués sur un onglet tiers", async () => {
+  const id = await openThird();
+  await grant(id, ["reseau", "agir"]);
+  await tool("executer_js", { id, code: "document.cookie = 'tiers=1'; await (await fetch('/data.json?tiers-h=1', { headers: { Authorization: 'Bearer secret' } })).text()" });
+  const line = await poll(() => tool("lire_reseau", { id, filtre: "tiers-h=1" }), (t) => / · 200 · /.test(t));
+  const detail = await tool("lire_requete", { id, requete: line.split(" · ")[0] });
+  expect(detail).not.toContain("Bearer secret");
+  expect(detail).not.toContain("tiers=1");
+  expect(detail).not.toMatch(/set-cookie: vu=1/i);
+  expect(detail).toMatch(/authorization: «masqué»/i);
+  expect(detail).toMatch(/\n  cookie: «masqué»/i);
+  expect(detail).toMatch(/set-cookie: «masqué»/i);
+});
+
+it("lecture accordée (Autoriser une fois) : pastille 👁 sur l'onglet et dans la barre d'adresse", async () => {
+  const id = await openThird();
+  expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [tabBadge(id)])).toBe(false);
+  const reading = call("lire_onglet", { id });
+  await waitUi(m, `return !!doc.querySelector('${READ_CARD}')`);
+  await click(m, `${READ_CARD} button`, { text: "Autoriser une fois" });
+  await reading;
+  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "lecture"`, [tabBadge(id)]);
+  await waitUi(m, `return doc.querySelector('form ${BADGE}')?.dataset.niveau === "lecture"`);
+});
+
+it("agir accordé : pastille ⚡", async () => {
+  const id = await openThird();
+  await grant(id, ["agir"]);
+  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "agir" && p.textContent.includes("⚡")`, [tabBadge(id)]);
+});
+
+it("clic sur la pastille : la bulle liste les droits ; Couper sur « console » retire ce droit (lire_console redemande)", async () => {
+  const id = await openThird();
+  await grant(id, ["console", "reseau"]);
+  await clickBadge(id);
+  const bubble = await waitUi<string>(m, `return doc.querySelector('${BUBBLE}')?.textContent`);
+  for (const t of ["Console et erreurs", "Réseau", "Cette conversation · tombe si l'onglet change de site"]) expect(bubble).toContain(t);
+  await click(m, `${BUBBLE} button[data-droit="console"]`);
+  await waitUi(m, `return !doc.querySelector('${BUBBLE} button[data-droit="console"]') && !!doc.querySelector('${BUBBLE} button[data-droit="reseau"]')`);
+  await pressKeys(m, "Escape");
+  await waitUi(m, `return !doc.querySelector('${BUBBLE}')`);
+  const pending = tool("lire_console", { id });
+  await cardText();
+  await answerCard("Refuser");
+  expect(await pending).toBe(REFUS);
+});
+
+it("Couper l'accès : la pastille disparaît, lire_onglet redemande", async () => {
+  const id = await openThird();
+  await grant(id, ["console"]);
+  await clickBadge(id);
+  await click(m, `${BUBBLE} button`, { text: "Couper l'accès" });
+  await waitUi(m, `return !doc.querySelector(arguments[0]) && !doc.querySelector('${BUBBLE}')`, [tabBadge(id)]);
+  const reading = call("lire_onglet", { id });
+  await waitUi(m, `return !!doc.querySelector('${READ_CARD}')`);
+  await click(m, `${READ_CARD} button`, { text: "Refuser" });
+  await reading;
+});
+
+it("couper « Agir » pendant un executer_js : l'appel répond « accès coupé par l'utilisateur »", async () => {
+  const id = await openThird();
+  await grant(id, ["console", "agir"]);
+  const t0 = Date.now();
+  const pending = tool("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
+  // The badge pulses while the call runs.
+  await waitUi(m, `return !!doc.querySelector(arguments[0])?.classList.contains("pulse")`, [tabBadge(id)]);
+  await clickBadge(id);
+  await click(m, `${BUBBLE} button[data-droit="agir"]`);
+  expect(await pending).toBe(TEXTE_COUPE);
+  expect(Date.now() - t0).toBeLessThan(6000);
+  // Console is kept: the badge goes back to 👁, still and quiet.
+  await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "lecture" && !p.classList.contains("pulse")`, [tabBadge(id)]);
+  await pressKeys(m, "Escape");
+}, 30_000);
+
+it("espace rendu privé : la pastille disparaît, le débogueur est détaché et les outils répondent privé sans carte", async () => {
+  const id = await openThird();
+  await grant(id, ["console", "agir"]);
+  await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "agir"`, [tabBadge(id)]);
+  const attached = () => m.execute<string[]>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).devtools.attached())();`);
+  await tool("lire_console", { id });
+  expect(await attached()).toContain(id);
+  const s = await state(m);
+  const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;
+  const setPrivate = (prive: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  await setPrivate(true);
+  try {
+    await waitUi(m, `return !doc.querySelector('${BADGE}')`);
+    expect(await attached()).not.toContain(id);
+    await poll(() => tool("lire_console", { id }), (t) => t === TEXTE_PRIVE);
+    expect(await tool("executer_js", { id, code: "document.title" })).toBe(TEXTE_PRIVE);
+    await noCard();
+  } finally {
+    await setPrivate(false);
+  }
+  // Shared again: the rights do not come back, the tool asks.
+  const pending = tool("lire_console", { id });
+  await cardText();
+  await answerCard("Refuser");
+  expect(await pending).toBe(REFUS);
+});
+
+it("Échap refuse la carte des outils de développement ; Entrée autorise la sélection", async () => {
+  const id = await openThird();
+  const pending = tool("demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Au clavier." });
+  expect(await cardText()).toContain("Au clavier.");
+  await armed();
+  // The focus stays trapped in the modal.
+  for (let i = 0; i < 12; i++) {
+    await pressKeys(m, "Tab");
+    expect(await inUi(m, `return !!doc.activeElement?.closest('${MODAL}')`)).toBe(true);
+  }
+  // Space unticks « Réseau » without answering; Enter, on the box, allows the selection.
+  await inUi(m, `doc.querySelector('${CARD} input[data-droit="reseau"]').focus()`);
+  await pressKeys(m, " ");
+  await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="reseau"]').checked`);
+  expect(await inUi(m, `return !!doc.querySelector('${MODAL}[data-armee]')`)).toBe(true);
+  await pressKeys(m, "Enter");
+  expect(await pending).toBe("Droits accordés : console\nRefusés : reseau");
+  await cardGone();
+
+  const refusal = tool("demander_outils_dev", { id, droits: ["performances"], raison: "Échap." });
+  expect(await cardText()).toContain("Échap.");
+  await armed();
+  await pressKeys(m, "Escape");
+  expect(await refusal).toBe(REFUS);
+  await cardGone();
+});
+
+it("Entrée frappée dès l'arrivée de la demande n'autorise rien ; une fois la carte visible depuis un moment, si", async () => {
+  const id = await openThird();
+  let answered = false;
+  const pending = tool("demander_outils_dev", { id, droits: ["console"], raison: "Trop tôt." }).finally(() => (answered = true));
+  await cardText();
+  // Typing in the page the moment the card comes: that key is no consent.
+  await pressKeys(m, "Enter");
+  await sleep(300);
+  expect(answered).toBe(false);
+  await armed();
+  await pressKeys(m, "Enter");
+  expect(await pending).toBe("Droits accordés : console");
+  await cardGone();
+});
+
+it("les outils de développement de l'utilisateur ouverts sur l'onglet : ils restent utilisables, et l'agent lit la console", async () => {
+  const id = await openDemo("?boite");
+  const url = `${demo.url}/?boite`;
+  await m.execute(
+    `return (async () => {
+      const { require } = ChromeUtils.importESModule("resource://devtools/shared/loader/Loader.sys.mjs");
+      const { gDevTools } = require("devtools/client/framework/devtools");
+      const tab = gBrowser.tabs.find((t) => t.linkedBrowser.currentURI.spec === arguments[0]);
+      window.testToolbox = await gDevTools.showToolboxForTab(tab, { toolId: "webconsole" });
+    })();`,
+    [url],
+  );
+  try {
+    await tool("executer_js", { id, code: "console.log('avec-boite'); 1" });
+    expect(await poll(() => tool("lire_console", { id }), (t) => t.includes("avec-boite"))).toContain("[log] avec-boite");
+    // The user's toolbox still shows the page's console and evaluates.
+    const own = await m.execute<{ shown: boolean; result: number }>(`return (async () => {
+      const hud = window.testToolbox.getPanel("webconsole").hud;
+      for (let i = 0; i < 50 && !hud.ui.outputNode.textContent.includes("avec-boite"); i++) await new Promise((r) => setTimeout(r, 100));
+      const r = await window.testToolbox.commands.scriptCommand.execute("40 + 2");
+      return { shown: hud.ui.outputNode.textContent.includes("avec-boite"), result: r.result };
+    })();`);
+    expect(own).toEqual({ shown: true, result: 42 });
+    expect(await tool("executer_js", { id, code: "6 * 7" })).toBe("42");
+  } finally {
+    await m.execute("return (async () => { await window.testToolbox?.destroy(); delete window.testToolbox; })();");
+  }
+  // Closed: the agent still reads.
+  await tool("executer_js", { id, code: "console.log('apres-boite'); 1" });
+  await poll(() => tool("lire_console", { id }), (t) => t.includes("apres-boite"));
+}, 60_000);
+
 const PROFILING = () => path.join(w.dataDir, "espace", ".webaios", "profilage");
 const profiles = () => (existsSync(PROFILING()) ? readdirSync(PROFILING()) : []);
 const profilerActive = () => m.execute<boolean>("return Services.profiler.IsActive();");
@@ -361,8 +636,17 @@ it("démo : deux instantane_memoire puis comparer_memoire : le type que la page 
   expect(r.split("\n")[1], r).toMatch(/^Object \+\d{5}/);
 });
 
-// Granting a third-party tab its rights needs task 5's consent card: tested there.
-it.todo("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une référence profil:");
+it("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une référence profil:", async () => {
+  const id = await openThird();
+  await grant(id, ["performances"]);
+  const before = profiles();
+  const r = await tool("profiler_performances", { id, duree_s: 0.5 });
+  const nom = /^Profil : profil:(\S+\.cpuprofile)$/m.exec(r)?.[1];
+  expect(nom, r).toBeDefined();
+  expect(existsSync(path.join(w.dataDir, "profilage", nom!))).toBe(true);
+  // Nothing of the third-party site in the space the agent reads.
+  expect(profiles()).toEqual(before);
+}, 60_000);
 
 /** A 20 s profile cut by `leave(id)` taking the tab to another site: it answers at once, writes nothing, stops the profiler. */
 async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>): Promise<void> {

@@ -1,4 +1,4 @@
-import { OngletIntrouvable, OngletPrive, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
+import { OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
 import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/commun/modele";
 import { ongletPrive } from "../../../navigateur/src/commun/modele";
 import { changementsPolitique, infosOnglets, ongletActifDe, origineDe, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
@@ -109,6 +109,12 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
     demanderAutorisation: ([o]: [OngletInfo], signal) => {
       const f = windows.active();
       return f ? questions.ask(o, f, signal) : false;
+    },
+    // The dev tools card, in the active window; refused with none to show it. The noyau takes it down (signal) when a
+    // new conversation starts.
+    demanderOutilsDev: ([o, d]: [OngletInfo, { droits: DroitDev[]; raison: string; agent: string }], signal) => {
+      const f = windows.active();
+      return f ? questions.askDevTools(o, d, f, signal) : [];
     },
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage], signal) => readPage(store, url, o, signal),
     lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),

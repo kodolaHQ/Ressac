@@ -79,3 +79,30 @@ it("a site's question waits without a delay; it falls (« retiree ») on its sig
   expect(await questions.askSite(site)).toBe("retiree");
   expect(questions.pending()).toEqual([]);
 });
+
+it("the dev tools card answers the ticked rights, [] on a refusal, on its signal or when its tab goes to another site", async () => {
+  const store = createStore(etatInitial());
+  const questions = new Questions(store);
+  const fenetre = store.state.fenetres[0]!.id;
+  store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: "https://a.test/", activer: true }, () => "t");
+  const o = { id: "t", titre: "A", url: "https://a.test/", espace: "" };
+  const d = { droits: ["console" as const, "reseau" as const], raison: "Pourquoi.", agent: "Claude Code" };
+  let answer = questions.askDevTools(o, d, fenetre);
+  expect(questions.pending()).toMatchObject([{ cible: "t", origine: "https://a.test", permissions: ["outils-dev"], ...d }]);
+  questions.answer(questions.pending()[0]!.id, "autoriser", undefined, ["console"]);
+  expect(await answer).toEqual(["console"]);
+
+  answer = questions.askDevTools(o, d, fenetre);
+  questions.answer(questions.pending()[0]!.id, "refuser", undefined, ["console"]);
+  expect(await answer).toEqual([]);
+
+  const ac = new AbortController();
+  answer = questions.askDevTools(o, d, fenetre, ac.signal);
+  ac.abort();
+  expect(await answer).toEqual([]);
+
+  answer = questions.askDevTools(o, d, fenetre);
+  store.dispatch({ type: "majOnglet", id: "t", champs: { url: "https://b.test/" } });
+  expect(await answer).toEqual([]);
+  expect(questions.pending()).toEqual([]);
+});
