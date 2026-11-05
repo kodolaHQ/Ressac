@@ -31,6 +31,8 @@ async function site(name: string): Promise<Site> {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     // ?slow holds the lane of a read for a while (one test only).
     if (u.searchParams.has("slow")) setTimeout(() => res.end(body), 1500);
+    // ?hold keeps site-b's lane past a read's 30 s deadline (one test only).
+    else if (u.searchParams.has("hold")) setTimeout(() => res.end(body), 35_000);
     else res.end(body);
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -150,5 +152,18 @@ describe("paced reads", () => {
     const ends = (await Promise.all(waiting)).map((r) => r.at);
     expect(free.at).toBeLessThan(Math.min(...ends));
     expect(texte(await holder)).toContain("Texte de site-b");
+  }, 90_000);
+
+  it("a wait for another site's turn that passes the read's deadline fails with Page trop lente", async () => {
+    // The holder keeps site-b's lane for 35 s; the redirect waits for it and runs out of its 30 s.
+    await m.command("WebDriver:SetTimeouts", { script: 60_000 }); // the default 30 s would cut the read's own 30 s deadline
+    const holder = paced(urlB("/page?hold"));
+    await waitFor(m, "return 0", () => b.hits.length === 1, 20_000);
+    const r = await paced(urlA(`/302?to=${encodeURIComponent(urlB("/page"))}`));
+    expect(r).toMatchObject({ err: expect.stringContaining("Page trop lente") });
+    expect(b.hits.map((h) => h.path)).toEqual(["/page"]);
+    // No read place leaked: a plain read still works.
+    expect(texte(await plain(urlA("/page")))).toContain("Texte de site-a");
+    await holder;
   }, 90_000);
 });
