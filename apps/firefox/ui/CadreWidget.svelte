@@ -37,7 +37,7 @@
       "*",
     );
   }
-  // À chaque changement de données, d'état ou de taille (le chargement passe par onload).
+  // À chaque changement de données, d'état ou de taille (le chargement passe par DOMFrameContentLoaded).
   $effect(() => {
     void [donnees, etat.statut, etat.derniereMaj, taille.l, taille.h, largeur, hauteur];
     envoyer();
@@ -103,6 +103,14 @@
     envoyer();
     brancherGeste();
   }
+  // An iframe of this chrome page never gets `load` (measured: neither the element nor its `onload`), so the data would
+  // never reach a display loaded after its last change. DOMFrameContentLoaded (chrome only, seen from the document) comes
+  // once the display's scripts have run.
+  $effect(() => {
+    const charge = (e: Event) => iframe && e.target === iframe && surCharge();
+    document.addEventListener("DOMFrameContentLoaded", charge, true);
+    return () => document.removeEventListener("DOMFrameContentLoaded", charge, true);
+  });
 </script>
 
 <svelte:window onmessage={surMessage} onfocusin={surFocusin} onblur={surBlur} />
@@ -110,7 +118,7 @@
 <div class="contenu" bind:clientWidth={largeur} bind:clientHeight={hauteur}>
   {#if widget.src}
     <!-- Sans allow-same-origin : le code écrit par l'agent tourne dans une origine opaque, sans accès à l'interface. -->
-    <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts" onload={surCharge}></iframe>
+    <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts"></iframe>
   {:else}
     <p class="vide">L'agent n'a pas encore écrit l'affichage de ce widget.</p>
   {/if}
