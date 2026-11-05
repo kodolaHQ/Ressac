@@ -161,7 +161,7 @@ The agent reads a tab's console and network, runs JS, reloads, profiles and comp
 
 - No debugging port. `chrome/store/devtools.ts` plugs a DevTools client into Firefox's DevTools server through an in-memory pipe, the way the toolbox does. `devtools.debugger.remote-enabled` stays true, but nothing listens.
 - The user's DevTools toolbox works on the same tab at the same time. `OutilsDevOccupes` is never raised.
-- A third-party tab (not an app's own site) needs the consent card; a private-space tab is refused before any client exists.
+- A tab other than the agent's local demos (`localhost`/`127.0.0.1` on the demo and app ports) needs the consent card; a private-space tab is refused before any client exists.
 - The raw profile is a converted `.cpuprofile`. The raw memory snapshot is census JSON (`format: "webaios-firefox-census"`).
 
 Known limits:
@@ -171,7 +171,7 @@ Known limits:
 - Unhandled rejections from the agent's own code (source "debugger eval code") never reach `lire_console`.
 - Firefox's profiler is shared by the whole browser. An agent profile is refused while another one runs, with « Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent) … » (Electron queued the second request). A profile the user starts during an agent profile is stopped with it.
 - When the agent's `naviguer` targets a load that never commits (a download, a 204, "stay on page"), the store keeps the target URL until the next location change.
-- No CORS/CSP platform warnings appear in `lire_console` (not probed).
+- Whether CORS/CSP platform warnings reach `lire_console` was not probed.
 
 ## Not migrated yet (step 4)
 
