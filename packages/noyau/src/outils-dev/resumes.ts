@@ -107,9 +107,19 @@ export interface ResumeMemoire {
 
 const TYPES_RETENUS = new Set(["object", "closure", "array", "string", "regexp", "native"]);
 
-/** Lit un `.heapsnapshot` V8 et regroupe les nœuds par nom. */
+/** Firefox census, already converted by the caller; entries are object classes, not JS constructors. */
+export interface InstantaneFirefox extends ResumeMemoire {
+  format: "webaios-firefox-census";
+}
+
+/** Lit un `.heapsnapshot` V8 (ou un recensement Firefox) et regroupe les nœuds par nom. */
 export function resumerInstantane(json: string): ResumeMemoire {
-  const brut = JSON.parse(json) as {
+  const parse = JSON.parse(json) as { format?: string };
+  if (parse.format === "webaios-firefox-census") {
+    const { total, parConstructeur } = parse as InstantaneFirefox;
+    return { total, parConstructeur: [...parConstructeur].sort((a, b) => b.taille - a.taille) };
+  }
+  const brut = parse as unknown as {
     snapshot: { meta: { node_fields: string[]; node_types: unknown[] } };
     nodes: number[];
     strings: string[];

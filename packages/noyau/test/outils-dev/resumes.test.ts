@@ -165,3 +165,28 @@ describe("résumé mémoire", () => {
     expect(t).not.toContain("Autre");
   });
 });
+
+const recensement = (objets: Record<string, [number, number]>, total: number): string =>
+  JSON.stringify({
+    format: "webaios-firefox-census",
+    total,
+    parConstructeur: Object.entries(objets).map(([nom, [nombre, taille]]) => ({ nom, nombre, taille })),
+  });
+
+describe("recensement Firefox", () => {
+  it("resumerInstantane lit un recensement Firefox : total et constructeurs triés par taille", () => {
+    const r = resumerInstantane(
+      recensement({ Function: [10, 500], Object: [40, 4000], Array: [5, 900], strings: [20, 2000] }, 9000),
+    );
+    expect(r.total).toBe(9000);
+    expect(r.parConstructeur.map((c) => c.nom)).toEqual(["Object", "strings", "Array", "Function"]);
+    expect(r.parConstructeur[0]).toEqual({ nom: "Object", nombre: 40, taille: 4000 });
+  });
+  it("comparerMemoire sur deux recensements Firefox : le type qui grossit est en tête", () => {
+    const a = resumerInstantane(recensement({ Object: [40, 4000], Array: [5, 900] }, 5000));
+    const b = resumerInstantane(recensement({ Object: [400, 40000], Array: [5, 900] }, 41000));
+    const t = comparerMemoire(a, b);
+    expect(t.split("\n")[1]).toContain("Object +360");
+    expect(t).not.toContain("Array");
+  });
+});
