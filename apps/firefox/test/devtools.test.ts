@@ -58,7 +58,7 @@ it("a new owner revokes the previous one; a released owner is refused; a method 
   const first = devtools.owner().token;
   const second = devtools.owner().token;
   await expect(devtools.call(first, "console", ["t"])).rejects.toThrow(TEXTE_REVOQUE);
-  await expect(devtools.call(second, "profiler", ["t", {}])).rejects.toThrow("Pas encore disponible");
+  await expect(devtools.call(second, "attaches" as never, [])).rejects.toThrow("Pas encore disponible");
   await expect(devtools.call(second, "constructor" as never, [])).rejects.toThrow("Pas encore disponible");
   devtools.release(first); // not the current one: nothing happens
   await expect(devtools.call(second, "console", ["t"])).rejects.toThrow("no browser");

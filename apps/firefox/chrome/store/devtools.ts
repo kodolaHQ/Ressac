@@ -1,11 +1,12 @@
 import { origineDe } from "../../../navigateur/src/main/agent/pont";
 import { TEXTE_REVOQUE } from "../../../navigateur/src/main/outils-dev/inspecteur";
 import { TamponOnglet, textePile } from "../../../navigateur/src/main/outils-dev/tampon";
+import type { InstantaneFirefox, ProfilCpu } from "../../../../packages/noyau/src/outils-dev/resumes";
 import { OngletIntrouvable, OngletPrive, type OutilsDevNavigateur, type RequeteReseau, type ResultatJs } from "../shims/noyau";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
-// The agent's dev tools on a tab, the Firefox side of the noyau's OutilsDevNavigateur (plan 28, note D1-D4, D7-D9): an
+// The agent's dev tools on a tab, the Firefox side of the noyau's OutilsDevNavigateur (plan 28, note D1-D9): an
 // in-process DevTools client per tab (CommandsFactory.forTab over DevToolsServer.connectPipe, the toolbox's own way), no
 // socket and no listener. It coexists with the person's own toolbox on the same tab (note D7): OutilsDevOccupes is never raised.
 
@@ -22,6 +23,12 @@ const TRUNCATED = "… [tronqué]";
 const EXTENSION = "moz-extension://";
 export const TEXTE_DELAI = `Le code n'a pas répondu en ${EVAL_TIMEOUT_MS / 1000} s : son résultat sera ignoré.`;
 const TEXTE_SITE_CHANGE = "L'onglet a changé de site.";
+/** As Electron's DUREE_PROFIL_MS, DUREE_PROFIL_MAX_MS and DELAI_CHARGEMENT_MS. */
+const PROFILE_MS = 5000;
+const PROFILE_MAX_MS = 30_000;
+const PROFILE_LOAD_TIMEOUT_MS = 30_000;
+/** Services.profiler is one for the whole browser: the person's own session is never stopped for the agent. */
+export const TEXTE_PROFILEUR_OCCUPE = "Le profileur de Firefox est déjà utilisé dans ce navigateur : l'agent ne l'interrompt pas. Réessayez une fois qu'il est arrêté.";
 /** As Electron's lacher. */
 const TEXTE_DETACHE = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
@@ -37,6 +44,7 @@ export interface DevTools {
 
 interface Session {
   commands: any;
+  browser: any;
   buffer: TamponOnglet;
   /** Network resources by id, oldest first: Firefox updates them in place (status, timings, sizes). */
   requests: Map<string, any>;
@@ -49,6 +57,11 @@ interface Session {
   /** Rejects the pending `nextTarget` (the session is dropped). */
   rejectNext(e: Error): void;
   dropped: boolean;
+  /** Dropped by a navigation to another site. */
+  siteChanged: boolean;
+  /** Resolves when the session is dropped. */
+  gone: Promise<void>;
+  leave(): void;
 }
 
 let loader: any;
@@ -157,6 +170,95 @@ function requestOf(r: any, h: { req: Record<string, string>; res: Record<string,
   };
 }
 
+type Leaf = { count: number; bytes: number };
+/** A census `{ objects: {<class>: leaf}, strings: leaf, scripts: leaf, other: {<type>: leaf}, domNode: {…} }`: one entry per leaf, named by its key. */
+export function censusToSnapshot(census: Record<string, Leaf | Record<string, Leaf>>): InstantaneFirefox {
+  const byName = new Map<string, { nom: string; nombre: number; taille: number }>();
+  let total = 0;
+  const add = (nom: string, l: Leaf) => {
+    const e = byName.get(nom) ?? { nom, nombre: 0, taille: 0 };
+    e.nombre += l.count;
+    e.taille += l.bytes;
+    total += l.bytes;
+    byName.set(nom, e);
+  };
+  for (const [key, v] of Object.entries(census ?? {})) {
+    if (typeof (v as Leaf).count === "number") add(key, v as Leaf);
+    else for (const [name, l] of Object.entries(v ?? {})) if (typeof l?.count === "number") add(name, l);
+  }
+  return { format: "webaios-firefox-census", total, parConstructeur: [...byName.values()] };
+}
+
+interface GeckoThread {
+  name: string;
+  pid: string | number;
+  samples: { schema: Record<string, number>; data: unknown[][] };
+  stackTable: { schema: Record<string, number>; data: (number | null)[][] };
+  frameTable: { schema: Record<string, number>; data: unknown[][] };
+  stringTable: string[];
+  markers: { schema: Record<string, number>; data: unknown[][] };
+}
+
+/** A Gecko thread as a .cpuprofile (note D5), JS frames only (Chrome's shape): a sample with no JS frame is (idle),
+ * (garbage collector) or (program), by its leaf category. Lines 0-based, times in µs. */
+export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[], innerWindowID: number) {
+  const S = t.samples.schema, ST = t.stackTable.schema, F = t.frameTable.schema;
+  const nodes: ProfilCpu["nodes"] = [{ id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [] }];
+  const byKey = new Map<string, number>();
+  const child = (parent: number, functionName: string, url: string, lineNumber: number) => {
+    const key = `${parent}\0${functionName}\0${url}\0${lineNumber}`;
+    let id = byKey.get(key);
+    if (id === undefined) {
+      id = nodes.length + 1;
+      byKey.set(key, id);
+      nodes.push({ id, callFrame: { functionName, url, lineNumber }, children: [] });
+      nodes[parent - 1]!.children!.push(id);
+    }
+    return id;
+  };
+  let otherWindowFrames = 0;
+  const leafOf = new Map<number, { node: number; js: boolean; idle: boolean }>();
+  const resolve = (stack: number) => {
+    let r = leafOf.get(stack);
+    if (r) return r;
+    const chain: unknown[][] = [];
+    for (let s: number | null = stack; s !== null && s !== undefined; s = t.stackTable.data[s]![ST.prefix!] as number | null) chain.unshift(t.frameTable.data[t.stackTable.data[s]![ST.frame!] as number]!);
+    let node = 1;
+    let js = false;
+    for (const f of chain) {
+      const loc = t.stringTable[f[F.location!] as number] ?? "";
+      // "name (url:line:col)[resource index]" for a JS frame; labels ("js::RunScript") have no url.
+      const m = loc.match(/^(?:(.*) \()?(\S+):(\d+):(\d+)\)?(?:\[\d+\])?$/);
+      if (!m || !/^(https?|file|moz-extension|blob):/.test(m[2]!)) continue;
+      if (f[F.innerWindowID!] && f[F.innerWindowID!] !== innerWindowID) otherWindowFrames++;
+      node = child(node, m[1] ?? "", m[2]!, Number(m[3]) - 1);
+      js = true;
+    }
+    // Native frames (stackwalk) have no category: the deepest frame that has one says what the thread was doing.
+    const cat = categories[chain.findLast((f) => f[F.category!] !== null && f[F.category!] !== undefined)?.[F.category!] as number]?.name ?? "Other";
+    if (!js) node = child(1, cat === "Idle" ? "(idle)" : cat === "GC / CC" ? "(garbage collector)" : "(program)", "", -1);
+    r = { node, js, idle: !js && cat === "Idle" };
+    leafOf.set(stack, r);
+    return r;
+  };
+  const rows = t.samples.data.filter((d) => d[S.stack!] !== null && d[S.stack!] !== undefined);
+  const times = rows.map((d) => d[S.time!] as number);
+  const samples: number[] = [];
+  const timeDeltas: number[] = [];
+  let scriptMs = 0, taskMs = 0;
+  rows.forEach((d, i) => {
+    const r = resolve(d[S.stack!] as number);
+    samples.push(r.node);
+    timeDeltas.push(Math.round(((times[i]! - (times[i - 1] ?? times[0]!)) * 1000)));
+    const dur = (times[i + 1] ?? times[i]!) - times[i]!;
+    if (r.js) scriptMs += dur;
+    if (!r.idle) taskMs += dur;
+  });
+  for (const n of nodes) if (!n.children!.length) delete n.children;
+  const profil: ProfilCpu = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
+  return { profil, scriptMs, taskMs, otherWindowFrames };
+}
+
 function abortError(signal: AbortSignal): unknown {
   return signal.reason ?? new DOMException("Interrompu.", "AbortError");
 }
@@ -174,6 +276,7 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
     void e.session.then(
       (s) => {
         s.dropped = true;
+        s.leave();
         s.nextTarget.catch(() => {});
         s.rejectNext(new Error(TEXTE_DETACHE));
         s.buffer.vider();
@@ -199,8 +302,10 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
     let resolveNext: (t: any) => void = () => {};
     let rejectNext: (e: Error) => void = () => {};
     const next = () => new Promise<any>((ok, ko) => ((resolveNext = ok), (rejectNext = ko)));
+    let leave = () => {};
     const s: Session = {
       commands,
+      browser,
       buffer: new TamponOnglet(),
       requests: new Map(),
       headers: new Map(),
@@ -208,6 +313,9 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
       nextTarget: next(),
       rejectNext: (e) => rejectNext(e),
       dropped: false,
+      siteChanged: false,
+      gone: new Promise<void>((ok) => (leave = ok)),
+      leave: () => leave(),
     };
     try {
       const { targetCommand, resourceCommand } = commands;
@@ -232,7 +340,7 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
               if (r.name !== "will-navigate" || r.targetFront?.isTopLevel === false) continue;
               // Same site: the messages stay, marked. Another site: they are worth nothing, the session goes.
               if (origineDe(String(r.newURI ?? "")) === s.origin) s.buffer.rechargement();
-              else return dropMe();
+              else return ((s.siteChanged = true), dropMe());
             } else if (r.resourceType === TYPES.NETWORK_EVENT) {
               if (String(r.url ?? "").startsWith(EXTENSION)) continue;
               const id = String(r.resourceId);
@@ -359,6 +467,21 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
     return { valeur: await valueText(s, value) };
   }
 
+  /** Rejects as soon as the call is cut (signal) or its session dropped (another site, revoked owner, tab closed). */
+  function cut(s: Session, signal?: AbortSignal): { wait: Promise<never>; done(): void } {
+    let onAbort = () => {};
+    const wait = new Promise<never>((_, ko) => {
+      onAbort = () => ko(abortError(signal!));
+      if (signal?.aborted) return onAbort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      void s.gone.then(() => ko(new Error(s.siteChanged ? TEXTE_SITE_CHANGE : TEXTE_DETACHE)));
+    });
+    wait.catch(() => {});
+    return { wait, done: () => signal?.removeEventListener("abort", onAbort) };
+  }
+
+  let profiling = false;
+
   const impl = {
     attacher: async (id: string) => void (await session(id)),
     detacher: async (id: string) => drop(id),
@@ -418,6 +541,69 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
       // Resolves at dom-complete (note D4); a page that never finishes still answers, as Electron's.
       await Promise.race([s.commands.targetCommand.reloadTopLevelTarget(!!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && origineDe(String(o.store.state.onglets[id]?.url ?? "")) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
+    },
+    /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */
+    async profiler(id: string, opts: { dureeMs?: number; recharger?: boolean }, signal?: AbortSignal) {
+      if (signal?.aborted) throw abortError(signal);
+      const s = await session(id);
+      const wg = s.browser.browsingContext?.currentWindowGlobal;
+      if (!wg) throw new Error("L'onglet n'a pas de page.");
+      if (profiling || Services.profiler.IsActive()) throw new Error(TEXTE_PROFILEUR_OCCUPE);
+      const pid = wg.osPid;
+      const c = cut(s, signal);
+      let data: any;
+      profiling = true;
+      try {
+        await Promise.race([Services.profiler.StartProfiler(1 << 22, 1, ["js", "stackwalk", "cpu"], ["pid:" + pid], s.browser.browserId), c.wait]);
+        const work = opts?.recharger
+          ? Promise.race([s.commands.targetCommand.reloadTopLevelTarget(false), sleep(PROFILE_LOAD_TIMEOUT_MS)])
+          : sleep(Math.min(Math.max(0, opts?.dureeMs ?? PROFILE_MS), PROFILE_MAX_MS));
+        await Promise.race([work, c.wait]);
+        data = await Promise.race([Services.profiler.getProfileDataAsync(), c.wait]);
+      } finally {
+        c.done();
+        await Promise.resolve(Services.profiler.StopProfiler()).catch(() => {});
+        profiling = false;
+      }
+      // The parent's own threads, then each child process's: the tab's is the only one sampled (filter pid:).
+      const proc = [data, ...(data.processes ?? [])].find((p: any) => p.threads?.some((t: any) => String(t.pid) === String(pid)));
+      const main = proc?.threads.find((t: any) => t.name === "GeckoMain");
+      if (!main) throw new Error("Le profil ne contient pas le processus de l'onglet.");
+      const r = geckoToCpuProfile(main, proc.meta.categories, wg.innerWindowId);
+      const M = main.markers.schema;
+      const metriques: Record<string, number> = {
+        ScriptDuration: r.scriptMs / 1000,
+        TaskDuration: r.taskMs / 1000,
+        // One start (phase 2) and one end (3) per reflow, or one interval (1).
+        LayoutCount: main.markers.data.filter((d: any[]) => String(main.stringTable[d[M.name]]).startsWith("Reflow") && d[M.phase] !== 3).length,
+      };
+      const target = await top(s);
+      const heap = await (await target.getFront("memory")).measure().catch(() => null);
+      if (heap) metriques.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
+      const nodes = grip((await run(s, 'document.getElementsByTagName("*").length').catch(() => null))?.result);
+      if (typeof nodes === "number") metriques.Nodes = nodes;
+      return { profil: r.profil, metriques };
+    },
+    /** The memory actor's census (note D6), as the noyau's InstantaneFirefox: classes, never a string's content. */
+    async instantaneMemoire(id: string, signal?: AbortSignal): Promise<string> {
+      if (signal?.aborted) throw abortError(signal);
+      const s = await session(id);
+      const c = cut(s, signal);
+      try {
+        const work = (async () => {
+          const mem = await (await top(s)).getFront("memory");
+          if ((await mem.getState()) !== "attached") await mem.attach();
+          try {
+            return await mem.takeCensus();
+          } finally {
+            await mem.detach().catch(() => {});
+          }
+        })();
+        work.catch(() => {});
+        return JSON.stringify(censusToSnapshot(await Promise.race([work, c.wait])));
+      } finally {
+        c.done();
+      }
     },
   };
 

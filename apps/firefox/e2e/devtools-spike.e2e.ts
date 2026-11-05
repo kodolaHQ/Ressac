@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import type { ProfilCpu } from "../../../packages/noyau/src/outils-dev/resumes";
 import { resumerProfil } from "../../../packages/noyau/src/outils-dev/resumes";
+import { geckoToCpuProfile } from "../chrome/store/devtools";
 import { cleanupXpis, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -233,77 +233,6 @@ async function listening(m: Marionette, w: LaunchedWebAiOs): Promise<{ pids: num
   const out = await promisify(execFile)("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", pids.join(",")]).then((r) => r.stdout, (e: { stdout?: string }) => e.stdout ?? "");
   const lines = out.split("\n").slice(1).filter(Boolean).map((l) => l.replace(/\s+/g, " "));
   return { pids: pids.length, marionetteSeen: lines.some((l) => l.includes(`:${marionettePort} `)), listen: lines.filter((l) => !l.includes(`:${marionettePort} `)) };
-}
-
-// --- Gecko profile → ProfilCpu (D5), the form the kernel summarizes ----------------------------------------------
-
-interface GeckoThread {
-  name: string;
-  pid: string | number;
-  samples: { schema: Record<string, number>; data: unknown[][] };
-  stackTable: { schema: Record<string, number>; data: (number | null)[][] };
-  frameTable: { schema: Record<string, number>; data: unknown[][] };
-  stringTable: string[];
-  markers: { schema: Record<string, number>; data: unknown[][] };
-}
-
-/** JS frames only (Chrome's shape): a sample with no JS frame is (idle), (garbage collector) or (program), by its leaf category. */
-function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[], innerWindowID: number) {
-  const S = t.samples.schema, ST = t.stackTable.schema, F = t.frameTable.schema;
-  const nodes: ProfilCpu["nodes"] = [{ id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [] }];
-  const byKey = new Map<string, number>();
-  const child = (parent: number, functionName: string, url: string, lineNumber: number) => {
-    const key = `${parent}\0${functionName}\0${url}\0${lineNumber}`;
-    let id = byKey.get(key);
-    if (id === undefined) {
-      id = nodes.length + 1;
-      byKey.set(key, id);
-      nodes.push({ id, callFrame: { functionName, url, lineNumber }, children: [] });
-      nodes[parent - 1]!.children!.push(id);
-    }
-    return id;
-  };
-  let otherWindowFrames = 0;
-  const leafOf = new Map<number, { node: number; js: boolean; idle: boolean }>();
-  const resolve = (stack: number) => {
-    let r = leafOf.get(stack);
-    if (r) return r;
-    const chain: unknown[][] = [];
-    for (let s: number | null = stack; s !== null && s !== undefined; s = t.stackTable.data[s]![ST.prefix!] as number | null) chain.unshift(t.frameTable.data[t.stackTable.data[s]![ST.frame!] as number]!);
-    let node = 1;
-    let js = false;
-    for (const f of chain) {
-      const loc = t.stringTable[f[F.location!] as number] ?? "";
-      // "name (url:line:col)[resource index]" for a JS frame; labels ("js::RunScript") have no url.
-      const m = loc.match(/^(?:(.*) \()?(\S+):(\d+):(\d+)\)?(?:\[\d+\])?$/);
-      if (!m || !/^(https?|file|moz-extension|blob):/.test(m[2]!)) continue;
-      if (f[F.innerWindowID!] && f[F.innerWindowID!] !== innerWindowID) otherWindowFrames++;
-      node = child(node, m[1] ?? "", m[2]!, Number(m[3]) - 1);
-      js = true;
-    }
-    // Native frames (stackwalk) have no category: the deepest frame that has one says what the thread was doing.
-    const cat = categories[chain.findLast((f) => f[F.category!] !== null && f[F.category!] !== undefined)?.[F.category!] as number]?.name ?? "Other";
-    if (!js) node = child(1, cat === "Idle" ? "(idle)" : cat === "GC / CC" ? "(garbage collector)" : "(program)", "", -1);
-    r = { node, js, idle: !js && cat === "Idle" };
-    leafOf.set(stack, r);
-    return r;
-  };
-  const rows = t.samples.data.filter((d) => d[S.stack!] !== null && d[S.stack!] !== undefined);
-  const times = rows.map((d) => d[S.time!] as number);
-  const samples: number[] = [];
-  const timeDeltas: number[] = [];
-  let scriptMs = 0, taskMs = 0;
-  rows.forEach((d, i) => {
-    const r = resolve(d[S.stack!] as number);
-    samples.push(r.node);
-    timeDeltas.push(Math.round(((times[i]! - (times[i - 1] ?? times[0]!)) * 1000)));
-    const dur = (times[i + 1] ?? times[i]!) - times[i]!;
-    if (r.js) scriptMs += dur;
-    if (!r.idle) taskMs += dur;
-  });
-  for (const n of nodes) if (!n.children!.length) delete n.children;
-  const profil: ProfilCpu = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
-  return { profil, scriptMs, taskMs, otherWindowFrames };
 }
 
 describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {

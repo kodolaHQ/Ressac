@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -15,7 +15,7 @@ import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { inUi, waitUi } from "./ui";
 
 // The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): Electron's outils-dev.spec.ts for console, network,
-// evaluation and reload. The third-party half (masked headers behind the consent card) comes with task 5.
+// evaluation and reload; task 4 for profiling and memory. The third-party halves (behind the consent card) come with task 5.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
@@ -25,6 +25,10 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Démo</title><p>Démo<
 <script>
 function boum() { throw new Error("boum"); }
 function parler() { console.log("bonjour de la page"); console.warn("attention"); }
+function busyLoop(ms) { const end = performance.now() + ms; let x = 0; while (performance.now() < end) x += Math.sqrt(x + 1); return x; }
+class LeakyThing { constructor(i) { this.i = i; this.j = i * 2; } }
+window.leak = [];
+if (location.search.includes("busy")) busyLoop(300);
 document.addEventListener("declencher", () => { console.log("PAGE-LOG"); fetch("/data.json?depuis-page"); });
 const log = new URLSearchParams(location.search).get("log");
 if (log) { console.log("tag-" + log); fetch("/data.json?log=" + log); }
@@ -295,6 +299,86 @@ it("changer de site vide les tampons", async () => {
   expect(text).not.toContain("avant");
   expect(await tool("lire_reseau", { id, filtre: "avant=1" })).toBe("Aucune requête.");
 });
+
+const PROFILING = () => path.join(w.dataDir, "espace", ".webaios", "profilage");
+const profiles = () => (existsSync(PROFILING()) ? readdirSync(PROFILING()) : []);
+const profilerActive = () => m.execute<boolean>("return Services.profiler.IsActive();");
+
+it("démo : profiler_performances (2 s) rend un résumé avec la fonction coûteuse de la page et écrit le fichier dans l'espace", async () => {
+  const id = await openDemo();
+  await tool("executer_js", { id, code: "window.busy = setInterval(() => busyLoop(50), 100); 1" });
+  try {
+    const r = await tool("profiler_performances", { id, duree_s: 2 });
+    expect(r).toMatch(/^busyLoop \(http:\/\/127\.0\.0\.1:\d+\/:\d+\) — [\d.]+ ms, [\d.]+ %$/m);
+    for (const metric of ["Nodes", "JSHeapUsedSize", "LayoutCount", "ScriptDuration", "TaskDuration"]) expect(r).toContain(`${metric} : `);
+    const chemin = /Profil : \/workspace\/(\.webaios\/profilage\/\S+\.cpuprofile)$/m.exec(r)?.[1];
+    expect(chemin, r).toBeDefined();
+    const profil = JSON.parse(readFileSync(path.join(w.dataDir, "espace", chemin!), "utf8"));
+    expect(profil.nodes.some((n: { callFrame: { functionName: string } }) => n.callFrame.functionName === "busyLoop")).toBe(true);
+    expect(profil.samples.length).toBe(profil.timeDeltas.length);
+    expect(await profilerActive()).toBe(false);
+  } finally {
+    await tool("executer_js", { id, code: "clearInterval(window.busy); 1" });
+  }
+}, 60_000);
+
+it("démo : profiler_performances avec recharger rend un résumé", async () => {
+  const id = await openDemo("?busy");
+  const r = await tool("profiler_performances", { id, recharger: true });
+  expect(r).toMatch(/^busyLoop \(/m);
+  expect(r).toContain("ScriptDuration : ");
+  expect(r).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/m);
+  expect(await profilerActive()).toBe(false);
+}, 60_000);
+
+it("le profileur de Firefox déjà en marche : profiler_performances refuse et ne l'arrête pas", async () => {
+  const id = await openDemo();
+  await m.execute("return (async () => { await Services.profiler.StartProfiler(1 << 20, 1, ['js'], ['GeckoMain']); })();");
+  try {
+    const before = profiles();
+    expect(await tool("profiler_performances", { id, duree_s: 0.5 })).toContain("profileur de Firefox est déjà utilisé");
+    expect(await profilerActive()).toBe(true);
+    expect(profiles()).toEqual(before);
+  } finally {
+    await m.execute("return (async () => { await Services.profiler.StopProfiler(); })();");
+  }
+});
+
+it("démo : deux instantane_memoire puis comparer_memoire : le type que la page fait grossir est en tête", async () => {
+  const id = await openDemo();
+  const snapshot = async () => {
+    const r = await tool("instantane_memoire", { id });
+    expect(r).toMatch(/^Total : [\d.]+ Ko$/m);
+    const chemin = /Instantané : (\/workspace\/\.webaios\/profilage\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
+    expect(chemin, r).toBeDefined();
+    return chemin!;
+  };
+  const a = await snapshot();
+  await tool("executer_js", { id, code: "for (let i = 0; i < 20000; i++) window.leak.push(new LeakyThing(i)); 1" });
+  const b = await snapshot();
+  const r = await tool("comparer_memoire", { id, a, b });
+  // Firefox's census counts classes, not constructors: LeakyThing instances count as Object.
+  expect(r.split("\n")[1], r).toMatch(/^Object \+\d{5}/);
+});
+
+// Granting a third-party tab its rights needs task 5's consent card: tested there.
+it.todo("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une référence profil:");
+
+it("la page change de site pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
+  const id = await openDemo();
+  const before = profiles();
+  const t0 = Date.now();
+  const pending = call("profiler_performances", { id, duree_s: 20 });
+  await sleep(1000);
+  // The page leaves on its own (an agent's naviguer is cut by the noyau first: see task 4's report).
+  await tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` });
+  const r = await pending;
+  expect(Date.now() - t0).toBeLessThan(10_000);
+  expect(r.texte).toContain("changé de site");
+  expect(r.texte).not.toContain("Profil :");
+  expect(profiles()).toEqual(before);
+  expect(await profilerActive()).toBe(false);
+}, 60_000);
 
 it("l'hôte redémarre : le nouveau noyau ne voit pas les anciens messages", async () => {
   const id = await openDemo();
