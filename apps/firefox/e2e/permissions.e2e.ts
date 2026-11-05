@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -447,6 +447,72 @@ describe("site permissions", () => {
   it("un son se lit sans clic (lecture automatique autorisée)", async () => {
     const id = await open(await origin(), "audio");
     expect(await result(id)).toEqual({ ok: "allowed" });
+  });
+
+  const until = async (ok: () => Promise<boolean>) => {
+    for (const end = Date.now() + 10_000; !(await ok()); await new Promise((r) => setTimeout(r, 100))) if (Date.now() > end) throw new Error("timed out");
+  };
+  /** Triggers the « Navigation » menu entry of the current window by its command, as a click on it does. */
+  const forgetFromMenu = () => m.execute(`document.getElementById("webaios-forget-permissions").doCommand();`);
+
+  it("Oublier les autorisations de ce site : la page redemande, Notification.permission repasse à 'default'", { timeout: 60_000 }, async () => {
+    const base = await origin();
+    const id = await open(base, "notif");
+    await waitBanner((t) => t !== null);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: "granted" });
+    expect(await saved()).toHaveProperty(`${base} notifications`);
+    expect(await m.execute<string>(`return document.getElementById("main-menubar").querySelector("menu[label='Navigation']").label;`)).toBe("Navigation");
+    await forgetFromMenu();
+    await until(async () => !(`${base} notifications` in (await saved())));
+    expect(await result(await open(base, "perm"))).toEqual({ ok: "default" });
+    const again = await open(base, "notif");
+    expect(await waitBanner((t) => t !== null)).toMatch(/veut vous envoyer des notifications$/);
+    await answer("Refuser");
+    expect(await result(again)).toEqual({ ok: "denied" });
+  });
+
+  it("un profil supprimé : son permissions.json et ses décisions dans Firefox disparaissent", { timeout: 60_000 }, async () => {
+    const base = await origin();
+    const fenetreId = (await state(m)).fenetres[0]!.id;
+    await dispatch(m, { type: "creerEspace", nom: "Jetable", icone: "🗑", prive: false, profil: "nouveau", fenetreId });
+    const space = (await state(m)).espaces.find((e) => e.nom === "Jetable")!;
+    const file = path.join(dirs.dataDir, `permissions-${space.profil}.json`);
+    const id = await open(base, "notif");
+    await waitBanner((t) => t !== null);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: "granted" });
+    const inFirefox = () => chrome<number>(`return Services.perms.all.filter((p) => p.type === "desktop-notification" && p.principal.originNoSuffix === arguments[0] && p.principal.originAttributes.userContextId > 0).length;`, [base]);
+    expect(await inFirefox()).toBe(1);
+    expect(await readFile(file, "utf8").then(JSON.parse)).toHaveProperty(`${base} notifications`);
+    await dispatch(m, { type: "supprimerEspace", id: space.id });
+    await until(() => access(file).then(() => false, () => true));
+    expect(await inFirefox()).toBe(0);
+  });
+
+  it("une réponse rangée dans Firefox avant ce bloc est retirée au démarrage : le site redemande par le bandeau", { timeout: 90_000 }, async () => {
+    const base = await origin();
+    await chrome(`Services.perms.addFromPrincipal(Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(arguments[0]), {}), "desktop-notification", Services.perms.ALLOW_ACTION, Services.perms.EXPIRE_NEVER);`, [base]);
+    await w.close();
+    await launch(false);
+    const id = await open(base, "notif");
+    expect(await waitBanner((t) => t !== null)).toMatch(/veut vous envoyer des notifications$/);
+    await answer("Refuser");
+    expect(await result(id)).toEqual({ ok: "denied" });
+  });
+
+  it("permissions.json survit au redémarrage, et Firefox le réapplique", { timeout: 90_000 }, async () => {
+    const base = await origin();
+    const id = await open(base, "notif");
+    await waitBanner((t) => t !== null);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: "granted" });
+    await w.close();
+    await launch(false);
+    expect(await saved()).toMatchObject({ [`${base} notifications`]: "autoriser" });
+    // Firefox answers before any question: the page reads it without asking.
+    expect(await result(await open(base, "perm"))).toEqual({ ok: "granted" });
+    expect(await banner()).toBeNull();
   });
 
   it("une popup bloquée n'affiche aucune barre de Firefox", { timeout: 60_000 }, async () => {
