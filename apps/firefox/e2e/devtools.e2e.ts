@@ -13,7 +13,10 @@ import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { click, inUi, pressKeys, waitUi } from "./ui";
-import { TEXTE_COUPE } from "../../../packages/noyau/src/mcp/outils-dev";
+import { TEXTE_COUPE, TEXTE_SITE_CHANGE } from "../../../packages/noyau/src/mcp/outils-dev";
+
+// Which one the noyau answers depends on whether the new page committed before it read the tab list.
+const CUT_BY_OWN_NAVIGATION = [TEXTE_COUPE, TEXTE_SITE_CHANGE];
 
 // The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): Electron's outils-dev.spec.ts for console, network,
 // evaluation and reload; task 4 for profiling and memory; task 5 for the consent card of a third-party tab, the badge and cuts.
@@ -676,7 +679,7 @@ it("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une r�
 }, 60_000);
 
 /** A 20 s profile cut by `leave(id)` taking the tab to another site: it answers `text` at once, writes nothing, stops the profiler. */
-async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, text: string): Promise<void> {
+async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, texts: string[]): Promise<void> {
   const id = await openDemo();
   const before = profiles();
   const t0 = Date.now();
@@ -685,7 +688,7 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, t
   await leave(id);
   const r = await pending;
   expect(Date.now() - t0).toBeLessThan(10_000);
-  expect(r.texte).toContain(text);
+  expect(texts.some((t) => r.texte.includes(t))).toBe(true);
   expect(r.texte).not.toContain("Profil :");
   expect(profiles()).toEqual(before);
   expect(await profilerActive()).toBe(false);
@@ -693,11 +696,11 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, t
 
 it("naviguer vers un autre site pendant profiler_performances : l'appel répond le texte de coupure, aucun fichier partiel", async () => {
   // localhost: another origin, still the agent's demo (its port). The noyau cuts the right before the load commits.
-  await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"), TEXTE_COUPE);
+  await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"), CUT_BY_OWN_NAVIGATION);
 }, 60_000);
 
 it("la page s'en va d'elle-même pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
-  await profileCutBySiteChange((id) => tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }), "L'onglet a changé de site.");
+  await profileCutBySiteChange((id) => tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }), ["L'onglet a changé de site."]);
 }, 60_000);
 
 it("executer_js coupé par naviguer vers un autre site répond vite le texte de coupure", async () => {
@@ -706,7 +709,7 @@ it("executer_js coupé par naviguer vers un autre site répond vite le texte de 
   const pending = call("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
   await sleep(500);
   expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→");
-  expect((await pending).texte).toBe(TEXTE_COUPE);
+  expect(CUT_BY_OWN_NAVIGATION).toContain((await pending).texte);
   expect(Date.now() - t0).toBeLessThan(6000);
 }, 60_000);
 
