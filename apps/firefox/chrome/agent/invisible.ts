@@ -202,53 +202,59 @@ async function load<T>(
   if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);
   const paced = o.menagee !== undefined && waitHost !== undefined;
   let target = url;
-  // Fixed at the first place taken: paced redirections and their waits count in the 30 s.
+  // Fixed when the first page starts loading: paced redirections and their waits count in the 30 s.
   let deadline = 0;
-  for (let jumps = 0; ; jumps++) {
-    await takePlace(signal);
-    let publicId: number | undefined;
-    let opened: { browser: any; close(): void } | undefined;
-    let redirection: string;
-    try {
-      if (jumps === 0) deadline = Date.now() + DELAI_TOTAL_MS;
-      // The state may have changed while waiting for a place.
-      checkProfile();
-      signal?.throwIfAborted();
-      if (Date.now() >= deadline) throw new Error(TROP_LENTE);
-      if (profil === null) await untilSignal(clearContainer((publicId = takePublic())), signal);
-      // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
-      opened = await createBrowser(publicId ?? containerFor(profil as IdProfil), { private: profil === null });
-      const page = await readIn(opened.browser, target, { allowed, allowLocal, paced }, reading, deadline, signal, screens);
-      // The profile went to a private space during the read: what was read does not leave.
-      checkProfile();
-      return page;
-    } catch (e) {
-      if (!(e instanceof Redirection)) throw e;
-      redirection = e.target;
-    } finally {
-      opened?.close();
-      // Emptied after the read too, once its page is gone: no cookie, storage nor service worker waits for the next one.
-      if (publicId !== undefined) {
-        await clearContainer(publicId);
-        freePublic.push(publicId);
+  // One private container for the whole read: a redirected target sees the redirector's cookies, as in an ordinary redirect.
+  let publicId: number | undefined;
+  try {
+    for (let jumps = 0; ; jumps++) {
+      await takePlace(signal);
+      let opened: { browser: any; close(): void } | undefined;
+      let redirection: string;
+      try {
+        // The state may have changed while waiting for a place.
+        checkProfile();
+        signal?.throwIfAborted();
+        if (jumps > 0 && Date.now() >= deadline) throw new Error(TROP_LENTE);
+        if (profil === null && publicId === undefined) await untilSignal(clearContainer((publicId = takePublic())), signal);
+        // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
+        opened = await createBrowser(publicId ?? containerFor(profil as IdProfil), { private: profil === null });
+        deadline ||= Date.now() + DELAI_TOTAL_MS;
+        const page = await readIn(opened.browser, target, { allowed, allowLocal, paced }, reading, deadline, signal, screens);
+        // The profile went to a private space during the read: what was read does not leave.
+        checkProfile();
+        return page;
+      } catch (e) {
+        if (!(e instanceof Redirection)) throw e;
+        redirection = e.target;
+      } finally {
+        opened?.close();
+        givePlace();
       }
-      givePlace();
+      // Another site (paced read): its turn is awaited holding no browser nor place, else two reads redirected to the
+      // site of a third, itself waiting for a place, would block every read. A loop between sites fails fast.
+      if (jumps >= MAX_SAUTS) throw new Error("Trop de redirections");
+      await untilDeadline((s) => waitHost!(o.menagee!, new URL(redirection).hostname, s), deadline, signal);
+      target = redirection;
     }
-    // Another site (paced read): its turn is awaited holding no browser nor place, else two reads redirected to the
-    // site of a third, itself waiting for a place, would block every read. A loop between sites fails fast.
-    if (jumps >= MAX_SAUTS) throw new Error("Trop de redirections");
-    await untilDeadline(waitHost!(o.menagee!, new URL(redirection).hostname, signal), deadline, signal);
-    target = redirection;
+  } finally {
+    // Emptied after the read too, once its page is gone: no cookie, storage nor service worker waits for the next one.
+    if (publicId !== undefined) {
+      await clearContainer(publicId);
+      freePublic.push(publicId);
+    }
   }
 }
 
-/** `p`, rejected with the too-slow error at `deadline` and with `signal.reason` if it aborts. */
-function untilDeadline<T>(p: Promise<T>, deadline: number, signal?: AbortSignal): Promise<T> {
-  return new Promise<T>((ok, ko) => {
-    const timer = setTimeout(() => ko(new Error(TROP_LENTE)), Math.max(0, deadline - Date.now()));
-    untilSignal(p, signal)
-      .then(ok, ko)
-      .finally(() => clearTimeout(timer));
+/** Runs `f`, rejected with the too-slow error at `deadline` and with `signal.reason` if it aborts; `f`'s own signal aborts on either. */
+function untilDeadline<T>(f: (s: AbortSignal) => Promise<T>, deadline: number, signal?: AbortSignal): Promise<T> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(new Error(TROP_LENTE)), Math.max(0, deadline - Date.now()));
+  const relay = () => stop.abort(signal!.reason);
+  signal?.addEventListener("abort", relay, { once: true });
+  return untilSignal(f(stop.signal), stop.signal).finally(() => {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", relay);
   });
 }
 
