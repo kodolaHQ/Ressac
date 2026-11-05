@@ -1,11 +1,11 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets } from "../../../packages/noyau/src/index";
+import { AUCUN_WORKFLOW_OUVERT, CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets } from "../../../packages/noyau/src/index";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { DESACTIVEE_PLANTAGES } from "../../navigateur/src/commun/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
@@ -221,6 +221,28 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("arreter");
     expect(await h.exited).toBe(0);
     expect(readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8")).toContain("webaios-session");
+  });
+
+  it("workflow_ouvert: the window's selection on its open workflow, forgotten when the window closes", async () => {
+    const h = startHost();
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    const sessions = join(h.racine, ".webaios", "sessions");
+    /** Starts an agent session for w1 and returns its own MCP config (its token names the window). */
+    const session = async () => {
+      const before = existsSync(sessions) ? readdirSync(sessions) : [];
+      await h.rpc.request("agent.demarrer", { fenetre: "w1", taille: { cols: 80, rows: 24 } });
+      let config: string | undefined;
+      await until(() => !!(config = existsSync(sessions) ? readdirSync(sessions).find((f) => !before.includes(f)) : undefined));
+      return join(sessions, config!);
+    };
+    const first = await session();
+    h.rpc.notify("workflow.selection", { fenetre: "w1", cible: { type: "widget", id: "veille" }, bloc: "tri" });
+    h.rpc.notify("fenetres.actives", { w1: "webaios://workflow/veille" });
+    await h.rpc.request("acces.etat"); // stdin is read in order: the notifications are applied
+    expect((await appelerOutil(h.racine, "workflow_ouvert", {}, first)).texte).toBe(JSON.stringify({ widget: "veille", bloc: "tri" }));
+    h.rpc.notify("agent.fermerFenetre", { fenetre: "w1" });
+    await until(() => !existsSync(first));
+    expect((await appelerOutil(h.racine, "workflow_ouvert", {}, await session())).texte).toBe(AUCUN_WORKFLOW_OUVERT);
   });
 
   it("stdin closed → the host exits", async () => {

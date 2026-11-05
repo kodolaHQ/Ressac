@@ -1,5 +1,5 @@
 import type { Noyau, OngletInfo } from "../../../packages/noyau/src/index.ts";
-import type { TailleTerminal } from "../../navigateur/src/commun/api.ts";
+import type { SelectionConstructeur, TailleTerminal } from "../../navigateur/src/commun/api.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
 // stdout carries only the RPC: anything else written there would corrupt it, so it goes to stderr.
@@ -19,7 +19,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { chargerProfils, cheminsEspace, creerNoyau, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees } = await import("../../../packages/noyau/src/index.ts");
+const { catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -27,6 +27,21 @@ const { RemoteBridge } = await import("./remote-bridge.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
+const {
+  readCode,
+  readEdition,
+  saveCode,
+  saveEdition,
+  SchemaBlocWorkflow,
+  SchemaBrouillon,
+  SchemaCible,
+  SchemaCodeWorkflow,
+  SchemaIdExecution,
+  SchemaNomCode,
+  selectionConstructeur,
+  workflowOpen,
+  WriteQueue,
+} = await import("./workflow.ts");
 
 const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {
@@ -63,6 +78,13 @@ const historique = (() => {
 const purge = setInterval(() => historique?.purger(), 6 * 60 * 60 * 1000);
 purge.unref();
 const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
+// Electron's MESSAGE_AGENT_ARRETE (main/index.ts, which imports electron, so it cannot be imported here).
+const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
+// The workflow builder: the block selected in each window, the workflow page each window shows (chrome's mirror).
+const selections = new Map<string, SelectionConstructeur>();
+let actives = new Map<string, string>();
+const writes = new WriteQueue();
+const contexteWidgets = { chemins, dossierWidgets };
 
 let noyau: Noyau | null = null;
 let erreur: string | null = null;
@@ -90,6 +112,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     dossierActions: join(dataDir, "actions"),
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
+    workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or an accord changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
     // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
@@ -103,7 +126,9 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
   }).then(
     (n) => {
       noyau = n;
-      unsubscribe = n.politique.surChange(diffuserAcces);
+      const offPolitique = n.politique.surChange(diffuserAcces);
+      const offDirect = n.surDirect((e) => rpc.notify("workflow.direct", e));
+      unsubscribe = () => (offPolitique(), offDirect());
       // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
       // Unguarded, a watch failure would reject `pret` and every host method with it.
       try {
@@ -248,7 +273,7 @@ const rpc = createRpc({
     },
     "accueil.accorder": async (p: { id: string; profil: string; compte: string[]; publiques: string[] }) => {
       const n = await pret;
-      if (!n) return { ok: false as const, erreur: "Le service des widgets ne répond pas (agent arrêté ?)" };
+      if (!n) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
       try {
         // Le noyau refuse si la déclaration n'est plus celle que la carte a montrée.
         await n.accorder(p);
@@ -274,6 +299,62 @@ const rpc = createRpc({
     "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
       executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
+    // The workflow builder, as Electron's main/index.ts and ipc.ts: inputs checked with the same schemas (a bad one
+    // throws), an action's workflow answered as Electron does with no agent (actions are not ported).
+    "workflow.catalogue": () => catalogueBlocs(),
+    "workflow.lire": (p: { cible?: unknown }) => {
+      const cible = SchemaCible.parse(p?.cible);
+      return cible.type === "widget" ? readEdition(contexteWidgets, cible.id) : null;
+    },
+    "workflow.enregistrer": (p: { cible?: unknown; brouillon?: unknown }) => {
+      const cible = SchemaCible.parse(p?.cible);
+      const brouillon = SchemaBrouillon.parse(p?.brouillon);
+      if (cible.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] };
+      return writes.inSeries(cible.id, () => saveEdition(contexteWidgets, cible.id, brouillon));
+    },
+    "workflow.lireCode": (p: { cible?: unknown; nom?: unknown }) => {
+      const cible = SchemaCible.parse(p?.cible);
+      const nom = SchemaNomCode.parse(p?.nom);
+      return cible.type === "widget" ? readCode(chemins, cible.id, nom) : { erreur: MESSAGE_AGENT_ARRETE };
+    },
+    "workflow.enregistrerCode": (p: { cible?: unknown; nom?: unknown; texte?: unknown }) => {
+      const cible = SchemaCible.parse(p?.cible);
+      const nom = SchemaNomCode.parse(p?.nom);
+      const texte = SchemaCodeWorkflow.parse(p?.texte);
+      if (cible.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+      return writes.inSeries(cible.id, () => saveCode(chemins, cible.id, nom, texte));
+    },
+    "workflow.rejouer": async (p: { cible?: unknown; execution?: unknown; bloc?: unknown }) => {
+      const cible = SchemaCible.parse(p?.cible);
+      const execution = SchemaIdExecution.parse(p?.execution);
+      const bloc = SchemaBlocWorkflow.parse(p?.bloc);
+      const n = await pret;
+      if (!n || cible.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+      return n.rejouer(cible.id, execution, bloc);
+    },
+    // No noyau: {} (the page then selects no run); a failed run throws nothing.
+    "workflow.lancer": async (p: { cible?: unknown }) => {
+      const cible = SchemaCible.parse(p?.cible);
+      const n = await pret;
+      if (!n || cible.type === "action") return {};
+      try {
+        const r = await n.recolterMaintenant(cible.id, "manuelle");
+        return r.execution === undefined ? {} : { execution: r.execution };
+      } catch (e) {
+        console.error(`[webaios] exécution du widget ${cible.id} :`, e);
+        return {};
+      }
+    },
+    "workflow.direct": async () => (await pret)?.direct() ?? { courants: [], enAttente: [] },
+    // A bad selection is ignored, as Electron's IPC does.
+    "workflow.selection": (p: { fenetre?: unknown; cible?: unknown; bloc?: unknown }) => {
+      const s = selectionConstructeur(p);
+      if (s && typeof p?.fenetre === "string") selections.set(p.fenetre, s);
+    },
+    // Replaces the whole mirror: a window absent or without a workflow page is forgotten.
+    "fenetres.actives": (p: Record<string, unknown> | null) => {
+      actives = new Map(Object.entries(p ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+    },
     "historique.noter": (p: Parameters<InstanceType<typeof Historique>["noter"]>[0]) => historique?.noter(p),
     "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique?.majTitre(p.url, p.espaceId, p.titre),
     "historique.retenir": (p: { url: string; espaceId: string; titre: string; texte: string }) => {
@@ -294,7 +375,11 @@ const rpc = createRpc({
     },
     "agent.ecrire": (p: { fenetre: string; d: string }) => sessions.ecrire(p.fenetre, p.d),
     "agent.redimensionner": (p: { fenetre: string; taille: TailleTerminal }) => sessions.redimensionner(p.fenetre, p.taille),
-    "agent.fermerFenetre": (p: { fenetre: string }) => void sessions.fermerFenetre(p.fenetre),
+    "agent.fermerFenetre": (p: { fenetre: string }) => {
+      selections.delete(p.fenetre);
+      actives.delete(p.fenetre);
+      void sessions.fermerFenetre(p.fenetre);
+    },
     prives: (p: { prives: string[]; actifPrive: boolean }) => bridge.setPrivate(p),
     "politique.navigue": (p: { id: string; url: string }) => noyau?.politique.ongletNavigue(p.id, p.url),
     "politique.ferme": (p: { id: string }) => noyau?.politique.ongletFerme(p.id),

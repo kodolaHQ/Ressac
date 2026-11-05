@@ -1,6 +1,6 @@
 import { OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
 import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/commun/modele";
-import { ongletPrive } from "../../../navigateur/src/commun/modele";
+import { ongletPrive, PREFIXE_WORKFLOW } from "../../../navigateur/src/commun/modele";
 import { changementsPolitique, infosOnglets, ongletActifDe, origineDe, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { DevTools } from "../store/devtools";
@@ -22,6 +22,16 @@ function privateMirror(state: EtatNavigateur, windows: WindowRegistry): { prives
   const f = state.fenetres.find((x) => x.id === windows.active());
   const active = f && f.actif[f.espaceActif];
   return { prives: Object.values(state.onglets).filter(isPrivate).map((o) => o.id), actifPrive: isPrivate(active ? state.onglets[active] : undefined) };
+}
+
+/** Each window's active tab URL, for `workflow_ouvert`: only a workflow page, never a web URL (null otherwise). */
+function activeWorkflows(state: EtatNavigateur): Record<IdFenetre, string | null> {
+  const r: Record<IdFenetre, string | null> = {};
+  for (const f of state.fenetres) {
+    const url = state.onglets[f.actif[f.espaceActif] ?? ""]?.url;
+    r[f.id] = url?.startsWith(PREFIXE_WORKFLOW) ? url : null;
+  }
+  return r;
 }
 
 /** The noyau's PontNavigateur, answered on the store and the windows' tabs (Electron's PontElectron). */
@@ -132,9 +142,12 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
  */
 export function trackState(store: Store, host: AgentHost, windows: WindowRegistry): () => void {
   let mirror = JSON.stringify(privateMirror(store.state, windows));
+  let workflows = JSON.stringify(activeWorkflows(store.state));
   const refresh = () => {
     const next = JSON.stringify(privateMirror(store.state, windows));
     if (next !== mirror) host.notify("prives", JSON.parse((mirror = next)));
+    const nextWorkflows = JSON.stringify(activeWorkflows(store.state));
+    if (nextWorkflows !== workflows) host.notify("fenetres.actives", JSON.parse((workflows = nextWorkflows)));
   };
   store.subscribe((state, previous) => {
     refresh();
@@ -153,6 +166,8 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
   return refresh;
 }
 
-/** The private mirror a new host starts from. */
-export const sendMirror = (store: Store, windows: WindowRegistry, notify: (method: string, params: unknown) => void) =>
+/** The private and workflow mirrors a new host starts from. */
+export const sendMirror = (store: Store, windows: WindowRegistry, notify: (method: string, params: unknown) => void) => {
   notify("prives", privateMirror(store.state, windows));
+  notify("fenetres.actives", activeWorkflows(store.state));
+};
