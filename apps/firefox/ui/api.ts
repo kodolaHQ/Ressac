@@ -1,11 +1,25 @@
-import type { ApiWebaios, EtatPanneauAgent, ResultatExtension } from "../../navigateur/src/commun/api";
+import type { ApiWebaios, EtatPanneauAgent, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
 import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
+import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts";
+import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
+import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
+
+/** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
+export interface AccueilLu {
+  widgets: WidgetAffiche[];
+  theme: ThemeAccueil | null;
+}
+
+/** The Electron preload's API, with the home page's read widened to carry the theme (Task 7 applies it). */
+export interface ApiFirefox extends Omit<ApiWebaios, "accueil"> {
+  accueil: Omit<ApiWebaios["accueil"], "lire"> & { lire(): Promise<AccueilLu> };
+}
 
 declare global {
   interface Window {
-    webaios: ApiWebaios;
+    webaios: ApiFirefox;
     /** ApiWebaios members the UI reached that this api does not implement (read by the e2e). */
     webaiosMissingApi?: Set<string>;
   }
@@ -19,7 +33,7 @@ const unavailable = async () => ({ ok: false as const, erreur: "Pas encore dispo
  * The Electron preload's `window.webaios`, on the Firefox window controller. What is not migrated yet (applications, sites,
  * extensions, actions) answers empty; any other member is recorded in `window.webaiosMissingApi` and is undefined.
  */
-export function createApi(win: WindowController): ApiWebaios {
+export function createApi(win: WindowController): ApiFirefox {
   const missing = (window.webaiosMissingApi ??= new Set());
   // The store outlives this document: a listener into a dead document would throw on every call.
   const untilUnload = (unsubscribe: () => void) => {
@@ -34,7 +48,7 @@ export function createApi(win: WindowController): ApiWebaios {
   /** An extension action in the noyau host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
     host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
-  const api: Partial<ApiWebaios> = {
+  const api: Partial<ApiFirefox> = {
     fenetreId: win.fenetreId,
     // A tab the user closes may ask first (Electron's ipc.ts sends fermerOnglet to Vues.fermer).
     agir: (action) => void (action.type === "fermerOnglet" ? win.closeTab(action.id) : win.store.dispatch(action)),
@@ -111,6 +125,43 @@ export function createApi(win: WindowController): ApiWebaios {
         offExit();
       });
     },
+    // The home page: widgets, their data and state, and the agent's theme, all kept by the noyau host.
+    accueil: {
+      lire: () =>
+        host.request<AccueilLu>("accueil.lire").then(
+          (r) => structuredClone(r ?? { widgets: [], theme: null }),
+          () => ({ widgets: [], theme: null }),
+        ),
+      surChange: (rappel) => untilUnload(host.on("accueil.change", () => rappel())),
+      placer: (placements) => host.notify("accueil.placer", { placements }),
+      retirer: (id) => host.notify("accueil.retirer", { id }),
+      ouvrir: (url) => {
+        // Task 6 adds the gesture check here (a real click just landed in this widget's frame).
+        if (!urlOuvrable(url)) return console.warn("[webaios] lien de widget refusé :", url);
+        win.store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url, activer: true });
+      },
+      profilsPourAccord: async () => profilsPourAccord(win.store.state, fenetre),
+      accorder: async (a) => {
+        // The state is read again at the moment of the accord: never a private space's profile.
+        if (!profilsLisibles(win.store.state).includes(a.profil)) return { ok: false as const, erreur: "Ce profil ne peut pas servir à un accord" };
+        return host.request<{ ok: true } | { ok: false; erreur: string }>("accueil.accorder", a).then(
+          (r) => structuredClone(r),
+          (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }),
+        );
+      },
+      refuserAccord: (id) => host.notify("accueil.refuserAccord", { id }),
+      recolter: (id) => host.notify("accueil.recolter", { id }),
+      executions: (id) =>
+        host.request<ResumeExecution[]>("accueil.executions", { id }).then(
+          (v) => structuredClone(v),
+          () => [],
+        ),
+      execution: (id, execution) =>
+        host.request<Execution | null>("accueil.execution", { id, execution }).then(
+          (v) => structuredClone(v),
+          () => null,
+        ),
+    },
     // The command bar's sources besides tabs: none in step 2.
     applications: { liste: async () => ({ atelier: "ok", applications: [] }), surChange: off, agir() {} },
     sites: { liste: none, surChange: off, agir() {} },
@@ -137,5 +188,5 @@ export function createApi(win: WindowController): ApiWebaios {
       if (typeof key === "string" && !(key in target)) missing.add(key);
       return Reflect.get(target, key);
     },
-  }) as ApiWebaios;
+  }) as ApiFirefox;
 }

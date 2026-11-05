@@ -9,6 +9,7 @@ import type { OptionsLecturePage, PageLue } from "../shims/noyau";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
+import { registerAccueilNotifications } from "./notifications";
 import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
@@ -219,6 +220,7 @@ async function start(): Promise<WebAiOsStore> {
     },
   });
   const history = createHistory(store, agent);
+  registerAccueilNotifications(agent);
   const downloads = await createDownloads();
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
