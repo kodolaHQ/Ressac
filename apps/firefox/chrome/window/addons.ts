@@ -22,7 +22,7 @@ export interface AddonButton {
   badge: string; // "" when none
   badgeColor: string | null; // css rgba(), from badgeBackgroundColor
   badgeTextColor: string | null;
-  /** False while no web page is displayed (empty window, internal page) or when the add-on disabled its action for the tab. */
+  /** False while no web page is displayed (empty window, internal page), when the add-on disabled its action for the tab, or when it has none. */
   enabled: boolean;
   pinned: boolean;
 }
@@ -31,7 +31,7 @@ export interface PendingUpdate {
   name: string;
 }
 export interface WindowAddons {
-  /** Active, non-hidden extensions with a browser action, in getActivePolicies order. */
+  /** Active, non-hidden extensions, in getActivePolicies order; one without a browser action is never enabled. */
   buttons(): AddonButton[];
   /** ExtensionsUI.updates. */
   updates(): PendingUpdate[];
@@ -97,8 +97,22 @@ export function createAddons(o: {
     const pins = pinned();
     return w.gUnifiedExtensions.getActivePolicies().flatMap((policy: any) => {
       const ba = actionOf(policy);
-      if (!ba) return [];
       const { extension } = policy;
+      // As Firefox's own panel and Electron's bar: an add-on without a button (content scripts only) is listed, greyed.
+      if (!ba)
+        return [
+          {
+            id: policy.id,
+            name: extension.name,
+            title: extension.name,
+            icon: ExtensionParent.IconDetails.getPreferredIcon(extension.manifest.icons ?? {}, extension, 32).icon ?? null,
+            badge: "",
+            badgeColor: null,
+            badgeTextColor: null,
+            enabled: false,
+            pinned: pins.includes(policy.id),
+          },
+        ];
       const data = ba.action.getContextData(tab);
       return [
         {

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { button, cleanupXpis, installAddon } from "./addons";
+import { button, cleanupXpis, hider, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -97,6 +97,14 @@ describe("add-on strip, sidebar", () => {
     await waitUi(m, `return doc.querySelectorAll('[data-testid="barre-extensions"] ${BTN}').length === 1`);
     expect(await m.execute("return Services.prefs.getStringPref('webaios.extensions.pinned')")).toContain(ID);
     await waitUi(m, `return doc.querySelector(${JSON.stringify(row)})?.textContent.includes("Détacher")`);
+  });
+
+  it("an add-on without a button (content scripts only) is listed too, its button greyed", async () => {
+    await installAddon(m, hider());
+    await open("/texte.html");
+    await openMenu();
+    const row = '[data-testid="ligne-barre-extension"]';
+    await waitUi(m, `return [...doc.querySelectorAll(${JSON.stringify(row)})].some((l) => l.textContent.includes("Cacheur") && l.querySelector(${JSON.stringify(BTN)})?.disabled)`);
   });
 
   it("a long name is cut; Épingler stays whole", async () => {
