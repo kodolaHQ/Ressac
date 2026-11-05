@@ -46,6 +46,8 @@ export function createApi(win: WindowController): ApiFirefox {
   };
   const host = win.store.agent;
   const fenetre = win.fenetreId;
+  /** When this window last opened a widget link: a display cannot make links leave in a burst. */
+  let dernierLien = 0;
   /** States this document makes itself: the host did not start, or stopped. */
   const localStates = new Set<(e: EtatPanneauAgent) => void>();
   const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
@@ -139,10 +141,14 @@ export function createApi(win: WindowController): ApiFirefox {
       surChange: (rappel) => untilUnload(host.on("accueil.change", () => rappel())),
       placer: (placements) => host.notify("accueil.placer", { placements }),
       retirer: (id) => host.notify("accueil.retirer", { id }),
-      ouvrir: (url, _id) => {
-        // Task 6 adds the gesture check here (a real click just landed in this widget's frame) and the one-link-per-second
-        // limit that keeps an affichage from opening links in a burst.
+      ouvrir: (url, id) => {
+        // Only just after a real click in this widget's display (one link per click), and one per second at most: a
+        // display that would burst links could make data leave.
+        if (!win.store.gestesWidgets.accepter(fenetre, id)) return console.warn("[webaios] lien de widget ignoré (pas de clic dans le widget) :", url);
+        const maintenant = Date.now();
+        if (maintenant - dernierLien < 1000) return console.warn("[webaios] lien de widget ignoré (trop rapproché) :", url);
         if (!urlOuvrable(url)) return console.warn("[webaios] lien de widget refusé :", url);
+        dernierLien = maintenant;
         win.store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url, activer: true });
       },
       profilsPourAccord: async () => profilsPourAccord(win.store.state, fenetre),

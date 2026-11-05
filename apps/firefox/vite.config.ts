@@ -57,7 +57,7 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: false,
         minify: false,
         lib: {
-          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts" },
+          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts", "widget-actor": "chrome/window/widget-actor.ts" },
           formats: ["es"],
           fileName: (_format, name) => `${name}.sys.mjs`,
         },
@@ -68,7 +68,7 @@ export default defineConfig(({ mode }) => {
         {
           name: "preprocessor-directive",
           writeBundle(o: { dir?: string }) {
-            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"]]) {
+            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"], ["widget-actor", "WEBAIOS_WIDGET_ACTOR"]]) {
               const file = `${o.dir}/${name}.sys.mjs`;
               writeFileSync(file, `#define ${define}\n${readFileSync(file, "utf8")}`);
             }

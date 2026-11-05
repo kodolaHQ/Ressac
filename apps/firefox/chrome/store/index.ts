@@ -17,6 +17,7 @@ import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
+import { gardienGestes } from "../../shared/geste-widget";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -44,12 +45,15 @@ export interface WebAiOsStore extends Store {
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
+  /** The real clicks in a widget's display: each lets that widget open one link (recorded by the widget frame actor). */
+  readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
 }
 
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
+const WIDGET_ACTOR = "chrome://browser/content/webaios/widget-actor.sys.mjs";
 
 /**
  * The extension actor's module. Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding it, served by a
@@ -101,6 +105,8 @@ const firefoxPermissions = {
 
 const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
+
+const gestesWidgets = gardienGestes<string>();
 
 async function start(): Promise<WebAiOsStore> {
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
@@ -170,6 +176,16 @@ async function start(): Promise<WebAiOsStore> {
     // Only turns retargeting off in its own frame: nothing it answers makes the parent act.
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["webaios-reading"],
+  });
+  // The widget displays: a chrome subframe of the sidebar, in the parent process. No `matches`: no pattern catches
+  // webaios-widget: (spike P3), so the child filters on the document's URL; being a subframe of a chrome document, it
+  // also needs allFrames and includeChrome. Not marked safeForUntrustedWebProcess: it is then not created in web
+  // content processes at all (dom.jsipc.check_safeForUntrustedWebProcess), and those can never host the scheme.
+  ChromeUtils.registerWindowActor("WebAiOsWidget", {
+    parent: { esModuleURI: WIDGET_ACTOR },
+    child: { esModuleURI: WIDGET_ACTOR, events: { DOMWindowCreated: {} } },
+    allFrames: true,
+    includeChrome: true,
   });
   const extensionActor = extensionActorModule();
   // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
@@ -253,6 +269,7 @@ async function start(): Promise<WebAiOsStore> {
     get access() {
       return access;
     },
+    gestesWidgets,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
   };
