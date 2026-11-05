@@ -28,7 +28,7 @@ In a new checkout or worktree: `pnpm engine:link` then `pnpm engine:import`. The
 - `window`: the window controller (syncs WebAiOs tabs and spaces with Firefox tabs and containers, shortcuts);
 - `store`: the shared state module (`store.sys.mjs`: session file, containers, shutdown save, the agent host), imported by the window at runtime;
 - `agent`: the agent panel (terminal), a second iframe on the right of the window;
-- `actor`: the page and extension JSWindowActors (`page-actor.sys.mjs`, `extension-actor.sys.mjs`). These are **copied** into the build, not linked (the macOS content sandbox cannot read a file outside the source and object trees): after changing `chrome/agent/page-actor.ts` or `extension-actor.ts`, run `pnpm build:ui`. The e2e load the extension actor as `pnpm ui` built it, through a `resource://` substitution (`WEBAIOS_TEST_EXTENSION_ACTOR` plus the `security.sandbox.content.mac.testing_read_path1` pref), so they need no rebuild.
+- `actor`: the page and extension JSWindowActors (`page-actor.sys.mjs`, `extension-actor.sys.mjs`). These are **copied** into the build, not linked (the macOS content sandbox cannot read a file outside the source and object trees): after changing `chrome/agent/page-actor.ts` or `extension-actor.ts`, run `pnpm build:ui`. The e2e load the extension actor as `pnpm ui` built it, through a `resource://` substitution (`WEBAIOS_TEST_EXTENSION_ACTOR` plus the `security.sandbox.content.mac.testing_read_path1` pref), so they need no rebuild. After each `build:ui`, run them once against the packaged actor with `WEBAIOS_E2E_PACKAGED_ACTOR=1`.
 
 ## The agent
 

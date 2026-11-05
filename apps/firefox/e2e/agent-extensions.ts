@@ -22,6 +22,8 @@ const BUILT_ACTOR = path.resolve(import.meta.dirname, "../src/browser/base/conte
  * these tests need no rebuild of the app.
  */
 function testActor(profile: string): { env: Record<string, string>; prefs: Record<string, string> } {
+  // WEBAIOS_E2E_PACKAGED_ACTOR=1: use the actor packaged by build:ui instead (checked once after each build:ui).
+  if (process.env.WEBAIOS_E2E_PACKAGED_ACTOR === "1") return { env: {}, prefs: {} };
   const dir = path.join(realpathSync(profile), "extension-actor");
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, "extension-actor.sys.mjs"), readFileSync(BUILT_ACTOR, "utf8").replace(/^#define .*\n/, ""));
