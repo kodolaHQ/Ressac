@@ -155,10 +155,28 @@ Limits:
 - Firefox's site permissions stored before this block are lost (wiped at startup).
 - Not checked headless: the real menu bar entry, the macOS screen picker, a real camera, Widevine, launching a real external application.
 
+## Agent dev tools
+
+The agent reads a tab's console and network, runs JS, reloads, profiles and compares memory (`lire_console`, `lire_reseau`, `executer_js`, `profiler_performances`, `instantane_memoire`, `comparer_memoire`). Same tools, texts and consent card as the Electron app.
+
+- No debugging port. `chrome/store/devtools.ts` plugs a DevTools client into Firefox's DevTools server through an in-memory pipe, the way the toolbox does. `devtools.debugger.remote-enabled` stays true, but nothing listens.
+- The user's DevTools toolbox works on the same tab at the same time. `OutilsDevOccupes` is never raised.
+- A third-party tab (not an app's own site) needs the consent card; a private-space tab is refused before any client exists.
+- The raw profile is a converted `.cpuprofile`. The raw memory snapshot is census JSON (`format: "webaios-firefox-census"`).
+
+Known limits:
+
+- The memory census names classes, not constructors: a page's own class shows as `Object`.
+- `executer_js` stops waiting after 10 s and drops the late result. An endless loop keeps running until Firefox's hang monitor stops it.
+- Unhandled rejections from the agent's own code (source "debugger eval code") never reach `lire_console`.
+- Firefox's profiler is shared by the whole browser. An agent profile is refused while another one runs, with « Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent) … » (Electron queued the second request). A profile the user starts during an agent profile is stopped with it.
+- When the agent's `naviguer` targets a load that never commits (a download, a 204, "stay on page"), the store keeps the target URL until the next location change.
+- No CORS/CSP platform warnings appear in `lire_console` (not probed).
+
 ## Not migrated yet (step 4)
 
 - compact mode;
-- the agent's dev tools, widget data and site-app permission checks;
+- widget data and site-app permission checks;
 - « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;
