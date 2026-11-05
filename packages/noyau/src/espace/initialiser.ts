@@ -73,11 +73,16 @@ async function renommerSiPresent(de: string, vers: string): Promise<void> {
   }
 }
 
-/** Un `disposition.json` qui n'est pas au format v2 (ancien `{ ordre }`). Illisible : laissé en place. */
+/**
+ * Un `disposition.json` d'un autre format (ancien `{ ordre }` ou version inconnue). v2 (Electron) et v3 (Firefox)
+ * sont gardés. Illisible : laissé en place.
+ */
 async function dispositionAncienne(chemin: string): Promise<boolean> {
   try {
     const v: unknown = JSON.parse(await readFile(chemin, "utf8"));
-    return typeof v !== "object" || v === null || (v as { version?: unknown }).version !== 2;
+    if (typeof v !== "object" || v === null) return true;
+    const version = (v as { version?: unknown }).version;
+    return version !== 2 && version !== 3;
   } catch {
     return false;
   }

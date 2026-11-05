@@ -104,6 +104,16 @@ test("des blocs existants partent dans accueil/.corbeille/blocs-…, rien n'est 
   expect(await readdir(corbeille)).toHaveLength(1);
 });
 
+test("une disposition v3 (Firefox) est gardée au lancement", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const perso = '{"version":3,"widgets":[{"id":"meteo","x":0,"y":0,"l":500,"h":180}]}';
+  await mkdir(c.accueil, { recursive: true });
+  await writeFile(c.disposition, perso);
+  await initialiserEspace(c);
+  expect(await readFile(c.disposition, "utf8")).toBe(perso);
+  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+});
+
 test("un widget de départ supprimé ne revient pas au lancement suivant", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
