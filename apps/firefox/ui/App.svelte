@@ -1,7 +1,7 @@
 <script lang="ts">
   // Electron's App.svelte, reduced to step 2: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
   // this transparent iframe; the iframe covers the whole window only when the UI shows more than its column.
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import BarreCommande from "../../navigateur/src/renderer/composants/BarreCommande.svelte";
   import BarreLaterale from "../../navigateur/src/renderer/composants/BarreLaterale.svelte";
   import Extensions from "../../navigateur/src/renderer/composants/Extensions.svelte";
@@ -13,15 +13,17 @@
   import PageVide from "../../navigateur/src/renderer/composants/PageVide.svelte";
   import Telechargements from "../../navigateur/src/renderer/composants/Telechargements.svelte";
   import PanneauOnglets from "../../navigateur/src/renderer/composants/PanneauOnglets.svelte";
+  import { focusAgent } from "../../navigateur/src/renderer/composants/agent.svelte";
   import { commande, fermerCommande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
   import { estDemandeAgent } from "../../navigateur/src/renderer/composants/modale.svelte";
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
-  import { aUneVue, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
+  import { aUneVue, cibleDeUrlWorkflow, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
+  import WorkflowBuilder from "./WorkflowBuilder.svelte";
 
   const win = window.parent.webaiosWindow!;
 
@@ -39,6 +41,20 @@
     api.rendreFocusPage();
   };
   const basculerPanneau = (p: Panneau) => (panneau === p ? fermerPanneau() : (panneau = p));
+  /** A widget's workflow builder is the active tab (an action's is not ported: the internal page shows). */
+  const cibleConstructeur = $derived.by(() => {
+    const c = ongletActif ? cibleDeUrlWorkflow(ongletActif.url) : null;
+    return c?.type === "widget" ? c : null;
+  });
+  /**
+   * ⌘J or ✦ on a builder tab (Electron's agentDuConstructeur): its Agent tab. A UI panel over it closes first; the
+   * request waits for the builder to mount again, so that it sees it.
+   */
+  function agentDuConstructeur(): void {
+    if (panneau === null) return void focusAgent.n++;
+    panneau = null;
+    void tick().then(() => focusAgent.n++);
+  }
   $effect(() => api.surPanneau(basculerPanneau));
   // The command bar targets the tab active when it opened: if another one shows, it closes.
   const idActif = $derived(ongletActif?.id);
@@ -81,7 +97,7 @@
       else if (r === "adresse") {
         if (ongletActif) ouvrirCommande("actif", ongletActif.url);
         else ouvrirCommande("nouveau");
-      }
+      } else if (r === "agent" && ongletActif && cibleDeUrlWorkflow(ongletActif.url)) agentDuConstructeur();
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
@@ -95,7 +111,8 @@
 
 <div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte}>
   {#if fenetre}
-    <BarreLaterale {fenetre} {basculerPanneau} />
+    <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
+    <BarreLaterale {fenetre} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
   {:else}
     <aside data-testid="barre-laterale"></aside>
   {/if}
@@ -110,6 +127,8 @@
       <PageError onglet={ongletActif} />
     {:else if ongletActif?.url === URL_EXTENSIONS}
       <Extensions />
+    {:else if cibleConstructeur}
+      {#key cibleConstructeur.id}<WorkflowBuilder cible={cibleConstructeur} />{/key}
     {:else if ongletActif && !pageWeb}
       <InternalPage />
     {/if}

@@ -35,6 +35,8 @@ declare global {
 const off = () => () => {};
 const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
+// Electron's MESSAGE_AGENT_ARRETE, as noyau/host.ts retypes it (a Node module this bundle cannot import).
+const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 
 /**
  * Serves each widget's display: writes its sanitized copy under `<dataDir>/webaios-widgets/<id>/` and points `src` at
@@ -86,6 +88,8 @@ export function createApi(win: WindowController): ApiFirefox {
   /** An extension action in the noyau host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
     host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
+  /** A host request answered in this realm; `fallback` when the host does not answer (Electron with no agent). */
+  const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   const api: Partial<ApiFirefox> = {
     fenetreId: win.fenetreId,
     // A tab the user closes may ask first (Electron's ipc.ts sends fermerOnglet to Vues.fermer).
@@ -231,6 +235,24 @@ export function createApi(win: WindowController): ApiFirefox {
       couperDeblocage: (cle) => extension("extensions.couperDeblocage", { cle }),
       installerStore: () => extension("extensions.installerStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
+    // The workflow builder: its reads and writes in the noyau host (widgets only, actions are not ported).
+    workflow: {
+      catalogue: () => ask("workflow.catalogue", undefined, []),
+      lire: (cible) => ask("workflow.lire", { cible }, null),
+      enregistrer: (cible, brouillon) => ask("workflow.enregistrer", { cible, brouillon }, { ok: false, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] }),
+      lireCode: (cible, nom) => ask("workflow.lireCode", { cible, nom }, { erreur: MESSAGE_AGENT_ARRETE }),
+      enregistrerCode: (cible, nom, texte) => ask("workflow.enregistrerCode", { cible, nom, texte }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
+      rejouer: (cible, execution, bloc) => ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
+      lancer: (cible) => ask("workflow.lancer", { cible }, {}),
+      selection: (cible, bloc) => host.notify("workflow.selection", { fenetre, cible, bloc }),
+      direct: () => ask("workflow.direct", undefined, { courants: [], enAttente: [] }),
+      surDirect(callback) {
+        // A host that stopped or started again sent no feed meanwhile: the runs are read again.
+        const again = () => void api.workflow!.direct().then(callback);
+        const offs = [host.on("workflow.direct", (e) => callback(structuredClone(e))), host.on(HOST_EXITED, again), host.on("accueil.change", again)];
+        return untilUnload(() => offs.forEach((f) => f()));
+      },
+    },
     actions: { liste: none, surChange: off, ouvrir: unavailable } as unknown as ApiWebaios["actions"],
   };
   return new Proxy(api, {

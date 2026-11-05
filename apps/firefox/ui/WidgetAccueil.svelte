@@ -17,6 +17,7 @@
     autoriser,
     refuser,
     recolter,
+    voirWorkflow,
   }: {
     widget: WidgetAffiche;
     /** La place affichée (celle de l'aperçu pendant un glisser). */
@@ -32,6 +33,7 @@
     autoriser: () => void;
     refuser: () => void;
     recolter: () => void;
+    voirWorkflow: () => void;
   } = $props();
 
   const date = (iso: string | null | undefined) =>
@@ -99,6 +101,9 @@
         <div class="liste" role="menu">
           {#if !("erreur" in widget)}
             <button role="menuitem" onclick={() => ((menuOuvert = false), recolter())}>Mettre à jour maintenant</button>
+            {#if widget.aRecolte}
+              <button role="menuitem" onclick={() => ((menuOuvert = false), voirWorkflow())}>Voir / modifier le workflow</button>
+            {/if}
           {/if}
           <button role="menuitem" onclick={() => ((menuOuvert = false), retirer())}>Retirer</button>
         </div>

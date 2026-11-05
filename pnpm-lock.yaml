@@ -184,6 +184,9 @@ importers:
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      '@xyflow/svelte':
+        specifier: 1.7.0
+        version: 1.7.0(svelte@5.57.2)
       '@zen-browser/surfer':
         specifier: 1.14.9
         version: 1.14.9(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)

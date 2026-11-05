@@ -19,6 +19,7 @@
     "@modelcontextprotocol/sdk": "1.32.2",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@types/node": "^26.6.5",
+    "@xyflow/svelte": "1.7.0",
     "@zen-browser/surfer": "1.14.9",
     "svelte": "^5.57.2",
     "typescript": "^7.0.2",

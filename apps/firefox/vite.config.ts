@@ -6,7 +6,7 @@ import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
 // Electron components that step 2 does not migrate (imported as ./Name.svelte by the reused ones): Unavailable.svelte shows nothing.
-const UNMIGRATED = ["IaLocale", "BoutonDesign"];
+const UNMIGRATED = ["IaLocale", "BoutonDesign", "ApercuAction"];
 
 // Three bundles, one per `--mode` (scripts/ui.sh builds all of them):
 // - sidebar: privileged Firefox page (chrome://browser/content/webaios/sidebar.html), one script and one stylesheet
@@ -83,12 +83,17 @@ export default defineConfig(({ mode }) => {
   const panel = mode === "agent" ? "agent" : "sidebar";
   return {
     plugins: [svelte()],
+    // Library mode leaves process.env.NODE_ENV in place (@xyflow/svelte reads it); a privileged page has no process.
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
     resolve: {
       alias: [
         // PageVide.svelte (frozen) imports ./Accueil.svelte: the home page has its own Firefox copy, so the name is
         // redirected explicitly rather than left to resolve next to the frozen component.
         { find: /^\.\/Accueil\.svelte$/, replacement: fileURLToPath(new URL("ui/Accueil.svelte", import.meta.url)) },
         { find: /^\.\/BarreExtensions\.svelte$/, replacement: fileURLToPath(new URL("ui/ExtensionsStrip.svelte", import.meta.url)) },
+        // The builder (Constructeur.svelte, frozen): its Agent tab opens the side panel; its preview reads the Firefox home.
+        { find: /^\.\/OngletAgent\.svelte$/, replacement: fileURLToPath(new URL("ui/AgentTab.svelte", import.meta.url)) },
+        { find: /^\.\/ApercuWidget\.svelte$/, replacement: fileURLToPath(new URL("ui/ApercuWidget.svelte", import.meta.url)) },
       ].concat(UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) }))),
     },
     build: {

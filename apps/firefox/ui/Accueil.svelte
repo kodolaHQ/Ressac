@@ -179,6 +179,7 @@
               api.accueil.refuserAccord(widget.id);
             }}
             recolter={() => agir(widget.id, () => api.accueil.recolter(widget.id))}
+            voirWorkflow={() => "nom" in widget && api.agir({ type: "ouvrirWorkflow", fenetreId: api.fenetreId, id: widget.id, nom: widget.nom })}
           />
         </div>
       {/each}

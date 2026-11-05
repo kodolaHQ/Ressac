@@ -1,5 +1,5 @@
 import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
-import { contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
+import { cibleDeUrlWorkflow, contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
@@ -46,6 +46,8 @@ export interface WindowController {
   rememberFocus(): () => void;
   /** Width of the open agent panel while its handle is dragged (the saved width comes back from reglages). */
   setAgentWidth(px: number): void;
+  /** Opens the agent panel if it is closed (never closes it), gives it the keyboard and tells the UIs ("agent"). */
+  openAgent(): void;
   /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
   onShortcut(cb: (r: Raccourci) => void): () => void;
   /** Electron's surPanneau: ⌘Y, ⇧⌘J (a second press closes it, the UI toggles). */
@@ -186,6 +188,8 @@ export function createController(
       if (active) controller.command(active, s.c);
     } else if (s.type === "parcourir") walk.parcourir(fenetreId, s.delta);
     else if (s.type === "agent") {
+      // On a workflow builder tab: its Agent tab, beside the open panel (Electron shows the agent in that tab).
+      if (active && cibleDeUrlWorkflow(state.onglets[active]?.url ?? "")) return controller.openAgent();
       // Electron's menu: toggle, then, opened from a web page, the keyboard goes to the terminal.
       store.dispatch({ type: "basculerPanneauAgent", fenetreId });
       if (agentOpen(store.state)) {
@@ -346,6 +350,11 @@ export function createController(
     },
     setAgentWidth(px) {
       if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
+    },
+    openAgent() {
+      if (!agentOpen(store.state)) store.dispatch({ type: "basculerPanneauAgent", fenetreId });
+      agentFrame.focus();
+      for (const cb of shortcutListeners) cb("agent");
     },
     onShortcut(cb) {
       shortcutListeners.add(cb);
