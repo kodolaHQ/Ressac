@@ -137,6 +137,24 @@ Limits:
 - A file Firefox blocks shows « Interrompu », without « Garder quand même »; a blocked or cancelled download may leave its partial file in the folder.
 - `/coupee` (truncated page) is not ported: Firefox may count a cut page as loaded.
 
+## Site permissions
+
+- Asked once per (origin, permission) and login profile, as in Electron: notifications, position, camera, microphone, plus DRM and MIDI. Screen sharing and links to another application are asked every time. Fullscreen and clipboard writes are granted without a question; everything else is refused without one (clipboard reads, `storage-access`, `xr`, persistent storage, local network, HID/serial/USB).
+- The question is the WebAiOs banner over the page (`chrome/window/site-banner.ts`); the page moves down by its height (`--webaios-banner`). Firefox's own permission prompts never show.
+- Decisions live in Electron's `permissions.json` (`permissions-<profile>.json` for the others), kept by `chrome/store/site-permissions.ts`, and are copied into Firefox's `Services.perms` with the profile's container (`permissions.isolateBy.userContext` is on), so `Notification.permission` and `permissions.query` answer right. At startup Firefox's stored site permissions are wiped and rebuilt from the files; a deleted profile takes its decisions.
+- The hooks (`chrome/store/permission-hooks.ts`): `Integration.contentPermission` (position, notifications, DRM via `media.eme.require-app-approval`, MIDI), a wrap of `WebRTCParent.prototype.receiveMessage` (camera, micro, screen), of `nsContentDispatchChooser.prototype.handleURI` (external links) and `ClipboardContextMenu.confirmUserPaste` (clipboard reads). A page that navigates or closes during its question drops it (refused this time, asked again next time). Invisible reads are refused.
+- Prefs set on the default branch at startup: `media.autoplay.default=0` (sounds play without a click), `privacy.popups.showBrowserMessage=false` (no popup-blocked bar), `full-screen-api.warning.timeout=0` (no fullscreen warning, as in Electron).
+- « Navigation > Oublier les autorisations de ce site » in the menu bar forgets the active tab's origin in its space's profile.
+- After a Firefox upgrade, rerun the probes: `WEBAIOS_SPIKE=1 pnpm exec vitest run -c vitest.e2e.config.ts e2e/permissions-spike.e2e.ts --silent=false`. Details: `docs/superpowers/notes/2026-11-05-permissions-sites-recherche.md`.
+
+Limits:
+
+- Screen sharing uses the macOS picker (no list in the banner, no tab sharing); without it (macOS < 14) screen sharing is refused.
+- Widevine is downloaded by Firefox on first use (network); the banner comes after.
+- Clipboard writes need a click (Firefox's rule); Electron allowed them without one.
+- Firefox's site permissions stored before this block are lost (wiped at startup).
+- Not checked headless: the real menu bar entry, the macOS screen picker, a real camera, Widevine, launching a real external application.
+
 ## Not migrated yet (step 4)
 
 - compact mode;

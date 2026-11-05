@@ -5,6 +5,7 @@
 import type { WebAiOsStore } from "../store";
 import { createController } from "./controller";
 import { setupPopup } from "./popup";
+import { mountSiteMenu } from "./site-menu";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -58,6 +59,7 @@ window.addEventListener(
         store.windows.release(fenetreId);
         throw e;
       }
+      mountSiteMenu(window, store, fenetreId);
       // Once per start, in the first window only: the unreadable session was kept aside.
       if (first && store.setAside) {
         void window.gNotificationBox.appendNotification(

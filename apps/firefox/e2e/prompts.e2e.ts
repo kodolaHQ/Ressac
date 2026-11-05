@@ -6,7 +6,7 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { waitUi } from "./ui";
 
-// Prompts of sites and add-ons anchor on #webaios-anchor (chrome/window/anchor.ts), not at the window's (0, 0).
+// Prompts of add-ons anchor on #webaios-anchor (chrome/window/anchor.ts), not at the window's (0, 0).
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
@@ -59,26 +59,16 @@ describe("prompts anchor on the sidebar", () => {
   });
   afterAll(() => w?.close());
 
-  it("a site's geolocation request opens on #webaios-anchor, over the address bar", async () => {
+  it("a site's geolocation request shows the WebAiOs banner, never Firefox's prompt", async () => {
     await open("/geo");
-    const r = await m.execute<any>(`return (async () => {
-      ${HELPERS}
-      const b = gBrowser.selectedBrowser;
-      await until(() => PopupNotifications.getNotification("geolocation", b) && PopupNotifications.panel.state === "open");
-      const frame = document.getElementById("webaios-sidebar");
-      const f = frame.getBoundingClientRect();
-      const bar = frame.contentDocument.querySelector('[data-testid="barre-adresse"]').getBoundingClientRect();
-      const box = document.getElementById("webaios-anchor").getBoundingClientRect();
-      return {
-        notification: !!PopupNotifications.getNotification("geolocation", b),
-        ...panelState(),
-        box: [box.x, box.y, box.width, box.height],
-        bar: [f.x + bar.x, f.y + bar.y, bar.width, bar.height],
-      };
-    })();`);
-    await m.execute(CLEAR);
-    expect(r).toMatchObject({ notification: true, state: "open", anchor: "webaios-anchor" });
-    r.box.forEach((v: number, i: number) => expect(Math.abs(v - r.bar[i])).toBeLessThanOrEqual(1));
+    const banner = `const b = document.querySelector('[data-testid="demande-permission"]'); return b?.checkVisibility() ? b.querySelector("span").textContent : null;`;
+    expect(await waitFor<string | null>(m, banner, (t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut connaître votre position$/);
+    expect(await m.execute(`return { notification: !!PopupNotifications.getNotification("geolocation", gBrowser.selectedBrowser), state: PopupNotifications.panel.state };`)).toEqual({
+      notification: false,
+      state: "closed",
+    });
+    await m.execute(`[...document.querySelectorAll('[data-testid="demande-permission"] button')].find((b) => b.textContent === "Refuser").click();`);
+    await waitFor<string | null>(m, banner, (t) => t === null);
   });
 
   it("installing an add-on from a page opens its prompt on #webaios-anchor", async () => {
