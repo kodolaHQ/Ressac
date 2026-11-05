@@ -17,7 +17,7 @@ process.env.WEBAIOS_PORTS_CONTENEUR ||= "5300-5319";
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { chargerProfils, cheminsEspace, creerNoyau, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
+const { chargerProfils, cheminsEspace, creerNoyau, Menagement, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -241,10 +241,19 @@ const rpc = createRpc({
       parCle(p, (cle) => extensions.revoir(cle, typeof p.fenetre === "string" ? p.fenetre : null)),
     "extensions.toutCouper": (p: { oui?: unknown }) => extensions.toutCouper(p?.oui === true),
     "extensions.installerStore": () => ({ ok: false, erreur: STORE_ABSENT }),
+    "lecture.changerHote": (p: { lecture: string; hote: string }) => bridge.changerHote(p.lecture, p.hote),
+    // Tests only: a paced read through a Menagement shared by the calls, as a workflow's web widget does.
+    ...(process.env.WEBAIOS_TEST_LECTURE_MENAGEE === "1"
+      ? {
+          "test.lectureMenagee": ({ url }: { url: string }) =>
+            menagementTest.lire(new URL(url).hostname, (ch) => bridge.lirePageInvisible(url, { profil: null, changerHote: ch })),
+        }
+      : {}),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
 const bridge = new RemoteBridge(rpc, historique);
+const menagementTest = new Menagement();
 /** A page request on one extension key: a malformed one is refused as text. */
 const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
 // Outside the agent's noyau, like the history: granted extensions run even when the noyau does not start.

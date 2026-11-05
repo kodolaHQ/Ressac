@@ -252,6 +252,7 @@ function untilDeadline<T>(f: (s: AbortSignal) => Promise<T>, deadline: number, s
   const timer = setTimeout(() => stop.abort(new Error(TROP_LENTE)), Math.max(0, deadline - Date.now()));
   const relay = () => stop.abort(signal!.reason);
   signal?.addEventListener("abort", relay, { once: true });
+  if (signal?.aborted) relay();
   return untilSignal(f(stop.signal), stop.signal).finally(() => {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relay);

@@ -36,7 +36,7 @@ The noyau (`@webaios/noyau`) runs in a separate Node process, `noyau/host.ts`, s
 
 The agent's workshop container is `webaios-atelier-firefox` (`WEBAIOS_CONTENEUR`), so it never touches the Electron app's `webaios-atelier`. It publishes ports 5300-5319 (`WEBAIOS_PORTS_CONTENEUR`), since the Electron app's container holds 5280-5299. Both share the `webaios-home` volume.
 
-Invisible reads run in a windowless browser, in a private container cleared before and after each read. Every request from a reading container is checked: an address that is local, or a name that resolves to one (or fails to resolve), is refused. Known limits, marked `shortcut:` in `chrome/agent/local-guard.ts` and `invisible.ts`: custom-scheme navigations, preconnects, Alt-Svc, WebRTC, and service workers in a login profile's container.
+Invisible reads run in a windowless browser, in a private container cleared before and after each read. Every request from a reading container is checked: an address that is local, or a name that resolves to one (or fails to resolve), is refused. Known limits, marked `shortcut:` in `chrome/agent/local-guard.ts` and `invisible.ts`: custom-scheme navigations, preconnects, Alt-Svc, WebRTC, and service workers in a login profile's container. Paced reads (the workflows' `web` widgets) wait for another site's turn before following a navigation to it: the read stops at that site's document, gives its place back, waits, then resumes (`chrome/agent/invisible.ts`, `noyau/remote-bridge.ts`).
 
 ## Work loop
 
@@ -178,7 +178,6 @@ Known limits:
 
 - compact mode;
 - widget data and site-app permission checks;
-- « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;
 - internal `webaios:` pages: a "not available yet" message;

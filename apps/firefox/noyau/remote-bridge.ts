@@ -1,4 +1,5 @@
 import {
+  type ChangerHote,
   OngletIntrouvable,
   OngletPrive,
   OutilsDevOccupes,
@@ -112,12 +113,26 @@ export class RemoteBridge implements PontNavigateur {
     };
   }
 
+  /** The waits of the paced reads in progress, by the id Firefox echoes back (`lecture.changerHote`). */
+  private readonly lecturesMenagees = new Map<string, ChangerHote>();
+
   lirePageInvisible = async (url: string, o: OptionsLecturePage): Promise<PageLue> => {
-    // shortcut: no paced (changerHote) reads yet, workflows' web widgets fail until a later plan wires it.
-    if (o.changerHote) throw new Error("Lecture ménagée pas encore disponible");
-    const { signal, changerHote: _, ...options } = o;
-    return this.call<PageLue>("lirePageInvisible", [url, options], signal);
+    const { signal, changerHote, ...options } = o;
+    if (!changerHote) return this.call<PageLue>("lirePageInvisible", [url, options], signal);
+    const id = crypto.randomUUID();
+    this.lecturesMenagees.set(id, changerHote);
+    try {
+      return await this.call<PageLue>("lirePageInvisible", [url, { ...options, menagee: id }], signal);
+    } finally {
+      this.lecturesMenagees.delete(id);
+    }
   };
+
+  /** Firefox asks to wait for another site's turn: answered when the noyau's Menagement lets the read go. */
+  changerHote(lecture: string, hote: string): Promise<void> {
+    const f = this.lecturesMenagees.get(lecture);
+    return f ? f(hote) : Promise.reject(new Error("Lecture inconnue"));
+  }
 
   lireHtmlInvisible = (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => {
     const { signal, ...options } = o;
