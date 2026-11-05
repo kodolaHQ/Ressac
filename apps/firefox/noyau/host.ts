@@ -241,6 +241,7 @@ const rpc = createRpc({
       parCle(p, (cle) => extensions.revoir(cle, typeof p.fenetre === "string" ? p.fenetre : null)),
     "extensions.toutCouper": (p: { oui?: unknown }) => extensions.toutCouper(p?.oui === true),
     "extensions.installerStore": () => ({ ok: false, erreur: STORE_ABSENT }),
+    // The RPC signal is ignored on purpose: the noyau's Menagement hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "lecture.changerHote": (p: { lecture: string; hote: string }) => bridge.changerHote(p.lecture, p.hote),
     // Tests only: a paced read through a Menagement shared by the calls, as a workflow's web widget does.
     ...(process.env.WEBAIOS_TEST_LECTURE_MENAGEE === "1"

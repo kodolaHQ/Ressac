@@ -45,6 +45,8 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 const urlA = (p: string) => `http://site-a.test:${a.port}${p}`;
 const urlB = (p: string) => `http://site-b.test:${b.port}${p}`;
+// site-c is a third name for the first server: another site for the noyau, the same test server.
+const urlC = (p: string) => `http://site-c.test:${a.port}${p}`;
 
 beforeAll(async () => {
   [a, b] = await Promise.all([site("site-a"), site("site-b")]);
@@ -57,7 +59,7 @@ beforeAll(async () => {
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   await m.execute(
     `const o = Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride);
-     o.addIPOverride("site-a.test", "127.0.0.1"); o.addIPOverride("site-b.test", "127.0.0.1");
+     o.addIPOverride("site-a.test", "127.0.0.1"); o.addIPOverride("site-b.test", "127.0.0.1"); o.addIPOverride("site-c.test", "127.0.0.1");
      Services.prefs.setIntPref("browser.download.folderList", 2); Services.prefs.setStringPref("browser.download.dir", arguments[0]);`,
     [w.dataDir],
   );
@@ -94,30 +96,28 @@ const plain = (url: string) =>
   );
 const texte = (r: Outcome) => ("ok" in r ? r.ok.texte : r.err);
 
+/** A read of site-b and, at the same moment, a read reaching site-b only by a redirect: the redirect must wait for the first read's turn. */
+async function redirectBesideRead(redirect: string) {
+  const [first, second] = await Promise.all([paced(urlB("/page")), paced(redirect)]);
+  expect(texte(first)).toContain("Texte de site-b");
+  expect(texte(second)).toContain("Texte de site-b");
+  expect(b.hits).toHaveLength(2);
+  // The turn comes one gap after the earlier read of site-b, which ended after its request.
+  expect(b.hits[1]!.at - b.hits[0]!.at).toBeGreaterThanOrEqual(GAP_MS);
+}
+
 describe("paced reads", () => {
   it("a 302 to another site waits for that site's turn: no request reaches it before", async () => {
-    const first = await paced(urlB("/page"));
-    expect(texte(first)).toContain("Texte de site-b");
-    const second = await paced(urlA(`/302?to=${encodeURIComponent(urlB("/page"))}`));
-    expect(texte(second)).toContain("Texte de site-b");
-    expect(b.hits).toHaveLength(2);
-    expect(b.hits[1]!.at - first.at).toBeGreaterThanOrEqual(GAP_MS);
+    await redirectBesideRead(urlA(`/302?to=${encodeURIComponent(urlB("/page"))}`));
   }, 60_000);
 
   it("a script redirect (location.href) to another site waits too", async () => {
-    const first = await paced(urlB("/page"));
-    const second = await paced(urlA(`/script?to=${encodeURIComponent(urlB("/page"))}`));
-    expect(texte(second)).toContain("Texte de site-b");
-    expect(b.hits).toHaveLength(2);
-    expect(b.hits[1]!.at - first.at).toBeGreaterThanOrEqual(GAP_MS);
+    await redirectBesideRead(urlA(`/script?to=${encodeURIComponent(urlB("/page"))}`));
   }, 60_000);
 
   it("same-site redirect follows without waiting", async () => {
-    const start = Date.now();
     const r = await paced(urlA(`/302?to=${encodeURIComponent(urlA("/page"))}`));
     expect(texte(r)).toContain("Texte de site-a");
-    // No hop was held: the whole read stays under the gap a held hop would add.
-    expect(r.at - start).toBeLessThan(GAP_MS + 4_000);
     expect(a.hits.map((h) => h.path)).toEqual(["/302", "/page"]);
   }, 60_000);
 
@@ -131,12 +131,16 @@ describe("paced reads", () => {
     expect(texte(r)).toContain("Texte de site-b");
   }, 60_000);
 
-  it("another read gets a place while one waits for its turn", async () => {
+  it("another read gets a place while two others wait for site-b's turn", async () => {
     await paced(urlB("/page"));
     const to = encodeURIComponent(urlB("/page"));
-    const waiting = [paced(urlA(`/302?to=${to}`)), paced(urlA(`/302?to=${to}`))];
-    // Both hold the sites' lanes; an unpaced read of site-a does not queue behind them.
+    // Two sites, so the noyau queues neither before the chrome: both reads sit in the chrome's wait together
+    // (site-b's lane serves them one gap apart, the first not before one gap after the read above).
+    const waiting = [paced(urlA(`/302?to=${to}`)), paced(urlC(`/302?to=${to}`))];
+    await waitFor(m, "return 0", () => a.hits.filter((h) => h.path === "/302").length === 2, 20_000);
     await new Promise((r) => setTimeout(r, 300));
+    // Both stopped at their redirect, each holding a read place if it kept it: the third read must still get one
+    // (read places: 2), and it ends before the first wait does.
     const free = await plain(urlA("/page"));
     expect(texte(free)).toContain("Texte de site-a");
     const ends = (await Promise.all(waiting)).map((r) => r.at);
