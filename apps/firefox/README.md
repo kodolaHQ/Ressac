@@ -155,10 +155,30 @@ Limits:
 - Firefox's site permissions stored before this block are lost (wiped at startup).
 - Not checked headless: the real menu bar entry, the macOS screen picker, a real camera, Widevine, launching a real external application.
 
+## The home page
+
+- The home page is the sidebar's no-tab screen (`ui/Accueil.svelte`, replacing Electron's grid in `PageVide`; the address field, `Essentiels` and the local-AI slot stay). A widget is a folder of the space, `espace/accueil/widgets/<id>/` (`widget.json`, `affichage.html`, `recolte.mjs` or `workflow.json`, `exemple.json`): the agent writes files, there is no API.
+- Service: the noyau host answers `accueil.*` (`lire`, `placer`, `retirer`, `recolter`, `executions`, `execution`, `profils`, `accorder`, `refuserAccord`) and sends `accueil.change` after every write (a widget or the theme written by the agent, an accord, a removal, a harvest). Widget data, states and accords live outside the space, in `<dataDir>/widgets`.
+- Display: a widget is served at `webaios-widget://<id>/affichage.html?v=<mtime>` by a `webaios-widget:` handler registered by the store (`chrome/window/widget-frame.ts`), in an iframe with `sandbox="allow-scripts"` (opaque origin). The document gets Electron's `CSP_WIDGET` as an injected `<meta http-equiv>` (a custom channel cannot carry a response header): no network, no form, no frame, inline scripts and styles only, Trusted Types; an `affichage` carrying a network hint (`<link>`, `<meta http-equiv>`, speculation rules) is replaced by `AFFICHAGE_REFUSE` before any script. Data arrives by `postMessage` (`donnees`, `taille`, `px`, `etat`); a widget link goes through the UI, only after a real click (`isTrusted`) and only for an `http(s)` URL outside the machine (`urlOuvrable`).
+- Guard: the `widget-actor` `JSWindowActor` (`chrome/window/widget-actor.ts`, registered without `matches` — the child filters on `document.documentURI` — with `allFrames` and `includeChrome`) installs Electron's `garde-widget` before the widget's scripts: no WebRTC, Trusted Types by default, `<link>`, `<meta http-equiv>`, XSLT and code-as-text refused. The sidebar's own CSP carries `frame-src webaios-widget:` for the frame.
+- Placement: free, in `espace/accueil/disposition.json` (`version: 3`): `x`/`l` in thousandths of the home width, `y`/`h` in pixels. Drag by the header, resize by the bottom-right handle; the moved widget stops at another one's edge and never moves it, the grid snaps (5 ‰ horizontally, 8 px vertically) with accent guides, holes are kept. A widget without a placement is put in the first free spot by the noyau on every read (`placerManquantsLibre`), so one the agent adds appears without a restart. A window resize stretches the thousandths and keeps the pixels.
+- Theme: `espace/accueil/theme.json`, written by the agent with its file tools. `packages/noyau/src/accueil/theme.ts` validates it (colours `#rrggbb`, `rayon`/`espace` 0–24, `police` `system`, `serif` or `mono`) and the home root applies it as CSS variables. Absent or invalid: the app's theme, a console warning, the file left untouched; delete it to come back to the default.
+- Harvests: the noyau's scheduler (minutes or fixed hours), the workshop container `webaios-atelier-firefox`, `recolte.mjs` or a workflow; « Mettre à jour maintenant » in the widget menu. Accords: a widget with `sources.compte` waits for the accord card, which names the domains read with the account and those contacted publicly and remembers the chosen login profile; the accord (domains and profile) is kept in `<dataDir>/widgets/accords.json`. Refusing erases the accord and what was read with the account and hides the banner for the session; removing a widget moves its folder to `espace/accueil/.corbeille` and erases its accord and its data.
+- Notifications: a finished harvest of a widget with `recolte.notifier` shows a macOS alert through Firefox's alerts service (`Cc["@mozilla.org/alerts-service;1"]`, never the XUL fallback): title = widget name, text = number of new items, never their content. The e2e write one JSON line per notification to `WEBAIOS_TEST_NOTIFICATIONS` and show nothing. An action sent while the noyau host is stopped changes nothing; the card says « Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?) » after 6 s.
+- Tests: `e2e/accueil.e2e.ts`; the fake docker is `test/outils/docker` (the launcher puts it on `PATH`), so no test touches a real container.
+
+Limits:
+
+- One theme palette only (no light/dark variant), no free CSS; the sidebar, the agent and the panels keep the app's theme.
+- No workflow builder or preview from the home page (« Voir / modifier le workflow » is not ported).
+- A widget whose workflow reads a page that changes host still fails with « Lecture ménagée pas encore disponible ».
+- `affichage.html` is written by the agent: the CSP and the guard are deterrence, not proof (same limit as Electron).
+- One home page for every space (as in Electron): widgets, data and accords are not per space.
+
 ## Not migrated yet (step 4)
 
 - compact mode;
-- the agent's dev tools, widget data and site-app permission checks;
+- the agent's dev tools and site-app permission checks;
 - « lecture ménagée » (changing host): refused with « Lecture ménagée pas encore disponible »;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;

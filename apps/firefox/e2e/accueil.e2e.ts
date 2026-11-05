@@ -1,15 +1,16 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { state, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { inUi, waitUi } from "./ui";
+import { click, inUi, waitUi } from "./ui";
 
-// La page d'accueil dans la barre latérale : widgets du dossier, placement libre, thème de l'agent, cadre isolé et liens.
-// Écrit ici par la tâche 7 ; les accords, la récolte et le retrait sont complétés par la tâche 8.
-// Non lancé par la tâche 7 (pas de build ni de moteur dans ce worktree) : à lancer après `pnpm build:ui` par l'utilisateur.
+// La page d'accueil dans la barre latérale : widgets du dossier, placement libre, thème de l'agent, cadre isolé et liens,
+// puis accords, récoltes (manuelle, en échec, atelier arrêté), notifications, retrait et host arrêté.
+// Non lancé dans ce worktree (pas de build ni de moteur) : à lancer après `pnpm build:ui` par l'utilisateur.
 
 interface PlacementTest {
   id: string;
@@ -19,8 +20,20 @@ interface PlacementTest {
   h: number;
 }
 
+interface AccordTest {
+  domaines: string[];
+  publiques: string[];
+  profil: string;
+}
+
+type AccordsTest = Record<string, AccordTest>;
+
 const RACINE = (dataDir: string) => path.join(dataDir, "espace");
 const ACCUEIL = (dataDir: string) => path.join(RACINE(dataDir), "accueil");
+const WIDGETS = (dataDir: string) => path.join(dataDir, "widgets");
+const ACCORDS = (dataDir: string) => path.join(WIDGETS(dataDir), "accords.json");
+const ETAT = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "etat.json");
+const DONNEES = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "donnees.json");
 
 async function ecrireWidget(dataDir: string, id: string, o: { nom: string; affichage: string; declaration?: Record<string, unknown> }): Promise<void> {
   const dossier = path.join(ACCUEIL(dataDir), "widgets", id);
@@ -38,12 +51,29 @@ async function ecrireWidget(dataDir: string, id: string, o: { nom: string; affic
   await writeFile(path.join(dossier, "affichage.html"), o.affichage);
 }
 
+async function ecrireRecolte(dataDir: string, id: string, code: string): Promise<void> {
+  await writeFile(path.join(ACCUEIL(dataDir), "widgets", id, "recolte.mjs"), code);
+}
+
 async function ecrireDisposition(dataDir: string, widgets: PlacementTest[]): Promise<void> {
   await writeFile(path.join(ACCUEIL(dataDir), "disposition.json"), JSON.stringify({ version: 3, widgets }));
 }
 
 async function lireDisposition(dataDir: string): Promise<PlacementTest[]> {
   return JSON.parse(await readFile(path.join(ACCUEIL(dataDir), "disposition.json"), "utf8")).widgets;
+}
+
+async function lireJson<T>(fichier: string): Promise<T> {
+  return JSON.parse(await readFile(fichier, "utf8")) as T;
+}
+
+async function ecrireJson(fichier: string, valeur: unknown): Promise<void> {
+  await mkdir(path.dirname(fichier), { recursive: true });
+  await writeFile(fichier, JSON.stringify(valeur));
+}
+
+async function lireAccords(dataDir: string): Promise<AccordsTest> {
+  return existsSync(ACCORDS(dataDir)) ? lireJson<AccordsTest>(ACCORDS(dataDir)) : {};
 }
 
 async function attendre<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: string, ms = 10_000): Promise<T> {
@@ -89,15 +119,37 @@ function texteCadre(m: Marionette, id: string): Promise<string> {
   );
 }
 
+/** Le texte d'une carte de widget : en-tête, bandeau d'accord et avertissements compris. */
+function texteWidget(m: Marionette, id: string): Promise<string> {
+  return inUi(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"]')?.textContent ?? "";`, [id]);
+}
+
+/** « Mettre à jour maintenant » par le menu du widget (comme l'e2e d'Electron). */
+async function recolter(m: Marionette, id: string): Promise<void> {
+  await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);
+  await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });
+}
+
 const AFFICHAGE = (titre: string) => `<!doctype html><meta charset="utf-8"><title>${titre}</title><p>${titre}</p>`;
+
+/** Un affichage qui rend les données reçues par postMessage, pour voir arriver une récolte. */
+const AFFICHAGE_DONNEES = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
+<script>
+  addEventListener("message", (e) => {
+    if (e.source !== parent || !e.data || e.data.type !== "widget") return;
+    document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
+  });
+</script>`;
 
 describe("la page d'accueil", () => {
   let dataDir: string;
   let w: LaunchedWebAiOs;
   let m: Marionette;
+  let notifications: string;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-"));
+    notifications = path.join(dataDir, "notifications.jsonl");
     await mkdir(path.join(ACCUEIL(dataDir), "widgets"), { recursive: true });
     await ecrireWidget(dataDir, "alpha", { nom: "Alpha", affichage: AFFICHAGE("alpha") });
     await ecrireWidget(dataDir, "beta", { nom: "Beta", affichage: AFFICHAGE("beta") });
@@ -115,13 +167,74 @@ describe("la page d'accueil", () => {
   document.getElementById("go").onclick = () => parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/clic" }, "*");
 </script>`,
     });
+    // Un widget qui lit avec le compte : le bandeau d'accord paraît tant qu'aucun accord n'est donné. Sa récolte ne lit
+    // qu'une fois `config.lire` posé (le test « un autre profil redemande »), pour que l'accord soit en jeu.
+    await ecrireWidget(dataDir, "compte", {
+      nom: "Compte",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: {
+        recolte: { minutes: 60 },
+        sources: { compte: ["exemple.invalid"], publiques: [], web: false },
+        config: { lire: false, url: "https://exemple.invalid/x" },
+      },
+    });
+    await ecrireRecolte(
+      dataDir,
+      "compte",
+      `export default async (w) => { if (w.config?.lire) await w.lirePage(w.config.url, { compte: true }); return { vu: "compte" }; };`,
+    );
+    // Un autre widget à compte : L'utilisateur le refuse (le bandeau ne revient pas de la session).
+    await ecrireWidget(dataDir, "sans-accord", {
+      nom: "Sans accord",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: { recolte: { minutes: 60 }, sources: { compte: ["exemple.invalid"], publiques: [], web: false } },
+    });
+    await ecrireRecolte(dataDir, "sans-accord", `export default async () => ({ secret: "du compte" });`);
+    // Une récolte lente : « en cours » reste visible, puis les données arrivent.
+    await ecrireWidget(dataDir, "lent", {
+      nom: "Lent",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
+    });
+    await ecrireRecolte(dataDir, "lent", `export default async () => { await new Promise((r) => setTimeout(r, 2500)); return { fait: Date.now() }; };`);
+    // Une récolte qui échoue.
+    await ecrireWidget(dataDir, "echec", {
+      nom: "Échec",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
+    });
+    await ecrireRecolte(dataDir, "echec", `export default async () => { throw new Error("boum"); };`);
+    // Une veille qui notifie ses nouveautés (première récolte : les deux éléments sont nouveaux).
+    await ecrireWidget(dataDir, "veille", {
+      nom: "Veille",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: { recolte: { minutes: 60, notifier: true }, sources: { compte: [], publiques: [], web: false } },
+    });
+    await ecrireRecolte(dataDir, "veille", `export default async () => [{ url: "https://exemple.invalid/a" }, { url: "https://exemple.invalid/b" }];`);
+    // Un widget avec accord et données, récolté d'avance : le retrait doit emporter les trois.
+    await ecrireWidget(dataDir, "retrait", {
+      nom: "Retrait",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: { sources: { compte: ["exemple.invalid"], publiques: [], web: false } },
+    });
+    const maintenant = new Date().toISOString();
+    await ecrireJson(ETAT(dataDir, "retrait"), { statut: "ok", derniereMaj: maintenant, derniereTentative: maintenant });
+    await ecrireJson(DONNEES(dataDir, "retrait"), { ancien: "compte" });
+    await ecrireJson(ACCORDS(dataDir), { retrait: { domaines: ["exemple.invalid"], publiques: [], profil: "defaut" } });
     await ecrireDisposition(dataDir, [
       { id: "alpha", x: 0, y: 0, l: 250, h: 180 },
       { id: "beta", x: 500, y: 0, l: 250, h: 180 },
       { id: "refus", x: 0, y: 200, l: 250, h: 180 },
       { id: "lien", x: 500, y: 200, l: 250, h: 180 },
+      { id: "compte", x: 0, y: 400, l: 250, h: 180 },
+      { id: "sans-accord", x: 500, y: 400, l: 250, h: 180 },
+      { id: "lent", x: 0, y: 600, l: 250, h: 180 },
+      { id: "echec", x: 500, y: 600, l: 250, h: 180 },
+      { id: "veille", x: 0, y: 800, l: 250, h: 180 },
+      { id: "retrait", x: 500, y: 800, l: 250, h: 180 },
     ]);
-    w = await launchWebAiOs({ dataDir });
+    // Une notification de test est un fichier, jamais une bulle macOS.
+    w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_NOTIFICATIONS: notifications } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -134,11 +247,11 @@ describe("la page d'accueil", () => {
   it("l'écran sans onglet montre les widgets du dossier, servis par webaios-widget:", async () => {
     const titres = await attendre(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
-      (ts) => ts.length === 4,
-      "les quatre widgets",
+      (ts) => ts.length === 10,
+      "les dix widgets",
       15_000,
     );
-    expect(titres).toEqual(["Alpha", "Beta", "Refus", "Lien"]);
+    expect(titres).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
     expect(src).toMatch(/^webaios-widget:\/\/alpha\/affichage\.html\?v=\d+$/);
   });
@@ -234,5 +347,185 @@ describe("la page d'accueil", () => {
     // Aucun <browser> de premier niveau ne charge le schéma : c'est un cadre de la barre latérale.
     const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("webaios-widget:")).length;`, (n) => n === 0);
     expect(top).toBe(0);
+  });
+
+  it("la carte d'accord : Autoriser retient le profil choisi et lance la récolte avec le compte", async () => {
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 15_000);
+    expect(await texteWidget(m, "compte")).toContain("exemple.invalid");
+    // Rien n'est lu avec le compte tant que l'utilisateur n'a pas accordé.
+    expect(existsSync(DONNEES(dataDir, "compte"))).toBe(false);
+    await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
+    const carte = await waitUi<string>(m, `const c = doc.querySelector('[data-testid="carte-accord"]'); return c ? c.textContent : "";`);
+    expect(carte).toContain("exemple.invalid");
+    expect(carte).toContain("ne contactera aucun autre site");
+    // Le profil de l'espace actif (le profil par défaut) est coché.
+    expect(await inUi<[string, boolean][]>(m, `return [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')].map((r) => [r.value, r.checked]);`)).toEqual([
+      ["defaut", true],
+    ]);
+    await click(m, '[data-testid="carte-accord"] button', { text: "Autoriser" });
+    // L'accord nomme les domaines montrés et le profil choisi ; la récolte démarre et ses données arrivent au cadre.
+    const accord = await attendre(() => lireAccords(dataDir), (a) => a.compte?.profil === "defaut", "l'écriture de l'accord");
+    expect(accord.compte).toEqual({ domaines: ["exemple.invalid"], publiques: [], profil: "defaut" });
+    await attendre(() => (existsSync(DONNEES(dataDir, "compte")) ? lireJson<unknown>(DONNEES(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
+    expect(await lireJson(DONNEES(dataDir, "compte"))).toEqual({ vu: "compte" });
+    await attendre(() => texteCadre(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
+    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`)).toBe(true);
+  });
+
+  it("Refuser ne revient pas : le bandeau reste caché après une relecture de la page", async () => {
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`, [], 15_000);
+    await click(m, '[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"] button', { text: "Refuser" });
+    expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(true);
+    // Un widget ajouté force une relecture (accueil.change) : le refus vaut pour la session, le bandeau ne revient pas.
+    await ecrireWidget(dataDir, "temoin", { nom: "Témoin", affichage: AFFICHAGE("témoin") });
+    await attendre(
+      () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
+      (ts) => ts.includes("Témoin"),
+      "la relecture après le refus",
+    );
+    expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(false);
+    expect(existsSync(DONNEES(dataDir, "sans-accord"))).toBe(false);
+    expect((await lireAccords(dataDir))["sans-accord"]).toBeUndefined();
+    expect(await lireJson<{ statut: string }>(ETAT(dataDir, "sans-accord"))).toMatchObject({ statut: "accord-requis" });
+  });
+
+  it("un autre profil que celui de l'accord redemande : la récolte le refuse, l'accord et ses données partent", async () => {
+    // L'accord nomme un profil de connexion ; un profil absent de la session le rend inutilisable.
+    const declaration = await lireJson<Record<string, unknown>>(path.join(ACCUEIL(dataDir), "widgets", "compte", "widget.json"));
+    await ecrireJson(path.join(ACCUEIL(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { lire: true, url: "https://exemple.invalid/x" } });
+    await ecrireJson(ACCORDS(dataDir), { ...(await lireAccords(dataDir)), compte: { domaines: ["exemple.invalid"], publiques: [], profil: "absent" } });
+    await recolter(m, "compte");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 20_000);
+    expect((await lireAccords(dataDir)).compte).toBeUndefined();
+    expect(existsSync(DONNEES(dataDir, "compte"))).toBe(false);
+    expect(await lireJson<{ statut: string }>(ETAT(dataDir, "compte"))).toMatchObject({ statut: "accord-requis" });
+    // La nouvelle demande propose de nouveau un profil.
+    await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
+    const profils = await waitUi<[string, boolean][]>(m, `return [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')].map((r) => [r.value, r.checked]);`);
+    expect(profils.map(([id]) => id)).toContain("defaut");
+    await click(m, '[data-testid="carte-accord"] button', { text: "Annuler" });
+  });
+
+  it("une récolte à la main passe par « en cours » puis remplit le widget", async () => {
+    const data = () => (existsSync(DONNEES(dataDir, "lent")) ? lireJson<{ fait: number }>(DONNEES(dataDir, "lent")) : Promise.resolve(null));
+    await attendre(data, (d) => d !== null, "les données du lancement", 20_000);
+    const avant = await attendre(
+      async () => {
+        try {
+          return JSON.parse(await texteCadre(m, "lent")) as { fait: number };
+        } catch {
+          return null;
+        }
+      },
+      (d) => d !== null,
+      "les données dans le cadre",
+    );
+    await recolter(m, "lent");
+    // L'état « en cours » est écrit avant le conteneur : le badge reste visible pendant la récolte lente.
+    await waitUi(m, `return (doc.querySelector('[data-testid="widget-lent"] header')?.textContent ?? '').includes('mise à jour…');`, [], 10_000);
+    const apres = await attendre(
+      async () => {
+        try {
+          return JSON.parse(await texteCadre(m, "lent")) as { fait: number };
+        } catch {
+          return null;
+        }
+      },
+      (d) => d !== null && d.fait > avant!.fait,
+      "les nouvelles données dans le cadre",
+      20_000,
+    );
+    expect(apres!.fait).toBeGreaterThan(avant!.fait);
+  });
+
+  it("une récolte en échec le dit et ne laisse pas de données", async () => {
+    const texte = await attendre(() => texteWidget(m, "echec"), (t) => t.includes("échec du") && t.includes("boum"), "l'échec de la récolte", 20_000);
+    expect(texte).toContain("échec du");
+    expect(existsSync(DONNEES(dataDir, "echec"))).toBe(false);
+    expect(await lireJson<{ statut: string; erreur: string }>(ETAT(dataDir, "echec"))).toMatchObject({ statut: "erreur", erreur: "boum" });
+  });
+
+  it("une récolte de nouveautés écrit sa notification dans WEBAIOS_TEST_NOTIFICATIONS", async () => {
+    const lignes = await attendre(
+      async () => ((existsSync(notifications) ? (await readFile(notifications, "utf8")).trim().split("\n").filter(Boolean) : []).map((l) => JSON.parse(l) as { titre: string; texte: string })),
+      (ls) => ls.some((n) => n.titre === "Veille"),
+      "la notification de nouveautés",
+      20_000,
+    );
+    expect(lignes).toContainEqual({ titre: "Veille", texte: "2 nouveaux éléments" });
+  });
+
+  it("Retirer : le dossier part dans .corbeille, l'accord et les données sont effacés", async () => {
+    // Le widget a un accord et des données avant le retrait.
+    expect(existsSync(path.join(ACCUEIL(dataDir), "widgets", "retrait"))).toBe(true);
+    expect((await lireAccords(dataDir)).retrait).toBeDefined();
+    expect(existsSync(DONNEES(dataDir, "retrait"))).toBe(true);
+    await click(m, '[data-testid="widget-retrait"] button[aria-label="Options du widget"]');
+    await click(m, '[role="menuitem"]', { text: "Retirer" });
+    const confirmation = await waitUi<string>(m, `const d = doc.querySelector('[data-testid="confirmation-retrait"]'); return d ? d.textContent : "";`);
+    expect(confirmation).toContain("Retirer « Retrait » de la page d'accueil ?");
+    await click(m, '[data-testid="confirmation-retrait"] button', { text: "Retirer" });
+    await waitUi(m, `return !doc.querySelector('[data-testid="widget-retrait"]');`, [], 15_000);
+    const corbeille = await attendre(
+      () => readdir(path.join(ACCUEIL(dataDir), ".corbeille")).catch(() => [] as string[]),
+      (noms) => noms.some((n) => n.startsWith("retrait-")),
+      "le dossier du widget dans la corbeille",
+    );
+    expect(corbeille.some((n) => n.startsWith("retrait-"))).toBe(true);
+    expect(existsSync(path.join(ACCUEIL(dataDir), "widgets", "retrait"))).toBe(false);
+    await attendre(() => lireAccords(dataDir), (a) => a.retrait === undefined, "le retrait de l'accord");
+    expect(existsSync(DONNEES(dataDir, "retrait"))).toBe(false);
+  });
+
+  it("host arrêté : les actions restent sans effet et la page reste affichée", async () => {
+    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await recolter(m, "veille");
+    const texte = await attendre(() => texteWidget(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'avertissement sans effet", 12_000);
+    expect(texte).toContain("le service des widgets ne répond pas");
+    // Les widgets restent affichés, cadres compris.
+    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toContain("Veille");
+    await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] iframe');`);
+  });
+});
+
+describe("la page d'accueil, atelier arrêté", () => {
+  let dataDir: string;
+  let w: LaunchedWebAiOs;
+  let m: Marionette;
+
+  beforeAll(async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-atelier-"));
+    await mkdir(path.join(ACCUEIL(dataDir), "widgets"), { recursive: true });
+    await ecrireWidget(dataDir, "veille", {
+      nom: "Veille",
+      affichage: AFFICHAGE_DONNEES,
+      declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
+    });
+    await ecrireRecolte(dataDir, "veille", `export default async () => [{ url: "https://exemple.invalid/a" }];`);
+    // Des données d'une récolte d'avant, et un état dû : la vérification du lancement doit les garder.
+    await ecrireJson(DONNEES(dataDir, "veille"), { vieux: true });
+    await ecrireJson(ETAT(dataDir, "veille"), { statut: "ok", derniereMaj: "2026-01-01T00:00:00.000Z", derniereTentative: "2026-01-01T00:00:00.000Z" });
+    await ecrireDisposition(dataDir, [{ id: "veille", x: 0, y: 0, l: 250, h: 180 }]);
+    w = await launchWebAiOs({ dataDir, env: { FAUX_DOCKER_ABSENT: "1" } });
+    m = w.marionette;
+    await m.setContext("chrome");
+    await waitReady(m);
+  });
+  afterAll(async () => {
+    await w?.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("sans atelier, la récolte ne tourne pas : « atelier arrêté », les données gardées", async () => {
+    await attendre(() => texteWidget(m, "veille"), (t) => t.includes("mise à jour impossible : atelier arrêté"), "l'atelier arrêté", 20_000);
+    expect(await lireJson(DONNEES(dataDir, "veille"))).toEqual({ vieux: true });
+    // « Mettre à jour maintenant » ne lance rien non plus.
+    await recolter(m, "veille");
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await lireJson<{ statut: string }>(ETAT(dataDir, "veille"))).toMatchObject({ statut: "atelier-arrete" });
+    expect(await lireJson(DONNEES(dataDir, "veille"))).toEqual({ vieux: true });
+    // La page reste affichée.
+    expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toEqual(["Veille"]);
   });
 });
