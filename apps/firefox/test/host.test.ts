@@ -353,6 +353,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       portees: [] as Record<string, unknown>[],
       /** Every extensions.rechargerOnglets notification. */
       recharges: [] as unknown[],
+      /** Every extensions.redemarrer request (an unchanged reload). */
+      redemarrages: [] as string[],
       reponse: (c: CarteExtension): ReponseAccord => ({ accepte: true, empreinte: c.empreinte }),
       handlers: {} as Record<string, Handler>,
     };
@@ -367,6 +369,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
         return { version: p.version };
       },
       "extensions.activer": (p: { addonId: string; actif: boolean }) => void activations.push(p),
+      "extensions.redemarrer": (p: { addonId: string }) => void f.redemarrages.push(p.addonId),
       "extensions.desinstaller": (p: { addonId: string }) => void (desinstallations.push(p.addonId), presents.delete(p.addonId)),
       "extensions.accord": (p: { carte: CarteExtension }) => (f.cartes.push(p.carte), f.reponse(p.carte)),
       "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [{ id: "f1", espaceActif: "e1" }], premierPlan: "f1" }),
@@ -449,13 +452,18 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.activations).toEqual([{ addonId: ID, actif: false }]);
   });
 
-  it("two reloads in a row: serialized, strictly increasing, the last one installed", async () => {
+  it("two reloads in a row: serialized; the second, unchanged, restarts the add-on without sending anything", async () => {
     const amo = await fakeAmo({ delaiMs: 500 });
     const f = firefox();
     const h = launch(amo, f, { prepare });
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     const [a, b] = await Promise.all([outil(h, "recharger_extension", { id: "ma-ext" }), outil(h, "recharger_extension", { id: "ma-ext" })]);
     expect([a, b]).toEqual(["etat : rechargee", "etat : rechargee"]);
+    expect(amo.envois.map((e) => e.version)).toEqual(["1.0.0.1"]);
+    expect(f.redemarrages).toEqual([ID]);
+    // Changed again: signed again, the next number.
+    source(h.dataDir, { css: "#autre { display: none }\n" });
+    expect(await outil(h, "recharger_extension", { id: "ma-ext" })).toBe("etat : rechargee");
     expect(amo.envois.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.installs.at(-1)!.version).toBe("1.0.0.2");
     expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.2");

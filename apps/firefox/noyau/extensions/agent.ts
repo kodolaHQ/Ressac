@@ -876,12 +876,14 @@ export class ExtensionsAgent {
 
     const signes = join(this.o.dossier, "signes");
     let change = true;
-    // Unchanged since the last signing (startup, or a grant in another profile): appliquer below reinstalls the kept
-    // .xpi if it is missing, nothing is sent.
-    const garde = o.demarrage || o.activer ? await this.garde(id) : null;
+    // Unchanged since the last signing (startup, a grant in another profile, or a reload): appliquer below reinstalls
+    // the kept .xpi if it is missing, nothing is sent; a reload restarts the running one.
+    const garde = await this.garde(id);
     if (garde?.empreinte === empreinte) {
       await effacer();
-      change = false;
+      // A reload still counts as a new start (modifieeLe: its console unlock ends, as in Electron).
+      if (!o.demarrage && !o.activer) await this.o.rpc.request("extensions.redemarrer", { addonId: addonIdDe(id) });
+      else change = false;
     } else if (o.demarrage && garde && !(await this.actifApresEnvoi(cle))) {
       // Active nowhere: nothing leaves for AMO; the kept version stays until it is activated again.
       await effacer();
