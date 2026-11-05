@@ -19,7 +19,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees } = await import("../../../packages/noyau/src/index.ts");
+const { catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -104,6 +104,10 @@ const diffuserAcces = () => {
   }, 50);
 };
 
+// Electron's local AI for harvests (agent.ts): started on demand, never installed here; ia.* blocks fail with the noyau's
+// message when Kev is missing.
+const ia = new IaLocale({ dossier: join(dataDir, "ia-locale"), executer: executeurParDefaut });
+
 const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
   erreur = null;
   return creerNoyau({
@@ -112,6 +116,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     racine,
     dossierWidgets,
     dossierActions: join(dataDir, "actions"),
+    ia,
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
@@ -182,6 +187,7 @@ const arreter = () =>
     extensions.arreter();
     await sessions.toutArreter();
     await arreterNoyau(await pret);
+    await ia.fermer().catch(() => {});
     clearInterval(purge);
     historique?.fermer();
   })());
