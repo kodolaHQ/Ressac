@@ -42,12 +42,12 @@ describe("deplacerLibre", () => {
   });
 
   it("un long glisser traverse un voisin jusqu'au bord droit, sans le déplacer", () => {
-    // Le pointeur va bien au-delà du voisin (500…700) : l'aperçu le survole et s'arrête au bord droit (1000 - 200).
-    const autre = place({ id: "b", x: 500 });
-    const r = deplacerLibre({ p: place(), x: 1200, y: 0, autres: [autre], largeurPx: 1000 });
-    expect(r.x).toBe(800);
+    // Le pointeur va bien au-delà du voisin (500…750) : l'aperçu le survole et s'arrête au bord droit (1000 - 250).
+    const autre = place({ id: "b", x: 500, l: 250 });
+    const r = deplacerLibre({ p: place({ l: 250 }), x: 1200, y: 0, autres: [autre], largeurPx: 1000 });
+    expect(r.x).toBe(750);
     expect(r.x + r.l).toBe(LARGEUR_LIBRE);
-    expect(autre).toEqual({ id: "b", x: 500, y: 0, l: 200, h: 180 });
+    expect(autre).toEqual({ id: "b", x: 500, y: 0, l: 250, h: 180 });
   });
 });
 

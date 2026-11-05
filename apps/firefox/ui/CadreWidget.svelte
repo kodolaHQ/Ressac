@@ -74,8 +74,14 @@
   function geste(e: PointerEvent) {
     if (e.isTrusted) api.accueil.geste(widget.id);
   }
+  // Le lien du widget : `webaiosOuvrir` (fourni par la garde dans le monde de la page) émet cet événement, que le
+  // parent chrome écoute (une origine opaque ne peut pas lui poster de message). La demande reste soumise au geste.
+  function lien(e: Event) {
+    api.accueil.ouvrir(String((e as CustomEvent).detail), widget.id);
+  }
   function detacherGeste() {
     fenetreGeste?.removeEventListener("pointerdown", geste, true);
+    fenetreGeste?.removeEventListener("webaios-ouvrir", lien, true);
     fenetreGeste = null;
   }
   function brancherGeste() {
@@ -87,6 +93,7 @@
     if (!page || page.RTCPeerConnection !== undefined || page.trustedTypes === undefined) return;
     fenetreGeste = cadre;
     cadre.addEventListener("pointerdown", geste, true);
+    cadre.addEventListener("webaios-ouvrir", lien, true);
   }
   onMount(brancherGeste);
   onDestroy(detacherGeste);

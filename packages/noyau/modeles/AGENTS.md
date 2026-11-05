@@ -359,6 +359,9 @@ enregistrée toute seule dans `workflow.json`. Donc :
 - Pour ouvrir un lien : `parent.postMessage({ type: "ouvrir", url }, "*")`, **depuis un
   gestionnaire de clic** (c'est permis juste après un vrai clic de l'utilisateur, pour une URL http(s)
   non locale, une seule par clic).
+- Sous Firefox, ouvre un lien avec `webaiosOuvrir(url)`, que l'accueil fournit : `parent.postMessage`
+  y est refusé par la barre latérale (origine opaque). Même règle : **depuis un gestionnaire de clic**,
+  une URL http(s) non locale, une seule par clic.
 - Écris le texte venu des pages avec `textContent`, jamais `innerHTML`.
 - Pas de `<link>`, de `<meta http-equiv>` ni de règles de spéculation, même dans un texte ou un
   `srcdoc` : un affichage qui en contient est refusé (ils feraient résoudre des noms, donc sortir

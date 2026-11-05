@@ -426,6 +426,19 @@ test("un AGENTS.md identique au modèle a37f286 (avant la disposition Firefox) e
   for (const motif of ["disposition.json", "WebAiOs-Firefox"]) expect(apres, motif).toContain(motif);
 });
 
+test("un AGENTS.md identique au modèle abce272 (avant le lien Firefox) est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant le lien Firefox (abce272) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-abce272.md"), "utf8");
+  expect(sha256(ancien)).toBe("977bba92e8209de62e939b1235bdbcd3b368e2f222865205ba927c3ad8592f5b");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("webaiosOuvrir");
+});
+
 test("le modèle AGENTS.md décrit les remarques du mode design des applis de site", async () => {
   const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
   for (const motif of ["Remarques du mode design", "/workspace/.webaios/remarques/site-<id>/", "MutationObserver", "site-tiers", "accueil/"]) {

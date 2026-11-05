@@ -146,7 +146,9 @@ const AFFICHAGE = (titre: string) => `<!doctype html><meta charset="utf-8"><titl
 const AFFICHAGE_DONNEES = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>
   addEventListener("message", (e) => {
-    if (e.source !== parent || !e.data || e.data.type !== "widget") return;
+    // L'origine d'un cadre sandbox est opaque : event.source n'est pas parent côté page (mesuré). Le message
+    // vient du chrome, seul à connaître ce cadre : on ne vérifie que son type.
+    if (!e.data || e.data.type !== "widget") return;
     document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
   });
 </script>`;
@@ -173,8 +175,8 @@ describe("la page d'accueil", () => {
       nom: "Lien",
       affichage: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
 <script>
-  parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/auto" }, "*");
-  document.getElementById("go").onclick = () => parent.postMessage({ type: "ouvrir", url: "https://exemple.invalid/clic" }, "*");
+  webaiosOuvrir("https://exemple.invalid/auto");
+  document.getElementById("go").onclick = () => webaiosOuvrir("https://exemple.invalid/clic");
 </script>`,
     });
     // Un widget qui lit avec le compte : le bandeau d'accord paraît tant qu'aucun accord n'est donné. Sa récolte ne lit

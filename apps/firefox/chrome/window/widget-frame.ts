@@ -170,6 +170,9 @@ function gardeWidget(motif: string): void {
       return definir.call(this, nom, classe, o);
     });
   }
+  // Firefox: a sandboxed resource frame cannot post to its chrome parent (measured: Permission denied to access
+  // property "postMessage"). The widget's link goes through this page-world helper, a custom event the chrome listens for.
+  w.webaiosOuvrir = (url: unknown) => w.dispatchEvent(new CustomEvent("webaios-ouvrir", { detail: String(url) }));
   // Last: see the comment on gardeWidget.
   const absents = [
     "RTCPeerConnection",
@@ -195,9 +198,10 @@ function gardeWidget(motif: string): void {
   ];
   for (const nom of absents) {
     try {
-      delete w[nom];
+      // Own non-configurable value: the global lives on Window.prototype, so deleting it does not shadow it.
+      Object.defineProperty(w, nom, { value: undefined, configurable: false, writable: false });
     } catch {
-      // non-configurable property: nothing more to do
+      // already a non-configurable own property: nothing more to do
     }
   }
   for (const [proto, nom] of [

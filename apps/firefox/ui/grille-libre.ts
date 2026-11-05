@@ -30,25 +30,40 @@ export function unitesLibres(t: { l: number; h: number }): { l: number; h: numbe
 
 /**
  * La place du widget `p` s'il était lâché en (x, y) : aimanté, dans l'accueil, et arrêté au bord d'un autre widget sans
- * le déplacer (le déplacement pousse l'aperçu hors des autres, il ne les tasse pas).
+ * le déplacer (le déplacement pousse l'aperçu hors des autres, il ne les tasse pas). Un glisser passe par-dessus un
+ * voisin quand le pointeur vise au-delà de son bord opposé ; seul un pointeur qui le chevauche par le bord proche
+ * s'arrête.
  */
 export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autres: readonly PlacementLibre[]; largeurPx: number }): PlacementLibre {
   const { p, autres, largeurPx } = o;
-  let x = borner(aimantX(o.x), 0, LARGEUR_LIBRE - p.l);
-  let y = Math.max(0, aimantY(o.y));
+  // La cible du pointeur, fixe : les bornes atteintes en cours de route ne changent pas le sens du geste.
+  const cibleX = borner(aimantX(o.x), 0, LARGEUR_LIBRE - p.l);
+  const cibleY = Math.max(0, aimantY(o.y));
+  const dx = cibleX - p.x;
+  const dy = cibleY - p.y;
+  let x = cibleX;
+  let y = cibleY;
   // Plusieurs murs peuvent se suivre : on refait un tour tant qu'un autre widget est touché.
   for (let tour = 0; tour < 8; tour++) {
     const gene = autres.find((a) => a.id !== p.id && chevauchent({ ...p, x, y }, a));
     if (!gene) break;
-    const dx = x - p.x;
-    const dy = y - p.y;
     const bornerX = () => {
-      if (dx > 0) x = Math.min(x, Math.max(p.x, gene.x - p.l));
-      else if (dx < 0) x = Math.min(p.x, Math.max(x, gene.x + gene.l));
+      if (dx > 0) {
+        if (cibleX >= gene.x + gene.l) x = cibleX;
+        else x = Math.min(x, Math.max(p.x, gene.x - p.l));
+      } else if (dx < 0) {
+        if (cibleX + p.l <= gene.x) x = cibleX;
+        else x = Math.min(p.x, Math.max(x, gene.x + gene.l));
+      }
     };
     const bornerY = () => {
-      if (dy > 0) y = Math.min(y, Math.max(p.y, gene.y - p.h));
-      else if (dy < 0) y = Math.min(p.y, Math.max(y, gene.y + gene.h));
+      if (dy > 0) {
+        if (cibleY >= gene.y + gene.h) y = cibleY;
+        else y = Math.min(y, Math.max(p.y, gene.y - p.h));
+      } else if (dy < 0) {
+        if (cibleY + p.h <= gene.y) y = cibleY;
+        else y = Math.min(p.y, Math.max(y, gene.y + gene.h));
+      }
     };
     // Le dernier bord touché gagne : l'axe qui a bougé le plus se borne d'abord, l'autre seulement si le chevauchement
     // reste (un glisser diagonal ne saute pas au coin du voisin). Les deux axes se comparent en pixels.
