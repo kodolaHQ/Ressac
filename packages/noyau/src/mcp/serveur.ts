@@ -180,11 +180,6 @@ const ID_WIDGET = z.string().regex(/^[a-z0-9-]+$/, "id de widget : minuscules, c
 
 /** Temps laissé à la fenêtre d'une application pour apparaître après le lancement. */
 const DELAI_ONGLET_APP_MS = 5000;
-/**
- * Un client MCP abandonne un outil resté muet trop longtemps (Claude Code : 300 s), alors qu'une signature AMO ou une
- * carte qui attend l'utilisateur peut durer plus : tant qu'un outil tourne, une notification d'avancement part à ce rythme.
- */
-const BATTEMENT_MS = 30_000;
 
 /** Demandes d'autorisation en attente, par onglet : partagées entre requêtes pour ne poser la question qu'une fois. */
 type DemandesEnCours = Map<string, Promise<boolean>>;
@@ -272,26 +267,9 @@ function creerServeurOutils(
   extensions?: OutilsExtensions,
   actions?: OptionsActions,
   sitesOutils?: OutilsSites,
-  battementMs = BATTEMENT_MS,
+  battementMs?: number,
 ): McpServer {
   const serveur = new McpServer({ name: "webaios", version: "0.1.0" });
-  // Chaque outil enregistré ensuite bat tant qu'il tourne, si le client a donné un jeton d'avancement.
-  const enregistrer = serveur.registerTool.bind(serveur);
-  serveur.registerTool = ((nom: string, config: never, f: (...a: any[]) => unknown) =>
-    enregistrer(nom, config, (async (...a: any[]) => {
-      const extra = a[a.length - 1];
-      const jeton = extra?._meta?.progressToken;
-      let n = 0;
-      const battement =
-        jeton === undefined
-          ? undefined
-          : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken: jeton, progress: ++n } }).catch(() => {}), battementMs);
-      try {
-        return await f(...a);
-      } finally {
-        clearInterval(battement);
-      }
-    }) as never)) as typeof serveur.registerTool;
 
   async function onglet(id: string): Promise<OngletInfo> {
     const o = (await pont.listerOnglets()).find((x) => x.id === id);
@@ -496,7 +474,7 @@ function creerServeurOutils(
   if (widgets) enregistrerOutilsWidgets(serveur, pont, politique, widgets, proteger);
   if (actions) enregistrerOutilsActions(serveur, pont, politique, actions, proteger);
   if (sitesOutils) enregistrerOutilsSites(serveur, { outils: sitesOutils, acces: accesSite }, proteger);
-  if (extensions) enregistrerOutilsExtensions(serveur, { outils: extensions, agent: dev?.agent ?? "L'agent", fenetre, politique });
+  if (extensions) enregistrerOutilsExtensions(serveur, { outils: extensions, agent: dev?.agent ?? "L'agent", fenetre, politique, ...(battementMs ? { battementMs } : {}) });
   if (workflowOuvert) {
     serveur.registerTool(
       "workflow_ouvert",
@@ -905,7 +883,7 @@ export async function demarrerServeurMcp(o: {
   applications?: OutilsApplications;
   /** Attente de la fenêtre d'une application après son lancement (réglable pour les tests). */
   delaiOngletAppMs?: number;
-  /** Le rythme des notifications d'avancement d'un outil long (tests). */
+  /** Le rythme des notifications d'avancement des outils d'extension qui attendent (tests). */
   battementMs?: number;
   /** Nom de l'agent, affiché sur la carte de consentement des outils de développement. */
   agent?: string;

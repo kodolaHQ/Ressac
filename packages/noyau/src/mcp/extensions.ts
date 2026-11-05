@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { PolitiqueAcces } from "../acces/politique.js";
 import { tronquer } from "../outils-dev/resumes.js";
 import type { MessageConsole } from "./pont.js";
@@ -122,9 +124,29 @@ function retraitConversation(politique: PolitiqueAcces): { signal: AbortSignal; 
  */
 export function enregistrerOutilsExtensions(
   serveur: McpServer,
-  c: { outils: OutilsExtensions; agent: string; fenetre: string | null; politique: PolitiqueAcces },
+  c: { outils: OutilsExtensions; agent: string; fenetre: string | null; politique: PolitiqueAcces; battementMs?: number },
 ): void {
   const { outils } = c;
+  /**
+   * Un client MCP abandonne un outil muet trop longtemps (Claude Code : 300 s) ; une signature AMO ou une carte qui
+   * attend l'utilisateur dure parfois plus : ces outils-là envoient un avancement à ce rythme. Pas les autres : un appel au
+   * navigateur bloqué doit encore tomber sur ce délai du client.
+   */
+  const battant =
+    <A>(f: (a: A) => Promise<Resultat>) =>
+    async (a: A, extra: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<Resultat> => {
+      const progressToken = extra._meta?.progressToken;
+      let progress = 0;
+      const battement =
+        progressToken === undefined
+          ? undefined
+          : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), c.battementMs ?? 30_000);
+      try {
+        return await f(a);
+      } finally {
+        clearInterval(battement);
+      }
+    };
   const proteger =
     <A>(f: (a: A) => Promise<Resultat>) =>
     async (a: A): Promise<Resultat> => {
@@ -159,7 +181,7 @@ export function enregistrerOutilsExtensions(
         "Une extension déjà accordée et active dans cet espace : rien n'est redemandé.",
       inputSchema: { id: ID_EXTENSION, espace: z.string().max(200).optional() },
     },
-    proteger(async ({ id, espace }) => {
+    battant(proteger(async ({ id, espace }: { id: string; espace?: string | undefined }) => {
       const r = retraitConversation(c.politique);
       try {
         const rep = await outils.demander(id, { ...(espace !== undefined ? { espace } : {}), fenetre: c.fenetre, agent: c.agent, signal: r.signal });
@@ -167,7 +189,7 @@ export function enregistrerOutilsExtensions(
       } finally {
         r.fin();
       }
-    }),
+    })),
   );
 
   serveur.registerTool(
@@ -179,12 +201,12 @@ export function enregistrerOutilsExtensions(
         "desactivee) jusqu'à un nouvel accord ; un refus de la copie (etat : refusee) ne change rien.",
       inputSchema: { id: ID_EXTENSION },
     },
-    proteger(async ({ id }) => {
+    battant(proteger(async ({ id }: { id: string }) => {
       const r = await outils.recharger(id);
       const lignes = [`etat : ${r.etat}`, ...(r.detail.length ? [PREFIXE_DETAIL_RECHARGEMENT, ...r.detail] : [])];
       if (r.etat === "desactivee") lignes.push("Appelle demander_extension pour redemander l'accord de l'utilisateur.");
       return texte(lignes.join("\n"), r.etat === "refusee");
-    }),
+    })),
   );
 
   serveur.registerTool(
@@ -230,7 +252,7 @@ export function enregistrerOutilsExtensions(
         "Jamais pour une extension du Store.",
       inputSchema: { id: ID_EXTENSION, raison: z.string() },
     },
-    proteger(async ({ id, raison }) => {
+    battant(proteger(async ({ id, raison }: { id: string; raison: string }) => {
       if (estDuStore(id)) return texte(RESERVE_AGENT);
       const bornee = raison.length > LONGUEUR_RAISON_CONSOLE ? raison.slice(0, LONGUEUR_RAISON_CONSOLE) : raison;
       const r = retraitConversation(c.politique);
@@ -241,7 +263,7 @@ export function enregistrerOutilsExtensions(
       } finally {
         r.fin();
       }
-    }),
+    })),
   );
 
   serveur.registerTool(

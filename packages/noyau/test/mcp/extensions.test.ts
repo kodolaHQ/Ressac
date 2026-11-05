@@ -246,7 +246,7 @@ test("debloquer_console : raison bornée à 200 caractères ; refermer_console",
   expect(outils.appels.find((a) => a.methode === "refermerConsole")?.args).toEqual(["cacheur"]);
 });
 
-test("un outil long (signature AMO) envoie des notifications d'avancement : le client ne l'abandonne pas", async () => {
+test("recharger_extension (signature AMO) envoie des notifications d'avancement ; lister_extensions non", async () => {
   await demarrer(true, 20);
   const recharger = outils.recharger.bind(outils);
   outils.recharger = async (id: string) => (await new Promise((r) => setTimeout(r, 150)), recharger(id));
@@ -255,4 +255,10 @@ test("un outil long (signature AMO) envoie des notifications d'avancement : le c
   expect(avancements.length).toBeGreaterThanOrEqual(2);
   expect(avancements).toEqual([...avancements].sort((a, b) => a - b));
   expect((r.content as { text: string }[])[0]!.text).toContain("etat : desactivee");
+  // Un outil qui n'attend ni signature ni carte reste muet : bloqué, il tombe sur le délai du client.
+  const lister = outils.lister.bind(outils);
+  outils.lister = async () => (await new Promise((r) => setTimeout(r, 150)), lister());
+  const muets: number[] = [];
+  await client!.callTool({ name: "lister_extensions", arguments: {} }, undefined, { onprogress: (p) => muets.push(p.progress) });
+  expect(muets).toEqual([]);
 });
