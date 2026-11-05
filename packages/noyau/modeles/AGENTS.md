@@ -381,6 +381,23 @@ enregistrée toute seule dans `workflow.json`. Donc :
    récolte partielle y paraît réussie), et en demander le détail affiche à l'utilisateur la même carte
    d'accord que `donnees_widget` ; un seul accord couvre les deux.
 
+## Thème de l'accueil (WebAiOs-Firefox)
+
+Dans WebAiOs-Firefox, tu peux changer l'allure de la page d'accueil avec `accueil/theme.json` :
+
+```json theme.json
+{ "version": 1, "fond": "#101014", "carte": "#1b1b21", "texte": "#f2f2f2", "texteDoux": "#9a9aa5", "accent": "#7aa2f7", "bord": "#2c2c34", "rayon": 6, "espace": 12, "police": "serif" }
+```
+
+- `version` vaut `1`.
+- Les couleurs `fond`, `carte`, `texte`, `texteDoux`, `accent` et `bord` sont en `#rrggbb`, rien d'autre.
+- `rayon` et `espace` sont des entiers de 0 à 24 (pixels).
+- `police` vaut `system` (défaut), `serif` ou `mono`.
+
+Tout est facultatif sauf `version` : ce que tu omets garde la valeur par défaut. Un fichier absent ou
+invalide laisse le thème par défaut, et le navigateur ne le réécrit jamais. Pas de CSS, pas d'URL,
+pas de police distante : uniquement ces clés. Supprimer le fichier remet le thème par défaut.
+
 ## Ce que regarde l'utilisateur
 
 Quand l'utilisateur parle de « cette page », « ce package », « cette vidéo », « cet article »,
