@@ -131,7 +131,6 @@ const HOST = `
   window.spikeClose = () => { try { window.spikeWindowless && window.spikeWindowless.close(); } catch (e) {} window.spikeWindowless = null; };
   window.spikeOpen = async (url) => {
     window.spikeClose();
-    window.spikeMessages = [];
     const flags = Ci.nsIWebBrowserChrome.CHROME_REMOTE_WINDOW | Ci.nsIWebBrowserChrome.CHROME_FISSION_WINDOW;
     const windowless = (window.spikeWindowless = Services.appShell.createWindowlessBrowser(true, flags));
     await new Promise((ok) => {
@@ -146,7 +145,6 @@ const HOST = `
       windowless.loadURI(Services.io.newURI("chrome://global/content/backgroundPageThumbs.xhtml"), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
     });
     const doc = windowless.document;
-    doc.defaultView.addEventListener("message", (e) => window.spikeMessages.push({ origin: e.origin, v: e.data && e.data.v, origin_: e.data && e.data.origin }));
     const browser = (window.spikeBrowserEl = doc.createXULElement("browser"));
     for (const [k, v] of Object.entries({ type: "content", remote: "true", maychangeremoteness: "true", disableglobalhistory: "true", manualactiveness: "true" })) browser.setAttribute(k, v);
     browser.style.width = "800px";
@@ -156,14 +154,14 @@ const HOST = `
     browser.docShellIsActive = true;
     browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
     for (let i = 0; i < 120 && (!browser.contentTitle || browser.contentTitle === "loading"); i++) await new Promise((r) => setTimeout(r, 100));
-    return { url: browser.currentURI.spec, title: browser.contentTitle, remote: browser.isRemoteBrowser, messages: window.spikeMessages.slice() };
+    return { url: browser.currentURI.spec, title: browser.contentTitle, remote: browser.isRemoteBrowser };
   };
   window.spikeLoad = async (url) => {
     const browser = window.spikeBrowserEl;
     const before = browser.contentTitle;
     browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
     for (let i = 0; i < 100 && browser.contentTitle === before; i++) await new Promise((r) => setTimeout(r, 100));
-    return { url: browser.currentURI.spec, title: browser.contentTitle, messages: window.spikeMessages.slice() };
+    return { url: browser.currentURI.spec, title: browser.contentTitle };
   };
 `;
 
@@ -185,7 +183,7 @@ async function startPages(): Promise<{ url: string; paths: string[]; close(): Pr
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);
 
 /** Loads `url` in the content host (a remote <browser>): title, URL, postMessages. */
-const openWidget = (m: Marionette, url: string) => chrome<{ url: string; title: string; remote: boolean; messages: any[] }>(m, "return await window.spikeOpen(arguments[0]);", [url]);
+const openWidget = (m: Marionette, url: string) => chrome<{ url: string; title: string; remote: boolean }>(m, "return await window.spikeOpen(arguments[0]);", [url]);
 
 /** `done:<JSON>` from a page title. */
 const done = (title: string | null | undefined) => {
@@ -303,7 +301,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     }
     await w?.close().catch(() => {});
     await pages?.close();
-    await rm(tmp, { recursive: true, force: true });
+    if (tmp) await rm(tmp, { recursive: true, force: true });
   });
 
   it("P1: webaios-widget: registered from chrome, served by an InputStreamChannel, the CSP, Trusted Types, WebRTC", { timeout: 120_000 }, async () => {
@@ -329,6 +327,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       await chrome(
         m,
         `
+        // Probe only, and it stays active for P2/P3 (they run after this probe): P2's served count is measured under
+        // URI_LOADABLE_BY_ANYONE, not under the product flags. Never in product code.
         Services.io.unregisterProtocolHandler("${SCHEME}");
         try {
           Services.io.registerProtocolHandler("${SCHEME}", window.spikeWidget.handler, Ci.nsIProtocolHandler.URI_STD | Ci.nsIProtocolHandler.URI_IS_POTENTIALLY_TRUSTWORTHY | Ci.nsIProtocolHandler.URI_LOADABLE_BY_ANYONE | Ci.nsIProtocolHandler.URI_NON_PERSISTABLE, -1);
@@ -381,7 +381,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     const loaded = await openWidget(m, `${pages.url}/p?page=1&v=22`);
     note("P2 the widget page in a content document (http proxy)", { ...loaded, page: done(loaded.title) });
 
-    const reload = await chrome<{ url: string; title: string; messages: any[] }>(m, "return await window.spikeLoad(arguments[0]);", [`${pages.url}/p?page=1&v=23`]);
+    const reload = await chrome<{ url: string; title: string }>(m, "return await window.spikeLoad(arguments[0]);", [`${pages.url}/p?page=1&v=23`]);
     note("P2 ?v reload (a distinct URL)", { ...reload, page: done(reload.title) });
   });
 
@@ -396,6 +396,31 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       try { parentActor = !!wg.getActor("WebAiOsWidgetSpike"); } catch (e) { parentActor = String(e).slice(0, 240); }
       return { parentActor, console: Services.console.getMessageArray().slice(-8).map((e) => String(e.message || e)).filter((t) => /actor|resource|spike/i.test(t)) };`);
     note("P3 actor", { load: { url: r.url, remote: r.remote }, page: done(r.title), actor, diag });
+
+    // isTrusted does not need the actor: a trusted synthetic click into a sandboxed subframe of the sidebar, the same
+    // route a real pointer takes. (Measured in a chrome:// subframe: the widget frame itself needs the CSP change.)
+    const pointer = await inUi<{ seen: unknown[]; err?: string }>(
+      m,
+      `
+      const f = doc.createElement("iframe");
+      f.id = "spike-pointer"; f.setAttribute("sandbox", "allow-scripts");
+      f.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;z-index:99999;background:#fff";
+      f.src = "chrome://global/content/aboutSupport.xhtml";
+      doc.body.append(f);
+      await new Promise((r) => setTimeout(r, 1200));
+      const seen = [];
+      try {
+        f.contentWindow.addEventListener("pointerdown", (e) => seen.push({ type: e.type, isTrusted: e.isTrusted }), true);
+        f.contentWindow.addEventListener("mousedown", (e) => seen.push({ type: e.type, isTrusted: e.isTrusted }), true);
+      } catch (e) { return { seen, err: String(e).slice(0, 200) }; }
+      const r = f.getBoundingClientRect();
+      for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, r.left + 20, r.top + 20, { button: 0, clickCount: 1 });
+      await new Promise((r2) => setTimeout(r2, 600));
+      const out = { seen };
+      f.remove();
+      return out;`,
+    );
+    note("P3 pointerdown isTrusted in a sandboxed subframe of the sidebar", pointer);
   });
 
   it("P4: Cc alerts-service in headless (system backend then the XUL fallback), and the test-file path", { timeout: 120_000 }, async () => {
@@ -431,7 +456,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P4 test file after one write", { lines: (await readFile(notifications, "utf8")).trim().split("\n").length });
   });
 
-  it("P5: srcdoc in the sidebar (the CSP it inherits), and in a content document (file access)", { timeout: 120_000 }, async () => {
+  it("P5: srcdoc in the sidebar (the CSP it inherits)", { timeout: 120_000 }, async () => {
     const inSidebar = await inUi<{ url: string | null; title: string | null; origin: string; principal: unknown }>(
       m,
       `
