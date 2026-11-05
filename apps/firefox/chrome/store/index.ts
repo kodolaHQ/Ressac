@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Decision, EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
 import { profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
@@ -6,6 +7,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import { registerWidgetProtocol } from "../window/widget-frame";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
@@ -116,6 +118,8 @@ async function start(): Promise<WebAiOsStore> {
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
+  // The widgets' displays, before any window asks for one (the scheme exists in the parent process only).
+  registerWidgetProtocol({ widgetsDir: join(dataDir, "espace", "accueil", "widgets") });
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
