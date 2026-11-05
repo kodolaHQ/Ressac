@@ -109,6 +109,11 @@ describe("IPC schemas copied from Electron", () => {
       expect(z.toJSONSchema(copy[k], { unrepresentable: "any" }), k).toEqual(z.toJSONSchema(electron[k], { unrepresentable: "any" }));
     for (const v of [{ cible: { type: "widget", id: "a" }, bloc: "b" }, { cible: { type: "action", id: "a" }, bloc: "" }, { cible: { type: "x" } }])
       expect(copy.selectionConstructeur(v)).toEqual(electron.selectionConstructeur(v));
+    // The byte limit is a refine, which the JSON schema cannot show: 256 KB of 2-byte characters is under the length limit.
+    const tooBig = "é".repeat(128 * 1024 + 1);
+    expect([copy.SchemaCodeWorkflow.safeParse(tooBig).success, electron.SchemaCodeWorkflow.safeParse(tooBig).success]).toEqual([false, false]);
+    const fits = "é".repeat(128 * 1024);
+    expect([copy.SchemaCodeWorkflow.safeParse(fits).success, electron.SchemaCodeWorkflow.safeParse(fits).success]).toEqual([true, true]);
   });
 });
 

@@ -245,6 +245,19 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect((await appelerOutil(h.racine, "workflow_ouvert", {}, await session())).texte).toBe(AUCUN_WORKFLOW_OUVERT);
   });
 
+  it("workflow.* answer a bad input with Electron's IPC shapes", async () => {
+    const h = startHost();
+    const cible = { type: "widget", id: "veille" };
+    const bad = { type: "widget", id: "../x" };
+    const echec = { ok: false, erreur: "Argument invalide" };
+    expect(await h.rpc.request("workflow.lire", { cible: bad })).toBeNull();
+    expect(await h.rpc.request("workflow.enregistrer", { cible, brouillon: { version: 2 } })).toEqual({ ...echec, avertissements: [] });
+    expect(await h.rpc.request("workflow.lireCode", { cible, nom: "Tri.mjs" })).toEqual({ erreur: "Argument invalide" });
+    expect(await h.rpc.request("workflow.enregistrerCode", { cible, nom: "tri.mjs", texte: 1 })).toEqual(echec);
+    expect(await h.rpc.request("workflow.rejouer", { cible, execution: "x/y", bloc: "tri" })).toEqual(echec);
+    expect(await h.rpc.request("workflow.lancer", { cible: bad })).toEqual({});
+  });
+
   it("stdin closed → the host exits", async () => {
     const h = startHost();
     await h.rpc.request("demarrer", { profilAgent: "claude" });

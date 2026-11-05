@@ -80,6 +80,8 @@ purge.unref();
 const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
 // Electron's MESSAGE_AGENT_ARRETE (main/index.ts, which imports electron, so it cannot be imported here).
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
+// Electron's ipc.ts answer to a bad builder argument.
+const ARGUMENT_INVALIDE = { ok: false as const, erreur: "Argument invalide" };
 // The workflow builder: the block selected in each window, the workflow page each window shows (chrome's mirror).
 const selections = new Map<string, SelectionConstructeur>();
 let actives = new Map<string, string>();
@@ -299,49 +301,57 @@ const rpc = createRpc({
     "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
       executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
-    // The workflow builder, as Electron's main/index.ts and ipc.ts: inputs checked with the same schemas (a bad one
-    // throws), an action's workflow answered as Electron does with no agent (actions are not ported).
+    // The workflow builder, as Electron's main/index.ts and ipc.ts: inputs checked with the same schemas, a bad one
+    // answered with ipc.ts's shapes; an action's workflow answered as Electron does with no agent (actions are not ported).
     "workflow.catalogue": () => catalogueBlocs(),
     "workflow.lire": (p: { cible?: unknown }) => {
-      const cible = SchemaCible.parse(p?.cible);
-      return cible.type === "widget" ? readEdition(contexteWidgets, cible.id) : null;
+      const cible = SchemaCible.safeParse(p?.cible);
+      return cible.success && cible.data.type === "widget" ? readEdition(contexteWidgets, cible.data.id) : null;
     },
     "workflow.enregistrer": (p: { cible?: unknown; brouillon?: unknown }) => {
-      const cible = SchemaCible.parse(p?.cible);
-      const brouillon = SchemaBrouillon.parse(p?.brouillon);
-      if (cible.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] };
-      return writes.inSeries(cible.id, () => saveEdition(contexteWidgets, cible.id, brouillon));
+      const cible = SchemaCible.safeParse(p?.cible);
+      const brouillon = SchemaBrouillon.safeParse(p?.brouillon);
+      if (!cible.success || !brouillon.success) return { ...ARGUMENT_INVALIDE, avertissements: [] };
+      if (cible.data.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] };
+      const id = cible.data.id;
+      return writes.inSeries(id, () => saveEdition(contexteWidgets, id, brouillon.data));
     },
     "workflow.lireCode": (p: { cible?: unknown; nom?: unknown }) => {
-      const cible = SchemaCible.parse(p?.cible);
-      const nom = SchemaNomCode.parse(p?.nom);
-      return cible.type === "widget" ? readCode(chemins, cible.id, nom) : { erreur: MESSAGE_AGENT_ARRETE };
+      const cible = SchemaCible.safeParse(p?.cible);
+      const nom = SchemaNomCode.safeParse(p?.nom);
+      if (!cible.success || !nom.success) return { erreur: ARGUMENT_INVALIDE.erreur };
+      return cible.data.type === "widget" ? readCode(chemins, cible.data.id, nom.data) : { erreur: MESSAGE_AGENT_ARRETE };
     },
     "workflow.enregistrerCode": (p: { cible?: unknown; nom?: unknown; texte?: unknown }) => {
-      const cible = SchemaCible.parse(p?.cible);
-      const nom = SchemaNomCode.parse(p?.nom);
-      const texte = SchemaCodeWorkflow.parse(p?.texte);
-      if (cible.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
-      return writes.inSeries(cible.id, () => saveCode(chemins, cible.id, nom, texte));
+      const cible = SchemaCible.safeParse(p?.cible);
+      const nom = SchemaNomCode.safeParse(p?.nom);
+      const texte = SchemaCodeWorkflow.safeParse(p?.texte);
+      if (!cible.success || !nom.success || !texte.success) return ARGUMENT_INVALIDE;
+      if (cible.data.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+      const id = cible.data.id;
+      return writes.inSeries(id, () => saveCode(chemins, id, nom.data, texte.data));
     },
     "workflow.rejouer": async (p: { cible?: unknown; execution?: unknown; bloc?: unknown }) => {
-      const cible = SchemaCible.parse(p?.cible);
-      const execution = SchemaIdExecution.parse(p?.execution);
-      const bloc = SchemaBlocWorkflow.parse(p?.bloc);
+      const cible = SchemaCible.safeParse(p?.cible);
+      const execution = SchemaIdExecution.safeParse(p?.execution);
+      const bloc = SchemaBlocWorkflow.safeParse(p?.bloc);
+      if (!cible.success || !execution.success || !bloc.success) return ARGUMENT_INVALIDE;
       const n = await pret;
-      if (!n || cible.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
-      return n.rejouer(cible.id, execution, bloc);
+      if (!n || cible.data.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+      return n.rejouer(cible.data.id, execution.data, bloc.data);
     },
-    // No noyau: {} (the page then selects no run); a failed run throws nothing.
+    // Bad input or no noyau: {} (the page then selects no run); a failed run throws nothing.
     "workflow.lancer": async (p: { cible?: unknown }) => {
-      const cible = SchemaCible.parse(p?.cible);
+      const cible = SchemaCible.safeParse(p?.cible);
+      if (!cible.success || cible.data.type === "action") return {};
       const n = await pret;
-      if (!n || cible.type === "action") return {};
+      if (!n) return {};
+      const id = cible.data.id;
       try {
-        const r = await n.recolterMaintenant(cible.id, "manuelle");
+        const r = await n.recolterMaintenant(id, "manuelle");
         return r.execution === undefined ? {} : { execution: r.execution };
       } catch (e) {
-        console.error(`[webaios] exécution du widget ${cible.id} :`, e);
+        console.error(`[webaios] exécution du widget ${id} :`, e);
         return {};
       }
     },
