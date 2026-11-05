@@ -58,7 +58,7 @@ class FauxOutils implements OutilsExtensions {
 
 let outils: FauxOutils;
 
-async function demarrer(avec = true) {
+async function demarrer(avec = true, battementMs?: number) {
   outils = new FauxOutils();
   serveur = await demarrerServeurMcp({
     pont: new PontFactice([], { actif: null, autoriser: false }),
@@ -66,6 +66,7 @@ async function demarrer(avec = true) {
     jeton,
     agent: "Claude",
     ...(avec ? { extensions: outils } : {}),
+    ...(battementMs ? { battementMs } : {}),
   });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
@@ -243,4 +244,15 @@ test("debloquer_console : raison bornée à 200 caractères ; refermer_console",
   expect((await appeler("debloquer_console", { id: "cacheur", raison: "r" })).texte).toBe(REFUSEE_PAR_UTILISATEUR);
   expect((await appeler("refermer_console", { id: "cacheur" })).texte).toContain("refermée");
   expect(outils.appels.find((a) => a.methode === "refermerConsole")?.args).toEqual(["cacheur"]);
+});
+
+test("un outil long (signature AMO) envoie des notifications d'avancement : le client ne l'abandonne pas", async () => {
+  await demarrer(true, 20);
+  const recharger = outils.recharger.bind(outils);
+  outils.recharger = async (id: string) => (await new Promise((r) => setTimeout(r, 150)), recharger(id));
+  const avancements: number[] = [];
+  const r = await client!.callTool({ name: "recharger_extension", arguments: { id: "x" } }, undefined, { onprogress: (p) => avancements.push(p.progress) });
+  expect(avancements.length).toBeGreaterThanOrEqual(2);
+  expect(avancements).toEqual([...avancements].sort((a, b) => a - b));
+  expect((r.content as { text: string }[])[0]!.text).toContain("etat : desactivee");
 });
