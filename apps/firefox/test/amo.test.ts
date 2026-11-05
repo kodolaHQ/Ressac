@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AMO_URL, ErreurSignature, SIGNATURE_LENTE, lireCleAmo, signatureImpossible, signatureRefusee, signer } from "../noyau/extensions/amo";
-import { zipper } from "../noyau/extensions/copie-firefox";
+import { addonIdDe, manifesteFirefox, refusFirefox, zipper } from "../noyau/extensions/copie-firefox";
+import { GARDES_PAR_DEFAUT, preparerCopie } from "../../../packages/noyau/src/index.ts";
 import { startFakeAmo } from "./fake-amo";
 
 const cle = { emetteur: "user:1:abc", secret: "s3cr3t-do-not-leak" };
@@ -98,13 +99,48 @@ describe("AMO client", () => {
     expect(await lireCleAmo({ WEBAIOS_TEST_AMO_URL: "x" })).toBeNull();
   });
 
-  it.skipIf(process.env.WEBAIOS_AMO !== "1")("real AMO: signs a minimal agent extension", { timeout: 20 * 60_000 }, async () => {
+  // Real AMO, under the owner's account: a real guarded copy of an agent extension, version 1 (new add-on) then 2 (existing one).
+  it.skipIf(process.env.WEBAIOS_AMO !== "1")("real AMO: signs a guarded agent copy, then a second version", { timeout: 40 * 60_000 }, async () => {
     const k = await lireCleAmo({});
     if (!k) throw new Error("AMO keys absent from the keychain");
-    const guid = `essai-${Date.now()}@agent.webaios`;
-    const a = await xpiDe(guid, "1.0.0.1");
-    await signer({ ...a, guid, version: "1.0.0.1", cle: k, base: AMO_URL });
-    const { stdout } = await promisify(execFile)("unzip", ["-l", a.sortie]);
-    expect(stdout).toContain("META-INF/cose.sig");
+    const d = mkdtempSync(join(tmpdir(), "webaios-amo-real-"));
+    dirs.push(d);
+    const dossier = `essai-${Date.now()}`;
+    const source = join(d, dossier);
+    mkdirSync(source);
+    writeFileSync(join(source, "content.js"), 'document.title += " ";');
+    const signerVersion = async (n: number, fond: string) => {
+      writeFileSync(join(source, "fond.js"), fond);
+      writeFileSync(
+        join(source, "manifest.json"),
+        JSON.stringify({
+          manifest_version: 3,
+          name: "WebAiOs essai",
+          version: "1.0.0",
+          background: { service_worker: "fond.js" },
+          permissions: ["storage"],
+          host_permissions: ["https://example.com/*"],
+          content_scripts: [{ matches: ["https://example.com/*"], js: ["content.js"] }],
+        }),
+      );
+      const staging = join(d, `copie-${n}`);
+      const r = await preparerCopie({ source, cible: staging, dossierGardes: GARDES_PAR_DEFAUT });
+      expect(r.analyse.refus).toEqual([]);
+      const brut = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
+      expect(refusFirefox(brut, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);
+      const f = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "webaios-fond.js"), "utf8"));
+      const manifeste = manifesteFirefox(brut, dossier, n, f ? (JSON.parse(f[1]!) as string) : undefined);
+      writeFileSync(join(staging, "manifest.json"), JSON.stringify(manifeste, null, 2));
+      const xpi = join(d, `${n}.xpi`);
+      const sortie = join(d, `${n}.signe.xpi`);
+      await zipper(staging, xpi);
+      const t = Date.now();
+      await signer({ xpi, sortie, guid: addonIdDe(dossier), version: String(manifeste.version), cle: k, base: AMO_URL });
+      console.log(`version ${manifeste.version} signed in ${Math.round((Date.now() - t) / 1000)} s`);
+      const { stdout } = await promisify(execFile)("unzip", ["-l", sortie]);
+      expect(stdout).toContain("META-INF/cose.sig");
+    };
+    await signerVersion(1, 'chrome.runtime.onInstalled.addListener(() => console.log("v1"));');
+    await signerVersion(2, 'chrome.runtime.onInstalled.addListener(() => console.log("v2"));');
   });
 });
