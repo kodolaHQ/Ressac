@@ -527,6 +527,14 @@ describe("site permissions", () => {
     await waitBanner((t) => t === null);
   });
 
+  it("les modules DRM sont demandés à Mozilla sous la version de Firefox, pas celle de WebAiOs", async () => {
+    // Under the app's own version (0.1.0) Mozilla's update server offers no Widevine, so no DRM ever works.
+    const url = await chrome<string>(`Services.prefs.clearUserPref("media.gmp-manager.url");
+      const { GMPInstallManager } = ChromeUtils.importESModule("resource://gre/modules/GMPInstallManager.sys.mjs");
+      return new GMPInstallManager()._getURL();`);
+    expect(url).toContain(`/GMP/${await m.execute<string>("return Services.appinfo.platformVersion;")}/`);
+  });
+
   it("le plein écran : accordé sans question, sans avertissement de Firefox sur la page", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "fs", {});
     await clickGo(id);

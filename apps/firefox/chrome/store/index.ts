@@ -111,6 +111,10 @@ async function start(): Promise<WebAiOsStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
   // Fullscreen is granted without a question and, as in Electron, without Firefox's warning over the page (spike P8).
   Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 0);
+  // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under WebAiOs's own version it answers
+  // with no module, and no DRM site ever plays.
+  const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
+  if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
