@@ -47,21 +47,23 @@ export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autr
   for (let tour = 0; tour < 8; tour++) {
     const gene = autres.find((a) => a.id !== p.id && chevauchent({ ...p, x, y }, a));
     if (!gene) break;
+    // Franchir n'est permis que si la place visée est réellement libre : la cible du pointeur peut être au-delà du
+    // voisin alors que le bord de l'accueil ramène le widget sur lui (on s'arrête alors au bord proche).
     const bornerX = () => {
       if (dx > 0) {
-        if (cibleX >= gene.x + gene.l) x = cibleX;
+        if (cibleX >= gene.x + gene.l && !chevauchent({ ...p, x: cibleX, y }, gene)) x = cibleX;
         else x = Math.min(x, Math.max(p.x, gene.x - p.l));
       } else if (dx < 0) {
-        if (cibleX + p.l <= gene.x) x = cibleX;
+        if (cibleX + p.l <= gene.x && !chevauchent({ ...p, x: cibleX, y }, gene)) x = cibleX;
         else x = Math.min(p.x, Math.max(x, gene.x + gene.l));
       }
     };
     const bornerY = () => {
       if (dy > 0) {
-        if (cibleY >= gene.y + gene.h) y = cibleY;
+        if (cibleY >= gene.y + gene.h && !chevauchent({ ...p, x, y: cibleY }, gene)) y = cibleY;
         else y = Math.min(y, Math.max(p.y, gene.y - p.h));
       } else if (dy < 0) {
-        if (cibleY + p.h <= gene.y) y = cibleY;
+        if (cibleY + p.h <= gene.y && !chevauchent({ ...p, x, y: cibleY }, gene)) y = cibleY;
         else y = Math.min(p.y, Math.max(y, gene.y + gene.h));
       }
     };

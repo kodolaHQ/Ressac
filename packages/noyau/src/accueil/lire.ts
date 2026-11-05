@@ -103,14 +103,24 @@ export function placerManquants(ids: string[], voulus: Placement[], defauts: Map
 const PAS_X = 8;
 const PAS_Y = 8;
 
-/** Première place libre en unités libres : x par pas de 8 ‰ (dernier x collé au bord), y par pas de 8 px. */
+/**
+ * Les x essayés : 0, le bord droit de chaque widget posé (un trou peut commencer exactement là, hors des pas de 8 ‰),
+ * puis les pas de 8 ‰ et le dernier x collé au bord.
+ */
+function abscissesLibres(occupes: Rectangle[], xMax: number): number[] {
+  const xs = new Set<number>([0, xMax]);
+  for (let x = PAS_X; x < xMax; x += PAS_X) xs.add(x);
+  for (const o of occupes) if (o.x + o.l <= xMax) xs.add(o.x + o.l);
+  return [...xs].sort((a, b) => a - b);
+}
+
+/** Première place libre en unités libres : les x ci-dessus, et en y 0, les bas des widgets posés, puis les pas de 8 px. */
 function premierePlaceLibre(occupes: Rectangle[], l: number, h: number): { x: number; y: number } {
   const xMax = LARGEUR_LIBRE - l;
+  const xs = abscissesLibres(occupes, xMax);
   for (let y = 0; ; ) {
-    for (let x = 0; ; x += PAS_X) {
-      const xx = Math.min(x, xMax);
-      if (!occupes.some((o) => chevauche(o, { x: xx, y, l, h }))) return { x: xx, y };
-      if (xx === xMax) break;
+    for (const x of xs) {
+      if (!occupes.some((o) => chevauche(o, { x, y, l, h }))) return { x, y };
     }
     // Un bas de widget peut tomber entre deux pas (90 px de haut, y = 90) : on l'essaie aussi.
     const bas = occupes.map((o) => o.y + o.h).filter((b) => b > y);

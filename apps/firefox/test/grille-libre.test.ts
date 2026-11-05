@@ -49,6 +49,14 @@ describe("deplacerLibre", () => {
     expect(r.x + r.l).toBe(LARGEUR_LIBRE);
     expect(autre).toEqual({ id: "b", x: 500, y: 0, l: 250, h: 180 });
   });
+
+  it("un voisin collé au bord droit arrête le glisser : la place visée est occupée", () => {
+    // Cible 1200 ramenée au bord droit (750), qui est exactement le voisin 750…1000 : on s'arrête au bord proche.
+    const autre = place({ id: "b", x: 750, l: 250 });
+    const r = deplacerLibre({ p: place({ l: 250 }), x: 1200, y: 0, autres: [autre], largeurPx: 1000 });
+    expect(r.x).toBe(500);
+    expect(r.x + r.l).toBe(750);
+  });
 });
 
 describe("redimensionnerLibre", () => {

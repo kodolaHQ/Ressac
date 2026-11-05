@@ -24,6 +24,7 @@
   let hauteur = $state(0);
 
   function envoyer() {
+    brancherGeste();
     // Le cadre a une origine opaque (sandbox sans allow-same-origin) : « * » est la seule cible possible.
     iframe?.contentWindow?.postMessage(
       {
@@ -86,13 +87,13 @@
   }
   function brancherGeste() {
     detacherGeste();
-    const cadre = iframe?.contentWindow;
+    // La fenêtre du document (defaultView) plutôt que le proxy du cadre : c'est elle qui reçoit les événements.
+    const cadre = iframe?.contentDocument?.defaultView ?? iframe?.contentWindow;
     if (!cadre) return;
-    // wrappedJSObject : le global de la page, où la garde a réellement supprimé WebRTC (un Xray montrerait l'interface native).
-    const page = (cadre as unknown as { wrappedJSObject?: { RTCPeerConnection?: unknown; trustedTypes?: unknown } }).wrappedJSObject;
-    if (!page || page.RTCPeerConnection !== undefined || page.trustedTypes === undefined) return;
-    fenetreGeste = cadre;
-    cadre.addEventListener("pointerdown", geste, true);
+    // Pas de condition sur la garde : le geste est un appui `isTrusted` vu par le chrome, que la page ne peut pas
+    // fabriquer ; l'état de la garde ne change rien à ce constat. Elle protège la sortie de données, pas ce lien.
+    fenetreGeste = cadre as unknown as Window;
+    cadre.addEventListener("pointerdown", geste as EventListener, true);
     cadre.addEventListener("webaios-ouvrir", lien, true);
   }
   onMount(brancherGeste);
