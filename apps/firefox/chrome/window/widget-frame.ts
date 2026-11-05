@@ -1,12 +1,9 @@
-import { realpathSync } from "node:fs";
-import { join } from "node:path";
 import { contientIndiceReseau } from "../../shared/indices-reseau";
 
 /**
- * Electron's scheme and CSP (main/agent/accueil.ts), copied: Firefox has no way to set a response header for a custom
- * channel (`nsIHttpChannel` is `[builtinclass]`), so the CSP is injected as a `<meta http-equiv>` into the served HTML.
+ * Electron's CSP (main/agent/accueil.ts), copied: a resource:// file cannot carry a response header, so the CSP is
+ * injected as a `<meta http-equiv>` into the copy the sidebar writes.
  */
-export const SCHEMA_WIDGET = "webaios-widget";
 export const CSP_WIDGET =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
 /** Servi à la place d'un affichage qui contient un indice réseau (copie d'indices-reseau.ts, Electron). */
@@ -14,14 +11,34 @@ export const AFFICHAGE_REFUSE =
   '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color: #b44">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir AGENTS.md.</p>';
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
+const PREFIXE = "webaios-widget-";
+
+/** Le nom de la substitution resource:// d'un widget : `webaios-widget-<id>`. */
+function nomSubstitution(id: string): string {
+  return `${PREFIXE}${id}`;
+}
+
+/** L'URL du cadre : la copie assainie, datée du mtime de la source (un nouveau mtime recharge le cadre). */
+export function urlAffichage(id: string, mtime: number): string {
+  return `resource://${PREFIXE}${id}/affichage-${mtime}.html`;
+}
+
+/** Le dossier des copies d'un widget : `<dataDir>/webaios-widgets/<id>/`. */
+function dossierCopies(dataDir: string, id: string): string {
+  return PathUtils.join(dataDir, "webaios-widgets", id);
+}
+
+/** La copie assainie d'un affichage : `<dossierCopies>/affichage-<mtime>.html`. */
+export function cheminCopie(dataDir: string, id: string, mtime: number): string {
+  return PathUtils.join(dossierCopies(dataDir, id), `affichage-${mtime}.html`);
+}
 
 /**
- * `realpath`, en synchrone. Dans Firefox le store est un bundle où `node:fs` est un shim (le host n'a pas Node) :
- * `nsIFile.normalize()` fait le même `realpath`. En test unitaire, `Ci` n'existe pas et c'est le vrai `node:fs`.
+ * `realpath`, en synchrone (`nsIFile.normalize`). L'agent écrit dans les dossiers des widgets : un lien symbolique ne
+ * doit pas y montrer un fichier du Mac.
  */
 function cheminReel(chemin: string): string | null {
   try {
-    if (typeof Ci === "undefined") return realpathSync(chemin);
     const fichier = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     fichier.initWithPath(chemin);
     fichier.normalize();
@@ -31,28 +48,14 @@ function cheminReel(chemin: string): string | null {
   }
 }
 
-/**
- * Le fichier d'un affichage (`webaios-widget://<id>/affichage.html[?v=…]`), jamais un autre : id en minuscules, chemin
- * exact, et le `realpath` du dossier du widget et du fichier restent dans le dossier des widgets (l'agent écrit dans ces
- * dossiers : un lien symbolique ne doit pas y montrer un fichier du Mac).
- */
-export function fichierAffichage(url: string, widgetsDir: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== `${SCHEMA_WIDGET}:` || !ID_WIDGET.test(u.hostname) || u.pathname !== "/affichage.html") return null;
-  // `new URL` normalise déjà `..` : on compare l'autorité et le chemin bruts, ce qui refuse aussi un port, un hôte
-  // majuscule et les séparateurs encodés (`%2F`, `%5C`, `%2e%2e`).
-  const apresSchema = url.slice(url.indexOf("://") + 3);
-  const fin = apresSchema.search(/[?#]/);
-  if ((fin < 0 ? apresSchema : apresSchema.slice(0, fin)) !== `${u.hostname}/affichage.html`) return null;
-  const dossier = join(widgetsDir, u.hostname);
+/** Le vrai chemin de `<dataDir>/espace/accueil/widgets/<id>/affichage.html`, confiné au dossier du widget. */
+function cheminSource(dataDir: string, id: string): string | null {
+  if (!ID_WIDGET.test(id)) return null;
+  const widgetsDir = PathUtils.join(dataDir, "espace", "accueil", "widgets");
+  const dossier = PathUtils.join(widgetsDir, id);
   const racine = cheminReel(widgetsDir);
   const reelDossier = cheminReel(dossier);
-  const reelFichier = cheminReel(join(dossier, "affichage.html"));
+  const reelFichier = cheminReel(PathUtils.join(dossier, "affichage.html"));
   if (!racine || !reelDossier || !reelFichier) return null;
   return reelDossier.startsWith(racine + "/") && reelFichier.startsWith(reelDossier + "/") ? reelFichier : null;
 }
@@ -65,62 +68,51 @@ export function affichageServi(html: string): string {
   return doctype ? `${doctype[0]}${meta}${html.slice(doctype[0].length)}` : meta + html;
 }
 
-/** Le texte d'un fichier en synchrone (`newChannel` doit rendre son canal tout de suite) ; null s'il est illisible. */
-function lireFichier(chemin: string): string | null {
+/** La substitution resource:// du widget, ou `null` pour la retirer. */
+function substituer(id: string, dossier: string | null): void {
+  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
+  Services.io
+    .getProtocolHandler("resource")
+    .QueryInterface(Ci.nsIResProtocolHandler)
+    .setSubstitution(nomSubstitution(id), dossier ? Services.io.newFileURI(new FileUtils.File(dossier)) : null);
+}
+
+/**
+ * Prépare l'affichage d'un widget : écrit sa copie assainie si le mtime de la source a changé, puis pose la
+ * substitution `resource://webaios-widget-<id>/`. Rend l'URL du cadre, ou null si l'affichage est absent ou sort de son
+ * dossier.
+ */
+export async function preparerWidget(dataDir: string, id: string): Promise<string | null> {
+  const source = cheminSource(dataDir, id);
+  if (!source) return null;
+  let mtime: number;
   try {
-    // shortcut: the file is opened by the realpath computed just before; a symlink swapped in by another process
-    // between the check and the open is still followed (these APIs have no O_NOFOLLOW). Upgrade if the widgets folder
-    // can be written by an untrusted process.
-    const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
-    const fichier = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-    fichier.initWithPath(chemin);
-    const flux = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
-    flux.init(fichier, -1, 0, 0);
-    try {
-      const octets = flux.available();
-      return octets === 0 ? "" : NetUtil.readInputStreamToString(flux, octets, { charset: "UTF-8" });
-    } finally {
-      flux.close();
-    }
+    mtime = Math.round((await IOUtils.stat(source)).lastModified);
   } catch {
     return null;
   }
+  const copie = cheminCopie(dataDir, id, mtime);
+  try {
+    // Même mtime : la copie existe déjà, on ne la réécrit pas (l'URL ne change pas).
+    if (!(await IOUtils.exists(copie))) {
+      await IOUtils.makeDirectory(dossierCopies(dataDir, id), { createAncestors: true, ignoreExisting: true });
+      await IOUtils.writeUTF8(copie, affichageServi(await IOUtils.readUTF8(source)), { flush: true });
+    }
+    substituer(id, dossierCopies(dataDir, id));
+  } catch (e) {
+    console.error(`[widget] copie de ${id} impossible :`, e);
+    return null;
+  }
+  return urlAffichage(id, mtime);
 }
 
-let enregistre = false;
-
-/**
- * Sert les affichages des widgets au processus parent seulement (un schéma posé à l'exécution n'existe pas dans les
- * processus de contenu) : appelé une fois, au démarrage du store.
- */
-export function registerWidgetProtocol(o: { widgetsDir: string }): void {
-  if (enregistre) return;
-  enregistre = true;
-  const handler = {
-    scheme: SCHEMA_WIDGET,
-    allowPort: () => false,
-    newChannel(uri: any, loadInfo: any) {
-      const chemin = fichierAffichage(uri.spec, o.widgetsDir);
-      const html = chemin ? lireFichier(chemin) : null;
-      if (html === null) throw (Components as any).Exception(`webaios-widget: nothing at ${uri.spec}`, Cr.NS_ERROR_FILE_NOT_FOUND);
-      const flux = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(Ci.nsIStringInputStream);
-      flux.setUTF8Data(affichageServi(html));
-      const canal = Cc["@mozilla.org/network/input-stream-channel;1"].createInstance(Ci.nsIInputStreamChannel).QueryInterface(Ci.nsIChannel);
-      canal.setURI(uri);
-      if (loadInfo) canal.loadInfo = loadInfo;
-      canal.contentType = "text/html";
-      canal.contentCharset = "utf-8";
-      canal.contentStream = flux;
-      // Pas d'en-tête possible : `LOAD_BYPASS_CACHE` est le « Cache-Control: no-store » du canal (`?v=<mtime>` recharge).
-      canal.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
-      return canal;
-    },
-    QueryInterface: ChromeUtils.generateQI(["nsIProtocolHandler"]),
-  };
-  Services.io.registerProtocolHandler(
-    SCHEMA_WIDGET,
-    handler,
-    Ci.nsIProtocolHandler.URI_STD | Ci.nsIProtocolHandler.URI_IS_POTENTIALLY_TRUSTWORTHY | Ci.nsIProtocolHandler.URI_DANGEROUS_TO_LOAD | Ci.nsIProtocolHandler.URI_NON_PERSISTABLE,
-    -1,
-  );
+/** Le widget n'existe plus : retire sa substitution et son dossier de copies (au mieux). */
+export async function oublierWidget(dataDir: string, id: string): Promise<void> {
+  if (!ID_WIDGET.test(id)) return;
+  try {
+    substituer(id, null);
+  } catch {
+    // rien à retirer
+  }
+  await IOUtils.remove(dossierCopies(dataDir, id), { recursive: true, ignoreAbsent: true }).catch(() => {});
 }

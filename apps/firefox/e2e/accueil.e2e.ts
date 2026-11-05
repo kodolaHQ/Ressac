@@ -254,16 +254,17 @@ describe("la page d'accueil", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("l'écran sans onglet montre les widgets du dossier, servis par webaios-widget:", async () => {
+  it("l'écran sans onglet montre les widgets du dossier, servis par resource://webaios-widget-", async () => {
     const titres = await attendre(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
       (ts) => ts.length === 10,
       "les dix widgets",
       15_000,
     );
-    expect(titres).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
+    // `lireAccueil` trie les dossiers des widgets : l'ordre est celui des ids, pas celui de la création.
+    expect(titres).toEqual(["Alpha", "Beta", "Compte", "Échec", "Lent", "Lien", "Refus", "Retrait", "Sans accord", "Veille"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
-    expect(src).toMatch(/^webaios-widget:\/\/alpha\/affichage\.html\?v=\d+$/);
+    expect(src).toMatch(/^resource:\/\/webaios-widget-alpha\/affichage-\d+\.html$/);
   });
 
   it("un widget ajouté par l'agent apparaît sans redémarrer", async () => {
@@ -282,7 +283,12 @@ describe("la page d'accueil", () => {
     // Loin vers la droite en passant par-dessus bêta : un glisser peut traverser un voisin, et alpha s'arrête au
     // bord droit de l'accueil (750 = 1000 ‰ - 250 ‰), sans déplacer bêta.
     await glisser(m, '[data-testid="widget-alpha"] header', 1200, 0);
-    const apres = await attendre(() => lireDisposition(dataDir), (ps) => ps.find((p) => p.id === "alpha")!.x > 0, "l'écriture du glisser");
+    // La lecture peut tomber pendant une écriture : une liste vide ou illisible ne doit pas faire échouer l'attente.
+    const apres = await attendre(
+      () => lireDisposition(dataDir).catch(() => [] as PlacementTest[]),
+      (ps) => (ps.find((p) => p.id === "alpha")?.x ?? 0) > 0,
+      "l'écriture du glisser",
+    );
     const alpha = apres.find((p) => p.id === "alpha")!;
     const beta = apres.find((p) => p.id === "beta")!;
     expect(alpha.x).toBeGreaterThan(0);
@@ -296,10 +302,10 @@ describe("la page d'accueil", () => {
     // Max déclaré : 6 unités de large (500 ‰) et 4 rangées (360 px).
     await glisser(m, '[data-testid="widget-beta"] [data-testid="poignee-taille"]', 600, 300);
     const apres = await attendre(
-      () => lireDisposition(dataDir),
+      () => lireDisposition(dataDir).catch(() => [] as PlacementTest[]),
       (ps) => {
-        const b = ps.find((p) => p.id === "beta")!;
-        return b.l > 250 || b.h > 180;
+        const b = ps.find((p) => p.id === "beta");
+        return !!b && (b.l > 250 || b.h > 180);
       },
       "l'écriture du redimensionnement",
     );

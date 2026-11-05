@@ -1,12 +1,13 @@
-// Widget frame actor: a widget's display is served under webaios-widget: in a chrome subframe of the sidebar, in the
-// parent process. Before any of its scripts, Electron's preload guard is installed in its page world; a real click in
-// it records the gesture that lets that widget open one link (ui/api.ts checks it). One module for both sides, like
-// page-actor.
+// Widget frame actor: a widget's display is served from resource://webaios-widget-<id>/ in a chrome subframe of the
+// sidebar, in the parent process. Before any of its scripts, Electron's preload guard is installed in its page world;
+// a real click in it records the gesture that lets that widget open one link (ui/api.ts checks it). One module for both
+// sides, like page-actor.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
 import type { WebAiOsStore } from "../store";
 import { contientIndiceReseau } from "../../shared/indices-reseau";
 
-const SCHEMA = "webaios-widget:";
+const PREFIXE = "resource://webaios-widget-";
+const NOM = "webaios-widget-";
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 
 /** Electron's garde-widget.ts list: TURN over TCP or UDP and ICE ignore connect-src and would leak. */
@@ -154,8 +155,8 @@ export class WebAiOsWidgetChild extends JSWindowActorChild {
   // DOMWindowCreated: before the widget's first script (spike P3).
   handleEvent() {
     const doc = this.document;
-    // No `matches` catches the scheme (spike P3): the child filters on the document's URL itself.
-    if (!doc.documentURI.startsWith(SCHEMA)) return;
+    // Not every resource:// document is a widget: the child filters on the substitution's name.
+    if (!doc.documentURI.startsWith(PREFIXE)) return;
     const win = this.contentWindow as any;
     if (!win) return;
     // Fail closed: a guard that did not install records no gesture, so ui/api.ts refuses every link. The CSP alone
@@ -172,7 +173,9 @@ export class WebAiOsWidgetChild extends JSWindowActorChild {
       "pointerdown",
       (event: any) => {
         if (!event.isTrusted) return;
-        (this as unknown as { sendAsyncMessage(name: string, data?: unknown): void }).sendAsyncMessage("geste", { widget: new URL(doc.documentURI).hostname });
+        (this as unknown as { sendAsyncMessage(name: string, data?: unknown): void }).sendAsyncMessage("geste", {
+          widget: new URL(doc.documentURI).hostname.slice(NOM.length),
+        });
       },
       true,
     );
@@ -183,9 +186,9 @@ export class WebAiOsWidgetParent extends JSWindowActorParent {
   async receiveMessage(m: { name: string; data?: { widget?: unknown } }) {
     if (m.name !== "geste") return;
     const uri: { spec?: string } | undefined = (this.manager as any).documentURI;
-    if (!uri?.spec?.startsWith(SCHEMA)) return;
-    // The widget is the document's own host, read here: the page cannot name another widget.
-    const widget = new URL(uri.spec).hostname;
+    if (!uri?.spec?.startsWith(PREFIXE)) return;
+    // The widget is the document's own substitution, read here: the page cannot name another widget.
+    const widget = new URL(uri.spec).hostname.slice(NOM.length);
     if (m.data?.widget !== widget) return;
     // The store is a shared module: imported at runtime, never bundled here (that would make a second copy).
     const win = (this as unknown as { browsingContext: { topChromeWindow?: any } }).browsingContext?.topChromeWindow;

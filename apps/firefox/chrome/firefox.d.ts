@@ -6,7 +6,8 @@ declare const IOUtils: {
   move(from: string, to: string): Promise<void>;
   copy(from: string, to: string): Promise<void>;
   makeDirectory(path: string, options?: { createAncestors?: boolean; ignoreExisting?: boolean }): Promise<void>;
-  remove(path: string, options?: { ignoreAbsent?: boolean }): Promise<void>;
+  remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
+  stat(path: string): Promise<{ lastModified: number }>;
 };
 declare const PathUtils: { join(...parts: string[]): string; readonly tempDir: string };
 declare const Services: any;

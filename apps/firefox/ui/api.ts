@@ -5,6 +5,7 @@ import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
+import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
 
 /** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
@@ -34,6 +35,25 @@ const none = async () => [];
 const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 /**
+ * Serves each widget's display: writes its sanitized copy under `<dataDir>/webaios-widgets/<id>/` and points `src` at
+ * its resource:// URL. The widgets served last time and gone now lose their substitution and their copies.
+ */
+async function servirAffichages(widgets: WidgetAffiche[], dataDir: string, prepares: Set<string>): Promise<void> {
+  const maintenant = new Set<string>();
+  await Promise.all(
+    widgets.map(async (w) => {
+      if (!("src" in w) || w.src === null) return;
+      const url = await preparerWidget(dataDir, w.id);
+      w.src = url;
+      if (url) maintenant.add(w.id);
+    }),
+  );
+  for (const id of prepares) if (!maintenant.has(id)) await oublierWidget(dataDir, id);
+  prepares.clear();
+  for (const id of maintenant) prepares.add(id);
+}
+
+/**
  * The Electron preload's `window.webaios`, on the Firefox window controller. What is not migrated yet (applications, sites,
  * extensions, actions) answers empty; any other member is recorded in `window.webaiosMissingApi` and is undefined.
  */
@@ -50,6 +70,8 @@ export function createApi(win: WindowController): ApiFirefox {
   let dernierLien = 0;
   /** States this document makes itself: the host did not start, or stopped. */
   const localStates = new Set<(e: EtatPanneauAgent) => void>();
+  /** The widgets whose display this document prepared: the others' substitutions and copies are cleared. */
+  const prepares = new Set<string>();
   const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
   /** An extension action in the noyau host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
@@ -133,11 +155,17 @@ export function createApi(win: WindowController): ApiFirefox {
     },
     // The home page: widgets, their data and state, and the agent's theme, all kept by the noyau host.
     accueil: {
-      lire: () =>
-        host.request<AccueilLu>("accueil.lire").then(
-          (r) => structuredClone(r ?? { widgets: [], theme: null }),
-          () => ({ widgets: [], theme: null }),
-        ),
+      lire: async () => {
+        let r: AccueilLu;
+        try {
+          r = structuredClone((await host.request<AccueilLu>("accueil.lire")) ?? { widgets: [], theme: null });
+        } catch {
+          // The host did not answer: an empty list is not evidence that the widgets are gone.
+          return { widgets: [], theme: null };
+        }
+        await servirAffichages(r.widgets, win.store.dataDir, prepares);
+        return r;
+      },
       surChange: (rappel) => untilUnload(host.on("accueil.change", () => rappel())),
       placer: (placements) => host.notify("accueil.placer", { placements }),
       retirer: (id) => host.notify("accueil.retirer", { id }),
