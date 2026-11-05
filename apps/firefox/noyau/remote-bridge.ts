@@ -1,4 +1,16 @@
-import { OngletIntrouvable, OngletPrive, ProfilRefuse, type HistoriqueNavigateur, type OngletInfo, type OptionsLecturePage, type PageLue, type PontNavigateur } from "../../../packages/noyau/src/index.ts";
+import {
+  OngletIntrouvable,
+  OngletPrive,
+  OutilsDevOccupes,
+  ProfilRefuse,
+  type HistoriqueNavigateur,
+  type OngletInfo,
+  type OptionsLecturePage,
+  type OutilsDevNavigateur,
+  type OutilsDevProprietaire,
+  type PageLue,
+  type PontNavigateur,
+} from "../../../packages/noyau/src/index.ts";
 import type { Historique } from "../../navigateur/src/main/historique.ts";
 import type { Rpc } from "../shared/rpc.ts";
 
@@ -43,6 +55,7 @@ export class RemoteBridge implements PontNavigateur {
       if (x.name === "OngletIntrouvable") throw new OngletIntrouvable(x.id!);
       if (x.name === "OngletPrive") throw new OngletPrive(x.id!);
       if (x.name === "ProfilRefuse") throw new ProfilRefuse(x.profil!);
+      if (x.name === "OutilsDevOccupes") throw new OutilsDevOccupes();
       throw e;
     }
   }
@@ -56,6 +69,41 @@ export class RemoteBridge implements PontNavigateur {
   demanderAutorisation = (o: OngletInfo) => this.call<boolean>("demanderAutorisation", [o]);
   estPrive = (id: string) => this.prives.has(id);
   ongletActifPrive = () => this.actifPrive;
+
+  /**
+   * The tab dev tools, run by Firefox (chrome/store/devtools.ts). Only an owner's are usable: Firefox keeps its
+   * attachments across noyau starts, a new owner revokes the previous one.
+   */
+  readonly outilsDev: OutilsDevNavigateur = {
+    // Without an owner's token Firefox refuses every call.
+    ...this.devTools(Promise.resolve("")),
+    proprietaire: () => {
+      const token = this.call<{ token: string }>("outilsDev.owner", []).then((r) => r.token);
+      token.catch(() => {});
+      return { ...this.devTools(token), liberer: () => void token.then((t) => this.rpc.notify("outilsDev.release", [t]), () => {}) };
+    },
+  };
+
+  /** Each method sends its arguments with the owner's token; a trailing AbortSignal cancels the request instead. */
+  private devTools(token: Promise<string>): Omit<OutilsDevProprietaire, "liberer"> {
+    const f =
+      (method: keyof OutilsDevNavigateur) =>
+      async (...a: unknown[]): Promise<any> => {
+        const signal = a.at(-1) instanceof AbortSignal ? (a.pop() as AbortSignal) : undefined;
+        return this.call("outilsDev.call", [await token, method, a], signal);
+      };
+    return {
+      attacher: f("attacher"),
+      detacher: f("detacher"),
+      console: f("console"),
+      reseau: f("reseau"),
+      corps: f("corps"),
+      profiler: f("profiler"),
+      instantaneMemoire: f("instantaneMemoire"),
+      executer: f("executer"),
+      recharger: f("recharger"),
+    };
+  }
 
   lirePageInvisible = async (url: string, o: OptionsLecturePage): Promise<PageLue> => {
     // shortcut: no paced (changerHote) reads yet, workflows' web widgets fail until a later plan wires it.

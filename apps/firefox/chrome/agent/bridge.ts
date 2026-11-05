@@ -3,6 +3,7 @@ import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/
 import { ongletPrive } from "../../../navigateur/src/commun/modele";
 import { changementsPolitique, infosOnglets, ongletActifDe, origineDe, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
 import type { Handler } from "../../shared/rpc";
+import type { DevTools } from "../store/devtools";
 import type { Store } from "../store/store";
 import type { WindowRegistry } from "../store/windows";
 import type { AgentHost } from "./host";
@@ -24,7 +25,7 @@ function privateMirror(state: EtatNavigateur, windows: WindowRegistry): { prives
 }
 
 /** The noyau's PontNavigateur, answered on the store and the windows' tabs (Electron's PontElectron). */
-export function bridgeHandlers(store: Store, questions: Questions, windows: WindowRegistry): Record<string, Handler> {
+export function bridgeHandlers(store: Store, questions: Questions, windows: WindowRegistry, devtools: DevTools): Record<string, Handler> {
   /** The open window that holds the tab. */
   const windowOf = (id: string) => {
     const m = windows.get(store.state.onglets[id]?.fenetreId ?? "");
@@ -111,6 +112,10 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
     },
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage], signal) => readPage(store, url, o, signal),
     lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
+    // The noyau's dev tools (RemoteBridge.outilsDev): one owner per noyau start, its token on every call.
+    "outilsDev.owner": () => devtools.owner(),
+    "outilsDev.call": ([token, method, args]: Parameters<DevTools["call"]>, signal) => devtools.call(token, method, args, signal),
+    "outilsDev.release": ([token]: [string]) => devtools.release(String(token)),
   };
 }
 

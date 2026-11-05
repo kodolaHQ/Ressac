@@ -1,5 +1,5 @@
 import type { Decision, EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
-import { profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
+import { ongletPrive, profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
@@ -7,6 +7,7 @@ import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
+import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
@@ -41,6 +42,8 @@ export interface WebAiOsStore extends Store {
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
+  /** The agent's dev tools on tabs, owned by the running noyau. */
+  readonly devtools: DevTools;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
@@ -207,10 +210,18 @@ async function start(): Promise<WebAiOsStore> {
   // The agent's access to tabs, as the host last sent it (no access while no host runs).
   let access: EtatAcces = { agent: "L'agent", onglets: {} };
   const agentExtensions = createAgentExtensions(store, windows, questions, () => agent, () => access);
+  const devtools = createDevTools({
+    store,
+    windows,
+    isPrivate: (id) => {
+      const o = store.state.onglets[id];
+      return !!o && ongletPrive(store.state, o);
+    },
+  });
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows), ...agentExtensions.handlers },
+    handlers: { ...bridgeHandlers(store, questions, windows, devtools), ...agentExtensions.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
@@ -223,7 +234,11 @@ async function start(): Promise<WebAiOsStore> {
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("acces", (e: EtatAcces) => (access = e));
-  agent.on(HOST_EXITED, () => (access = { agent: access.agent, onglets: {} }));
+  agent.on(HOST_EXITED, () => {
+    access = { agent: access.agent, onglets: {} };
+    // Its noyau is gone: nothing stays attached for it.
+    devtools.release();
+  });
   agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
@@ -244,6 +259,7 @@ async function start(): Promise<WebAiOsStore> {
     windows,
     agentExtensions,
     sitePermissions,
+    devtools,
     get access() {
       return access;
     },
