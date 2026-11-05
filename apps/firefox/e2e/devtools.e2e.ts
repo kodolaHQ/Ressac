@@ -43,6 +43,8 @@ async function startDemo(): Promise<{ port: number; url: string; hits: string[];
     hits.push(req.url ?? "");
     const u = new URL(req.url ?? "/", "http://x");
     if (u.pathname === "/") return res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }).end(PAGE);
+    // A load that never commits: the tab stays on its page.
+    if (u.pathname === "/vide") return res.writeHead(204).end();
     if (u.pathname === "/data.json") return res.writeHead(200, { "Content-Type": "application/json", "Set-Cookie": "vu=1" }).end('{"ok":true}');
     res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
   });
@@ -373,6 +375,31 @@ it("décocher Réseau dans une demande console+reseau : seul console est accord�
   await noCard();
 });
 
+it("naviguer un onglet tiers vers une URL de démo qui répond 204 : l'onglet reste tiers, executer_js n'y tourne pas sans carte", async () => {
+  const id = await openThird();
+  const url = (await state(m)).onglets[id]!.url;
+  const navigating = tool("naviguer", { id, url: `${demo.url}/vide` });
+  await waitUi(m, `return !!doc.querySelector('${READ_CARD}')`);
+  await click(m, `${READ_CARD} button`, { text: "Autoriser une fois" });
+  expect(await navigating).toContain("→");
+  await poll(async () => demo.hits.includes("/vide"), (v) => v);
+  await sleep(500);
+  // The tab is still on the third-party page: its read access (given to the demo origin) no longer covers it.
+  expect((await state(m)).onglets[id]!.url).toBe(url);
+  const line = (await tool("lister_onglets")).split("\n").find((l) => l.startsWith(`${id} · `));
+  expect(line).toBeDefined();
+  expect(line).not.toContain("/vide");
+  // Without demo rights, the policy asks; whatever it answers, the third-party page's code does not run.
+  let answer: string | undefined;
+  const pending = tool("executer_js", { id, code: "location.href" }).then((t) => (answer = t));
+  await poll(async () => answer !== undefined || (await inUi<boolean>(m, `return !!doc.querySelector('${CARD}')`)), (v) => v === true);
+  if (answer === undefined) {
+    await answerCard("Refuser");
+    await pending;
+  }
+  expect(answer).not.toContain("tiers=");
+});
+
 it("deux demandes : une seule carte à la fois, la seconde après réponse à la première", async () => {
   const id = await openThird();
   const other = await openThird();
@@ -458,7 +485,7 @@ it("Couper l'accès : la pastille disparaît, lire_onglet redemande", async () =
   await reading;
 });
 
-it("couper « Agir » pendant un executer_js : l'appel répond « accès coupé par l'utilisateur »", async () => {
+it("couper « Agir » pendant un executer_js : l'appel répond le texte de coupure", async () => {
   const id = await openThird();
   await grant(id, ["console", "agir"]);
   const t0 = Date.now();
@@ -648,8 +675,8 @@ it("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une r�
   expect(profiles()).toEqual(before);
 }, 60_000);
 
-/** A 20 s profile cut by `leave(id)` taking the tab to another site: it answers at once, writes nothing, stops the profiler. */
-async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>): Promise<void> {
+/** A 20 s profile cut by `leave(id)` taking the tab to another site: it answers `text` at once, writes nothing, stops the profiler. */
+async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, text: string): Promise<void> {
   const id = await openDemo();
   const before = profiles();
   const t0 = Date.now();
@@ -658,27 +685,29 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>): 
   await leave(id);
   const r = await pending;
   expect(Date.now() - t0).toBeLessThan(10_000);
-  expect(r.texte).toContain("L'onglet a changé de site");
+  expect(r.texte).toContain(text);
   expect(r.texte).not.toContain("Profil :");
   expect(profiles()).toEqual(before);
   expect(await profilerActive()).toBe(false);
 }
 
-it("la page change de site pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
-  // localhost: another origin, still the agent's demo (its port).
-  await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"));
+it("naviguer vers un autre site pendant profiler_performances : l'appel répond le texte de coupure, aucun fichier partiel", async () => {
+  // localhost: another origin, still the agent's demo (its port). The noyau cuts the right before the load commits.
+  await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"), TEXTE_COUPE);
 }, 60_000);
 
 it("la page s'en va d'elle-même pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
-  await profileCutBySiteChange((id) => tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }));
+  await profileCutBySiteChange((id) => tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }), "L'onglet a changé de site.");
 }, 60_000);
 
-it("executer_js coupé par naviguer vers un autre site répond « L'onglet a changé de site »", async () => {
+it("executer_js coupé par naviguer vers un autre site répond vite le texte de coupure", async () => {
   const id = await openDemo();
+  const t0 = Date.now();
   const pending = call("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
   await sleep(500);
   expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→");
-  expect((await pending).texte).toContain("L'onglet a changé de site");
+  expect((await pending).texte).toBe(TEXTE_COUPE);
+  expect(Date.now() - t0).toBeLessThan(6000);
 }, 60_000);
 
 it("l'hôte redémarre : le nouveau noyau ne voit pas les anciens messages", async () => {
