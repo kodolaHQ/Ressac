@@ -229,3 +229,39 @@ test("le fichier écrit a le format d'Electron", async () => {
   await make().handle(req("geolocation", { origine: "https://a.test" }));
   expect(JSON.parse(disk.get(FILE)!)).toEqual({ "https://a.test geolocation": "autoriser" });
 });
+
+test("une origine illisible dans le fichier n'empêche pas le démarrage ni les autres décisions", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  disk.set(FILE, JSON.stringify({ "pas une origine notifications": "autoriser", [`${meet} geolocation`]: "autoriser" }));
+  const p = make({
+    firefox: { set: (_p, origine, ...r) => (origine.startsWith("pas") ? (() => { throw new Error("bad uri"); })() : calls.push(["set", origine, ...r])), remove: () => {} },
+  });
+  await p.ready;
+  expect(calls).toEqual([["set", meet, "geolocation", "autoriser"]]);
+  expect(await p.handle(req("geolocation"))).toBe(true);
+  await p.forget("defaut", meet);
+  warn.mockRestore();
+});
+
+test("removeProfile retire Firefox tout de suite, avant que l'appelant ne retire le conteneur", async () => {
+  const p = make();
+  const done = p.removeProfile("pro");
+  expect(calls.at(-1)).toEqual(["remove", "pro", null]);
+  await done;
+});
+
+test("profil retiré pendant une question : la réponse tardive vaut pour la demande, sans écriture ni recopie", async () => {
+  const replies: ((d: Issue) => void)[] = [];
+  const p = make({ ask: (d) => (questions.push(d), new Promise((ok) => replies.push(ok))) });
+  await p.ready;
+  const r = p.handle(req("notifications", { profil: "pro" }));
+  await vi.waitFor(() => expect(replies).toHaveLength(1));
+  await p.removeProfile("pro");
+  calls = [];
+  replies[0]!("autoriser");
+  expect(await r).toBe(true);
+  await Promise.resolve();
+  expect(calls).toEqual([]);
+  expect(disk.has(`${DIR}/permissions-pro.json`)).toBe(false);
+  expect(p.check("pro", meet, "notifications")).toBe(false);
+});

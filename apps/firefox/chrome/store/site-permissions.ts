@@ -90,6 +90,14 @@ export function createSitePermissions(o: {
   const memo = new Map<IdProfil, Record<string, Decision>>();
   const pending = new Map<string, Promise<Issue>>();
   let writes: Promise<void> = Promise.resolve();
+  // A mirror failure (e.g. a hand-edited origin Firefox cannot parse) skips that entry, never the whole store.
+  const mirror = (fn: () => void) => {
+    try {
+      fn();
+    } catch (e) {
+      console.warn("[site-permissions] not mirrored into Firefox:", e);
+    }
+  };
   const of = (profil: IdProfil) => memo.get(profil) ?? memo.set(profil, {}).get(profil)!;
 
   // Writes are chained so two decisions never race on the temporary file.
@@ -101,7 +109,7 @@ export function createSitePermissions(o: {
 
   const ready = (async () => {
     // Firefox starts empty: it is rebuilt from the files, so nothing it kept on its own outlives them.
-    o.firefox.remove(null, null);
+    mirror(() => o.firefox.remove(null, null));
     for (const profil of new Set([PROFIL_DEFAUT, ...o.profiles()])) {
       const path = fileOf(o.dataDir, profil);
       const text = await files.read(path);
@@ -114,7 +122,7 @@ export function createSitePermissions(o: {
       memo.set(profil, decisions);
       for (const [k, d] of Object.entries(decisions)) {
         const i = k.lastIndexOf(" ");
-        o.firefox.set(profil, k.slice(0, i), k.slice(i + 1) as SitePermission, d);
+        mirror(() => o.firefox.set(profil, k.slice(0, i), k.slice(i + 1) as SitePermission, d));
       }
     }
   })();
@@ -146,10 +154,10 @@ export function createSitePermissions(o: {
           done();
           // Withdrawn without an answer (tab closed): refused this time, asked again next time.
           if (d === "retiree") return;
-          for (const p of fresh) {
-            decisions[key(origine, p)] = d;
-            o.firefox.set(r.profil, origine, p, d);
-          }
+          for (const p of fresh) decisions[key(origine, p)] = d;
+          // The profile was removed while the question was open: the answer holds for this request only.
+          if (memo.get(r.profil) !== decisions) return;
+          for (const p of fresh) mirror(() => o.firefox.set(r.profil, origine, p, d));
           void save(r.profil);
         }, done);
       }
@@ -159,19 +167,20 @@ export function createSitePermissions(o: {
     check(profil, origine, kind, mediaType) {
       if (SANS_DEMANDE.has(kind)) return true;
       const permissions = translate(kind, mediaType ? [mediaType] : []);
-      return permissions.length > 0 && permissions.every((p) => of(profil)[key(origine, p)] === "autoriser");
+      return permissions.length > 0 && permissions.every((p) => memo.get(profil)?.[key(origine, p)] === "autoriser");
     },
     async forget(profil, origine) {
       await ready;
       const decisions = of(profil);
       for (const k of Object.keys(decisions)) if (k.startsWith(`${origine} `)) delete decisions[k];
-      o.firefox.remove(profil, origine);
+      mirror(() => o.firefox.remove(profil, origine));
       await save(profil);
     },
     async removeProfile(profil) {
-      await ready;
+      // Synchronously, before the caller removes the container: Firefox's entries are found through it.
       memo.delete(profil);
-      o.firefox.remove(profil, null);
+      mirror(() => o.firefox.remove(profil, null));
+      await ready;
       await (writes = writes.then(() => files.remove(fileOf(o.dataDir, profil))).catch((e) => console.error("[site-permissions] remove failed:", e)));
     },
   };
