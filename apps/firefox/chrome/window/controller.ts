@@ -188,8 +188,9 @@ export function createController(
       if (active) controller.command(active, s.c);
     } else if (s.type === "parcourir") walk.parcourir(fenetreId, s.delta);
     else if (s.type === "agent") {
-      // On a workflow builder tab: its Agent tab, beside the open panel (Electron shows the agent in that tab).
-      if (active && cibleDeUrlWorkflow(state.onglets[active]?.url ?? "")) return controller.openAgent();
+      // On a widget's builder tab: its Agent tab, beside the open panel (Electron shows the agent in that tab). An action's
+      // workflow tab shows the internal page (not ported): the plain toggle.
+      if (active && cibleDeUrlWorkflow(state.onglets[active]?.url ?? "")?.type === "widget") return controller.openAgent();
       // Electron's menu: toggle, then, opened from a web page, the keyboard goes to the terminal.
       store.dispatch({ type: "basculerPanneauAgent", fenetreId });
       if (agentOpen(store.state)) {

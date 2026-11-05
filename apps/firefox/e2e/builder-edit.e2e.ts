@@ -337,6 +337,13 @@ describe("the workflow builder", () => {
     await dispatch(m, { type: "ouvrirWorkflow", fenetreId: (await state(m)).fenetres[0]!.id, id: "x", nom: "X", proprietaire: "action" });
     expect(await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-interne\"]')")).toBe(true);
     expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"constructeur\"]')")).toBe(false);
+    // No builder there: ⌘J toggles the panel as on any other tab.
+    const panelHidden = (v: boolean) => waitFor(m, "return document.getElementById('webaios-agent').hidden", (h) => h === v);
+    const before = await m.execute<boolean>("return document.getElementById('webaios-agent').hidden");
+    await pressKeys(m, "Meta+j");
+    await panelHidden(!before);
+    await pressKeys(m, "Meta+j");
+    await panelHidden(before);
   });
 
   it("ajouter un bloc par la palette le rend « Non enregistré : … entrée manquante » ; le relier l'enregistre", async () => {

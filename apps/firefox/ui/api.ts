@@ -78,6 +78,7 @@ export function createApi(win: WindowController): ApiFirefox {
   };
   const host = win.store.agent;
   const fenetre = win.fenetreId;
+  let lastSelection: unknown; // the last workflow.selection this window sent
   /** When this window last opened a widget link: a display cannot make links leave in a burst. */
   let dernierLien = 0;
   /** States this document makes itself: the host did not start, or stopped. */
@@ -244,7 +245,13 @@ export function createApi(win: WindowController): ApiFirefox {
       enregistrerCode: (cible, nom, texte) => ask("workflow.enregistrerCode", { cible, nom, texte }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
       rejouer: (cible, execution, bloc) => ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
       lancer: (cible) => ask("workflow.lancer", { cible }, {}),
-      selection: (cible, bloc) => host.notify("workflow.selection", { fenetre, cible, bloc }),
+      selection(cible, bloc) {
+        // The host keeps it in memory only: resent on `acces`, which a host sends once its noyau has started (and on policy
+        // changes, harmless: the same selection again).
+        if (!lastSelection) untilUnload(host.on("acces", () => host.notify("workflow.selection", lastSelection)));
+        lastSelection = { fenetre, cible, bloc };
+        host.notify("workflow.selection", lastSelection);
+      },
       direct: () => ask("workflow.direct", undefined, { courants: [], enAttente: [] }),
       surDirect(callback) {
         // A host that stopped or started again sent no feed meanwhile: the runs are read again.

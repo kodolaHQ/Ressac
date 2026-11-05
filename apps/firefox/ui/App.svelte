@@ -97,7 +97,7 @@
       else if (r === "adresse") {
         if (ongletActif) ouvrirCommande("actif", ongletActif.url);
         else ouvrirCommande("nouveau");
-      } else if (r === "agent" && ongletActif && cibleDeUrlWorkflow(ongletActif.url)) agentDuConstructeur();
+      } else if (r === "agent" && cibleConstructeur) agentDuConstructeur();
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.

@@ -108,6 +108,7 @@ async function builder(id: string): Promise<void> {
 }
 
 /** The agent session's own MCP config of the window whose agent started last (the fake agent logs its args). */
+const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const lastSessionConfig = () =>
   path.join(dataDir, "espace", (JSON.parse(read(path.join(dataDir, "espace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
 const workflowOpen = async (config: string) => (await appelerOutil(path.join(dataDir, "espace"), "workflow_ouvert", {}, config)).texte;
@@ -157,7 +158,7 @@ describe("the builder's Agent tab", () => {
     await oneTerminal();
   });
 
-  it("⌘J et ✦ dans le constructeur ouvrent l'onglet Agent, sans panneau latéral ni contexte pré-rempli", async () => {
+  it("⌘J et ✦ dans le constructeur ouvrent l'onglet Agent et le panneau de l'agent, sans contexte pré-rempli", async () => {
     await launch();
     await homeAgent();
     await builder("veille");
@@ -297,7 +298,7 @@ describe("workflow_ouvert", () => {
   it("workflow_ouvert (appelerOutil avec le jeton de la session de cette fenêtre) rend le widget et le bloc sélectionné", async () => {
     await launch();
     await homeAgent();
-    const session = lastSessionConfig();
+    let session = lastSessionConfig();
     const open = () => workflowOpen(session);
     await poll(open, AUCUN_WORKFLOW_OUVERT);
 
@@ -308,6 +309,12 @@ describe("workflow_ouvert", () => {
     // The Agent tab changes nothing the agent knows.
     await click(m, '[data-testid="onglet-agent"]');
     await shown();
+    await poll(open, '{"widget":"veille","bloc":"tri"}');
+    // The host restarts (the panel's Réessayer): the window's new session still sees the selected block.
+    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.stop(); })();`);
+    await click(m, "button", { text: "Réessayer", frame: "agent" });
+    await waitFor(m, "return 1", () => lastSessionConfig() !== session, 20_000);
+    session = lastSessionConfig();
     await poll(open, '{"widget":"veille","bloc":"tri"}');
     // The main token (no window) sees no builder.
     expect((await callTool(dataDir, "workflow_ouvert")).texte).toBe(AUCUN_WORKFLOW_OUVERT);
