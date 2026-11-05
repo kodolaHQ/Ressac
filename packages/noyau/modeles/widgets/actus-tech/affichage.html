@@ -25,6 +25,7 @@
 <body class="etroit">
 <ul id="liste"></ul>
 <script>
+  const ouvrirLien = (url) => (window.webaiosOuvrir ? window.webaiosOuvrir(url) : parent.postMessage({ type: "ouvrir", url }, "*"));
   function afficher(m) {
     const donnees = m.donnees || {};
     const articles = Array.isArray(donnees.articles) ? donnees.articles : [];
@@ -49,7 +50,7 @@
         b.className = "titre";
         b.type = "button";
         b.textContent = String(a.titre ?? "");
-        b.addEventListener("click", () => parent.postMessage({ type: "ouvrir", url }, "*"));
+        b.addEventListener("click", () => ouvrirLien(url));
         li.append(b);
       } else {
         const t = document.createElement("div");
@@ -72,7 +73,8 @@
       liste.append(li);
     }
   }
-  addEventListener("message", (e) => { if (e.source === parent && e.data && e.data.type === "widget") afficher(e.data); });
+  // Firefox : un cadre resource:// sandboxé ne voit pas parent, e.source === parent y est faux.
+  addEventListener("message", (e) => { if (e.data && e.data.type === "widget") afficher(e.data); });
 </script>
 </body>
 </html>

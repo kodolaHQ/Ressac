@@ -353,7 +353,8 @@ enregistrée toute seule dans `workflow.json`. Donc :
 
 - Le widget reçoit par `message` : `{ type: "widget", donnees, taille: { l, h }, px: { largeur, hauteur }, etat: { statut, derniereMaj } }`.
   Il se redessine à chaque message ; adapte-le à `taille` et `px` (le même widget peut être
-  petit ou grand). Sans données, affiche un état vide lisible.
+  petit ou grand). Sans données, affiche un état vide lisible. N'compare pas `e.source` à `parent` :
+  sous Firefox, un cadre `resource://` sandboxé ne voit pas son parent et ignorerait tous les messages.
 - Le cadre est isolé : scripts seulement, pas de réseau, aucune ressource externe (pas de
   police, d'image ni de script distants ; la CSP les bloque). Mets tout en ligne.
 - Pour ouvrir un lien : `parent.postMessage({ type: "ouvrir", url }, "*")`, **depuis un

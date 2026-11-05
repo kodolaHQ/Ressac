@@ -4,7 +4,7 @@ import { chmod, cp, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } fr
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { cheminsEspace } from "../../src/chemins.js";
-import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES } from "../../src/espace/initialiser.js";
+import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES, AFFICHAGES_LIVREES } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
 import { DeclarationSite, verifierDeclarationSite } from "../../src/sites/schemas.js";
@@ -648,4 +648,50 @@ test("un espace neuf reçoit les workflows", async () => {
     expect((await readdir(join(c.widgets, id))).sort(), id).toEqual([...fichiers].sort());
   }
   expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+});
+
+// ——— Migration des affichages livrés avant Firefox ———
+
+const AFFICHAGES = join(import.meta.dirname, "affichages-livres");
+
+test("les 6 versions livrées d'affichage.html ont les empreintes connues", async () => {
+  const fichiers = (await readdir(AFFICHAGES)).sort();
+  expect(fichiers).toHaveLength(6);
+  const empreintes: Record<string, string[]> = {};
+  for (const f of fichiers) {
+    const id = f.replace(/-[0-9a-f]{7}\.html$/, "");
+    (empreintes[id] ??= []).push(sha256(await readFile(join(AFFICHAGES, f))));
+  }
+  for (const [id, liste] of Object.entries(empreintes)) {
+    expect([...AFFICHAGES_LIVREES[id as keyof typeof AFFICHAGES_LIVREES]].sort(), id).toEqual(liste.sort());
+  }
+  expect(Object.keys(empreintes).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
+});
+
+for (const fichier of readdirSync(AFFICHAGES).sort()) {
+  const id = fichier.replace(/-[0-9a-f]{7}\.html$/, "");
+  test(`un affichage de départ resté à une version livrée est remplacé par le modèle (${fichier})`, async () => {
+    const ancien = await readFile(join(AFFICHAGES, fichier), "utf8");
+    const c = cheminsEspace(await dossierTemporaire());
+    await initialiserEspace(c);
+    await writeFile(join(c.widgets, id, "affichage.html"), ancien);
+    const { crees } = await initialiserEspace(c);
+    expect(await readFile(join(c.widgets, id, "affichage.html"), "utf8")).toBe(
+      await readFile(join(MODELES_PAR_DEFAUT, "widgets", id, "affichage.html"), "utf8"),
+    );
+    expect(crees).toContain(join(c.widgets, id, "affichage.html"));
+    // Un second lancement ne fait plus rien.
+    expect((await initialiserEspace(c)).crees).toEqual([]);
+  });
+}
+
+test("un affichage de départ modifié par l'utilisateur n'est pas touché", async () => {
+  const ancien = await readFile(join(AFFICHAGES, "meteo-4d4c5f1.html"), "utf8");
+  const modifie = `${ancien}\n<!-- le mien -->`;
+  const c = cheminsEspace(await dossierTemporaire());
+  await initialiserEspace(c);
+  await writeFile(join(c.widgets, "meteo", "affichage.html"), modifie);
+  const { crees } = await initialiserEspace(c);
+  expect(await readFile(join(c.widgets, "meteo", "affichage.html"), "utf8")).toBe(modifie);
+  expect(crees).toEqual([]);
 });

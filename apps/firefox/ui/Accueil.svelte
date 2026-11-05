@@ -260,10 +260,9 @@
     --accueil-espace: 12px;
     --accueil-police: inherit;
     box-sizing: border-box;
-    width: min(1200px, calc(100% - 32px));
-    margin: 16px auto;
+    width: 100%;
+    margin: 0;
     padding: 16px;
-    border-radius: 12px;
     background: var(--accueil-fond);
     color: var(--accueil-texte);
     font-family: var(--accueil-police);

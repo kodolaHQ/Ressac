@@ -48,6 +48,7 @@ const ANCIENS_AGENTS = new Set([
   "55902f3a55b0494f90112284ad0fb76b589165773b3a4b6979dedea41e5ad4b7",
   "a37f2860c52cf15e21562f6b84c0b84f432f3841f091b04b60ad522ce9f5d58f",
   "977bba92e8209de62e939b1235bdbcd3b368e2f222865205ba927c3ad8592f5b",
+  "f38be067fe3d2554a6cbac4478ce6273fb67dbee0cbce8816afd744b41a1f823",
 ]);
 
 const empreinte = (contenu: Buffer) => createHash("sha256").update(contenu).digest("hex");
@@ -148,6 +149,26 @@ export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Read
   ]),
 };
 
+/**
+ * Empreintes sha256 des versions livrées de l'`affichage.html` des widgets de départ, avant les formes Firefox
+ * (écoute sans comparer `e.source`, liens par `webaiosOuvrir`). Un affichage resté à l'une d'elles est remplacé par le
+ * modèle courant ; un affichage modifié par l'utilisateur ou l'agent (empreinte inconnue) n'est pas touché.
+ */
+export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
+  meteo: new Set([
+    "437c53d9ec9db7261bf1b90258ebfc4a2febed3b0c44fc49e5a79e68a022f449",
+    "41b7f74fbbd384ab88ba8e31a57d0c2b7ee4df1f6081a588f23c888fa3721257",
+  ]),
+  "actus-tech": new Set([
+    "da8afce4e0676662aa65787df9c913f684f5f6b1c2bf2bf8961a69fa531ba209",
+    "0f8306d6c64698eb1a5252075fb273e99fca1811748943e6986591caf18dd081",
+  ]),
+  "daily-dev": new Set([
+    "9bc668a4f1515d8f66b9a040a828099432f659ba976263af43aea2696b3a9e99",
+    "12184cdd667940b894a9c86e980eb5cfb0da60acc20591665b726124c9a741b1",
+  ]),
+};
+
 /** Le contenu d'un fichier ordinaire (jamais un lien symbolique) ; null s'il est absent ou autre chose. */
 async function fichierOrdinaire(chemin: string): Promise<Buffer | null> {
   try {
@@ -224,6 +245,20 @@ async function rangerRecolte(c: CheminsEspace, id: string): Promise<void> {
   await renommerSiPresent(join(c.widgets, id, "recolte.mjs"), join(corbeille, `${id}-recolte-${horodatage()}.mjs`));
 }
 
+/**
+ * Remplace l'`affichage.html` d'un widget de départ resté à une version livrée (empreinte connue) par celui du modèle.
+ * Un affichage modifié, un lien symbolique ou un widget absent ne sont pas touchés.
+ */
+async function migrerAffichageDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof AFFICHAGES_LIVREES): Promise<boolean> {
+  const fichier = join(c.widgets, id, "affichage.html");
+  const contenu = await fichierOrdinaire(fichier);
+  if (!contenu || !AFFICHAGES_LIVREES[id].has(empreinte(contenu))) return false;
+  const modele = join(modeles, "widgets", id, "affichage.html");
+  if (!existsSync(modele)) return false;
+  await copyFile(modele, fichier);
+  return true;
+}
+
 /** Crée l'espace de travail à partir des modèles, sans écraser un fichier existant (sauf un AGENTS.md d'un ancien modèle). */
 export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_DEFAUT): Promise<{ crees: string[] }> {
   const crees: string[] = [];
@@ -238,6 +273,14 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
       crees.push(destination);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+  }
+  for (const id of Object.keys(AFFICHAGES_LIVREES) as (keyof typeof AFFICHAGES_LIVREES)[]) {
+    // Au mieux, widget par widget : un affichage raté ne bloque jamais le lancement.
+    try {
+      if (await migrerAffichageDeDepart(c, modeles, id)) crees.push(join(c.widgets, id, "affichage.html"));
+    } catch (e) {
+      console.error(`[webaios] migration de l'affichage du widget ${id} :`, e);
     }
   }
   for (const id of Object.keys(RECOLTES_LIVREES) as (keyof typeof RECOLTES_LIVREES)[]) {
