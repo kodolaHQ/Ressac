@@ -414,8 +414,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
     const { main, ...rest } = prof;
     note("D5 profile", rest);
     if (main) {
-      const r = geckoToCpuProfile(main, prof.categories.map((name: string) => ({ name })), prof.innerWindowId);
-      note("D5 conversion", { nodes: r.profil.nodes.length, samples: r.profil.samples.length, scriptMs: Math.round(r.scriptMs), taskMs: Math.round(r.taskMs), otherWindowFrames: r.otherWindowFrames,
+      const r = geckoToCpuProfile(main, prof.categories.map((name: string) => ({ name })), new Set([prof.innerWindowId]));
+      note("D5 conversion", { nodes: r.profil.nodes.length, samples: r.profil.samples.length, scriptMs: Math.round(r.scriptMs), taskMs: Math.round(r.taskMs),
         durationMs: Math.round((r.profil.endTime - r.profil.startTime) / 1000) });
       note("D5 resumerProfil", resumerProfil(r.profil, { LayoutCount: prof.reflows, ScriptDuration: r.scriptMs / 1000, TaskDuration: r.taskMs / 1000 }, 8).split("\n"));
     }

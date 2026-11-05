@@ -170,7 +170,8 @@ Known limits:
 - `executer_js` stops waiting after 10 s and drops the late result. An endless loop keeps running until Firefox's hang monitor stops it.
 - Unhandled rejections from the agent's own code (source "debugger eval code") never reach `lire_console`.
 - Firefox's profiler is shared by the whole browser. An agent profile is refused while another one runs, with « Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent) … » (Electron queued the second request). A profile the user starts during an agent profile is stopped with it.
-- When the agent's `naviguer` targets a load that never commits (a download, a 204, "stay on page"), the store keeps the target URL until the next location change.
+- A dev tool call cut by the agent's own `naviguer` to another site answers the generic cut text (`TEXTE_COUPE`), not « L'onglet a changé de site. »: the noyau cuts the right before the load commits. A page that leaves by itself still answers « L'onglet a changé de site. ».
+- A page that does not answer within 10 s (an endless loop, a breakpoint): `instantane_memoire` fails with « La page ne répond pas. », `profiler_performances` answers without `Nodes` and `JSHeapUsedSize`.
 - Whether CORS/CSP platform warnings reach `lire_console` was not probed.
 
 ## Not migrated yet (step 4)

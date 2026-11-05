@@ -1,7 +1,7 @@
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
 import { TEXTE_REVOQUE } from "../../navigateur/src/main/outils-dev/inspecteur";
-import { createDevTools } from "../chrome/store/devtools";
+import { createDevTools, geckoToCpuProfile } from "../chrome/store/devtools";
 import { createStore } from "../chrome/store/store";
 import type { WindowRegistry } from "../chrome/store/windows";
 
@@ -9,6 +9,8 @@ import type { WindowRegistry } from "../chrome/store/windows";
  * unless a test sets `liveTarget`. */
 const clients: { destroyed: boolean }[] = [];
 let liveTarget: unknown = null;
+/** The fake clients' evaluation (scriptCommand.execute). */
+let execute: () => Promise<unknown> = async () => ({ result: 1 });
 (globalThis as any).ChromeUtils = {
   importESModule: () => ({
     require: () => ({
@@ -18,7 +20,7 @@ let liveTarget: unknown = null;
             destroyed: false,
             targetCommand: { TYPES: { FRAME: "frame" }, startListening: async () => {}, watchTargets: async () => {}, targetFront: liveTarget ?? { isDestroyed: () => true } },
             resourceCommand: { TYPES: { CONSOLE_MESSAGE: "c", ERROR_MESSAGE: "e", NETWORK_EVENT: "n", DOCUMENT_EVENT: "d" }, watchResources: async () => {} },
-            scriptCommand: { execute: async () => ({ result: 1 }) },
+            scriptCommand: { execute: () => execute() },
             destroy: async () => void (c.destroyed = true),
           };
           clients.push(c);
@@ -169,4 +171,87 @@ it("a profile cut while its StartProfiler is still in flight stops the profiler 
   await expect(devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 1000 }], cut.signal)).rejects.toBeDefined();
   await new Promise((r) => setTimeout(r, 60));
   expect(active).toBe(false);
+});
+
+/** A GeckoMain thread: one sample per [function, innerWindowID] pair, 1 ms apart; `reflows` gives each Reflow marker's window. */
+function geckoThread(calls: [string, number][], reflows: (number | undefined)[] = []) {
+  const stringTable: string[] = [];
+  const str = (x: string) => (stringTable.includes(x) ? stringTable.indexOf(x) : stringTable.push(x) - 1);
+  return {
+    name: "GeckoMain",
+    pid: 42,
+    samples: { schema: { stack: 0, time: 1 }, data: calls.map((_, i) => [i, i]) },
+    stackTable: { schema: { prefix: 0, frame: 1 }, data: calls.map((_, i) => [null, i]) },
+    frameTable: { schema: { location: 0, innerWindowID: 2, category: 6 }, data: calls.map(([f, w]) => [str(`${f} (http://127.0.0.1:5300/:3:1)`), null, w, null, null, null, 0]) },
+    stringTable,
+    markers: { schema: { name: 0, phase: 3, data: 5 }, data: reflows.map((w) => [str("Reflow (sync)"), 0, 0, 2, 0, w === undefined ? null : { innerWindowID: w }]) },
+  };
+}
+
+it("geckoToCpuProfile keeps only the frames of the tab's own windows: another tab of the process is (program), out of the script time", () => {
+  const r = geckoToCpuProfile(geckoThread([["mine", 1], ["theirs", 2], ["mine", 3], ["theirs", 2]]), [{ name: "JavaScript" }], new Set([1, 3]));
+  const names = r.profil.nodes.map((n) => n.callFrame.functionName);
+  expect(names).toContain("mine");
+  expect(names).not.toContain("theirs");
+  expect(names).toContain("(program)");
+  expect(r.profil.samples.length).toBe(4);
+  // Samples at 0, 1, 2, 3 ms, each lasting until the next: the two of "mine" count as script, not the two of "theirs".
+  expect(r.scriptMs).toBe(2);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  liveTarget = null;
+  execute = async () => ({ result: 1 });
+});
+
+/** Services.profiler giving one empty GeckoMain thread of process 42, `pages` of tab 1. */
+function fakeProfiler(reflows: (number | undefined)[] = []) {
+  (globalThis as any).Services = {
+    profiler: {
+      IsActive: () => false,
+      StartProfiler: async () => {},
+      StopProfiler: async () => {},
+      getProfileDataAsync: async () => ({
+        meta: { categories: [] },
+        threads: [geckoThread([], reflows)],
+        pages: [{ tabID: 1, innerWindowID: 7 }, { tabID: 2, innerWindowID: 8 }],
+        processes: [],
+      }),
+    },
+  };
+  return { ...browserAt("http://127.0.0.1:5300/"), browserId: 1, browsingContext: { currentWindowGlobal: { osPid: 42, innerWindowId: 7 } } };
+}
+
+it("profiler counts the reflows of the tab's own windows only", async () => {
+  const browser = fakeProfiler([7, 8, undefined, 7]);
+  liveTarget = { isDestroyed: () => false, getFront: async () => ({ measure: async () => ({ jsObjectsSize: 1, jsStringsSize: 0, jsOtherSize: 0 }) }) };
+  const { devtools } = setup({ ensure: async () => browser });
+  const r = (await devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 0 }])) as { metriques: Record<string, number> };
+  expect(r.metriques.LayoutCount).toBe(3);
+});
+
+it("profiler on a page that never answers its Nodes count or memory measure: the call answers without those metrics", async () => {
+  vi.useFakeTimers();
+  const browser = fakeProfiler();
+  liveTarget = { isDestroyed: () => false, getFront: async () => ({ measure: () => new Promise(() => {}) }) };
+  execute = () => new Promise(() => {});
+  const { devtools } = setup({ ensure: async () => browser });
+  let r: { metriques: Record<string, number> } | undefined;
+  void devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 0 }]).then((x) => (r = x as typeof r));
+  await vi.advanceTimersByTimeAsync(25_000);
+  expect(r?.metriques).toBeDefined();
+  expect(r!.metriques).not.toHaveProperty("Nodes");
+  expect(r!.metriques).not.toHaveProperty("JSHeapUsedSize");
+});
+
+it("instantaneMemoire on a page whose census never comes fails with « La page ne répond pas. »", async () => {
+  vi.useFakeTimers();
+  const mem = { ...memoryFront("detached"), takeCensus: () => new Promise(() => {}) };
+  liveTarget = { isDestroyed: () => false, getFront: async () => mem };
+  const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
+  const pending = devtools.call(devtools.owner().token, "instantaneMemoire", ["t"]);
+  const outcome = pending.then(() => "answered", (e: Error) => e.message);
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(await outcome).toBe("La page ne répond pas.");
 });

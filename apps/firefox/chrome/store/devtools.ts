@@ -72,6 +72,15 @@ const devtoolsRequire = (id: string) => (loader ??= ChromeUtils.importESModule("
 let parser: any;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** `p`, or « La page ne répond pas. » after `ms`: a page stuck in a loop or paused at a breakpoint never answers. */
+async function within<T>(p: Promise<T>, ms = NAVIGATION_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<never>((_, ko) => (timer = setTimeout(() => ko(new Error("La page ne répond pas.")), ms)))]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const grip = (g: any) => (g && typeof g.getGrip === "function" ? g.getGrip() : g);
 
 /** A grip as text, as Electron's texteObjet: a string as is, an Error by its message, another object by its class. */
@@ -203,8 +212,9 @@ interface GeckoThread {
 }
 
 /** A Gecko thread as a .cpuprofile (note D5), JS frames only (Chrome's shape): a sample with no JS frame is (idle),
- * (garbage collector) or (program), by its leaf category. Lines 0-based, times in µs. */
-export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[], innerWindowID: number) {
+ * (garbage collector) or (program), by its leaf category. Lines 0-based, times in µs. The process may run other tabs:
+ * a JS frame of a window not in `windows` (the tab's pages) is left out, its sample counts as theirs, not as script. */
+export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[], windows: Set<number>) {
   const S = t.samples.schema, ST = t.stackTable.schema, F = t.frameTable.schema;
   const nodes: ProfilCpu["nodes"] = [{ id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [] }];
   const byKey = new Map<string, number>();
@@ -219,7 +229,6 @@ export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[]
     }
     return id;
   };
-  let otherWindowFrames = 0;
   const leafOf = new Map<number, { node: number; js: boolean; idle: boolean }>();
   const resolve = (stack: number) => {
     let r = leafOf.get(stack);
@@ -233,7 +242,7 @@ export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[]
       // "name (url:line:col)[resource index]" for a JS frame; labels ("js::RunScript") have no url.
       const m = loc.match(/^(?:(.*) \()?(\S+):(\d+):(\d+)\)?(?:\[\d+\])?$/);
       if (!m || !/^(https?|file|moz-extension|blob):/.test(m[2]!)) continue;
-      if (f[F.innerWindowID!] && f[F.innerWindowID!] !== innerWindowID) otherWindowFrames++;
+      if (f[F.innerWindowID!] && !windows.has(f[F.innerWindowID!] as number)) continue;
       node = child(node, m[1] ?? "", m[2]!, Number(m[3]) - 1);
       js = true;
     }
@@ -259,7 +268,7 @@ export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[]
   });
   for (const n of nodes) if (!n.children!.length) delete n.children;
   const profil: ProfilCpu = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
-  return { profil, scriptMs, taskMs, otherWindowFrames };
+  return { profil, scriptMs, taskMs };
 }
 
 function abortError(signal: AbortSignal): unknown {
@@ -411,12 +420,7 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
     const t = s.commands.targetCommand.targetFront;
     if (t && !t.isDestroyed()) return t;
     if (s.dropped) throw new Error(TEXTE_DETACHE);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([s.nextTarget, new Promise((_, ko) => (timer = setTimeout(() => ko(new Error("La page ne répond pas.")), NAVIGATION_TIMEOUT_MS)))]);
-    } finally {
-      clearTimeout(timer);
-    }
+    return within(s.nextTarget);
   }
 
   /** Evaluates in the page's main world, top frame; once again on a target destroyed by a navigation (the code did not run). */
@@ -576,18 +580,21 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
         const proc = [data, ...(data.processes ?? [])].find((p: any) => p.threads?.some((t: any) => String(t.pid) === String(pid)));
         const main = proc?.threads.find((t: any) => t.name === "GeckoMain");
         if (!main) throw new Error("Le profil ne contient pas le processus de l'onglet.");
-        const r = geckoToCpuProfile(main, proc.meta.categories, wg.innerWindowId);
+        // Every page this tab had during the profile (a reload changes its window), never another tab's of the same process.
+        const windows = new Set<number>([wg.innerWindowId, ...(proc.pages ?? []).filter((p: any) => p.tabID === s.browser.browserId).map((p: any) => p.innerWindowID)]);
+        const r = geckoToCpuProfile(main, proc.meta.categories, windows);
         const M = main.markers.schema;
+        const mine = (d: any[]) => !d[M.data]?.innerWindowID || windows.has(d[M.data].innerWindowID);
         const metriques: Record<string, number> = {
           ScriptDuration: r.scriptMs / 1000,
           TaskDuration: r.taskMs / 1000,
           // One start (phase 2) and one end (3) per reflow, or one interval (1).
-          LayoutCount: main.markers.data.filter((d: any[]) => String(main.stringTable[d[M.name]]).startsWith("Reflow") && d[M.phase] !== 3).length,
+          LayoutCount: main.markers.data.filter((d: any[]) => String(main.stringTable[d[M.name]]).startsWith("Reflow") && d[M.phase] !== 3 && mine(d)).length,
         };
         const target = await Promise.race([top(s).catch(() => null), c.wait]);
-        const heap = target && (await Promise.race([target.getFront("memory").then((m: any) => m.measure()).catch(() => null), c.wait]));
+        const heap = target && (await Promise.race([within(target.getFront("memory").then((m: any) => m.measure())).catch(() => null), c.wait]));
         if (heap) metriques.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
-        const nodes = grip((await Promise.race([run(s, 'document.getElementsByTagName("*").length').catch(() => null), c.wait]))?.result);
+        const nodes = grip((await Promise.race([within(run(s, 'document.getElementsByTagName("*").length')).catch(() => null), c.wait]))?.result);
         if (typeof nodes === "number") metriques.Nodes = nodes;
         return { profil: r.profil, metriques };
       } finally {
@@ -606,7 +613,7 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
           const mine = (await mem.getState()) !== "attached";
           if (mine) await mem.attach();
           try {
-            return await mem.takeCensus();
+            return await within<any>(mem.takeCensus());
           } finally {
             if (mine) await mem.detach().catch(() => {});
           }
