@@ -114,6 +114,8 @@ export function registerPermissionHooks(o: {
   const { nsContentDispatchChooser } = ChromeUtils.importESModule("resource://gre/modules/ContentDispatchChooser.sys.mjs");
   const handleURI = nsContentDispatchChooser.prototype.handleURI;
   nsContentDispatchChooser.prototype.handleURI = function (handler: any, uri: any, principal: any, bc: any) {
+    // Typed in the address bar (no principal, or the system one): asked in the name of the site the tab shows.
+    if (!principal || principal.isSystemPrincipal) principal = bc?.top?.currentWindowGlobal?.documentPrincipal;
     if (principal)
       ask(bc?.top?.embedderElement, principal, { kind: "openExternal", lien: uri.spec }, (ok) => {
         if (!ok) return;

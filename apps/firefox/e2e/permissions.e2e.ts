@@ -517,6 +517,16 @@ describe("site permissions", () => {
     expect(await banner()).toBeNull();
   });
 
+  it("un lien vers une autre application tapé dans la barre d'adresse : le bandeau au nom du site affiché", { timeout: 60_000 }, async () => {
+    // The webaios-test: handler registered by the previous test stays known to this profile.
+    const id = await open(await origin(), "none", {});
+    // As the address bar does: a load with the system principal, no page behind it.
+    await m.execute(`${browser(id)}.fixupAndLoadURIString("webaios-test:typed", { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`);
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut ouvrir un lien dans une autre application : webaios-test:typed$/);
+    await answer("Refuser");
+    await waitBanner((t) => t === null);
+  });
+
   it("le plein écran : accordé sans question, sans avertissement de Firefox sur la page", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "fs", {});
     await clickGo(id);
