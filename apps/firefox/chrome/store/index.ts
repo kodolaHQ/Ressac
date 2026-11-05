@@ -221,7 +221,7 @@ async function start(): Promise<WebAiOsStore> {
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows, devtools), ...agentExtensions.handlers },
+    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.

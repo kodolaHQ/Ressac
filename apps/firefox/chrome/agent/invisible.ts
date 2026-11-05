@@ -4,6 +4,7 @@ import { ProfilRefuse, type OptionsLecturePage, type PageLue } from "../shims/no
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";
 import { guardContainer, localLiteral, watchReading } from "./local-guard";
+import { pacedTarget } from "./paced";
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 
@@ -20,6 +21,17 @@ const MAX_LIENS_DEFILEE = 1_000;
 const CALME_DEFILEMENT_MS = 1_000;
 const RELEVE_MS = 250;
 const DEFILER_MAX = 20;
+const MAX_SAUTS = 5;
+
+/** Waits for the turn of a host (the host's `lecture.changerHote`). */
+type WaitHost = (lecture: string, hote: string, signal?: AbortSignal) => Promise<void>;
+
+/** A paced read stopped at a document of another site: to resume on `target` after that site's turn. */
+class Redirection extends Error {
+  constructor(readonly target: string) {
+    super(`Redirection vers ${hostOf(target)}`);
+  }
+}
 
 /** An empty privileged page that hosts the <browser>, as BackgroundPageThumbs does. */
 const HOST_PAGE = "chrome://global/content/backgroundPageThumbs.xhtml";
@@ -171,7 +183,15 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
  * container that no private space uses, or ProfilRefuse) and reads it with `reading`. Same guards, same two places,
  * same 30 s for every read. `signal` aborts the read, waiting or running, closes its browser, rejects with its reason.
  */
-async function load<T>(store: Store, url: string, o: OptionsLecturePage, signal: AbortSignal | undefined, reading: Reading<T>, screens: number): Promise<T> {
+async function load<T>(
+  store: Store,
+  url: string,
+  o: OptionsLecturePage & { menagee?: string },
+  signal: AbortSignal | undefined,
+  reading: Reading<T>,
+  screens: number,
+  waitHost?: WaitHost,
+): Promise<T> {
   const { profil, domaines } = o;
   const allowLocal = o.adressesLocales === true;
   const allowed = (u: string) => urlPermise(u, domaines, true) && (allowLocal || !localLiteral(hostOf(u)));
@@ -180,29 +200,56 @@ async function load<T>(store: Store, url: string, o: OptionsLecturePage, signal:
   };
   checkProfile();
   if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);
-  await takePlace(signal);
-  let publicId: number | undefined;
-  let opened: { browser: any; close(): void } | undefined;
-  try {
-    // The state may have changed while waiting for a place.
-    checkProfile();
-    signal?.throwIfAborted();
-    if (profil === null) await untilSignal(clearContainer((publicId = takePublic())), signal);
-    // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
-    opened = await createBrowser(publicId ?? containerFor(profil as IdProfil), { private: profil === null });
-    const page = await readIn(opened.browser, url, { allowed, allowLocal }, reading, Date.now() + DELAI_TOTAL_MS, signal, screens);
-    // The profile went to a private space during the read: what was read does not leave.
-    checkProfile();
-    return page;
-  } finally {
-    opened?.close();
-    // Emptied after the read too, once its page is gone: no cookie, storage nor service worker waits for the next one.
-    if (publicId !== undefined) {
-      await clearContainer(publicId);
-      freePublic.push(publicId);
+  const paced = o.menagee !== undefined && waitHost !== undefined;
+  let target = url;
+  // Fixed at the first place taken: paced redirections and their waits count in the 30 s.
+  let deadline = 0;
+  for (let jumps = 0; ; jumps++) {
+    await takePlace(signal);
+    let publicId: number | undefined;
+    let opened: { browser: any; close(): void } | undefined;
+    let redirection: string;
+    try {
+      if (jumps === 0) deadline = Date.now() + DELAI_TOTAL_MS;
+      // The state may have changed while waiting for a place.
+      checkProfile();
+      signal?.throwIfAborted();
+      if (Date.now() >= deadline) throw new Error(TROP_LENTE);
+      if (profil === null) await untilSignal(clearContainer((publicId = takePublic())), signal);
+      // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
+      opened = await createBrowser(publicId ?? containerFor(profil as IdProfil), { private: profil === null });
+      const page = await readIn(opened.browser, target, { allowed, allowLocal, paced }, reading, deadline, signal, screens);
+      // The profile went to a private space during the read: what was read does not leave.
+      checkProfile();
+      return page;
+    } catch (e) {
+      if (!(e instanceof Redirection)) throw e;
+      redirection = e.target;
+    } finally {
+      opened?.close();
+      // Emptied after the read too, once its page is gone: no cookie, storage nor service worker waits for the next one.
+      if (publicId !== undefined) {
+        await clearContainer(publicId);
+        freePublic.push(publicId);
+      }
+      givePlace();
     }
-    givePlace();
+    // Another site (paced read): its turn is awaited holding no browser nor place, else two reads redirected to the
+    // site of a third, itself waiting for a place, would block every read. A loop between sites fails fast.
+    if (jumps >= MAX_SAUTS) throw new Error("Trop de redirections");
+    await untilDeadline(waitHost!(o.menagee!, new URL(redirection).hostname, signal), deadline, signal);
+    target = redirection;
   }
+}
+
+/** `p`, rejected with the too-slow error at `deadline` and with `signal.reason` if it aborts. */
+function untilDeadline<T>(p: Promise<T>, deadline: number, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((ok, ko) => {
+    const timer = setTimeout(() => ko(new Error(TROP_LENTE)), Math.max(0, deadline - Date.now()));
+    untilSignal(p, signal)
+      .then(ok, ko)
+      .finally(() => clearTimeout(timer));
+  });
 }
 
 /** The number of screens to scroll: an integer from 0 to 20 (anything else: 0). */
@@ -226,14 +273,20 @@ function shapePage(url: string, p: Parts, b: Bounds): PageLue {
 }
 
 /** Reads a page invisibly, public (`profil: null`) or with a login profile no private space uses. Nothing is kept. */
-export function readPage(store: Store, url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue> {
+export function readPage(
+  store: Store,
+  url: string,
+  o: OptionsLecturePage & { menagee?: string },
+  signal?: AbortSignal,
+  waitHost?: WaitHost,
+): Promise<PageLue> {
   const screens = screensOf(o.defiler);
   const bounds = screens > 0 ? { texte: MAX_TEXTE_DEFILEE, liens: MAX_LIENS_DEFILEE } : { texte: MAX_TEXTE, liens: MAX_LIENS };
   return load(store, url, o, signal, {
     read: (actor) => actor.sendQuery("read", bounds),
     shape: (u, raw) => shapePage(u, (raw ?? { titre: "", texte: "", liens: [] }) as Parts, bounds),
     cumulate: cumulerParties,
-  }, screens);
+  }, screens, waitHost);
 }
 
 /** The HTML of a public page (2 MB at most), always in an emptied private container; `url` is the final address. */
@@ -251,7 +304,7 @@ export function readHtml(store: Store, url: string, o: { adressesLocales?: boole
 function readIn<T>(
   browser: any,
   url: string,
-  g: { allowed: (u: string) => boolean; allowLocal: boolean },
+  g: { allowed: (u: string) => boolean; allowLocal: boolean; paced?: boolean },
   reading: Reading<T>,
   deadline: number,
   signal: AbortSignal | undefined,
@@ -287,7 +340,12 @@ function readIn<T>(
     const actor = () => browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
 
     // Ended on finish: the browser stays guarded for local addresses (its unload, a pagehide beacon, comes later).
-    const unwatch = watchReading(browser, { allowLocal: g.allowLocal, allowTop: g.allowed, onBlocked: block });
+    // A paced read also stops at a document of another site than the one it started on (resumed after its turn).
+    const unwatch = watchReading(browser, {
+      allowLocal: g.allowLocal,
+      allowTop: (u) => g.allowed(u) && !(g.paced && pacedTarget(url, u)),
+      onBlocked: (u) => (g.allowed(u) ? finish({ error: new Redirection(u) }) : block(u)),
+    });
     const waitCalm = () => {
       clearTimeout(calm);
       calm = setTimeout(() => void (screens > 0 ? scrollThenRead() : read()), CALME_MS);

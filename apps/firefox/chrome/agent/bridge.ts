@@ -25,7 +25,7 @@ function privateMirror(state: EtatNavigateur, windows: WindowRegistry): { prives
 }
 
 /** The noyau's PontNavigateur, answered on the store and the windows' tabs (Electron's PontElectron). */
-export function bridgeHandlers(store: Store, questions: Questions, windows: WindowRegistry, devtools: DevTools): Record<string, Handler> {
+export function bridgeHandlers(store: Store, questions: Questions, windows: WindowRegistry, devtools: DevTools, host: () => AgentHost): Record<string, Handler> {
   /** The open window that holds the tab. */
   const windowOf = (id: string) => {
     const m = windows.get(store.state.onglets[id]?.fenetreId ?? "");
@@ -116,7 +116,8 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },
-    lirePageInvisible: ([url, o]: [string, OptionsLecturePage], signal) => readPage(store, url, o, signal),
+    lirePageInvisible: ([url, o]: [string, OptionsLecturePage & { menagee?: string }], signal) =>
+      readPage(store, url, o, signal, (lecture, hote, s) => host().request("lecture.changerHote", { lecture, hote }, s)),
     lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
     // The noyau's dev tools (RemoteBridge.outilsDev): one owner per noyau start, its token on every call.
     "outilsDev.owner": () => devtools.owner(),
