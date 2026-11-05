@@ -10,11 +10,13 @@ import { createAgentExtensions, type AgentExtensions } from "./agent-extensions"
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
+import { registerAccueilNotifications } from "./notifications";
 import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
+import { gardienGestes } from "../../shared/geste-widget";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
@@ -44,6 +46,8 @@ export interface WebAiOsStore extends Store {
   readonly access: EtatAcces;
   /** The agent's dev tools on tabs, owned by the running noyau. */
   readonly devtools: DevTools;
+  /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
+  readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
@@ -102,6 +106,8 @@ const firefoxPermissions = {
 const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
+const gestesWidgets = gardienGestes<string>();
+
 async function start(): Promise<WebAiOsStore> {
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
@@ -118,6 +124,9 @@ async function start(): Promise<WebAiOsStore> {
   // with no module, and no DRM site ever plays.
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
+  // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
+  // sanitizer (CSP_WIDGET, contientIndiceReseau).
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
@@ -227,9 +236,12 @@ async function start(): Promise<WebAiOsStore> {
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
       for (const e of store.state.espaces) if (e.prive) notify("historique.rendrePrive", { espaceId: e.id });
       agentExtensions.hostStarted();
+      // A restart (« Réessayer ») may have missed the home's changes: it reads again now that the host answers.
+      notify("accueil.change");
     },
   });
   const history = createHistory(store, agent);
+  registerAccueilNotifications(agent);
   const downloads = await createDownloads();
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
@@ -263,6 +275,7 @@ async function start(): Promise<WebAiOsStore> {
     get access() {
       return access;
     },
+    gestesWidgets,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
   };

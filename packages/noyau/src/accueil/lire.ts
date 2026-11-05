@@ -3,7 +3,16 @@ import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
 import { lireDonnees, lireEtatWidget } from "./donnees.js";
-import { COLONNES, DeclarationWidget, Placement, type EtatAccueil, type WidgetLu } from "./schemas.js";
+import {
+  COLONNES,
+  DeclarationWidget,
+  DispositionLibre,
+  LARGEUR_LIBRE,
+  Placement,
+  PlacementLibre,
+  type EtatAccueil,
+  type WidgetLu,
+} from "./schemas.js";
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
 
@@ -87,6 +96,76 @@ export function placerManquants(ids: string[], voulus: Placement[], defauts: Map
     const ancien = voulus.find((p) => p.id === id);
     const { l, h } = ancien ?? defauts.get(id)!;
     retenus.push({ id, ...premierePlace(retenus, l, h), l, h });
+  }
+  return retenus;
+}
+
+const PAS_X = 8;
+const PAS_Y = 8;
+
+/**
+ * Les x essayés : 0, le bord droit de chaque widget posé (un trou peut commencer exactement là, hors des pas de 8 ‰),
+ * puis les pas de 8 ‰ et le dernier x collé au bord.
+ */
+function abscissesLibres(occupes: Rectangle[], xMax: number): number[] {
+  const xs = new Set<number>([0, xMax]);
+  for (let x = PAS_X; x < xMax; x += PAS_X) xs.add(x);
+  for (const o of occupes) if (o.x + o.l <= xMax) xs.add(o.x + o.l);
+  return [...xs].sort((a, b) => a - b);
+}
+
+/** Première place libre en unités libres : les x ci-dessus, et en y 0, les bas des widgets posés, puis les pas de 8 px. */
+function premierePlaceLibre(occupes: Rectangle[], l: number, h: number): { x: number; y: number } {
+  const xMax = LARGEUR_LIBRE - l;
+  const xs = abscissesLibres(occupes, xMax);
+  for (let y = 0; ; ) {
+    for (const x of xs) {
+      if (!occupes.some((o) => chevauche(o, { x, y, l, h }))) return { x, y };
+    }
+    // Un bas de widget peut tomber entre deux pas (90 px de haut, y = 90) : on l'essaie aussi.
+    const bas = occupes.map((o) => o.y + o.h).filter((b) => b > y);
+    y = bas.length > 0 ? Math.min(y + PAS_Y, ...bas) : y + PAS_Y;
+  }
+}
+
+/** Placements de disposition.json en unités libres. Une autre version, un fichier abîmé ou un chevauchement donne []. */
+export async function lireDispositionLibre(c: CheminsEspace): Promise<PlacementLibre[]> {
+  try {
+    const dispo = DispositionLibre.safeParse(JSON.parse(await readFile(c.disposition, "utf8")));
+    if (!dispo.success) return [];
+    const { widgets } = dispo.data;
+    if (widgets.some((a, i) => widgets.slice(i + 1).some((b) => chevauche(a, b)))) return [];
+    return widgets;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Même contrat que placerManquants, en unités libres : un placement voulu valide est gardé, un id inconnu ou un
+ * doublon est ignoré, et chaque widget absent est posé au premier trou sans chevauchement.
+ */
+export function placerManquantsLibre(
+  ids: readonly string[],
+  voulus: readonly PlacementLibre[],
+  defauts: ReadonlyMap<string, { l: number; h: number }>,
+): PlacementLibre[] {
+  const parses = voulus.flatMap((p) => {
+    const v = PlacementLibre.safeParse(p);
+    return v.success ? [v.data] : [];
+  });
+  const retenus: PlacementLibre[] = [];
+  const dejaVus = new Set<string>();
+  for (const p of parses) {
+    if (!defauts.has(p.id) || dejaVus.has(p.id)) continue;
+    dejaVus.add(p.id);
+    if (!retenus.some((r) => chevauche(r, p))) retenus.push(p);
+  }
+  const aPlacer = [...parses.map((p) => p.id), ...ids].filter((id, i, tous) => defauts.has(id) && tous.indexOf(id) === i && !retenus.some((r) => r.id === id));
+  for (const id of aPlacer) {
+    const ancien = parses.find((p) => p.id === id);
+    const { l, h } = ancien ?? defauts.get(id)!;
+    retenus.push({ id, ...premierePlaceLibre(retenus, l, h), l, h });
   }
   return retenus;
 }

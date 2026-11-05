@@ -16,14 +16,17 @@ process.env.WEBAIOS_PORTS_CONTENEUR ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
+const { appendFileSync } = await import("node:fs");
+const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { chargerProfils, cheminsEspace, creerNoyau, Menagement, prefixeContexte } = await import("../../../packages/noyau/src/index.ts");
+const { chargerProfils, cheminsEspace, creerNoyau, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
+const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
 
 const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {
@@ -31,6 +34,9 @@ if (!dataDir) {
   process.exit(2);
 }
 const racine = join(dataDir, "espace");
+const chemins = cheminsEspace(racine);
+// Widgets' data, states and accords: outside the space, like Electron.
+const dossierWidgets = join(dataDir, "widgets");
 // Outside the agent's noyau: the history works even when the noyau does not start.
 // Electron's retenable (capture-texte.ts) can't be imported here: it needs the extensionless "../historique" import, which Node refuses.
 const MEMOIRE_BOUCLE = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
@@ -62,6 +68,7 @@ let noyau: Noyau | null = null;
 let erreur: string | null = null;
 let pret: Promise<Noyau | null> = Promise.resolve(null);
 let unsubscribe: (() => void) | undefined;
+let arretAccueil: (() => Promise<void>) | undefined;
 let accesTimer: NodeJS.Timeout | undefined;
 
 const etatAcces = () => ({ agent: noyau?.agent ?? "L'agent", onglets: noyau?.politique.etat() ?? {} });
@@ -79,16 +86,31 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     pont: bridge,
     profilId,
     racine,
-    dossierWidgets: join(dataDir, "widgets"),
+    dossierWidgets,
     dossierActions: join(dataDir, "actions"),
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
+    // Widgets and actions wrote something, or an accord changed: the page reads again.
+    surChange: () => rpc.notify("accueil.change"),
+    // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
+    notifier: (n) => {
+      const fichier = process.env.WEBAIOS_TEST_NOTIFICATIONS;
+      if (fichier) return void appendFileSync(fichier, JSON.stringify({ titre: n.titre, texte: n.texte }) + "\n");
+      rpc.notify("accueil.notification", { titre: n.titre, texte: n.texte });
+    },
     ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}),
     ...(duckduckgo ? { urlRecherche: duckduckgo } : {}),
   }).then(
     (n) => {
       noyau = n;
       unsubscribe = n.politique.surChange(diffuserAcces);
+      // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
+      // Unguarded, a watch failure would reject `pret` and every host method with it.
+      try {
+        arretAccueil = n.surveillerAccueil(() => rpc.notify("accueil.change"));
+      } catch (e) {
+        console.error("[webaios] la surveillance de l'accueil n'a pas démarré :", e);
+      }
       diffuserAcces();
       return n;
     },
@@ -104,6 +126,8 @@ const arreterNoyau = async (n: Noyau | null) => {
   noyau = null;
   unsubscribe?.();
   unsubscribe = undefined;
+  await arretAccueil?.();
+  arretAccueil = undefined;
   diffuserAcces();
   await n?.arreter();
 };
@@ -165,12 +189,91 @@ const rpc = createRpc({
       // The noyau writes the default profile while it starts: the panel may ask before that.
       await pret;
       try {
-        return (await chargerProfils(cheminsEspace(racine))).profils.map((x) => ({ id: x.id, nom: x.nom }));
+        return (await chargerProfils(chemins)).profils.map((x) => ({ id: x.id, nom: x.nom }));
       } catch {
         return [];
       }
     },
     "acces.etat": etatAcces,
+    // Home page: the widgets of espace/accueil/widgets, their data and state, the validated theme. Electron's rules,
+    // with the free placement (version 3).
+    "accueil.lire": async () => {
+      const n = await pret;
+      if (!n) return { widgets: [], theme: null };
+      try {
+        const etat = await n.lireAccueil();
+        const mtimes: Record<string, number> = {};
+        await Promise.all(
+          etat.widgets.map(async (w) => {
+            if ("erreur" in w || !w.aAffichage) return;
+            try {
+              mtimes[w.id] = Math.round((await stat(join(w.dossier, "affichage.html"))).mtimeMs);
+            } catch {
+              // affichage.html supprimé entre-temps : la prochaine lecture le dira
+            }
+          }),
+        );
+        const [placements, theme] = await Promise.all([lireDispositionLibre(n.chemins), lireTheme(n.chemins)]);
+        // Un thème invalide garde le défaut : il est signalé, jamais réécrit.
+        if (theme.erreur) console.warn(`[webaios] ${theme.erreur}`);
+        return versWidgetsAffiches({ etat, placements, theme: theme.theme, mtimes });
+      } catch (e) {
+        console.error("[webaios] page d'accueil illisible :", e);
+        return { widgets: [], theme: null };
+      }
+    },
+    "accueil.placer": async (p: { placements?: unknown }) => {
+      try {
+        // Un placement n'a pas besoin du noyau : les dossiers de l'espace suffisent (comme Electron).
+        const ids = (await lireAccueil(chemins, dossierWidgets)).widgets.map((w) => w.id);
+        await placerWidgets(chemins, validerPlacements(p?.placements, ids));
+      } catch (e) {
+        console.error("[webaios] disposition non écrite :", e);
+        // L'interface a déjà montré l'aperçu du geste : elle relit l'ancienne disposition au lieu de le laisser à l'écran.
+        rpc.notify("accueil.change");
+      }
+    },
+    "accueil.retirer": (p: { id?: unknown }) => {
+      const id = typeof p?.id === "string" ? p.id : "";
+      // L'accord et les données lues avec le compte partent avec le widget (par le noyau, qui écrit aussi les accords).
+      void retirerWidget(chemins, id, async (w) => {
+        const n = await pret;
+        if (n) return n.refuserAccord(w);
+        await retirerAccord(dossierWidgets, w);
+        await supprimerDonnees(dossierWidgets, w);
+      }).then(
+        () => rpc.notify("accueil.change"),
+        (e) => console.error(`[webaios] widget ${id} non retiré :`, e),
+      );
+    },
+    "accueil.accorder": async (p: { id: string; profil: string; compte: string[]; publiques: string[] }) => {
+      const n = await pret;
+      if (!n) return { ok: false as const, erreur: "Le service des widgets ne répond pas (agent arrêté ?)" };
+      try {
+        // Le noyau refuse si la déclaration n'est plus celle que la carte a montrée.
+        await n.accorder(p);
+        return { ok: true as const };
+      } catch (e) {
+        console.error(`[webaios] accord du widget ${p?.id} :`, e);
+        // L'interface relit la page : la nouvelle demande s'affiche.
+        rpc.notify("accueil.change");
+        return { ok: false as const, erreur: (e as Error).message };
+      }
+    },
+    "accueil.refuserAccord": async (p: { id?: unknown }) => {
+      const n = await pret;
+      if (!n || typeof p?.id !== "string") return;
+      await n.refuserAccord(p.id).catch((e) => console.error(`[webaios] retrait de l'accord du widget ${p.id} :`, e));
+    },
+    "accueil.recolter": async (p: { id?: unknown }) => {
+      const n = await pret;
+      if (!n || typeof p?.id !== "string") return;
+      await n.recolterMaintenant(p.id).catch((e) => console.error(`[webaios] récolte du widget ${p.id} :`, e));
+    },
+    // Lues sans le noyau, comme la page d'accueil : les exécutions, hors de l'espace.
+    "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
+    "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
+      executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
     "historique.noter": (p: Parameters<InstanceType<typeof Historique>["noter"]>[0]) => historique?.noter(p),
     "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique?.majTitre(p.url, p.espaceId, p.titre),
     "historique.retenir": (p: { url: string; espaceId: string; titre: string; texte: string }) => {
@@ -258,7 +361,7 @@ const menagementTest = new Menagement();
 /** A page request on one extension key: a malformed one is refused as text. */
 const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
 // Outside the agent's noyau, like the history: granted extensions run even when the noyau does not start.
-const extensions = new ExtensionsAgent({ dossier: join(dataDir, "extensions"), dossierAgent: cheminsEspace(racine).extensions, rpc });
+const extensions = new ExtensionsAgent({ dossier: join(dataDir, "extensions"), dossierAgent: chemins.extensions, rpc });
 let demarrageExtensions: Promise<void> | undefined;
 
 createInterface({ input: process.stdin, crlfDelay: Infinity })

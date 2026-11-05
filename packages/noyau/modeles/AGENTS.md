@@ -52,6 +52,9 @@ Pour ajouter un widget, crée son dossier (avec `exemple.json` et un affichage f
 ajoute-le à `disposition.json`. Pour le supprimer, retire-le des deux. Les données récoltées (`donnees.json`) et
 l'état (`etat.json`) sont gardés par le navigateur hors de ton espace : ne les écris jamais.
 
+**WebAiOs-Firefox** : n'écris jamais `accueil/disposition.json`. La page y place elle-même un widget nouveau (au
+premier emplacement libre) ; ce fichier est en version 3 et n'est écrit que par le navigateur.
+
 ### Workflows des widgets
 
 `accueil/widgets/<id>/workflow.json` (256 Ko au plus, 100 blocs et 400 liens au plus) décrit la
@@ -356,6 +359,9 @@ enregistrée toute seule dans `workflow.json`. Donc :
 - Pour ouvrir un lien : `parent.postMessage({ type: "ouvrir", url }, "*")`, **depuis un
   gestionnaire de clic** (c'est permis juste après un vrai clic de l'utilisateur, pour une URL http(s)
   non locale, une seule par clic).
+- Sous Firefox, ouvre un lien avec `webaiosOuvrir(url)`, que l'accueil fournit : `parent.postMessage`
+  y est refusé par la barre latérale (origine opaque). Même règle : **depuis un gestionnaire de clic**,
+  une URL http(s) non locale, une seule par clic.
 - Écris le texte venu des pages avec `textContent`, jamais `innerHTML`.
 - Pas de `<link>`, de `<meta http-equiv>` ni de règles de spéculation, même dans un texte ou un
   `srcdoc` : un affichage qui en contient est refusé (ils feraient résoudre des noms, donc sortir
@@ -380,6 +386,23 @@ enregistrée toute seule dans `workflow.json`. Donc :
    Pareil pour `executions_widget` : la liste ne donne que `{ id, statut }` par exécution (une
    récolte partielle y paraît réussie), et en demander le détail affiche à l'utilisateur la même carte
    d'accord que `donnees_widget` ; un seul accord couvre les deux.
+
+## Thème de l'accueil (WebAiOs-Firefox)
+
+Dans WebAiOs-Firefox, tu peux changer l'allure de la page d'accueil avec `accueil/theme.json` :
+
+```json theme.json
+{ "version": 1, "fond": "#101014", "carte": "#1b1b21", "texte": "#f2f2f2", "texteDoux": "#9a9aa5", "accent": "#7aa2f7", "bord": "#2c2c34", "rayon": 6, "espace": 12, "police": "serif" }
+```
+
+- `version` vaut `1`.
+- Les couleurs `fond`, `carte`, `texte`, `texteDoux`, `accent` et `bord` sont en `#rrggbb`, rien d'autre.
+- `rayon` et `espace` sont des entiers de 0 à 24 (pixels).
+- `police` vaut `system` (défaut), `serif` ou `mono`.
+
+Tout est facultatif sauf `version` : ce que tu omets garde la valeur par défaut. Un fichier absent ou
+invalide laisse le thème par défaut, et le navigateur ne le réécrit jamais. Pas de CSS, pas d'URL,
+pas de police distante : uniquement ces clés. Supprimer le fichier remet le thème par défaut.
 
 ## Ce que regarde l'utilisateur
 

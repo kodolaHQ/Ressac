@@ -104,6 +104,16 @@ test("des blocs existants partent dans accueil/.corbeille/blocs-…, rien n'est 
   expect(await readdir(corbeille)).toHaveLength(1);
 });
 
+test("une disposition v3 (Firefox) est gardée au lancement", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const perso = '{"version":3,"widgets":[{"id":"meteo","x":0,"y":0,"l":500,"h":180}]}';
+  await mkdir(c.accueil, { recursive: true });
+  await writeFile(c.disposition, perso);
+  await initialiserEspace(c);
+  expect(await readFile(c.disposition, "utf8")).toBe(perso);
+  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+});
+
 test("un widget de départ supprimé ne revient pas au lancement suivant", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
@@ -388,6 +398,45 @@ test("un AGENTS.md identique au modèle c19ad8d (avant les applis de site) est r
   for (const motif of ["site.json", "webaiosSite.retenir", "suiviAdresse", "reprise", "ouvrir_site", "memoire_site", '{ type: "ouvrir"', "lister_sites", "erreurs_retouches"]) {
     expect(apres, motif).toContain(motif);
   }
+});
+
+test("un AGENTS.md identique au modèle 55902f3 (avant le thème de l'accueil) est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant le thème de l'accueil Firefox (55902f3) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-55902f3.md"), "utf8");
+  expect(sha256(ancien)).toBe("55902f3a55b0494f90112284ad0fb76b589165773b3a4b6979dedea41e5ad4b7");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("Thème de l'accueil");
+});
+
+test("un AGENTS.md identique au modèle a37f286 (avant la disposition Firefox) est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant la disposition de l'accueil Firefox (a37f286) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-a37f286.md"), "utf8");
+  expect(sha256(ancien)).toBe("a37f2860c52cf15e21562f6b84c0b84f432f3841f091b04b60ad522ce9f5d58f");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  for (const motif of ["disposition.json", "WebAiOs-Firefox"]) expect(apres, motif).toContain(motif);
+});
+
+test("un AGENTS.md identique au modèle abce272 (avant le lien Firefox) est remplacé par le nouveau", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
+  // Modèle d'avant le lien Firefox (abce272) : empreinte listée dans ANCIENS_AGENTS.
+  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-abce272.md"), "utf8");
+  expect(sha256(ancien)).toBe("977bba92e8209de62e939b1235bdbcd3b368e2f222865205ba927c3ad8592f5b");
+  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  await initialiserEspace(c);
+  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  expect(apres).toBe(modele);
+  expect(apres).toContain("webaiosOuvrir");
 });
 
 test("le modèle AGENTS.md décrit les remarques du mode design des applis de site", async () => {

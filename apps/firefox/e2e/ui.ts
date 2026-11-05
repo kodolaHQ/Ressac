@@ -46,6 +46,8 @@ export async function click(m: Marionette, selector: string, o: { button?: 0 | 2
   await inUi(
     m,
     `${find}
+     el.scrollIntoView({ block: "center" });
+     await new Promise((r) => requestAnimationFrame(r));
      const r = el.getBoundingClientRect();
      const x = r.left + r.width / 2, y = r.top + r.height / 2;
      if (arguments[2] === 2) ui.synthesizeMouseEvent("contextmenu", x, y, { button: 2 });

@@ -70,6 +70,24 @@ export type Placement = z.infer<typeof Placement>;
 export const Disposition = z.object({ version: z.literal(2), widgets: z.array(Placement) });
 export type Disposition = z.infer<typeof Disposition>;
 
+/** Millièmes de la largeur de l'accueil : la grille de 12 colonnes y perd sa précision. */
+export const LARGEUR_LIBRE = 1000;
+/** Une unité de hauteur (celle d'Electron), en pixels. */
+export const RANGEE_PX = 90;
+
+export const PlacementLibre = z
+  .object({ id: z.string(), x: z.number().int().min(0).max(LARGEUR_LIBRE), y: z.number().int().min(0), l: z.number().int().min(1).max(LARGEUR_LIBRE), h: z.number().int().min(1) })
+  .refine((p) => p.x + p.l <= LARGEUR_LIBRE, "déborde de l'accueil");
+export type PlacementLibre = z.infer<typeof PlacementLibre>;
+
+export const DispositionLibre = z.object({ version: z.literal(3), widgets: z.array(PlacementLibre) });
+export type DispositionLibre = z.infer<typeof DispositionLibre>;
+
+/** Convertit une taille déclarée en unités (1…12) vers les unités libres. */
+export function taillesLibres(t: { l: number; h: number }): { l: number; h: number } {
+  return { l: Math.round((t.l * LARGEUR_LIBRE) / COLONNES), h: t.h * RANGEE_PX };
+}
+
 const StatutWidget = z.enum(["ok", "en-cours", "erreur", "accord-requis", "atelier-arrete"]);
 
 export const EtatWidget = z.object({
