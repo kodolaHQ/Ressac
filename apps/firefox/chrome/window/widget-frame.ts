@@ -28,6 +28,18 @@ function dossierCopies(dataDir: string, id: string): string {
   return PathUtils.join(dataDir, "webaios-widgets", id);
 }
 
+/**
+ * Le dossier des copies, créé puis confiné à `<dataDir>/webaios-widgets` : un dossier de copies qui est un lien
+ * symbolique est refusé. Rend son vrai chemin, où les copies sont écrites.
+ */
+async function dossierCopiesConfine(dataDir: string, id: string): Promise<string | null> {
+  const dossier = dossierCopies(dataDir, id);
+  await IOUtils.makeDirectory(dossier, { createAncestors: true, ignoreExisting: true });
+  const racine = cheminReel(PathUtils.join(dataDir, "webaios-widgets"));
+  const reel = cheminReel(dossier);
+  return racine && reel && reel.startsWith(racine + "/") ? reel : null;
+}
+
 /** La copie assainie d'un affichage : `<dossierCopies>/affichage-<mtime>.html`. */
 export function cheminCopie(dataDir: string, id: string, mtime: number): string {
   return PathUtils.join(dossierCopies(dataDir, id), `affichage-${mtime}.html`);
@@ -91,14 +103,29 @@ export async function preparerWidget(dataDir: string, id: string): Promise<strin
   } catch {
     return null;
   }
-  const copie = cheminCopie(dataDir, id, mtime);
+  const dossier = dossierCopies(dataDir, id);
   try {
+    const reel = await dossierCopiesConfine(dataDir, id);
+    if (!reel) {
+      console.warn(`[widget] dossier de copies de ${id} hors de <dataDir>/webaios-widgets : refusé`);
+      return null;
+    }
+    const copie = PathUtils.join(reel, `affichage-${mtime}.html`);
     // Même mtime : la copie existe déjà, on ne la réécrit pas (l'URL ne change pas).
     if (!(await IOUtils.exists(copie))) {
-      await IOUtils.makeDirectory(dossierCopies(dataDir, id), { createAncestors: true, ignoreExisting: true });
-      await IOUtils.writeUTF8(copie, affichageServi(await IOUtils.readUTF8(source)), { flush: true });
+      // shortcut: the source is read by the realpath computed just before; a symlink swapped in by another process
+      // between the check and the read is still followed (IOUtils has no O_NOFOLLOW). Upgrade if the widgets folder can
+      // be written by an untrusted process.
+      // Écriture atomique (motif de site-permissions.ts) : un cadre ne lit jamais une copie à moitié écrite.
+      const temporaire = `${copie}.${crypto.randomUUID()}.tmp`;
+      await IOUtils.writeUTF8(temporaire, affichageServi(await IOUtils.readUTF8(source)), { flush: true });
+      await IOUtils.move(temporaire, copie);
+      // Une seule copie par widget : la précédente est retirée.
+      for (const ancien of await IOUtils.getChildren(reel)) {
+        if (ancien !== copie && /affichage-.*\.html$/.test(ancien)) await IOUtils.remove(ancien, { ignoreAbsent: true });
+      }
     }
-    substituer(id, dossierCopies(dataDir, id));
+    substituer(id, dossier);
   } catch (e) {
     console.error(`[widget] copie de ${id} impossible :`, e);
     return null;

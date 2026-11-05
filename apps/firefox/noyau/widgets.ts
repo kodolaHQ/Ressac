@@ -20,8 +20,11 @@ import type { WidgetAffiche } from "../../navigateur/src/commun/api.ts";
 // Copied from Electron's main/agent/accueil.ts (which imports electron, so the Node host cannot import it): same rules,
 // free placement (version 3) and the theme added.
 
-export const SCHEMA_WIDGET = "webaios-widget";
 const ID_WIDGET = /^[a-z0-9-]+$/;
+/** L'URL du cadre : la copie assainie que la sidebar écrit, datée du mtime de la source (un nouveau mtime recharge). */
+function urlAffichage(id: string, mtime: number): string {
+  return `resource://webaios-widget-${id}/affichage-${mtime}.html`;
+}
 /** Taille donnée à un widget illisible (sans déclaration), pour qu'il garde une place et montre son erreur. */
 const TAILLE_WIDGET_ILLISIBLE = { l: 4, h: 2 };
 
@@ -52,7 +55,7 @@ export function versWidgetsAffiches(o: {
         nom: w.declaration.nom,
         placement,
         tailles: w.declaration.tailles,
-        src: w.aAffichage ? `${SCHEMA_WIDGET}://${w.id}/affichage.html?v=${o.mtimes[w.id] ?? 0}` : null,
+        src: w.aAffichage ? urlAffichage(w.id, o.mtimes[w.id] ?? 0) : null,
         donnees: w.donnees,
         exemple: w.exemple,
         etat: w.etat,

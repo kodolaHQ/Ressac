@@ -1,8 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AFFICHAGE_REFUSE, CSP_WIDGET, affichageServi, cheminCopie, preparerWidget, urlAffichage } from "../chrome/window/widget-frame";
+import type { WidgetAffiche } from "../../navigateur/src/commun/api";
+import { AFFICHAGE_REFUSE, CSP_WIDGET, affichageServi, cheminCopie, oublierWidget, preparerWidget, urlAffichage } from "../chrome/window/widget-frame";
+import { servirAffichages } from "../ui/api";
 
 let racine: string;
 let widgets: string;
@@ -25,6 +27,8 @@ beforeAll(() => {
       makeDirectory: async (p: string) => void mkdirSync(p, { recursive: true }),
       readUTF8: async (p: string) => readFileSync(p, "utf8"),
       writeUTF8: async (p: string, texte: string) => writeFileSync(p, texte),
+      move: async (de: string, vers: string) => renameSync(de, vers),
+      getChildren: async (p: string) => readdirSync(p).map((nom) => join(p, nom)),
       remove: async (p: string) => rmSync(p, { recursive: true, force: true }),
     },
     Ci: { nsIFile: "nsIFile", nsIResProtocolHandler: "nsIResProtocolHandler" },
@@ -97,6 +101,29 @@ describe("preparerWidget", () => {
     expect(readFileSync(copie, "utf8")).toBe(premier);
   });
 
+  it("retire l'ancienne copie quand la source change", async () => {
+    const source = join(widgets, "demo", "affichage.html");
+    const ancien = Math.round(statSync(source).mtimeMs);
+    const nouveau = ancien + 5000;
+    writeFileSync(source, "<!doctype html><title>nouveau</title>");
+    utimesSync(source, new Date(nouveau), new Date(nouveau));
+    expect(await preparerWidget(racine, "demo")).toBe(urlAffichage("demo", nouveau));
+    expect(existsSync(cheminCopie(racine, "demo", ancien))).toBe(false);
+    expect(readFileSync(cheminCopie(racine, "demo", nouveau), "utf8")).toContain("<title>nouveau</title>");
+    // L'écriture est atomique : aucun temporaire ne reste.
+    expect(readdirSync(join(racine, "webaios-widgets", "demo")).some((n) => n.endsWith(".tmp"))).toBe(false);
+  });
+
+  it("refuse un dossier de copies qui est un lien sortant", async () => {
+    const dehors = join(racine, "copies-dehors");
+    mkdirSync(dehors);
+    mkdirSync(join(widgets, "copie-lien"), { recursive: true });
+    writeFileSync(join(widgets, "copie-lien", "affichage.html"), "<title>lien</title>");
+    symlinkSync(dehors, join(racine, "webaios-widgets", "copie-lien"));
+    expect(await preparerWidget(racine, "copie-lien")).toBeNull();
+    expect(readdirSync(dehors)).toEqual([]);
+  });
+
   it("refuse un affichage.html qui est un lien sortant du dossier du widget", async () => {
     mkdirSync(join(widgets, "fuite"), { recursive: true });
     writeFileSync(join(widgets, "fuite", "widget.json"), "{}");
@@ -110,6 +137,37 @@ describe("preparerWidget", () => {
     writeFileSync(join(dehors, "affichage.html"), "<title>dehors</title>");
     symlinkSync(dehors, join(widgets, "evade"));
     expect(await preparerWidget(racine, "evade")).toBeNull();
+  });
+});
+
+describe("oublierWidget", () => {
+  it("retire la substitution et le dossier de copies", async () => {
+    mkdirSync(join(widgets, "oublie"), { recursive: true });
+    writeFileSync(join(widgets, "oublie", "affichage.html"), "<title>oublie</title>");
+    await preparerWidget(racine, "oublie");
+    expect(substitutions.get("webaios-widget-oublie")).toBeTruthy();
+    await oublierWidget(racine, "oublie");
+    expect(substitutions.get("webaios-widget-oublie")).toBeNull();
+    expect(existsSync(join(racine, "webaios-widgets", "oublie"))).toBe(false);
+  });
+});
+
+describe("servirAffichages", () => {
+  it("prépare les copies, et n'oublie que les widgets qui ne sont plus affichés", async () => {
+    const prepares = new Set<string>();
+    const oublies: string[] = [];
+    const outil = {
+      preparer: async (_d: string, id: string) => `resource://webaios-widget-${id}/affichage-1.html`,
+      oublier: async (_d: string, id: string) => void oublies.push(id),
+    };
+    const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/affichage-1.html` }) as unknown as WidgetAffiche;
+    await servirAffichages([w("a"), w("b")], "/data", prepares, outil);
+    expect(prepares).toEqual(new Set(["a", "b"]));
+    expect(oublies).toEqual([]);
+    await servirAffichages([w("a")], "/data", prepares, outil);
+    // « a » est toujours affiché : sa substitution reste.
+    expect(prepares).toEqual(new Set(["a"]));
+    expect(oublies).toEqual(["b"]);
   });
 });
 

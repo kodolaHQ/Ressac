@@ -42,7 +42,7 @@ describe("versWidgetsAffiches", () => {
         // 4 unités de large sur 12 → 333 ‰ ; 2 rangées de 90 px.
         placement: { id: "demo", x: 0, y: 0, l: 333, h: 180 },
         tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 4, h: 2 } },
-        src: "webaios-widget://demo/affichage.html?v=1730000000123",
+        src: "resource://webaios-widget-demo/affichage-1730000000123.html",
         donnees: { n: 1 },
         exemple: { n: 0 },
         etat: { ...ETAT_WIDGET_PAR_DEFAUT, statut: "en-cours" },

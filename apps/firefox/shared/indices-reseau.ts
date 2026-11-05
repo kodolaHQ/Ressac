@@ -2,10 +2,10 @@
  * Ce qui, dans le HTML d'un affichage de widget, ferait sortir quelque chose de la machine sans passer par la CSP :
  * `<link>` (dns-prefetch résout un nom choisi par le widget : les données partent dans la requête DNS), `<meta
  * http-equiv>` (x-dns-prefetch-control: on rallumerait la résolution des liens) et les règles de spéculation. Refusé
- * dans affichage.html (servi par le navigateur, widget-frame.ts) comme dans le HTML que l'affichage écrit (garde du
+ * dans affichage.html (servi depuis une copie, widget-frame.ts) comme dans le HTML que l'affichage écrit (garde du
  * cadre, widget-actor.ts). Copie de apps/navigateur/src/commun/indices-reseau.ts.
  *
- * Sans import : le bundle actor n'a pas les shims `node:` du store, il ne peut donc pas importer widget-frame.ts.
+ * Sans import : le bundle actor ne doit pas tirer les helpers chrome de la sidebar (widget-frame.ts).
  */
 export const MOTIF_INDICES_RESEAU = "<\\s*link(?![a-z0-9-])|http-equiv|speculationrules";
 

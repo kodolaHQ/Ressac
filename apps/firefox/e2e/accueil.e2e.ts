@@ -261,10 +261,17 @@ describe("la page d'accueil", () => {
       "les dix widgets",
       15_000,
     );
-    // `lireAccueil` trie les dossiers des widgets : l'ordre est celui des ids, pas celui de la création.
-    expect(titres).toEqual(["Alpha", "Beta", "Compte", "Échec", "Lent", "Lien", "Refus", "Retrait", "Sans accord", "Veille"]);
+    expect(titres).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
     expect(src).toMatch(/^resource:\/\/webaios-widget-alpha\/affichage-\d+\.html$/);
+    // Le cadre est isolé : le document du widget n'a pas le principal système de la sidebar (origine opaque, sandbox).
+    const systeme = await waitUi<string>(
+      m,
+      `const d = doc.querySelector('[data-testid="widget-alpha"] iframe')?.contentDocument; return d ? String(d.nodePrincipal.isSystemPrincipal) : null;`,
+      [],
+      15_000,
+    );
+    expect(systeme).toBe("false");
   });
 
   it("un widget ajouté par l'agent apparaît sans redémarrer", async () => {
@@ -368,8 +375,8 @@ describe("la page d'accueil", () => {
     await waitWindowCount(m, 1);
     await new Promise((r) => setTimeout(r, 500));
     expect(await waitWindowCount(m, 1)).toHaveLength(1);
-    // Aucun <browser> de premier niveau ne charge le schéma : c'est un cadre de la barre latérale.
-    const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("webaios-widget:")).length;`, (n) => n === 0);
+    // Aucun <browser> de premier niveau ne charge la substitution resource:// : c'est un cadre de la barre latérale.
+    const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("resource://webaios-widget-")).length;`, (n) => n === 0);
     expect(top).toBe(0);
   });
 

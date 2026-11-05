@@ -38,17 +38,25 @@ const unavailable = async () => ({ ok: false as const, erreur: "Pas encore dispo
  * Serves each widget's display: writes its sanitized copy under `<dataDir>/webaios-widgets/<id>/` and points `src` at
  * its resource:// URL. The widgets served last time and gone now lose their substitution and their copies.
  */
-async function servirAffichages(widgets: WidgetAffiche[], dataDir: string, prepares: Set<string>): Promise<void> {
+export async function servirAffichages(
+  widgets: WidgetAffiche[],
+  dataDir: string,
+  prepares: Set<string>,
+  outil: {
+    preparer: (dataDir: string, id: string) => Promise<string | null>;
+    oublier: (dataDir: string, id: string) => Promise<void>;
+  } = { preparer: preparerWidget, oublier: oublierWidget },
+): Promise<void> {
   const maintenant = new Set<string>();
   await Promise.all(
     widgets.map(async (w) => {
       if (!("src" in w) || w.src === null) return;
-      const url = await preparerWidget(dataDir, w.id);
+      const url = await outil.preparer(dataDir, w.id);
       w.src = url;
       if (url) maintenant.add(w.id);
     }),
   );
-  for (const id of prepares) if (!maintenant.has(id)) await oublierWidget(dataDir, id);
+  for (const id of prepares) if (!maintenant.has(id)) await outil.oublier(dataDir, id);
   prepares.clear();
   for (const id of maintenant) prepares.add(id);
 }
