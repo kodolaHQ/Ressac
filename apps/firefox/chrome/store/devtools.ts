@@ -28,7 +28,8 @@ const PROFILE_MS = 5000;
 const PROFILE_MAX_MS = 30_000;
 const PROFILE_LOAD_TIMEOUT_MS = 30_000;
 /** Services.profiler is one for the whole browser: the person's own session is never stopped for the agent. */
-export const TEXTE_PROFILEUR_OCCUPE = "Le profileur de Firefox est déjà utilisé dans ce navigateur : l'agent ne l'interrompt pas. Réessayez une fois qu'il est arrêté.";
+export const TEXTE_PROFILEUR_OCCUPE =
+  "Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent) : l'agent ne l'interrompt pas. Réessayez une fois qu'il est arrêté.";
 /** As Electron's lacher. */
 const TEXTE_DETACHE = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
@@ -62,6 +63,8 @@ interface Session {
   /** Resolves when the session is dropped. */
   gone: Promise<void>;
   leave(): void;
+  /** The memory snapshots of this tab, one after the other: each attaches and detaches the front only when it was not attached. */
+  memory: Promise<unknown>;
 }
 
 let loader: any;
@@ -316,6 +319,7 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
       siteChanged: false,
       gone: new Promise<void>((ok) => (leave = ok)),
       leave: () => leave(),
+      memory: Promise.resolve(),
     };
     try {
       const { targetCommand, resourceCommand } = commands;
@@ -551,38 +555,44 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
       if (profiling || Services.profiler.IsActive()) throw new Error(TEXTE_PROFILEUR_OCCUPE);
       const pid = wg.osPid;
       const c = cut(s, signal);
-      let data: any;
-      profiling = true;
       try {
-        await Promise.race([Services.profiler.StartProfiler(1 << 22, 1, ["js", "stackwalk", "cpu"], ["pid:" + pid], s.browser.browserId), c.wait]);
-        const work = opts?.recharger
-          ? Promise.race([s.commands.targetCommand.reloadTopLevelTarget(false), sleep(PROFILE_LOAD_TIMEOUT_MS)])
-          : sleep(Math.min(Math.max(0, opts?.dureeMs ?? PROFILE_MS), PROFILE_MAX_MS));
-        await Promise.race([work, c.wait]);
-        data = await Promise.race([Services.profiler.getProfileDataAsync(), c.wait]);
+        let data: any;
+        profiling = true;
+        const start = new Promise((ok) => ok(Services.profiler.StartProfiler(1 << 22, 1, ["js", "stackwalk", "cpu"], ["pid:" + pid], s.browser.browserId)));
+        start.catch(() => {});
+        try {
+          await Promise.race([start, c.wait]);
+          const work = opts?.recharger
+            ? Promise.race([s.commands.targetCommand.reloadTopLevelTarget(false), sleep(PROFILE_LOAD_TIMEOUT_MS)])
+            : sleep(Math.min(Math.max(0, opts?.dureeMs ?? PROFILE_MS), PROFILE_MAX_MS));
+          await Promise.race([work, c.wait]);
+          data = await Promise.race([Services.profiler.getProfileDataAsync(), c.wait]);
+        } finally {
+          // Cut during the start: it may land after the cut, so it is awaited before the stop (nothing to stop if it failed).
+          if (await start.then(() => true, () => false)) await Promise.resolve(Services.profiler.StopProfiler()).catch(() => {});
+          profiling = false;
+        }
+        // The parent's own threads, then each child process's: the tab's is the only one sampled (filter pid:).
+        const proc = [data, ...(data.processes ?? [])].find((p: any) => p.threads?.some((t: any) => String(t.pid) === String(pid)));
+        const main = proc?.threads.find((t: any) => t.name === "GeckoMain");
+        if (!main) throw new Error("Le profil ne contient pas le processus de l'onglet.");
+        const r = geckoToCpuProfile(main, proc.meta.categories, wg.innerWindowId);
+        const M = main.markers.schema;
+        const metriques: Record<string, number> = {
+          ScriptDuration: r.scriptMs / 1000,
+          TaskDuration: r.taskMs / 1000,
+          // One start (phase 2) and one end (3) per reflow, or one interval (1).
+          LayoutCount: main.markers.data.filter((d: any[]) => String(main.stringTable[d[M.name]]).startsWith("Reflow") && d[M.phase] !== 3).length,
+        };
+        const target = await Promise.race([top(s).catch(() => null), c.wait]);
+        const heap = target && (await Promise.race([target.getFront("memory").then((m: any) => m.measure()).catch(() => null), c.wait]));
+        if (heap) metriques.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
+        const nodes = grip((await Promise.race([run(s, 'document.getElementsByTagName("*").length').catch(() => null), c.wait]))?.result);
+        if (typeof nodes === "number") metriques.Nodes = nodes;
+        return { profil: r.profil, metriques };
       } finally {
         c.done();
-        await Promise.resolve(Services.profiler.StopProfiler()).catch(() => {});
-        profiling = false;
       }
-      // The parent's own threads, then each child process's: the tab's is the only one sampled (filter pid:).
-      const proc = [data, ...(data.processes ?? [])].find((p: any) => p.threads?.some((t: any) => String(t.pid) === String(pid)));
-      const main = proc?.threads.find((t: any) => t.name === "GeckoMain");
-      if (!main) throw new Error("Le profil ne contient pas le processus de l'onglet.");
-      const r = geckoToCpuProfile(main, proc.meta.categories, wg.innerWindowId);
-      const M = main.markers.schema;
-      const metriques: Record<string, number> = {
-        ScriptDuration: r.scriptMs / 1000,
-        TaskDuration: r.taskMs / 1000,
-        // One start (phase 2) and one end (3) per reflow, or one interval (1).
-        LayoutCount: main.markers.data.filter((d: any[]) => String(main.stringTable[d[M.name]]).startsWith("Reflow") && d[M.phase] !== 3).length,
-      };
-      const target = await top(s);
-      const heap = await (await target.getFront("memory")).measure().catch(() => null);
-      if (heap) metriques.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
-      const nodes = grip((await run(s, 'document.getElementsByTagName("*").length').catch(() => null))?.result);
-      if (typeof nodes === "number") metriques.Nodes = nodes;
-      return { profil: r.profil, metriques };
     },
     /** The memory actor's census (note D6), as the noyau's InstantaneFirefox: classes, never a string's content. */
     async instantaneMemoire(id: string, signal?: AbortSignal): Promise<string> {
@@ -590,16 +600,18 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
       const s = await session(id);
       const c = cut(s, signal);
       try {
-        const work = (async () => {
+        const work = s.memory.then(async () => {
           const mem = await (await top(s)).getFront("memory");
-          if ((await mem.getState()) !== "attached") await mem.attach();
+          // Attached already (the person's Memory panel): left as found.
+          const mine = (await mem.getState()) !== "attached";
+          if (mine) await mem.attach();
           try {
             return await mem.takeCensus();
           } finally {
-            await mem.detach().catch(() => {});
+            if (mine) await mem.detach().catch(() => {});
           }
-        })();
-        work.catch(() => {});
+        });
+        s.memory = work.catch(() => {});
         return JSON.stringify(censusToSnapshot(await Promise.race([work, c.wait])));
       } finally {
         c.done();

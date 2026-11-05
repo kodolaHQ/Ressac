@@ -336,7 +336,7 @@ it("le profileur de Firefox déjà en marche : profiler_performances refuse et n
   await m.execute("return (async () => { await Services.profiler.StartProfiler(1 << 20, 1, ['js'], ['GeckoMain']); })();");
   try {
     const before = profiles();
-    expect(await tool("profiler_performances", { id, duree_s: 0.5 })).toContain("profileur de Firefox est déjà utilisé");
+    expect(await tool("profiler_performances", { id, duree_s: 0.5 })).toContain("Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent)");
     expect(await profilerActive()).toBe(true);
     expect(profiles()).toEqual(before);
   } finally {
@@ -364,20 +364,37 @@ it("démo : deux instantane_memoire puis comparer_memoire : le type que la page 
 // Granting a third-party tab its rights needs task 5's consent card: tested there.
 it.todo("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une référence profil:");
 
-it("la page change de site pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
+/** A 20 s profile cut by `leave(id)` taking the tab to another site: it answers at once, writes nothing, stops the profiler. */
+async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>): Promise<void> {
   const id = await openDemo();
   const before = profiles();
   const t0 = Date.now();
   const pending = call("profiler_performances", { id, duree_s: 20 });
   await sleep(1000);
-  // The page leaves on its own (an agent's naviguer is cut by the noyau first: see task 4's report).
-  await tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` });
+  await leave(id);
   const r = await pending;
   expect(Date.now() - t0).toBeLessThan(10_000);
-  expect(r.texte).toContain("changé de site");
+  expect(r.texte).toContain("L'onglet a changé de site");
   expect(r.texte).not.toContain("Profil :");
   expect(profiles()).toEqual(before);
   expect(await profilerActive()).toBe(false);
+}
+
+it("la page change de site pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
+  // localhost: another origin, still the agent's demo (its port).
+  await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"));
+}, 60_000);
+
+it("la page s'en va d'elle-même pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
+  await profileCutBySiteChange((id) => tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }));
+}, 60_000);
+
+it("executer_js coupé par naviguer vers un autre site répond « L'onglet a changé de site »", async () => {
+  const id = await openDemo();
+  const pending = call("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
+  await sleep(500);
+  expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→");
+  expect((await pending).texte).toContain("L'onglet a changé de site");
 }, 60_000);
 
 it("l'hôte redémarre : le nouveau noyau ne voit pas les anciens messages", async () => {

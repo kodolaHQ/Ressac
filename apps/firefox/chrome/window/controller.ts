@@ -277,7 +277,16 @@ export function createController(
       const tab = tabs.tab(ongletId);
       if (!tab) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
-      tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
+      // The target URL at once, as Electron's getURL during a load: a dev tool call cut by this navigation reads the new site.
+      // shortcut: a load that never commits (a download, a 204) keeps it until the next location change; reconcile on STATE_STOP if that matters.
+      const before = store.state.onglets[ongletId]?.url;
+      store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
+      try {
+        tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
+      } catch (e) {
+        if (before !== undefined) store.dispatch({ type: "majOnglet", id: ongletId, champs: { url: before } });
+        throw e;
+      }
     },
     ensure: (ongletId) => tabs.ensure(ongletId),
     command(ongletId, c) {

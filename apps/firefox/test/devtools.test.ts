@@ -5,8 +5,10 @@ import { createDevTools } from "../chrome/store/devtools";
 import { createStore } from "../chrome/store/store";
 import type { WindowRegistry } from "../chrome/store/windows";
 
-/** Fake DevTools clients (CommandsFactory.forTab): their top-level target is destroyed, as right after a navigation. */
+/** Fake DevTools clients (CommandsFactory.forTab): their top-level target is destroyed, as right after a navigation,
+ * unless a test sets `liveTarget`. */
 const clients: { destroyed: boolean }[] = [];
+let liveTarget: unknown = null;
 (globalThis as any).ChromeUtils = {
   importESModule: () => ({
     require: () => ({
@@ -14,7 +16,7 @@ const clients: { destroyed: boolean }[] = [];
         forTab: async () => {
           const c = {
             destroyed: false,
-            targetCommand: { TYPES: { FRAME: "frame" }, startListening: async () => {}, watchTargets: async () => {}, targetFront: { isDestroyed: () => true } },
+            targetCommand: { TYPES: { FRAME: "frame" }, startListening: async () => {}, watchTargets: async () => {}, targetFront: liveTarget ?? { isDestroyed: () => true } },
             resourceCommand: { TYPES: { CONSOLE_MESSAGE: "c", ERROR_MESSAGE: "e", NETWORK_EVENT: "n", DOCUMENT_EVENT: "d" }, watchResources: async () => {} },
             scriptCommand: { execute: async () => ({ result: 1 }) },
             destroy: async () => void (c.destroyed = true),
@@ -101,4 +103,70 @@ it("a call waiting for the page's next target ends as soon as the session is dro
   await devtools.call(token, "detacher", ["t"]);
   await expect(run).rejects.toThrow("détachés");
   expect(Date.now() - t0).toBeLessThan(2000);
+});
+
+/** A fake memory front (note D6): takeCensus needs it attached, and takes a while. */
+function memoryFront(state: "attached" | "detached") {
+  const mem = {
+    state: state as string,
+    calls: [] as string[],
+    getState: async () => mem.state,
+    attach: async () => void (mem.calls.push("attach"), (mem.state = "attached")),
+    detach: async () => void (mem.calls.push("detach"), (mem.state = "detached")),
+    takeCensus: async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      if (mem.state !== "attached") throw new Error("not attached");
+      return { objects: { Object: { count: 2, bytes: 64 } }, strings: { count: 1, bytes: 16 }, scripts: { count: 0, bytes: 0 }, other: {}, domNode: {} };
+    },
+  };
+  return mem;
+}
+
+it("instantaneMemoire leaves a memory front attached by someone else (the person's Memory panel) attached", async () => {
+  const mem = memoryFront("attached");
+  liveTarget = { isDestroyed: () => false, getFront: async () => mem };
+  try {
+    const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
+    const r = JSON.parse(String(await devtools.call(devtools.owner().token, "instantaneMemoire", ["t"])));
+    expect(r).toEqual({ format: "webaios-firefox-census", total: 80, parConstructeur: [{ nom: "Object", nombre: 2, taille: 64 }, { nom: "strings", nombre: 1, taille: 16 }, { nom: "scripts", nombre: 0, taille: 0 }] });
+    expect(mem.state).toBe("attached");
+    expect(mem.calls).toEqual([]);
+  } finally {
+    liveTarget = null;
+  }
+});
+
+it("two instantaneMemoire on one tab at once both answer, and the front they attached is detached after", async () => {
+  const mem = memoryFront("detached");
+  liveTarget = { isDestroyed: () => false, getFront: async () => mem };
+  try {
+    const browser = browserAt("http://127.0.0.1:5300/");
+    const { devtools } = setup({ ensure: async () => browser });
+    const { token } = devtools.owner();
+    await Promise.all([devtools.call(token, "instantaneMemoire", ["t"]), devtools.call(token, "instantaneMemoire", ["t"])]);
+    expect(mem.state).toBe("detached");
+  } finally {
+    liveTarget = null;
+  }
+});
+
+it("a profile cut while its StartProfiler is still in flight stops the profiler once the start has landed", async () => {
+  const cut = new AbortController();
+  let active = false;
+  (globalThis as any).Services = {
+    profiler: {
+      IsActive: () => active,
+      StartProfiler: () => {
+        cut.abort(); // cut right after the call, before the start lands
+        return new Promise<void>((r) => setTimeout(() => ((active = true), r()), 30));
+      },
+      StopProfiler: async () => void (active = false),
+      getProfileDataAsync: async () => ({ meta: {}, threads: [], processes: [] }),
+    },
+  };
+  const browser = { ...browserAt("http://127.0.0.1:5300/"), browserId: 1, browsingContext: { currentWindowGlobal: { osPid: 42, innerWindowId: 1 } } };
+  const { devtools } = setup({ ensure: async () => browser });
+  await expect(devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 1000 }], cut.signal)).rejects.toBeDefined();
+  await new Promise((r) => setTimeout(r, 60));
+  expect(active).toBe(false);
 });
