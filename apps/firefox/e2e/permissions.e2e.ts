@@ -16,6 +16,7 @@ import { waitUi } from "./ui";
 const PAGE = `<!doctype html><meta charset="utf-8"><title>ready</title>
 <button id="go" style="width:300px;height:120px">go</button><div id="frames"></div>
 <script>
+const gum = async (c) => { const s = await navigator.mediaDevices.getUserMedia(c); const r = s.getTracks().map((t) => t.kind); s.getTracks().forEach((t) => t.stop()); return r; };
 const ACTIONS = {
   none: async () => null,
   perm: async () => Notification.permission,
@@ -25,6 +26,10 @@ const ACTIONS = {
   persist: () => navigator.storage.persist(),
   sa: async () => (await document.requestStorageAccess(), "granted"),
   xr: async () => (navigator.xr ? navigator.xr.requestSession("inline").then(() => "granted", (e) => e.name) : "no WebXR"),
+  cam: () => gum({ video: true }),
+  both: () => gum({ video: true, audio: true }),
+  screen: async () => { const s = await navigator.mediaDevices.getDisplayMedia({ video: true }); s.getTracks().forEach((t) => t.stop()); return "shared"; },
+  proto: async () => { location.href = "webaios-test:hello"; return "navigated"; },
   popup: async () => !!window.open("/p?do=notif&auto&popup", "notif", "width=500,height=600"),
 };
 const q = new URLSearchParams(location.search);
@@ -32,11 +37,13 @@ const done = (v) => { document.title = "done:" + JSON.stringify(v); if (parent !
 const run = async () => { document.title = "pending"; try { done({ ok: await ACTIONS[q.get("do")]() }); } catch (e) { done({ err: e?.name ?? String(e) }); } };
 document.getElementById("go").onclick = run;
 addEventListener("message", (e) => (document.title = "frame:" + e.data));
-if (q.get("frame")) document.getElementById("frames").innerHTML = '<iframe allow="storage-access" style="width:400px;height:200px" src="' + q.get("frame") + '"></iframe>';
+if (q.get("frame")) document.getElementById("frames").innerHTML = '<iframe allow="storage-access;camera;microphone" style="width:400px;height:200px" src="' + q.get("frame") + '"></iframe>';
 if (q.has("auto")) run();
 </script>`;
 
 const PREFS = {
+  // Fake camera and microphone: no device, no macOS question (spike P2).
+  "media.navigator.streams.fake": true,
   // Test geolocation provider on a data: URL, never CoreLocation (a macOS prompt).
   "geo.provider.testing": true,
   "geo.provider.use_corelocation": false,
@@ -50,14 +57,17 @@ const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 const BANNER = '[data-testid="demande-permission"]';
 
 /** A server of PAGE: each test takes fresh origins, so no earlier decision answers for it. */
-async function startPages(): Promise<{ url: string; port: number; close(): Promise<void> }> {
+async function startPages(): Promise<{ url: string; port: number; handled: string[]; close(): Promise<void> }> {
+  const handled: string[] = [];
   const server = createServer((req, res) => {
+    // The test scheme's web handler lands here.
+    if (new URL(req.url ?? "/", "http://x").pathname === "/handled") return handled.push(req.url!), res.writeHead(200, { "Content-Type": "text/html" }).end("<title>handled</title>");
     if (new URL(req.url ?? "/", "http://x").pathname === "/p") return res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(PAGE);
     res.writeHead(404).end();
   });
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   const port = (server.address() as AddressInfo).port;
-  return { url: `http://127.0.0.1:${port}`, port, close: () => new Promise((ok) => (server.close(() => ok()), server.closeAllConnections())) };
+  return { url: `http://127.0.0.1:${port}`, port, handled, close: () => new Promise((ok) => (server.close(() => ok()), server.closeAllConnections())) };
 }
 
 describe("site permissions", () => {
@@ -316,5 +326,88 @@ describe("site permissions", () => {
     await waitBanner((t) => t === null);
     await dispatch(m, { type: "activerOnglet", id: asking });
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
+  });
+
+  it("une demande de caméra d'un site reste un bandeau, pas une modale : la page reste affichée", async () => {
+    const id = await open(await origin(), "cam");
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut utiliser votre caméra$/);
+    expect(await m.execute(`return gBrowser.selectedBrowser.checkVisibility() && gBrowser.getTabDialogBox(gBrowser.selectedBrowser)._tabDialogManager._dialogs.length`)).toBe(0);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: ["video"] });
+  });
+
+  it("caméra et micro ensemble : un seul bandeau « utiliser votre caméra et votre micro », retenu ; un rechargement ne redemande pas", async () => {
+    const base = await origin();
+    const id = await open(base, "both");
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut utiliser votre caméra et votre micro$/);
+    expect(await pending()).toHaveLength(1);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: ["audio", "video"] });
+    await reload(id);
+    expect(await result(id)).toEqual({ ok: ["audio", "video"] });
+    expect(await banner()).toBeNull();
+    expect(await saved()).toMatchObject({ [`${base} media-camera`]: "autoriser", [`${base} media-micro`]: "autoriser" });
+    // Refused: NotAllowedError, kept too.
+    const other = await open(await origin(), "both");
+    await waitBanner((t) => t !== null);
+    await answer("Refuser");
+    expect(await result(other)).toEqual({ err: "NotAllowedError" });
+  });
+
+  it("un cadre d'un autre site demande la caméra : le bandeau nomme le cadre, la décision est retenue pour lui", { timeout: 60_000 }, async () => {
+    const base = await origin();
+    const port = new URL(base).port;
+    await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("site2.localhost", "127.0.0.1");`);
+    const frame = `http://site2.localhost:${port}`;
+    const id = await open(base, "none", { extra: `&frame=${encodeURIComponent(`${frame}/p?do=cam&auto`)}` });
+    expect(await waitBanner((t) => t !== null)).toBe(`site2.localhost:${port} veut utiliser votre caméra`);
+    await answer("Autoriser");
+    expect(await result(id)).toEqual({ ok: ["video"] });
+    expect(await saved()).toMatchObject({ [`${frame} media-camera`]: "autoriser" });
+    expect(await saved()).not.toHaveProperty(`${base} media-camera`);
+  });
+
+  it("le partage d'écran : le bandeau à chaque fois", { timeout: 60_000 }, async () => {
+    const id = await open(await origin(), "screen", {});
+    for (let i = 0; i < 2; i++) {
+      await clickGo(id);
+      expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut partager votre écran$/);
+      await answer("Refuser");
+      await waitBanner((t) => t === null);
+      expect(await result(id)).toEqual({ err: "NotAllowedError" });
+      await reload(id);
+    }
+    expect(Object.keys(await saved()).filter((k) => /screen|partage/.test(k))).toEqual([]);
+  });
+
+  it("un lien vers une autre application : le bandeau avec le lien, à chaque fois", { timeout: 60_000 }, async () => {
+    const base = await origin();
+    const handler = await origin();
+    const handled = servers[servers.length - 1]!.handled;
+    // A web handler for webaios-test:, so Firefox knows an application for it (spike P5).
+    await chrome(
+      `const eps = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService);
+       const info = eps.getProtocolHandlerInfo("webaios-test");
+       const app = Cc["@mozilla.org/uriloader/web-handler-app;1"].createInstance(Ci.nsIWebHandlerApp);
+       app.name = "test"; app.uriTemplate = arguments[0] + "/handled?u=%s";
+       info.possibleApplicationHandlers.appendElement(app);
+       info.preferredApplicationHandler = app; info.preferredAction = Ci.nsIHandlerInfo.useHelperApp; info.alwaysAskBeforeHandling = false;
+       Cc["@mozilla.org/uriloader/handler-service;1"].getService(Ci.nsIHandlerService).store(info);`,
+      [handler],
+    );
+    const id = await open(base, "proto", {});
+    await clickGo(id);
+    expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut ouvrir un lien dans une autre application : webaios-test:hello$/);
+    await answer("Refuser");
+    await waitBanner((t) => t === null);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(handled).toEqual([]);
+    // Asked again, and this time allowed: the handler's page loads.
+    await clickGo(id);
+    await waitBanner((t) => t !== null);
+    await answer("Autoriser");
+    await waitFor(m, `return ${browser(id)}.currentURI.spec`, (u: string) => u.includes("/handled?u="));
+    expect(handled).toHaveLength(1);
+    expect(Object.keys(await saved()).filter((k) => /ouvrir|application/.test(k))).toEqual([]);
   });
 });
