@@ -51,11 +51,11 @@ export async function readWorkflow(dataDir: string, id: string): Promise<any> {
   return JSON.parse(await readFile(path.join(widgetDir(dataDir, id), "workflow.json"), "utf8"));
 }
 
-/** « Voir / modifier le workflow » from the widget's menu on the home page; waits for the canvas. */
+/** « Voir / modifier le workflow » from the widget's menu on the home page; waits for the builder (Electron's ouvrirConstructeur). */
 export async function openBuilder(m: Marionette, id: string): Promise<void> {
   await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);
   await click(m, '[role="menuitem"]', { text: "Voir / modifier le workflow" });
-  await waitUi(m, "return !!doc.querySelector('.svelte-flow')");
+  await waitUi(m, "return !!doc.querySelector('[data-testid=\"constructeur\"]')");
 }
 
 /** The ids of the canvas's visible nodes. */
