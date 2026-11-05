@@ -52,6 +52,9 @@ Pour ajouter un widget, crée son dossier (avec `exemple.json` et un affichage f
 ajoute-le à `disposition.json`. Pour le supprimer, retire-le des deux. Les données récoltées (`donnees.json`) et
 l'état (`etat.json`) sont gardés par le navigateur hors de ton espace : ne les écris jamais.
 
+**WebAiOs-Firefox** : n'écris jamais `accueil/disposition.json`. La page y place elle-même un widget nouveau (au
+premier emplacement libre) ; ce fichier est en version 3 et n'est écrit que par le navigateur.
+
 ### Workflows des widgets
 
 `accueil/widgets/<id>/workflow.json` (256 Ko au plus, 100 blocs et 400 liens au plus) décrit la

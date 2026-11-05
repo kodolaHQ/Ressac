@@ -28,6 +28,15 @@ test("une couleur non hexadécimale, un rayon de 25 ou une police inconnue : th�
   }
 });
 
+test("une clé inconnue : thème null et l'erreur", async () => {
+  const c = cheminsEspace(await dossierTemporaire());
+  await mkdir(c.accueil, { recursive: true });
+  await writeFile(join(c.accueil, "theme.json"), '{"version":1,"inconnu":1}');
+  const { theme, erreur } = await lireTheme(c);
+  expect(theme).toBeNull();
+  expect(erreur).toContain("theme.json invalide :");
+});
+
 test("un fichier illisible laisse le fichier intact", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });

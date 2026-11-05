@@ -40,6 +40,15 @@ describe("deplacerLibre", () => {
     expect(r.x).toBe(350);
     expect(r.y).toBe(20);
   });
+
+  it("un long glisser traverse un voisin jusqu'au bord droit, sans le déplacer", () => {
+    // Le pointeur va bien au-delà du voisin (500…700) : l'aperçu le survole et s'arrête au bord droit (1000 - 200).
+    const autre = place({ id: "b", x: 500 });
+    const r = deplacerLibre({ p: place(), x: 1200, y: 0, autres: [autre], largeurPx: 1000 });
+    expect(r.x).toBe(800);
+    expect(r.x + r.l).toBe(LARGEUR_LIBRE);
+    expect(autre).toEqual({ id: "b", x: 500, y: 0, l: 200, h: 180 });
+  });
 });
 
 describe("redimensionnerLibre", () => {
@@ -102,5 +111,11 @@ describe("guidesLibres", () => {
     const r = guidesLibres({ p: place({ x: 100 }), autres: [place({ id: "b", x: 700, y: 300 })], largeurPx: 1000 });
     expect(r.x).not.toContain(100);
     expect(r.x).not.toContain(700);
+  });
+
+  it("rend un guide pour un voisin hors grille, à un pas d'aimantation près", () => {
+    // Voisin à 333 ‰, aperçu aimanté à 335 ‰ : 2 px d'écart, sous le pas de 5 ‰ (5 px pour 1000 px).
+    const r = guidesLibres({ p: place({ x: 335 }), autres: [place({ id: "b", x: 333, y: 300 })], largeurPx: 1000 });
+    expect(r.x).toContain(335);
   });
 });

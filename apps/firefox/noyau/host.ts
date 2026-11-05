@@ -105,7 +105,12 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
       noyau = n;
       unsubscribe = n.politique.surChange(diffuserAcces);
       // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
-      arretAccueil = n.surveillerAccueil(() => rpc.notify("accueil.change"));
+      // Unguarded, a watch failure would reject `pret` and every host method with it.
+      try {
+        arretAccueil = n.surveillerAccueil(() => rpc.notify("accueil.change"));
+      } catch (e) {
+        console.error("[webaios] la surveillance de l'accueil n'a pas démarré :", e);
+      }
       diffuserAcces();
       return n;
     },

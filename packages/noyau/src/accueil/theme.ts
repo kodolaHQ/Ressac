@@ -18,7 +18,7 @@ export const ThemeAccueil = z.object({
   rayon: z.number().int().min(0).max(24).optional(),
   espace: z.number().int().min(0).max(24).optional(),
   police: z.enum(["system", "serif", "mono"]).optional(),
-});
+}).strict();
 export type ThemeAccueil = z.infer<typeof ThemeAccueil>;
 
 /** theme : null si absent. erreur : présent et invalide (le défaut s'applique, le fichier n'est jamais réécrit). */

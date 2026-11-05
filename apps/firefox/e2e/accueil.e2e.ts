@@ -279,15 +279,16 @@ describe("la page d'accueil", () => {
   it("glisser un widget ne déplace aucun autre", async () => {
     const avant = await lireDisposition(dataDir);
     const betaAvant = avant.find((p) => p.id === "beta")!;
-    // Loin vers la droite : le bord de bêta arrête alpha, qui ne le pousse pas.
+    // Loin vers la droite en passant par-dessus bêta : un glisser peut traverser un voisin, et alpha s'arrête au
+    // bord droit de l'accueil (750 = 1000 ‰ - 250 ‰), sans déplacer bêta.
     await glisser(m, '[data-testid="widget-alpha"] header', 1200, 0);
     const apres = await attendre(() => lireDisposition(dataDir), (ps) => ps.find((p) => p.id === "alpha")!.x > 0, "l'écriture du glisser");
     const alpha = apres.find((p) => p.id === "alpha")!;
     const beta = apres.find((p) => p.id === "beta")!;
     expect(alpha.x).toBeGreaterThan(0);
     expect(alpha.x + alpha.l).toBeLessThanOrEqual(1000);
-    // Il s'arrête au bord gauche de bêta (500) sans le déplacer.
-    expect(alpha.x).toBe(250);
+    // Alpha passe au-delà de bêta : il ne peut pas être lâché sur un autre widget, mais le glisser le survole.
+    expect(alpha.x).toBe(750);
     expect(beta).toEqual(betaAvant);
   });
 
@@ -339,6 +340,8 @@ describe("la page d'accueil", () => {
     await inUi(
       m,
       `const f = doc.querySelector('[data-testid="widget-lien"] iframe');
+       f.scrollIntoView({ block: "center" });
+       await new Promise((r) => requestAnimationFrame(r));
        const b = f.contentDocument.getElementById("go");
        const r = f.getBoundingClientRect(), q = b.getBoundingClientRect();
        const x = r.left + q.left + q.width / 2, y = r.top + q.top + q.height / 2;
@@ -406,7 +409,7 @@ describe("la page d'accueil", () => {
     );
     expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(false);
     await attendre(() => lireAccords(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
-    expect(existsSync(DONNEES(dataDir, "sans-accord"))).toBe(false);
+    await attendre(async () => existsSync(DONNEES(dataDir, "sans-accord")), (present) => !present, "le retrait des données du refus");
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "sans-accord"))).toMatchObject({ statut: "accord-requis" });
   });
 
@@ -423,7 +426,7 @@ describe("la page d'accueil", () => {
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "compte"))).toMatchObject({ statut: "accord-requis" });
     // La nouvelle demande propose de nouveau un profil.
     await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
-    const profils = await waitUi<[string, boolean][]>(m, `return [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')].map((r) => [r.value, r.checked]);`);
+    const profils = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
     expect(profils.map(([id]) => id)).toContain("defaut");
     await click(m, '[data-testid="carte-accord"] button', { text: "Annuler" });
   });

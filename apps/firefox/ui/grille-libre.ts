@@ -108,7 +108,8 @@ export function redimensionnerLibre(o: {
 
 /**
  * Les guides à dessiner pour l'aperçu `p`, en pixels : un trait par bord ou centre aligné avec un autre widget, ou avec
- * les marges ou le centre de l'accueil. Les alignements sont cherchés à 1 px près (l'aimantation laisse un écart).
+ * les marges ou le centre de l'accueil. Les alignements sont cherchés à un pas d'aimantation près : l'aperçu est
+ * aimanté, le voisin peut ne pas l'être.
  */
 export function guidesLibres(o: { p: PlacementLibre; autres: readonly PlacementLibre[]; largeurPx: number }): { x: number[]; y: number[] } {
   const { p, autres, largeurPx } = o;
@@ -116,10 +117,10 @@ export function guidesLibres(o: { p: PlacementLibre; autres: readonly PlacementL
   const autresX = autres.filter((a) => a.id !== p.id);
   const ciblesX = [0, largeurPx / 2, largeurPx, ...autresX.flatMap((a) => [px(a.x), px(a.x + a.l / 2), px(a.x + a.l)])];
   const ciblesY = autresX.flatMap((a) => [a.y, a.y + a.h / 2, a.y + a.h]);
-  const alignes = (valeurs: number[], cibles: number[]) =>
-    [...new Set(valeurs.filter((v) => cibles.some((c) => Math.abs(c - v) <= 1)).map((v) => Math.round(v * 100) / 100))];
+  const alignes = (valeurs: number[], cibles: number[], tolerance: number) =>
+    [...new Set(valeurs.filter((v) => cibles.some((c) => Math.abs(c - v) <= tolerance)).map((v) => Math.round(v * 100) / 100))];
   return {
-    x: alignes([px(p.x), px(p.x + p.l / 2), px(p.x + p.l)], ciblesX),
-    y: alignes([p.y, p.y + p.h / 2, p.y + p.h], ciblesY),
+    x: alignes([px(p.x), px(p.x + p.l / 2), px(p.x + p.l)], ciblesX, (PAS_X * largeurPx) / LARGEUR_LIBRE),
+    y: alignes([p.y, p.y + p.h / 2, p.y + p.h], ciblesY, PAS_Y),
   };
 }
