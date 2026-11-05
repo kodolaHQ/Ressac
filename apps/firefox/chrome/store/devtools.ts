@@ -22,6 +22,8 @@ const TRUNCATED = "… [tronqué]";
 const EXTENSION = "moz-extension://";
 export const TEXTE_DELAI = `Le code n'a pas répondu en ${EVAL_TIMEOUT_MS / 1000} s : son résultat sera ignoré.`;
 const TEXTE_SITE_CHANGE = "L'onglet a changé de site.";
+/** As Electron's lacher. */
+const TEXTE_DETACHE = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
 export interface DevTools {
   /** One owner per noyau start: creating one revokes the previous (its calls throw TEXTE_REVOQUE, its attachments drop). */
@@ -44,6 +46,8 @@ interface Session {
   origin: string | null;
   /** The next top-level target: each navigation brings one, and the previous is destroyed (note D1). */
   nextTarget: Promise<any>;
+  /** Rejects the pending `nextTarget` (the session is dropped). */
+  rejectNext(e: Error): void;
   dropped: boolean;
 }
 
@@ -114,6 +118,8 @@ function feedConsole(buffer: TamponOnglet, r: any, TYPES: any): void {
   }
   const e = r.pageError;
   if (!e || fromExtension(e.sourceName, e.stacktrace)) return;
+  // executer_js gives a rejection back with its stack (two-step evaluation): Firefox's « unhandled » report of it is not the page's.
+  if (e.isPromiseRejection && e.sourceName === "debugger eval code") return;
   const text = gripText(e.errorMessage).replace(/^uncaught exception: /, "");
   // A rejection's stack is not in `stacktrace` but in its exception (note D1).
   const stack = e.stacktrace?.length ? callFrames(e.stacktrace) : stackFrames(grip(e.exception)?.preview?.stack);
@@ -156,8 +162,10 @@ function abortError(signal: AbortSignal): unknown {
 }
 
 export function createDevTools(o: { store: Store; windows: WindowRegistry; isPrivate(tabId: string): boolean }): DevTools {
-  const entries = new Map<string, { browser: any; session: Promise<Session> }>();
+  const entries = new Map<string, { browser: any; origin: string | null; session: Promise<Session> }>();
   let current: string | null = null;
+  /** Bumped by owner() and release(): a call that was loading its tab meanwhile attaches nothing. */
+  let generation = 0;
 
   const drop = (id: string) => {
     const e = entries.get(id);
@@ -166,6 +174,8 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
     void e.session.then(
       (s) => {
         s.dropped = true;
+        s.nextTarget.catch(() => {});
+        s.rejectNext(new Error(TEXTE_DETACHE));
         s.buffer.vider();
         s.requests.clear();
         s.headers.clear();
@@ -187,13 +197,16 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
     const { CommandsFactory } = devtoolsRequire("devtools/shared/commands/commands-factory");
     const commands = await CommandsFactory.forTab(tab);
     let resolveNext: (t: any) => void = () => {};
+    let rejectNext: (e: Error) => void = () => {};
+    const next = () => new Promise<any>((ok, ko) => ((resolveNext = ok), (rejectNext = ko)));
     const s: Session = {
       commands,
       buffer: new TamponOnglet(),
       requests: new Map(),
       headers: new Map(),
       origin: origineDe(browser.currentURI.spec),
-      nextTarget: new Promise((r) => (resolveNext = r)),
+      nextTarget: next(),
+      rejectNext: (e) => rejectNext(e),
       dropped: false,
     };
     try {
@@ -204,7 +217,7 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
         onAvailable: ({ targetFront }: any) => {
           if (!targetFront.isTopLevel) return;
           const resolve = resolveNext;
-          s.nextTarget = new Promise((r) => (resolveNext = r));
+          s.nextTarget = next();
           resolve(targetFront);
         },
       });
@@ -253,19 +266,22 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
       }
     };
     check();
+    const gen = generation;
     const win = o.windows.get(o.store.state.onglets[id]!.fenetreId);
     if (!win) throw new OngletIntrouvable(id);
     const browser = await win.controller.ensure(id);
     check(); // closed or turned private while it loaded
+    if (gen !== generation) throw new Error(TEXTE_REVOQUE);
     let e = entries.get(id);
-    // Moved to another window: another browser.
-    if (e && e.browser !== browser) {
+    // Moved to another window (another browser), or on another site without its will-navigate heard (bfcache…).
+    if (e && (e.browser !== browser || origineDe(browser.currentURI.spec) !== e.origin)) {
       drop(id);
       e = undefined;
     }
     if (!e) {
-      const entry: { browser: any; session: Promise<Session> } = {
+      const entry: { browser: any; origin: string | null; session: Promise<Session> } = {
         browser,
+        origin: origineDe(browser.currentURI.spec),
         session: attach(win.window, browser, () => {
           if (entries.get(id) === entry) drop(id);
         }),
@@ -282,7 +298,13 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
   async function top(s: Session): Promise<any> {
     const t = s.commands.targetCommand.targetFront;
     if (t && !t.isDestroyed()) return t;
-    return Promise.race([s.nextTarget, sleep(NAVIGATION_TIMEOUT_MS).then(() => Promise.reject(new Error("La page ne répond pas.")))]);
+    if (s.dropped) throw new Error(TEXTE_DETACHE);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([s.nextTarget, new Promise((_, ko) => (timer = setTimeout(() => ko(new Error("La page ne répond pas.")), NAVIGATION_TIMEOUT_MS)))]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Evaluates in the page's main world, top frame; once again on a target destroyed by a navigation (the code did not run). */
@@ -401,12 +423,14 @@ export function createDevTools(o: { store: Store; windows: WindowRegistry; isPri
 
   return {
     owner() {
+      generation++;
       current = crypto.randomUUID();
       dropAll();
       return { token: current };
     },
     release(token) {
       if (token !== undefined && token !== current) return;
+      generation++;
       current = null;
       dropAll();
     },

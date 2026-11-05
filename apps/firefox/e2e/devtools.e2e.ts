@@ -11,6 +11,7 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
+import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { inUi, waitUi } from "./ui";
 
 // The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): Electron's outils-dev.spec.ts for console, network,
@@ -24,14 +25,17 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Démo</title><p>Démo<
 <script>
 function boum() { throw new Error("boum"); }
 function parler() { console.log("bonjour de la page"); console.warn("attention"); }
+document.addEventListener("declencher", () => { console.log("PAGE-LOG"); fetch("/data.json?depuis-page"); });
 const log = new URLSearchParams(location.search).get("log");
 if (log) { console.log("tag-" + log); fetch("/data.json?log=" + log); }
 console.log("page chargée");
 </script>`;
 
 /** The demo server, on a random port given to the noyau as its demo range (never the real 5300-5319 of a running WebAiOs). */
-async function startDemo(): Promise<{ port: number; url: string; close(): Promise<void> }> {
+async function startDemo(): Promise<{ port: number; url: string; hits: string[]; close(): Promise<void> }> {
+  const hits: string[] = [];
   const server: Server = createServer((req, res) => {
+    hits.push(req.url ?? "");
     const u = new URL(req.url ?? "/", "http://x");
     if (u.pathname === "/") return res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }).end(PAGE);
     if (u.pathname === "/data.json") return res.writeHead(200, { "Content-Type": "application/json", "Set-Cookie": "vu=1" }).end('{"ok":true}');
@@ -39,7 +43,7 @@ async function startDemo(): Promise<{ port: number; url: string; close(): Promis
   });
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   const port = (server.address() as AddressInfo).port;
-  return { port, url: `http://127.0.0.1:${port}`, close: () => new Promise((ok) => (server.close(() => ok()), server.closeAllConnections())) };
+  return { port, url: `http://127.0.0.1:${port}`, hits, close: () => new Promise((ok) => (server.close(() => ok()), server.closeAllConnections())) };
 }
 
 /** Each WebAiOs (Gecko) process's listening TCP sockets, Marionette's own port set apart (spike D8). */
@@ -76,6 +80,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await w?.close();
   await demo?.close();
+  await cleanupXpis();
 });
 
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(w.dataDir, name, args);
@@ -141,6 +146,10 @@ it("démo : executer_js attend une promesse ; une exception revient avec sa pile
     /^Exception : RangeError: rejet\n\s+at g/,
   );
   expect(await tool("executer_js", { id, code: "let = ;" })).toMatch(/^Exception : SyntaxError/);
+  // The rejection was given back: Firefox's own « unhandled » report of it is not the page's.
+  await tool("executer_js", { id, code: "console.log('fin'); 1" });
+  const text = await poll(() => tool("lire_console", { id }), (t) => t.includes("fin"));
+  expect(text).not.toContain("rejet");
 });
 
 it("démo : une promesse qui ne se résout jamais : executer_js répond sur son délai, l'appel suivant marche", async () => {
@@ -180,6 +189,47 @@ it("Cookie et Authorization montrés sur une démo", async () => {
   // The cookie jar also holds vu=1, set by an earlier response.
   expect(detail).toMatch(/\n  cookie: .*essai=1/i);
   expect(detail).toMatch(/set-cookie: vu=1/i);
+});
+
+it("lire_console et lire_reseau ne montrent rien d'une extension qui écrit dans la console et fait des requêtes depuis son script de contenu", async () => {
+  // Its content script, on the event the page also hears: a log, a fetch of the page's own origin with a header, a 404,
+  // a cross-origin fetch that CORS refuses, and an exception; then a mark on the page.
+  const script = `document.addEventListener("declencher", async () => {
+    console.log("BAVARD-EXT");
+    await fetch(location.origin + "/data.json?depuis-extension", { headers: { "X-Bavard": "1" } }).catch(() => {});
+    await fetch(location.origin + "/absent-depuis-extension").catch(() => {});
+    await fetch("http://localhost:${demo.port}/data.json?cors-depuis-extension", { headers: { "X-Bavard": "1" } }).catch(() => {});
+    document.documentElement.setAttribute("data-bavard-fini", "1");
+    throw new Error("BAVARD-EXCEPTION");
+  });`;
+  const addon = await installAddon(m, {
+    id: "bavard@webaios.test",
+    manifest: { manifest_version: 2, name: "Bavard", version: "1.0", browser_specific_settings: { gecko: { id: "bavard@webaios.test" } },
+      content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["cs.js"], run_at: "document_start" }] },
+    files: { "cs.js": script },
+  });
+  try {
+    const id = await openDemo("?bavarde");
+    await tool("executer_js", { id, code: "document.dispatchEvent(new CustomEvent('declencher')); 1" });
+    await poll(() => tool("lire_console", { id }), (t) => t.includes("PAGE-LOG"));
+    await poll(() => tool("lire_reseau", { id }), (t) => t.includes("depuis-page"));
+    await poll(() => tool("executer_js", { id, code: "document.documentElement.getAttribute('data-bavard-fini')" }), (t) => t === '"1"');
+    await sleep(500); // the last resources
+    const console_ = await tool("lire_console", { id });
+    const reseau = await tool("lire_reseau", { id });
+    expect(console_).not.toContain("BAVARD");
+    expect(reseau).not.toContain("depuis-extension");
+    for (const trace of ["absent-depuis-extension", "cors-depuis-extension", "CORS", "Cross-Origin"]) {
+      expect(console_).not.toContain(trace);
+      expect(reseau).not.toContain(trace);
+    }
+    expect(reseau).toContain("depuis-page");
+    // The extension's requests did happen: Firefox keeps them out of the tab's network resources.
+    expect(demo.hits).toContain("/data.json?depuis-extension");
+    expect(demo.hits).toContain("/absent-depuis-extension");
+  } finally {
+    await uninstallAddon(m, addon);
+  }
 });
 
 it("le même site dans un espace privé : rien de son onglet dans les tampons de l'onglet attaché", async () => {
