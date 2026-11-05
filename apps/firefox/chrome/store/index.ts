@@ -1,4 +1,4 @@
-import type { EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
+import type { Decision, EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
 import { profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
@@ -9,7 +9,8 @@ import type { OptionsLecturePage, PageLue } from "../shims/noyau";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
-import { containerFor, migrateContainers, removeContainer } from "./containers";
+import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
+import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 
@@ -33,6 +34,8 @@ export interface WebAiOsStore extends Store {
   readonly questions: Questions;
   /** The WebAiOs windows open: each full browser window claims a window of the state. */
   readonly windows: WindowRegistry;
+  /** What sites may do (notifications, position, camera, micro, MIDI, DRM, screen), asked once per profile and origin. */
+  readonly sitePermissions: SitePermissions;
   /** The agent's extensions as Firefox add-ons, installed and switched as the noyau host says. */
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
@@ -57,6 +60,41 @@ function extensionActorModule(): string {
   return "resource://webaios-test/extension-actor.sys.mjs";
 }
 
+/** Firefox's permission types behind each decision we mirror (what the page reads through Notification.permission, permissions.query, MIDI). */
+const FIREFOX_TYPES: Partial<Record<SitePermission, string[]>> = {
+  notifications: ["desktop-notification"],
+  geolocation: ["geo"],
+  "media-camera": ["camera"],
+  "media-micro": ["microphone"],
+  // The same question: asked once, answered for both.
+  midi: ["midi", "midi-sysex"],
+};
+const MIRRORED = new Set(Object.values(FIREFOX_TYPES).flat());
+
+const principalOf = (profile: IdProfil, origin: string, create: boolean) => {
+  const userContextId = create ? containerFor(profile) : existingContainer(profile);
+  return userContextId === null ? null : Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(origin), userContextId ? { userContextId } : {});
+};
+
+/** Mirrors the decisions into Firefox's permission manager: without it a page reads "default" after an allow (spike P6). */
+const firefoxPermissions = {
+  set(profile: IdProfil, origin: string, p: SitePermission, d: Decision) {
+    const principal = principalOf(profile, origin, true);
+    for (const type of FIREFOX_TYPES[p] ?? []) Services.perms.addFromPrincipal(principal, type, d === "autoriser" ? Services.perms.ALLOW_ACTION : Services.perms.DENY_ACTION, Services.perms.EXPIRE_NEVER);
+  },
+  /** (null, null): every origin of every container. (profile, null): a whole container. (profile, origin): one origin. */
+  remove(profile: IdProfil | null, origin: string | null) {
+    if (profile === null) return MIRRORED.forEach((type) => Services.perms.removeByType(type));
+    const id = existingContainer(profile);
+    if (id === null) return;
+    if (origin !== null) {
+      const principal = principalOf(profile, origin, false);
+      return MIRRORED.forEach((type) => Services.perms.removeFromPrincipal(principal, type));
+    }
+    for (const perm of Services.perms.all) if (MIRRORED.has(perm.type) && perm.principal.originAttributes.userContextId === id) Services.perms.removePermission(perm);
+  },
+};
+
 const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
@@ -64,9 +102,18 @@ async function start(): Promise<WebAiOsStore> {
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
+  // A decision is per login profile: without this, one container's permission holds in all of them (spike P6).
+  Services.prefs.getDefaultBranch("").setBoolPref("permissions.isolateBy.userContext", true);
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
+  const sitePermissions = createSitePermissions({
+    dataDir,
+    profiles: () => [...profilsEnUsage(store.state)],
+    // The banner arrives with the next task: until then every question is refused.
+    ask: async () => "refuser",
+    firefox: firefoxPermissions,
+  });
   const recorder = new EnregistreurSession(dataDir);
   const flush = () => recorder.vider();
   store.subscribe((state, previous) => {
@@ -74,6 +121,7 @@ async function start(): Promise<WebAiOsStore> {
     const used = profilsEnUsage(state);
     for (const id of profilsEnUsage(previous)) if (!used.has(id)) {
         try {
+          void sitePermissions.removeProfile(id);
           removeContainer(id);
         } catch (e) {
           console.error("[store] container removal failed:", e);
@@ -175,6 +223,7 @@ async function start(): Promise<WebAiOsStore> {
     questions,
     windows,
     agentExtensions,
+    sitePermissions,
     get access() {
       return access;
     },
