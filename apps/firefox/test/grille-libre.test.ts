@@ -23,20 +23,44 @@ describe("deplacerLibre", () => {
     expect(deplacerLibre({ p: place({ x: 700, y: 200 }), x: 450, y: 200, autres: [autre] }).x).toBe(600);
     expect(deplacerLibre({ p: place({ x: 400, y: 0 }), x: 400, y: 300, autres: [autre] }).y).toBe(20);
   });
+
+  it("ne téléporte pas l'aperçu sur un glisser diagonal : un seul axe se borne", () => {
+    // Le voisin est en bas à droite ; l'axe horizontal a bougé le plus : son bord gauche gagne, y reste où le pointeur
+    // l'a mis (pas de saut au coin (200, 20) du voisin).
+    const autre = place({ id: "b", x: 400, y: 200 });
+    const r = deplacerLibre({ p: place(), x: 350, y: 304, autres: [autre] });
+    expect(r.x).toBe(200);
+    expect(r.y).toBe(304);
+  });
 });
 
 describe("redimensionnerLibre", () => {
   it("borne la taille entre min et max", () => {
-    const grand = redimensionnerLibre({ p: place(), l: 900, h: 900, min: { l: 100, h: 90 }, max: { l: 500, h: 360 } });
+    const grand = redimensionnerLibre({ p: place(), l: 900, h: 900, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
     expect(grand).toMatchObject({ l: 500, h: 360 });
-    const petit = redimensionnerLibre({ p: place(), l: 1, h: 1, min: { l: 100, h: 90 }, max: { l: 500, h: 360 } });
+    const petit = redimensionnerLibre({ p: place(), l: 1, h: 1, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
     expect(petit).toMatchObject({ l: 100, h: 90 });
   });
 
   it("ne déborde pas à droite de l'accueil", () => {
-    const r = redimensionnerLibre({ p: place({ x: 900 }), l: 300, h: 180, min: { l: 50, h: 90 }, max: { l: 500, h: 360 } });
+    const r = redimensionnerLibre({ p: place({ x: 900 }), l: 300, h: 180, min: { l: 50, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
     expect(r.x + r.l).toBeLessThanOrEqual(LARGEUR_LIBRE);
     expect(r.l).toBe(100);
+  });
+
+  it("s'arrête au bord gauche d'un voisin, jamais de chevauchement", () => {
+    const autre = place({ id: "b", x: 500 });
+    const r = redimensionnerLibre({ p: place(), l: 900, h: 180, min: { l: 167, h: 90 }, max: { l: 900, h: 360 }, autres: [autre] });
+    expect(r.x + r.l).toBe(500);
+    expect(r.l).toBe(500);
+  });
+
+  it("recule au lieu de descendre sous le minimum près du bord droit", () => {
+    // Le minimum (200 ‰) ne tient pas après x = 950 : le widget glisse à gauche, sa largeur reste au minimum.
+    const r = redimensionnerLibre({ p: place({ x: 950 }), l: 200, h: 180, min: { l: 200, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
+    expect(r.x).toBe(800);
+    expect(r.l).toBe(200);
+    expect(r.x + r.l).toBe(LARGEUR_LIBRE);
   });
 });
 

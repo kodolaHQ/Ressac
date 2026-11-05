@@ -17,6 +17,8 @@
   // Remplacée d'un bloc à chaque lecture : pas de proxy profond (les données partent telles quelles vers les cadres).
   let widgets = $state.raw<WidgetAffiche[]>([]);
   let theme = $state.raw<ThemeAccueil | null>(null);
+  /** La première lecture est passée : l'écran vide ne clignote pas avant elle. */
+  let charge = $state(false);
   // Lectures qui se croisent (rafale de changements) : seule la dernière compte.
   let derniere = 0;
   function charger() {
@@ -26,6 +28,7 @@
         if (n !== derniere) return;
         widgets = lus;
         theme = lu;
+        charge = true;
         verifierAttentes();
       },
       () => {},
@@ -122,7 +125,7 @@
     const autres = g.depart.filter((q) => q.id !== g.id);
     const p = g.mode === "deplacer"
       ? deplacerLibre({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, autres })
-      : redimensionnerLibre({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.tailles.min, max: g.tailles.max });
+      : redimensionnerLibre({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.tailles.min, max: g.tailles.max, autres });
     apercu = g.depart.map((q) => (q.id === g.id ? p : q));
     guides = guidesLibres({ p, autres, largeurPx });
   }
@@ -186,7 +189,7 @@
         <div class="guide guide-y" data-testid="guide-y" style:top="{y}px"></div>
       {/each}
     </div>
-  {:else}
+  {:else if charge}
     <p class="vide" data-testid="accueil-vide">Aucun widget pour l'instant. Demande à l'agent de créer le premier.</p>
   {/if}
 </section>

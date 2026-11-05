@@ -21,4 +21,8 @@ describe("variablesTheme", () => {
     expect(variablesTheme({ version: 1, fond: "red", carte: "#12345" } as ThemeAccueil)).toEqual({});
     expect(variablesTheme(null)).toEqual({});
   });
+
+  it("n'accepte pas une clé de prototype comme police", () => {
+    expect(variablesTheme({ version: 1, police: "toString" } as unknown as ThemeAccueil)).toEqual({});
+  });
 });

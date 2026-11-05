@@ -40,30 +40,59 @@ export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autr
   for (let tour = 0; tour < 8; tour++) {
     const gene = autres.find((a) => a.id !== p.id && chevauchent({ ...p, x, y }, a));
     if (!gene) break;
-    if (x > p.x) x = Math.min(x, Math.max(p.x, gene.x - p.l));
-    else if (x < p.x) x = Math.min(p.x, Math.max(x, gene.x + gene.l));
-    if (y > p.y) y = Math.min(y, Math.max(p.y, gene.y - p.h));
-    else if (y < p.y) y = Math.min(p.y, Math.max(y, gene.y + gene.h));
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const bornerX = () => {
+      if (dx > 0) x = Math.min(x, Math.max(p.x, gene.x - p.l));
+      else if (dx < 0) x = Math.min(p.x, Math.max(x, gene.x + gene.l));
+    };
+    const bornerY = () => {
+      if (dy > 0) y = Math.min(y, Math.max(p.y, gene.y - p.h));
+      else if (dy < 0) y = Math.min(p.y, Math.max(y, gene.y + gene.h));
+    };
+    // Le dernier bord touché gagne : l'axe qui a bougé le plus se borne d'abord, l'autre seulement si le chevauchement
+    // reste (un glisser diagonal ne saute pas au coin du voisin).
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      bornerX();
+      if (chevauchent({ ...p, x, y }, gene)) bornerY();
+    } else {
+      bornerY();
+      if (chevauchent({ ...p, x, y }, gene)) bornerX();
+    }
   }
   // Un arrêt sur un bord gauche venu de la droite peut viser le bord droit de l'accueil : on y reste.
   x = borner(x, 0, LARGEUR_LIBRE - p.l);
   return { ...p, x, y };
 }
 
-/** La taille du widget `p` après un geste : bornée entre min et max, et jamais au-delà du bord droit de l'accueil. */
+/**
+ * La taille du widget `p` après un geste : bornée entre min et max, jamais au-delà du bord droit de l'accueil, et
+ * arrêtée au bord gauche d'un voisin dont la hauteur croise la sienne (jamais de chevauchement écrit).
+ */
 export function redimensionnerLibre(o: {
   p: PlacementLibre;
   l: number;
   h: number;
   min: { l: number; h: number };
   max: { l: number; h: number };
+  autres: readonly PlacementLibre[];
 }): PlacementLibre {
-  const { p, min, max } = o;
-  const maxL = Math.max(1, Math.min(max.l, LARGEUR_LIBRE - p.x));
+  const { p, min, max, autres } = o;
+  const hL = borner(aimantY(o.h), Math.max(1, min.h), max.h);
+  const minL = Math.max(1, Math.min(min.l, LARGEUR_LIBRE));
+  const vertical = (a: PlacementLibre) => a.id !== p.id && a.y < p.y + hL && p.y < a.y + a.h;
+  const bord = (depuis: number) => Math.min(LARGEUR_LIBRE, ...autres.filter((a) => vertical(a) && a.x >= depuis).map((a) => a.x));
+  // Le minimum ne tient pas avant le voisin (ou le bord droit) : le widget recule au lieu de descendre sous son
+  // minimum, comme la grille d'Electron.
+  const x = Math.max(0, Math.min(p.x, bord(p.x) - minL));
+  const droite = bord(x);
+  const xFinal = Math.max(0, Math.min(x, droite - minL));
+  const maxL = Math.max(1, Math.min(max.l, droite - xFinal));
   return {
     ...p,
-    l: borner(aimantX(o.l), Math.max(1, Math.min(min.l, maxL)), maxL),
-    h: borner(aimantY(o.h), Math.max(1, min.h), max.h),
+    x: xFinal,
+    l: borner(aimantX(o.l), Math.max(1, Math.min(minL, maxL)), maxL),
+    h: hL,
   };
 }
 

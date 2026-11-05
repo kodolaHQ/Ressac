@@ -23,6 +23,7 @@ export function variablesTheme(t: ThemeAccueil | null): Record<string, string> {
   }
   if (Number.isInteger(t.rayon) && t.rayon! >= 0 && t.rayon! <= 24) variables["--accueil-rayon"] = `${t.rayon}px`;
   if (Number.isInteger(t.espace) && t.espace! >= 0 && t.espace! <= 24) variables["--accueil-espace"] = `${t.espace}px`;
-  if (t.police && t.police in POLICES) variables["--accueil-police"] = POLICES[t.police];
+  // hasOwn : « toString » ou « constructor » ne doivent pas passer pour une police.
+  if (t.police && Object.hasOwn(POLICES, t.police)) variables["--accueil-police"] = POLICES[t.police];
   return variables;
 }

@@ -80,6 +80,7 @@
 
 <style>
   .contenu { flex: 1; min-height: 0; display: flex; }
-  iframe { flex: 1; width: 100%; height: 100%; border: none; background: white; }
+  /* Le fond de la carte pendant le chargement : plus de flash blanc en mode sombre. */
+  iframe { flex: 1; width: 100%; height: 100%; border: none; background: var(--accueil-carte); }
   .vide { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--accueil-texte-doux); }
 </style>

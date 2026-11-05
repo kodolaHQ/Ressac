@@ -107,6 +107,12 @@ describe("validerPlacements", () => {
     expect(() => validerPlacements([p(), p({ x: 500 })], ids)).toThrow(/deux fois/);
   });
 
+  it("refuse des widgets qui se chevauchent (une liste chevauchante effacerait la disposition au prochain lecture)", () => {
+    expect(() => validerPlacements([p(), p({ id: "meteo", x: 100 })], ids)).toThrow(/chevauchent/);
+    // Des bords qui se touchent ne se chevauchent pas.
+    expect(validerPlacements([p(), p({ id: "meteo", x: 500 })], ids)).toHaveLength(2);
+  });
+
   it("refuse autre chose qu'une liste", () => {
     expect(() => validerPlacements("nope", ids)).toThrow();
   });

@@ -68,8 +68,9 @@ export function versWidgetsAffiches(o: {
 }
 
 /**
- * Une disposition envoyée par l'interface : entiers, dans l'accueil, un widget connu et une seule fois. Refusée en bloc
- * sinon (l'interface relit alors l'ancienne disposition).
+ * Une disposition envoyée par l'interface : entiers, dans l'accueil, un widget connu, une seule fois, sans
+ * chevauchement. Refusée en bloc sinon (l'interface relit alors l'ancienne disposition) : `lireDispositionLibre`
+ * renvoie [] pour une disposition chevauchante, et l'écrire effacerait tout le placement au prochain lecture.
  */
 export function validerPlacements(brut: unknown, ids: readonly string[]): PlacementLibre[] {
   if (!Array.isArray(brut)) throw new Error("placements invalides : liste attendue");
@@ -84,6 +85,14 @@ export function validerPlacements(brut: unknown, ids: readonly string[]): Placem
   for (const p of placements) {
     if (vus.has(p.id)) throw new Error(`widget placé deux fois : ${p.id}`);
     vus.add(p.id);
+  }
+  for (let i = 0; i < placements.length; i++) {
+    const a = placements[i]!;
+    for (let j = i + 1; j < placements.length; j++) {
+      const b = placements[j]!;
+      if (a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h)
+        throw new Error(`widgets qui se chevauchent : ${a.id} et ${b.id}`);
+    }
   }
   return placements;
 }

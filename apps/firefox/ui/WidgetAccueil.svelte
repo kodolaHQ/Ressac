@@ -143,6 +143,10 @@
     overflow: hidden;
     color: var(--accueil-texte);
   }
+  /* Ombre plus discrète sur fond clair. */
+  @media (prefers-color-scheme: light) {
+    .widget { box-shadow: 0 1px 6px rgb(0 0 0 / 0.08); }
+  }
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: grab; user-select: none; min-height: 20px; }
   h2 { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .badge { font-size: 11px; color: var(--accueil-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
