@@ -123,8 +123,15 @@ export function registerPermissionHooks(o: {
       });
   };
 
+  // Reading the clipboard: refused without a question, never Firefox's « Coller » menu (spike P8, Electron refuses it).
+  const { ClipboardContextMenu } = ChromeUtils.importESModule("resource://gre/modules/ClipboardContextMenu.sys.mjs");
+  const { PromptUtils } = ChromeUtils.importESModule("resource://gre/modules/PromptUtils.sys.mjs");
+  const confirmUserPaste = ClipboardContextMenu.confirmUserPaste;
+  ClipboardContextMenu.confirmUserPaste = () => Promise.resolve(PromptUtils.objectToPropBag({ ok: false }));
+
   return () => {
     Integration.contentPermission.unregister(factory);
+    ClipboardContextMenu.confirmUserPaste = confirmUserPaste;
     WebRTCParent.prototype.receiveMessage = receive;
     nsContentDispatchChooser.prototype.handleURI = handleURI;
   };

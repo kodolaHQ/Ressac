@@ -39,6 +39,8 @@ const ACTIONS = {
     // A refused play() rejects (NotAllowedError); in a background tab an allowed one may stay pending, so only the policy and the absence of a rejection count.
     await Promise.race([a.play(), new Promise((ok) => setTimeout(ok, 1500))]); a.pause(); return navigator.getAutoplayPolicy("mediaelement"); },
   blocked: async () => window.open("/p?do=none", "_blank") === null,
+  fs: async () => (await document.documentElement.requestFullscreen(), "full"),
+  clipr: () => navigator.clipboard.readText(),
   proto: async () => { location.href = "webaios-test:hello"; return "navigated"; },
   popup: async () => !!window.open("/p?do=notif&auto&popup", "notif", "width=500,height=600"),
 };
@@ -512,6 +514,29 @@ describe("site permissions", () => {
     expect(await saved()).toMatchObject({ [`${base} notifications`]: "autoriser" });
     // Firefox answers before any question: the page reads it without asking.
     expect(await result(await open(base, "perm"))).toEqual({ ok: "granted" });
+    expect(await banner()).toBeNull();
+  });
+
+  it("le plein écran : accordé sans question, sans avertissement de Firefox sur la page", { timeout: 60_000 }, async () => {
+    const id = await open(await origin(), "fs", {});
+    await clickGo(id);
+    try {
+      expect(await result(id)).toEqual({ ok: "full" });
+      await new Promise((r) => setTimeout(r, 500));
+      expect(await m.execute(`const w = document.getElementById("fullscreen-warning"); return !w || w.hidden || !w.hasAttribute("onscreen");`)).toBe(true);
+      expect(await banner()).toBeNull();
+    } finally {
+      await chrome(`if (document.fullscreenElement) await document.exitFullscreen(); window.fullScreen = false;`);
+    }
+  });
+
+  it("lire le presse-papiers : refusé sans question, sans le menu « Coller » de Firefox", { timeout: 60_000 }, async () => {
+    // Headless Firefox keeps its own in-memory clipboard: the machine's is not touched.
+    await m.execute(`Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString("from-elsewhere");`);
+    const id = await open(await origin(), "clipr", {});
+    await clickGo(id);
+    expect(await result(id)).toEqual({ err: "NotAllowedError" });
+    expect(await m.execute(`return document.getElementById("clipboardReadPasteMenuPopup")?.state ?? "closed";`)).toBe("closed");
     expect(await banner()).toBeNull();
   });
 
