@@ -52,21 +52,22 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     etat = appliquer(etat, a, genId);
   };
   const fake = fakeHost(answers);
-  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: async () => null, release: async () => {} };
+  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (nom: string): Promise<string | null> => `resource://webaios-composant-${nom}/composant-1.html`), release: vi.fn(async (_nom: string) => {}) };
+  const unloads: (() => void)[] = [];
   const api = (fenetre: string) =>
     createActionsApi({
       state: () => etat,
       dispatch,
       host: fake.host,
       fenetre,
-      untilUnload: (f) => f,
+      untilUnload: (f) => (unloads.push(f), f),
       media,
     });
   const turnPrivate = (f = F) => {
     const e = etat.espaces.find((x) => x.id === etat.fenetres.find((w) => w.id === f)!.espaceActif)!;
     etat = appliquer(etat, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil }, genId);
   };
-  return { F, api, dispatched, turnPrivate, media, ...fake, etat: () => etat, set: (s: EtatNavigateur) => (etat = s), genId };
+  return { F, api, dispatched, turnPrivate, media, unload: () => unloads.forEach((f) => f()), ...fake, etat: () => etat, set: (s: EtatNavigateur) => (etat = s), genId };
 }
 
 type Api = ReturnType<typeof createActionsApi>;
@@ -478,5 +479,33 @@ describe("createActionsApi", () => {
     expect(await a.supprimer("gitlab")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
     expect(await a.ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
     expect(calls).toEqual([]);
+  });
+
+  it("components: each serve is paired with one store release; a private space serves none; unload releases what is left", async () => {
+    const s = setup();
+    const a = s.api(s.F);
+    expect(await a.serveComponent("barres")).toBe("resource://webaios-composant-barres/composant-1.html");
+    await a.serveComponent("barres");
+    await a.serveComponent("ecrit");
+    a.releaseComponent("barres");
+    // A release this document does not hold reaches nothing (another window's reference stays).
+    a.releaseComponent("autre");
+    expect(s.media.release.mock.calls).toEqual([["barres"]]);
+    s.unload();
+    expect(s.media.release.mock.calls.map((c) => c[0]).sort()).toEqual(["barres", "barres", "ecrit"]);
+    const p = setup();
+    const b = p.api(p.F);
+    p.turnPrivate();
+    expect(await b.serveComponent("barres")).toBeNull();
+    b.releaseComponent("barres");
+    expect(p.media.serve).not.toHaveBeenCalled();
+    expect(p.media.release).not.toHaveBeenCalled();
+    // Turned private while the store serves: null, and the reference taken is still released.
+    const t = setup();
+    const c = t.api(t.F);
+    t.media.serve.mockImplementationOnce(async () => (t.turnPrivate(), "resource://webaios-composant-x/composant-1.html"));
+    expect(await c.serveComponent("x")).toBeNull();
+    c.releaseComponent("x");
+    expect(t.media.release).toHaveBeenCalledWith("x");
   });
 });

@@ -1,6 +1,12 @@
+import { existsSync, readdirSync } from "node:fs";
+import { utimes } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import path from "node:path";
+import type { Action } from "../../navigateur/src/commun/api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { EXECUTION, openActionPage, startActionServers, tid, uiQueries, writeActionWithResult, type Block } from "./actions";
-import { state, waitReady } from "./firefox";
+import { BARRES, EXECUTION, openActionPage, probe, startActionServers, tid, uiQueries, writeActionWithResult, writeComponent, type Block } from "./actions";
+import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
@@ -45,6 +51,22 @@ let servers: Awaited<ReturnType<typeof startActionServers>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
+/** What reached the probe component's server: requests and TCP connections. */
+const reached = { requests: [] as string[], connections: 0 };
+let probeServer: Server;
+
+/** A component that sends height `px` on each message, and tries a link (components open none). */
+const sized = (px: number) => `<!doctype html><meta charset="utf-8"><script>
+  addEventListener("message", (e) => {
+    if (e.data?.type !== "composant") return;
+    try { webaiosOuvrir("https://exemple.invalide/from-component"); } catch {}
+    parent.postMessage({ type: "hauteur", px: ${px} }, "*");
+  });
+</script>`;
+const FRAME = tid("cadre-composant");
+const closeTabs = async () => {
+  for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+};
 
 beforeAll(async () => {
   // A permitted link opens a tab: exemple.invalide resolves to the machine, so no lookup leaves it.
@@ -65,6 +87,28 @@ beforeAll(async () => {
   });
   const many = Array.from({ length: 40 }, (_, i) => ({ titre: `n${i}`, photo: `https://img.exemple/n${i}.png` }));
   await writeActionWithResult(w.dataDir, "lazy", { nom: "Lazy", resultats: { photos: many }, blocs: cards });
+  probeServer = createServer((req, res) => (reached.requests.push(req.url ?? "/"), res.writeHead(200).end("x")));
+  probeServer.on("connection", () => reached.connections++);
+  await new Promise<void>((ok) => probeServer.listen(0, "127.0.0.1", ok));
+  const probeBase = `http://127.0.0.1:${(probeServer.address() as AddressInfo).port}`;
+  const proprietes = { valeurs: { genre: "reference", description: "Liste de { libelle, valeur }", requis: true }, titre: { genre: "texte", description: "Titre du graphique" } };
+  await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", proprietes, html: BARRES });
+  await writeComponent(w.dataDir, "ecrit", { description: "Hauteur fixe", proprietes: {}, html: sized(300) });
+  await writeComponent(w.dataDir, "sonde", { description: "Sonde", proprietes: {}, html: probe(probeBase) });
+  // Eight bars: taller than the 150 px the frame starts with, so the height it asks for shows.
+  const ventes = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche", "Total"].map((libelle, i) => ({ libelle, valeur: i + 1 }));
+  await writeActionWithResult(w.dataDir, "graphe", {
+    nom: "Graphe",
+    resultats: { ventes },
+    blocs: [
+      { composant: "titre", props: { texte: "Priorités" } },
+      { composant: "barres", props: { valeurs: "ventes", titre: "Ventes" } },
+      { composant: "absent", props: {} },
+      { composant: "paragraphe", props: { texte: "Après le composant." } },
+    ],
+  });
+  await writeActionWithResult(w.dataDir, "ecrit", { nom: "Ecrit", resultats: { n: 1 }, blocs: [{ composant: "titre", props: { texte: "Ecrit" } }, { composant: "ecrit", props: {} }] });
+  await writeActionWithResult(w.dataDir, "sonde", { nom: "Sonde", resultats: { n: 1 }, blocs: [{ composant: "titre", props: { texte: "Sonde" } }, { composant: "sonde", props: {} }] });
   await writeActionWithResult(w.dataDir, "images", { nom: "Images", resultats: { photos: Object.entries(PHOTOS).map(([titre, photo]) => ({ titre, photo })) }, blocs: cards });
 }, 60_000);
 
@@ -72,6 +116,7 @@ afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
   await w?.close();
   await servers?.close();
+  await new Promise((ok) => (probeServer?.closeAllConnections(), probeServer?.close(ok)));
 });
 
 describe("action page rendering", () => {
@@ -198,4 +243,94 @@ describe("action page rendering", () => {
     const paths = servers.images.seen.map((s) => s.path);
     expect(new Set(paths).size).toBe(paths.length);
   });
+
+  // actions.spec.ts:232, with AGENTS.md:660's « barres » example as the component
+  it("agent component: its height follows its message; a missing component shows « Composant indisponible : … » and the rest of the page shows", async () => {
+    await m.execute("Services.prefs.setIntPref('ui.systemUsesDarkTheme', 1);");
+    try {
+      await openActionPage(m, "graphe", "Graphe");
+      expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('sandbox');", [FRAME])).toBe("allow-scripts");
+      await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.querySelectorAll('rect').length === 8;", [FRAME], 15_000);
+      const frame = await inUi<{ src: string; uri: string; titre: string; body: string; texts: string[] }>(
+        m,
+        "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, titre: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
+        [FRAME],
+      );
+      expect(frame.src).toMatch(/^resource:\/\/webaios-composant-barres\/composant-\d+\.html$/);
+      expect(frame.uri).toBe(frame.src);
+      expect(frame).toMatchObject({ titre: "Ventes", body: "sombre" });
+      expect(frame.texts.slice(0, 4)).toEqual(["Lundi", "1", "Mardi", "2"]);
+      // The height the component asked for: its document's own height, not the 150 it started with.
+      await waitUi(m, "const f = doc.querySelector(arguments[0]); const h = f.contentDocument.documentElement.scrollHeight; return h !== 150 && Math.round(f.getBoundingClientRect().height) === h;", [FRAME]);
+      expect(await q.text(tid("bloc-erreur"))).toBe("Composant indisponible : absent");
+      expect(await q.text(tid("rendu-page"))).toContain("Après le composant.");
+      expect(await q.text(tid("bloc-titre"))).toBe("Priorités");
+    } finally {
+      await m.execute("Services.prefs.clearUserPref('ui.systemUsesDarkTheme');");
+    }
+  });
+
+  // Review Focus 4
+  it("a component rewritten while shown reloads; closing its last page removes its substitution", async () => {
+    await closeTabs();
+    await openActionPage(m, "ecrit", "Ecrit");
+    const height = () => inUi<number>(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height);", [FRAME]);
+    await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 300;", [FRAME], 15_000);
+    const first = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
+    // The agent rewrites it: a new mtime, a new copy.
+    const html = path.join(w.dataDir, "espace", "composants", "ecrit", "composant.html");
+    await writeComponent(w.dataDir, "ecrit", { description: "Hauteur fixe", proprietes: {}, html: sized(400) });
+    const later = new Date(Date.now() + 5000);
+    await utimes(html, later, later);
+    await waitUi(m, "const f = doc.querySelector(arguments[0]); return f.contentDocument?.documentURI !== arguments[1] && Math.round(f.getBoundingClientRect().height) === 400;", [FRAME, first], 15_000);
+    const second = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
+    expect(second).toMatch(/^resource:\/\/webaios-composant-ecrit\/composant-\d+\.html$/);
+    const copies = path.join(w.dataDir, "webaios-composants", "ecrit");
+    expect(readdirSync(copies)).toEqual([path.basename(second)]);
+    // Its link was not opened: components open none.
+    expect(Object.values((await state(m)).onglets).some((o) => o.url.includes("from-component"))).toBe(false);
+    /** Dispatches a bridge event on the frame's window, as a component's own code could, with any detail. */
+    const send = (detail: unknown) =>
+      inUi(m, "const w = doc.querySelector(arguments[0]).contentDocument.defaultView; w.dispatchEvent(new w.CustomEvent('webaios-composant', { detail: arguments[1] }));", [FRAME, detail]);
+    await send(JSON.stringify({ type: "autre", px: 900 }));
+    await send({ type: "hauteur", px: 700 });
+    await send(JSON.stringify({ type: "hauteur", px: "800" }));
+    await send("{not json");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await height()).toBe(400);
+    // The bridge's own path, clamped.
+    await send(JSON.stringify({ type: "hauteur", px: 5000 }));
+    await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 2000;", [FRAME]);
+    await send(JSON.stringify({ type: "hauteur", px: 1 }));
+    await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 20;", [FRAME]);
+    // A document that is not the current copy (as the old one) does not count.
+    await inUi(m, "doc.querySelector(arguments[0]).setAttribute('src', 'about:blank');", [FRAME]);
+    await waitUi(m, "return doc.querySelector(arguments[0]).contentDocument?.documentURI === 'about:blank';", [FRAME]);
+    await send(JSON.stringify({ type: "hauteur", px: 600 }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await height()).toBe(20);
+    await closeTabs();
+    await waitUi(m, "return !doc.querySelector(arguments[0]);", [FRAME]);
+    for (const deadline = Date.now() + 10_000; existsSync(copies); await sleep(100)) if (Date.now() > deadline) throw new Error("copies left");
+    const after = await m.execute<{ substitution: boolean; load: string }>(
+      `return (async () => {
+        const h = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
+        const load = await fetch(arguments[0]).then((r) => "status " + r.status, (e) => e.name);
+        return { substitution: h.hasSubstitution("webaios-composant-ecrit"), load };
+      })();`,
+      [second],
+    );
+    expect(after).toEqual({ substitution: false, load: "TypeError" });
+  }, 60_000);
+
+  // Plan 33 spike S1, kept without WEBAIOS_SPIKE
+  it("a component's fetch, image and WebSocket to the test server never arrive", async () => {
+    reached.requests.length = 0;
+    reached.connections = 0;
+    await openActionPage(m, "sonde", "Sonde");
+    await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.documentURI?.startsWith('resource://webaios-composant-sonde/');", [FRAME], 15_000);
+    // The probe tries at once, then navigates itself to the server after 1.5 s.
+    await sleep(3000);
+    expect(reached).toEqual({ requests: [], connections: 0 });
+  }, 30_000);
 });

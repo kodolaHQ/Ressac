@@ -84,6 +84,14 @@ export function createActionsApi(o: {
       if (method === "actions.liste" || params?.id === id) lastRead.delete(key);
     }
   };
+  /** The store references this document holds on each component; the serves answered null in a private space. */
+  const served = new Map<string, number>();
+  const unserved = new Map<string, number>();
+  const bump = (m: Map<string, number>, nom: string, d: number) => {
+    const n = (m.get(nom) ?? 0) + d;
+    if (n > 0) m.set(nom, n);
+    else m.delete(nom);
+  };
   const afterRestart = (cb: () => void) => (restarted.add(cb), () => void restarted.delete(cb));
   /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
   let dernierLien = -Infinity;
@@ -179,9 +187,24 @@ export function createActionsApi(o: {
       const data = await o.media.image(url);
       return prive() ? null : data;
     },
-    // Task 6.
-    serveComponent: async () => null,
-    releaseComponent() {},
+    // Each serve is paired with a release (store refcount); a private space's serve takes no reference.
+    async serveComponent(nom) {
+      if (prive()) return bump(unserved, nom, 1), null;
+      bump(served, nom, 1);
+      const url = await o.media.serve(nom);
+      return prive() ? null : url;
+    },
+    releaseComponent(nom) {
+      if (unserved.has(nom)) return bump(unserved, nom, -1);
+      if (!served.has(nom)) return;
+      bump(served, nom, -1);
+      void o.media.release(nom);
+    },
   };
+  // A document that goes releases what it still shows.
+  o.untilUnload(() => {
+    for (const [nom, n] of served) for (let i = 0; i < n; i++) void o.media.release(nom);
+    served.clear();
+  });
   return api;
 }

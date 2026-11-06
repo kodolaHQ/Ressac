@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startActionServers, writeComponent } from "./actions";
+import { BARRES, probe, startActionServers, writeComponent } from "./actions";
 import { waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -15,67 +15,6 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 /** Runs `body` (an async function body) in the chrome context. */
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);
-
-/** AGENTS.md:660's « barres » example, unchanged. */
-const BARRES = `<!doctype html>
-<meta charset="utf-8">
-<style>
-  body { margin: 0; font: 13px system-ui, sans-serif; color: #222; background: transparent; }
-  body.sombre { color: #eee; }
-  h3 { margin: 0 0 6px; font-size: 14px; }
-</style>
-<h3 id="titre"></h3>
-<svg id="graphique" width="100%" role="img"></svg>
-<script>
-  const NS = "http://www.w3.org/2000/svg";
-  const el = (nom, attrs, texte) => {
-    const e = document.createElementNS(NS, nom);
-    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
-    if (texte !== undefined) e.textContent = texte;
-    return e;
-  };
-  addEventListener("message", (m) => {
-    if (m.data?.type !== "composant") return;
-    const { props, theme, largeur } = m.data;
-    document.body.className = theme === "sombre" ? "sombre" : "";
-    document.getElementById("titre").textContent = props.titre ?? "";
-    const valeurs = (Array.isArray(props.valeurs) ? props.valeurs : []).slice(0, 12)
-      .map((v) => ({ libelle: String(v?.libelle ?? ""), valeur: Number(v?.valeur) || 0 }));
-    const max = Math.max(1, ...valeurs.map((v) => v.valeur));
-    const w = Math.max(200, largeur || 400), h = 24, marge = 110;
-    const svg = document.getElementById("graphique");
-    svg.replaceChildren();
-    svg.setAttribute("viewBox", \`0 0 \${w} \${valeurs.length * h}\`);
-    svg.setAttribute("height", valeurs.length * h);
-    valeurs.forEach((v, i) => {
-      const long = ((w - marge - 40) * v.valeur) / max;
-      svg.append(
-        el("text", { x: 0, y: i * h + 15, fill: "currentColor" }, v.libelle.slice(0, 16)),
-        el("rect", { x: marge, y: i * h + 3, width: long, height: h - 8, rx: 3, fill: "#3b82f6" }),
-        el("text", { x: marge + long + 6, y: i * h + 15, fill: "currentColor" }, String(v.valeur)),
-      );
-    });
-    parent.postMessage({ type: "hauteur", px: document.documentElement.scrollHeight }, "*");
-  });
-</script>
-`;
-
-/** A component that tries the network three ways and the chrome, reports through parent.postMessage, then navigates itself. */
-const probe = (base: string) => `<!doctype html><meta charset="utf-8">
-<img id="i" src="${base}/img">
-<script>
-  const out = { Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services, origin: location.origin };
-  try { out.top = String(top.document.title); } catch (e) { out.top = e.name; }
-  try { out.frameElement = String(frameElement); } catch (e) { out.frameElement = e.name; }
-  // Firefox's legacy content Components (plan 31 spike): what it holds, if anything.
-  if (typeof Components !== "undefined") out.components = { keys: Object.keys(Components), interfaces: Object.keys(Components.interfaces ?? {}), classes: typeof Components.classes, utils: typeof Components.utils };
-  try { fetch("${base}/fetch").then(() => (out.fetch = "loaded"), (e) => (out.fetch = e.name)); } catch (e) { out.fetch = "threw " + e.name; }
-  try { const ws = new WebSocket("${base.replace("http", "ws")}/ws"); ws.onerror = () => (out.ws = "error"); ws.onopen = () => (out.ws = "open"); } catch (e) { out.ws = "threw " + e.name; }
-  document.getElementById("i").onload = () => (out.img = "loaded");
-  document.getElementById("i").onerror = () => (out.img = "error");
-  // Then a self-navigation, which would carry data in its URL (Electron blocks it with will-frame-navigate).
-  setTimeout(() => { parent.postMessage({ type: "sonde", out }, "*"); location.href = "${base}/nav?x=1"; }, 1500);
-</script>`;
 
 describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
   let servers: Awaited<ReturnType<typeof startActionServers>>;
