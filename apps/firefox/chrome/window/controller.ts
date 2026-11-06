@@ -40,9 +40,11 @@ export interface WindowController {
    * the window left of the agent panel (true: empty and internal pages) or only its 240 px column (false).
    */
   setFullWindow(full: boolean | "window"): void;
-  /** Compact mode: the sidebar's column, with the iframe and the page following it. */
+  /** Compact mode: the page takes the sidebar's column, and the sidebar floats over it. */
+  setSidebarColumn(shown: boolean): void;
+  /** Whether the sidebar shows; hidden, the iframe folds once the sidebar has slid out. */
   setSidebarVisible(visible: boolean): void;
-  /** Width of the sidebar's column: 0 while compact mode hides it. */
+  /** Width of the sidebar's column: 0 in compact mode. */
   sidebarWidth(): number;
   /** Electron's surZoneGauche: where the mouse is against the left edge, sent when that changes. */
   onLeftZone(cb: (z: ZoneGauche) => void): () => void;
@@ -374,9 +376,12 @@ export function createController(
       frame.toggleAttribute("full", !!full);
       frame.toggleAttribute("over", full === "window");
     },
-    setSidebarVisible(visible) {
-      sidebarWidth = visible ? LARGEUR_BARRE : 0;
+    setSidebarColumn(shown) {
+      sidebarWidth = shown ? LARGEUR_BARRE : 0;
       document.documentElement.style.setProperty("--webaios-sidebar", `${sidebarWidth}px`);
+    },
+    setSidebarVisible(visible) {
+      frame.toggleAttribute("folded", !visible);
       // They sit in the sidebar's first row: nothing else is under them.
       document.getElementById("webaios-window-buttons")!.toggleAttribute("hidden", !visible);
     },

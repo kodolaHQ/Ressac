@@ -107,7 +107,8 @@
   const overlay = $derived(!!demandeAgent || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panneau));
 
-  // Compact mode, as Electron's App: touching the left edge reveals the sidebar, which takes its column back while hovered.
+  // Compact mode, as Electron's App: touching the left edge reveals the sidebar. Unlike Electron it floats over the page, which
+  // keeps its size: resizing a page on every frame of the slide would not be smooth.
   // The controller reports the mouse everywhere in the window; the decision is in revelation.ts.
   const compact = $derived(fenetre?.compact ?? false);
   let revelee = $state(false);
@@ -141,6 +142,7 @@
     if (acces.bullesOuvertes === 0) untrack(() => zone === "loin" && planifierMasquage());
   });
   $effect(() => api.surZoneGauche(surZoneSouris));
+  $effect(() => win.setSidebarColumn(!compact));
   $effect(() => win.setSidebarVisible(barreVisible));
   $effect(() => {
     if (!compact) {
@@ -154,13 +156,15 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusPageVide.n++} />
 
-<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact={!barreVisible} class:couverte={overlay}>
-  {#if fenetre}
-    <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
-    <BarreLaterale {fenetre} cachee={!barreVisible} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
-  {:else}
-    <aside data-testid="barre-laterale"></aside>
-  {/if}
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact class:couverte={overlay}>
+  <div class="colonne" class:repliee={!barreVisible} inert={!barreVisible}>
+    {#if fenetre}
+      <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
+      <BarreLaterale {fenetre} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
+    {:else}
+      <aside data-testid="barre-laterale"></aside>
+    {/if}
+  </div>
   <main class="contenu" class:opaque={!pageWeb || !!panneau} data-testid="zone-contenu">
     {#if fenetre && panneau === "historique"}
       <Historique {fenetre} fermer={fermerPanneau} />
@@ -211,6 +215,19 @@
     height: 100%;
   }
   .fenetre.compact { grid-template-columns: 1fr; }
+  .colonne { display: grid; min-width: 0; min-height: 0; }
+  .compact .colonne {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 10;
+    width: 240px;
+    border-right: 1px solid var(--bord);
+    transition: transform 200ms ease;
+  }
+  .compact .repliee { transform: translateX(-100%); visibility: hidden; transition: transform 200ms ease, visibility 0s 200ms; }
+  @media (prefers-reduced-motion: reduce) {
+    .compact .colonne { transition: none; }
+  }
   .contenu { min-width: 0; min-height: 0; }
   .opaque { background: var(--fond); }
 </style>

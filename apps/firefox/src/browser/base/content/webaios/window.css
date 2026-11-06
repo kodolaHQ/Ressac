@@ -28,17 +28,26 @@
   --webaios-agent: 0px !important;
 }
 
-/* The UI column on the left, --webaios-sidebar wide (0 while compact mode hides it); `full` (overlays, empty page) covers
-   the whole window. */
+/* The UI column on the left; `full` (overlays, empty page) covers the whole window. In compact mode the sidebar floats
+   over the page: `folded` drops the iframe once it has slid out (App.svelte's 200 ms), so that the page gets the mouse. */
 :root[webaios-main] #webaios-sidebar {
   position: fixed;
   top: 0;
   left: 0;
   height: 100%;
-  width: var(--webaios-sidebar, 240px);
+  width: 240px;
   border: none;
   /* Above #tabbrowser-tabbox (z-index 2 in Firefox), for painting and for the mouse. */
   z-index: 3;
+}
+
+:root[webaios-main] #webaios-sidebar[folded]:not([full]) {
+  width: 0;
+  transition: width 0s 200ms;
+}
+
+:root[webaios-main][inDOMFullscreen] #webaios-sidebar:not([full]) {
+  width: 0;
 }
 
 :root[webaios-main] #webaios-sidebar[full] {

@@ -33,9 +33,15 @@ const layout = () =>
   inUi<{ page: number; pageWidth: number; window: number; frame: number; sidebar: boolean }>(
     m,
     `const page = gBrowser.selectedBrowser.getBoundingClientRect();
-     return { page: page.left, pageWidth: page.width, window: window.innerWidth, frame: frame.getBoundingClientRect().width, sidebar: !doc.querySelector('[data-testid="barre-laterale"]').hidden };`,
+     return { page: page.left, pageWidth: page.width, window: window.innerWidth, frame: frame.getBoundingClientRect().width, sidebar: !doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert };`,
   );
-const waitSidebar = (shown: boolean) => waitUi(m, `return doc.querySelector('[data-testid="barre-laterale"]').hidden === arguments[0];`, [!shown]);
+const waitSidebar = (shown: boolean) =>
+  waitUi(
+    m,
+    `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert === !arguments[0]
+       && (frame.hasAttribute("full") || frame.getBoundingClientRect().width === (arguments[0] ? 240 : 0));`,
+    [shown],
+  );
 
 /** A mouse move through the widget, as an OS one: over a web page the UI document does not see it. */
 const moveMouse = (x: number) =>
@@ -52,7 +58,7 @@ async function openPage(): Promise<void> {
 }
 
 describe("compact mode", () => {
-  it("the button hides the column and the page takes the full width; the edge reveals, leaving hides", async () => {
+  it("the button hides the column and the page takes the full width; the edge reveals it over the page, leaving hides", async () => {
     await openPage();
     expect(await layout()).toMatchObject({ page: 240, frame: 240, sidebar: true });
 
@@ -63,7 +69,7 @@ describe("compact mode", () => {
 
     await moveMouse(5);
     await waitSidebar(true);
-    expect(await layout()).toMatchObject({ page: 240, frame: 240 });
+    expect(await layout()).toMatchObject({ page: 0, frame: 240, pageWidth: hidden.window });
 
     // Over the sidebar, then over its margin on the page: it stays.
     await moveMouse(100);
