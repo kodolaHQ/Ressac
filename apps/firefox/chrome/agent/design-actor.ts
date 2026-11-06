@@ -53,7 +53,16 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       // Gecko also sends `click` to chrome listeners for the middle and right buttons (the page gets auxclick).
       if (sandbox && e.type === "click" && e.button === 0 && !picked && (e.target as Node | null)?.ownerDocument === doc && typeof sandbox.__viseurChoisir === "function") {
         picked = true;
-        sandbox.__viseurChoisir(e.target);
+        try {
+          sandbox.__viseurChoisir(e.target);
+        } catch {
+          // A failed pick ends the viewfinder (its query answers null) rather than leave the page swallowed.
+          try {
+            if (typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
+          } finally {
+            unguard();
+          }
+        }
       }
     };
     const key = (e: KeyboardEvent) => {
@@ -62,13 +71,21 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       e.stopImmediatePropagation();
       if (typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
     };
+    // A page kept in the bfcache is never destroyed (no didDestroy): leaving it ends the viewfinder and the guard.
+    const hide = (e: Event) => {
+      if (e.target !== doc) return;
+      if (sandbox && typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
+      unguard();
+    };
     for (const t of MOUSE) h.addEventListener(t, mouse, true);
     if (sandbox) h.addEventListener("keydown", key, true);
+    h.addEventListener("pagehide", hide, true);
     let timer: unknown;
     const unguard = () => {
       clearTimeout(timer);
       for (const t of MOUSE) h.removeEventListener(t, mouse, true);
       h.removeEventListener("keydown", key, true);
+      h.removeEventListener("pagehide", hide, true);
       if (this.unguardCurrent === unguard) this.unguardCurrent = null;
     };
     this.unguardCurrent = unguard;
@@ -102,6 +119,8 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
         return top ? this.arm(code) : null;
       case "stop":
         if (this.viewfinderSandbox) Cu.evalInSandbox(code, this.viewfinderSandbox, "latest", "webaios-viseur-arret.js", 1);
+        // Also ends the 500 ms swallow after a capture, as Electron's ARRET does with __viseurAvaler.
+        this.unguardCurrent?.();
         return true;
       // lireSource's expression in the page's own world (Xrays waived), in a sandbox thrown away after.
       case "source":

@@ -28,8 +28,9 @@ beforeAll(async () => {
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  // One web process per site: « two tabs in one process » is then a fact, not a chance.
-  w = await launchWebAiOs({ dataDir, profile, env: a.env, prefs: { ...a.prefs, "dom.ipc.processCount.webIsolated": 1 } });
+  // One web process per site: « two tabs in one process » is then a fact, not a chance. Back goes to a page left
+  // without a user gesture (the bfcache test).
+  w = await launchWebAiOs({ dataDir, profile, env: a.env, prefs: { ...a.prefs, "dom.ipc.processCount.webIsolated": 1, "browser.navigation.requireUserInteraction": false } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -134,14 +135,17 @@ describe("design viewfinder actor", () => {
   });
 
   // design.spec.ts:174
-  it("reloading during the viewfinder rejects the query, in under 1 s", async () => {
+  // Electron's armerViseur answers null. Here pagehide ends the viewfinder first ({ r: null }); a rejection (AbortError,
+  // the window gone first) is null for the parent as well.
+  it("reloading during the viewfinder ends the query with null, in under 1 s", async () => {
     await open("/");
     const a = await arm();
     const t0 = Date.now();
     await m.execute(`${B}.reload();`);
     const r = await a.result();
     expect(Date.now() - t0).toBeLessThan(1000);
-    expect((r as { e?: string }).e).toMatch(/AbortError/);
+    expect(r).not.toBe("pending");
+    if (typeof r !== "string") expect("e" in r ? r.e : r.r).toSatisfy((v: unknown) => v === null || /AbortError/.test(String(v)));
   });
 
   // design.spec.ts:186
@@ -235,10 +239,51 @@ describe("design viewfinder actor", () => {
     await reaches();
     a = await arm();
     await m.execute(`${B}.reload();`);
-    expect((await a.result()) as { e?: string }).toHaveProperty("e");
+    expect(await a.result()).not.toBe("pending");
     await waitFor(m, `return !${B}.webProgress.isLoadingDocument && !!${B}.browsingContext.currentWindowGlobal`, (v) => v === true);
     await sleep(300);
     await reaches();
+  });
+
+  // didDestroy does not fire for a page kept in the bfcache: pagehide ends the viewfinder and its guard.
+  it("leaving into the bfcache ends the viewfinder: after Back, no viewfinder and clicks reach the page", async () => {
+    await open("/hooks");
+    await inPage("window.kept = 1; return 1;");
+    const a = await arm();
+    await inPage(`location.href = "/hooks?next"; return 1;`);
+    await waitFor(m, `return ${B}.currentURI.spec.endsWith("/hooks?next") && !${B}.webProgress.isLoadingDocument;`, (v) => v === true);
+    expect(await a.result()).toEqual({ r: null });
+    await m.execute(`${B}.goBack();`);
+    await waitFor(m, `return ${B}.currentURI.spec.endsWith("/hooks") && !${B}.webProgress.isLoadingDocument;`, (v) => v === true);
+    // The very document, restored from the bfcache (a reload would have lost `kept`).
+    expect(await inPage("return window.kept;")).toBe(1);
+    expect(await hosts()).toBe(0);
+    await clearLog(m, B);
+    await trustedMouse(m, B, "#lien", { button: 1 });
+    await trustedMouse(m, B, "#email");
+    await expect.poll(async () => (await pageLog(m, B)).reactions, { timeout: 10_000 }).toContain("click:email");
+    expect((await pageLog(m, B)).early).toEqual(expect.arrayContaining(["auxclick:true", "click:true"]));
+  });
+
+  it("stop ends the swallow after a capture at once; a pick that throws stops the viewfinder", async () => {
+    await open("/hooks");
+    let a = await arm();
+    await trustedMouse(m, B, "#email");
+    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#email");
+    await stopActor(m, B);
+    await clearLog(m, B);
+    await trustedMouse(m, B, "#email");
+    // Well inside the 500 ms swallow.
+    await sleep(100);
+    expect((await pageLog(m, B)).reactions).toContain("click:email");
+    await afterSwallow();
+    a = await armActor(m, B, `globalThis.__viseurChoisir = () => { throw new Error("pick"); }; new Promise((ok) => (globalThis.__viseurArret = () => ok(null)))`);
+    await sleep(100);
+    await trustedMouse(m, B, "#envoyer");
+    expect(await a.result()).toEqual({ r: null });
+    await clearLog(m, B);
+    await trustedMouse(m, B, "#email");
+    await expect.poll(async () => (await pageLog(m, B)).reactions, { timeout: 10_000 }).toContain("click:email");
   });
 
   it("two tabs in one process: arming A guards nothing in B", async () => {
