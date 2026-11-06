@@ -101,7 +101,8 @@ export function createActionsApi(o: {
       if (!p) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
       if (!p.ok) return p;
       o.dispatch({ type: "ouvrirAction", fenetreId: fenetre, id, nom: p.nom });
-      if (p.lancer) host.request("actions.lancer", { id, saisie }).catch((e) => console.error(`[webaios] action ${id} :`, e));
+      // A host that dies meanwhile: the next `acces` reads the page again, as after a rejected `ask`.
+      if (p.lancer) host.request("actions.lancer", { id, saisie }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
       return { ok: true };
     },
     lancer: (id, saisie) => ask("actions.lancer", { id, saisie }, () => ({ statut: "invalide" as const, erreur: prive() ? ACTIONS_EN_ESPACE_PRIVE : MESSAGE_SANS_NOYAU })),

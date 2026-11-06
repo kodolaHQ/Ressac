@@ -404,14 +404,20 @@ describe("createActionsApi", () => {
     expect(launched(calls)).toEqual([]);
   });
 
-  it("ouvrir: a stopped host is Electron's missing noyau; a failed launch goes to the console", async () => {
+  it("ouvrir: a stopped host is Electron's missing noyau; a failed launch goes to the console and reads again on the next acces", async () => {
     const stopped = setup();
     expect(await stopped.api(stopped.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(stopped.dispatched).toEqual([]);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const s = setup({ "actions.preparer": preparer() });
-    expect(await s.api(s.F).ouvrir("gitlab", null)).toEqual({ ok: true });
+    const a = s.api(s.F);
+    const change = vi.fn();
+    a.surChange(change);
+    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
     await vi.waitFor(() => expect(error).toHaveBeenCalled());
+    // The host did not answer the launch: its next start reads the page again.
+    s.emit("acces");
+    expect(change).toHaveBeenCalledTimes(1);
   });
 
   it("refuserAccord and supprimer go to the host, refused in a private space; their cached reads are forgotten", async () => {
