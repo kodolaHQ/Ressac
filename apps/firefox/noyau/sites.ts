@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import fs, { lstat, mkdir, open, readdir, realpath, rename } from "node:fs/promises";
@@ -8,25 +9,32 @@ import {
   accordNecessaire,
   adresseDeDepart,
   domainesEffectifs,
+  droitsDe,
   empreinteLectureSite,
   ID_SITE,
   lireAccordsSites,
   lireEtatAdresse,
+  lireRetouches,
   lireSite,
   lireSites,
   MemoireSite,
   supprimerDonneesSite,
   surveillerSites,
   type CheminsEspace,
+  type DeclarationSite,
   type DroitsSite,
   type OutilsSites,
+  type RetouchesLues,
+  type SiteLu,
 } from "../../../packages/noyau/src/index.ts";
-import { ICONE_MAX, modifierAvecAgent, type ActionSite, type MessageVersLAccueil, type SiteAffiche } from "../../navigateur/src/commun/sites.ts";
+import { ICONE_MAX, modifierAvecAgent, type ActionSite, type DemandeAccordSite, type MessageVersLAccueil, type SiteAffiche } from "../../navigateur/src/commun/sites.ts";
 import type { Cadre } from "../../navigateur/src/commun/modele.ts";
-import type { SiteOuvrable } from "../../navigateur/src/main/sites/fenetres.ts";
+import type { ErreurRetouche, SiteOuvrable } from "../../navigateur/src/main/sites/fenetres.ts";
+import type { ReponseMemoire } from "../../navigateur/src/main/sites/injection.ts";
+import { memoireOp } from "./site-memory.ts";
 
 // The pure parts of Electron's main/sites/service.ts, copied: it imports electron, so the Node host cannot import it.
-// Same guards, same counters, same messages. Left to plan 32: retouches, injection, address tracking, accord, extensions.
+// Same guards, same counters, same messages. Left to plan 32's later tasks: address tracking, accord, extensions.
 
 /** Electron's IPC schema of a site app action (commun/api.ts, which Node cannot import): test/sites-host.test.ts compares them. */
 export const SchemaActionSite = z.object({
@@ -34,12 +42,43 @@ export const SchemaActionSite = z.object({
   action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
 });
 
+/** The app as the chrome gets it: what opens, its accord card, and its fingerprint (lister_onglets). */
+export type SiteChrome = SiteOuvrable & { demande: DemandeAccordSite; empreinte: string };
+
+const uniques = (l: string[]) => [...new Set(l)];
+
+/** Copy of Electron's empreinteDroits (main/sites/fenetres.ts): the fingerprint of the rights the declaration asks for. */
+export function empreinteDroits(d: DeclarationSite): string {
+  return createHash("sha256").update(JSON.stringify(droitsDe(d))).digest("hex");
+}
+
+/** Copy of Electron's demandeAccord (main/sites/fenetres.ts): what the accord card shows. */
+export function demandeAccord(s: SiteOuvrable): DemandeAccordSite {
+  const d = s.declaration;
+  const declares = new Set(d.domaines.map((x) => x.toLowerCase()));
+  return {
+    nom: d.nom,
+    domaines: [...d.domaines],
+    connexion: [...d.connexion],
+    cadres: uniques(d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres))),
+    reprise: d.reprise,
+    fichiers: uniques(d.retouches.flatMap((r) => [...r.js, ...r.css])),
+    correspond: uniques(d.retouches.flatMap((r) => r.correspond)),
+    suivis: uniques(s.domaines.map((x) => x.toLowerCase()).filter((x) => !declares.has(x))),
+    empreinte: empreinteDroits(d),
+  };
+}
+
 /** Requests host -> chrome: the window itself lives in the chrome. */
 export interface SitesChrome {
-  ouvrir(s: SiteOuvrable, cadre?: Cadre): Promise<boolean>;
+  ouvrir(s: SiteChrome, cadre: Cadre | null, retouches: RetouchesLues): Promise<boolean>;
   fermer(id: string): Promise<void>;
   effacer(id: string): Promise<void>;
-  mettreAJour(s: SiteOuvrable): Promise<void>;
+  /** True if the page was reloaded (Electron's FenetresSites.mettreAJour). */
+  mettreAJour(s: SiteChrome, retouches: RetouchesLues): Promise<boolean>;
+  rechargerVue(id: string): Promise<void>;
+  /** The retouches' console of the open app. */
+  erreurs(id: string): Promise<ErreurRetouche[]>;
   ouvertes(): Promise<string[]>;
   accueilChange(id: string): void;
 }
@@ -52,6 +91,10 @@ export interface SitesHost {
   memoireAccueil(id: string): Promise<(MessageVersLAccueil & { type: "memoire" }) | null>;
   noter(id: string, x: { cadre?: Cadre; favicon?: string }): void;
   fermee(id: string): void;
+  /** `webaiosSite` of an open app's main page; the chrome checked the sender, the accord and the address. */
+  memoireOp(demande: unknown): Promise<ReponseMemoire>;
+  /** The open apps as last sent to the chrome. */
+  sitesOuverts: Map<string, SiteChrome>;
   outils: OutilsSites;
   resynchroniser(): Promise<void>;
   arreter(): Promise<void>;
@@ -187,6 +230,9 @@ export function createSites(o: {
   const lecture = { adressesLocales: o.adressesLocales };
   /** Windows open in the chrome: kept by `ouvrir`/`fermee`, recomputed by `resynchroniser`. */
   let ouvertes = new Set<string>();
+  /** The open apps as last sent to the chrome, and their retouches' files (Electron's `retouches`). */
+  const sitesOuverts = new Map<string, SiteChrome>();
+  const retouches = new Map<string, RetouchesLues>();
   const abonnements = new Map<string, () => void>();
   const relectures = new Map<string, number>();
   /** Suppressions en cours : une seconde demande pour la même appli ne fait rien. */
@@ -204,8 +250,11 @@ export function createSites(o: {
       ?.then((m) => m.vider())
       .catch((e) => console.error(`[sites] mémoire de ${id} non écrite :`, e));
 
-  /** L'appli telle qu'elle s'ouvre, ou null (absente, site.json invalide, dossier dont le nom n'est pas exactement `id`, ou `encore()` devenu faux). */
-  async function preparer(id: string, encore: () => boolean = () => true): Promise<SiteOuvrable | null> {
+  /**
+   * L'appli telle qu'elle s'ouvre et ses fichiers de retouches, ou null (absente, site.json invalide, dossier dont le nom
+   * n'est pas exactement `id`, ou `encore()` devenu faux après une des lectures).
+   */
+  async function preparer(id: string, encore: () => boolean = () => true): Promise<{ site: SiteChrome; retouches: RetouchesLues } | null> {
     if (!ID_SITE.test(id)) return null;
     // Un disque insensible à la casse trouverait « MonSite » pour « monsite » : seul le nom exact compte.
     const noms = await readdir(o.chemins.sites).catch(() => [] as string[]);
@@ -224,7 +273,9 @@ export function createSites(o: {
       console.error("[sites] accords illisibles :", e);
     }
     if (!encore()) return null;
-    return {
+    const fichiers = await fichiersRetouches(lu);
+    if (!encore()) return null;
+    const site: SiteOuvrable = {
       id,
       declaration: d,
       aAccueil: lu.aAccueil,
@@ -232,9 +283,22 @@ export function createSites(o: {
       depart: adresseDeDepart(d, etat),
       accordRequis: accordNecessaire(d) && !accordCouvre(accord, d),
     };
+    return { site: { ...site, demande: demandeAccord(site), empreinte: empreinteLectureSite(d) }, retouches: fichiers };
   }
 
-  /** site.json a changé : l'appli ouverte est relue et la fenêtre mise à jour ; seule la dernière relecture compte. */
+  /** Les fichiers des retouches ; aucun si l'un d'eux manque ou dépasse les bornes (l'erreur est écrite). */
+  async function fichiersRetouches(lu: Extract<SiteLu, { declaration: unknown }>): Promise<RetouchesLues> {
+    if (lu.declaration.retouches.length === 0) return { js: {}, css: {} };
+    const r = await lireRetouches(lu).catch((e: unknown) => ({ erreur: String(e) }));
+    if (!("erreur" in r)) return r;
+    console.warn(`[sites] ${lu.id} : retouches non injectées : ${r.erreur}`);
+    return { js: {}, css: {} };
+  }
+
+  /**
+   * site.json ou un fichier de retouche a changé : l'appli ouverte est relue, puis sa page rechargée (Electron's relire,
+   * without the address tracking and the extensions, later tasks); seule la dernière relecture compte.
+   */
   async function relire(id: string): Promise<void> {
     if (!ouvertes.has(id)) return;
     const n = (relectures.get(id) ?? 0) + 1;
@@ -243,8 +307,24 @@ export function createSites(o: {
       console.error(`[sites] ${id} illisible :`, e);
       return null;
     });
-    if (relectures.get(id) !== n || !ouvertes.has(id) || !p) return;
-    await o.chrome.mettreAJour(p).catch((e) => console.error(`[sites] ${id} non mise à jour :`, e));
+    const avant = sitesOuverts.get(id);
+    if (relectures.get(id) !== n || !ouvertes.has(id) || !avant) return;
+    // Devenue invalide : plus rien n'est injecté (la fenêtre garde ce qu'elle avait, sans retouches).
+    const nouvelles = p ? p.retouches : { js: {}, css: {} };
+    // Rien de changé pour la page (dossier recopié, événement en double) : elle n'est pas rechargée.
+    const pareil =
+      JSON.stringify(nouvelles) === JSON.stringify(retouches.get(id) ?? null) &&
+      (!p || JSON.stringify({ ...p.site, aAccueil: null }) === JSON.stringify({ ...avant, aAccueil: null }));
+    retouches.set(id, nouvelles);
+    if (p) sitesOuverts.set(id, p.site);
+    try {
+      // Electron reads its retouches map at each injection; the chrome holds its own copy, so it gets the new one even
+      // when site.json became invalid (with the app as it was). The card that comes back already reloads the page.
+      const rechargee = await o.chrome.mettreAJour(p?.site ?? avant, nouvelles);
+      if (relectures.get(id) === n && !pareil && !rechargee) await o.chrome.rechargerVue(id);
+    } catch (e) {
+      console.error(`[sites] ${id} non mise à jour :`, e);
+    }
   }
 
   let arreterSurveillance: () => Promise<void> = async () => {};
@@ -323,6 +403,7 @@ export function createSites(o: {
       if (!(await connue(id))) return;
       await o.chrome.fermer(id);
       ouvertes.delete(id);
+      forget(id);
       await o.chrome.effacer(id);
       const m = memoires.get(id);
       if (m) await m.then((x) => x.effacer(), () => {});
@@ -349,10 +430,16 @@ export function createSites(o: {
     const commencees = suppressionsCommencees.get(id) ?? 0;
     const encore = () => !suppressions.has(id) && (suppressionsCommencees.get(id) ?? 0) === commencees;
     if (!encore()) return false;
-    const site = await preparer(id, encore);
-    if (!site || !encore()) return false;
+    const p = await preparer(id, encore);
+    if (!p || !encore()) return false;
     relectures.set(id, (relectures.get(id) ?? 0) + 1);
-    if (!(await o.chrome.ouvrir(site, souvenirs.lire(id).cadre))) return false;
+    // Before the window: its first page already asks for its retouches.
+    sitesOuverts.set(id, p.site);
+    retouches.set(id, p.retouches);
+    if (!(await o.chrome.ouvrir(p.site, souvenirs.lire(id).cadre ?? null, p.retouches))) {
+      if (!ouvertes.has(id)) forget(id);
+      return false;
+    }
     // A deletion started while the chrome opened the window (Electron's open was synchronous): close it again.
     if (!encore()) {
       await o.chrome.fermer(id).catch(() => {});
@@ -395,6 +482,11 @@ export function createSites(o: {
   };
 
   const liste = async () => (await lignes()).map(({ empreinte: _, ...l }) => l);
+
+  function forget(id: string): void {
+    sitesOuverts.delete(id);
+    retouches.delete(id);
+  }
 
   return {
     liste,
@@ -439,6 +531,7 @@ export function createSites(o: {
     },
     fermee(id) {
       ouvertes.delete(id);
+      forget(id);
       abonnements.get(id)?.();
       abonnements.delete(id);
       relectures.delete(id);
@@ -456,11 +549,26 @@ export function createSites(o: {
         if (!(await liste()).some((s) => s.id === id)) return null;
         return (await memoire(id)).contenu();
       },
-      // Retouches are plan 32: no console yet.
-      erreurs: async (id) => ((await liste()).some((s) => s.id === id) ? [] : null),
+      erreurs: async (id) => {
+        if (!(await liste()).some((s) => s.id === id)) return null;
+        return ouvertes.has(id) ? o.chrome.erreurs(id).catch(() => []) : [];
+      },
     },
+    sitesOuverts,
+    // Checked again here: only an open app whose retouches are granted has a memory for its page.
+    memoireOp: (d) => memoireOp((id) => (sitesOuverts.get(id)?.accordRequis === false ? memoire(id) : Promise.reject(new Error("pas d'accord"))), d),
     async resynchroniser() {
       ouvertes = new Set(await o.chrome.ouvertes());
+      for (const id of [...sitesOuverts.keys()]) if (!ouvertes.has(id)) forget(id);
+      // A host that started again knows the open apps only by id: read again, as they were opened.
+      for (const id of ouvertes)
+        if (!sitesOuverts.has(id)) {
+          const p = await preparer(id).catch(() => null);
+          if (p && ouvertes.has(id)) {
+            sitesOuverts.set(id, p.site);
+            retouches.set(id, p.retouches);
+          }
+        }
       // A host that started again has no subscription: the windows already open keep their home's feed.
       for (const id of ouvertes) await memoire(id).then((m) => abonner(id, m), () => {});
     },

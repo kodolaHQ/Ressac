@@ -3,15 +3,17 @@
 // the windows (Electron's main/sites/fenetres.ts).
 import type { Cadre } from "../../../navigateur/src/commun/modele";
 import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
-import type { SiteOuvrable } from "../../../navigateur/src/main/sites/fenetres";
+import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
 import { adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
+import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
+import type { SiteChrome } from "../../noyau/sites";
 import { gardienGestes } from "../../shared/geste-widget";
 import type { AgentHost } from "../agent/host";
-import type { SiteFrameData } from "../agent/site-actor";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
+import { frameError, frameInjection, frameMemory, siteOfFrame } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
@@ -22,8 +24,8 @@ export const SITE_WINDOW_KEY = "webaios-site";
 const SIZE = { largeur: 1200, hauteur: 800 };
 const MIN = { largeur: 360, hauteur: 240 };
 
-/** What the site actor runs in each frame of a container: published to every content process. */
-export function publishSiteFrames(map: Map<number, SiteFrameData>): void {
+/** The open apps' containers (userContextId → app id), published to every content process: the site actor asks only there. */
+export function publishSiteFrames(map: Map<number, string>): void {
   Services.ppmm.sharedData.set(SITE_FRAMES, map);
   Services.ppmm.sharedData.flush();
 }
@@ -61,7 +63,11 @@ export interface SiteWindowController {
 }
 
 interface OpenSite {
-  site: SiteOuvrable;
+  site: SiteChrome;
+  /** The app's retouches' files, as the host last read them. */
+  retouches: RetouchesLues;
+  /** The retouches' console (site-frames.ts frameError), until the window closes. */
+  erreurs: ErreurRetouche[];
   userContextId: number;
   window: Window;
   /** The app view's <browser>, once the window is set up. */
@@ -173,6 +179,8 @@ const observer = {
 };
 let observing = false;
 
+const publishOpen = () => publishSiteFrames(new Map([...byContainer].map(([uc, s]) => [uc, s.site.id])));
+
 /** The home's frame may show only a page (.html, so with the home's CSP) of the copy served now, or about:blank. */
 function homePage(id: string, uri: { spec: string } | null): boolean {
   if (uri?.spec === "about:blank") return true;
@@ -256,7 +264,8 @@ function stateOf(s: OpenSite): EtatFenetreSite {
     domaine: httpHost(url) ?? httpHost(s.site.depart) ?? "",
     peutReculer: !!s.view?.canGoBack,
     peutAvancer: !!s.view?.canGoForward,
-    // Address tracking and the accord card are plan 32's: the app opens as Electron's « Ouvrir sans retouches ».
+    // Address tracking and the accord card are later tasks': an app without its accord opens as Electron's « Ouvrir
+    // sans retouches » (frameInjection gives its frames nothing).
     suivi: false,
     recherche: false,
     avis: s.notice.avis,
@@ -405,7 +414,10 @@ function closed(s: OpenSite): void {
   const id = s.site.id;
   s.listeners.clear();
   s.notice.dispose();
-  if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
+  if (byContainer.get(s.userContextId) === s) {
+    byContainer.delete(s.userContextId);
+    publishOpen();
+  }
   // Reopened before this close: the sign-in windows are the new app's.
   if (open.get(id) !== s) return;
   open.delete(id);
@@ -425,11 +437,11 @@ export const sites = {
    * Opens the app's window, or brings it to the front without reloading it (its declaration and domains are taken
    * over). False if the id is not a site app's.
    */
-  open(site: SiteOuvrable, cadre?: Cadre | null): boolean {
+  open(site: SiteChrome, cadre: Cadre | null | undefined, retouches: RetouchesLues): boolean {
     if (typeof site?.id !== "string" || !ID_SITE.test(site.id)) return false;
     const known = open.get(site.id);
     if (known && !known.window.closed) {
-      sites.update(site);
+      sites.update(site, retouches);
       if (known.window.windowState === known.window.STATE_MINIMIZED) (known.window as any).restore();
       known.window.focus();
       return true;
@@ -444,10 +456,11 @@ export const sites = {
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
-    // Opened « sans retouches » (plan 31 injects nothing): never the accord card.
-    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
+    // No accord card yet (a later task): an app without its accord gets no retouches (frameInjection).
+    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
+    publishOpen();
     const onClose = {
       observe(w: unknown, topic: string) {
         if (topic !== "domwindowclosed" || w !== win) return;
@@ -481,11 +494,15 @@ export const sites = {
     await removeSiteContainer(id);
     if (dataDir) await forgetHome(dataDir, id);
   },
-  /** site.json changed: the open app takes its new declaration and domains (its bfcache is dropped), without showing. */
-  update(site: SiteOuvrable): void {
+  /**
+   * site.json or a retouche changed: the open app takes its new declaration, domains and retouches (its bfcache is
+   * dropped), without showing. True if its page was reloaded (the accord card, Task 2): never yet.
+   */
+  update(site: SiteChrome, retouches: RetouchesLues): boolean {
     const s = open.get(site?.id);
-    if (!s || s.window.closed) return;
+    if (!s || s.window.closed) return false;
     s.site = site;
+    s.retouches = retouches;
     s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
     // The home screen is gone: the site view (Electron's reprendre).
     if (s.vue === "accueil" && !site.aAccueil) {
@@ -494,6 +511,32 @@ export const sites = {
     }
     s.window.gBrowser?.updateTitlebar();
     broadcast(s);
+    return false;
+  },
+  /** Electron's rechargerVue: the view's page reloaded, if it was ever loaded (its retouches changed). */
+  reloadView(id: string): void {
+    const s = open.get(id);
+    if (s?.loaded && !s.window.closed) s.view?.reload();
+  },
+  /** The retouches' console of the open app (Electron's erreurs), or none. */
+  errors(id: string): ErreurRetouche[] {
+    return [...(open.get(id)?.erreurs ?? [])];
+  },
+  /** The site actor's "injection", for the frame of this WindowGlobalParent (site-frames.ts). */
+  frameInjection(wgp: any) {
+    const s = siteOfFrame(wgp, open.values());
+    return frameInjection(wgp, s, !!(s && context(s).adressesLocales));
+  },
+  /** The site actor's "erreur": a retouche's error in the frame of this WindowGlobalParent. */
+  frameError(wgp: any, e: unknown): void {
+    frameError(siteOfFrame(wgp, open.values()), e);
+  },
+  /** The site actor's "memoire", for the frame of this WindowGlobalParent: relayed to the host. */
+  frameMemory(wgp: any, demande: unknown) {
+    return frameMemory(wgp, siteOfFrame(wgp, open.values()), demande, (p) => {
+      if (!host) return Promise.reject(new Error("no host"));
+      return host.request("sites.memoireOp", p);
+    });
   },
   /** « Afficher le dossier »: the app's folder shown in the file manager. */
   revealSite(id: string): void {
@@ -518,7 +561,7 @@ export const sites = {
     return s && !s.window.closed ? s.window : undefined;
   },
   /** The app as its window was opened or last updated (the window reads it as it loads). */
-  siteOf(id: string): SiteOuvrable | undefined {
+  siteOf(id: string): SiteChrome | undefined {
     return open.get(id)?.site;
   },
   /** The window's controller, from its creation (site-window.ts); the view is attached once Firefox's startup is done. */
@@ -554,10 +597,12 @@ export const sites = {
   },
   /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
   handlers: {
-    "sites.ouvrir": ([site, cadre]: [SiteOuvrable, Cadre | null]) => sites.open(site, cadre),
+    "sites.ouvrir": ([site, cadre, retouches]: [SiteChrome, Cadre | null, RetouchesLues]) => sites.open(site, cadre, retouches),
     "sites.fermer": ([id]: [string]) => sites.close(id),
     "sites.effacer": ([id]: [string]) => sites.erase(id),
-    "sites.mettreAJour": ([site]: [SiteOuvrable]) => sites.update(site),
+    "sites.mettreAJour": ([site, retouches]: [SiteChrome, RetouchesLues]) => sites.update(site, retouches),
+    "sites.rechargerVue": ([id]: [string]) => sites.reloadView(id),
+    "sites.erreurs": ([id]: [string]) => sites.errors(id),
     "sites.ouvertes": () => sites.openIds(),
     // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
     "sites.accueilChange": ([id]: [string]) => {

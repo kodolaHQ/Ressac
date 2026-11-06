@@ -386,6 +386,7 @@ const rpc = createRpc({
     "sites.noter": (p: { id?: unknown; cadre?: Cadre; favicon?: unknown }) => {
       if (typeof p?.id === "string") sites.noter(p.id, { ...(p.cadre ? { cadre: p.cadre } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
     },
+    "sites.memoireOp": (p: unknown) => sites.memoireOp(p),
     "sites.ferme": (p: { id?: unknown }) => {
       if (typeof p?.id === "string") sites.fermee(p.id);
     },
@@ -487,10 +488,12 @@ const sites = createSites({
   dataDir,
   adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
   chrome: {
-    ouvrir: (s, cadre) => rpc.request("sites.ouvrir", [s, cadre ?? null]),
+    ouvrir: (s, cadre, retouches) => rpc.request("sites.ouvrir", [s, cadre, retouches]),
     fermer: (id) => rpc.request("sites.fermer", [id]),
     effacer: (id) => rpc.request("sites.effacer", [id]),
-    mettreAJour: (s) => rpc.request("sites.mettreAJour", [s]),
+    mettreAJour: (s, retouches) => rpc.request("sites.mettreAJour", [s, retouches]),
+    rechargerVue: (id) => rpc.request("sites.rechargerVue", [id]),
+    erreurs: (id) => rpc.request("sites.erreurs", [id]),
     ouvertes: () => rpc.request("sites.ouvertes"),
     accueilChange: (id) => rpc.notify("sites.accueilChange", [id]),
   },

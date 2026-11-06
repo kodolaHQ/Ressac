@@ -40,6 +40,7 @@ declare const WebExtensionPolicy: {
   getActiveExtensions(): { extension?: any }[];
 };
 declare const WindowGlobalParent: { getByInnerWindowId(id: number): any };
+declare const WindowGlobalChild: { getByInnerWindowId(id: number): any };
 declare class JSWindowActorParent {
   readonly manager: any;
 }
@@ -50,6 +51,7 @@ declare class JSProcessActorChild {
   sendAsyncMessage(name: string, data?: unknown): void;
 }
 declare class JSWindowActorChild {
+  readonly manager: any;
   readonly document: Document;
   readonly contentWindow: Window;
   readonly docShell: any;
@@ -59,3 +61,8 @@ declare class JSWindowActorChild {
 declare const __WEBAIOS_NODE__: string;
 declare const __WEBAIOS_TSX__: string;
 declare const __WEBAIOS_HOST__: string;
+// Vite's raw imports (a file's text, bundled).
+declare module "*?raw" {
+  const text: string;
+  export default text;
+}

@@ -56,7 +56,14 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
   write("casse", "{pas du json");
   write("MonSite", JSON.stringify(declaration));
   const journal: string[] = [];
-  const calls: { ouvrir: unknown[][]; majs: Parameters<SitesChrome["mettreAJour"]>[0][]; accueil: string[] } = { ouvrir: [], majs: [], accueil: [] };
+  const calls: { ouvrir: unknown[][]; majs: Parameters<SitesChrome["mettreAJour"]>[0][]; retouches: Parameters<SitesChrome["mettreAJour"]>[1][]; recharges: string[]; accueil: string[] } = {
+    ouvrir: [],
+    majs: [],
+    retouches: [],
+    recharges: [],
+    accueil: [],
+  };
+  let erreursChrome: Awaited<ReturnType<SitesChrome["erreurs"]>> = [];
   let ouvertesChrome: string[] = [];
   const chrome: SitesChrome = {
     ouvrir: async (...a) => {
@@ -70,7 +77,13 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
     },
     fermer: async (id) => void journal.push(`fermer ${id}`),
     effacer: async (id) => void journal.push(`effacer ${id}`),
-    mettreAJour: async (s) => void calls.majs.push(s),
+    mettreAJour: async (s, r) => {
+      calls.majs.push(s);
+      calls.retouches.push(r);
+      return false;
+    },
+    rechargerVue: async (id) => void calls.recharges.push(id),
+    erreurs: async () => erreursChrome,
     ouvertes: async () => ouvertesChrome,
     accueilChange: (id) => void calls.accueil.push(id),
   };
@@ -82,7 +95,7 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
     await sites.arreter();
     rmSync(racine, { recursive: true, force: true });
   });
-  return { sites, chemins, dataDir, calls, journal, diffuser, preRemplir, memoires, write, setOuvertes: (o: string[]) => (ouvertesChrome = o) };
+  return { sites, chemins, dataDir, calls, journal, diffuser, preRemplir, memoires, write, setOuvertes: (o: string[]) => (ouvertesChrome = o), setErreurs: (e: typeof erreursChrome) => (erreursChrome = e) };
 }
 
 describe("liste", () => {
@@ -108,6 +121,7 @@ describe("ouvrirParId", () => {
     const [site, cadre] = m.calls.ouvrir[0]!;
     expect(site).toMatchObject({ id: "vidola", domaines: ["vidola-a.example", "vidola-b.example"], depart: "https://vidola-a.example/", aAccueil: false });
     expect(cadre).toEqual({ x: 1, y: 2, largeur: 300, hauteur: 400 });
+    expect(m.calls.ouvrir[0]![2]).toEqual({ js: {}, css: {} });
     expect((await m.sites.liste()).find((s) => s.id === "vidola")!.ouverte).toBe(true);
     for (const id of ["absente", "casse", "MonSite", "../x"]) expect(await m.sites.ouvrirParId(id)).toBe(false);
     expect(m.calls.ouvrir).toHaveLength(1);
@@ -244,6 +258,61 @@ describe("watching", () => {
   });
 });
 
+describe("retouches", () => {
+  const avecRetouches = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }] };
+  const ecrire = (m: ReturnType<typeof mount>, f: string, texte: string) => {
+    mkdirSync(join(m.chemins.sites, "vidola", "retouches"), { recursive: true });
+    writeFileSync(join(m.chemins.sites, "vidola", "retouches", f), texte);
+  };
+
+  it("opens with the retouches' files, the accord card and the fingerprint", async () => {
+    const m = mount();
+    m.write("vidola", JSON.stringify(avecRetouches));
+    ecrire(m, "a.js", "window.a = 1");
+    ecrire(m, "a.css", "p {}");
+    await m.sites.ouvrirParId("vidola");
+    const [site, cadre, retouches] = m.calls.ouvrir[0]!;
+    expect(cadre).toBeNull();
+    expect(retouches).toEqual({ js: { "a.js": "window.a = 1" }, css: { "a.css": "p {}" } });
+    expect(site).toMatchObject({ accordRequis: true, demande: { nom: "Vidola", fichiers: ["a.js", "a.css"], empreinte: expect.stringMatching(/^[0-9a-f]{64}$/) }, empreinte: expect.any(String) });
+    expect(m.sites.sitesOuverts.get("vidola")).toBe(site);
+  });
+
+  it("rewriting retouches/a.js updates the chrome then reloads the view once; the same content does not reload", async () => {
+    const m = mount();
+    m.write("vidola", JSON.stringify(avecRetouches));
+    ecrire(m, "a.js", "window.a = 1");
+    ecrire(m, "a.css", "p {}");
+    await m.sites.ouvrirParId("vidola");
+    await new Promise((r) => setTimeout(r, 400));
+    ecrire(m, "a.js", "window.a = 2");
+    await vi.waitFor(() => expect(m.calls.recharges).toEqual(["vidola"]), { timeout: 5000 });
+    expect(m.calls.retouches.at(-1)).toEqual({ js: { "a.js": "window.a = 2" }, css: { "a.css": "p {}" } });
+    const majs = m.calls.majs.length;
+    ecrire(m, "a.js", "window.a = 2");
+    await vi.waitFor(() => expect(m.calls.majs.length).toBeGreaterThan(majs), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(m.calls.recharges).toEqual(["vidola"]);
+  });
+
+  it("memoireOp: only an open app with its accord; the address is the chrome's", async () => {
+    const m = mount();
+    const op = { id: "vidola", adresse: "/serie/x", op: "retenir", cle: "k", valeur: 1 };
+    expect(await m.sites.memoireOp(op)).toMatchObject({ ok: false });
+    await m.sites.ouvrirParId("vidola");
+    // reprise: true asks for the accord.
+    expect(await m.sites.memoireOp(op)).toMatchObject({ ok: false });
+    m.sites.fermee("vidola");
+    await accorderSite(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    await m.sites.ouvrirParId("vidola");
+    expect(await m.sites.memoireOp(op)).toEqual({ ok: true });
+    expect(await m.sites.memoireOp({ ...op, op: "lire" })).toEqual({ ok: true, valeur: 1 });
+    expect((await m.sites.outils.memoire("vidola"))!.valeurs.k).toMatchObject({ adresse: "/serie/x" });
+    m.sites.fermee("vidola");
+    expect(await m.sites.memoireOp({ ...op, op: "lire" })).toMatchObject({ ok: false });
+  });
+});
+
 describe("outils", () => {
   it("lister carries the fingerprint, memoire returns the content, erreurs is empty, an unknown app is null", async () => {
     const m = mount();
@@ -255,7 +324,11 @@ describe("outils", () => {
     mem.retenir("serie", 1, "/s");
     await mem.vider();
     expect((await m.sites.outils.memoire("vidola"))!.valeurs).toHaveProperty("serie");
+    // Closed: no console. Open: the chrome's.
+    m.setErreurs([{ quand: "q", texte: "boum", source: "webaios-retouche://vidola/a.js:1", sourceVerifiee: false }]);
     expect(await m.sites.outils.erreurs("vidola")).toEqual([]);
+    await m.sites.ouvrirParId("vidola");
+    expect(await m.sites.outils.erreurs("vidola")).toEqual([{ quand: "q", texte: "boum", source: "webaios-retouche://vidola/a.js:1", sourceVerifiee: false }]);
     expect(await m.sites.outils.memoire("inconnu")).toBeNull();
     expect(await m.sites.outils.erreurs("inconnu")).toBeNull();
     expect(await m.sites.outils.ouvrir("inconnu")).toBe(false);

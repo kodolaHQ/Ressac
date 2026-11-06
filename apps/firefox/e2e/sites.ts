@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { accorderSite, DeclarationSite } from "../../../packages/noyau/src/index";
 import type { Marionette } from "./marionette";
 
 // Site app helpers, copied from Electron's e2e (apps/navigateur/e2e/aide.ts, sites.spec.ts) with English names.
@@ -90,6 +91,9 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
     writeFileSync(path.join(dossier, chemin), contenu);
   }
 }
+
+/** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the noyau's own accorderSite: the app opens granted. */
+export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => accorderSite(dataDir, id, DeclarationSite.parse(declaration));
 
 /** Electron's test home page (sites.spec.ts ACCUEIL), copied as is: it shows the memory it receives and notes every message. */
 export const ELECTRON_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>

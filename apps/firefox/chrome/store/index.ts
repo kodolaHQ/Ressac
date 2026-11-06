@@ -194,15 +194,16 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["webext-browsers", "browsers"],
     allFrames: true,
   });
-  // Site apps: every http(s) frame of a tab browser; the child does nothing outside a site app's container.
+  // Site apps: every frame of a tab browser, about:blank and srcdoc ones too (no `matches`); the child asks only in an
+  // open app's container, for an http(s), about:blank or about:srcdoc document.
   const siteActor = actorModule("site-actor");
   ChromeUtils.registerWindowActor("WebAiOsSite", {
     parent: { esModuleURI: siteActor },
     child: { esModuleURI: siteActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
     allFrames: true,
-    matches: ["http://*/*", "https://*/*"],
     messageManagerGroups: ["browsers"],
-    // Required in web processes; the parent receives nothing, so a compromised web process cannot make it act.
+    // Required in web processes. The parent reads only the message's name and the bounded fields of a memory request
+    // or an error: what it decides comes from its WindowGlobalParent (store/site-frames.ts).
     safeForUntrustedWebProcess: true,
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
