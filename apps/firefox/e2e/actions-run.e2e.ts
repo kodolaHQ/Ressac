@@ -85,10 +85,12 @@ describe("action runs", () => {
     await visible(tid("avancement-action"));
     // The button is greyed while it runs; one more launch (the agent, another window) gives the same run.
     expect(await disabled(tid("relancer-action"))).toBe(true);
-    const [a, b] = await inUi<{ execution?: string }[]>(m, "return Promise.all([ui.webaios.actions.lancer('pages-c', null), ui.webaios.actions.lancer('pages-c', null)]).then((r) => JSON.parse(JSON.stringify(r)));");
+    // Each lancer resolves at the run's end (15-38 s): started in the page, awaited outside the 30 s script timeout.
+    await inUi(m, "ui.__r = null; Promise.all([ui.webaios.actions.lancer('pages-c', null), ui.webaios.actions.lancer('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
+    const [a, b] = await waitUi<{ execution?: string }[]>(m, "return ui.__r;", [], 90_000);
     expect(a!.execution).toBeTruthy();
     expect(b!.execution).toBe(a!.execution);
-    await visible(tid("rendu-page"));
+    await visible(tid("rendu-page"), 90_000);
     await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
     expect(await runsOnDisk(w.dataDir, "pages-c")).toHaveLength(1);
   });
