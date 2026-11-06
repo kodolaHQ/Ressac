@@ -1,10 +1,20 @@
-// A site app's window (prototype of plan 31's spike, taken over by its Tasks 3-4): browser.xhtml opened by
-// store/sites.ts without a toolbar, marked from its creation, never a WebAiOs main window. One <browser> (the app
-// view, in the app's container), Firefox's tabs and toolbars hidden, the bar's frame on top.
+// A site app's window: browser.xhtml opened by store/sites.ts without a toolbar, marked from its creation, never a
+// WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
+// bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
+import type { SiteWindowController } from "../store/sites";
+import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
+
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const XHTML = "http://www.w3.org/1999/xhtml";
 // Keep in sync with store/sites.ts SITE_WINDOW_KEY.
 const SITE_WINDOW_KEY = "webaios-site";
+
+declare global {
+  interface Window {
+    /** In a site app's window: what its bar drives (ui/site-api.ts). */
+    webaiosSiteWindow?: SiteWindowController;
+  }
+}
 
 type Sites = typeof import("../store/sites").sites;
 const sitesModule = (): Sites => ChromeUtils.importESModule(STORE).sites;
@@ -18,12 +28,16 @@ export function siteIdOf(win: Window): string | null {
 /** The app whose container this window's first browser is in (a window the app's pages opened), or undefined. */
 export function siteOfContainer(win: Window): string | undefined {
   const userContextId = Number(win.gBrowser?.selectedBrowser?.getAttribute("usercontextid") || 0);
-  return userContextId ? sitesModule().ofContainer(userContextId) : undefined;
+  return userContextId ? sitesModule().siteOfContainer(userContextId) : undefined;
 }
 
 /**
- * window.open and target=_blank from the app's pages (Firefox asks browserDOMWindow for what it would open as a tab):
- * the app view, a sign-in window opened by the store, or nothing. Printing keeps Firefox's own path.
+ * Everything the app's pages would open elsewhere goes through the app's rules (sites.routeOpen): the app view, a
+ * sign-in window opened by the store, or nothing.
+ * - window.open and target=_blank: Firefox asks browserDOMWindow for what it would open as a tab. Printing keeps
+ *   Firefox's own path.
+ * - ⌘click, middle click and the context menu's « open in a tab/window »: openLinkIn, which would put a tab in the
+ *   main window, in the app's container.
  */
 function routeOpens(win: Window, id: string): void {
   const firefox = (win as any).browserDOMWindow;
@@ -45,33 +59,54 @@ function routeOpens(win: Window, id: string): void {
       return 1;
     },
   };
+  const openLinkIn = win.openLinkIn;
+  win.openLinkIn = (url, where, params) => (where === "current" ? openLinkIn(url, where, params) : void sites.routeOpen(id, url));
 }
 
-/** Run at the window's DOMContentLoaded, before anything could claim it. */
-export function setupSiteWindow(win: Window, id: string): void {
+/**
+ * Run at the window's DOMContentLoaded, before anything could claim it: the bar's frame, the routing, the keys, closing
+ * without a question, the title. The view is attached once Firefox's startup is done.
+ */
+export function setupSiteWindow(win: Window, id: string): SiteWindowController | null {
+  const sites = sitesModule();
+  const controller = sites.controller(id);
+  // An app closed (deleted) while its window was opening.
+  if (!controller) {
+    win.close();
+    return null;
+  }
   const doc = win.document;
   doc.documentElement.setAttribute("webaios-site", id);
   doc.getElementById("navigator-toolbox")!.hidden = true;
   const bar = doc.createElementNS(XHTML, "iframe") as HTMLIFrameElement;
   bar.id = "webaios-site-bar";
-  bar.style.cssText = "border: none; height: 36px; width: 100%; display: block;";
   doc.getElementById("browser")!.before(bar);
   routeOpens(win, id);
+  // Firefox's tab, address and history keys and menu commands do nothing here; ⌘W closes the window, never its one
+  // tab; ⌘N opens a main window. Back and forward go through the bar.
+  for (const k of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS, "goBackKb", "goForwardKb"]) doc.getElementById(k)?.setAttribute("disabled", "true");
+  const onKeyDown = (e: KeyboardEvent) => {
+    const s = shortcutFor(e);
+    if (!s) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (s.type === "fenetre") win.OpenBrowserWindow();
+    else if (s.type === "fermerFenetre" || (s.type === "raccourci" && s.r === "fermerOnglet")) win.close();
+  };
+  win.addEventListener("keydown", onKeyDown, true);
+  bar.addEventListener("load", () => bar.contentWindow!.addEventListener("keydown", onKeyDown, true));
+  // The site's code was not reviewed: its beforeunload never keeps the app from closing (Electron).
+  win.CanCloseWindow = () => true;
+  win.webaiosSiteWindow = controller;
   void win.delayedStartupPromise.then(() => {
-    const browser = win.gBrowser.selectedBrowser;
-    // A page kept in the bfcache comes back without a request, so without the request guard (measured: history.back()
-    // to a removed domain, zero request): none is kept, dropped at each location change and when the rules change.
-    // Kept on the window: the browser holds its progress listeners weakly.
-    const listener = ((win as any).webaiosSiteProgress = {
-      QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
-      onLocationChange(progress: any) {
-        if (progress.isTopLevel) browser.browsingContext?.sessionHistory?.evictAllDocumentViewers();
-      },
-    });
-    browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION);
-    sitesModule().attach(id, browser);
+    const gBrowser = win.gBrowser;
+    // The title is the app's name, never the page's.
+    gBrowser.getWindowTitleForBrowser = () => sites.siteOf(id)?.declaration.nom ?? "";
+    gBrowser.updateTitlebar();
+    sites.attach(id, gBrowser.selectedBrowser);
     bar.src = `chrome://browser/content/webaios/sidebar.html?site=${encodeURIComponent(id)}`;
   });
+  return controller;
 }
 
 /**

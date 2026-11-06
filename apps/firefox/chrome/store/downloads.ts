@@ -31,10 +31,13 @@ export interface DownloadsList {
   cancel(id: string): void;
 }
 
-type FirefoxDownload = DownloadLike & { launch(options?: { useSystemDefault?: boolean }): Promise<void>; showContainingDirectory(): Promise<void>; cancel(): Promise<void> };
+type FirefoxDownload = DownloadLike & { source?: { userContextId?: number }; finalize(removePartialData?: boolean): Promise<void>; launch(options?: { useSystemDefault?: boolean }): Promise<void>; showContainingDirectory(): Promise<void>; cancel(): Promise<void> };
 
-/** Follows Downloads.getList(Downloads.ALL) with addView; ids are crypto.randomUUID() kept in a WeakMap per Download. */
-export async function createDownloads(): Promise<DownloadsList> {
+/**
+ * Follows Downloads.getList(Downloads.ALL) with addView; ids are crypto.randomUUID() kept in a WeakMap per Download.
+ * A download from a container `refused` names is cancelled, its partial file removed, and dropped from the list.
+ */
+export async function createDownloads(refused: (userContextId: number) => boolean = () => false): Promise<DownloadsList> {
   const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
   const downloads = new Set<FirefoxDownload>();
   const ids = new WeakMap<FirefoxDownload, string>();
@@ -55,8 +58,16 @@ export async function createDownloads(): Promise<DownloadsList> {
     });
   };
   const find = (id: string) => [...downloads].find((d) => ids.get(d) === id);
-  await (await Downloads.getList(Downloads.ALL)).addView({
+  const all = await Downloads.getList(Downloads.ALL);
+  await all.addView({
     onDownloadAdded(d: FirefoxDownload) {
+      if (refused(d.source?.userContextId ?? 0)) {
+        void d
+          .finalize(true)
+          .then(() => all.remove(d))
+          .catch((e: unknown) => console.error("[downloads]", e));
+        return;
+      }
       downloads.add(d);
       changed();
     },

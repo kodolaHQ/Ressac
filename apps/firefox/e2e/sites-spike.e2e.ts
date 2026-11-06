@@ -67,7 +67,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   const toPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => `${r.methode} ${r.chemin}`);
   const blocked = () => m.execute<string[]>(`return ChromeUtils.importESModule("${STORE}").sites.blocked("vidola").slice();`);
   const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
-  const openSite = (r = rules()) => m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0]);`, [r]);
+  // As the host's SiteOuvrable (noyau/sites.ts preparer).
+  const openSite = (r = rules()) =>
+    m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0]);`, [
+      { id: r.id, declaration: { nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion }, aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },
+    ]);
   /** Waits until the view has loaded `url`. */
   const viewAt = (url: string) => waitFor(m, `const b = ${view}; return !!b && b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`.replace("arguments[0]", JSON.stringify(url)), (v) => v === true, 15_000);
   /** Runs `act`, waits, then notes the view's URL, what reached pub.localhost, the mentions and the window count. */

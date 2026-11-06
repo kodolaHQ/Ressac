@@ -6,7 +6,8 @@ import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
 // Electron components that step 2 does not migrate (imported as ./Name.svelte by the reused ones): Unavailable.svelte shows nothing.
-const UNMIGRATED = ["IaLocale", "BoutonDesign", "ApercuAction"];
+// The site bar (plan 31): no design mode, no extension menu; the modules' strip is plan 32's (BoutonsExtensionsSite).
+const UNMIGRATED = ["IaLocale", "BoutonDesign", "ApercuAction", "MenuExtensionsSite", "BoutonDesignSite", "ProjetsExternes", "BoutonsExtensionsSite"];
 
 // Three bundles, one per `--mode` (scripts/ui.sh builds all of them):
 // - sidebar: privileged Firefox page (chrome://browser/content/webaios/sidebar.html), one script and one stylesheet

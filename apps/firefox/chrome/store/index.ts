@@ -11,9 +11,10 @@ import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { registerAccueilNotifications } from "./notifications";
-import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
+import { containerFor, existingContainer, isSiteContainer, migrateContainers, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
+import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { gardienGestes } from "../../shared/geste-widget";
@@ -46,6 +47,8 @@ export interface WebAiOsStore extends Store {
   readonly access: EtatAcces;
   /** The agent's dev tools on tabs, owned by the running noyau. */
   readonly devtools: DevTools;
+  /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
+  readonly sites: SiteApps;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
@@ -127,6 +130,8 @@ async function start(): Promise<WebAiOsStore> {
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
   // sanitizer (CSP_WIDGET, contientIndiceReseau).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
+  // The site apps' served home copies too (the same sanitizer).
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
@@ -241,7 +246,7 @@ async function start(): Promise<WebAiOsStore> {
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers },
+    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers, ...sites.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
@@ -249,11 +254,15 @@ async function start(): Promise<WebAiOsStore> {
       agentExtensions.hostStarted();
       // A restart (« Réessayer ») may have missed the home's changes: it reads again now that the host answers.
       notify("accueil.change");
+      // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
+      notify("sites.pret");
     },
   });
+  bindSites(agent, dataDir);
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
-  const downloads = await createDownloads();
+  // A site app's downloads are cancelled (Electron's app sessions download nothing).
+  const downloads = await createDownloads(isSiteContainer);
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("acces", (e: EtatAcces) => (access = e));
@@ -283,6 +292,7 @@ async function start(): Promise<WebAiOsStore> {
     agentExtensions,
     sitePermissions,
     devtools,
+    sites,
     get access() {
       return access;
     },

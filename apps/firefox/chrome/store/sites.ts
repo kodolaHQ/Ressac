@@ -1,13 +1,22 @@
-// Site app windows (prototype of plan 31's spike, taken over by its Tasks 3-4): the registry of open app windows, their
-// containers, and the guard that keeps each app on its domains before any request leaves.
+// Site app windows: the registry of open app windows, their containers, their bar's controller, and the guard that
+// keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
+// the windows (Electron's main/sites/fenetres.ts).
+import type { Cadre } from "../../../navigateur/src/commun/modele";
+import { ICONE_MAX, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
+import type { SiteOuvrable } from "../../../navigateur/src/main/sites/fenetres";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
+import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
+import type { AgentHost } from "../agent/host";
 import type { SiteFrameData } from "../agent/site-actor";
-import { containerFor } from "./containers";
+import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "webaios-sites";
 /** The window.arguments[1] key that marks a site app window from its creation (read before store.windows.claim). */
 export const SITE_WINDOW_KEY = "webaios-site";
+/** Electron's BrowserWindow: 1200 × 800 by default, 360 × 240 at least. */
+const SIZE = { largeur: 1200, hauteur: 800 };
+const MIN = { largeur: 360, hauteur: 240 };
 
 /** What the site actor runs in each frame of a container: published to every content process. */
 export function publishSiteFrames(map: Map<number, SiteFrameData>): void {
@@ -15,20 +24,38 @@ export function publishSiteFrames(map: Map<number, SiteFrameData>): void {
   Services.ppmm.sharedData.flush();
 }
 
-export interface SiteRules {
-  id: string;
-  nom: string;
-  adresse: string;
-  domaines: string[];
-  connexion: string[];
+/** What the bar (ui/site-api.ts) drives, through `window.parent.webaiosSiteWindow`. */
+export interface SiteWindowController {
+  state(): EtatFenetreSite;
+  onState(cb: (e: EtatFenetreSite) => void): () => void;
+  /** « Entrer dans le site »: the start address the first time only. */
+  enter(): void;
+  /** ⌂: the home screen; the site's page stays loaded behind it. */
+  home(): void;
+  back(): void;
+  forward(): void;
+  reload(): void;
+  /** « Ouvrir dans un onglet »: the last blocked link (Task 4). */
+  openBlocked(): void;
+  memory(): Promise<(MessageVersLAccueil & { type: "memoire" }) | null>;
+  onMemory(cb: (m: MessageVersLAccueil & { type: "memoire" }) => void): () => void;
+  /** The home screen asks for an address of the site (Task 5). */
+  openFromHome(adresse: string): boolean;
+  image(url: string): Promise<string | null>;
+  homeUrl(): Promise<string | null>;
+  homeGesture(): void;
 }
 
 interface OpenSite {
-  rules: SiteRules;
+  site: SiteOuvrable;
   userContextId: number;
   window: Window;
   /** The app view's <browser>, once the window is set up. */
   view: any;
+  vue: EtatFenetreSite["vue"];
+  /** Has the start address been loaded (« Entrer dans le site » loads it once)? */
+  loaded: boolean;
+  listeners: Set<(e: EtatFenetreSite) => void>;
   /** browserIds of the sign-in windows (connexion) kept for this app. */
   small: Set<number>;
   /** The hosts of the blocked navigations and opens, in order (the bar's mention reads the last one). */
@@ -37,10 +64,13 @@ interface OpenSite {
 
 const open = new Map<string, OpenSite>();
 const byContainer = new Map<number, OpenSite>();
+let host: AgentHost | null = null;
+let dataDir = "";
+const memoryListeners = new Map<string, Set<(m: MessageVersLAccueil & { type: "memoire" }) => void>>();
 
 const context = (s: OpenSite): ContexteNavigation => ({
-  domaines: s.rules.domaines,
-  connexion: s.rules.connexion,
+  domaines: s.site.domaines,
+  connexion: s.site.declaration.connexion ?? [],
   adressesLocales: Services.env.get("WEBAIOS_TEST_ADRESSES_LOCALES") === "1",
 });
 
@@ -52,11 +82,22 @@ function hostOf(url: string): string {
   }
 }
 
+/** The host of an http(s) address, else null (about:blank, an unreadable address). */
+function httpHost(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname : null;
+  } catch {
+    return null;
+  }
+}
+
 function block(s: OpenSite, url: string): void {
   s.blocked.push(hostOf(url));
 }
 
 function loadInView(s: OpenSite, url: string): void {
+  s.loaded = true;
   s.view?.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
 }
 
@@ -76,7 +117,8 @@ function closeStray(browser: any): void {
  * goes only to the app's domains or its sign-in domains (decisionNavigation); so does a kept sign-in window. Any other
  * browser of the container is a window the page just opened (window.open with features: Firefox creates it without
  * asking browserDOMWindow): its first page decides (decisionOuverture). A refused load is cancelled before the request
- * is sent, with NS_BINDING_ABORTED so that the view stays on its page (no error page).
+ * is sent, with NS_BINDING_ABORTED so that the view stays on its page (no error page). The container of an app whose
+ * window is closed loads nothing (a window it opened that outlived it).
  * shortcut: preconnects and speculative connections never reach this observer (a TCP connection, no HTTP request);
  * upgrade if a blocked host must never see a connection.
  */
@@ -85,8 +127,12 @@ const observer = {
     const ch = subject.QueryInterface(Ci.nsIHttpChannel);
     const li = ch.loadInfo;
     if (li.externalContentPolicyType !== Ci.nsIContentPolicy.TYPE_DOCUMENT) return;
-    const s = byContainer.get(li.originAttributes.userContextId);
-    if (!s) return;
+    const userContextId = li.originAttributes.userContextId;
+    const s = byContainer.get(userContextId);
+    if (!s) {
+      if (isSiteContainer(userContextId)) ch.cancel(Cr.NS_BINDING_ABORTED);
+      return;
+    }
     const url: string = ch.URI.spec;
     const bc = li.browsingContext;
     const browserId: number = ch.browserId || bc?.browserId;
@@ -119,55 +165,254 @@ function openInContainer(userContextId: number, marker: unknown, size: string): 
   return Services.ww.openWindow(null, "chrome://browser/content/browser.xhtml", "_blank", `chrome,dialog=no,non-private,resizable,minimizable,titlebar,close,${size}`, args);
 }
 
+/** Electron's cadreVisible: the frame kept, if it still meets a screen. */
+function visible(c: Cadre): boolean {
+  const screen = Cc["@mozilla.org/gfx/screenmanager;1"].getService(Ci.nsIScreenManager).screenForRect(c.x, c.y, c.largeur, c.hauteur);
+  const [l, t, w, h] = [{ value: 0 }, { value: 0 }, { value: 0 }, { value: 0 }];
+  screen.GetAvailRectDisplayPix(l, t, w, h);
+  return c.x < l.value + w.value && c.x + c.largeur > l.value && c.y < t.value + h.value && c.y + c.hauteur > t.value;
+}
+
+/** The window's features: the kept frame (outer size, as Electron's bounds), else 1200 × 800; 360 × 240 at least. */
+function frameFeatures(cadre: Cadre | null | undefined): string {
+  const c = cadre && [cadre.x, cadre.y, cadre.largeur, cadre.hauteur].every(Number.isFinite) && visible(cadre) ? cadre : null;
+  const largeur = Math.max(MIN.largeur, Math.round(c?.largeur ?? SIZE.largeur));
+  const hauteur = Math.max(MIN.hauteur, Math.round(c?.hauteur ?? SIZE.hauteur));
+  return `outerWidth=${largeur},outerHeight=${hauteur}${c ? `,left=${Math.round(c.x)},top=${Math.round(c.y)}` : ""}`;
+}
+
+/** The window's frame as Electron notes it (getNormalBounds), or null while it is minimized or fullscreen. Still read at unload. */
+function frameOf(win: Window): Cadre | null {
+  if (win.windowState === win.STATE_MINIMIZED || win.windowState === win.STATE_FULLSCREEN) return null;
+  return { x: win.screenX, y: win.screenY, largeur: win.outerWidth, hauteur: win.outerHeight };
+}
+
+function noteFrame(s: OpenSite): void {
+  const cadre = frameOf(s.window);
+  if (cadre) host?.notify("sites.noter", { id: s.site.id, cadre });
+}
+
+function stateOf(s: OpenSite): EtatFenetreSite {
+  const url: string = s.view?.currentURI?.spec ?? "";
+  return {
+    id: s.site.id,
+    nom: s.site.declaration.nom,
+    vue: s.vue,
+    aAccueil: s.site.aAccueil,
+    domaine: httpHost(url) ?? httpHost(s.site.depart) ?? "",
+    peutReculer: !!s.view?.canGoBack,
+    peutAvancer: !!s.view?.canGoForward,
+    // Address tracking and the accord card are plan 32's: the app opens as Electron's « Ouvrir sans retouches ».
+    suivi: false,
+    recherche: false,
+    avis: null,
+    accord: null,
+  };
+}
+
+function broadcast(s: OpenSite): void {
+  if (s.window.closed) return;
+  // The bar's frame covers the window on the home screen (window.css).
+  s.window.document.documentElement.toggleAttribute("webaios-site-home", s.vue === "accueil");
+  const e = stateOf(s);
+  for (const cb of s.listeners) cb(e);
+}
+
+function controllerOf(s: OpenSite): SiteWindowController {
+  const id = s.site.id;
+  return {
+    state: () => stateOf(s),
+    onState(cb) {
+      s.listeners.add(cb);
+      return () => void s.listeners.delete(cb);
+    },
+    enter() {
+      if (s.vue === "accord") return;
+      s.vue = "site";
+      if (!s.loaded) loadInView(s, s.site.depart);
+      broadcast(s);
+    },
+    home() {
+      if (!s.site.aAccueil || s.vue === "accord") return;
+      s.vue = "accueil";
+      broadcast(s);
+    },
+    back() {
+      if (s.vue === "site" && s.view?.canGoBack) s.view.goBack();
+    },
+    forward() {
+      if (s.vue === "site" && s.view?.canGoForward) s.view.goForward();
+    },
+    reload() {
+      if (s.vue === "site" && s.loaded) s.view?.reload();
+    },
+    openBlocked() {},
+    memory: () => host?.request<(MessageVersLAccueil & { type: "memoire" }) | null>("sites.memoireAccueil", { id }).catch(() => null) ?? Promise.resolve(null),
+    onMemory(cb) {
+      let set = memoryListeners.get(id);
+      if (!set) memoryListeners.set(id, (set = new Set()));
+      set.add(cb);
+      return () => void set.delete(cb);
+    },
+    openFromHome: () => false,
+    image: async () => null,
+    homeUrl: async () => null,
+    homeGesture() {},
+  };
+}
+
+/** The window is set up (site-window.ts): its view is watched, then, in the site view, sent to the app's address. */
+function attach(s: OpenSite, browser: any): void {
+  s.view = browser;
+  const win = s.window;
+  const id = s.site.id;
+  // A page kept in the bfcache comes back without a request, so without the request guard (measured: history.back()
+  // to a removed domain, zero request): none is kept, dropped at each location change and when the rules change.
+  // Kept on the window: the browser holds its progress listeners weakly.
+  const listener = ((win as any).webaiosSiteProgress = {
+    QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+    onLocationChange(progress: any) {
+      if (!progress.isTopLevel) return;
+      browser.browsingContext?.sessionHistory?.evictAllDocumentViewers();
+      // After the tab browser's own listener has updated canGoBack and canGoForward.
+      Services.tm.dispatchToMainThread(() => broadcast(s));
+    },
+  });
+  browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION);
+  // The favicon Firefox shows for the page (a data: URL from its FaviconLoader), noted as Electron's faviconEnDonnees.
+  let favicon: string | null = null;
+  win.gBrowser.tabContainer.addEventListener("TabAttrModified", (e: CustomEvent<{ changed: string[] }>) => {
+    if (!e.detail.changed.includes("image")) return;
+    const icon = win.gBrowser.getIcon(win.gBrowser.selectedTab);
+    if (typeof icon !== "string" || !icon.startsWith("data:image/") || icon.length > ICONE_MAX || icon === favicon) return;
+    favicon = icon;
+    host?.notify("sites.noter", { id, favicon });
+  });
+  // The frame is noted as it moves (MozUpdateWindowPos, chrome only), is resized and closes; the host writes it later.
+  let pending: number | undefined;
+  const noteSoon = () => {
+    win.clearTimeout(pending);
+    pending = win.setTimeout(() => noteFrame(s), 200);
+  };
+  win.windowRoot.addEventListener("MozUpdateWindowPos", noteSoon);
+  win.addEventListener("resize", noteSoon);
+  // On the loaded window: the about:blank document a new window starts with unloads too.
+  win.addEventListener(
+    "unload",
+    () => {
+      win.clearTimeout(pending);
+      noteFrame(s);
+      s.listeners.clear();
+      if (open.get(id) === s) {
+        open.delete(id);
+        memoryListeners.delete(id);
+        host?.notify("sites.ferme", { id });
+      }
+      if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
+      // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
+      // Only this app's: a main window is never closed here, whatever its tab's container.
+      for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
+    },
+    { once: true },
+  );
+  if (s.vue === "site") loadInView(s, s.site.depart);
+  broadcast(s);
+}
+
 /** Sign-in windows opened by sites.routeOpen, and the address each loads once set up (takeSmallUrl). */
 const smallUrls = new Map<Window, string>();
 
+/** The site apps' windows, for the host (handlers) and the store. */
 export const sites = {
-  /** Opens the app's window, or brings it to the front with the new rules (rules changed: its bfcache is dropped). */
-  open(rules: SiteRules): Window {
-    const known = open.get(rules.id);
+  /**
+   * Opens the app's window, or brings it to the front without reloading it (its declaration and domains are taken
+   * over). False if the id is not a site app's.
+   */
+  open(site: SiteOuvrable, cadre?: Cadre | null): boolean {
+    if (typeof site?.id !== "string" || !ID_SITE.test(site.id)) return false;
+    const known = open.get(site.id);
     if (known && !known.window.closed) {
-      known.rules = rules;
-      known.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
+      sites.update(site);
+      if (known.window.windowState === known.window.STATE_MINIMIZED) (known.window as any).restore();
       known.window.focus();
-      return known.window;
+      return true;
     }
     if (!observing) {
       observing = true;
       Services.obs.addObserver(observer, "http-on-modify-request");
     }
-    const userContextId = containerFor(`site-${rules.id}`);
-    // browser.js's window.arguments: [1] extra options (the marker), [5] the first tab's userContextId; no URL ([0]),
-    // so nothing loads before the view is watched.
+    const userContextId = siteContainer(site.id);
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
-    marker.setPropertyAsAString(SITE_WINDOW_KEY, rules.id);
-    const win = openInContainer(userContextId, marker, "width=1200,height=800");
-    const s: OpenSite = { rules, userContextId, window: win, view: null, small: new Set(), blocked: [] };
-    open.set(rules.id, s);
+    marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
+    const win = openInContainer(userContextId, marker, frameFeatures(cadre));
+    // Opened « sans retouches » (plan 31 injects nothing): never the accord card.
+    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [] };
+    open.set(site.id, s);
     byContainer.set(userContextId, s);
-    return win;
+    return true;
   },
-  /** The window is set up (site-window.ts): its view is watched, then sent to the app's address. */
+  /** Closes the app's window without asking its page (deletion, the host's request); its frame is noted first. */
+  async close(id: string): Promise<void> {
+    const s = open.get(id);
+    if (!s || s.window.closed) return;
+    noteFrame(s);
+    await new Promise<void>((ok) => {
+      const o = {
+        observe(w: unknown, topic: string) {
+          if (topic !== "domwindowclosed" || w !== s.window) return;
+          Services.ww.unregisterNotification(o);
+          ok();
+        },
+      };
+      Services.ww.registerNotification(o);
+      s.window.close();
+    });
+  },
+  /** « Supprimer »: the app's container (cookies, storage) and its served home copies are wiped. */
+  async erase(id: string): Promise<void> {
+    if (typeof id !== "string" || !ID_SITE.test(id)) return;
+    await removeSiteContainer(id);
+    if (dataDir) await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites", id), { recursive: true, ignoreAbsent: true });
+  },
+  /** site.json changed: the open app takes its new declaration and domains (its bfcache is dropped), without showing. */
+  update(site: SiteOuvrable): void {
+    const s = open.get(site?.id);
+    if (!s || s.window.closed) return;
+    s.site = site;
+    s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
+    // The home screen is gone: the site view (Electron's reprendre).
+    if (s.vue === "accueil" && !site.aAccueil) {
+      s.vue = "site";
+      if (!s.loaded) loadInView(s, site.depart);
+    }
+    s.window.gBrowser?.updateTitlebar();
+    broadcast(s);
+  },
+  openIds(): string[] {
+    return [...open.values()].filter((s) => !s.window.closed).map((s) => s.site.id);
+  },
+  /** The app whose container this is, if its window is open. */
+  siteOfContainer(userContextId: number): string | undefined {
+    return byContainer.get(userContextId)?.site.id;
+  },
+  windowOf(id: string): Window | undefined {
+    const s = open.get(id);
+    return s && !s.window.closed ? s.window : undefined;
+  },
+  /** The app as its window was opened or last updated (the window reads it as it loads). */
+  siteOf(id: string): SiteOuvrable | undefined {
+    return open.get(id)?.site;
+  },
+  /** The window's controller, from its creation (site-window.ts); the view is attached once Firefox's startup is done. */
+  controller(id: string): SiteWindowController | undefined {
+    const s = open.get(id);
+    return s ? controllerOf(s) : undefined;
+  },
   attach(id: string, browser: any): void {
     const s = open.get(id);
-    if (!s) return;
-    s.view = browser;
-    // On the loaded window: the about:blank document a new window starts with unloads too.
-    browser.ownerDocument.defaultView.addEventListener(
-      "unload",
-      () => {
-        if (open.get(id) === s) open.delete(id);
-        if (byContainer.get(s.userContextId) !== s) return;
-        byContainer.delete(s.userContextId);
-        // The guard ends with the app window: no other window of its container may outlive it unguarded.
-        for (const w of Services.wm.getEnumerator("navigator:browser"))
-          if (Number(w.gBrowser?.selectedBrowser?.getAttribute("usercontextid")) === s.userContextId) w.close();
-      },
-      { once: true },
-    );
-    loadInView(s, s.rules.adresse);
+    if (s) attach(s, browser);
   },
-  /** window.open and target=_blank (the window's browserDOMWindow): the app view, a sign-in window, or blocked. */
+  /** window.open, target=_blank and links opened in a tab or a window: the app view, a sign-in window, or blocked. */
   routeOpen(id: string, url: string): "dans-l-appli" | "petite-fenetre" | "bloquer" {
     const s = open.get(id);
     if (!s) return "bloquer";
@@ -185,12 +430,30 @@ export const sites = {
     smallUrls.delete(win);
     return url;
   },
-  /** The app whose container this is, if its window is open. */
-  ofContainer(userContextId: number): string | undefined {
-    return byContainer.get(userContextId)?.rules.id;
-  },
-  /** The hosts blocked so far in the app's window (the spike reads them in place of the bar's mention). */
+  /** The hosts blocked so far in the app's window (read by the e2e in place of the bar's mention until Task 4). */
   blocked(id: string): string[] {
     return open.get(id)?.blocked ?? [];
   },
+  /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
+  handlers: {
+    "sites.ouvrir": ([site, cadre]: [SiteOuvrable, Cadre | null]) => sites.open(site, cadre),
+    "sites.fermer": ([id]: [string]) => sites.close(id),
+    "sites.effacer": ([id]: [string]) => sites.erase(id),
+    "sites.mettreAJour": ([site]: [SiteOuvrable]) => sites.update(site),
+    "sites.ouvertes": () => sites.openIds(),
+    // The served home copy is Task 5's.
+    "sites.accueilChange": () => {},
+  },
 };
+
+export type SiteApps = typeof sites;
+
+/** Started with the store: the host the windows report to, and where the served home copies live. */
+export function bindSites(agent: AgentHost, dir: string): void {
+  host = agent;
+  dataDir = dir;
+  agent.on("sites.memoire", (p: { id?: unknown; message?: MessageVersLAccueil & { type: "memoire" } }) => {
+    if (typeof p?.id !== "string" || !p.message) return;
+    for (const cb of memoryListeners.get(p.id) ?? []) cb(p.message);
+  });
+}

@@ -109,3 +109,35 @@
   border-color: var(--accent);
   color: white;
 }
+
+/* A site app's window (store/sites.ts): its bar on top, 36 px (HAUTEUR_BARRE_SITE), above the app view. */
+:root[webaios-site] {
+  min-width: 360px;
+  min-height: 240px;
+}
+
+:root[webaios-site] #webaios-site-bar {
+  display: block;
+  border: none;
+  width: 100%;
+  height: 36px;
+  flex: none;
+}
+
+/* The view right under the bar, as Electron's (Firefox draws a 1px line above the page). */
+:root[webaios-site] #tabbrowser-tabpanels .browserContainer {
+  border-block-start: none;
+}
+
+/* The home screen: the bar's document covers the window; the site's page stays loaded behind it. */
+:root[webaios-site][webaios-site-home] #webaios-site-bar {
+  position: fixed;
+  inset: 0;
+  height: 100%;
+  z-index: 3;
+}
+
+/* An element in fullscreen: the view takes the whole window, the bar comes back on exit. */
+:root[webaios-site][inDOMFullscreen] #webaios-site-bar {
+  display: none;
+}

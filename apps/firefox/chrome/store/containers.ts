@@ -39,6 +39,28 @@ export function removeContainer(profile: IdProfil): void {
   ContextualIdentityService.saveSoon();
 }
 
+/** userContextId of site app `id`'s private container (`userContextIdInternal.webaios-site-<id>`), created on first use. */
+export const siteContainer = (id: string): number => containerFor(`site-${id}`);
+
+/** userContextId of site app `id`'s container if it exists, else null: never creates one. */
+export const existingSiteContainer = (id: string): number | null => existingContainer(`site-${id}`);
+
+/** Is this the container of a site app (open or not)? The request guard refuses every page of one whose app is closed. */
+export function isSiteContainer(userContextId: number): boolean {
+  if (!userContextId) return false;
+  ContextualIdentityService.ensureDataReady();
+  const prefix = internalName("site-");
+  return ContextualIdentityService._identities.some((i: { public: boolean; name: string; userContextId: number }) => !i.public && i.userContextId === userContextId && i.name.startsWith(prefix));
+}
+
+/** Wipes site app `id`'s cookies and storage (waited for, as invisible.ts's clearContainer), then drops its identity. */
+export async function removeSiteContainer(id: string): Promise<void> {
+  const userContextId = existingSiteContainer(id);
+  if (userContextId === null) return;
+  await new Promise<void>((ok) => Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId }, { onDataDeleted: () => ok() }));
+  removeContainer(`site-${id}`);
+}
+
 /**
  * Public `webaios-<id>` identities left by older builds become internal in place (same userContextId, so cookies and storage stay;
  * spike S4), unless the internal name is already taken (then left untouched). shortcut: edits ContextualIdentityService._identities; recheck after a Firefox upgrade.
