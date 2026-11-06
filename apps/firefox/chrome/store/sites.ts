@@ -13,7 +13,7 @@ import { gardienGestes } from "../../shared/geste-widget";
 import type { AgentHost } from "../agent/host";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
-import { frameError, frameInjection, frameMemory, siteOfFrame } from "./site-frames";
+import { frameError, frameInjection, frameMemory, framePosition, frameResume, siteOfFrame } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
@@ -594,6 +594,16 @@ export const sites = {
       if (!host) return Promise.reject(new Error("no host"));
       return host.request("sites.memoireOp", p);
     });
+  },
+  /** The site actor's "position": a video's position, relayed to the host. */
+  framePosition(wgp: any, p: unknown): void {
+    const s = siteOfFrame(wgp, open.values());
+    framePosition(wgp, s, p, !!(s && context(s).adressesLocales), (q) => host?.notify("sites.position", q));
+  },
+  /** The site actor's "reprise": the position to resume, from the host. */
+  frameResume(wgp: any, duree: unknown): Promise<number | null> {
+    const s = siteOfFrame(wgp, open.values());
+    return frameResume(wgp, s, duree, !!(s && context(s).adressesLocales), (q) => (host ? host.request<number | null>("sites.reprise", q) : Promise.resolve(null)));
   },
   /** « Afficher le dossier »: the app's folder shown in the file manager. */
   revealSite(id: string): void {

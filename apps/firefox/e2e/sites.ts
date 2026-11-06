@@ -186,3 +186,32 @@ export async function inBrowser<T>(m: Marionette, browser: string, script: strin
 /** Runs `script` in the content of app `id`'s view (see inBrowser). */
 export const inSiteView = <T>(m: Marionette, id: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
   inBrowser<T>(m, `${siteWindowExpr(id)}.gBrowser.selectedBrowser`, script, o);
+
+/** Electron's silenceWav (e2e/aide.ts): `seconds` of 8 kHz silence as a WAV, a video as far as the player cares. */
+export function silenceWav(seconds = 3): Buffer {
+  const n = 8000 * seconds;
+  const b = Buffer.alloc(44 + n, 0x80);
+  b.write("RIFF", 0);
+  b.writeUInt32LE(36 + n, 4);
+  b.write("WAVEfmt ", 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(8000, 24);
+  b.writeUInt32LE(8000, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write("data", 36);
+  b.writeUInt32LE(n, 40);
+  return b;
+}
+
+/** Electron's servirWav: a WAV served with byte ranges, like a real video server, so the player can seek to the minute. */
+export const serveWav = (wav: Buffer): SiteRoute => (req, res) => {
+  const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+  if (!range) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);
+  const from = Number(range[1]);
+  const to = range[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+  res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": to - from + 1, "Content-Range": `bytes ${from}-${to}/${wav.length}`, "Accept-Ranges": "bytes" });
+  res.end(wav.subarray(from, to + 1));
+};

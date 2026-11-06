@@ -336,6 +336,27 @@ describe("retouches", () => {
     m.sites.fermee("vidola");
     expect(await m.sites.memoireOp({ ...op, op: "lire" })).toMatchObject({ ok: false });
   });
+
+  it("position and reprise: only an open app with its accord; « Oublier » drops a note waiting for its second", async () => {
+    const m = mount();
+    const note = (t: number) => m.sites.position({ id: "vidola", cadre: "1:2", adresse: "/episode/4", t, duree: 90 });
+    await m.sites.ouvrirParId("vidola");
+    await note(70);
+    expect(await m.sites.reprise({ id: "vidola", adresse: "/episode/4", duree: 90 })).toBeNull();
+    expect((await m.sites.outils.memoire("vidola"))!.positions).toEqual({});
+    m.sites.fermee("vidola");
+    await accorderSite(m.dataDir, "vidola", DeclarationSite.parse(declaration));
+    await m.sites.ouvrirParId("vidola");
+    await note(70);
+    expect(await m.sites.reprise({ id: "vidola", adresse: "/episode/4", duree: 91 })).toBe(70);
+    // A second note too soon waits; « Oublier » (the real action) drops it, the memory stays empty.
+    void note(75);
+    await m.sites.agir("vidola", "oublier", "f1");
+    await new Promise((r) => setTimeout(r, 1300));
+    expect((await m.sites.outils.memoire("vidola"))!.positions).toEqual({});
+    m.sites.fermee("vidola");
+    expect(await m.sites.reprise({ id: "vidola", adresse: "/episode/4", duree: 90 })).toBeNull();
+  });
 });
 
 describe("accorder", () => {

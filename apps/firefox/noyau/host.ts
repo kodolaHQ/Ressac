@@ -387,6 +387,8 @@ const rpc = createRpc({
       if (typeof p?.id === "string") sites.noter(p.id, { ...(p.cadre ? { cadre: p.cadre } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
     },
     "sites.memoireOp": (p: unknown) => sites.memoireOp(p),
+    "sites.position": (p: unknown) => sites.position(p),
+    "sites.reprise": (p: unknown) => sites.reprise(p),
     "sites.accorder": (p: { id?: unknown; oui?: unknown; empreinte?: unknown }) => {
       if (typeof p?.id === "string" && typeof p.oui === "boolean" && typeof p.empreinte === "string") return sites.accorder(p.id, p.oui, p.empreinte);
     },

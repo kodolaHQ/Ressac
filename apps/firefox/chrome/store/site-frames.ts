@@ -6,7 +6,7 @@ import { adresseRelative } from "../../../../packages/noyau/src/sites/adresses";
 import GARDE from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
 import { sourceRetouche, type InjectionCadre } from "../../../navigateur/src/commun/sites";
 import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
-import { ajouterConsoleRetouche, injectionPour, type ReponseMemoire } from "../../../navigateur/src/main/sites/injection";
+import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type ReponseMemoire } from "../../../navigateur/src/main/sites/injection";
 import { REFUS_MEMOIRE } from "../../noyau/site-memory";
 import type { SiteChrome } from "../../noyau/sites";
 
@@ -50,7 +50,12 @@ export function frameInjection(wgp: any, s: FrameSite | undefined, adressesLocal
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
   if (!f) return null;
-  return injectionPour({ site: s.site, retouches: s.retouches, accorde: true, garde: GARDE, adressesLocales }, f.principal ? { url: f.url, principal: true } : f);
+  const i = injectionPour({ site: s.site, retouches: s.retouches, accorde: true, garde: GARDE, adressesLocales }, f.principal ? { url: f.url, principal: true } : f);
+  // A player written into an about:srcdoc / about:blank frame of an app page has no address of its own for injectionPour
+  // (nothing is injected there), but the resume goes into it like into any other frame of that page.
+  if (i && !f.principal && /^about:(srcdoc|blank)$/.test(f.url) && f.page !== null && adresseRelative(f.page, s.site.domaines) !== null)
+    i.reprise = repriseDansCadre(s.site.declaration, f, adressesLocales);
+  return i;
 }
 
 /**
@@ -79,4 +84,32 @@ export function frameError(s: FrameSite | undefined, e: unknown): void {
   if (typeof texte !== "string" || typeof source !== "string" || !source.startsWith(sourceRetouche(s.site.id, ""))) return;
   const l = typeof ligne === "number" && Number.isInteger(ligne) && ligne > 0 ? ligne : 0;
   ajouterConsoleRetouche(s.erreurs, { texte, source: l ? `${source}:${l}` : source }, new Date().toISOString());
+}
+
+/**
+ * Electron's pageReprise: the app's id and the relative address of the view's top page, if the frame's app has its accord
+ * and the resume goes into this frame (declaration, `cadres` patterns). The address is read at each request (a pushState
+ * to another episode counts); a page off the app's domains (a sign-in page and its frames) has none.
+ */
+function resumePage(wgp: any, s: FrameSite | undefined, adressesLocales: boolean): { id: string; adresse: string } | null {
+  if (!s || s.site.accordRequis) return null;
+  const f = frameOf(wgp, s.view);
+  if (!f || !repriseDansCadre(s.site.declaration, f, adressesLocales)) return null;
+  const adresse = f.principal ? adresseRelative(f.url, s.site.domaines) : f.page === null ? null : adresseRelative(f.page, s.site.domaines);
+  return adresse === null ? null : { id: s.site.id, adresse };
+}
+
+/** The actor's "position": a video's position of the page, for the host (`cadre` is the frame's one-second step key). */
+export function framePosition(wgp: any, s: FrameSite | undefined, p: unknown, adressesLocales: boolean, notify: (p: object) => void): void {
+  const page = p && typeof p === "object" ? resumePage(wgp, s, adressesLocales) : null;
+  if (!page) return;
+  const { t, duree, fin } = p as { t?: unknown; duree?: unknown; fin?: unknown };
+  notify({ ...page, cadre: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duree, fin: fin === true });
+}
+
+/** The actor's "reprise": the position kept for the page, for a video of this duration (null if none). */
+export async function frameResume(wgp: any, s: FrameSite | undefined, duree: unknown, adressesLocales: boolean, request: (p: object) => Promise<number | null>): Promise<number | null> {
+  const page = resumePage(wgp, s, adressesLocales);
+  const d = duree && typeof duree === "object" ? (duree as { duree?: unknown }).duree : undefined;
+  return page && typeof d === "number" ? request({ ...page, duree: d }) : null;
 }

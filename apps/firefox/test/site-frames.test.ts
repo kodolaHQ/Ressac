@@ -6,7 +6,7 @@ import { REFUS_MEMOIRE } from "../noyau/site-memory";
 import type { SiteChrome } from "../noyau/sites";
 
 vi.mock("electron", () => ({ ipcMain: undefined }));
-const { frameError, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
+const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
 
 // Electron's sender rules (test/sites/injection.test.ts, IPC part) on Firefox's WindowGlobalParent: what a frame gets
 // is decided from its browsing context and the view's <browser>, never from what it says.
@@ -73,6 +73,18 @@ describe("frameInjection", () => {
     expect(frameInjection(f, siteOfFrame(f, [login.s]), false)).toMatchObject({ js: [], reprise: false });
   });
 
+  it("an about:srcdoc player frame of an app page gets the resume when the app declares no cadres, never the retouches", () => {
+    const sans = app();
+    const free = { ...sans.s, site: { ...sans.s.site, declaration: DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/series/*"], js: ["a.js"] }] }) } };
+    const f = sans.v.frame("about:srcdoc");
+    expect(frameInjection(f, siteOfFrame(f, [free]), false)).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: true });
+    // With `cadres` patterns, a frame without an address of its own matches none; on a sign-in page, nothing.
+    expect(frameInjection(f, siteOfFrame(f, [sans.s]), false)?.reprise).toBe(false);
+    const login = app({ url: "https://compte.example/" });
+    const g = login.v.frame("about:srcdoc");
+    expect(frameInjection(g, siteOfFrame(g, [{ ...login.s, site: free.site }]), false)?.reprise).toBe(false);
+  });
+
   it("a gone frame (its documentURI throws) gets nothing", () => {
     const { v, s } = app();
     const gone = { browsingContext: v.main.browsingContext, get documentURI(): never { throw new Error("dead"); } };
@@ -133,5 +145,71 @@ describe("the retouches' console", () => {
     expect(s.erreurs[0]!.texte).toBe("e10");
     for (let i = 0; i < 40; i++) frameError(s, err("webaios-retouche://vidola/a.js", "x".repeat(5000)));
     expect(s.erreurs.reduce((t, e) => t + e.texte.length, 0)).toBeLessThanOrEqual(CONSOLE_RETOUCHES_TOTAL);
+  });
+});
+
+// Electron's pageReprise rules (test/sites/injection.test.ts: position and reprise refusals), on WindowGlobalParents.
+describe("framePosition and frameResume", () => {
+  /** A frame with the ids the step key is made of. */
+  const withIds = <F extends { browsingContext: object }>(f: F, id: number, inner: number) => {
+    // The main frame's context is the view's own object (that identity makes it the main frame): its id is set in place.
+    if ((f.browsingContext as { top?: unknown }).top === f.browsingContext) Object.assign(f.browsingContext, { id });
+    return { ...f, browsingContext: (f.browsingContext as { top?: unknown }).top === f.browsingContext ? f.browsingContext : { ...f.browsingContext, id }, innerWindowId: inner };
+  };
+  const note = (v: ReturnType<typeof app>["v"], s: ReturnType<typeof app>["s"], f: any, p: unknown, local = false) => {
+    const sent: object[] = [];
+    framePosition(f, siteOfFrame(f, [s]), p, local, (q) => sent.push(q));
+    return sent;
+  };
+  const LECTEUR = "https://www.lecteur.example/embed/9";
+
+  it("a position from the player is sent with the page's address and the frame's step key; from the main page too", () => {
+    const { v, s } = app({ url: "https://vidola-b.example/episode/4?s=1" });
+    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
+    expect(note(v, s, lecteur, { t: 70, duree: 90 })).toEqual([{ id: "vidola", adresse: "/episode/4?s=1", cadre: "5:77", t: 70, duree: 90, fin: false }]);
+    const main = withIds(v.main, 2, 11);
+    expect(note(v, s, main, { t: 72, duree: 90, fin: true })).toEqual([{ id: "vidola", adresse: "/episode/4?s=1", cadre: "2:11", t: 72, duree: 90, fin: true }]);
+  });
+
+  it("refused without accord, for a frame the resume does not go into, outside the view, off the site, or a malformed message", () => {
+    const { v, s } = app();
+    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
+    expect(note(v, { ...s, site: { ...s.site, accordRequis: true } } as never, lecteur, { t: 70, duree: 90 })).toEqual([]);
+    // reprise false in the declaration
+    const sans = { ...s, site: { ...s.site, declaration: { ...declaration, reprise: false } } } as never;
+    expect(note(v, sans, lecteur, { t: 70, duree: 90 })).toEqual([]);
+    // an advert does not match the `cadres` patterns
+    expect(note(v, s, withIds(v.frame("https://ads.pub.example/v"), 6, 78), { t: 70, duree: 90 })).toEqual([]);
+    // the sign-in window (another <browser>)
+    const small = browser(PAGE);
+    expect(note(small, s, withIds(small.main, 9, 1), { t: 70, duree: 90 })).toEqual([]);
+    // a sign-in page and its frames
+    const login = app({ url: "https://compte.example/connexion" });
+    expect(note(login.v, login.s, withIds(login.v.frame(LECTEUR), 5, 77), { t: 70, duree: 90 })).toEqual([]);
+    expect(note(login.v, login.s, withIds(login.v.main, 2, 11), { t: 70, duree: 90 })).toEqual([]);
+    for (const p of [null, "x", undefined]) expect(note(v, s, lecteur, p)).toEqual([]);
+  });
+
+  it("the address is read at each message (a pushState to another episode counts)", () => {
+    const { v, s } = app({ url: "https://vidola-b.example/episode/4" });
+    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
+    expect((note(v, s, lecteur, { t: 1, duree: 90 })[0] as { adresse: string }).adresse).toBe("/episode/4");
+    (v.main.browsingContext as any).currentWindowGlobal = { documentURI: { spec: "https://vidola-b.example/episode/5" } };
+    expect((note(v, s, lecteur, { t: 1, duree: 90 })[0] as { adresse: string }).adresse).toBe("/episode/5");
+  });
+
+  it("frameResume asks the host with the page's address; nothing for a refused frame or a malformed duration", async () => {
+    const { v, s } = app({ url: "https://vidola-b.example/episode/4" });
+    const asked: object[] = [];
+    const ask = async (p: object) => (asked.push(p), 70);
+    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
+    expect(await frameResume(lecteur, siteOfFrame(lecteur, [s]), { duree: 90 }, false, ask)).toBe(70);
+    expect(asked).toEqual([{ id: "vidola", adresse: "/episode/4", duree: 90 }]);
+    for (const d of [undefined, null, {}, { duree: "90" }]) expect(await frameResume(lecteur, siteOfFrame(lecteur, [s]), d, false, ask)).toBeNull();
+    const ad = withIds(v.frame("https://ads.pub.example/v"), 6, 78);
+    expect(await frameResume(ad, siteOfFrame(ad, [s]), { duree: 90 }, false, ask)).toBeNull();
+    const small = browser(PAGE);
+    expect(await frameResume(small.main, siteOfFrame(small.main, [s]), { duree: 90 }, false, ask)).toBeNull();
+    expect(asked).toHaveLength(1);
   });
 });

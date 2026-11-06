@@ -32,7 +32,7 @@ import { ICONE_MAX, modifierAvecAgent, type ActionSite, type DemandeAccordSite, 
 import type { Cadre } from "../../navigateur/src/commun/modele.ts";
 import type { ErreurRetouche, SiteOuvrable } from "../../navigateur/src/main/sites/fenetres.ts";
 import type { ReponseMemoire } from "../../navigateur/src/main/sites/injection.ts";
-import { memoireOp } from "./site-memory.ts";
+import { creerPositions, memoireOp } from "./site-memory.ts";
 
 // The pure parts of Electron's main/sites/service.ts, copied: it imports electron, so the Node host cannot import it.
 // Same guards, same counters, same messages. Left to plan 32's later tasks: address tracking, accord, extensions.
@@ -102,6 +102,9 @@ export interface SitesHost {
   accorder(id: string, oui: boolean, empreinte: string): Promise<void>;
   /** `webaiosSite` of an open app's main page; the chrome checked the sender, the accord and the address. */
   memoireOp(demande: unknown): Promise<ReponseMemoire>;
+  /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.reprise`); the chrome checked the frame. */
+  position(demande: unknown): Promise<void>;
+  reprise(demande: unknown): Promise<number | null>;
   /** The open apps as last sent to the chrome. */
   sitesOuverts: Map<string, SiteChrome>;
   outils: OutilsSites;
@@ -253,6 +256,10 @@ export function createSites(o: {
   /** Dernière action ratée par appli (« Supprimer » sans corbeille…), montrée en texte sur sa ligne. */
   const erreursActions = new Map<string, string>();
 
+  // Checked again here, like memoireOp: only an open app whose retouches are granted has positions.
+  const accordee = (id: string) => sitesOuverts.get(id)?.accordRequis === false;
+  const positions = creerPositions({ memoire: (id) => (accordee(id) ? memoire(id) : Promise.reject(new Error("pas d'accord"))), accorde: accordee });
+
   const viderMemoire = (id: string) =>
     memoires
       .get(id)
@@ -394,6 +401,7 @@ export function createSites(o: {
    */
   async function oublier(id: string): Promise<void> {
     if (!(await connue(id))) return;
+    positions.annulerNotes(id);
     const m = await memoire(id);
     await m.effacer();
     if (!ouvertes.has(id)) memoires.delete(id);
@@ -410,6 +418,7 @@ export function createSites(o: {
     suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
     try {
       if (!(await connue(id))) return;
+      positions.annulerNotes(id);
       await o.chrome.fermer(id);
       ouvertes.delete(id);
       forget(id);
@@ -539,6 +548,7 @@ export function createSites(o: {
       if (x.favicon !== undefined) o.diffuser();
     },
     fermee(id) {
+      positions.fermee(id);
       ouvertes.delete(id);
       forget(id);
       abonnements.get(id)?.();
@@ -587,6 +597,8 @@ export function createSites(o: {
     },
     // Checked again here: only an open app whose retouches are granted has a memory for its page.
     memoireOp: (d) => memoireOp((id) => (sitesOuverts.get(id)?.accordRequis === false ? memoire(id) : Promise.reject(new Error("pas d'accord"))), d),
+    position: (d) => positions.position(d),
+    reprise: (d) => positions.reprise(d),
     async resynchroniser() {
       ouvertes = new Set(await o.chrome.ouvertes());
       for (const id of [...sitesOuverts.keys()]) if (!ouvertes.has(id)) forget(id);

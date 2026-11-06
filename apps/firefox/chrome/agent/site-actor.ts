@@ -7,6 +7,7 @@
 import type { WebAiOsStore } from "../store";
 import type { InjectionCadre } from "../../../navigateur/src/commun/sites";
 import type { ReponseMemoire } from "../../../navigateur/src/main/sites/injection";
+import { EVENEMENTS_VIDEO, SuiviReprise } from "../../../navigateur/src/preload/reprise";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/sites.ts SITE_FRAMES.
@@ -42,12 +43,14 @@ function relayErrors(): void {
  * frame's address, place and view come from this actor's WindowGlobalParent.
  */
 export class WebAiOsSiteParent extends JSWindowActorParent {
-  async receiveMessage(m: { name: string; data?: unknown }): Promise<InjectionCadre | ReponseMemoire | null> {
-    if (m.name !== "injection" && m.name !== "memoire" && m.name !== "erreur") return null;
+  async receiveMessage(m: { name: string; data?: unknown }): Promise<InjectionCadre | ReponseMemoire | number | null> {
+    if (!["injection", "memoire", "erreur", "position", "reprise"].includes(m.name)) return null;
     const { sites } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
     if (m.name === "injection") return sites.frameInjection(this.manager);
     if (m.name === "memoire") return sites.frameMemory(this.manager, m.data);
-    sites.frameError(this.manager, m.data);
+    if (m.name === "reprise") return sites.frameResume(this.manager, m.data);
+    if (m.name === "position") sites.framePosition(this.manager, m.data);
+    else sites.frameError(this.manager, m.data);
     return null;
   }
 }
@@ -62,6 +65,7 @@ function valid(r: unknown): InjectionCadre | null {
 export class WebAiOsSiteChild extends JSWindowActorChild {
   /** The scripts waiting for DOMContentLoaded. */
   private pending: (() => void) | null = null;
+  private resumed = false;
 
   // DOMWindowCreated: the request. DOMContentLoaded (capture, listened above the page's window): the scripts, even
   // when the page stops the event's propagation.
@@ -92,6 +96,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       } catch (e) {
         console.error("[webaios] retouche CSS non posée :", e);
       }
+    if (i.reprise === true) this.resume();
     if (i.js.length === 0 || typeof i.garde !== "string") return;
     const garde = i.garde;
     const doc = this.document as any;
@@ -121,6 +126,43 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     };
     if (doc.readyState === "loading") this.pending = scripts;
     else scripts();
+  }
+
+  /**
+   * Electron's brancherReprise, in this actor's own world (neither the page's nor the sandbox's): the events of the
+   * document's videos, captured. Only a trusted event counts (an event the page dispatches is ignored). The position
+   * is set through the Xray view, so the page cannot hook it.
+   */
+  private resume() {
+    // Once per window: an about:srcdoc frame keeps the inner window of its initial about:blank (the actor asked then, and not
+    // again), so the listeners are on the window, which outlives the replaced document.
+    if (this.resumed) return;
+    this.resumed = true;
+    const win = this.contentWindow as any;
+    const suivi = new SuiviReprise({
+      noter: (t, duree, fin) => this.sendAsyncMessage("position", { t, duree, fin }),
+      demander: async (duree) => {
+        try {
+          const p: unknown = await this.sendQuery("reprise", { duree });
+          return typeof p === "number" && Number.isFinite(p) ? p : null;
+        } catch {
+          return null;
+        }
+      },
+      maintenant: () => Date.now(),
+    });
+    for (const type of EVENEMENTS_VIDEO)
+      win.addEventListener(
+        type,
+        (e: any) => {
+          const v = e.target;
+          if (!e.isTrusted || !v || ChromeUtils.getClassName(v) !== "HTMLVideoElement") return;
+          void suivi.surEvenement(type, { currentTime: v.currentTime, duration: v.duration, cle: v }).then((p) => {
+            if (p !== null && p > 0) v.currentTime = p;
+          });
+        },
+        { capture: true },
+      );
   }
 
   /** `webaiosSite` in the sandbox: promises of the sandbox, one request each; a refusal rejects with the memory's message. */

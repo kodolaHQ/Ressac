@@ -33,6 +33,7 @@ declare const ChromeUtils: {
   }[];
   getXPCOMErrorName(status: number): string;
   generateQI(interfaces: string[]): unknown;
+  getClassName(o: unknown): string;
 };
 declare const WebExtensionPolicy: {
   getByID(id: string): { mozExtensionHostname: string } | null;
@@ -56,6 +57,7 @@ declare class JSWindowActorChild {
   readonly contentWindow: Window;
   readonly docShell: any;
   sendQuery(name: string, data?: unknown): Promise<unknown>;
+  sendAsyncMessage(name: string, data?: unknown): void;
 }
 // Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
 declare const __WEBAIOS_NODE__: string;
