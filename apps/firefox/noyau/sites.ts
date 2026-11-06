@@ -353,6 +353,11 @@ export function createSites(o: {
     if (!site || !encore()) return false;
     relectures.set(id, (relectures.get(id) ?? 0) + 1);
     if (!(await o.chrome.ouvrir(site, souvenirs.lire(id).cadre))) return false;
+    // A deletion started while the chrome opened the window (Electron's open was synchronous): close it again.
+    if (!encore()) {
+      await o.chrome.fermer(id).catch(() => {});
+      return false;
+    }
     ouvertes.add(id);
     o.diffuser();
     return true;

@@ -42,7 +42,7 @@ const declaration = {
   reprise: true,
 };
 
-function mount() {
+function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "sites-host-")));
   const chemins = cheminsEspace(join(racine, "espace"));
   const dataDir = join(racine, "profil");
@@ -59,7 +59,15 @@ function mount() {
   const calls: { ouvrir: unknown[][]; majs: Parameters<SitesChrome["mettreAJour"]>[0][]; accueil: string[] } = { ouvrir: [], majs: [], accueil: [] };
   let ouvertesChrome: string[] = [];
   const chrome: SitesChrome = {
-    ouvrir: async (...a) => (calls.ouvrir.push(a), journal.push("ouvrir"), true),
+    ouvrir: async (...a) => {
+      calls.ouvrir.push(a);
+      journal.push("ouvrir");
+      if (gateOuvrir) {
+        gateOuvrir.reached();
+        await gateOuvrir.open;
+      }
+      return true;
+    },
     fermer: async (id) => void journal.push(`fermer ${id}`),
     effacer: async (id) => void journal.push(`effacer ${id}`),
     mettreAJour: async (s) => void calls.majs.push(s),
@@ -198,6 +206,24 @@ describe("agir", () => {
     expect(m.calls.ouvrir).toHaveLength(0);
     expect(m.journal.filter((j) => j === "fermer vidola")).toHaveLength(1);
     expect(readdirSync(join(m.chemins.sites, ".corbeille"))).toHaveLength(1);
+  });
+});
+
+describe("deleting while the chrome opens the window", () => {
+  it("closes the window opened meanwhile and does not mark it open", async () => {
+    let lache!: () => void;
+    let atteint!: () => void;
+    const reached = new Promise<void>((ok) => (atteint = ok));
+    const m = mount({ reached: () => atteint(), open: new Promise<void>((ok) => (lache = ok)) });
+    const ouverture = m.sites.ouvrirParId("vidola");
+    await reached;
+    const suppression = m.sites.agir("vidola", "supprimer", "f1");
+    await vi.waitFor(() => expect(m.journal).toContain("effacer vidola"));
+    lache();
+    expect(await ouverture).toBe(false);
+    await suppression;
+    expect(m.journal.at(-1)).toBe("fermer vidola");
+    expect((await m.sites.liste()).find((s) => s.id === "vidola")?.ouverte ?? false).toBe(false);
   });
 });
 
