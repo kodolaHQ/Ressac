@@ -1,4 +1,4 @@
-import type { Decision, EtatAcces, IdProfil } from "../../../navigateur/src/commun/modele";
+import type { Decision, EtatAcces, IdFenetre, IdProfil } from "../../../navigateur/src/commun/modele";
 import { ongletPrive, profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
@@ -252,10 +252,44 @@ async function start(): Promise<WebAiOsStore> {
       return !!o && ongletPrive(store.state, o);
     },
   });
+  // The last main window; with none open, one opens first (Electron's fenetreAgent() + rouvrir).
+  async function mainWindow(): Promise<IdFenetre | undefined> {
+    if (!windows.active()) {
+      const win = BrowserWindowTracker.openWindow();
+      await new Promise<void>((ok) => {
+        const o = {
+          observe(subject: unknown) {
+            if (subject !== win) return;
+            Services.obs.removeObserver(o, "browser-delayed-startup-finished");
+            // After window/index.ts's claim, which follows the same delayed startup.
+            Services.tm.dispatchToMainThread(() => ok());
+          },
+        };
+        Services.obs.addObserver(o, "browser-delayed-startup-finished");
+      });
+    }
+    return windows.active();
+  }
+  const toFront = (fenetreId: IdFenetre) => {
+    const win = windows.get(fenetreId)?.window;
+    if (!win) return;
+    if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
+    win.focus();
+  };
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites), ...agentExtensions.handlers, ...sites.handlers },
+    handlers: {
+      ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites),
+      ...agentExtensions.handlers,
+      ...sites.handlers,
+      // A review batch for the agent (noyau/design.ts): its window, then its panel with the keyboard, in front.
+      "design.fenetreAgent": async () => (await mainWindow()) ?? null,
+      "design.donnerAgent": ([fenetre]: [IdFenetre]) => {
+        windows.get(fenetre)?.controller.openAgent();
+        toFront(fenetre);
+      },
+    },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
@@ -271,27 +305,10 @@ async function start(): Promise<WebAiOsStore> {
   // (Electron's ouvrirDansOnglet); with no main window open, one opens first.
   bindSites(agent, dataDir, async (url) => {
     if (!/^https?:\/\//.test(url)) return;
-    if (!windows.active()) {
-      const win = BrowserWindowTracker.openWindow();
-      await new Promise<void>((ok) => {
-        const o = {
-          observe(subject: unknown) {
-            if (subject !== win) return;
-            Services.obs.removeObserver(o, "browser-delayed-startup-finished");
-            // After window/index.ts's claim, which follows the same delayed startup.
-            Services.tm.dispatchToMainThread(() => ok());
-          },
-        };
-        Services.obs.addObserver(o, "browser-delayed-startup-finished");
-      });
-    }
-    const fenetreId = windows.active();
+    const fenetreId = await mainWindow();
     if (!fenetreId) return;
     store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
-    const win = windows.get(fenetreId)?.window;
-    if (!win) return;
-    if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
-    win.focus();
+    toFront(fenetreId);
   });
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
