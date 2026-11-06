@@ -41,6 +41,8 @@ export function createActionsApi(o: {
     return !s || espaceActifPrive(s, fenetre);
   };
   const refus = { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
+  /** The host stopped or did not answer a request: the next `acces` reads again (afterRestart). */
+  let hostDown = false;
   /** The last answer to each read of the page: a host that stopped answers nothing, and the page keeps what it showed. */
   const lastRead = new Map<string, unknown>();
   /**
@@ -55,26 +57,28 @@ export function createActionsApi(o: {
         if (keep) lastRead.set(key, v);
         return structuredClone(v);
       },
-      () => (keep && lastRead.has(key) ? structuredClone(lastRead.get(key) as T) : empty()),
+      () => {
+        hostDown = true;
+        return keep && lastRead.has(key) ? structuredClone(lastRead.get(key) as T) : empty();
+      },
     );
     return prive() ? empty() : r;
   };
   /**
-   * Calls `cb` once on the first `acces` after the host exited: the host sends it once its noyau has started again.
-   * Meanwhile the page keeps its last read; later `acces` (each policy change) are ignored.
+   * The host stopped, or did not answer this API (a page opened while it was down): the first `acces`, sent once its
+   * noyau runs again, calls the subscribers back once. Meanwhile pages keep their last read; later `acces` (each policy
+   * change) are ignored.
    */
-  const afterRestart = (cb: () => void) => {
-    let exited = false;
-    const offs = [
-      host.on(HOST_EXITED, () => (exited = true)),
-      host.on("acces", () => {
-        if (!exited) return;
-        exited = false;
-        cb();
-      }),
-    ];
-    return () => offs.forEach((f) => f());
-  };
+  const restarted = new Set<() => void>();
+  o.untilUnload(host.on(HOST_EXITED, () => (hostDown = true)));
+  o.untilUnload(
+    host.on("acces", () => {
+      if (!hostDown) return;
+      hostDown = false;
+      restarted.forEach((cb) => cb());
+    }),
+  );
+  const afterRestart = (cb: () => void) => (restarted.add(cb), () => void restarted.delete(cb));
   /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
   let dernierLien = -Infinity;
   const api: ActionsFirefox = {

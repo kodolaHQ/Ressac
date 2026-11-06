@@ -294,6 +294,32 @@ describe("createActionsApi", () => {
     expect(await a.liste()).toEqual([]);
   });
 
+  it("a page opened while the host is down reads again on the next acces", async () => {
+    let up = false;
+    const { F, api, emit } = setup({
+      "actions.liste": () => {
+        if (!up) throw new Error("Le noyau de l'agent s'est arrêté.");
+        return [{ id: "gitlab" }];
+      },
+      "actions.direct": () => NONE,
+    });
+    const a = api(F);
+    const change = vi.fn();
+    const direct = vi.fn();
+    a.surChange(change);
+    a.surDirect(direct);
+    // The page's first read: no host answers, and this API saw no exit.
+    expect(await a.liste()).toEqual([]);
+    up = true;
+    emit("acces");
+    expect(change).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(direct).toHaveBeenCalledTimes(1));
+    expect(await a.liste()).toEqual([{ id: "gitlab" }]);
+    // A later acces, with no failure in between: nothing more.
+    emit("acces");
+    expect(change).toHaveBeenCalledTimes(1);
+  });
+
   it("acces without a preceding exit does not read again", async () => {
     const { F, api, emit, calls } = setup({ "actions.direct": () => NONE });
     const change = vi.fn();
