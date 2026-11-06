@@ -4,13 +4,18 @@
 
 import type { IdFenetre } from "../../../navigateur/src/commun/modele";
 import type { WebAiOsStore } from "../store";
-import type { Anchors, Rect } from "./anchor";
+import type { SiteWindowController } from "../store/sites";
+import { setupAnchors, type Anchors, type Rect } from "./anchor";
 import { PINNED_PREF, parsePinned, setPinned } from "./pinned";
 import type { TabSync } from "./tabs";
 
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
 const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
 const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
+const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
+const ADDONS_LIST = "addons://list/extension";
+// Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
+const AGENT_SUFFIX = "@agent.webaios";
 
 export interface AddonButton {
   id: string;
@@ -57,6 +62,77 @@ export function createAddons(o: {
   store: WebAiOsStore;
   fenetreId: IdFenetre;
 }): WindowAddons {
+  const activeSpace = () => {
+    const f = o.store.state.fenetres.find((x) => x.id === o.fenetreId);
+    return f ? o.store.state.espaces.find((e) => e.id === f.espaceActif) : undefined;
+  };
+  return addonsCore({
+    win: o.win,
+    gBrowser: o.gBrowser,
+    anchors: o.anchors,
+    shown(id) {
+      const espace = activeSpace();
+      return !espace || o.store.agentExtensions.shownIn(id, espace.profil, espace.prive);
+    },
+    page: () => !!o.tabs.displayed(),
+    watch: [
+      (notify) => o.store.agentExtensions.onScopes(notify),
+      (notify) => {
+        // Another space, or the same one turned private or given another profile.
+        let lastSpace = "";
+        return o.store.subscribe(() => {
+          const e = activeSpace();
+          const key = e ? `${e.id}|${e.profil}|${e.prive}` : "";
+          if (key !== lastSpace) (lastSpace = key), notify();
+        });
+      },
+    ],
+    manage: () => void (o.win as any).BrowserAddonUI.openAddonsMgr(ADDONS_LIST),
+    findMore: () => void o.store.dispatch({ type: "ouvrirOnglet", fenetreId: o.fenetreId, url: "https://addons.mozilla.org/fr/firefox/" }),
+  });
+}
+
+/**
+ * A site app's window (store/sites.ts): the add-ons' buttons for its one tab, the app view. Never an agent extension's
+ * (they never run in an app, spec §4.9); enabled in the « site » view on a web page only, as Electron's bar shows them.
+ * Its popups open on the app's bar; about:addons opens in a main window (the app window takes no tab).
+ */
+export function createSiteAddons(win: Window, view: SiteWindowController): WindowAddons {
+  const w = win as any;
+  const bar = win.document.getElementById("webaios-site-bar") as HTMLIFrameElement;
+  return addonsCore({
+    win,
+    gBrowser: w.gBrowser,
+    anchors: setupAnchors(win, bar),
+    shown: (id) => !id.endsWith(AGENT_SUFFIX),
+    page: () => view.state().vue === "site" && /^https?:/.test(w.gBrowser.selectedBrowser.currentURI?.spec ?? ""),
+    watch: [(notify) => view.onState(notify)],
+    manage() {
+      const main = BrowserWindowTracker.getTopWindow() ?? w.OpenBrowserWindow();
+      void main.delayedStartupPromise.then(() => {
+        main.BrowserAddonUI.openAddonsMgr(ADDONS_LIST);
+        main.focus();
+      });
+    },
+    // The site bar has no extensions menu.
+    findMore: () => {},
+  });
+}
+
+/** What both kinds of window share: Firefox's add-ons and their buttons in this window. */
+function addonsCore(o: {
+  win: Window;
+  gBrowser: any;
+  anchors: Anchors;
+  /** Is this add-on listed in this window? */
+  shown(addonId: string): boolean;
+  /** Is a web page displayed (the buttons can be enabled)? */
+  page(): boolean;
+  /** Other sources of change: each subscribes `notify` and returns its unsubscribe, called at unload. */
+  watch: ((notify: () => void) => () => void)[];
+  manage(): void;
+  findMore(): void;
+}): WindowAddons {
   const w = o.win as any;
   const listeners = new Set<() => void>();
   let queued = false;
@@ -89,19 +165,14 @@ export function createAddons(o: {
     watched.get(id)?.observer.disconnect();
     watched.delete(id);
   };
-  const activeSpace = () => {
-    const f = o.store.state.fenetres.find((x) => x.id === o.fenetreId);
-    return f ? o.store.state.espaces.find((e) => e.id === f.espaceActif) : undefined;
-  };
   const pinned = () => parsePinned(Services.prefs.getStringPref(PINNED_PREF, "[]"));
 
   const buttons = (): AddonButton[] => {
     const tab = o.gBrowser.selectedTab;
-    const page = !!o.tabs.displayed();
+    const page = o.page();
     const pins = pinned();
-    const espace = activeSpace();
     return w.gUnifiedExtensions.getActivePolicies().flatMap((policy: any) => {
-      if (espace && !o.store.agentExtensions.shownIn(policy.id, espace.profil, espace.prive)) return [];
+      if (!o.shown(policy.id)) return [];
       const ba = actionOf(policy);
       const { extension } = policy;
       // As Firefox's own panel and Electron's bar: an add-on without a button (content scripts only) is listed, greyed.
@@ -154,14 +225,7 @@ export function createAddons(o: {
   ExtensionsUI.on("change", extensionListener);
   Services.prefs.addObserver(PINNED_PREF, prefObserver);
   o.gBrowser.tabContainer.addEventListener("TabSelect", notify);
-  const offScopes = o.store.agentExtensions.onScopes(notify);
-  // Another space, or the same one turned private or given another profile.
-  let lastSpace = "";
-  const offStore = o.store.subscribe(() => {
-    const e = activeSpace();
-    const key = e ? `${e.id}|${e.profil}|${e.prive}` : "";
-    if (key !== lastSpace) (lastSpace = key), notify();
-  });
+  const offs = o.watch.map((watch) => watch(notify));
   w.addEventListener("popupshown", onShown, true);
   w.addEventListener(
     "unload",
@@ -171,8 +235,7 @@ export function createAddons(o: {
       AddonManager.removeAddonListener(addonListener);
       ExtensionsUI.off("change", extensionListener);
       Services.prefs.removeObserver(PINNED_PREF, prefObserver);
-      offScopes();
-      offStore();
+      for (const off of offs) off();
       for (const id of [...watched.keys()]) unwatch(id);
       listeners.clear();
     },
@@ -198,8 +261,8 @@ export function createAddons(o: {
     pin(id, on) {
       Services.prefs.setStringPref(PINNED_PREF, JSON.stringify(setPinned(pinned(), id, on)));
     },
-    manage: () => void w.BrowserAddonUI.openAddonsMgr("addons://list/extension"),
-    findMore: () => void o.store.dispatch({ type: "ouvrirOnglet", fenetreId: o.fenetreId, url: "https://addons.mozilla.org/fr/firefox/" }),
+    manage: o.manage,
+    findMore: o.findMore,
     reviewUpdate(id) {
       const update = [...ExtensionsUI.updates].find((u: any) => u.addon.id === id);
       if (update) ExtensionsUI.showUpdate(o.gBrowser, update);

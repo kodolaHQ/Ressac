@@ -27,6 +27,8 @@ export class RemoteBridge implements PontNavigateur {
   constructor(
     private readonly rpc: Rpc,
     h?: Pick<Historique, "rechercherPourAgent" | "texteRetenu">,
+    /** Answered from the host's mirror of the open site apps (synchronous in PontNavigateur). */
+    private readonly sitePermis: (site: string, url: string) => boolean = () => false,
   ) {
     if (h)
       this.historique = {
@@ -75,6 +77,13 @@ export class RemoteBridge implements PontNavigateur {
       if (signal?.aborted) return [];
       throw e;
     });
+  // The noyau keeps the accord for the conversation and takes the card down (signal) when a new one starts: refused then.
+  demanderDonneesWidget = (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) =>
+    this.call<boolean>("demanderDonneesWidget", [o], signal).catch((e) => {
+      if (signal?.aborted) return false;
+      throw e;
+    });
+  adresseSitePermise = (site: string, url: string) => this.sitePermis(site, url);
   estPrive = (id: string) => this.prives.has(id);
   ongletActifPrive = () => this.actifPrive;
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { AUCUN_WORKFLOW_OUVERT, CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets } from "../../../packages/noyau/src/index";
+import { AUCUN_WORKFLOW_OUVERT, CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets, navigationHorsSite } from "../../../packages/noyau/src/index";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
 import { DESACTIVEE_PLANTAGES } from "../../navigateur/src/commun/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
@@ -256,6 +256,34 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(await h.rpc.request("workflow.enregistrerCode", { cible, nom: "tri.mjs", texte: 1 })).toEqual(echec);
     expect(await h.rpc.request("workflow.rejouer", { cible, execution: "x/y", bloc: "tri" })).toEqual(echec);
     expect(await h.rpc.request("workflow.lancer", { cible: bad })).toEqual({});
+  });
+
+  it("adresseSitePermise follows the open app's domains, false once it is closed", async () => {
+    const site = { id: "site:vidola", titre: "Vidola", url: "https://vidola.test/", espace: "", site: "vidola", domaine: "vidola.test", empreinte: "e" };
+    const navigations: string[] = [];
+    const h = startHost({}, (dataDir) => {
+      const dossier = join(dataDir, "espace", "sites", "vidola");
+      mkdirSync(dossier, { recursive: true });
+      writeFileSync(join(dossier, "site.json"), JSON.stringify({ nom: "Vidola", adresse: "https://vidola.test/", domaines: ["vidola.test"], connexion: ["compte.test"] }));
+    }, {
+      handlers: {
+        listerOnglets: () => [...tabs, site],
+        demanderDonneesWidget: () => true,
+        naviguer: ([, url]: [string, string]) => void navigations.push(url),
+        "sites.ouvertes": () => ["vidola"],
+      },
+    });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("sites.pret");
+    const naviguer = (url: string) => appelerOutil(h.racine, "naviguer", { id: "site:vidola", url });
+    expect((await naviguer("https://vidola.test/film/2")).texte).toBe("Appli de site site:vidola → https://vidola.test/film/2");
+    // Sign-in domains and other sites are not the app's: nothing loads.
+    expect(await naviguer("https://compte.test/connexion")).toEqual({ texte: navigationHorsSite("https://compte.test/connexion"), erreur: true });
+    expect(await naviguer("https://pub.test/x")).toEqual({ texte: navigationHorsSite("https://pub.test/x"), erreur: true });
+    h.rpc.notify("sites.ferme", { id: "vidola" });
+    await h.rpc.request("acces.etat"); // stdin is read in order: the notification is applied
+    expect(await naviguer("https://vidola.test/film/3")).toEqual({ texte: navigationHorsSite("https://vidola.test/film/3"), erreur: true });
+    expect(navigations).toEqual(["https://vidola.test/film/2"]);
   });
 
   it("stdin closed → the host exits", async () => {

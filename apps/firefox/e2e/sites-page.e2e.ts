@@ -301,11 +301,16 @@ describe("the agent's site tools", () => {
     expect(await callTool(dataDir, "ouvrir_site", { id: "inconnu" })).toEqual({ texte: SITE_INCONNU, erreur: true });
   });
 
-  it("memoire_site answers SITE_REFUSE without a card", async () => {
+  // Plan 32 Task 5 brought the app's « donnees-widget » card (before it, no card and an immediate refusal). Refused, the
+  // memory is not given (sites.spec.ts:1792); the accorded path is sites-agent.e2e.ts's port of :1799.
+  it("memoire_site shows the app's card; Refuser answers SITE_REFUSE (sites.spec.ts:1792)", async () => {
     const { dataDir } = await withAgent((d) => (writeSite(d, "vidola", vidola()), writeMemory(d)));
     await expect.poll(async () => (await callTool(dataDir, "lister_sites")).texte, { timeout: 15_000 }).toContain("vidola");
-    expect(await callTool(dataDir, "memoire_site", { id: "vidola" })).toEqual({ texte: SITE_REFUSE, erreur: false });
-    // Never a card: the agent's questions stay empty.
-    expect(await inUi(m, "return !!doc.querySelector('[data-testid=\"modale-demande\"]')")).toBe(false);
+    const memory = callTool(dataDir, "memoire_site", { id: "vidola" });
+    const card = '[data-testid="demande-donnees-widget"]';
+    expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${card} [data-testid="demande-site"]`)})?.textContent`, [], 15_000)).toContain("« Vidola »");
+    await click(m, `${card} button`, { text: "Refuser" });
+    expect(await memory).toEqual({ texte: SITE_REFUSE, erreur: false });
+    await waitUi(m, "return !doc.querySelector('[data-testid=\"modale-demande\"]')");
   });
 });

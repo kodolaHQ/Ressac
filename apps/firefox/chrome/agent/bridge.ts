@@ -1,9 +1,10 @@
-import { OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
+import { navigationHorsSite, OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
 import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/commun/modele";
 import { ongletPrive, PREFIXE_WORKFLOW } from "../../../navigateur/src/commun/modele";
-import { changementsPolitique, infosOnglets, ongletActifDe, origineDe, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
+import { changementsPolitique, infosOnglets, ongletActifDe, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { DevTools } from "../store/devtools";
+import type { SiteApps } from "../store/sites";
 import type { Store } from "../store/store";
 import type { WindowRegistry } from "../store/windows";
 import type { AgentHost } from "./host";
@@ -35,7 +36,14 @@ function activeWorkflows(state: EtatNavigateur): Record<IdFenetre, string | null
 }
 
 /** The noyau's PontNavigateur, answered on the store and the windows' tabs (Electron's PontElectron). */
-export function bridgeHandlers(store: Store, questions: Questions, windows: WindowRegistry, devtools: DevTools, host: () => AgentHost): Record<string, Handler> {
+export function bridgeHandlers(
+  store: Store,
+  questions: Questions,
+  windows: WindowRegistry,
+  devtools: DevTools,
+  host: () => AgentHost,
+  sites: Pick<SiteApps, "forAgent" | "viewFor" | "navigateForAgent">,
+): Record<string, Handler> {
   /** The open window that holds the tab. */
   const windowOf = (id: string) => {
     const m = windows.get(store.state.onglets[id]?.fenetreId ?? "");
@@ -71,11 +79,43 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
       throw new Error("L'onglet a changé de site pendant la lecture : rien n'est rendu.");
     return r;
   };
+  /**
+   * Reads the view of a site app window (`site:<id>`): never its bar, home or card. Closed, before or during the read:
+   * OngletIntrouvable (a clean answer, Electron's surVueSite). Undefined for any other id.
+   */
+  const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>): Promise<T> | undefined => {
+    if (!id.startsWith(PREFIXE_SITE)) return undefined;
+    const view = sites.viewFor(id.slice(PREFIXE_SITE.length));
+    if (!view) return Promise.reject(new OngletIntrouvable(id));
+    return read(view.browser, view.window).catch((e) => {
+      if (sites.viewFor(id.slice(PREFIXE_SITE.length))?.browser !== view.browser) throw new OngletIntrouvable(id);
+      throw e;
+    });
+  };
+  const getText = async (browser: any) => {
+    const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
+    // The child runs in a web process: its answer is not trusted.
+    const texte = String(r?.texte ?? "").slice(0, TEXT_MAX);
+    const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
+    return selection ? { texte, selection } : { texte };
+  };
+  const snapshot = async (browser: any, win: Window) => {
+    const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
+    try {
+      const canvas = win.document.createElementNS(XHTML, "canvas") as HTMLCanvasElement;
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+      return canvas.toDataURL("image/png").slice("data:image/png;base64,".length);
+    } finally {
+      bitmap.close();
+    }
+  };
 
   return {
     // Decision 3, as Electron's fenetreAgent: no window open (the last one kept), no active tab.
     ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? windows.active()),
-    listerOnglets: () => infosOnglets(store.state),
+    listerOnglets: () => [...infosOnglets(store.state), ...sites.forAgent().map(ongletSite)],
     // The agent's demos open in the foreground, marked ✦. With no window open, in the kept one, as Electron.
     ouvrirOnglet: ([url, espace]: [string, string?]): OngletInfo => {
       const state = store.state;
@@ -90,30 +130,18 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
       return infosOnglets(store.state).find((o) => o.id === id)!;
     },
     naviguer: ([id, url]: [string, string]) => {
+      if (id.startsWith(PREFIXE_SITE)) {
+        if (!sites.viewFor(id.slice(PREFIXE_SITE.length))) throw new OngletIntrouvable(id);
+        // Never a tab instead: off the app's domains nothing loads (the noyau checked it already).
+        const r = sites.navigateForAgent(id.slice(PREFIXE_SITE.length), url);
+        if (r === "refuse") throw new Error(navigationHorsSite(url));
+        return r === "en-attente" ? r : undefined;
+      }
       tab(id);
       windowOf(id).controller.navigateForAgent(id, url);
     },
-    lireTexte: ([id]: [string]) =>
-      outsidePrivate(id, async (browser) => {
-        const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
-        // The child runs in a web process: its answer is not trusted.
-        const texte = String(r?.texte ?? "").slice(0, TEXT_MAX);
-        const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
-        return selection ? { texte, selection } : { texte };
-      }),
-    capturer: ([id]: [string]) =>
-      outsidePrivate(id, async (browser) => {
-        const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
-        try {
-          const canvas = windowOf(id).window.document.createElementNS(XHTML, "canvas") as HTMLCanvasElement;
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-          canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
-          return canvas.toDataURL("image/png").slice("data:image/png;base64,".length);
-        } finally {
-          bitmap.close();
-        }
-      }),
+    lireTexte: ([id]: [string]) => onSiteView(id, getText) ?? outsidePrivate(id, getText),
+    capturer: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
     // host goes: the card falls.
     demanderAutorisation: ([o]: [OngletInfo], signal) => {
@@ -125,6 +153,12 @@ export function bridgeHandlers(store: Store, questions: Questions, windows: Wind
     demanderOutilsDev: ([o, d]: [OngletInfo, { droits: DroitDev[]; raison: string; agent: string }], signal) => {
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
+    },
+    // The « donnees-widget » card in the active window; refused with none to show it. The noyau takes it down (signal)
+    // when a new conversation starts.
+    demanderDonneesWidget: ([o]: [{ id: string; nom: string; agent: string; genre?: "action" | "site" }], signal) => {
+      const f = windows.active();
+      return f ? questions.askWidgetData(o, f, signal) : false;
     },
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage & { menagee?: string }], signal) =>
       readPage(store, url, o, signal, (lecture, hote, s) => host().request("lecture.changerHote", { lecture, hote }, s)),

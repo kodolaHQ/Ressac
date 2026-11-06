@@ -135,7 +135,9 @@ async function start(): Promise<WebAiOsStore> {
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
-  const questions = new Questions(store);
+  const questions = new Questions(store, () => sites.forAgent());
+  // A site app window closed: the agent's questions on it fall.
+  sites.onClosed(() => questions.dropStale());
   const sitePermissions = createSitePermissions({
     dataDir,
     profiles: () => [...profilsEnUsage(store.state)],
@@ -194,15 +196,16 @@ async function start(): Promise<WebAiOsStore> {
     messageManagerGroups: ["webext-browsers", "browsers"],
     allFrames: true,
   });
-  // Site apps: every http(s) frame of a tab browser; the child does nothing outside a site app's container.
+  // Site apps: every frame of a tab browser, about:blank and srcdoc ones too (no `matches`); the child asks only in an
+  // open app's container, for an http(s), about:blank or about:srcdoc document.
   const siteActor = actorModule("site-actor");
   ChromeUtils.registerWindowActor("WebAiOsSite", {
     parent: { esModuleURI: siteActor },
     child: { esModuleURI: siteActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
     allFrames: true,
-    matches: ["http://*/*", "https://*/*"],
     messageManagerGroups: ["browsers"],
-    // Required in web processes; the parent receives nothing, so a compromised web process cannot make it act.
+    // Required in web processes. The parent reads only the message's name and the bounded fields of a memory request
+    // or an error: what it decides comes from its WindowGlobalParent (store/site-frames.ts).
     safeForUntrustedWebProcess: true,
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
@@ -238,6 +241,7 @@ async function start(): Promise<WebAiOsStore> {
   const devtools = createDevTools({
     store,
     windows,
+    sites,
     isPrivate: (id) => {
       const o = store.state.onglets[id];
       return !!o && ongletPrive(store.state, o);
@@ -246,7 +250,7 @@ async function start(): Promise<WebAiOsStore> {
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers, ...sites.handlers },
+    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites), ...agentExtensions.handlers, ...sites.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.

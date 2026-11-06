@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { DeclarationSite, type RetouchesLues } from "../../../packages/noyau/src/index";
 import { HOME_BRIDGE } from "../chrome/store/site-home";
 import { affichageServi } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";
@@ -16,7 +16,6 @@ import { ELECTRON_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, sit
 // rerun with WEBAIOS_SPIKE=1 after a Firefox version change and compare.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-const GUARD = readFileSync(path.resolve(import.meta.dirname, "../../../packages/noyau/extensions/webaios-garde-page.js"), "utf8");
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "compte.localhost", "lecteur.localhost"];
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -61,16 +60,17 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   let m: Marionette;
   let profile: string;
   const pub = (p: string) => server.url("pub.localhost", p);
-  const rules = (domaines = ["vidola-a.localhost"]) => ({ id: "vidola", nom: "Vidola", adresse: server.url("vidola-a.localhost", "/"), domaines, connexion: ["compte.localhost"] });
+  const rules = (domaines = ["vidola-a.localhost"], retouches: object[] = []) => ({ id: "vidola", nom: "Vidola", adresse: server.url("vidola-a.localhost", "/"), domaines, connexion: ["compte.localhost"], retouches });
   const view = `${siteWindowExpr("vidola")}.gBrowser.selectedBrowser`;
   const viewUrl = () => m.execute<string>(`return ${view}.currentURI.spec;`);
   const toPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => `${r.methode} ${r.chemin}`);
   const blocked = () => m.execute<string[]>(`return ChromeUtils.importESModule("${STORE}").sites.blocked("vidola").slice();`);
   const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
-  // As the host's SiteOuvrable (noyau/sites.ts preparer).
-  const openSite = (r = rules()) =>
-    m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0]);`, [
-      { id: r.id, declaration: { nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion }, aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },
+  // As the host's SiteChrome (noyau/sites.ts preparer), granted.
+  const openSite = (r = rules(), retouches: RetouchesLues = { js: {}, css: {} }) =>
+    m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0], null, arguments[1]);`, [
+      { id: r.id, declaration: DeclarationSite.parse({ nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion, retouches: r.retouches }), aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },
+      retouches,
     ]);
   /** Waits until the view has loaded `url`. */
   const viewAt = (url: string) => waitFor(m, `const b = ${view}; return !!b && b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`.replace("arguments[0]", JSON.stringify(url)), (v) => v === true, 15_000);
@@ -256,8 +256,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   }, 240_000);
 
   it("(c) the sandbox: no chrome, no page world, password hidden, after a stopped DOMContentLoaded", async () => {
-    const uc = await m.execute<number>(`return Number(${view}.getAttribute("usercontextid"));`);
-    await m.execute(`ChromeUtils.importESModule("${STORE}").publishSiteFrames(new Map([[arguments[0], { id: "vidola", garde: arguments[1], scripts: [{ code: arguments[2], nom: "sonde.js" }] }]]));`, [uc, GUARD, PROBE]);
+    // Plan 32: the probe is the app's retouche, in the page and in the lecteur.localhost frame (its `cadres`).
+    const lecteur = server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
+    await openSite(rules(undefined, [{ correspond: ["/sonde"], js: ["sonde.js"], cadres: [lecteur] }]), { js: { "sonde.js": PROBE }, css: {} });
     const sonde = server.url("vidola-a.localhost", "/sonde");
     await inSiteView(m, "vidola", `location.href = ${JSON.stringify(sonde)}`);
     await viewAt(sonde);
@@ -297,7 +298,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await m.setContext("chrome");
     await m.command("WebDriver:SwitchToWindow", { handle: main, focus: false });
     await m.execute(`gBrowser.removeTab(gBrowser.tabs.find((t) => t.linkedBrowser.currentURI.spec === arguments[0]));`, [sonde]);
-    await m.execute(`ChromeUtils.importESModule("${STORE}").publishSiteFrames(new Map());`);
+    await openSite();
   }, 90_000);
 
   it("(d) Electron's home page: unchanged, served by resource://, parent.postMessage both ways", async () => {

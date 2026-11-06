@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
-import { Questions } from "../chrome/agent/questions";
+import { Questions, SCHEMA_WIDGET } from "../chrome/agent/questions";
 import { createStore } from "../chrome/store/store";
 
 it("a question already stale when asked (tab gone) is refused at once, without a card", async () => {
@@ -105,4 +106,34 @@ it("the dev tools card answers the ticked rights, [] on a refusal, on its signal
   store.dispatch({ type: "majOnglet", id: "t", champs: { url: "https://b.test/" } });
   expect(await answer).toEqual([]);
   expect(questions.pending()).toEqual([]);
+});
+
+it("the widget data card: Electron's origin per kind; Autoriser answers true; a site app's dev tools card falls when its window closes", async () => {
+  const store = createStore(etatInitial());
+  let open = [{ id: "vidola", url: "https://vidola.test/" }];
+  const questions = new Questions(store, () => open);
+  const fenetre = store.state.fenetres[0]!.id;
+  const kinds = [
+    questions.askWidgetData({ id: "meteo", nom: "Météo", agent: "Claude" }, fenetre),
+    questions.askWidgetData({ id: "envoi", nom: "Envoi", agent: "Claude", genre: "action" }, fenetre),
+    questions.askWidgetData({ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }, fenetre),
+  ];
+  expect(questions.pending()).toMatchObject([
+    { origine: "webaios-widget://meteo", permissions: ["donnees-widget"], titre: "Météo", widget: "meteo", agent: "Claude", fenetreId: fenetre },
+    { origine: "webaios://action/envoi", action: "envoi" },
+    { origine: "webaios-site://vidola", site: "vidola" },
+  ]);
+  for (const q of questions.pending()) questions.answer(q.id, "autoriser");
+  expect(await Promise.all(kinds)).toEqual([true, true, true]);
+
+  const rights = questions.askDevTools({ id: "site:vidola", titre: "Vidola", url: "https://vidola.test/", espace: "" }, { droits: ["console"], raison: "r", agent: "Claude" }, fenetre);
+  expect(questions.pending()).toHaveLength(1);
+  open = [];
+  questions.dropStale();
+  expect(questions.pending()).toEqual([]);
+  expect(await rights).toEqual([]);
+});
+
+it("SCHEMA_WIDGET is Electron's", () => {
+  expect(readFileSync(new URL("../../navigateur/src/main/agent/accueil.ts", import.meta.url), "utf8")).toContain(`export const SCHEMA_WIDGET = "${SCHEMA_WIDGET}";`);
 });

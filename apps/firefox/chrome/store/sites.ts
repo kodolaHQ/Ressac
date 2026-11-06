@@ -2,16 +2,18 @@
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows (Electron's main/sites/fenetres.ts).
 import type { Cadre } from "../../../navigateur/src/commun/modele";
-import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
-import type { SiteOuvrable } from "../../../navigateur/src/main/sites/fenetres";
+import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
+import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
-import { adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
+import { adresseRelative, adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
+import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
+import type { SiteChrome } from "../../noyau/sites";
 import { gardienGestes } from "../../shared/geste-widget";
 import type { AgentHost } from "../agent/host";
-import type { SiteFrameData } from "../agent/site-actor";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
+import { frameError, frameInjection, frameMemory, framePosition, frameResume, siteOfFrame } from "./site-frames";
 import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
@@ -22,8 +24,8 @@ export const SITE_WINDOW_KEY = "webaios-site";
 const SIZE = { largeur: 1200, hauteur: 800 };
 const MIN = { largeur: 360, hauteur: 240 };
 
-/** What the site actor runs in each frame of a container: published to every content process. */
-export function publishSiteFrames(map: Map<number, SiteFrameData>): void {
+/** The open apps' containers (userContextId → app id), published to every content process: the site actor asks only there. */
+export function publishSiteFrames(map: Map<number, string>): void {
   Services.ppmm.sharedData.set(SITE_FRAMES, map);
   Services.ppmm.sharedData.flush();
 }
@@ -32,6 +34,8 @@ export function publishSiteFrames(map: Map<number, SiteFrameData>): void {
 export interface SiteWindowController {
   state(): EtatFenetreSite;
   onState(cb: (e: EtatFenetreSite) => void): () => void;
+  /** « Autoriser » (oui) or « Ouvrir sans retouches » on the accord card; `empreinte` is the card's. */
+  accord(oui: boolean, empreinte: string): Promise<void>;
   /** « Entrer dans le site »: the start address the first time only. */
   enter(): void;
   /** ⌂: the home screen; the site's page stays loaded behind it. */
@@ -39,6 +43,8 @@ export interface SiteWindowController {
   back(): void;
   forward(): void;
   reload(): void;
+  /** « Chercher la nouvelle adresse » (Electron's chercherAdresse): the host reads the reference page. */
+  findAddress(): void;
   /** A navigation or an open of the app was refused: kept for « Ouvrir dans un onglet », mentioned in the bar. */
   blocked(url: string): void;
   /** « Ouvrir dans un onglet »: the last blocked link, in the last main window (its active space); the mention falls. */
@@ -61,12 +67,19 @@ export interface SiteWindowController {
 }
 
 interface OpenSite {
-  site: SiteOuvrable;
+  site: SiteChrome;
+  /** The app's retouches' files, as the host last read them. */
+  retouches: RetouchesLues;
+  /** The retouches' console (site-frames.ts frameError), until the window closes. */
+  erreurs: ErreurRetouche[];
   userContextId: number;
   window: Window;
   /** The app view's <browser>, once the window is set up. */
   view: any;
   vue: EtatFenetreSite["vue"];
+  /** The address to load once the card is answered (the agent's, Electron's aCharger), and whether it asked for it. */
+  aCharger: string | null;
+  aChargerAgent: boolean;
   /** Has the start address been loaded (« Entrer dans le site » loads it once)? */
   loaded: boolean;
   listeners: Set<(e: EtatFenetreSite) => void>;
@@ -79,6 +92,15 @@ interface OpenSite {
   home: Promise<string | null> | null;
   /** When the home last opened an address. */
   lastHomeOpen: number;
+  /** The address of the last load WebAiOs started in the view (Electron's cible): the address follow reads it back. */
+  target: string | null;
+  /** A reading of the reference page is under way (the bar's button shows it). */
+  searching: boolean;
+  /** The host's mention (address changed, not found…); a blocked link replaces it, as Electron's single avis. */
+  hostNotice: AvisBarre | null;
+  /** WebAiOs just started a load in the view (Electron's attendVoulu); `wanted`: the view's current load is one (chargementVoulu). */
+  wantNext: boolean;
+  wanted: boolean;
 }
 
 const open = new Map<string, OpenSite>();
@@ -89,6 +111,8 @@ let openTab: (url: string) => void = () => {};
 /** The last real presses in each app's home (one allows one open). */
 const gestures = gardienGestes<string>();
 const memoryListeners = new Map<string, Set<(m: MessageVersLAccueil & { type: "memoire" }) => void>>();
+/** Told after an app's window closed (the agent's questions on `site:<id>` fall). */
+const closeListeners = new Set<() => void>();
 
 const context = (s: OpenSite): ContexteNavigation => ({
   domaines: s.site.domaines,
@@ -105,12 +129,28 @@ function hostOf(url: string): string {
 }
 
 function block(s: OpenSite, url: string): void {
+  s.hostNotice = null;
   s.blocked.push(hostOf(url));
   s.notice.block(url);
 }
 
+/** The address follow (Electron's surSuivi): only an app that declares suiviAdresse; the host reads the reference page. */
+function follow(s: OpenSite, url: string | null): void {
+  if (!s.site.declaration.suiviAdresse || open.get(s.site.id) !== s) return;
+  host?.notify("sites.chercher", { id: s.site.id, url });
+}
+
+/** A reload is a load WebAiOs started too (measured: the system principal): the follow aims at the page reloaded. */
+function reloadView(s: OpenSite): void {
+  s.wantNext = true;
+  s.target = s.view?.currentURI?.spec ?? s.target;
+  s.view?.reload();
+}
+
 function loadInView(s: OpenSite, url: string): void {
+  s.wantNext = true;
   s.loaded = true;
+  s.target = url;
   s.view?.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
 }
 
@@ -152,10 +192,25 @@ const observer = {
     const ctx = context(s);
     const inView = browserId === s.view?.browserId;
     if (inView || s.small.has(browserId)) {
+      // A new load (not a redirect of one) is wanted if WebAiOs just started it; its redirects keep that.
+      if (inView && li.redirectChain.length === 0) {
+        s.wanted = s.wantNext;
+        s.wantNext = false;
+      }
+      // Electron's M1: under the home or the card, the view loads only what WebAiOs starts. An add-on's tabs.reload,
+      // goBack or goForward (no fixupAndLoadURIString to refuse them, see site-window.ts) is cancelled before it is sent.
+      // As in Electron, the page's own navigations wait for « Entrer » too; Firefox's add-ons run in every app (§4.9).
+      if (inView && s.vue !== "site" && !s.wanted) {
+        console.warn(`[sites] chargement arrêté dans la vue (vue ${s.vue}, non voulu) : ${url.slice(0, 80)}`);
+        return void ch.cancel(Cr.NS_BINDING_ABORTED);
+      }
       if (decisionNavigation(url, ctx) === "suivre") return;
       ch.cancel(Cr.NS_BINDING_ABORTED);
       // A sign-in window's refused page is not mentioned (Electron's equiperPetite).
       if (inView) block(s, url);
+      // Sent off the site (a parked domain) during a load WebAiOs started (loadInView loads as the system principal): the
+      // site may have moved. A redirect after a click in the page has the page's principal: nothing is read.
+      if (inView && li.triggeringPrincipal.isSystemPrincipal && li.redirectChain.length > 0) follow(s, s.target);
       return;
     }
     // A sign-in window opens nothing (Electron's equiperPetite denies every open).
@@ -173,6 +228,8 @@ const observer = {
 };
 let observing = false;
 
+const publishOpen = () => publishSiteFrames(new Map([...byContainer].map(([uc, s]) => [uc, s.site.id])));
+
 /** The home's frame may show only a page (.html, so with the home's CSP) of the copy served now, or about:blank. */
 function homePage(id: string, uri: { spec: string } | null): boolean {
   if (uri?.spec === "about:blank") return true;
@@ -183,6 +240,17 @@ function homePage(id: string, uri: { spec: string } | null): boolean {
     return false;
   }
 }
+
+/** Electron's ERREURS_RESEAU_SUIVI, as Firefox's statuses. */
+const NETWORK_ERRORS = new Set<number>([
+  Cr.NS_ERROR_UNKNOWN_HOST,
+  Cr.NS_ERROR_CONNECTION_REFUSED,
+  Cr.NS_ERROR_NET_TIMEOUT,
+  Cr.NS_ERROR_NET_RESET,
+  Cr.NS_ERROR_NET_INTERRUPT,
+  Cr.NS_ERROR_OFFLINE,
+  Cr.NS_ERROR_PROXY_CONNECTION_REFUSED,
+]);
 
 const POLICY_CONTRACT = "@webaios/site-view-policy;1";
 /**
@@ -256,18 +324,34 @@ function stateOf(s: OpenSite): EtatFenetreSite {
     domaine: httpHost(url) ?? httpHost(s.site.depart) ?? "",
     peutReculer: !!s.view?.canGoBack,
     peutAvancer: !!s.view?.canGoForward,
-    // Address tracking and the accord card are plan 32's: the app opens as Electron's « Ouvrir sans retouches ».
-    suivi: false,
-    recherche: false,
-    avis: s.notice.avis,
-    accord: null,
+    suivi: s.site.declaration.suiviAdresse !== undefined,
+    recherche: s.searching,
+    avis: s.notice.avis ?? s.hostNotice,
+    accord: s.vue === "accord" ? s.site.demande : null,
   };
+}
+
+/** Electron's vueSuivante: after the card, the home if there is one, else the site (loaded on its start address the first time). */
+function nextView(s: OpenSite): void {
+  const agent = s.aChargerAgent;
+  s.aChargerAgent = false;
+  if (s.aCharger) {
+    const to = s.aCharger;
+    s.aCharger = null;
+    loadInView(s, to);
+  }
+  // The agent asked for an address during the card: that is what the user sees, even if the app has a home.
+  if (s.site.aAccueil && !agent) s.vue = "accueil";
+  else {
+    s.vue = "site";
+    if (!s.loaded) loadInView(s, s.site.depart);
+  }
 }
 
 function broadcast(s: OpenSite): void {
   if (s.window.closed) return;
-  // The bar's frame covers the window on the home screen (window.css).
-  s.window.document.documentElement.toggleAttribute("webaios-site-home", s.vue === "accueil");
+  // The bar's frame covers the window on the home screen and on the accord card (window.css): the view stays behind.
+  s.window.document.documentElement.toggleAttribute("webaios-site-home", s.vue !== "site");
   const e = stateOf(s);
   for (const cb of s.listeners) cb(e);
 }
@@ -279,6 +363,10 @@ function controllerOf(s: OpenSite): SiteWindowController {
     onState(cb) {
       s.listeners.add(cb);
       return () => void s.listeners.delete(cb);
+    },
+    async accord(oui, empreinte) {
+      if (open.get(id) !== s || typeof oui !== "boolean" || typeof empreinte !== "string" || empreinte.length > 128) return;
+      await host?.request("sites.accorder", { id, oui, empreinte });
     },
     enter() {
       if (s.vue === "accord") return;
@@ -298,7 +386,13 @@ function controllerOf(s: OpenSite): SiteWindowController {
       if (s.vue === "site" && s.view?.canGoForward) s.view.goForward();
     },
     reload() {
-      if (s.vue === "site" && s.loaded) s.view?.reload();
+      if (s.vue === "site" && s.loaded) reloadView(s);
+    },
+    findAddress() {
+      if (open.get(id) !== s || s.vue !== "site" || !s.site.declaration.suiviAdresse) return;
+      // The page shown if it is on the site, else (error page, blocked link…) the start address.
+      const url: string = s.view?.currentURI?.spec ?? "";
+      follow(s, url && adresseRelative(url, s.site.domaines) !== null ? url : null);
     },
     blocked: (url) => block(s, url),
     openBlocked() {
@@ -359,6 +453,14 @@ function attach(s: OpenSite, browser: any): void {
   // Kept on the window: the browser holds its progress listeners weakly.
   const listener = ((win as any).webaiosSiteProgress = {
     QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+    // The view's own page did not answer (DNS, refused, timeout, reset, offline: Electron's erreurDeReseau). Never
+    // NS_BINDING_ABORTED, which is our own refusals.
+    onStateChange(progress: any, request: any, flags: number, status: number) {
+      const L = Ci.nsIWebProgressListener;
+      if (!progress.isTopLevel || !(flags & L.STATE_STOP) || !(flags & L.STATE_IS_DOCUMENT) || !NETWORK_ERRORS.has(status)) return;
+      const failed: string | undefined = request instanceof Ci.nsIChannel ? request.URI.spec : undefined;
+      follow(s, failed && /^https?:/i.test(failed) ? failed : s.target);
+    },
     onLocationChange(progress: any, _request: unknown, _location: unknown, flags: number) {
       if (!progress.isTopLevel) return;
       browser.browsingContext?.sessionHistory?.evictAllDocumentViewers();
@@ -368,7 +470,7 @@ function attach(s: OpenSite, browser: any): void {
       Services.tm.dispatchToMainThread(() => broadcast(s));
     },
   });
-  browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION);
+  browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION | Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
   // The favicon Firefox shows for the page (a data: URL from its FaviconLoader), noted as Electron's faviconEnDonnees.
   let favicon: string | null = null;
   win.gBrowser.tabContainer.addEventListener("TabAttrModified", (e: CustomEvent<{ changed: string[] }>) => {
@@ -405,12 +507,21 @@ function closed(s: OpenSite): void {
   const id = s.site.id;
   s.listeners.clear();
   s.notice.dispose();
-  if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
+  if (byContainer.get(s.userContextId) === s) {
+    byContainer.delete(s.userContextId);
+    publishOpen();
+  }
   // Reopened before this close: the sign-in windows are the new app's.
   if (open.get(id) !== s) return;
   open.delete(id);
   memoryListeners.delete(id);
   host?.notify("sites.ferme", { id });
+  for (const cb of closeListeners)
+    try {
+      cb();
+    } catch (e) {
+      console.error("[sites] close listener failed:", e);
+    }
   // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
   // Only this app's: a main window is never closed here, whatever its tab's container.
   for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
@@ -425,11 +536,11 @@ export const sites = {
    * Opens the app's window, or brings it to the front without reloading it (its declaration and domains are taken
    * over). False if the id is not a site app's.
    */
-  open(site: SiteOuvrable, cadre?: Cadre | null): boolean {
+  open(site: SiteChrome, cadre: Cadre | null | undefined, retouches: RetouchesLues): boolean {
     if (typeof site?.id !== "string" || !ID_SITE.test(site.id)) return false;
     const known = open.get(site.id);
     if (known && !known.window.closed) {
-      sites.update(site);
+      sites.update(site, retouches);
       if (known.window.windowState === known.window.STATE_MINIMIZED) (known.window as any).restore();
       known.window.focus();
       return true;
@@ -444,10 +555,11 @@ export const sites = {
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
-    // Opened « sans retouches » (plan 31 injects nothing): never the accord card.
-    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
+    // The card first if the retouches need their accord: the view loads nothing until it is answered (nextView).
+    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
+    publishOpen();
     const onClose = {
       observe(w: unknown, topic: string) {
         if (topic !== "domwindowclosed" || w !== win) return;
@@ -481,19 +593,96 @@ export const sites = {
     await removeSiteContainer(id);
     if (dataDir) await forgetHome(dataDir, id);
   },
-  /** site.json changed: the open app takes its new declaration and domains (its bfcache is dropped), without showing. */
-  update(site: SiteOuvrable): void {
+  /**
+   * Electron's reprendre: site.json or a retouche changed, or the app is opened again. The open app takes its new
+   * declaration, domains and retouches (its bfcache is dropped), without showing. The rights grew (the accord no longer
+   * covers, or new rights after « Ouvrir sans retouches »): the card comes back and the loaded page is reloaded, without
+   * the retouches it had. The accord is no longer needed: the next view. The home is gone: the site. True if the page was
+   * reloaded.
+   */
+  update(site: SiteChrome, retouches: RetouchesLues): boolean {
     const s = open.get(site?.id);
-    if (!s || s.window.closed) return;
+    if (!s || s.window.closed) return false;
+    const before = s.site;
     s.site = site;
+    s.retouches = retouches;
     s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
-    // The home screen is gone: the site view (Electron's reprendre).
-    if (s.vue === "accueil" && !site.aAccueil) {
-      s.vue = "site";
-      if (!s.loaded) loadInView(s, site.depart);
-    }
+    let reloaded = false;
+    // The fingerprint is that of the rights asked (empreinteDroits).
+    const grown = before.demande.empreinte !== site.demande.empreinte;
+    if (site.accordRequis && s.vue !== "accord" && (!before.accordRequis || grown)) {
+      s.vue = "accord";
+      if (s.loaded) {
+        reloadView(s);
+        reloaded = true;
+      }
+    } else if (s.vue === "accord" && !site.accordRequis) nextView(s);
+    else if (s.vue === "accueil" && !site.aAccueil) nextView(s);
     s.window.gBrowser?.updateTitlebar();
     broadcast(s);
+    return reloaded;
+  },
+  /** The choice made on the card (the accord, if given, is already kept in `site`). Nothing if the card is not shown. */
+  afterAccord(id: string, site: SiteChrome | null): void {
+    const s = open.get(id);
+    if (!s || s.window.closed || s.vue !== "accord") return;
+    if (site) s.site = site;
+    // The accord given does not cover today's declaration (site.json rewritten meanwhile): the card stays.
+    if (site?.accordRequis) return broadcast(s);
+    // A page already loaded (without retouches) is reloaded to receive them.
+    const reload = site !== null && s.loaded && s.aCharger === null;
+    nextView(s);
+    if (reload) reloadView(s);
+    broadcast(s);
+  },
+  /** The window's current view, or null if it is not open. */
+  viewOf(id: string): EtatFenetreSite["vue"] | null {
+    const s = open.get(id);
+    return s && !s.window.closed ? s.vue : null;
+  },
+  rebroadcast(id: string): void {
+    const s = open.get(id);
+    if (s) broadcast(s);
+  },
+  /** The agent's dev tools reload the view: that load is WebAiOs's, not an add-on's (the M1 net spares it under the home). */
+  markWanted(id: string): void {
+    const s = open.get(id);
+    if (s) s.wantNext = true;
+  },
+  /** Electron's rechargerVue: the view's page reloaded, if it was ever loaded (its retouches changed). */
+  reloadView(id: string): void {
+    const s = open.get(id);
+    if (s?.loaded && !s.window.closed) reloadView(s);
+  },
+  /** The retouches' console of the open app (Electron's erreurs), or none. */
+  errors(id: string): ErreurRetouche[] {
+    return [...(open.get(id)?.erreurs ?? [])];
+  },
+  /** The site actor's "injection", for the frame of this WindowGlobalParent (site-frames.ts). */
+  frameInjection(wgp: any) {
+    const s = siteOfFrame(wgp, open.values());
+    return frameInjection(wgp, s, !!(s && context(s).adressesLocales));
+  },
+  /** The site actor's "erreur": a retouche's error in the frame of this WindowGlobalParent. */
+  frameError(wgp: any, e: unknown): void {
+    frameError(siteOfFrame(wgp, open.values()), e);
+  },
+  /** The site actor's "memoire", for the frame of this WindowGlobalParent: relayed to the host. */
+  frameMemory(wgp: any, demande: unknown) {
+    return frameMemory(wgp, siteOfFrame(wgp, open.values()), demande, (p) => {
+      if (!host) return Promise.reject(new Error("no host"));
+      return host.request("sites.memoireOp", p);
+    });
+  },
+  /** The site actor's "position": a video's position, relayed to the host. */
+  framePosition(wgp: any, p: unknown): void {
+    const s = siteOfFrame(wgp, open.values());
+    framePosition(wgp, s, p, !!(s && context(s).adressesLocales), (q) => host?.notify("sites.position", q));
+  },
+  /** The site actor's "reprise": the position to resume, from the host. */
+  frameResume(wgp: any, duree: unknown): Promise<number | null> {
+    const s = siteOfFrame(wgp, open.values());
+    return frameResume(wgp, s, duree, !!(s && context(s).adressesLocales), (q) => (host ? host.request<number | null>("sites.reprise", q) : Promise.resolve(null)));
   },
   /** « Afficher le dossier »: the app's folder shown in the file manager. */
   revealSite(id: string): void {
@@ -505,6 +694,41 @@ export const sites = {
     } catch (e) {
       console.warn("[sites] dossier non affiché :", e);
     }
+  },
+  /**
+   * The open windows for the agent (Electron's FenetresSites.ouvertes): `url` the page shown, `domaine` the app's current
+   * one (its start address's), `empreinte` today's declaration's, to which the agent's accord is tied.
+   */
+  forAgent(): { id: string; nom: string; url: string; domaine: string; empreinte: string }[] {
+    return [...open.values()]
+      .filter((s) => !s.window.closed)
+      .map((s) => {
+        const url: string = s.view?.currentURI?.spec ?? "";
+        return { id: s.site.id, nom: s.site.declaration.nom, url: url && url !== "about:blank" ? url : s.site.depart, domaine: httpHost(s.site.depart) ?? "", empreinte: s.site.empreinte };
+      });
+  },
+  /** The app view's <browser> and its window: never the bar, the home or the card, nor a sign-in window. */
+  viewFor(id: string): { browser: any; window: Window } | undefined {
+    const s = open.get(id);
+    return s?.view && !s.window.closed ? { browser: s.view, window: s.window } : undefined;
+  },
+  /** Electron's naviguerPourAgent: a load WebAiOs wants, on the app's domains only; kept for after the card. */
+  navigateForAgent(id: string, url: string): "charge" | "en-attente" | "refuse" {
+    const s = open.get(id);
+    if (!s?.view || s.window.closed || decisionOuverture(url, context(s)) !== "dans-l-appli") return "refuse";
+    if (s.vue === "accord") {
+      s.aCharger = url;
+      s.aChargerAgent = true;
+      return "en-attente";
+    }
+    loadInView(s, url);
+    s.vue = "site";
+    broadcast(s);
+    return "charge";
+  },
+  onClosed(cb: () => void): () => void {
+    closeListeners.add(cb);
+    return () => void closeListeners.delete(cb);
   },
   openIds(): string[] {
     return [...open.values()].filter((s) => !s.window.closed).map((s) => s.site.id);
@@ -518,7 +742,7 @@ export const sites = {
     return s && !s.window.closed ? s.window : undefined;
   },
   /** The app as its window was opened or last updated (the window reads it as it loads). */
-  siteOf(id: string): SiteOuvrable | undefined {
+  siteOf(id: string): SiteChrome | undefined {
     return open.get(id)?.site;
   },
   /** The window's controller, from its creation (site-window.ts); the view is attached once Firefox's startup is done. */
@@ -554,12 +778,49 @@ export const sites = {
   },
   /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
   handlers: {
-    "sites.ouvrir": ([site, cadre]: [SiteOuvrable, Cadre | null]) => sites.open(site, cadre),
+    "sites.ouvrir": ([site, cadre, retouches]: [SiteChrome, Cadre | null, RetouchesLues]) => sites.open(site, cadre, retouches),
     "sites.fermer": ([id]: [string]) => sites.close(id),
     "sites.effacer": ([id]: [string]) => sites.erase(id),
-    "sites.mettreAJour": ([site]: [SiteOuvrable]) => sites.update(site),
+    "sites.mettreAJour": ([site, retouches]: [SiteChrome, RetouchesLues]) => sites.update(site, retouches),
+    "sites.rechargerVue": ([id]: [string]) => sites.reloadView(id),
+    "sites.erreurs": ([id]: [string]) => sites.errors(id),
+    "sites.vue": ([id]: [string]) => sites.viewOf(id),
+    "sites.apresAccord": ([id, site]: [string, SiteChrome | null]) => sites.afterAccord(id, site),
+    "sites.rediffuser": ([id]: [string]) => sites.rebroadcast(id),
     "sites.ouvertes": () => sites.openIds(),
     // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
+    // Address follow (Electron's FenetresSites.cherche, avis, adresseChangee).
+    "sites.cherche": ([id, oui]: [string, boolean]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      s.searching = oui;
+      broadcast(s);
+    },
+    "sites.avis": ([id, a]: [string, AvisBarre | null]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      s.notice.clear();
+      s.hostNotice = a;
+      broadcast(s);
+    },
+    "sites.adresseChangee": ([id, domaines, depart, vers]: [string, string[], string, string]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      // The card's « suivis »: the domains added by the follow (the host recomputes the same list).
+      const declared = new Set(s.site.declaration.domaines.map((x) => x.toLowerCase()));
+      const suivis = [...new Set(domaines.map((x) => x.toLowerCase()).filter((x) => !declared.has(x)))];
+      s.site = { ...s.site, domaines, depart, demande: { ...s.site.demande, suivis } };
+      if (s.vue === "accord") {
+        // The card is shown: the view loads nothing before the choice; a page already loaded was on the old domain.
+        if (s.loaded) {
+          s.aCharger = vers;
+          s.aChargerAgent = false;
+        }
+        return broadcast(s);
+      }
+      loadInView(s, vers);
+      broadcast(s);
+    },
     "sites.accueilChange": ([id]: [string]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;

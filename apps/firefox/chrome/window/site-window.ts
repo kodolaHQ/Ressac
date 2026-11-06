@@ -2,6 +2,7 @@
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden, the
 // bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
 import type { SiteWindowController } from "../store/sites";
+import { createSiteAddons, type WindowAddons } from "./addons";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -11,8 +12,8 @@ const SITE_WINDOW_KEY = "webaios-site";
 
 declare global {
   interface Window {
-    /** In a site app's window: what its bar drives (ui/site-api.ts). */
-    webaiosSiteWindow?: SiteWindowController;
+    /** In a site app's window: what its bar drives (ui/site-api.ts), and its add-on buttons once Firefox's startup is done. */
+    webaiosSiteWindow?: SiteWindowController & { addons?: WindowAddons };
   }
 }
 
@@ -67,13 +68,69 @@ function routeOpens(win: Window, id: string, small = false): void {
   };
 }
 
+// The errors an add-on's tabs call receives (Electron's). Thrown as plain objects: Firefox's extension code passes their
+// message on, where an Error from this window would reach the add-on as « An unexpected error occurred ».
+const PROTECTED = { message: "Onglet protégé par WebAiOs" };
+const REFUSED = { message: "Chargement refusé par WebAiOs" };
+
+const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement.hasAttribute("webaios-site");
+
+/**
+ * The app view is never a tab add-ons can close, move out, add to, or send off the web (spec §4.9). Its window has one
+ * tab, the view: removing or detaching it is refused, and so is any new tab. tabs.update goes through
+ * fixupAndLoadURIString: refused unless the view shows the site (Electron's I1: never the page hidden under the home or
+ * the accord card) and the address is http(s). WebAiOs's own loads (the system principal) pass. Its reload, goBack and
+ * goForward are stopped by the request guard (store/sites.ts, Electron's M1). windows.remove of this window is refused
+ * (Electron's peutFermerFenetre); WebAiOs's own close() calls, ⌘W and the window's close button still close it.
+ */
+function protectView(win: Window, view: SiteWindowController): void {
+  const close = win.close;
+  win.close = function () {
+    // ext-windows.js's windows.remove calls window.close(): no other way to tell an add-on's call from WebAiOs's.
+    if (new Error().stack?.includes("/ext-windows.js")) throw PROTECTED;
+    return close.call(this);
+  };
+  const g = win.gBrowser;
+  for (const name of ["removeTab", "removeTabs", "replaceTabWithWindow", "replaceTabsWithWindow"])
+    g[name] = () => {
+      throw PROTECTED;
+    };
+  for (const name of ["addTab", "addTrustedTab"])
+    g[name] = () => {
+      throw REFUSED;
+    };
+  const browser = g.selectedBrowser;
+  const load = browser.fixupAndLoadURIString;
+  browser.fixupAndLoadURIString = function (url: string, options: any) {
+    if (!options?.triggeringPrincipal?.isSystemPrincipal && (view.state().vue !== "site" || !/^https?:/i.test(url))) throw REFUSED;
+    return load.call(this, url, options);
+  };
+}
+
+/**
+ * Any other window (main, popup): a site app's view never comes into it. Neither by adoptTab (an add-on's tabs.move to
+ * this window) nor as the tab a new window adopts (windows.create({ tabId })): that one opens empty. Run at
+ * DOMContentLoaded (window.js comes after browser-main.js, whose DOMContentLoaded made gBrowser), before
+ * browser-init.js's onLoad swaps the adopted tab in.
+ */
+export function refuseSiteTabs(win: Window): void {
+  const init = (win as any).gBrowserInit;
+  if (isSiteTab(init?.getTabToAdopt())) init._clearTabToAdopt();
+  const g = win.gBrowser;
+  const adopt = g.adoptTab;
+  g.adoptTab = function (tab: any, options: unknown) {
+    if (isSiteTab(tab)) throw PROTECTED;
+    return adopt.call(this, tab, options);
+  };
+}
+
 /**
  * Run at the window's DOMContentLoaded, before anything could claim it: the bar's frame, the routing, the keys, closing
  * without a question, the title. The view is attached once Firefox's startup is done.
  */
 export function setupSiteWindow(win: Window, id: string): SiteWindowController | null {
   const sites = sitesModule();
-  const controller = sites.controller(id);
+  const controller: (SiteWindowController & { addons?: WindowAddons }) | undefined = sites.controller(id);
   // An app closed (deleted) while its window was opening.
   if (!controller) {
     win.close();
@@ -102,12 +159,15 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   // The site's code was not reviewed: its beforeunload never keeps the app from closing (Electron).
   win.CanCloseWindow = () => true;
   win.webaiosSiteWindow = controller;
+  // Now: gBrowser and its one browser, the view, exist (browser-main.js's DOMContentLoaded ran before this one).
+  protectView(win, controller);
   void win.delayedStartupPromise.then(() => {
     const gBrowser = win.gBrowser;
     // The title is the app's name, never the page's.
     gBrowser.getWindowTitleForBrowser = () => sites.siteOf(id)?.declaration.nom ?? "";
     gBrowser.updateTitlebar();
     sites.attach(id, gBrowser.selectedBrowser);
+    controller.addons = createSiteAddons(win, controller);
     bar.src = `chrome://browser/content/webaios/sidebar.html?site=${encodeURIComponent(id)}`;
   });
   return controller;

@@ -33,6 +33,7 @@ declare const ChromeUtils: {
   }[];
   getXPCOMErrorName(status: number): string;
   generateQI(interfaces: string[]): unknown;
+  getClassName(o: unknown): string;
 };
 declare const WebExtensionPolicy: {
   getByID(id: string): { mozExtensionHostname: string } | null;
@@ -40,6 +41,7 @@ declare const WebExtensionPolicy: {
   getActiveExtensions(): { extension?: any }[];
 };
 declare const WindowGlobalParent: { getByInnerWindowId(id: number): any };
+declare const WindowGlobalChild: { getByInnerWindowId(id: number): any };
 declare class JSWindowActorParent {
   readonly manager: any;
 }
@@ -50,12 +52,19 @@ declare class JSProcessActorChild {
   sendAsyncMessage(name: string, data?: unknown): void;
 }
 declare class JSWindowActorChild {
+  readonly manager: any;
   readonly document: Document;
   readonly contentWindow: Window;
   readonly docShell: any;
   sendQuery(name: string, data?: unknown): Promise<unknown>;
+  sendAsyncMessage(name: string, data?: unknown): void;
 }
 // Absolute paths frozen by Vite `define` in the store bundle (scripts/paths.ts).
 declare const __WEBAIOS_NODE__: string;
 declare const __WEBAIOS_TSX__: string;
 declare const __WEBAIOS_HOST__: string;
+// Vite's raw imports (a file's text, bundled).
+declare module "*?raw" {
+  const text: string;
+  export default text;
+}

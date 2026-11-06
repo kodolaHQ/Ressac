@@ -386,6 +386,15 @@ const rpc = createRpc({
     "sites.noter": (p: { id?: unknown; cadre?: Cadre; favicon?: unknown }) => {
       if (typeof p?.id === "string") sites.noter(p.id, { ...(p.cadre ? { cadre: p.cadre } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
     },
+    "sites.memoireOp": (p: unknown) => sites.memoireOp(p),
+    "sites.position": (p: unknown) => sites.position(p),
+    "sites.reprise": (p: unknown) => sites.reprise(p),
+    "sites.chercher": (p: { id?: unknown; url?: unknown }) => {
+      if (typeof p?.id === "string" && (p.url === null || typeof p.url === "string")) return sites.chercherAdresse(p.id, p.url);
+    },
+    "sites.accorder": (p: { id?: unknown; oui?: unknown; empreinte?: unknown }) => {
+      if (typeof p?.id === "string" && typeof p.oui === "boolean" && typeof p.empreinte === "string") return sites.accorder(p.id, p.oui, p.empreinte);
+    },
     "sites.ferme": (p: { id?: unknown }) => {
       if (typeof p?.id === "string") sites.fermee(p.id);
     },
@@ -475,7 +484,7 @@ const rpc = createRpc({
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
-const bridge = new RemoteBridge(rpc, historique);
+const bridge = new RemoteBridge(rpc, historique, (site, url) => sites.adressePermise(site, url));
 const menagementTest = new Menagement();
 /** A page request on one extension key: a malformed one is refused as text. */
 const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
@@ -487,16 +496,31 @@ const sites = createSites({
   dataDir,
   adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
   chrome: {
-    ouvrir: (s, cadre) => rpc.request("sites.ouvrir", [s, cadre ?? null]),
+    ouvrir: (s, cadre, retouches) => rpc.request("sites.ouvrir", [s, cadre, retouches]),
     fermer: (id) => rpc.request("sites.fermer", [id]),
     effacer: (id) => rpc.request("sites.effacer", [id]),
-    mettreAJour: (s) => rpc.request("sites.mettreAJour", [s]),
+    mettreAJour: (s, retouches) => rpc.request("sites.mettreAJour", [s, retouches]),
+    rechargerVue: (id) => rpc.request("sites.rechargerVue", [id]),
+    erreurs: (id) => rpc.request("sites.erreurs", [id]),
+    vue: (id) => rpc.request("sites.vue", [id]),
+    apresAccord: (id, s) => rpc.request("sites.apresAccord", [id, s]),
+    rediffuser: (id) => rpc.request("sites.rediffuser", [id]),
     ouvertes: () => rpc.request("sites.ouvertes"),
     accueilChange: (id) => rpc.notify("sites.accueilChange", [id]),
+    cherche: (id, oui) => rpc.notify("sites.cherche", [id, oui]),
+    avis: (id, a) => rpc.notify("sites.avis", [id, a]),
+    adresseChangee: (id, domaines, depart, vers) => rpc.notify("sites.adresseChangee", [id, domaines, depart, vers]),
   },
+  // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
+  lireLiens: async (page, signal) =>
+    (await bridge.lirePageInvisible(page, { profil: null, ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}), ...(signal ? { signal } : {}) })).liens.map((l) => l.url),
   diffuser: () => rpc.notify("sites.change"),
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
+  // The agent loses its dev tools on the closed window; the app's accord holds for the conversation, until « Supprimer »
+  // (an app made again under the same id asks for its card again).
+  surFermee: (id) => noyau?.politique.ongletFerme(`site:${id}`),
+  surSupprimee: (id) => noyau?.politique.retirerLectureSite(id),
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.pret" once it does.
 void sites.resynchroniser().catch(() => {});

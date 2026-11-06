@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { accorderSite, DeclarationSite } from "../../../packages/noyau/src/index";
 import type { Marionette } from "./marionette";
 
 // Site app helpers, copied from Electron's e2e (apps/navigateur/e2e/aide.ts, sites.spec.ts) with English names.
@@ -90,6 +91,9 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
     writeFileSync(path.join(dossier, chemin), contenu);
   }
 }
+
+/** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the noyau's own accorderSite: the app opens granted. */
+export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => accorderSite(dataDir, id, DeclarationSite.parse(declaration));
 
 /** Electron's test home page (sites.spec.ts ACCUEIL), copied as is: it shows the memory it receives and notes every message. */
 export const ELECTRON_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
@@ -182,3 +186,32 @@ export async function inBrowser<T>(m: Marionette, browser: string, script: strin
 /** Runs `script` in the content of app `id`'s view (see inBrowser). */
 export const inSiteView = <T>(m: Marionette, id: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
   inBrowser<T>(m, `${siteWindowExpr(id)}.gBrowser.selectedBrowser`, script, o);
+
+/** Electron's silenceWav (e2e/aide.ts): `seconds` of 8 kHz silence as a WAV, a video as far as the player cares. */
+export function silenceWav(seconds = 3): Buffer {
+  const n = 8000 * seconds;
+  const b = Buffer.alloc(44 + n, 0x80);
+  b.write("RIFF", 0);
+  b.writeUInt32LE(36 + n, 4);
+  b.write("WAVEfmt ", 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(8000, 24);
+  b.writeUInt32LE(8000, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write("data", 36);
+  b.writeUInt32LE(n, 40);
+  return b;
+}
+
+/** Electron's servirWav: a WAV served with byte ranges, like a real video server, so the player can seek to the minute. */
+export const serveWav = (wav: Buffer): SiteRoute => (req, res) => {
+  const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+  if (!range) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);
+  const from = Number(range[1]);
+  const to = range[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+  res.writeHead(206, { "Content-Type": "audio/wav", "Content-Length": to - from + 1, "Content-Range": `bytes ${from}-${to}/${wav.length}`, "Accept-Ranges": "bytes" });
+  res.end(wav.subarray(from, to + 1));
+};
