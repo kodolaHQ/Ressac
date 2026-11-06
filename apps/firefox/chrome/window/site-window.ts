@@ -73,7 +73,8 @@ function routeOpens(win: Window, id: string, small = false): void {
 const PROTECTED = { message: "Onglet protégé par WebAiOs" };
 const REFUSED = { message: "Chargement refusé par WebAiOs" };
 
-const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement.hasAttribute("webaios-site");
+// An agent app's view too (its window: window/app-window.ts).
+const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement && ["webaios-site", "webaios-app"].some((x) => tab.ownerDocument.documentElement.hasAttribute(x));
 
 /**
  * The app view is never a tab add-ons can close, move out, add to, or send off the web (spec §4.9). Its window has one
@@ -108,7 +109,7 @@ function protectView(win: Window, view: SiteWindowController): void {
 }
 
 /**
- * Any other window (main, popup): a site app's view never comes into it. Neither by adoptTab (an add-on's tabs.move to
+ * Any other window (main, popup): a site app's or an agent app's view never comes into it. Neither by adoptTab (an add-on's tabs.move to
  * this window) nor as the tab a new window adopts (windows.create({ tabId })): that one opens empty. Run at
  * DOMContentLoaded (window.js comes after browser-main.js, whose DOMContentLoaded made gBrowser), before
  * browser-init.js's onLoad swaps the adopted tab in.

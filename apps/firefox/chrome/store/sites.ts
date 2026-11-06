@@ -11,6 +11,7 @@ import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import type { SiteChrome } from "../../noyau/sites";
 import { gardienGestes } from "../../shared/geste-widget";
 import type { AgentHost } from "../agent/host";
+import { apps } from "./apps";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 import { frameError, frameInjection, frameMemory, framePosition, frameResume, siteOfFrame } from "./site-frames";
@@ -180,6 +181,8 @@ const observer = {
     const ch = subject.QueryInterface(Ci.nsIHttpChannel);
     const li = ch.loadInfo;
     if (li.externalContentPolicyType !== Ci.nsIContentPolicy.TYPE_DOCUMENT) return;
+    // An agent app's container: its own origin rule (store/apps.ts).
+    if (apps.request(ch, li)) return;
     const userContextId = li.originAttributes.userContextId;
     const s = byContainer.get(userContextId);
     if (!s) {
@@ -228,6 +231,15 @@ const observer = {
 };
 let observing = false;
 
+/** The request guard and the view policy: installed with the store (bindApps), and again (a no-op) with a site app's window. */
+export function installGuard(): void {
+  if (observing) return;
+  observing = true;
+  Services.obs.addObserver(observer, "http-on-modify-request");
+  Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(viewPolicy.classID, "WebAiOs site view policy", POLICY_CONTRACT, viewPolicy);
+  Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
+}
+
 const publishOpen = () => publishSiteFrames(new Map([...byContainer].map(([uc, s]) => [uc, s.site.id])));
 
 /** The home's frame may show only a page (.html, so with the home's CSP) of the copy served now, or about:blank. */
@@ -267,7 +279,7 @@ const viewPolicy = {
     const accept = Ci.nsIContentPolicy.ACCEPT;
     if (li.externalContentPolicyType !== Ci.nsIContentPolicy.TYPE_DOCUMENT || location.schemeIs("http") || location.schemeIs("https") || li.loadErrorPage) return accept;
     const browserId = li.browsingContext?.browserId;
-    if (!browserId || ![...open.values()].some((s) => s.view?.browserId === browserId)) return accept;
+    if (!browserId || (![...open.values()].some((s) => s.view?.browserId === browserId) && !apps.isAppView(browserId))) return accept;
     console.warn(`[sites] chargement arrêté dans la vue (hors du web) : ${String(location.spec).slice(0, 80)}`);
     return Ci.nsIContentPolicy.REJECT_REQUEST;
   },
@@ -279,7 +291,7 @@ const viewPolicy = {
  * no URL ([0]), so nothing loads before the window is set up. No `toolbar` (nor `all`) feature: window.toolbar.visible is
  * false for good (its setter refuses), so BrowserWindowTracker.getTopWindow() never returns the window.
  */
-function openInContainer(userContextId: number, marker: unknown, size: string): Window {
+export function openInContainer(userContextId: number, marker: unknown, size: string): Window {
   const container = Cc["@mozilla.org/supports-PRUint32;1"].createInstance(Ci.nsISupportsPRUint32);
   container.data = userContextId;
   const args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
@@ -296,7 +308,7 @@ function visible(c: Cadre): boolean {
 }
 
 /** The window's features: the kept frame (outer size, as Electron's bounds), else 1200 × 800; 360 × 240 at least. */
-function frameFeatures(cadre: Cadre | null | undefined): string {
+export function frameFeatures(cadre: Cadre | null | undefined): string {
   const c = cadre && [cadre.x, cadre.y, cadre.largeur, cadre.hauteur].every(Number.isFinite) && visible(cadre) ? cadre : null;
   const largeur = Math.max(MIN.largeur, Math.round(c?.largeur ?? SIZE.largeur));
   const hauteur = Math.max(MIN.hauteur, Math.round(c?.hauteur ?? SIZE.hauteur));
@@ -304,7 +316,7 @@ function frameFeatures(cadre: Cadre | null | undefined): string {
 }
 
 /** The window's frame as Electron notes it (getNormalBounds), or null while it is minimized or fullscreen. Still read at unload. */
-function frameOf(win: Window): Cadre | null {
+export function frameOf(win: Window): Cadre | null {
   if (win.windowState === win.STATE_MINIMIZED || win.windowState === win.STATE_FULLSCREEN) return null;
   return { x: win.screenX, y: win.screenY, largeur: win.outerWidth, hauteur: win.outerHeight };
 }
@@ -545,12 +557,7 @@ export const sites = {
       known.window.focus();
       return true;
     }
-    if (!observing) {
-      observing = true;
-      Services.obs.addObserver(observer, "http-on-modify-request");
-      Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(viewPolicy.classID, "WebAiOs site view policy", POLICY_CONTRACT, viewPolicy);
-      Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
-    }
+    installGuard();
     const userContextId = siteContainer(site.id);
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);

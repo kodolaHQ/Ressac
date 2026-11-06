@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { WebAiOsStore } from "../store";
+import { appDossierOf, setupAppWindow } from "./app-window";
 import { createController } from "./controller";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
@@ -37,6 +38,9 @@ window.addEventListener(
     // Every full browser window is WebAiOs; popups (window.open with dimensions) stay plain Firefox windows, and a
     // private window (Dock, ⇧⌘P) stays Firefox's: it must not take the session's windows into private browsing.
     if (PrivateBrowsingUtils.isWindowPrivate(window)) return;
+    // An agent app's window: never a main window, never a plain popup.
+    const app = appDossierOf(window);
+    if (app) return setupAppWindow(window, app);
     // A site app's window, or a window its pages opened (its container): never a main window, never a plain popup.
     const site = siteIdOf(window);
     if (site) return setupSiteWindow(window, site);

@@ -1,4 +1,7 @@
 import { origineDe, PREFIXE_SITE } from "../../../navigateur/src/main/agent/pont";
+
+/** Electron's PREFIXE_APP (main/agent/pont.ts, not exported). */
+const PREFIXE_APP = "app:";
 import { TEXTE_REVOQUE } from "../../../navigateur/src/main/outils-dev/inspecteur";
 import { TamponOnglet, textePile } from "../../../navigateur/src/main/outils-dev/tampon";
 import type { InstantaneFirefox, ProfilCpu } from "../../../../packages/noyau/src/outils-dev/resumes";
@@ -277,22 +280,26 @@ function abortError(signal: AbortSignal): unknown {
 
 /**
  * `sites`: the site app windows; an id `site:<id>` aims at the app view's <browser>, never its bar, home or card
- * (Electron's InspecteurCdp on vueSite).
+ * (Electron's InspecteurCdp on vueSite). `apps`: the agent app windows; `app:<dossier>` aims at the app view's <browser>.
  */
 export function createDevTools(o: {
   store: Store;
   windows: WindowRegistry;
   isPrivate(tabId: string): boolean;
   sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
+  apps?: { viewFor(dossier: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
 }): DevTools {
   /** The top-level reload of the agent's dev tools; on a site app it is WebAiOs's load, so the M1 net spares it under the home. */
   const reloadTop = (id: string, s: { commands: any }, noCache: boolean) => {
     if (id.startsWith(PREFIXE_SITE)) o.sites?.markWanted(id.slice(PREFIXE_SITE.length));
     return s.commands.targetCommand.reloadTopLevelTarget(noCache);
   };
-  const siteView = (id: string) => (id.startsWith(PREFIXE_SITE) ? o.sites?.viewFor(id.slice(PREFIXE_SITE.length)) : undefined);
-  /** The page's address now: the app view's for a site app window, the tab's otherwise. */
-  const urlOf = (id: string) => String((id.startsWith(PREFIXE_SITE) ? siteView(id)?.browser.currentURI?.spec : o.store.state.onglets[id]?.url) ?? "");
+  /** A site app or agent app window, not a tab of the state. */
+  const isWindow = (id: string) => id.startsWith(PREFIXE_SITE) || id.startsWith(PREFIXE_APP);
+  const siteView = (id: string) =>
+    id.startsWith(PREFIXE_SITE) ? o.sites?.viewFor(id.slice(PREFIXE_SITE.length)) : id.startsWith(PREFIXE_APP) ? o.apps?.viewFor(id.slice(PREFIXE_APP.length)) : undefined;
+  /** The page's address now: the app view's for a site app or agent app window, the tab's otherwise. */
+  const urlOf = (id: string) => String((isWindow(id) ? siteView(id)?.browser.currentURI?.spec : o.store.state.onglets[id]?.url) ?? "");
   const entries = new Map<string, { browser: any; origin: string | null; session: Promise<Session> }>();
   let current: string | null = null;
   /** Bumped by owner() and release(): a call that was loading its tab meanwhile attaches nothing. */
@@ -320,11 +327,13 @@ export function createDevTools(o: {
 
   // A tab closed or turned private: detached at once, its buffers emptied. A site app window: when it closes.
   o.store.subscribe((state) => {
-    for (const id of [...entries.keys()]) if (!id.startsWith(PREFIXE_SITE) && (!state.onglets[id] || o.isPrivate(id))) drop(id);
+    for (const id of [...entries.keys()]) if (!isWindow(id) && (!state.onglets[id] || o.isPrivate(id))) drop(id);
   });
-  o.sites?.onClosed(() => {
-    for (const id of [...entries.keys()]) if (id.startsWith(PREFIXE_SITE) && !siteView(id)) drop(id);
-  });
+  const dropClosed = () => {
+    for (const id of [...entries.keys()]) if (isWindow(id) && !siteView(id)) drop(id);
+  };
+  o.sites?.onClosed(dropClosed);
+  o.apps?.onClosed(dropClosed);
 
   async function attach(win: any, browser: any, dropMe: () => void): Promise<Session> {
     const tab = win.gBrowser.getTabForBrowser(browser);
@@ -396,7 +405,7 @@ export function createDevTools(o: {
 
   /** The tab's session, attached if needed. A private tab is refused before any DevTools client is made for it. */
   async function session(id: string): Promise<Session> {
-    const site = id.startsWith(PREFIXE_SITE);
+    const site = isWindow(id);
     const check = () => {
       if (site ? !siteView(id) : !o.store.state.onglets[id]) {
         drop(id);

@@ -6,6 +6,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDevTools, type DevTools } from "./devtools";
@@ -50,6 +51,8 @@ export interface WebAiOsStore extends Store {
   readonly devtools: DevTools;
   /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
   readonly sites: SiteApps;
+  /** The agent apps' windows (never WebAiOs windows), opened and closed as the host asks. */
+  readonly apps: AgentApps;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
@@ -140,9 +143,10 @@ async function start(): Promise<WebAiOsStore> {
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
-  const questions = new Questions(store, () => sites.forAgent());
-  // A site app window closed: the agent's questions on it fall.
+  const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
+  // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
+  apps.onClosed(() => questions.dropStale());
   const sitePermissions = createSitePermissions({
     dataDir,
     profiles: () => [...profilsEnUsage(store.state)],
@@ -258,6 +262,7 @@ async function start(): Promise<WebAiOsStore> {
     store,
     windows,
     sites,
+    apps,
     isPrivate: (id) => {
       const o = store.state.onglets[id];
       return !!o && ongletPrive(store.state, o);
@@ -291,9 +296,10 @@ async function start(): Promise<WebAiOsStore> {
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
     handlers: {
-      ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites),
+      ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
       ...agentExtensions.handlers,
       ...sites.handlers,
+      ...apps.handlers,
       // A review batch for the agent (noyau/design.ts): its window, then its panel with the keyboard, in front.
       "design.fenetreAgent": async () => (await mainWindow()) ?? null,
       "design.donnerAgent": ([fenetre]: [IdFenetre]) => {
@@ -314,13 +320,16 @@ async function start(): Promise<WebAiOsStore> {
   });
   // « Ouvrir dans un onglet » of a site app: a tab of the last main window, in its active space, brought to the front
   // (Electron's ouvrirDansOnglet); with no main window open, one opens first.
-  bindSites(agent, dataDir, async (url) => {
+  // An agent app's link off its origin too (Electron's ouvrirDansOnglet).
+  const openInTab = async (url: string) => {
     if (!/^https?:\/\//.test(url)) return;
     const fenetreId = await mainWindow();
     if (!fenetreId) return;
     store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
     toFront(fenetreId);
-  });
+  };
+  bindSites(agent, dataDir, openInTab);
+  bindApps(agent, openInTab);
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
   // A site app's downloads are cancelled (Electron's app sessions download nothing).
@@ -330,8 +339,9 @@ async function start(): Promise<WebAiOsStore> {
   agent.on("acces", (e: EtatAcces) => (access = e));
   agent.on(HOST_EXITED, () => {
     access = { agent: access.agent, onglets: {} };
-    // Its noyau is gone: nothing stays attached for it.
+    // Its noyau is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).
     devtools.release();
+    apps.closeAll();
   });
   agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
@@ -355,6 +365,7 @@ async function start(): Promise<WebAiOsStore> {
     sitePermissions,
     devtools,
     sites,
+    apps,
     get access() {
       return access;
     },
@@ -368,6 +379,8 @@ async function start(): Promise<WebAiOsStore> {
 export const ready: Promise<WebAiOsStore> = start();
 // Site app windows: read synchronously by a window as it loads (chrome/window/site-window.ts).
 export { sites, publishSiteFrames } from "./sites";
+// Agent app windows: read synchronously by a window as it loads (chrome/window/app-window.ts).
+export { apps } from "./apps";
 // For the e2e: the action images' channel, measured directly (plan 33 spike S2).
 export { containerRequests, loadImage } from "./site-home";
 export { actionImagesContainer } from "./action-media";

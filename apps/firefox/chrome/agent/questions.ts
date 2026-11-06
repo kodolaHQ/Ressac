@@ -15,17 +15,28 @@ export class Questions {
   private readonly open = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
   private readonly listeners = new Set<Listener>();
 
-  /** `openSites`: the site app windows open now (`sites.forAgent`), for the questions on `site:<id>`. */
+  /**
+   * `openSites`: the site app windows open now (`sites.forAgent`), for the questions on `site:<id>`; `openApps`: the agent
+   * app windows (`apps.forAgent`), for those on `app:<dossier>`.
+   */
   constructor(
     private readonly store: Store,
     private readonly openSites: () => { id: string; url: string }[] = () => [],
+    private readonly openApps: () => { dossier: string; url: string }[] = () => [],
   ) {
     // A tab closed, moved to a private space or gone to another site will never be answered: its question falls (a refusal).
     store.subscribe(() => this.dropStale());
   }
 
-  /** A question that will never get a useful answer: its tab, or its site app window (`site:<id>`), is gone. */
+  /**
+   * A question that will never get a useful answer: its tab, or its site app window (`site:<id>`), is gone; its app
+   * window (`app:<dossier>`) is closed or on another origin (Electron's ecarterQuestionsCaduques).
+   */
   private stale(d: DemandeEnAttente): boolean {
+    if (d.cible?.startsWith("app:")) {
+      const a = this.openApps().find((x) => `app:${x.dossier}` === d.cible);
+      if (!a || origineDe(a.url) !== d.origine) return true;
+    }
     return questionCaduque(d, this.store.state) || questionSiteCaduque(d, this.openSites());
   }
 

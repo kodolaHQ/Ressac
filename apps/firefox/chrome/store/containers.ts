@@ -45,21 +45,39 @@ export const siteContainer = (id: string): number => containerFor(`site-${id}`);
 /** userContextId of site app `id`'s container if it exists, else null: never creates one. */
 export const existingSiteContainer = (id: string): number | null => existingContainer(`site-${id}`);
 
-/** Is this the container of a site app (open or not)? The request guard refuses every page of one whose app is closed. */
-export function isSiteContainer(userContextId: number): boolean {
+/** Is this a private container whose internal name starts with `webaios-<prefix>`? */
+function hasPrefix(userContextId: number, prefix: string): boolean {
   if (!userContextId) return false;
   ContextualIdentityService.ensureDataReady();
-  const prefix = internalName("site-");
-  return ContextualIdentityService._identities.some((i: { public: boolean; name: string; userContextId: number }) => !i.public && i.userContextId === userContextId && i.name.startsWith(prefix));
+  const name = internalName(prefix);
+  return ContextualIdentityService._identities.some((i: { public: boolean; name: string; userContextId: number }) => !i.public && i.userContextId === userContextId && i.name.startsWith(name));
 }
 
-/** Wipes site app `id`'s cookies and storage (waited for, as invisible.ts's clearContainer), then drops its identity. */
-export async function removeSiteContainer(id: string): Promise<void> {
-  const userContextId = existingSiteContainer(id);
+/** Is this the container of a site app (open or not)? The request guard refuses every page of one whose app is closed. */
+export const isSiteContainer = (userContextId: number): boolean => hasPrefix(userContextId, "site-");
+
+/** Wipes a container's cookies and storage (waited for, as invisible.ts's clearContainer), then drops its identity. */
+async function wipe(profile: IdProfil): Promise<void> {
+  const userContextId = existingContainer(profile);
   if (userContextId === null) return;
   await new Promise<void>((ok) => Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId }, { onDataDeleted: () => ok() }));
-  removeContainer(`site-${id}`);
+  removeContainer(profile);
 }
+
+/** Wipes site app `id`'s cookies and storage, then drops its identity. */
+export const removeSiteContainer = (id: string): Promise<void> => wipe(`site-${id}`);
+
+/** userContextId of agent app `dossier`'s private container (`userContextIdInternal.webaios-app-<dossier>`), created on first use. */
+export const appContainer = (dossier: string): number => containerFor(`app-${dossier}`);
+
+/** userContextId of agent app `dossier`'s container if it exists, else null: never creates one. */
+export const existingAppContainer = (dossier: string): number | null => existingContainer(`app-${dossier}`);
+
+/** Is this the container of an agent app (running or not)? The request guard refuses every page of one whose app is not open. */
+export const isAppContainer = (userContextId: number): boolean => hasPrefix(userContextId, "app-");
+
+/** « Supprimer »: agent app `dossier`'s cookies and storage are wiped, then its identity dropped. */
+export const removeAppContainer = (dossier: string): Promise<void> => wipe(`app-${dossier}`);
 
 /**
  * Public `webaios-<id>` identities left by older builds become internal in place (same userContextId, so cookies and storage stay;

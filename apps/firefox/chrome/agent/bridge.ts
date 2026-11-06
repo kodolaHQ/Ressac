@@ -1,8 +1,9 @@
 import { navigationHorsSite, OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
 import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/commun/modele";
 import { ongletPrive, PREFIXE_WORKFLOW } from "../../../navigateur/src/commun/modele";
-import { changementsPolitique, infosOnglets, ongletActifDe, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
+import { changementsPolitique, infosOnglets, ongletActifDe, ongletApplication, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
 import type { Handler } from "../../shared/rpc";
+import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
 import type { SiteApps } from "../store/sites";
 import type { Store } from "../store/store";
@@ -12,6 +13,8 @@ import { readHtml, readPage } from "./invisible";
 import type { Questions } from "./questions";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
+/** Electron's PREFIXE_APP (main/agent/pont.ts, not exported): an agent app window seen as a tab. */
+const PREFIXE_APP = "app:";
 /** As the page actor and Electron. */
 const TEXT_MAX = 100_000;
 
@@ -43,6 +46,7 @@ export function bridgeHandlers(
   devtools: DevTools,
   host: () => AgentHost,
   sites: Pick<SiteApps, "forAgent" | "viewFor" | "navigateForAgent">,
+  apps: Pick<AgentApps, "forAgent" | "viewFor" | "navigateForAgent">,
 ): Record<string, Handler> {
   /** The open window that holds the tab. */
   const windowOf = (id: string) => {
@@ -79,16 +83,20 @@ export function bridgeHandlers(
       throw new Error("L'onglet a changé de site pendant la lecture : rien n'est rendu.");
     return r;
   };
+  /** The view of a site app window (`site:<id>`) or of an agent app window (`app:<dossier>`); null for any other id. */
+  const windowView = (id: string) =>
+    id.startsWith(PREFIXE_SITE) ? sites.viewFor(id.slice(PREFIXE_SITE.length)) : id.startsWith(PREFIXE_APP) ? apps.viewFor(id.slice(PREFIXE_APP.length)) : null;
   /**
-   * Reads the view of a site app window (`site:<id>`): never its bar, home or card. Closed, before or during the read:
-   * OngletIntrouvable (a clean answer, Electron's surVueSite). Undefined for any other id.
+   * Reads the view of a site app or agent app window: never a site app's bar, home or card, nor an app's badge or
+   * overlay. Closed, before or during the read: OngletIntrouvable (a clean answer, Electron's surVueSite). Undefined for
+   * any other id.
    */
   const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>): Promise<T> | undefined => {
-    if (!id.startsWith(PREFIXE_SITE)) return undefined;
-    const view = sites.viewFor(id.slice(PREFIXE_SITE.length));
+    const view = windowView(id);
+    if (view === null) return undefined;
     if (!view) return Promise.reject(new OngletIntrouvable(id));
     return read(view.browser, view.window).catch((e) => {
-      if (sites.viewFor(id.slice(PREFIXE_SITE.length))?.browser !== view.browser) throw new OngletIntrouvable(id);
+      if (windowView(id)?.browser !== view.browser) throw new OngletIntrouvable(id);
       throw e;
     });
   };
@@ -112,23 +120,25 @@ export function bridgeHandlers(
     }
   };
 
+  /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one, as Electron. */
+  const openTab = ([url, espace]: [string, string?]): OngletInfo => {
+    const state = store.state;
+    const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
+    if (!f) throw new Error("Aucune fenêtre ouverte");
+    const espaceId = resoudreEspace(state, f, espace);
+    if (state.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+    const id = crypto.randomUUID();
+    store.dispatch({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId, activer: true, ouvertParAgent: true }, () => id);
+    if (!store.state.onglets[id]) throw new Error(`Impossible d'ouvrir ${url}`);
+    store.dispatch({ type: "activerOnglet", id }); // also switches to its space
+    return infosOnglets(store.state).find((o) => o.id === id)!;
+  };
+
   return {
     // Decision 3, as Electron's fenetreAgent: no window open (the last one kept), no active tab.
     ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? windows.active()),
-    listerOnglets: () => [...infosOnglets(store.state), ...sites.forAgent().map(ongletSite)],
-    // The agent's demos open in the foreground, marked ✦. With no window open, in the kept one, as Electron.
-    ouvrirOnglet: ([url, espace]: [string, string?]): OngletInfo => {
-      const state = store.state;
-      const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
-      if (!f) throw new Error("Aucune fenêtre ouverte");
-      const espaceId = resoudreEspace(state, f, espace);
-      if (state.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
-      const id = crypto.randomUUID();
-      store.dispatch({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId, activer: true, ouvertParAgent: true }, () => id);
-      if (!store.state.onglets[id]) throw new Error(`Impossible d'ouvrir ${url}`);
-      store.dispatch({ type: "activerOnglet", id }); // also switches to its space
-      return infosOnglets(store.state).find((o) => o.id === id)!;
-    },
+    listerOnglets: () => [...infosOnglets(store.state), ...apps.forAgent().map(ongletApplication), ...sites.forAgent().map(ongletSite)],
+    ouvrirOnglet: openTab,
     naviguer: ([id, url]: [string, string]) => {
       if (id.startsWith(PREFIXE_SITE)) {
         if (!sites.viewFor(id.slice(PREFIXE_SITE.length))) throw new OngletIntrouvable(id);
@@ -136,6 +146,13 @@ export function bridgeHandlers(
         const r = sites.navigateForAgent(id.slice(PREFIXE_SITE.length), url);
         if (r === "refuse") throw new Error(navigationHorsSite(url));
         return r === "en-attente" ? r : undefined;
+      }
+      if (id.startsWith(PREFIXE_APP)) {
+        const dossier = id.slice(PREFIXE_APP.length);
+        if (!apps.viewFor(dossier)) throw new OngletIntrouvable(id);
+        // The app window never leaves its origin: elsewhere, a tab of the main window (Electron's PontElectron.naviguer).
+        if (!apps.navigateForAgent(dossier, url)) openTab([url]);
+        return;
       }
       tab(id);
       windowOf(id).controller.navigateForAgent(id, url);

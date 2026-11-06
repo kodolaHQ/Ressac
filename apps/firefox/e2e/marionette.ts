@@ -68,6 +68,8 @@ export class Marionette {
 
   command<T = unknown>(name: string, params: Record<string, unknown> = {}): Promise<T> {
     const id = ++this.id;
+    // Firefox already gone (a test quit it): nothing would ever answer.
+    if (this.socket.destroyed) return Promise.reject(new Error("Marionette: connection closed"));
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
       this.socket.write(encodeFrame([0, id, name, params]));

@@ -134,6 +134,27 @@ it("the widget data card: Electron's origin per kind; Autoriser answers true; a 
   expect(await rights).toEqual([]);
 });
 
+it("a card on an agent app window falls when the window closes or goes to another origin (a relaunch on another port)", async () => {
+  const store = createStore(etatInitial());
+  let open = [{ dossier: "essai", url: "http://localhost:15280/" }];
+  const questions = new Questions(store, () => [], () => open);
+  const fenetre = store.state.fenetres[0]!.id;
+  const ask = () => questions.ask({ id: "app:essai", titre: "Essai", url: "http://localhost:15280/", espace: "" }, fenetre);
+  const first = ask();
+  expect(questions.pending()).toHaveLength(1);
+  open = [{ dossier: "essai", url: "http://localhost:15281/" }];
+  questions.dropStale();
+  expect(questions.pending()).toEqual([]);
+  expect(await first).toBe(false);
+  open = [{ dossier: "essai", url: "http://localhost:15280/" }];
+  const second = ask();
+  expect(questions.pending()).toHaveLength(1);
+  open = [];
+  questions.dropStale();
+  expect(questions.pending()).toEqual([]);
+  expect(await second).toBe(false);
+});
+
 it("SCHEMA_WIDGET is Electron's", () => {
   expect(readFileSync(new URL("../../navigateur/src/main/agent/accueil.ts", import.meta.url), "utf8")).toContain(`export const SCHEMA_WIDGET = "${SCHEMA_WIDGET}";`);
 });
