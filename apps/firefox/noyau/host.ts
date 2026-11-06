@@ -20,12 +20,13 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees } = await import("../../../packages/noyau/src/index.ts");
+const { ACTION_INCONNUE, catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees, surveillerActions } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites, SchemaActionSite } = await import("./sites.ts");
+const { createActionsHost, SchemaAccord, SchemaIdAction, SchemaSaisieAction } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
@@ -88,7 +89,13 @@ const ARGUMENT_INVALIDE = { ok: false as const, erreur: "Argument invalide" };
 const selections = new Map<string, SelectionConstructeur>();
 let actives = new Map<string, string>();
 const writes = new WriteQueue();
+const idAction = (v: unknown): v is string => SchemaIdAction.safeParse(v).success;
+const executionAction = (v: unknown): v is string => SchemaIdExecution.safeParse(v).success;
+// Electron's ipc.ts bound on a link.
+const urlAction = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 8192;
 const contexteWidgets = { chemins, dossierWidgets };
+// Actions' runs, results, accords and refusals: outside the space, like Electron.
+const dossierActions = join(dataDir, "actions");
 
 let noyau: Noyau | null = null;
 let erreur: string | null = null;
@@ -117,7 +124,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     profilId,
     racine,
     dossierWidgets,
-    dossierActions: join(dataDir, "actions"),
+    dossierActions,
     ia,
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
@@ -138,7 +145,11 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
       noyau = n;
       const offPolitique = n.politique.surChange(diffuserAcces);
       const offDirect = n.surDirect((e) => rpc.notify("workflow.direct", e));
-      unsubscribe = () => (offPolitique(), offDirect());
+      const offActions = n.actions.surDirect((e) => {
+        rpc.notify("actions.direct", e);
+        actions.directVu(e);
+      });
+      unsubscribe = () => (offPolitique(), offDirect(), offActions());
       // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
       // Unguarded, a watch failure would reject `pret` and every host method with it.
       try {
@@ -190,6 +201,7 @@ const arreter = () =>
     extensions.arreter();
     await sessions.toutArreter();
     await sites.arreter();
+    await arretActions?.();
     await arreterNoyau(await pret);
     await ia.fermer().catch(() => {});
     clearInterval(purge);
@@ -375,6 +387,32 @@ const rpc = createRpc({
     "fenetres.actives": (p: Record<string, unknown> | null) => {
       actives = new Map(Object.entries(p ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
     },
+    // Actions: what touches the noyau and the disk (the chrome keeps the window state). Inputs checked with Electron's
+    // schemas; a bad one gets Electron's empty answer.
+    "actions.liste": () => actions.liste(),
+    "actions.preparer": (p: { id?: unknown; saisie?: unknown }) =>
+      idAction(p?.id) && SchemaSaisieAction.safeParse(p.saisie ?? null).success ? actions.preparer(p.id, (p.saisie ?? null) as string | null) : { ok: false, erreur: ACTION_INCONNUE },
+    "actions.nom": (p: { id?: unknown }) => (idAction(p?.id) ? actions.nom(p.id) : null),
+    "actions.lancer": (p: { id?: unknown; saisie?: unknown }) =>
+      idAction(p?.id) && SchemaSaisieAction.safeParse(p.saisie ?? null).success
+        ? actions.lancer(p.id, (p.saisie ?? null) as string | null)
+        : { statut: "invalide", erreur: "Demande invalide" },
+    "actions.arreter": (p: { id?: unknown }) => void (idAction(p?.id) && actions.arreter(p.id)),
+    "actions.page": (p: { id?: unknown; execution?: unknown }) =>
+      idAction(p?.id) && (p.execution === null || executionAction(p.execution)) ? actions.page(p.id, p.execution) : null,
+    "actions.executions": (p: { id?: unknown }) => (idAction(p?.id) ? actions.executions(p.id) : []),
+    "actions.execution": (p: { id?: unknown; execution?: unknown }) => (idAction(p?.id) && executionAction(p.execution) ? actions.execution(p.id, p.execution) : null),
+    "actions.direct": () => actions.direct(),
+    "actions.lienPermis": (p: { id?: unknown; execution?: unknown; url?: unknown }) =>
+      idAction(p?.id) && executionAction(p.execution) && urlAction(p.url) ? actions.lienPermis(p.id, p.execution, p.url) : false,
+    "actions.imagePermise": (p: { id?: unknown; execution?: unknown; url?: unknown }) =>
+      idAction(p?.id) && executionAction(p.execution) && urlAction(p.url) ? actions.imagePermise(p.id, p.execution, p.url) : false,
+    "actions.accorder": (p: unknown) => {
+      const r = SchemaAccord.safeParse(p);
+      return r.success && idAction(r.data.id) ? actions.accorder(r.data) : { ok: false, erreur: "Demande d'accord invalide" };
+    },
+    "actions.refuserAccord": (p: { id?: unknown }) => (idAction(p?.id) ? actions.refuserAccord(p.id) : undefined),
+    "actions.supprimer": (p: { id?: unknown }) => (idAction(p?.id) ? actions.supprimer(p.id) : { ok: false, erreur: "Demande invalide" }),
     // Site apps (the window is the chrome's). A bad action is ignored, as Electron's IPC does.
     "sites.pret": () => sites.resynchroniser(),
     "sites.liste": () => sites.liste(),
@@ -522,6 +560,15 @@ const sites = createSites({
   surFermee: (id) => noyau?.politique.ongletFerme(`site:${id}`),
   surSupprimee: (id) => noyau?.politique.retirerLectureSite(id),
 });
+// Actions: the noyau and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
+const actions = createActionsHost({ chemins, dossierActions, noyau: () => noyau, surChange: () => rpc.notify("actions.change") });
+// The actions and components folders, watched outside the noyau like Electron's agent.ts: the page lists even without it.
+let arretActions: (() => Promise<void>) | undefined;
+try {
+  arretActions = surveillerActions(chemins, () => rpc.notify("actions.change"));
+} catch (e) {
+  console.error("[webaios] la surveillance des actions n'a pas démarré :", e);
+}
 // The chrome may not answer yet (its handlers come up later): it calls "sites.pret" once it does.
 void sites.resynchroniser().catch(() => {});
 let demarrageExtensions: Promise<void> | undefined;
