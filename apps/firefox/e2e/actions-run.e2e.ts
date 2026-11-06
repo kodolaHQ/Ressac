@@ -142,22 +142,31 @@ describe("action runs", () => {
   });
 
   // Review Focus 5
-  it("after a host restart the action page and the feed come back", { timeout: 90_000 }, async () => {
+  it("after a host restart the action page and the feed come back", { timeout: 120_000 }, async () => {
     await writePagesAction(w.dataDir, servers.site.url, "pages-r");
     await writeResult(w.dataDir, "pages-r", "2026-10-31T08-00-00-000Z", "2026-10-31T08:00:00.000Z", "Avant");
     await openAction(m, "pages-r", "Pages");
     await q.waitText(tid("bloc-titre"), "Avant");
-    // The host stops under the open page (as builder-runs.e2e.ts does), then starts again (the agent panel's Réessayer).
-    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.stop(); })();`);
-    await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (pid) => pid === null);
-    // A newer result, written while no host runs: only reading again after the restart shows it.
-    await writeResult(w.dataDir, "pages-r", "2026-10-31T09-00-00-000Z", "2026-10-31T09:00:00.000Z", "Après");
-    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure(); })();`);
-    // The page reads its result again, without reopening the tab.
-    await q.waitText(tid("bloc-titre"), "Après", 30_000);
-    servers.settings.lenteurSiteMs = 1500;
+    // A run in progress when the host crashes: it goes with the host, and no feed says so.
+    servers.settings.lenteurSiteMs = 4000;
     await click(m, tid("relancer-action"));
-    // The feed: the run's progress shows, then its page.
+    await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
+    // The host crashes under the open page (killed: no last notification), then starts again (the agent panel's
+    // Réessayer, as builder-runs.e2e.ts does).
+    process.kill((await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`))!, "SIGKILL");
+    await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (pid) => pid === null);
+    // While no host runs, the page keeps its last read (its launch's end, refused, reads it again): the action and the
+    // progress stay, no « Action inconnue ».
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await q.text(tid("nom-action"))).toBe("Pages");
+    expect(await q.count(tid("avancement-action"))).toBe(1);
+    await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure(); })();`);
+    // Once the noyau runs again (`acces`), the feed is read again: nothing runs. Only that read clears the progress.
+    await q.waitCount(tid("avancement-action"), 0, 30_000);
+    // The page works again without reopening the tab: a new run shows its progress, then its page.
+    servers.settings.lenteurSiteMs = 1500;
+    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
+    await click(m, tid("relancer-action"));
     await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
     await q.waitText(tid("bloc-titre"), "Pages lues", 30_000);
     await q.waitCount(tid("avancement-action"), 0);

@@ -41,19 +41,46 @@ export function createActionsApi(o: {
     return !s || espaceActifPrive(s, fenetre);
   };
   const refus = { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
-  /** A host request answered in this realm, `empty` in a private space (before and after) or when the host does not answer. */
-  const ask = async <T>(method: string, params: unknown, empty: () => T): Promise<T> => {
+  /** The last answer to each read of the page: a host that stopped answers nothing, and the page keeps what it showed. */
+  const lastRead = new Map<string, unknown>();
+  /**
+   * A host request answered in this realm, `empty` in a private space (before and after). When the host does not
+   * answer: with `keep`, the last answer to the same request, otherwise `empty`.
+   */
+  const ask = async <T>(method: string, params: unknown, empty: () => T, keep = false): Promise<T> => {
     if (prive()) return empty();
-    const r = await host.request<T>(method, params).then((v) => structuredClone(v), () => empty());
+    const key = JSON.stringify([method, params]);
+    const r = await host.request<T>(method, params).then(
+      (v) => {
+        if (keep) lastRead.set(key, v);
+        return structuredClone(v);
+      },
+      () => (keep && lastRead.has(key) ? structuredClone(lastRead.get(key) as T) : empty()),
+    );
     return prive() ? empty() : r;
+  };
+  /**
+   * Calls `cb` once on the first `acces` after the host exited: the host sends it once its noyau has started again.
+   * Meanwhile the page keeps its last read; later `acces` (each policy change) are ignored.
+   */
+  const afterRestart = (cb: () => void) => {
+    let exited = false;
+    const offs = [
+      host.on(HOST_EXITED, () => (exited = true)),
+      host.on("acces", () => {
+        if (!exited) return;
+        exited = false;
+        cb();
+      }),
+    ];
+    return () => offs.forEach((f) => f());
   };
   /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
   let dernierLien = -Infinity;
   const api: ActionsFirefox = {
-    liste: () => ask("actions.liste", undefined, () => []),
+    liste: () => ask("actions.liste", undefined, () => [], true),
     surChange(rappel) {
-      // A host that stopped or started again (`acces` comes once its noyau runs), or the chrome's resync: read again.
-      const offs = ["actions.change", HOST_EXITED, "accueil.change", "acces"].map((e) => host.on(e, () => rappel()));
+      const offs = [host.on("actions.change", () => rappel()), host.on("accueil.change", () => rappel()), afterRestart(() => rappel())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     // Task 4.
@@ -62,16 +89,15 @@ export function createActionsApi(o: {
     arreter(id) {
       if (!prive()) host.notify("actions.arreter", { id });
     },
-    page: (id, execution) => ask("actions.page", { id, execution }, () => null),
-    executions: (id) => ask("actions.executions", { id }, () => []),
-    execution: (id, execution) => ask("actions.execution", { id, execution }, () => null),
+    page: (id, execution) => ask("actions.page", { id, execution }, () => null, true),
+    executions: (id) => ask("actions.executions", { id }, () => [], true),
+    execution: (id, execution) => ask("actions.execution", { id, execution }, () => null, true),
     direct: () => ask("actions.direct", undefined, NO_ACTION),
     surDirect(rappel) {
       // Only while this window's space is not private, judged at each event (Electron's diffuserDirectActions).
       const offFeed = host.on("actions.direct", (e) => !prive() && rappel(structuredClone(e)));
-      // A host that stopped or started again sent no feed meanwhile: the runs are read again.
-      const again = () => void api.direct().then((e) => !prive() && rappel(e));
-      const offs = [offFeed, ...[HOST_EXITED, "acces"].map((e) => host.on(e, again))];
+      // A host that started again sent no feed meanwhile: the runs are read again.
+      const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !prive() && rappel(e)))];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     async ouvrirLien(id, execution, url) {
@@ -98,10 +124,12 @@ export function createActionsApi(o: {
       if (prive()) return refus;
       // Never a profile a private space uses: the state is read again at the moment of the accord.
       if (!profilsLisibles(o.state()!).includes(a.profil)) return { ok: false, erreur: "Ce profil ne peut pas servir à un accord" };
-      return host.request<{ ok: true } | { ok: false; erreur: string }>("actions.accorder", a).then(
-        (r) => structuredClone(r),
-        (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }),
+      // A host that does not answer is Electron's missing noyau; the noyau's own refusals come back as answers.
+      const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.accorder", a).then(
+        (v) => structuredClone(v),
+        () => ({ ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
       );
+      return prive() ? refus : r;
     },
     // Tasks 4 to 6.
     refuserAccord: async () => {},

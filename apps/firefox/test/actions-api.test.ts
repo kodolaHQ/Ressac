@@ -241,8 +241,9 @@ describe("createActionsApi", () => {
     emit("actions.direct", running);
     expect(seenPub).toHaveBeenCalledWith(running);
     expect(seenPriv).not.toHaveBeenCalled();
-    // A host that stopped: the feed is read again, only for the public window.
+    // A host that started again: the feed is read again, only for the public window.
     emit(HOST_EXITED, { message: "stop" });
+    emit("acces");
     await vi.waitFor(() => expect(seenPub).toHaveBeenCalledTimes(2));
     expect(seenPriv).not.toHaveBeenCalled();
     calls.length = 0;
@@ -254,14 +255,68 @@ describe("createActionsApi", () => {
     expect(await pub.liste()).toEqual([{ id: "gitlab" }]);
   });
 
-  it("surChange calls back on actions.change, a host exit, the home's resync and a noyau start", () => {
+  it("surChange calls back on actions.change and the home's resync; after a host exit, once on its noyau's start", () => {
     const { F, api, emit } = setup();
     const cb = vi.fn();
     const off = api(F).surChange(cb);
-    for (const e of ["actions.change", HOST_EXITED, "accueil.change", "acces"]) emit(e);
-    expect(cb).toHaveBeenCalledTimes(4);
+    emit("actions.change");
+    emit("accueil.change");
+    expect(cb).toHaveBeenCalledTimes(2);
+    // The page keeps its last read while no host runs; the first acces after the exit reads again, later ones do not.
+    emit(HOST_EXITED, { message: "stop" });
+    expect(cb).toHaveBeenCalledTimes(2);
+    emit("acces");
+    emit("acces");
+    expect(cb).toHaveBeenCalledTimes(3);
     off();
     emit("actions.change");
-    expect(cb).toHaveBeenCalledTimes(4);
+    expect(cb).toHaveBeenCalledTimes(3);
+  });
+
+  it("a host that stops keeps the page's last read; a read never answered stays empty", async () => {
+    let up = true;
+    const answer = (v: unknown) => () => {
+      if (!up) throw new Error("Le noyau de l'agent s'est arrêté.");
+      return v;
+    };
+    const { F, api, turnPrivate } = setup({ "actions.liste": answer([{ id: "gitlab" }]), "actions.page": answer({ execution: "x" }), "actions.executions": answer([{ id: "x" }]), "actions.direct": answer({ courantes: [{ action: "gitlab" }], enAttente: [] }) });
+    const a = api(F);
+    await Promise.all([a.liste(), a.page("gitlab", null), a.executions("gitlab"), a.direct()]);
+    up = false;
+    expect(await a.liste()).toEqual([{ id: "gitlab" }]);
+    expect(await a.page("gitlab", null)).toEqual({ execution: "x" });
+    expect(await a.executions("gitlab")).toEqual([{ id: "x" }]);
+    expect(await a.page("gitlab", "y")).toBeNull();
+    // Nothing runs while no host runs.
+    expect(await a.direct()).toEqual(NONE);
+    // Never in a private space.
+    turnPrivate();
+    expect(await a.liste()).toEqual([]);
+  });
+
+  it("acces without a preceding exit does not read again", async () => {
+    const { F, api, emit, calls } = setup({ "actions.direct": () => NONE });
+    const change = vi.fn();
+    const direct = vi.fn();
+    const a = api(F);
+    a.surChange(change);
+    a.surDirect(direct);
+    emit("acces");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(change).not.toHaveBeenCalled();
+    expect(direct).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+  });
+
+  it("accorder: a stopped host is Electron's missing noyau; a window turned private meanwhile is refused", async () => {
+    const stopped = setup();
+    expect(await stopped.api(stopped.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({
+      ok: false,
+      erreur: "Le service des actions ne répond pas (agent arrêté ?)",
+    });
+    let turn = () => {};
+    const s = setup({ "actions.accorder": () => (turn(), { ok: true }) });
+    turn = () => s.turnPrivate();
+    expect(await s.api(s.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
   });
 });
