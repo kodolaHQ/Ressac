@@ -16,7 +16,7 @@ const INJECTED_CSS = ["/site/FenetreSite.svelte", "/ui/SiteAddonsStrip.svelte"];
 //   with fixed names, no eval (privileged documents have a strict CSP);
 // - window: script loaded in every browser window;
 // - agent: the agent panel, same kind of page as the sidebar (agent.html, agent.js, agent.css);
-// - actor: ES modules for the page, extension and site JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs, site-actor.sys.mjs);
+// - actor: ES modules for the page, extension, site and design JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs, site-actor.sys.mjs, design-actor.sys.mjs);
 // - store: ES module loaded by resource://, the Node state code bundled with shims for node:fs/crypto/path.
 export default defineConfig(({ mode }) => {
   const outDir = "src/browser/base/content/webaios";
@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: false,
         minify: false,
         lib: {
-          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts", "site-actor": "chrome/agent/site-actor.ts" },
+          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts", "site-actor": "chrome/agent/site-actor.ts", "design-actor": "chrome/agent/design-actor.ts" },
           formats: ["es"],
           fileName: (_format, name) => `${name}.sys.mjs`,
         },
@@ -72,7 +72,7 @@ export default defineConfig(({ mode }) => {
         {
           name: "preprocessor-directive",
           writeBundle(o: { dir?: string }) {
-            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"], ["site-actor", "WEBAIOS_SITE_ACTOR"]]) {
+            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"], ["site-actor", "WEBAIOS_SITE_ACTOR"], ["design-actor", "WEBAIOS_DESIGN_ACTOR"]]) {
               const file = `${o.dir}/${name}.sys.mjs`;
               writeFileSync(file, `#define ${define}\n${readFileSync(file, "utf8")}`);
             }

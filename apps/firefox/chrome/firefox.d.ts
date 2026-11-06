@@ -53,6 +53,7 @@ declare class JSProcessActorChild {
 }
 declare class JSWindowActorChild {
   readonly manager: any;
+  readonly browsingContext: any;
   readonly document: Document;
   readonly contentWindow: Window;
   readonly docShell: any;

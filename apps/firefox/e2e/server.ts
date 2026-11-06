@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 
@@ -18,15 +18,17 @@ export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
  * /telecharge is an attachment, /telecharge-cadre has it in a frame and clicks a download link to it, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
  * /description has a meta description. /geo asks for the position as it loads. /prive/auth asks for HTTP Basic authentication (401) and, with any credentials, is a page with text (under /prive/: Firefox sends the credentials again to that directory only). /telecharger/<name> serves a page file as an attachment, /fichier-lent starts a 1 MB
  * attachment, writes 1 KB and stalls (its closed connection is noted as "/fichier-lent:fermée").
- * `host` "::1" listens on IPv6 loopback; `paths` lists every path asked, in order.
+ * `host` "::1" listens on IPv6 loopback; `routes` adds pages by path; `paths` lists every path asked, in order.
  */
-export async function startServer(o: { host?: string } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
+export async function startServer(o: { host?: string; routes?: Record<string, (req: IncomingMessage, res: ServerResponse) => void> } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
   const paths: string[] = [];
   const server = createServer((req, res) => {
     const asked = new URL(req.url ?? "/", "http://x");
     const route = asked.pathname;
     paths.push(route);
     const to = asked.searchParams.get("vers") ?? "";
+    const own = o.routes?.[route];
+    if (own) return own(req, res);
     if (route === "/sous-ressources") {
       res.writeHead(200, { "Content-Type": "text/html" });
       return res.end(

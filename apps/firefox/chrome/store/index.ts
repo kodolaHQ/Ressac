@@ -213,6 +213,17 @@ async function start(): Promise<WebAiOsStore> {
     // or an error: what it decides comes from its WindowGlobalParent (store/site-frames.ts).
     safeForUntrustedWebProcess: true,
   });
+  // The design mode's viewfinder (design-actor.ts): every http(s) frame, so the guard reaches a frame of another process.
+  // Only on the parent's demand (no events); the parent has no receiveMessage, so a web process cannot make it act.
+  const designActor = actorModule("design-actor");
+  ChromeUtils.registerWindowActor("WebAiOsDesign", {
+    parent: { esModuleURI: designActor },
+    child: { esModuleURI: designActor },
+    matches: ["http://*/*", "https://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+    safeForUntrustedWebProcess: true,
+  });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
   ChromeUtils.registerProcessActor("WebAiOsConsole", {
