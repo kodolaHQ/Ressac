@@ -37,14 +37,15 @@ export function siteOfContainer(win: Window): string | undefined {
  * - window.open and target=_blank: Firefox asks browserDOMWindow for what it would open as a tab. Printing keeps
  *   Firefox's own path.
  * - ⌘click, middle click and the context menu's « open in a tab/window »: openLinkIn, which would put a tab in the
- *   main window, in the app's container.
+ *   main window, in the app's container. Alt+click's « save » does nothing.
+ * A sign-in window (`small`) opens nothing at all (Electron's equiperPetite).
  */
-function routeOpens(win: Window, id: string): void {
+function routeOpens(win: Window, id: string, small = false): void {
   const firefox = (win as any).browserDOMWindow;
   const sites = sitesModule();
   const route = (uri: any, params: unknown, where: number, flags: number, name: string, inFrame: "createContentWindowInFrame" | "openURIInFrame") => {
     if (where === Ci.nsIBrowserDOMWindow.OPEN_PRINT_BROWSER) return firefox[inFrame](uri, params, where, flags, name);
-    sites.routeOpen(id, uri?.spec ?? "about:blank");
+    if (!small) sites.routeOpen(id, uri?.spec ?? "about:blank");
     // Nothing opened by Firefox: window.open returns null, as Electron's denied open.
     throw Cr.NS_ERROR_ABORT;
   };
@@ -60,7 +61,10 @@ function routeOpens(win: Window, id: string): void {
     },
   };
   const openLinkIn = win.openLinkIn;
-  win.openLinkIn = (url, where, params) => (where === "current" ? openLinkIn(url, where, params) : void sites.routeOpen(id, url));
+  win.openLinkIn = (url, where, params) => {
+    if (where === "current") return openLinkIn(url, where, params);
+    if (where !== "save" && !small) sites.routeOpen(id, url);
+  };
 }
 
 /**
@@ -116,7 +120,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
 export function setupSiteSmallWindow(win: Window, id: string): void {
   win.document.documentElement.setAttribute("webaios-site-small", id);
   // Now: Firefox's own browserDOMWindow (set before gBrowser, which this window already has) would open tabs elsewhere.
-  routeOpens(win, id);
+  routeOpens(win, id, true);
   void win.delayedStartupPromise.then(() => {
     const url = sitesModule().takeSmallUrl(win);
     if (url) win.gBrowser.selectedBrowser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });

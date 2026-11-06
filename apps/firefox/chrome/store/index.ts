@@ -258,7 +258,32 @@ async function start(): Promise<WebAiOsStore> {
       notify("sites.pret");
     },
   });
-  bindSites(agent, dataDir);
+  // « Ouvrir dans un onglet » of a site app: a tab of the last main window, in its active space, brought to the front
+  // (Electron's ouvrirDansOnglet); with no main window open, one opens first.
+  bindSites(agent, dataDir, async (url) => {
+    if (!/^https?:\/\//.test(url)) return;
+    if (!windows.active()) {
+      const win = BrowserWindowTracker.openWindow();
+      await new Promise<void>((ok) => {
+        const o = {
+          observe(subject: unknown) {
+            if (subject !== win) return;
+            Services.obs.removeObserver(o, "browser-delayed-startup-finished");
+            // After window/index.ts's claim, which follows the same delayed startup.
+            Services.tm.dispatchToMainThread(() => ok());
+          },
+        };
+        Services.obs.addObserver(o, "browser-delayed-startup-finished");
+      });
+    }
+    const fenetreId = windows.active();
+    if (!fenetreId) return;
+    store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
+    const win = windows.get(fenetreId)?.window;
+    if (!win) return;
+    if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
+    win.focus();
+  });
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
   // A site app's downloads are cancelled (Electron's app sessions download nothing).

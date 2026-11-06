@@ -9,6 +9,7 @@ import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import type { AgentHost } from "../agent/host";
 import type { SiteFrameData } from "../agent/site-actor";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
+import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "webaios-sites";
@@ -35,7 +36,9 @@ export interface SiteWindowController {
   back(): void;
   forward(): void;
   reload(): void;
-  /** « Ouvrir dans un onglet »: the last blocked link (Task 4). */
+  /** A navigation or an open of the app was refused: kept for « Ouvrir dans un onglet », mentioned in the bar. */
+  blocked(url: string): void;
+  /** « Ouvrir dans un onglet »: the last blocked link, in the last main window (its active space); the mention falls. */
   openBlocked(): void;
   memory(): Promise<(MessageVersLAccueil & { type: "memoire" }) | null>;
   onMemory(cb: (m: MessageVersLAccueil & { type: "memoire" }) => void): () => void;
@@ -58,14 +61,16 @@ interface OpenSite {
   listeners: Set<(e: EtatFenetreSite) => void>;
   /** browserIds of the sign-in windows (connexion) kept for this app. */
   small: Set<number>;
-  /** The hosts of the blocked navigations and opens, in order (the bar's mention reads the last one). */
+  /** The hosts of the blocked navigations and opens, in order (read by the e2e). */
   blocked: string[];
+  notice: BlockedNotice;
 }
 
 const open = new Map<string, OpenSite>();
 const byContainer = new Map<number, OpenSite>();
 let host: AgentHost | null = null;
 let dataDir = "";
+let openTab: (url: string) => void = () => {};
 const memoryListeners = new Map<string, Set<(m: MessageVersLAccueil & { type: "memoire" }) => void>>();
 
 const context = (s: OpenSite): ContexteNavigation => ({
@@ -82,18 +87,9 @@ function hostOf(url: string): string {
   }
 }
 
-/** The host of an http(s) address, else null (about:blank, an unreadable address). */
-function httpHost(url: string): string | null {
-  try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname : null;
-  } catch {
-    return null;
-  }
-}
-
 function block(s: OpenSite, url: string): void {
   s.blocked.push(hostOf(url));
+  s.notice.block(url);
 }
 
 function loadInView(s: OpenSite, url: string): void {
@@ -137,10 +133,18 @@ const observer = {
     const bc = li.browsingContext;
     const browserId: number = ch.browserId || bc?.browserId;
     const ctx = context(s);
-    if (browserId === s.view?.browserId || s.small.has(browserId)) {
+    const inView = browserId === s.view?.browserId;
+    if (inView || s.small.has(browserId)) {
       if (decisionNavigation(url, ctx) === "suivre") return;
       ch.cancel(Cr.NS_BINDING_ABORTED);
-      return block(s, url);
+      // A sign-in window's refused page is not mentioned (Electron's equiperPetite).
+      if (inView) block(s, url);
+      return;
+    }
+    // A sign-in window opens nothing (Electron's equiperPetite denies every open).
+    if (s.small.has(bc?.opener?.top?.browserId)) {
+      ch.cancel(Cr.NS_BINDING_ABORTED);
+      return closeStray(bc?.top?.embedderElement);
     }
     const d = decisionOuverture(url, ctx);
     if (d === "petite-fenetre") return void s.small.add(browserId);
@@ -205,7 +209,7 @@ function stateOf(s: OpenSite): EtatFenetreSite {
     // Address tracking and the accord card are plan 32's: the app opens as Electron's « Ouvrir sans retouches ».
     suivi: false,
     recherche: false,
-    avis: null,
+    avis: s.notice.avis,
     accord: null,
   };
 }
@@ -246,7 +250,13 @@ function controllerOf(s: OpenSite): SiteWindowController {
     reload() {
       if (s.vue === "site" && s.loaded) s.view?.reload();
     },
-    openBlocked() {},
+    blocked: (url) => block(s, url),
+    openBlocked() {
+      const url = s.notice.take();
+      if (!url) return;
+      broadcast(s);
+      openTab(url);
+    },
     memory: () => host?.request<(MessageVersLAccueil & { type: "memoire" }) | null>("sites.memoireAccueil", { id }).catch(() => null) ?? Promise.resolve(null),
     onMemory(cb) {
       let set = memoryListeners.get(id);
@@ -271,9 +281,11 @@ function attach(s: OpenSite, browser: any): void {
   // Kept on the window: the browser holds its progress listeners weakly.
   const listener = ((win as any).webaiosSiteProgress = {
     QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
-    onLocationChange(progress: any) {
+    onLocationChange(progress: any, _request: unknown, _location: unknown, flags: number) {
       if (!progress.isTopLevel) return;
       browser.browsingContext?.sessionHistory?.evictAllDocumentViewers();
+      // A new page: the mention of a link blocked on the previous one falls (Electron's did-navigate).
+      if (!(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) s.notice.clear();
       // After the tab browser's own listener has updated canGoBack and canGoForward.
       Services.tm.dispatchToMainThread(() => broadcast(s));
     },
@@ -303,12 +315,13 @@ function attach(s: OpenSite, browser: any): void {
       win.clearTimeout(pending);
       noteFrame(s);
       s.listeners.clear();
-      if (open.get(id) === s) {
-        open.delete(id);
-        memoryListeners.delete(id);
-        host?.notify("sites.ferme", { id });
-      }
+      s.notice.dispose();
       if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
+      // Reopened before this unload: the sign-in windows are the new app's.
+      if (open.get(id) !== s) return;
+      open.delete(id);
+      memoryListeners.delete(id);
+      host?.notify("sites.ferme", { id });
       // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
       // Only this app's: a main window is never closed here, whatever its tab's container.
       for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
@@ -346,7 +359,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
     // Opened « sans retouches » (plan 31 injects nothing): never the accord card.
-    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [] };
+    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)) };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     return true;
@@ -449,9 +462,10 @@ export const sites = {
 export type SiteApps = typeof sites;
 
 /** Started with the store: the host the windows report to, and where the served home copies live. */
-export function bindSites(agent: AgentHost, dir: string): void {
+export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void): void {
   host = agent;
   dataDir = dir;
+  openTab = openInTab;
   agent.on("sites.memoire", (p: { id?: unknown; message?: MessageVersLAccueil & { type: "memoire" } }) => {
     if (typeof p?.id !== "string" || !p.message) return;
     for (const cb of memoryListeners.get(p.id) ?? []) cb(p.message);
