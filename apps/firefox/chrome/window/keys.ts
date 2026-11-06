@@ -16,6 +16,8 @@ export type Shortcut =
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
   | { type: "fenetre" }
   | { type: "fermerFenetre" }
+  /** ⇧⌘A: the Applications page (Electron's menu item « Applications »), not Firefox's add-ons. */
+  | { type: "applications" }
   /** Firefox's next/previous tab keys walk every XUL tab, other spaces' too: consumed, nothing done. */
   | { type: "ignorer" };
 
@@ -38,6 +40,7 @@ const SHIFT_COMMAND: Record<string, Shortcut> = {
   w: { type: "fermerFenetre" },
   j: { type: "panneau", p: "telechargements" },
   s: { type: "compact" },
+  a: { type: "applications" },
 };
 
 /** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
@@ -82,6 +85,8 @@ export const FIREFOX_KEYS = [
   "manBookmarkKb",
   // ⇧⌘S: Firefox's screenshot.
   "key_screenshot",
+  // ⇧⌘A: Firefox's add-ons manager.
+  "key_openAddons",
 ];
 
 /**

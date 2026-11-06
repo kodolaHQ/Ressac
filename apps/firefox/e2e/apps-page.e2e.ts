@@ -1,0 +1,209 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { appRow, appWindowExpr, closeAppsPage, inAppView, openAppsPage, rowButton, rowCount, rowState, stopsLog, writeProject, type AppsPage } from "./apps";
+import { dispatch, state, waitFor } from "./firefox";
+import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
+
+// Plan 35a Task 4: the Applications page's Docker section on the real API, and ⇧⌘A. Ports of Electron's
+// e2e/applications.spec.ts (the page's part, :290-:430).
+
+const BLOCK: [number, number] = [15285, 15289];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const PAGE = '[data-testid="page-applications"]';
+
+let p: AppsPage | undefined;
+afterEach(async () => {
+  try {
+    if (p) expect(await missingApi(p.m)).toEqual([]);
+  } finally {
+    await closeAppsPage(p);
+    p = undefined;
+  }
+});
+
+const pageShown = (shown: boolean) => waitUi(p!.m, "return !!doc.querySelector(arguments[0]) === arguments[1]", [PAGE, shown]);
+const pageText = () => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [PAGE]);
+const rowText = (dossier: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(dossier)]);
+const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
+const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="appli-"]').length === arguments[0];`, [n], ms);
+const pageTabs = async () => Object.values((await state(p!.m)).onglets).filter((o) => o.url === "webaios://applications").length;
+const fenetreId = async () => (await state(p!.m)).fenetres[0]!.id;
+const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
+/** A mouse move through the widget, as an OS one (compact.e2e.ts). */
+const moveMouse = (x: number) =>
+  p!.m.execute(
+    `const ratio = window.devicePixelRatio;
+     window.windowUtils.sendNativeMouseEvent((window.mozInnerScreenX + arguments[0]) * ratio, (window.mozInnerScreenY + 300) * ratio, window.windowUtils.NATIVE_MOUSE_MESSAGE_MOVE, 0, 0, document.documentElement);`,
+    [x],
+  );
+const search = (text: string) =>
+  inUi(p!.m, `const i = doc.querySelector('[data-testid="recherche-applications"]'); i.value = arguments[0]; i.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [text]);
+
+describe("Applications page", () => {
+  // applications.spec.ts:290
+  it("⇧⌘A and the sidebar entry open a single Applications page; no about:addons tab", async () => {
+    p = await openAppsPage(BLOCK, { page: false });
+    const m = p.m;
+    await pressKeys(m, "Meta+Shift+a");
+    await pageShown(true);
+    await pressKeys(m, "Meta+Shift+a");
+    await sleep(300);
+    expect(await pageTabs()).toBe(1);
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await fenetreId(), url: "about:blank", activer: true });
+    await pageShown(false);
+    await click(m, '[data-testid="bouton-applications"]');
+    await pageShown(true);
+    expect(await pageTabs()).toBe(1);
+    // From another space: the window's page comes back, in its space.
+    const s = await state(m);
+    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: s.espaces[0]!.profil, fenetreId: s.fenetres[0]!.id });
+    await pageShown(false);
+    await pressKeys(m, "Meta+Shift+a");
+    await pageShown(true);
+    expect(await pageTabs()).toBe(1);
+    // Firefox's ⇧⌘A (add-ons) never ran.
+    expect(Object.values((await state(m)).onglets).some((o) => o.url.startsWith("about:addons"))).toBe(false);
+    expect(await m.execute<boolean>(`return gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("about:addons"));`)).toBe(false);
+  });
+
+  // applications.spec.ts:307
+  it("compact mode: the Applications page takes the whole room, the bar comes back on the left", async () => {
+    p = await openAppsPage(BLOCK);
+    const m = p.m;
+    await dispatch(m, { type: "basculerCompact", fenetreId: await fenetreId() });
+    await waitUi(m, `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
+    const box = await inUi<{ top: number; left: number }>(
+      m,
+      `const h = doc.querySelector(arguments[0]).querySelector("h2").getBoundingClientRect(); const f = frame.getBoundingClientRect();
+       return { top: f.top + h.top, left: f.left + doc.querySelector(arguments[0]).getBoundingClientRect().left };`,
+      [PAGE],
+    );
+    expect(box.top).toBeLessThan(40);
+    expect(box.left).toBe(0);
+    await moveMouse(3);
+    await waitUi(m, `return !doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
+    await waitUi(m, `return !!doc.querySelector('[aria-label="Quitter le mode compact"]');`);
+  });
+
+  // applications.spec.ts:320
+  it("the list shows type, origin and state; the side counters are right", async () => {
+    p = await openAppsPage(BLOCK);
+    await rows(3);
+    for (const [filtre, texte] of [
+      ["tout", "Tout 3"],
+      ["application", "Applications 1"],
+      ["poc", "POC et tests 1"],
+      ["sans-fiche", "Sans fiche 1"],
+      ["arretee", "Arrêtées 3"],
+    ] as const)
+      await expect.poll(() => filterText(filtre), { timeout: 10_000 }).toBe(texte);
+    expect(await filterText("erreur")).toBeNull();
+    expect(await rowText("zod")).toContain("github.com/colinhacks/zod");
+    expect(await rowText("zod")).toContain("POC");
+    expect(await rowText("essai")).toContain("Application");
+    expect(await rowText("vieux")).toContain("Sans fiche");
+    await rowState(p.m, "essai", "arretee");
+  });
+
+  // applications.spec.ts:340
+  it("filter by type and search", async () => {
+    p = await openAppsPage(BLOCK);
+    const m = p.m;
+    await rows(3);
+    await click(m, '[data-testid="filtre-poc"]');
+    await rows(1);
+    expect(await rowText("zod")).not.toBe("");
+    await click(m, '[data-testid="filtre-tout"]');
+    await search("colin");
+    await rows(1);
+    expect(await rowText("zod")).not.toBe("");
+    await search("ess");
+    await rows(1);
+    expect(await rowText("essai")).not.toBe("");
+  });
+
+  // applications.spec.ts:356
+  it("Lancer from the page: En marche, port shown, window open; Arrêter closes it", async () => {
+    p = await openAppsPage(BLOCK, { lent: true });
+    const m = p.m;
+    await rowButton(m, "essai", "Lancer");
+    await rowState(m, "essai", "lancement");
+    await rowState(m, "essai", "en-marche", 15_000);
+    expect(await rowText("essai")).toMatch(/port 1528[5-9]/);
+    await expect.poll(() => filterText("en-marche"), { timeout: 10_000 }).toBe("En marche 1");
+    await waitFor(m, `return !!${appWindowExpr("essai")}?.gBrowser.selectedBrowser.currentURI.spec.startsWith("http://localhost:");`, (v) => v === true, 15_000);
+    await waitFor(m, `return !${appWindowExpr("essai")}.gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
+    // « Ouvrir » brings the window to the front without reloading it.
+    await inAppView(m, "essai", "window.marque = 1;");
+    await rowButton(m, "essai", "Ouvrir");
+    await sleep(300);
+    expect(await inAppView(m, "essai", "return window.marque;")).toBe(1);
+    await rowButton(m, "essai", "Arrêter");
+    await rowState(m, "essai", "arretee");
+    await expect.poll(appWindows, { timeout: 10_000 }).toBe(0);
+  });
+
+  // applications.spec.ts:376
+  it("a manifest that appears updates the page live", async () => {
+    p = await openAppsPage(BLOCK);
+    await rows(3);
+    // Time for the projects' watch to be ready.
+    await sleep(500);
+    writeProject(p.dataDir, "nouveau", { manifeste: { nom: "Nouveau" } });
+    await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")]);
+    await expect.poll(() => filterText("tout"), { timeout: 10_000 }).toBe("Tout 4");
+  });
+
+  // applications.spec.ts:387
+  it("Docker slow to answer: a new project still appears live", async () => {
+    // `docker info` answers in 8 s: the orphans' cleanup is not over when the project comes.
+    p = await openAppsPage(BLOCK, { env: { FAUX_DOCKER_LENT: "1" } });
+    await rows(3);
+    await sleep(500);
+    writeProject(p.dataDir, "nouveau", { manifeste: { nom: "Nouveau" } });
+    await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")], 4_000);
+    expect(stopsLog(p.dataDir)).not.toContain("WEBAIOS_APP=.*");
+  });
+
+  // applications.spec.ts:398
+  it("without Docker: banner and Lancer disabled", async () => {
+    p = await openAppsPage(BLOCK, { env: { FAUX_DOCKER_ABSENT: "1" } });
+    await waitUi(p.m, "return doc.querySelector(arguments[0])?.textContent.includes(\"Docker n'est pas lancé\")", [PAGE]);
+    const disabled = await waitUi<string>(
+      p.m,
+      `const b = [...doc.querySelectorAll(arguments[0] + " .actions button")].find((e) => e.textContent.includes("Lancer")); return b ? String(b.disabled) : null;`,
+      [appRow("essai")],
+    );
+    expect(disabled).toBe("true");
+    expect(await rowCount(p.m)).toBe(3);
+  });
+
+  // applications.spec.ts:406
+  it("Docker slow to answer: the list shows without waiting", async () => {
+    p = await openAppsPage(BLOCK, { env: { FAUX_DOCKER_LENT: "1" } });
+    await rows(3, 3_000);
+  });
+
+  // applications.spec.ts:412
+  it("empty list: help text", async () => {
+    p = await openAppsPage(BLOCK, { projets: false });
+    await waitUi(p.m, "return doc.querySelector(arguments[0])?.textContent.includes(\"Demande à l'agent de tester un package ou de construire une app\")", [PAGE]);
+    expect(await pageText()).toContain("Rien ici pour l'instant.");
+  });
+
+  // applications.spec.ts:418
+  it("the Applications page comes back after a restart, without web page or history", async () => {
+    const first = await openAppsPage(BLOCK);
+    p = first;
+    await rows(3);
+    expect(await missingApi(first.m)).toEqual([]);
+    await first.w.close();
+    p = undefined;
+    p = await openAppsPage(BLOCK, { dataDir: first.dataDir, profile: first.profile, page: false });
+    const m = p.m;
+    await pageShown(true);
+    await rows(3);
+    expect(await m.execute<boolean>(`return [...Services.wm.getEnumerator("navigator:browser")].some((w) => w.gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("webaios:")));`)).toBe(false);
+    const recents = await inUi<{ url: string }[]>(m, "return await ui.webaios.historique.recents();");
+    expect(recents.some((v) => v.url.startsWith("webaios:"))).toBe(false);
+  });
+});

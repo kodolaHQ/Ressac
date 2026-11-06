@@ -329,7 +329,7 @@ async function start(): Promise<WebAiOsStore> {
     toFront(fenetreId);
   };
   bindSites(agent, dataDir, openInTab);
-  bindApps(agent, openInTab);
+  bindApps(agent, openInTab, dataDir);
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
   // A site app's downloads are cancelled (Electron's app sessions download nothing).

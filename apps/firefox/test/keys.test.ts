@@ -70,6 +70,12 @@ describe("shortcutFor", () => {
     expect(FIREFOX_COMMANDS).toContain("Browser:Screenshot");
   });
 
+  it("⇧⌘A opens the Applications page, not Firefox's add-ons", () => {
+    expect(key("A", "KeyA", { meta: true, shift: true })).toEqual({ type: "applications" });
+    expect(key("a", "KeyA", { meta: true })).toBeNull();
+    expect(FIREFOX_KEYS).toContain("key_openAddons");
+  });
+
   it("leaves other keys alone", () => {
     expect(key("t", "KeyT")).toBeNull();
     expect(key("t", "KeyT", { meta: true, alt: true })).toBeNull();

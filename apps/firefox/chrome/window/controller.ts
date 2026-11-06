@@ -210,6 +210,7 @@ export function createController(
     } else if (s.type === "compact") store.dispatch({ type: "basculerCompact", fenetreId });
     else if (s.type === "fenetre") window.OpenBrowserWindow();
     else if (s.type === "fermerFenetre") window.close();
+    else if (s.type === "applications") store.dispatch({ type: "ouvrirApplications", fenetreId });
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
   const onKeyDown = (e: KeyboardEvent) => {

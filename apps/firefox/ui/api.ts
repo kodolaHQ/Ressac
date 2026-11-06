@@ -1,5 +1,5 @@
 import type { SiteAffiche } from "../../navigateur/src/commun/sites";
-import type { ApiWebaios, EtatPanneauAgent, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
+import type { ApiWebaios, EtatPanneauAgent, ListeApplications, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
 import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
 import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts";
 import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas.ts";
@@ -40,7 +40,6 @@ declare global {
   }
 }
 
-const off = () => () => {};
 // Electron's MESSAGE_AGENT_ARRETE, as noyau/host.ts retypes it (a Node module this bundle cannot import).
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 
@@ -226,8 +225,23 @@ export function createApi(win: WindowController): ApiFirefox {
           () => null,
         ),
     },
-    // The command bar's sources besides tabs: none in step 2.
-    applications: { liste: async () => ({ atelier: "ok", applications: [] }), surChange: off, agir() {} },
+    // The agent's applications, kept by the noyau host (its windows through the chrome). The host checks every action
+    // with SchemaActionApplication; « Afficher le dossier » is the chrome's (one path segment), « Relire » the page's.
+    applications: {
+      liste: () => ask<ListeApplications>("applications.liste", undefined, { atelier: "ok", applications: [] }),
+      surChange(callback) {
+        // A host that started again, or the chrome's resync, sent no change: the list is read again.
+        const offs = [host.on("applications.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("accueil.change", () => callback())];
+        return untilUnload(() => offs.forEach((f) => f()));
+      },
+      agir(dossier, action) {
+        if (action === "dossier") return win.store.apps.reveal(dossier);
+        // shortcut: « Relire » does nothing until plan 35a Task 5.
+        if (action === "relire") return;
+        // « Déboguer »: the host pre-fills the terminal and opens the panel (design.donnerAgent).
+        host.notify("applications.agir", { dossier, action, fenetre });
+      },
+    },
     // The site apps, kept by the noyau host (its window actions go through the chrome); « Afficher le dossier » and
     // « Relire » are the UI's own.
     sites: {

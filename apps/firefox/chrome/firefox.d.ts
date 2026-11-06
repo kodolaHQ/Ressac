@@ -1,7 +1,7 @@
 // Loose ambient declarations for the Firefox globals the chrome code uses.
 declare const IOUtils: {
   readUTF8(path: string): Promise<string>;
-  writeUTF8(path: string, text: string, options?: { flush?: boolean }): Promise<number>;
+  writeUTF8(path: string, text: string, options?: { flush?: boolean; mode?: "overwrite" | "append" | "appendOrCreate" | "create" }): Promise<number>;
   exists(path: string): Promise<boolean>;
   move(from: string, to: string): Promise<void>;
   copy(from: string, to: string): Promise<void>;

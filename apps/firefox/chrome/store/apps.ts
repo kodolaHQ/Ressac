@@ -26,6 +26,7 @@ interface OpenApp {
 const open = new Map<string, OpenApp>();
 let host: AgentHost | null = null;
 let openTab: (url: string) => void = () => {};
+let dataDir = "";
 /** After quit-application-granted, a window closing is the quit's, never the user's (spike S8). */
 let quitting = false;
 const closeListeners = new Set<() => void>();
@@ -154,6 +155,24 @@ export const apps = {
   /** « Supprimer »: the app's container (cookies, storage) is wiped. */
   async erase(dossier: string): Promise<void> {
     if (typeof dossier === "string" && dossierValide(dossier)) await removeAppContainer(dossier);
+  },
+  /**
+   * « Afficher le dossier »: `<dataDir>/espace/projets/<dossier>` shown in the Finder, never opened (an `x.app` folder
+   * would launch). One path segment only (Electron's segmentValide). WEBAIOS_TEST_REVEAL (e2e): the path is appended to
+   * that file instead.
+   */
+  reveal(dossier: string): void {
+    if (typeof dossier !== "string" || dossier === "" || dossier === "." || dossier === ".." || /[/\\\0]/.test(dossier) || !dataDir) return;
+    const path = PathUtils.join(dataDir, "espace", "projets", dossier);
+    const test = Services.env.get("WEBAIOS_TEST_REVEAL");
+    if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[apps] reveal not noted:", e));
+    try {
+      const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      f.initWithPath(path);
+      f.reveal();
+    } catch (e) {
+      console.warn("[apps] dossier non affiché :", e);
+    }
   },
   /** The host is gone: every app window closes, as wanted closes, and is forgotten at once (spec §13.8). */
   closeAll(): void {
@@ -285,8 +304,9 @@ const redirects = {
 };
 
 /** Started with the store: the host the windows report to, and the main window tab for what leaves an app. */
-export function bindApps(agent: AgentHost, openInTab: (url: string) => void): void {
+export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string): void {
   host = agent;
+  dataDir = dir;
   openTab = openInTab;
   // From the start, not with the first window: an app container left from a previous run loads nothing either.
   installGuard();

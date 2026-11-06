@@ -1,9 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import { join } from "node:path";
 import { expect } from "vitest";
+import { dispatch, state, waitReady } from "./firefox";
+import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
+import { click, inUi, waitUi } from "./ui";
 
 // Agent app helpers, ported from Electron's e2e (apps/navigateur/e2e/aide.ts:363-403, applications.spec.ts) with English names.
 
@@ -100,4 +105,77 @@ export async function answers(port: number): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** What the fake agent got as input (`<dataDir>/espace/faux-agent-entree.txt`): a pre-filled text without \r was never sent. */
+export const agentInput = (dataDir: string): string => {
+  const f = join(dataDir, "espace", "faux-agent-entree.txt");
+  return existsSync(f) ? readFileSync(f, "utf8") : "";
+};
+
+export interface AppsPage {
+  w: LaunchedWebAiOs;
+  m: Marionette;
+  dataDir: string;
+  profile: string;
+}
+
+/**
+ * Electron's ouvrirPage (applications.spec.ts:273): three projects (`essai` an application, `zod` a POC, `vieux` without
+ * manifest) and the Applications page open. `lent`: essai's server waits a second before listening (« Lancement… » shows).
+ * `dataDir` and `profile` given are reused (a restart); the caller removes the folders.
+ */
+export async function openAppsPage(
+  block: [number, number],
+  o: { env?: Record<string, string>; projets?: boolean; lent?: boolean; sansFiche?: string[]; prepare?: (dataDir: string) => void; dataDir?: string; profile?: string; page?: boolean } = {},
+): Promise<AppsPage> {
+  const dataDir = o.dataDir ?? (await mkdtemp(join(os.tmpdir(), "webaios-data-")));
+  const profile = o.profile ?? (await mkdtemp(join(os.tmpdir(), "webaios-firefox-")));
+  if (!o.dataDir) {
+    if (o.projets ?? true) {
+      writeProject(dataDir, "essai", { manifeste: { nom: "Essai", ...(o.lent ? { lancement: "sleep 1 && node serveur.mjs" } : {}) } });
+      writeProject(dataDir, "zod", { manifeste: { type: "poc", origine: "https://github.com/colinhacks/zod" } });
+      writeProject(dataDir, "vieux");
+    }
+    for (const d of o.sansFiche ?? []) writeProject(dataDir, d);
+    o.prepare?.(dataDir);
+  }
+  const w = await launchWebAiOs({ dataDir, profile, env: { ...APPS_ENV(block), ...o.env } });
+  const m = w.marionette;
+  await m.setContext("chrome");
+  await waitReady(m);
+  await expect.poll(() => existsSync(join(dataDir, "espace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
+  if (o.page ?? true) {
+    await dispatch(m, { type: "ouvrirApplications", fenetreId: (await state(m)).fenetres[0]!.id });
+    await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");
+  }
+  return { w, m, dataDir, profile };
+}
+
+/** Closes WebAiOs, kills the fake apps left, removes its folders. */
+export async function closeAppsPage(p: AppsPage | undefined): Promise<void> {
+  if (!p) return;
+  await p.w.close();
+  killFakeApps(p.dataDir);
+  await rm(p.dataDir, { recursive: true, force: true });
+  await rm(p.profile, { recursive: true, force: true });
+}
+
+/** The page's app rows (`appli-<dossier>`). */
+export const rowCount = (m: Marionette): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid^="appli-"]').length;`);
+export const appRow = (dossier: string) => `[data-testid="appli-${dossier}"]`;
+/** Waits until row `dossier`'s data-etat is `etat`. */
+export const rowState = (m: Marionette, dossier: string, etat: string, ms = 10_000) =>
+  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.etat === arguments[1]", [appRow(dossier), etat], ms);
+/** Clicks the row's button whose text contains `name`. */
+export const rowButton = (m: Marionette, dossier: string, name: string) => click(m, `${appRow(dossier)} .actions button`, { text: name });
+/** Opens the row's ⋯ menu and clicks its item `name`. */
+export async function rowMenu(m: Marionette, dossier: string, name: string): Promise<void> {
+  await click(m, `${appRow(dossier)} button.options`);
+  await click(m, '[role="menuitem"]', { text: name });
+}
+/** The labels of row `dossier`'s ⋯ menu (left open). */
+export async function rowMenuItems(m: Marionette, dossier: string): Promise<string[]> {
+  await click(m, `${appRow(dossier)} button.options`);
+  return waitUi<string[]>(m, `const l = [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim()); return l.length > 0 && l;`);
 }
