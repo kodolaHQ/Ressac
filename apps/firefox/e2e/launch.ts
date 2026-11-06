@@ -61,6 +61,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_DATA_DIR: dataDir,
         // The fake agent writes its traces there.
         WEBAIOS_RACINE: path.join(dataDir, "espace"),
+        // A free port, as Electron's e2e (externes.spec.ts:11): never the real 5279.
+        WEBAIOS_PORT_MCP_EXTERNE: "0",
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },

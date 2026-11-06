@@ -54,6 +54,8 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       FAUX_DOCKER_JOURNAL: journal,
       WEBAIOS_HOST_TEST: "1",
       PATH: `${outils}:${process.env.PATH}`,
+      // A free port, as Electron's e2e: never the real 5279.
+      WEBAIOS_PORT_MCP_EXTERNE: "0",
       ...env,
     },
   });
@@ -107,6 +109,20 @@ afterEach(async () => {
 });
 
 describe("agent host", { timeout: 30_000 }, () => {
+  it("the host starts the external MCP without the noyau", async () => {
+    const h = startHost();
+    let e: { serveur: { etat: string; port?: number } } | undefined;
+    const end = Date.now() + 10_000;
+    while (Date.now() < end) {
+      e = await h.rpc.request("externes.liste");
+      if (e!.serveur.etat === "pret") break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(e?.serveur.etat).toBe("pret");
+    expect(e?.serveur.port).toBeGreaterThan(0);
+    expect(existsSync(join(h.racine, ".webaios", "mcp.json"))).toBe(false);
+  });
+
   it("creates the space and MCP config, lister_onglets goes through Firefox", async () => {
     const h = startHost();
     expect(await h.rpc.request("demarrer", { profilAgent: "claude" })).toEqual({ agent: expect.any(String) });

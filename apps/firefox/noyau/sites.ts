@@ -255,6 +255,8 @@ export function createSites(o: {
   surFermee?(id: string): void;
   /** « Supprimer » begins (Electron's surSupprimee): the agent's accord on the app falls. */
   surSupprimee?(id: string): void;
+  /** The deletion `surSupprimee` began is over (folder in the trash, or failed): a review snapshot taken meanwhile is erased. */
+  apresSuppression?(id: string): void;
 }): SitesHost {
   const dossierSites = join(o.dataDir, "sites");
   const souvenirs = new SiteSouvenirs(o.dataDir);
@@ -497,8 +499,10 @@ export function createSites(o: {
     if (suppressions.has(id)) return;
     suppressions.add(id);
     suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
+    let commencee = false;
     try {
       if (!(await connue(id))) return;
+      commencee = true;
       o.surSupprimee?.(id);
       positions.annulerNotes(id);
       recherches.get(id)?.abort();
@@ -523,6 +527,7 @@ export function createSites(o: {
       }
     } finally {
       suppressions.delete(id);
+      if (commencee) o.apresSuppression?.(id);
       o.diffuser();
     }
   }

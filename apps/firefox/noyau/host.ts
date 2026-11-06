@@ -26,6 +26,7 @@ const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites, SchemaActionSite } = await import("./sites.ts");
+const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createActionsHost, SchemaAccord, SchemaIdAction, SchemaSaisieAction } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
@@ -123,6 +124,13 @@ const diffuserAcces = () => {
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
 const ia = new IaLocale({ dossier: join(dataDir, "ia-locale"), executer: executeurParDefaut, modeleDecision: "pplx-decider-flash" });
 
+// The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
+const notifier = (n: { titre: string; texte: string }) => {
+  const fichier = process.env.WEBAIOS_TEST_NOTIFICATIONS;
+  if (fichier) return void appendFileSync(fichier, JSON.stringify({ titre: n.titre, texte: n.texte }) + "\n");
+  rpc.notify("accueil.notification", { titre: n.titre, texte: n.texte });
+};
+
 const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
   erreur = null;
   return creerNoyau({
@@ -138,12 +146,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or an accord changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
-    // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
-    notifier: (n) => {
-      const fichier = process.env.WEBAIOS_TEST_NOTIFICATIONS;
-      if (fichier) return void appendFileSync(fichier, JSON.stringify({ titre: n.titre, texte: n.texte }) + "\n");
-      rpc.notify("accueil.notification", { titre: n.titre, texte: n.texte });
-    },
+    notifier,
     ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}),
     ...(duckduckgo ? { urlRecherche: duckduckgo } : {}),
   }).then(
@@ -207,6 +210,7 @@ const arreter = () =>
     extensions.arreter();
     await sessions.toutArreter();
     await sites.arreter();
+    await design.arreter();
     await arretActions?.();
     await arreterNoyau(await pret);
     await ia.fermer().catch(() => {});
@@ -542,6 +546,8 @@ const rpc = createRpc({
             menagementTest.lire(new URL(url).hostname, (ch) => bridge.lirePageInvisible(url, { profil: null, changerHote: ch })),
         }
       : {}),
+    // Design mode's host side (noyau/design.ts): `design` is made after `sites`, below.
+    ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
@@ -575,13 +581,34 @@ const sites = createSites({
   // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
   lireLiens: async (page, signal) =>
     (await bridge.lirePageInvisible(page, { profil: null, ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}), ...(signal ? { signal } : {}) })).liens.map((l) => l.url),
-  diffuser: () => rpc.notify("sites.change"),
+  // The review takes a new app's first snapshot.
+  diffuser: () => {
+    rpc.notify("sites.change");
+    design.sitesChanged();
+  },
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
   // The agent loses its dev tools on the closed window; the app's accord holds for the conversation, until « Supprimer »
   // (an app made again under the same id asks for its card again).
   surFermee: (id) => noyau?.politique.ongletFerme(`site:${id}`),
-  surSupprimee: (id) => noyau?.politique.retirerLectureSite(id),
+  // Its remarks, review repository and comments go with it.
+  surSupprimee: (id) => {
+    noyau?.politique.retirerLectureSite(id);
+    design.siteDeleted(id);
+  },
+  // A snapshot taken between the start and the end of the deletion is erased again (an app made again starts afresh).
+  apresSuppression: (id) => design.siteDeleted(id),
+});
+// Design mode: remarks, the external MCP server and the review, without waiting for the noyau.
+const design = createDesignHost({
+  dataDir,
+  chemins,
+  port: externalMcpPort(process.env.WEBAIOS_PORT_MCP_EXTERNE),
+  sites: () => sites.liste().then((l) => l.map(({ id, nom }) => ({ id, nom }))),
+  preRemplir: (f, t) => sessions.preRemplir(f, t),
+  chrome: { fenetreAgent: () => rpc.request("design.fenetreAgent"), donnerAgent: (f) => rpc.notify("design.donnerAgent", [f]) },
+  notifier,
+  diffuser: () => (rpc.notify("externes.change"), rpc.notify("design.change")),
 });
 // Actions: the noyau and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
 const actions = createActionsHost({ chemins, dossierActions, noyau: () => noyau, surChange: () => rpc.notify("actions.change") });
