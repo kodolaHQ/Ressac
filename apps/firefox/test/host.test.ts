@@ -995,7 +995,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
 });
 
 describe("agent applications", { timeout: 30_000 }, () => {
-  const APPS = { WEBAIOS_PORTS_APPS: "15280-15284", WEBAIOS_DELAI_APP_MS: "3000" };
+  // Their own block, apart from every e2e file's (plans 35a and 35b).
+  const APPS = { WEBAIOS_PORTS_APPS: "15325-15329", WEBAIOS_DELAI_APP_MS: "3000" };
   type Liste = { atelier: string; applications: { dossier: string; etat: string; port?: number; favicon?: string; dernierLancement?: string }[] };
   /** Electron's ecrireProjet (e2e/aide.ts) with its "ok" server: projets/essai, named Essai. */
   const writeEssai = (dataDir: string) => {
@@ -1052,8 +1053,8 @@ createServer((req, res) => {
     await launched(h, chrome);
     const [a] = chrome.ouvertures;
     expect(a).toMatchObject({ dossier: "essai", nom: "Essai" });
-    expect(a!.port).toBeGreaterThanOrEqual(15280);
-    expect(a!.port).toBeLessThanOrEqual(15284);
+    expect(a!.port).toBeGreaterThanOrEqual(15325);
+    expect(a!.port).toBeLessThanOrEqual(15329);
     const e = await essai(h);
     expect(e).toMatchObject({ port: a!.port, dernierLancement: expect.any(String) });
     expect(Date.now() - Date.parse(e!.dernierLancement!)).toBeLessThan(30_000);
@@ -1140,6 +1141,18 @@ createServer((req, res) => {
     expect(session).toBeGreaterThan(app);
   });
 
+  it("a failed apps stop at quit still stops the sessions", async () => {
+    const { h } = startApps({ WEBAIOS_TEST_ARRET_APPS_ECHOUE: "1" });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    const avant = arrets(h).length;
+    h.child.stdin.end();
+    expect(await h.exited).toBe(0);
+    expect(arrets(h).slice(avant)).toContain("cat /tmp/webaios-session-");
+    expect(h.stderr()).toContain("arrêt des applis simulé");
+  });
+
   it("drift: plageDePorts, the app tab and SchemaActionApplication match Electron's", async () => {
     const { plageDePorts, SchemaActionApplication, appTab } = await import("../noyau/applications");
     const { SchemaActionApplication: electronSchema } = await import("../../navigateur/src/commun/api");
@@ -1163,5 +1176,11 @@ createServer((req, res) => {
       { dossier: 3, action: "lancer" },
     ])
       expect(SchemaActionApplication.safeParse(v).success).toBe(electronSchema.safeParse(v).success);
+    // Every action, on a launchable folder and on one that is not.
+    const actions = (sc: { shape: { action: { options: readonly string[] } } }) => sc.shape.action.options;
+    expect(actions(SchemaActionApplication)).toEqual(actions(electronSchema));
+    for (const action of actions(electronSchema))
+      for (const dossier of ["essai", "My Project", ".."])
+        expect(SchemaActionApplication.safeParse({ dossier, action }).success, `${action} ${dossier}`).toBe(electronSchema.safeParse({ dossier, action }).success);
   });
 });
