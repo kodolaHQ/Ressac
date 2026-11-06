@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   accordCouvre,
   accordNecessaire,
+  accorderSite,
   adresseDeDepart,
   domainesEffectifs,
   droitsDe,
@@ -79,6 +80,12 @@ export interface SitesChrome {
   rechargerVue(id: string): Promise<void>;
   /** The retouches' console of the open app. */
   erreurs(id: string): Promise<ErreurRetouche[]>;
+  /** The view the window shows, or null if it is not open. */
+  vue(id: string): Promise<"accueil" | "accord" | "site" | null>;
+  /** The choice made on the card (Electron's apresAccord): `s` null for « Ouvrir sans retouches ». */
+  apresAccord(id: string, s: SiteChrome | null): Promise<void>;
+  /** The state broadcast again (the card up to date). */
+  rediffuser(id: string): Promise<void>;
   ouvertes(): Promise<string[]>;
   accueilChange(id: string): void;
 }
@@ -91,6 +98,8 @@ export interface SitesHost {
   memoireAccueil(id: string): Promise<(MessageVersLAccueil & { type: "memoire" }) | null>;
   noter(id: string, x: { cadre?: Cadre; favicon?: string }): void;
   fermee(id: string): void;
+  /** « Autoriser » / « Ouvrir sans retouches » on the card (Electron's SitesService.accorder). */
+  accorder(id: string, oui: boolean, empreinte: string): Promise<void>;
   /** `webaiosSite` of an open app's main page; the chrome checked the sender, the accord and the address. */
   memoireOp(demande: unknown): Promise<ReponseMemoire>;
   /** The open apps as last sent to the chrome. */
@@ -555,6 +564,27 @@ export function createSites(o: {
       },
     },
     sitesOuverts,
+    async accorder(id, oui, empreinte) {
+      // Taken before any wait: site.json may grow between the card and the click.
+      const montree = sitesOuverts.get(id);
+      if (!montree || suppressions.has(id) || (await o.chrome.vue(id)) !== "accord") return;
+      if (!oui) return o.chrome.apresAccord(id, null);
+      // Granted only if its rights are the clicked card's (the agent picks its moment).
+      const d = montree.declaration;
+      if (empreinteDroits(d) !== empreinte) return o.chrome.rediffuser(id);
+      // A reading already under way read the accord from before: it is dropped (and redone once the accord is written).
+      relectures.set(id, (relectures.get(id) ?? 0) + 1);
+      await accorderSite(o.dataDir, id, d);
+      const s = sitesOuverts.get(id);
+      // During a deletion nothing is granted (the accord would be that of an app that is leaving).
+      if (!s || suppressions.has(id)) return;
+      const accorde = droitsDe(d);
+      const apres = { ...s, accordRequis: accordNecessaire(s.declaration) && !accordCouvre(accorde, s.declaration) };
+      // The chrome's copy is this one: the reading below finds nothing changed and does not reload a second time.
+      sitesOuverts.set(id, apres);
+      await o.chrome.apresAccord(id, apres);
+      void relire(id);
+    },
     // Checked again here: only an open app whose retouches are granted has a memory for its page.
     memoireOp: (d) => memoireOp((id) => (sitesOuverts.get(id)?.accordRequis === false ? memoire(id) : Promise.reject(new Error("pas d'accord"))), d),
     async resynchroniser() {

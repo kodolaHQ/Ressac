@@ -7,7 +7,7 @@ import { testActor } from "./agent-extensions";
 import { waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { grantSite, inBrowser, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
 // Plan 32 Task 1: the agent's retouches in each frame of a site app's view (Xray sandbox per document), ports of
@@ -268,16 +268,25 @@ describe("retouches", () => {
     // The accord from before the frame pattern was added: it covers less than the declaration asks for.
     ["with an accord that covers less than the declaration", () => ({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [], reprise: false } })],
   ] as const)
-    it(`${cas}: neither the agent's CSS nor script in the page (sites.spec.ts:944)`, async () => {
+    it(`${cas}: nothing is loaded before the card is answered, then neither the agent's CSS nor script in the page (sites.spec.ts:944)`, async () => {
       const accords = path.join(dataDir, "sites-accords.json");
       const before = readFileSync(accords, "utf8");
       writeFileSync(accords, JSON.stringify(accord()));
       try {
-        // Task 1 has no accord card yet: the app opens without retouches and its view loads at once.
-        await openAt("vidola", "/serie/the-bear");
+        await openSite("vidola");
+        await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("accord");
+        await sleep(300);
+        // The card blocks the view: it loads nothing.
+        expect(await m.execute<string>(`return ${siteWindowExpr("vidola")}.gBrowser.selectedBrowser.currentURI.spec;`)).toBe("about:blank");
+        expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+        // « Ouvrir sans retouches »: the page loads, and nothing of the agent is in it.
+        await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuser-site"]').click(); return true;`);
+        await expect.poll(() => viewUrl("vidola"), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
+        await expect.poll(() => view("document.readyState")).toBe("complete");
         await sleep(300);
         expect(await view("document.body.dataset.retouche ?? null")).toBeNull();
         expect(await view('getComputedStyle(document.getElementById("shorts")).display')).toBe("block");
+        expect(await view("document.documentElement.dataset.retenu ?? null")).toBeNull();
       } finally {
         writeFileSync(accords, before);
       }

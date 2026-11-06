@@ -5,7 +5,7 @@ const off = () => () => {};
 
 /**
  * Electron's ApiSite for the site bar (FenetreSite.svelte), on the window's controller. What comes out of the chrome is
- * copied (structuredClone): the bar never holds the store's objects. No retouches, accord, extensions nor design mode in
+ * copied (structuredClone): the bar never holds the store's objects. No extensions nor design mode in
  * plan 31: those members do nothing (nobody calls the extension and design ones, their components are aliased away).
  */
 export function createSiteApi(c: SiteWindowController): ApiSite {
@@ -24,7 +24,11 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     recharger: () => c.reload(),
     ouvrirBloque: () => c.openBlocked(),
     chercherAdresse: () => {},
-    accorder: async () => {},
+    // Electron's IPC schema refuses a non-boolean choice and an unbounded fingerprint.
+    accorder: async (oui, empreinte) => {
+      if (typeof oui !== "boolean" || (empreinte !== undefined && (typeof empreinte !== "string" || empreinte.length > 128))) throw new Error("invalid accord request");
+      await c.accord(oui, empreinte ?? "");
+    },
     // Electron's invoke rejects when the memory cannot be read: CadreAccueil then sends nothing.
     memoire: async () => {
       const m = await c.memory();

@@ -34,6 +34,8 @@ export function publishSiteFrames(map: Map<number, string>): void {
 export interface SiteWindowController {
   state(): EtatFenetreSite;
   onState(cb: (e: EtatFenetreSite) => void): () => void;
+  /** « Autoriser » (oui) or « Ouvrir sans retouches » on the accord card; `empreinte` is the card's. */
+  accord(oui: boolean, empreinte: string): Promise<void>;
   /** « Entrer dans le site »: the start address the first time only. */
   enter(): void;
   /** ⌂: the home screen; the site's page stays loaded behind it. */
@@ -73,6 +75,9 @@ interface OpenSite {
   /** The app view's <browser>, once the window is set up. */
   view: any;
   vue: EtatFenetreSite["vue"];
+  /** The address to load once the card is answered (the agent's, Electron's aCharger), and whether it asked for it. */
+  aCharger: string | null;
+  aChargerAgent: boolean;
   /** Has the start address been loaded (« Entrer dans le site » loads it once)? */
   loaded: boolean;
   listeners: Set<(e: EtatFenetreSite) => void>;
@@ -264,19 +269,35 @@ function stateOf(s: OpenSite): EtatFenetreSite {
     domaine: httpHost(url) ?? httpHost(s.site.depart) ?? "",
     peutReculer: !!s.view?.canGoBack,
     peutAvancer: !!s.view?.canGoForward,
-    // Address tracking and the accord card are later tasks': an app without its accord opens as Electron's « Ouvrir
-    // sans retouches » (frameInjection gives its frames nothing).
+    // Address tracking is a later task's.
     suivi: false,
     recherche: false,
     avis: s.notice.avis,
-    accord: null,
+    accord: s.vue === "accord" ? s.site.demande : null,
   };
+}
+
+/** Electron's vueSuivante: after the card, the home if there is one, else the site (loaded on its start address the first time). */
+function nextView(s: OpenSite): void {
+  const agent = s.aChargerAgent;
+  s.aChargerAgent = false;
+  if (s.aCharger) {
+    const to = s.aCharger;
+    s.aCharger = null;
+    loadInView(s, to);
+  }
+  // The agent asked for an address during the card: that is what the user sees, even if the app has a home.
+  if (s.site.aAccueil && !agent) s.vue = "accueil";
+  else {
+    s.vue = "site";
+    if (!s.loaded) loadInView(s, s.site.depart);
+  }
 }
 
 function broadcast(s: OpenSite): void {
   if (s.window.closed) return;
-  // The bar's frame covers the window on the home screen (window.css).
-  s.window.document.documentElement.toggleAttribute("webaios-site-home", s.vue === "accueil");
+  // The bar's frame covers the window on the home screen and on the accord card (window.css): the view stays behind.
+  s.window.document.documentElement.toggleAttribute("webaios-site-home", s.vue !== "site");
   const e = stateOf(s);
   for (const cb of s.listeners) cb(e);
 }
@@ -288,6 +309,10 @@ function controllerOf(s: OpenSite): SiteWindowController {
     onState(cb) {
       s.listeners.add(cb);
       return () => void s.listeners.delete(cb);
+    },
+    async accord(oui, empreinte) {
+      if (open.get(id) !== s || typeof oui !== "boolean" || typeof empreinte !== "string" || empreinte.length > 128) return;
+      await host?.request("sites.accorder", { id, oui, empreinte });
     },
     enter() {
       if (s.vue === "accord") return;
@@ -456,8 +481,8 @@ export const sites = {
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
-    // No accord card yet (a later task): an app without its accord gets no retouches (frameInjection).
-    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
+    // The card first if the retouches need their accord: the view loads nothing until it is answered (nextView).
+    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -495,23 +520,55 @@ export const sites = {
     if (dataDir) await forgetHome(dataDir, id);
   },
   /**
-   * site.json or a retouche changed: the open app takes its new declaration, domains and retouches (its bfcache is
-   * dropped), without showing. True if its page was reloaded (the accord card, Task 2): never yet.
+   * Electron's reprendre: site.json or a retouche changed, or the app is opened again. The open app takes its new
+   * declaration, domains and retouches (its bfcache is dropped), without showing. The rights grew (the accord no longer
+   * covers, or new rights after « Ouvrir sans retouches »): the card comes back and the loaded page is reloaded, without
+   * the retouches it had. The accord is no longer needed: the next view. The home is gone: the site. True if the page was
+   * reloaded.
    */
   update(site: SiteChrome, retouches: RetouchesLues): boolean {
     const s = open.get(site?.id);
     if (!s || s.window.closed) return false;
+    const before = s.site;
     s.site = site;
     s.retouches = retouches;
     s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
-    // The home screen is gone: the site view (Electron's reprendre).
-    if (s.vue === "accueil" && !site.aAccueil) {
-      s.vue = "site";
-      if (!s.loaded) loadInView(s, site.depart);
-    }
+    let reloaded = false;
+    // The fingerprint is that of the rights asked (empreinteDroits).
+    const grown = before.demande.empreinte !== site.demande.empreinte;
+    if (site.accordRequis && s.vue !== "accord" && (!before.accordRequis || grown)) {
+      s.vue = "accord";
+      if (s.loaded) {
+        s.view?.reload();
+        reloaded = true;
+      }
+    } else if (s.vue === "accord" && !site.accordRequis) nextView(s);
+    else if (s.vue === "accueil" && !site.aAccueil) nextView(s);
     s.window.gBrowser?.updateTitlebar();
     broadcast(s);
-    return false;
+    return reloaded;
+  },
+  /** The choice made on the card (the accord, if given, is already kept in `site`). Nothing if the card is not shown. */
+  afterAccord(id: string, site: SiteChrome | null): void {
+    const s = open.get(id);
+    if (!s || s.window.closed || s.vue !== "accord") return;
+    if (site) s.site = site;
+    // The accord given does not cover today's declaration (site.json rewritten meanwhile): the card stays.
+    if (site?.accordRequis) return broadcast(s);
+    // A page already loaded (without retouches) is reloaded to receive them.
+    const reload = site !== null && s.loaded && s.aCharger === null;
+    nextView(s);
+    if (reload) s.view?.reload();
+    broadcast(s);
+  },
+  /** The window's current view, or null if it is not open. */
+  viewOf(id: string): EtatFenetreSite["vue"] | null {
+    const s = open.get(id);
+    return s && !s.window.closed ? s.vue : null;
+  },
+  rebroadcast(id: string): void {
+    const s = open.get(id);
+    if (s) broadcast(s);
   },
   /** Electron's rechargerVue: the view's page reloaded, if it was ever loaded (its retouches changed). */
   reloadView(id: string): void {
@@ -603,6 +660,9 @@ export const sites = {
     "sites.mettreAJour": ([site, retouches]: [SiteChrome, RetouchesLues]) => sites.update(site, retouches),
     "sites.rechargerVue": ([id]: [string]) => sites.reloadView(id),
     "sites.erreurs": ([id]: [string]) => sites.errors(id),
+    "sites.vue": ([id]: [string]) => sites.viewOf(id),
+    "sites.apresAccord": ([id, site]: [string, SiteChrome | null]) => sites.afterAccord(id, site),
+    "sites.rediffuser": ([id]: [string]) => sites.rebroadcast(id),
     "sites.ouvertes": () => sites.openIds(),
     // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
     "sites.accueilChange": ([id]: [string]) => {

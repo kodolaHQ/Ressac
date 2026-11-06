@@ -387,6 +387,9 @@ const rpc = createRpc({
       if (typeof p?.id === "string") sites.noter(p.id, { ...(p.cadre ? { cadre: p.cadre } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
     },
     "sites.memoireOp": (p: unknown) => sites.memoireOp(p),
+    "sites.accorder": (p: { id?: unknown; oui?: unknown; empreinte?: unknown }) => {
+      if (typeof p?.id === "string" && typeof p.oui === "boolean" && typeof p.empreinte === "string") return sites.accorder(p.id, p.oui, p.empreinte);
+    },
     "sites.ferme": (p: { id?: unknown }) => {
       if (typeof p?.id === "string") sites.fermee(p.id);
     },
@@ -494,6 +497,9 @@ const sites = createSites({
     mettreAJour: (s, retouches) => rpc.request("sites.mettreAJour", [s, retouches]),
     rechargerVue: (id) => rpc.request("sites.rechargerVue", [id]),
     erreurs: (id) => rpc.request("sites.erreurs", [id]),
+    vue: (id) => rpc.request("sites.vue", [id]),
+    apresAccord: (id, s) => rpc.request("sites.apresAccord", [id, s]),
+    rediffuser: (id) => rpc.request("sites.rediffuser", [id]),
     ouvertes: () => rpc.request("sites.ouvertes"),
     accueilChange: (id) => rpc.notify("sites.accueilChange", [id]),
   },

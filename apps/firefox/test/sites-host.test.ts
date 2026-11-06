@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { accorderSite, cheminsEspace, DeclarationSite, lireAccordsSites, MemoireSite } from "../../../packages/noyau/src/index";
 import { SchemaActionSite as electronSchema } from "../../navigateur/src/commun/api";
 import { modifierAvecAgent } from "../../navigateur/src/commun/sites";
-import { createSites, SchemaActionSite, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
+import { createSites, demandeAccord, empreinteDroits, SchemaActionSite, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
+
+// Electron's fenetres.ts only for its empreinteDroits (the drift test): the window classes are never built.
+vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
+vi.mock("../../navigateur/src/main/onglets/vues", () => ({}));
 
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).
 const gate: { armed: boolean; reached: (() => void) | null; open: (() => void) | null } = { armed: false, reached: null, open: null };
@@ -56,7 +60,17 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
   write("casse", "{pas du json");
   write("MonSite", JSON.stringify(declaration));
   const journal: string[] = [];
-  const calls: { ouvrir: unknown[][]; majs: Parameters<SitesChrome["mettreAJour"]>[0][]; retouches: Parameters<SitesChrome["mettreAJour"]>[1][]; recharges: string[]; accueil: string[] } = {
+  const calls: {
+    ouvrir: unknown[][];
+    majs: Parameters<SitesChrome["mettreAJour"]>[0][];
+    retouches: Parameters<SitesChrome["mettreAJour"]>[1][];
+    recharges: string[];
+    accueil: string[];
+    apres: unknown[][];
+    rediffuser: string[];
+  } = {
+    apres: [],
+    rediffuser: [],
     ouvrir: [],
     majs: [],
     retouches: [],
@@ -65,6 +79,9 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
   };
   let erreursChrome: Awaited<ReturnType<SitesChrome["erreurs"]>> = [];
   let ouvertesChrome: string[] = [];
+  let vueChrome: Awaited<ReturnType<SitesChrome["vue"]>> = null;
+  /** While set, fermer waits for it (a deletion in progress). */
+  let retenue: Promise<void> | null = null;
   const chrome: SitesChrome = {
     ouvrir: async (...a) => {
       calls.ouvrir.push(a);
@@ -75,7 +92,13 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
       }
       return true;
     },
-    fermer: async (id) => void journal.push(`fermer ${id}`),
+    fermer: async (id) => {
+      journal.push(`fermer ${id}`);
+      await retenue;
+    },
+    vue: async () => vueChrome,
+    apresAccord: async (...a) => void calls.apres.push(a),
+    rediffuser: async (id) => void calls.rediffuser.push(id),
     effacer: async (id) => void journal.push(`effacer ${id}`),
     mettreAJour: async (s, r) => {
       calls.majs.push(s);
@@ -95,7 +118,9 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
     await sites.arreter();
     rmSync(racine, { recursive: true, force: true });
   });
-  return { sites, chemins, dataDir, calls, journal, diffuser, preRemplir, memoires, write, setOuvertes: (o: string[]) => (ouvertesChrome = o), setErreurs: (e: typeof erreursChrome) => (erreursChrome = e) };
+  return { sites, chemins, dataDir, calls, journal, diffuser, preRemplir, memoires, write, setOuvertes: (o: string[]) => (ouvertesChrome = o),
+    setVue: (v: typeof vueChrome) => (vueChrome = v),
+    retenir: (p: Promise<void> | null) => (retenue = p), setErreurs: (e: typeof erreursChrome) => (erreursChrome = e) };
 }
 
 describe("liste", () => {
@@ -313,6 +338,77 @@ describe("retouches", () => {
   });
 });
 
+describe("accorder", () => {
+  const avecRetouches = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: [] }] };
+  async function ouverte() {
+    const m = mount();
+    m.write("vidola", JSON.stringify(avecRetouches));
+    mkdirSync(join(m.chemins.sites, "vidola", "retouches"), { recursive: true });
+    writeFileSync(join(m.chemins.sites, "vidola", "retouches", "a.js"), "window.a = 1");
+    await m.sites.ouvrirParId("vidola");
+    const site = m.sites.sitesOuverts.get("vidola")!;
+    m.setVue("accord");
+    return { m, site };
+  }
+  const accords = (m: { dataDir: string }) => lireAccordsSites(m.dataDir);
+
+  it("with the card's fingerprint: writes the accord, tells the chrome (accord now covers), reads again without reloading", async () => {
+    const { m, site } = await ouverte();
+    expect(site.accordRequis).toBe(true);
+    await m.sites.accorder("vidola", true, site.demande.empreinte);
+    expect(Object.keys(await accords(m))).toEqual(["vidola"]);
+    expect(m.calls.apres).toEqual([["vidola", expect.objectContaining({ accordRequis: false })]]);
+    await vi.waitFor(() => expect(m.calls.majs.length).toBeGreaterThan(0), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(m.calls.recharges).toEqual([]);
+  });
+
+  it("a stale fingerprint: nothing is written, the chrome shows the card again", async () => {
+    const { m } = await ouverte();
+    await m.sites.accorder("vidola", true, "0".repeat(64));
+    expect(await accords(m)).toEqual({});
+    expect(m.calls.apres).toEqual([]);
+    expect(m.calls.rediffuser).toEqual(["vidola"]);
+  });
+
+  it("« Ouvrir sans retouches »: the next view without any accord", async () => {
+    const { m, site } = await ouverte();
+    await m.sites.accorder("vidola", false, site.demande.empreinte);
+    expect(await accords(m)).toEqual({});
+    expect(m.calls.apres).toEqual([["vidola", null]]);
+  });
+
+  it.each([["site"], [null]] as const)("when the window shows %s, not the card: nothing happens", async (vue) => {
+    const { m, site } = await ouverte();
+    m.setVue(vue);
+    await m.sites.accorder("vidola", true, site.demande.empreinte);
+    expect(await accords(m)).toEqual({});
+    expect(m.calls.apres).toEqual([]);
+    expect(m.calls.rediffuser).toEqual([]);
+  });
+
+  it("an app that is not open grants nothing", async () => {
+    const m = mount();
+    m.setVue("accord");
+    await m.sites.accorder("vidola", true, "0".repeat(64));
+    expect(await accords(m)).toEqual({});
+    expect(m.calls.apres).toEqual([]);
+  });
+
+  it("accorder during a deletion grants nothing (Review Focus 4)", async () => {
+    const { m, site } = await ouverte();
+    let lache!: () => void;
+    m.retenir(new Promise<void>((ok) => (lache = ok)));
+    const suppression = m.sites.agir("vidola", "supprimer", "f1");
+    await vi.waitFor(() => expect(m.journal).toContain("fermer vidola"));
+    await m.sites.accorder("vidola", true, site.demande.empreinte);
+    lache();
+    await suppression;
+    expect(await accords(m)).toEqual({});
+    expect(m.calls.apres).toEqual([]);
+  });
+});
+
 describe("outils", () => {
   it("lister carries the fingerprint, memoire returns the content, erreurs is empty, an unknown app is null", async () => {
     const m = mount();
@@ -336,6 +432,40 @@ describe("outils", () => {
 });
 
 describe("copies kept in sync with Electron", () => {
+  const demandee = {
+    ...declaration,
+    connexion: ["compte.example"],
+    retouches: [
+      { correspond: ["/serie/*"], js: ["a.js"], css: ["cacher.css"], cadres: ["https://lecteur.example/*"] },
+      { correspond: ["/serie/*"], js: ["a.js"], css: [], cadres: false as const },
+    ],
+  };
+
+  it("empreinteDroits is Electron's, and follows the rights only", async () => {
+    const { empreinteDroits: electron } = await import("../../navigateur/src/main/sites/fenetres");
+    const d = DeclarationSite.parse(demandee);
+    expect(empreinteDroits(d)).toBe(electron(d));
+    // Rights drift: another sign-in domain changes it; a description does not.
+    expect(empreinteDroits(DeclarationSite.parse({ ...demandee, connexion: ["autre.example"] }))).not.toBe(empreinteDroits(d));
+    expect(empreinteDroits(DeclarationSite.parse({ ...demandee, description: "autre" }))).toBe(empreinteDroits(d));
+  });
+
+  it("demandeAccord gives Electron's card (e2e 43): rights, files without duplicates, followed domains, fingerprint", () => {
+    const d = DeclarationSite.parse(demandee);
+    const carte = demandeAccord({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
+    expect(carte).toEqual({
+      nom: "Vidola",
+      domaines: ["vidola-a.example", "vidola-b.example"],
+      connexion: ["compte.example"],
+      cadres: ["https://lecteur.example/*"],
+      reprise: true,
+      fichiers: ["a.js", "cacher.css"],
+      correspond: ["/serie/*"],
+      suivis: ["vidola-c.example"],
+      empreinte: empreinteDroits(d),
+    });
+  });
+
   it("SchemaActionSite accepts and refuses the same ids and actions", () => {
     for (const v of [{ id: "vidola", action: "supprimer" }, { id: "../x", action: "supprimer" }, { id: "Vidola", action: "ouvrir" }, { id: "a", action: "autre" }, { id: ".corbeille", action: "relire" }])
       expect(SchemaActionSite.safeParse(v).success).toBe(electronSchema.safeParse(v).success);
