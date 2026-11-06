@@ -9,6 +9,19 @@
   display: none !important;
 }
 
+/* The macOS window buttons, centred on the sidebar's first row (Firefox's own box is in the hidden toolbox). */
+:root[webaios-main] #webaios-window-buttons {
+  appearance: auto;
+  -moz-default-appearance: -moz-window-button-box;
+  position: fixed;
+  top: 15px;
+  left: 16px;
+}
+
+:root[webaios-main] #webaios-window-buttons[hidden] {
+  display: none;
+}
+
 /* HTML fullscreen (a video): only the page stays. Important: both widths are set inline on the root. */
 :root[webaios-main][inDOMFullscreen] {
   --webaios-sidebar: 0px !important;
@@ -62,6 +75,11 @@
   margin-top: var(--webaios-banner, 0px);
   margin-inline-start: var(--webaios-sidebar, 240px);
   margin-inline-end: var(--webaios-agent, 0px);
+}
+
+/* Firefox's separator under its hidden toolbar: the page goes up to the window's top edge. */
+:root[webaios-main] .browserContainer {
+  border-block-start: none !important;
 }
 
 /* A site's question (Electron's DemandePermission), above the page; colours from the UI's theme.css. */

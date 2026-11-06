@@ -65,7 +65,7 @@
         </li>
       {/each}
     </ul>
-    <hr />
+    <div class="espace" data-testid="titre-espace">{espace?.icone} {espace?.nom}</div>
     <ListeOnglets {fenetre} />
     <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.agir({ type: "afficherPageVide", fenetreId: fenetre.id })}><Icone nom="plus" taille={14} /> Nouvel onglet</button>
   </div>
@@ -114,10 +114,10 @@
     -webkit-app-region: drag;
   }
   .barre[hidden] { display: none; }
-  .defilant { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; -webkit-app-region: no-drag; }
+  .defilant { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 14px; -webkit-app-region: no-drag; }
   .barre :global(nav) { -webkit-app-region: no-drag; }
   .epingles { list-style: none; margin: 0; padding: 0; min-height: 8px; }
-  .epingles button { all: unset; display: flex; align-items: center; gap: 8px; width: calc(100% - 12px); height: 32px; padding: 0 6px; border-radius: 6px; color: var(--texte); }
+  .epingles button { all: unset; display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); height: 34px; padding: 0 8px; border-radius: 8px; color: var(--texte); }
   .epingles button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .epingles button:hover { background: var(--fond-survol); }
   .epingles button.actif { background: var(--fond-actif); }
@@ -129,7 +129,7 @@
   .outil:hover { background: var(--fond-survol); }
   .outil[aria-pressed="true"] { color: var(--accent); }
   .pastille { position: absolute; inset: 3px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 360deg), transparent 0); mask: radial-gradient(circle, transparent 55%, black 56%); }
-  hr { width: 100%; border: none; border-top: 1px solid var(--bord); margin: 2px 0; }
-  .nouveau { all: unset; display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; color: var(--texte-doux); }
+  .espace { padding: 10px 8px 0; font-size: 12px; font-weight: 600; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .nouveau { all: unset; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--texte-doux); }
   .nouveau:hover { background: var(--fond-survol); }
 </style>

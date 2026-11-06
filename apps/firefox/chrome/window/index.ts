@@ -43,6 +43,12 @@ window.addEventListener(
     const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     frame.id = "webaios-sidebar";
     document.getElementById("browser")!.prepend(frame);
+    // Dragging regions only count in the top document unless its docShell allows them: the sidebar has the window's.
+    (frame.contentWindow as any).docShell.windowDraggingAllowed = true;
+    // macOS places the window buttons on this box, and hides them without one (the toolbox holding Firefox's is hidden).
+    const windowButtons = (document as any).createXULElement("hbox") as HTMLElement;
+    windowButtons.id = "webaios-window-buttons";
+    document.getElementById("browser")!.append(windowButtons);
     // The agent panel, on the right: a second iframe, so that the web page between both keeps the mouse.
     const agentFrame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     agentFrame.id = "webaios-agent";

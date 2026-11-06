@@ -33,7 +33,7 @@ describe("WebAiOs-Firefox foundation", () => {
       await w.marionette.execute(
         "return [Services.prefs.getBoolPref('devtools.chrome.enabled'), Services.prefs.getBoolPref('devtools.debugger.remote-enabled'), Services.prefs.getIntPref('browser.tabs.inTitlebar')]",
       ),
-    ).toEqual([true, true, 0]);
+    ).toEqual([true, true, 1]);
   });
 
   it("ships the first-run prefs as defaults, not only through Marionette", async () => {

@@ -76,6 +76,19 @@ describe("compact mode", () => {
     expect(await layout()).toMatchObject({ page: 0, frame: 0 });
   });
 
+  it("the macOS window buttons go with the sidebar", async () => {
+    const buttons = () => m.execute<boolean>(`return document.getElementById("webaios-window-buttons").checkVisibility();`);
+    await openPage();
+    expect(await m.execute(`return document.documentElement.hasAttribute("customtitlebar");`)).toBe(true);
+    expect(await buttons()).toBe(true);
+    await toggle();
+    await waitSidebar(false);
+    expect(await buttons()).toBe(false);
+    await moveMouse(5);
+    await waitSidebar(true);
+    expect(await buttons()).toBe(true);
+  });
+
   it("coming back before the delay keeps the sidebar", async () => {
     await openPage();
     await toggle();

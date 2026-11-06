@@ -70,6 +70,52 @@ const emptyPageFocused = () =>
        && document.activeElement === document.getElementById("webaios-sidebar");`,
   );
 
+// getComputedStyle does not expose -moz-window-dragging: the last matching rule gives it (a chrome rule keeps it when parsed).
+const DRAGGING = `const of = (s) => {
+  const el = doc.querySelector(s);
+  let value = "default";
+  for (const sheet of doc.styleSheets) for (const r of sheet.cssRules) {
+    const v = /-moz-window-dragging: ([a-z-]+)/.exec(r.cssText)?.[1];
+    if (v && el.matches(r.selectorText)) value = v;
+  }
+  return value;
+};`;
+
+describe("the sidebar's layout", () => {
+  it("drags the window from its empty areas only, and leaves the page the whole height", async () => {
+    await open("/icone");
+    await waitUi(m, `return !frame.hasAttribute("full");`);
+    const drag = await inUi<Record<string, string>>(
+      m,
+      `${DRAGGING} return { allowed: frame.contentWindow.docShell.windowDraggingAllowed, sidebar: of(".barre"), button: of(".navigation button"), address: of(".ligne"), tabs: of(".defilant"), footer: of("footer") };`,
+    );
+    expect(drag).toEqual({ allowed: true, sidebar: "drag", button: "no-drag", address: "no-drag", tabs: "no-drag", footer: "no-drag" });
+    expect(await m.execute(`const r = gBrowser.selectedBrowser.getBoundingClientRect(); return [r.top, r.height - window.innerHeight];`)).toEqual([0, 0]);
+    // Under an overlay the sidebar's area belongs to the overlay.
+    await pressKeys(m, "Meta+t");
+    await waitUi(m, `${DRAGGING} return of(".barre") === "default";`);
+  });
+
+  it("shows the extensions inside the address pill and the space above the tabs", async () => {
+    const shown = await inUi<{ menuIn: boolean; pill: number; space: string; gap: number }>(
+      m,
+      `const pill = doc.querySelector(".ligne").getBoundingClientRect(), menu = doc.querySelector('[data-testid="menu-extensions"]').getBoundingClientRect();
+       const tiles = doc.querySelector('[data-testid="essentiels"]').getBoundingClientRect();
+       return { menuIn: menu.right <= pill.right && menu.top >= pill.top && menu.bottom <= pill.bottom, pill: pill.height, gap: tiles.top - pill.bottom,
+         space: doc.querySelector('[data-testid="titre-espace"]').textContent };`,
+    );
+    const espace = (await state(m)).espaces[0]!;
+    expect(shown).toEqual({ menuIn: true, pill: 34, gap: 14, space: `${espace.icone} ${espace.nom}` });
+    // The panel opens under the pill, which keeps its height.
+    await click(m, '[data-testid="menu-extensions"]');
+    const panel = await waitUi<{ top: number; bottom: number } | null>(
+      m,
+      `const p = doc.querySelector('[data-testid="panneau-extensions"]'); return p && { top: p.getBoundingClientRect().top, bottom: doc.querySelector("form").getBoundingClientRect().bottom };`,
+    );
+    expect(panel!.top).toBeGreaterThanOrEqual(panel!.bottom);
+  });
+});
+
 describe("WebAiOs sidebar", () => {
   it("“Nouvel onglet” shows the empty page with its field focused; Enter opens the address", async () => {
     const a = await open("/a.html");

@@ -154,7 +154,7 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusPageVide.n++} />
 
-<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact={!barreVisible}>
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact={!barreVisible} class:couverte={overlay}>
   {#if fenetre}
     <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
     <BarreLaterale {fenetre} cachee={!barreVisible} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
@@ -201,6 +201,9 @@
 <style>
   /* Transparent so the web page under the iframe shows; the sidebar and the content area paint their own. */
   :global(html, body) { background: transparent; }
+  /* Firefox's -webkit-app-region: the same areas. An overlay over the sidebar keeps its clicks. */
+  .fenetre:not(.couverte) :global(.barre) { -moz-window-dragging: drag; }
+  .fenetre :global(.barre :is(.navigation button, .ligne, .defilant, footer)) { -moz-window-dragging: no-drag; }
   .couche-commande { position: fixed; inset: 0; z-index: 100; }
   .fenetre {
     display: grid;

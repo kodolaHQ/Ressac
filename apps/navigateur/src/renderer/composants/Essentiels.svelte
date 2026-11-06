@@ -43,7 +43,7 @@
 <style>
   .essentiels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-height: 8px; }
   .essentiels.grand { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
-  button { all: unset; display: grid; place-content: center; height: 36px; border-radius: 8px; background: var(--fond-survol); }
+  button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 10px; background: var(--fond-survol); }
   .grand button { height: 64px; }
   button.actif { background: var(--fond-actif); outline: 1px solid var(--accent); }
 </style>

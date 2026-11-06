@@ -9,8 +9,8 @@ pref("devtools.chrome.enabled", true);
 pref("devtools.debugger.remote-enabled", true);
 pref("devtools.debugger.prompt-connection", true);
 
-// Native macOS title bar: Firefox's tab strip is hidden behind our own UI.
-pref("browser.tabs.inTitlebar", 0);
+// No title bar: the sidebar goes up to the top of the window, with the macOS window buttons in its first row.
+pref("browser.tabs.inTitlebar", 1);
 
 // No first-run screens.
 pref("browser.shell.checkDefaultBrowser", false);

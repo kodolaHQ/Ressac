@@ -206,6 +206,10 @@ Limits:
 - zoom is not tracked in the state;
 - the actions' workflow builder: `webaios://workflow/action/<id>` shows the internal page « Pas encore disponible dans WebAiOs-Firefox. »;
 
+## The window
+
+No title bar (`browser.tabs.inTitlebar`, in `webaios.js`: needs `pnpm build:ui`). macOS places its window buttons on the box `#webaios-window-buttons` and hides them when there is none, as in compact mode (the theme geometry of `-moz-window-button-box`). The sidebar drags the window through `-moz-window-dragging`, which only counts in a nested document whose docShell has `windowDraggingAllowed`.
+
 ## Worktrees
 
 `engine/` is shared by all checkouts (it links to `~/WebAiOs-firefox/engine`), and the import links `src/` files of the checkout that ran it. Run `pnpm engine:import` in the checkout you build. Links left behind by a deleted worktree are dangling: `engine:import` prunes them first (`scripts/engine.sh prune`), otherwise surfer fails with ENOENT.

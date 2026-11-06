@@ -377,6 +377,8 @@ export function createController(
     setSidebarVisible(visible) {
       sidebarWidth = visible ? LARGEUR_BARRE : 0;
       document.documentElement.style.setProperty("--webaios-sidebar", `${sidebarWidth}px`);
+      // They sit in the sidebar's first row: nothing else is under them.
+      document.getElementById("webaios-window-buttons")!.toggleAttribute("hidden", !visible);
     },
     sidebarWidth: () => sidebarWidth,
     onLeftZone(cb) {

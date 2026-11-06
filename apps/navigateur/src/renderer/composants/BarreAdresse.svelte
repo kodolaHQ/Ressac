@@ -143,15 +143,18 @@
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
   .navigation .compact[aria-pressed="true"] { color: var(--accent); }
-  .ligne { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-  form { position: relative; flex: 1; min-width: 0; }
+  /* La pastille : un fond sous sa première rangée (champ et extensions), le panneau des extensions passe à la ligne dessous. */
+  .ligne { position: relative; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; -webkit-app-region: no-drag; }
+  .ligne::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid transparent; background: var(--fond-survol); }
+  .ligne:has(input:focus)::before { border-color: var(--accent); background: var(--fond); }
+  .ligne :global(.extensions) { padding-right: 3px; }
+  form { position: relative; flex: 1; min-width: 80px; height: 34px; }
   .acces { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
   .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px; background: var(--fond-actif); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
   .suggestions li { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 5px; color: var(--texte); }
   .suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--fond-survol); }
   .suggestions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .suggestions .url { font-size: 11px; color: var(--texte-doux); }
-  input { width: 100%; box-sizing: border-box; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; background: var(--fond-survol); color: var(--texte); outline: none; -webkit-app-region: no-drag; }
+  input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 10px; border: none; background: none; color: var(--texte); outline: none; -webkit-app-region: no-drag; }
   input.avec-acces { padding-right: 56px; }
-  input:focus { border-color: var(--accent); background: var(--fond); }
 </style>

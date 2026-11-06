@@ -74,7 +74,7 @@
 
 <style>
   .onglets { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px; border-radius: 6px; color: var(--texte); cursor: default; }
+  li { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: 8px; color: var(--texte); cursor: default; }
   li:hover { background: var(--fond-survol); }
   li[aria-current="page"] { background: var(--fond-actif); }
   li.avant { box-shadow: inset 0 2px 0 var(--accent); }
