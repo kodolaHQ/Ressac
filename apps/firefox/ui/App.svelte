@@ -215,7 +215,7 @@
     height: 100%;
   }
   .fenetre.compact { grid-template-columns: 1fr; }
-  .colonne { display: grid; min-width: 0; min-height: 0; }
+  .colonne { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
   .compact .colonne {
     position: fixed;
     inset: 0 auto 0 0;
