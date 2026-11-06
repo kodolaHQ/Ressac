@@ -2,13 +2,28 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
-import { actionsDataDir, adPhoto, chained, startActionServers, tid, uiQueries, waitNoyau, writeAction, writeRunnableAction } from "./actions";
+import {
+  actionsDataDir,
+  adPhoto,
+  chained,
+  LAYOUT_PROMPT,
+  openAction,
+  runsOnDisk,
+  runStatuses,
+  startActionServers,
+  tid,
+  uiQueries,
+  waitNoyau,
+  writeAction,
+  writePagesAction,
+  writeRunnableAction,
+} from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// Whole scenarios of an action (Electron's actions.spec.ts:1334-1460, ported): Gemma's plan, the results' images through
+// Whole scenarios of an action (Electron's actions.spec.ts:1232-1500, ported): Gemma's plan, the results' images through
 // the test hook (WEBAIOS_TEST_ACTION_IMAGES: `https://<host><path>` is asked from the local image server, which notes
 // each request with its Cookie and Referer). One launch for the file; the actions are written before it.
 
@@ -32,6 +47,30 @@ const EXTRACT_ADS = `export default async (page) => {
 };
 `;
 
+/** `extraire.mjs` of the GitLab tickets (actions.spec.ts:1160). */
+const EXTRACT_TICKETS = `export default async (page) => {
+  const tickets = [];
+  for (const l of page.liens) {
+    const m = /^#(\\d+) (.+) \\[([\\w-]+)\\] \\(([\\w-]+)\\)$/.exec(l.texte.trim());
+    if (m) tickets.push({ titre: m[2], projet: m[4], priorite: m[3], url: l.url });
+  }
+  return { tickets };
+};
+`;
+const TICKETS_LAYOUT = "un chiffre clé, les tickets par priorité, les trois plus urgents en encadré";
+const TICKETS = "tickets-gitlab";
+/** Gemma's plan for the tickets: a key figure, the most urgent in a box, the table by priority (actions.spec.ts:1193). */
+const TICKETS_PLAN = {
+  blocs: [
+    { composant: "chiffre", props: { valeur: "compter(filtrer(tickets, priorite = urgent))", libelle: "Tickets urgents" } },
+    { composant: "encadre", props: { niveau: "attention", titre: "À traiter d'abord", elements: "garder(filtrer(tickets, priorite = urgent), 3)", champ: "titre" } },
+    {
+      composant: "tableau",
+      props: { elements: "regrouper(tickets, priorite)", colonnes: [{ champ: "titre", libelle: "Ticket" }, { champ: "projet", libelle: "Projet" }], lien: "url" },
+    },
+  ],
+};
+
 let servers: Awaited<ReturnType<typeof startActionServers>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
@@ -39,6 +78,27 @@ let q: ReturnType<typeof uiQueries>;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
+const layoutPrompts = (from: number) => servers.ollama.prompts.slice(from).filter((p) => p.startsWith(LAYOUT_PROMPT));
+/** The statuses of the runs written since `before` (the runs of earlier tests stay on disk). */
+const newStatuses = async (id: string, before: number) => (await runStatuses(w.dataDir, id)).slice(before);
+
+/** What the tickets page shows: a figure, the box, one table section per priority (actions.spec.ts:1205). */
+async function waitTicketsPage(): Promise<void> {
+  const page = tid("rendu-page");
+  await visible(page, 60_000);
+  await q.waitText(`${page} ${tid("bloc-chiffre")} .valeur`, "2", 30_000);
+  expect(await q.text(`${page} ${tid("bloc-chiffre")}`)).toContain("Tickets urgents");
+  const box = (await q.text(`${page} ${tid("bloc-encadre")}`)) ?? "";
+  for (const t of ["À traiter d'abord", "Connexion impossible", "Fuite mémoire du worker"]) expect(box).toContain(t);
+  expect(box).not.toContain("Facture en double");
+  const table = `${page} ${tid("bloc-tableau")}`;
+  expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent.trim());", [`${table} th[scope="rowgroup"]`])).toEqual(["urgent", "normale", "basse"]);
+  const second = await inUi<string>(m, "return doc.querySelectorAll(arguments[0])[1]?.textContent ?? '';", [`${table} tbody`]);
+  expect(second).toContain("Facture en double");
+  expect(second).toContain("Export CSV lent");
+  expect(await q.count(`${page} ${tid("mention-secours")}`)).toBe(0);
+}
+
 const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
 
 beforeAll(async () => {
@@ -74,10 +134,29 @@ beforeAll(async () => {
       tickets: [{ titre: "Connexion impossible", photo: "https://img.exemple.org/avatar.png", fuite: ${JSON.stringify(leak)} }],
     });`,
   });
+  // AGENTS.md's « Tickets GitLab »: source.page with the account, then extraire, then the page (actions.spec.ts:1173).
+  await writeAction(d, TICKETS, {
+    nom: "Tickets GitLab",
+    motsCles: ["gitlab", "tickets"],
+    sources: { compte: ["127.0.0.1"] },
+    miseEnPage: TICKETS_LAYOUT,
+    workflow: chained([
+      { id: "tickets", type: "source.page", parametres: { url: `${site}/gitlab/tickets`, compte: true } },
+      { id: "extraire", type: "code", parametres: { source: "extraire.mjs" } },
+      { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+    ]),
+    fichiers: { "extraire.mjs": EXTRACT_TICKETS },
+  });
+  await writeRunnableAction(d, "taches", {
+    nom: "Tâches",
+    code: `export default async () => ({ taches: [{ nom: "Alpha", etat: "ouvert" }, { nom: "Bravo", etat: "fermé" }] });`,
+  });
+  for (const id of ["un", "deux", "trois"]) await writePagesAction(d, site, id, `Pages ${id}`);
   // Electron's accorder (actions.spec.ts:1190).
+  const accord = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
   await mkdir(actionsDataDir(d), { recursive: true });
-  await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
-  for (const id of ["annonces-leboncoin", "hostile"]) await waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
+  await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: accord, [TICKETS]: accord }));
+  for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
 }, 90_000);
 beforeEach(async () => {
   servers.reset();
@@ -90,6 +169,100 @@ afterAll(async () => {
 });
 
 describe("action scenarios", () => {
+  // actions.spec.ts:1232
+  it("spec success: type « git », validate, see the progress, then a key figure, a table by priority and a « à traiter d'abord » box", { timeout: 120_000 }, async () => {
+    servers.settings.lenteurSiteMs = 1500;
+    servers.settings.plan = TICKETS_PLAN;
+    const before = (await runsOnDisk(w.dataDir, TICKETS)).length;
+    const from = servers.ollama.prompts.length;
+    await click(m, tid("nouvel-onglet"));
+    await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
+    await click(m, tid("saisie-page-vide"));
+    await inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid("saisie-page-vide"), "git"]);
+    await q.waitContains(tid("suggestions-actions"), "Tickets GitLab");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await visible(tid("page-action"));
+    await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
+    await waitTicketsPage();
+    await q.waitCount(tid("avancement-action"), 0);
+    // One layout request: the (bounded) results and the action's instruction, between their marks.
+    const prompts = layoutPrompts(from);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Connexion impossible");
+    expect(prompts[0]).toContain(`<<<CONSIGNE\n${TICKETS_LAYOUT}\nCONSIGNE>>>`);
+    expect(await newStatuses(TICKETS, before)).toEqual(["reussie"]);
+  });
+
+  // actions.spec.ts:1264
+  it("the next day, no ticket: « Aucun résultat », no prompt; yesterday's result reopens without relaunching", { timeout: 120_000 }, async () => {
+    servers.settings.plan = TICKETS_PLAN;
+    const before = await runsOnDisk(w.dataDir, TICKETS);
+    await openAction(m, TICKETS, "Tickets GitLab");
+    await click(m, tid("relancer-action"));
+    // The page may already show an earlier test's tickets: wait for this run's end on disk.
+    for (const deadline = Date.now() + 60_000; JSON.stringify(await newStatuses(TICKETS, before.length)) !== '["reussie"]'; await sleep(200))
+      if (Date.now() > deadline) throw new Error(`no finished run: ${JSON.stringify(await newStatuses(TICKETS, before.length))}`);
+    await waitTicketsPage();
+    const [yesterday] = (await runsOnDisk(w.dataDir, TICKETS)).filter((f) => !before.includes(f)).map((f) => f.replace(/\.json$/, ""));
+
+    // The next day, no ticket left: the page says so, without asking Gemma anything.
+    servers.settings.tickets = [];
+    const from = servers.ollama.prompts.length;
+    await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
+    await click(m, tid("relancer-action"));
+    await q.waitText(tid("aucun-resultat"), "Aucun résultat", 60_000);
+    expect(await runsOnDisk(w.dataDir, TICKETS)).toHaveLength(before.length + 2);
+    expect(servers.ollama.prompts.length).toBe(from);
+
+    // Yesterday's result, reopened from the previous results: nothing is launched, Gemma is not called again.
+    await click(m, tid("resultats-precedents"));
+    await click(m, tid(`resultat-${yesterday}`));
+    await waitTicketsPage();
+    await sleep(500);
+    expect(servers.ollama.prompts.length).toBe(from);
+    expect(await runsOnDisk(w.dataDir, TICKETS)).toHaveLength(before.length + 2);
+  });
+
+  // actions.spec.ts:1385
+  it("Gemma returns invalid JSON twice: fallback page with « mise en page simple »", { timeout: 90_000 }, async () => {
+    servers.settings.plan = "Voici la page : { blocs: [titre";
+    const from = servers.ollama.prompts.length;
+    await openAction(m, "taches", "Tâches");
+    await click(m, tid("relancer-action"));
+    const page = tid("rendu-page");
+    await visible(page, 60_000);
+    await q.waitText(`${page} ${tid("mention-secours")}`, "mise en page simple", 30_000);
+    expect(await q.text(page)).toContain("Alpha");
+    expect(await q.text(page)).toContain("Bravo");
+    // Two attempts, the second with the refusal's reason.
+    const prompts = layoutPrompts(from);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("la réponse n'est pas du JSON valide");
+    expect(await runStatuses(w.dataDir, "taches")).toEqual(["reussie"]);
+  });
+
+  // actions.spec.ts:1474
+  it("three actions launched: the third says « En attente : deux actions tournent déjà », then runs", { timeout: 150_000 }, async () => {
+    servers.settings.lenteurSiteMs = 3000;
+    // The first two, launched as the agent or the Actions page would (without waiting for their end).
+    await inUi(m, "void ui.webaios.actions.lancer('un', null); void ui.webaios.actions.lancer('deux', null);");
+    await waitUi(m, "return (await ui.webaios.actions.direct()).courantes.length === 2;", [], 30_000);
+    await openAction(m, "trois", "Pages trois");
+    await click(m, tid("relancer-action"));
+    await q.waitText(tid("en-attente"), "En attente : deux actions tournent déjà", 30_000);
+    const feed = await inUi<{ courantes: { action: string }[]; enAttente: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
+    expect(feed.enAttente.map((a) => a.action)).toEqual(["trois"]);
+    expect(feed.courantes.map((a) => a.action).sort()).toEqual(["deux", "un"]);
+    // A slot frees up: the third runs, then shows its page.
+    await q.waitCount(tid("en-attente"), 0, 60_000);
+    await visible(tid("rendu-page"), 60_000);
+    await q.waitContains(tid("bloc-liste"), "Page 3", 30_000);
+    for (const id of ["un", "deux", "trois"])
+      for (const deadline = Date.now() + 60_000; JSON.stringify(await runStatuses(w.dataDir, id)) !== '["reussie"]'; await sleep(200))
+        if (Date.now() > deadline) throw new Error(`${id}: ${JSON.stringify(await runStatuses(w.dataDir, id))}`);
+  });
+
   // actions.spec.ts:1334
   it("Leboncoin « leboncoin clio lyon »: the input reaches the URL read, cards with photos loaded", { timeout: 120_000 }, async () => {
     servers.settings.plan = {

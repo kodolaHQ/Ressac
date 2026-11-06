@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -199,6 +199,12 @@ export async function runsOnDisk(dataDir: string, id: string): Promise<string[]>
   return (await readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json")).sort();
 }
 
+/** The status of each finished run on disk, oldest first (Electron's statutsSurDisque). */
+export async function runStatuses(dataDir: string, id: string): Promise<string[]> {
+  const dir = path.join(actionsDataDir(dataDir), id, "executions");
+  return Promise.all((await runsOnDisk(dataDir, id)).map(async (f) => (JSON.parse(await readFile(path.join(dir, f), "utf8")) as { statut: string }).statut));
+}
+
 /** A finished run and its result (a title), written on disk (Electron's ecrireResultat). */
 export async function writeResult(dataDir: string, id: string, execution: string, debut: string, titre: string, saisie: string | null = null): Promise<void> {
   const data = path.join(actionsDataDir(dataDir), id);
@@ -275,7 +281,7 @@ export const adPhoto = (n: number) => `https://img.leboncoin.exemple/photos/${n}
 /** The fake Gemma's plan for a layout request: a title, then the list of pages read (actions.spec.ts PLAN_GEMMA). */
 export const GEMMA_PLAN = { blocs: [{ composant: "titre", props: { texte: "Pages lues" } }, { composant: "liste", props: { elements: "$", titre: "page.titre" } }] };
 /** The start of the layout prompt (pages/mise-en-page.ts). */
-const LAYOUT_PROMPT = "Tu mets en page le résultat d'une action pour l'utilisateur.";
+export const LAYOUT_PROMPT = "Tu mets en page le résultat d'une action pour l'utilisateur.";
 
 /** A 1×1 red PNG. */
 export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==", "base64");
