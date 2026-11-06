@@ -42,3 +42,11 @@ describe("node shims", () => {
   });
   it("joins paths", () => expect(join("a", "b")).toBe("a/b"));
 });
+
+describe("node:url shim", () => {
+  it("domainToASCII matches node:url's", async () => {
+    const { domainToASCII } = await import("../chrome/shims/url");
+    const node = await import("node:url");
+    for (const d of ["exemple.fr", "ÉCOLE.fr", "bücher.de", "日本.jp", "xn--bcher-kva.de", "a..b", "exa mple.com", ""]) expect(domainToASCII(d), d).toBe(node.domainToASCII(d));
+  });
+});

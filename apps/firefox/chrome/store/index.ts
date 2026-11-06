@@ -11,9 +11,10 @@ import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
 import { registerAccueilNotifications } from "./notifications";
-import { containerFor, existingContainer, migrateContainers, removeContainer } from "./containers";
+import { containerFor, existingContainer, isSiteContainer, migrateContainers, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
+import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { gardienGestes } from "../../shared/geste-widget";
@@ -46,6 +47,8 @@ export interface WebAiOsStore extends Store {
   readonly access: EtatAcces;
   /** The agent's dev tools on tabs, owned by the running noyau. */
   readonly devtools: DevTools;
+  /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
+  readonly sites: SiteApps;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
@@ -56,16 +59,16 @@ export interface WebAiOsStore extends Store {
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
 
 /**
- * The extension actor's module. Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding it, served by a
- * resource:// substitution (the content sandbox reads it only with security.sandbox.content.mac.testing_read_path1
- * set to that folder: spike S5), so the e2e run without a rebuild of the app.
+ * An actor's module (`extension-actor`, `site-actor`). Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding
+ * both, served by a resource:// substitution (the content sandbox reads it only with
+ * security.sandbox.content.mac.testing_read_path1 set to that folder: spike S5), so the e2e run without a rebuild of the app.
  */
-function extensionActorModule(): string {
+function actorModule(name: string): string {
   const dir = Services.env.get("WEBAIOS_TEST_EXTENSION_ACTOR");
-  if (!dir) return "chrome://browser/content/webaios/extension-actor.sys.mjs";
+  if (!dir) return `chrome://browser/content/webaios/${name}.sys.mjs`;
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
   Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("webaios-test", Services.io.newFileURI(new FileUtils.File(dir)));
-  return "resource://webaios-test/extension-actor.sys.mjs";
+  return `resource://webaios-test/${name}.sys.mjs`;
 }
 
 /** Firefox's permission types behind each decision we mirror (what the page reads through Notification.permission, permissions.query, MIDI). */
@@ -127,6 +130,8 @@ async function start(): Promise<WebAiOsStore> {
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
   // sanitizer (CSP_WIDGET, contientIndiceReseau).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
+  // The site apps' served home copies too (the same sanitizer).
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
@@ -178,7 +183,7 @@ async function start(): Promise<WebAiOsStore> {
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["webaios-reading"],
   });
-  const extensionActor = extensionActorModule();
+  const extensionActor = actorModule("extension-actor");
   // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
   // `matches`: the about:blank frames that inherit an agent page's principal must be reached too (the child filters
   // on the document's principal).
@@ -188,6 +193,17 @@ async function start(): Promise<WebAiOsStore> {
     remoteTypes: ["extension"],
     messageManagerGroups: ["webext-browsers", "browsers"],
     allFrames: true,
+  });
+  // Site apps: every http(s) frame of a tab browser; the child does nothing outside a site app's container.
+  const siteActor = actorModule("site-actor");
+  ChromeUtils.registerWindowActor("WebAiOsSite", {
+    parent: { esModuleURI: siteActor },
+    child: { esModuleURI: siteActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
+    allFrames: true,
+    matches: ["http://*/*", "https://*/*"],
+    messageManagerGroups: ["browsers"],
+    // Required in web processes; the parent receives nothing, so a compromised web process cannot make it act.
+    safeForUntrustedWebProcess: true,
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
@@ -230,7 +246,7 @@ async function start(): Promise<WebAiOsStore> {
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers },
+    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers, ...sites.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
@@ -238,11 +254,40 @@ async function start(): Promise<WebAiOsStore> {
       agentExtensions.hostStarted();
       // A restart (« Réessayer ») may have missed the home's changes: it reads again now that the host answers.
       notify("accueil.change");
+      // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
+      notify("sites.pret");
     },
+  });
+  // « Ouvrir dans un onglet » of a site app: a tab of the last main window, in its active space, brought to the front
+  // (Electron's ouvrirDansOnglet); with no main window open, one opens first.
+  bindSites(agent, dataDir, async (url) => {
+    if (!/^https?:\/\//.test(url)) return;
+    if (!windows.active()) {
+      const win = BrowserWindowTracker.openWindow();
+      await new Promise<void>((ok) => {
+        const o = {
+          observe(subject: unknown) {
+            if (subject !== win) return;
+            Services.obs.removeObserver(o, "browser-delayed-startup-finished");
+            // After window/index.ts's claim, which follows the same delayed startup.
+            Services.tm.dispatchToMainThread(() => ok());
+          },
+        };
+        Services.obs.addObserver(o, "browser-delayed-startup-finished");
+      });
+    }
+    const fenetreId = windows.active();
+    if (!fenetreId) return;
+    store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
+    const win = windows.get(fenetreId)?.window;
+    if (!win) return;
+    if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
+    win.focus();
   });
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
-  const downloads = await createDownloads();
+  // A site app's downloads are cancelled (Electron's app sessions download nothing).
+  const downloads = await createDownloads(isSiteContainer);
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("acces", (e: EtatAcces) => (access = e));
@@ -272,6 +317,7 @@ async function start(): Promise<WebAiOsStore> {
     agentExtensions,
     sitePermissions,
     devtools,
+    sites,
     get access() {
       return access;
     },
@@ -282,5 +328,7 @@ async function start(): Promise<WebAiOsStore> {
 }
 
 export const ready: Promise<WebAiOsStore> = start();
+// Site app windows: read synchronously by a window as it loads (chrome/window/site-window.ts).
+export { sites, publishSiteFrames } from "./sites";
 // For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
 export { alertObserver } from "./notifications";

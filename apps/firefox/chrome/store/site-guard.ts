@@ -1,0 +1,71 @@
+// The bar's « Lien vers X bloqué » mention of a site app (Electron's bloquer and diffuserAvis, main/sites/fenetres.ts).
+// The request guard itself is in sites.ts (one observer for every app container).
+import type { AvisBarre } from "../../../navigateur/src/commun/sites";
+
+/** Electron's ECART_AVIS_MS: at most one change of the mention per 500 ms. */
+export const NOTICE_GAP_MS = 500;
+
+/** The host of an http(s) address, else null (about:blank, javascript:, an unreadable address). */
+export function httpHost(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface BlockedNotice {
+  readonly avis: AvisBarre | null;
+  /** A navigation or an open was refused: its URL is kept for « Ouvrir dans un onglet », the bar shows its domain. */
+  block(url: string): void;
+  /** « Ouvrir dans un onglet »: the last blocked URL, once; the mention falls (the caller broadcasts). */
+  take(): string | null;
+  /** A new page: the mention and the URL fall (the caller broadcasts). */
+  clear(): void;
+  dispose(): void;
+}
+
+/** `broadcast` sends the window's state, the mention in it: the first change at once, the last one always (deferred). */
+export function blockedNotice(broadcast: () => void): BlockedNotice {
+  let url: string | null = null;
+  let avis: AvisBarre | null = null;
+  let sent = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const send = () => {
+    timer = undefined;
+    sent = Date.now();
+    broadcast();
+  };
+  return {
+    get avis() {
+      return avis;
+    },
+    block(u) {
+      const domaine = httpHost(u);
+      // Nothing to open in a tab: refused without a mention.
+      if (!domaine) return;
+      url = u;
+      if (avis?.genre === "lien-bloque" && avis.domaine === domaine) return;
+      avis = { genre: "lien-bloque", domaine };
+      if (timer) return;
+      const wait = sent + NOTICE_GAP_MS - Date.now();
+      if (wait <= 0) send();
+      else timer = setTimeout(send, wait);
+    },
+    take() {
+      const u = url;
+      url = null;
+      if (avis?.genre === "lien-bloque") avis = null;
+      return u;
+    },
+    clear() {
+      url = null;
+      avis = null;
+    },
+    dispose() {
+      clearTimeout(timer);
+      timer = undefined;
+    },
+  };
+}

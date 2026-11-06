@@ -3,6 +3,10 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
 import { dispatch, state, waitFor } from "./firefox";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import { testActor } from "./agent-extensions";
+import { ELECTRON_HOME, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
@@ -13,7 +17,11 @@ let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 beforeAll(async () => (server = await startServer()));
-afterAll(() => server?.close());
+const kept: string[] = [];
+afterAll(async () => {
+  await server?.close();
+  for (const d of kept) await rm(d, { recursive: true, force: true });
+});
 beforeEach(async () => {
   w = await launchWebAiOs();
   m = w.marionette;
@@ -126,6 +134,39 @@ async function draftKept(count: number): Promise<void> {
 }
 
 describe("Command bar", () => {
+  it("the command bar offers site apps and opens one", async () => {
+    // Relaunched on a data folder that holds the app before the start (the watcher sees no initial event).
+    await w.close();
+    const sites = await startSitesServer();
+    const dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
+    const profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
+    try {
+      writeSite(dataDir, "vidola", {
+        declaration: { nom: "Vidola", adresse: sites.url("vidola-a.localhost", "/"), domaines: ["vidola-a.localhost"], connexion: [] },
+        fichiers: { "accueil/index.html": ELECTRON_HOME },
+      });
+      const actor = testActor(profile);
+      w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+      m = w.marionette;
+      await m.setContext("chrome");
+      await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
+      await waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-laterale\"]')");
+      await resolveLocalHosts(m, ["vidola-a.localhost"]);
+      await waitUi(m, "return (await ui.webaios.sites.liste()).some((s) => s.id === 'vidola')", [], 30_000);
+      await pressKeys(m, "Meta+t");
+      await type("Vidola");
+      await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"appli\"]').length === 1");
+      await click(m, '[data-testid="ligne-commande"][data-type="appli"] button');
+      await waitFor(m, "return [...Services.wm.getEnumerator('navigator:browser')].some((w) => w.document.documentElement.getAttribute('webaios-site') === 'vidola')", (v) => v === true);
+      expect(await siteWindowCount(m, "vidola")).toBe(1);
+      await waitBar(false);
+    } finally {
+      // afterEach closes w; the folders go in afterAll.
+      kept.push(dataDir, profile);
+      await sites.fermer();
+    }
+  });
+
   it("⌘T opens an empty bar with its field focused", async () => {
     await withPageA();
     await pressKeys(m, "Meta+t");

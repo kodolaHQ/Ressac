@@ -224,14 +224,15 @@ const SCRIPT_GARDE = `<script>(${gardeWidget.toString()})(${JSON.stringify(MOTIF
 const PREFIXE_DOC = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
 
 /**
- * Le texte servi : la meta CSP puis la garde, après un éventuel doctype (le doctype reste le premier jeton, pas de
- * mode quirks) et avant tout autre élément ; AFFICHAGE_REFUSE si le HTML contient un indice réseau.
+ * Le texte servi : la meta CSP (`csp`) puis la garde, puis `extra` (le pont d'un accueil d'appli), après un éventuel
+ * doctype (le doctype reste le premier jeton, pas de mode quirks) et avant tout autre élément ; AFFICHAGE_REFUSE si le
+ * HTML contient un indice réseau.
  */
-export function affichageServi(html: string): string {
+export function affichageServi(html: string, csp = CSP_WIDGET, extra = ""): string {
   if (contientIndiceReseau(html)) return AFFICHAGE_REFUSE;
   const prefixe = html.match(PREFIXE_DOC)?.[0] ?? "";
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}">`;
-  return `${prefixe}${meta}${SCRIPT_GARDE}${html.slice(prefixe.length)}`;
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
+  return `${prefixe}${meta}${SCRIPT_GARDE}${extra}${html.slice(prefixe.length)}`;
 }
 
 /** La substitution resource:// du widget, ou `null` pour la retirer. */

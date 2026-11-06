@@ -7,7 +7,9 @@ declare const IOUtils: {
   copy(from: string, to: string): Promise<void>;
   makeDirectory(path: string, options?: { createAncestors?: boolean; ignoreExisting?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
-  stat(path: string): Promise<{ lastModified: number }>;
+  stat(path: string): Promise<{ lastModified: number; size: number; type: "regular" | "directory" | "other" }>;
+  read(path: string, options?: { maxBytes?: number }): Promise<Uint8Array>;
+  write(path: string, data: Uint8Array): Promise<number>;
   getChildren(path: string): Promise<string[]>;
 };
 declare const PathUtils: { join(...parts: string[]): string; readonly tempDir: string };
@@ -16,7 +18,7 @@ declare const Ci: any;
 declare const Cr: any;
 declare const Cu: any;
 declare const Cc: any;
-declare const Components: { isSuccessCode(status: number): boolean };
+declare const Components: { isSuccessCode(status: number): boolean; ID(id: string): unknown; manager: any };
 declare const ChromeUtils: {
   importESModule(url: string): any;
   /** Milliseconds, monotonic. */
