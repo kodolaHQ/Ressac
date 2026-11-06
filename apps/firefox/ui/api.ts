@@ -9,6 +9,7 @@ import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
+import { createActionsApi, type ActionsFirefox } from "./actions-api";
 
 /** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
 export interface AccueilLu {
@@ -16,8 +17,12 @@ export interface AccueilLu {
   theme: ThemeAccueil | null;
 }
 
-/** The Electron preload's API, with the home page's read widened to carry the theme and free placements (Task 7). */
-export interface ApiFirefox extends Omit<ApiWebaios, "accueil"> {
+/**
+ * The Electron preload's API, with the home page's read widened to carry the theme and free placements (Task 7), and
+ * the actions' result images and components asked of the chrome.
+ */
+export interface ApiFirefox extends Omit<ApiWebaios, "accueil" | "actions"> {
+  actions: ActionsFirefox;
   accueil: Omit<ApiWebaios["accueil"], "lire" | "placer"> & {
     lire(): Promise<AccueilLu>;
     placer(placements: PlacementLibre[]): void;
@@ -35,8 +40,6 @@ declare global {
 }
 
 const off = () => () => {};
-const none = async () => [];
-const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 // Electron's MESSAGE_AGENT_ARRETE, as noyau/host.ts retypes it (a Node module this bundle cannot import).
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 
@@ -288,7 +291,8 @@ export function createApi(win: WindowController): ApiFirefox {
         return untilUnload(() => offs.forEach((f) => f()));
       },
     },
-    actions: { liste: none, surChange: off, ouvrir: unavailable } as unknown as ApiWebaios["actions"],
+    // The actions: the window state's half here (private spaces, dispatches), the disk and noyau's in the host.
+    actions: createActionsApi({ state: () => win.store.state, dispatch: (a) => win.store.dispatch(a), host, fenetre, untilUnload, media: win.store.actionMedia }),
   };
   return new Proxy(api, {
     get(target, key) {

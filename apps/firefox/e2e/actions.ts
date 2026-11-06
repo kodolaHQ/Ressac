@@ -1,10 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { dispatch, state } from "./firefox";
 import type { Marionette } from "./marionette";
-import { waitUi } from "./ui";
+import { inUi, waitUi } from "./ui";
 
 // Ports of Electron's action helpers (e2e/aide.ts, e2e/actions.spec.ts). Declarations live in the space
 // (`<dataDir>/espace/actions/<id>/`, `<dataDir>/espace/composants/<nom>/`); runs, results and agreements outside it.
@@ -79,13 +79,103 @@ export async function writeActionWithResult(
   );
 }
 
-/**
- * Opens action `id`'s page in a tab of the first window (Electron's ouvrirPage, actions.spec.ts): nothing is launched.
- * shortcut: waits for the page itself instead of polling the host's page first; Task 3 adds the poll once its RPC exists.
- */
+/** Opens action `id`'s page in a tab of the first window, once the noyau serves it (Electron's ouvrirPage, actions.spec.ts:68): nothing is launched. */
 export async function openActionPage(m: Marionette, id: string, nom: string, execution = EXECUTION): Promise<void> {
+  await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, execution], 30_000);
   await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, execution });
   await waitUi(m, `return !!doc.querySelector('[data-testid="rendu-page"]');`, [], 30_000);
+}
+
+/** Electron's SANS_NOYAU (actions.spec.ts:420). */
+export const WITHOUT_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
+
+/** Waits until the noyau serves the actions: an unknown action is then refused as such (Electron's attendreNoyau, actions.spec.ts:424). */
+export async function waitNoyau(m: Marionette): Promise<void> {
+  await waitUi(m, "return ui.webaios.actions.lancer('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_NOYAU], 30_000);
+}
+
+/** Opens the action's page (its last result, or `execution`) without launching anything (Electron's ouvrirAction, actions.spec.ts:432). */
+export async function openAction(m: Marionette, id: string, nom: string, execution?: string): Promise<void> {
+  await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, ...(execution ? { execution } : {}) });
+  await waitUi(m, `return !!doc.querySelector('[data-testid="page-action"]');`, [], 10_000);
+}
+
+/** A workflow whose blocks follow one another in the array's order (actions.spec.ts enChaine). */
+export const chained = (blocs: { id: string; type: string; parametres: Record<string, unknown> }[]) => ({
+  version: 1,
+  blocs,
+  liens: blocs.slice(1).map((b, i) => ({ de: blocs[i]!.id, vers: b.id })),
+});
+
+/** A runnable action: a `code` block, the blocks between, then the output to the page (Electron's ecrireActionExecutable). */
+export function writeRunnableAction(
+  dataDir: string,
+  id: string,
+  o: { nom: string; code: string; compte?: string[]; saisie?: string; motsCles?: string[]; blocs?: { id: string; type: string; parametres: Record<string, unknown> }[] },
+): Promise<void> {
+  const blocs = [{ id: "liste", type: "code", parametres: { source: "liste.mjs" } }, ...(o.blocs ?? []), { id: "sortie", type: "sortie", parametres: { vers: "page" } }];
+  return writeAction(dataDir, id, {
+    nom: o.nom,
+    sources: { compte: o.compte ?? [] },
+    ...(o.motsCles ? { motsCles: o.motsCles } : {}),
+    ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}),
+    workflow: chained(blocs),
+    fichiers: { "liste.mjs": o.code },
+  });
+}
+
+/** Three pages of the slow site, read one by one: « Lecture de 127.0.0.1… » then « 3 / 3 » (Electron's ecrireActionPages). */
+export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages", nom = "Pages") =>
+  writeRunnableAction(dataDir, id, {
+    nom,
+    code: `export default async () => [1, 2, 3].map((n) => ({ url: "${siteUrl}/lent/" + n }));`,
+    blocs: [{ id: "lecture", type: "source.page", parametres: { url: "{url}", parElement: true, champ: "page" } }],
+  });
+
+/** Finished runs written on disk for this action, without temporary files (Electron's executionsSurDisque). */
+export async function runsOnDisk(dataDir: string, id: string): Promise<string[]> {
+  const dir = path.join(actionsDataDir(dataDir), id, "executions");
+  return (await readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json")).sort();
+}
+
+/** A finished run and its result (a title), written on disk (Electron's ecrireResultat). */
+export async function writeResult(dataDir: string, id: string, execution: string, debut: string, titre: string, saisie: string | null = null): Promise<void> {
+  const data = path.join(actionsDataDir(dataDir), id);
+  await mkdir(path.join(data, "executions"), { recursive: true });
+  await mkdir(path.join(data, "resultats"), { recursive: true });
+  await writeFile(
+    path.join(data, "executions", `${execution}.json`),
+    JSON.stringify({ version: 1, id: execution, proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", ...(saisie ? { saisie } : {}), blocs: [] }),
+  );
+  await writeFile(
+    path.join(data, "resultats", `${execution}.json`),
+    JSON.stringify({ version: 1, execution, saisie, resultats: { titre }, plan: { blocs: [{ composant: "titre", props: { texte: titre } }] }, secours: false, vide: false }),
+  );
+}
+
+export const tid = (id: string) => `[data-testid="${id}"]`;
+
+/** Reads and waits on the sidebar UI's elements by CSS selector (Playwright's locators, as these files need them). */
+export function uiQueries(m: Marionette) {
+  const text = (selector: string) => inUi<string | null>(m, "return doc.querySelector(arguments[0])?.textContent ?? null;", [selector]);
+  const count = (selector: string) => inUi<number>(m, "return doc.querySelectorAll(arguments[0]).length;", [selector]);
+  /** Fails with the last text seen. */
+  const until = async (selector: string, ok: (t: string | null) => boolean, what: string, ms: number) => {
+    const deadline = Date.now() + ms;
+    for (let t = await text(selector); ; t = await text(selector)) {
+      if (ok(t)) return;
+      if (Date.now() > deadline) throw new Error(`${selector}: expected ${what}, got ${JSON.stringify(t)}`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  };
+  return {
+    text,
+    count,
+    waitText: (selector: string, expected: string, ms = 10_000) => until(selector, (t) => t?.trim() === expected, JSON.stringify(expected), ms),
+    waitContains: (selector: string, part: string, ms = 10_000) => until(selector, (t) => !!t?.includes(part), `to contain ${JSON.stringify(part)}`, ms),
+    waitCount: (selector: string, n: number, ms = 10_000) => waitUi(m, "return doc.querySelectorAll(arguments[0]).length === arguments[1];", [selector, n], ms),
+    value: (selector: string) => inUi<string | null>(m, "return doc.querySelector(arguments[0])?.value ?? null;", [selector]),
+  };
 }
 
 export interface TestServer {

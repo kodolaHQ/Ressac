@@ -2,6 +2,8 @@
   // Electron's App.svelte, reduced to step 2: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
   // this transparent iframe; the iframe covers the whole window only when the UI shows more than its column.
   import { tick, untrack } from "svelte";
+  import PageAction from "../../navigateur/src/renderer/action/PageAction.svelte";
+  import Actions from "../../navigateur/src/renderer/composants/Actions.svelte";
   import Applications from "../../navigateur/src/renderer/composants/Applications.svelte";
   import BarreCommande from "../../navigateur/src/renderer/composants/BarreCommande.svelte";
   import BarreLaterale from "../../navigateur/src/renderer/composants/BarreLaterale.svelte";
@@ -20,7 +22,8 @@
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
-  import { aUneVue, cibleDeUrlWorkflow, URL_APPLICATIONS, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
+  import { actionDeUrl, aUneVue, cibleDeUrlWorkflow, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
+  import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
   import { masquer, REVELATION_INITIALE, surZone, type ZoneGauche } from "../../navigateur/src/commun/revelation";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
@@ -49,6 +52,14 @@
   const cibleConstructeur = $derived.by(() => {
     const c = ongletActif ? cibleDeUrlWorkflow(ongletActif.url) : null;
     return c?.type === "widget" ? c : null;
+  });
+  // Electron's ZoneContenu: an action's page launches nothing when opened. Refused when the tab's space (or the one shown)
+  // is private; a space not found counts as private.
+  const pageAction = $derived(ongletActif ? actionDeUrl(ongletActif.url) : null);
+  const actionEnPrive = $derived.by(() => {
+    const espaces = etat.valeur?.espaces ?? [];
+    const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
+    return prive(fenetre?.espaceActif) || prive(ongletActif?.espaceId);
   });
   /**
    * ⌘J or ✦ on a builder tab (Electron's agentDuConstructeur): its Agent tab. A UI panel over it closes first; the
@@ -179,8 +190,20 @@
       <Extensions />
     {:else if ongletActif?.url === URL_APPLICATIONS}
       <Applications />
+    {:else if ongletActif?.url === URL_ACTIONS}
+      {#if actionEnPrive}
+        <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+      {:else}
+        <Actions />
+      {/if}
     {:else if cibleConstructeur}
       {#key cibleConstructeur.id}<WorkflowBuilder cible={cibleConstructeur} />{/key}
+    {:else if pageAction}
+      {#if actionEnPrive}
+        <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+      {:else}
+        {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
+      {/if}
     {:else if ongletActif && !pageWeb}
       <InternalPage />
     {/if}
@@ -233,4 +256,6 @@
   }
   .contenu { min-width: 0; min-height: 0; }
   .opaque { background: var(--fond); }
+  /* Electron's ZoneContenu. */
+  .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
 </style>
