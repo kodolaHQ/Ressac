@@ -194,7 +194,7 @@ Limits:
 - A login profile that becomes private or is deleted does not re-ask at once: the accord is refused at the widget's next scheduled harvest (as in Electron, at the next read; no observer).
 - `affichage.html` is written by the agent: the CSP and the guard are deterrence, not proof (same limit as Electron).
 - One home page for every space (as in Electron): widgets, data and accords are not per space.
-- `ia.*` blocks look for the local AI in `<dataDir>/ia-locale`, not in Electron's profile: they fail with « IA locale non installée » until it is imported there (step 6) or `WEBAIOS_KEV_URL` is set. Kev's port defaults to 8008, as in Electron.
+- `ia.*` blocks run entirely in Ollama: Gemma (`gemma4:e4b-mlx`) writes, and the decision model `pplx-decider-flash` replaces Electron's Kev (same `/v1/systemone` request and answers; compared on the owner's real widgets: 90–100 % same keep/drop decisions, score correlation ~0.9). Nothing is installed by WebAiOs-Firefox: run `ollama pull pplx-decider-flash` once; a missing model fails the block with `Kev a répondu 404`. `WEBAIOS_KEV_URL` still points the decisions at a Kev server instead (the e2e use it for their fake).
 
 ## Not migrated yet (step 4)
 

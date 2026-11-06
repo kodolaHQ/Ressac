@@ -104,9 +104,9 @@ const diffuserAcces = () => {
   }, 50);
 };
 
-// Electron's local AI for harvests (agent.ts): started on demand, never installed here; ia.* blocks fail with the noyau's
-// message when Kev is missing.
-const ia = new IaLocale({ dossier: join(dataDir, "ia-locale"), executer: executeurParDefaut });
+// The local AI for harvests: Gemma and the decision model both run in Ollama (Electron launches Kev instead; same
+// /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
+const ia = new IaLocale({ dossier: join(dataDir, "ia-locale"), executer: executeurParDefaut, modeleDecision: "pplx-decider-flash" });
 
 const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
   erreur = null;

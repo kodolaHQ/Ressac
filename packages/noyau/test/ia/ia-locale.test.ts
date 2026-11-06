@@ -38,6 +38,29 @@ describe("IaLocale", () => {
     expect(req.corps).toEqual({ state: "texte", questions });
   });
 
+  it("with modeleDecision, kev() asks Ollama's /v1/systemone with that model and launches nothing", async () => {
+    const ollama = garder(await fauxKev());
+    const { executer } = executeurFactice([]);
+    const lancer = vi.fn();
+    const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, lancer, ollamaUrl: ollama.url, modeleDecision: "pplx-decider-flash" });
+    aArreter.push(ia);
+    const questions = { q: { type: "noul", instructions: "ok ?" } };
+    expect(await ia.kev({ state: "texte", questions })).toEqual({ q: { type: "noul", noul: 0.91 } });
+    const req = ollama.requetes.find((x) => x.url === "/v1/systemone")!;
+    expect(req.corps).toEqual({ state: "texte", questions, model: "pplx-decider-flash" });
+    expect(lancer).not.toHaveBeenCalled();
+    expect(ia.etat().etat).not.toBe("non-installee");
+  });
+
+  it("an imposed Kev address wins over modeleDecision", async () => {
+    const kev = garder(await fauxKev());
+    const { executer } = executeurFactice([]);
+    const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, kevUrl: kev.url, ollamaUrl: await urlInjoignable(), modeleDecision: "pplx-decider-flash" });
+    aArreter.push(ia);
+    await ia.kev({ state: "texte", questions: {} });
+    expect(kev.requetes.find((x) => x.url === "/v1/systemone")!.corps).toEqual({ state: "texte", questions: {} });
+  });
+
   it("gemma() envoie le modèle gemma4:e4b-mlx, think false, et analyse le JSON si demandé", async () => {
     const ollama = garder(await fauxOllama('{"a":1}'));
     const { executer } = executeurFactice([]);

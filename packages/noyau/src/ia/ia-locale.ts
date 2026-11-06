@@ -21,6 +21,8 @@ export interface OptionsIaLocale {
   lancer?: (cmd: string, args: string[], o: { cwd: string }) => ProcessusIa;
   kevUrl?: string;
   ollamaUrl?: string;
+  /** Ollama decision model (same /v1/systemone API as Kev) used instead of launching Kev; an imposed Kev address wins. */
+  modeleDecision?: string;
   port?: number;
   inactiviteMs?: number;
   horloge?: () => number;
@@ -255,15 +257,16 @@ export class IaLocale {
   async kev(corps: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
     if (this.fermee) throw new Error(ERREUR_IA_FERMEE);
     verifierAbandon(o.signal);
-    await this.assurerKev();
+    const modele = this.kevImposee ? undefined : this.o.modeleDecision;
+    if (!modele) await this.assurerKev();
     verifierAbandon(o.signal);
     this.dernierUsage = this.horloge();
     let r: Response;
     try {
-      r = await fetch(`${this.kevUrl}/v1/systemone`, {
+      r = await fetch(`${modele ? this.ollamaUrl : this.kevUrl}/v1/systemone`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(corps),
+        body: JSON.stringify(modele ? { ...corps, model: modele } : corps),
         signal: delaiEt(DELAI_KEV_MS, o.signal),
       });
     } catch (e) {
