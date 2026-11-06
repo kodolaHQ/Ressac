@@ -63,6 +63,8 @@ beforeAll(async () => {
     resultats: { photos: [{ titre: "Bonjour", photo: "https://img.exemple/photo.png" }] },
     blocs: cards,
   });
+  const many = Array.from({ length: 40 }, (_, i) => ({ titre: `n${i}`, photo: `https://img.exemple/n${i}.png` }));
+  await writeActionWithResult(w.dataDir, "lazy", { nom: "Lazy", resultats: { photos: many }, blocs: cards });
   await writeActionWithResult(w.dataDir, "images", { nom: "Images", resultats: { photos: Object.entries(PHOTOS).map(([titre, photo]) => ({ titre, photo })) }, blocs: cards });
 }, 60_000);
 
@@ -174,5 +176,26 @@ describe("action page rendering", () => {
     // The redirect's target (/secret) got no request; none carried a cookie or a referrer.
     expect(paths()).toEqual(asked);
     expect(servers.images.seen.every((s) => s.cookie === null && s.referer === null)).toBe(true);
+  });
+
+  // Electron's loading="lazy": an image far below the view is asked only once scrolled near.
+  it("an offscreen result image is not requested until it is scrolled near", async () => {
+    servers.reset();
+    await openActionPage(m, "lazy", "Lazy");
+    const cards = tid("bloc-cartes");
+    await waitUi(m, "return doc.querySelectorAll(arguments[0]).length > 0;", [`${cards} img.pa-image`], 15_000);
+    const n = await q.count(`${cards} .pa-carte`);
+    const last = `/img.exemple/n${n - 1}.png`;
+    await sleep(1000);
+    const before = servers.images.seen.map((s) => s.path);
+    expect(before.length).toBeLessThan(n);
+    expect(before).not.toContain(last);
+    await inUi(m, "const d = doc.querySelector(arguments[0]); d.scrollTop = d.scrollHeight;", [tid("page-action")]);
+    for (const deadline = Date.now() + 10_000; !servers.images.seen.some((s) => s.path === last); await sleep(100))
+      if (Date.now() > deadline) throw new Error(`not asked after the scroll: ${last}`);
+    await waitUi(m, "const c = [...doc.querySelectorAll(arguments[0])].at(-1); return !!c?.querySelector('img.pa-image');", [`${cards} .pa-carte`]);
+    // Each image asked once: a page read again does not ask again.
+    const paths = servers.images.seen.map((s) => s.path);
+    expect(new Set(paths).size).toBe(paths.length);
   });
 });
