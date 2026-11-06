@@ -45,5 +45,6 @@
   .essentiels.grand { grid-template-columns: repeat(auto-fill, 64px); justify-content: center; gap: 12px; }
   button { all: unset; display: grid; place-content: center; height: 44px; border-radius: 10px; background: var(--fond-survol); }
   .grand button { height: 64px; }
-  button.actif { background: var(--fond-actif); outline: 1px solid var(--accent); }
+  /* Inside the box: the sidebar's scroll area clips what sticks out. */
+  button.actif { background: var(--fond-actif); outline: 1px solid var(--accent); outline-offset: -1px; }
 </style>
