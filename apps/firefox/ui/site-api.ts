@@ -5,8 +5,9 @@ const off = () => () => {};
 
 /**
  * Electron's ApiSite for the site bar (FenetreSite.svelte), on the window's controller. What comes out of the chrome is
- * copied (structuredClone): the bar never holds the store's objects. No extensions nor design mode in
- * plan 31: those members do nothing (nobody calls the extension and design ones, their components are aliased away).
+ * copied (structuredClone): the bar never holds the store's objects. The extension and design members do nothing:
+ * the add-on buttons read the window's own (SiteAddonsStrip.svelte, webaiosSiteWindow.addons), the extension menu and
+ * the design mode are aliased away.
  */
 export function createSiteApi(c: SiteWindowController): ApiSite {
   // The controller outlives this document: a listener into a dead document would throw on every call.

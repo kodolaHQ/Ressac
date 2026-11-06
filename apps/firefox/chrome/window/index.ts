@@ -6,7 +6,7 @@ import type { WebAiOsStore } from "../store";
 import { createController } from "./controller";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
-import { setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
+import { refuseSiteTabs, setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs");
@@ -40,6 +40,7 @@ window.addEventListener(
     // A site app's window, or a window its pages opened (its container): never a main window, never a plain popup.
     const site = siteIdOf(window);
     if (site) return setupSiteWindow(window, site);
+    refuseSiteTabs(window);
     const opener = siteOfContainer(window);
     if (opener) {
       setupSiteSmallWindow(window, opener);
