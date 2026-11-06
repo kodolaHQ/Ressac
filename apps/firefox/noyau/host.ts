@@ -20,13 +20,14 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
-const { ACTION_INCONNUE, catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees, surveillerActions } = await import("../../../packages/noyau/src/index.ts");
+const { ACTION_INCONNUE, Atelier, catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees, surveillerActions } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites, SchemaActionSite } = await import("./sites.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
+const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost, SchemaAccord, SchemaIdAction, SchemaSaisieAction } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
@@ -103,6 +104,8 @@ const contexteWidgets = { chemins, dossierWidgets };
 // Actions' runs, results, accords and refusals: outside the space, like Electron.
 const dossierActions = join(dataDir, "actions");
 const contexteActions = { chemins, dossierActions };
+// One container for the agent (whatever its profile) and the apps it launches: the noyau's own default (noyau.ts:389).
+const atelier = new Atelier({ chemins });
 
 let noyau: Noyau | null = null;
 let erreur: string | null = null;
@@ -143,6 +146,8 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
     sites: sites.outils,
+    atelier,
+    applications: apps.gestionnaire,
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or an accord changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
@@ -207,6 +212,8 @@ const changerProfil = (profilAgent: string) => {
 let stopping: Promise<void> | undefined;
 const arreter = () =>
   (stopping ??= (async () => {
+    // First: the apps' stop shares the 5 s quit delay with the sessions' (spike S8).
+    await apps.arreter();
     extensions.arreter();
     await sessions.toutArreter();
     await sites.arreter();
@@ -546,6 +553,8 @@ const rpc = createRpc({
             menagementTest.lire(new URL(url).hostname, (ch) => bridge.lirePageInvisible(url, { profil: null, changerHote: ch })),
         }
       : {}),
+    // The agent's applications (noyau/applications.ts): `apps` is made after the RPC, below.
+    ...Object.fromEntries(["applications.liste", "applications.agir", "applications.fenetreFermee", "applications.navigation", "applications.noter"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
     // Design mode's host side (noyau/design.ts): `design` is made after `sites`, below.
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
@@ -598,6 +607,34 @@ const sites = createSites({
   },
   // A snapshot taken between the start and the end of the deletion is erased again (an app made again starts afresh).
   apresSuppression: (id) => design.siteDeleted(id),
+});
+// The agent's applications: the gestionnaire, the Docker probe, the memory; the windows are the chrome's.
+const apps = createApplicationsHost({
+  chemins,
+  dataDir,
+  atelier,
+  chrome: {
+    ouvrir: (a, cadre) => rpc.request("apps.ouvrir", [a, cadre]),
+    fermer: (dossier) => rpc.request("apps.fermer", [dossier]),
+    montrer: (dossier) => rpc.request("apps.montrer", [dossier]),
+    effacer: (dossier) => rpc.request("apps.effacer", [dossier]),
+  },
+  // As Electron's agent.ts:258-275: the tab is given to the agent when the text is written, then the panel opens.
+  deboguer: (f, texte, acces) => {
+    sessions.preRemplir(
+      f,
+      texte,
+      acces &&
+        (() => {
+          const onglet = acces();
+          if (onglet) noyau?.politique.interactionUtilisateur(onglet);
+        }),
+    );
+    rpc.notify("design.donnerAgent", [f]);
+  },
+  politique: () => noyau?.politique ?? null,
+  // The Applications page reads the list again; design mode too (the running apps' ports may have changed).
+  diffuser: () => (rpc.notify("applications.change"), rpc.notify("design.change")),
 });
 // Design mode: remarks, the external MCP server and the review, without waiting for the noyau.
 const design = createDesignHost({

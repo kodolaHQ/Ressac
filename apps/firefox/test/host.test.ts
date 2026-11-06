@@ -97,6 +97,14 @@ afterEach(async () => {
       h.child.kill("SIGKILL");
       await h.exited;
     }
+    // A fake app left running would hold its test port (as Electron's applications.spec.ts:9-20).
+    for (const f of existsSync(h.racine) ? readdirSync(h.racine) : [])
+      if (/^faux-docker-app-.*\.pid$/.test(f))
+        try {
+          process.kill(-Number(readFileSync(join(h.racine, f), "utf8")), "SIGKILL");
+        } catch {
+          // already stopped
+        }
     // Detached fake docker calls started before the host exited can still append to the journal for a moment.
     const rm = () => rmSync(h.dataDir, { recursive: true, force: true });
     try {
@@ -983,5 +991,177 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     h.rpc.notify("extensions.plantage", { addonId: ID, le: t + 1000 });
     await until(() => f.activations.at(-1)?.actif === false);
     expect(entree(h.dataDir)).toMatchObject({ desactivee: { raison: "plantages" } });
+  });
+});
+
+describe("agent applications", { timeout: 30_000 }, () => {
+  const APPS = { WEBAIOS_PORTS_APPS: "15280-15284", WEBAIOS_DELAI_APP_MS: "3000" };
+  type Liste = { atelier: string; applications: { dossier: string; etat: string; port?: number; favicon?: string; dernierLancement?: string }[] };
+  /** Electron's ecrireProjet (e2e/aide.ts) with its "ok" server: projets/essai, named Essai. */
+  const writeEssai = (dataDir: string) => {
+    const chemin = join(dataDir, "espace", "projets", "essai");
+    mkdirSync(chemin, { recursive: true });
+    writeFileSync(
+      join(chemin, "serveur.mjs"),
+      `import { createServer } from "node:http";
+createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end('<title>Essai essai</title>');
+}).listen(Number(process.env.PORT));
+`,
+    );
+    writeFileSync(join(chemin, "webaios.json"), JSON.stringify({ type: "application", lancement: "node serveur.mjs", nom: "Essai" }));
+  };
+  /** A host with the essai project and a fake chrome noting the apps.* requests. */
+  const startApps = (env: Record<string, string> = {}, handlers: Record<string, Handler> = {}) => {
+    const chrome = { ouvertures: [] as { dossier: string; nom: string; port: number }[], effacees: [] as string[], changes: 0 };
+    const h = startHost({ ...APPS, ...env }, writeEssai, {
+      handlers: {
+        "apps.ouvrir": ([a]: [{ dossier: string; nom: string; port: number }]) => void chrome.ouvertures.push(a),
+        "apps.fermer": () => undefined,
+        "apps.montrer": () => true,
+        "apps.effacer": ([d]: [string]) => void chrome.effacees.push(d),
+        "applications.change": () => void chrome.changes++,
+        ...handlers,
+      },
+    });
+    return { h, chrome };
+  };
+  const liste = (h: Host) => h.rpc.request<Liste>("applications.liste");
+  const essai = async (h: Host) => (await liste(h)).applications.find((a) => a.dossier === "essai");
+  const agir = (h: Host, action: string, dossier = "essai") => h.rpc.notify("applications.agir", { dossier, action, fenetre: "f1" });
+  const arrets = (h: Host) => (existsSync(join(h.racine, "faux-docker-arrets.log")) ? readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8") : "");
+  const launched = async (h: Host, chrome: { ouvertures: unknown[] }) => {
+    agir(h, "lancer");
+    await until(() => chrome.ouvertures.length > 0, 20_000);
+    expect((await essai(h))?.etat).toBe("en-marche");
+  };
+
+  it("applications.liste lists essai with atelier ok, without waiting for docker", async () => {
+    // docker info answers after 8 s.
+    const { h } = startApps({ FAUX_DOCKER_LENT: "1" });
+    const t = Date.now();
+    const l = await liste(h);
+    expect(Date.now() - t).toBeLessThan(4000);
+    expect(l.atelier).toBe("ok");
+    expect(l.applications).toEqual([expect.objectContaining({ dossier: "essai", nom: "Essai", etat: "arretee" })]);
+  });
+
+  it("lancer asks the chrome to open the app on a port of WEBAIOS_PORTS_APPS, and notes dernierLancement", async () => {
+    const { h, chrome } = startApps();
+    await launched(h, chrome);
+    const [a] = chrome.ouvertures;
+    expect(a).toMatchObject({ dossier: "essai", nom: "Essai" });
+    expect(a!.port).toBeGreaterThanOrEqual(15280);
+    expect(a!.port).toBeLessThanOrEqual(15284);
+    const e = await essai(h);
+    expect(e).toMatchObject({ port: a!.port, dernierLancement: expect.any(String) });
+    expect(Date.now() - Date.parse(e!.dernierLancement!)).toBeLessThan(30_000);
+  });
+
+  it("fenetreFermee by the owner stops the app; a wanted close does not", async () => {
+    const { h, chrome } = startApps();
+    await launched(h, chrome);
+    const avant = arrets(h);
+    h.rpc.notify("applications.fenetreFermee", { dossier: "essai", parUtilisateur: false });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(arrets(h).slice(avant.length)).not.toContain("WEBAIOS_APP=essai");
+    expect((await essai(h))?.etat).toBe("en-marche");
+    h.rpc.notify("applications.fenetreFermee", { dossier: "essai", parUtilisateur: true });
+    await until(() => arrets(h).slice(avant.length).includes("WEBAIOS_APP=essai"));
+    expect((await essai(h))?.etat).toBe("arretee");
+  });
+
+  it("supprimer is refused while running, and for ../x", async () => {
+    const { h, chrome } = startApps({}, {});
+    mkdirSync(join(h.racine, "x"), { recursive: true });
+    await launched(h, chrome);
+    agir(h, "supprimer");
+    agir(h, "supprimer", "../x");
+    await new Promise((r) => setTimeout(r, 500));
+    await liste(h);
+    expect(existsSync(join(h.racine, "projets", "essai", "webaios.json"))).toBe(true);
+    expect(existsSync(join(h.racine, "x"))).toBe(true);
+    expect(chrome.effacees).toEqual([]);
+  });
+
+  it("supprimer erases the folder, the memory and asks apps.effacer", async () => {
+    const { h, chrome } = startApps();
+    const memoire = join(h.dataDir, "applications.json");
+    h.rpc.notify("applications.noter", { dossier: "essai", cadre: { x: 1, y: 2, largeur: 300, hauteur: 200 } });
+    await until(() => existsSync(memoire) && readFileSync(memoire, "utf8").includes("essai"));
+    agir(h, "supprimer");
+    await until(() => !existsSync(join(h.racine, "projets", "essai")));
+    await until(() => chrome.effacees.length > 0);
+    expect(chrome.effacees).toEqual(["essai"]);
+    await until(() => !readFileSync(memoire, "utf8").includes("essai"));
+    expect((await liste(h)).applications).toEqual([]);
+    // Outside the container's mount.
+    expect(existsSync(join(h.racine, "applications.json"))).toBe(false);
+  });
+
+  it("noter keeps a data:image favicon of 64 KB at most", async () => {
+    const { h, chrome } = startApps();
+    const favicon = "data:image/png;base64," + "A".repeat(1000);
+    h.rpc.notify("applications.noter", { dossier: "essai", favicon });
+    await until(() => chrome.changes > 0);
+    expect((await essai(h))?.favicon).toBe(favicon);
+    const trop = "data:image/png;base64," + "A".repeat(64 * 1024);
+    for (const f of [trop, "data:text/html,<b>x</b>", "https://exemple.test/favicon.ico", 3])
+      h.rpc.notify("applications.noter", { dossier: "essai", favicon: f });
+    expect((await essai(h))?.favicon).toBe(favicon);
+  });
+
+  it("deboguer pre-fills the window's agent and opens its panel", async () => {
+    const donnes: unknown[] = [];
+    const { h } = startApps({}, { "design.donnerAgent": (p: unknown) => void donnes.push(p) });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    agir(h, "deboguer");
+    await until(() => h.donnees().includes("essai"));
+    await until(() => donnes.length > 0);
+    expect(donnes).toEqual([["f1"]]);
+  });
+
+  it("the host stops the apps first on stdin close", async () => {
+    const { h, chrome } = startApps();
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    await launched(h, chrome);
+    const avant = arrets(h).length;
+    h.child.stdin.end();
+    expect(await h.exited).toBe(0);
+    const apres = arrets(h).slice(avant);
+    const app = apres.indexOf("WEBAIOS_APP=essai");
+    const session = apres.indexOf("cat /tmp/webaios-session-");
+    expect(app).toBeGreaterThanOrEqual(0);
+    expect(session).toBeGreaterThan(app);
+  });
+
+  it("drift: plageDePorts, the app tab and SchemaActionApplication match Electron's", async () => {
+    const { plageDePorts, SchemaActionApplication, appTab } = await import("../noyau/applications");
+    const { SchemaActionApplication: electronSchema } = await import("../../navigateur/src/commun/api");
+    const corps = (source: string, debut: string) => source.slice(source.indexOf(debut), source.indexOf("\n}\n", source.indexOf(debut)));
+    const service = readFileSync(join(import.meta.dirname, "../../navigateur/src/main/applications/service.ts"), "utf8");
+    const copie = readFileSync(join(import.meta.dirname, "../noyau/applications.ts"), "utf8");
+    const debut = "export function plageDePorts(";
+    expect(corps(copie, debut)).toBe(corps(service, debut));
+    expect(plageDePorts("15280-15284")).toEqual([15280, 15284]);
+    const pont = readFileSync(join(import.meta.dirname, "../../navigateur/src/main/agent/pont.ts"), "utf8");
+    expect(pont).toContain('const PREFIXE_APP = "app:";');
+    expect(pont).toContain('return { id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier };');
+    expect(appTab({ dossier: "essai", titre: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", titre: "T", url: "http://localhost:15280/", espace: "", application: "essai" });
+    for (const v of [
+      { dossier: "essai", action: "lancer" },
+      { dossier: "../x", action: "supprimer" },
+      { dossier: "My Project", action: "supprimer" },
+      { dossier: "My Project", action: "lancer" },
+      { dossier: ".", action: "deboguer" },
+      { dossier: "essai", action: "autre" },
+      { dossier: 3, action: "lancer" },
+    ])
+      expect(SchemaActionApplication.safeParse(v).success).toBe(electronSchema.safeParse(v).success);
   });
 });
