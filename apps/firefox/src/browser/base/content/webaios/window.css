@@ -9,13 +9,20 @@
   display: none !important;
 }
 
-/* The UI column on the left; `full` (overlays, empty page) covers the whole window. */
+/* HTML fullscreen (a video): only the page stays. Important: both widths are set inline on the root. */
+:root[webaios-main][inDOMFullscreen] {
+  --webaios-sidebar: 0px !important;
+  --webaios-agent: 0px !important;
+}
+
+/* The UI column on the left, --webaios-sidebar wide (0 while compact mode hides it); `full` (overlays, empty page) covers
+   the whole window. */
 :root[webaios-main] #webaios-sidebar {
   position: fixed;
   top: 0;
   left: 0;
   height: 100%;
-  width: 240px;
+  width: var(--webaios-sidebar, 240px);
   border: none;
   /* Above #tabbrowser-tabbox (z-index 2 in Firefox), for painting and for the mouse. */
   z-index: 3;
@@ -53,7 +60,7 @@
 :root[webaios-main] #tabbrowser-tabbox {
   /* Below the site question's banner, --webaios-banner high (0 without one). */
   margin-top: var(--webaios-banner, 0px);
-  margin-inline-start: 240px;
+  margin-inline-start: var(--webaios-sidebar, 240px);
   margin-inline-end: var(--webaios-agent, 0px);
 }
 
@@ -66,7 +73,7 @@
   --bord: #3a3a42;
   position: fixed;
   top: 0;
-  left: 240px;
+  left: var(--webaios-sidebar, 240px);
   right: var(--webaios-agent, 0px);
   z-index: 2;
   display: flex;

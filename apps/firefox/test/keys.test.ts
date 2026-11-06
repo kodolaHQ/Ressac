@@ -63,6 +63,13 @@ describe("shortcutFor", () => {
     expect(FIREFOX_COMMANDS).toEqual(expect.arrayContaining(["Browser:ShowAllHistory", "Browser:ShowAllBookmarks", "Tools:Downloads"]));
   });
 
+  it("⇧⌘S toggles compact mode, not Firefox's screenshot", () => {
+    expect(key("S", "KeyS", { meta: true, shift: true })).toEqual({ type: "compact" });
+    expect(key("s", "KeyS", { meta: true })).toBeNull();
+    expect(FIREFOX_KEYS).toContain("key_screenshot");
+    expect(FIREFOX_COMMANDS).toContain("Browser:Screenshot");
+  });
+
   it("leaves other keys alone", () => {
     expect(key("t", "KeyT")).toBeNull();
     expect(key("t", "KeyT", { meta: true, alt: true })).toBeNull();

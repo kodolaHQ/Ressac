@@ -18,12 +18,15 @@
   import { estDemandeAgent } from "../../navigateur/src/renderer/composants/modale.svelte";
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
-  import { api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
+  import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
   import { aUneVue, cibleDeUrlWorkflow, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
+  import { masquer, REVELATION_INITIALE, surZone, type ZoneGauche } from "../../navigateur/src/commun/revelation";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
   import WorkflowBuilder from "./WorkflowBuilder.svelte";
+
+  const MASQUAGE_MS = 300;
 
   const win = window.parent.webaiosWindow!;
 
@@ -103,16 +106,58 @@
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
   const overlay = $derived(!!demandeAgent || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panneau));
+
+  // Compact mode, as Electron's App: touching the left edge reveals the sidebar, which takes its column back while hovered.
+  // The controller reports the mouse everywhere in the window; the decision is in revelation.ts.
+  const compact = $derived(fenetre?.compact ?? false);
+  let revelee = $state(false);
+  let armee = REVELATION_INITIALE.armee;
+  let zone: ZoneGauche = "loin";
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+  const barreVisible = $derived(!compact || revelee);
+
+  function surZoneSouris(z: ZoneGauche) {
+    zone = z;
+    if (!compact) return;
+    const r = surZone({ revelee, armee }, z);
+    armee = r.armee;
+    revelee = r.revelee;
+    if (r.masquer) planifierMasquage();
+    else clearTimeout(minuterie);
+  }
+  function planifierMasquage() {
+    clearTimeout(minuterie);
+    // The access bubble is mounted outside the sidebar: while it is open, the sidebar stays.
+    if (!revelee || acces.bullesOuvertes > 0) return;
+    minuterie = setTimeout(() => {
+      if (zone !== "loin" || acces.bullesOuvertes > 0) return;
+      const r = masquer(zone);
+      revelee = r.revelee;
+      armee = r.armee;
+    }, MASQUAGE_MS);
+  }
+  // Once the bubble closes, hiding resumes if the mouse is already away from the sidebar.
+  $effect(() => {
+    if (acces.bullesOuvertes === 0) untrack(() => zone === "loin" && planifierMasquage());
+  });
+  $effect(() => api.surZoneGauche(surZoneSouris));
+  $effect(() => win.setSidebarVisible(barreVisible));
+  $effect(() => {
+    if (!compact) {
+      clearTimeout(minuterie);
+      revelee = false;
+    }
+  });
 </script>
 
 <!-- A tab switch to the parking tab blurs the field the empty page had just focused; the controller then focuses this
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusPageVide.n++} />
 
-<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte}>
+<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact={!barreVisible}>
   {#if fenetre}
     <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
-    <BarreLaterale {fenetre} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
+    <BarreLaterale {fenetre} cachee={!barreVisible} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
   {:else}
     <aside data-testid="barre-laterale"></aside>
   {/if}
@@ -162,6 +207,7 @@
     grid-template-columns: 240px 1fr;
     height: 100%;
   }
+  .fenetre.compact { grid-template-columns: 1fr; }
   .contenu { min-width: 0; min-height: 0; }
   .opaque { background: var(--fond); }
 </style>

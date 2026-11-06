@@ -9,6 +9,8 @@ export type Shortcut =
   | { type: "parcourir"; delta: 1 | -1 }
   /** ⌘J: the agent panel (Electron's menu item « Panneau agent »). */
   | { type: "agent" }
+  /** ⇧⌘S: the sidebar's compact mode (Electron's menu item « Mode compact »). */
+  | { type: "compact" }
   /** ⌘Y, ⇧⌘J: a UI panel (Electron's menu items « Historique » and « Téléchargements »). */
   | { type: "panneau"; p: Panneau }
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
@@ -35,6 +37,7 @@ const SHIFT_COMMAND: Record<string, Shortcut> = {
   r: { type: "naviguer", c: "rechargerSansCache" },
   w: { type: "fermerFenetre" },
   j: { type: "panneau", p: "telechargements" },
+  s: { type: "compact" },
 };
 
 /** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
@@ -77,6 +80,8 @@ export const FIREFOX_KEYS = [
   "showAllHistoryKb",
   "key_gotoHistory",
   "manBookmarkKb",
+  // ⇧⌘S: Firefox's screenshot.
+  "key_screenshot",
 ];
 
 /**
@@ -104,4 +109,6 @@ export const FIREFOX_COMMANDS = [
   "Tools:Downloads",
   // ⇧⌘⌫ (key_sanitize_mac) and History > Clear Recent History: Firefox's sanitize dialog.
   "Tools:Sanitize",
+  // Tools > Take Screenshot: its menu item keeps the ⇧⌘S of compact mode.
+  "Browser:Screenshot",
 ];

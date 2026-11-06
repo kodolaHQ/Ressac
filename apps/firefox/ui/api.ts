@@ -104,6 +104,7 @@ export function createApi(win: WindowController): ApiFirefox {
     surRaccourci: (callback) => untilUnload(win.onShortcut(callback)),
     surPanneau: (callback) => untilUnload(win.onPanel(callback)),
     surPanneauOnglets: (callback) => untilUnload(win.onTabPanel((p) => callback(p && structuredClone(p)))),
+    surZoneGauche: (callback) => untilUnload(win.onLeftZone(callback)),
     // The window's terminal session, in the noyau host. Its output and states are routed by window.
     agent: {
       demarrer(taille) {

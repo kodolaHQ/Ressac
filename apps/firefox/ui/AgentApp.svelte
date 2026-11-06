@@ -63,7 +63,7 @@
     debut ??= window.innerWidth;
     const reelle = voulue - debut + window.innerWidth;
     // Always room for the page: 300 px at least beside the sidebar.
-    const max = Math.min(LARGEUR_AGENT_MAX, window.parent.innerWidth - 240 - 300);
+    const max = Math.min(LARGEUR_AGENT_MAX, window.parent.innerWidth - win.sidebarWidth() - 300);
     const largeur = Math.round(Math.max(LARGEUR_AGENT_MIN, Math.min(max, reelle)));
     win.setAgentWidth(largeur);
     if (fin) {

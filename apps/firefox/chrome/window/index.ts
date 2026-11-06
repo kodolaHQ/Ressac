@@ -23,6 +23,7 @@ declare global {
     readonly STATE_MINIMIZED: number;
     readonly STATE_FULLSCREEN: number;
     readonly windowRoot: EventTarget;
+    readonly mozInnerScreenX: number;
     /** In a popup: the WebAiOs tab it was opened from (setupPopup). */
     webaiosPopupSource?: import("../../../navigateur/src/commun/modele").IdOnglet;
     webaiosWindow?: import("./controller").WindowController;

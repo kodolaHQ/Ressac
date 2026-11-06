@@ -198,7 +198,6 @@ Limits:
 
 ## Not migrated yet (step 4)
 
-- compact mode;
 - site-app permission checks;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;

@@ -1,8 +1,9 @@
 import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
-import { cibleDeUrlWorkflow, contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
+import { cibleDeUrlWorkflow, contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, LARGEUR_BARRE, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
 import { versUrl } from "../../../navigateur/src/main/adresse";
 import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
 import { versNieme } from "../../../navigateur/src/main/raccourcis";
+import { zoneGauche, zoneSortie, type ZoneGauche } from "../../../navigateur/src/commun/revelation";
 import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
@@ -39,6 +40,12 @@ export interface WindowController {
    * the window left of the agent panel (true: empty and internal pages) or only its 240 px column (false).
    */
   setFullWindow(full: boolean | "window"): void;
+  /** Compact mode: the sidebar's column, with the iframe and the page following it. */
+  setSidebarVisible(visible: boolean): void;
+  /** Width of the sidebar's column: 0 while compact mode hides it. */
+  sidebarWidth(): number;
+  /** Electron's surZoneGauche: where the mouse is against the left edge, sent when that changes. */
+  onLeftZone(cb: (z: ZoneGauche) => void): () => void;
   /**
    * Notes whether the terminal or the page has the keyboard (an agent card is about to take it) and returns what gives
    * it back: the UI document only knows its own focus, which is its body in both cases.
@@ -145,6 +152,7 @@ export function createController(
   const shortcutListeners = new Set<(r: Raccourci) => void>();
   const panelKeyListeners = new Set<(p: Panneau) => void>();
   const panelListeners = new Set<(p: PanneauOnglets | null) => void>();
+  const leftZoneListeners = new Set<(z: ZoneGauche) => void>();
   // ⌃Tab: recent order and the walk in progress, as in Electron. No page previews in step 2: cards show the icon.
   const walk = new ParcoursOnglets({
     etat: () => store.state,
@@ -197,7 +205,8 @@ export function createController(
         agentFrame.focus();
         for (const cb of shortcutListeners) cb("agent");
       }
-    } else if (s.type === "fenetre") window.OpenBrowserWindow();
+    } else if (s.type === "compact") store.dispatch({ type: "basculerCompact", fenetreId });
+    else if (s.type === "fenetre") window.OpenBrowserWindow();
     else if (s.type === "fermerFenetre") window.close();
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
@@ -213,11 +222,33 @@ export function createController(
   };
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
+  // Compact mode, as Electron's Vues: the mouse in window px, noted on moves. The page may shift under a still mouse (the
+  // sidebar revealed); its last real position is what counts when it leaves the window.
+  let zone: ZoneGauche | null = null;
+  let lastX = Infinity;
+  const sendZone = (z: ZoneGauche) => {
+    if (z !== zone) for (const cb of leftZoneListeners) cb(z);
+  };
+  const onMouseMove = (e: MouseEvent) => {
+    lastX = e.screenX - window.mozInnerScreenX;
+    const z = zoneGauche(lastX);
+    sendZone(z);
+    zone = z;
+  };
+  const onMouseOut = (e: MouseEvent) => {
+    if (e.relatedTarget) return;
+    sendZone(zoneSortie(lastX));
+    zone = null; // the next move is sent even in the same zone
+  };
+  window.addEventListener("mousemove", onMouseMove, true);
+  window.addEventListener("mouseout", onMouseOut, true);
   // The UI documents' events stop at their own window: listen there too, on each load.
   for (const f of [frame, agentFrame])
     f.addEventListener("load", () => {
       f.contentWindow!.addEventListener("keydown", onKeyDown, true);
       f.contentWindow!.addEventListener("keyup", onKeyUp, true);
+      f.contentWindow!.addEventListener("mousemove", onMouseMove, true);
+      f.contentWindow!.addEventListener("mouseout", onMouseOut, true);
     });
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
@@ -246,6 +277,7 @@ export function createController(
   window.CanCloseWindow = () => (quit && !quit.data) || canCloseWindow();
   /** Tabs whose page is being asked: a second ⌘W must not ask again. */
   const asking = new Set<IdOnglet>();
+  let sidebarWidth = LARGEUR_BARRE;
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
   // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; Electron has
   // no native sidebar, so every item is off, including the ones SidebarController adds or re-enables later.
@@ -341,6 +373,15 @@ export function createController(
     setFullWindow(full) {
       frame.toggleAttribute("full", !!full);
       frame.toggleAttribute("over", full === "window");
+    },
+    setSidebarVisible(visible) {
+      sidebarWidth = visible ? LARGEUR_BARRE : 0;
+      document.documentElement.style.setProperty("--webaios-sidebar", `${sidebarWidth}px`);
+    },
+    sidebarWidth: () => sidebarWidth,
+    onLeftZone(cb) {
+      leftZoneListeners.add(cb);
+      return () => void leftZoneListeners.delete(cb);
     },
     rememberFocus() {
       const had = document.activeElement;
