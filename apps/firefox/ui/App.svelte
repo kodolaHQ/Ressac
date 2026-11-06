@@ -48,11 +48,8 @@
     api.rendreFocusPage();
   };
   const basculerPanneau = (p: Panneau) => (panneau === p ? fermerPanneau() : (panneau = p));
-  /** A widget's workflow builder is the active tab (an action's is not ported: the internal page shows). */
-  const cibleConstructeur = $derived.by(() => {
-    const c = ongletActif ? cibleDeUrlWorkflow(ongletActif.url) : null;
-    return c?.type === "widget" ? c : null;
-  });
+  /** A widget's or an action's workflow builder is the active tab. */
+  const cibleConstructeur = $derived(ongletActif ? cibleDeUrlWorkflow(ongletActif.url) : null);
   // Electron's ZoneContenu: an action's page launches nothing when opened. Refused when the tab's space (or the one shown)
   // is private; a space not found counts as private.
   const pageAction = $derived(ongletActif ? actionDeUrl(ongletActif.url) : null);
@@ -197,7 +194,11 @@
         <Actions />
       {/if}
     {:else if cibleConstructeur}
-      {#key cibleConstructeur.id}<WorkflowBuilder cible={cibleConstructeur} />{/key}
+      {#if cibleConstructeur.type === "action" && actionEnPrive}
+        <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>
+      {:else}
+        {#key `${cibleConstructeur.type}:${cibleConstructeur.id}`}<WorkflowBuilder cible={cibleConstructeur} />{/key}
+      {/if}
     {:else if pageAction}
       {#if actionEnPrive}
         <p class="plante" data-testid="action-espace-prive">{ACTIONS_EN_ESPACE_PRIVE}</p>

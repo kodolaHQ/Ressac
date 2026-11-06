@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { cheminsEspace } from "../../../packages/noyau/src/index";
 import * as electron from "../../navigateur/src/commun/api";
@@ -134,5 +134,75 @@ describe("fenetres.actives mirror", () => {
     store.dispatch({ type: "ouvrirOnglet", fenetreId: f, url: "webaios://workflow/veille" }, () => "t1");
     store.dispatch({ type: "ouvrirOnglet", fenetreId: f, url: "https://x.test/" }, () => "t2");
     expect(sent.filter(([m]) => m === "fenetres.actives").map(([, p]) => p)).toEqual([{ [f]: null }, { [f]: "webaios://workflow/veille" }, { [f]: null }]);
+  });
+});
+
+// Electron's constructeur.ts is imported only for the drift test: its electron imports (through ./actions) are never used.
+vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
+vi.mock("../../navigateur/src/main/onglets/vues", () => ({}));
+
+/** A space with one action, `gitlab`, and its data folder outside the space. */
+function mountAction(decl: object) {
+  const racine = realpathSync(mkdtempSync(join(tmpdir(), "workflow-action-")));
+  dirs.push(racine);
+  const chemins = cheminsEspace(join(racine, "espace"));
+  const dossier = join(chemins.actions, "gitlab");
+  mkdirSync(dossier, { recursive: true });
+  writeFileSync(join(dossier, "action.json"), JSON.stringify(decl));
+  return { chemins, dossier, c: { chemins, dossierActions: join(racine, "actions") } };
+}
+
+describe("action workflow edition, drift against Electron's constructeur.ts", () => {
+  const withInput = { nom: "GitLab", saisie: { libelle: "Projet" }, sources: { publiques: ["gitlab.com"] }, miseEnPage: "Un tableau", dureeMaxMinutes: 5 };
+  const read = { id: "lire", type: "code", position: { x: 0, y: 0 }, parametres: { source: "lire.mjs" } };
+  const page = { id: "page", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://gitlab.com/{saisie}" } };
+  const toPage = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, parametres: { vers: "page" } };
+  const wf = { version: 1, blocs: [read, toPage], liens: [{ de: "lire", vers: "sortie" }] };
+  const wfInput = { version: 1, blocs: [page, toPage], liens: [{ de: "page", vers: "sortie" }] };
+
+  it("readActionEdition, saveActionEdition, readActionCode and saveActionCode answer as Electron", async () => {
+    const e = await import("../../navigateur/src/main/agent/constructeur");
+    for (const decl of [withInput, { nom: "GitLab", sources: { publiques: ["gitlab.com"] } }]) {
+      const [a, b] = [mountAction(decl), mountAction(decl)];
+      // No workflow.json: nothing to open.
+      expect(await copy.readActionEdition(a.c, "gitlab")).toEqual(await e.lireEditionAction(b.c, "gitlab"));
+      expect(await copy.readActionEdition(a.c, "absente")).toEqual(await e.lireEditionAction(b.c, "absente"));
+      expect(await copy.readActionCode(a.chemins, "gitlab", "lire.mjs")).toEqual(await e.lireCodeAction(b.chemins, "gitlab", "lire.mjs"));
+      expect(await copy.saveActionCode(a.chemins, "gitlab", "lire.mjs", "export default async () => []")).toEqual(
+        await e.enregistrerCodeAction(b.chemins, "gitlab", "lire.mjs", "export default async () => []"),
+      );
+      expect(await copy.readActionCode(a.chemins, "gitlab", "lire.mjs")).toEqual(await e.lireCodeAction(b.chemins, "gitlab", "lire.mjs"));
+      for (const draft of [wf, wfInput, { version: 1, blocs: [], liens: [] }]) {
+        const saved = await copy.saveActionEdition(a.c, "gitlab", draft);
+        expect(saved).toEqual(await e.enregistrerEditionAction(b.c, "gitlab", draft));
+        expect(await copy.readActionEdition(a.c, "gitlab")).toEqual(await e.lireEditionAction(b.c, "gitlab"));
+      }
+      // The cases compared above include a saved workflow with its action, not only nulls.
+      expect(await copy.readActionEdition(a.c, "gitlab")).toMatchObject({ origine: "fichier", action: { nom: "GitLab" } });
+      expect(await copy.saveActionEdition(a.c, "absente", wf)).toEqual(await e.enregistrerEditionAction(b.c, "absente", wf));
+      expect(await copy.saveActionCode(a.chemins, "absente", "x.mjs", "1")).toEqual(await e.enregistrerCodeAction(b.chemins, "absente", "x.mjs", "1"));
+      // An unreadable action.json.
+      writeFileSync(join(a.dossier, "action.json"), "{pas du json");
+      writeFileSync(join(b.dossier, "action.json"), "{pas du json");
+      expect(await copy.readActionEdition(a.c, "gitlab")).toEqual(await e.lireEditionAction(b.c, "gitlab"));
+      expect(await copy.saveActionEdition(a.c, "gitlab", wf)).toEqual(await e.enregistrerEditionAction(b.c, "gitlab", wf));
+    }
+  });
+
+  it("a symlinked action folder gives null and writes nothing outside", async () => {
+    const m = mountAction(withInput);
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "workflow-outside-")));
+    dirs.push(outside);
+    writeFileSync(join(outside, "action.json"), readFileSync(join(m.dossier, "action.json")));
+    writeFileSync(join(outside, "workflow.json"), JSON.stringify(wf));
+    writeFileSync(join(outside, "lire.mjs"), "secret");
+    rmSync(m.dossier, { recursive: true });
+    symlinkSync(outside, m.dossier);
+    expect(await copy.actionFolder(m.chemins, "gitlab")).toBeNull();
+    expect(await copy.readActionEdition(m.c, "gitlab")).toBeNull();
+    expect(await copy.readActionCode(m.chemins, "gitlab", "lire.mjs")).toEqual({ erreur: expect.any(String) });
+    expect(await copy.saveActionCode(m.chemins, "gitlab", "neuf.mjs", "pwned")).toMatchObject({ ok: false });
+    expect(await copy.saveActionEdition(m.c, "gitlab", wf)).toMatchObject({ ok: false });
+    expect(existsSync(join(outside, "neuf.mjs"))).toBe(false);
   });
 });

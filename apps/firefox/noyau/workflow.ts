@@ -3,16 +3,20 @@ import { lstat, open, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { z } from "zod";
 import {
+  ACTION_INCONNUE,
   avertirWorkflow,
   contexteValidation,
+  contexteValidationAction,
   DeclarationWidget,
   enregistrerCode,
   enregistrerWorkflow,
   ID_EXECUTION,
+  lireAction,
   lireBrouillon,
   lireCode,
   validerWorkflow,
   type Avertissement,
+  type DeclarationAction,
   type CheminsEspace,
   type ResultatEnregistrement,
   type WorkflowOuvert,
@@ -20,7 +24,7 @@ import {
 import { cibleDeUrlWorkflow } from "../../navigateur/src/commun/modele.ts";
 import type { EditionWorkflow, SelectionConstructeur } from "../../navigateur/src/commun/api.ts";
 
-// The widget part of Electron's main/agent/constructeur.ts, copied: it imports ./accueil, which imports electron, so the
+// The widget and action parts of Electron's main/agent/constructeur.ts, copied: it imports ./accueil, which imports electron, so the
 // Node host cannot import it. Same rules, same noyau calls.
 
 // Electron's IPC schemas (commun/api.ts), copied: api.ts re-exports "./canaux" without extension, which Node refuses.
@@ -97,12 +101,21 @@ const MESSAGE_ILLISIBLE = "Écriture impossible";
  * link) inside it. The agent writes there: it must not redirect a read or a write to a file of the Mac.
  */
 async function dossierWidgetSur(chemins: CheminsEspace, id: string): Promise<string | null> {
+  return dossierConfine(chemins.widgets, id);
+}
+
+/** An action's folder, with the same guards as a widget's. */
+export async function actionFolder(chemins: CheminsEspace, id: string): Promise<string | null> {
+  return dossierConfine(chemins.actions, id);
+}
+
+async function dossierConfine(parent: string, id: string): Promise<string | null> {
   try {
-    if ((await lstat(chemins.widgets)).isSymbolicLink()) return null;
-    const dossier = join(chemins.widgets, id);
+    if ((await lstat(parent)).isSymbolicLink()) return null;
+    const dossier = join(parent, id);
     const l = await lstat(dossier);
     if (l.isSymbolicLink() || !l.isDirectory()) return null;
-    const [racine, reel] = await Promise.all([realpath(chemins.widgets), realpath(dossier)]);
+    const [racine, reel] = await Promise.all([realpath(parent), realpath(dossier)]);
     return reel.startsWith(racine + sep) ? dossier : null;
   } catch {
     return null;
@@ -204,6 +217,93 @@ export async function saveCode(chemins: CheminsEspace, id: string, nom: string, 
     return await enregistrerCode(dossier, nom, texte);
   } catch (e) {
     console.error(`[webaios] code du widget ${id} :`, e);
+    return { ok: false, erreur: MESSAGE_ILLISIBLE };
+  }
+}
+
+// --- An action's workflow (`webaios://workflow/action/<id>`), Electron's constructeur.ts:187-276. Drift test in
+// test/workflow-host.test.ts.
+
+type ActionContext = { chemins: CheminsEspace; dossierActions: string };
+
+/** `action.json` read, and the action's (confined) folder; null: unknown action; `erreur`: unreadable declaration. */
+async function declarationAction(chemins: CheminsEspace, id: string): Promise<{ declaration: DeclarationAction; dossier: string } | { erreur: string } | null> {
+  const dossier = await actionFolder(chemins, id);
+  const a = dossier ? await lireAction(chemins, id) : null;
+  if (!dossier || !a) return null;
+  return "erreur" in a ? { erreur: a.erreur } : { declaration: a.declaration, dossier };
+}
+
+function avertissementsAction(brut: unknown, d: DeclarationAction): Avertissement[] {
+  const r = validerWorkflow(brut, contexteValidationAction(d));
+  if (!r.ok) return [];
+  return avertirWorkflow(
+    r.valide.workflow,
+    { sources: d.sources, config: null, dureeMaxMinutes: d.dureeMaxMinutes ?? null, proprietaire: "action", saisie: d.saisie !== undefined },
+    r.valide,
+  );
+}
+
+/** What the builder opens for an action: its `workflow.json` only (no implicit workflow); null: unknown, unreadable, no workflow or disk error. Writes nothing. */
+export async function readActionEdition(c: ActionContext, id: string): Promise<EditionWorkflow | null> {
+  try {
+    const d = await declarationAction(c.chemins, id);
+    if (!d || "erreur" in d) return null;
+    const decl = d.declaration;
+    const l = await lireBrouillon(d.dossier, contexteValidationAction(decl));
+    if (!l || l.origine !== "fichier") return null;
+    return {
+      ...l,
+      avertissements: l.brut === null ? [] : avertissementsAction(l.brut, decl),
+      action: {
+        nom: decl.nom,
+        compte: decl.sources.compte,
+        publiques: decl.sources.publiques,
+        web: decl.sources.web,
+        saisie: decl.saisie ?? null,
+        miseEnPage: decl.miseEnPage ?? null,
+        dureeMaxMinutes: decl.dureeMaxMinutes ?? null,
+      },
+    };
+  } catch (e) {
+    console.error(`[webaios] lecture du workflow de l'action ${id} :`, e);
+    return null;
+  }
+}
+
+/** Saves the action's draft; `action.json` is never written. Call inside `inSeries`. */
+export async function saveActionEdition(c: ActionContext, id: string, brut: unknown): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }> {
+  try {
+    const d = await declarationAction(c.chemins, id);
+    if (!d) return { ok: false, erreur: ACTION_INCONNUE, avertissements: [] };
+    if ("erreur" in d) return { ok: false, erreur: d.erreur, avertissements: [] };
+    const r = await enregistrerWorkflow({
+      dossierFichiers: d.dossier,
+      dossierDonnees: join(c.dossierActions, id),
+      brut,
+      contexte: contexteValidationAction(d.declaration),
+    });
+    return { ...r, avertissements: r.ok ? avertissementsAction(brut, d.declaration) : [] };
+  } catch (e) {
+    console.error(`[webaios] enregistrement du workflow de l'action ${id} :`, e);
+    return { ok: false, erreur: MESSAGE_ILLISIBLE, avertissements: [] };
+  }
+}
+
+export async function readActionCode(chemins: CheminsEspace, id: string, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }> {
+  const dossier = await actionFolder(chemins, id);
+  if (!dossier) return { erreur: ACTION_INCONNUE };
+  return lireCode(dossier, nom);
+}
+
+/** Call inside `inSeries`: the folder is checked again just before writing. */
+export async function saveActionCode(chemins: CheminsEspace, id: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
+  const dossier = await actionFolder(chemins, id);
+  if (!dossier) return { ok: false, erreur: ACTION_INCONNUE };
+  try {
+    return await enregistrerCode(dossier, nom, texte);
+  } catch (e) {
+    console.error(`[webaios] code de l'action ${id} :`, e);
     return { ok: false, erreur: MESSAGE_ILLISIBLE };
   }
 }

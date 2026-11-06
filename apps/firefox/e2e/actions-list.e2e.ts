@@ -142,7 +142,7 @@ describe("the Actions page", () => {
     await waitRuns("leboncoin", 1);
   });
 
-  // actions.spec.ts:1048 (the builder's content is Task 7's: here, its tab)
+  // actions.spec.ts:1048
   it("« Voir le workflow » opens the action's builder", async () => {
     await openActionsPage();
     await click(m, tid("voir-workflow-tickets"));
@@ -150,6 +150,7 @@ describe("the Actions page", () => {
       `Workflow — ${TICKETS_NOM}`,
     ]);
     expect(Object.values((await state(m)).onglets).filter((o) => o.url === "webaios://workflow/action/tickets")).toHaveLength(1);
+    await visible(tid("constructeur"));
   });
 
   // actions.spec.ts:1063

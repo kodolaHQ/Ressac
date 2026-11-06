@@ -232,7 +232,6 @@ Limits:
 - internal `webaios:` pages: a "not available yet" message (the Applications page shows its Sites section only; the Docker applications and « Projets externes » are not migrated);
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
-- the actions' workflow builder: `webaios://workflow/action/<id>` shows the internal page « Pas encore disponible dans WebAiOs-Firefox. »;
 
 ## The window
 

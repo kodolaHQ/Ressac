@@ -30,9 +30,14 @@ const { createActionsHost, SchemaAccord, SchemaIdAction, SchemaSaisieAction } = 
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
+const { ACTION_TOURNE_DEJA } = await import("../../navigateur/src/commun/actions.ts");
 const {
+  readActionCode,
+  readActionEdition,
   readCode,
   readEdition,
+  saveActionCode,
+  saveActionEdition,
   saveCode,
   saveEdition,
   SchemaBlocWorkflow,
@@ -96,6 +101,7 @@ const urlAction = (v: unknown): v is string => typeof v === "string" && v.length
 const contexteWidgets = { chemins, dossierWidgets };
 // Actions' runs, results, accords and refusals: outside the space, like Electron.
 const dossierActions = join(dataDir, "actions");
+const contexteActions = { chemins, dossierActions };
 
 let noyau: Noyau | null = null;
 let erreur: string | null = null;
@@ -323,34 +329,35 @@ const rpc = createRpc({
     "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
       executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
-    // The workflow builder, as Electron's main/index.ts and ipc.ts: inputs checked with the same schemas, a bad one
-    // answered with ipc.ts's shapes; an action's workflow answered as Electron does with no agent (actions are not ported).
+    // The workflow builder, as Electron's main/index.ts, ipc.ts and constructeur.ts: inputs checked with the same
+    // schemas, a bad one answered with ipc.ts's shapes. The private-space refusal of an action is the chrome's (api.ts).
     "workflow.catalogue": () => catalogueBlocs(),
     "workflow.lire": (p: { cible?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
-      return cible.success && cible.data.type === "widget" ? readEdition(contexteWidgets, cible.data.id) : null;
+      if (!cible.success) return null;
+      return cible.data.type === "widget" ? readEdition(contexteWidgets, cible.data.id) : readActionEdition(contexteActions, cible.data.id);
     },
     "workflow.enregistrer": (p: { cible?: unknown; brouillon?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
       const brouillon = SchemaBrouillon.safeParse(p?.brouillon);
       if (!cible.success || !brouillon.success) return { ...ARGUMENT_INVALIDE, avertissements: [] };
-      if (cible.data.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] };
       const id = cible.data.id;
+      if (cible.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionEdition(contexteActions, id, brouillon.data));
       return writes.inSeries(id, () => saveEdition(contexteWidgets, id, brouillon.data));
     },
     "workflow.lireCode": (p: { cible?: unknown; nom?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
       const nom = SchemaNomCode.safeParse(p?.nom);
       if (!cible.success || !nom.success) return { erreur: ARGUMENT_INVALIDE.erreur };
-      return cible.data.type === "widget" ? readCode(chemins, cible.data.id, nom.data) : { erreur: MESSAGE_AGENT_ARRETE };
+      return cible.data.type === "widget" ? readCode(chemins, cible.data.id, nom.data) : readActionCode(chemins, cible.data.id, nom.data);
     },
     "workflow.enregistrerCode": (p: { cible?: unknown; nom?: unknown; texte?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
       const nom = SchemaNomCode.safeParse(p?.nom);
       const texte = SchemaCodeWorkflow.safeParse(p?.texte);
       if (!cible.success || !nom.success || !texte.success) return ARGUMENT_INVALIDE;
-      if (cible.data.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
       const id = cible.data.id;
+      if (cible.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionCode(chemins, id, nom.data, texte.data));
       return writes.inSeries(id, () => saveCode(chemins, id, nom.data, texte.data));
     },
     "workflow.rejouer": async (p: { cible?: unknown; execution?: unknown; bloc?: unknown }) => {
@@ -359,16 +366,32 @@ const rpc = createRpc({
       const bloc = SchemaBlocWorkflow.safeParse(p?.bloc);
       if (!cible.success || !execution.success || !bloc.success) return ARGUMENT_INVALIDE;
       const n = await pret;
-      if (!n || cible.data.type === "action") return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
-      return n.rejouer(cible.data.id, execution.data, bloc.data);
+      if (!n) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
+      if (cible.data.type === "widget") return n.rejouer(cible.data.id, execution.data, bloc.data);
+      // A trial: its result shows in the builder's preview, never as the last result.
+      const l = n.actions.rejouer(cible.data.id, execution.data, bloc.data);
+      if (l.deja) return { ok: false as const, erreur: ACTION_TOURNE_DEJA };
+      const r = await l.fin;
+      return r.statut !== "invalide" && r.execution !== undefined
+        ? { ok: true as const, execution: r.execution, statut: r.statut }
+        : { ok: false as const, erreur: r.erreur ?? "Rejeu impossible" };
     },
     // Bad input or no noyau: {} (the page then selects no run); a failed run throws nothing.
-    "workflow.lancer": async (p: { cible?: unknown }) => {
+    "workflow.lancer": async (p: { cible?: unknown; saisie?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
-      if (!cible.success || cible.data.type === "action") return {};
+      const saisie = SchemaSaisieAction.safeParse(p?.saisie ?? null);
+      if (!cible.success || !saisie.success) return {};
       const n = await pret;
       if (!n) return {};
       const id = cible.data.id;
+      if (cible.data.type === "action") {
+        // A different input while the action runs is not lost silently.
+        const l = n.actions.lancer(id, { ...(saisie.data?.trim() ? { saisie: saisie.data } : {}), declencheur: "manuelle" });
+        if (l.deja) return { erreur: ACTION_TOURNE_DEJA };
+        const r = await l.fin;
+        if (r.execution !== undefined) return { execution: r.execution };
+        return r.erreur !== undefined ? { erreur: r.erreur } : {};
+      }
       try {
         const r = await n.recolterMaintenant(id, "manuelle");
         return r.execution === undefined ? {} : { execution: r.execution };

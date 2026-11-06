@@ -9,7 +9,8 @@ import { HOST_EXITED } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
-import { createActionsApi, type ActionsFirefox } from "./actions-api";
+import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
+import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
 
 /** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
 export interface AccueilLu {
@@ -96,6 +97,8 @@ export function createApi(win: WindowController): ApiFirefox {
     host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
   /** A host request answered in this realm; `fallback` when the host does not answer (Electron with no agent). */
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
+  /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
+  const privateAction = (cible: { type: string }) => cible.type === "action" && (!win.store.state || espaceActifPrive(win.store.state, fenetre));
   const api: Partial<ApiFirefox> = {
     fenetreId: win.fenetreId,
     // A tab the user closes may ask first (Electron's ipc.ts sends fermerOnglet to Vues.fermer).
@@ -267,15 +270,24 @@ export function createApi(win: WindowController): ApiFirefox {
       couperDeblocage: (cle) => extension("extensions.couperDeblocage", { cle }),
       installerStore: () => extension("extensions.installerStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
-    // The workflow builder: its reads and writes in the noyau host (widgets only, actions are not ported).
+    // The workflow builder: its reads and writes in the noyau host. An action's is refused in a private space with the
+    // shapes of Electron's creerConstructeurActions; its reads are checked again once answered.
     workflow: {
       catalogue: () => ask("workflow.catalogue", undefined, []),
-      lire: (cible) => ask("workflow.lire", { cible }, null),
-      enregistrer: (cible, brouillon) => ask("workflow.enregistrer", { cible, brouillon }, { ok: false, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] }),
-      lireCode: (cible, nom) => ask("workflow.lireCode", { cible, nom }, { erreur: MESSAGE_AGENT_ARRETE }),
-      enregistrerCode: (cible, nom, texte) => ask("workflow.enregistrerCode", { cible, nom, texte }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
-      rejouer: (cible, execution, bloc) => ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
-      lancer: (cible) => ask("workflow.lancer", { cible }, {}),
+      lire: async (cible) => (privateAction(cible) ? null : ask("workflow.lire", { cible }, null).then((r) => (privateAction(cible) ? null : r))),
+      enregistrer: async (cible, brouillon) =>
+        privateAction(cible)
+          ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE, avertissements: [] }
+          : ask("workflow.enregistrer", { cible, brouillon }, { ok: false, erreur: MESSAGE_AGENT_ARRETE, avertissements: [] }),
+      lireCode: async (cible, nom) =>
+        privateAction(cible)
+          ? { erreur: ACTIONS_EN_ESPACE_PRIVE }
+          : ask("workflow.lireCode", { cible, nom }, { erreur: MESSAGE_AGENT_ARRETE }).then((r) => (privateAction(cible) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : r)),
+      enregistrerCode: async (cible, nom, texte) =>
+        privateAction(cible) ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.enregistrerCode", { cible, nom, texte }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
+      rejouer: async (cible, execution, bloc) =>
+        privateAction(cible) ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
+      lancer: async (cible, saisie) => (privateAction(cible) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.lancer", { cible, saisie: saisie ?? null }, {})),
       selection(cible, bloc) {
         // The host keeps it in memory only: resent on `acces`, which a host sends once its noyau has started (and on policy
         // changes, harmless: the same selection again).
