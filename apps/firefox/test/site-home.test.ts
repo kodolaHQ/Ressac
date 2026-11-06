@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cspAccueilSite, FICHIER_ACCUEIL_MAX as ELECTRON_FICHIER_MAX } from "../../navigateur/src/main/sites/accueil";
 import { chargerImage, REDIRECTIONS_IMAGE as ELECTRON_REDIRECTIONS, type OuvrirRequete } from "../../navigateur/src/main/image-distante";
 import { AFFICHAGE_REFUSE } from "../chrome/window/widget-frame";
-import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, REDIRECTIONS_IMAGE, cspAccueilFirefox, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
+import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, HOME_TYPES, REDIRECTIONS_IMAGE, cspAccueilFirefox, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
 
 let root: string;
 let data: string;
@@ -228,6 +228,19 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     app({ "index.html": "<p>accueil</p>", "gros.png": Buffer.alloc(FICHIER_ACCUEIL_MAX + 1), "juste.png": Buffer.alloc(FICHIER_ACCUEIL_MAX), ".cache/x.js": "secret", ".x": "secret" });
     const url = await serveHome(data, "vidola");
     expect(served(url!)).toEqual(["index.html", "juste.png"]);
+  });
+
+  it("copies only Electron's served types (TYPES in main/sites/accueil.ts), nothing else", async () => {
+    app({ "index.html": "<p>accueil</p>", "page.HTML": "<p>p</p>", "x.svg": "<svg/>", "a.js": "1", "x.xhtml": "<x/>", "x.xht": "<x/>", "x.htm": "<p/>", "x.shtml": "<p/>", "x.xml": "<x/>", "sans": "x", "x.exe": "x" });
+    const url = await serveHome(data, "vidola");
+    expect(served(url!)).toEqual(["a.js", "index.html", "page.HTML", "x.svg"]);
+    expect(copied(url!, "page.HTML")).toContain("Content-Security-Policy");
+  });
+
+  it("the copied types are Electron's TYPES (drift)", () => {
+    const source = readFileSync(join(__dirname, "../../navigateur/src/main/sites/accueil.ts"), "utf8");
+    const block = source.slice(source.indexOf("const TYPES"), source.indexOf("};", source.indexOf("const TYPES")));
+    expect([...HOME_TYPES].sort()).toEqual([...block.matchAll(/"(\.[a-z0-9]+)":/g)].map((m) => m[1]).sort());
   });
 
   it("serves AFFICHAGE_REFUSE for an index.html with <link>", async () => {

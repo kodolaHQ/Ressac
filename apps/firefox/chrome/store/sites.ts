@@ -12,7 +12,7 @@ import type { AgentHost } from "../agent/host";
 import type { SiteFrameData } from "../agent/site-actor";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
-import { forgetHome, serveHome, siteImage } from "./site-home";
+import { forgetHome, serveHome, servedHost, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "webaios-sites";
@@ -56,6 +56,8 @@ export interface SiteWindowController {
   homeUrl(): Promise<string | null>;
   /** A real (isTrusted) press in the home's frame. */
   homeGesture(): void;
+  /** Watches the home's frame: any document load in it other than a page of the served copy is cancelled before it starts. */
+  guardHome(frame: HTMLIFrameElement): void;
 }
 
 interface OpenSite {
@@ -170,6 +172,39 @@ const observer = {
   },
 };
 let observing = false;
+
+/** The home's frame may show only a page (.html, so with the home's CSP) of the copy served now, or about:blank. */
+function homePage(id: string, uri: { spec: string } | null): boolean {
+  if (uri?.spec === "about:blank") return true;
+  try {
+    const u = new URL(uri?.spec ?? "");
+    return u.protocol === "resource:" && u.host === servedHost(id) && /\.html$/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+const POLICY_CONTRACT = "@webaios/site-view-policy;1";
+/**
+ * Electron's C8 (fenetres.ts, did-start-navigation): the app view shows only the web. A top-level load of the view that
+ * is not http(s) (file: from ⌘O or a dropped file, mailto: and other external schemes before the OS handler is asked,
+ * blob:, data:) is refused before its channel opens; it shows no error page, the view stays on its page. The request
+ * guard above only sees HTTP channels. Firefox's own error pages still load.
+ */
+const viewPolicy = {
+  classID: Components.ID("{6d1f3c2a-8b4e-4f7a-9c35-2e8d7a1b5f40}"),
+  QueryInterface: ChromeUtils.generateQI(["nsIContentPolicy", "nsIFactory"]),
+  createInstance: (iid: unknown) => (viewPolicy.QueryInterface as (iid: unknown) => unknown)(iid),
+  shouldLoad(location: any, li: any): number {
+    const accept = Ci.nsIContentPolicy.ACCEPT;
+    if (li.externalContentPolicyType !== Ci.nsIContentPolicy.TYPE_DOCUMENT || location.schemeIs("http") || location.schemeIs("https") || li.loadErrorPage) return accept;
+    const browserId = li.browsingContext?.browserId;
+    if (!browserId || ![...open.values()].some((s) => s.view?.browserId === browserId)) return accept;
+    console.warn(`[sites] chargement arrêté dans la vue (hors du web) : ${String(location.spec).slice(0, 80)}`);
+    return Ci.nsIContentPolicy.REJECT_REQUEST;
+  },
+  shouldProcess: () => Ci.nsIContentPolicy.ACCEPT,
+};
 
 /**
  * browser.xhtml with browser.js's window.arguments: [1] extra options (the marker), [5] the first tab's userContextId;
@@ -292,6 +327,20 @@ function controllerOf(s: OpenSite): SiteWindowController {
       s.lastHomeOpen = now;
       return true;
     },
+    guardHome(frame) {
+      const progress = (frame as any).browsingContext?.docShell?.QueryInterface(Ci.nsIWebProgress);
+      if (!progress) return;
+      const L = Ci.nsIWebProgressListener;
+      const listener = {
+        QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+        onStateChange(_progress: unknown, request: any, flags: number) {
+          if (flags & L.STATE_START && flags & L.STATE_IS_DOCUMENT && !homePage(id, request.QueryInterface(Ci.nsIChannel).originalURI)) request.cancel(Cr.NS_BINDING_ABORTED);
+        },
+      };
+      progress.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
+      // Kept on the frame, and gone with it (with its docShell): the docShell holds its progress listeners weakly.
+      (frame as any).webaiosHomeGuard = listener;
+    },
     image: async (url) => (open.get(id) === s && typeof url === "string" ? siteImage(s.userContextId, url, s.site.domaines) : null),
     homeUrl: () => (open.get(id) === s && s.site.aAccueil ? (s.home ??= serveHome(dataDir, id)) : Promise.resolve(null)),
     homeGesture() {
@@ -337,28 +386,34 @@ function attach(s: OpenSite, browser: any): void {
   };
   win.windowRoot.addEventListener("MozUpdateWindowPos", noteSoon);
   win.addEventListener("resize", noteSoon);
-  // On the loaded window: the about:blank document a new window starts with unloads too.
+  // On the loaded window: the about:blank document a new window starts with unloads too. The rest of the closing is
+  // released (closed) once the window is gone, before its startup too.
   win.addEventListener(
     "unload",
     () => {
       win.clearTimeout(pending);
       noteFrame(s);
-      s.listeners.clear();
-      s.notice.dispose();
-      if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
-      // Reopened before this unload: the sign-in windows are the new app's.
-      if (open.get(id) !== s) return;
-      open.delete(id);
-      memoryListeners.delete(id);
-      host?.notify("sites.ferme", { id });
-      // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
-      // Only this app's: a main window is never closed here, whatever its tab's container.
-      for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
     },
     { once: true },
   );
   if (s.vue === "site") loadInView(s, s.site.depart);
   broadcast(s);
+}
+
+/** The app's window is closed (from its creation: a ⌘W before its startup is done too). */
+function closed(s: OpenSite): void {
+  const id = s.site.id;
+  s.listeners.clear();
+  s.notice.dispose();
+  if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
+  // Reopened before this close: the sign-in windows are the new app's.
+  if (open.get(id) !== s) return;
+  open.delete(id);
+  memoryListeners.delete(id);
+  host?.notify("sites.ferme", { id });
+  // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
+  // Only this app's: a main window is never closed here, whatever its tab's container.
+  for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
 }
 
 /** Sign-in windows opened by sites.routeOpen, and the address each loads once set up (takeSmallUrl). */
@@ -382,6 +437,8 @@ export const sites = {
     if (!observing) {
       observing = true;
       Services.obs.addObserver(observer, "http-on-modify-request");
+      Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(viewPolicy.classID, "WebAiOs site view policy", POLICY_CONTRACT, viewPolicy);
+      Services.catMan.addCategoryEntry("content-policy", POLICY_CONTRACT, POLICY_CONTRACT, false, true);
     }
     const userContextId = siteContainer(site.id);
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
@@ -391,6 +448,14 @@ export const sites = {
     const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
+    const onClose = {
+      observe(w: unknown, topic: string) {
+        if (topic !== "domwindowclosed" || w !== win) return;
+        Services.ww.unregisterNotification(onClose);
+        closed(s);
+      },
+    };
+    Services.ww.registerNotification(onClose);
     return true;
   },
   /** Closes the app's window without asking its page (deletion, the host's request); its frame is noted first. */

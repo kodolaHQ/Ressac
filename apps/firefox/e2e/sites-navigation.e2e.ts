@@ -349,6 +349,59 @@ describe("site app navigation", () => {
     await waitNotice("pub.localhost");
   });
 
+  it("loads in the app view that are not http(s) are refused: file: (⌘O, a dropped file), mailto:, an external scheme, blob:", async () => {
+    await openAndWait();
+    await expect.poll(() => inSiteView(m, "vidola", "return document.title;", { frame: 0 }), { timeout: 10_000 }).toBe("Cadre pub");
+    await inSiteView(m, "vidola", "window.marque = 7; return 1;");
+    // What would launch the OS handler (Firefox's content dispatch chooser) records instead.
+    await m.execute(
+      `const reg = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
+       const contract = "@mozilla.org/content-dispatch-chooser;1";
+       window.webaiosTestChooser = { cid: reg.contractIDToCID(contract), mine: Services.uuid.generateUUID(), seen: [] };
+       const chooser = { QueryInterface: ChromeUtils.generateQI(["nsIContentDispatchChooser"]), handleURI: (_h, uri) => void window.webaiosTestChooser.seen.push(uri.spec) };
+       window.webaiosTestChooser.factory = { QueryInterface: ChromeUtils.generateQI(["nsIFactory"]), createInstance: (iid) => chooser.QueryInterface(iid) };
+       reg.registerFactory(window.webaiosTestChooser.mine, "test chooser", contract, window.webaiosTestChooser.factory);`,
+    );
+    // Each vector is checked on its own: one that gets through is reported, and the view is put back on the site.
+    const stays = async (what: string) => {
+      await sleep(600);
+      const at = await viewUrl();
+      expect.soft(at, what).toBe(url("/"));
+      if (at === url("/")) return void expect.soft(await inSiteView(m, "vidola", "return window.marque;"), what).toBe(7);
+      await m.execute(`${view}.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });`, [url("/")]);
+      await viewAt(url("/"));
+      await expect.poll(() => inSiteView(m, "vidola", "return document.title;", { frame: 0 }), { timeout: 10_000 }).toBe("Cadre pub");
+      await inSiteView(m, "vidola", "window.marque = 7; return 1;");
+    };
+    try {
+      const file = "file://" + path.join(dataDir, "sites", "vidola", "site.json");
+      const system = "Services.scriptSecurityManager.getSystemPrincipal()";
+      await m.execute(`${site}.openLinkIn(arguments[0], "current", { triggeringPrincipal: ${system} }); return 1;`, [file]);
+      await stays("⌘O file:");
+      await m.execute(`${view}.droppedLinkHandler(null, [{ url: arguments[0], name: "", type: "" }], ${system}); return 1;`, [file]);
+      await stays("dropped file:");
+      for (const target of ["mailto:a@b.test", "zoommtg://join?x=1"]) {
+        await inSiteView(m, "vidola", `location.href = ${JSON.stringify(target)}; return 1;`, { gesture: true });
+        await stays(target);
+      }
+      expect.soft(await m.execute(`return window.webaiosTestChooser.seen;`), "OS handler").toEqual([]);
+      await inSiteView(m, "vidola", "location.href = URL.createObjectURL(new Blob(['<title>blob</title>'], { type: 'text/html' })); return 1;", { gesture: true });
+      await stays("blob:");
+      // From the pub.localhost frame (cross-origin), its own blob: as top.location.
+      await inSiteView(m, "vidola", "top.location = URL.createObjectURL(new Blob(['<title>blob</title>'], { type: 'text/html' })); return 1;", { gesture: true, frame: 0 });
+      await stays("blob: from a cross-origin frame");
+    } finally {
+      await m.execute(
+        `const reg = Components.manager.QueryInterface(Ci.nsIComponentRegistrar); const t = window.webaiosTestChooser;
+         reg.unregisterFactory(t.mine, t.factory); reg.registerFactory(t.cid, "", "@mozilla.org/content-dispatch-chooser;1", null);`,
+      );
+    }
+    // Firefox's own error page still shows for a site address that cannot be reached.
+    const closed = url("/").replace(/:\d+\//, ":59999/");
+    await inSiteView(m, "vidola", `location.href = ${JSON.stringify(closed)}; return 1;`, { gesture: true });
+    await waitFor(m, `return String(${view}.browsingContext.currentWindowGlobal?.documentURI?.spec ?? "");`, (v) => String(v).startsWith("about:neterror"), 15_000);
+  });
+
   it("Alt+click (Firefox's « save link ») does nothing in the app", async () => {
     await m.execute(`Services.prefs.setBoolPref("browser.altClickSave", true);`);
     try {

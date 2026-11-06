@@ -247,6 +247,21 @@ describe("site app window", () => {
     expect(await windowHandles(m)).toEqual(before);
   });
 
+  it("closed before its startup is done (a very fast ⌘W): the host no longer says « Ouverte »", async () => {
+    // Closed in the same turn as the open: before delayedStartupPromise, so before the view is attached.
+    const attached = await inStore<boolean>(
+      `await store.agent.request("sites.agir", { id: "vidola", action: "ouvrir", fenetre: store.state.fenetres[0].id });
+       const win = store.sites.windowOf("vidola");
+       const attached = !!win.webaiosSiteProgress;
+       win.close();
+       return attached;`,
+    );
+    expect(attached).toBe(false);
+    await waitFor(m, `return !${site};`, (v) => v === true);
+    const ouverte = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.liste")).find((s) => s.id === "vidola")?.ouverte;`);
+    await expect.poll(ouverte, { timeout: 10_000 }).toBe(false);
+  });
+
   it("a download in the app is cancelled", async () => {
     const dl = path.join(dataDir, "dl");
     await mkdir(dl, { recursive: true });

@@ -18,6 +18,12 @@ const IMAGES_AT_ONCE = 4;
 const IMAGES_WAITING_MAX = 200;
 
 const DIRECTIVES_FICHIERS = new Set(["script-src", "style-src", "img-src", "font-src"]);
+/**
+ * The extensions Electron serves (TYPES in main/sites/accueil.ts, drift test in site-home.test.ts): no other file is
+ * copied. resource:// picks a type from the extension, so an .xhtml or .xml would be a document without the home's CSP.
+ */
+export const HOME_TYPES = new Set([".html", ".js", ".css", ".json", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".otf"]);
+const extension = (segment: string) => (segment.lastIndexOf(".") > 0 ? segment.slice(segment.lastIndexOf(".")).toLowerCase() : "");
 const substitution = (key: string) => `webaios-site-${key}`;
 
 /**
@@ -84,9 +90,9 @@ function substitute(name: string, dir: string | null): void {
 /**
  * Copies `<dataDir>/espace/sites/<id>/accueil/` into `<dataDir>/webaios-sites/<id>/<token>/` with Electron's
  * repondreAccueilSite rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
- * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file; the
- * `.html` pages go through homeServed. Points `resource://webaios-site-<id>-<token>/` straight at that folder (the
- * previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
+ * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file,
+ * only Electron's served types (HOME_TYPES); the `.html` pages go through homeServed. Points
+ * `resource://webaios-site-<id>-<token>/` straight at that folder (the previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
  * The token is random at each serve: the substitution is content-accessible (ALLOW_CONTENT_ACCESS, below), so neither
  * its host nor any root above it may be guessable by a web page.
  * shortcut: files are checked by realpath then read by path (IOUtils has no O_NOFOLLOW): a link swapped in between is
@@ -140,7 +146,7 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
           continue;
         }
         // A named pipe or a device ("other") is never read.
-        if (info.type !== "regular" || info.size > FICHIER_ACCUEIL_MAX) continue;
+        if (info.type !== "regular" || info.size > FICHIER_ACCUEIL_MAX || !HOME_TYPES.has(extension(segment))) continue;
         const bytes = await IOUtils.read(child, { maxBytes: FICHIER_ACCUEIL_MAX + 1 });
         // A file that grew since stat is refused, never cut.
         if (bytes.length > FICHIER_ACCUEIL_MAX) continue;
@@ -167,6 +173,9 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
     return null;
   }
 }
+
+/** The host of the copy app `id`'s home is served under now (`webaios-site-<id>-<token>`), or undefined. */
+export const servedHost = (id: string): string | undefined => current.get(id);
 
 /** « Supprimer »: the app's served home goes, its substitution and its copies. */
 export async function forgetHome(dataDir: string, id: string): Promise<void> {

@@ -69,13 +69,14 @@
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the home's scripts have run.
     const charge = (e: Event) => {
       if (!cadre || e.target !== cadre) return;
-      // The home went elsewhere (another app's home, any resource:): back to its own page.
+      // about:blank (the only other page guardHome lets load): back to its own page.
       if (src && !ours()) return void (cadre.src = src);
       fenetreGeste?.removeEventListener("pointerdown", geste, true);
       fenetreGeste = (cadre.contentDocument?.defaultView as Window | null) ?? null;
       fenetreGeste?.addEventListener("pointerdown", geste, true);
     };
     document.addEventListener("DOMFrameContentLoaded", charge, true);
+    controller.guardHome(cadre!);
     refresh();
     const finEtat = api.surEtat(refresh);
     const fin = api.surMemoire(envoyer);

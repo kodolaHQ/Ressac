@@ -18,7 +18,7 @@ declare const Ci: any;
 declare const Cr: any;
 declare const Cu: any;
 declare const Cc: any;
-declare const Components: { isSuccessCode(status: number): boolean };
+declare const Components: { isSuccessCode(status: number): boolean; ID(id: string): unknown; manager: any };
 declare const ChromeUtils: {
   importESModule(url: string): any;
   /** Milliseconds, monotonic. */

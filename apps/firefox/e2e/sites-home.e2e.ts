@@ -37,6 +37,20 @@ const PROBE = `<script>
       f.submit();
     }
     if (c === "aller") location.href = e.data.url;
+    if (c === "lien") {
+      const a = document.createElement("a");
+      a.id = "lien";
+      a.textContent = "lien";
+      a.style = "display: block; font-size: 40px";
+      a.href = e.data.url;
+      document.body.prepend(a);
+    }
+    if (c === "refresh") {
+      const r = document.createElement("meta");
+      r.httpEquiv = "refresh";
+      r.content = "0;url=" + e.data.url;
+      document.head.append(r);
+    }
     if (c === "logo") {
       const i = new Image();
       i.onload = () => (window.logo = i.naturalWidth);
@@ -168,7 +182,10 @@ beforeAll(async () => {
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   const declaration = { nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] };
   // Written before the launch: the watcher sees no initial event that would reread the apps on the way.
-  writeSite(dataDir, "vidola", { declaration, fichiers: { "accueil/index.html": HOME, "accueil/img/logo.png": PNG, "accueil/app.js": "window.appJs = 1;", "accueil/style.css": "p { color: red; }" } });
+  // Documents with scripts that would run without the home's CSP (no meta in them) if the frame loaded them.
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg"><image href="${url("/espion-svg-img")}" width="1" height="1"/><script>fetch("${url("/espion-svg-fetch")}")</script></svg>`;
+  const xhtml = `<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="${url("/espion-xhtml-img")}"/><script>fetch("${url("/espion-xhtml-fetch")}")</script></body></html>`;
+  writeSite(dataDir, "vidola", { declaration, fichiers: { "accueil/index.html": HOME, "accueil/img/logo.png": PNG, "accueil/app.js": "window.appJs = 1;", "accueil/style.css": "p { color: red; }", "accueil/x.svg": svg, "accueil/x.xhtml": xhtml } });
   writeSite(dataDir, "demenage", { declaration: { ...declaration, nom: "Déménagé" }, fichiers: { "accueil/index.html": HOME } });
   writeSite(dataDir, "auto", { declaration: { ...declaration, nom: "Auto" }, fichiers: { "accueil/index.html": AUTO } });
   writeSite(dataDir, "tube", { declaration: { ...declaration, nom: "Tube" }, fichiers: { "accueil/index.html": "<p>accueil</p>" } });
@@ -284,6 +301,34 @@ describe("site app home screen", () => {
     const urls = await inSiteBar<string[]>(m, "vidola", `return [...doc.querySelectorAll("iframe")].map((f) => String(f.contentDocument?.documentURI ?? ""));`);
     const own = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
     expect(urls.every((u) => u.startsWith(`${own}/`)), urls.join(" ")).toBe(true);
+  });
+
+  it("a script-bearing SVG or XHTML file, or any page that is not one of its .html, never loads in the home's frame: no request", async () => {
+    await openHome();
+    // The home's document stays the same one (a load sent back afterwards would give a new window).
+    await inHome("vidola", "fw.marque = 7; return true;");
+    const same = async (what: string) => {
+      await sleep(800);
+      expect(await inHome("vidola", "return fw.marque ?? null;"), what).toBe(7);
+    };
+    // The home's own code: Firefox refuses its navigations to resource: (« Access … from script denied »), a real
+    // click on a link and a <meta refresh> do nothing (measured).
+    for (const target of ["x.svg", "x.xhtml", "img/logo.png", "resource://webaios-site-autre/1/index.html"]) {
+      await probe("vidola", { essai: "aller", url: target });
+      await same(`aller ${target}`);
+    }
+    await probe("vidola", { essai: "refresh", url: "x.svg" });
+    await same("refresh");
+    await probe("vidola", { essai: "lien", url: "x.svg" });
+    await sleep(200);
+    await realClick("vidola", "#lien");
+    await same("lien");
+    // Any other load of the frame (here put there by the chrome) is cancelled before it starts.
+    for (const target of ["x.svg", "img/logo.png"]) {
+      await inSiteBar(m, "vidola", `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); h.contentWindow.location.href = new URL(arguments[0], h.src).href; return 1;`, [target]);
+      await same(`chrome ${target}`);
+    }
+    expect(server.requetes).toEqual([]);
   });
 
   it("a site image asked for comes back as data: (with the app's cookies); a pub.localhost image comes back null", async () => {
