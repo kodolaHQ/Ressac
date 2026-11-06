@@ -231,7 +231,7 @@ Limits:
 Limits:
 
 - The apps' modules are global (§4.9 of the spec): one list for every app, not per app.
-- No Review page (« Relire » opens the internal « not available yet » page), no design mode, no « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
+- No design mode (plans 35-36), no « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
 - `about:srcdoc` and `about:blank` frames get video resume when the top page is on the app's domains (beyond Electron, which gives them none); nothing else goes there.
 - The « donnees-widget » card now covers widgets, actions and site apps; before plan 32, widget data read with an account was always refused.
 - Electron's M1 net is always on (Electron: only with an extension loaded in the app's session), so the page's own navigations under the home or the card are dropped. `tabs.create` from an add-on opens in the main window.
@@ -239,14 +239,23 @@ Limits:
 - The headless e2e decode no media: the 10 s `timeupdate` step and a real `ended` are covered by unit tests only. The packaged actor is checked with `WEBAIOS_E2E_PACKAGED_ACTOR=1` after each `build:ui`.
 - A sign-in window opened by `window.open(url)` without features has no `opener` (a login waiting for `opener.postMessage` fails). A window opened with features towards a refused domain shows for an instant, then closes; nothing leaves. A TCP preconnect (no HTTP request) is not seen by the guard.
 - Firefox does not resolve `*.localhost`: the e2e add a DNS override (`resolveLocalHosts`). Visits of an app window are not recorded (`places.history.enabled` is false).
-- The « Projets externes » block of the page shows an off server and no project (external MCP not migrated).
+
+## External MCP and Review
+
+The host runs the external MCP server (port 5279, `WEBAIOS_PORT_MCP_EXTERNE` changes it, `0` in the tests) without the noyau: `noyau/design.ts` creates the remarks, the registries of external clients and projects, and the review service. It listens on 127.0.0.1 only, checks Host and Origin, keeps only the SHA-256 of each token, and never falls back to another port (« Le port 5279 est pris »). It stops with the host; « Réessayer » restarts it on the same port with the same tokens.
+
+- The « Projets externes » section of the Applications page connects a Claude Code (the command with the token shows once), declares projects, revokes a client, forgets a project. A project folder under the data folder is refused (`DOSSIER_ESPACE`). Registries, private repositories (`design/relecture/`) and batches (`design/remarques/`) live under `<dataDir>/design`, never in the space.
+- The Review page (`webaios://relecture`, the frozen Electron component) shows the diff of an external project or of a site app since the last « Marquer comme relu ». Comments go to Claude Code (`lire_remarques`, `attendre_remarques`) or, for a site app, into the agent panel: the text waits there and Enter sends it (`design.fenetreAgent`, `design.donnerAgent`).
+- Copies: `noyau/review.ts` (Electron's `ServiceRelecture`) and `shared/design-guards.ts` (the input checks), each with a drift test (`test/review-host.test.ts`). `externes.ts` and `envoi.ts` are imported as is.
+- Tests: `e2e/external-mcp.e2e.ts`, `e2e/review.e2e.ts`, `e2e/review-comments.e2e.ts`. The manual checks and the ports of Electron's tests (with their gaps) are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 34 »).
+- A Claude Code connected to Electron must be connected again (new token; `claude mcp remove webaios-remarques` first if the name exists). No agent apps, hence no badge and no `app-*` project.
 
 ## Not migrated yet (step 4)
 
 - site-app permission checks;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;
-- internal `webaios:` pages: a "not available yet" message (the Applications page shows its Sites section only; the Docker applications and « Projets externes » are not migrated);
+- internal `webaios:` pages: a "not available yet" message (the Applications page shows its Sites and « Projets externes » sections only; the Docker applications are not migrated);
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
 
