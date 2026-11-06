@@ -283,7 +283,9 @@ describe("accord card", () => {
     await openToCard();
     mkdirSync(path.join(dataDir, "espace", "sites", "vidola", "accueil"), { recursive: true });
     writeFileSync(path.join(dataDir, "espace", "sites", "vidola", "accueil", "index.html"), "<p>accueil</p>");
-    await sleep(800);
+    // A home-only change is not a reread: the declaration's rewrite is.
+    rewriteDeclaration(declaration());
+    await expect.poll(async () => (await state()).aAccueil, { timeout: 10_000 }).toBe(true);
     expect((await state()).vue).toBe("accord");
     await click("refuser-site");
     await expect.poll(async () => (await state()).vue, { timeout: 10_000 }).toBe("accueil");
