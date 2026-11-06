@@ -73,9 +73,12 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
     };
     // A page kept in the bfcache is never destroyed (no didDestroy): leaving it ends the viewfinder and the guard.
     const hide = (e: Event) => {
-      if (e.target !== doc) return;
-      if (sandbox && typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
-      unguard();
+      if (!e.isTrusted || e.target !== doc) return;
+      try {
+        if (sandbox && typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
+      } finally {
+        unguard();
+      }
     };
     for (const t of MOUSE) h.addEventListener(t, mouse, true);
     if (sandbox) h.addEventListener("keydown", key, true);
