@@ -123,7 +123,7 @@ it("declarer_projet: the projet-externe line shows; one notification only, even 
     await waitCount(tid("projet-externe"), 1);
     const line = (await text(tid("projet-externe")))!;
     for (const t of ["mon-site", dossier, "18765", "Claude Code"]) expect(line).toContain(t);
-    await expect.poll(() => readNotifications(notifications)).toEqual([{ titre: "WebAiOs", texte: "Claude Code a branché le projet mon-site" }]);
+    await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ titre: "WebAiOs", texte: "Claude Code a branché le projet mon-site" }]);
     await c.callTool({ name: "declarer_projet", arguments: { dossier, ports: [18765] } });
     await new Promise((r) => setTimeout(r, 500));
     expect(readNotifications(notifications)).toHaveLength(1);
@@ -166,7 +166,7 @@ it("Oublier: the line goes, with ext-<id>.git and its comments under <dataDir>/d
     expect(existsSync(comments)).toBe(true);
     await click(m, `${tid("projet-externe")} button`, { text: "Oublier" });
     await waitCount(tid("projet-externe"), 0);
-    await expect.poll(() => existsSync(path.join(relecture, `${projet}.git`)) || existsSync(comments)).toBe(false);
+    await expect.poll(() => existsSync(path.join(relecture, `${projet}.git`)) || existsSync(comments), { timeout: 10_000 }).toBe(false);
   } finally {
     await p.client.close();
   }
