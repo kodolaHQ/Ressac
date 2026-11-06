@@ -234,6 +234,8 @@
   /* Firefox's -webkit-app-region: the same areas. An overlay over the sidebar keeps its clicks. */
   .fenetre:not(.couverte) :global(.barre) { -moz-window-dragging: drag; }
   .fenetre :global(.barre :is(.navigation button, .ligne, .defilant, footer)) { -moz-window-dragging: no-drag; }
+  /* The Actions page's confirmation covers the window, its drag areas too (Electron's no-drag on its veil). */
+  .fenetre :global(:is([data-testid="voile-suppression-action"], [data-testid="confirmation-suppression-action"])) { -moz-window-dragging: no-drag; }
   .couche-commande { position: fixed; inset: 0; z-index: 100; }
   .fenetre {
     display: grid;
@@ -254,7 +256,8 @@
   @media (prefers-reduced-motion: reduce) {
     .compact .colonne { transition: none; }
   }
-  .contenu { min-width: 0; min-height: 0; }
+  /* Electron's .surface: the action page fills it (position: absolute), not the window. */
+  .contenu { position: relative; min-width: 0; min-height: 0; }
   .opaque { background: var(--fond); }
   /* Electron's ZoneContenu. */
   .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }

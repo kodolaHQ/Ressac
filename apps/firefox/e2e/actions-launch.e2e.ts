@@ -1,0 +1,326 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { Action } from "../../navigateur/src/commun/api";
+import { actionsDataDir, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writeAction, writeRunnableAction } from "./actions";
+import { dispatch, state, waitFor, waitReady } from "./firefox";
+import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
+import type { Marionette } from "./marionette";
+import { startServer } from "./server";
+import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
+
+// Launching actions from the empty page and the ⌘T bar (Electron's actions.spec.ts:847-968, barre-commande.spec.ts:194-
+// 601, ported). One launch for the file: each test starts on a fresh empty page in a public space. A proxy on a closed
+// port keeps searches and addresses from leaving the machine; the local servers are not proxied.
+
+const STORE = "chrome://browser/content/webaios/store.sys.mjs";
+const TICKETS_NOM = "Mes tickets GitLab à traiter";
+
+let servers: Awaited<ReturnType<typeof startActionServers>>;
+let pages: Awaited<ReturnType<typeof startServer>>;
+let w: LaunchedWebAiOs;
+let m: Marionette;
+let q: ReturnType<typeof uiQueries>;
+
+const lines = (type: string) => `[data-testid="ligne-commande"][data-type="${type}"]`;
+const focused = (testid: string) =>
+  waitUi(m, "return doc.activeElement?.dataset.testid === arguments[0] && document.activeElement === document.getElementById('webaios-sidebar');", [testid]);
+/** Types `text` in the field with the keyboard (an input event, as Playwright's fill). */
+const fill = (testid: string, text: string) =>
+  inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid(testid), text]);
+const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
+const listCalls = () => m.execute<number>("return window.webaiosListCalls;");
+const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+async function setPrivate(prive: boolean): Promise<void> {
+  const s = await state(m);
+  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
+  if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+}
+/** A web page of the local server shown in a new tab; resolves once its title is in the state. */
+async function openPage(p: string, titre: string): Promise<string> {
+  const url = pages.url + p;
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  for (const deadline = Date.now() + 10_000; !Object.values((await state(m)).onglets).some((o) => o.url === url && o.titre === titre); await new Promise((r) => setTimeout(r, 100)))
+    if (Date.now() > deadline) throw new Error(`${url} not loaded`);
+  return url;
+}
+/** The action is in the list the noyau gives. */
+const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
+/** Opens the empty page (« Nouvel onglet »), its field focused (Electron's lancerAvecSuggestions). */
+async function emptyPage(): Promise<void> {
+  await click(m, tid("nouvel-onglet"));
+  await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
+  // With no tab left the empty page was already shown: a click gives its field the keyboard.
+  await click(m, tid("saisie-page-vide"));
+  await focused("saisie-page-vide");
+}
+async function openBar(): Promise<void> {
+  await pressKeys(m, "Meta+t");
+  await focused("saisie-commande");
+}
+
+beforeAll(async () => {
+  servers = await startActionServers();
+  pages = await startServer();
+  w = await launchWebAiOs({
+    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" },
+    prefs: { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 },
+  });
+  m = w.marionette;
+  q = uiQueries(m);
+  await m.setContext("chrome");
+  await waitReady(m);
+  await waitNoyau(m);
+  const d = w.dataDir;
+  // actions.spec.ts lancerAvecSuggestions: one action without input (keyword gitlab), one with.
+  await writeRunnableAction(d, "tickets", { nom: TICKETS_NOM, motsCles: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  await writeRunnableAction(d, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
+  // barre-commande.spec.ts: actions without workflow.
+  await writeAction(d, "sans-workflow", { nom: "Zorglub" });
+  await writeAction(d, "resume", { nom: "Résumé vidéo", saisie: { libelle: "Vidéo" } });
+  await writeAction(d, "page-action", { nom: "Page action" });
+  for (const id of ["tickets", "leboncoin", "sans-workflow", "resume", "page-action"]) await listed(id);
+  // Counts the `actions.liste` the UI asks the host for (Electron's espionnerListe).
+  await m.execute(`return (async () => {
+    const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent;
+    const request = agent.request.bind(agent);
+    window.webaiosListCalls = 0;
+    agent.request = (method, params) => (method === "actions.liste" && window.webaiosListCalls++, request(method, params));
+  })();`);
+}, 90_000);
+beforeEach(async () => {
+  servers.reset();
+  if (await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("barre-commande")])) await pressKeys(m, "Escape");
+  await setPrivate(false);
+  for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+});
+afterAll(async () => {
+  expect(await missingApi(m)).toEqual([]);
+  await w?.close();
+  await servers?.close();
+  await pages?.close();
+});
+
+describe("launching from the empty page", () => {
+  // actions.spec.ts:847
+  it("typing « git » shows the suggestion; ↓ then Enter opens the action page and launches", { timeout: 90_000 }, async () => {
+    await emptyPage();
+    await fill("saisie-page-vide", "git");
+    await q.waitContains(tid("suggestions-actions"), TICKETS_NOM);
+    expect(await q.text(tid("suggestions-actions"))).toContain("Rechercher");
+    await pressKeys(m, "ArrowDown");
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-activedescendant');", [tid("saisie-page-vide")])).toMatch(/.+/);
+    await pressKeys(m, "Enter");
+    await visible(tid("page-action"));
+    for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "tickets")).length !== 1; await new Promise((r) => setTimeout(r, 200)))
+      if (Date.now() > deadline) throw new Error("the tickets action did not run");
+  });
+
+  // actions.spec.ts:866
+  it("Escape closes the list; Enter searches « git » as before", async () => {
+    const runs = (await runsOnDisk(w.dataDir, "tickets")).length;
+    await emptyPage();
+    await fill("saisie-page-vide", "git");
+    await visible(tid("suggestions-actions"));
+    await pressKeys(m, "Escape");
+    await q.waitCount(tid("suggestions-actions"), 0);
+    await pressKeys(m, "Enter");
+    for (const deadline = Date.now() + 10_000; !(await tabUrls()).includes("https://www.google.com/search?q=git"); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > deadline) throw new Error(`no search: ${JSON.stringify(await tabUrls())}`);
+    expect(await runsOnDisk(w.dataDir, "tickets")).toHaveLength(runs);
+  });
+
+  // actions.spec.ts:882
+  it("« exemple.org » with no match then Enter opens the address", async () => {
+    await emptyPage();
+    await fill("saisie-page-vide", "exemple.org");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await q.count(tid("suggestions-actions"))).toBe(0);
+    await pressKeys(m, "Enter");
+    for (const deadline = Date.now() + 10_000; !(await tabUrls()).includes("https://exemple.org/"); await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > deadline) throw new Error(`not opened: ${JSON.stringify(await tabUrls())}`);
+  });
+
+  // actions.spec.ts:895
+  it("« leboncoin » then Enter: the page with its input field, nothing launched", async () => {
+    await emptyPage();
+    await fill("saisie-page-vide", "leboncoin");
+    await q.waitContains(tid("suggestions-actions"), "Leboncoin");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await visible(tid("page-action"));
+    await visible(tid("saisie-action"));
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await runsOnDisk(w.dataDir, "leboncoin")).toEqual([]);
+  });
+
+  // actions.spec.ts:912
+  it("command bar: « leboncoin », Enter asks for the input; « clio », Enter launches with it", { timeout: 90_000 }, async () => {
+    await emptyPage();
+    await openBar();
+    await fill("saisie-commande", "leboncoin");
+    await q.waitCount(lines("action"), 1);
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await focused("parametre-commande");
+    // On the empty page, no web page: nothing filled in.
+    expect(await q.value(tid("parametre-commande"))).toBe("");
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).placeholder;", [tid("parametre-commande")])).toBe("Recherche");
+    await fill("parametre-commande", "clio");
+    await pressKeys(m, "Enter");
+    await visible(tid("page-action"));
+    await q.waitCount(tid("barre-commande"), 0);
+    for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "leboncoin")).length !== 1; await new Promise((r) => setTimeout(r, 200)))
+      if (Date.now() > deadline) throw new Error("the leboncoin action did not run");
+    const [file] = await runsOnDisk(w.dataDir, "leboncoin");
+    expect(JSON.parse(await readFile(path.join(actionsDataDir(w.dataDir), "leboncoin", "executions", file!), "utf8")).saisie).toBe("clio");
+  });
+
+  // actions.spec.ts:943
+  it("private space: no suggestion, the list is not even asked for (even when the actions change)", async () => {
+    await setPrivate(true);
+    await m.execute("window.webaiosListCalls = 0;");
+    await emptyPage();
+    await writeRunnableAction(w.dataDir, "privee", { nom: "Autre privee", code: "export default async () => [];" });
+    await fill("saisie-page-vide", "autre");
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await q.count(tid("suggestions-actions"))).toBe(0);
+    expect(await listCalls()).toBe(0);
+  });
+
+  // actions.spec.ts:956
+  it("normal space: an actions change asks for the list again (the counter works)", async () => {
+    await emptyPage();
+    await m.execute("window.webaiosListCalls = 0;");
+    await writeRunnableAction(w.dataDir, "nouvelle", { nom: "Autre nouvelle", code: "export default async () => [];" });
+    await waitFor(m, "return window.webaiosListCalls;", (n: number) => n > 0, 15_000);
+    await fill("saisie-page-vide", "autre");
+    await q.waitContains(tid("suggestions-actions"), "Autre nouvelle");
+  });
+
+  // actions.spec.ts:968
+  it("the suggestion list is not in a window drag region", async () => {
+    await emptyPage();
+    await fill("saisie-page-vide", "git");
+    await visible(tid("suggestions-actions"));
+    // getComputedStyle does not expose -moz-window-dragging: the last matching rule gives it, on the list or the nearest
+    // ancestor that has one.
+    const dragging = await inUi<string>(
+      m,
+      `const of = (el) => {
+        let value = "default";
+        for (const sheet of doc.styleSheets) for (const r of sheet.cssRules) {
+          const v = /-moz-window-dragging: ([a-z-]+)/.exec(r.cssText)?.[1];
+          if (v && r.selectorText && el.matches(r.selectorText)) value = v;
+        }
+        return value;
+      };
+      for (let el = doc.querySelector(arguments[0]); el; el = el.parentElement) { const v = of(el); if (v !== "default") return v; }
+      return "default";`,
+      [tid("suggestions-actions")],
+    );
+    expect(dragging).not.toBe("drag");
+  });
+});
+
+describe("launching from the command bar", () => {
+  // barre-commande.spec.ts:194
+  it("an action launches from the bar", async () => {
+    await openBar();
+    await fill("saisie-commande", "Zorglub");
+    await q.waitCount(lines("action"), 1);
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await visible(tid("page-action"));
+    await q.waitCount(tid("barre-commande"), 0);
+  });
+
+  // barre-commande.spec.ts:210
+  it("an action waiting for its input: Enter asks for it, filled with the active URL all selected; Escape and ⌫ go back to the list", async () => {
+    const url = await openPage("/a.html", "Page A");
+    await openBar();
+    await fill("saisie-commande", "résumé");
+    await q.waitCount(lines("action"), 1);
+    await q.waitContains(lines("action"), "Vidéo");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await q.waitText(tid("pastille-commande"), "Résumé vidéo");
+    await focused("parametre-commande");
+    expect(await inUi(m, "const f = doc.querySelector(arguments[0]); return [f.value, f.selectionStart, f.selectionEnd];", [tid("parametre-commande")])).toEqual([url, 0, url.length]);
+    expect(await q.count(lines("action"))).toBe(0);
+    // Escape goes back to the list, the typed text intact, the bar stays open.
+    await pressKeys(m, "Escape");
+    await focused("saisie-commande");
+    expect(await q.value(tid("saisie-commande"))).toBe("résumé");
+    expect(await q.count(tid("barre-commande"))).toBe(1);
+    // The action stays chosen: Tab asks for it too; ⌫ clears the selection, then ⌫ on the empty field goes back.
+    expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-selected');", [lines("action")])).toBe("true");
+    await pressKeys(m, "Tab");
+    await focused("parametre-commande");
+    expect(await q.value(tid("parametre-commande"))).toBe(url);
+    // Held, ⌫ clears the field without going back; released then pressed again, it goes back, text intact.
+    await m.execute(`const tip = (window.webaiosTestTip ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor));
+      tip.beginInputTransactionForTests(window);
+      tip.keydown(new KeyboardEvent("", { key: "Backspace", code: "Backspace" }));
+      tip.keydown(new KeyboardEvent("", { key: "Backspace", code: "Backspace", repeat: true }));
+      tip.keyup(new KeyboardEvent("", { key: "Backspace", code: "Backspace" }));`);
+    expect(await q.value(tid("parametre-commande"))).toBe("");
+    await focused("parametre-commande");
+    await pressKeys(m, "Backspace");
+    await focused("saisie-commande");
+    expect(await q.value(tid("saisie-commande"))).toBe("résumé");
+    expect(Object.keys((await state(m)).onglets)).toHaveLength(1);
+  });
+
+  // barre-commande.spec.ts:253
+  it("an action waiting for its input, typed with it (« résumé vidéo x »): launched without asking again", async () => {
+    await openBar();
+    await fill("saisie-commande", "résumé vidéo https://y.fr/v");
+    await q.waitContains(lines("action"), "« https://y.fr/v »");
+    await pressKeys(m, "ArrowDown");
+    await pressKeys(m, "Enter");
+    await visible(tid("page-action"));
+    expect(await q.count(tid("parametre-commande"))).toBe(0);
+  });
+
+  // barre-commande.spec.ts:269
+  it("lines are grouped under a title per section, each with its icon", async () => {
+    await openPage("/a.html", "Page A");
+    await openBar();
+    await fill("saisie-commande", "Page");
+    await q.waitCount(lines("onglet"), 1);
+    await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent).join() === 'Actions,Onglets ouverts';", [tid("section-commande")]);
+    expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((l) => l.querySelectorAll('.pictogramme').length);", [tid("ligne-commande")])).toSatisfy((n: number[]) =>
+      n.length > 0 && n.every((x) => x === 1),
+    );
+  });
+
+  // barre-commande.spec.ts:396
+  it("private space: no action offered", async () => {
+    await setPrivate(true);
+    await openBar();
+    await fill("saisie-commande", "Zorglub");
+    await q.waitCount(lines("defaut"), 1);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await q.count(lines("action"))).toBe(0);
+  });
+
+  // barre-commande.spec.ts:601
+  it("an action's input: the offered address follows the page that navigates, not once edited", async () => {
+    const a = await openPage("/a.html", "Page A");
+    await openBar();
+    await fill("saisie-commande", "résumé");
+    await click(m, `${lines("action")} button`);
+    const field = tid("parametre-commande");
+    await waitUi(m, "return doc.querySelector(arguments[0])?.value === arguments[1];", [field, a]);
+    const load = (url: string) =>
+      m.execute("gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}) });", [url]);
+    await load(pages.url + "/b.html");
+    await waitUi(m, "return doc.querySelector(arguments[0])?.value === arguments[1];", [field, pages.url + "/b.html"]);
+    await fill("parametre-commande", "ma vidéo");
+    await load(a);
+    await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec;", (u) => u === a);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await q.value(field)).toBe("ma vidéo");
+  });
+});

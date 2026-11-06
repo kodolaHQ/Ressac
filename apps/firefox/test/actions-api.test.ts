@@ -345,4 +345,107 @@ describe("createActionsApi", () => {
     turn = () => s.turnPrivate();
     expect(await s.api(s.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
   });
+  // Review Focus 1
+  it("a window turned private while the host reads opens and launches nothing", async () => {
+    let turn = () => {};
+    const s = setup({ "actions.preparer": () => (turn(), { ok: true, nom: "GitLab", lancer: true }), "actions.lancer": () => ({ statut: "reussie", execution: "x" }) });
+    turn = () => s.turnPrivate();
+    s.dispatched.length = 0;
+    expect(await s.api(s.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.calls.map((c) => c.method)).toEqual(["actions.preparer"]);
+    expect(s.dispatched).toEqual([]);
+  });
+
+  /** The host's preparer over a fixed set of actions (noyau/actions.ts), `running` already in the direct feed. */
+  const preparer = (running: string[] = []) => (p: { id: string; saisie: string | null }) => {
+    const noms: Record<string, [string, boolean]> = { gitlab: ["GitLab", false], leboncoin: ["Leboncoin", true] };
+    const a = noms[p.id];
+    if (!a) return { ok: false, erreur: "Action inconnue" };
+    return { ok: true, nom: a[0], lancer: !running.includes(p.id) && !(a[1] && !p.saisie?.trim()) };
+  };
+  const launched = (calls: { method: string; params: unknown }[]) => calls.filter((c) => c.method === "actions.lancer").map((c) => c.params);
+
+  // actions.test.ts:402
+  it("ouvrir opens the action's page titled with its name, then launches it", async () => {
+    const { F, api, calls, etat } = setup({ "actions.preparer": preparer(), "actions.lancer": () => ({ statut: "reussie", execution: "x" }) });
+    const a = api(F);
+    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
+    const onglets = Object.values(etat().onglets);
+    expect(onglets).toHaveLength(1);
+    expect(onglets[0]).toMatchObject({ url: "webaios://action/gitlab", titre: "GitLab" });
+    expect(launched(calls)).toEqual([{ id: "gitlab", saisie: null }]);
+    expect(await a.ouvrir("leboncoin", "clio lyon")).toEqual({ ok: true });
+    expect(launched(calls)).toEqual([{ id: "gitlab", saisie: null }, { id: "leboncoin", saisie: "clio lyon" }]);
+  });
+
+  // actions.test.ts:413
+  it("ouvrir without the required input opens the page and launches nothing; an unknown action is refused", async () => {
+    const { F, api, calls, etat } = setup({ "actions.preparer": preparer() });
+    const a = api(F);
+    expect(await a.ouvrir("leboncoin", null)).toEqual({ ok: true });
+    expect(await a.ouvrir("leboncoin", "  ")).toEqual({ ok: true });
+    expect(Object.values(etat().onglets).map((o) => o.url)).toEqual(["webaios://action/leboncoin"]);
+    expect(launched(calls)).toEqual([]);
+    expect(await a.ouvrir("inconnue", null)).toEqual({ ok: false, erreur: "Action inconnue" });
+  });
+
+  // actions.test.ts:423
+  it("ouvrir on a running action opens its page and launches nothing", async () => {
+    const { F, api, calls, etat, set, genId } = setup({ "actions.preparer": preparer(["gitlab"]) });
+    const a = api(F);
+    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
+    const page = Object.values(etat().onglets)[0]!;
+    // Another tab comes first; opening again goes back to the action's page.
+    set(appliquer(etat(), { type: "ouvrirOnglet", fenetreId: F, url: "https://a.test/" }, genId));
+    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
+    expect(Object.values(etat().onglets).filter((o) => o.url.startsWith("webaios://action/"))).toHaveLength(1);
+    expect(etat().fenetres[0]!.actif[etat().fenetres[0]!.espaceActif]).toBe(page.id);
+    expect(launched(calls)).toEqual([]);
+  });
+
+  it("ouvrir: a stopped host is Electron's missing noyau; a failed launch goes to the console", async () => {
+    const stopped = setup();
+    expect(await stopped.api(stopped.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(stopped.dispatched).toEqual([]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const s = setup({ "actions.preparer": preparer() });
+    expect(await s.api(s.F).ouvrir("gitlab", null)).toEqual({ ok: true });
+    await vi.waitFor(() => expect(error).toHaveBeenCalled());
+  });
+
+  it("refuserAccord and supprimer go to the host, refused in a private space; their cached reads are forgotten", async () => {
+    let up = true;
+    const answer = (v: unknown) => () => {
+      if (!up) throw new Error("Le noyau de l'agent s'est arrêté.");
+      return v;
+    };
+    const { F, api, calls, turnPrivate } = setup({
+      "actions.page": answer({ execution: "x" }),
+      "actions.executions": answer([{ id: "x" }]),
+      "actions.liste": answer([{ id: "gitlab" }]),
+      "actions.refuserAccord": answer(undefined),
+      "actions.supprimer": answer({ ok: true }),
+    });
+    const a = api(F);
+    await Promise.all([a.page("gitlab", null), a.executions("gitlab"), a.liste()]);
+    await a.refuserAccord("gitlab");
+    up = false;
+    // The results were erased with the accord: a stopped host gives no stale page back.
+    expect(await a.page("gitlab", null)).toBeNull();
+    expect(await a.executions("gitlab")).toEqual([]);
+    up = true;
+    await a.liste();
+    expect(await a.supprimer("gitlab")).toEqual({ ok: true });
+    up = false;
+    expect(await a.liste()).toEqual([]);
+    expect(await a.supprimer("gitlab")).toEqual({ ok: false, erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(calls.filter((c) => c.method === "actions.refuserAccord" || c.method === "actions.supprimer").map((c) => c.params)).toEqual([{ id: "gitlab" }, { id: "gitlab" }, { id: "gitlab" }]);
+    calls.length = 0;
+    turnPrivate();
+    await a.refuserAccord("gitlab");
+    expect(await a.supprimer("gitlab")).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(await a.ouvrir("gitlab", null)).toEqual({ ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE });
+    expect(calls).toEqual([]);
+  });
 });

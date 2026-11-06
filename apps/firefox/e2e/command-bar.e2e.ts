@@ -5,6 +5,7 @@ import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
 import { dispatch, state, waitFor } from "./firefox";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
+import { writeAction } from "./actions";
 import { testActor } from "./agent-extensions";
 import { ELECTRON_HOME, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -304,13 +305,16 @@ describe("Command bar", () => {
   });
 
   // barre-commande.spec.ts:284
-  it("an empty ⌘T lists the other open tabs, not the shown one; Enter shows the empty page", async () => {
+  it("an empty ⌘T: the actions, then the other open tabs, not the shown one; Enter shows the empty page", async () => {
+    await writeAction(w.dataDir, "sans-workflow", { nom: "Zorglub" });
+    await waitUi(m, "return (await ui.webaios.actions.liste()).length > 0", [], 30_000);
     await withPageA();
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
     await pressKeys(m, "Meta+t");
     await fieldFocused();
-    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"section-commande\"]')].some((e) => e.textContent === 'Onglets ouverts')");
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"section-commande\"]')].map((e) => e.textContent).join() === 'Actions,Onglets ouverts'");
+    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"action\"]')].map((e) => e.textContent).join()")).toContain("Zorglub");
     expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]')].map((e) => e.textContent)")).toEqual([
       expect.stringContaining("Page A"),
     ]);

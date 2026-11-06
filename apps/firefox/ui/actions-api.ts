@@ -24,7 +24,6 @@ export type ActionsFirefox = ApiWebaios["actions"] & {
 // Electron's MESSAGE_SANS_NOYAU and AUCUNE_ACTION (main/agent/actions.ts, which this bundle cannot import).
 const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION = () => ({ courantes: [], enAttente: [] });
-const unavailable = async () => ({ ok: false as const, erreur: "Pas encore disponible dans WebAiOs-Firefox." });
 
 export function createActionsApi(o: {
   state: () => EtatNavigateur | undefined;
@@ -78,6 +77,13 @@ export function createActionsApi(o: {
       restarted.forEach((cb) => cb());
     }),
   );
+  /** An action's accord or folder is gone: none of its cached reads, nor the cached list, may come back. */
+  const forget = (id: string) => {
+    for (const key of lastRead.keys()) {
+      const [method, params] = JSON.parse(key) as [string, { id?: string } | undefined];
+      if (method === "actions.liste" || params?.id === id) lastRead.delete(key);
+    }
+  };
   const afterRestart = (cb: () => void) => (restarted.add(cb), () => void restarted.delete(cb));
   /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
   let dernierLien = -Infinity;
@@ -87,8 +93,17 @@ export function createActionsApi(o: {
       const offs = [host.on("actions.change", () => rappel()), host.on("accueil.change", () => rappel()), afterRestart(() => rappel())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
-    // Task 4.
-    ouvrir: unavailable,
+    // Electron's order, cut in two host calls: read without launching, check private again, open the page, then launch.
+    async ouvrir(id, saisie) {
+      if (prive()) return refus;
+      const p = await ask<{ ok: true; nom: string; lancer: boolean } | { ok: false; erreur: string } | null>("actions.preparer", { id, saisie }, () => null);
+      if (prive()) return refus;
+      if (!p) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
+      if (!p.ok) return p;
+      o.dispatch({ type: "ouvrirAction", fenetreId: fenetre, id, nom: p.nom });
+      if (p.lancer) host.request("actions.lancer", { id, saisie }).catch((e) => console.error(`[webaios] action ${id} :`, e));
+      return { ok: true };
+    },
     lancer: (id, saisie) => ask("actions.lancer", { id, saisie }, () => ({ statut: "invalide" as const, erreur: prive() ? ACTIONS_EN_ESPACE_PRIVE : MESSAGE_SANS_NOYAU })),
     arreter(id) {
       if (!prive()) host.notify("actions.arreter", { id });
@@ -135,9 +150,24 @@ export function createActionsApi(o: {
       );
       return prive() ? refus : r;
     },
-    // Tasks 4 to 6.
-    refuserAccord: async () => {},
-    supprimer: unavailable,
+    async refuserAccord(id) {
+      if (prive()) return;
+      // The host stops the run first, then erases the accord and the results.
+      await host.request("actions.refuserAccord", { id }).then(
+        () => forget(id),
+        (e) => ((hostDown = true), console.error(`[webaios] retrait de l'accord de l'action ${id} :`, e)),
+      );
+    },
+    async supprimer(id) {
+      if (prive()) return refus;
+      const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.supprimer", { id }).then(
+        (v) => structuredClone(v),
+        () => ((hostDown = true), { ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
+      );
+      if (r.ok) forget(id);
+      return prive() ? refus : r;
+    },
+    // Tasks 5 and 6.
     async voirWorkflow(id) {
       const nom = await ask<string | null>("actions.nom", { id }, () => null);
       if (nom && !prive()) o.dispatch({ type: "ouvrirWorkflow", fenetreId: fenetre, id, nom, proprietaire: "action" });
