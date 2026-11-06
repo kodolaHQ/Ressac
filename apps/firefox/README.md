@@ -202,13 +202,24 @@ Limits:
 - Each app runs in its own internal container (`webaios-site-<id>`: cookies, localStorage, IndexedDB), in its own window (`chrome/store/sites.ts`, `ui/SiteWindow.svelte`): one `<browser>`, never a main window, never listed by ⌃Tab. A request guard (`http-on-modify-request`) keeps it on the app's domains and sign-in domains before anything leaves; the home screen is served from `resource://` in a sandboxed frame of the bar.
 - The page's code runs in the `WebAiOsSite` actor (`site-actor.sys.mjs`), one `Cu.Sandbox` per document. It is read through the symlinks of `build:ui`: after a change to the actor, ask for `build:ui` (the e2e use `testActor`, the packaged one with `WEBAIOS_E2E_PACKAGED_ACTOR=1`).
 - The Applications page's « Sites » section is Electron's, as is (`webaios://applications`): the host (`noyau/sites.ts`) answers `sites.liste` and `sites.agir`, and sends `sites.change`. « Afficher le dossier » and « Relire » are the UI's (`ui/api.ts`). The command bar lists the apps; the agent has `lister_sites`, `ouvrir_site` and `memoire_site`.
+- What the agent adds (plan 32), as in Electron:
+  - **retouches** (`retouches/*.css`, `*.js`, `webaiosSite`): the actor's child asks its parent what goes into each frame (`sendQuery`); the parent decides from its own `WindowGlobalParent` (`chrome/store/site-frames.ts`, Electron's `injectionPour`), never from what the frame says, and only for the app's view (never the sign-in window or a tab). Memory goes to the host (`noyau/site-memory.ts`); the retouches' console is relayed per frame;
+  - the **accord card** (Electron's state machine): the view stays `about:blank` until the choice; rights that grow bring it back;
+  - **video resume** (Electron's `SuiviReprise` in the actor, positions kept by the host) and the **address follow** (`noyau/site-follow.ts`, a copy of `SuiviAdresse` with a drift test);
+  - the **agent's tools** on `site:<id>` (`lister_onglets`, `lire_onglet`, `capture_ecran`, `naviguer`, dev tools) behind the app's « donnees-widget » card;
+  - **add-on buttons** in the app bar (`createSiteAddons`, `ui/SiteAddonsStrip.svelte`); the view is protected from add-ons (no remove, move, adopt, `windows.remove`, non-http loads; Electron's M1 net in the request guard).
+- The end-to-end scenario with AGENTS.md's examples: `e2e/sites-scenario.e2e.ts`. The manual checks of plan 32 are in `docs/superpowers/notes/2026-11-06-applis-de-site-firefox-spike.md` (« Plan 32 »).
 - The probes: `WEBAIOS_SPIKE=1 corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/sites-spike.e2e.ts`, to run again after each Firefox update (measures the window, the routing, the sandbox and the home).
 
 Limits:
 
 - The apps' modules are global (§4.9 of the spec): one list for every app, not per app.
-- No Review page (« Relire » opens the internal « not available yet » page), no design mode, and no title-bar drag region: Firefox keeps its native title bar.
-- Opened as Electron's « Ouvrir sans retouches »: no retouches injected, no address tracking and no accord card until plan 32, so `memoire_site` answers « refusé » (`SITE_REFUSE`).
+- No Review page (« Relire » opens the internal « not available yet » page), no design mode, no « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
+- `about:srcdoc` and `about:blank` frames get video resume when the top page is on the app's domains (beyond Electron, which gives them none); nothing else goes there.
+- The « donnees-widget » card now covers widgets, actions and site apps; before plan 32, widget data read with an account was always refused.
+- Electron's M1 net is always on (Electron: only with an extension loaded in the app's session), so the page's own navigations under the home or the card are dropped. `tabs.create` from an add-on opens in the main window.
+- « Supprimer » withdraws the agent's accord on the app: an app made again under the same id asks again.
+- The headless e2e decode no media: the 10 s `timeupdate` step and a real `ended` are covered by unit tests only. The packaged actor is checked with `WEBAIOS_E2E_PACKAGED_ACTOR=1` after each `build:ui`.
 - A sign-in window opened by `window.open(url)` without features has no `opener` (a login waiting for `opener.postMessage` fails). A window opened with features towards a refused domain shows for an instant, then closes; nothing leaves. A TCP preconnect (no HTTP request) is not seen by the guard.
 - Firefox does not resolve `*.localhost`: the e2e add a DNS override (`resolveLocalHosts`). Visits of an app window are not recorded (`places.history.enabled` is false).
 - The « Projets externes » block of the page shows an off server and no project (external MCP not migrated).
