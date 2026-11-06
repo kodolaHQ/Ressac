@@ -132,6 +132,7 @@ describe("agent components", () => {
     const served = readFileSync(join(copies, new URL(url!).pathname.slice(1)), "utf8");
     expect(served).toContain('http-equiv="Content-Security-Policy"');
     expect(served).toContain("webaios-composant");
+    expect(served).toContain('defineProperty(w, "Components"');
     expect(substitutions.get("webaios-composant-barres")).toBe(`file://${copies}`);
     expect(await serveComponent(data(), "barres")).toBe(url);
     expect(readdirSync(copies)).toHaveLength(1);

@@ -181,6 +181,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     note("S1 probe", { report, reached: componentReached, before, baseline });
     expect(report).toBeDefined();
     expect(componentReached).toEqual({ requests: [], upgrades: [], connections: 0 });
+    // The leftover web Components that COMPONENT_BRIDGE hides: in an ordinary page, `interfaces` only.
+    expect(baseline).toMatchObject({ Components: "object", keys: ["interfaces"] });
     expect({ Components: report.Components, ChromeUtils: report.ChromeUtils, Services: report.Services }).toEqual({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined" });
   }, 60_000);
 
