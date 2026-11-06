@@ -93,7 +93,20 @@ function substitute(name: string, dir: string | null): void {
  * followed; and the whole folder is copied with no file count limit. Upgrade if the agent's folder can be written by an
  * untrusted process.
  */
-export async function serveHome(dataDir: string, id: string): Promise<string | null> {
+export function serveHome(dataDir: string, id: string): Promise<string | null> {
+  // One serve at a time per app: the agent writes several files in a row, and a serve cleaning up while another copies
+  // would delete the other's folder. Each waits for the previous, then publishes and removes the older copies.
+  const run = (serving.get(id) ?? Promise.resolve()).then(() => serveNow(dataDir, id));
+  const settled = run.catch(() => {});
+  serving.set(id, settled);
+  void settled.then(() => serving.get(id) === settled && serving.delete(id));
+  return run;
+}
+
+/** The serve of each app in progress (the last one started). */
+const serving = new Map<string, Promise<unknown>>();
+
+async function serveNow(dataDir: string, id: string): Promise<string | null> {
   if (typeof id !== "string" || !ID_SITE.test(id)) return null;
   try {
     const sites = PathUtils.join(dataDir, "espace", "sites");
@@ -158,6 +171,8 @@ export async function serveHome(dataDir: string, id: string): Promise<string | n
 /** « Supprimer »: the app's served home goes, its substitution and its copies. */
 export async function forgetHome(dataDir: string, id: string): Promise<void> {
   if (typeof id !== "string" || !ID_SITE.test(id)) return;
+  // A serve still running would publish again after this.
+  await serving.get(id);
   const name = current.get(id);
   current.delete(id);
   if (name) substitute(name, null);

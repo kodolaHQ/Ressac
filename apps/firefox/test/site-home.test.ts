@@ -193,6 +193,17 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     expect(existsSync(join(data, "webaios-sites", "vidola"))).toBe(false);
   });
 
+  it("two serves started back to back (the agent writing several files): the last one works, nothing stale is left", async () => {
+    app({ "index.html": "<p>accueil</p>", "img/logo.png": Buffer.from([1]), "a/b/c.js": "1" });
+    const [first, second] = await Promise.all([serveHome(data, "vidola"), serveHome(data, "vidola")]);
+    expect(second).toMatch(/^resource:\/\/webaios-site-vidola-[0-9a-f]{32}\/index\.html$/);
+    expect(served(second!)).toEqual(["a/b/c.js", "img/logo.png", "index.html"]);
+    expect(readdirSync(join(data, "webaios-sites", "vidola"))).toEqual([tokenOf(second!)]);
+    const live = [...substitutions].filter(([name, v]) => name.startsWith("webaios-site-vidola-") && v !== null).map(([name]) => name);
+    expect(live).toEqual([new URL(second!).host]);
+    if (first) expect(substitutions.get(new URL(first).host)).toBeNull();
+  });
+
   it("never serves a symbolic link to a file of the Mac", async () => {
     const home = app({ "index.html": "<p>accueil</p>" });
     symlinkSync(join(root, "secret.txt"), join(home, "secret.txt"));
