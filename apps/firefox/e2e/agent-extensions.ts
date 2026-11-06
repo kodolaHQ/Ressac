@@ -14,19 +14,20 @@ export function grant(dataDir: string, id: string, accord: unknown, profils: str
 
 export type FakeAmo = Awaited<ReturnType<typeof startFakeAmo>>;
 
-const BUILT_ACTOR = path.resolve(import.meta.dirname, "../src/browser/base/content/webaios/extension-actor.sys.mjs");
+const BUILT = path.resolve(import.meta.dirname, "../src/browser/base/content/webaios");
 
 /**
- * The extension actor as `pnpm ui` built it, without its preprocessor line, in a folder of the profile: the store loads
- * it by a resource:// substitution, which the content sandbox reads with the testing_read_path1 pref (spike S5). So
- * these tests need no rebuild of the app.
+ * The extension and site actors as `pnpm ui` built them, without their preprocessor line, in a folder of the profile:
+ * the store loads them by a resource:// substitution, which the content sandbox reads with the testing_read_path1 pref
+ * (spike S5). So these tests need no rebuild of the app.
  */
-function testActor(profile: string): { env: Record<string, string>; prefs: Record<string, string> } {
-  // WEBAIOS_E2E_PACKAGED_ACTOR=1: use the actor packaged by build:ui instead (checked once after each build:ui).
+export function testActor(profile: string): { env: Record<string, string>; prefs: Record<string, string> } {
+  // WEBAIOS_E2E_PACKAGED_ACTOR=1: use the actors packaged by build:ui instead (checked once after each build:ui).
   if (process.env.WEBAIOS_E2E_PACKAGED_ACTOR === "1") return { env: {}, prefs: {} };
   const dir = path.join(realpathSync(profile), "extension-actor");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "extension-actor.sys.mjs"), readFileSync(BUILT_ACTOR, "utf8").replace(/^#define .*\n/, ""));
+  for (const name of ["extension-actor", "site-actor"])
+    writeFileSync(path.join(dir, `${name}.sys.mjs`), readFileSync(path.join(BUILT, `${name}.sys.mjs`), "utf8").replace(/^#define .*\n/, ""));
   return { env: { WEBAIOS_TEST_EXTENSION_ACTOR: dir }, prefs: { "security.sandbox.content.mac.testing_read_path1": dir } };
 }
 

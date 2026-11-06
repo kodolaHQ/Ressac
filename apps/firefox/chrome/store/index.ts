@@ -56,16 +56,16 @@ export interface WebAiOsStore extends Store {
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
 
 /**
- * The extension actor's module. Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding it, served by a
- * resource:// substitution (the content sandbox reads it only with security.sandbox.content.mac.testing_read_path1
- * set to that folder: spike S5), so the e2e run without a rebuild of the app.
+ * An actor's module (`extension-actor`, `site-actor`). Tests only: WEBAIOS_TEST_EXTENSION_ACTOR names a folder holding
+ * both, served by a resource:// substitution (the content sandbox reads it only with
+ * security.sandbox.content.mac.testing_read_path1 set to that folder: spike S5), so the e2e run without a rebuild of the app.
  */
-function extensionActorModule(): string {
+function actorModule(name: string): string {
   const dir = Services.env.get("WEBAIOS_TEST_EXTENSION_ACTOR");
-  if (!dir) return "chrome://browser/content/webaios/extension-actor.sys.mjs";
+  if (!dir) return `chrome://browser/content/webaios/${name}.sys.mjs`;
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
   Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution("webaios-test", Services.io.newFileURI(new FileUtils.File(dir)));
-  return "resource://webaios-test/extension-actor.sys.mjs";
+  return `resource://webaios-test/${name}.sys.mjs`;
 }
 
 /** Firefox's permission types behind each decision we mirror (what the page reads through Notification.permission, permissions.query, MIDI). */
@@ -178,7 +178,7 @@ async function start(): Promise<WebAiOsStore> {
     safeForUntrustedWebProcess: true,
     messageManagerGroups: ["webaios-reading"],
   });
-  const extensionActor = extensionActorModule();
+  const extensionActor = actorModule("extension-actor");
   // The agent's extension pages: background and popup (webext-browsers), options or pages in a tab (browsers). No
   // `matches`: the about:blank frames that inherit an agent page's principal must be reached too (the child filters
   // on the document's principal).
@@ -188,6 +188,17 @@ async function start(): Promise<WebAiOsStore> {
     remoteTypes: ["extension"],
     messageManagerGroups: ["webext-browsers", "browsers"],
     allFrames: true,
+  });
+  // Site apps: every http(s) frame of a tab browser; the child does nothing outside a site app's container.
+  const siteActor = actorModule("site-actor");
+  ChromeUtils.registerWindowActor("WebAiOsSite", {
+    parent: { esModuleURI: siteActor },
+    child: { esModuleURI: siteActor, events: { DOMWindowCreated: {}, DOMContentLoaded: { capture: true } } },
+    allFrames: true,
+    matches: ["http://*/*", "https://*/*"],
+    messageManagerGroups: ["browsers"],
+    // Required in web processes; the parent receives nothing, so a compromised web process cannot make it act.
+    safeForUntrustedWebProcess: true,
   });
   // The agent's extensions' consoles, in every content process: a content script writes in a web process (spike S6).
   // What it relays is untrusted there: the parent checks it (agentExtensions.relayConsole).
@@ -282,5 +293,7 @@ async function start(): Promise<WebAiOsStore> {
 }
 
 export const ready: Promise<WebAiOsStore> = start();
+// Site app windows: read synchronously by a window as it loads (chrome/window/site-window.ts).
+export { sites, publishSiteFrames } from "./sites";
 // For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
 export { alertObserver } from "./notifications";

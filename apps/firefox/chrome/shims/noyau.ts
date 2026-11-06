@@ -1,6 +1,7 @@
 // Pure helpers of the kernel, re-exported from their files (never from index.ts, which pulls in Node-only code).
 export * from "../../../../packages/noyau/src/mcp/pont";
 export { adresseLocale } from "../../../../packages/noyau/src/workflows/acces";
+export { hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
 // Copied: it lives in mcp/serveur.ts, which imports the MCP SDK.
 export const navigationHorsSite = (url: string) => `L'appli de site ne va que sur ses domaines : ${url} refusée.`;
 export { siteMenage } from "../../../../packages/noyau/src/workflows/menagement";

@@ -13,7 +13,7 @@ const UNMIGRATED = ["IaLocale", "BoutonDesign", "ApercuAction"];
 //   with fixed names, no eval (privileged documents have a strict CSP);
 // - window: script loaded in every browser window;
 // - agent: the agent panel, same kind of page as the sidebar (agent.html, agent.js, agent.css);
-// - actor: ES modules for the page and extension JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs);
+// - actor: ES modules for the page, extension and site JSWindowActors (page-actor.sys.mjs, extension-actor.sys.mjs, site-actor.sys.mjs);
 // - store: ES module loaded by resource://, the Node state code bundled with shims for node:fs/crypto/path.
 export default defineConfig(({ mode }) => {
   const outDir = "src/browser/base/content/webaios";
@@ -34,6 +34,7 @@ export default defineConfig(({ mode }) => {
           electron: shim("electron"),
           "@webaios/noyau": shim("noyau"),
           "node:net": shim("net"),
+          "node:url": shim("url"),
           "node:dns": shim("empty"),
           "node:http": shim("empty"),
           "node:https": shim("empty"),
@@ -57,7 +58,7 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: false,
         minify: false,
         lib: {
-          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts" },
+          entry: { "page-actor": "chrome/agent/page-actor.ts", "extension-actor": "chrome/agent/extension-actor.ts", "site-actor": "chrome/agent/site-actor.ts" },
           formats: ["es"],
           fileName: (_format, name) => `${name}.sys.mjs`,
         },
@@ -68,7 +69,7 @@ export default defineConfig(({ mode }) => {
         {
           name: "preprocessor-directive",
           writeBundle(o: { dir?: string }) {
-            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"]]) {
+            for (const [name, define] of [["page-actor", "WEBAIOS_PAGE_ACTOR"], ["extension-actor", "WEBAIOS_EXTENSION_ACTOR"], ["site-actor", "WEBAIOS_SITE_ACTOR"]]) {
               const file = `${o.dir}/${name}.sys.mjs`;
               writeFileSync(file, `#define ${define}\n${readFileSync(file, "utf8")}`);
             }
