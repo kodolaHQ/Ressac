@@ -2,14 +2,17 @@
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows (Electron's main/sites/fenetres.ts).
 import type { Cadre } from "../../../navigateur/src/commun/modele";
-import { ICONE_MAX, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
+import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
 import type { SiteOuvrable } from "../../../navigateur/src/main/sites/fenetres";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
+import { adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
+import { gardienGestes } from "../../shared/geste-widget";
 import type { AgentHost } from "../agent/host";
 import type { SiteFrameData } from "../agent/site-actor";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
+import { serveHome, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "webaios-sites";
@@ -42,10 +45,16 @@ export interface SiteWindowController {
   openBlocked(): void;
   memory(): Promise<(MessageVersLAccueil & { type: "memoire" }) | null>;
   onMemory(cb: (m: MessageVersLAccueil & { type: "memoire" }) => void): () => void;
-  /** The home screen asks for an address of the site (Task 5). */
+  /**
+   * The home screen asks for an address (Electron's ouvrirDepuisAccueil): on the current domain, just after a real
+   * gesture in the home (consumed), one per ECART_OUVERTURE_ACCUEIL_MS; false if refused.
+   */
   openFromHome(adresse: string): boolean;
+  /** A site image for the home, as `data:`, loaded in the app's container; null if refused. */
   image(url: string): Promise<string | null>;
+  /** The served copy's URL (re-served when the home's files change, then the state is broadcast), or null. */
   homeUrl(): Promise<string | null>;
+  /** A real (isTrusted) press in the home's frame. */
   homeGesture(): void;
 }
 
@@ -64,6 +73,10 @@ interface OpenSite {
   /** The hosts of the blocked navigations and opens, in order (read by the e2e). */
   blocked: string[];
   notice: BlockedNotice;
+  /** The served home copy, until the home's files change. */
+  home: Promise<string | null> | null;
+  /** When the home last opened an address. */
+  lastHomeOpen: number;
 }
 
 const open = new Map<string, OpenSite>();
@@ -71,6 +84,8 @@ const byContainer = new Map<number, OpenSite>();
 let host: AgentHost | null = null;
 let dataDir = "";
 let openTab: (url: string) => void = () => {};
+/** The last real presses in each app's home (one allows one open). */
+const gestures = gardienGestes<string>();
 const memoryListeners = new Map<string, Set<(m: MessageVersLAccueil & { type: "memoire" }) => void>>();
 
 const context = (s: OpenSite): ContexteNavigation => ({
@@ -264,10 +279,24 @@ function controllerOf(s: OpenSite): SiteWindowController {
       set.add(cb);
       return () => void set.delete(cb);
     },
-    openFromHome: () => false,
-    image: async () => null,
-    homeUrl: async () => null,
-    homeGesture() {},
+    openFromHome(adresse) {
+      if (open.get(id) !== s || typeof adresse !== "string") return false;
+      const now = Date.now();
+      if (now - s.lastHomeOpen < ECART_OUVERTURE_ACCUEIL_MS) return false;
+      const url = adresseSurDomaine(adresse, httpHost(s.site.depart) ?? "", s.site.domaines, s.site.depart, { adressesLocales: !!context(s).adressesLocales });
+      // Without a recent real gesture nothing opens: a home that asks on load would send back to the site at each ⌂.
+      if (!url || !gestures.accepter(id, id) || s.vue !== "accueil") return false;
+      loadInView(s, url);
+      s.vue = "site";
+      broadcast(s);
+      s.lastHomeOpen = now;
+      return true;
+    },
+    image: async (url) => (open.get(id) === s && typeof url === "string" ? siteImage(s.userContextId, url, s.site.domaines) : null),
+    homeUrl: () => (open.get(id) === s && s.site.aAccueil ? (s.home ??= serveHome(dataDir, id)) : Promise.resolve(null)),
+    homeGesture() {
+      if (open.get(id) === s) gestures.geste(id, id);
+    },
   };
 }
 
@@ -359,7 +388,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
     // Opened « sans retouches » (plan 31 injects nothing): never the accord card.
-    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)) };
+    const s: OpenSite = { site, userContextId, window: win, view: null, vue: site.aAccueil ? "accueil" : "site", loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     return true;
@@ -454,8 +483,13 @@ export const sites = {
     "sites.effacer": ([id]: [string]) => sites.erase(id),
     "sites.mettreAJour": ([site]: [SiteOuvrable]) => sites.update(site),
     "sites.ouvertes": () => sites.openIds(),
-    // The served home copy is Task 5's.
-    "sites.accueilChange": () => {},
+    // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
+    "sites.accueilChange": ([id]: [string]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      s.home = null;
+      broadcast(s);
+    },
   },
 };
 

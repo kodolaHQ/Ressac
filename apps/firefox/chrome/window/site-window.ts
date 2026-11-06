@@ -126,19 +126,3 @@ export function setupSiteSmallWindow(win: Window, id: string): void {
     if (url) win.gBrowser.selectedBrowser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
   });
 }
-
-/**
- * Electron's home pages call `parent.postMessage`; from a sandboxed opaque frame Firefox refuses it towards a chrome
- * parent. Run first in the served copy (page world): `parent` (a [Replaceable] property) becomes an object whose
- * postMessage dispatches `webaios-home` on the frame's window, its detail the message as JSON, for the chrome to read.
- * Self-contained, serialized with toString().
- */
-export function homeBridge(): void {
-  const w = window as unknown as Record<string, any>;
-  const stringify = JSON.stringify;
-  const Custom = w.CustomEvent;
-  const dispatch = w.dispatchEvent.bind(w);
-  w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-home", { detail: stringify(m) })) });
-}
-
-export const HOME_BRIDGE = `<script>(${homeBridge.toString()})();</script>`;

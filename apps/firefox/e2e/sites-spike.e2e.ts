@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { HOME_BRIDGE } from "../chrome/window/site-window";
+import { HOME_BRIDGE } from "../chrome/store/site-home";
 import { affichageServi } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";
 import { state, waitFor } from "./firefox";

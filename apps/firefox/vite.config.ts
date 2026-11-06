@@ -96,6 +96,8 @@ export default defineConfig(({ mode }) => {
         // The builder (Constructeur.svelte, frozen): its Agent tab opens the side panel; its preview reads the Firefox home.
         { find: /^\.\/OngletAgent\.svelte$/, replacement: fileURLToPath(new URL("ui/AgentTab.svelte", import.meta.url)) },
         { find: /^\.\/ApercuWidget\.svelte$/, replacement: fileURLToPath(new URL("ui/ApercuWidget.svelte", import.meta.url)) },
+        // The site bar's home frame (FenetreSite.svelte, frozen): served by resource://, its messages through the bridge.
+        { find: /^\.\/CadreAccueil\.svelte$/, replacement: fileURLToPath(new URL("ui/SiteHomeFrame.svelte", import.meta.url)) },
       ].concat(UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) }))),
     },
     build: {
