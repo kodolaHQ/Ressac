@@ -284,6 +284,19 @@ describe("site app address follow", () => {
     await viewAt("t66", b("/film/2"));
   });
 
+  it("↻ in the bar while vidola-a now redirects to pub.localhost: the follow starts (reload is a load WebAiOs started)", async () => {
+    let parked = false;
+    server.definir("vidola-a.localhost", "/recharge", (_req, res) => (parked ? res.writeHead(302, { Location: pub("/arrivee") }).end() : res.writeHead(200, { "Content-Type": "text/html" }).end("<title>R</title>ok")));
+    await setup("t68", declaration(a("/recharge")));
+    await openAndWait("t68", "/recharge");
+    expect(referenceReads()).toBe(0);
+    parked = true;
+    await barClick("t68", "site-recharger");
+    await expectText("t68", "site-avis", AVIS_CHANGE);
+    expect(referenceReads()).toBe(1);
+    expect(server.requetes.some((r) => r.hote === "pub.localhost")).toBe(false);
+  });
+
   it("an app without suiviAdresse has no button (sites.spec.ts:1521)", async () => {
     await setup("t67", declaration(a("/"), { suiviAdresse: undefined }));
     await openAndWait("t67");

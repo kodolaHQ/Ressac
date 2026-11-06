@@ -135,6 +135,12 @@ function follow(s: OpenSite, url: string | null): void {
   host?.notify("sites.chercher", { id: s.site.id, url });
 }
 
+/** A reload is a load WebAiOs started too (measured: the system principal): the follow aims at the page reloaded. */
+function reloadView(s: OpenSite): void {
+  s.target = s.view?.currentURI?.spec ?? s.target;
+  s.view?.reload();
+}
+
 function loadInView(s: OpenSite, url: string): void {
   s.loaded = true;
   s.target = url;
@@ -361,10 +367,10 @@ function controllerOf(s: OpenSite): SiteWindowController {
       if (s.vue === "site" && s.view?.canGoForward) s.view.goForward();
     },
     reload() {
-      if (s.vue === "site" && s.loaded) s.view?.reload();
+      if (s.vue === "site" && s.loaded) reloadView(s);
     },
     findAddress() {
-      if (open.get(id) !== s || !s.site.declaration.suiviAdresse) return;
+      if (open.get(id) !== s || s.vue !== "site" || !s.site.declaration.suiviAdresse) return;
       // The page shown if it is on the site, else (error page, blocked link…) the start address.
       const url: string = s.view?.currentURI?.spec ?? "";
       follow(s, url && adresseRelative(url, s.site.domaines) !== null ? url : null);
@@ -433,8 +439,8 @@ function attach(s: OpenSite, browser: any): void {
     onStateChange(progress: any, request: any, flags: number, status: number) {
       const L = Ci.nsIWebProgressListener;
       if (!progress.isTopLevel || !(flags & L.STATE_STOP) || !(flags & L.STATE_IS_DOCUMENT) || !NETWORK_ERRORS.has(status)) return;
-      const failed: string = request.QueryInterface(Ci.nsIChannel).URI.spec;
-      follow(s, /^https?:/i.test(failed) ? failed : s.target);
+      const failed: string | undefined = request instanceof Ci.nsIChannel ? request.URI.spec : undefined;
+      follow(s, failed && /^https?:/i.test(failed) ? failed : s.target);
     },
     onLocationChange(progress: any, _request: unknown, _location: unknown, flags: number) {
       if (!progress.isTopLevel) return;
@@ -582,7 +588,7 @@ export const sites = {
     if (site.accordRequis && s.vue !== "accord" && (!before.accordRequis || grown)) {
       s.vue = "accord";
       if (s.loaded) {
-        s.view?.reload();
+        reloadView(s);
         reloaded = true;
       }
     } else if (s.vue === "accord" && !site.accordRequis) nextView(s);
@@ -601,7 +607,7 @@ export const sites = {
     // A page already loaded (without retouches) is reloaded to receive them.
     const reload = site !== null && s.loaded && s.aCharger === null;
     nextView(s);
-    if (reload) s.view?.reload();
+    if (reload) reloadView(s);
     broadcast(s);
   },
   /** The window's current view, or null if it is not open. */
@@ -616,7 +622,7 @@ export const sites = {
   /** Electron's rechargerVue: the view's page reloaded, if it was ever loaded (its retouches changed). */
   reloadView(id: string): void {
     const s = open.get(id);
-    if (s?.loaded && !s.window.closed) s.view?.reload();
+    if (s?.loaded && !s.window.closed) reloadView(s);
   },
   /** The retouches' console of the open app (Electron's erreurs), or none. */
   errors(id: string): ErreurRetouche[] {
