@@ -65,11 +65,11 @@ export const reviewedRef = (dataDir: string, projet: string) => join(dataDir, "d
 
 /**
  * Connects a client and declares a project folder holding `app.js` (LINES) and `logo.bin`, then waits for its line and
- * its first review snapshot.
+ * its first review snapshot (unless `snapshot` is false: no git).
  */
 export async function declareProject(
   m: Marionette,
-  o: { dataDir: string; nom?: string; ports?: number[] },
+  o: { dataDir: string; nom?: string; ports?: number[]; snapshot?: boolean },
 ): Promise<{ dossier: string; id: string; port: number; jeton: string; client: Client }> {
   const dossier = projectDir(o.nom ?? "mon-site");
   writeAppJs(dossier, LINES);
@@ -79,7 +79,7 @@ export async function declareProject(
   await client.callTool({ name: "declarer_projet", arguments: { dossier, ports: o.ports ?? [18765] } });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projet-externe\"]')", [], 15_000);
   const id = createHash("sha256").update(dossier).digest("hex").slice(0, 16);
-  for (const deadline = Date.now() + 15_000; !existsSync(reviewedRef(o.dataDir, `ext-${id}`)); await new Promise((r) => setTimeout(r, 100)))
+  for (const deadline = Date.now() + 15_000; o.snapshot !== false && !existsSync(reviewedRef(o.dataDir, `ext-${id}`)); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`no first review snapshot of ext-${id}`);
   return { dossier, id, port, jeton, client };
 }

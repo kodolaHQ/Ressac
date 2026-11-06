@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../../navigateur/src/commun/api";
 import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host";
 import { raisonEchec } from "../shared/design-guards";
-import { createExternesApi } from "../ui/design-api";
+import { createExternesApi, createRelectureApi } from "../ui/design-api";
 
 /** A fake noyau host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
@@ -80,5 +80,92 @@ describe("createExternesApi", () => {
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     await new Promise((r) => setTimeout(r, 0));
     expect(dispatched).toHaveLength(1);
+  });
+});
+
+describe("createRelectureApi", () => {
+  const P = "ext-" + ID;
+  const T = "a".repeat(40) + ":" + "b".repeat(40);
+  const C = "c-0123abcd";
+  function relecture() {
+    const calls: { method: string; params: unknown }[] = [];
+    const host = { request: async (method: string, params?: unknown) => (calls.push({ method, params }), { method, params }) } as Pick<AgentHost, "request">;
+    return { api: createRelectureApi({ host }), calls };
+  }
+
+  it("each member rejects an invalid input without calling the host", async () => {
+    const { api, calls } = relecture();
+    const bad: [string, () => Promise<unknown>][] = [
+      ["projet invalide", () => api.ouvrir("../x")],
+      ["jeton invalide", () => api.ouvrir(P, "abc")],
+      ["projet invalide", () => api.fichier("demo", T, "app.js")],
+      ["jeton invalide", () => api.fichier(P, "x", "app.js")],
+      ["chemin invalide", () => api.fichier(P, T, "")],
+      ["chemin invalide", () => api.fichier(P, T, "a\0b")],
+      ["chemin invalide", () => api.fichier(P, T, "x".repeat(4097))],
+      ["lignes invalides", () => api.lignes(P, T, "app.js", 0, 3)],
+      ["lignes invalides", () => api.lignes(P, T, "app.js", 5, 3)],
+      ["lignes invalides", () => api.lignes(P, T, "app.js", 1.5, 3)],
+      ["projet invalide", () => api.commentaires(42 as unknown as string)],
+      ["lignes invalides", () => api.commenter(P, T, null as never)],
+      ["lignes invalides", () => api.commenter(P, T, { fichier: "app.js", debut: 2, fin: 1, texte: "t" })],
+      ["jeton invalide", () => api.commenter(P, "x", { fichier: "app.js", debut: 1, fin: 1, texte: "t" })],
+      ["chemin invalide", () => api.commenter(P, T, { fichier: "", debut: 1, fin: 1, texte: "t" })],
+      ["texte invalide", () => api.commenter(P, T, { fichier: "app.js", debut: 1, fin: 1, texte: "x".repeat(4001) })],
+      ["commentaire invalide", () => api.modifierCommentaire(P, "c-xyz", "t")],
+      ["texte invalide", () => api.modifierCommentaire(P, C, 42 as unknown as string)],
+      ["résolu invalide", () => api.resoudre(P, C, "oui" as unknown as boolean)],
+      ["commentaire invalide", () => api.resoudre(P, "../c", true)],
+      ["commentaire invalide", () => api.supprimerCommentaire(P, "c-0123abcde")],
+      ["projet invalide", () => api.envoyer("app-")],
+      ["jeton invalide", () => api.relu(P, T + "0")],
+    ];
+    for (const [message, f] of bad) await expect(f(), message).rejects.toThrow(message);
+    expect(calls).toEqual([]);
+  });
+
+  it("valid inputs go to the handler of the same name, with named parameters; ouvrir without a token passes jeton: null", async () => {
+    const { api, calls } = relecture();
+    const c = { fichier: "dossier é/a b.js", debut: 1, fin: 2, texte: "t" };
+    expect(await api.ouvrir(P)).toEqual({ method: "relecture.ouvrir", params: { projet: P, jeton: null } });
+    await api.ouvrir(P, T);
+    await api.fichier(P, T, "app.js");
+    await api.lignes(P, T, "app.js", 1, 11);
+    await api.commentaires(P);
+    await api.commenter(P, T, c);
+    await api.modifierCommentaire(P, C, "u");
+    await api.resoudre(P, C, false);
+    await api.supprimerCommentaire(P, C);
+    await api.envoyer(P);
+    await api.relu(P, T);
+    expect(calls).toEqual([
+      { method: "relecture.ouvrir", params: { projet: P, jeton: null } },
+      { method: "relecture.ouvrir", params: { projet: P, jeton: T } },
+      { method: "relecture.fichier", params: { projet: P, jeton: T, chemin: "app.js" } },
+      { method: "relecture.lignes", params: { projet: P, jeton: T, chemin: "app.js", debut: 1, fin: 11 } },
+      { method: "relecture.commentaires", params: { projet: P } },
+      { method: "relecture.commenter", params: { projet: P, jeton: T, c } },
+      { method: "relecture.modifierCommentaire", params: { projet: P, id: C, texte: "u" } },
+      { method: "relecture.resoudre", params: { projet: P, id: C, resolu: false } },
+      { method: "relecture.supprimerCommentaire", params: { projet: P, id: C } },
+      { method: "relecture.envoyer", params: { projet: P } },
+      { method: "relecture.relu", params: { projet: P, jeton: T } },
+    ]);
+  });
+
+  it("answers are copies; a host rejection keeps its message", async () => {
+    const answer = { etat: "ok", fichiers: [] };
+    const api = createRelectureApi({
+      host: {
+        request: async (method: string) => {
+          if (method === "relecture.envoyer") throw new Error("projet inconnu");
+          return answer;
+        },
+      } as Pick<AgentHost, "request">,
+    });
+    const v = await api.commentaires(P);
+    expect(v).toEqual(answer);
+    expect(v).not.toBe(answer);
+    await expect(api.envoyer(P)).rejects.toThrow("projet inconnu");
   });
 });

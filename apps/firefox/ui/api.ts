@@ -1,4 +1,3 @@
-import { PREFIXE_RELECTURE } from "../../navigateur/src/commun/modele";
 import type { SiteAffiche } from "../../navigateur/src/commun/sites";
 import type { ApiWebaios, EtatPanneauAgent, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
 import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
@@ -11,7 +10,7 @@ import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
 import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
-import { createExternesApi } from "./design-api";
+import { createExternesApi, createRelectureApi } from "./design-api";
 
 /** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
 export interface AccueilLu {
@@ -240,14 +239,19 @@ export function createApi(win: WindowController): ApiFirefox {
       },
       agir(id, action) {
         if (action === "dossier") return win.store.sites.revealSite(id);
-        // The Review page is not ported: its tab shows the internal « not available yet » page.
-        if (action === "relire") return void win.store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: PREFIXE_RELECTURE + "site-" + id, activer: true });
+        // Electron's index.ts relire: the app's Review page, under its name.
+        if (action === "relire")
+          return void api.sites!.liste()
+            .then((l) => win.store.dispatch({ type: "ouvrirRelecture", fenetreId: fenetre, projet: "site-" + id, nom: (l.find((s) => s.id === id)?.nom ?? id).slice(0, 80) }))
+            .catch((e) => console.error("[webaios] site review :", e));
         host.notify("sites.agir", { id, action, fenetre });
         if (action === "modifier") win.openAgent();
       },
     },
     // The section « Projets externes »: the external MCP server, kept by the noyau host.
     externes: createExternesApi({ host, fenetre, dispatch: (a) => win.store.dispatch(a), untilUnload }),
+    // The Review page: its comparisons and comments, kept by the noyau host.
+    relecture: createRelectureApi({ host }),
     // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
     extensions: {
       pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),

@@ -16,13 +16,14 @@
   import PageVide from "../../navigateur/src/renderer/composants/PageVide.svelte";
   import Telechargements from "../../navigateur/src/renderer/composants/Telechargements.svelte";
   import PanneauOnglets from "../../navigateur/src/renderer/composants/PanneauOnglets.svelte";
+  import Relecture from "../../navigateur/src/renderer/composants/Relecture.svelte";
   import { focusAgent } from "../../navigateur/src/renderer/composants/agent.svelte";
   import { commande, fermerCommande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
   import { estDemandeAgent } from "../../navigateur/src/renderer/composants/modale.svelte";
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
-  import { actionDeUrl, aUneVue, cibleDeUrlWorkflow, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
+  import { actionDeUrl, aUneVue, cibleDeUrlWorkflow, projetDeUrlRelecture, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
   import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
   import { masquer, REVELATION_INITIALE, surZone, type ZoneGauche } from "../../navigateur/src/commun/revelation";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
@@ -53,6 +54,7 @@
   // Electron's ZoneContenu: an action's page launches nothing when opened. Refused when the tab's space (or the one shown)
   // is private; a space not found counts as private.
   const pageAction = $derived(ongletActif ? actionDeUrl(ongletActif.url) : null);
+  const projetRelecture = $derived(ongletActif ? projetDeUrlRelecture(ongletActif.url) : null);
   const actionEnPrive = $derived.by(() => {
     const espaces = etat.valeur?.espaces ?? [];
     const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
@@ -205,6 +207,8 @@
       {:else}
         {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
       {/if}
+    {:else if projetRelecture}
+      {#key `${ongletActif?.id}:${projetRelecture}`}<Relecture projet={projetRelecture} ongletId={ongletActif?.id ?? ""} />{/key}
     {:else if ongletActif && !pageWeb}
       <InternalPage />
     {/if}

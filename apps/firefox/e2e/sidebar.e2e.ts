@@ -227,8 +227,8 @@ describe("WebAiOs sidebar", () => {
   });
 
   it("shows an internal webaios: page as not yet available", async () => {
-    // The Review page is not migrated (the Actions page, used here before plan 33, now is).
-    await dispatch(m, { type: "ouvrirRelecture", fenetreId: (await win()).id, projet: "demo", nom: "Demo" });
+    // An internal page WebAiOs-Firefox does not know (the Review page, used here before plan 34, is migrated).
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: "webaios://inconnue" });
     const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"page-interne\"]')?.textContent");
     expect(text).toBe("Pas encore disponible dans WebAiOs-Firefox.");
     expect(await m.execute("return document.getElementById('webaios-sidebar').hasAttribute('full')")).toBe(true);
