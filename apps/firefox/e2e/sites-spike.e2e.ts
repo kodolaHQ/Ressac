@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { HOME_BRIDGE } from "../chrome/window/site-window";
 import { affichageServi } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";
@@ -30,7 +30,19 @@ const seen = { Components: typeof Components, ChromeUtils: typeof ChromeUtils, S
 window.probeVar = 1;
 var probeGlobal = 2;
 document.documentElement.setAttribute("data-probe", JSON.stringify(seen));
-document.addEventListener("probe-read", () => document.documentElement.setAttribute("data-pw", JSON.stringify(document.getElementById("pw").value)));
+// The same-origin Xray door (the guard's comment: accepted, Electron's inline-script twin): wrappedJSObject, and an
+// inline <script> put in the page by the sandbox.
+const injected = document.createElement("script");
+injected.textContent = "window.injectedBySandbox = 1";
+document.documentElement.append(injected);
+document.addEventListener("probe-read", () => {
+  const waived = (f) => { try { return f(); } catch (e) { return String(e); } };
+  document.documentElement.setAttribute("data-pw", JSON.stringify(document.getElementById("pw").value));
+  document.documentElement.setAttribute("data-door", JSON.stringify({
+    secretWaived: waived(() => window.wrappedJSObject.secret),
+    pwWaivedLength: waived(() => document.getElementById("pw").wrappedJSObject.value.length),
+  }));
+});
 `;
 
 /** A page for (c): a page-world secret, DOMContentLoaded stopped in capture, a password field, optionally a frame. */
@@ -39,7 +51,7 @@ const probePage = (frame: string) => `<!doctype html><title>Sonde</title>
   window.secret = "s3cret";
   for (const t of [window, document]) t.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true);
   document.addEventListener("probe-check", () => document.documentElement.setAttribute("data-page", JSON.stringify({
-    probeVar: typeof window.probeVar, probeGlobal: typeof window.probeGlobal, portee: typeof window.__webaiosPortee, pwLength: document.getElementById("pw").value.length })));
+    probeVar: typeof window.probeVar, probeGlobal: typeof window.probeGlobal, injectedBySandbox: typeof window.injectedBySandbox, portee: typeof window.__webaiosPortee, pwLength: document.getElementById("pw").value.length })));
 </script>
 <input type="password" id="pw">${frame ? `<iframe src="${frame}"></iframe>` : ""}`;
 
@@ -74,6 +86,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
       tabs: Object.keys((await state(m)).onglets).length,
     };
     note(what, r);
+    // Security: nothing ever reaches pub.localhost (its ad frame on the home page aside).
+    expect(r.toPub, what).toEqual([]);
     return r;
   }
 
@@ -200,7 +214,19 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await measure("(b) window.open to compte.localhost with features", () => inSiteView(m, "vidola", `window.open(${JSON.stringify(connexion)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true }), 2000);
     note("(b) sign-in window", await waitFor(m, `return !!(${small}) && !(${small}).gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true).then(smallInfo, (e) => String(e)));
     note("(b) sign-in window reached compte", server.requetes.some((r) => r.hote === "compte.localhost"));
-    await measure("(b) opener.location from the sign-in window", () => inBrowser(m, `(${small}).gBrowser.selectedBrowser`, pageWorld(`opener.location = ${JSON.stringify(pub("/opener"))};`)));
+    // With a gesture, from the page world; what the assignment did is written on the page.
+    const opener = await measure("(b) opener.location from the sign-in window", async () => {
+      await inBrowser(m, `(${small}).gBrowser.selectedBrowser`, pageWorld(`const u = ${JSON.stringify(pub("/opener"))}; const r = [];
+        for (const [name, f] of [["opener.location =", () => { opener.location = u; }], ["opener.location.href =", () => { opener.location.href = u; }], ["opener.location.replace", () => opener.location.replace(u)]]) {
+          try { f(); r.push(name + " assigned"); break; } catch (e) { r.push(name + " " + e.name + ": " + e.message); }
+        }
+        for (const [name, f] of [["opener.closed", () => opener.closed], ["opener.postMessage", () => opener.postMessage("x", "*")], ["opener.frames.length", () => opener.frames.length]]) {
+          try { r.push(name + " = " + String(f())); } catch (e) { r.push(name + " " + e.name); }
+        }
+        document.documentElement.dataset.r = r.join(" | ");`), { gesture: true });
+      return inBrowser(m, `(${small}).gBrowser.selectedBrowser`, "return document.documentElement.dataset.r;");
+    });
+    expect(opener.url).toBe(home);
     await measure("(b) the sign-in window navigates to pub", () => inBrowser(m, `(${small}).gBrowser.selectedBrowser`, `location.href = ${JSON.stringify(pub("/petite"))}; return 1;`));
     note("(b) sign-in window after", await smallInfo());
     await m.execute(`(${small})?.close();`);
@@ -219,6 +245,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await openSite(rules());
     const r = await measure("(b) history.back() to vidola-b, removed", () => inSiteView(m, "vidola", "history.back(); return 1;"));
     note("(b) history.back(): requests to vidola-b", server.requetes.filter((q) => q.hote === "vidola-b.localhost").length);
+    expect(server.requetes.filter((q) => q.hote === "vidola-b.localhost")).toEqual([]);
+    expect(r.url).toBe(server.url("vidola-a.localhost", "/film/2"));
     note("(b) history.back(): url", r.url);
     await back();
   }, 240_000);
@@ -234,9 +262,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
       document.dispatchEvent(new Event("probe-read"));
       document.dispatchEvent(new Event("probe-check"));
       const e = document.documentElement;
-      return { probe: JSON.parse(e.getAttribute("data-probe")), pw: e.getAttribute("data-pw"), page: JSON.parse(e.getAttribute("data-page")) };`;
+      return { probe: JSON.parse(e.getAttribute("data-probe")), pw: e.getAttribute("data-pw"), door: JSON.parse(e.getAttribute("data-door")), page: JSON.parse(e.getAttribute("data-page")) };`;
     for (const [where, frame] of [["main document", undefined], ["lecteur.localhost frame", 0]] as const) {
-      note(`(c) ${where}`, await inSiteView(m, "vidola", read, { frame }).catch((e) => String(e)));
+      const got = await inSiteView<any>(m, "vidola", read, { frame });
+      note(`(c) ${where}`, got);
+      // Security: through its Xray view the sandbox sees no chrome, nothing of the page, and no password.
+      for (const k of ["Components", "ChromeUtils", "Services", "require", "process", "secret", "windowSecret"]) expect(got.probe[k], k).toBe("undefined");
+      expect(got.pw).toBe('""');
+      expect(got.page).toMatchObject({ probeVar: "undefined", probeGlobal: "undefined", portee: "undefined", pwLength: 7 });
     }
     // An ordinary tab with the same page: the actor does nothing there.
     note(
@@ -320,5 +353,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
         return { trusted, received: win.__spikeHome.root.slice(-1) };`,
       ),
     );
+  }, 60_000);
+
+  it("(e) closing the app window closes its sign-in windows: nothing of its container stays unguarded", async () => {
+    const connexion = server.url("compte.localhost", "/connexion");
+    await inSiteView(m, "vidola", `window.open(${JSON.stringify(connexion)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
+    const small = `[...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site-small") === "vidola").length`;
+    await waitFor(m, `return ${small};`, (n: number) => n === 1);
+    await m.execute(`${siteWindowExpr("vidola")}.close();`);
+    const left = await waitFor(m, `return ${small};`, (n: number) => n === 0).catch(() => -1);
+    note("(e) sign-in windows left after the app window closed", left);
+    expect(left).toBe(0);
   }, 60_000);
 });

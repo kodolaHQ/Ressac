@@ -157,7 +157,11 @@ export const sites = {
       "unload",
       () => {
         if (open.get(id) === s) open.delete(id);
-        if (byContainer.get(s.userContextId) === s) byContainer.delete(s.userContextId);
+        if (byContainer.get(s.userContextId) !== s) return;
+        byContainer.delete(s.userContextId);
+        // The guard ends with the app window: no other window of its container may outlive it unguarded.
+        for (const w of Services.wm.getEnumerator("navigator:browser"))
+          if (Number(w.gBrowser?.selectedBrowser?.getAttribute("usercontextid")) === s.userContextId) w.close();
       },
       { once: true },
     );
