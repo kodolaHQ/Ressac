@@ -7,7 +7,7 @@ import { urlRelecture } from "../../navigateur/src/commun/modele";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { declareProject, LINES, modified, openApplications, reviewedRef, writeAppJs } from "./review";
+import { declareProject, LINES, modified, openApplications, refreshReview, reviewedRef, writeAppJs } from "./review";
 import { writeSite } from "./sites";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
@@ -163,7 +163,7 @@ it("a file changed while the page is open: nothing changes before « Rafraîchir
     await new Promise((r) => setTimeout(r, 300));
     expect(await texts(ADDED)).toEqual(["15ligne 15 modifiée"]);
     expect(await count(tid("fichier-relecture"))).toBe(1);
-    await click(m, `${PAGE} button`, { text: "Rafraîchir" });
+    await refreshReview(m);
     await waitCount(tid("fichier-relecture"), 2);
     await waitTexts(ADDED, ["15ligne 15 modifiée", "25ligne 25 modifiée"]);
   } finally {
@@ -189,7 +189,7 @@ it("changed, then another tab and back: the page shows the old diff until « Raf
     await waitTexts(ADDED, ["15ligne 15 modifiée"]);
     await new Promise((r) => setTimeout(r, 300));
     expect(await texts(ADDED)).toEqual(["15ligne 15 modifiée"]);
-    await click(m, `${PAGE} button`, { text: "Rafraîchir" });
+    await refreshReview(m);
     await waitTexts(ADDED, ["15ligne 15 modifiée", "25ligne 25 modifiée"]);
   } finally {
     await p.client.close();
@@ -293,7 +293,7 @@ it("forgetting a project under its open Review page: Rafraîchir says projet inc
     await expect.poll(() => existsSync(path.join(relecture, `${projet}.git`)) || existsSync(comments), { timeout: 10_000 }).toBe(false);
     await click(m, tid(`onglet-${review}`));
     await waitCount(PAGE, 1);
-    await click(m, `${PAGE} button`, { text: "Rafraîchir" });
+    await refreshReview(m);
     await waitUi(m, `return doc.querySelector('${tid("relecture-indisponible")}')?.textContent === "Relecture indisponible : projet inconnu"`);
     expect(await count(tid("erreur-relecture"))).toBe(0);
   } finally {

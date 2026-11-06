@@ -8,7 +8,7 @@ import { LIGNE_CHANGEE_PAGE as LIGNE_CHANGEE, PLAGE_HORS_BLOC, urlRelecture } fr
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { declareProject, LINES, modified, openApplications, textOf, writeAppJs } from "./review";
+import { declareProject, LINES, modified, openApplications, refreshReview, textOf, writeAppJs } from "./review";
 import { writeSite } from "./sites";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
@@ -58,7 +58,7 @@ const waitText = (selector: string, t: string, ms = 10_000) => waitUi(m, "return
 /** The new line number of the diff line just above the first comment (the line it hangs under). */
 const commentUnder = () => inUi<string | null>(m, `return doc.querySelector('${COMMENT}')?.previousElementSibling?.dataset.nouveau ?? null`);
 const openFile = (chemin: string) => click(m, tid("fichier-relecture"), { text: chemin });
-const refresh = () => click(m, `${PAGE} button`, { text: "Rafraîchir" });
+const refresh = () => refreshReview(m);
 const ADDED = `${tid("ligne-diff")}.ajout`;
 
 /** A Shift+click on the + of line `n`: its mousedown, as DiffFichier reads it (the click helper has no modifiers). */

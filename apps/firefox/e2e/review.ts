@@ -101,3 +101,10 @@ export function readNotifications(file: string): { titre: string; texte: string 
   return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 }
 
+
+/** « Rafraîchir » on the Review page, once it is enabled again: the button stays disabled while the previous comparison loads, and a click on it then does nothing. */
+export async function refreshReview(m: Marionette): Promise<void> {
+  const sel = '[data-testid="page-relecture"] button';
+  await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].some((b) => b.textContent.includes('Rafraîchir') && !b.disabled)", [sel], 15_000);
+  await click(m, sel, { text: "Rafraîchir" });
+}
