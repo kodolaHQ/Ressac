@@ -285,6 +285,11 @@ export function createDevTools(o: {
   isPrivate(tabId: string): boolean;
   sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
 }): DevTools {
+  /** The top-level reload of the agent's dev tools; on a site app it is WebAiOs's load, so the M1 net spares it under the home. */
+  const reloadTop = (id: string, s: { commands: any }, noCache: boolean) => {
+    if (id.startsWith(PREFIXE_SITE)) o.sites?.markWanted(id.slice(PREFIXE_SITE.length));
+    return s.commands.targetCommand.reloadTopLevelTarget(noCache);
+  };
   const siteView = (id: string) => (id.startsWith(PREFIXE_SITE) ? o.sites?.viewFor(id.slice(PREFIXE_SITE.length)) : undefined);
   /** The page's address now: the app view's for a site app window, the tab's otherwise. */
   const urlOf = (id: string) => String((id.startsWith(PREFIXE_SITE) ? siteView(id)?.browser.currentURI?.spec : o.store.state.onglets[id]?.url) ?? "");
@@ -564,9 +569,8 @@ export function createDevTools(o: {
     },
     async recharger(id: string, sansCache: boolean): Promise<void> {
       const s = await session(id);
-      if (id.startsWith(PREFIXE_SITE)) o.sites?.markWanted(id.slice(PREFIXE_SITE.length));
       // Resolves at dom-complete (note D4); a page that never finishes still answers, as Electron's.
-      await Promise.race([s.commands.targetCommand.reloadTopLevelTarget(!!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
+      await Promise.race([reloadTop(id, s, !!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && origineDe(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
     },
     /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */
@@ -586,7 +590,7 @@ export function createDevTools(o: {
         try {
           await Promise.race([start, c.wait]);
           const work = opts?.recharger
-            ? Promise.race([s.commands.targetCommand.reloadTopLevelTarget(false), sleep(PROFILE_LOAD_TIMEOUT_MS)])
+            ? Promise.race([reloadTop(id, s, false), sleep(PROFILE_LOAD_TIMEOUT_MS)])
             : sleep(Math.min(Math.max(0, opts?.dureeMs ?? PROFILE_MS), PROFILE_MAX_MS));
           await Promise.race([work, c.wait]);
           data = await Promise.race([Services.profiler.getProfileDataAsync(), c.wait]);
