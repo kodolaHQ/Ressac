@@ -6,6 +6,7 @@ import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
 import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
@@ -54,6 +55,8 @@ export interface WebAiOsStore extends Store {
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
+  /** An action page's result images (`data:`, or null) and agent components (a resource:// copy per page showing it). */
+  readonly actionMedia: { image(url: string): Promise<string | null>; serve(nom: string): Promise<string | null>; release(nom: string): Promise<void> };
 }
 
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
@@ -132,6 +135,8 @@ async function start(): Promise<WebAiOsStore> {
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
   // The site apps' served home copies too (the same sanitizer).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
+  // The agent components' copies too.
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-composants"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies non effacées :", e));
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
@@ -328,11 +333,15 @@ async function start(): Promise<WebAiOsStore> {
     gestesWidgets,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
+    actionMedia: { image: actionImage, serve: (nom) => serveComponent(dataDir, nom), release: (nom) => releaseComponent(dataDir, nom) },
   };
 }
 
 export const ready: Promise<WebAiOsStore> = start();
 // Site app windows: read synchronously by a window as it loads (chrome/window/site-window.ts).
 export { sites, publishSiteFrames } from "./sites";
+// For the e2e: the action images' channel, measured directly (plan 33 spike S2).
+export { containerRequests, loadImage } from "./site-home";
+export { actionImagesContainer } from "./action-media";
 // For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
 export { alertObserver } from "./notifications";

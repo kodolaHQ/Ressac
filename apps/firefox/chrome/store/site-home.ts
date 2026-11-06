@@ -58,7 +58,7 @@ export function homeServed(html: string, key: string): string {
 }
 
 /** `realpath` (nsIFile.normalize), or null. */
-function realPath(p: string): string | null {
+export function realPath(p: string): string | null {
   try {
     const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     f.initWithPath(p);
@@ -69,7 +69,7 @@ function realPath(p: string): string | null {
   }
 }
 
-function isLink(p: string): boolean {
+export function isLink(p: string): boolean {
   const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   f.initWithPath(p);
   return f.isSymlink();
@@ -290,8 +290,10 @@ function imageAllowed(url: string, domaines: readonly string[]): boolean {
 /**
  * Electron's requetesDe, on a Firefox channel in the app's container (a content principal with its userContextId, so
  * its cookies): redirects stop at the channel's event sink until the loader calls followRedirect during the event.
+ * `anonymous` (an action's result images): LOAD_ANONYMOUS, no cookie sent or stored, kept by each redirected channel
+ * (measured: plan 33 spike S2), and no cookie jar.
  */
-function containerRequests(userContextId: number): OpenRequest {
+export function containerRequests(userContextId: number, o: { anonymous?: boolean } = {}): OpenRequest {
   return (url) => {
     const listeners: Record<string, ((...a: any[]) => void)[]> = {};
     const emit = (event: string, ...a: unknown[]) => listeners[event]?.forEach((cb) => cb(...a));
@@ -305,10 +307,13 @@ function containerRequests(userContextId: number): OpenRequest {
       securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
       contentPolicyType: Ci.nsIContentPolicy.TYPE_OTHER,
     }).QueryInterface(Ci.nsIHttpChannel);
-    // A channel without a window gets a cookie jar that refuses every cookie (measured): the app's, first-party.
-    const jar = Cc["@mozilla.org/cookieJarSettings;1"].createInstance(Ci.nsICookieJarSettings);
-    jar.initWithURI(uri, false);
-    channel.loadInfo.cookieJarSettings = jar;
+    if (o.anonymous) channel.loadFlags |= Ci.nsIRequest.LOAD_ANONYMOUS;
+    else {
+      // A channel without a window gets a cookie jar that refuses every cookie (measured): the app's, first-party.
+      const jar = Cc["@mozilla.org/cookieJarSettings;1"].createInstance(Ci.nsICookieJarSettings);
+      jar.initWithURI(uri, false);
+      channel.loadInfo.cookieJarSettings = jar;
+    }
     // The channel of the last hop: a followed redirect goes on in a new one.
     let current = channel;
     let follow = false;
@@ -379,6 +384,13 @@ function containerRequests(userContextId: number): OpenRequest {
   };
 }
 
+/** A loaded image as a `data:` URL. */
+export function toDataUrl(image: { type: string; corps: Uint8Array }): string {
+  let binary = "";
+  for (let i = 0; i < image.corps.length; i += 0x8000) binary += String.fromCharCode(...image.corps.subarray(i, i + 0x8000));
+  return `data:${image.type};base64,${btoa(binary)}`;
+}
+
 /** Image loads of each app (by container): running and waiting. */
 const queues = new Map<number, { running: number; waiting: (() => void)[] }>();
 
@@ -395,10 +407,7 @@ export async function siteImage(userContextId: number, url: string, domaines: st
   else await new Promise<void>((ok) => q!.waiting.push(ok));
   try {
     const image = await loadImage(containerRequests(userContextId), url, { permise: (u) => imageAllowed(u, domaines), cookies: true, max: IMAGE_SITE_MAX });
-    if (!image) return null;
-    let binary = "";
-    for (let i = 0; i < image.corps.length; i += 0x8000) binary += String.fromCharCode(...image.corps.subarray(i, i + 0x8000));
-    return `data:${image.type};base64,${btoa(binary)}`;
+    return image && toDataUrl(image);
   } finally {
     const next = q.waiting.shift();
     if (next) next();
