@@ -11,6 +11,7 @@ import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
 import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
+import { createExternesApi } from "./design-api";
 
 /** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
 export interface AccueilLu {
@@ -245,15 +246,8 @@ export function createApi(win: WindowController): ApiFirefox {
         if (action === "modifier") win.openAgent();
       },
     },
-    // The section « Projets externes » (external MCP) is not ported: an off server, no project.
-    externes: {
-      liste: async () => ({ serveur: { etat: "eteint", raison: "Pas encore disponible dans WebAiOs-Firefox." }, projets: [], clients: [] }),
-      surChange: off,
-      brancher: () => Promise.reject(new Error("unavailable")),
-      revoquer: async () => {},
-      oublier: async () => {},
-      relire() {},
-    },
+    // The section « Projets externes »: the external MCP server, kept by the noyau host.
+    externes: createExternesApi({ host, fenetre, dispatch: (a) => win.store.dispatch(a), untilUnload }),
     // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
     extensions: {
       pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),

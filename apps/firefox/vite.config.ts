@@ -7,7 +7,7 @@ import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
 // Electron components that step 2 does not migrate (imported as ./Name.svelte by the reused ones): Unavailable.svelte shows nothing.
 // The site bar: no design mode, no extension menu (no per-app activation, spec §4.9).
-const UNMIGRATED = ["IaLocale", "BoutonDesign", "MenuExtensionsSite", "BoutonDesignSite", "ProjetsExternes"];
+const UNMIGRATED = ["IaLocale", "BoutonDesign", "MenuExtensionsSite", "BoutonDesignSite"];
 // Mounted only in a site app's bar: their styles are injected there, never bundled into the main UI's stylesheet.
 const INJECTED_CSS = ["/site/FenetreSite.svelte", "/ui/SiteAddonsStrip.svelte"];
 
