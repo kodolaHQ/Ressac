@@ -181,7 +181,7 @@ describe("WebAiOs sidebar", () => {
   });
 
   it("shows an internal webaios: page as not yet available", async () => {
-    await dispatch(m, { type: "ouvrirApplications", fenetreId: (await win()).id });
+    await dispatch(m, { type: "ouvrirActions", fenetreId: (await win()).id });
     const text = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"page-interne\"]')?.textContent");
     expect(text).toBe("Pas encore disponible dans WebAiOs-Firefox.");
     expect(await m.execute("return document.getElementById('webaios-sidebar').hasAttribute('full')")).toBe(true);

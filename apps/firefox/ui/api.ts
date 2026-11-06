@@ -1,3 +1,5 @@
+import { PREFIXE_RELECTURE } from "../../navigateur/src/commun/modele";
+import type { SiteAffiche } from "../../navigateur/src/commun/sites";
 import type { ApiWebaios, EtatPanneauAgent, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
 import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
 import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts";
@@ -219,7 +221,32 @@ export function createApi(win: WindowController): ApiFirefox {
     },
     // The command bar's sources besides tabs: none in step 2.
     applications: { liste: async () => ({ atelier: "ok", applications: [] }), surChange: off, agir() {} },
-    sites: { liste: none, surChange: off, agir() {} },
+    // The site apps, kept by the noyau host (its window actions go through the chrome); « Afficher le dossier » and
+    // « Relire » are the UI's own.
+    sites: {
+      liste: () => ask<SiteAffiche[]>("sites.liste", undefined, []),
+      surChange(callback) {
+        // A host that started again, or the chrome's resync, sent no change: the list is read again.
+        const offs = [host.on("sites.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("accueil.change", () => callback())];
+        return untilUnload(() => offs.forEach((f) => f()));
+      },
+      agir(id, action) {
+        if (action === "dossier") return win.store.sites.revealSite(id);
+        // The Review page is not ported: its tab shows the internal « not available yet » page.
+        if (action === "relire") return void win.store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: PREFIXE_RELECTURE + "site-" + id, activer: true });
+        host.notify("sites.agir", { id, action, fenetre });
+        if (action === "modifier") win.openAgent();
+      },
+    },
+    // The section « Projets externes » (external MCP) is not ported: an off server, no project.
+    externes: {
+      liste: async () => ({ serveur: { etat: "eteint", raison: "Pas encore disponible dans WebAiOs-Firefox." }, projets: [], clients: [] }),
+      surChange: off,
+      brancher: () => Promise.reject(new Error("unavailable")),
+      revoquer: async () => {},
+      oublier: async () => {},
+      relire() {},
+    },
     // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
     extensions: {
       pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),

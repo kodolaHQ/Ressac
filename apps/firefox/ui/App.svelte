@@ -2,6 +2,7 @@
   // Electron's App.svelte, reduced to step 2: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
   // this transparent iframe; the iframe covers the whole window only when the UI shows more than its column.
   import { tick, untrack } from "svelte";
+  import Applications from "../../navigateur/src/renderer/composants/Applications.svelte";
   import BarreCommande from "../../navigateur/src/renderer/composants/BarreCommande.svelte";
   import BarreLaterale from "../../navigateur/src/renderer/composants/BarreLaterale.svelte";
   import Extensions from "../../navigateur/src/renderer/composants/Extensions.svelte";
@@ -19,7 +20,7 @@
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
   import { reglagesEspace } from "../../navigateur/src/renderer/composants/reglagesEspace.svelte";
   import { api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../../navigateur/src/renderer/etat.svelte";
-  import { aUneVue, cibleDeUrlWorkflow, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
+  import { aUneVue, cibleDeUrlWorkflow, URL_APPLICATIONS, URL_EXTENSIONS } from "../../navigateur/src/commun/modele";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
@@ -127,6 +128,8 @@
       <PageError onglet={ongletActif} />
     {:else if ongletActif?.url === URL_EXTENSIONS}
       <Extensions />
+    {:else if ongletActif?.url === URL_APPLICATIONS}
+      <Applications />
     {:else if cibleConstructeur}
       {#key cibleConstructeur.id}<WorkflowBuilder cible={cibleConstructeur} />{/key}
     {:else if ongletActif && !pageWeb}

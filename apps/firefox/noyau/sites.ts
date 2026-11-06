@@ -390,6 +390,10 @@ export function createSites(o: {
     );
   }
 
+  const abonner = (id: string, m: MemoireSite) => {
+    if (!abonnements.has(id)) abonnements.set(id, m.surChange(() => void messageMemoire(id, m).then((msg) => o.notifierMemoire(id, msg), () => {})));
+  };
+
   const liste = async () => (await lignes()).map(({ empreinte: _, ...l }) => l);
 
   return {
@@ -420,12 +424,7 @@ export function createSites(o: {
       try {
         const m = await memoire(id);
         // Abonné une fois par fenêtre ouverte (désabonné à sa fermeture) ; une fenêtre déjà fermée ne l'est pas.
-        if (!abonnements.has(id) && ouvertes.has(id)) {
-          abonnements.set(
-            id,
-            m.surChange(() => void messageMemoire(id, m).then((msg) => o.notifierMemoire(id, msg), () => {})),
-          );
-        }
+        if (ouvertes.has(id)) abonner(id, m);
         return await messageMemoire(id, m);
       } catch (e) {
         console.error(`[sites] mémoire de ${id} indisponible :`, e);
@@ -462,6 +461,8 @@ export function createSites(o: {
     },
     async resynchroniser() {
       ouvertes = new Set(await o.chrome.ouvertes());
+      // A host that started again has no subscription: the windows already open keep their home's feed.
+      for (const id of ouvertes) await memoire(id).then((m) => abonner(id, m), () => {});
     },
     async arreter() {
       try {

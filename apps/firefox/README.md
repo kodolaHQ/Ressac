@@ -196,13 +196,30 @@ Limits:
 - One home page for every space (as in Electron): widgets, data and accords are not per space.
 - `ia.*` blocks run entirely in Ollama: Gemma (`gemma4:e4b-mlx`) writes, and the decision model `pplx-decider-flash` replaces Electron's Kev (same `/v1/systemone` request and answers; compared on the owner's real widgets: 90–100 % same keep/drop decisions, score correlation ~0.9). Nothing is installed by WebAiOs-Firefox: run `ollama pull pplx-decider-flash` once; a missing model fails the block with `Kev a répondu 404`. `WEBAIOS_KEV_URL` still points the decisions at a Kev server instead (the e2e use it for their fake).
 
+## Site apps
+
+- An app is a folder of the space, `<dataDir>/espace/sites/<id>/` (`site.json`, `accueil/`, written by the agent). What WebAiOs keeps lives outside it, in `<dataDir>/sites/<id>/` (`memoire.json`, `adresse.json`) and in `sites.json` (window frame, favicon). « Supprimer » moves the folder to `espace/sites/.corbeille/<id>-<time>` and wipes the session and the memory.
+- Each app runs in its own internal container (`webaios-site-<id>`: cookies, localStorage, IndexedDB), in its own window (`chrome/store/sites.ts`, `ui/SiteWindow.svelte`): one `<browser>`, never a main window, never listed by ⌃Tab. A request guard (`http-on-modify-request`) keeps it on the app's domains and sign-in domains before anything leaves; the home screen is served from `resource://` in a sandboxed frame of the bar.
+- The page's code runs in the `WebAiOsSite` actor (`site-actor.sys.mjs`), one `Cu.Sandbox` per document. It is read through the symlinks of `build:ui`: after a change to the actor, ask for `build:ui` (the e2e use `testActor`, the packaged one with `WEBAIOS_E2E_PACKAGED_ACTOR=1`).
+- The Applications page's « Sites » section is Electron's, as is (`webaios://applications`): the host (`noyau/sites.ts`) answers `sites.liste` and `sites.agir`, and sends `sites.change`. « Afficher le dossier » and « Relire » are the UI's (`ui/api.ts`). The command bar lists the apps; the agent has `lister_sites`, `ouvrir_site` and `memoire_site`.
+- The probes: `WEBAIOS_SPIKE=1 corepack pnpm --filter firefox-webaios exec vitest run -c vitest.e2e.config.ts e2e/sites-spike.e2e.ts`, to run again after each Firefox update (measures the window, the routing, the sandbox and the home).
+
+Limits:
+
+- The apps' modules are global (§4.9 of the spec): one list for every app, not per app.
+- No Review page (« Relire » opens the internal « not available yet » page), no design mode, and no title-bar drag region: Firefox keeps its native title bar.
+- Opened as Electron's « Ouvrir sans retouches »: no retouches injected, no address tracking and no accord card until plan 32, so `memoire_site` answers « refusé » (`SITE_REFUSE`).
+- A sign-in window opened by `window.open(url)` without features has no `opener` (a login waiting for `opener.postMessage` fails). A window opened with features towards a refused domain shows for an instant, then closes; nothing leaves. A TCP preconnect (no HTTP request) is not seen by the guard.
+- Firefox does not resolve `*.localhost`: the e2e add a DNS override (`resolveLocalHosts`). Visits of an app window are not recorded (`places.history.enabled` is false).
+- The « Projets externes » block of the page shows an off server and no project (external MCP not migrated).
+
 ## Not migrated yet (step 4)
 
 - compact mode;
 - site-app permission checks;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;
-- internal `webaios:` pages: a "not available yet" message;
+- internal `webaios:` pages: a "not available yet" message (the Applications page shows its Sites section only; the Docker applications and « Projets externes » are not migrated);
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
 - the actions' workflow builder: `webaios://workflow/action/<id>` shows the internal page « Pas encore disponible dans WebAiOs-Firefox. »;

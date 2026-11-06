@@ -430,6 +430,17 @@ export const sites = {
     s.window.gBrowser?.updateTitlebar();
     broadcast(s);
   },
+  /** « Afficher le dossier »: the app's folder shown in the file manager. */
+  revealSite(id: string): void {
+    if (typeof id !== "string" || !ID_SITE.test(id) || !dataDir) return;
+    try {
+      const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      f.initWithPath(PathUtils.join(dataDir, "espace", "sites", id));
+      f.reveal();
+    } catch (e) {
+      console.warn("[sites] dossier non affiché :", e);
+    }
+  },
   openIds(): string[] {
     return [...open.values()].filter((s) => !s.window.closed).map((s) => s.site.id);
   },
