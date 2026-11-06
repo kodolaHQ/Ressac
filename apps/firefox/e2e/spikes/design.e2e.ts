@@ -29,6 +29,13 @@ const HOOKS = DESIGN.replace(
   window.early = []; window.hooked = []; window.fakeStop = 0;
   for (const t of ["pointerdown", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"])
     window.addEventListener(t, (e) => early.push(t + ":" + e.isTrusted), true);
+  window.docEarly = []; window.moves = { pointermove: 0, mousemove: 0 }; window.keysEarly = [];
+  for (const t of ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"]) {
+    document.addEventListener(t, (e) => docEarly.push(t + ":capture:" + e.isTrusted), true);
+    document.addEventListener(t, (e) => docEarly.push(t + ":bubble:" + e.isTrusted));
+  }
+  for (const t of ["pointermove", "mousemove"]) window.addEventListener(t, (e) => e.isTrusted && moves[t]++, true);
+  window.addEventListener("keydown", (e) => keysEarly.push(e.key + ":" + e.isTrusted), true);
   const hook = (o, k) => { const f = o[k]; o[k] = function (...a) { hooked.push(k); return f.apply(this, a); }; };
   hook(Element.prototype, "attachShadow"); hook(Document.prototype, "createElement"); hook(EventTarget.prototype, "addEventListener");
   hook(window, "getComputedStyle"); hook(Element.prototype, "getBoundingClientRect"); hook(CSS, "escape"); hook(Document.prototype, "querySelectorAll");
@@ -46,6 +53,26 @@ const GRID = html(
 const TARGET = html('<div id="cible" style="position:absolute;left:300px;top:900px;width:80px;height:30px;background:rgb(0,200,0)"></div>', "<style>body{margin:0;height:3000px;background:#fff}</style>");
 /** The overlay's document (S3): transparent, one opaque box (the "bubble", 200 × 56) with a textarea. */
 const OVERLAY = '<head><style>html, body { margin: 0; background: transparent; } #bulle { width: 200px; height: 56px; background: rgb(109, 94, 252); } textarea { width: 180px; height: 30px; }</style></head><body><div id="bulle"><textarea id="t"></textarea></div></body>';
+/** design.html with a same-origin frame holding a button (S1 fix, (b)). */
+const FRAMED = DESIGN.replace("</body>", '<iframe id="cadre" style="width:300px;height:100px" srcdoc="<button id=dans>dans</button><script>window.vu = []; for (const t of [\'mousedown\', \'click\']) addEventListener(t, (e) => vu.push(t + \':\' + e.isTrusted), true)</script>"></iframe></body>');
+/**
+ * Electron's scriptViseur with the S1 fix: no click listener of its own; the actor's guard hands it the clicked element
+ * (`__viseurChoisir`). Everything else (hover, Escape, swallowing, stop) is Electron's code, unchanged.
+ */
+function guardedScript(): string {
+  let s = scriptViseur();
+  const edits: [string, string][] = [
+    ['      window.removeEventListener("click", surClic, true);\n', ""],
+    ["if (globalThis.__viseurArret === arret) delete globalThis.__viseurArret;", "if (globalThis.__viseurArret === arret) { delete globalThis.__viseurArret; delete globalThis.__viseurChoisir; }"],
+    ["const surClic = (e) => {\n      if (!e.isTrusted) return;\n      bloque(e);\n      const el = e.target;", "const choisir = (el) => {"],
+    ['window.addEventListener("click", surClic, true);', "globalThis.__viseurChoisir = choisir;"],
+  ];
+  for (const [a, b] of edits) {
+    if (!s.includes(a)) throw new Error(`scriptViseur changed: ${a}`);
+    s = s.replace(a, b);
+  }
+  return s;
+}
 const CSP = "default-src 'none'; script-src 'nonce-essai'; style-src 'self'; require-trusted-types-for 'script'; trusted-types 'none'";
 
 /** A Svelte 5 component compiled in dev mode (what a demo of the agent serves through Vite), built with this repo's Vite. */
@@ -82,6 +109,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
       if (route === "/" || route === "/x") return send(DESIGN);
       if (route === "/autre") return send("<title>Autre</title>autre");
       if (route === "/hooks") return send(HOOKS);
+      if (route === "/cadre") return send(FRAMED);
       if (route === "/csp") return send('<title>CSP</title><button id="b">ok</button>', { "Content-Security-Policy": CSP });
       if (route === "/grille") return send(GRID);
       if (route === "/cible") return send(TARGET);
@@ -132,6 +160,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
   /** Arms the viewfinder; `result()` waits for its answer ({ r } or { e } when the query is rejected). */
   const arm = () => chrome(m, `window.__spikeArm = ${ACTOR}.sendQuery("arm", { code: arguments[0] }).then((r) => ({ r }), (e) => ({ e: String(e) })); return true;`, [scriptViseur()]);
   const result = () => chrome<{ r?: any; e?: string }>(m, "return window.__spikeArm;");
+  /** The S1 fix: armed with the guard on the chrome event handler. */
+  const armG = () => chrome(m, `window.__spikeArm = ${ACTOR}.sendQuery("armGuarded", { code: arguments[0] }).then((r) => ({ r }), (e) => ({ e: String(e) })); return true;`, [guardedScript()]);
+  const resultIn = (ms: number) => Promise.race([result(), sleep(ms).then(() => "pending" as const)]);
 
   async function open(url: string) {
     await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
@@ -265,7 +296,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(seen.pageGlobal).toBe("undefined");
   });
 
-  it("S1: a hostile page (window listeners first, hooked prototypes, fake stop) sees nothing of the viewfinder", async () => {
+  it("S1 (unguarded): a hostile page sees no hook nor fake stop, but its early window listener sees the click", async () => {
     await open(`${base}/hooks`);
     await sleep(200);
     await inPage("window.hooked.length = 0; window.early.length = 0");
@@ -281,10 +312,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(seen.hooked).toEqual([]);
     expect(seen.fakeStop).toBe(0);
     expect(seen.reactions).toEqual([]);
-    // The click itself: a page listener on window (capture) registered before the viewfinder's. Kept strict: it fails
-    // (measured ["pointerdown:true","click:true"]); the owner decides (spec §6, security stop rule).
+    // The hole of Electron's script as is: a page listener on window (capture) registered before the viewfinder's sees
+    // the person's click. Asserted as measured, so a change shows; the "S1 fix" probes below close it.
     note("S1 early window-capture listener saw", seen.early);
-    expect(seen.early).toEqual([]);
+    expect(seen.early).toEqual(["pointerdown:true", "click:true"]);
   });
 
   it("S1: same-document navigation stops (and the parent re-arms); a reload answers null", async () => {
@@ -338,6 +369,157 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(frame?.cadre.display).toBe("block");
     expect(c.r?.selecteur).toBe("#b");
     expect(await ask("hosts")).toBe(0);
+  });
+
+  // --- S1 fix, the chromeEventHandler guard --------------------------------------------------------------------
+
+  const PAGE_SAW = "({ early: window.early.slice(), docEarly: window.docEarly.slice(), reactions: window.reactions.slice(), moves: { ...window.moves }, keysEarly: window.keysEarly.slice() })";
+  const clearPage = () => inPage("early.length = 0; docEarly.length = 0; reactions.length = 0; keysEarly.length = 0; moves.pointermove = 0; moves.mousemove = 0;");
+
+  it("S1 fix (a, c): the hostile page sees no click of any kind, in any phase; hover still frames", async () => {
+    await open(`${base}/hooks`);
+    await sleep(200);
+    const listeners0 = await ask("listeners");
+    await clearPage();
+    await armG();
+    await sleep(100);
+    const armedListeners = await ask("listeners");
+    await mouse("#email", { move: true });
+    const frame = await ask("frame");
+    const tabs = await chrome(m, "return gBrowser.tabs.length;");
+    await mouse("#lien", { button: 1 });
+    await mouse("#lien", { button: 2 });
+    await sleep(200);
+    const midRight = await inPage(PAGE_SAW);
+    await mouse("#envoyer", { count: 2 });
+    const c = await result();
+    await sleep(300);
+    const seen = { selecteur: c.r?.selecteur, frame: frame?.cadre.display, label: frame?.etiquette.text, page: await inPage(PAGE_SAW), midRight, newTabs: (await chrome(m, "return gBrowser.tabs.length;")) - tabs, href: await inPage("location.href"), guard: await ask("guardSeen"), hooked: await inPage("window.hooked"), listeners0, armedListeners };
+    note("S1 fix hostile page", seen);
+    expect(seen.selecteur).toBe("#envoyer");
+    expect(seen.frame).toBe("block");
+    expect(seen.label).toBe("input#email.champ");
+    for (const p of [seen.midRight, seen.page]) {
+      expect(p.early).toEqual([]);
+      expect(p.docEarly).toEqual([]);
+      expect(p.reactions).toEqual([]);
+    }
+    expect(seen.newTabs).toBe(0);
+    expect(seen.href).toBe(`${base}/hooks`);
+    expect(seen.hooked).toEqual([]);
+  });
+
+  it("S1 fix (d, g): page-made events ignored; keys reach the page except Escape, which stops", async () => {
+    await open(`${base}/hooks`);
+    await sleep(200);
+    await clearPage();
+    await armG();
+    await sleep(100);
+    await inPage(`document.querySelector("li").click(); window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); document.querySelector("#envoyer").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+    await sleep(200);
+    const untrusted = { hosts: await ask("hosts"), pending: await resultIn(100), page: await inPage(PAGE_SAW) };
+    note("S1 fix untrusted", untrusted);
+    expect(untrusted.hosts).toBe(1);
+    expect(untrusted.pending).toBe("pending");
+    // The page's own untrusted events reach its own listeners (nothing to hide from it).
+    expect(untrusted.page.early).toEqual(["click:false", "click:false"]);
+    await pressKeys(m, "a");
+    await sleep(100);
+    await pressKeys(m, "Escape");
+    const r = await resultIn(3000);
+    const keys = { r, page: await inPage("window.keysEarly.slice()"), hosts: await ask("hosts") };
+    note("S1 fix keyboard", keys);
+    // Electron's surTouche only takes a trusted Escape; other keys go to the page.
+    expect(keys.page).toEqual(["Escape:false", "a:true"]);
+    expect(r).toEqual({ r: null });
+    expect(keys.hosts).toBe(0);
+  });
+
+  it("S1 fix (e): after a capture, a stop or a reload the page gets clicks again and no guard listener is left", async () => {
+    await open(`${base}/hooks`);
+    await sleep(200);
+    const before = await ask("listeners");
+    const out: Record<string, unknown> = { before };
+    // After a capture: guard kept 500 ms (rest of a double click), then gone.
+    await armG();
+    await sleep(100);
+    await mouse("#email");
+    expect((await result()).r?.selecteur).toBe("#email");
+    out.just = await ask("listeners");
+    await sleep(600);
+    out.afterCapture = await ask("listeners");
+    await clearPage();
+    await mouse("#email");
+    await sleep(200);
+    out.pageAfterCapture = await inPage(PAGE_SAW);
+    // After the parent's stop.
+    await armG();
+    await sleep(100);
+    await ask("stop");
+    expect(await result()).toEqual({ r: null });
+    out.afterStop = await ask("listeners");
+    // A reload while armed: the old actor goes (didDestroy), the new page gets its clicks.
+    await armG();
+    await sleep(100);
+    await chrome(m, "gBrowser.selectedBrowser.reload();");
+    out.reload = await result();
+    await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
+    await sleep(300);
+    out.afterReload = await ask("listeners");
+    await mouse("#email");
+    await sleep(200);
+    out.pageAfterReload = await inPage(PAGE_SAW);
+    note("S1 fix cleanup", out);
+    for (const k of ["afterCapture", "afterStop", "afterReload"]) expect(out[k]).toEqual(before);
+    expect((out.just as any).guarded).toBe((before as any).guarded + 9);
+    for (const k of ["pageAfterCapture", "pageAfterReload"]) {
+      expect((out[k] as any).early).toContain("click:true");
+      expect((out[k] as any).reactions).toContain("click:email");
+    }
+  });
+
+  it("S1 fix (f): arming in one tab leaves another tab alone", async () => {
+    await open(`${base}/hooks`);
+    await sleep(200);
+    const tabA = await chrome(m, "window.__spikeTabA = gBrowser.selectedTab; return gBrowser.tabs.indexOf(gBrowser.selectedTab);");
+    await armG();
+    await sleep(100);
+    await open(`${base}/hooks`);
+    await sleep(200);
+    await clearPage();
+    await mouse("#email");
+    await sleep(200);
+    const b = { page: await inPage(PAGE_SAW), hosts: await ask("hosts"), listeners: await ask("listeners"), process: (await ask("info")).remoteType };
+    await chrome(m, "gBrowser.selectedTab = window.__spikeTabA;");
+    await waitFor(m, "return gBrowser.selectedTab === window.__spikeTabA;", (v) => v === true);
+    await sleep(200);
+    const a = { hosts: await ask("hosts"), process: (await ask("info")).remoteType };
+    await mouse("#envoyer");
+    const r = await result();
+    note("S1 fix two tabs", { tabA, b, a, selecteur: r.r?.selecteur });
+    expect(b.page.reactions).toContain("click:email");
+    expect(b.hosts).toBe(0);
+    expect(a.hosts).toBe(1);
+    expect(r.r?.selecteur).toBe("#envoyer");
+  });
+
+  it("S1 fix (b): a click in a same-origin frame", async () => {
+    await open(`${base}/cadre`);
+    await waitFor(m, `return ${ACTOR}.sendQuery("probe", { code: "!!document.querySelector('#cadre').contentDocument?.querySelector('#dans')" });`, (v) => v === true);
+    await armG();
+    await sleep(100);
+    const c = await chrome(
+      m,
+      `const b = gBrowser.selectedBrowser, br = b.getBoundingClientRect();
+       const r = await b.browsingContext.currentWindowGlobal.getActor("WebAiOsSpikeDesign").sendQuery("probe", { code: "(() => { const f = document.querySelector('#cadre').getBoundingClientRect(), d = document.querySelector('#cadre').contentDocument.querySelector('#dans').getBoundingClientRect(); return { x: f.x + d.x + d.width / 2, y: f.y + d.y + d.height / 2 }; })()" });
+       const x = br.left + r.x, y = br.top + r.y;
+       for (const t of ["mousedown", "mouseup"]) window.synthesizeMouseEvent(t, x, y, { button: 0, clickCount: 1 });
+       return r;`,
+    );
+    await sleep(300);
+    const seen = { at: c, result: await resultIn(300), guard: await ask("guardSeen"), frame: await inPage("document.querySelector('#cadre').contentWindow.vu"), sameProcess: await inPage("!!document.querySelector('#cadre').contentDocument") };
+    note("S1 fix same-origin frame", seen);
+    await ask("stop");
   });
 
   // --- S2, the capture -------------------------------------------------------------------------------------------

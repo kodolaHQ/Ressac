@@ -1,6 +1,8 @@
 // Throwaway actor of plan 35's spike (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md). Registered at
 // runtime by e2e/spikes/design.e2e.ts from a resource:// substitution: no build:ui. Not product code.
 
+import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
+
 // Electron's ARRET (apps/navigateur/src/main/design/viseur.ts), not exported there.
 const ARRET = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
 
@@ -11,6 +13,10 @@ const clone = (v) => {
     return { cloneError: String(e) };
   }
 };
+
+/** The mouse events the guard swallows while armed (and 500 ms after a capture: the rest of a double click). */
+const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "dblclick", "contextmenu"];
+const GUARDED = new Set([...MOUSE, "keydown"]);
 
 export class WebAiOsSpikeDesignParent extends JSWindowActorParent {}
 
@@ -30,6 +36,63 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
   pageWorld() {
     const win = this.contentWindow;
     return Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: false, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · source (spike)" });
+  }
+
+  /**
+   * Capture listeners on this tab's chrome event handler: the first target of every event of the tab's documents, so
+   * no page listener (window or document, capture or not) runs before them. A trusted event is stopped there; a trusted
+   * primary click hands its target to the viewfinder (`__viseurChoisir`), a trusted Escape stops it. Untrusted events
+   * (made by the page) pass untouched, as in Electron. Other keys reach the page, as in Electron.
+   */
+  async armGuarded(code) {
+    this.unguard?.();
+    const sb = this.viewfinder();
+    const doc = this.document;
+    const h = this.docShell.chromeEventHandler;
+    const seen = (this.seen = []);
+    let picked = false;
+    const mouse = (e) => {
+      if (!e.isTrusted) return;
+      const inTop = e.target?.ownerDocument === doc;
+      seen.push(e.type + ":" + (inTop ? "top" : "other"));
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      // Gecko also sends `click` for the middle and right buttons to chrome listeners (content gets auxclick): primary only.
+      if (e.type === "click" && e.button === 0 && !picked && inTop && typeof sb.__viseurChoisir === "function") {
+        picked = true;
+        sb.__viseurChoisir(e.target);
+      }
+    };
+    const key = (e) => {
+      if (!e.isTrusted || e.key !== "Escape") return;
+      seen.push("keydown:Escape");
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (typeof sb.__viseurArret === "function") sb.__viseurArret();
+    };
+    for (const t of MOUSE) h.addEventListener(t, mouse, true);
+    h.addEventListener("keydown", key, true);
+    let timer;
+    const unguard = (this.unguard = () => {
+      clearTimeout(timer);
+      for (const t of MOUSE) h.removeEventListener(t, mouse, true);
+      h.removeEventListener("keydown", key, true);
+      if (this.unguard === unguard) this.unguard = null;
+    });
+    let r = null;
+    try {
+      r = await Cu.evalInSandbox(code, sb, "latest", "webaios-viseur.js", 1);
+    } finally {
+      // After a capture, the rest of a double click is swallowed for 500 ms (Electron's __viseurAvaler); else at once.
+      if (r) timer = setTimeout(unguard, 500);
+      else unguard();
+    }
+    return r;
+  }
+
+  // The chrome event handler outlives this document (it is the tab's): the guard must go with the window.
+  didDestroy() {
+    this.unguard?.();
   }
 
   async receiveMessage(msg) {
@@ -64,6 +127,16 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
         } catch (e) {
           return { error: String(e) };
         }
+      // The S1 fix: the viewfinder with a guard on the chrome event handler (in front of every page listener).
+      case "armGuarded":
+        return clone(await this.armGuarded(d.code));
+      case "guardSeen":
+        return (this.seen ?? []).slice();
+      // Test only: this tab's chrome event handler's listeners of the guarded types (capture), and all of them.
+      case "listeners": {
+        const all = Cc["@mozilla.org/eventlistenerservice;1"].getService(Ci.nsIEventListenerService).getListenerInfoFor(this.docShell.chromeEventHandler);
+        return { all: all.length, guarded: all.filter((l) => GUARDED.has(l.type) && l.capturing).length };
+      }
       // Test only: the viewfinder's host elements, read through Xrays (works under any CSP).
       case "hosts":
         return this.document.querySelectorAll("webaios-viseur").length;
