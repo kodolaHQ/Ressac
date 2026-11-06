@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { openActionPage, tid, uiQueries, writeActionWithResult, type Block } from "./actions";
+import { EXECUTION, openActionPage, startActionServers, tid, uiQueries, writeActionWithResult, type Block } from "./actions";
 import { state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // An action's page and its built-in components (Electron's actions.spec.ts:102-187, ported): served from a result the
-// test writes, with no container and no Gemma. Reopening a page launches nothing.
+// test writes, with no container and no Gemma. Reopening a page launches nothing. Result images go through the test hook
+// (WEBAIOS_TEST_ACTION_IMAGES): `https://<host><path>` is asked from the local image server, which notes each request.
 
 const TASKS = [
   { nom: "Alpha", priorite: 9, etat: "ouvert", url: "https://exemple.invalide/alpha", image: "https://exemple.invalide/a.png" },
@@ -30,24 +31,45 @@ const DEMO_BLOCKS: Block[] = [
 ];
 const DEMO_RESULTS = { taches: TASKS, resume: { ouvertes: 2, semaine: "44", source: "https://exemple.invalide/source" } };
 
+/** The hostile images of Review Focus 3, and an ordinary one as the control. */
+const PHOTOS = {
+  ok: "https://img.exemple/ok.png",
+  // A 302 to http://127.0.0.1:<port>/secret.
+  redirect: "https://img.exemple/x/r",
+  html: "https://img.exemple/html.png",
+  big: "https://img.exemple/big.png",
+};
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+let servers: Awaited<ReturnType<typeof startActionServers>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 let q: ReturnType<typeof uiQueries>;
 
 beforeAll(async () => {
   // A permitted link opens a tab: exemple.invalide resolves to the machine, so no lookup leaves it.
-  w = await launchWebAiOs({ prefs: { "network.dns.localDomains": "exemple.invalide" } });
+  servers = await startActionServers();
+  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ACTION_IMAGES: servers.images.url }, prefs: { "network.dns.localDomains": "exemple.invalide" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
   await waitReady(m);
   await writeActionWithResult(w.dataDir, "demo", { nom: "Démo", resultats: DEMO_RESULTS, blocs: DEMO_BLOCKS, secours: true });
   await writeActionWithResult(w.dataDir, "simple", { nom: "Simple", resultats: DEMO_RESULTS, blocs: DEMO_BLOCKS });
+  const cards: Block[] = [{ composant: "cartes", props: { elements: "photos", titre: "titre", image: "photo" } }];
+  await writeActionWithResult(w.dataDir, "courrier", {
+    nom: "Courrier",
+    compte: ["mail.exemple.fr"],
+    resultats: { photos: [{ titre: "Bonjour", photo: "https://img.exemple/photo.png" }] },
+    blocs: cards,
+  });
+  await writeActionWithResult(w.dataDir, "images", { nom: "Images", resultats: { photos: Object.entries(PHOTOS).map(([titre, photo]) => ({ titre, photo })) }, blocs: cards });
 }, 60_000);
 
 afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
   await w?.close();
+  await servers?.close();
 });
 
 describe("action page rendering", () => {
@@ -116,5 +138,41 @@ describe("action page rendering", () => {
     const deadline = Date.now() + 10_000;
     while (!(await urls()).some((u) => u.includes("exemple.invalide/alpha")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
     expect((await urls()).some((u) => u.includes("exemple.invalide/alpha"))).toBe(true);
+  });
+
+  // actions.spec.ts:190
+  it("account action: the image is a neutral placeholder and no request reaches the test server", async () => {
+    servers.reset();
+    await openActionPage(m, "courrier", "Courrier");
+    const cards = tid("bloc-cartes");
+    await q.waitContains(cards, "Bonjour");
+    await q.waitCount(`${cards} ${tid("image-neutre")}`, 1);
+    expect(await q.count(`${cards} img`)).toBe(0);
+    // Asked directly, the host refuses it too: an action with an account never loads an image.
+    expect(await inUi(m, "return ui.webaios.actions.image('courrier', arguments[0], arguments[1]);", [EXECUTION, "https://img.exemple/photo.png"])).toBeNull();
+    await sleep(500);
+    expect(servers.images.seen).toEqual([]);
+  });
+
+  // Review Focus 3
+  it("a result image that redirects to 127.0.0.1, is not an image or is too big stays neutral", async () => {
+    servers.reset();
+    await openActionPage(m, "images", "Images");
+    const cards = tid("bloc-cartes");
+    // The control: an ordinary image shows, as a data: URL.
+    await q.waitCount(`${cards} img.pa-image`, 1, 15_000);
+    expect(await inUi<string>(m, "return doc.querySelector(arguments[0]).src;", [`${cards} img.pa-image`])).toMatch(/^data:image\/png;base64,/);
+    const paths = () => servers.images.seen.map((s) => s.path).sort();
+    const asked = ["/img.exemple/big.png", "/img.exemple/html.png", "/img.exemple/ok.png", "/img.exemple/x/r"];
+    for (const deadline = Date.now() + 15_000; JSON.stringify(paths()) !== JSON.stringify(asked); await sleep(100))
+      if (Date.now() > deadline) throw new Error(`images asked: ${JSON.stringify(paths())}`);
+    await q.waitCount(`${cards} ${tid("image-neutre")}`, 3);
+    expect(await q.count(`${cards} img`)).toBe(1);
+    // An address absent from the results: refused by the host, never fetched.
+    expect(await inUi(m, "return ui.webaios.actions.image('images', arguments[0], arguments[1]);", [EXECUTION, "https://img.exemple/absent.png"])).toBeNull();
+    await sleep(500);
+    // The redirect's target (/secret) got no request; none carried a cookie or a referrer.
+    expect(paths()).toEqual(asked);
+    expect(servers.images.seen.every((s) => s.cookie === null && s.referer === null)).toBe(true);
   });
 });

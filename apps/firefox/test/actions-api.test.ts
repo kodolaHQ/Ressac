@@ -52,6 +52,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     etat = appliquer(etat, a, genId);
   };
   const fake = fakeHost(answers);
+  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: async () => null, release: async () => {} };
   const api = (fenetre: string) =>
     createActionsApi({
       state: () => etat,
@@ -59,13 +60,13 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
       host: fake.host,
       fenetre,
       untilUnload: (f) => f,
-      media: { image: async () => "data:image/png;base64,", serve: async () => null, release: async () => {} },
+      media,
     });
   const turnPrivate = (f = F) => {
     const e = etat.espaces.find((x) => x.id === etat.fenetres.find((w) => w.id === f)!.espaceActif)!;
     etat = appliquer(etat, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil }, genId);
   };
-  return { F, api, dispatched, turnPrivate, ...fake, etat: () => etat, set: (s: EtatNavigateur) => (etat = s), genId };
+  return { F, api, dispatched, turnPrivate, media, ...fake, etat: () => etat, set: (s: EtatNavigateur) => (etat = s), genId };
 }
 
 type Api = ReturnType<typeof createActionsApi>;
@@ -207,6 +208,7 @@ describe("createActionsApi", () => {
       ["actions.lancer", { statut: "reussie", execution: "x" }, (b: Api) => b.lancer("gitlab", null), { statut: "invalide", erreur: ACTIONS_EN_ESPACE_PRIVE }],
       ["actions.nom", "GitLab", (b: Api) => b.voirWorkflow("gitlab"), undefined],
       ["actions.lienPermis", true, (b: Api) => b.ouvrirLien("gitlab", "x", "https://gitlab.com/1"), undefined],
+      ["actions.imagePermise", true, (b: Api) => b.image("gitlab", "x", "https://img.test/a.png"), null],
     ] as const;
     for (const [method, value, call, empty] of cases) {
       let turn = () => {};
@@ -215,13 +217,14 @@ describe("createActionsApi", () => {
       expect(await call(s.api(s.F)), method).toEqual(empty);
       expect(s.calls.map((c) => c.method), method).toEqual([method]);
       expect(s.dispatched, method).toEqual([]);
+      expect(s.media.image, method).not.toHaveBeenCalled();
     }
   });
 
   // Review Focus 2
   it("a private window gets no direct feed, list, page or image", async () => {
     const running = { courantes: [{ action: "gitlab", debut: DEBUT, saisie: null, essai: false, etape: "workflow", blocs: {} }], enAttente: [] };
-    const { F, api, calls, emit, etat, set, genId } = setup({
+    const { F, api, calls, emit, etat, set, genId, media } = setup({
       "actions.liste": () => [{ id: "gitlab" }],
       "actions.page": () => ({ execution: "x" }),
       "actions.direct": () => running,
@@ -252,7 +255,29 @@ describe("createActionsApi", () => {
     expect(await priv.image("gitlab", "x", "https://img.test/a.png")).toBeNull();
     expect(await priv.direct()).toEqual(NONE);
     expect(calls).toEqual([]);
+    expect(media.image).not.toHaveBeenCalled();
     expect(await pub.liste()).toEqual([{ id: "gitlab" }]);
+    // The same image, for the public window: allowed by the host, loaded by the store.
+    expect(await pub.image("gitlab", "x", "https://img.test/a.png")).toBe("data:image/png;base64,");
+    expect(media.image).toHaveBeenCalledWith("https://img.test/a.png");
+  });
+
+  it("image: the host is asked first; a refusal or a stopped host loads nothing; a window turned private during the load gets null", async () => {
+    let allowed = false;
+    const s = setup({ "actions.imagePermise": () => allowed });
+    const b = s.api(s.F);
+    // An address absent from the results (the host refuses): no load.
+    expect(await b.image("gitlab", "x", "https://img.test/absent.png")).toBeNull();
+    expect(s.calls).toEqual([{ method: "actions.imagePermise", params: { id: "gitlab", execution: "x", url: "https://img.test/absent.png" } }]);
+    expect(s.media.image).not.toHaveBeenCalled();
+    allowed = true;
+    expect(await b.image("gitlab", "x", "https://img.test/a.png")).toBe("data:image/png;base64,");
+    // No cached image after a refusal: a stopped host refuses.
+    const stopped = setup();
+    expect(await stopped.api(stopped.F).image("gitlab", "x", "https://img.test/a.png")).toBeNull();
+    expect(stopped.media.image).not.toHaveBeenCalled();
+    s.media.image.mockImplementationOnce(async () => (s.turnPrivate(), "data:image/png;base64,"));
+    expect(await b.image("gitlab", "x", "https://img.test/a.png")).toBeNull();
   });
 
   it("surChange calls back on actions.change and the home's resync; after a host exit, once on its noyau's start", () => {

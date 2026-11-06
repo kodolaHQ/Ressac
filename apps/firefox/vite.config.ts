@@ -104,6 +104,8 @@ export default defineConfig(({ mode }) => {
         { find: /^\.\/CadreAccueil\.svelte$/, replacement: fileURLToPath(new URL("ui/SiteHomeFrame.svelte", import.meta.url)) },
         // The site bar's add-on buttons (BarreSite.svelte, frozen): Firefox's add-ons of the app's window.
         { find: /^\.\/BoutonsExtensionsSite\.svelte$/, replacement: fileURLToPath(new URL("ui/SiteAddonsStrip.svelte", import.meta.url)) },
+        // An action page's result image (Cartes.svelte, frozen): the host's checks, then the chrome's anonymous load.
+        { find: /^\.\.\/ImagePage\.svelte$/, replacement: fileURLToPath(new URL("ui/ActionImage.svelte", import.meta.url)) },
       ].concat(UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) }))),
     },
     build: {

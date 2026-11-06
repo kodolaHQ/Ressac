@@ -226,7 +226,7 @@ export type ImageRequestSeen = { path: string; cookie: string | null; referer: s
  * Electron's servers of actions.spec.ts:290-383 (the site, the fake Gemma and `reglages`, reset by `reset()`), plus the
  * fake Kev, and an image server noting each request's path, Cookie and Referer. Image server paths: `/cookie` sets
  * `seen=<value of ?v>` (a page), `*.png` a PNG with a Set-Cookie, `*\/r` a 302 to `/secret` (absolute http URL),
- * `/hop` a 302 to `/p.png`, `/secret` a PNG.
+ * `/hop` a 302 to `/p.png`, `/secret` a PNG, `*.jpg` a PNG too, `*\/html.png` an HTML page, `*\/big.png` 6 MB.
  */
 export async function startActionServers() {
   const settings: { lenteurSiteMs: number; lenteurGemmaMs: number; plan: unknown; tickets: GitlabTicket[] } = { lenteurSiteMs: 0, lenteurGemmaMs: 0, plan: null, tickets: GITLAB_TICKETS };
@@ -268,7 +268,10 @@ export async function startActionServers() {
     if (u.pathname === "/cookie") return void res.writeHead(200, { "Content-Type": "text/html", "Set-Cookie": `seen=${u.searchParams.get("v") ?? "1"}; Max-Age=3600; Path=/` }).end("<title>cookie</title>");
     if (u.pathname.endsWith("/r")) return void res.writeHead(302, { Location: `${images.url}/secret` }).end();
     if (u.pathname === "/hop") return void res.writeHead(302, { Location: `${images.url}/p.png` }).end();
-    if (u.pathname.endsWith(".png") || u.pathname === "/secret") return void res.writeHead(200, { "Content-Type": "image/png", "Set-Cookie": "leak=1; Max-Age=3600; Path=/" }).end(PNG);
+    // Hostile images (Review Focus 3): not an image, or over the 5 MB limit.
+    if (u.pathname.endsWith("/html.png")) return void res.writeHead(200, { "Content-Type": "text/html" }).end("<title>pas une image</title>");
+    if (u.pathname.endsWith("/big.png")) return void res.writeHead(200, { "Content-Type": "image/png" }).end(Buffer.alloc(6 * 1024 * 1024));
+    if (u.pathname.endsWith(".png") || u.pathname.endsWith(".jpg") || u.pathname === "/secret") return void res.writeHead(200, { "Content-Type": "image/png", "Set-Cookie": "leak=1; Max-Age=3600; Path=/" }).end(PNG);
     res.writeHead(404).end();
   });
   return {

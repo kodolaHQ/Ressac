@@ -168,12 +168,18 @@ export function createActionsApi(o: {
       if (r.ok) forget(id);
       return prive() ? refus : r;
     },
-    // Tasks 5 and 6.
     async voirWorkflow(id) {
       const nom = await ask<string | null>("actions.nom", { id }, () => null);
       if (nom && !prive()) o.dispatch({ type: "ouvrirWorkflow", fenetreId: fenetre, id, nom, proprietaire: "action" });
     },
-    image: async () => null,
+    // Electron's repondreImage, in two halves: the host's checks, then the store's anonymous load. Never from lastRead:
+    // a cached image would outlive a refusal (a deleted run, an accord given since).
+    async image(id, execution, url) {
+      if ((await ask("actions.imagePermise", { id, execution, url }, () => false)) !== true) return null;
+      const data = await o.media.image(url);
+      return prive() ? null : data;
+    },
+    // Task 6.
     serveComponent: async () => null,
     releaseComponent() {},
   };
