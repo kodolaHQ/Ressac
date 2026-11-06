@@ -30,6 +30,7 @@ const allowed = (u: string) => u.startsWith("https://") && urlOuvrable(u);
 /** A result image as a `data:` URL (Electron's repondreImage load: no cookie, no referrer, checked redirects), or null. */
 export async function actionImage(url: string): Promise<string | null> {
   const open = containerRequests(actionImagesContainer(), { anonymous: true });
+  // Under the hook, an https redirect would be judged allowed and followed natively: test servers redirect to http.
   const origin = Services.env.get("WEBAIOS_TEST_ACTION_IMAGES") || undefined;
   const image = await loadImage((u, o) => open(actionImageTestUrl(u, origin), o), url, { permise: allowed, cookies: false, max: ACTION_IMAGE_MAX });
   return image && toDataUrl(image);

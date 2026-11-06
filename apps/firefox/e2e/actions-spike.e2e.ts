@@ -60,7 +60,7 @@ const BARRES = `<!doctype html>
 </script>
 `;
 
-/** A component that tries the network three ways and the chrome, then reports through parent.postMessage. */
+/** A component that tries the network three ways and the chrome, reports through parent.postMessage, then navigates itself. */
 const probe = (base: string) => `<!doctype html><meta charset="utf-8">
 <img id="i" src="${base}/img">
 <script>
@@ -73,7 +73,8 @@ const probe = (base: string) => `<!doctype html><meta charset="utf-8">
   try { const ws = new WebSocket("${base.replace("http", "ws")}/ws"); ws.onerror = () => (out.ws = "error"); ws.onopen = () => (out.ws = "open"); } catch (e) { out.ws = "threw " + e.name; }
   document.getElementById("i").onload = () => (out.img = "loaded");
   document.getElementById("i").onerror = () => (out.img = "error");
-  setTimeout(() => parent.postMessage({ type: "sonde", out }, "*"), 1500);
+  // Then a self-navigation, which would carry data in its URL (Electron blocks it with will-frame-navigate).
+  setTimeout(() => { parent.postMessage({ type: "sonde", out }, "*"); location.href = "${base}/nav?x=1"; }, 1500);
 </script>`;
 
 describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
@@ -164,7 +165,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
 
   it("S1: a component reaches neither the network (fetch, <img>, WebSocket) nor the chrome", async () => {
     const before = { ...reached, requests: [...reached.requests], upgrades: [...reached.upgrades] };
-    const r = await mount("sonde", {}, 2500);
+    const r = await mount("sonde", {}, 3500);
     const report = r.got.filter((g: any) => g.fromFrame).map((g: any) => JSON.parse(g.detail)).find((d: any) => d.type === "sonde")?.out;
     const componentReached = structuredClone(reached);
     // The baseline: the same globals in an ordinary web page (a tab on the probe server's /page, which writes them in its title).
@@ -178,12 +179,26 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
       return JSON.parse(title);`,
       [probeBase],
     ).catch((e) => String(e));
-    note("S1 probe", { report, reached: componentReached, before, baseline });
+    note("S1 probe", { report, reached: componentReached, before, baseline, afterNavigation: r.loaded });
     expect(report).toBeDefined();
     expect(componentReached).toEqual({ requests: [], upgrades: [], connections: 0 });
     // The leftover web Components that COMPONENT_BRIDGE hides: in an ordinary page, `interfaces` only.
+    expect(r.loaded).toBe(r.src);
     expect(baseline).toMatchObject({ Components: "object", keys: ["interfaces"] });
     expect({ Components: report.Components, ChromeUtils: report.ChromeUtils, Services: report.Services }).toEqual({ Components: "undefined", ChromeUtils: "undefined", Services: "undefined" });
+  }, 60_000);
+
+  it("S1: a component's navigation to another resource: URL (another component's copy, a Firefox resource)", async () => {
+    // barres stays served meanwhile: its copy is a live resource:// URL to aim at.
+    const barres = await chrome<string>(m, `return (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.serve("barres");`);
+    const out: Record<string, unknown> = {};
+    for (const [nom, target] of [["nav-composant", barres], ["nav-gre", "resource://gre/modules/NetUtil.sys.mjs"]] as const) {
+      await writeComponent(w.dataDir, nom, { description: "Sonde", proprietes: {}, html: `<!doctype html><script>setTimeout(() => { try { location.href = ${JSON.stringify(target)}; parent.postMessage({ type: "nav", thrown: null }, "*"); } catch (e) { parent.postMessage({ type: "nav", thrown: e.name + ": " + e.message }, "*"); } }, 200);</script>` });
+      const r = await mount(nom, {}, 1500);
+      out[nom] = { loaded: r.loaded, said: r.got.filter((g: any) => g.fromFrame).map((g: any) => g.detail) };
+    }
+    await chrome(m, `await (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.release("barres");`);
+    note("S1 resource navigation", { barres, out });
   }, 60_000);
 
   /** The cookies on 127.0.0.1 of each container: default, profile p1, the action images'. */
@@ -242,13 +257,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     expect(redirected.image).toEqual({ type: "image/png", length: 70 });
     expect(anonymousSeen.map((s) => s.path)).toEqual(["/p.png", "/hop", "/p.png"]);
     expect(anonymousSeen.every((s) => s.cookie === null && s.referer === null)).toBe(true);
+    expect([direct.channels.length, redirected.channels.length]).toEqual([1, 2]);
     expect([...direct.channels, ...redirected.channels].every((c: any) => c.anonymous && c.userContextId === direct.ctx)).toBe(true);
     expect(after).toEqual(set);
     // Control: the same load without the flag (a cookie jar, as a site app's) sends the container's cookie, so the probe sees one.
     const control = await load(false, `${servers.images.url}/p.png`);
     const controlSeen = servers.images.seen.splice(0);
-    note("S2 control (not anonymous)", { control, seen: controlSeen, after: await cookies() });
+    const controlAfter = await cookies();
+    note("S2 control (not anonymous)", { control, seen: controlSeen, after: controlAfter });
     expect(controlSeen[0]?.cookie).toBe("seen=action");
+    expect(controlAfter.actionImages).toContain("leak=1");
   }, 60_000);
 
   it("S2: through the test hook, a redirect to 127.0.0.1 is refused before it is followed; an image arrives as data:", async () => {
