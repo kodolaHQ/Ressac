@@ -15,12 +15,15 @@ const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwA
 
 const SERVERS = {
   // Electron's: /redirige redirects elsewhere server side; /retient refuses to be left; /sans-titre has no <title>.
-  // Added for Firefox: /page2 (same origin), /icone?href=<url> (a page whose icon is <url>), /icon.png.
+  // Added for Firefox: /page2 (same origin), /icone?href=<url> (a page whose icon is <url>), /icon.png, /vers-file and
+  // /vers-data (redirects off the web).
   ok: (dossier: string) => `import { createServer } from "node:http";
 const PNG = Buffer.from("${PNG}", "base64");
 createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   if (req.url === "/redirige") return res.writeHead(302, { Location: "https://exemple.invalide/redirige" }).end();
+  if (req.url === "/vers-file") return res.writeHead(302, { Location: "file:///etc/hosts" }).end();
+  if (req.url === "/vers-data") return res.writeHead(302, { Location: "data:text/html,<title>data</title>" }).end();
   if (u.pathname === "/icon.png") return res.writeHead(200, { "Content-Type": "image/png" }).end(PNG);
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   if (req.url === "/retient") return res.end('<title>Retient</title><script>addEventListener("beforeunload", (e) => e.preventDefault())</script>');

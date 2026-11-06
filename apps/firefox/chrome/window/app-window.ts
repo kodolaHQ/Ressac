@@ -2,6 +2,7 @@
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
 import { memeOrigine, TAILLE_FAVICON } from "../../../navigateur/src/main/applications/favicon";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
+import { protectView } from "./site-window";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/apps.ts APP_WINDOW_KEY.
@@ -50,6 +51,19 @@ function routeOpens(win: Window, apps: Apps): void {
   };
 }
 
+/**
+ * A window an app's page opened with features (window.open(url, name, "width=…")): Firefox makes it without asking
+ * browserDOMWindow, in the app's container. Closed at once, whatever it loads (about:blank and blob: never meet the
+ * request guard): Electron refuses every window an app opens. True if it was one.
+ */
+export function closeAppPopup(win: Window): boolean {
+  const userContextId = Number(win.gBrowser?.selectedBrowser?.getAttribute("usercontextid") || 0);
+  if (!userContextId || !appsModule().ownsContainer(userContextId)) return false;
+  // Once its startup is done: closed earlier, its opening never completes (measured: the opener's click never returns).
+  void win.delayedStartupPromise.then(() => win.close());
+  return true;
+}
+
 /** Run at the window's DOMContentLoaded, before anything could claim it; the view is attached once Firefox's startup is done. */
 export function setupAppWindow(win: Window, dossier: string): void {
   const apps = appsModule();
@@ -78,6 +92,8 @@ export function setupAppWindow(win: Window, dossier: string): void {
   );
   // The app's code was not reviewed: its beforeunload never keeps the window from closing, nor the app from quitting.
   win.CanCloseWindow = () => true;
+  // As a site app's view (spec §13.8): add-ons can neither add a tab here, nor close, move or detach the view.
+  protectView(win, () => true);
   // The frame is noted as it moves (MozUpdateWindowPos, chrome only), is resized and closes.
   let pending: number | undefined;
   const noteSoon = () => {

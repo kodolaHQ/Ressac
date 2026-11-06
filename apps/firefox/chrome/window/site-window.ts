@@ -83,8 +83,9 @@ const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement && ["webai
  * the accord card) and the address is http(s). WebAiOs's own loads (the system principal) pass. Its reload, goBack and
  * goForward are stopped by the request guard (store/sites.ts, Electron's M1). windows.remove of this window is refused
  * (Electron's peutFermerFenetre); WebAiOs's own close() calls, ⌘W and the window's close button still close it.
+ * `showsPage`: may an add-on load in the view now (an agent app's window: always; the guard keeps it on its origin)?
  */
-function protectView(win: Window, view: SiteWindowController): void {
+export function protectView(win: Window, showsPage: () => boolean): void {
   const close = win.close;
   win.close = function () {
     // ext-windows.js's windows.remove calls window.close(): no other way to tell an add-on's call from WebAiOs's.
@@ -103,7 +104,7 @@ function protectView(win: Window, view: SiteWindowController): void {
   const browser = g.selectedBrowser;
   const load = browser.fixupAndLoadURIString;
   browser.fixupAndLoadURIString = function (url: string, options: any) {
-    if (!options?.triggeringPrincipal?.isSystemPrincipal && (view.state().vue !== "site" || !/^https?:/i.test(url))) throw REFUSED;
+    if (!options?.triggeringPrincipal?.isSystemPrincipal && (!showsPage() || !/^https?:/i.test(url))) throw REFUSED;
     return load.call(this, url, options);
   };
 }
@@ -161,7 +162,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   win.CanCloseWindow = () => true;
   win.webaiosSiteWindow = controller;
   // Now: gBrowser and its one browser, the view, exist (browser-main.js's DOMContentLoaded ran before this one).
-  protectView(win, controller);
+  protectView(win, () => controller.state().vue === "site");
   void win.delayedStartupPromise.then(() => {
     const gBrowser = win.gBrowser;
     // The title is the app's name, never the page's.

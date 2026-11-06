@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { WebAiOsStore } from "../store";
-import { appDossierOf, setupAppWindow } from "./app-window";
+import { appDossierOf, closeAppPopup, setupAppWindow } from "./app-window";
 import { createController } from "./controller";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
@@ -45,6 +45,8 @@ window.addEventListener(
     const site = siteIdOf(window);
     if (site) return setupSiteWindow(window, site);
     refuseSiteTabs(window);
+    // A window an app's page opened with features (after refuseSiteTabs: windows.create({ tabId }) would adopt its view).
+    if (closeAppPopup(window)) return;
     const opener = siteOfContainer(window);
     if (opener) {
       setupSiteSmallWindow(window, opener);

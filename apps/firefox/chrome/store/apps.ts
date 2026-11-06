@@ -222,6 +222,8 @@ export const apps = {
     closeListeners.add(cb);
     return () => void closeListeners.delete(cb);
   },
+  /** Is this an agent app's container (running or not)? */
+  ownsContainer: (userContextId: number): boolean => isAppContainer(userContextId),
   isAppView(browserId: number): boolean {
     return [...open.values()].some((a) => a.view?.browserId === browserId);
   },
@@ -262,11 +264,32 @@ export const apps = {
 
 export type AgentApps = typeof apps;
 
+/**
+ * A redirect of the view's page off the web (Location: file:, data:…): no http channel follows, so the request guard
+ * never sees it, and Firefox's own refusal would leave the view on about:blank. Cancelled on the response, the view stays.
+ */
+const redirects = {
+  observe(subject: any) {
+    const ch = subject.QueryInterface(Ci.nsIHttpChannel);
+    const li = ch.loadInfo;
+    if (li.externalContentPolicyType !== Ci.nsIContentPolicy.TYPE_DOCUMENT || !apps.isAppView(ch.browserId || li.browsingContext?.browserId)) return;
+    if (ch.responseStatus < 300 || ch.responseStatus > 399) return;
+    let location = "";
+    try {
+      location = new URL(ch.getResponseHeader("Location"), ch.URI.spec).protocol;
+    } catch {
+      return;
+    }
+    if (location !== "http:" && location !== "https:") ch.cancel(Cr.NS_BINDING_ABORTED);
+  },
+};
+
 /** Started with the store: the host the windows report to, and the main window tab for what leaves an app. */
 export function bindApps(agent: AgentHost, openInTab: (url: string) => void): void {
   host = agent;
   openTab = openInTab;
   // From the start, not with the first window: an app container left from a previous run loads nothing either.
   installGuard();
+  Services.obs.addObserver(redirects, "http-on-examine-response");
   Services.obs.addObserver({ observe: () => (quitting = true) }, "quit-application-granted");
 }
