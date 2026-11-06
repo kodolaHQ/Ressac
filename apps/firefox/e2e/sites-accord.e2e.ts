@@ -49,7 +49,7 @@ const viewState = (id = "vidola") =>
      const spec = win.gBrowser.selectedBrowser.currentURI?.spec ?? "";
      return { url: spec === "about:blank" ? "" : spec, visible: !win.document.documentElement.hasAttribute("webaios-site-home") };`,
   );
-const state = (id = "vidola") => m.execute<{ vue: string; accord: { empreinte: string; connexion: string[]; suivis: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
+const state = (id = "vidola") => m.execute<{ vue: string; aAccueil: boolean; accord: { empreinte: string; connexion: string[]; suivis: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
 const shorts = () => view('getComputedStyle(document.getElementById("shorts")).display');
 const retouche = () => view("document.body.dataset.retouche ?? null");
