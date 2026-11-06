@@ -98,6 +98,9 @@ interface OpenSite {
   searching: boolean;
   /** The host's mention (address changed, not found…); a blocked link replaces it, as Electron's single avis. */
   hostNotice: AvisBarre | null;
+  /** WebAiOs just started a load in the view (Electron's attendVoulu); `wanted`: the view's current load is one (chargementVoulu). */
+  wantNext: boolean;
+  wanted: boolean;
 }
 
 const open = new Map<string, OpenSite>();
@@ -139,11 +142,13 @@ function follow(s: OpenSite, url: string | null): void {
 
 /** A reload is a load WebAiOs started too (measured: the system principal): the follow aims at the page reloaded. */
 function reloadView(s: OpenSite): void {
+  s.wantNext = true;
   s.target = s.view?.currentURI?.spec ?? s.target;
   s.view?.reload();
 }
 
 function loadInView(s: OpenSite, url: string): void {
+  s.wantNext = true;
   s.loaded = true;
   s.target = url;
   s.view?.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
@@ -187,6 +192,18 @@ const observer = {
     const ctx = context(s);
     const inView = browserId === s.view?.browserId;
     if (inView || s.small.has(browserId)) {
+      // A new load (not a redirect of one) is wanted if WebAiOs just started it; its redirects keep that.
+      if (inView && li.redirectChain.length === 0) {
+        s.wanted = s.wantNext;
+        s.wantNext = false;
+      }
+      // Electron's M1: under the home or the card, the view loads only what WebAiOs starts. An add-on's tabs.reload,
+      // goBack or goForward (no fixupAndLoadURIString to refuse them, see site-window.ts) is cancelled before it is sent.
+      // As in Electron, the page's own navigations wait for « Entrer » too; Firefox's add-ons run in every app (§4.9).
+      if (inView && s.vue !== "site" && !s.wanted) {
+        console.warn(`[sites] chargement arrêté dans la vue (vue ${s.vue}, non voulu) : ${url.slice(0, 80)}`);
+        return void ch.cancel(Cr.NS_BINDING_ABORTED);
+      }
       if (decisionNavigation(url, ctx) === "suivre") return;
       ch.cancel(Cr.NS_BINDING_ABORTED);
       // A sign-in window's refused page is not mentioned (Electron's equiperPetite).
@@ -539,7 +556,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
     // The card first if the retouches need their accord: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null };
+    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();

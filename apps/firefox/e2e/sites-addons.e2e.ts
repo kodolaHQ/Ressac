@@ -41,6 +41,9 @@ const run = async (o, t) => {
     return browser.tabs.move(t.id, { windowId: other.id, index: 0 }).then(() => "moved");
   }
   if (o.op === "window") return browser.windows.create({ tabId: t.id }).then(() => "window");
+  if (o.op === "close-window") return browser.windows.remove(t.windowId).then(() => "closed");
+  if (o.op === "reload") return browser.tabs.reload(t.id).then(() => "reloaded");
+  if (o.op === "back") return browser.tabs.goBack(t.id).then(() => "back");
 };
 setInterval(async () => {
   const [t] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -202,6 +205,8 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => siteState("tube").then((s) => s.vue), { timeout: 15_000 }).toBe("accueil");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("tube")).toBe(0);
+    const enabled = (id: string) => m.execute<boolean[]>(`return ${siteWindowExpr(id)}.webaiosSiteWindow.addons.buttons().map((b) => b.enabled);`);
+    expect(await enabled("tube")).toEqual([false]);
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(1);
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
@@ -211,6 +216,7 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => siteState("carte").then((s) => s.vue), { timeout: 15_000 }).toBe("accord");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("carte")).toBe(0);
+    expect(await enabled("carte")).toEqual([false]);
   });
 
   it("on the home screen, tabs.update of the view to a page of the app is refused: no request to the site, the view stays where it is (extensions-sites.spec.ts:655)", async () => {
@@ -231,6 +237,38 @@ describe("add-ons in a site app window", () => {
     expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
     expect(await viewUrl("tube")).toBe(url("/pubs"));
     expect((await siteState("tube")).vue).toBe("accueil");
+  });
+
+  it("on the home screen, tabs.reload and tabs.goBack of the view send no request; the view stays where it is (Electron's M1, fenetres.ts:415)", async () => {
+    await start({ sites: { tube: withHome() } });
+    await installAddon(m, probe());
+    await openSite("tube");
+    await expect.poll(() => siteState("tube").then((s) => s.vue), { timeout: 15_000 }).toBe("accueil");
+    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
+    await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
+    await view(`(location.href = ${JSON.stringify(url("/film/2"))}, 1)`, "tube");
+    await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/film/2"));
+    await expect.poll(() => view("document.readyState", "tube"), { timeout: 10_000 }).not.toBe("loading");
+    await openPopup("tube");
+    await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
+    server.requetes.splice(0);
+    expect((await order({ op: "reload" }, "tube")).error).toBeUndefined();
+    expect((await order({ op: "back" }, "tube")).error).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+    expect(await viewUrl("tube")).toBe(url("/film/2"));
+    expect((await siteState("tube")).vue).toBe("accueil");
+  });
+
+  it("windows.remove of the app's window is refused (extensions-sites.spec.ts peutFermerFenetre, sessions.ts:594)", async () => {
+    await start();
+    await installAddon(m, probe());
+    await openAndWait();
+    await openPopup();
+    expect(await order({ op: "close-window" })).toEqual({ error: PROTECTED });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await tabCount()).toBe(1);
+    expect(await viewUrl()).toBe(url("/pubs"));
   });
 
   it("tabs.remove and tabs.move on the app view leave it in place", async () => {

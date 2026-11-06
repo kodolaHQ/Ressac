@@ -79,9 +79,17 @@ const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement.hasAttribu
  * The app view is never a tab add-ons can close, move out, add to, or send off the web (spec §4.9). Its window has one
  * tab, the view: removing or detaching it is refused, and so is any new tab. tabs.update goes through
  * fixupAndLoadURIString: refused unless the view shows the site (Electron's I1: never the page hidden under the home or
- * the accord card) and the address is http(s). WebAiOs's own loads (the system principal) pass.
+ * the accord card) and the address is http(s). WebAiOs's own loads (the system principal) pass. Its reload, goBack and
+ * goForward are stopped by the request guard (store/sites.ts, Electron's M1). windows.remove of this window is refused
+ * (Electron's peutFermerFenetre); WebAiOs's own close() calls, ⌘W and the window's close button still close it.
  */
 function protectView(win: Window, view: SiteWindowController): void {
+  const close = win.close;
+  win.close = function () {
+    // ext-windows.js's windows.remove calls window.close(): no other way to tell an add-on's call from WebAiOs's.
+    if (new Error().stack?.includes("/ext-windows.js")) throw PROTECTED;
+    return close.call(this);
+  };
   const g = win.gBrowser;
   for (const name of ["removeTab", "removeTabs", "replaceTabWithWindow", "replaceTabsWithWindow"])
     g[name] = () => {
@@ -102,21 +110,18 @@ function protectView(win: Window, view: SiteWindowController): void {
 /**
  * Any other window (main, popup): a site app's view never comes into it. Neither by adoptTab (an add-on's tabs.move to
  * this window) nor as the tab a new window adopts (windows.create({ tabId })): that one opens empty. Run at
- * DOMContentLoaded, before browser-init.js's onLoad swaps the adopted tab in.
- * shortcut: an adoptTab before this window's delayed startup is not refused; upgrade if an add-on can reach one.
+ * DOMContentLoaded (window.js comes after browser-main.js, whose DOMContentLoaded made gBrowser), before
+ * browser-init.js's onLoad swaps the adopted tab in.
  */
 export function refuseSiteTabs(win: Window): void {
   const init = (win as any).gBrowserInit;
   if (isSiteTab(init?.getTabToAdopt())) init._clearTabToAdopt();
-  // gBrowser may not exist yet (browser-init.js makes it at its own DOMContentLoaded).
-  void win.delayedStartupPromise.then(() => {
-    const g = win.gBrowser;
-    const adopt = g.adoptTab;
-    g.adoptTab = function (tab: any, options: unknown) {
-      if (isSiteTab(tab)) throw PROTECTED;
-      return adopt.call(this, tab, options);
-    };
-  });
+  const g = win.gBrowser;
+  const adopt = g.adoptTab;
+  g.adoptTab = function (tab: any, options: unknown) {
+    if (isSiteTab(tab)) throw PROTECTED;
+    return adopt.call(this, tab, options);
+  };
 }
 
 /**
@@ -154,13 +159,14 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   // The site's code was not reviewed: its beforeunload never keeps the app from closing (Electron).
   win.CanCloseWindow = () => true;
   win.webaiosSiteWindow = controller;
+  // Now: gBrowser and its one browser, the view, exist (browser-main.js's DOMContentLoaded ran before this one).
+  protectView(win, controller);
   void win.delayedStartupPromise.then(() => {
     const gBrowser = win.gBrowser;
     // The title is the app's name, never the page's.
     gBrowser.getWindowTitleForBrowser = () => sites.siteOf(id)?.declaration.nom ?? "";
     gBrowser.updateTitlebar();
     sites.attach(id, gBrowser.selectedBrowser);
-    protectView(win, controller);
     controller.addons = createSiteAddons(win, controller);
     bar.src = `chrome://browser/content/webaios/sidebar.html?site=${encodeURIComponent(id)}`;
   });
