@@ -5,11 +5,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cspAccueilSite, FICHIER_ACCUEIL_MAX as ELECTRON_FICHIER_MAX } from "../../navigateur/src/main/sites/accueil";
 import { chargerImage, REDIRECTIONS_IMAGE as ELECTRON_REDIRECTIONS, type OuvrirRequete } from "../../navigateur/src/main/image-distante";
 import { AFFICHAGE_REFUSE } from "../chrome/window/widget-frame";
-import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, REDIRECTIONS_IMAGE, cspAccueilFirefox, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
+import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, REDIRECTIONS_IMAGE, cspAccueilFirefox, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
 
 let root: string;
 let data: string;
-const substitutions = new Map<string, string | null>();
+/** What the resource:// substitutions received: name → [folder, flags] (null: removed). */
+const substitutions = new Map<string, [string, number] | null>();
+let uuids = 0;
 
 // The module runs as chrome in Firefox (IOUtils, PathUtils, Services, Cc, Ci): here, the same on node:fs.
 beforeAll(() => {
@@ -48,9 +50,15 @@ beforeAll(() => {
     ChromeUtils: { importESModule: () => ({ FileUtils: { File: class { constructor(public path: string) {} } } }) },
     Services: {
       io: {
-        getProtocolHandler: () => ({ QueryInterface: () => ({ setSubstitutionWithFlags: (n: string, uri: { spec: string } | null) => substitutions.set(n, uri?.spec ?? null) }) }),
+        getProtocolHandler: () => ({
+          QueryInterface: () => ({
+            setSubstitutionWithFlags: (n: string, uri: { spec: string }, flags: number) => substitutions.set(n, [uri.spec, flags]),
+            setSubstitution: (n: string, uri: null) => substitutions.set(n, uri),
+          }),
+        }),
         newFileURI: (f: { path: string }) => ({ spec: `file://${f.path}` }),
       },
+      uuid: { generateUUID: () => ({ toString: () => `{${(++uuids).toString(16).padStart(8, "0")}-1111-4222-8333-444455556666}` }) },
     },
   });
 });
@@ -68,9 +76,11 @@ function app(files: Record<string, string | Buffer>, id = "vidola", folder = id)
   }
   return home;
 }
-/** The files of the served copy, relative to its `<n>/` folder. */
+/** The token of a served URL (`resource://webaios-site-<id>-<token>/index.html`): its copy's folder. */
+const tokenOf = (url: string, id = "vidola") => new URL(url).host.slice(`webaios-site-${id}-`.length);
+/** The files of the served copy, relative to its `<token>/` folder. */
 function served(url: string, id = "vidola"): string[] {
-  const dir = join(data, "webaios-sites", id, url.split("/")[3]!);
+  const dir = join(data, "webaios-sites", id, tokenOf(url, id));
   const out: string[] = [];
   const walk = (d: string, rel: string) => {
     for (const e of readdirSync(d, { withFileTypes: true })) e.isDirectory() ? walk(join(d, e.name), `${rel}${e.name}/`) : out.push(`${rel}${e.name}`);
@@ -78,7 +88,7 @@ function served(url: string, id = "vidola"): string[] {
   walk(dir, "");
   return out.sort();
 }
-const copied = (url: string, p: string, id = "vidola") => readFileSync(join(data, "webaios-sites", id, url.split("/")[3]!, p), "utf8");
+const copied = (url: string, p: string, id = "vidola") => readFileSync(join(data, "webaios-sites", id, tokenOf(url, id), p), "utf8");
 
 describe("homeServed", () => {
   it("puts the CSP meta, the widgets' guard, then the bridge, after the doctype", () => {
@@ -163,15 +173,24 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
   it("copies the home, its .html through homeServed, and points resource://webaios-site-<id>/ at the copies", async () => {
     app({ "index.html": "<!doctype html><p>accueil</p>", "img/logo.png": Buffer.from([1, 2, 3]), "app.js": "let x;" });
     const url = await serveHome(data, "vidola");
-    expect(url).toMatch(/^resource:\/\/webaios-site-vidola\/\d+\/index\.html$/);
+    // A random token in the host, the substitution straight at its folder: nothing above it to guess.
+    expect(url).toMatch(/^resource:\/\/webaios-site-vidola-[0-9a-f]{32}\/index\.html$/);
+    const host = new URL(url!).host;
     expect(served(url!)).toEqual(["app.js", "img/logo.png", "index.html"]);
-    expect(copied(url!, "index.html")).toBe(homeServed("<!doctype html><p>accueil</p>", "vidola"));
+    expect(copied(url!, "index.html")).toBe(homeServed("<!doctype html><p>accueil</p>", host.slice("webaios-site-".length)));
+    expect(copied(url!, "index.html")).toContain(`img-src data: resource://${host};`);
     expect(copied(url!, "app.js")).toBe("let x;");
-    expect(substitutions.get("webaios-site-vidola")).toBe(`file://${join(data, "webaios-sites", "vidola")}`);
-    // Served again: a new <n>/, the previous one is gone.
+    expect(substitutions.get(host)).toEqual([`file://${join(data, "webaios-sites", "vidola", tokenOf(url!))}`, 1]);
+    expect(substitutions.has("webaios-site-vidola")).toBe(false);
+    // Served again: a new token; the previous substitution and folder are gone.
     const again = await serveHome(data, "vidola");
-    expect(again).not.toBe(url);
-    expect(readdirSync(join(data, "webaios-sites", "vidola"))).toEqual([again!.split("/")[3]]);
+    expect(new URL(again!).host).not.toBe(host);
+    expect(substitutions.get(host)).toBeNull();
+    expect(readdirSync(join(data, "webaios-sites", "vidola"))).toEqual([tokenOf(again!)]);
+    // « Supprimer »: the substitution and the copies go.
+    await forgetHome(data, "vidola");
+    expect(substitutions.get(new URL(again!).host)).toBeNull();
+    expect(existsSync(join(data, "webaios-sites", "vidola"))).toBe(false);
   });
 
   it("never serves a symbolic link to a file of the Mac", async () => {

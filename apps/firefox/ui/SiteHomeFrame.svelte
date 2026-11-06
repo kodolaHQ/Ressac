@@ -15,7 +15,7 @@
   let src = $state<string | null>(null);
   const controller = window.parent.webaiosSiteWindow!;
 
-  /** The frame's document is a page of this app's served home (never an address it navigated to). */
+  /** The frame's document is a page of this app's served home copy (never an address it navigated to). */
   function ours(): boolean {
     let u: URL;
     try {
@@ -23,7 +23,8 @@
     } catch {
       return false;
     }
-    return u.protocol === "resource:" && u.host === `webaios-site-${id}` && u.pathname.endsWith(".html");
+    // The host is the current copy's (random at each serve): never another app's home, nor an older copy.
+    return !!src && u.protocol === "resource:" && u.host === new URL(src).host && u.pathname.endsWith(".html");
   }
 
   /** Opaque origin: the target can only be « * »; only this frame's document receives. */

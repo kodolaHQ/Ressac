@@ -18,12 +18,15 @@ const IMAGES_AT_ONCE = 4;
 const IMAGES_WAITING_MAX = 200;
 
 const DIRECTIVES_FICHIERS = new Set(["script-src", "style-src", "img-src", "font-src"]);
-const substitution = (id: string) => `webaios-site-${id}`;
+const substitution = (key: string) => `webaios-site-${key}`;
 
-/** Electron's cspAccueilSite, with this app's files at `resource://webaios-site-<id>` (drift test in site-home.test.ts). */
-export function cspAccueilFirefox(id: string): string {
+/**
+ * Electron's cspAccueilSite, with the served copy's files at `resource://webaios-site-<key>` (`key`: see serveHome) in
+ * place of `webaios-site://<id>` (drift test in site-home.test.ts).
+ */
+export function cspAccueilFirefox(key: string): string {
   return CSP_WIDGET.split("; ")
-    .map((d) => (DIRECTIVES_FICHIERS.has(d.split(" ")[0]!) ? `${d} resource://${substitution(id)}` : d))
+    .map((d) => (DIRECTIVES_FICHIERS.has(d.split(" ")[0]!) ? `${d} resource://${substitution(key)}` : d))
     .join("; ");
 }
 
@@ -43,9 +46,9 @@ export function homeBridge(): void {
 
 export const HOME_BRIDGE = `<script>(${homeBridge.toString()})();</script>`;
 
-/** A page of the home: this app's CSP, the widgets' guard, then the bridge, after the doctype; AFFICHAGE_REFUSE on a network hint. */
-export function homeServed(html: string, id: string): string {
-  return affichageServi(html, cspAccueilFirefox(id), HOME_BRIDGE);
+/** A page of the home: its copy's CSP, the widgets' guard, then the bridge, after the doctype; AFFICHAGE_REFUSE on a network hint. */
+export function homeServed(html: string, key: string): string {
+  return affichageServi(html, cspAccueilFirefox(key), HOME_BRIDGE);
 }
 
 /** `realpath` (nsIFile.normalize), or null. */
@@ -68,15 +71,24 @@ function isLink(p: string): boolean {
 
 const name = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
-/** Copies served so far: each serve writes a new `<n>/`, so the frame's URL changes and it reloads. */
-let served = 0;
+/** The substitution each app's home is served under now (one per app; the previous one is removed). */
+const current = new Map<string, string>();
+
+function substitute(name: string, dir: string | null): void {
+  const handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
+  if (!dir) return handler.setSubstitution(name, null);
+  const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
+  handler.setSubstitutionWithFlags(name, Services.io.newFileURI(new FileUtils.File(dir)), Ci.nsISubstitutingProtocolHandler.ALLOW_CONTENT_ACCESS);
+}
 
 /**
- * Copies `<dataDir>/espace/sites/<id>/accueil/` into `<dataDir>/webaios-sites/<id>/<n>/` with Electron's
+ * Copies `<dataDir>/espace/sites/<id>/accueil/` into `<dataDir>/webaios-sites/<id>/<token>/` with Electron's
  * repondreAccueilSite rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
  * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file; the
- * `.html` pages go through homeServed. Points `resource://webaios-site-<id>/` at the copies and returns the URL of
- * `<n>/index.html`, or null (no home page, or a refused folder).
+ * `.html` pages go through homeServed. Points `resource://webaios-site-<id>-<token>/` straight at that folder (the
+ * previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
+ * The token is random at each serve: the substitution is content-accessible (ALLOW_CONTENT_ACCESS, below), so neither
+ * its host nor any root above it may be guessable by a web page.
  * shortcut: files are checked by realpath then read by path (IOUtils has no O_NOFOLLOW): a link swapped in between is
  * followed; and the whole folder is copied with no file count limit. Upgrade if the agent's folder can be written by an
  * untrusted process.
@@ -91,9 +103,10 @@ export async function serveHome(dataDir: string, id: string): Promise<string | n
     // realpath resolves every link on the path: if it differs from the expected path, a link (or another case) is there.
     const expected = PathUtils.join(sitesReal, id, "accueil");
     if (realPath(source) !== expected) return null;
-    const n = ++served;
+    const token = Services.uuid.generateUUID().toString().replace(/[{}-]/g, "");
+    const key = `${id}-${token}`;
     const copies = PathUtils.join(dataDir, "webaios-sites", id);
-    const target = PathUtils.join(copies, String(n));
+    const target = PathUtils.join(copies, token);
     await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
     // The copies stay inside <dataDir>/webaios-sites: a copies folder that is a link is refused.
     const root = realPath(PathUtils.join(dataDir, "webaios-sites"));
@@ -118,7 +131,7 @@ export async function serveHome(dataDir: string, id: string): Promise<string | n
         const bytes = await IOUtils.read(child, { maxBytes: FICHIER_ACCUEIL_MAX + 1 });
         // A file that grew since stat is refused, never cut.
         if (bytes.length > FICHIER_ACCUEIL_MAX) continue;
-        if (/\.html$/i.test(segment)) await IOUtils.writeUTF8(out, homeServed(new TextDecoder().decode(bytes), id));
+        if (/\.html$/i.test(segment)) await IOUtils.writeUTF8(out, homeServed(new TextDecoder().decode(bytes), key));
         else await IOUtils.write(out, bytes);
         if (top && segment === "index.html") index = true;
       }
@@ -126,19 +139,29 @@ export async function serveHome(dataDir: string, id: string): Promise<string | n
     await copy(source, expected, target, true);
     // One copy per app: the previous ones go.
     for (const old of await IOUtils.getChildren(copies)) if (old !== target) await IOUtils.remove(old, { recursive: true, ignoreAbsent: true });
-    const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-    // Content access: without it the home's opaque frame cannot load its own images, scripts or styles (measured). A
-    // web page in a tab still cannot load them (measured, an <img> of a page on pub.localhost); the CSP keeps each home
-    // to its own app's files.
-    Services.io
-      .getProtocolHandler("resource")
-      .QueryInterface(Ci.nsIResProtocolHandler)
-      .setSubstitutionWithFlags(substitution(id), Services.io.newFileURI(new FileUtils.File(copies)), Ci.nsISubstitutingProtocolHandler.ALLOW_CONTENT_ACCESS);
-    return index ? `resource://${substitution(id)}/${n}/index.html` : null;
+    const previous = current.get(id);
+    if (previous) substitute(previous, null);
+    current.delete(id);
+    if (!index) return null;
+    // Content access: without it the home's opaque frame cannot load its own images, scripts or styles (measured). Any
+    // content principal may then load these URLs as <script>, stylesheet or <img>: hence the random host. The CSP keeps
+    // each home to its own copy's files.
+    substitute(substitution(key), target);
+    current.set(id, substitution(key));
+    return `resource://${substitution(key)}/index.html`;
   } catch (e) {
     console.error(`[sites] accueil de ${id} non servi :`, e);
     return null;
   }
+}
+
+/** « Supprimer »: the app's served home goes, its substitution and its copies. */
+export async function forgetHome(dataDir: string, id: string): Promise<void> {
+  if (typeof id !== "string" || !ID_SITE.test(id)) return;
+  const name = current.get(id);
+  current.delete(id);
+  if (name) substitute(name, null);
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites", id), { recursive: true, ignoreAbsent: true });
 }
 
 // --- Images: a copy of Electron's chargerImage (main/image-distante.ts), on Uint8Array instead of Buffer. Drift test

@@ -12,7 +12,7 @@ import type { AgentHost } from "../agent/host";
 import type { SiteFrameData } from "../agent/site-actor";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
-import { serveHome, siteImage } from "./site-home";
+import { forgetHome, serveHome, siteImage } from "./site-home";
 
 // Keep in sync with agent/site-actor.ts SITE_FRAMES.
 const SITE_FRAMES = "webaios-sites";
@@ -414,7 +414,7 @@ export const sites = {
   async erase(id: string): Promise<void> {
     if (typeof id !== "string" || !ID_SITE.test(id)) return;
     await removeSiteContainer(id);
-    if (dataDir) await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites", id), { recursive: true, ignoreAbsent: true });
+    if (dataDir) await forgetHome(dataDir, id);
   },
   /** site.json changed: the open app takes its new declaration and domains (its bfcache is dropped), without showing. */
   update(site: SiteOuvrable): void {
