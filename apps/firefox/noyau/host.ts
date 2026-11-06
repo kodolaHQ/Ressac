@@ -1,4 +1,5 @@
 import type { Noyau, OngletInfo } from "../../../packages/noyau/src/index.ts";
+import type { Cadre } from "../../navigateur/src/commun/modele.ts";
 import type { SelectionConstructeur, TailleTerminal } from "../../navigateur/src/commun/api.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
@@ -24,6 +25,7 @@ const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions
 const { Historique } = await import("../../navigateur/src/main/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
+const { createSites, SchemaActionSite } = await import("./sites.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
@@ -119,6 +121,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     ia,
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
+    sites: sites.outils,
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or an accord changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
@@ -186,6 +189,7 @@ const arreter = () =>
   (stopping ??= (async () => {
     extensions.arreter();
     await sessions.toutArreter();
+    await sites.arreter();
     await arreterNoyau(await pret);
     await ia.fermer().catch(() => {});
     clearInterval(purge);
@@ -371,6 +375,20 @@ const rpc = createRpc({
     "fenetres.actives": (p: Record<string, unknown> | null) => {
       actives = new Map(Object.entries(p ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
     },
+    // Site apps (the window is the chrome's). A bad action is ignored, as Electron's IPC does.
+    "sites.pret": () => sites.resynchroniser(),
+    "sites.liste": () => sites.liste(),
+    "sites.agir": (p: { id?: unknown; action?: unknown; fenetre?: unknown }) => {
+      const a = SchemaActionSite.safeParse(p);
+      if (a.success && typeof p?.fenetre === "string") return sites.agir(a.data.id, a.data.action, p.fenetre);
+    },
+    "sites.memoireAccueil": (p: { id?: unknown }) => (typeof p?.id === "string" ? sites.memoireAccueil(p.id) : null),
+    "sites.noter": (p: { id?: unknown; cadre?: Cadre; favicon?: unknown }) => {
+      if (typeof p?.id === "string") sites.noter(p.id, { ...(p.cadre ? { cadre: p.cadre } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
+    },
+    "sites.ferme": (p: { id?: unknown }) => {
+      if (typeof p?.id === "string") sites.fermee(p.id);
+    },
     "historique.noter": (p: Parameters<InstanceType<typeof Historique>["noter"]>[0]) => historique?.noter(p),
     "historique.titre": (p: { url: string; espaceId: string; titre: string }) => historique?.majTitre(p.url, p.espaceId, p.titre),
     "historique.retenir": (p: { url: string; espaceId: string; titre: string; texte: string }) => {
@@ -463,6 +481,25 @@ const menagementTest = new Menagement();
 const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
 // Outside the agent's noyau, like the history: granted extensions run even when the noyau does not start.
 const extensions = new ExtensionsAgent({ dossier: join(dataDir, "extensions"), dossierAgent: chemins.extensions, rpc });
+// Site apps: the Node side (list, memory, deletion); the windows are the chrome's, asked through the RPC.
+const sites = createSites({
+  chemins,
+  dataDir,
+  adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
+  chrome: {
+    ouvrir: (s, cadre) => rpc.request("sites.ouvrir", [s, cadre ?? null]),
+    fermer: (id) => rpc.request("sites.fermer", [id]),
+    effacer: (id) => rpc.request("sites.effacer", [id]),
+    mettreAJour: (s) => rpc.request("sites.mettreAJour", [s]),
+    ouvertes: () => rpc.request("sites.ouvertes"),
+    accueilChange: (id) => rpc.notify("sites.accueilChange", [id]),
+  },
+  diffuser: () => rpc.notify("sites.change"),
+  preRemplir: (f, t) => sessions.preRemplir(f, t),
+  notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
+});
+// The chrome may not answer yet (its handlers come up later): it calls "sites.pret" once it does.
+void sites.resynchroniser().catch(() => {});
 let demarrageExtensions: Promise<void> | undefined;
 
 createInterface({ input: process.stdin, crlfDelay: Infinity })
