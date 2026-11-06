@@ -281,4 +281,28 @@ describe("the agent on a site app window", () => {
     expect(lu.texte).toContain("les films du jour");
     await expect.poll(async () => (await call("erreurs_retouches", { id: "flemmix" })).texte, { timeout: 10_000 }).toContain("retouche cassée");
   });
+
+  it("recharger on site:<id> while the app shows its home reaches the server (the view's load is wanted)", async () => {
+    await start({ vidola: vidola() }, async () => {
+      writeSite(dataDir, "vidola", { declaration: vidola(), fichiers: { "accueil/index.html": "<p>accueil</p>" } });
+    });
+    await openSite();
+    const vue = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().vue;`);
+    const film = url("/film/2");
+    const navigating = call("naviguer", { id: "site:vidola", url: film });
+    await cardText();
+    await answer(ALLOW);
+    expect((await navigating).erreur).toBe(false);
+    await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(film);
+    const hits = () => server.requetes.filter((r) => r.chemin === "/film/2").length;
+    await expect.poll(hits, { timeout: 10_000 }).toBe(1);
+    await m.execute(`${siteWindowExpr("vidola")}.webaiosSiteWindow.home()`);
+    const before = hits();
+    expect(await vue()).toBe("accueil");
+    const reloading = call("recharger", { id: "site:vidola" });
+    await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(DEVTOOLS)})?.textContent`, [], 15_000);
+    await answer("Autoriser la sélection", DEVTOOLS);
+    await expect.poll(hits, { timeout: 10_000 }).toBeGreaterThan(before);
+    expect((await reloading).erreur).toBe(false);
+  });
 });

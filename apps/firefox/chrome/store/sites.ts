@@ -644,6 +644,11 @@ export const sites = {
     const s = open.get(id);
     if (s) broadcast(s);
   },
+  /** The agent's dev tools reload the view: that load is WebAiOs's, not an add-on's (the M1 net spares it under the home). */
+  markWanted(id: string): void {
+    const s = open.get(id);
+    if (s) s.wantNext = true;
+  },
   /** Electron's rechargerVue: the view's page reloaded, if it was ever loaded (its retouches changed). */
   reloadView(id: string): void {
     const s = open.get(id);

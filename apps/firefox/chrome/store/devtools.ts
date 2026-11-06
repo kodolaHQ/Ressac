@@ -283,7 +283,7 @@ export function createDevTools(o: {
   store: Store;
   windows: WindowRegistry;
   isPrivate(tabId: string): boolean;
-  sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
+  sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
 }): DevTools {
   const siteView = (id: string) => (id.startsWith(PREFIXE_SITE) ? o.sites?.viewFor(id.slice(PREFIXE_SITE.length)) : undefined);
   /** The page's address now: the app view's for a site app window, the tab's otherwise. */
@@ -564,6 +564,7 @@ export function createDevTools(o: {
     },
     async recharger(id: string, sansCache: boolean): Promise<void> {
       const s = await session(id);
+      if (id.startsWith(PREFIXE_SITE)) o.sites?.markWanted(id.slice(PREFIXE_SITE.length));
       // Resolves at dom-complete (note D4); a page that never finishes still answers, as Electron's.
       await Promise.race([s.commands.targetCommand.reloadTopLevelTarget(!!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && origineDe(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
