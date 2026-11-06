@@ -2,10 +2,10 @@
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows (Electron's main/sites/fenetres.ts).
 import type { Cadre } from "../../../navigateur/src/commun/modele";
-import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
+import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
 import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
-import { adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
+import { adresseRelative, adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
 import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import type { SiteChrome } from "../../noyau/sites";
@@ -43,6 +43,8 @@ export interface SiteWindowController {
   back(): void;
   forward(): void;
   reload(): void;
+  /** « Chercher la nouvelle adresse » (Electron's chercherAdresse): the host reads the reference page. */
+  findAddress(): void;
   /** A navigation or an open of the app was refused: kept for « Ouvrir dans un onglet », mentioned in the bar. */
   blocked(url: string): void;
   /** « Ouvrir dans un onglet »: the last blocked link, in the last main window (its active space); the mention falls. */
@@ -90,6 +92,12 @@ interface OpenSite {
   home: Promise<string | null> | null;
   /** When the home last opened an address. */
   lastHomeOpen: number;
+  /** The address of the last load WebAiOs started in the view (Electron's cible): the address follow reads it back. */
+  target: string | null;
+  /** A reading of the reference page is under way (the bar's button shows it). */
+  searching: boolean;
+  /** The host's mention (address changed, not found…); a blocked link replaces it, as Electron's single avis. */
+  hostNotice: AvisBarre | null;
 }
 
 const open = new Map<string, OpenSite>();
@@ -116,12 +124,20 @@ function hostOf(url: string): string {
 }
 
 function block(s: OpenSite, url: string): void {
+  s.hostNotice = null;
   s.blocked.push(hostOf(url));
   s.notice.block(url);
 }
 
+/** The address follow (Electron's surSuivi): only an app that declares suiviAdresse; the host reads the reference page. */
+function follow(s: OpenSite, url: string | null): void {
+  if (!s.site.declaration.suiviAdresse || open.get(s.site.id) !== s) return;
+  host?.notify("sites.chercher", { id: s.site.id, url });
+}
+
 function loadInView(s: OpenSite, url: string): void {
   s.loaded = true;
+  s.target = url;
   s.view?.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
 }
 
@@ -167,6 +183,9 @@ const observer = {
       ch.cancel(Cr.NS_BINDING_ABORTED);
       // A sign-in window's refused page is not mentioned (Electron's equiperPetite).
       if (inView) block(s, url);
+      // Sent off the site (a parked domain) during a load WebAiOs started (loadInView loads as the system principal): the
+      // site may have moved. A redirect after a click in the page has the page's principal: nothing is read.
+      if (inView && li.triggeringPrincipal.isSystemPrincipal && li.redirectChain.length > 0) follow(s, s.target);
       return;
     }
     // A sign-in window opens nothing (Electron's equiperPetite denies every open).
@@ -196,6 +215,17 @@ function homePage(id: string, uri: { spec: string } | null): boolean {
     return false;
   }
 }
+
+/** Electron's ERREURS_RESEAU_SUIVI, as Firefox's statuses. */
+const NETWORK_ERRORS = new Set<number>([
+  Cr.NS_ERROR_UNKNOWN_HOST,
+  Cr.NS_ERROR_CONNECTION_REFUSED,
+  Cr.NS_ERROR_NET_TIMEOUT,
+  Cr.NS_ERROR_NET_RESET,
+  Cr.NS_ERROR_NET_INTERRUPT,
+  Cr.NS_ERROR_OFFLINE,
+  Cr.NS_ERROR_PROXY_CONNECTION_REFUSED,
+]);
 
 const POLICY_CONTRACT = "@webaios/site-view-policy;1";
 /**
@@ -269,10 +299,9 @@ function stateOf(s: OpenSite): EtatFenetreSite {
     domaine: httpHost(url) ?? httpHost(s.site.depart) ?? "",
     peutReculer: !!s.view?.canGoBack,
     peutAvancer: !!s.view?.canGoForward,
-    // Address tracking is a later task's.
-    suivi: false,
-    recherche: false,
-    avis: s.notice.avis,
+    suivi: s.site.declaration.suiviAdresse !== undefined,
+    recherche: s.searching,
+    avis: s.notice.avis ?? s.hostNotice,
     accord: s.vue === "accord" ? s.site.demande : null,
   };
 }
@@ -334,6 +363,12 @@ function controllerOf(s: OpenSite): SiteWindowController {
     reload() {
       if (s.vue === "site" && s.loaded) s.view?.reload();
     },
+    findAddress() {
+      if (open.get(id) !== s || !s.site.declaration.suiviAdresse) return;
+      // The page shown if it is on the site, else (error page, blocked link…) the start address.
+      const url: string = s.view?.currentURI?.spec ?? "";
+      follow(s, url && adresseRelative(url, s.site.domaines) !== null ? url : null);
+    },
     blocked: (url) => block(s, url),
     openBlocked() {
       const url = s.notice.take();
@@ -393,6 +428,14 @@ function attach(s: OpenSite, browser: any): void {
   // Kept on the window: the browser holds its progress listeners weakly.
   const listener = ((win as any).webaiosSiteProgress = {
     QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+    // The view's own page did not answer (DNS, refused, timeout, reset, offline: Electron's erreurDeReseau). Never
+    // NS_BINDING_ABORTED, which is our own refusals.
+    onStateChange(progress: any, request: any, flags: number, status: number) {
+      const L = Ci.nsIWebProgressListener;
+      if (!progress.isTopLevel || !(flags & L.STATE_STOP) || !(flags & L.STATE_IS_DOCUMENT) || !NETWORK_ERRORS.has(status)) return;
+      const failed: string = request.QueryInterface(Ci.nsIChannel).URI.spec;
+      follow(s, /^https?:/i.test(failed) ? failed : s.target);
+    },
     onLocationChange(progress: any, _request: unknown, _location: unknown, flags: number) {
       if (!progress.isTopLevel) return;
       browser.browsingContext?.sessionHistory?.evictAllDocumentViewers();
@@ -402,7 +445,7 @@ function attach(s: OpenSite, browser: any): void {
       Services.tm.dispatchToMainThread(() => broadcast(s));
     },
   });
-  browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION);
+  browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION | Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
   // The favicon Firefox shows for the page (a data: URL from its FaviconLoader), noted as Electron's faviconEnDonnees.
   let favicon: string | null = null;
   win.gBrowser.tabContainer.addEventListener("TabAttrModified", (e: CustomEvent<{ changed: string[] }>) => {
@@ -482,7 +525,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
     // The card first if the retouches need their accord: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity };
+    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -675,6 +718,38 @@ export const sites = {
     "sites.rediffuser": ([id]: [string]) => sites.rebroadcast(id),
     "sites.ouvertes": () => sites.openIds(),
     // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
+    // Address follow (Electron's FenetresSites.cherche, avis, adresseChangee).
+    "sites.cherche": ([id, oui]: [string, boolean]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      s.searching = oui;
+      broadcast(s);
+    },
+    "sites.avis": ([id, a]: [string, AvisBarre | null]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      s.notice.clear();
+      s.hostNotice = a;
+      broadcast(s);
+    },
+    "sites.adresseChangee": ([id, domaines, depart, vers]: [string, string[], string, string]) => {
+      const s = open.get(id);
+      if (!s || s.window.closed) return;
+      // The card's « suivis »: the domains added by the follow (the host recomputes the same list).
+      const declared = new Set(s.site.declaration.domaines.map((x) => x.toLowerCase()));
+      const suivis = [...new Set(domaines.map((x) => x.toLowerCase()).filter((x) => !declared.has(x)))];
+      s.site = { ...s.site, domaines, depart, demande: { ...s.site.demande, suivis } };
+      if (s.vue === "accord") {
+        // The card is shown: the view loads nothing before the choice; a page already loaded was on the old domain.
+        if (s.loaded) {
+          s.aCharger = vers;
+          s.aChargerAgent = false;
+        }
+        return broadcast(s);
+      }
+      loadInView(s, vers);
+      broadcast(s);
+    },
     "sites.accueilChange": ([id]: [string]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;

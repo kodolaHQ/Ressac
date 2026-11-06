@@ -23,7 +23,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     suivant: () => c.forward(),
     recharger: () => c.reload(),
     ouvrirBloque: () => c.openBlocked(),
-    chercherAdresse: () => {},
+    chercherAdresse: () => c.findAddress(),
     // Electron's IPC schema refuses a non-boolean choice and an unbounded fingerprint.
     accorder: async (oui, empreinte) => {
       if (typeof oui !== "boolean" || (empreinte !== undefined && (typeof empreinte !== "string" || empreinte.length > 128))) throw new Error("invalid accord request");

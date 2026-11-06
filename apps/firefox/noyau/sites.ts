@@ -6,6 +6,8 @@ import { extname, join, sep } from "node:path";
 import { z } from "zod";
 import {
   accordCouvre,
+  adresseRelative,
+  adresseSurDomaine,
   accordNecessaire,
   accorderSite,
   adresseDeDepart,
@@ -28,10 +30,11 @@ import {
   type RetouchesLues,
   type SiteLu,
 } from "../../../packages/noyau/src/index.ts";
-import { ICONE_MAX, modifierAvecAgent, type ActionSite, type DemandeAccordSite, type MessageVersLAccueil, type SiteAffiche } from "../../navigateur/src/commun/sites.ts";
+import { adresseChangee, adresseInchangee, adresseIntrouvable, ICONE_MAX, modifierAvecAgent, type ActionSite, type AvisBarre, type DemandeAccordSite, type MessageVersLAccueil, type SiteAffiche } from "../../navigateur/src/commun/sites.ts";
 import type { Cadre } from "../../navigateur/src/commun/modele.ts";
 import type { ErreurRetouche, SiteOuvrable } from "../../navigateur/src/main/sites/fenetres.ts";
 import type { ReponseMemoire } from "../../navigateur/src/main/sites/injection.ts";
+import { SuiviAdresse } from "./site-follow.ts";
 import { creerPositions, memoireOp } from "./site-memory.ts";
 
 // The pure parts of Electron's main/sites/service.ts, copied: it imports electron, so the Node host cannot import it.
@@ -88,6 +91,12 @@ export interface SitesChrome {
   rediffuser(id: string): Promise<void>;
   ouvertes(): Promise<string[]>;
   accueilChange(id: string): void;
+  /** A reading of the reference page starts or ends: the bar's button shows it (Electron's FenetresSites.cherche). */
+  cherche(id: string, oui: boolean): void;
+  /** The bar's mention (Electron's FenetresSites.avis). */
+  avis(id: string, a: AvisBarre | null): void;
+  /** The follow found the new address: the open app takes its domains and start address, and the view goes to `vers`. */
+  adresseChangee(id: string, domaines: string[], depart: string, vers: string): void;
 }
 
 export interface SitesHost {
@@ -105,6 +114,8 @@ export interface SitesHost {
   /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.reprise`); the chrome checked the frame. */
   position(demande: unknown): Promise<void>;
   reprise(demande: unknown): Promise<number | null>;
+  /** « Chercher la nouvelle adresse », or a site that does not answer (`url`: the page aimed at, else the start address). */
+  chercherAdresse(id: string, url: string | null): Promise<void>;
   /** The open apps as last sent to the chrome. */
   sitesOuverts: Map<string, SiteChrome>;
   outils: OutilsSites;
@@ -230,6 +241,8 @@ export function createSites(o: {
   dataDir: string;
   adressesLocales: boolean;
   chrome: SitesChrome;
+  /** The links of a reference page, read without the profile or any cookie (the bridge's public invisible read). */
+  lireLiens(page: string, signal?: AbortSignal): Promise<string[]>;
   /** The list or the state of the site apps changed (`sites.change`). */
   diffuser(): void;
   preRemplir(fenetre: string, texte: string): void;
@@ -246,6 +259,11 @@ export function createSites(o: {
   const sitesOuverts = new Map<string, SiteChrome>();
   const retouches = new Map<string, RetouchesLues>();
   const abonnements = new Map<string, () => void>();
+  /** Address follow: the reading under way, the last notice, and the changes made (a reading begun before one is redone). */
+  const recherches = new Map<string, AbortController>();
+  const derniersAvis = new Map<string, AvisBarre>();
+  const changements = new Map<string, number>();
+  const suivi = new SuiviAdresse({ lireLiens: o.lireLiens, dossierSites, adressesLocales: o.adressesLocales, maintenant: () => Date.now() });
   const relectures = new Map<string, number>();
   /** Suppressions en cours : une seconde demande pour la même appli ne fait rien. */
   const suppressions = new Set<string>();
@@ -311,6 +329,59 @@ export function createSites(o: {
     return { js: {}, css: {} };
   }
 
+  /** Electron's chercherAdresse (service.ts): the reference page says where the site is now; a notice says the result. */
+  async function chercherAdresse(id: string, url: string | null): Promise<void> {
+    const s = ouvertes.has(id) ? sitesOuverts.get(id) : undefined;
+    const d = s?.declaration;
+    if (!s || !d?.suiviAdresse || suppressions.has(id)) return;
+    // A reading is already under way: the follow answers « trop-tot » without doubling it.
+    const enCours = recherches.has(id);
+    const controle = new AbortController();
+    if (!enCours) {
+      recherches.set(id, controle);
+      o.chrome.cherche(id, true);
+    }
+    const r = await suivi.chercher(id, d, controle.signal).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
+    if (!enCours) {
+      if (recherches.get(id) === controle) recherches.delete(id);
+      if (!controle.signal.aborted) o.chrome.cherche(id, false);
+    }
+    // Window closed (or app deleted) during the reading: what comes after is ignored.
+    const courante = ouvertes.has(id) ? sitesOuverts.get(id) : undefined;
+    if (controle.signal.aborted || !courante) return;
+    const notifier = (a: AvisBarre) => {
+      derniersAvis.set(id, a);
+      o.chrome.avis(id, a);
+    };
+    switch (r.t) {
+      case "trop-tot": {
+        const dernier = derniersAvis.get(id);
+        if (dernier) o.chrome.avis(id, dernier);
+        return;
+      }
+      case "introuvable":
+        return notifier({ genre: "introuvable", texte: adresseIntrouvable(hote(d.suiviAdresse.page) ?? d.suiviAdresse.page) });
+      case "inchangee":
+        return notifier({ genre: "inchangee", texte: adresseInchangee(d.nom) });
+      case "change": {
+        // Today's declaration (site.json may have been read again during the reading).
+        const decl = courante.declaration;
+        const domaines = domainesEffectifs(decl, r.etat);
+        const depart = adresseDeDepart(decl, r.etat);
+        // The same page on the new domain, else the start address.
+        const relative = url ? adresseRelative(url, domaines) : null;
+        const vers = (relative && adresseSurDomaine(relative, r.domaine, domaines, depart, lecture)) || depart;
+        changements.set(id, (changements.get(id) ?? 0) + 1);
+        const site = { ...courante, domaines, depart };
+        sitesOuverts.set(id, { ...site, demande: demandeAccord(site) });
+        o.chrome.adresseChangee(id, domaines, depart, vers);
+        notifier({ genre: "adresse-changee", texte: adresseChangee(d.nom, r.domaine) });
+        // The home shows the new domain.
+        if (abonnements.has(id)) void memoire(id).then((m) => messageMemoire(id, m)).then((msg) => o.notifierMemoire(id, msg), () => {});
+      }
+    }
+  }
+
   /**
    * site.json ou un fichier de retouche a changé : l'appli ouverte est relue, puis sa page rechargée (Electron's relire,
    * without the address tracking and the extensions, later tasks); seule la dernière relecture compte.
@@ -319,12 +390,15 @@ export function createSites(o: {
     if (!ouvertes.has(id)) return;
     const n = (relectures.get(id) ?? 0) + 1;
     relectures.set(id, n);
+    const changementsAvant = changements.get(id) ?? 0;
     const p = await preparer(id).catch((e: unknown) => {
       console.error(`[sites] ${id} illisible :`, e);
       return null;
     });
     const avant = sitesOuverts.get(id);
     if (relectures.get(id) !== n || !ouvertes.has(id) || !avant) return;
+    // The site changed address during the reading: its domains would be the old ones, read again.
+    if ((changements.get(id) ?? 0) !== changementsAvant) return relire(id);
     // Devenue invalide : plus rien n'est injecté (la fenêtre garde ce qu'elle avait, sans retouches).
     const nouvelles = p ? p.retouches : { js: {}, css: {} };
     // Rien de changé pour la page (dossier recopié, événement en double) : elle n'est pas rechargée.
@@ -419,6 +493,7 @@ export function createSites(o: {
     try {
       if (!(await connue(id))) return;
       positions.annulerNotes(id);
+      recherches.get(id)?.abort();
       await o.chrome.fermer(id);
       ouvertes.delete(id);
       forget(id);
@@ -426,6 +501,7 @@ export function createSites(o: {
       const m = memoires.get(id);
       if (m) await m.then((x) => x.effacer(), () => {});
       memoires.delete(id);
+      suivi.oublier(id);
       await supprimerDonneesSite(o.dataDir, id);
       souvenirs.oublier(id);
       if (!(await dossierReel(id))) return;
@@ -554,6 +630,9 @@ export function createSites(o: {
       abonnements.get(id)?.();
       abonnements.delete(id);
       relectures.delete(id);
+      recherches.get(id)?.abort();
+      recherches.delete(id);
+      derniersAvis.delete(id);
       void viderMemoire(id);
       o.diffuser();
     },
@@ -573,6 +652,7 @@ export function createSites(o: {
         return ouvertes.has(id) ? o.chrome.erreurs(id).catch(() => []) : [];
       },
     },
+    chercherAdresse,
     sitesOuverts,
     async accorder(id, oui, empreinte) {
       // Taken before any wait: site.json may grow between the card and the click.
@@ -616,6 +696,7 @@ export function createSites(o: {
     },
     async arreter() {
       try {
+        for (const c of recherches.values()) c.abort();
         await arreterSurveillance().catch(() => {});
         await Promise.allSettled([...memoires.keys()].map(viderMemoire));
       } finally {

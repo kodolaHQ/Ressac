@@ -46,7 +46,7 @@ const declaration = {
   reprise: true,
 };
 
-function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
+function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }, lireLiens: (page: string, signal?: AbortSignal) => Promise<string[]> = async () => []) {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "sites-host-")));
   const chemins = cheminsEspace(join(racine, "espace"));
   const dataDir = join(racine, "profil");
@@ -57,6 +57,7 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
   };
   write("vidola", JSON.stringify(declaration));
   writeFileSync(join(chemins.sites, "vidola", "garde.txt"), "x");
+  write("suivi", JSON.stringify({ ...declaration, domaines: ["vidola-a.example"], suiviAdresse: { page: "https://adresses.example/", motif: "vidola" } }));
   write("casse", "{pas du json");
   write("MonSite", JSON.stringify(declaration));
   const journal: string[] = [];
@@ -68,7 +69,9 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
     accueil: string[];
     apres: unknown[][];
     rediffuser: string[];
+    suivi: unknown[][];
   } = {
+    suivi: [],
     apres: [],
     rediffuser: [],
     ouvrir: [],
@@ -109,11 +112,14 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
     erreurs: async () => erreursChrome,
     ouvertes: async () => ouvertesChrome,
     accueilChange: (id) => void calls.accueil.push(id),
+    cherche: (...a) => void calls.suivi.push(["cherche", ...a]),
+    avis: (...a) => void calls.suivi.push(["avis", ...a]),
+    adresseChangee: (...a) => void calls.suivi.push(["adresseChangee", ...a]),
   };
   const diffuser = vi.fn();
   const preRemplir = vi.fn();
   const memoires: { id: string; message: unknown }[] = [];
-  const sites = createSites({ chemins, dataDir, adressesLocales: false, chrome, diffuser, preRemplir, notifierMemoire: (id, message) => void memoires.push({ id, message }) });
+  const sites = createSites({ chemins, dataDir, adressesLocales: false, lireLiens, chrome, diffuser, preRemplir, notifierMemoire: (id, message) => void memoires.push({ id, message }) });
   cleanup.push(async () => {
     await sites.arreter();
     rmSync(racine, { recursive: true, force: true });
@@ -122,6 +128,88 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }) {
     setVue: (v: typeof vueChrome) => (vueChrome = v),
     retenir: (p: Promise<void> | null) => (retenue = p), setErreurs: (e: typeof erreursChrome) => (erreursChrome = e) };
 }
+
+// Electron's own unit tests of SuiviAdresse (they run on Electron's file), plus the drift guard of the host's copy.
+import "../../navigateur/test/sites/suivi.test";
+
+describe("site-follow.ts", () => {
+  it("is Electron's suivi.ts, body unchanged (only its two import lines differ)", () => {
+    const body = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8").split("\n").filter((l) => !l.startsWith("//")).slice(2).join("\n");
+    expect(body("../noyau/site-follow.ts")).toBe(body("../../navigateur/src/main/sites/suivi.ts"));
+  });
+});
+
+describe("chercherAdresse", () => {
+  const AVIS_CHANGE = "Vidola a changé d'adresse : vidola-b.example. Il faudra peut-être te reconnecter.";
+
+  it("a new domain: the bar is told (reading, new address, notice), adresse.json is written, the open app takes it", async () => {
+    const m = mount(undefined, async () => ["https://adresses.example/x", "https://vidola-b.example/"]);
+    await m.sites.ouvrirParId("suivi");
+    await m.sites.chercherAdresse("suivi", "https://vidola-a.example/serie/1");
+    expect(m.calls.suivi).toEqual([
+      ["cherche", "suivi", true],
+      ["cherche", "suivi", false],
+      ["adresseChangee", "suivi", ["vidola-a.example", "vidola-b.example"], "https://vidola-b.example/", "https://vidola-b.example/serie/1"],
+      ["avis", "suivi", { genre: "adresse-changee", texte: AVIS_CHANGE }],
+    ]);
+    expect(JSON.parse(readFileSync(join(m.dataDir, "sites", "suivi", "adresse.json"), "utf8"))).toMatchObject({ actuel: "vidola-b.example", anciens: ["vidola-a.example"] });
+    expect(m.sites.sitesOuverts.get("suivi")).toMatchObject({ domaines: ["vidola-a.example", "vidola-b.example"], depart: "https://vidola-b.example/" });
+    expect(m.sites.sitesOuverts.get("suivi")!.demande.suivis).toEqual(["vidola-b.example"]);
+  });
+
+  it("nothing to follow (no suiviAdresse, not open, deleting): no reading", async () => {
+    const lireLiens = vi.fn(async () => ["https://vidola-b.example/"]);
+    const m = mount(undefined, lireLiens);
+    await m.sites.ouvrirParId("vidola");
+    await m.sites.chercherAdresse("vidola", null);
+    await m.sites.chercherAdresse("suivi", null);
+    expect(lireLiens).not.toHaveBeenCalled();
+    expect(m.calls.suivi).toEqual([]);
+  });
+
+  it("too early gives the last notice again, without a second reading", async () => {
+    const lireLiens = vi.fn(async () => []);
+    const m = mount(undefined, lireLiens);
+    await m.sites.ouvrirParId("suivi");
+    await m.sites.chercherAdresse("suivi", null);
+    const first = m.calls.suivi.filter((c) => c[0] === "avis");
+    expect(first).toEqual([["avis", "suivi", { genre: "introuvable", texte: "Adresse introuvable sur adresses.example" }]]);
+    await m.sites.chercherAdresse("suivi", null);
+    expect(lireLiens).toHaveBeenCalledTimes(1);
+    expect(m.calls.suivi.filter((c) => c[0] === "avis")).toEqual([...first, ...first]);
+  });
+
+  it("the window closes during the reading: it is aborted and nothing is sent after", async () => {
+    let signal: AbortSignal | undefined;
+    let release: (l: string[]) => void = () => {};
+    const m = mount(undefined, (_p, s) => {
+      signal = s;
+      return new Promise((ok) => (release = ok));
+    });
+    await m.sites.ouvrirParId("suivi");
+    const done = m.sites.chercherAdresse("suivi", null);
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    m.sites.fermee("suivi");
+    expect(signal!.aborted).toBe(true);
+    release(["https://vidola-b.example/"]);
+    await done;
+    expect(m.calls.suivi).toEqual([["cherche", "suivi", true]]);
+    expect(existsSync(join(m.dataDir, "sites", "suivi", "adresse.json"))).toBe(false);
+  });
+
+  it("a deletion aborts the reading too", async () => {
+    let signal: AbortSignal | undefined;
+    const m = mount(undefined, (_p, s) => {
+      signal = s;
+      return new Promise(() => {});
+    });
+    await m.sites.ouvrirParId("suivi");
+    void m.sites.chercherAdresse("suivi", null);
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    await m.sites.agir("suivi", "supprimer", "f1");
+    expect(signal!.aborted).toBe(true);
+  });
+});
 
 describe("liste", () => {
   it("shows the current domain, the error of a broken site.json, and no actions for a refused id", async () => {

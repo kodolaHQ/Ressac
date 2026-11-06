@@ -389,6 +389,9 @@ const rpc = createRpc({
     "sites.memoireOp": (p: unknown) => sites.memoireOp(p),
     "sites.position": (p: unknown) => sites.position(p),
     "sites.reprise": (p: unknown) => sites.reprise(p),
+    "sites.chercher": (p: { id?: unknown; url?: unknown }) => {
+      if (typeof p?.id === "string" && (p.url === null || typeof p.url === "string")) return sites.chercherAdresse(p.id, p.url);
+    },
     "sites.accorder": (p: { id?: unknown; oui?: unknown; empreinte?: unknown }) => {
       if (typeof p?.id === "string" && typeof p.oui === "boolean" && typeof p.empreinte === "string") return sites.accorder(p.id, p.oui, p.empreinte);
     },
@@ -504,7 +507,13 @@ const sites = createSites({
     rediffuser: (id) => rpc.request("sites.rediffuser", [id]),
     ouvertes: () => rpc.request("sites.ouvertes"),
     accueilChange: (id) => rpc.notify("sites.accueilChange", [id]),
+    cherche: (id, oui) => rpc.notify("sites.cherche", [id, oui]),
+    avis: (id, a) => rpc.notify("sites.avis", [id, a]),
+    adresseChangee: (id, domaines, depart, vers) => rpc.notify("sites.adresseChangee", [id, domaines, depart, vers]),
   },
+  // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
+  lireLiens: async (page, signal) =>
+    (await bridge.lirePageInvisible(page, { profil: null, ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}), ...(signal ? { signal } : {}) })).liens.map((l) => l.url),
   diffuser: () => rpc.notify("sites.change"),
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
