@@ -137,6 +137,11 @@ describe("site-follow.ts", () => {
     const body = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8").split("\n").filter((l) => !l.startsWith("//")).slice(2).join("\n");
     expect(body("../noyau/site-follow.ts")).toBe(body("../../navigateur/src/main/sites/suivi.ts"));
   });
+
+  it("site-navigation.ts is Electron's navigation.ts, body unchanged (only its import line differs)", () => {
+    const body = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8").split("\n").filter((l) => !l.startsWith("//")).slice(1).join("\n");
+    expect(body("../noyau/site-navigation.ts")).toBe(body("../../navigateur/src/main/sites/navigation.ts"));
+  });
 });
 
 describe("chercherAdresse", () => {

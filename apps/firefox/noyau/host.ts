@@ -484,7 +484,7 @@ const rpc = createRpc({
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },
 });
-const bridge = new RemoteBridge(rpc, historique);
+const bridge = new RemoteBridge(rpc, historique, (site, url) => sites.adressePermise(site, url));
 const menagementTest = new Menagement();
 /** A page request on one extension key: a malformed one is refused as text. */
 const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
@@ -517,6 +517,10 @@ const sites = createSites({
   diffuser: () => rpc.notify("sites.change"),
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
+  // The agent loses its dev tools on the closed window; the app's accord holds for the conversation, until « Supprimer »
+  // (an app made again under the same id asks for its card again).
+  surFermee: (id) => noyau?.politique.ongletFerme(`site:${id}`),
+  surSupprimee: (id) => noyau?.politique.retirerLectureSite(id),
 });
 // The chrome may not answer yet (its handlers come up later): it calls "sites.pret" once it does.
 void sites.resynchroniser().catch(() => {});

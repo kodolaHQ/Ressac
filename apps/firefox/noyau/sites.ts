@@ -35,6 +35,7 @@ import type { Cadre } from "../../navigateur/src/commun/modele.ts";
 import type { ErreurRetouche, SiteOuvrable } from "../../navigateur/src/main/sites/fenetres.ts";
 import type { ReponseMemoire } from "../../navigateur/src/main/sites/injection.ts";
 import { SuiviAdresse } from "./site-follow.ts";
+import { decisionOuverture } from "./site-navigation.ts";
 import { creerPositions, memoireOp } from "./site-memory.ts";
 
 // The pure parts of Electron's main/sites/service.ts, copied: it imports electron, so the Node host cannot import it.
@@ -118,6 +119,8 @@ export interface SitesHost {
   chercherAdresse(id: string, url: string | null): Promise<void>;
   /** The open apps as last sent to the chrome. */
   sitesOuverts: Map<string, SiteChrome>;
+  /** Is the address on the open app's domains? (a navigation the agent asks for, Electron's adressePermise) */
+  adressePermise(id: string, url: string): boolean;
   outils: OutilsSites;
   resynchroniser(): Promise<void>;
   arreter(): Promise<void>;
@@ -248,6 +251,10 @@ export function createSites(o: {
   preRemplir(fenetre: string, texte: string): void;
   /** A home screen memory change (`sites.memoire`), for the subscribed window. */
   notifierMemoire(id: string, message: MessageVersLAccueil & { type: "memoire" }): void;
+  /** The app's window closed (Electron's surFermee). */
+  surFermee?(id: string): void;
+  /** « Supprimer » begins (Electron's surSupprimee): the agent's accord on the app falls. */
+  surSupprimee?(id: string): void;
 }): SitesHost {
   const dossierSites = join(o.dataDir, "sites");
   const souvenirs = new SiteSouvenirs(o.dataDir);
@@ -492,6 +499,7 @@ export function createSites(o: {
     suppressionsCommencees.set(id, (suppressionsCommencees.get(id) ?? 0) + 1);
     try {
       if (!(await connue(id))) return;
+      o.surSupprimee?.(id);
       positions.annulerNotes(id);
       recherches.get(id)?.abort();
       await o.chrome.fermer(id);
@@ -635,6 +643,7 @@ export function createSites(o: {
       derniersAvis.delete(id);
       void viderMemoire(id);
       o.diffuser();
+      o.surFermee?.(id);
     },
     outils: {
       lister: async () =>
@@ -654,6 +663,10 @@ export function createSites(o: {
     },
     chercherAdresse,
     sitesOuverts,
+    adressePermise(id, url) {
+      const s = ouvertes.has(id) ? sitesOuverts.get(id) : undefined;
+      return !!s && decisionOuverture(url, { domaines: s.domaines, connexion: s.declaration.connexion ?? [], adressesLocales: o.adressesLocales }) === "dans-l-appli";
+    },
     async accorder(id, oui, empreinte) {
       // Taken before any wait: site.json may grow between the card and the click.
       const montree = sitesOuverts.get(id);

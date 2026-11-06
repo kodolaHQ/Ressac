@@ -1,29 +1,44 @@
 import type { DroitDev, OngletInfo } from "../shims/noyau";
 import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions";
 import type { Decision, DemandeEnAttente, IdFenetre, IdOnglet, Issue, Permission } from "../../../navigateur/src/commun/modele";
-import { attendreDroits, attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque } from "../../../navigateur/src/main/agent/pont";
+import { SCHEMA_SITE } from "../../../navigateur/src/commun/sites";
+import { attendreDroits, attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque, questionSiteCaduque } from "../../../navigateur/src/main/agent/pont";
 import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 
 type Listener = (pending: DemandeEnAttente[]) => void;
+/** Electron's SCHEMA_WIDGET (main/agent/accueil.ts, which imports electron): test/questions.test.ts guards the drift. */
+export const SCHEMA_WIDGET = "webaios-widget";
 
 /** The agent's « lire l'onglet » and extension grant cards waiting for the user (Electron's `questions` in main/index.ts). */
 export class Questions {
   private readonly open = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
   private readonly listeners = new Set<Listener>();
 
-  constructor(private readonly store: Store) {
+  /** `openSites`: the site app windows open now (`sites.forAgent`), for the questions on `site:<id>`. */
+  constructor(
+    private readonly store: Store,
+    private readonly openSites: () => { id: string; url: string }[] = () => [],
+  ) {
     // A tab closed, moved to a private space or gone to another site will never be answered: its question falls (a refusal).
-    store.subscribe((state) => {
-      let changed = false;
-      for (const [id, q] of this.open)
-        if (questionCaduque(q.demande, state)) {
-          this.open.delete(id);
-          q.repondre("retiree");
-          changed = true;
-        }
-      if (changed) this.changed();
-    });
+    store.subscribe(() => this.dropStale());
+  }
+
+  /** A question that will never get a useful answer: its tab, or its site app window (`site:<id>`), is gone. */
+  private stale(d: DemandeEnAttente): boolean {
+    return questionCaduque(d, this.store.state) || questionSiteCaduque(d, this.openSites());
+  }
+
+  /** Drops the stale questions (« retirée »); called on each state change and when a site app window closes. */
+  dropStale(): void {
+    let changed = false;
+    for (const [id, q] of this.open)
+      if (this.stale(q.demande)) {
+        this.open.delete(id);
+        q.repondre("retiree");
+        changed = true;
+      }
+    if (changed) this.changed();
   }
 
   /** Shows the card in the window and waits for the answer; false after DELAI_QUESTION_MS, or when `signal` aborts. */
@@ -31,7 +46,7 @@ export class Questions {
     const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
     const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["lire-onglet" as const], titre: o.titre, cible: o.id };
     // Already stale (tab closed, private, gone elsewhere): no card, which no state change would ever take down.
-    if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve(false);
+    if (this.stale({ id: "", ...fields })) return Promise.resolve(false);
     return attendreReponse((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
   }
 
@@ -42,8 +57,24 @@ export class Questions {
   askDevTools(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<DroitDev[]> {
     const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
     const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["outils-dev" as const], titre: o.titre, cible: o.id, droits: d.droits, raison: d.raison, agent: d.agent };
-    if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve([]);
+    if (this.stale({ id: "", ...fields })) return Promise.resolve([]);
     return attendreDroits((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
+  }
+
+  /**
+   * The « donnees-widget » card (Electron's demanderDonneesWidget in main/index.ts): the agent wants a widget's, an
+   * action's or a site app's data, read with the user's account. False after DELAI_QUESTION_MS or on `signal`.
+   */
+  askWidgetData(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<boolean> {
+    const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
+    const fields = { ongletId, fenetreId, permissions: ["donnees-widget" as const], titre: o.nom, agent: o.agent };
+    const target =
+      o.genre === "action"
+        ? { origine: `webaios://action/${o.id}`, action: o.id }
+        : o.genre === "site"
+          ? { origine: `${SCHEMA_SITE}://${o.id}`, site: o.id }
+          : { origine: `${SCHEMA_WIDGET}://${o.id}`, widget: o.id };
+    return attendreReponse((repondre) => this.pose({ ...fields, ...target }, repondre), DELAI_QUESTION_MS, signal);
   }
 
   /**

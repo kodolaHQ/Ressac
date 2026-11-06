@@ -108,6 +108,8 @@ let openTab: (url: string) => void = () => {};
 /** The last real presses in each app's home (one allows one open). */
 const gestures = gardienGestes<string>();
 const memoryListeners = new Map<string, Set<(m: MessageVersLAccueil & { type: "memoire" }) => void>>();
+/** Told after an app's window closed (the agent's questions on `site:<id>` fall). */
+const closeListeners = new Set<() => void>();
 
 const context = (s: OpenSite): ContexteNavigation => ({
   domaines: s.site.domaines,
@@ -497,6 +499,12 @@ function closed(s: OpenSite): void {
   open.delete(id);
   memoryListeners.delete(id);
   host?.notify("sites.ferme", { id });
+  for (const cb of closeListeners)
+    try {
+      cb();
+    } catch (e) {
+      console.error("[sites] close listener failed:", e);
+    }
   // Its sign-in windows close with it (the request guard refuses any page of a closed app's container anyway).
   // Only this app's: a main window is never closed here, whatever its tab's container.
   for (const w of Services.wm.getEnumerator("navigator:browser")) if (w.document.documentElement.getAttribute("webaios-site-small") === id) w.close();
@@ -664,6 +672,41 @@ export const sites = {
     } catch (e) {
       console.warn("[sites] dossier non affiché :", e);
     }
+  },
+  /**
+   * The open windows for the agent (Electron's FenetresSites.ouvertes): `url` the page shown, `domaine` the app's current
+   * one (its start address's), `empreinte` today's declaration's, to which the agent's accord is tied.
+   */
+  forAgent(): { id: string; nom: string; url: string; domaine: string; empreinte: string }[] {
+    return [...open.values()]
+      .filter((s) => !s.window.closed)
+      .map((s) => {
+        const url: string = s.view?.currentURI?.spec ?? "";
+        return { id: s.site.id, nom: s.site.declaration.nom, url: url && url !== "about:blank" ? url : s.site.depart, domaine: httpHost(s.site.depart) ?? "", empreinte: s.site.empreinte };
+      });
+  },
+  /** The app view's <browser> and its window: never the bar, the home or the card, nor a sign-in window. */
+  viewFor(id: string): { browser: any; window: Window } | undefined {
+    const s = open.get(id);
+    return s?.view && !s.window.closed ? { browser: s.view, window: s.window } : undefined;
+  },
+  /** Electron's naviguerPourAgent: a load WebAiOs wants, on the app's domains only; kept for after the card. */
+  navigateForAgent(id: string, url: string): "charge" | "en-attente" | "refuse" {
+    const s = open.get(id);
+    if (!s?.view || s.window.closed || decisionOuverture(url, context(s)) !== "dans-l-appli") return "refuse";
+    if (s.vue === "accord") {
+      s.aCharger = url;
+      s.aChargerAgent = true;
+      return "en-attente";
+    }
+    loadInView(s, url);
+    s.vue = "site";
+    broadcast(s);
+    return "charge";
+  },
+  onClosed(cb: () => void): () => void {
+    closeListeners.add(cb);
+    return () => void closeListeners.delete(cb);
   },
   openIds(): string[] {
     return [...open.values()].filter((s) => !s.window.closed).map((s) => s.site.id);

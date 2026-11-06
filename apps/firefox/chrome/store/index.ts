@@ -135,7 +135,9 @@ async function start(): Promise<WebAiOsStore> {
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
-  const questions = new Questions(store);
+  const questions = new Questions(store, () => sites.forAgent());
+  // A site app window closed: the agent's questions on it fall.
+  sites.onClosed(() => questions.dropStale());
   const sitePermissions = createSitePermissions({
     dataDir,
     profiles: () => [...profilsEnUsage(store.state)],
@@ -239,6 +241,7 @@ async function start(): Promise<WebAiOsStore> {
   const devtools = createDevTools({
     store,
     windows,
+    sites,
     isPrivate: (id) => {
       const o = store.state.onglets[id];
       return !!o && ongletPrive(store.state, o);
@@ -247,7 +250,7 @@ async function start(): Promise<WebAiOsStore> {
   const agent = createHost({
     dataDir,
     profilAgent: () => store.state.reglages.profilAgent,
-    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent), ...agentExtensions.handlers, ...sites.handlers },
+    handlers: { ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites), ...agentExtensions.handlers, ...sites.handlers },
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
