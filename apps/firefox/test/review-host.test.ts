@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ID_PROJET, Remarques, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
+import { HTML_MAX, ID_PROJET, INDISPONIBLE_DESIGN, Remarques, TRONQUE, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
 import { JETON_RELECTURE, ServiceRelecture } from "../../navigateur/src/main/design/relecture";
 import { PLAGE_HORS_BLOC } from "../../navigateur/src/commun/modele";
 import { TEXTE_REMARQUE_MAX } from "../../navigateur/src/commun/api";
@@ -328,5 +328,41 @@ describe("design guards", () => {
     expect(() => g.checkResolved("true")).toThrow("résolu invalide");
     expect(g.checkClientName("a".repeat(200))).toHaveLength(200);
     for (const bad of ["a".repeat(201), 5]) expect(() => g.checkClientName(bad)).toThrow("Nom invalide");
+  });
+
+  it("copy Electron's design texts and bounds", () => {
+    expect(g.UNAVAILABLE_DESIGN).toBe(INDISPONIBLE_DESIGN);
+    expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRONQUE]);
+    const ipc = readFileSync(new URL("../../navigateur/src/main/ipc.ts", import.meta.url), "utf8");
+    expect(ipc).toContain(`const invalide = { ok: false as const, erreur: ${JSON.stringify(g.INVALID_REQUEST)} };`);
+    expect(ipc).toContain(`typeof id === "string" && id.length <= ${g.DESIGN_ID_MAX})`);
+    expect(ipc).toContain(`typeof lot === "string" && lot.length <= ${g.DESIGN_ID_MAX})`);
+    const service = readFileSync(new URL("../../navigateur/src/main/design/service.ts", import.meta.url), "utf8");
+    expect(service).toContain(`return { ok: false, erreur: ${JSON.stringify(g.NOTHING_AIMED)} };`);
+  });
+
+  it("checkDesignContext: viseur.ts's rules, strict, known keys only", () => {
+    const ok = {
+      selecteur: "#b", etiquette: "b", html: "a".repeat(HTML_MAX) + TRONQUE, adresse: "http://x/", voisinage: { parent: "p", freres: [] },
+      styles: { color: "red" }, source: { fichier: "a.svelte", ligne: 1, colonne: 2 }, vue: { largeur: 1, hauteur: 2 },
+    };
+    expect(g.checkDesignContext({ ...ok, rect: { x: 1 } })).toEqual(ok);
+    expect(g.checkDesignContext({ ...ok, source: null }).source).toBeNull();
+    for (const bad of [
+      null, "x", { ...ok, html: "a".repeat(HTML_MAX + TRONQUE.length + 1) }, { ...ok, vue: { largeur: Infinity, hauteur: 1 } },
+      { ...ok, voisinage: { parent: "p", freres: [1] } }, { ...ok, styles: { a: null } }, { ...ok, etiquette: 2 },
+      { ...ok, source: undefined }, { ...ok, source: { fichier: "a".repeat(1025) } }, { ...ok, source: { fichier: "a", ligne: 0 } },
+      { ...ok, source: { fichier: "a", colonne: 1.5 } },
+    ]) expect(() => g.checkDesignContext(bad)).toThrow(g.INVALID_REQUEST);
+  });
+
+  it("checkCapture: null, or a PNG of at most 8 MiB", () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(g.checkCapture(null)).toBeNull();
+    expect(g.checkCapture(png.toString("base64"))).toEqual(png);
+    const big = Buffer.concat([png, Buffer.alloc(g.CAPTURE_MAX - png.length)]);
+    expect(g.checkCapture(big.toString("base64"))).toHaveLength(g.CAPTURE_MAX);
+    for (const bad of [Buffer.concat([big, Buffer.alloc(1)]).toString("base64"), "iVBORw0K", Buffer.from("GIF89a!!!").toString("base64"), 1, undefined, ""])
+      expect(() => g.checkCapture(bad)).toThrow(g.INVALID_REQUEST);
   });
 });

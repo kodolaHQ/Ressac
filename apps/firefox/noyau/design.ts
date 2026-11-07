@@ -4,15 +4,47 @@
 // The noyau is imported first: Electron's externes.ts and envoi.ts load under tsx only once it is linked.
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { PORT_MCP_EXTERNE, plagesConteneur, RegistreExternes, Remarques, type Application, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index.ts";
+import {
+  destinationDe, etatLot, PORT_MCP_EXTERNE, plagesConteneur, projetDemo, projetPourAdresse, projetPourFenetreApp, projetPourSite, RegistreExternes, Remarques,
+  REMARQUE_VIDE, SANS_CLIENT, type Application, type CheminsEspace, type ContexteDesign, type Element, type IdProjet, type Lot, type ProjetSuivi,
+} from "../../../packages/noyau/src/index.ts";
 import { demarrerExternes, raisonEchec, type ServiceExternes } from "../../navigateur/src/main/design/externes.ts";
 import { creerEnvoi } from "../../navigateur/src/main/design/envoi.ts";
-import type { EtatExternes } from "../../navigateur/src/commun/api.ts";
+import type { ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../../navigateur/src/commun/api.ts";
 import { ReviewService } from "./review.ts";
-import { checkClientName, checkComment, checkLines, checkPath, checkProject, checkResolved, checkText, checkToken, CLIENT_ID, EXTERNAL_ID, ID_PROJECT } from "../shared/design-guards.ts";
+import {
+  checkCapture, checkClientName, checkComment, checkDesignContext, checkLines, checkPath, checkProject, checkResolved, checkText, checkToken, CLIENT_ID,
+  DESIGN_ID_MAX, EXTERNAL_ID, ID_PROJECT, INVALID_REQUEST, REMARK_TEXT_MAX, URL_MAX,
+} from "../shared/design-guards.ts";
 
 /** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses (as index.ts:1192). */
 export const externalMcpPort = (v: string | undefined): number => Number(v ?? PORT_MCP_EXTERNE);
+
+// Copied from service.ts word for word (test/design-host.test.ts checks them): service.ts does not load under tsx.
+export function sourceTexte(s: ContexteDesign["source"]): string | null {
+  if (!s) return null;
+  return s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier;
+}
+
+export function elementAffiche(e: Element): ElementAffiche {
+  const base = { id: e.id, type: e.type, texte: e.texte, traite: e.traite ?? null };
+  return e.type === "design"
+    ? { ...base, etiquette: e.contexte.etiquette, source: sourceTexte(e.contexte.source) }
+    : { ...base, etiquette: `${e.contexte.fichier}:${e.contexte.debut}-${e.contexte.fin}`, source: e.contexte.fichier };
+}
+
+export function lotAffiche(l: Lot): LotAffiche {
+  return { id: l.id, cree: l.cree, etat: etatLot(l), destination: l.destination, elements: l.elements.map(elementAffiche) };
+}
+
+/** A followed project as the chrome shows it: its cart count, its destination, its name (ServiceDesign.etat). */
+export interface SuiviDesign {
+  projet: ProjetSuivi;
+  panier: number;
+  destination: string | null;
+  sansDestination: string | null;
+  nom: string;
+}
 
 export interface DesignHost {
   handlers: Record<string, (p: any) => unknown>;
@@ -31,6 +63,7 @@ export const DESIGN_METHODS = [
   "externes.liste", "externes.brancher", "externes.revoquer", "externes.oublier", "externes.nom",
   "relecture.ouvrir", "relecture.fichier", "relecture.lignes", "relecture.commentaires", "relecture.commenter",
   "relecture.modifierCommentaire", "relecture.resoudre", "relecture.supprimerCommentaire", "relecture.envoyer", "relecture.relu",
+  "design.suivi", "design.ajouter", "design.panier", "design.lots", "design.retirer", "design.traite", "design.envoyer",
 ] as const;
 
 export function createDesignHost(o: {
@@ -119,6 +152,80 @@ export function createDesignHost(o: {
       o.diffuser();
     });
 
+  // ServiceDesign's project logic (service.ts:166-198): Electron's applis() is the running apps with a port.
+  const running = async () => (await o.applis()).flatMap((a) => (a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : []));
+  const projetSuivi = async (p: IdProjet): Promise<ProjetSuivi | null> => {
+    if (p.startsWith("app-")) {
+      const dossier = p.slice(4);
+      return projetPourFenetreApp(dossier, (await running()).find((a) => a.dossier === dossier)?.nom ?? dossier);
+    }
+    if (p.startsWith("site-")) {
+      const id = p.slice(5);
+      const site = (await o.sites()).find((x) => x.id === id);
+      return site ? projetPourSite(id, site.nom) : null;
+    }
+    if (p.startsWith("demo-")) return { type: "demo", projet: projetDemo(Number(p.slice(5))), port: Number(p.slice(5)) };
+    const e = registre?.projets().find((x) => `ext-${x.id}` === p);
+    return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
+  };
+  const destination = (p: ProjetSuivi) => {
+    const d = destinationDe(p, registre?.clients() ?? []);
+    return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
+  };
+  const suivi = async (p: Params): Promise<SuiviDesign | null> => {
+    let projet: ProjetSuivi | null;
+    if (typeof p?.url === "string" && p.url.length <= URL_MAX)
+      projet = projetPourAdresse(p.url, { appsLancees: await running(), plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS), externes: registre?.projets() ?? [] });
+    else if (p?.url === undefined && p?.projet !== undefined) projet = await projetSuivi(checkProject(p.projet));
+    else throw new Error(INVALID_REQUEST);
+    if (!projet) return null;
+    const panier = (await remarques.panier(projet.projet)).length;
+    return { projet, panier, ...destination(projet), nom: projet.type === "demo" ? `localhost:${projet.port}` : projet.nom };
+  };
+  const erreur = (e: unknown): ResultatExtension => ({ ok: false, erreur: e instanceof Error ? e.message : String(e) });
+  const ajouter = async (p: Params): Promise<ResultatExtension> => {
+    let projet: IdProjet, contexte: ContexteDesign, capture: Buffer | null;
+    const texte = p?.texte;
+    try {
+      if (typeof texte !== "string" || texte.length > REMARK_TEXT_MAX) throw new Error(INVALID_REQUEST);
+      projet = checkProject(p?.projet);
+      contexte = checkDesignContext(p?.contexte);
+      capture = checkCapture(p?.capture);
+      // A forgotten external project gets no cart.
+      if (!(await projetSuivi(projet))) throw new Error(INVALID_REQUEST);
+    } catch {
+      return { ok: false, erreur: INVALID_REQUEST };
+    }
+    if (texte.trim() === "") return { ok: false, erreur: REMARQUE_VIDE };
+    try {
+      await remarques.ajouterAuPanier(projet, { texte, contexte, capture });
+      return { ok: true };
+    } catch (e) {
+      return erreur(e);
+    }
+  };
+  // ServiceDesign.envoyer (service.ts:476-494), with index.ts's site snapshot before the first batch.
+  const envoyer = async (p: Params): Promise<ResultatExtension> => {
+    if (typeof p?.projet !== "string" || !ID_PROJECT.test(p.projet)) return { ok: false, erreur: INVALID_REQUEST };
+    const projet = await projetSuivi(p.projet);
+    if (!projet) return { ok: false, erreur: SANS_CLIENT };
+    let dest: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
+    if (projet.type === "externe") {
+      const d = destinationDe(projet, registre?.clients() ?? []);
+      if ("indisponible" in d || projet.client === null) return { ok: false, erreur: SANS_CLIENT };
+      dest = { destination: "mcp", client: projet.client };
+    }
+    try {
+      const lot = await remarques.envoyerPanier(projet.projet, dest);
+      if (projet.type === "site") await review.assurer(projet.projet).catch(() => undefined);
+      await envoiLot(projet, lot);
+      return { ok: true };
+    } catch (e) {
+      return erreur(e);
+    }
+  };
+  const id = (v: unknown): v is string => typeof v === "string" && v.length <= DESIGN_ID_MAX;
+
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
     "externes.liste": (): EtatExternes =>
       externes?.etat() ?? { serveur: { etat: "eteint", raison: echec ?? "Le MCP externe démarre" }, projets: [], clients: [] },
@@ -162,6 +269,20 @@ export function createDesignHost(o: {
     "relecture.supprimerCommentaire": (p) => review.supprimerCommentaire(checkProject(p?.projet), checkComment(p?.id)),
     "relecture.envoyer": (p) => review.envoyer(checkProject(p?.projet)),
     "relecture.relu": (p) => review.relu(checkProject(p?.projet), checkToken(p?.jeton)),
+    "design.suivi": suivi,
+    "design.ajouter": ajouter,
+    "design.panier": async (p) => (await remarques.panier(checkProject(p?.projet))).map(elementAffiche),
+    "design.lots": async (p) => (await remarques.lots(checkProject(p?.projet))).map(lotAffiche),
+    // A bad id does nothing, as ipc.ts.
+    "design.retirer": async (p) => {
+      const projet = checkProject(p?.projet);
+      if (id(p?.id)) await remarques.retirerDuPanier(projet, p.id);
+    },
+    "design.traite": async (p) => {
+      const projet = checkProject(p?.projet);
+      if (id(p?.lot)) await remarques.marquerLotTraite(projet, p.lot);
+    },
+    "design.envoyer": envoyer,
   };
 
   return {

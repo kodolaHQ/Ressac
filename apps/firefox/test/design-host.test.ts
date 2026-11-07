@@ -1,22 +1,24 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cheminsEspace, DepotRelecture, depotRelecture, DOSSIER_ESPACE, PORT_MCP_EXTERNE, projetExterne } from "../../../packages/noyau/src/index";
+import { cheminsEspace, DepotRelecture, depotRelecture, DOSSIER_ESPACE, PORT_MCP_EXTERNE, projetExterne, REMARQUE_VIDE, SANS_CLIENT } from "../../../packages/noyau/src/index";
 import { AUCUNE_FENETRE } from "../../navigateur/src/main/design/envoi";
-import { createDesignHost, DESIGN_METHODS, externalMcpPort, type DesignHost } from "../noyau/design";
+import { createDesignHost, DESIGN_METHODS, elementAffiche, externalMcpPort, lotAffiche, sourceTexte, type DesignHost, type SuiviDesign } from "../noyau/design";
+import { INVALID_REQUEST } from "../shared/design-guards";
 import { ReviewService } from "../noyau/review";
 
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const c of cleanup.splice(0).reverse()) await c();
 });
 
 type Ext = { serveur: { etat: string; port?: number; raison?: string }; projets: { id: string; nom: string }[] };
 
-type App = { dossier: string; nom: string; type: "application" | "poc" | "sans-fiche"; creeLe: string; etat: "arretee" };
+type App = { dossier: string; nom: string; type: "application" | "poc" | "sans-fiche"; creeLe: string; etat: "arretee" | "en-marche"; port?: number };
 const app = (dossier: string, type: App["type"] = "application"): App => ({ dossier, nom: dossier, type, creeLe: "2026-11-07T00:00:00.000Z", etat: "arretee" });
 
 function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: string; nom: string }[]; applis?: App[] } = {}) {
@@ -291,5 +293,143 @@ describe("design host", { timeout: 20_000 }, () => {
     await ready(s.design);
     expect(await h["externes.revoquer"]!({ id: "../x" })).toBeUndefined();
     expect(await h["externes.oublier"]!({ id: "zz" })).toBeUndefined();
+  });
+});
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+const contexte = (o: Record<string, unknown> = {}) => ({
+  selecteur: "#b", etiquette: "button#b", html: "<button id=b>Ok</button>", adresse: "http://127.0.0.1:15283/",
+  voisinage: { parent: "main", freres: ["p"] }, styles: { color: "red" }, source: { fichier: "src/A.svelte", ligne: 3 },
+  vue: { largeur: 800, hauteur: 600 }, ...o,
+});
+
+describe("design host, the carts", { timeout: 20_000 }, () => {
+  /** A demo on 15283 (in WEBAIOS_PORTS_APPS), app-essai running on 15281, an external project on 3000. */
+  async function withProjects(o: Parameters<typeof prepare>[0] = {}) {
+    vi.stubEnv("WEBAIOS_PORTS_APPS", "15280-15284");
+    const s = prepare({ applis: [{ ...app("essai"), nom: "Essai", etat: "en-marche", port: 15281 }, app("dort")], sites: [{ id: "x", nom: "Site X" }], ...o });
+    const projet = join(s.maison, "projet");
+    mkdirSync(projet);
+    await callTool(s.design, "declarer_projet", { dossier: projet, ports: [3000], nom: "Projet" });
+    const ext = `ext-${(await liste(s.design)).projets[0]!.id}`;
+    return { ...s, ext, h: s.design.handlers };
+  }
+  const suivi = (h: DesignHost["handlers"], p: unknown) => h["design.suivi"]!(p) as Promise<SuiviDesign | null>;
+
+  it("design.suivi of a demo, an app running on its port, an external project's port, and nothing elsewhere", async () => {
+    const { h, ext } = await withProjects();
+    expect(await suivi(h, { url: "http://127.0.0.1:15283/" })).toEqual({
+      projet: { type: "demo", projet: "demo-15283", port: 15283 }, panier: 0, destination: "l'agent", sansDestination: null, nom: "localhost:15283",
+    });
+    expect(await suivi(h, { url: "http://localhost:15281/a" })).toMatchObject({ projet: { type: "app", projet: "app-essai" }, nom: "Essai" });
+    expect(await suivi(h, { url: "http://localhost:3000/" })).toEqual({
+      projet: { type: "externe", projet: ext, dossier: expect.any(String), nom: "Projet", client: expect.any(String) },
+      panier: 0, destination: "Claude Code (Claude Code)", sansDestination: null, nom: "Projet",
+    });
+    expect(await suivi(h, { url: "https://exemple.test/" })).toBeNull();
+    expect(await suivi(h, { url: "http://localhost:4999/" })).toBeNull();
+    await expect(Promise.resolve().then(() => suivi(h, { url: `http://localhost:15283/${"a".repeat(8192)}` }))).rejects.toThrow(INVALID_REQUEST);
+    await expect(Promise.resolve().then(() => suivi(h, {}))).rejects.toThrow(INVALID_REQUEST);
+  });
+
+  it("design.suivi of app-essai, site-x, demo-15283, an unknown ext- id", async () => {
+    const { h } = await withProjects();
+    expect(await suivi(h, { projet: "app-essai" })).toMatchObject({ projet: { type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" }, nom: "Essai" });
+    // Not running: Electron's applis() lists the running ones, the name falls back to the folder.
+    expect(await suivi(h, { projet: "app-dort" })).toMatchObject({ nom: "dort" });
+    expect(await suivi(h, { projet: "site-x" })).toMatchObject({ projet: { type: "site", projet: "site-x", id: "x", nom: "Site X" }, destination: "l'agent" });
+    expect(await suivi(h, { projet: "site-y" })).toBeNull();
+    expect(await suivi(h, { projet: "demo-15283" })).toMatchObject({ projet: { type: "demo", port: 15283 }, nom: "localhost:15283" });
+    expect(await suivi(h, { projet: "ext-0123456789abcdef" })).toBeNull();
+    await expect(Promise.resolve().then(() => suivi(h, { projet: "../x" }))).rejects.toThrow("projet invalide");
+  });
+
+  it("ajouter puts the remark and its PNG in the cart; a blank text gives REMARQUE_VIDE; 4001 characters, a non-PNG capture or a bad context give INVALID_REQUEST, nothing written", async () => {
+    const { h, chemins } = await withProjects();
+    const dossier = join(chemins.interne, "remarques", "demo-15283");
+    const add = (o: Record<string, unknown>) => h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: contexte(), capture: PNG.toString("base64"), ...o });
+    const refused = [
+      { texte: "a".repeat(4001) },
+      { texte: 3 },
+      { capture: Buffer.from("GIF89a").toString("base64") },
+      { capture: 7 },
+      { contexte: contexte({ html: "a".repeat(5000) }) },
+      { contexte: contexte({ vue: { largeur: Number.NaN, hauteur: 1 } }) },
+      { contexte: contexte({ source: { fichier: "" } }) },
+      { contexte: contexte({ styles: { color: 1 } }) },
+      { contexte: null },
+      { projet: "../x" },
+      { projet: "ext-0123456789abcdef" },
+    ];
+    for (const r of refused) expect(await add(r), JSON.stringify(r).slice(0, 80)).toEqual({ ok: false, erreur: INVALID_REQUEST });
+    expect(await add({ texte: "  \n" })).toEqual({ ok: false, erreur: REMARQUE_VIDE });
+    expect(existsSync(dossier)).toBe(false);
+
+    expect(await add({ texte: "a".repeat(4000), contexte: contexte({ extra: "x", source: null }) })).toEqual({ ok: true });
+    expect(await add({ capture: null })).toEqual({ ok: true });
+    const panier = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string; texte: string; source: string | null }[];
+    expect(panier.map((e) => [e.texte.length, e.source])).toEqual([[4000, null], [10, "src/A.svelte:3"]]);
+    expect(readFileSync(join(dossier, `${panier[0]!.id}.png`))).toEqual(PNG);
+    expect(existsSync(join(dossier, `${panier[1]!.id}.png`))).toBe(false);
+    // Only known keys are written.
+    expect(readFileSync(join(dossier, "panier.json"), "utf8")).not.toContain("extra");
+    expect(await suivi(h, { projet: "demo-15283" })).toMatchObject({ panier: 2 });
+  });
+
+  it("envoyer of a demo writes the lot under the space and asks the agent's window; of an external project without client gives SANS_CLIENT", async () => {
+    const { h, chemins, chrome, calls, ext, design, dataDir } = await withProjects();
+    await h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: contexte(), capture: null });
+    expect(await h["design.envoyer"]!({ projet: "demo-15283" })).toEqual({ ok: true });
+    const dossier = join(chemins.interne, "remarques", "demo-15283");
+    expect(readdirSync(dossier).filter((n) => existsSync(join(dossier, n, "lot.json")))).toHaveLength(1);
+    expect(chrome.fenetreAgent).toHaveBeenCalled();
+    expect(calls).toEqual([expect.stringMatching(/^preRemplir f7 /), "donnerAgent f7"]);
+    expect(await h["design.panier"]!({ projet: "demo-15283" })).toEqual([]);
+    expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "en-attente", destination: "agent", elements: [{ texte: "Plus grand" }] }]);
+
+    // The client revoked: no destination.
+    const client = ((await liste(design)).projets[0] as unknown as { client: string }).client;
+    await h["externes.revoquer"]!({ id: client });
+    await h["design.ajouter"]!({ projet: ext, texte: "x", contexte: contexte(), capture: null });
+    chrome.fenetreAgent.mockClear();
+    expect(await h["design.envoyer"]!({ projet: ext })).toEqual({ ok: false, erreur: SANS_CLIENT });
+    expect(await h["design.envoyer"]!({ projet: "ext-0123456789abcdef" })).toEqual({ ok: false, erreur: SANS_CLIENT });
+    expect(await h["design.envoyer"]!({ projet: "../x" })).toEqual({ ok: false, erreur: INVALID_REQUEST });
+    expect(chrome.fenetreAgent).not.toHaveBeenCalled();
+    // An external project's cart stays under <dataDir>/design, never in the space.
+    expect(existsSync(join(chemins.interne, "remarques", ext))).toBe(false);
+    const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+    expect(walk(join(dataDir, "design")).some((f) => f.includes(ext) && f.endsWith("panier.json"))).toBe(true);
+  });
+
+  it("traite marks the lot; an id of 65 characters does nothing", async () => {
+    const { h } = await withProjects();
+    await h["design.ajouter"]!({ projet: "demo-15283", texte: "a", contexte: contexte(), capture: null });
+    await h["design.ajouter"]!({ projet: "demo-15283", texte: "b", contexte: contexte(), capture: null });
+    const [a] = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string }[];
+    expect(await h["design.retirer"]!({ projet: "demo-15283", id: "x".repeat(65) })).toBeUndefined();
+    expect(await h["design.retirer"]!({ projet: "demo-15283", id: 3 })).toBeUndefined();
+    await h["design.retirer"]!({ projet: "demo-15283", id: a!.id });
+    expect(((await h["design.panier"]!({ projet: "demo-15283" })) as { texte: string }[]).map((e) => e.texte)).toEqual(["b"]);
+    await h["design.envoyer"]!({ projet: "demo-15283" });
+    const [lot] = (await h["design.lots"]!({ projet: "demo-15283" })) as { id: string; etat: string }[];
+    expect(await h["design.traite"]!({ projet: "demo-15283", lot: `${lot!.id}${"0".repeat(65 - lot!.id.length)}` })).toBeUndefined();
+    expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "en-attente" }]);
+    await h["design.traite"]!({ projet: "demo-15283", lot: lot!.id });
+    expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "traite" }]);
+    await expect(h["design.panier"]!({ projet: "../x" }) as Promise<unknown>).rejects.toThrow("projet invalide");
+  });
+
+  it("drift: elementAffiche, lotAffiche and sourceTexte are service.ts's word for word", () => {
+    const service = readFileSync(new URL("../../navigateur/src/main/design/service.ts", import.meta.url), "utf8");
+    const design = readFileSync(new URL("../noyau/design.ts", import.meta.url), "utf8");
+    for (const name of ["sourceTexte", "elementAffiche", "lotAffiche"]) {
+      const body = new RegExp(`function ${name}\\([^]*?\\n}\\n`).exec(design)?.[0];
+      expect(body, name).toBeTruthy();
+      expect(service).toContain(body!);
+    }
+    expect(sourceTexte({ fichier: "a", ligne: 2 })).toBe("a:2");
+    expect(lotAffiche).toBeTypeOf("function");
+    expect(elementAffiche).toBeTypeOf("function");
   });
 });

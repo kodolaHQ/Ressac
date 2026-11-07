@@ -1,6 +1,7 @@
 // Copies of Electron's design guards, loadable under tsx and in the sidebar bundle (no value import): main/ipc.ts keeps
 // its checks private and imports electron, ID_PROJET lives in a noyau file that needs node:crypto, raisonEchec in
 // externes.ts needs node:fs. test/review-host.test.ts compares each one with the original.
+import type { ContexteDesign } from "../../../packages/noyau/src/design/remarques";
 
 /** Copy of noyau's ID_PROJET. */
 export const ID_PROJECT = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
@@ -57,4 +58,59 @@ export function checkResolved(r: unknown): boolean {
 export function checkClientName(nom: unknown): string {
   if (typeof nom !== "string" || nom.length > 200) throw new Error("Nom invalide");
   return nom;
+}
+
+/** Copies of Electron's design texts: noyau's INDISPONIBLE_DESIGN, ipc.ts's invalide, service.ts's ajouter. */
+export const UNAVAILABLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
+export const INVALID_REQUEST = "Demande invalide";
+export const NOTHING_AIMED = "Aucun élément visé.";
+/** An element's or a batch's id (ipc.ts's `id.length <= 64`). */
+export const DESIGN_ID_MAX = 64;
+/** Copies of noyau's HTML_MAX and TRONQUE: a context's html is at most a cut one. */
+export const HTML_MAX = 4096;
+export const TRONQUE = "… [tronqué]";
+/** A capture's PNG, decoded (mine: an element's capture is far smaller). */
+export const CAPTURE_MAX = 8 * 1024 * 1024;
+export const URL_MAX = 8192;
+
+const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+const str = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;
+const positiveInt = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
+const record = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const invalid = (): never => {
+  throw new Error(INVALID_REQUEST);
+};
+
+/** viseur.ts's propreCapture and sourceSaine rules, strict (a bad field refuses the whole context), rebuilt with known keys only. */
+export function checkDesignContext(c: unknown): ContexteDesign {
+  if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
+  const { selecteur, etiquette, html, adresse, vue, voisinage, styles, source } = c as Record<string, any>;
+  if (![vue.largeur, vue.hauteur].every(finite)) return invalid();
+  if (![selecteur, etiquette, adresse, voisinage.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRONQUE.length)) return invalid();
+  if (!Array.isArray(voisinage.freres) || !voisinage.freres.every((f: unknown) => str(f))) return invalid();
+  if (!Object.values(styles).every((x) => str(x))) return invalid();
+  let src: ContexteDesign["source"] = null;
+  if (source !== null) {
+    if (!record(source) || !str(source.fichier, 1024) || source.fichier === "") return invalid();
+    if ((source.ligne !== undefined && !positiveInt(source.ligne)) || (source.colonne !== undefined && !positiveInt(source.colonne))) return invalid();
+    src = { fichier: source.fichier, ...(source.ligne !== undefined ? { ligne: source.ligne } : {}), ...(source.colonne !== undefined ? { colonne: source.colonne } : {}) };
+  }
+  return {
+    selecteur, etiquette, html, adresse,
+    vue: { largeur: vue.largeur, hauteur: vue.hauteur },
+    voisinage: { parent: voisinage.parent, freres: [...voisinage.freres] },
+    styles: { ...styles },
+    source: src,
+  };
+}
+
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** A capture: null, or a PNG in base64 of at most CAPTURE_MAX bytes. Host side only (Buffer). */
+export function checkCapture(b: unknown): Buffer | null {
+  if (b === null) return null;
+  if (typeof b !== "string" || b.length > Math.ceil(CAPTURE_MAX / 3) * 4) return invalid();
+  const buf = Buffer.from(b, "base64");
+  if (buf.length > CAPTURE_MAX || buf.length < PNG.length || PNG.some((x, i) => buf[i] !== x)) return invalid();
+  return buf;
 }
