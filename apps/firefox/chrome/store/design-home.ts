@@ -124,6 +124,8 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
       const hwin = hdoc.defaultView!;
       // Only where the home's events reach the frame first (S6); else nothing is set.
       if ((hwin as any).docShell.chromeEventHandler !== frame) return null;
+      // Only the app's served home (never a system-principal document, nor the frame's initial about:blank).
+      if ((hdoc as any).nodePrincipal.isSystemPrincipal || !hdoc.documentURI.startsWith("resource://webaios-site-")) return null;
       const sb = viewfinder(hdoc, hwin);
       g = guard(sb, hdoc, () => hidden(null));
       pending = Promise.resolve(Cu.evalInSandbox(code, sb, "latest", FILE + "webaios-viseur.js", 1));

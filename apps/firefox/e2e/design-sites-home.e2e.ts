@@ -220,6 +220,29 @@ describe("design mode on a site app's home", () => {
     for (const k of ["parentDocument", "topDocument", "parentHref", "topHref", "parentSiteWindow", "topGBrowser", "topSiteWindow", "defaultViewParent"]) expect(String(reach[k])).toMatch(/^throws:|^undefined$/);
     expect(reach.frameElement).toBe("null");
     expect(reach.opener).toBe("null");
+    // The home's own principal: the served copy's origin.
+    expect(reach.origin).toMatch(/^resource:\/\/webaios-site-sonde-/);
+  });
+
+  it("the home viewfinder arms only on the served home: a system about:blank frame or a sandboxed about:blank gives null, nothing set", async () => {
+    await toHome(m, "sonde");
+    // Two frames of the bar's document, each its own chrome event handler: a system-principal about:blank, and a
+    // sandboxed (null principal) about:blank, as the home frame's own initial document.
+    const r = await inHome<{ answers: unknown[]; marks: (string | null)[] }>(
+      "sonde",
+      `const { homeViewfinder } = ChromeUtils.importESModule("${STORE}");
+       const frames = [false, true].map((sandboxed) => { const x = doc.createElement("iframe"); if (sandboxed) x.setAttribute("sandbox", "allow-scripts"); doc.body.append(x); return x; });
+       try {
+         await new Promise((ok) => win.setTimeout(ok, 200));
+         const answers = [];
+         for (const x of frames) answers.push(await homeViewfinder(x).query("arm", { code: arguments[0] }));
+         return { answers, marks: frames.map((x) => x.contentDocument?.documentElement?.getAttribute("data-armed") ?? null), system: frames.map((x) => x.contentDocument.nodePrincipal.isSystemPrincipal) };
+       } finally { for (const x of frames) x.remove(); }`,
+      [`(document.documentElement.setAttribute("data-armed", "1"), { ok: 1 })`],
+    );
+    expect(r.answers).toEqual([null, null]);
+    expect(r.marks).toEqual([null, null]);
+    expect((r as any).system).toEqual([true, false]);
   });
 
   // Review Focus 4.
