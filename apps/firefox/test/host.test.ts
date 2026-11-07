@@ -1125,7 +1125,7 @@ createServer((req, res) => {
     expect(donnes).toEqual([["f1"]]);
   });
 
-  it("the host stops the apps first on stdin close", async () => {
+  it("the host stops the apps and the sessions on stdin close", async () => {
     const { h, chrome } = startApps();
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
@@ -1134,11 +1134,23 @@ createServer((req, res) => {
     const avant = arrets(h).length;
     h.child.stdin.end();
     expect(await h.exited).toBe(0);
+    // Started first, then run side by side with the sessions' stop (Electron's order): both happen before the exit.
     const apres = arrets(h).slice(avant);
-    const app = apres.indexOf("WEBAIOS_APP=essai");
-    const session = apres.indexOf("cat /tmp/webaios-session-");
-    expect(app).toBeGreaterThanOrEqual(0);
-    expect(session).toBeGreaterThan(app);
+    expect(apres).toContain("WEBAIOS_APP=essai");
+    expect(apres).toContain("cat /tmp/webaios-session-");
+  });
+
+  it("a slow apps stop at quit does not hold back the sessions' stop", async () => {
+    const { h, chrome } = startApps({ FAUX_DOCKER_ARRET_APP_LENT: "4" });
+    await h.rpc.request("demarrer", { profilAgent: "claude" });
+    await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
+    await until(() => h.donnees().includes("faux agent prêt>"));
+    await launched(h, chrome);
+    const avant = arrets(h).length;
+    h.child.stdin.end();
+    // The apps' docker answers after 4 s: the sessions are stopped well before.
+    await until(() => arrets(h).slice(avant).includes("cat /tmp/webaios-session-"), 2_500);
+    expect(await h.exited).toBe(0);
   });
 
   it("a failed apps stop at quit still stops the sessions", async () => {

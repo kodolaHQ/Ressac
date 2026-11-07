@@ -212,9 +212,10 @@ const changerProfil = (profilAgent: string) => {
 let stopping: Promise<void> | undefined;
 const arreter = () =>
   (stopping ??= (async () => {
-    // First: the apps' stop shares the 5 s quit delay with the sessions' (spike S8). Settled alone, as Electron's
-    // index.ts:1482: its failure never skips the stops below. WEBAIOS_TEST_ARRET_APPS_ECHOUE: tests only.
-    await (process.env.WEBAIOS_TEST_ARRET_APPS_ECHOUE === "1" ? Promise.reject(new Error("arrêt des applis simulé")) : apps.arreter()).catch((e) =>
+    // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
+    // before the history is closed (Electron runs them side by side). Settled alone, as Electron's index.ts:1482:
+    // its failure never skips the stops below. WEBAIOS_TEST_ARRET_APPS_ECHOUE: tests only.
+    const appsStopped = (process.env.WEBAIOS_TEST_ARRET_APPS_ECHOUE === "1" ? Promise.reject(new Error("arrêt des applis simulé")) : apps.arreter()).catch((e) =>
       console.error("[webaios] les applis ne se sont pas arrêtées :", e),
     );
     extensions.arreter();
@@ -226,6 +227,7 @@ const arreter = () =>
     await ia.fermer().catch(() => {});
     clearInterval(purge);
     historique?.fermer();
+    await appsStopped;
   })());
 
 const sessions = new SessionsAgent({

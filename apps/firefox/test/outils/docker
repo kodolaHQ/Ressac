@@ -16,6 +16,11 @@ if [ "$FAUX_DOCKER_SANS_CONTENEUR" = 1 ]; then
     : > "$marque"
   fi
 fi
+# FAUX_DOCKER_ARRET_APP_LENT=<s>: one app's stop (its kill script names WEBAIOS_APP=<folder>, not the orphan sweep's
+# WEBAIOS_APP=.*) answers that late, like a slow docker.
+if [ -n "$FAUX_DOCKER_ARRET_APP_LENT" ]; then
+  case "$*" in *"WEBAIOS_APP=.*"*) ;; *WEBAIOS_APP=*kill*) sleep "$FAUX_DOCKER_ARRET_APP_LENT" ;; esac
+fi
 for a; do
   shift
   [ "$a" = webaios-atelier-firefox ] && a=webaios-atelier
