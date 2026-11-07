@@ -636,8 +636,13 @@ const apps = createApplicationsHost({
     rpc.notify("design.donnerAgent", [f]);
   },
   politique: () => noyau?.politique ?? null,
-  // The Applications page reads the list again; design mode too (the running apps' ports may have changed).
-  diffuser: () => (rpc.notify("applications.change"), rpc.notify("design.change")),
+  // The Applications page reads the list again; design mode too (the running apps' ports may have changed); the review
+  // takes a new app's first snapshot.
+  diffuser: () => {
+    rpc.notify("applications.change");
+    rpc.notify("design.change");
+    design.appsChanged();
+  },
 });
 // Design mode: remarks, the external MCP server and the review, without waiting for the noyau.
 const design = createDesignHost({
@@ -645,6 +650,8 @@ const design = createDesignHost({
   chemins,
   port: externalMcpPort(process.env.WEBAIOS_PORT_MCP_EXTERNE),
   sites: () => sites.liste().then((l) => l.map(({ id, nom }) => ({ id, nom }))),
+  // Every app, as Electron's gestionnaire.liste() (apps.liste() keeps the running ones only).
+  applis: () => apps.gestionnaire.liste(),
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   chrome: { fenetreAgent: () => rpc.request("design.fenetreAgent"), donnerAgent: (f) => rpc.notify("design.donnerAgent", [f]) },
   notifier,

@@ -1,3 +1,4 @@
+import type { ListeApplications } from "../../../navigateur/src/commun/api";
 import type { Decision, EtatAcces, IdFenetre, IdProfil } from "../../../navigateur/src/commun/modele";
 import { ongletPrive, profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
 import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
@@ -329,7 +330,23 @@ async function start(): Promise<WebAiOsStore> {
     toFront(fenetreId);
   };
   bindSites(agent, dataDir, openInTab);
-  bindApps(agent, openInTab, dataDir);
+  bindApps(agent, openInTab, dataDir, {
+    access: () => access,
+    // « Relire ce projet » of an app window's badge: the app's Review page in the main window, only for an app with a
+    // manifest (Electron's design.relire skips the others).
+    review: (dossier) =>
+      void agent
+        .request<ListeApplications>("applications.liste")
+        .then(async (l) => {
+          const a = l.applications.find((x) => x.dossier === dossier);
+          if (!a || a.type === "sans-fiche") return;
+          const fenetreId = await mainWindow();
+          if (!fenetreId) return;
+          store.dispatch({ type: "ouvrirRelecture", fenetreId, projet: "app-" + dossier, nom: a.nom.slice(0, 80) });
+          toFront(fenetreId);
+        })
+        .catch((e) => console.error("[apps] review not opened:", e)),
+  });
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
   // A site app's downloads are cancelled (Electron's app sessions download nothing).

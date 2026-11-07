@@ -59,11 +59,11 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
 }
 
 /**
- * The site bar's whole `window.webaios`. The sidebar bundle also evaluates the main UI's modules, which subscribe as
- * they load (etat.svelte.ts: surEtat, telechargements.liste()…): any member but `site` is inert (callable, every
- * property and result is itself, its `then` never calls back), and never mounted here.
+ * The whole `window.webaios` of a site bar or an app badge. The sidebar bundle also evaluates the main UI's modules,
+ * which subscribe as they load (etat.svelte.ts: surEtat, telechargements.liste()…): any member but `members`' own is
+ * inert (callable, every property and result is itself, its `then` never calls back), and never mounted here.
  */
-export function siteWebaios(site: ApiSite): unknown {
+export function inertWebaios(members: object): unknown {
   const inert: object = new Proxy(function () {}, { get: () => inert, apply: () => inert });
-  return new Proxy({ site }, { get: (t, k) => (k === "site" ? t.site : inert) });
+  return new Proxy(members, { get: (t, k) => (Object.hasOwn(t, k) ? t[k as keyof typeof t] : inert) });
 }

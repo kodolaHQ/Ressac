@@ -5,6 +5,7 @@ import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts"
 import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
+import { dossierValide } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
 import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
@@ -226,7 +227,7 @@ export function createApi(win: WindowController): ApiFirefox {
         ),
     },
     // The agent's applications, kept by the noyau host (its windows through the chrome). The host checks every action
-    // with SchemaActionApplication; « Afficher le dossier » is the chrome's (one path segment), « Relire » the page's.
+    // with SchemaActionApplication; « Afficher le dossier » is the chrome's (one path segment), « Relire » the UI's.
     applications: {
       liste: () => ask<ListeApplications>("applications.liste", undefined, { atelier: "ok", applications: [] }),
       surChange(callback) {
@@ -236,8 +237,16 @@ export function createApi(win: WindowController): ApiFirefox {
       },
       agir(dossier, action) {
         if (action === "dossier") return win.store.apps.reveal(dossier);
-        // shortcut: « Relire » does nothing until plan 35a Task 5.
-        if (action === "relire") return;
+        // Electron's index.ts relire: the app's Review page, under its name; a project without manifest has none.
+        if (action === "relire") {
+          if (!dossierValide(dossier)) return;
+          return void api.applications!.liste()
+            .then((l) => {
+              const a = l.applications.find((x) => x.dossier === dossier);
+              if (a && a.type !== "sans-fiche") win.store.dispatch({ type: "ouvrirRelecture", fenetreId: fenetre, projet: "app-" + dossier, nom: a.nom.slice(0, 80) });
+            })
+            .catch((e) => console.error("[webaios] app review :", e));
+        }
         // « Déboguer »: the host pre-fills the terminal and opens the panel (design.donnerAgent).
         host.notify("applications.agir", { dossier, action, fenetre });
       },

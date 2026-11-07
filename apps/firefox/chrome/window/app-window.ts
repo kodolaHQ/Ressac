@@ -64,6 +64,26 @@ export function closeAppPopup(win: Window): boolean {
   return true;
 }
 
+/**
+ * The badge (Electron's pastille): a transparent chrome frame over the view's top right corner, sidebar.html?pastille=.
+ * The page cannot see it (the view is remote); it gets only its app's access, through `webaiosOverlay`.
+ */
+function addBadge(win: Window, apps: Apps, dossier: string): void {
+  const doc = win.document;
+  const frame = doc.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement & { webaiosOverlay?: unknown };
+  frame.id = "webaios-app-badge";
+  // Out of the flow before it is appended (spike S8): in #browser's flex row a default iframe pushes the view aside.
+  frame.style.cssText = "position: fixed; top: 12px; right: 12px; z-index: 3; border: none; background: transparent; width: 48px; height: 28px";
+  const api = apps.badge(win, (width, height) => {
+    frame.style.width = `${width}px`;
+    frame.style.height = `${height}px`;
+  });
+  if (!api) return;
+  doc.getElementById("browser")!.append(frame);
+  frame.webaiosOverlay = { api };
+  frame.src = "chrome://browser/content/webaios/sidebar.html?pastille=" + encodeURIComponent("app:" + dossier);
+}
+
 /** Run at the window's DOMContentLoaded, before anything could claim it; the view is attached once Firefox's startup is done. */
 export function setupAppWindow(win: Window, dossier: string): void {
   const apps = appsModule();
@@ -138,5 +158,6 @@ export function setupAppWindow(win: Window, dossier: string): void {
     });
     view.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION);
     apps.attach(win, view);
+    addBadge(win, apps, dossier);
   });
 }

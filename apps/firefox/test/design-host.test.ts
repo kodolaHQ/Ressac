@@ -16,7 +16,10 @@ afterEach(async () => {
 
 type Ext = { serveur: { etat: string; port?: number; raison?: string }; projets: { id: string; nom: string }[] };
 
-function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: string; nom: string }[] } = {}) {
+type App = { dossier: string; nom: string; type: "application" | "poc" | "sans-fiche"; creeLe: string; etat: "arretee" };
+const app = (dossier: string, type: App["type"] = "application"): App => ({ dossier, nom: dossier, type, creeLe: "2026-11-07T00:00:00.000Z", etat: "arretee" });
+
+function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: string; nom: string }[]; applis?: App[] } = {}) {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-design-")));
   cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
   const chemins = cheminsEspace(join(dataDir, "espace"));
@@ -32,10 +35,11 @@ function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: stri
     donnerAgent: vi.fn((f: string) => void calls.push(`donnerAgent ${f}`)),
   };
   const sites = vi.fn(async () => o.sites ?? []);
+  const applis = vi.fn(async () => o.applis ?? []);
   const diffuser = vi.fn();
-  const design = createDesignHost({ dataDir, chemins, port: o.port ?? 0, maison, sites, preRemplir, chrome, notifier, diffuser });
+  const design = createDesignHost({ dataDir, chemins, port: o.port ?? 0, maison, sites, applis, preRemplir, chrome, notifier, diffuser });
   cleanup.push(() => design.arreter());
-  return { dataDir, chemins, maison, design, preRemplir, notifier, chrome, sites, diffuser, calls };
+  return { dataDir, chemins, maison, design, preRemplir, notifier, chrome, sites, applis, diffuser, calls };
 }
 
 async function until<T>(f: () => Promise<T> | T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -234,6 +238,24 @@ describe("design host", { timeout: 20_000 }, () => {
     vi.useRealTimers();
     await until(() => spy.mock.calls.length, (n) => n === 2);
     expect(spy).toHaveBeenLastCalledWith(["tuning"]);
+  });
+
+  it("appsChanged twice within 1 s takes one photo pass, apps without manifest skipped", async () => {
+    const spy = vi.spyOn(ReviewService.prototype, "priseEnCharge");
+    const s = prepare({ applis: [app("essai"), app("vieux", "sans-fiche"), app("zod", "poc")] });
+    // The first takeover, at start.
+    await until(() => spy.mock.calls.length, (n) => n === 1);
+    expect(spy).toHaveBeenLastCalledWith(["essai", "zod"]);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    s.design.appsChanged();
+    vi.advanceTimersByTime(500);
+    s.design.appsChanged();
+    vi.advanceTimersByTime(999);
+    expect(s.applis).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    vi.useRealTimers();
+    await until(() => spy.mock.calls.length, (n) => n === 2);
+    expect(spy).toHaveBeenLastCalledWith(["essai", "zod"]);
   });
 
   it("siteDeleted erases site-<id>.git, its comments and its lots", async () => {

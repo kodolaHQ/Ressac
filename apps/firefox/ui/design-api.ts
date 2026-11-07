@@ -19,7 +19,7 @@ import {
 // ipc.ts's guards before any call.
 
 /** An error from the store's realm, made again in this one (`instanceof Error` fails across realms). */
-const local = (e: unknown): Error => new Error(typeof (e as Error | null)?.message === "string" ? (e as Error).message : String(e));
+export const local = (e: unknown): Error => new Error(typeof (e as Error | null)?.message === "string" ? (e as Error).message : String(e));
 
 export function createExternesApi(o: {
   host: Pick<AgentHost, "request" | "on">;

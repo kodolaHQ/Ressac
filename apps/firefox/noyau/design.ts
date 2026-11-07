@@ -4,7 +4,7 @@
 // The noyau is imported first: Electron's externes.ts and envoi.ts load under tsx only once it is linked.
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { PORT_MCP_EXTERNE, plagesConteneur, RegistreExternes, Remarques, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index.ts";
+import { PORT_MCP_EXTERNE, plagesConteneur, RegistreExternes, Remarques, type Application, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index.ts";
 import { demarrerExternes, raisonEchec, type ServiceExternes } from "../../navigateur/src/main/design/externes.ts";
 import { creerEnvoi } from "../../navigateur/src/main/design/envoi.ts";
 import type { EtatExternes } from "../../navigateur/src/commun/api.ts";
@@ -18,6 +18,8 @@ export interface DesignHost {
   handlers: Record<string, (p: any) => unknown>;
   /** The site apps list changed: after 1 s of calm, their first review snapshot. */
   sitesChanged(): void;
+  /** The agent apps list changed: the same takeover, after 1 s of calm. */
+  appsChanged(): void;
   /** A deleted site app: its remarks, review repository and comments erased. */
   siteDeleted(id: string): void;
   arreter(): Promise<void>;
@@ -37,6 +39,8 @@ export function createDesignHost(o: {
   port: number;
   maison?: string;
   sites(): Promise<{ id: string; nom: string }[]>;
+  /** Every agent app, running or not (their first snapshot, their name on the Review page). */
+  applis(): Promise<Application[]>;
   preRemplir(fenetre: string, texte: string): void;
   chrome: { fenetreAgent(): Promise<string | null>; donnerAgent(fenetre: string): void };
   notifier(n: { titre: string; texte: string }): void;
@@ -64,14 +68,24 @@ export function createDesignHost(o: {
       devant: () => {},
     })(p, lot);
   };
-  const review = new ReviewService({ dossiers, chemins: o.chemins, registre: () => registre, sites: o.sites, remarques, envoyer: envoiLot });
+  const review = new ReviewService({ dossiers, chemins: o.chemins, registre: () => registre, applis: o.applis, sites: o.sites, remarques, envoyer: envoiLot });
 
-  const takeOver = () =>
+  // As index.ts:1163-1175: the apps with a manifest, then the site apps, each through the review's queue.
+  const takeOver = () => {
+    void o
+      .applis()
+      .then((l) => review.priseEnCharge(l.filter((a) => a.type !== "sans-fiche").map((a) => a.dossier)))
+      .catch((e) => console.error("[relecture] prise en charge :", e));
     void o
       .sites()
       .then((l) => review.priseEnChargeSites(l.map((s) => s.id)))
       .catch((e) => console.error("[relecture] prise en charge des sites :", e));
+  };
   let takeOverTimer: NodeJS.Timeout | undefined;
+  const takeOverSoon = () => {
+    clearTimeout(takeOverTimer);
+    takeOverTimer = setTimeout(takeOver, 1000);
+  };
   takeOver();
 
   // Handled and outdated batches are purged at start, then every 24 hours.
@@ -152,10 +166,8 @@ export function createDesignHost(o: {
 
   return {
     handlers,
-    sitesChanged: () => {
-      clearTimeout(takeOverTimer);
-      takeOverTimer = setTimeout(takeOver, 1000);
-    },
+    sitesChanged: takeOverSoon,
+    appsChanged: takeOverSoon,
     siteDeleted: (id) => {
       const p = `site-${id}`;
       if (!ID_PROJECT.test(p)) return;
