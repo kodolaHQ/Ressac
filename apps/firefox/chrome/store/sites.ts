@@ -1,6 +1,7 @@
 // Site app windows: the registry of open app windows, their containers, their bar's controller, and the guard that
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows (Electron's main/sites/fenetres.ts).
+import type { EtatDesign } from "../../../navigateur/src/commun/api";
 import type { Cadre } from "../../../navigateur/src/commun/modele";
 import { DUREE_AVIS_INFO_MS, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
 import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
@@ -10,7 +11,8 @@ import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import type { SiteChrome } from "../../noyau/sites";
 import { gardienGestes } from "../../shared/geste-widget";
-import type { AgentHost } from "../agent/host";
+import { HOST_EXITED, type AgentHost } from "../agent/host";
+import type { DesignService } from "./design";
 import { apps } from "./apps";
 import { isSiteContainer, removeSiteContainer, siteContainer } from "./containers";
 import { blockedNotice, httpHost, type BlockedNotice } from "./site-guard";
@@ -65,6 +67,8 @@ export interface SiteWindowController {
   homeGesture(): void;
   /** Watches the home's frame: any document load in it other than a page of the served copy is cancelled before it starts. */
   guardHome(frame: HTMLIFrameElement): void;
+  /** This window's design mode: the target is the controller's app (`site`), never an id from the bar. */
+  design: { etat(): Promise<EtatDesign>; toggle(): void; relire(): void; openCart(): void; onChange(cb: () => void): () => void };
 }
 
 /** Where the design mode aims in an app's window (Electron's VueDesignSite). */
@@ -124,6 +128,7 @@ const byContainer = new Map<number, OpenSite>();
 let host: AgentHost | null = null;
 let dataDir = "";
 let openTab: (url: string) => void = () => {};
+let design: Pick<DesignService, "etat" | "toggle" | "relire" | "openCart" | "onChange"> | null = null;
 /** The last real presses in each app's home (one allows one open). */
 const gestures = gardienGestes<string>();
 const memoryListeners = new Map<string, Set<(m: MessageVersLAccueil & { type: "memoire" }) => void>>();
@@ -466,6 +471,18 @@ function controllerOf(s: OpenSite): SiteWindowController {
     homeUrl: () => (open.get(id) === s && s.site.aAccueil ? (s.home ??= serveHome(dataDir, id)) : Promise.resolve(null)),
     homeGesture() {
       if (open.get(id) === s) gestures.geste(id, id);
+    },
+    // Set by bindSites, before any app window opens.
+    design: {
+      etat: () => design!.etat({ type: "site", id }),
+      toggle: () => void design!.toggle({ type: "site", id }),
+      relire: () => void design!.relire({ type: "site", id }),
+      openCart: () => void design!.openCart({ type: "site", id }),
+      onChange(cb) {
+        // accueil.change: sent at each host start, so a restarted host is read again.
+        const offs = [...["design.change", "accueil.change", HOST_EXITED].map((m) => host!.on(m, () => cb())), design!.onChange(cb)];
+        return () => offs.forEach((f) => f());
+      },
     },
   };
 }
@@ -905,10 +922,11 @@ export const sites = {
 export type SiteApps = typeof sites;
 
 /** Started with the store: the host the windows report to, and where the served home copies live. */
-export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void): void {
+export function bindSites(agent: AgentHost, dir: string, openInTab: (url: string) => void, d: NonNullable<typeof design>): void {
   host = agent;
   dataDir = dir;
   openTab = openInTab;
+  design = d;
   agent.on("sites.memoire", (p: { id?: unknown; message?: MessageVersLAccueil & { type: "memoire" } }) => {
     if (typeof p?.id !== "string" || !p.message) return;
     for (const cb of memoryListeners.get(p.id) ?? []) cb(p.message);

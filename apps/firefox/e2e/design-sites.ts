@@ -111,16 +111,22 @@ export const siteMouse = (m: Marionette, id: string, p: { x: number; y: number }
     [p.x, p.y, o.button ?? 0, o.move ?? false],
   );
 
-/** Trusted keys in the site window (nsITextInputProcessor), to its focused element. */
-export const siteKey = (m: Marionette, id: string, key: string) =>
+/** Trusted keys in the window `winExpr` (nsITextInputProcessor), to its focused element, with `mods` (Meta, Shift…) held. */
+export const keyIn = (m: Marionette, winExpr: string, key: string, mods: string[] = []) =>
   m.execute(
-    `const win = ${siteExpr(id)};
+    `const win = ${winExpr};
      const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
      tip.beginInputTransactionForTests(win);
+     const mods = arguments[1].map((k) => new win.KeyboardEvent("", { key: k, code: k + "Left" }));
+     for (const e of mods) tip.keydown(e);
      const ev = new win.KeyboardEvent("", { key: arguments[0], code: arguments[0].length === 1 ? "Key" + arguments[0].toUpperCase() : arguments[0] });
-     tip.keydown(ev); tip.keyup(ev);`,
-    [key],
+     tip.keydown(ev); tip.keyup(ev);
+     for (const e of mods.reverse()) tip.keyup(e);`,
+    [key, mods],
   );
+
+/** Trusted keys in the site window (nsITextInputProcessor), to its focused element. */
+export const siteKey = (m: Marionette, id: string, key: string, mods: string[] = []) => keyIn(m, siteExpr(id), key, mods);
 
 /** The centre of `sel` in the app view, in the site window's coordinates (read in the page's world: before arming). */
 export async function viewPoint(m: Marionette, id: string, sel: string): Promise<{ x: number; y: number }> {

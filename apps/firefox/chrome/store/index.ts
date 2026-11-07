@@ -334,8 +334,8 @@ async function start(): Promise<WebAiOsStore> {
     store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
     toFront(fenetreId);
   };
-  bindSites(agent, dataDir, openInTab);
   const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront });
+  bindSites(agent, dataDir, openInTab, design);
   design.overlays = createOverlays({ design, host: agent });
   bindApps(agent, openInTab, dataDir, { access: () => access, design });
   const history = createHistory(store, agent);

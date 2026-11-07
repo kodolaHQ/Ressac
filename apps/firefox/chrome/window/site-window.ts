@@ -19,6 +19,7 @@ declare global {
 
 type Sites = typeof import("../store/sites").sites;
 const sitesModule = (): Sites => ChromeUtils.importESModule(STORE).sites;
+const designShortcut = (win: Window) => void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => store.design.shortcut(win));
 
 /** The app id this window was opened for (window.arguments[1], set by sites.open), or null. */
 export function siteIdOf(win: Window): string | null {
@@ -155,6 +156,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
     e.stopImmediatePropagation();
     if (s.type === "fenetre") win.OpenBrowserWindow();
     else if (s.type === "fermerFenetre" || (s.type === "raccourci" && s.r === "fermerOnglet")) win.close();
+    else if (s.type === "design") designShortcut(win);
   };
   win.addEventListener("keydown", onKeyDown, true);
   bar.addEventListener("load", () => bar.contentWindow!.addEventListener("keydown", onKeyDown, true));
@@ -181,6 +183,18 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
  */
 export function setupSiteSmallWindow(win: Window, id: string): void {
   win.document.documentElement.setAttribute("webaios-site-small", id);
+  // ⇧⌘D: the avis in the app's bar (store.design.shortcut), never Firefox's « bookmark all tabs »; no other key is taken.
+  for (const k of ["bookmarkAllTabsKb", "Browser:BookmarkAllTabs"]) win.document.getElementById(k)?.setAttribute("disabled", "true");
+  win.addEventListener(
+    "keydown",
+    (e: KeyboardEvent) => {
+      if (shortcutFor(e)?.type !== "design") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      designShortcut(win);
+    },
+    true,
+  );
   // Now: Firefox's own browserDOMWindow (set before gBrowser, which this window already has) would open tabs elsewhere.
   routeOpens(win, id, true);
   void win.delayedStartupPromise.then(() => {

@@ -47,7 +47,7 @@ export interface DesignOverlays {
 export interface DesignService {
   etat(t: DesignTarget): Promise<EtatDesign>;
   toggle(t: DesignTarget): Promise<void>;
-  /** ⇧⌘D in `win`: Electron's choisirCibleDesign on that window; a site app's targets wait for plan 36. */
+  /** ⇧⌘D in `win`: Electron's choisirCibleDesign on that window; a site app's sign-in window: the avis in the app's bar. */
   shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
   /** The bubble's « Ajouter ». */
@@ -325,6 +325,12 @@ export function createDesign(o: {
       // The page whose address gives the project, read with the address: the only one ever armed.
       const wgp = pageOf(v.browser);
       const r = await suivi(t, v, wgp).catch(() => undefined);
+      // A site app's view may have changed during the host's answer (⌂, fullscreen, a sign-in page): read again (Electron's aLancer).
+      if (t.type === "site" && r && !sessions.has(key)) {
+        const now = o.sites.designView(t.id);
+        if (!now?.available) return o.sites.infoNotice(t.id, UNAVAILABLE_DESIGN_SITE);
+        if (now.vue !== site!.vue) return;
+      }
       if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) {
         // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
         if (r === null && t.type === "fenetre" && !sessions.has(key) && view(t)?.browser === v.browser) {
@@ -391,7 +397,8 @@ export function createDesign(o: {
         autreFenetre: !main && !appli,
         fenetreActive: main ? fenetreId : undefined,
       });
-      if (choix.type === "cible" && (choix.cible.type === "fenetre" || choix.cible.type === "app")) void service.toggle(choix.cible);
+      if (choix.type === "avis-site") o.sites.infoNotice(choix.id, UNAVAILABLE_DESIGN_SITE);
+      else if (choix.type === "cible") void service.toggle(choix.cible);
     },
 
     async stop(t) {

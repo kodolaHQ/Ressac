@@ -1,13 +1,14 @@
 import type { ApiSite } from "../../navigateur/src/commun/api";
 import type { SiteWindowController } from "../chrome/store/sites";
+import { local } from "./design-api";
 
 const off = () => () => {};
 
 /**
  * Electron's ApiSite for the site bar (FenetreSite.svelte), on the window's controller. What comes out of the chrome is
- * copied (structuredClone): the bar never holds the store's objects. The extension and design members do nothing:
- * the add-on buttons read the window's own (SiteAddonsStrip.svelte, webaiosSiteWindow.addons), the extension menu and
- * the design mode are aliased away.
+ * copied (structuredClone): the bar never holds the store's objects. The extension members do nothing: the add-on
+ * buttons read the window's own (SiteAddonsStrip.svelte, webaiosSiteWindow.addons), the extension menu is aliased away.
+ * The design mode is the window's: the controller knows the app, the bar sends no target.
  */
 export function createSiteApi(c: SiteWindowController): ApiSite {
   // The controller outlives this document: a listener into a dead document would throw on every call.
@@ -49,11 +50,17 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
       surFermer: off,
     },
     design: {
-      etat: async () => ({ actif: false, projet: null, indisponible: null, destination: null, sansDestination: null, panier: 0, nom: "" }),
-      basculer: () => {},
-      relire: () => {},
-      ouvrirPanier: () => {},
-      surChange: off,
+      etat: () =>
+        Promise.resolve()
+          .then(() => c.design.etat())
+          .then(
+            (e) => structuredClone(e),
+            (e) => Promise.reject(local(e)),
+          ),
+      basculer: () => c.design.toggle(),
+      relire: () => c.design.relire(),
+      ouvrirPanier: () => c.design.openCart(),
+      surChange: (cb) => untilUnload(c.design.onChange(() => cb())),
     },
   };
 }
