@@ -19,4 +19,11 @@ else if (params.has("pastille") || params.has("calque")) {
   const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));
   if (params.has("calque")) mount(DesignApp, { target });
   else mount(PastilleApp, { target, props: { id: params.get("pastille") ?? "" } });
-} else mount(App, { target: document.body });
+} else {
+  // BoutonDesign's chevron (frozen) opens the menu on click, and MenuContextuel's window click listener would close it
+  // at once (Applications.svelte stops the click for that reason): stopped here first, registered before the mount.
+  window.addEventListener("click", (e) => {
+    if ((e.target as Element | null)?.closest?.('button[aria-label="Menu du mode design"]')) e.stopImmediatePropagation();
+  });
+  mount(App, { target: document.body });
+}

@@ -15,6 +15,10 @@ type Rectangle = { x: number; y: number; width: number; height: number };
 /** La bulle d'une remarque : 320×170, sous l'élément. */
 export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
 const ECART_BULLE = 6;
+// The unavailability message: 360×56, 12 px from the top and right of the tab's view.
+export const LARGEUR_MESSAGE = 360;
+export const HAUTEUR_MESSAGE = 56;
+export const MARGE_MESSAGE = 12;
 // calque.ts: an app window's cart, 340 px on the right, 12 px from the edges.
 export const MARGE = 12;
 export const LARGEUR_PANIER = 340;

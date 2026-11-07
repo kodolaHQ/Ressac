@@ -62,6 +62,7 @@ describe("design copies", () => {
     const cle = /\nexport const cleCible = [\s\S]*?;\n/.exec(COPIES)?.[0] ?? "missing cleCible";
     expect(SERVICE).toContain(cle);
     for (const start of ["export const TAILLE_BULLE = ", "const ECART_BULLE = "]) expect(SERVICE).toContain(line(COPIES, start));
+    for (const k of ["LARGEUR_MESSAGE", "HAUTEUR_MESSAGE", "MARGE_MESSAGE"]) expect(SERVICE).toContain(line(COPIES, `export const ${k} = `).replace("export ", ""));
     for (const k of ["MARGE", "LARGEUR_PANIER"]) expect(CALQUE).toContain(line(COPIES, `export const ${k} = `).replace("export ", ""));
     expect(CALQUE).toContain(line(COPIES, "export const DUREE_MESSAGE_MS = "));
     expect(cleCible({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");

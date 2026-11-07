@@ -18,6 +18,8 @@ export type Shortcut =
   | { type: "fermerFenetre" }
   /** ⇧⌘A: the Applications page (Electron's menu item « Applications »), not Firefox's add-ons. */
   | { type: "applications" }
+  /** ⇧⌘D: the design mode of the window in front (Electron's menu item « Mode design »), not Firefox's « bookmark all tabs ». */
+  | { type: "design" }
   /** Firefox's next/previous tab keys walk every XUL tab, other spaces' too: consumed, nothing done. */
   | { type: "ignorer" };
 
@@ -41,6 +43,7 @@ const SHIFT_COMMAND: Record<string, Shortcut> = {
   j: { type: "panneau", p: "telechargements" },
   s: { type: "compact" },
   a: { type: "applications" },
+  d: { type: "design" },
 };
 
 /** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
@@ -87,6 +90,8 @@ export const FIREFOX_KEYS = [
   "key_screenshot",
   // ⇧⌘A: Firefox's add-ons manager.
   "key_openAddons",
+  // ⇧⌘D: Firefox's « bookmark all tabs ».
+  "bookmarkAllTabsKb",
 ];
 
 /**
@@ -116,4 +121,6 @@ export const FIREFOX_COMMANDS = [
   "Tools:Sanitize",
   // Tools > Take Screenshot: its menu item keeps the ⇧⌘S of compact mode.
   "Browser:Screenshot",
+  // Bookmarks > Bookmark All Tabs: its menu item keeps the ⇧⌘D of the design mode.
+  "Browser:BookmarkAllTabs",
 ];

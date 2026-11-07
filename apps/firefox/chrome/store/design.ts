@@ -6,6 +6,7 @@
 import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../../navigateur/src/commun/api";
 import type { IdFenetre } from "../../../navigateur/src/commun/modele";
 import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
+import { choisirCibleDesign } from "../../../navigateur/src/main/design/premier-plan";
 import type { SuiviDesign } from "../../noyau/design";
 import { DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";
@@ -15,8 +16,11 @@ import {
   cleanSource,
   cleCible,
   firefoxViewfinderScript,
+  HAUTEUR_MESSAGE,
+  LARGEUR_MESSAGE,
   LARGEUR_PANIER,
   MARGE,
+  MARGE_MESSAGE,
   placeBulle,
   rectCapture,
   SOURCE_TIMEOUT_MS,
@@ -40,6 +44,8 @@ export interface DesignOverlays {
 export interface DesignService {
   etat(t: DesignTarget): Promise<EtatDesign>;
   toggle(t: DesignTarget): Promise<void>;
+  /** ⇧⌘D in `win`: Electron's choisirCibleDesign on that window; a site app's targets wait for plan 36. */
+  shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
   /** The bubble's « Ajouter ». */
   add(t: DesignTarget, texte: string): Promise<ResultatExtension>;
@@ -292,8 +298,16 @@ export function createDesign(o: {
       if (!v) return;
       // The page whose address gives the project, read with the address: the only one ever armed.
       const wgp = pageOf(v.browser);
-      const r = await suivi(t, v, wgp).catch(() => null);
-      if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) return;
+      const r = await suivi(t, v, wgp).catch(() => undefined);
+      if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) {
+        // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
+        if (r === null && t.type === "fenetre" && !sessions.has(key) && view(t)?.browser === v.browser) {
+          const b = v.browser.getBoundingClientRect();
+          const place = { x: b.x + b.width - MARGE_MESSAGE - LARGEUR_MESSAGE, y: b.y + MARGE_MESSAGE, width: LARGEUR_MESSAGE, height: HAUTEUR_MESSAGE };
+          show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, projet: "", etiquette: "", source: null, destination: null, sansDestination: null, avertissement: null });
+        }
+        return;
+      }
       const { browser, win } = v;
       const gBrowser = (win as any).gBrowser;
       const off = () => void service.stop(t);
@@ -331,6 +345,21 @@ export function createDesign(o: {
       notify();
       giveKeyboard(s);
       void armSafe(s);
+    },
+
+    shortcut(win) {
+      const doc = win.document.documentElement;
+      const fenetreId = (win as any).webaiosWindow?.fenetreId as IdFenetre | undefined;
+      const main = !!fenetreId && o.windows.get(fenetreId)?.window === win;
+      const appli = o.apps.dossierOf(win);
+      const choix = choisirCibleDesign({
+        appli,
+        site: doc.getAttribute("webaios-site") ?? undefined,
+        petiteDeSite: doc.getAttribute("webaios-site-small") ?? undefined,
+        autreFenetre: !main && !appli,
+        fenetreActive: main ? fenetreId : undefined,
+      });
+      if (choix.type === "cible" && (choix.cible.type === "fenetre" || choix.cible.type === "app")) void service.toggle(choix.cible);
     },
 
     async stop(t) {

@@ -76,6 +76,13 @@ describe("shortcutFor", () => {
     expect(FIREFOX_KEYS).toContain("key_openAddons");
   });
 
+  it("⇧⌘D toggles the design mode, not Firefox's « bookmark all tabs »", () => {
+    expect(key("D", "KeyD", { meta: true, shift: true })).toEqual({ type: "design" });
+    expect(key("d", "KeyD", { meta: true })).toBeNull();
+    expect(FIREFOX_KEYS).toContain("bookmarkAllTabsKb");
+    expect(FIREFOX_COMMANDS).toContain("Browser:BookmarkAllTabs");
+  });
+
   it("leaves other keys alone", () => {
     expect(key("t", "KeyT")).toBeNull();
     expect(key("t", "KeyT", { meta: true, alt: true })).toBeNull();
