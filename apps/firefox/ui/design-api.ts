@@ -1,6 +1,7 @@
-import type { Action, ApiWebaios, EtatExternes } from "../../navigateur/src/commun/api";
+import type { Action, ApiDesign, ApiWebaios, ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../../navigateur/src/commun/api";
 import type { IdFenetre } from "../../navigateur/src/commun/modele";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
+import type { WindowController } from "../chrome/window/controller";
 import {
   checkClientName,
   checkComment,
@@ -11,7 +12,10 @@ import {
   checkText,
   checkToken,
   CLIENT_ID,
+  DESIGN_ID_MAX,
   EXTERNAL_ID,
+  ID_PROJECT,
+  INVALID_REQUEST,
   raisonEchec,
 } from "../shared/design-guards";
 
@@ -114,6 +118,42 @@ export function createRelectureApi(o: { host: Pick<AgentHost, "request"> }): Api
     },
     async relu(projet, jeton) {
       return ask("relecture.relu", { projet: checkProject(projet), jeton: checkToken(jeton) });
+    },
+  };
+}
+
+/**
+ * The design mode of this window's active tab (ipc.ts's « fenetre » origin): the target is this window, never an id
+ * the UI sends. A cart, batch or send is only for the project of the tab's state (projetPermis); the host checks again.
+ */
+export function createDesignApi(o: { win: WindowController; untilUnload: (f: () => void) => () => void }): ApiDesign {
+  const { design, agent: host } = o.win.store;
+  const t = { type: "fenetre" as const, fenetreId: o.win.fenetreId };
+  const copy = <T>(p: Promise<T>): Promise<T> =>
+    p.then(
+      (v) => structuredClone(v),
+      (e) => Promise.reject(local(e)),
+    );
+  const etat = () => copy(design.etat(t));
+  const allowed = async (p: unknown): Promise<boolean> => typeof p === "string" && ID_PROJECT.test(p) && p === (await etat().catch(() => null))?.projet?.projet;
+  const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
+  return {
+    etat,
+    basculer: () => void design.toggle(t),
+    relire: () => void design.relire(t),
+    panier: async (p) => ((await allowed(p)) ? copy(host.request<ElementAffiche[]>("design.panier", { projet: p })) : []),
+    lots: async (p) => ((await allowed(p)) ? copy(host.request<LotAffiche[]>("design.lots", { projet: p })) : []),
+    async retirer(p, x) {
+      if ((await allowed(p)) && id(x)) await copy(host.request("design.retirer", { projet: p, id: x }));
+    },
+    async traite(p, lot) {
+      if ((await allowed(p)) && id(lot)) await copy(host.request("design.traite", { projet: p, lot }));
+    },
+    envoyer: async (p) => ((await allowed(p)) ? copy(host.request<ResultatExtension>("design.envoyer", { projet: p })) : { ok: false, erreur: INVALID_REQUEST }),
+    surChange(cb) {
+      // accueil.change: the chrome sends it at each host start.
+      const offs = [...["design.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb())), design.onChange(() => cb())];
+      return o.untilUnload(() => offs.forEach((f) => f()));
     },
   };
 }

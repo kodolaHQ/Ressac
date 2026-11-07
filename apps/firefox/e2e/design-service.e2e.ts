@@ -219,7 +219,8 @@ describe("design service", () => {
     expect((await etat()).actif).toBe(true);
     await svc("d.cancel(t); return 1;");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect(await svc("return d.overlayContext(t);")).toBeNull();
+    // Only the bubble: the UI's cart column (Task 3) shows while the mode is on.
+    expect(await svc('return d.overlayContext(t, ["bulle", "message"]);')).toBeNull();
     await stopMode();
     expect(await hosts()).toBe(0);
     expect((await etat()).actif).toBe(false);

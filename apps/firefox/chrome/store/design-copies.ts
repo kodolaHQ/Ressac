@@ -18,6 +18,8 @@ const ECART_BULLE = 6;
 // calque.ts: an app window's cart, 340 px on the right, 12 px from the edges.
 export const MARGE = 12;
 export const LARGEUR_PANIER = 340;
+/** calque.ts: the unavailability message closes by itself after this. */
+export const DUREE_MESSAGE_MS = 4000;
 
 /** Clé d'une cible, aussi l'argument de son calque. */
 export const cleCible = (c: CibleDesign): string =>

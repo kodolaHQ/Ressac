@@ -11,7 +11,7 @@ import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
 import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
-import { createExternesApi, createRelectureApi } from "./design-api";
+import { createDesignApi, createExternesApi, createRelectureApi } from "./design-api";
 
 /** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
 export interface AccueilLu {
@@ -31,6 +31,10 @@ export interface ApiFirefox extends Omit<ApiWebaios, "accueil" | "actions"> {
     /** A real pointerdown in a widget's display, seen by the UI's chrome listener (no API in the frozen Electron type). */
     geste(id: string): void;
   };
+  /** The design mode's cart column, opened or closed by App.svelte (ZoneContenu's rule), on the project of the active tab. */
+  designVolet(ouvert: boolean): void;
+  /** The cart column's « Fermer ». */
+  surVoletFerme(callback: () => void): () => void;
 }
 
 declare global {
@@ -275,6 +279,14 @@ export function createApi(win: WindowController): ApiFirefox {
     externes: createExternesApi({ host, fenetre, dispatch: (a) => win.store.dispatch(a), untilUnload }),
     // The Review page: its comparisons and comments, kept by the noyau host.
     relecture: createRelectureApi({ host }),
+    // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
+    design: createDesignApi({ win, untilUnload }),
+    designVolet(ouvert) {
+      const t = { type: "fenetre" as const, fenetreId: fenetre };
+      if (ouvert === true) void win.store.design.openCart(t);
+      else if (ouvert === false) win.store.design.closeOverlay(t, "panier");
+    },
+    surVoletFerme: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "fenetre", fenetreId: fenetre }, () => callback())),
     // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
     extensions: {
       pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),

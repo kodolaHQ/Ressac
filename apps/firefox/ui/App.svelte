@@ -18,6 +18,7 @@
   import PanneauOnglets from "../../navigateur/src/renderer/composants/PanneauOnglets.svelte";
   import Relecture from "../../navigateur/src/renderer/composants/Relecture.svelte";
   import { focusAgent } from "../../navigateur/src/renderer/composants/agent.svelte";
+  import { design, relireDesign } from "../../navigateur/src/renderer/composants/design.svelte";
   import { commande, fermerCommande, focusPageVide, ouvrirCommande } from "../../navigateur/src/renderer/composants/commande.svelte";
   import { estDemandeAgent } from "../../navigateur/src/renderer/composants/modale.svelte";
   import { menu } from "../../navigateur/src/renderer/composants/menu.svelte";
@@ -27,6 +28,7 @@
   import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
   import { masquer, REVELATION_INITIALE, surZone, type ZoneGauche } from "../../navigateur/src/commun/revelation";
   import type { Panneau, PanneauOnglets as TabPanel } from "../../navigateur/src/commun/api";
+  import type { ApiFirefox } from "./api";
   import InternalPage from "./InternalPage.svelte";
   import PageError from "./PageError.svelte";
   import WorkflowBuilder from "./WorkflowBuilder.svelte";
@@ -70,6 +72,29 @@
     void tick().then(() => focusAgent.n++);
   }
   $effect(() => api.surPanneau(basculerPanneau));
+  // ZoneContenu's design mode: it follows the tab shown and its address (the chrome stops the mode if it changes).
+  $effect(() => {
+    void ongletActif?.id;
+    void ongletActif?.url;
+    void relireDesign();
+  });
+  /** The cart column: while the design mode is on, or asked by « Panier ». */
+  const panierDesign = $derived.by(() => {
+    const e = design.etat;
+    return e?.projet && panneau === null && (e.actif || design.panierDemande) ? e : null;
+  });
+  const firefox = api as unknown as ApiFirefox;
+  // The column is a chrome frame beside the page: opened again on another project, so that it shows that one's cart.
+  $effect(() => {
+    void panierDesign?.projet?.projet;
+    firefox.designVolet(!!panierDesign);
+  });
+  $effect(() =>
+    firefox.surVoletFerme(() => {
+      design.panierDemande = false;
+      if (design.etat?.actif) api.design.basculer();
+    }),
+  );
   // The command bar targets the tab active when it opened: if another one shows, it closes.
   const idActif = $derived(ongletActif?.id);
   $effect(() => {

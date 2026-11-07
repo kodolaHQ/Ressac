@@ -3,11 +3,11 @@
 // The actor's limits are handled here: a frame's guard has no timeout (every frame guarded is unguarded on every exit),
 // a second arm may leave the first pending (never armed twice, stale answers dropped by generation), and its stop may
 // throw or hang (timed out, then the top window is unguarded).
-import type { ContexteCalque, EtatDesign, ResultatExtension } from "../../../navigateur/src/commun/api";
+import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../../navigateur/src/commun/api";
 import type { IdFenetre } from "../../../navigateur/src/commun/modele";
 import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
 import type { SuiviDesign } from "../../noyau/design";
-import { NOTHING_AIMED, UNAVAILABLE_DESIGN } from "../../shared/design-guards";
+import { DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";
 import type { apps as Apps } from "./apps";
 import {
@@ -33,6 +33,8 @@ export interface DesignOverlays {
   show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: ContexteCalque): void;
   hide(key: string, mode: ContexteCalque["mode"]): void;
   forget(key: string): void;
+  /** The main window's cart column: its « Fermer » (App.svelte decides what it stops). */
+  onColumnClosed(t: DesignTarget, cb: () => void): () => void;
 }
 
 export interface DesignService {
@@ -45,7 +47,10 @@ export interface DesignService {
   cancel(t: DesignTarget): void;
   openCart(t: DesignTarget): Promise<void>;
   relire(t: DesignTarget): Promise<void>;
-  overlayContext(t: DesignTarget): ContexteCalque | null;
+  /** What the target's overlay shows: the first of `modes` it has (the bubble, then the cart, then the message). */
+  overlayContext(t: DesignTarget, modes?: ContexteCalque["mode"][]): ContexteCalque | null;
+  /** Hides one overlay of the target: the message's timeout, the cart column closed by its window. */
+  closeOverlay(t: DesignTarget, mode: ContexteCalque["mode"]): void;
   /** The target's window closed. */
   forget(t: DesignTarget): void;
   onChange(cb: () => void): () => void;
@@ -136,6 +141,13 @@ export function createDesign(o: {
   const sessions = new Map<string, Session>();
   /** Calques.contexte: what each key's overlay shows, the bubble first, then the cart, then the message. */
   const contexts = new Map<string, Partial<Record<ContexteCalque["mode"], ContexteCalque>>>();
+  /** Each key's last openCart or close of its cart: an openCart that a close overtook shows nothing. */
+  const cartAsks = new Map<string, number>();
+  const askCart = (key: string) => {
+    const n = (cartAsks.get(key) ?? 0) + 1;
+    cartAsks.set(key, n);
+    return n;
+  };
   const listeners = new Set<() => void>();
   const notify = () => {
     for (const cb of listeners)
@@ -259,7 +271,7 @@ export function createDesign(o: {
   });
 
   const service: DesignService = {
-    overlays: { show() {}, hide() {}, forget() {} },
+    overlays: { show() {}, hide() {}, forget() {}, onColumnClosed: () => () => {} },
 
     async etat(t) {
       const s = sessions.get(cleCible(t));
@@ -366,9 +378,10 @@ export function createDesign(o: {
     },
 
     async openCart(t) {
+      const n = askCart(cleCible(t));
       const v = view(t);
       const r = v ? await suivi(t, v).catch(() => null) : null;
-      if (!v || !r) return;
+      if (!v || !r || cartAsks.get(cleCible(t)) !== n) return;
       const [l, h] = [v.win.innerWidth, v.win.innerHeight];
       const place = { x: Math.max(0, l - MARGE - LARGEUR_PANIER), y: MARGE, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - 2 * MARGE) };
       show(cleCible(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
@@ -384,13 +397,21 @@ export function createDesign(o: {
       if (t.type === "app") o.toFront(fenetreId);
     },
 
-    overlayContext(t) {
+    overlayContext(t, modes = ["bulle", "panier", "message"]) {
       const c = contexts.get(cleCible(t));
-      return c?.bulle ?? c?.panier ?? c?.message ?? null;
+      for (const mode of modes) if (c?.[mode]) return c[mode];
+      return null;
+    },
+
+    closeOverlay(t, mode) {
+      const key = cleCible(t);
+      if (mode === "panier") askCart(key);
+      hide(key, mode);
     },
 
     forget(t) {
       const key = cleCible(t);
+      cartAsks.delete(key);
       void service.stop(t);
       contexts.delete(key);
       service.overlays.forget(key);
@@ -403,4 +424,38 @@ export function createDesign(o: {
     },
   };
   return service;
+}
+
+/**
+ * An overlay frame's ApiCalque (ipc.ts's « calque » origin): its target is the chrome's, never an id the frame sends.
+ * A project is allowed only if it is the one the overlay shows (projetPermis); the host checks every bound again.
+ * `modes`: what this frame shows. `annuler`: the frame's own (the cart column's « Fermer »), else the service's cancel.
+ */
+export function overlayApi(
+  o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: ContexteCalque["mode"][]; annuler?: () => void },
+  t: DesignTarget,
+): ApiCalque {
+  const allowed = (p: unknown): p is string => typeof p === "string" && ID_PROJECT.test(p) && o.design.overlayContext(t)?.projet === p;
+  const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
+  return {
+    contexte: async () => o.design.overlayContext(t, o.modes),
+    async ajouter(texte) {
+      if (typeof texte !== "string" || texte.length > REMARK_TEXT_MAX) return { ok: false, erreur: INVALID_REQUEST };
+      return o.design.add(t, texte);
+    },
+    annuler: () => (o.annuler ? o.annuler() : o.design.cancel(t)),
+    panier: async (p) => (allowed(p) ? o.host.request<ElementAffiche[]>("design.panier", { projet: p }) : []),
+    lots: async (p) => (allowed(p) ? o.host.request<LotAffiche[]>("design.lots", { projet: p }) : []),
+    async retirer(p, x) {
+      if (allowed(p) && id(x)) await o.host.request("design.retirer", { projet: p, id: x });
+    },
+    async traite(p, lot) {
+      if (allowed(p) && id(lot)) await o.host.request("design.traite", { projet: p, lot });
+    },
+    envoyer: async (p) => (allowed(p) ? o.host.request<ResultatExtension>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
+    surChange(cb) {
+      const offs = [o.host.on("design.change", () => cb()), o.design.onChange(cb)];
+      return () => offs.forEach((f) => f());
+    },
+  };
 }

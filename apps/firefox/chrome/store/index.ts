@@ -11,6 +11,7 @@ import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
 import { createDesign, type DesignService } from "./design";
+import { createOverlays } from "../window/design-overlays";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
@@ -354,6 +355,7 @@ async function start(): Promise<WebAiOsStore> {
   });
   const history = createHistory(store, agent);
   const design = createDesign({ agent, windows, apps, dispatch: store.dispatch, mainWindow, toFront });
+  design.overlays = createOverlays({ design, host: agent });
   registerAccueilNotifications(agent);
   // A site app's downloads are cancelled (Electron's app sessions download nothing).
   const downloads = await createDownloads(isSiteContainer);

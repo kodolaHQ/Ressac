@@ -23,11 +23,13 @@ export function createBadgeApi(raw: BadgeChrome): ApiPastille {
     },
     surAcces: (cb) => untilUnload(raw.surAcces((e) => cb(structuredClone(e)))),
     pastilleTaille: (ouverte) => void (typeof ouverte === "boolean" && raw.pastilleTaille(ouverte)),
+    // surChange: design.svelte.ts, in this bundle for App.svelte, subscribes as it loads (PastilleApp never calls it).
     design: {
       etat: async () => ({ actif: false, projet: null, indisponible: null, destination: null, sansDestination: null, panier: 0, nom: "" }),
       basculer: () => {},
       panier: () => {},
       relire: () => raw.relire(),
-    },
+      surChange: () => () => {},
+    } as ApiPastille["design"],
   };
 }
