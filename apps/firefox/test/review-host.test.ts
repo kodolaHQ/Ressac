@@ -351,9 +351,11 @@ describe("design guards", () => {
     for (const bad of [
       null, "x", { ...ok, html: "a".repeat(HTML_MAX + TRONQUE.length + 1) }, { ...ok, vue: { largeur: Infinity, hauteur: 1 } },
       { ...ok, voisinage: { parent: "p", freres: [1] } }, { ...ok, styles: { a: null } }, { ...ok, etiquette: 2 },
-      { ...ok, source: undefined }, { ...ok, source: { fichier: "a".repeat(1025) } }, { ...ok, source: { fichier: "a", ligne: 0 } },
-      { ...ok, source: { fichier: "a", colonne: 1.5 } },
     ]) expect(() => g.checkDesignContext(bad)).toThrow(g.INVALID_REQUEST);
+    // sourceSaine: a bad source field is dropped, the remark stays (a Svelte loc.column of 0 is real).
+    expect(g.checkDesignContext({ ...ok, source: { fichier: "a", ligne: 0, colonne: 3 } }).source).toEqual({ fichier: "a", colonne: 3 });
+    expect(g.checkDesignContext({ ...ok, source: { fichier: "a", ligne: 4, colonne: 1.5 } }).source).toEqual({ fichier: "a", ligne: 4 });
+    for (const source of [undefined, "x", { fichier: "a".repeat(1025) }, { fichier: "" }, { ligne: 2 }]) expect(g.checkDesignContext({ ...ok, source }).source).toBeNull();
   });
 
   it("checkCapture: null, or a PNG of at most 8 MiB", () => {

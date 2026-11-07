@@ -81,7 +81,7 @@ const invalid = (): never => {
   throw new Error(INVALID_REQUEST);
 };
 
-/** viseur.ts's propreCapture and sourceSaine rules, strict (a bad field refuses the whole context), rebuilt with known keys only. */
+/** viseur.ts's propreCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
 export function checkDesignContext(c: unknown): ContexteDesign {
   if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
   const { selecteur, etiquette, html, adresse, vue, voisinage, styles, source } = c as Record<string, any>;
@@ -89,12 +89,11 @@ export function checkDesignContext(c: unknown): ContexteDesign {
   if (![selecteur, etiquette, adresse, voisinage.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRONQUE.length)) return invalid();
   if (!Array.isArray(voisinage.freres) || !voisinage.freres.every((f: unknown) => str(f))) return invalid();
   if (!Object.values(styles).every((x) => str(x))) return invalid();
-  let src: ContexteDesign["source"] = null;
-  if (source !== null) {
-    if (!record(source) || !str(source.fichier, 1024) || source.fichier === "") return invalid();
-    if ((source.ligne !== undefined && !positiveInt(source.ligne)) || (source.colonne !== undefined && !positiveInt(source.colonne))) return invalid();
-    src = { fichier: source.fichier, ...(source.ligne !== undefined ? { ligne: source.ligne } : {}), ...(source.colonne !== undefined ? { colonne: source.colonne } : {}) };
-  }
+  // As sourceSaine: a bad file gives no source, a bad line or column is dropped; the remark stays.
+  const src: ContexteDesign["source"] =
+    !record(source) || !str(source.fichier, 1024) || source.fichier === ""
+      ? null
+      : { fichier: source.fichier, ...(positiveInt(source.ligne) ? { ligne: source.ligne } : {}), ...(positiveInt(source.colonne) ? { colonne: source.colonne } : {}) };
   return {
     selecteur, etiquette, html, adresse,
     vue: { largeur: vue.largeur, hauteur: vue.hauteur },

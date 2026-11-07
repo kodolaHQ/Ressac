@@ -355,7 +355,6 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
       { capture: 7 },
       { contexte: contexte({ html: "a".repeat(5000) }) },
       { contexte: contexte({ vue: { largeur: Number.NaN, hauteur: 1 } }) },
-      { contexte: contexte({ source: { fichier: "" } }) },
       { contexte: contexte({ styles: { color: 1 } }) },
       { contexte: null },
       { projet: "../x" },
@@ -366,7 +365,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(existsSync(dossier)).toBe(false);
 
     expect(await add({ texte: "a".repeat(4000), contexte: contexte({ extra: "x", source: null }) })).toEqual({ ok: true });
-    expect(await add({ capture: null })).toEqual({ ok: true });
+    expect(await add({ capture: null, contexte: contexte({ source: { fichier: "src/A.svelte", ligne: 3, colonne: 0 } }) })).toEqual({ ok: true });
     const panier = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string; texte: string; source: string | null }[];
     expect(panier.map((e) => [e.texte.length, e.source])).toEqual([[4000, null], [10, "src/A.svelte:3"]]);
     expect(readFileSync(join(dossier, `${panier[0]!.id}.png`))).toEqual(PNG);
@@ -417,7 +416,14 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "en-attente" }]);
     await h["design.traite"]!({ projet: "demo-15283", lot: lot!.id });
     expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "traite" }]);
-    await expect(h["design.panier"]!({ projet: "../x" }) as Promise<unknown>).rejects.toThrow("projet invalide");
+    // A bad project answers as ipc.ts: an empty list, or nothing.
+    for (const projet of ["../x", 3, undefined]) {
+      expect(await h["design.panier"]!({ projet })).toEqual([]);
+      expect(await h["design.lots"]!({ projet })).toEqual([]);
+      expect(await h["design.retirer"]!({ projet, id: "e-00000000" })).toBeUndefined();
+      expect(await h["design.traite"]!({ projet, lot: lot!.id })).toBeUndefined();
+    }
+    expect(await h["design.panier"]!(null)).toEqual([]);
   });
 
   it("drift: elementAffiche, lotAffiche and sourceTexte are service.ts's word for word", () => {

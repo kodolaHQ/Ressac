@@ -206,7 +206,7 @@ export function createDesignHost(o: {
   };
   // ServiceDesign.envoyer (service.ts:476-494), with index.ts's site snapshot before the first batch.
   const envoyer = async (p: Params): Promise<ResultatExtension> => {
-    if (typeof p?.projet !== "string" || !ID_PROJECT.test(p.projet)) return { ok: false, erreur: INVALID_REQUEST };
+    if (!projetId(p?.projet)) return { ok: false, erreur: INVALID_REQUEST };
     const projet = await projetSuivi(p.projet);
     if (!projet) return { ok: false, erreur: SANS_CLIENT };
     let dest: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
@@ -225,6 +225,7 @@ export function createDesignHost(o: {
     }
   };
   const id = (v: unknown): v is string => typeof v === "string" && v.length <= DESIGN_ID_MAX;
+  const projetId = (v: unknown): v is IdProjet => typeof v === "string" && ID_PROJECT.test(v);
 
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
     "externes.liste": (): EtatExternes =>
@@ -271,16 +272,14 @@ export function createDesignHost(o: {
     "relecture.relu": (p) => review.relu(checkProject(p?.projet), checkToken(p?.jeton)),
     "design.suivi": suivi,
     "design.ajouter": ajouter,
-    "design.panier": async (p) => (await remarques.panier(checkProject(p?.projet))).map(elementAffiche),
-    "design.lots": async (p) => (await remarques.lots(checkProject(p?.projet))).map(lotAffiche),
-    // A bad id does nothing, as ipc.ts.
+    // A bad project or id answers as ipc.ts: an empty list, or nothing.
+    "design.panier": async (p) => (projetId(p?.projet) ? (await remarques.panier(p.projet)).map(elementAffiche) : []),
+    "design.lots": async (p) => (projetId(p?.projet) ? (await remarques.lots(p.projet)).map(lotAffiche) : []),
     "design.retirer": async (p) => {
-      const projet = checkProject(p?.projet);
-      if (id(p?.id)) await remarques.retirerDuPanier(projet, p.id);
+      if (projetId(p?.projet) && id(p?.id)) await remarques.retirerDuPanier(p.projet, p.id);
     },
     "design.traite": async (p) => {
-      const projet = checkProject(p?.projet);
-      if (id(p?.lot)) await remarques.marquerLotTraite(projet, p.lot);
+      if (projetId(p?.projet) && id(p?.lot)) await remarques.marquerLotTraite(p.projet, p.lot);
     },
     "design.envoyer": envoyer,
   };
