@@ -231,7 +231,7 @@ Limits:
 Limits:
 
 - The apps' modules are global (§4.9 of the spec): one list for every app, not per app.
-- No design mode in site app windows (plan 36), no « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
+- No « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
 - `about:srcdoc` and `about:blank` frames get video resume when the top page is on the app's domains (beyond Electron, which gives them none); nothing else goes there.
 - The « donnees-widget » card now covers widgets, actions and site apps; before plan 32, widget data read with an account was always refused.
 - Electron's M1 net is always on (Electron: only with an extension loaded in the app's session), so the page's own navigations under the home or the card are dropped. `tabs.create` from an add-on opens in the main window.
@@ -262,19 +262,19 @@ Limits:
 
 ## Design mode
 
-- The ✎ button of the toolbar and ⇧⌘D (Firefox's own bookmark-all-tabs shortcut is disabled) start the viewfinder on the selected tab of a main window, or on an agent app window. Only a tab on a followed project (an agent demo, an agent app, a project connected by a Claude Code) is armed; elsewhere a message shows for 4 s and nothing is injected. In a site app window ⇧⌘D does nothing yet (plan 36).
+- The ✎ button of the toolbar and ⇧⌘D (Firefox's own bookmark-all-tabs shortcut is disabled) start the viewfinder on the selected tab of a main window, or on an agent app window. Only a tab on a followed project (an agent demo, an agent app, a project connected by a Claude Code) is armed; elsewhere a message shows for 4 s and nothing is injected. 
 - The chrome service (`chrome/store/design.ts`, Electron's `ServiceDesign`) arms only the `WebAiOsDesign` actor of the target's current `WindowGlobal`, once at a time. Every process-root frame under it is guarded too, including frames added while aiming (`window-global-created`). A reload, another document, another tab, a crash or the window closing ends the mode; the cart stays. A stop that hangs is cut after 1 s.
 - A click captures the element: `drawSnapshot` of `rectCapture`, cropped on a canvas (PNG of the rectangle's size at any zoom or density). The bubble, the message and the app window's cart are in a transparent chrome frame (`sidebar.html?calque`) placed over the page; the main window's cart is a 300 px column (frame `#webaios-design-volet`) that narrows the page through `--webaios-panier`. The bubble takes the keyboard (⌘Enter adds, Escape cancels) and gives it back to the page. An overlay never names its target: the chrome binds it.
 - The host (`noyau/design.ts`: `design.suivi`, `.ajouter`, `.panier`, `.lots`, `.retirer`, `.traite`, `.envoyer`) re-checks every context and capture (PNG, 8 MiB at most). « Envoyer » fills the agent's terminal (no Enter) or, for an external project, queues the batch for Claude Code. With the host down the cart keeps its last read and the call's error shows.
 - Agent app windows: the badge's « Mode design », « Panier » and « Relire ce projet » act on the window's own app; ⇧⌘D inside toggles its own mode.
 - Copies with drift tests: `shared/design-guards.ts`, the host's texts (`noyau/design.ts`), `chrome/store/design-copies.ts` (`placeBulle`, `cleCible`, sizes, margins, message duration), `chrome/shims/noyau.ts`.
-- Tests: `e2e/design-service.e2e.ts`, `design-overlay`, `design-button`, `design-send`, `design-apps` (ports 15300-15324); the actor ones also run packaged with `WEBAIOS_E2E_PACKAGED_ACTOR=1` (`design-actor`, `design-service`). The ports of Electron's tests (with their gaps), the limits and the manual checks are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 35b »).
+- Site app windows (plan 36): the ✎ button of the app bar (with its chevron: « Panier », « Relire ce projet ») and ⇧⌘D toggle the mode of that app; the target comes from the window, never from the page. The viewfinder is the packaged `WebAiOsDesign` actor in its own sandbox next to the retouches' (no `build:ui`), without the source read; the bubble warns that a third-party page is captured. The app's home is a `resource://` frame of the bar in the parent process: the chrome aims it without an actor (`chrome/store/design-home.ts`, a Xray sandbox per document, armed only on the served home), and its remarks are tagged `[accueil]`. Unavailable on the accord card, the login page, in fullscreen (a 5 s `info` notice in the bar). ⌂, « Entrer dans le site », fullscreen, another document (a retouche reloads the view) or the window closing end the mode; the cart stays. In the small sign-in window ⇧⌘D toggles nothing and shows the notice. With the host down ✎ keeps its last state. The home's `source` read runs synchronously in the parent process: a home that loops in `closest` freezes the browser.
+- Tests: `e2e/design-service.e2e.ts`, `design-overlay`, `design-button`, `design-send`, `design-apps` (ports 15300-15324), `design-sites-view`, `-bar`, `-home`, `-send` (15345-15364, helpers in `design-sites.ts`); the actor ones also run packaged with `WEBAIOS_E2E_PACKAGED_ACTOR=1` (`design-actor`, `design-service`). The ports of Electron's tests (with their gaps), the limits and the manual checks are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 35b » and « Plan 36 »).
 
 Limits:
 
 - As in Electron: a page CSS can hide the viewfinder, a batch stays « read » until marked done, a retouch that reloads the page ends the mode.
 - Add-on frames (`moz-extension:`) are not guarded; a frame added during aiming is guarded only once its actor answers (a few ms); Escape inside a cross-origin frame that has the keyboard does not stop the viewfinder.
-- Site apps: plan 36.
 
 ## External MCP and Review
 
