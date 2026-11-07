@@ -63,6 +63,8 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_RACINE: path.join(dataDir, "espace"),
         // A free port, as Electron's e2e (externes.spec.ts:11): never the real 5279.
         WEBAIOS_PORT_MCP_EXTERNE: "0",
+        // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
+        WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },
