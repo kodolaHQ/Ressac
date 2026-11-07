@@ -286,6 +286,23 @@ describe("la page d'accueil", () => {
     expect(titres).toContain("Nouveau");
   });
 
+  it("a tall home page keeps the favourites whole, above the widgets", async () => {
+    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: "https://exemple.invalid/favori" });
+    const onglet = Object.entries(s.onglets).find(([, o]) => o.url.includes("/favori"))![0];
+    await dispatch(m, { type: "ajouterEssentiel", id: onglet });
+    await dispatch(m, { type: "fermerOnglet", id: onglet });
+    const r = await waitUi<{ bas: number; accueil: number; defile: boolean }>(
+      m,
+      `const f = doc.querySelector('[data-testid="essentiels-page-vide"] [data-testid^="favori-"]');
+       const a = doc.querySelector('[data-testid="accueil"]');
+       if (!f || !a?.querySelector('[data-testid="widget-retrait"]')) return null;
+       const p = a.parentElement;
+       return { bas: f.getBoundingClientRect().bottom, accueil: a.getBoundingClientRect().top, defile: p.scrollHeight > p.clientHeight };`,
+    );
+    expect(r.defile).toBe(true);
+    expect(r.bas).toBeLessThanOrEqual(r.accueil);
+  });
+
   it("glisser un widget ne déplace aucun autre", async () => {
     const avant = await lireDisposition(dataDir);
     const betaAvant = avant.find((p) => p.id === "beta")!;

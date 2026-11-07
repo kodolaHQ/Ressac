@@ -134,5 +134,6 @@
   input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); outline: none; }
   .refus { margin: 6px 4px 0; color: var(--en-erreur); font-size: 13px; }
   input:focus { border-color: var(--accent); }
-  .page-vide :global([data-testid="essentiels-page-vide"]) { width: min(560px, 80%); }
+  /* No shrink: its min-height lets the column crush it under tall widgets. */
+  .page-vide :global([data-testid="essentiels-page-vide"]) { width: min(560px, 80%); flex-shrink: 0; }
 </style>
