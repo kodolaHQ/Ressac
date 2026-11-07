@@ -16,6 +16,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     window.addEventListener("unload", unsubscribe, { once: true });
     return unsubscribe;
   };
+  let lastDesign: Awaited<ReturnType<SiteWindowController["design"]["etat"]>> | null = null;
   return {
     etat: async () => structuredClone(c.state()),
     surEtat: (cb) => untilUnload(c.onState((e) => cb(structuredClone(e)))),
@@ -50,12 +51,14 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
       surFermer: off,
     },
     design: {
+      // A host that does not answer: the last state again, as Electron's bar whose invoke never settles (spec §5.10);
+      // BoutonDesignSite would grey ✎ on a rejection.
       etat: () =>
         Promise.resolve()
           .then(() => c.design.etat())
           .then(
-            (e) => structuredClone(e),
-            (e) => Promise.reject(local(e)),
+            (e) => structuredClone((lastDesign = e)),
+            (e) => (lastDesign ? structuredClone(lastDesign) : Promise.reject(local(e))),
           ),
       basculer: () => c.design.toggle(),
       relire: () => c.design.relire(),
