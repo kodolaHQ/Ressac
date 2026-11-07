@@ -54,6 +54,26 @@ describe("overlayApi", () => {
     expect(calls).toEqual(['design.panier {"projet":"demo-15308"}', 'design.retirer {"projet":"demo-15308","id":"e1"}', 'design.envoyer {"projet":"demo-15308"}']);
   });
 
+  it("spec §5.10 the host stopped: the cart and batches last read stand; never read, the rejection passes; its restart reads again", async () => {
+    const { design } = setup();
+    let down = false;
+    const on: string[] = [];
+    const host = {
+      request: async <T>(method: string): Promise<T> => {
+        if (down) throw new Error("hôte arrêté");
+        return (method === "design.panier" ? [{ id: "e1" }] : [{ id: "l1" }]) as T;
+      },
+      on: (m: string) => (on.push(m), () => {}),
+    };
+    const api = overlayApi({ design, host }, T);
+    expect(await api.panier("demo-15308")).toEqual([{ id: "e1" }]);
+    down = true;
+    expect(await api.panier("demo-15308")).toEqual([{ id: "e1" }]);
+    await expect(api.lots("demo-15308")).rejects.toThrow("hôte arrêté");
+    api.surChange(() => {});
+    expect(on).toEqual(["design.change", "accueil.change"]);
+  });
+
   it("a message (project '') allows no cart at all", async () => {
     const { design, host, calls } = setup({ message: ctx("message", "") });
     expect(await overlayApi({ design, host }, T).panier("")).toEqual([]);

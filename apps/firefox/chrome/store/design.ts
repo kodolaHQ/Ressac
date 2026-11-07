@@ -470,6 +470,14 @@ export function overlayApi(
 ): ApiCalque {
   const allowed = (p: unknown): p is string => typeof p === "string" && ID_PROJECT.test(p) && o.design.overlayContext(t)?.projet === p;
   const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
+  // Spec §5.10, the host stopped: PanierDesign reads again after a failed send and would show a rejected read as an
+  // empty cart. The last answer stands instead; a restarted host is read again (surChange).
+  const last = new Map<string, unknown>();
+  const read = <T>(method: string, p: string): Promise<T> =>
+    o.host.request<T>(method, { projet: p }).then(
+      (v) => (last.set(`${method} ${p}`, v), v),
+      (e) => (last.has(`${method} ${p}`) ? (last.get(`${method} ${p}`) as T) : Promise.reject(e)),
+    );
   return {
     contexte: async () => o.design.overlayContext(t, o.modes),
     async ajouter(texte) {
@@ -477,8 +485,8 @@ export function overlayApi(
       return o.design.add(t, texte);
     },
     annuler: () => (o.annuler ? o.annuler() : o.design.cancel(t)),
-    panier: async (p) => (allowed(p) ? o.host.request<ElementAffiche[]>("design.panier", { projet: p }) : []),
-    lots: async (p) => (allowed(p) ? o.host.request<LotAffiche[]>("design.lots", { projet: p }) : []),
+    panier: async (p) => (allowed(p) ? read<ElementAffiche[]>("design.panier", p) : []),
+    lots: async (p) => (allowed(p) ? read<LotAffiche[]>("design.lots", p) : []),
     async retirer(p, x) {
       if (allowed(p) && id(x)) await o.host.request("design.retirer", { projet: p, id: x });
     },
@@ -487,7 +495,8 @@ export function overlayApi(
     },
     envoyer: async (p) => (allowed(p) ? o.host.request<ResultatExtension>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
-      const offs = [o.host.on("design.change", () => cb()), o.design.onChange(cb)];
+      // accueil.change: sent at each host start (store/index.ts), so a restarted host's cart is read again.
+      const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
       return () => offs.forEach((f) => f());
     },
   };
