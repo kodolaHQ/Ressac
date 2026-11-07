@@ -252,7 +252,7 @@ describe("lancer, refusals and deletion", () => {
     expect(await creer(null).lancer("gitlab", null)).toEqual({ statut: "invalide", erreur: MESSAGE_SANS_NOYAU });
   });
 
-  it("executions and execution read the disk without the noyau and refuse bad ids", async () => {
+  it("executions and execution read the disk without the noyau and refuse bad ids; page is refused", async () => {
     const { creer, dossierActions } = host();
     const ex = await executer(dossierActions, "gitlab", { a: 1 });
     const h = creer(null);
@@ -262,7 +262,8 @@ describe("lancer, refusals and deletion", () => {
     expect(await h.execution("gitlab", "../x")).toBeNull();
     expect(await h.execution("../x", ex)).toBeNull();
     expect(await h.direct()).toEqual({ courantes: [], enAttente: [] });
-    expect(await h.page("gitlab", null)).toBeNull();
+    // The page is the noyau's: refused without it, so the chrome reads it again once the noyau runs.
+    await expect(h.page("gitlab", null)).rejects.toThrow(MESSAGE_SANS_NOYAU);
   });
 
   // actions.test.ts:462

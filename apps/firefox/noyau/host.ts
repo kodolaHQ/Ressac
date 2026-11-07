@@ -453,7 +453,8 @@ const rpc = createRpc({
     "actions.refuserAccord": (p: { id?: unknown }) => (idAction(p?.id) ? actions.refuserAccord(p.id) : undefined),
     "actions.supprimer": (p: { id?: unknown }) => (idAction(p?.id) ? actions.supprimer(p.id) : { ok: false, erreur: "Demande invalide" }),
     // Site apps (the window is the chrome's). A bad action is ignored, as Electron's IPC does.
-    "sites.pret": () => sites.resynchroniser(),
+    // The open apps are known again: the Applications page reads them (it read « fermée » while the host was down).
+    "sites.pret": () => sites.resynchroniser().then(() => rpc.notify("sites.change")),
     "sites.liste": () => sites.liste(),
     "sites.agir": (p: { id?: unknown; action?: unknown; fenetre?: unknown }) => {
       const a = SchemaActionSite.safeParse(p);

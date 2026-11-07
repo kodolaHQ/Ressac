@@ -194,7 +194,10 @@ export function createActionsHost(o: {
       o.noyau()?.actions.arreter(id);
     },
     async page(id: string, execution: string | null): Promise<PageAction | null> {
-      return (await o.noyau()?.actions.page(id, execution)) ?? null;
+      const noyau = o.noyau();
+      // Refused, not null (« no result »): a page read before the noyau started reads again on its first `acces`.
+      if (!noyau) throw new Error(MESSAGE_SANS_NOYAU);
+      return (await noyau.actions.page(id, execution)) ?? null;
     },
     async executions(id: string): Promise<ResumeExecution[]> {
       const noyau = o.noyau();
