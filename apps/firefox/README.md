@@ -240,6 +240,26 @@ Limits:
 - A sign-in window opened by `window.open(url)` without features has no `opener` (a login waiting for `opener.postMessage` fails). A window opened with features towards a refused domain shows for an instant, then closes; nothing leaves. A TCP preconnect (no HTTP request) is not seen by the guard.
 - Firefox does not resolve `*.localhost`: the e2e add a DNS override (`resolveLocalHosts`). Visits of an app window are not recorded (`places.history.enabled` is false).
 
+## Agent applications
+
+- An app the agent writes is a folder `<dataDir>/espace/projets/<folder>/` with a `webaios.json` manifest, run by the noyau in Docker (`noyau/applications.ts`, Electron's `Gestionnaire`). Its window is `chrome/store/apps.ts` + `chrome/window/app-window.ts`: one `<browser>` on the app's port, no bar, never a main window.
+- Each app has its own internal container (`webaios-app-<folder>`) and a request guard that keeps it on its origin: other sites open in a tab of the main window; `file:`, `data:` and `blob:` are refused (also as http redirects); permissions are denied per origin and container; the view is protected from add-ons. Closing the window stops the app; so does the host stopping (the window closes). At quit the apps stop first, then the sessions.
+- The Applications page's Docker section (`ui/api.ts`): launch, stop, delete, « Passer en application », debug (the terminal is filled, not sent), « Afficher le dossier » (`reveal`, never `launch`), « Relire ». ⇧⌘A opens the page; Firefox's own ⇧⌘A (about:addons) is disabled.
+- The badge (top right of the window, `ui/badge-api.ts`) shows the agent's access to the app and lets one cut it or open the Review page; the page cannot reach it. « Mode design » and the basket in its menu stay inert until the design mode lands in app windows (plan 35b).
+- The Review page covers these apps: the first snapshot is taken at start (apps without a manifest are skipped).
+- The design viewfinder runs in the `WebAiOsDesign` actor (`chrome/agent/design-actor.ts`, every frame, http/https). It is the one packaged file of this plan: after a change to it, ask for `build:ui` (the e2e use `testActor`, the packaged one with `WEBAIOS_E2E_PACKAGED_ACTOR=1`). Its guard sits on the `chromeEventHandler`; a cross-origin frame in another process is guarded by its own actor.
+- Copies with drift tests: `SchemaActionApplication`, `appTab` and `plageDePorts` (`noyau/applications.ts`), `dossierValide` (`chrome/store/app-folder.ts`), the viewfinder script and sanitizers (`chrome/store/design-copies.ts`).
+- Tests: `e2e/apps-window.e2e.ts`, `apps-page`, `apps-actions`, `apps-badge`, `design-actor`. The ports of Electron's tests (with their gaps), the limits and the manual checks are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 35a »).
+
+Limits:
+
+- Firefox add-ons run in app windows (shared by every container, spec §13.8); there is no add-on bar there.
+- Apps without a manifest (`sans-fiche`) are not snapshotted for review.
+- Downloads from an app container are not cancelled, and cross-origin frames load inside the app (both as in Electron).
+- A cached 301/308 to `file:` leaves the view on `about:blank`.
+- Headless cannot route a real click into an out-of-process frame: the viewfinder's cross-origin case is tested through WebDriver actions, and a headed check is pending.
+- `applications.json`, the apps' cookies and their batches from Electron are not imported.
+
 ## External MCP and Review
 
 The host runs the external MCP server (port 5279, `WEBAIOS_PORT_MCP_EXTERNE` changes it, `0` in the tests) without the noyau: `noyau/design.ts` creates the remarks, the registries of external clients and projects, and the review service. It listens on 127.0.0.1 only, checks Host and Origin, keeps only the SHA-256 of each token, and never falls back to another port (« Le port 5279 est pris »). It stops with the host; « Réessayer » restarts it on the same port with the same tokens.
@@ -248,14 +268,14 @@ The host runs the external MCP server (port 5279, `WEBAIOS_PORT_MCP_EXTERNE` cha
 - The Review page (`webaios://relecture`, the frozen Electron component) shows the diff of an external project or of a site app since the last « Marquer comme relu ». Comments go to Claude Code (`lire_remarques`, `attendre_remarques`) or, for a site app, into the agent panel: the text waits there and Enter sends it (`design.fenetreAgent`, `design.donnerAgent`).
 - Copies: `noyau/review.ts` (Electron's `ServiceRelecture`) and `shared/design-guards.ts` (the input checks), each with a drift test (`test/review-host.test.ts`). `externes.ts` and `envoi.ts` are imported as is.
 - Tests: `e2e/external-mcp.e2e.ts`, `e2e/review.e2e.ts`, `e2e/review-comments.e2e.ts`. The manual checks and the ports of Electron's tests (with their gaps) are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 34 »).
-- A Claude Code connected to Electron must be connected again (new token; `claude mcp remove webaios-remarques` first if the name exists). No agent apps, hence no badge and no `app-*` project.
+- A Claude Code connected to Electron must be connected again (new token; `claude mcp remove webaios-remarques` first if the name exists).
 
 ## Not migrated yet (step 4)
 
 - site-app permission checks;
 - the host does not restart on its own after a crash: « Réessayer » in the panel relaunches it;
 - design mode;
-- internal `webaios:` pages: a "not available yet" message (the Applications page shows its Sites and « Projets externes » sections only; the Docker applications are not migrated);
+- internal `webaios:` pages: a "not available yet" message;
 - tab previews in ⌃Tab: the cards show the icon;
 - zoom is not tracked in the state;
 
