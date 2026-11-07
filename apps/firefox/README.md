@@ -231,7 +231,7 @@ Limits:
 Limits:
 
 - The apps' modules are global (§4.9 of the spec): one list for every app, not per app.
-- No design mode (plans 35-36), no « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
+- No design mode in site app windows (plan 36), no « Gérer » add-on menu in the app bar (`MenuExtensionsSite` not migrated), and no title-bar drag region: Firefox keeps its native title bar.
 - `about:srcdoc` and `about:blank` frames get video resume when the top page is on the app's domains (beyond Electron, which gives them none); nothing else goes there.
 - The « donnees-widget » card now covers widgets, actions and site apps; before plan 32, widget data read with an account was always refused.
 - Electron's M1 net is always on (Electron: only with an extension loaded in the app's session), so the page's own navigations under the home or the card are dropped. `tabs.create` from an add-on opens in the main window.
@@ -245,7 +245,7 @@ Limits:
 - An app the agent writes is a folder `<dataDir>/espace/projets/<folder>/` with a `webaios.json` manifest, run by the noyau in Docker (`noyau/applications.ts`, Electron's `Gestionnaire`). Its window is `chrome/store/apps.ts` + `chrome/window/app-window.ts`: one `<browser>` on the app's port, no bar, never a main window.
 - Each app has its own internal container (`webaios-app-<folder>`) and a request guard that keeps it on its origin: other sites open in a tab of the main window; `file:`, `data:` and `blob:` are refused (also as http redirects); permissions are denied per origin and container; the view is protected from add-ons. Closing the window stops the app; so does the host stopping (the window closes). At quit the apps stop first, then the sessions.
 - The Applications page's Docker section (`ui/api.ts`): launch, stop, delete, « Passer en application », debug (the terminal is filled, not sent), « Afficher le dossier » (`reveal`, never `launch`), « Relire ». ⇧⌘A opens the page; Firefox's own ⇧⌘A (about:addons) is disabled.
-- The badge (top right of the window, `ui/badge-api.ts`) shows the agent's access to the app and lets one cut it or open the Review page; the page cannot reach it. « Mode design » and the basket in its menu stay inert until the design mode lands in app windows (plan 35b).
+- The badge (top right of the window, `ui/badge-api.ts`) shows the agent's access to the app and lets one cut it or open the Review page; the page cannot reach it. « Mode design » and the basket in its menu drive the design mode of the app (see « Design mode »).
 - The Review page covers these apps: the first snapshot is taken at start (apps without a manifest are skipped).
 - The design viewfinder runs in the `WebAiOsDesign` actor (`chrome/agent/design-actor.ts`, every frame, http/https). It is the one packaged file of this plan: after a change to it, ask for `build:ui` (the e2e use `testActor`, the packaged one with `WEBAIOS_E2E_PACKAGED_ACTOR=1`). Its guard sits on the `chromeEventHandler`; a cross-origin frame in another process is guarded by its own actor.
 - Copies with drift tests: `SchemaActionApplication`, `appTab` and `plageDePorts` (`noyau/applications.ts`), `dossierValide` (`chrome/store/app-folder.ts`), the viewfinder script and sanitizers (`chrome/store/design-copies.ts`).
@@ -259,6 +259,22 @@ Limits:
 - A cached 301/308 to `file:` leaves the view on `about:blank`.
 - Headless cannot route a real click into an out-of-process frame: the viewfinder's cross-origin case is tested through WebDriver actions, and a headed check is pending.
 - `applications.json`, the apps' cookies and their batches from Electron are not imported.
+
+## Design mode
+
+- The ✎ button of the toolbar and ⇧⌘D (Firefox's own bookmark-all-tabs shortcut is disabled) start the viewfinder on the selected tab of a main window, or on an agent app window. Only a tab on a followed project (an agent demo, an agent app, a project connected by a Claude Code) is armed; elsewhere a message shows for 4 s and nothing is injected. In a site app window ⇧⌘D does nothing yet (plan 36).
+- The chrome service (`chrome/store/design.ts`, Electron's `ServiceDesign`) arms only the `WebAiOsDesign` actor of the target's current `WindowGlobal`, once at a time. Every process-root frame under it is guarded too, including frames added while aiming (`window-global-created`). A reload, another document, another tab, a crash or the window closing ends the mode; the cart stays. A stop that hangs is cut after 1 s.
+- A click captures the element: `drawSnapshot` of `rectCapture`, cropped on a canvas (PNG of the rectangle's size at any zoom or density). The bubble, the message and the app window's cart are in a transparent chrome frame (`sidebar.html?calque`) placed over the page; the main window's cart is a 300 px column (frame `#webaios-design-volet`) that narrows the page through `--webaios-panier`. The bubble takes the keyboard (⌘Enter adds, Escape cancels) and gives it back to the page. An overlay never names its target: the chrome binds it.
+- The host (`noyau/design.ts`: `design.suivi`, `.ajouter`, `.panier`, `.lots`, `.retirer`, `.traite`, `.envoyer`) re-checks every context and capture (PNG, 8 MiB at most). « Envoyer » fills the agent's terminal (no Enter) or, for an external project, queues the batch for Claude Code. With the host down the cart keeps its last read and the call's error shows.
+- Agent app windows: the badge's « Mode design », « Panier » and « Relire ce projet » act on the window's own app; ⇧⌘D inside toggles its own mode.
+- Copies with drift tests: `shared/design-guards.ts`, the host's texts (`noyau/design.ts`), `chrome/store/design-copies.ts` (`placeBulle`, `cleCible`, sizes, margins, message duration), `chrome/shims/noyau.ts`.
+- Tests: `e2e/design-service.e2e.ts`, `design-overlay`, `design-button`, `design-send`, `design-apps` (ports 15300-15324); the actor ones also run packaged with `WEBAIOS_E2E_PACKAGED_ACTOR=1` (`design-actor`, `design-service`). The ports of Electron's tests (with their gaps), the limits and the manual checks are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 35b »).
+
+Limits:
+
+- As in Electron: a page CSS can hide the viewfinder, a batch stays « read » until marked done, a retouch that reloads the page ends the mode.
+- Add-on frames (`moz-extension:`) are not guarded; a frame added during aiming is guarded only once its actor answers (a few ms); Escape inside a cross-origin frame that has the keyboard does not stop the viewfinder.
+- Site apps: plan 36.
 
 ## External MCP and Review
 
