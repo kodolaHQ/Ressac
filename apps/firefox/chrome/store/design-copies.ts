@@ -1,12 +1,48 @@
 // The design mode's pure pieces of Electron (apps/navigateur/src/main/design/viseur.ts, frozen): imported where they are
 // exported, copied word for word where they are not (test/design-copies.test.ts checks the copies against Electron's text).
-import { tronquerHtml, type ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
+import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
+import type { CibleDesign } from "../../../navigateur/src/main/design/service";
 import { scriptViseur, type CaptureViseur } from "../../../navigateur/src/main/design/viseur";
+import { tronquerHtml } from "../shims/noyau";
 
 export { rectCapture } from "../../../navigateur/src/main/design/viseur";
 export type { CaptureViseur };
 
 export const SOURCE_TIMEOUT_MS = 1500;
+
+// service.ts does not load in the store (the noyau's values, WebContentsView): copied word for word.
+type Rectangle = { x: number; y: number; width: number; height: number };
+/** La bulle d'une remarque : 320×170, sous l'élément. */
+export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
+const ECART_BULLE = 6;
+// calque.ts: an app window's cart, 340 px on the right, 12 px from the edges.
+export const MARGE = 12;
+export const LARGEUR_PANIER = 340;
+
+/** Clé d'une cible, aussi l'argument de son calque. */
+export const cleCible = (c: CibleDesign): string =>
+  c.type === "fenetre" ? `fenetre:${c.fenetreId}` : c.type === "app" ? `app:${c.dossier}` : `site:${c.id}`;
+
+/**
+ * Place de la bulle dans la fenêtre : sous l'élément (rect CSS × zoom, décalé des bornes de la vue de la page), bornée
+ * à la fenêtre, et jamais au-dessus de `hautMin` (le bas de la barre d'une appli de site).
+ */
+export function placeBulle(
+  rect: CaptureViseur["rect"],
+  zoom: number,
+  bornes: Rectangle,
+  fenetre: [number, number],
+  o: { hautMin?: number; hauteur?: number } = {},
+): Rectangle {
+  const hauteur = o.hauteur ?? TAILLE_BULLE.hauteur;
+  const borner = (v: number, max: number) => Math.round(Math.max(0, Math.min(v, max)));
+  return {
+    x: borner(bornes.x + rect.x * zoom, fenetre[0] - TAILLE_BULLE.largeur),
+    y: Math.max(o.hautMin ?? 0, borner(bornes.y + (rect.y + rect.hauteur) * zoom + ECART_BULLE, fenetre[1] - hauteur)),
+    width: TAILLE_BULLE.largeur,
+    height: hauteur,
+  };
+}
 
 /**
  * Electron's scriptViseur without its own click listener: the actor's guard (design-actor.ts), in front of every page

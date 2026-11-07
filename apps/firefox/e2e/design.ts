@@ -50,14 +50,18 @@ export const FRAME_PAGE = `<!doctype html><meta charset="utf-8"><title>cadre</ti
 /** DESIGN_PAGE with a frame of another site (`frameUrl`), so of another process. */
 export const OOP_PAGE = (frameUrl: string) => DESIGN_PAGE.replace("</body>", `<iframe id="cadre" src="${frameUrl}" style="width:300px;height:120px;border:0"></iframe></body>`);
 
+/** Spike S2's page: a green 80×30 target at (300, 900) on a white page 3000 px high. */
+export const TARGET_PAGE = '<!doctype html><meta charset="utf-8"><title>cible</title><style>body{margin:0;height:3000px;background:#fff}</style><div id="cible" style="position:absolute;left:300px;top:900px;width:80px;height:30px;background:rgb(0,200,0)"></div>';
+
 const send = (body: string, headers: Record<string, string> = {}) => (_req: unknown, res: ServerResponse) =>
   void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...headers }).end(body);
 
 /**
  * Two servers on 127.0.0.1: the pages (`page`, reached as 127.0.0.1) and the frame (`frame`, reached as localhost: another
- * site, so another process). `/`, `/x`, `/hooks`, `/csp`, `/oop` (DESIGN_PAGE with the frame) and `/frame` on both.
+ * site, so another process). `/`, `/x`, `/hooks`, `/csp`, `/oop` (DESIGN_PAGE with the frame), `/cible` and `/frame` on
+ * both. `port`: the pages' port (a demo port in WEBAIOS_PORTS_APPS makes them a demo project).
  */
-export async function startDesignServers(): Promise<{ page: string; frame: string; close(): Promise<void> }> {
+export async function startDesignServers(o: { port?: number } = {}): Promise<{ page: string; frame: string; close(): Promise<void> }> {
   let frame = "";
   const routes = {
     "/": send(DESIGN_PAGE),
@@ -65,9 +69,10 @@ export async function startDesignServers(): Promise<{ page: string; frame: strin
     "/hooks": send(HOOKS_PAGE),
     "/csp": send(CSP_PAGE, { "Content-Security-Policy": CSP }),
     "/frame": send(FRAME_PAGE),
+    "/cible": send(TARGET_PAGE),
     "/oop": (req: unknown, res: ServerResponse) => send(OOP_PAGE(`${frame}/frame`))(req, res),
   };
-  const [a, b] = await Promise.all([startServer({ routes }), startServer({ routes })]);
+  const [a, b] = await Promise.all([startServer({ routes, port: o.port }), startServer({ routes })]);
   frame = `http://localhost:${b.port}`;
   return { page: a.url, frame, close: () => Promise.all([a.close(), b.close()]).then(() => {}) };
 }

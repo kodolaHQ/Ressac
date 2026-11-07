@@ -10,6 +10,7 @@ import type { OptionsLecturePage, PageLue } from "../shims/noyau";
 import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
+import { createDesign, type DesignService } from "./design";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
@@ -54,6 +55,8 @@ export interface WebAiOsStore extends Store {
   readonly sites: SiteApps;
   /** The agent apps' windows (never WebAiOs windows), opened and closed as the host asks. */
   readonly apps: AgentApps;
+  /** The design mode of each main window's tab and agent app window (spec §5.4-5.5). */
+  readonly design: DesignService;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly gestesWidgets: ReturnType<typeof gardienGestes<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
@@ -348,6 +351,7 @@ async function start(): Promise<WebAiOsStore> {
         .catch((e) => console.error("[apps] review not opened:", e)),
   });
   const history = createHistory(store, agent);
+  const design = createDesign({ agent, windows, apps, dispatch: store.dispatch, mainWindow, toFront });
   registerAccueilNotifications(agent);
   // A site app's downloads are cancelled (Electron's app sessions download nothing).
   const downloads = await createDownloads(isSiteContainer);
@@ -383,6 +387,7 @@ async function start(): Promise<WebAiOsStore> {
     devtools,
     sites,
     apps,
+    design,
     get access() {
       return access;
     },

@@ -50,3 +50,12 @@ describe("node:url shim", () => {
     for (const d of ["exemple.fr", "ÉCOLE.fr", "bücher.de", "日本.jp", "xn--bcher-kva.de", "a..b", "exa mple.com", ""]) expect(domainToASCII(d), d).toBe(node.domainToASCII(d));
   });
 });
+
+describe("@webaios/noyau shim: what Electron's viseur.ts imports", () => {
+  it("drift: HTML_MAX, MARGE_CAPTURE, MONDE_VISEUR, STYLES_UTILES, TRONQUE and tronquerHtml match design/remarques.ts", async () => {
+    const shim = await import("../chrome/shims/noyau");
+    const real = await import("../../../packages/noyau/src/design/remarques");
+    for (const k of ["HTML_MAX", "MARGE_CAPTURE", "MONDE_VISEUR", "STYLES_UTILES", "TRONQUE"] as const) expect(shim[k], k).toEqual(real[k]);
+    for (const h of ["", "a".repeat(4096), "b".repeat(4097)]) expect(shim.tronquerHtml(h)).toBe(real.tronquerHtml(h));
+  });
+});

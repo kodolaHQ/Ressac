@@ -18,9 +18,9 @@ export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
  * /telecharge is an attachment, /telecharge-cadre has it in a frame and clicks a download link to it, /travailleur installs /sw.js, which fetches <base>/sw 4 s later.
  * /description has a meta description. /geo asks for the position as it loads. /prive/auth asks for HTTP Basic authentication (401) and, with any credentials, is a page with text (under /prive/: Firefox sends the credentials again to that directory only). /telecharger/<name> serves a page file as an attachment, /fichier-lent starts a 1 MB
  * attachment, writes 1 KB and stalls (its closed connection is noted as "/fichier-lent:fermée").
- * `host` "::1" listens on IPv6 loopback; `routes` adds pages by path; `paths` lists every path asked, in order.
+ * `host` "::1" listens on IPv6 loopback; `port` a fixed one (0: any free port); `routes` adds pages by path; `paths` lists every path asked, in order.
  */
-export async function startServer(o: { host?: string; routes?: Record<string, (req: IncomingMessage, res: ServerResponse) => void> } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
+export async function startServer(o: { host?: string; port?: number; routes?: Record<string, (req: IncomingMessage, res: ServerResponse) => void> } = {}): Promise<{ url: string; port: number; paths: string[]; close(): Promise<void> }> {
   const paths: string[] = [];
   const server = createServer((req, res) => {
     const asked = new URL(req.url ?? "/", "http://x");
@@ -119,7 +119,7 @@ export async function startServer(o: { host?: string; routes?: Record<string, (r
     res.end(readFileSync(file));
   });
   const host = o.host ?? "127.0.0.1";
-  await new Promise<void>((ok) => server.listen(0, host, ok));
+  await new Promise<void>((ok) => server.listen(o.port ?? 0, host, ok));
   const port = (server.address() as AddressInfo).port;
   return {
     url: `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
