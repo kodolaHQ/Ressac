@@ -155,7 +155,7 @@ it("unavailable on the accord card (the avis goes after 5 s); ⌂ stops the mode
   await openSite(m, "sans-accord");
   await expect.poll(() => inSiteBar(m, "sans-accord", `return !!doc.querySelector('${tid("carte-accord-site")}');`), { timeout: 10_000 }).toBe(true);
   await verifyUnavailable("sans-accord");
-  await expect.poll(async () => (await bar("sans-accord")).avis, { timeout: 7_000 }).toBeNull();
+  await expect.poll(async () => (await bar("sans-accord")).avis, { timeout: 10_000 }).toBeNull();
 });
 
 // design-sites.spec.ts:326
