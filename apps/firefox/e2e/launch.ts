@@ -87,7 +87,6 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_PORT_MCP_EXTERNE: "0",
         // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
-        // A release build ignores services.settings.server (user.js) without it.
         ...o.env,
         PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`,
       }, },
