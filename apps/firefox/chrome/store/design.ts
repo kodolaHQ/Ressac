@@ -156,9 +156,10 @@ export function createDesign(o: {
     const v = o.apps.viewFor(t.dossier);
     return v ? { browser: v.browser, win: v.window } : null;
   };
-  const suivi = (t: DesignTarget, v: View) =>
-    o.agent.request<SuiviDesign | null>("design.suivi", t.type === "fenetre" ? { url: String(v.browser.currentURI?.spec ?? "") } : { projet: "app-" + t.dossier });
   const pageOf = (b: any) => b.browsingContext?.currentWindowGlobal;
+  /** The project of the page's own document (`wgp`, the one armed), never of the <browser>'s address, which a commit moves first. */
+  const suivi = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
+    o.agent.request<SuiviDesign | null>("design.suivi", t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : { projet: "app-" + t.dossier });
   const current = (s: Session, g: number) => sessions.get(s.key) === s && s.generation === g;
 
   const giveKeyboard = (s: Session) => {
@@ -243,6 +244,20 @@ export function createDesign(o: {
     show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: contexte.etiquette, source: sourceText(source), ...s.destination, avertissement: null });
   }
 
+  /** A throw anywhere after the arm (a bug, a window gone mid-way): the session stops, its frames unguarded. */
+  const armSafe = (s: Session) =>
+    arm(s).catch((e) => {
+      console.error("[design] arm failed:", e);
+      unguardFrames(s);
+      return service.stop(s.target);
+    });
+
+  // A window id comes back when the last window reopens (windows.ts keeps it): a closed agent app window forgets its target too.
+  o.apps.onClosed(() => {
+    for (const key of new Set([...sessions.keys(), ...contexts.keys()]))
+      if (key.startsWith("app:") && !o.apps.viewFor(key.slice(4))) service.forget({ type: "app", dossier: key.slice(4) });
+  });
+
   const service: DesignService = {
     overlays: { show() {}, hide() {}, forget() {} },
 
@@ -263,7 +278,7 @@ export function createDesign(o: {
       if (!v) return;
       // The page whose address gives the project, read with the address: the only one ever armed.
       const wgp = pageOf(v.browser);
-      const r = await suivi(t, v).catch(() => null);
+      const r = await suivi(t, v, wgp).catch(() => null);
       if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) return;
       const { browser, win } = v;
       const gBrowser = (win as any).gBrowser;
@@ -301,7 +316,7 @@ export function createDesign(o: {
       sessions.set(key, s);
       notify();
       giveKeyboard(s);
-      void arm(s);
+      void armSafe(s);
     },
 
     async stop(t) {
@@ -333,7 +348,7 @@ export function createDesign(o: {
       s.attente = null;
       hide(s.key, "bulle");
       giveKeyboard(s);
-      void arm(s);
+      void armSafe(s);
       return r;
     },
 
@@ -347,7 +362,7 @@ export function createDesign(o: {
       s.attente = null;
       hide(key, "bulle");
       giveKeyboard(s);
-      void arm(s);
+      void armSafe(s);
     },
 
     async openCart(t) {

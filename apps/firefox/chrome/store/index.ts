@@ -253,6 +253,8 @@ async function start(): Promise<WebAiOsStore> {
     // The window's agent session stops with it; its questions go to the active window, or are refused.
     onRelease: (fenetre) => {
       agent.notify("agent.fermerFenetre", { fenetre });
+      // Its id comes back if it was the last window (kept): no overlay or cart context stays for it.
+      design.forget({ type: "fenetre", fenetreId: fenetre });
       questions.windowClosed(fenetre, windows.active());
       refreshMirror();
     },

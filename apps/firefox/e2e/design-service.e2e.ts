@@ -7,7 +7,7 @@ import { placeBulle, rectCapture } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { pageLog, clearLog, startDesignServers, stopActor, trustedMouse } from "./design";
-import { waitFor } from "./firefox";
+import { pressClosing, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
@@ -389,6 +389,68 @@ describe("design service", () => {
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await m.execute(`Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(${B}.browsingContext.currentWindowGlobal.domProcess.osPid);`);
     await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+  });
+
+  // Review minor 3: the project comes from the armed document's own address, never from the <browser>'s.
+  it("a <browser> whose address says demo over a page outside any project: toggle arms nothing", async () => {
+    await open("/", servers.frame);
+    await record();
+    await m.execute(`Object.defineProperty(${B}, "currentURI", { configurable: true, get: () => Services.io.newURI("${servers.page}/") }); return 1;`);
+    try {
+      await toggle();
+      await sleep(500);
+      expect(await hosts()).toBe(0);
+      expect(await queries()).toEqual([]);
+      expect((await etat()).projet).toBeNull();
+    } finally {
+      await m.execute(`delete ${B}.currentURI; return 1;`);
+      await stopMode();
+    }
+  });
+
+  // Review minor 5: a throw after the arm stops the session.
+  it("a throw while showing the bubble stops the mode, no bubble", async () => {
+    await open("/");
+    const n = (await bubbles()).length;
+    // The click's own gesture reads it once; the service's next read (the bubble's place) throws.
+    await m.execute(`const b = ${B}, real = b.getBoundingClientRect; let n = 0; b.getBoundingClientRect = function () { if (n++ >= 1) throw new Error("test"); return real.call(this); }; return 1;`);
+    try {
+      await toggle();
+      await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
+      await trustedMouse(m, B, { x: 60, y: 20 });
+      await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+      expect((await bubbles()).length).toBe(n);
+    } finally {
+      await m.execute(`delete ${B}.getBoundingClientRect; return 1;`);
+    }
+  });
+
+  // Review minor 4: the last window's id is reused when it reopens (windows.ts kept).
+  it("closing the last window forgets its overlay context: reopened, the context is fresh", async () => {
+    await open("/");
+    await svc("await d.openCart(t); return 1;");
+    expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("panier");
+    const id = await m.execute<string>("return window.webaiosWindow.fenetreId;");
+    // A module timer outlives the window: once it is gone, it reopens one as the Dock would.
+    await m.execute(
+      `const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
+       const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
+       const reopen = () => [...Services.wm.getEnumerator("navigator:browser")].length ? setTimeout(reopen, 100) : setTimeout(() => BrowserWindowTracker.openWindow(), 500);
+       setTimeout(reopen, 100);`,
+    );
+    const old = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
+    await pressClosing(m, "Meta+Shift+w");
+    const reopened = (await waitWindowCount(m, 1, 20_000)).find((h) => h !== old)!;
+    await m.command("WebDriver:SwitchToWindow", { handle: reopened, focus: false });
+    await waitReady(m);
+    await waitFor(m, "return !!window.webaiosWindow;", (v) => v === true);
+    expect(await m.execute("return window.webaiosWindow.fenetreId;")).toBe(id);
+    expect(await svc("return d.overlayContext(t);")).toBeNull();
+    // The recorder lived in the closed window: set again for the tests after.
+    await m.execute(`return (async () => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design;
+      window.__overlay = [];
+      d.overlays = { show: (key, win, place, ctx) => window.__overlay.push({ op: "show", key, place, ctx: JSON.parse(JSON.stringify(ctx)) }), hide: (key, mode) => window.__overlay.push({ op: "hide", key, mode }), forget: (key) => window.__overlay.push({ op: "forget", key }) };
+      return 1; })();`);
   });
 
   it("the host stopped: toggle does nothing, etat rejects", async () => {
