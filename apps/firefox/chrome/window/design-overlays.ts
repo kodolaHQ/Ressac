@@ -32,7 +32,8 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
   const overlays = new Map<string, Overlay>();
   const closedListeners = new Map<string, Set<() => void>>();
   // The service's keys (cleCible), read back: the frame's target is the chrome's.
-  const targetOf = (key: string): DesignTarget => (key.startsWith("fenetre:") ? { type: "fenetre", fenetreId: key.slice(8) } : { type: "app", dossier: key.slice(4) });
+  const targetOf = (key: string): DesignTarget =>
+    key.startsWith("fenetre:") ? { type: "fenetre", fenetreId: key.slice(8) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", dossier: key.slice(4) };
   const main = (key: string) => key.startsWith("fenetre:");
   const inColumn = (key: string, mode: Mode) => mode === "panier" && main(key);
   /** Calques.contexte's order; a main window's cart is in its column. */

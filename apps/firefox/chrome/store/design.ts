@@ -5,10 +5,11 @@
 // throw or hang (timed out, then the top window is unguarded).
 import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../../navigateur/src/commun/api";
 import type { IdFenetre } from "../../../navigateur/src/commun/modele";
+import { HAUTEUR_BARRE_SITE } from "../../../navigateur/src/commun/sites";
 import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
 import { choisirCibleDesign } from "../../../navigateur/src/main/design/premier-plan";
 import type { SuiviDesign } from "../../noyau/design";
-import { DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN } from "../../shared/design-guards";
+import { CAPTURE_WARNING_SITE, DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN, UNAVAILABLE_DESIGN_SITE } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";
 import type { apps as Apps } from "./apps";
 import {
@@ -26,12 +27,14 @@ import {
   SOURCE_TIMEOUT_MS,
   sourceExpression,
   STOP_SCRIPT,
+  TAILLE_BULLE_SITE,
   type CaptureViseur,
 } from "./design-copies";
+import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
-export type DesignTarget = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string };
+export type DesignTarget = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string } | { type: "site"; id: string };
 
 export interface DesignOverlays {
   show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: ContexteCalque): void;
@@ -119,7 +122,8 @@ const sourceText = (s: ContexteDesign["source"]): string | null => (s ? (s.ligne
 export async function capturePng(browser: any, rect: CaptureViseur["rect"], vue: CaptureViseur["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
   try {
     const win = browser.ownerDocument.defaultView;
-    const zoom: number = browser.fullZoom;
+    // The home's frame (an <iframe>) has no fullZoom.
+    const zoom: number = browser.fullZoom ?? 1;
     const dpr: number = win.devicePixelRatio;
     const r = rectCapture(rect, vue, zoom);
     if (r.width <= 0 || r.height <= 0 || !wgp) return null;
@@ -140,6 +144,7 @@ export function createDesign(o: {
   agent: AgentHost;
   windows: WindowRegistry;
   apps: typeof Apps;
+  sites: Pick<SiteApps, "designView" | "infoNotice" | "controller" | "onClosed">;
   dispatch: Store["dispatch"];
   mainWindow(): Promise<IdFenetre | undefined>;
   toFront(f: IdFenetre): void;
@@ -171,17 +176,24 @@ export function createDesign(o: {
       const browser = win && !win.closed ? win.gBrowser?.selectedBrowser : null;
       return browser ? { browser, win } : null;
     }
+    if (t.type === "site") {
+      const d = o.sites.designView(t.id);
+      return d ? { browser: d.home ?? d.browser, win: d.win } : null;
+    }
     const v = o.apps.viewFor(t.dossier);
     return v ? { browser: v.browser, win: v.window } : null;
   };
   const pageOf = (b: any) => b.browsingContext?.currentWindowGlobal;
   /** The project of the page's own document (`wgp`, the one armed), never of the <browser>'s address, which a commit moves first. */
   const suivi = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
-    o.agent.request<SuiviDesign | null>("design.suivi", t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : { projet: "app-" + t.dossier });
+    o.agent.request<SuiviDesign | null>(
+      "design.suivi",
+      t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { projet: "app-" + t.dossier } : { projet: "site-" + t.id },
+    );
   const current = (s: Session, g: number) => sessions.get(s.key) === s && s.generation === g;
 
   const giveKeyboard = (s: Session) => {
-    if (s.target.type === "app" && Services.env.get("WEBAIOS_INVISIBLE") !== "1" && !s.win.closed) s.win.focus();
+    if (s.target.type !== "fenetre" && Services.env.get("WEBAIOS_INVISIBLE") !== "1" && !s.win.closed) s.win.focus();
     s.browser.focus();
   };
 
@@ -250,7 +262,9 @@ export function createDesign(o: {
     s.unguardTimer = setTimeout(() => s.armed || unguardFrames(s), SWALLOW_MS);
     const capture = cleanCapture(r);
     if (!capture) return service.stop(s.target);
-    const source = cleanSource(await within(ask(s.wgp, "source", { code: sourceExpression(capture.selecteur) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
+    // A site app's pages: nothing is read in the page's world, the source stays unknown (Electron's armer).
+    const site = s.target.type === "site";
+    const source = site ? null : cleanSource(await within(ask(s.wgp, "source", { code: sourceExpression(capture.selecteur) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
     if (!current(s, g)) return;
     if (pageOf(s.browser) !== s.wgp) return service.stop(s.target);
     const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
@@ -259,9 +273,12 @@ export function createDesign(o: {
     s.attente = { contexte: { ...contexte, source }, capture: png };
     const v = view(s.target);
     if (v?.browser !== s.browser || pageOf(s.browser) !== s.wgp || s.win.closed) return service.stop(s.target);
-    const b = s.browser.getBoundingClientRect();
-    const place = placeBulle(rect, s.browser.fullZoom, { x: b.x, y: b.y, width: b.width, height: b.height }, [s.win.innerWidth, s.win.innerHeight]);
-    show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: contexte.etiquette, source: sourceText(source), ...s.destination, avertissement: null });
+    const b = s.target.type === "site" ? o.sites.designView(s.target.id)?.bounds : s.browser.getBoundingClientRect();
+    if (!b) return service.stop(s.target);
+    const bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
+    const win: [number, number] = [s.win.innerWidth, s.win.innerHeight];
+    const place = placeBulle(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { hautMin: bounds.y, hauteur: TAILLE_BULLE_SITE.hauteur } : {});
+    show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: contexte.etiquette, source: sourceText(source), ...s.destination, avertissement: site ? CAPTURE_WARNING_SITE : null });
   }
 
   /** A throw anywhere after the arm (a bug, a window gone mid-way): the session stops, its frames unguarded. */
@@ -277,6 +294,10 @@ export function createDesign(o: {
     for (const key of new Set([...sessions.keys(), ...contexts.keys()]))
       if (key.startsWith("app:") && !o.apps.viewFor(key.slice(4))) service.forget({ type: "app", dossier: key.slice(4) });
   });
+  o.sites.onClosed(() => {
+    for (const key of new Set([...sessions.keys(), ...contexts.keys()]))
+      if (key.startsWith("site:") && !o.sites.designView(key.slice(5))) service.forget({ type: "site", id: key.slice(5) });
+  });
 
   const service: DesignService = {
     overlays: { show() {}, hide() {}, forget() {}, onColumnClosed: () => () => {} },
@@ -287,13 +308,18 @@ export function createDesign(o: {
       // A host that does not answer rejects: the button keeps its last state.
       const r = s ? await o.agent.request<SuiviDesign | null>("design.suivi", { projet: s.projet.projet }) : v ? await suivi(t, v) : null;
       const projet = r?.projet ?? s?.projet ?? null;
-      if (!projet) return { actif: false, projet: null, indisponible: UNAVAILABLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
-      return { actif: !!s, projet, indisponible: null, destination: r?.destination ?? null, sansDestination: r?.sansDestination ?? null, panier: r?.panier ?? 0, nom: r?.nom ?? "" };
+      if (!projet) return { actif: false, projet: null, indisponible: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
+      // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
+      const indisponible = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAILABLE_DESIGN_SITE : null;
+      return { actif: !!s, projet, indisponible, destination: r?.destination ?? null, sansDestination: r?.sansDestination ?? null, panier: r?.panier ?? 0, nom: r?.nom ?? "" };
     },
 
     async toggle(t) {
       const key = cleCible(t);
       if (sessions.has(key)) return service.stop(t);
+      const site = t.type === "site" ? o.sites.designView(t.id) : null;
+      // Unavailable in the site app's window: why, in its bar; nothing injected.
+      if (t.type === "site" && !site?.available) return o.sites.infoNotice(t.id, UNAVAILABLE_DESIGN_SITE);
       const v = view(t);
       if (!v) return;
       // The page whose address gives the project, read with the address: the only one ever armed.
@@ -324,6 +350,11 @@ export function createDesign(o: {
       const onClose = (e: any) => e.target?.linkedBrowser === browser && off();
       const onCrash = (e: any) => e.isTrusted && e.originalTarget === browser && off();
       const onUnload = () => service.forget(t);
+      // A site app's own stops: ⌂, « Entrer dans le site », an element's fullscreen.
+      const offState =
+        t.type === "site" && site
+          ? o.sites.controller(t.id)?.onState((e) => (e.vue !== site.vue || win.document.documentElement.hasAttribute("inDOMFullscreen")) && off())
+          : undefined;
       gBrowser.addTabsProgressListener(progress);
       gBrowser.tabContainer.addEventListener("TabSelect", onSelect);
       gBrowser.tabContainer.addEventListener("TabClose", onClose);
@@ -334,6 +365,7 @@ export function createDesign(o: {
         target: t, key, projet: r.projet, browser, win, wgp, generation: 0, memeDocument: false, armed: false, attente: null,
         destination: { destination: r.destination, sansDestination: r.sansDestination }, guarded: new Set(), unguardTimer: undefined,
         cleanup: () => {
+          offState?.();
           gBrowser.removeTabsProgressListener(progress);
           gBrowser.tabContainer.removeEventListener("TabSelect", onSelect);
           gBrowser.tabContainer.removeEventListener("TabClose", onClose);
@@ -414,7 +446,9 @@ export function createDesign(o: {
       const r = v ? await suivi(t, v).catch(() => null) : null;
       if (!v || !r || cartAsks.get(cleCible(t)) !== n) return;
       const [l, h] = [v.win.innerWidth, v.win.innerHeight];
-      const place = { x: Math.max(0, l - MARGE - LARGEUR_PANIER), y: MARGE, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - 2 * MARGE) };
+      // A site app's cart starts under its bar (Electron's margeHaute).
+      const y = t.type === "site" ? HAUTEUR_BARRE_SITE + MARGE : MARGE;
+      const place = { x: Math.max(0, l - MARGE - LARGEUR_PANIER), y, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - y - MARGE) };
       show(cleCible(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
     },
 
@@ -425,7 +459,7 @@ export function createDesign(o: {
       const fenetreId = t.type === "fenetre" ? t.fenetreId : await o.mainWindow();
       if (!fenetreId) return;
       o.dispatch({ type: "ouvrirRelecture", fenetreId, projet: r.projet.projet, nom: r.nom.slice(0, 80) });
-      if (t.type === "app") o.toFront(fenetreId);
+      if (t.type !== "fenetre") o.toFront(fenetreId);
     },
 
     overlayContext(t, modes = ["bulle", "panier", "message"]) {

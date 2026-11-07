@@ -62,6 +62,9 @@ export function checkClientName(nom: unknown): string {
 
 /** Copies of Electron's design texts: noyau's INDISPONIBLE_DESIGN, ipc.ts's invalide, service.ts's ajouter. */
 export const UNAVAILABLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
+/** Copies of noyau's INDISPONIBLE_DESIGN_SITE and AVERTISSEMENT_CAPTURE_SITE (design/projets.ts). */
+export const UNAVAILABLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
+export const CAPTURE_WARNING_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 export const INVALID_REQUEST = "Demande invalide";
 export const NOTHING_AIMED = "Aucun élément visé.";
 /** An element's or a batch's id (ipc.ts's `id.length <= 64`). */

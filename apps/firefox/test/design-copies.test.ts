@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { cleanCapture, cleanSource, cleCible, firefoxViewfinderScript, placeBulle, sourceExpression, STOP_SCRIPT } from "../chrome/store/design-copies";
+import { cleanCapture, cleanSource, cleCible, firefoxViewfinderScript, placeBulle, sourceExpression, STOP_SCRIPT, TAILLE_BULLE_SITE } from "../chrome/store/design-copies";
 
 const ELECTRON = readFileSync(path.resolve(import.meta.dirname, "../../navigateur/src/main/design/viseur.ts"), "utf8");
 const COPIES = readFileSync(path.resolve(import.meta.dirname, "../chrome/store/design-copies.ts"), "utf8");
@@ -61,12 +61,14 @@ describe("design copies", () => {
     expect(SERVICE).toContain(placed);
     const cle = /\nexport const cleCible = [\s\S]*?;\n/.exec(COPIES)?.[0] ?? "missing cleCible";
     expect(SERVICE).toContain(cle);
-    for (const start of ["export const TAILLE_BULLE = ", "const ECART_BULLE = "]) expect(SERVICE).toContain(line(COPIES, start));
+    for (const start of ["export const TAILLE_BULLE = ", "export const TAILLE_BULLE_SITE = ", "const ECART_BULLE = "]) expect(SERVICE).toContain(line(COPIES, start));
+    expect(TAILLE_BULLE_SITE).toEqual({ largeur: 320, hauteur: 190 });
     for (const k of ["LARGEUR_MESSAGE", "HAUTEUR_MESSAGE", "MARGE_MESSAGE"]) expect(SERVICE).toContain(line(COPIES, `export const ${k} = `).replace("export ", ""));
     for (const k of ["MARGE", "LARGEUR_PANIER"]) expect(CALQUE).toContain(line(COPIES, `export const ${k} = `).replace("export ", ""));
     expect(CALQUE).toContain(line(COPIES, "export const DUREE_MESSAGE_MS = "));
     expect(cleCible({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");
     expect(cleCible({ type: "app", dossier: "essai" })).toBe("app:essai");
+    expect(cleCible({ type: "site", id: "tuning" })).toBe("site:tuning");
   });
 
   // Electron's test/design/service.test.ts:232-241.
@@ -75,6 +77,8 @@ describe("design copies", () => {
     expect(placeBulle({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
     expect(placeBulle({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
     expect(placeBulle({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, { x: 0, y: 356, width: 1200, height: 44 }, [1200, 400], { hautMin: 356, hauteur: 190 })).toEqual({ x: 10, y: 356, width: 320, height: 190 });
+    // A site app: an element at the bottom of a short window stays under the 36 px bar (y 36, not 10).
+    expect(placeBulle({ x: 10, y: 150, largeur: 50, hauteur: 20 }, 1, { x: 0, y: 36, width: 1200, height: 164 }, [1200, 200], { hautMin: 36, hauteur: 190 })).toEqual({ x: 10, y: 36, width: 320, height: 190 });
     // Zoomed 1.5: the CSS rect scaled into the window.
     expect(placeBulle({ x: 100, y: 20, largeur: 100, hauteur: 30 }, 1.5, bornes, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
   });

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { HTML_MAX, ID_PROJET, INDISPONIBLE_DESIGN, Remarques, TRONQUE, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
+import { AVERTISSEMENT_CAPTURE_SITE, HTML_MAX, ID_PROJET, INDISPONIBLE_DESIGN, INDISPONIBLE_DESIGN_SITE, Remarques, TRONQUE, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
 import { JETON_RELECTURE, ServiceRelecture } from "../../navigateur/src/main/design/relecture";
 import { PLAGE_HORS_BLOC } from "../../navigateur/src/commun/modele";
 import { TEXTE_REMARQUE_MAX } from "../../navigateur/src/commun/api";
@@ -332,6 +332,7 @@ describe("design guards", () => {
 
   it("copy Electron's design texts and bounds", () => {
     expect(g.UNAVAILABLE_DESIGN).toBe(INDISPONIBLE_DESIGN);
+    expect([g.UNAVAILABLE_DESIGN_SITE, g.CAPTURE_WARNING_SITE]).toEqual([INDISPONIBLE_DESIGN_SITE, AVERTISSEMENT_CAPTURE_SITE]);
     expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRONQUE]);
     const ipc = readFileSync(new URL("../../navigateur/src/main/ipc.ts", import.meta.url), "utf8");
     expect(ipc).toContain(`const invalide = { ok: false as const, erreur: ${JSON.stringify(g.INVALID_REQUEST)} };`);

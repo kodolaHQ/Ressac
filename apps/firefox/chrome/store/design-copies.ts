@@ -14,6 +14,8 @@ export const SOURCE_TIMEOUT_MS = 1500;
 type Rectangle = { x: number; y: number; width: number; height: number };
 /** La bulle d'une remarque : 320×170, sous l'élément. */
 export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
+/** La bulle dans une appli de site : 20 px de plus pour la ligne d'avertissement. */
+export const TAILLE_BULLE_SITE = { largeur: 320, hauteur: 190 };
 const ECART_BULLE = 6;
 // The unavailability message: 360×56, 12 px from the top and right of the tab's view.
 export const LARGEUR_MESSAGE = 360;

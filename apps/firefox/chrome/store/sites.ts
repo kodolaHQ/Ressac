@@ -2,10 +2,10 @@
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows (Electron's main/sites/fenetres.ts).
 import type { Cadre } from "../../../navigateur/src/commun/modele";
-import { ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
+import { DUREE_AVIS_INFO_MS, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
 import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
-import { adresseRelative, adresseSurDomaine } from "../../../../packages/noyau/src/sites/adresses";
+import { adresseRelative, adresseSurDomaine, hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
 import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import type { SiteChrome } from "../../noyau/sites";
@@ -65,6 +65,21 @@ export interface SiteWindowController {
   homeGesture(): void;
   /** Watches the home's frame: any document load in it other than a page of the served copy is cancelled before it starts. */
   guardHome(frame: HTMLIFrameElement): void;
+}
+
+/** Where the design mode aims in an app's window (Electron's VueDesignSite). */
+export interface SiteDesignView {
+  win: Window;
+  nom: string;
+  vue: EtatFenetreSite["vue"];
+  /** The app view's <browser>. */
+  browser: any;
+  /** The home's frame (data-testid site-cadre-accueil in the bar) when the home is shown and shows this app's served copy (homePage), else null. */
+  home: HTMLIFrameElement | null;
+  /** Where to aim, in the site window's coordinates: the home frame's (bar rect + frame rect), else the view's. */
+  bounds: { x: number; y: number; width: number; height: number };
+  /** Electron's vueDesign.disponible. */
+  available: boolean;
 }
 
 interface OpenSite {
@@ -477,12 +492,19 @@ function attach(s: OpenSite, browser: any): void {
       if (!progress.isTopLevel) return;
       browser.browsingContext?.sessionHistory?.evictAllDocumentViewers();
       // A new page: the mention of a link blocked on the previous one falls (Electron's did-navigate).
-      if (!(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) s.notice.clear();
+      if (!(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
+        s.notice.clear();
+        // The info mention falls at the next page too (Electron's avisInfo).
+        if (s.hostNotice?.genre === "info") s.hostNotice = null;
+      }
       // After the tab browser's own listener has updated canGoBack and canGoForward.
       Services.tm.dispatchToMainThread(() => broadcast(s));
     },
   });
   browser.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION | Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
+  // An element's fullscreen in or out (the design mode stops, ✎ greys): the state is broadcast. Kept on the window.
+  const fullscreen = ((win as any).webaiosSiteFullscreen = new (win as any).MutationObserver(() => broadcast(s)));
+  fullscreen.observe(win.document.documentElement, { attributes: true, attributeFilter: ["inDOMFullscreen"] });
   // The favicon Firefox shows for the page (a data: URL from its FaviconLoader), noted as Electron's faviconEnDonnees.
   let favicon: string | null = null;
   win.gBrowser.tabContainer.addEventListener("TabAttrModified", (e: CustomEvent<{ changed: string[] }>) => {
@@ -718,6 +740,49 @@ export const sites = {
   viewFor(id: string): { browser: any; window: Window } | undefined {
     const s = open.get(id);
     return s?.view && !s.window.closed ? { browser: s.view, window: s.window } : undefined;
+  },
+  /** Electron's vueDesign: where the design mode aims and whether it is available; null if the window or its view is not there. */
+  designView(id: string): SiteDesignView | null {
+    const s = open.get(id);
+    if (!s?.view || s.window.closed) return null;
+    const win = s.window;
+    const rect = (e: Element) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    let home: HTMLIFrameElement | null = null;
+    let bounds = rect(s.view);
+    if (s.vue === "accueil") {
+      const bar = win.document.getElementById("webaios-site-bar") as HTMLIFrameElement | null;
+      const f = bar?.contentDocument?.querySelector('[data-testid="site-cadre-accueil"]') as HTMLIFrameElement | null;
+      const spec = f?.contentDocument?.documentURI;
+      if (bar && f && spec && spec !== "about:blank" && homePage(id, { spec })) {
+        home = f;
+        const [b, h] = [rect(bar), rect(f)];
+        bounds = { x: b.x + h.x, y: b.y + h.y, width: h.width, height: h.height };
+      }
+    }
+    const url: string = s.view.currentURI?.spec ?? "";
+    const hote = httpHost(url);
+    const available =
+      !win.document.documentElement.hasAttribute("inDOMFullscreen") &&
+      (s.vue === "accueil"
+        ? home !== null
+        : s.vue === "site" && decisionOuverture(url, context(s)) === "dans-l-appli" && hote !== null && !hoteDansSite(hote, context(s).connexion));
+    return { win, nom: s.site.declaration.nom, vue: s.vue, browser: s.view, home, bounds, available };
+  },
+  /** Electron's avisInfo: a passing mention in the bar, gone after DUREE_AVIS_INFO_MS or at the next page; never over a blocked link's. */
+  infoNotice(id: string, texte: string): void {
+    const s = open.get(id);
+    if (!s || s.window.closed || s.notice.avis?.genre === "lien-bloque") return;
+    const avis: AvisBarre = { genre: "info", texte };
+    s.hostNotice = avis;
+    broadcast(s);
+    setTimeout(() => {
+      if (s.hostNotice !== avis) return;
+      s.hostNotice = null;
+      broadcast(s);
+    }, DUREE_AVIS_INFO_MS);
   },
   /** Electron's naviguerPourAgent: a load WebAiOs wants, on the app's domains only; kept for after the card. */
   navigateForAgent(id: string, url: string): "charge" | "en-attente" | "refuse" {
