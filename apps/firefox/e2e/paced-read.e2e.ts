@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -56,7 +59,15 @@ beforeAll(async () => {
   [a, b] = await Promise.all([site("site-a"), site("site-b")]);
   a.peer = `http://site-b.test:${b.port}/bounce`;
   b.peer = `http://site-a.test:${a.port}/bounce`;
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1", WEBAIOS_TEST_LECTURE_MENAGEE: "1" } });
+  // The starter widgets would harvest the real web (the fake docker runs them on the Mac), their article reads holding
+  // the two read places for up to 30 s each: here they are the same widgets without a harvest.
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
+  for (const id of ["meteo", "actus-tech", "daily-dev"]) {
+    const { recolte: _, ...widget } = JSON.parse(await readFile(path.resolve(import.meta.dirname, `../../../packages/noyau/modeles/widgets/${id}/widget.json`), "utf8"));
+    await mkdir(path.join(dataDir, "espace/accueil/widgets", id), { recursive: true });
+    await writeFile(path.join(dataDir, "espace/accueil/widgets", id, "widget.json"), JSON.stringify(widget));
+  }
+  w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1", WEBAIOS_TEST_LECTURE_MENAGEE: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
@@ -70,7 +81,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await w?.close();
-  await Promise.all([a?.close(), b?.close()]);
+  await Promise.all([a?.close(), b?.close(), w && rm(w.dataDir, { recursive: true, force: true })]);
 });
 beforeEach(() => {
   a.hits.length = 0;
