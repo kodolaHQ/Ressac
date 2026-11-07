@@ -1,9 +1,11 @@
 // Agent app windows (Electron's main/applications/fenetres.ts): one window per running app, the app's page alone, in
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
+import type { EtatDesign } from "../../../navigateur/src/commun/api";
 import type { Cadre, EtatAcces } from "../../../navigateur/src/commun/modele";
 import { dossierValide } from "./app-folder";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
+import type { DesignService } from "./design";
 import { appContainer, isAppContainer, removeAppContainer } from "./containers";
 import { frameFeatures, frameOf, installGuard, openInContainer } from "./sites";
 
@@ -31,14 +33,15 @@ let dataDir = "";
 let quitting = false;
 const closeListeners = new Set<() => void>();
 let access: () => EtatAcces = () => ({ agent: "L'agent", onglets: {} });
-let review: (dossier: string) => void = () => {};
+let design: Pick<DesignService, "etat" | "toggle" | "openCart" | "relire"> | null = null;
 
 /** What the badge frame of an app window gets from the chrome (ui/badge-api.ts copies every value it hands over). */
 export interface BadgeChrome {
   acces: { etat(): EtatAcces; couper(id: unknown, droit: unknown): void };
   surAcces(cb: (e: EtatAcces) => void): () => void;
   pastilleTaille(ouverte: unknown): void;
-  relire(): void;
+  /** Its window's design mode (target `app`, from the window, never from the frame). */
+  design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
 }
 
 // Electron's fenetres.ts sizes: closed, the WebAiOs button alone or with the agent's access; open, its bubble or menu.
@@ -287,12 +290,13 @@ export const apps = {
   },
   /**
    * The badge of an app window (Electron's pastille): only its own app's access (accesDe), the frame sized by `size` as
-   * that access and its menu change, « Relire ce projet » on its own app. Undefined if the window is not an app's.
+   * that access and its menu change, its own app's design mode. Undefined if the window is not an app's.
    */
   badge(win: Window, size: (width: number, height: number) => void): BadgeChrome | undefined {
     const dossier = apps.dossierOf(win);
     if (!dossier) return undefined;
     const id = "app:" + dossier;
+    const target = { type: "app" as const, dossier };
     // Electron's accesDe: never another tab's access.
     const own = (): EtatAcces => {
       const e = access();
@@ -335,7 +339,14 @@ export const apps = {
         opened = ouverte;
         place();
       },
-      relire: () => review(dossier),
+      design: {
+        // Set by bindApps, before any app window opens.
+        etat: () => design!.etat(target),
+        basculer: () => void design!.toggle(target),
+        panier: () => void design!.openCart(target),
+        // Electron's design.relire: the Review page of any app, one without manifest included (service.ts:443).
+        relire: () => void design!.relire(target),
+      },
     };
   },
   /** The host's requests (noyau/applications.ts chrome), positional params. */
@@ -371,14 +382,14 @@ const redirects = {
 
 /**
  * Started with the store: the host the windows report to, the main window tab for what leaves an app, the agent's
- * access (the badges) and an app's Review page in the main window.
+ * access (the badges) and the design mode of each app window.
  */
-export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string, o: { access: () => EtatAcces; review: (dossier: string) => void }): void {
+export function bindApps(agent: AgentHost, openInTab: (url: string) => void, dir: string, o: { access: () => EtatAcces; design: NonNullable<typeof design> }): void {
   host = agent;
   dataDir = dir;
   openTab = openInTab;
   access = o.access;
-  review = o.review;
+  design = o.design;
   // From the start, not with the first window: an app container left from a previous run loads nothing either.
   installGuard();
   Services.obs.addObserver(redirects, "http-on-examine-response");

@@ -95,7 +95,8 @@ export function setupAppWindow(win: Window, dossier: string): void {
   doc.getElementById("navigator-toolbox")!.hidden = true;
   routeOpens(win, apps);
   // Firefox's tab, address and history keys do nothing here; ⌘R reloads the view; ⌘W and ⇧⌘W close the window; ⌘N
-  // opens a main window. ⌥⌘I stays Firefox's (the view's dev tools, Electron's openDevTools).
+  // opens a main window; ⇧⌘D toggles this window's design mode. ⌥⌘I stays Firefox's (the view's dev tools, Electron's
+  // openDevTools).
   for (const k of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS, "goBackKb", "goForwardKb"]) doc.getElementById(k)?.setAttribute("disabled", "true");
   win.addEventListener(
     "keydown",
@@ -107,6 +108,7 @@ export function setupAppWindow(win: Window, dossier: string): void {
       if (s.type === "fenetre") win.OpenBrowserWindow();
       else if (s.type === "fermerFenetre" || (s.type === "raccourci" && s.r === "fermerOnglet")) win.close();
       else if (s.type === "naviguer" && (s.c === "recharger" || s.c === "rechargerSansCache")) win.gBrowser.selectedBrowser.reload();
+      else if (s.type === "design") void ChromeUtils.importESModule(STORE).ready.then((store: import("../store").WebAiOsStore) => store.design.shortcut(win));
     },
     true,
   );
