@@ -161,6 +161,22 @@ describe("design overlay", () => {
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before);
   });
 
+  it("the open column reads its cart a few times, never in a loop", async () => {
+    await open();
+    await modeOn();
+    await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
+    await sleep(500);
+    await svc(`window.__calls = []; const real = (store.agent.__real ??= store.agent.request); store.agent.request = (method, p) => (window.__calls.push(method), real.call(store.agent, method, p)); return 1;`);
+    try {
+      await sleep(3000);
+      const calls = await m.execute<string[]>(`return window.__calls.filter((c) => ["design.suivi", "design.panier", "design.lots"].includes(c));`);
+      expect(calls.length).toBeLessThan(20);
+    } finally {
+      await svc("if (store.agent.__real) store.agent.request = store.agent.__real; return 1;");
+    }
+    await modeOff();
+  });
+
   it("the bubble takes the keyboard, ⌘Enter adds, Escape cancels, then the page has it back", async () => {
     await open();
     await modeOn();
@@ -329,11 +345,14 @@ describe("design overlay", () => {
     await expect.poll(() => frameOf<string | null>("webaios-design-calque", `return doc.querySelector('[role="alert"]')?.textContent ?? null;`).then((f) => f?.v ?? null), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleShown()).toBe(true);
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bulle");
-    // Réessayer: the host starts again; the UI's design state reads as on.
-    await svc("await store.agent.ensure(); return 1;");
-    await expect
-      .poll(() => inUi<boolean | null>(m, "return ui.webaios.design.etat().then((e) => e.actif, () => null);"), { timeout: 30_000 })
-      .toBe(true);
+    // Réessayer: the host starts again; the UI reads its design state again by itself (the test never asks it).
+    await svc(`window.__etats = []; const real = (d.__realEtat ??= d.etat); d.etat = (x) => real.call(d, x).then((e) => (window.__etats.push(e.actif), e)); return 1;`);
+    try {
+      await svc("await store.agent.ensure(); return 1;");
+      await expect.poll(() => m.execute<boolean[]>("return window.__etats;"), { timeout: 30_000 }).toContain(true);
+    } finally {
+      await svc("if (d.__realEtat) d.etat = d.__realEtat; return 1;");
+    }
     await pressKeys(m, "Escape");
     await modeOff();
   });

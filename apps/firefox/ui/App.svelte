@@ -85,10 +85,9 @@
   });
   const firefox = api as unknown as ApiFirefox;
   // The column is a chrome frame beside the page: opened again on another project, so that it shows that one's cart.
-  $effect(() => {
-    void panierDesign?.projet?.projet;
-    firefox.designVolet(!!panierDesign);
-  });
+  // A string, not the state object (new at each read): the column opens once per project, never at each read.
+  const projetVolet = $derived(panierDesign?.projet?.projet ?? null);
+  $effect(() => firefox.designVolet(projetVolet !== null));
   $effect(() =>
     firefox.surVoletFerme(() => {
       design.panierDemande = false;

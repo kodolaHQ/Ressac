@@ -187,9 +187,11 @@ export function createDesign(o: {
     notify();
   };
   const show = (key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: ContexteCalque) => {
+    const same = JSON.stringify(contexts.get(key)?.[ctx.mode]) === JSON.stringify(ctx);
     contexts.set(key, { ...contexts.get(key), [ctx.mode]: ctx });
     service.overlays.show(key, win, place, ctx);
-    notify();
+    // Nothing new to read: a notify would make the UI read again, and open the same cart again, in a loop.
+    if (!same) notify();
   };
 
   const guardFrame = (s: Session, wgp: any) => {
@@ -431,6 +433,8 @@ export function createDesign(o: {
  * A project is allowed only if it is the one the overlay shows (projetPermis); the host checks every bound again.
  * `modes`: what this frame shows. `annuler`: the frame's own (the cart column's « Fermer »), else the service's cancel.
  */
+// Trust boundary: the frame is a system-principal chrome document, so it could reach the chrome itself; this API is a
+// convention for the frozen UI, and the real guards are these chrome-side checks and the host's.
 export function overlayApi(
   o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: ContexteCalque["mode"][]; annuler?: () => void },
   t: DesignTarget,
