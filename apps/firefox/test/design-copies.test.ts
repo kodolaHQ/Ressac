@@ -72,6 +72,12 @@ describe("design copies", () => {
   });
 
   // Electron's test/design/service.test.ts:232-241.
+  it("drift: the home's MOUSE (design-home.ts) is the actor's (design-actor.ts), word for word", () => {
+    const mouse = (file: string) => line(readFileSync(path.resolve(import.meta.dirname, file), "utf8").split("\n").map((l) => l.replace(/^export /, "")).join("\n"), "const MOUSE = ");
+    expect(mouse("../chrome/store/design-home.ts")).toBe(mouse("../chrome/agent/design-actor.ts"));
+    expect(mouse("../chrome/agent/design-actor.ts")).toContain('"pointerdown"');
+  });
+
   it("placeBulle: under the element, bounded to the window", () => {
     const bornes = { x: 300, y: 50, width: 900, height: 750 };
     expect(placeBulle({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });

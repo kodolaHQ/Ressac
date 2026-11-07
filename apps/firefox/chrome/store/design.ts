@@ -30,6 +30,7 @@ import {
   TAILLE_BULLE_SITE,
   type CaptureViseur,
 } from "./design-copies";
+import { homeViewfinder } from "./design-home";
 import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
@@ -93,6 +94,10 @@ interface Session {
   armed: boolean;
   attente: { contexte: ContexteDesign; capture: string | null } | null;
   destination: { destination: string | null; sansDestination: string | null };
+  /** The page's viewfinder: the actor of `wgp`, or the chrome's own on a site app's home frame (spike S6). */
+  query(name: "arm" | "stop" | "source" | "unguard", data?: { code?: string }): Promise<unknown>;
+  /** A site app's home: `browser` is its frame. */
+  home: boolean;
   /** The process-root frames sent a guard, until each is unguarded. */
   guarded: Set<any>;
   unguardTimer: ReturnType<typeof setTimeout> | undefined;
@@ -235,8 +240,8 @@ export function createDesign(o: {
 
   /** The actor's stop; if it throws or never answers, the top's guard is lifted anyway. true when it answered. */
   async function disarm(s: Session): Promise<boolean> {
-    const answered = await within(ask(s.wgp, "stop", { code: STOP_SCRIPT }).then(() => true, () => false), STOP_TIMEOUT_MS, false);
-    if (!answered) await within(ask(s.wgp, "unguard").then(() => true, () => false), STOP_TIMEOUT_MS, false);
+    const answered = await within(s.query("stop", { code: STOP_SCRIPT }).then(() => true, () => false), STOP_TIMEOUT_MS, false);
+    if (!answered) await within(s.query("unguard").then(() => true, () => false), STOP_TIMEOUT_MS, false);
     return answered;
   }
 
@@ -248,8 +253,10 @@ export function createDesign(o: {
     if (pageOf(s.browser) !== s.wgp) return service.stop(s.target);
     s.armed = true;
     clearTimeout(s.unguardTimer);
-    const answer = ask(s.wgp, "arm", { code: firefoxViewfinderScript() }).catch(() => null);
-    for (const bc of s.browser.browsingContext.getAllBrowsingContextsInSubtree()) guardFrame(s, bc.currentWindowGlobal);
+    // An arm on a home that is removed never answers: left pending, the session is gone by then (stopped on onState).
+    const answer = s.query("arm", { code: firefoxViewfinderScript() }).catch(() => null);
+    // The home's frames are in the parent process, behind the home frame's guard.
+    if (!s.home) for (const bc of s.browser.browsingContext.getAllBrowsingContextsInSubtree()) guardFrame(s, bc.currentWindowGlobal);
     const r = await answer;
     // A stale answer: whoever made it stale (stop, forget) has unguarded the frames.
     if (!current(s, g)) return;
@@ -262,14 +269,16 @@ export function createDesign(o: {
     s.unguardTimer = setTimeout(() => s.armed || unguardFrames(s), SWALLOW_MS);
     const capture = cleanCapture(r);
     if (!capture) return service.stop(s.target);
-    // A site app's pages: nothing is read in the page's world, the source stays unknown (Electron's armer).
-    const site = s.target.type === "site";
-    const source = site ? null : cleanSource(await within(ask(s.wgp, "source", { code: sourceExpression(capture.selecteur) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
+    // A site app's pages: nothing is read in the page's world, the source stays unknown (Electron's armer). Its home is the agent's code: read.
+    const site = s.target.type === "site" && !s.home;
+    const source = site ? null : cleanSource(await within(s.query("source", { code: sourceExpression(capture.selecteur) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
     if (!current(s, g)) return;
     if (pageOf(s.browser) !== s.wgp) return service.stop(s.target);
     const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
     if (!current(s, g)) return;
     const { rect, ...contexte } = capture;
+    // Electron's address for the home (no served copy's token): the noyau tags such remarks [accueil] (pty/contexte.ts).
+    if (s.home && s.target.type === "site") contexte.adresse = `webaios-site://${s.target.id}${new URL(contexte.adresse).pathname}`;
     s.attente = { contexte: { ...contexte, source }, capture: png };
     const v = view(s.target);
     if (v?.browser !== s.browser || pageOf(s.browser) !== s.wgp || s.win.closed) return service.stop(s.target);
@@ -277,7 +286,7 @@ export function createDesign(o: {
     if (!b) return service.stop(s.target);
     const bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
     const win: [number, number] = [s.win.innerWidth, s.win.innerHeight];
-    const place = placeBulle(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { hautMin: bounds.y, hauteur: TAILLE_BULLE_SITE.hauteur } : {});
+    const place = placeBulle(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { hautMin: bounds.y, hauteur: TAILLE_BULLE_SITE.hauteur } : s.home ? { hautMin: bounds.y } : {});
     show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: contexte.etiquette, source: sourceText(source), ...s.destination, avertissement: site ? CAPTURE_WARNING_SITE : null });
   }
 
@@ -367,7 +376,9 @@ export function createDesign(o: {
       // Window capture: before tabs.ts's handler, which stops it at the tab panels.
       win.addEventListener("oop-browser-crashed", onCrash, true);
       win.addEventListener("unload", onUnload);
+      const home = t.type === "site" && browser === site?.home;
       const s: Session = {
+        query: home ? homeViewfinder(browser).query : (name, data) => ask(wgp, name, data), home,
         target: t, key, projet: r.projet, browser, win, wgp, generation: 0, memeDocument: false, armed: false, attente: null,
         destination: { destination: r.destination, sansDestination: r.sansDestination }, guarded: new Set(), unguardTimer: undefined,
         cleanup: () => {

@@ -395,3 +395,5 @@ export { containerRequests, loadImage } from "./site-home";
 export { actionImagesContainer } from "./action-media";
 // For the e2e: test mode writes notifications to a file, so no alert is ever shown to click.
 export { alertObserver } from "./notifications";
+// For the e2e: the home viewfinder's own sandbox, probed with the code it evaluates (plan 36, S6's reach list).
+export { homeViewfinder } from "./design-home";
