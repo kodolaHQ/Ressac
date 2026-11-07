@@ -14,9 +14,9 @@ export type SiteRoute = string | ((req: IncomingMessage, res: ServerResponse) =>
  * Electron's serveurSites: one server for every `*.localhost` test host, answering by the Host header. `definir(hote,
  * chemin, route)` adds a page; `/cookie` sets a cookie on any host; `couper(hote)` resets that host's connections (a
  * stopped site). Every request received is noted in `requetes`, with its method.
- * Firefox resolves these names only with a DNS override: see `resolveLocalHosts`.
+ * Firefox resolves these names only with a DNS override: see `resolveLocalHosts`. `port`: a fixed one (default: any free port).
  */
-export async function startSitesServer(): Promise<{
+export async function startSitesServer(o: { port?: number } = {}): Promise<{
   port: number;
   /** `http://<hote>:<port><chemin>`. */
   url(hote: string, chemin?: string): string;
@@ -49,7 +49,7 @@ export async function startSitesServer(): Promise<{
     }
     res.writeHead(404).end();
   });
-  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  await new Promise<void>((ok) => serveur.listen(o.port ?? 0, "127.0.0.1", ok));
   const port = (serveur.address() as AddressInfo).port;
   return {
     port,
