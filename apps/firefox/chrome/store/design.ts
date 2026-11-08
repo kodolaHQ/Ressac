@@ -547,7 +547,7 @@ export function overlayApi(
     },
     envoyer: async (p) => (allowed(p) ? o.host.request<ResultatExtension>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
-      // accueil.change: sent at each host start (store/index.ts), so a restarted host's cart is read again.
+      // accueil.change: sent at each noyau start (noyau/host.ts), so a restarted host's cart is read again.
       const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
       return () => offs.forEach((f) => f());
     },

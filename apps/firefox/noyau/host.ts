@@ -172,6 +172,8 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
         console.error("[webaios] la surveillance de l'accueil n'a pas démarré :", e);
       }
       diffuserAcces();
+      // Each noyau start (a restart included): what the pages read while it was down is read again.
+      rpc.notify("accueil.change");
       return n;
     },
     (e: Error) => {

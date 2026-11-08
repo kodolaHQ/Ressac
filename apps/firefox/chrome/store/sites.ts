@@ -479,7 +479,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       relire: () => void design!.relire({ type: "site", id }),
       openCart: () => void design!.openCart({ type: "site", id }),
       onChange(cb) {
-        // accueil.change: sent at each host start, so a restarted host is read again.
+        // accueil.change: sent at each noyau start, so a restarted host is read again.
         const offs = [...["design.change", "accueil.change", HOST_EXITED].map((m) => host!.on(m, () => cb())), design!.onChange(cb)];
         return () => offs.forEach((f) => f());
       },

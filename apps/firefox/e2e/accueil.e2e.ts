@@ -548,6 +548,38 @@ describe("la page d'accueil", () => {
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toContain("Veille");
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] iframe');`);
   });
+
+});
+
+// Widgets with no harvest: nothing the new noyau does writes, so only its start can make the page read again.
+describe("the home page after a host restart", () => {
+  let dataDir: string;
+  let w: LaunchedWebAiOs;
+  let m: Marionette;
+  const titles = () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`);
+
+  beforeAll(async () => {
+    dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-relance-"));
+    await mkdir(path.join(ACCUEIL(dataDir), "widgets"), { recursive: true });
+    await ecrireWidget(dataDir, "alpha", { nom: "Alpha", affichage: AFFICHAGE("alpha") });
+    w = await launchWebAiOs({ dataDir });
+    m = w.marionette;
+    await m.setContext("chrome");
+    await waitReady(m);
+    await attendre(titles, (ts) => ts.includes("Alpha"), "the first widget", 20_000);
+  });
+  afterAll(async () => {
+    await w?.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("a widget added while the host was stopped shows once it starts again (Réessayer)", async () => {
+    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
+    await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
+    await ecrireWidget(dataDir, "pendant-arret", { nom: "Pendant l'arrêt", affichage: AFFICHAGE("pendant-arret") });
+    await m.execute(`return (async () => { await window.webaiosWindow.store.agent.ensure(); return true; })();`);
+    expect(await attendre(titles, (ts) => ts.includes("Pendant l'arrêt"), "the widget added while the host was stopped", 20_000)).toContain("Alpha");
+  });
 });
 
 describe("la page d'accueil, atelier arrêté", () => {
