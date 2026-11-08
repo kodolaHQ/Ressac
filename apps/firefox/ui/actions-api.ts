@@ -42,6 +42,8 @@ export function createActionsApi(o: {
   const refus = { ok: false as const, erreur: ACTIONS_EN_ESPACE_PRIVE };
   /** The host stopped or did not answer a request: the next `acces` reads again (afterRestart). */
   let hostDown = false;
+  /** The `acces` handled so far: a refusal answered before one of them but handled after it still reads again. */
+  let accesSeen = 0;
   /** The last answer to each read of the page: a host that stopped answers nothing, and the page keeps what it showed. */
   const lastRead = new Map<string, unknown>();
   /**
@@ -51,13 +53,16 @@ export function createActionsApi(o: {
   const ask = async <T>(method: string, params: unknown, empty: () => T, keep = false): Promise<T> => {
     if (prive()) return empty();
     const key = JSON.stringify([method, params]);
+    const seen = accesSeen;
     const r = await host.request<T>(method, params).then(
       (v) => {
         if (keep) lastRead.set(key, v);
         return structuredClone(v);
       },
       () => {
-        hostDown = true;
+        // An acces handled meanwhile may be the noyau's first, read with this refusal in one go: read again now.
+        if (accesSeen !== seen) readAgain();
+        else hostDown = true;
         return keep && lastRead.has(key) ? structuredClone(lastRead.get(key) as T) : empty();
       },
     );
@@ -69,12 +74,14 @@ export function createActionsApi(o: {
    * change) are ignored.
    */
   const restarted = new Set<() => void>();
+  const readAgain = () => restarted.forEach((cb) => cb());
   o.untilUnload(host.on(HOST_EXITED, () => (hostDown = true)));
   o.untilUnload(
     host.on("acces", () => {
+      accesSeen++;
       if (!hostDown) return;
       hostDown = false;
-      restarted.forEach((cb) => cb());
+      readAgain();
     }),
   );
   /** An action's accord or folder is gone: none of its cached reads, nor the cached list, may come back. */

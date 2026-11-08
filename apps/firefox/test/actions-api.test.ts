@@ -346,6 +346,22 @@ describe("createActionsApi", () => {
     expect(change).toHaveBeenCalledTimes(1);
   });
 
+  // One read of the host's pipe can hold both the refusal and the noyau's first acces: the acces listener runs before
+  // the refusal's handler.
+  it("a read refused just before the noyau's first acces, in the same read, reads again", async () => {
+    let refuse!: (e: Error) => void;
+    const { F, api, emit } = setup({ "actions.page": () => new Promise((_, no) => (refuse = no)) });
+    const a = api(F);
+    const change = vi.fn();
+    a.surChange(change);
+    const read = a.page("annonces", null);
+    await vi.waitFor(() => expect(refuse).toBeTypeOf("function"));
+    refuse(new Error("Le service des actions ne répond pas (agent arrêté ?)"));
+    emit("acces");
+    expect(await read).toBeNull();
+    expect(change).toHaveBeenCalledTimes(1);
+  });
+
   it("acces without a preceding exit does not read again", async () => {
     const { F, api, emit, calls } = setup({ "actions.direct": () => NONE });
     const change = vi.fn();
