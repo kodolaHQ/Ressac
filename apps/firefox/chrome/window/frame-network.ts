@@ -17,10 +17,22 @@ const warned = new WeakSet<Window>();
  */
 function onPress(e: Event): void {
   const t = ((e as any).composedTarget ?? e.target) as Node | null;
-  // A text node's element (3: Node.TEXT_NODE; the store's global has no Node).
-  const el = (t?.nodeType === 3 ? t.parentElement : t) as Element | null;
-  if (!el?.closest?.(":any-link")) return;
-  if (uiNetwork().isUiDocument(el.ownerDocument)) e.preventDefault();
+  if (t && underLink(t) && uiNetwork().isUiDocument(t.ownerDocument)) e.preventDefault();
+}
+
+/**
+ * Whether `node` is in a link in the flattened tree, the path the event takes: through slots (open or closed) and up
+ * from a shadow root to its host. `closest` alone stops at a shadow root.
+ */
+function underLink(node: Node): boolean {
+  let n: any = node;
+  for (let i = 0; n && i < 1024; i++) {
+    // 1: Node.ELEMENT_NODE, 11: DOCUMENT_FRAGMENT_NODE (the store's global has no Node).
+    if (n.nodeType === 1 && n.matches(":any-link")) return true;
+    n = n.openOrClosedAssignedSlot ?? n.parentNode;
+    if (n?.nodeType === 11) n = n.host ?? null;
+  }
+  return false;
 }
 
 /**

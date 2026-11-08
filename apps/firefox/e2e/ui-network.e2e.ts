@@ -128,6 +128,36 @@ const DNS_SCRIPT =
  * Links a person presses: #l opens its address in a tab through webaiosOuvrir (the click handler), #p is a plain link,
  * #s an SVG link. The display's own capture listener tries to stop every mousedown before the chrome sees it.
  */
+/**
+ * Links around shadow content (open, closed, a shadow inside a shadow), and light content slotted under a link of a
+ * shadow tree: a press must still be seen under its link. #hv is only hovered.
+ */
+const shadowDisplay = `<!doctype html><meta charset="utf-8"><title>ombre</title><body style="margin:0;font-size:14px">
+<a href="http://sh-open.${SFX}:15366/"><span id="h-open" style="display:inline-block"></span></a>
+<a href="http://sh-closed.${SFX}:15366/"><span id="h-closed" style="display:inline-block"></span></a>
+<a href="http://sh-nested.${SFX}:15366/"><span id="h-nested" style="display:inline-block"></span></a>
+<span id="h-slot" style="display:inline-block"><b>slotted</b></span>
+<a id="hv" href="http://hover.${SFX}:15366/">hover hover</a>
+<script>
+  const shadow = (id, mode, nested) => {
+    const root = document.getElementById(id).attachShadow({ mode });
+    const b = document.createElement("b");
+    b.textContent = "shadow " + id;
+    if (!nested) return root.append(b);
+    const inner = document.createElement("span");
+    root.append(inner);
+    inner.attachShadow({ mode: "open" }).append(b);
+  };
+  shadow("h-open", "open");
+  shadow("h-closed", "closed");
+  shadow("h-nested", "open", true);
+  // Light content slotted under a link that lives in a closed shadow root.
+  const slotLink = document.createElement("a");
+  slotLink.href = "http://sh-slot.${SFX}:15366/";
+  slotLink.append(document.createElement("slot"));
+  document.getElementById("h-slot").attachShadow({ mode: "closed" }).append(slotLink);
+</script>`;
+
 const linksDisplay = `<!doctype html><meta charset="utf-8"><title>lien</title>
 <p><a id="l" href="http://md.${SFX}:15366/" style="display:inline-block;font-size:20px;padding:4px">ouvrir</a>
 <a id="p" href="http://${host("plain")}/plain" style="display:inline-block;font-size:20px;padding:4px">simple</a></p>
@@ -213,6 +243,7 @@ describe("the UI's network", () => {
     widgetFiles(dataDir, "actus-tech", readFileSync(path.join(starter, "affichage.html"), "utf8"), JSON.parse(readFileSync(path.join(starter, "exemple.json"), "utf8")));
     widgetFiles(dataDir, "sonde", DISPLAY);
     widgetFiles(dataDir, "lien", linksDisplay);
+    widgetFiles(dataDir, "ombre", shadowDisplay);
     writeProject(dataDir, "essai", { manifeste: {} });
     const netsite = { nom: "Netsite", adresse: `http://netsite.localhost:${HTTP}/page`, domaines: ["netsite.localhost"] };
     writeSite(dataDir, "netsite", { declaration: netsite });
@@ -408,6 +439,28 @@ describe("the UI's network", () => {
     expect({ names: (await names()).filter((n) => n === "md" || n === "md-svg"), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
 
+  it("a press on shadow content inside a widget's link (open, closed, nested, slotted) resolves no name and opens no connection", { timeout: 60_000 }, async () => {
+    const tcp0 = net.tcp.length;
+    await expect.poll(() => m.execute(`return !!${widgetDoc("ombre")}?.getElementById("h-nested");`), { timeout: 15_000 }).toBe(true);
+    for (const id of ["#h-open", "#h-closed", "#h-nested", "#h-slot b"]) expect(await press("ombre", id, false), id).toBe("iframe");
+    await sleep(3000);
+    expect({ names: (await names()).filter((n) => n.startsWith("sh-")), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
+  });
+
+  it("hovering a widget's link resolves no name and opens no connection", { timeout: 60_000 }, async () => {
+    const tcp0 = net.tcp.length;
+    await m.execute(
+      `return (async () => { const sb = document.getElementById("webaios-sidebar"), ui = sb.contentWindow, f = ${widgetFrame("ombre")};
+       f.scrollIntoView({ block: "center" });
+       await new Promise((r) => ui.requestAnimationFrame(r));
+       const r = f.getBoundingClientRect(), q = f.contentDocument.getElementById("hv").getBoundingClientRect();
+       for (let i = 0; i < 10; i++) { ui.synthesizeMouseEvent("mousemove", r.left + q.left + 2 + i * 4, r.top + q.top + q.height / 2, {}); await new Promise((ok) => setTimeout(ok, 100)); }
+       ui.synthesizeMouseEvent("mousemove", 2, 2, {}); })();`,
+    );
+    await sleep(3000);
+    expect({ names: (await names()).filter((n) => n === "hover"), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
+  });
+
   it("a plain link in a widget, clicked, leaves the frame on its copy", { timeout: 60_000 }, async () => {
     expect(await press("lien", "#p", true)).toBe("iframe");
     await sleep(3000);
@@ -477,22 +530,33 @@ describe("the UI's network", () => {
        ui.synthesizeMouseEvent("mousedown", x, y, { button: 0, clickCount: 1 });
        ui.synthesizeMouseEvent("mouseup", 2, 2, { button: 0, clickCount: 1 });
        a.remove();
+       // A link around a closed shadow root's content.
+       const s = d.createElement("a"); s.href = "http://sys-sh." + arguments[0] + ":15366/"; s.style.cssText = a.style.cssText;
+       const h = d.createElement("span"); s.append(h); d.body.append(s);
+       const b = d.createElement("b"); b.textContent = "shadow shadow"; h.attachShadow({ mode: "closed" }).append(b);
+       await new Promise((r) => ui.requestAnimationFrame(r));
+       const p = h.getBoundingClientRect(), sx = p.left + 10, sy = p.top + p.height / 2;
+       ui.synthesizeMouseEvent("mousedown", sx, sy, { button: 0, clickCount: 1 });
+       ui.synthesizeMouseEvent("mouseup", 2, 2, { button: 0, clickCount: 1 });
+       s.remove();
        return hit; })();`,
       [SFX],
     );
     expect(hit).toBe("sys-md");
     await sleep(3000);
-    expect({ names: (await names()).filter((n) => n === "sys-md"), tcp: tcpSince(tcp0), httpConns: net.httpConns() - http0 }).toEqual({ names: [], tcp: 0, httpConns: 0 });
+    expect({ names: (await names()).filter((n) => n === "sys-md" || n === "sys-sh"), tcp: tcpSince(tcp0), httpConns: net.httpConns() - http0 }).toEqual({ names: [], tcp: 0, httpConns: 0 });
   });
 
   // Last: a navigation that went through would take the UI away. Their embedder is browser.xhtml: only the frame's mark says they are the UI's.
   it("the sidebar and the agent panel navigating themselves to the web reach no server", { timeout: 60_000 }, async () => {
+    const tcp0 = net.tcp.length;
+    const http0 = net.httpConns();
     // Refused at once (NS_ERROR_CONTENT_BLOCKED, thrown by the setter): what counts is that nothing reaches the server.
     for (const [tag, id] of [["ag", "webaios-agent"], ["sb", "webaios-sidebar"]])
       await m.execute(`try { document.getElementById(arguments[0]).contentWindow.location.href = arguments[1]; } catch (e) {}`, [id, `http://${host(`selfnav-${tag}`)}/selfnav-${tag}`]);
     await sleep(3000);
     expect(net.hits.filter((h) => h.label.startsWith("selfnav-")).map((h) => `${h.label} ${h.path}`)).toEqual([]);
-    expect((await names()).filter((n) => n.startsWith("selfnav-"))).toEqual([]);
+    expect({ names: (await names()).filter((n) => n.startsWith("selfnav-")), tcp: tcpSince(tcp0), httpConns: net.httpConns() - http0 }).toEqual({ names: [], tcp: 0, httpConns: 0 });
     expect(await m.execute(`return ["webaios-agent", "webaios-sidebar"].map((id) => document.getElementById(id).contentDocument?.documentURI);`)).toEqual([
       "chrome://browser/content/webaios/agent.html",
       "chrome://browser/content/webaios/sidebar.html",
