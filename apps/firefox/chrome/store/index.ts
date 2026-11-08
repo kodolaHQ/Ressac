@@ -21,6 +21,7 @@ import { createSitePermissions, type SitePermission, type SitePermissions } from
 import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
+import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
 import { gardienGestes } from "../../shared/geste-widget";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
@@ -121,7 +122,11 @@ const dataDir =
 
 const gestesWidgets = gardienGestes<string>();
 
+let uiNetState: UiNetworkState;
+
 async function start(): Promise<WebAiOsStore> {
+  // The UI's network net first, before any await: the windows read its state before they give their frames a src.
+  uiNetState = installUiNetwork(Services.env.get("WEBAIOS_TEST_UI_NETWORK_FAIL") || null);
   // Our history is the only one: Firefox's would grow unread. Set at runtime on the default branch, before any window
   // (favicons, back/forward and reopening a closed tab keep working: plan 24 spike S1).
   Services.prefs.getDefaultBranch("").setBoolPref("places.history.enabled", false);
@@ -390,6 +395,8 @@ export const ready: Promise<WebAiOsStore> = start();
 export { sites, publishSiteFrames } from "./sites";
 // Agent app windows: read synchronously by a window as it loads (chrome/window/app-window.ts).
 export { apps } from "./apps";
+// The UI's network net: read synchronously by a window before it gives its UI frames a src.
+export const uiNetwork: { state(): UiNetworkState; isUiDocument(doc: Document | null | undefined): boolean } = { state: () => uiNetState, isUiDocument };
 // For the e2e: the action images' channel, measured directly (plan 33 spike S2).
 export { containerRequests, loadImage } from "./site-home";
 export { actionImagesContainer } from "./action-media";

@@ -1,0 +1,127 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The UI's network net (chrome/store/ui-network.ts) on fake objects; Electron's reseau-interface.test.ts where it has a
+// meaning (no proxy, no webaios-icone: here).
+
+const ACCEPT = 1;
+const REJECT = -1;
+const MAIL = 1;
+const observers: [unknown, string][] = [];
+const categories: string[] = [];
+let registerFactory = vi.fn();
+Object.assign(globalThis as any, {
+  Ci: { nsIContentPolicy: { ACCEPT, REJECT_REQUEST: REJECT }, nsIDocShell: { APP_TYPE_MAIL: MAIL }, nsIComponentRegistrar: "registrar", nsIChannel: "channel" },
+  Cr: { NS_BINDING_ABORTED: 0x804b0002 },
+  Components: { ID: (s: string) => s, manager: { QueryInterface: () => ({ registerFactory: (...a: unknown[]) => registerFactory(...a) }) } },
+  ChromeUtils: { generateQI: () => () => ({}) },
+  Services: {
+    obs: { addObserver: (o: unknown, topic: string) => observers.push([o, topic]), notifyObservers: vi.fn() },
+    catMan: { addCategoryEntry: (c: string) => categories.push(c) },
+    wm: { getOuterWindowWithId: () => null },
+  },
+});
+const N = await import("../chrome/store/ui-network");
+
+/** A document at `uri` in a chrome (or content) context embedded by `embedder` (null: a window's top). */
+const doc = (uri: string, embedder: object | null = null, isContent = false): any => ({ documentURI: uri, defaultView: { browsingContext: { isContent, embedderElement: embedder } } });
+const frameIn = (owner: unknown, appType = 0): any => ({ ownerDocument: owner, frameLoader: { docShell: { appType } } });
+const browserXhtml = doc("chrome://browser/content/browser.xhtml");
+const sidebar = doc("chrome://browser/content/webaios/sidebar.html", frameIn(browserXhtml));
+const widget = doc("resource://webaios-widget-a/affichage-1.html", frameIn(sidebar));
+const widgetBlank = doc("about:blank", frameIn(widget));
+const tab = doc("resource://webaios-site-x/index.html", null, true);
+const li = (loadingDocument: unknown, browsingContext: unknown = null): any => ({ loadingDocument, browsingContext, externalContentPolicyType: 3 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  registerFactory = vi.fn();
+});
+
+describe("ui-network", () => {
+  it("the UI's loads: http, https, ws and wss are refused whatever the host, 127.0.0.1 and localhost included; nothing escapes the net", () => {
+    for (const u of ["http://127.0.0.1:1/x", "https://localhost/", "ws://a.example/", "wss://b.example/", "HTTP://X.EXAMPLE/"]) expect(N.isBlockedAddress(u), u).toBe(true);
+  });
+
+  it("chrome:, resource:, moz-extension:, data:, blob:, page-icon:, moz-remote-image: pass; a nested view-source: is judged by its inner URI", () => {
+    for (const u of [
+      "chrome://browser/content/webaios/sidebar.html",
+      "resource://webaios-widget-a/affichage-1.html",
+      "moz-extension://u/i.png",
+      "data:image/png;base64,AA",
+      "blob:null/1",
+      "page-icon:http://a.example/",
+      "moz-remote-image://?url=http%3A%2F%2Fa.example%2F",
+      "about:blank",
+    ])
+      expect(N.isBlockedAddress(u), u).toBe(false);
+    for (const u of ["view-source:http://a.example/", "view-source:view-source:https://a.example/"]) expect(N.isBlockedAddress(u), u).toBe(true);
+  });
+
+  it("a document is the UI's by its own address or an in-process ancestor's; browser.xhtml, a tab (even on a resource://webaios-site- address) and a document-less chrome channel are not", () => {
+    expect(N.isUiDocument(sidebar)).toBe(true);
+    expect(N.isUiDocument(widget)).toBe(true);
+    expect(N.isUiDocument(widgetBlank)).toBe(true);
+    expect(N.isUiDocument(doc("resource://webaios-test-net/p.html", frameIn(sidebar)))).toBe(true);
+    expect(N.isUiDocument(browserXhtml)).toBe(false);
+    expect(N.isUiDocument(tab)).toBe(false);
+    expect(N.isUiDocument(null)).toBe(false);
+    expect(N.isUiDocument({ documentURI: "chrome://browser/content/webaios/sidebar.html" } as any)).toBe(false);
+    const dead = Object.defineProperty({ documentURI: "about:blank" }, "defaultView", { get: () => { throw new TypeError("can't access dead object"); } });
+    expect(N.isUiDocument(dead as any)).toBe(false);
+    expect(N.isUiLoad(li(null, null)), "a document-less chrome channel (action image, add-on install)").toBe(false);
+  });
+
+  it("a frame's navigation, with neither loading document nor node, is the UI's by its browsing context's embedder", () => {
+    expect(N.isUiLoad(li(null, { isContent: false, embedderElement: frameIn(widget) }))).toBe(true);
+    expect(N.isUiLoad(li(null, { isContent: false, embedderElement: frameIn(browserXhtml, MAIL) })), "a cut frame").toBe(true);
+    expect(N.isUiLoad(li(null, { isContent: false, embedderElement: frameIn(browserXhtml) })), "an uncut frame of browser.xhtml").toBe(false);
+    expect(N.isUiLoad(li(null, { isContent: true, embedderElement: frameIn(sidebar) })), "a content context").toBe(false);
+    expect(N.isUiLoad(li(null, null)), "an action image, an add-on").toBe(false);
+  });
+
+  it("the policy rejects a UI load to the web and accepts the rest", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(N.uiPolicy.shouldLoad({ spec: "http://a.example/" }, li(widget))).toBe(REJECT);
+    expect(warn).toHaveBeenCalledWith("[ui-network] refused", 3, "http://a.example/");
+    expect(N.uiPolicy.shouldLoad({ spec: "data:image/png;base64,AA" }, li(widget))).toBe(ACCEPT);
+    expect(N.uiPolicy.shouldLoad({ spec: "http://a.example/" }, li(tab))).toBe(ACCEPT);
+    expect(N.uiPolicy.shouldProcess()).toBe(ACCEPT);
+  });
+
+  it("the net failing to install: the policy refused, frames still load; the observer refused, no UI frame gets its src", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    observers.length = categories.length = 0;
+    expect(N.installUiNetwork(null)).toEqual({ policy: true, observer: true, webrtc: true });
+    expect(observers.map(([, t]) => t)).toEqual(["http-on-opening-request", "PeerConnection:request"]);
+    expect(categories).toEqual(["content-policy"]);
+    expect(error).not.toHaveBeenCalled();
+    expect(N.installUiNetwork("policy")).toEqual({ policy: false, observer: true, webrtc: true });
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(String(error.mock.calls[0]![0])).toMatch(/^\[ui-network\] /);
+    expect(N.installUiNetwork("observer")).toEqual({ policy: true, observer: false, webrtc: true });
+    registerFactory = vi.fn(() => {
+      throw new Error("NS_ERROR_FACTORY_EXISTS");
+    });
+    expect(N.installUiNetwork()).toEqual({ policy: false, observer: true, webrtc: true });
+  });
+
+  it("the opening-request observer cancels a UI channel to the web, never another; the WebRTC refusal answers only the UI", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    observers.length = 0;
+    N.installUiNetwork();
+    const [opening, webrtc] = observers.map(([o]) => o as { observe(s: unknown): void });
+    const channel = (spec: string, d: unknown) => ({ QueryInterface() { return this; }, URI: { spec }, loadInfo: li(d), cancel: vi.fn() });
+    for (const [spec, d, cut] of [["http://a.example/", sidebar, true], ["data:,x", sidebar, false], ["http://a.example/", tab, false]] as const) {
+      const c = channel(spec, d);
+      opening!.observe(c);
+      expect(c.cancel.mock.calls.length, `${spec} ${d.documentURI}`).toBe(cut ? 1 : 0);
+    }
+    const notify = (globalThis as any).Services.obs.notifyObservers;
+    for (const [d, deny] of [[widget, true], [tab, false], [null, false]] as const) {
+      notify.mockClear();
+      (globalThis as any).Services.wm.getOuterWindowWithId = () => (d ? { document: d } : null);
+      webrtc!.observe({ windowID: 1, callID: "c1" });
+      expect(notify.mock.calls, String(d?.documentURI)).toEqual(deny ? [[null, "PeerConnection:response:deny", "c1"]] : []);
+    }
+  });
+});
