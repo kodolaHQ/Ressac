@@ -61,7 +61,7 @@ const send = (body: string, headers: Record<string, string> = {}) => (_req: unkn
  * site, so another process). `/`, `/x`, `/hooks`, `/csp`, `/oop` (DESIGN_PAGE with the frame), `/cible` and `/frame` on
  * both. `port`: the pages' port (a demo port in WEBAIOS_PORTS_APPS makes them a demo project).
  */
-export async function startDesignServers(o: { port?: number } = {}): Promise<{ page: string; frame: string; close(): Promise<void> }> {
+export async function startDesignServers(o: { port?: number } = {}): Promise<{ page: string; frame: string; paths: string[]; close(): Promise<void> }> {
   let frame = "";
   const routes = {
     "/": send(DESIGN_PAGE),
@@ -74,7 +74,7 @@ export async function startDesignServers(o: { port?: number } = {}): Promise<{ p
   };
   const [a, b] = await Promise.all([startServer({ routes, port: o.port }), startServer({ routes })]);
   frame = `http://localhost:${b.port}`;
-  return { page: a.url, frame, close: () => Promise.all([a.close(), b.close()]).then(() => {}) };
+  return { page: a.url, frame, paths: a.paths, close: () => Promise.all([a.close(), b.close()]).then(() => {}) };
 }
 
 const actor = (browserExpr: string, frame?: number) =>

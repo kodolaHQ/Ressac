@@ -2,6 +2,7 @@ import type { ContexteCalque } from "../../../navigateur/src/commun/api";
 import type { AgentHost } from "../agent/host";
 import { overlayApi, type DesignOverlays, type DesignService, type DesignTarget } from "../store/design";
 import { cleCible, DUREE_MESSAGE_MS } from "../store/design-copies";
+import { cutFrameNetwork } from "./frame-network";
 
 // Electron's Calques (main/design/calque.ts) as chrome frames of sidebar.html?calque (spike S3): an html:iframe in
 // #browser, over the remote page, transparent. Outside its rectangle the page keeps the mouse and the wheel. The page
@@ -57,12 +58,13 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
     // Out of the flow before it is appended (spike S8): in #browser's flex row a default iframe pushes the page aside.
     f.style.cssText = "position: fixed; z-index: 3; border: 0; background: transparent; display: none";
     doc.getElementById("browser")!.append(f);
+    const mayLoad = cutFrameNetwork(f);
     const t = targetOf(key);
     const api = kind === "volet" ? overlayApi({ ...o, modes: ["panier"], annuler: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: calqueModes(key) }, t);
     f.webaiosOverlay = { api };
     // A bubble shown while the frame still loads: the keyboard once its document is there.
     if (kind === "calque") f.addEventListener("load", () => ov.places.bulle && f.focus());
-    f.src = SRC;
+    if (mayLoad) f.src = SRC;
     ov[kind] = f;
     return f;
   }

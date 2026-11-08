@@ -12,6 +12,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, inUi, pressKeys, typeText } from "./ui";
+import { uiRefusals } from "./ui-network";
 
 // Plan 35b Task 3: the design overlay (sidebar.html?calque), its bubble and the main window's cart column, driven by
 // api.design.basculer() in the UI (⌘⇧D comes with Task 4). The demo is 127.0.0.1:15308, in this file's block 15305-15309.
@@ -139,6 +140,24 @@ describe("design overlay", () => {
     expect(await hosts()).toBe(0);
     expect((await etat()).panier).toBe(1);
     expect(await inPage("return window.reactions;")).toEqual([]);
+  });
+
+  it("the calque and the volet are cut before they load", async () => {
+    // The previous test opened the bubble and the cart column: both frames are there.
+    const cut = await m.execute(
+      `return ["webaios-design-calque", "webaios-design-volet"].map((id) => { const f = document.getElementById(id), ds = f?.frameLoader?.docShell;
+         return ds ? { dns: ds.allowDNSPrefetch, mail: ds.appType === Ci.nsIDocShell.APP_TYPE_MAIL, uri: f.contentDocument?.documentURI } : null; });`,
+    );
+    const page = { dns: false, mail: true, uri: "chrome://browser/content/webaios/sidebar.html?calque" };
+    expect(cut).toEqual([page, page]);
+    await m.execute(
+      `for (const id of ["webaios-design-calque", "webaios-design-volet"]) { const d = document.getElementById(id).contentDocument, i = d.createElement("img");
+         i.style.cssText = "position:absolute;width:1px;height:1px"; i.src = "http://127.0.0.1:${PORT}/ui-net-probe.png?" + id; d.body.append(i); }`,
+    );
+    await sleep(3000);
+    const refusals = (await uiRefusals(m)).join("\n");
+    for (const id of ["webaios-design-calque", "webaios-design-volet"]) expect(refusals, id).toContain(`ui-net-probe.png?${id}`);
+    expect(servers.paths.filter((p) => p.includes("ui-net-probe"))).toEqual([]);
   });
 
   it("the cart column shrinks the page by 300 px and is never covered", async () => {

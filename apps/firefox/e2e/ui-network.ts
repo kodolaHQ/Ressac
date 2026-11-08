@@ -26,7 +26,7 @@ export type Hit = { label: string; path: string; method: string };
 export const label = (h: string | undefined) => String(h ?? "").replace(/:\d+$/, "").replace(`.${SFX}`, "");
 
 /**
- * An HTTP/WebSocket server on `http` logging each request by host name (/page: a tab's loads, /rtc: a tab's WebRTC,
+ * An HTTP/WebSocket server on `http` logging each request by host name (/page: a tab's loads, /rtc: a tab's WebRTC, /link?h=: a page-wide link,
  * images as PNG, the rest a small page), a TCP counter on `raw` (fake TURN, a link's target) and, with `udp`, a UDP
  * counter (fake STUN). The arrays fill as things arrive.
  */
@@ -41,6 +41,8 @@ export async function startNetWitness(o: { http: number; raw: number; udp?: numb
     const html = (s: string) => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(s);
     if (u.pathname === "/page")
       return html(`<title>page</title><img src="/s2/witness/img"><script>fetch("/s2/witness/fetch").catch(() => {}); try { new WebSocket("ws://" + location.host + "/s2/witness/ws"); } catch (e) {} navigator.sendBeacon("/s2/witness/beacon", "x");</script>`);
+    // A page-wide link to `h` (a tab's link press).
+    if (u.pathname === "/link") return html(`<title>link</title><a href="${u.searchParams.get("h")}" style="position:fixed;inset:0;display:block;font-size:40px">link</a>`);
     if (u.pathname === "/rtc") return html(`<title>rtc</title><script>${RTC}\nrtc(window.RTCPeerConnection, "tab").then((o) => { document.title = JSON.stringify(o); });</script>`);
     if (/(img|\.png|remote)$/.test(u.pathname)) return res.writeHead(200, { "Content-Type": "image/png" }).end(PNG);
     html("<title>s2</title>");
@@ -141,14 +143,18 @@ export const rtcPage = (tag: string) => `<!doctype html><meta charset="utf-8"><t
 })();
 </script>`;
 
-/** The net's refusals so far (`[ui-network] refused …`), from the console service and the console API's storage. */
-export function uiRefusals(m: Marionette): Promise<string[]> {
+/** The console lines so far that contain `text`, from the console service and the console API's storage. */
+export function consoleWith(m: Marionette, text: string): Promise<string[]> {
   return m.execute<string[]>(
     `const out = Services.console.getMessageArray().map((x) => String(x.message ?? x));
      for (const e of Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage).getEvents()) out.push((e.arguments ?? []).map(String).join(" "));
-     return [...new Set(out.filter((t) => t.includes("[ui-network] refused")))];`,
+     return [...new Set(out.filter((t) => t.includes(arguments[0])))];`,
+    [text],
   );
 }
+
+/** The net's refusals so far (`[ui-network] refused …`). */
+export const uiRefusals = (m: Marionette): Promise<string[]> => consoleWith(m, "[ui-network] refused");
 
 /** resource://webaios-test-net/ serves `dir` (a name outside the UI's prefixes: such a page is the UI's only through its ancestor). */
 export function testPages(m: Marionette, dir: string): Promise<unknown> {

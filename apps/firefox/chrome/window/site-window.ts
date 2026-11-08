@@ -3,6 +3,7 @@
 // bar's frame on top (sidebar.html?site=<id>, ui/SiteWindow.svelte).
 import type { SiteWindowController } from "../store/sites";
 import { createSiteAddons, type WindowAddons } from "./addons";
+import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -145,6 +146,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   const bar = doc.createElementNS(XHTML, "iframe") as HTMLIFrameElement;
   bar.id = "webaios-site-bar";
   doc.getElementById("browser")!.before(bar);
+  const mayLoad = cutFrameNetwork(bar);
   routeOpens(win, id);
   // Firefox's tab, address and history keys and menu commands do nothing here; ⌘W closes the window, never its one
   // tab; ⌘N opens a main window. Back and forward go through the bar.
@@ -172,7 +174,7 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
     gBrowser.updateTitlebar();
     sites.attach(id, gBrowser.selectedBrowser);
     controller.addons = createSiteAddons(win, controller);
-    bar.src = `chrome://browser/content/webaios/sidebar.html?site=${encodeURIComponent(id)}`;
+    if (mayLoad) bar.src = `chrome://browser/content/webaios/sidebar.html?site=${encodeURIComponent(id)}`;
   });
   return controller;
 }

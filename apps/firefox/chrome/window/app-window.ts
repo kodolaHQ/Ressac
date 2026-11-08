@@ -1,6 +1,7 @@
 // An agent app's window: browser.xhtml opened by store/apps.ts without a toolbar, marked from its creation, never a
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
 import { memeOrigine, TAILLE_FAVICON } from "../../../navigateur/src/main/applications/favicon";
+import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
 import { protectView } from "./site-window";
 
@@ -81,7 +82,7 @@ function addBadge(win: Window, apps: Apps, dossier: string): void {
   if (!api) return;
   doc.getElementById("browser")!.append(frame);
   frame.webaiosOverlay = { api };
-  frame.src = "chrome://browser/content/webaios/sidebar.html?pastille=" + encodeURIComponent("app:" + dossier);
+  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/webaios/sidebar.html?pastille=" + encodeURIComponent("app:" + dossier);
 }
 
 /** Run at the window's DOMContentLoaded, before anything could claim it; the view is attached once Firefox's startup is done. */

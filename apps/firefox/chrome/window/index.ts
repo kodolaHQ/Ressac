@@ -5,6 +5,7 @@
 import type { WebAiOsStore } from "../store";
 import { appDossierOf, closeAppPopup, setupAppWindow } from "./app-window";
 import { createController } from "./controller";
+import { cutFrameNetwork } from "./frame-network";
 import { setupPopup } from "./popup";
 import { mountSiteMenu } from "./site-menu";
 import { refuseSiteTabs, setupSiteSmallWindow, setupSiteWindow, siteIdOf, siteOfContainer } from "./site-window";
@@ -59,6 +60,7 @@ window.addEventListener(
     const frame = document.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement;
     frame.id = "webaios-sidebar";
     document.getElementById("browser")!.prepend(frame);
+    const sidebarMayLoad = cutFrameNetwork(frame);
     // Dragging regions only count in the top document unless its docShell allows them: the sidebar has the window's.
     (frame.contentWindow as any).docShell.windowDraggingAllowed = true;
     // macOS places the window buttons on this box, and hides them without one (the toolbox holding Firefox's is hidden).
@@ -70,6 +72,7 @@ window.addEventListener(
     agentFrame.id = "webaios-agent";
     agentFrame.hidden = true;
     document.getElementById("browser")!.append(agentFrame);
+    const agentMayLoad = cutFrameNetwork(agentFrame);
     // The store is a shared module: imported at runtime, never bundled here (that would make a second copy).
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
@@ -94,7 +97,8 @@ window.addEventListener(
           [],
         );
       }
-      // The UI reads window.webaiosWindow as it loads.
+      // The UI reads window.webaiosWindow as it loads. Without the UI's network guard, neither loads.
+      if (!sidebarMayLoad || !agentMayLoad) return;
       frame.src = "chrome://browser/content/webaios/sidebar.html";
       agentFrame.src = "chrome://browser/content/webaios/agent.html";
     });
