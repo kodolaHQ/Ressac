@@ -286,6 +286,31 @@ The host runs the external MCP server (port 5279, `WEBAIOS_PORT_MCP_EXTERNE` cha
 - Tests: `e2e/external-mcp.e2e.ts`, `e2e/review.e2e.ts`, `e2e/review-comments.e2e.ts`. The manual checks and the ports of Electron's tests (with their gaps) are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 34 »).
 - A Claude Code connected to Electron must be connected again (new token; `claude mcp remove webaios-remarques` first if the name exists).
 
+## The UI's network
+
+The UI (sidebar, agent panel, site bars, badges, overlays, widgets, components, site homes) reaches no web server. Tabs, reads, site apps and agent apps keep their network. Five pieces:
+
+- **Predicate** (`chrome/store/ui-network.ts`): a document is the UI's by its own address or an in-process ancestor's. Tabs and `browser.xhtml` are not.
+- **Content policy**: refuses http, https, ws and wss from opaque UI documents, whatever the host. System documents skip content policies.
+- **Observer** (`http-on-opening-request`): cancels the same loads. It is the only layer for system documents.
+- **Frame flags** (`cutFrameNetwork` in `chrome/window/frame-network.ts`): `allowDNSPrefetch = false` and `APP_TYPE_MAIL` on each UI frame, which cuts DNS prefetch and link hints.
+- **Press guard**: a capture `mousedown` on `windowRoot` is consumed on a link (`:any-link`) in any UI document, system ones included, so no speculative connect starts. The walk follows slots and shadow hosts and fails closed past 1024 steps. The click still works. History links no longer take focus, selection or drag on press.
+
+WebRTC is refused by a `PeerConnection:request` observer for UI documents.
+
+Rule: every new UI frame calls `cutFrameNetwork(frame)` after it is inserted and before its `src` is set. If the observer failed to install, no UI frame gets its `src`.
+
+Test hook: `WEBAIOS_TEST_UI_NETWORK_FAIL=policy|observer` forces an install failure.
+
+Limits:
+- `moz-remote-image:` wrapping an http URL, and any script, in a system document are not covered (only our code runs there).
+- WebRTC from system documents is not refused.
+- `media.navigator.permission.disabled = true` lifts the WebRTC refusal for opaque documents.
+- A widget link press loses focus. A plain `<a href>` in a widget no longer navigates its frame.
+- Favicons are fetched by the tab, with its container's cookies, never by the UI.
+
+Tests: `test/ui-network.test.ts`, `e2e/ui-network.e2e.ts`, `e2e/ui-network-fail.e2e.ts` (helpers in `e2e/ui-network.ts`). Notes and manual checks: `docs/superpowers/notes/2026-11-08-reseau-interfaces-spikes.md` (« Construction (plan 37) »).
+
 ## Not migrated yet (step 4)
 
 - site-app permission checks;
