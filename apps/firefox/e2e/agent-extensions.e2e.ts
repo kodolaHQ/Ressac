@@ -161,6 +161,31 @@ describe("agent extensions: registry, signed install, restart", () => {
     expect(await agentAddons(w.marionette)).toEqual([]);
   });
 
+  // A removal landing while WebAiOs still installs the add-on (Firefox's onInstalled comes before install() resolves):
+  // it is the user's, not WebAiOs's; the noyau must not install it back.
+  it("uninstalled from about:addons during an install of ours: gone from the registry, not installed back", async () => {
+    const f = folders();
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
+    grant(f.dataDir, "cacheur", ACCORD);
+    const w = await launch(f);
+    await waitAddon(w, "1.0.0.1");
+    await w.marionette.execute(`return (async () => {
+      const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+      const l = { onInstalled(a) {
+        if (a.id !== ${JSON.stringify(ID)} || a.version !== "1.0.0.2") return;
+        AddonManager.removeAddonListener(l);
+        void a.uninstall();
+      } };
+      AddonManager.addAddonListener(l);
+    })();`);
+    ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "cache.css": CACHE_TOUT });
+    await until(() => existsSync(path.join(racine(f.dataDir), ".webaios", "mcp.json")));
+    await callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
+    await until(() => !("agent:cacheur" in registry(f.dataDir)));
+    await settle(w);
+    expect(await agentAddons(w.marionette)).toEqual([]);
+  });
+
   // about:addons' Remove button: a pending uninstall (Undo shown), only onUninstalling until the page unloads.
   it("removed with about:addons' Remove (pending uninstall): gone from the registry, not back after a restart", async () => {
     const f = folders();

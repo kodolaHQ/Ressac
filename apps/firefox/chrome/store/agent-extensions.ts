@@ -57,16 +57,21 @@ export interface AgentExtensions {
 
 /** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
 export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => EtatAcces): AgentExtensions {
-  // Add-ons this module is changing: their AddonManager events are ours, not about:addons'.
+  // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
+  // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
   const ours = new Set<string>();
-  const own = async <T>(addonId: string, f: () => Promise<T>): Promise<T> => {
-    ours.add(addonId);
+  const own = async <T>(addonId: string, quoi: "desinstallee" | "desactivee", f: () => Promise<T>): Promise<T> => {
+    const key = `${addonId} ${quoi}`;
+    ours.add(key);
     try {
       return await f();
     } finally {
-      ours.delete(addonId);
+      ours.delete(key);
     }
   };
+  // Seen from AddonManager: an immediate uninstall under way (onUninstalling to onUninstalled), and about:addons' Undo.
+  const uninstalling = new Set<string>();
+  const undone = new Set<string>();
   const agentId = (addonId: string) => {
     if (typeof addonId !== "string" || !addonId.endsWith(SUFFIX)) throw new Error(`Pas une extension de l'agent : ${addonId}`);
     return addonId;
@@ -79,7 +84,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const present = await AddonManager.getAddonByID(id);
       if (!p.actif && !present) return null;
       if (present && present.version === p.version) return { version: present.version };
-      return own(id, async () => {
+      return own(id, "desactivee", async () => {
         if (!p.actif && !present.userDisabled) await present.disable();
         let path = p.xpi;
         if (p.temporaire) {
@@ -101,18 +106,20 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     // recharger_extension on an unchanged copy: the running add-on restarts as is (disable then enable), nothing re-signed.
     "extensions.redemarrer": async (p: { addonId: string }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
-      if (addon?.isActive) await own(addon.id, () => addon.reload());
+      if (addon?.isActive) await own(addon.id, "desactivee", () => addon.reload());
     },
     "extensions.activer": async (p: { addonId: string; actif: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (!addon || addon.userDisabled === !p.actif) return;
-      await own(addon.id, () => (p.actif ? addon.enable() : addon.disable()));
+      await own(addon.id, "desactivee", () => (p.actif ? addon.enable() : addon.disable()));
     },
-    // `unlessUndone`: about:addons' Remove (a pending uninstall); its Undo came first if it is no longer pending: kept, false.
+    // `unlessUndone`: a removal from about:addons; kept (false) only if its Undo came. An add-on present again without an
+    // Undo was installed back by the noyau before the removal reached it: uninstalled again.
     "extensions.desinstaller": async (p: { addonId: string; unlessUndone?: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
-      if (addon && p.unlessUndone && !(addon.pendingOperations & AddonManager.PENDING_UNINSTALL)) return false;
-      if (addon) await own(addon.id, () => addon.uninstall());
+      if (addon && p.unlessUndone && undone.has(addon.id)) return false;
+      // An immediate uninstall still finishing: Firefox completes it.
+      if (addon && !uninstalling.has(addon.id)) await own(addon.id, "desinstallee", () => addon.uninstall());
       return true;
     },
     // The grant card, in that window if still open, else the active one; no window: it falls at once.
@@ -147,13 +154,21 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   AddonManager.addAddonListener({
     // about:addons' Remove is uninstall(true): only onUninstalling fires until the page unloads, maybe at quit. The
     // removal is handled from it; the noyau completes the uninstall unless Undo came first.
-    onUninstalling: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desinstallee"),
-    onUninstalled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desinstallee"),
+    onUninstalling: (a: { id: string; temporarilyInstalled: boolean; pendingOperations: number }) => {
+      undone.delete(a.id);
+      if (!(a.pendingOperations & AddonManager.PENDING_UNINSTALL)) uninstalling.add(a.id);
+      outside(a, "desinstallee");
+    },
+    onUninstalled: (a: { id: string; temporarilyInstalled: boolean }) => {
+      uninstalling.delete(a.id);
+      outside(a, "desinstallee");
+    },
+    onOperationCancelled: (a: { id: string }) => void undone.add(a.id),
     onDisabled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desactivee"),
   });
   function outside(addon: { id: string; temporarilyInstalled: boolean }, quoi: "desinstallee" | "desactivee") {
     // Quitting unloads temporary add-ons: not a choice made in about:addons.
-    if (!addon.id.endsWith(SUFFIX) || ours.has(addon.id) || (addon.temporarilyInstalled && Services.startup.shuttingDown)) return;
+    if (!addon.id.endsWith(SUFFIX) || ours.has(`${addon.id} ${quoi}`) || (addon.temporarilyInstalled && Services.startup.shuttingDown)) return;
     pending.set(addon.id, quoi);
     void send(addon.id, quoi);
   }
