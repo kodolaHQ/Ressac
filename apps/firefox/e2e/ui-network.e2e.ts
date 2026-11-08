@@ -137,6 +137,7 @@ const shadowDisplay = `<!doctype html><meta charset="utf-8"><title>ombre</title>
 <a href="http://sh-closed.${SFX}:15366/"><span id="h-closed" style="display:inline-block"></span></a>
 <a href="http://sh-nested.${SFX}:15366/"><span id="h-nested" style="display:inline-block"></span></a>
 <span id="h-slot" style="display:inline-block"><b>slotted</b></span>
+<a href="http://sh-deep.${SFX}:15366/"><span id="h-deep"></span></a>
 <a id="hv" href="http://hover.${SFX}:15366/">hover hover</a>
 <script>
   const shadow = (id, mode, nested) => {
@@ -156,6 +157,11 @@ const shadowDisplay = `<!doctype html><meta charset="utf-8"><title>ombre</title>
   slotLink.href = "http://sh-slot.${SFX}:15366/";
   slotLink.append(document.createElement("slot"));
   document.getElementById("h-slot").attachShadow({ mode: "closed" }).append(slotLink);
+  // Deeper than the guard's walk bound (measured: Gecko warms nothing this deep either; kept as a witness).
+  let deep = document.getElementById("h-deep");
+  for (let i = 0; i < 1100; i++) deep = deep.appendChild(document.createElement("span"));
+  deep.id = "h-deep-in";
+  deep.textContent = "deep";
 </script>`;
 
 const linksDisplay = `<!doctype html><meta charset="utf-8"><title>lien</title>
@@ -439,10 +445,10 @@ describe("the UI's network", () => {
     expect({ names: (await names()).filter((n) => n === "md" || n === "md-svg"), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
 
-  it("a press on shadow content inside a widget's link (open, closed, nested, slotted) resolves no name and opens no connection", { timeout: 60_000 }, async () => {
+  it("a press on shadow content inside a widget's link (open, closed, nested, slotted, very deep) resolves no name and opens no connection", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
     await expect.poll(() => m.execute(`return !!${widgetDoc("ombre")}?.getElementById("h-nested");`), { timeout: 15_000 }).toBe(true);
-    for (const id of ["#h-open", "#h-closed", "#h-nested", "#h-slot b"]) expect(await press("ombre", id, false), id).toBe("iframe");
+    for (const id of ["#h-open", "#h-closed", "#h-nested", "#h-slot b", "#h-deep-in"]) expect(await press("ombre", id, false), id).toBe("iframe");
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n.startsWith("sh-")), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });

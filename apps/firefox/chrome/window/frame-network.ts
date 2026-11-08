@@ -32,7 +32,8 @@ function underLink(node: Node): boolean {
     n = n.openOrClosedAssignedSlot ?? n.parentNode;
     if (n?.nodeType === 11) n = n.host ?? null;
   }
-  return false;
+  // Past the bound with nodes left: counted as a link (the press is only consumed, never lost).
+  return n != null;
 }
 
 /**
