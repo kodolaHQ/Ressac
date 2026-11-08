@@ -10,7 +10,7 @@ const observers: [unknown, string][] = [];
 const categories: string[] = [];
 let registerFactory = vi.fn();
 Object.assign(globalThis as any, {
-  Ci: { nsIContentPolicy: { ACCEPT, REJECT_REQUEST: REJECT }, nsIDocShell: { APP_TYPE_MAIL: MAIL }, nsIComponentRegistrar: "registrar", nsIChannel: "channel" },
+  Ci: { nsIContentPolicy: { ACCEPT, REJECT_REQUEST: REJECT, TYPE_WEB_TRANSPORT: 59 }, nsIDocShell: { APP_TYPE_MAIL: MAIL }, nsIComponentRegistrar: "registrar", nsIChannel: "channel" },
   Cr: { NS_BINDING_ABORTED: 0x804b0002 },
   Components: { ID: (s: string) => s, manager: { QueryInterface: () => ({ registerFactory: (...a: unknown[]) => registerFactory(...a) }) } },
   ChromeUtils: { generateQI: () => () => ({}) },
@@ -30,7 +30,10 @@ const sidebar = doc("chrome://browser/content/webaios/sidebar.html", frameIn(bro
 const widget = doc("resource://webaios-widget-a/affichage-1.html", frameIn(sidebar));
 const widgetBlank = doc("about:blank", frameIn(widget));
 const tab = doc("resource://webaios-site-x/index.html", null, true);
-const li = (loadingDocument: unknown, browsingContext: unknown = null): any => ({ loadingDocument, browsingContext, externalContentPolicyType: 3 });
+const li = (loadingDocument: unknown, browsingContext: unknown = null): any => ({ loadingDocument, browsingContext, targetBrowsingContext: browsingContext, externalContentPolicyType: 3 });
+/** A frame's navigation as DocumentLoadListener builds it (LoadInfo::CreateForFrame): browsingContext is the parent's, targetBrowsingContext the frame's. */
+const frameNav = (parent: unknown, frame: unknown): any => ({ loadingDocument: null, browsingContext: parent, targetBrowsingContext: frame, externalContentPolicyType: 7 });
+const topChrome = { isContent: false, embedderElement: null };
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -71,12 +74,41 @@ describe("ui-network", () => {
     expect(N.isUiLoad(li(null, null)), "a document-less chrome channel (action image, add-on install)").toBe(false);
   });
 
-  it("a frame's navigation, with neither loading document nor node, is the UI's by its browsing context's embedder", () => {
-    expect(N.isUiLoad(li(null, { isContent: false, embedderElement: frameIn(widget) }))).toBe(true);
-    expect(N.isUiLoad(li(null, { isContent: false, embedderElement: frameIn(browserXhtml, MAIL) })), "a cut frame").toBe(true);
-    expect(N.isUiLoad(li(null, { isContent: false, embedderElement: frameIn(browserXhtml) })), "an uncut frame of browser.xhtml").toBe(false);
-    expect(N.isUiLoad(li(null, { isContent: true, embedderElement: frameIn(sidebar) })), "a content context").toBe(false);
+  it("a frame's navigation, with neither loading document nor node, is the UI's by its target context's embedder, not its parent's", () => {
+    const parentOf = (owner: any) => owner.defaultView.browsingContext;
+    expect(N.isUiLoad(frameNav(parentOf(widget), { isContent: false, embedderElement: frameIn(widget) }))).toBe(true);
+    expect(N.isUiLoad(frameNav(topChrome, { isContent: false, embedderElement: frameIn(browserXhtml, MAIL) })), "a cut top frame: its parent is browser.xhtml's top context").toBe(true);
+    expect(N.isUiLoad(frameNav(topChrome, { isContent: false, embedderElement: frameIn(browserXhtml) })), "an uncut frame of browser.xhtml").toBe(false);
+    expect(N.isUiLoad(frameNav(parentOf(sidebar), { isContent: true, embedderElement: frameIn(sidebar) })), "a content context").toBe(false);
     expect(N.isUiLoad(li(null, null)), "an action image, an add-on").toBe(false);
+  });
+
+  it("a dedicated worker's load is judged by its associated context; a load without any context by its principal (system too for WebTransport)", () => {
+    const worker = (associatedBrowsingContext: unknown): any => ({ loadingDocument: null, browsingContext: null, targetBrowsingContext: null, associatedBrowsingContext, externalContentPolicyType: 2 });
+    expect(N.isUiLoad(worker({ isContent: false, embedderElement: frameIn(sidebar) })), "a worker of a frame in the sidebar").toBe(true);
+    expect(N.isUiLoad(worker({ isContent: false, embedderElement: frameIn(browserXhtml, MAIL) })), "a worker of the sidebar").toBe(true);
+    expect(N.isUiLoad(worker({ isContent: true, embedderElement: null })), "a tab's worker").toBe(false);
+    const bare = (spec: string, isSystemPrincipal = false): any => ({ ...worker(null), loadingPrincipal: { isSystemPrincipal, spec, precursorPrincipal: null } });
+    expect(N.isUiLoad(bare("resource://webaios-widget-a/w.js")), "a parent-process worker's fetch, no context: a UI principal").toBe(true);
+    expect(N.isUiLoad(bare("resource://webaios-test-net/w.js")), "no context, a principal outside the prefixes").toBe(false);
+    expect(N.isUiLoad(bare("", true)), "no context, system (an add-on install)").toBe(false);
+    const wt = (loadingPrincipal: unknown): any => ({ loadingDocument: null, browsingContext: null, targetBrowsingContext: null, associatedBrowsingContext: null, loadingPrincipal, externalContentPolicyType: 59 });
+    const opaque = (precursor: string) => ({ isSystemPrincipal: false, spec: "moz-nullprincipal:{1}", precursorPrincipal: { isSystemPrincipal: false, spec: precursor } });
+    expect(N.isUiLoad(wt({ isSystemPrincipal: true, spec: "" })), "a system document").toBe(true);
+    expect(N.isUiLoad(wt(opaque("resource://webaios-widget-a/affichage-1.html"))), "a served widget").toBe(true);
+    expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "resource://webaios-composant-c/composant-1.html", precursorPrincipal: null })), "a component").toBe(true);
+    expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "https://a.example/", precursorPrincipal: null })), "a tab").toBe(false);
+    expect(N.isUiLoad(wt(opaque("https://a.example/"))), "a sandboxed tab frame").toBe(false);
+    expect(N.isUiLoad({ ...wt({ isSystemPrincipal: true, spec: "" }), externalContentPolicyType: 3 }), "a system image without context (an action image)").toBe(false);
+  });
+
+  it("a chain of UI-less chrome documents deeper than the walk's bound counts as the UI's (fails closed)", () => {
+    let d = browserXhtml;
+    for (let i = 0; i < 40; i++) d = doc("about:blank", frameIn(d));
+    expect(N.isUiDocument(d)).toBe(true);
+    let short = browserXhtml;
+    for (let i = 0; i < 20; i++) short = doc("about:blank", frameIn(short));
+    expect(N.isUiDocument(short)).toBe(false);
   });
 
   it("the policy rejects a UI load to the web and accepts the rest", () => {

@@ -240,8 +240,8 @@ describe("site app home screen", () => {
     expect(frame.src).toMatch(/^resource:\/\/webaios-site-vidola-[0-9a-f]{32}\/index\.html$/);
     await expect.poll(() => inHome("vidola", `return home.contentDocument.getElementById("series").textContent;`)).toBe("encours.the-bear : The Bear /serie/the-bear?e=4");
     expect(await inHome("vidola", `return home.contentDocument.getElementById("domaine").textContent;`)).toBe("vidola-a.localhost");
-    // Opaque origin, the guard in place (no WebRTC nor XSLT), no WebAiOs API.
-    expect(await inHome("vidola", `return [fw.origin, typeof fw.RTCPeerConnection, typeof fw.XSLTProcessor, typeof fw.webaios];`)).toEqual(["null", "undefined", "undefined", "undefined"]);
+    // Opaque origin, the guard in place (no WebRTC, WebTransport nor XSLT), no WebAiOs API.
+    expect(await inHome("vidola", `return [fw.origin, typeof fw.RTCPeerConnection, typeof fw.WebTransport, typeof fw.XSLTProcessor, typeof fw.webaios];`)).toEqual(["null", "undefined", "undefined", "undefined", "undefined"]);
     expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-entrer"]').textContent;`)).toBe("Entrer dans le site");
   });
 

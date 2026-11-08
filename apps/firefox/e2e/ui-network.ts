@@ -158,12 +158,12 @@ export function consoleWith(m: Marionette, text: string): Promise<string[]> {
 /** The net's refusals so far (`[ui-network] refused …`). */
 export const uiRefusals = (m: Marionette): Promise<string[]> => consoleWith(m, "[ui-network] refused");
 
-/** resource://webaios-test-net/ serves `dir` (a name outside the UI's prefixes: such a page is the UI's only through its ancestor). */
-export function testPages(m: Marionette, dir: string): Promise<unknown> {
+/** resource://<name>/ serves `dir`; by default webaios-test-net, a name outside the UI's prefixes: such a page is the UI's only through its ancestor. */
+export function testPages(m: Marionette, dir: string, name = "webaios-test-net"): Promise<unknown> {
   return m.execute(
     `const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
      const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-     res.setSubstitution("webaios-test-net", Services.io.newFileURI(new FileUtils.File(arguments[0])));`,
-    [dir],
+     res.setSubstitution(arguments[1], Services.io.newFileURI(new FileUtils.File(arguments[0])));`,
+    [dir, name],
   );
 }

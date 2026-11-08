@@ -290,7 +290,7 @@ The host runs the external MCP server (port 5279, `WEBAIOS_PORT_MCP_EXTERNE` cha
 
 The UI (sidebar, agent panel, site bars, badges, overlays, widgets, components, site homes) reaches no web server. Tabs, reads, site apps and agent apps keep their network. Five pieces:
 
-- **Predicate** (`chrome/store/ui-network.ts`): a document is the UI's by its own address or an in-process ancestor's. Tabs and `browser.xhtml` are not.
+- **Predicate** (`chrome/store/ui-network.ts`): a document is the UI's by its own address or an in-process ancestor's (past 32 ancestors it counts as the UI's). Tabs and `browser.xhtml` are not. A frame's navigation is judged by its target context, the frame (its `APP_TYPE_MAIL` mark or its UI parent document), not by `browsingContext`, which is the parent's. A dedicated worker's load falls back to its associated context. A load with no document and no context (WebTransport; a worker's fetch in the parent process) is judged by its principal: a UI address, or system for WebTransport.
 - **Content policy**: refuses http, https, ws and wss from opaque UI documents, whatever the host. System documents skip content policies.
 - **Observer** (`http-on-opening-request`): cancels the same loads. It is the only layer for system documents.
 - **Frame flags** (`cutFrameNetwork` in `chrome/window/frame-network.ts`): `allowDNSPrefetch = false` and `APP_TYPE_MAIL` on each UI frame, which cuts DNS prefetch and link hints.
@@ -300,11 +300,12 @@ WebRTC is refused by a `PeerConnection:request` observer for UI documents.
 
 Rule: every new UI frame calls `cutFrameNetwork(frame)` after it is inserted and before its `src` is set. If the observer failed to install, no UI frame gets its `src`.
 
-Test hook: `WEBAIOS_TEST_UI_NETWORK_FAIL=policy|observer` forces an install failure.
+Test hook: `WEBAIOS_TEST_UI_NETWORK_FAIL=policy|observer|webrtc` forces an install failure.
 
 Limits:
 - `moz-remote-image:` wrapping an http URL, and any script, in a system document are not covered (only our code runs there).
 - WebRTC from system documents is not refused.
+- A system document's worker or WebTransport without a context is not refused (only our code runs there). The widget guard removes `WebTransport`.
 - `media.navigator.permission.disabled = true` lifts the WebRTC refusal for opaque documents.
 - A widget link press loses focus. A plain `<a href>` in a widget no longer navigates its frame.
 - Favicons are fetched by the tab, with its container's cookies, never by the UI.

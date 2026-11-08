@@ -14,7 +14,7 @@ export function isBlockedAddress(spec: string): boolean {
   return BLOCKED.test(s);
 }
 
-/** From doc up through in-process ancestors (defaultView.browsingContext → embedderElement.ownerDocument): an absent or content context ends it (false) before the address is read; true on the first UI address. */
+/** From doc up through in-process ancestors (defaultView.browsingContext → embedderElement.ownerDocument): an absent or content context ends it (false) before the address is read; true on the first UI address, or past the walk's bound (fails closed). */
 export function isUiDocument(doc: Document | null | undefined): boolean {
   try {
     let d: any = doc;
@@ -25,6 +25,8 @@ export function isUiDocument(doc: Document | null | undefined): boolean {
       if (UI_PREFIXES.some((p) => uri.startsWith(p))) return true;
       d = bc.embedderElement?.ownerDocument;
     }
+    // Past the bound with ancestors left: counted as the UI's, as the press walk does (no real chrome chain is that deep).
+    return d != null;
   } catch {
     // A dead object: not the UI's.
   }
@@ -40,13 +42,25 @@ export function isUiFrame(el: Element | null | undefined): boolean {
   }
 }
 
-/** loadingDocument is the UI's; or, without one, a chrome browsingContext whose embedderElement isUiFrame or sits in a UI document. Never reads loadingNode. */
-export function isUiLoad(li: { loadingDocument: Document | null; browsingContext: any }): boolean {
+const hasUiAddress = (p: any): boolean => UI_PREFIXES.some((x) => String((p.precursorPrincipal ?? p).spec).startsWith(x));
+
+/**
+ * loadingDocument is the UI's; or, without one, a chrome target (else associated) context whose embedderElement isUiFrame
+ * or sits in a UI document; or, without any context, a principal at a UI address (system too for a WebTransport). Never reads loadingNode.
+ */
+export function isUiLoad(li: { loadingDocument: Document | null; browsingContext: any; targetBrowsingContext?: any; associatedBrowsingContext?: any; loadingPrincipal?: any; externalContentPolicyType?: number }): boolean {
   try {
     if (li.loadingDocument) return isUiDocument(li.loadingDocument);
-    // A frame's navigation (DocumentLoadListener): neither loading document nor node, only the target context (S2).
-    const bc = li.browsingContext;
-    if (!bc || bc.isContent) return false;
+    // A frame's navigation (DocumentLoadListener, LoadInfo::CreateForFrame): browsingContext is the parent's, the target is
+    // the frame. A dedicated worker's fetch or WebSocket: at most the associated context (its document's).
+    const bc = li.targetBrowsingContext ?? li.browsingContext ?? li.associatedBrowsingContext;
+    // No context: WebTransport (built from a principal, context set after AsyncOpen: WebTransportSessionProxy.cpp), a
+    // parent-process worker's fetch (measured). System principals pass but WebTransport's: action images, add-on installs.
+    if (!bc) {
+      const p = li.loadingPrincipal;
+      return !!p && (hasUiAddress(p) || (p.isSystemPrincipal && li.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_WEB_TRANSPORT));
+    }
+    if (bc.isContent) return false;
     const e = bc.embedderElement;
     return !!e && (isUiFrame(e) || isUiDocument(e.ownerDocument));
   } catch {

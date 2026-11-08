@@ -84,6 +84,21 @@ try { const i = b.contentDocument.createElement("iframe"); i.src = "http://${hos
 setTimeout(() => { try { location.href = "http://${host("fuite-self")}/fuite/self"; } catch (e) { document.getElementById("t").dataset.self = String(e).slice(0, 80); } }, 1500);
 </script>`;
 
+/** A dedicated worker's fetch and WebSocket. Measured: in the parent process its fetch has no context at all, only the
+ * worker's principal. The parent process refuses data: and blob: scripts and an opaque page cannot start a resource:
+ * worker (so no served UI page can start one), hence this page is not sandboxed. */
+const workerCode = `fetch(${JSON.stringify(`http://${host("tp-wfetch")}/tp/wfetch`)}).catch(() => {}); try { new WebSocket(${JSON.stringify(`ws://${host("tp-wws")}/tp/wws`)}); } catch (e) {} postMessage("ran");`;
+const workerPage = `<!doctype html><meta charset="utf-8"><title>wk</title><script>
+const wk = new Worker("worker.js");
+wk.onmessage = (e) => (document.title = "worker " + e.data);
+wk.onerror = () => (document.title = "worker error");
+</script>`;
+/** A WebTransport attempt to the UDP counter: its channel has a principal and no context. Its title: typeof WebTransport. */
+const webTransportPage = `<!doctype html><meta charset="utf-8"><title>wt</title><script>
+document.title = typeof WebTransport;
+try { const t = new WebTransport("https://tp-wt.${SFX}:15367/tp/wt"); t.ready.catch(() => {}); t.closed.catch(() => {}); } catch (e) { document.title += " " + e.name; }
+</script>`;
+
 /** An unguarded opaque page (no CSP, no guard): every kind of load of the spikes' S2, under tp-<kind>. */
 const loadsPage = `<!doctype html><meta charset="utf-8"><title>tp</title><p class="f">tp</p>
 <style>@font-face { font-family: tp; src: url(http://${host("tp-font")}/tp/font); } .f { font-family: tp; }</style>
@@ -184,14 +199,14 @@ describe("the UI's network", () => {
 
   const names = () => resolvedNames(logDir);
   /** A frame `<iframe sandbox="allow-scripts">` appended to the sidebar on `src`; resolves once its document is `src`. */
-  const sidebarFrame = (id: string, src: string) =>
+  const sidebarFrame = (id: string, src: string, sandbox: string | null = "allow-scripts") =>
     m.execute(
       `return (async () => { const sb = document.getElementById("webaios-sidebar").contentDocument;
-       const f = sb.createElement("iframe"); f.id = arguments[0]; f.setAttribute("sandbox", "allow-scripts"); f.style.cssText = "width:20px;height:20px;border:0";
+       const f = sb.createElement("iframe"); f.id = arguments[0]; if (arguments[2] !== null) f.setAttribute("sandbox", arguments[2]); f.style.cssText = "width:20px;height:20px;border:0";
        sb.body.append(f); f.setAttribute("src", arguments[1]);
        for (let i = 0; i < 100 && f.contentDocument?.documentURI !== arguments[1]; i++) await new Promise((r) => setTimeout(r, 50));
        return f.contentDocument?.documentURI; })();`,
-      [id, src],
+      [id, src, sandbox],
     );
   const widgetDoc = (id: string) => `document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')?.contentDocument`;
   const widgetFrame = (id: string) => `document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe')`;
@@ -233,6 +248,9 @@ describe("the UI's network", () => {
     pages = await mkdtemp(path.join(os.tmpdir(), "webaios-net-pages-"));
     writeFileSync(path.join(pages, "rtc.html"), rtcPage("rtcp"));
     writeFileSync(path.join(pages, "loads.html"), loadsPage);
+    writeFileSync(path.join(pages, "wt.html"), webTransportPage);
+    writeFileSync(path.join(pages, "worker.html"), workerPage);
+    writeFileSync(path.join(pages, "worker.js"), workerCode);
     widgetFiles(dataDir, "espion", spyDisplay());
     // Electron's widgetsFuite: the display navigates itself to the server, or to data:.
     widgetFiles(dataDir, "fuite", DISPLAY.replace("</script>", `setTimeout(() => (location = ${JSON.stringify(`http://${host("fuite")}/fuite-navigation?d=secret`)}), 1500);</script>`), "reste");
@@ -337,12 +355,23 @@ describe("the UI's network", () => {
     for (const tag of ["sb", "ag"]) for (const what of [`${tag}-img.`, `${tag}-imgs.`, `127.0.0.1:${HTTP}/${tag}-local`, `${tag}-bg.`]) expect(refusals, what).toContain(what);
   });
 
-  it("an unguarded opaque page in the sidebar loads nothing: fetch, WebSocket, sendBeacon, img, font, frame", { timeout: 120_000 }, async () => {
+  it("an unguarded opaque page in the sidebar loads nothing: fetch, WebSocket, sendBeacon, img, font, frame, a worker's fetch and WebSocket, WebTransport", { timeout: 120_000 }, async () => {
+    const udp0 = net.udp.length;
     expect(await sidebarFrame("loads-net", "resource://webaios-test-net/loads.html")).toBe("resource://webaios-test-net/loads.html");
+    // WebTransport and, in the parent process, a worker's fetch have no context: they are judged by their principal, so
+    // their pages are served under a UI prefix (still unguarded, no CSP).
+    await testPages(m, pages, "webaios-widget-test-net");
+    expect(await sidebarFrame("wt-net", "resource://webaios-widget-test-net/wt.html")).toBe("resource://webaios-widget-test-net/wt.html");
+    expect(await sidebarFrame("worker-net", "resource://webaios-widget-test-net/worker.html", null)).toBe("resource://webaios-widget-test-net/worker.html");
+    const title = (id: string) => m.execute<string>(`return document.getElementById("webaios-sidebar").contentDocument.getElementById(arguments[0]).contentDocument.title;`, [id]);
+    await expect.poll(() => title("worker-net"), { timeout: 10_000 }).toBe("worker ran");
+    expect(await title("wt-net")).toBe("function");
     await sleep(3000);
     expect(net.hits.filter((h) => h.label.startsWith("tp-")).map((h) => `${h.label} ${h.method} ${h.path}`)).toEqual([]);
     // The policy refuses before the DNS (S2 p1).
-    expect((await names()).filter((n) => n.startsWith("tp-"))).toEqual([]);
+    expect({ names: (await names()).filter((n) => n.startsWith("tp-")), udp: net.udp.length - udp0 }).toEqual({ names: [], udp: 0 });
+    const refusals = (await uiRefusals(m)).join("\n");
+    for (const what of ["tp-wfetch.", "tp-wws.", "tp-wt."]) expect(refusals, what).toContain(what);
   });
 
   // accueil.spec.ts:810
@@ -668,7 +697,8 @@ describe("the UI's network", () => {
     expect({ names: (await names()).filter((n) => n === "sys-md" || n === "sys-sh"), tcp: tcpSince(tcp0), httpConns: net.httpConns() - http0 }).toEqual({ names: [], tcp: 0, httpConns: 0 });
   });
 
-  // Last: a navigation that went through would take the UI away. Their embedder is browser.xhtml: only the frame's mark says they are the UI's.
+  // Last: a navigation that went through would take the UI away. Their parent is browser.xhtml: the net judges them by the
+  // target context's mark (test/ui-network.test.ts), but browser.xhtml's CSP refuses first, so this measures the CSP.
   it("the sidebar and the agent panel navigating themselves to the web reach no server", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
     const http0 = net.httpConns();

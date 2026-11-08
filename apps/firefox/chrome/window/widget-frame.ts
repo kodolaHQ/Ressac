@@ -194,6 +194,7 @@ function gardeWidget(motif: string): void {
     "RTCPeerConnectionIceEvent",
     "RTCDataChannelEvent",
     "RTCTrackEvent",
+    "WebTransport",
     "XSLTProcessor",
   ];
   for (const nom of absents) {
