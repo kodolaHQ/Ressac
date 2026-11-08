@@ -3,12 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { APPS_ENV, appWindowExpr, launchEssai, writeProject } from "./apps";
+import { APPS_ENV, appWindowExpr, inAppView, launchEssai, writeProject } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
-import { grantSite, siteWindowExpr, writeSite } from "./sites";
+import { grantSite, inSiteView, siteWindowExpr, writeSite } from "./sites";
 import { consoleWith, DATA_PNG, NET_PREFS, netEnv, resolvedNames, rtcPage, SFX, startNetWitness, testPages, uiRefusals, widgetFiles } from "./ui-network";
 
 // The UI's network (spec 2026-11-08-webaios-firefox-reseau-interfaces-design.md): nothing the UI shows reaches a server
@@ -406,6 +406,121 @@ describe("the UI's network", () => {
     expect(await size()).toEqual([88, 28]);
     await callTool(dataDir, "arreter_application", { dossier: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
+  });
+
+  // accueil.spec.ts:883
+  it("a favicon shows in the tab list, fetched by the tab, never by the UI (the UI has no network)", { timeout: 60_000 }, async () => {
+    const refused0 = (await uiRefusals(m)).length;
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `http://${host("icone")}/avec-icone`, activer: true });
+    let id = "";
+    await expect.poll(async () => (id = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes("/avec-icone"))?.[0] ?? ""), { timeout: 10_000 }).not.toBe("");
+    const icon = () =>
+      m.execute<{ src: string; width: number } | null>(
+        `const i = document.getElementById("webaios-sidebar").contentDocument.querySelector(arguments[0]); return i ? { src: i.src, width: i.complete ? i.naturalWidth : 0 } : null;`,
+        [`[data-testid="onglet-${id}"] img`],
+      );
+    await expect.poll(async () => (await icon())?.width, { timeout: 15_000 }).toBe(1);
+    const src = (await icon())!.src;
+    expect(src.startsWith("data:") || (src.startsWith("moz-remote-image:") && new URL(src).searchParams.get("url")!.startsWith("data:")), src.slice(0, 80)).toBe(true);
+    expect(net.hits.some((h) => h.label === "icone" && h.path === "/icone.png")).toBe(true);
+    await closeTab("/avec-icone", "sonde");
+    expect((await uiRefusals(m)).slice(refused0)).toEqual([]);
+  });
+
+  it("the tabs and the agent's reads keep their network: a tab's image, fetch, WebSocket and WebRTC TURN/TCP reach the local servers, and an invisible read returns the page", { timeout: 120_000 }, async () => {
+    const refused0 = (await uiRefusals(m)).length;
+    const fenetreId = (await state(m)).fenetres[0]!.id;
+    const seen = (name: string) => net.hits.filter((h) => h.label === name).map((h) => `${h.method} ${h.path}`);
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `http://${host("tab-page")}/page`, activer: true });
+    await expect
+      .poll(() => seen("tab-page"), { timeout: 15_000 })
+      .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws", "POST /s2/witness/beacon"]));
+    await closeTab("tab-page.", "sonde");
+    const tcp0 = net.tcp.length;
+    const udp0 = net.udp.length;
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `http://${host("tab-rtc")}/rtc`, activer: true });
+    const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
+    expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
+    await closeTab("tab-rtc.", "sonde");
+    const read = await m.execute<string>(
+      `return (async () => { const s = await ChromeUtils.importESModule("${STORE}").ready;
+       try { return (await s.readPage(arguments[0], { profil: null, adressesLocales: true })).titre; } catch (e) { return "ERR " + e; } })();`,
+      [`http://${host("lu")}/page`],
+    );
+    expect(read).toBe("page");
+    expect(seen("lu")).toContain("GET /page");
+    expect((await uiRefusals(m)).slice(refused0)).toEqual([]);
+  });
+
+  // Review Focus 1: the views are content <browser>s, never the UI's; the site bar and its home stay cut.
+  it("a site app's view and an agent app's window keep their network; no load of theirs is refused", { timeout: 120_000 }, async () => {
+    const refused0 = (await uiRefusals(m)).length;
+    const hits0 = net.hits.length;
+    await m.execute(
+      `return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready;
+       for (const id of ["netsite", "netsite-accueil"]) await store.agent.request("sites.agir", { id, action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`,
+    );
+    await expect
+      .poll(() => net.hits.slice(hits0).filter((h) => h.label === "netsite.localhost").map((h) => `${h.method} ${h.path}`), { timeout: 20_000 })
+      .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws"]));
+    const port = await launchEssai(dataDir);
+    await waitFor(m, `const b = ${appWindowExpr("essai")}?.gBrowser.selectedBrowser; return b && !b.webProgress.isLoadingDocument ? b.currentURI.spec : "";`, (v: string) => v.includes(`localhost:${port}`), 20_000);
+    expect(await inAppView<number>(m, "essai", "return fetch('/').then((r) => r.status)")).toBe(200);
+    // A link press in each view still warms its connection, as in a tab.
+    const link = (name: string) =>
+      `document.body.insertAdjacentHTML("beforeend", '<a href="http://${name}.${SFX}:15366/" style="position:fixed;left:0;top:0;width:50%;height:50%;display:block;z-index:2147483647">link</a>'); return true;`;
+    const pressView = (win: string) =>
+      m.execute(
+        `const w = ${win}, r = w.gBrowser.selectedBrowser.getBoundingClientRect();
+         w.synthesizeMouseEvent("mousedown", r.left + r.width / 4, r.top + r.height / 4, { button: 0, clickCount: 1 });
+         w.synthesizeMouseEvent("mouseup", r.left + (r.width * 3) / 4, r.top + (r.height * 3) / 4, { button: 0, clickCount: 1 });`,
+      );
+    for (const [name, win, run] of [
+      ["site-md", siteWindowExpr("netsite"), () => inSiteView(m, "netsite", link("site-md"))],
+      ["app-md", appWindowExpr("essai"), () => inAppView(m, "essai", link("app-md"))],
+    ] as const) {
+      const tcp0 = net.tcp.length;
+      expect(await run()).toBe(true);
+      await pressView(win);
+      await expect.poll(() => tcpSince(tcp0), { timeout: 10_000, message: name }).toBeGreaterThan(0);
+    }
+    // The opaque home of netsite-accueil is the UI's: its image is refused.
+    const home = `${siteWindowExpr("netsite-accueil")}?.document.getElementById("webaios-site-bar")?.contentDocument?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument`;
+    await expect.poll(() => m.execute(`return ${home}?.getElementById("h")?.textContent ?? null;`), { timeout: 15_000 }).toBe("accueil");
+    await m.execute(`const d = ${home}; const i = d.createElement("img"); i.src = arguments[0]; d.body.append(i);`, [`http://${host("netsite-img")}/x.png`]);
+    await sleep(3000);
+    expect(net.hits.filter((h) => h.label === "netsite-img")).toEqual([]);
+    expect((await names()).filter((n) => n === "netsite-img")).toEqual([]);
+    const refused = (await uiRefusals(m)).slice(refused0);
+    // Measured: the home's own CSP (img-src data: resource://webaios-site-…) refuses it before the content policy is asked.
+    expect((await consoleWith(m, "netsite-img.")).join("\n")).toMatch(/Content-Security-Policy.*netsite-img\..*img-src data: resource:\/\/webaios-site-netsite-accueil-/);
+    // Behind the CSP, the net would refuse it too: the predicate judges the home the UI's.
+    expect(await m.execute(`return ChromeUtils.importESModule("${STORE}").uiNetwork.isUiDocument(${home});`)).toBe(true);
+    expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
+    await callTool(dataDir, "arreter_application", { dossier: "essai" }).catch(() => {});
+    await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
+  });
+
+  it("an action's images and an add-on install are not the UI's", { timeout: 60_000 }, async () => {
+    const refused0 = (await uiRefusals(m)).length;
+    // An action's result image: the product's channel (anonymous, a content principal, no document).
+    const image = await m.execute<number | null>(
+      `return (async () => { const s = await ChromeUtils.importESModule("${STORE}");
+       const r = await s.loadImage(s.containerRequests(0, { anonymous: true }), arguments[0], { permise: () => true, cookies: false, max: 100000 });
+       return r ? r.corps.length : null; })();`,
+      [`http://${host("act-img")}/s2/witness/img`],
+    );
+    expect(image).toBeGreaterThan(0);
+    const addon = await m.execute<string>(
+      `return (async () => { const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+       const i = await AddonManager.getInstallForURL(arguments[0], { telemetryInfo: { source: "test" } });
+       try { await i.install(); return "installed"; } catch (e) { return "failed: " + i.error; } })();`,
+      [`http://${host("addon")}/x.xpi`],
+    );
+    // The fake .xpi fails once downloaded.
+    expect(addon).toMatch(/^failed/);
+    expect(net.hits.filter((h) => h.label === "act-img" || h.label === "addon").map((h) => `${h.label} ${h.path}`)).toEqual(expect.arrayContaining(["act-img /s2/witness/img", "addon /x.xpi"]));
+    expect((await uiRefusals(m)).slice(refused0)).toEqual([]);
   });
 
   it("a widget re-rendered or added after the sidebar loaded inherits the cut", { timeout: 120_000 }, async () => {
