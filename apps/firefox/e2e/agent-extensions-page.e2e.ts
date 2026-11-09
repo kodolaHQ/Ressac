@@ -172,7 +172,8 @@ describe("the Extensions page", () => {
     const m = w.marionette;
     await openPage(m);
     expect(Object.values((await state(m)).tabs).map((o) => o.url)).toContain("webaios://extensions");
-    expect(await inUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent`)).toContain("Aucune extension.");
+    // the list loads after the page shows
+    await waitUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent.includes("Aucune extension.")`);
     await fromStrip(m, "Gérer les extensions");
     await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (v) => typeof v === "string" && v.startsWith("about:addons"));
     expect(await missingApi(m)).toEqual([]);
