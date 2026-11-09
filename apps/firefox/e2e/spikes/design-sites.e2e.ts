@@ -25,7 +25,7 @@ const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "aux
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 
-/** Electron's design.html with the hostile page's hooks (HOOKS_PAGE), plus a password field and a green target. */
+/** design.html with the hostile page's hooks (HOOKS_PAGE), plus a password field and a green target. */
 const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">', '<input type="password" id="mdp" name="mdp"> <button type="submit" id="envoyer">').replace(
   "</body>",
   '<div id="cible" style="position:absolute;left:300px;top:200px;width:80px;height:30px;background:rgb(0,200,0)"></div><p class="cache">caché</p></body>',

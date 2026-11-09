@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 
 // Plan 36 Task 2: the site bar's design button, its chevron, ⇧⌘D in the app window and in its sign-in window, the
-// bar's info avis. Apps tuning, avec-accueil and sans-accord (Electron's design-sites.spec.ts). Block 15350-15354:
+// bar's info avis. Apps tuning, avec-accueil and sans-accord. Block 15350-15354:
 // sites on 15350.
 
 const PORT = 15350;
@@ -102,7 +102,7 @@ async function aim(id: string, sel: string, label: string) {
   await expect.poll(() => calqueOf(m, id, "return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
 }
 
-/** Electron's verifierIndisponible: ⇧⌘D there injects nothing, the avis is in the bar, ✎ greyed with it, ▾ active. */
+/** ⇧⌘D there injects nothing, the avis is in the bar, ✎ greyed with it, ▾ active. */
 async function verifyUnavailable(id: string) {
   await designKey(id);
   await expect.poll(async () => (await bar(id)).avis, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN_SITE);
@@ -307,7 +307,7 @@ it("mode on, bubble open, 3 s idle: at most 4 design.suivi calls", async () => {
   expect((await bar("tuning")).count).toBe(String(n + 1));
 });
 
-// Task 1's review: the site's availability read again after the host's answer (Electron's aLancer).
+// Task 1's review: the site's availability read again after the host's answer.
 it("fullscreen while the host answers the toggle: the mode does not start", async () => {
   await toSite(m, "tuning");
   // The toggle's design.suivi is held until the page is fullscreen.

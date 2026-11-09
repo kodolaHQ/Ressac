@@ -3,8 +3,7 @@ import { appRow, appWindowExpr, closeAppsPage, inAppView, openAppsPage, rowButto
 import { dispatch, state, waitFor } from "./firefox";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// Plan 35a Task 4: the Applications page's Docker section on the real API, and ⇧⌘A. Ports of Electron's
-// e2e/applications.spec.ts (the page's part, :290-:430).
+// Plan 35a Task 4: the Applications page's Docker section on the real API, and ⇧⌘A.
 
 const BLOCK: [number, number] = [15285, 15289];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

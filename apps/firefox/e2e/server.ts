@@ -10,7 +10,7 @@ const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".j
 export const ICON = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==", "base64");
 
 /**
- * Serves the Electron e2e pages read-only; /cookie sets a persistent cookie, /lire-cookie shows the cookies in its title,
+ * Serves the e2e pages read-only; /cookie sets a persistent cookie, /lire-cookie shows the cookies in its title,
  * /icone is a page with an http favicon (/icone.png) and a pure red background, /avale a page that swallows every key.
  * Invisible reading: /sous-ressources?vers=<base> has a frame, an image and a fetch on <base>, /redirige?vers=<url>
  * answers 302, /dialogues calls print() and alert() while loading, /lent never answers, /balise sends a beacon to

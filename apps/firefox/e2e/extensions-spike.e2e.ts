@@ -70,7 +70,7 @@ async function writeTree(dir: string, files: Record<string, string | Buffer>): P
 }
 
 /**
- * The Electron copy (`preparerCopie`) of SOURCE, then by hand what plan 25's decisions 2 and 3 add for Firefox: gecko id,
+ * The base copy of SOURCE, then by hand what plan 25's decisions 2 and 3 add for Firefox: gecko id,
  * version `1.0.0.<n>`, background `scripts: [guard, original]` (webaios-fond.js dropped). `extra` is merged into the
  * manifest last (what AMO turns out to require). Returns the zipped .xpi path and the copy's manifest.
  */

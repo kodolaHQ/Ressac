@@ -1,9 +1,6 @@
 .superpowers/
 node_modules/
 .DS_Store
-out/
-test-results/
-playwright-report/
 
 # Claude Code : worktrees jetables
 .claude/worktrees/

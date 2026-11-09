@@ -22,7 +22,7 @@ describe("design copies", () => {
     rect: { x: 1, y: 2, largeur: 3, hauteur: 4 }, adresse: "http://127.0.0.1/", vue: { largeur: 800, hauteur: 600 },
   });
 
-  it("cleanCapture: Electron's shape checks, then the html is cut", () => {
+  it("cleanCapture: the shape checks, then the html is cut", () => {
     expect(cleanCapture(valid())).toEqual(valid());
     expect(cleanCapture({ ...valid(), rect: { x: Number.NaN, y: 2, largeur: 3, hauteur: 4 } })).toBeNull();
     expect(cleanCapture({ ...valid(), voisinage: { parent: "body", freres: "p" } })).toBeNull();
@@ -34,7 +34,7 @@ describe("design copies", () => {
     expect(long!.html.length).toBeLessThan(5000);
   });
 
-  it("cleanSource: Electron's checks", () => {
+  it("cleanSource: the shape checks", () => {
     expect(cleanSource({ file: {}, line: "x" })).toBeNull();
     expect(cleanSource({ fichier: {}, ligne: "x" })).toBeNull();
     expect(cleanSource({ fichier: "a.svelte", ligne: -3, colonne: 1.5 })).toEqual({ fichier: "a.svelte" });
@@ -49,7 +49,6 @@ describe("design copies", () => {
     expect(cleCible({ type: "site", id: "tuning" })).toBe("site:tuning");
   });
 
-  // Electron's test/design/service.test.ts:232-241.
   it("drift: the home's MOUSE (design-home.ts) is the actor's (design-actor.ts), word for word", () => {
     const mouse = (file: string) => line(readFileSync(path.resolve(import.meta.dirname, file), "utf8").split("\n").map((l) => l.replace(/^export /, "")).join("\n"), "const MOUSE = ");
     expect(mouse("../chrome/store/design-home.ts")).toBe(mouse("../chrome/agent/design-actor.ts"));

@@ -12,8 +12,7 @@ import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, waitUi } from "./ui";
 
-// Ported from Electron's extensions-interface.spec.ts (the space settings' Extensions section) and extensions-agent.spec.ts
-// (A7, N1, Review Focus 5); plus spec choice 2: an agent extension's content scripts run only in the spaces it is active in.
+// The space settings' Extensions section (A7, N1, Review Focus 5), plus spec choice 2: an agent extension's content scripts run only in the spaces it is active in.
 const HOTE = "http://127.0.0.1/*";
 const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
 const ERREUR_PROFIL_PRIVE = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
@@ -238,7 +237,7 @@ describe("agent extensions per space", () => {
     expect(await inPage(m, a, "return document.documentElement.getAttribute('data-tic')")).toBeNull();
   });
 
-  // Electron's rechargerOngletsAgent reloads every agent-script tab of a profile turned private, « même ceux d'une
+  // A profile turned private reloads every agent-script tab of a profile turned private, « même ceux d'une
   // extension déjà retirée sans rechargement »: here switched off in A, still active (and enabled) for B's profile.
   it("switched off in A, active in B's profile: A turns private, the tab its script still runs in is reloaded", async () => {
     const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)));

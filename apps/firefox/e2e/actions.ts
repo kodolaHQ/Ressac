@@ -6,13 +6,13 @@ import { dispatch, state } from "./firefox";
 import type { Marionette } from "./marionette";
 import { inUi, waitUi } from "./ui";
 
-// Ports of Electron's action helpers (e2e/aide.ts, e2e/actions.spec.ts). Declarations live in the space
+// Action helpers. Declarations live in the space
 // (`<dataDir>/espace/actions/<id>/`, `<dataDir>/espace/composants/<nom>/`); runs, results and agreements outside it.
 
 /** The execution every written result belongs to (actions.spec.ts EXECUTION). */
 export const EXECUTION = "2026-10-31T08-00-00-000Z";
 
-/** Runs, results and agreements of the actions, outside the space: `<dataDir>/actions/` (Electron's dossierActions). */
+/** Runs, results and agreements of the actions, outside the space: `<dataDir>/actions/`. */
 export const actionsDataDir = (dataDir: string) => path.join(dataDir, "actions");
 
 /** A test action: the keys of `action.json` (`sources` filled by default), its workflow and other files (aide.ts ActionTest). */
@@ -31,7 +31,7 @@ export interface TestAction {
   fichiers?: Record<string, string>;
 }
 
-/** Electron's ecrireAction (aide.ts:96): `<dataDir>/espace/actions/<id>/`. */
+/** Writes an action into `<dataDir>/espace/actions/<id>/`. */
 export async function writeAction(dataDir: string, id: string, a: TestAction): Promise<void> {
   const dir = path.join(dataDir, "espace", "actions", id);
   await mkdir(dir, { recursive: true });
@@ -49,7 +49,7 @@ export interface TestComponent {
   html: string;
 }
 
-/** Electron's ecrireComposant (aide.ts:121): `<dataDir>/espace/composants/<nom>/`. */
+/** Writes a component into `<dataDir>/espace/composants/<nom>/`. */
 export async function writeComponent(dataDir: string, nom: string, c: TestComponent): Promise<void> {
   const dir = path.join(dataDir, "espace", "composants", nom);
   await mkdir(dir, { recursive: true });
@@ -114,13 +114,13 @@ export const probe = (base: string) => `<!doctype html><meta charset="utf-8">
   try { const ws = new WebSocket("${base.replace("http", "ws")}/ws"); ws.onerror = () => (out.ws = "error"); ws.onopen = () => (out.ws = "open"); } catch (e) { out.ws = "threw " + e.name; }
   document.getElementById("i").onload = () => (out.img = "loaded");
   document.getElementById("i").onerror = () => (out.img = "error");
-  // Then a self-navigation, which would carry data in its URL (Electron blocks it with will-frame-navigate).
+  // Then a self-navigation, which would carry data in its URL (which must be blocked).
   setTimeout(() => { parent.postMessage({ type: "sonde", out }, "*"); location.href = "${base}/nav?x=1"; }, 1500);
 </script>`;
 
 export type Block = { composant: string; props: Record<string, unknown>; blocs?: Block[]; gauche?: Block[]; droite?: Block[] };
 
-/** Electron's ecrireActionAvecResultat (actions.spec.ts:30): the action and its last run, with its result. */
+/** The action and its last run, with its result. */
 export async function writeActionWithResult(
   dataDir: string,
   id: string,
@@ -140,22 +140,22 @@ export async function writeActionWithResult(
   );
 }
 
-/** Opens action `id`'s page in a tab of the first window, once the noyau serves it (Electron's ouvrirPage, actions.spec.ts:68): nothing is launched. */
+/** Opens action `id`'s page in a tab of the first window, once the noyau serves it: nothing is launched. */
 export async function openActionPage(m: Marionette, id: string, nom: string, execution = EXECUTION): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, execution], 30_000);
   await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, execution });
   await waitUi(m, `return !!doc.querySelector('[data-testid="rendu-page"]');`, [], 30_000);
 }
 
-/** Electron's SANS_NOYAU (actions.spec.ts:420). */
+/** What the UI says when the actions service does not answer. */
 export const WITHOUT_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 
-/** Waits until the noyau serves the actions: an unknown action is then refused as such (Electron's attendreNoyau, actions.spec.ts:424). */
+/** Waits until the noyau serves the actions: an unknown action is then refused as such. */
 export async function waitNoyau(m: Marionette): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.lancer('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_NOYAU], 30_000);
 }
 
-/** Opens the action's page (its last result, or `execution`) without launching anything (Electron's ouvrirAction, actions.spec.ts:432). */
+/** Opens the action's page (its last result, or `execution`) without launching anything. */
 export async function openAction(m: Marionette, id: string, nom: string, execution?: string): Promise<void> {
   await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, ...(execution ? { execution } : {}) });
   await waitUi(m, `return !!doc.querySelector('[data-testid="page-action"]');`, [], 10_000);
@@ -168,7 +168,7 @@ export const chained = (blocs: { id: string; type: string; parametres: Record<st
   liens: blocs.slice(1).map((b, i) => ({ de: blocs[i]!.id, vers: b.id })),
 });
 
-/** A runnable action: a `code` block, the blocks between, then the output to the page (Electron's ecrireActionExecutable). */
+/** A runnable action: a `code` block, the blocks between, then the output to the page. */
 export function writeRunnableAction(
   dataDir: string,
   id: string,
@@ -185,7 +185,7 @@ export function writeRunnableAction(
   });
 }
 
-/** Three pages of the slow site, read one by one: « Lecture de 127.0.0.1… » then « 3 / 3 » (Electron's ecrireActionPages). */
+/** Three pages of the slow site, read one by one: « Lecture de 127.0.0.1… » then « 3 / 3 ». */
 export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages", nom = "Pages") =>
   writeRunnableAction(dataDir, id, {
     nom,
@@ -193,19 +193,19 @@ export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages",
     blocs: [{ id: "lecture", type: "source.page", parametres: { url: "{url}", parElement: true, champ: "page" } }],
   });
 
-/** Finished runs written on disk for this action, without temporary files (Electron's executionsSurDisque). */
+/** Finished runs written on disk for this action, without temporary files. */
 export async function runsOnDisk(dataDir: string, id: string): Promise<string[]> {
   const dir = path.join(actionsDataDir(dataDir), id, "executions");
   return (await readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json")).sort();
 }
 
-/** The status of each finished run on disk, oldest first (Electron's statutsSurDisque). */
+/** The status of each finished run on disk, oldest first. */
 export async function runStatuses(dataDir: string, id: string): Promise<string[]> {
   const dir = path.join(actionsDataDir(dataDir), id, "executions");
   return Promise.all((await runsOnDisk(dataDir, id)).map(async (f) => (JSON.parse(await readFile(path.join(dir, f), "utf8")) as { statut: string }).statut));
 }
 
-/** A finished run and its result (a title), written on disk (Electron's ecrireResultat). */
+/** A finished run and its result (a title), written on disk. */
 export async function writeResult(dataDir: string, id: string, execution: string, debut: string, titre: string, saisie: string | null = null): Promise<void> {
   const data = path.join(actionsDataDir(dataDir), id);
   await mkdir(path.join(data, "executions"), { recursive: true });
@@ -251,7 +251,7 @@ export interface TestServer {
   close(): Promise<void>;
 }
 
-/** Electron's ecouter (actions.spec.ts): a local server, each URL asked noted in `log`. */
+/** A local server, each URL asked noted in `log`. */
 export async function listen(handle: (req: IncomingMessage, res: ServerResponse, body: string) => void): Promise<TestServer> {
   const log: string[] = [];
   const server = createServer((req, res) => {
@@ -290,7 +290,7 @@ export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA
 export type ImageRequestSeen = { path: string; cookie: string | null; referer: string | null };
 
 /**
- * Electron's servers of actions.spec.ts:290-383 (the site, the fake Gemma and `reglages`, reset by `reset()`), plus the
+ * The action servers (the site, the fake Gemma and `reglages`, reset by `reset()`), plus the
  * fake Kev, and an image server noting each request's path, Cookie and Referer. Image server paths: `/cookie` sets
  * `seen=<value of ?v>` (a page), `*.png` a PNG with a Set-Cookie, `*\/r` a 302 to `/secret` (absolute http URL),
  * `/hop` a 302 to `/p.png`, `/secret` a PNG, `*.jpg` a PNG too, `*\/html.png` an HTML page, `*\/big.png` 6 MB.

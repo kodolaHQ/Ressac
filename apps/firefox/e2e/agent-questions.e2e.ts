@@ -9,7 +9,7 @@ import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 
-// Electron's agent.spec.ts « Read permission » tests, and the access badge of outils-dev.spec.ts.
+// The agent's « Read permission » questions, and the dev tools' access badge.
 const REFUSED = "Accès refusé par l'utilisateur à cet onglet.";
 const CARD = '[data-testid="demande-permission"]';
 
@@ -154,7 +154,7 @@ async function handlesById(): Promise<Record<string, string>> {
 const activeId = () => m.execute<string>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).windows.active())()`);
 const hasCard = (h: string) => inWindow(m, h, () => inUi<boolean>(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`));
 
-/** The ✦ button (what ⌘J and Electron's menu item do too), then waits for the panel to show or hide. */
+/** The ✦ button (what ⌘J does too), then waits for the panel to show or hide. */
 async function togglePanel(): Promise<void> {
   const was = await m.execute<boolean>("return !document.getElementById('webaios-agent').hidden");
   await click(m, '[data-testid="bouton-agent"]');

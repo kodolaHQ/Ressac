@@ -453,7 +453,7 @@ describe("leaving a page with unsaved changes", () => {
     }
   }
 
-  // Electron onglets 173. Rester is button 1 (dismiss), Quitter button 0 (accept).
+  // Rester is button 1 (dismiss), Quitter button 0 (accept).
   for (const [label, button] of [["Rester", 1], ["Quitter", 0]] as const) {
     it(`closing a tab with an unsaved form asks (${label})`, async () => {
       // Marionette would dismiss the prompt at the next command: this session leaves prompts to the test.
@@ -526,7 +526,7 @@ describe("leaving a page with unsaved changes", () => {
   });
 
   // Marionette accepts Firefox's own beforeunload prompts by itself: the test counts the dialogs that open.
-  it("quitting asks nothing, as in Electron; closing the window still asks, as Firefox", async () => {
+  it("quitting asks nothing; closing the window still asks, as Firefox", async () => {
     await unsavedForm();
     // What every quit path does (nsAppStartup::Quit): quit-application-requested, then each window's CanClose, same task.
     const dialogs = (quitting: boolean) =>

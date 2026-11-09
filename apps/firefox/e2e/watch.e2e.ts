@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 import { click, inUi } from "./ui";
 import { writeWidget } from "./workflows";
 
-// The watch end to end (Electron's veille.spec.ts, ported): all local. An ad site, a fake DuckDuckGo (the noyau tests'
+// The watch end to end: all local. An ad site, a fake DuckDuckGo (the noyau tests'
 // saved pages), a fake Kev and a fake Ollama. No real notification: test mode writes them to a file in the data folder.
 // Plus the click on a notification.
 
@@ -251,7 +251,7 @@ const progress = (m: Marionette, id: string) =>
   inUi<string | null>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"] [data-testid="progression"]')?.textContent ?? null;`, [id]);
 const widgetText = (m: Marionette, id: string) => inUi<string>(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"]')?.textContent ?? "";`, [id]);
 
-/** « Mettre à jour maintenant » from the widget's menu (as Electron's e2e). */
+/** « Mettre à jour maintenant » from the widget's menu. */
 async function harvest(m: Marionette, id: string): Promise<void> {
   await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);
   await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });

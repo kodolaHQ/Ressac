@@ -16,8 +16,7 @@ import { LINES, writeAppJs } from "./review";
 import { inBrowser } from "./sites";
 import { click, pressKeys, typeText, waitUi } from "./ui";
 
-// Plan 35b Task 6: the design mode in an agent app's window (spec §13.5). Ports of Electron's design.spec.ts:426,529 and
-// relecture.spec.ts:168, plus the app's own stops, ⇧⌘D in its window, its source and the agent never seeing the bubble.
+// Plan 35b Task 6: the design mode in an agent app's window (spec §13.5), plus the app's own stops, ⇧⌘D in its window, its source and the agent never seeing the bubble.
 // Block 15320-15324; the demo of the main window's tab on 15324 (the apps take the first free ports).
 
 const BLOCK: [number, number] = [15320, 15324];
@@ -27,7 +26,7 @@ const APP = appWindowExpr("essai");
 const VIEW = "gBrowser.selectedBrowser";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const tid = (id: string) => `[data-testid="${id}"]`;
-// Electron's « formulaire » server with design.html's data-source paragraph.
+// The « formulaire » server with design.html's data-source paragraph.
 const SERVER = `import { createServer } from "node:http";
 createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -67,7 +66,7 @@ afterEach(async () => {
   await callTool(dataDir, "arreter_application", { dossier: "essai" }).catch(() => {});
   await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
   await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
-  // Each test starts with an empty cart (Electron's tests each have a new root).
+  // Each test starts with an empty cart.
   await svc(`for (const e of await store.agent.request("design.panier", { projet: "app-essai" })) await store.agent.request("design.retirer", { projet: "app-essai", id: e.id }); return 1;`);
 });
 
@@ -206,7 +205,7 @@ it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the 
   await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("lot-envoye")}').length;`), { timeout: 10_000 }).toBe(1);
 });
 
-// relecture.spec.ts:168: Electron's native menu item relire-projet does not exist under Firefox (spec §5.7); its two
+// relecture.spec.ts:168: no native menu item relire-projet (spec §5.7); its two
 // equivalents are the badge's item again and the card's « Relire ».
 it("relecture.spec.ts:168 Relire ce projet from essai's badge, twice, then Relire of its card bring back the same page, without a second tab", async () => {
   await launched();

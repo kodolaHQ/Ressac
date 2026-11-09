@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { pressKeys } from "./ui";
 
-// Plan 35a Task 1: the design viewfinder actor (WebAiOsDesign), Electron's design.spec.ts:63-236 ported, and the guard of
+// Plan 35a Task 1: the design viewfinder actor (WebAiOsDesign), and the guard of
 // the spikes' « Correctif S1 », in the top window and in every process-root frame.
 
 const B = "gBrowser.selectedBrowser";
@@ -135,7 +135,7 @@ describe("design viewfinder actor", () => {
   });
 
   // design.spec.ts:174
-  // Electron's armerViseur answers null. Here pagehide ends the viewfinder first ({ r: null }); a rejection (AbortError,
+  // Pagehide ends the viewfinder first ({ r: null }); a rejection (AbortError,
   // the window gone first) is null for the parent as well.
   it("reloading during the viewfinder ends the query with null, in under 1 s", async () => {
     await open("/");

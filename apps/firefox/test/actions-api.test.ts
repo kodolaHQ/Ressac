@@ -171,7 +171,7 @@ describe("createActionsApi", () => {
     ]);
   });
 
-  it("a stopped host gives Electron's answers without a noyau", async () => {
+  it("a stopped host gives the answers without a noyau", async () => {
     const { F, api } = setup();
     const a = api(F);
     expect(await a.lancer("x", null)).toEqual({ statut: "invalide", erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
@@ -370,7 +370,7 @@ describe("createActionsApi", () => {
     expect(calls).toEqual([]);
   });
 
-  it("accorder: a stopped host is Electron's missing noyau; a window turned private meanwhile is refused", async () => {
+  it("accorder: a stopped host is a missing noyau; a window turned private meanwhile is refused", async () => {
     const stopped = setup();
     expect(await stopped.api(stopped.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({
       ok: false,
@@ -440,7 +440,7 @@ describe("createActionsApi", () => {
     expect(launched(calls)).toEqual([]);
   });
 
-  it("ouvrir: a stopped host is Electron's missing noyau; a failed launch goes to the console and reads again on the next acces", async () => {
+  it("ouvrir: a stopped host is a missing noyau; a failed launch goes to the console and reads again on the next acces", async () => {
     const stopped = setup();
     expect(await stopped.api(stopped.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(stopped.dispatched).toEqual([]);

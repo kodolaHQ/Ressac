@@ -3,7 +3,7 @@ import { bannerText } from "../chrome/window/banner-text";
 
 const a = "https://a.test";
 
-it("Electron's sentences: camera and micro grouped, notifications, the link cut at 120", () => {
+it("the sentences: camera and micro grouped, notifications, the link cut at 120", () => {
   expect(bannerText({ origine: a, permissions: ["media-camera", "media-micro"] })).toBe("a.test veut utiliser votre caméra et votre micro");
   expect(bannerText({ origine: a, permissions: ["notifications"] })).toBe("a.test veut vous envoyer des notifications");
   const lien = `mailto:${"x".repeat(200)}`;

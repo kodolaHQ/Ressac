@@ -11,8 +11,8 @@ import { callTool } from "./mcp";
 import { grantSite, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Plan 32 Task 5: the agent's tools on a site app window, behind the app's « donnees-widget » card. Ports of Electron's
-// e2e/sites.spec.ts 74 (:1669) to 78 (:1799) and 83 (:2173), plus the case seen on 2026-11-06 (ouvrir_site, then
+// Plan 32 Task 5: the agent's tools on a site app window, behind the app's « donnees-widget » card, plus
+// the case seen on 2026-11-06 (ouvrir_site, then
 // lire_onglet on the app showed no card and answered « Onglet introuvable »).
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -64,7 +64,7 @@ async function start(sites: Record<string, object> = { vidola: vidola() }, prepa
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
 }
 
-/** Electron's ouvrirEtAttendre: the app opened, its view on `chemin` and loaded. */
+/** The app opened, its view on `chemin` and loaded. */
 async function openAndWait(id = "vidola", chemin = "/", host = "vidola-a.localhost") {
   await openSite(id);
   await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(chemin, host));
@@ -152,7 +152,7 @@ describe("the agent on a site app window", () => {
     expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(DEVTOOLS)})?.textContent`, [], 15_000)).toContain("Vidola");
     await answer("Autoriser la sélection", DEVTOOLS);
     expect((await console_).texte).toBe("Aucun message.");
-    // In the page's own world, as Electron's executeJavaScript.
+    // In the page's own world.
     await view(`(() => { const s = document.createElement("script"); s.textContent = "console.warn('message de la vue du site')"; document.documentElement.append(s); s.remove(); return 1; })()`);
     await expect.poll(async () => (await call("lire_console", { id: "site:vidola" })).texte, { timeout: 10_000 }).toContain("[warn] message de la vue du site");
     expect(await shown('[data-testid="modale-demande"]')).toBe(false);

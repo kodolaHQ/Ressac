@@ -225,7 +225,7 @@ test("une demande arrivée avant la fin du chargement attend ready", async () =>
   expect(questions).toEqual([]);
 });
 
-test("le fichier écrit a le format d'Electron", async () => {
+test("le fichier écrit a le format attendu", async () => {
   await make().handle(req("geolocation", { origine: "https://a.test" }));
   expect(JSON.parse(disk.get(FILE)!)).toEqual({ "https://a.test geolocation": "autoriser" });
 });

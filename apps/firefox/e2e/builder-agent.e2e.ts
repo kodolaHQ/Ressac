@@ -12,7 +12,7 @@ import { appelerOutil } from "../test/mcp";
 import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 import { openBuilder, widgetDir, writeWidget } from "./workflows";
 
-// The workflow builder's Agent tab and `workflow_ouvert` (Electron's constructeur.spec.ts, ported). Under Firefox the
+// The workflow builder's Agent tab and `workflow_ouvert`. The
 // Agent tab opens the window's agent panel instead of hosting its terminal: a check of the terminal in the tab becomes
 // « the panel is open, with one conversation » (one terminal, in the agent frame).
 

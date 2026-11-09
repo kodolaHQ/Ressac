@@ -10,8 +10,8 @@ import type { Marionette } from "./marionette";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceWav, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 3: the video resume in the frames of a site app's view, ports of Electron's e2e/sites.spec.ts 54 (:1256),
-// 55 (:1275), 56 (:1286), 57 (:1301), plus an about:srcdoc player, untrusted events, the sign-in window and a host restart.
+// Plan 32 Task 3: the video resume in the frames of a site app's view, plus an about:srcdoc
+// player, untrusted events, the sign-in window and a host restart.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "lecteur.localhost", "compte.localhost"];

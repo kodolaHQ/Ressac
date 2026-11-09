@@ -11,7 +11,7 @@ import { declareProject, LINES, modified, openApplications, refreshReview, revie
 import { writeSite } from "./sites";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Plan 34 Task 4: the Review page, ports of Electron's e2e/relecture.spec.ts on a declared external project (spec §6),
+// Plan 34 Task 4: the Review page on a declared external project (spec §6),
 // a site app's « Relire », and Review Focus 3 and 4.
 
 const dirs: string[] = [];

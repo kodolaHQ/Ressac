@@ -62,7 +62,7 @@ it("a site's question waits without a delay; it falls (« retiree ») on its sig
   store.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url: "https://a.test/", activer: true }, () => "t");
   const site = { ongletId: "t", fenetreId: fenetre, origine: "https://a.test", permissions: ["notifications" as const] };
   let answer = questions.askSite(site);
-  // Electron's site question: on its tab only (no fenetreId), shown as a banner.
+  // A site question: on its tab only (no fenetreId), shown as a banner.
   expect(questions.pending()).toEqual([{ id: expect.any(String), ongletId: "t", origine: "https://a.test", permissions: ["notifications"] }]);
   questions.answer(questions.pending()[0]!.id, "autoriser");
   expect(await answer).toBe("autoriser");
@@ -107,7 +107,7 @@ it("the dev tools card answers the ticked rights, [] on a refusal, on its signal
   expect(questions.pending()).toEqual([]);
 });
 
-it("the widget data card: Electron's origin per kind; Autoriser answers true; a site app's dev tools card falls when its window closes", async () => {
+it("the widget data card: the origin per kind; Autoriser answers true; a site app's dev tools card falls when its window closes", async () => {
   const store = createStore(etatInitial());
   let open = [{ id: "vidola", url: "https://vidola.test/" }];
   const questions = new Questions(store, () => open);

@@ -10,16 +10,16 @@ import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
 import { click, inUi, waitUi } from "./ui";
 
-// Agent app helpers, ported from Electron's e2e (apps/navigateur/e2e/aide.ts:363-403, applications.spec.ts) with English names.
+// Agent app helpers.
 
-/** A fake app's ports (one block of 5 per e2e file: they run in parallel) and Electron's short delay before « En erreur ». */
+/** A fake app's ports (one block of 5 per e2e file: they run in parallel) and a short delay before « En erreur ». */
 export const APPS_ENV = (block: [number, number]) => ({ WEBAIOS_PORTS_APPS: `${block[0]}-${block[1]}`, WEBAIOS_DELAI_APP_MS: "3000" });
 
 // 1×1 PNG, the app's same-origin icon.
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 const SERVERS = {
-  // Electron's: /redirige redirects elsewhere server side; /retient refuses to be left; /sans-titre has no <title>.
+  // /redirige redirects elsewhere server side; /retient refuses to be left; /sans-titre has no <title>.
   // Added for Firefox: /page2 (same origin), /icone?href=<url> (a page whose icon is <url>), /icon.png, /vers-file and
   // /vers-data (redirects off the web).
   ok: (dossier: string) => `import { createServer } from "node:http";
@@ -53,7 +53,7 @@ createServer((req, res) => {
 };
 
 /**
- * Electron's ecrireProjet: `<dataDir>/espace/projets/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
+ * Writes a project: `<dataDir>/espace/projets/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
  * `webaios.json` (a string is written as is; an object completes `{ type: "application", lancement: "node serveur.mjs" }`).
  */
 export function writeProject(dataDir: string, dossier: string, o: { manifeste?: object | string; serveur?: keyof typeof SERVERS } = {}): void {
@@ -121,7 +121,7 @@ export interface AppsPage {
 }
 
 /**
- * Electron's ouvrirPage (applications.spec.ts:273): three projects (`essai` an application, `zod` a POC, `vieux` without
+ * Three projects (`essai` an application, `zod` a POC, `vieux` without
  * manifest) and the Applications page open. `lent`: essai's server waits a second before listening (« Lancement… » shows).
  * `dataDir` and `profile` given are reused (a restart); the caller removes the folders.
  */

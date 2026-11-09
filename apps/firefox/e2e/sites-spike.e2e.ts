@@ -9,10 +9,10 @@ import { testActor } from "./agent-extensions";
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { ELECTRON_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer } from "./sites";
+import { SITE_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer } from "./sites";
 
 // Plan 31's spike (docs/superpowers/notes/2026-11-06-applis-de-site-firefox-spike.md): the site app window, routing
-// without a request, the Xray sandbox, Electron's home page. The probes print what they see rather than assert it:
+// without a request, the Xray sandbox, the test home page. The probes print what they see rather than assert it:
 // rerun with WEBAIOS_SPIKE=1 after a Firefox version change and compare.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -29,7 +29,7 @@ const seen = { Components: typeof Components, ChromeUtils: typeof ChromeUtils, S
 window.probeVar = 1;
 var probeGlobal = 2;
 document.documentElement.setAttribute("data-probe", JSON.stringify(seen));
-// The same-origin Xray door (the guard's comment: accepted, Electron's inline-script twin): wrappedJSObject, and an
+// The same-origin Xray door (the guard's comment: accepted, the inline-script twin): wrappedJSObject, and an
 // inline <script> put in the page by the sandbox.
 const injected = document.createElement("script");
 injected.textContent = "window.injectedBySandbox = 1";
@@ -301,9 +301,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await openSite();
   }, 90_000);
 
-  it("(d) Electron's home page: unchanged, served by resource://, parent.postMessage both ways", async () => {
-    // The served copy: the widget display's CSP and guard, then the bridge, then the home page as Electron wrote it.
-    const served = affichageServi(ELECTRON_HOME).replace("<title>Accueil</title>", `${HOME_BRIDGE}<title>Accueil</title>`);
+  it("(d) the test home page: unchanged, served by resource://, parent.postMessage both ways", async () => {
+    // The served copy: the widget display's CSP and guard, then the bridge, then the home page as is.
+    const served = affichageServi(SITE_HOME).replace("<title>Accueil</title>", `${HOME_BRIDGE}<title>Accueil</title>`);
     const dir = path.join(w.dataDir, "webaios-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);

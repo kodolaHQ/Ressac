@@ -30,7 +30,7 @@ describe("Firefox copy", () => {
     expect(refusFirefox({ version: "1.2.3" }, ["fond.js"])).toEqual([]);
   });
 
-  it("refusals: a right Electron's agent extensions cannot use, or a manifest key that grants a power", () => {
+  it("refusals: a right agent extensions cannot use, or a manifest key that grants a power", () => {
     const droit = (n: string) => `Droit non pris en charge par WebAiOs : ${n}`;
     const permis = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
     expect(refusFirefox({ version: "1", permissions: permis }, [])).toEqual([]);

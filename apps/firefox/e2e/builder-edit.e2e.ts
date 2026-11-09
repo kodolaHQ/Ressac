@@ -10,8 +10,7 @@ import type { Marionette } from "./marionette";
 import { click, inUi, keyDown, keyUp, missingApi, pressKeys, typeText, waitUi } from "./ui";
 import { nodes, openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 
-// The workflow builder on webaios://workflow/<widget>, opened from the home page's widget menu (Electron's
-// constructeur.spec.ts, ported).
+// The workflow builder on webaios://workflow/<widget>, opened from the home page's widget menu.
 
 /** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
 const WORKFLOW_VEILLE = {
@@ -733,7 +732,7 @@ describe("the workflow builder", () => {
     await waitCount("code-non-enregistre", 1);
     const tabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === "webaios://workflow/close").length;
 
-    // Firefox shows the sidebar's confirm() as a modal prompt (a WebDriver user prompt): Electron's text.
+    // Firefox shows the sidebar's confirm() as a modal prompt (a WebDriver user prompt), with the confirm's text.
     await pressKeysLater("Meta+w");
     expect(await promptText()).toBe("Le code de liens.mjs n'est pas enregistré. Fermer quand même ? Il sera perdu.");
     await m.command("WebDriver:DismissAlert");

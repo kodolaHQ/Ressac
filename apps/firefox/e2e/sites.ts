@@ -5,13 +5,13 @@ import path from "node:path";
 import { accorderSite, DeclarationSite } from "../../../packages/noyau/src/index";
 import type { Marionette } from "./marionette";
 
-// Site app helpers, copied from Electron's e2e (apps/navigateur/e2e/aide.ts, sites.spec.ts) with English names.
+// Site app helpers.
 
 /** What a route of startSitesServer answers: an HTML text, or the hand on the response. */
 export type SiteRoute = string | ((req: IncomingMessage, res: ServerResponse) => void);
 
 /**
- * Electron's serveurSites: one server for every `*.localhost` test host, answering by the Host header. `definir(hote,
+ * One server for every `*.localhost` test host, answering by the Host header. `definir(hote,
  * chemin, route)` adds a page; `/cookie` sets a cookie on any host; `couper(hote)` resets that host's connections (a
  * stopped site). Every request received is noted in `requetes`, with its method.
  * Firefox resolves these names only with a DNS override: see `resolveLocalHosts`. `port`: a fixed one (default: any free port).
@@ -81,7 +81,7 @@ export interface SiteTest {
   fichiers?: Record<string, string | Buffer>;
 }
 
-/** Electron's ecrireSite: writes a site app into `<dataDir>/espace/sites/<id>/` (what the agent would write there). */
+/** Writes a site app into `<dataDir>/espace/sites/<id>/` (what the agent would write there). */
 export function writeSite(dataDir: string, id: string, s: SiteTest): void {
   const dossier = path.join(dataDir, "espace", "sites", id);
   mkdirSync(dossier, { recursive: true });
@@ -95,8 +95,8 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
 /** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the noyau's own accorderSite: the app opens granted. */
 export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => accorderSite(dataDir, id, DeclarationSite.parse(declaration));
 
-/** Electron's test home page (sites.spec.ts ACCUEIL), copied as is: it shows the memory it receives and notes every message. */
-export const ELECTRON_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
+/** The test home page: it shows the memory it receives and notes every message. */
+export const SITE_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
 <ul id="series"></ul><p id="domaine"></p><button id="ouvrir">Reprendre</button>
 <script>
   window.recus = [];
@@ -187,7 +187,7 @@ export async function inBrowser<T>(m: Marionette, browser: string, script: strin
 export const inSiteView = <T>(m: Marionette, id: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
   inBrowser<T>(m, `${siteWindowExpr(id)}.gBrowser.selectedBrowser`, script, o);
 
-/** Electron's silenceWav (e2e/aide.ts): `seconds` of 8 kHz silence as a WAV, a video as far as the player cares. */
+/** `seconds` of 8 kHz silence as a WAV, a video as far as the player cares. */
 export function silenceWav(seconds = 3): Buffer {
   const n = 8000 * seconds;
   const b = Buffer.alloc(44 + n, 0x80);
@@ -206,7 +206,7 @@ export function silenceWav(seconds = 3): Buffer {
   return b;
 }
 
-/** Electron's servirWav: a WAV served with byte ranges, like a real video server, so the player can seek to the minute. */
+/** A WAV served with byte ranges, like a real video server, so the player can seek to the minute. */
 export const serveWav = (wav: Buffer): SiteRoute => (req, res) => {
   const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
   if (!range) return void res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Accept-Ranges": "bytes" }).end(wav);

@@ -54,7 +54,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       FAUX_DOCKER_JOURNAL: journal,
       WEBAIOS_HOST_TEST: "1",
       PATH: `${outils}:${process.env.PATH}`,
-      // A free port, as Electron's e2e: never the real 5279.
+      // A free port: never the real 5279.
       WEBAIOS_PORT_MCP_EXTERNE: "0",
       ...env,
     },
@@ -97,7 +97,7 @@ afterEach(async () => {
       h.child.kill("SIGKILL");
       await h.exited;
     }
-    // A fake app left running would hold its test port (as Electron's applications.spec.ts:9-20).
+    // A fake app left running would hold its test port.
     for (const f of existsSync(h.racine) ? readdirSync(h.racine) : [])
       if (/^faux-docker-app-.*\.pid$/.test(f))
         try {
@@ -227,7 +227,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(lignes.filter((l) => / webaios-atelier( |$)/.test(l))).toEqual([]);
   });
 
-  it("publishes its own port range, apart from the Electron app's 5280-5299", async () => {
+  it("publishes its own port range, 5300-5319", async () => {
     const h = startHost({ FAUX_DOCKER_SANS_CONTENEUR: "1" });
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
@@ -269,7 +269,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect((await appelerOutil(h.racine, "workflow_ouvert", {}, await session())).texte).toBe(AUCUN_WORKFLOW_OUVERT);
   });
 
-  it("workflow.* answer a bad input with Electron's IPC shapes", async () => {
+  it("workflow.* answer a bad input with the UI's shapes", async () => {
     const h = startHost();
     const cible = { type: "widget", id: "veille" };
     const bad = { type: "widget", id: "../x" };
@@ -688,7 +688,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     t = await outil(h, "console_extension", { id: "ma-ext" });
     expect(t).not.toContain("fond démarré");
     expect(t).toContain(CONSOLE_FOND_OBSERVE);
-    // Refused: « Déblocage refusé » said as Electron says it.
+    // Refused: « Déblocage refusé ».
     issue = "refuser";
     expect(await outil(h, "debloquer_console", { id: "ma-ext", raison: "r" })).toBe("Refusée par l'utilisateur.");
   });
@@ -998,7 +998,7 @@ describe("agent applications", { timeout: 30_000 }, () => {
   // Their own block, apart from every e2e file's (plans 35a and 35b).
   const APPS = { WEBAIOS_PORTS_APPS: "15325-15329", WEBAIOS_DELAI_APP_MS: "3000" };
   type Liste = { atelier: string; applications: { dossier: string; etat: string; port?: number; favicon?: string; dernierLancement?: string }[] };
-  /** Electron's ecrireProjet (e2e/aide.ts) with its "ok" server: projets/essai, named Essai. */
+  /** Writes a project with an "ok" server: projets/essai, named Essai. */
   const writeEssai = (dataDir: string) => {
     const chemin = join(dataDir, "espace", "projets", "essai");
     mkdirSync(chemin, { recursive: true });
@@ -1134,7 +1134,7 @@ createServer((req, res) => {
     const avant = arrets(h).length;
     h.child.stdin.end();
     expect(await h.exited).toBe(0);
-    // Started first, then run side by side with the sessions' stop (Electron's order): both happen before the exit.
+    // Started first, then run side by side with the sessions' stop: both happen before the exit.
     const apres = arrets(h).slice(avant);
     expect(apres).toContain("WEBAIOS_APP=essai");
     expect(apres).toContain("cat /tmp/webaios-session-");

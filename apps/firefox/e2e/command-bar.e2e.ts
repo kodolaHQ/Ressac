@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import { writeAction } from "./actions";
 import { testActor } from "./agent-extensions";
-import { ELECTRON_HOME, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite } from "./sites";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
@@ -81,7 +81,7 @@ async function withPageA(): Promise<string> {
 const emptyPageFocused = () =>
   waitUi(m, "return doc.activeElement?.dataset.testid === 'saisie-page-vide' && document.activeElement === document.getElementById('webaios-sidebar')");
 const veilClick = () => inUi(m, `for (const type of ["mousedown", "mouseup"]) ui.synthesizeMouseEvent(type, 5, 5, { button: 0, clickCount: 1 });`);
-/** A click in the bar's box margin, off the field and the lines (Electron: 3, 3, which Gecko hit-tests outside the 12 px rounded corner). */
+/** A click in the bar's box margin, off the field and the lines (6, 6: Gecko hit-tests 3, 3 outside the 12 px rounded corner). */
 const marginClick = () =>
   inUi(
     m,
@@ -144,7 +144,7 @@ describe("Command bar", () => {
     try {
       writeSite(dataDir, "vidola", {
         declaration: { nom: "Vidola", adresse: sites.url("vidola-a.localhost", "/"), domaines: ["vidola-a.localhost"], connexion: [] },
-        fichiers: { "accueil/index.html": ELECTRON_HOME },
+        fichiers: { "accueil/index.html": SITE_HOME },
       });
       const actor = testActor(profile);
       w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
@@ -358,7 +358,7 @@ describe("Command bar", () => {
 
   // barre-commande.spec.ts:478
   it("on the empty page, Escape gives the keyboard back to the empty page's field", async () => {
-    // Electron first checks the field has the keyboard at start: here Marionette's NewSession focuses the selected browser.
+    // No check that the field has the keyboard at start: Marionette's NewSession focuses the selected browser.
     await pressKeys(m, "Meta+t");
     await fieldFocused();
     await pressKeys(m, "Escape");

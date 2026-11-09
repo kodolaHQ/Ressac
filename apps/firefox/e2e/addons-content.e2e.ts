@@ -9,7 +9,7 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
-// Ports of Electron's extensions.spec.ts scenarios (blocker, hider, onInstalled).
+// Add-on scenarios: a blocker, a hider, onInstalled.
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));

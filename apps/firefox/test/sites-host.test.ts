@@ -286,7 +286,7 @@ describe("agir", () => {
     expect(sites.vidola).toBeUndefined();
   });
 
-  it("a failed trash shows Electron's text on the row", async () => {
+  it("a failed trash shows its text on the row", async () => {
     const m = mount();
     writeFileSync(join(m.chemins.sites, ".corbeille"), "un fichier, pas un dossier");
     await m.sites.agir("vidola", "supprimer", "f1");

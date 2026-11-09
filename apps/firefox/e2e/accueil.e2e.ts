@@ -134,7 +134,7 @@ function texteWidget(m: Marionette, id: string): Promise<string> {
   return inUi(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"]')?.textContent ?? "";`, [id]);
 }
 
-/** « Mettre à jour maintenant » par le menu du widget (comme l'e2e d'Electron). */
+/** « Mettre à jour maintenant » par le menu du widget. */
 async function recolter(m: Marionette, id: string): Promise<void> {
   await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);
   await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });

@@ -5,7 +5,7 @@ import { beforeEach, expect, test } from "vitest";
 import { CLE_INVALIDE, MemoireSite, VALEUR_NON_JSON } from "../../../packages/noyau/src/index";
 import { creerPositions, memoireOp, REFUS_MEMOIRE } from "../noyau/site-memory";
 
-// The memory part of Electron's test/sites/injection.test.ts, ported to the host's memoireOp: the sender checks
+// The site memory, on the host's memoireOp: the sender checks
 // (sub-frame, sign-in window, page off the site, no accord) are the chrome's, in site-frames.test.ts.
 
 let memoire: MemoireSite;
@@ -47,7 +47,7 @@ test("memory refused by the service (app being deleted): the memory's refusal, n
   expect(memoire.contenu().valeurs).toEqual({});
 });
 
-// --- Video resume: the position part of Electron's test/sites/injection.test.ts, on the host's creerPositions. The
+// --- Video resume: the positions, on the host's creerPositions. The
 // sender checks (view, accord, repriseDansCadre, page address) are the chrome's, in site-frames.test.ts.
 
 let accorde: boolean;

@@ -9,11 +9,11 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
-import { ELECTRON_HOME, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite, type SiteTest } from "./sites";
+import { SITE_HOME, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, startSitesServer, writeSite, type SiteTest } from "./sites";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Plan 31 Task 6: the Applications page's « Sites » section (ports of Electron's e2e/sites.spec.ts 68 :1553, 69 :1577,
-// 70 :1587, 71 :1595, 72 :1605, 73 :1631, 84 :2208 reduced to the session and the memory) and the agent's site tools.
+// Plan 31 Task 6: the Applications page's « Sites » section and the agent's site
+// tools.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost"];
@@ -41,7 +41,7 @@ afterEach(async () => {
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = (home = true): SiteTest => ({
   declaration: { nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: [] },
-  ...(home ? { fichiers: { "accueil/index.html": ELECTRON_HOME } } : {}),
+  ...(home ? { fichiers: { "accueil/index.html": SITE_HOME } } : {}),
 });
 const memory = (dataDir: string, id = "vidola") => path.join(dataDir, "sites", id, "memoire.json");
 function writeMemory(dataDir: string, id = "vidola"): void {

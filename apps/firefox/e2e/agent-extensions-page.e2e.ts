@@ -13,8 +13,7 @@ import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Ported from Electron's extensions-interface.spec.ts (the Extensions page) and extensions-agent.spec.ts (:1210, the
-// unlock on the page; Supprimer and Désactiver partout of an agent extension). The page lists the agent's extensions only
+// The Extensions page: the unlock on the page, Supprimer and Désactiver partout of an agent extension. The page lists the agent's extensions only
 // (plan decision 8); lister_extensions lists AMO add-ons too (decision 7).
 const HOTE = "http://127.0.0.1/*";
 const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };

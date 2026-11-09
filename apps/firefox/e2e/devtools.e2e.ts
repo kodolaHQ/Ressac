@@ -18,7 +18,7 @@ import { TEXTE_COUPE, TEXTE_SITE_CHANGE } from "../../../packages/noyau/src/mcp/
 // Which one the noyau answers depends on whether the new page committed before it read the tab list.
 const CUT_BY_OWN_NAVIGATION = [TEXTE_COUPE, TEXTE_SITE_CHANGE];
 
-// The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): Electron's outils-dev.spec.ts for console, network,
+// The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): console, network,
 // evaluation and reload; task 4 for profiling and memory; task 5 for the consent card of a third-party tab, the badge and cuts.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -309,7 +309,7 @@ it("changer de site vide les tampons", async () => {
   expect(await tool("lire_reseau", { id, filtre: "avant=1" })).toBe("Aucune requête.");
 });
 
-// The consent card, on a tab the user opened on a third-party site (Electron's outils-dev.spec.ts).
+// The consent card, on a tab the user opened on a third-party site.
 const CARD = '[data-testid="demande-outils-dev"]';
 const MODAL = '[data-testid="modale-demande"]';
 const READ_CARD = '[data-testid="demande-permission"]';

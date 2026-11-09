@@ -23,7 +23,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// Whole scenarios of an action (Electron's actions.spec.ts:1232-1500, ported): Gemma's plan, the results' images through
+// Whole scenarios of an action: Gemma's plan, the results' images through
 // the test hook (WEBAIOS_TEST_ACTION_IMAGES: `https://<host><path>` is asked from the local image server, which notes
 // each request with its Cookie and Referer). One launch for the file; the actions are written before it.
 
@@ -152,7 +152,6 @@ beforeAll(async () => {
     code: `export default async () => ({ taches: [{ nom: "Alpha", etat: "ouvert" }, { nom: "Bravo", etat: "fermé" }] });`,
   });
   for (const id of ["un", "deux", "trois"]) await writePagesAction(d, site, id, `Pages ${id}`);
-  // Electron's accorder (actions.spec.ts:1190).
   const accord = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
   await mkdir(actionsDataDir(d), { recursive: true });
   await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: accord, [TICKETS]: accord }));
@@ -282,7 +281,7 @@ describe("action scenarios", () => {
     expect(await m.execute<string[]>(`return Services.cookies.getCookiesFromHost("127.0.0.1", {}).map((c) => c.name + "=" + c.value);`)).toContain("seen=default");
     servers.images.seen.length = 0;
     const since = servers.site.log.length;
-    // Electron's empty page: type, ↓, Enter.
+    // The empty page: type, ↓, Enter.
     await click(m, tid("nouvel-onglet"));
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
     await click(m, tid("saisie-page-vide"));

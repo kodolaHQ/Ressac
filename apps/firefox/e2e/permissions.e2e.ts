@@ -9,8 +9,8 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
-// Site permissions through the WebAiOs banner (chrome/window/site-banner.ts, chrome/store/permission-hooks.ts), ported
-// from apps/navigateur/e2e/permissions.spec.ts. No network, no real device (spike P1, P7).
+// Site permissions through the WebAiOs banner (chrome/window/site-banner.ts, chrome/store/permission-hooks.ts). No
+// network, no real device (spike P1, P7).
 
 /** What `/p?do=<what>` runs as it loads (`&auto`) or on a click of #go; its title is then "done:<json>". */
 const PAGE = `<!doctype html><meta charset="utf-8"><title>ready</title>
@@ -128,7 +128,7 @@ describe("site permissions", () => {
   const answer = (label: "Refuser" | "Autoriser") =>
     m.execute(`[...document.querySelector('${BANNER}').querySelectorAll("button")].find((b) => b.textContent === arguments[0]).click();`, [label]);
   const pending = () => chrome<unknown[]>(`return (await ChromeUtils.importESModule("${STORE}").ready).questions.pending();`);
-  /** The decisions kept for the default profile (Electron's permissions.json). */
+  /** The decisions kept for the default profile (permissions.json). */
   const saved = () => readFile(path.join(dirs.dataDir, "permissions.json"), "utf8").then((t) => JSON.parse(t) as Record<string, string>, () => ({}));
   const reload = async (id: string) => {
     await m.execute(`${browser(id)}.reload();`);

@@ -10,8 +10,8 @@ import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 2: the « Autoriser les retouches » accord card, ports of Electron's e2e/sites.spec.ts 43 (:1007) to 51
-// (:1149) and 53 (:1187). 52 (no-drag buttons) is not ported: the bar keeps Firefox's native title bar, nothing drags it.
+// Plan 32 Task 2: the « Autoriser les retouches » accord card. No no-drag buttons:
+// the bar keeps Firefox's native title bar, nothing drags it.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "lecteur.localhost", "compte.localhost"];
@@ -42,7 +42,7 @@ const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 const openSite = (id = "vidola") => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string>(`const u = ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? ""; return u === "about:blank" ? "" : u;`);
-/** Electron's etatVueSite: the view's address, and whether it shows (the bar covers the window on the card and the home). */
+/** The view's address, and whether it shows (the bar covers the window on the card and the home). */
 const viewState = (id = "vidola") =>
   m.execute<{ url: string; visible: boolean } | null>(
     `const win = ${siteWindowExpr(id)}; if (!win?.gBrowser) return null;

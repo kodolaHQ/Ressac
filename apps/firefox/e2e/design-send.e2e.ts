@@ -12,8 +12,8 @@ import { declareProject, modified, openApplications, refreshReview, textOf, writ
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, typeText, waitUi } from "./ui";
 
-// Plan 35b Task 5: the cart's send, to the agent (pre-filled, never sent) and to the connected Claude Code, ports of
-// Electron's design.spec.ts:489,577 and externes.spec.ts:163, and spec §5.10 (the host stopped). The demo is
+// Plan 35b Task 5: the cart's send, to the agent (pre-filled, never sent) and to the connected Claude Code, and
+// spec §5.10 (the host stopped). The demo is
 // 127.0.0.1:15318, in this file's block 15315-15319.
 
 const PORT = 15318;

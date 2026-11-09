@@ -12,7 +12,7 @@ Règle :
 - **Appels situés dans des `.svelte`** → lancer la requête depuis un fichier `.svelte` qui utilise le symbole, pas depuis le `.ts` de définition.
 - **Type ou nom utilisé dans plusieurs `.svelte`, chaînes, canaux IPC, points d'entrée** → grep. Le LSP en rate.
 
-Si `apps/navigateur/node_modules/typescript` change de place, mettre à jour le chemin dans `.claude/marketplace-local/plugins/tsgo-lsp/.lsp.json`.
+Si `apps/firefox/node_modules/typescript` change de place, mettre à jour le chemin dans `.claude/marketplace-local/plugins/tsgo-lsp/.lsp.json`.
 Après un clone : `npm ci` dans `.claude/marketplace-local/plugins/svelte-lsp`.
 
 ## Tests e2e de WebAiOs-Firefox

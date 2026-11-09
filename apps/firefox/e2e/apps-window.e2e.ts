@@ -13,8 +13,8 @@ import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { inBrowser } from "./sites";
 
-// Plan 35a Task 3: the agent app's window, its container, its origin guard and the agent's `app:<dossier>`. Ports of
-// Electron's e2e/applications.spec.ts (window part), plus the security checks of spike S8 on the real code.
+// Plan 35a Task 3: the agent app's window, its container, its origin guard and the agent's `app:<dossier>`, plus
+// the security checks of spike S8 on the real code.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const BLOCK: [number, number] = [15280, 15284];

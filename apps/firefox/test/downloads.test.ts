@@ -14,7 +14,7 @@ const base: DownloadLike = {
 };
 
 describe("toItem", () => {
-  it("maps a Firefox download to Electron's shape", () => {
+  it("maps a Firefox download to the UI's shape", () => {
     expect(toItem("a", { ...base, succeeded: true, stopped: true })).toEqual({ id: "a", nom: "fichier(1).txt", chemin: "/tmp/dl/fichier(1).txt", recus: 35, total: 100, etat: "termine" });
     expect(toItem("b", { ...base, error: new Error("x"), stopped: true }).etat).toBe("interrompu");
     expect(toItem("c", { ...base, canceled: true, stopped: true }).etat).toBe("annule");
@@ -23,7 +23,7 @@ describe("toItem", () => {
 });
 
 describe("createDownloads", () => {
-  it("opens a finished download with the system's app, like Electron's shell.openPath", async () => {
+  it("opens a finished download with the system's app", async () => {
     const launch = vi.fn(async () => {});
     const d = { ...base, succeeded: true, stopped: true, launch };
     vi.stubGlobal("ChromeUtils", {

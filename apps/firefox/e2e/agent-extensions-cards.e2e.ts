@@ -14,8 +14,7 @@ import { callTool } from "./mcp";
 import { startServer } from "./server";
 import { click, inUi, pressKeys, waitUi } from "./ui";
 
-// Ported from Electron's extensions-agent.spec.ts (the agent's tools and their card) and extensions-interface.spec.ts
-// (the card itself, posed straight through the store's Questions; its answer is written to a file).
+// The agent's extension tools and their card (posed straight through the store's Questions; its answer is written to a file).
 const MODALE = '[data-testid="modale-demande"]';
 const CARTE = '[data-testid="demande-extension"]';
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -25,7 +24,7 @@ const FOND_SEUL = {
   "manifest.json": { manifest_version: 3, name: "Fond de l'agent", version: "1.0.0", background: { service_worker: "fond.js" } },
   "fond.js": 'console.log("fond démarré");\n',
 };
-/** A background and a content script on HOTE that both write to the console (Electron's JOURNAL). */
+/** A background and a content script on HOTE that both write to the console. */
 const JOURNAL = {
   "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOTE], js: ["contenu.js"] }] },
   "fond.js": 'console.log("fond démarré");\n',

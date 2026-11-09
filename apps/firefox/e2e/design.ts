@@ -9,10 +9,8 @@ import { inBrowser } from "./sites";
 // The design mode's e2e helpers and pages (plans 35a and 35b), from the spikes of
 // docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md (e2e/spikes/design.e2e.ts). Chrome context.
 
-const ELECTRON_DESIGN = readFileSync(path.resolve(import.meta.dirname, "pages/design.html"), "utf8");
-
-/** Electron's design.html (form#inscription, input#email.champ, button#envoyer, a#lien, a data-source, #nue, ul > li × 3), plus a page global the viewfinder must not see. */
-export const DESIGN_PAGE = ELECTRON_DESIGN.replace("window.reactions = [];", 'window.reactions = []; window.pageSecret = "secret";');
+/** design.html (form#inscription, input#email.champ, button#envoyer, a#lien, a data-source, #nue, ul > li × 3), plus a page global the viewfinder must not see. */
+export const DESIGN_PAGE = readFileSync(path.resolve(import.meta.dirname, "pages/design.html"), "utf8").replace("window.reactions = [];", 'window.reactions = []; window.pageSecret = "secret";');
 
 const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];
 
@@ -39,7 +37,7 @@ export const HOOKS_PAGE = DESIGN_PAGE.replace(
 </script>`,
 );
 
-/** Electron's strict CSP page (design.spec.ts): nonce scripts, Trusted Types. */
+/** A strict CSP page: nonce scripts, Trusted Types. */
 export const CSP = "default-src 'none'; script-src 'nonce-essai'; style-src 'self'; require-trusted-types-for 'script'; trusted-types 'none'";
 export const CSP_PAGE = '<!doctype html><meta charset="utf-8"><title>CSP</title><button id="b">ok</button>';
 
@@ -116,7 +114,7 @@ export const unguardFrame = (m: Marionette, browserExpr: string, i: number) => m
 export const askActor = <T = unknown>(m: Marionette, browserExpr: string, name: string, data?: unknown, frame?: number) =>
   m.execute<T>(`return ${actor(browserExpr, frame)}.sendQuery(arguments[0], arguments[1]);`, [name, data]);
 
-/** Electron's lireSource: the expression in the page's world, then sourceSaine. */
+/** Reads the source: the expression in the page's world, then sourceSaine. */
 export async function readSource(m: Marionette, browserExpr: string, selector: string) {
   return cleanSource(await askActor(m, browserExpr, "source", { code: sourceExpression(selector) }));
 }

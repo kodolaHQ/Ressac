@@ -26,7 +26,7 @@ const SCHEME = "webaios-widget";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Electron's CSP_WIDGET (apps/navigateur/src/main/agent/accueil.ts).
+// The widget display's CSP.
 const CSP_WIDGET =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
 

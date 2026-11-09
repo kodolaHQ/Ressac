@@ -9,7 +9,6 @@ import { callTool } from "./mcp";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 // Plan 35a Task 4: the Applications page's actions (Supprimer, Afficher le dossier, Passer en application, Déboguer).
-// Ports of Electron's e2e/applications.spec.ts (:441-:590).
 
 const BLOCK: [number, number] = [15290, 15294];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -6,7 +6,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// An action page's outcomes (Electron's actions.spec.ts:641-800, ported): a stopped workshop, empty results, an account
+// An action page's outcomes: a stopped workshop, empty results, an account
 // accord, a private space, a closed tab, a run or an action that no longer exists.
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;

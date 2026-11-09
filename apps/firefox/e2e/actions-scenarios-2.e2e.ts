@@ -10,7 +10,7 @@ import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 import { writeWidget } from "./workflows";
 
-// Action scenarios across launches, or beside widgets (Electron's actions.spec.ts:1505-1660, ported): each test has its
+// Action scenarios across launches, or beside widgets: each test has its
 // own data and profile folders, kept between its launches.
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
@@ -89,7 +89,7 @@ it("session restore with an action tab: the last result shows, no run launched",
 });
 
 /**
- * A widget display that shows the data it gets (JSON) and its status (actions.spec.ts:1529), without Electron's
+ * A widget display that shows the data it gets (JSON) and its status (actions.spec.ts:1529), without an
  * `e.source !== parent` check: inside Firefox's sandboxed resource:// frame it is always true (plan 27, AGENTS.md).
  */
 const WIDGET_DISPLAY = `<!doctype html><meta charset="utf-8">

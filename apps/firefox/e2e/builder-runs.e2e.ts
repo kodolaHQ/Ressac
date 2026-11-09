@@ -11,8 +11,8 @@ import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 import { openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 
-// The workflow builder's runs, replays, implicit workflows, a 30-block workflow and web widgets (Electron's
-// constructeur.spec.ts, ported), plus a host restart under an open builder.
+// The workflow builder's runs, replays, implicit workflows, a 30-block workflow and web widgets,
+// plus a host restart under an open builder.
 
 /** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
 const WORKFLOW_VEILLE = {
@@ -101,7 +101,7 @@ const writeState = async (id: string, etat: Record<string, unknown>) => {
   await writeFile(path.join(dataOf(id), "etat.json"), JSON.stringify(etat));
 };
 
-/** A run's trace of one block (Electron's `trace`). */
+/** A run's trace of one block. */
 const trace = (bloc: string, type: string, debut: string, fields: Record<string, unknown>) => ({
   id: bloc,
   type,
@@ -340,7 +340,7 @@ const pressEnter = () => m.execute(
    tip.keyup(ev);`,
 );
 
-/** Console errors and uncaught exceptions of the sidebar UI from now on (Electron's erreursConsole). */
+/** Console errors and uncaught exceptions of the sidebar UI from now on. */
 // Only the sidebar's own console.error, error and unhandledrejection: unlike Playwright, not widget sub-frames or CSP reports.
 const trackErrors = () =>
   inUi(

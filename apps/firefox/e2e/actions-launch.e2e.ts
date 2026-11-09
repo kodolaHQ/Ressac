@@ -9,9 +9,8 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// Launching actions from the empty page and the ⌘T bar (Electron's actions.spec.ts:847-968, barre-commande.spec.ts:194-
-// 601, ported). One launch for the file: each test starts on a fresh empty page in a public space. A proxy on a closed
-// port keeps searches and addresses from leaving the machine; the local servers are not proxied.
+// Launching actions from the empty page and the ⌘T bar. One launch for the file: each test starts on a fresh empty page
+// in a public space. A proxy on a closed port keeps searches and addresses from leaving the machine; the local servers are not proxied.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const TICKETS_NOM = "Mes tickets GitLab à traiter";
@@ -46,7 +45,7 @@ async function openPage(p: string, titre: string): Promise<string> {
 }
 /** The action is in the list the noyau gives. */
 const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
-/** Opens the empty page (« Nouvel onglet »), its field focused (Electron's lancerAvecSuggestions). */
+/** Opens the empty page (« Nouvel onglet »), its field focused. */
 async function emptyPage(): Promise<void> {
   await click(m, tid("nouvel-onglet"));
   await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-vide")]);
@@ -80,7 +79,7 @@ beforeAll(async () => {
   await writeAction(d, "resume", { nom: "Résumé vidéo", saisie: { libelle: "Vidéo" } });
   await writeAction(d, "page-action", { nom: "Page action" });
   for (const id of ["tickets", "leboncoin", "sans-workflow", "resume", "page-action"]) await listed(id);
-  // Counts the `actions.liste` the UI asks the host for (Electron's espionnerListe).
+  // Counts the `actions.liste` the UI asks the host for.
   await m.execute(`return (async () => {
     const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent;
     const request = agent.request.bind(agent);

@@ -58,7 +58,6 @@ describe("review service", () => {
     return v as T & { etat: "ok"; jeton: string };
   };
 
-  // Electron relecture.test.ts:35
   it("two opens give two tokens; an unknown token is refused", async () => {
     const s = prepare();
     await s.service.ouvrir(EXT);
@@ -79,7 +78,6 @@ describe("review service", () => {
     await expect(s.service.lignes(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(COMPARAISON_INCONNUE);
   });
 
-  // Electron relecture.test.ts:60
   it("keeps at most 8 comparisons per project: the oldest drops", async () => {
     const s = prepare();
     await s.service.ouvrir(EXT);
@@ -92,7 +90,6 @@ describe("review service", () => {
     expect((await s.service.fichier(EXT, tokens[1]!, "a.txt")).chemin).toBe("a.txt");
   }, 20_000);
 
-  // Electron relecture.test.ts:84
   it("a range overflowing the block is refused", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(5, 25));
@@ -107,7 +104,6 @@ describe("review service", () => {
     expect(first!.lignes).toEqual([{ marque: " ", texte: "ligne 4" }, { marque: "-", texte: "ligne 5" }, { marque: "+", texte: "ligne 5 modifiée" }]);
   });
 
-  // Electron relecture.test.ts:103
   it("relu keeps the tree shown: a file changed after ouvrir() stays in the next diff", async () => {
     const s = prepare();
     const v = await opened(s, "un\n", "deux\n");
@@ -118,7 +114,6 @@ describe("review service", () => {
     await expect(s.service.relu(EXT, unknown)).rejects.toThrow(COMPARAISON_INCONNUE);
   });
 
-  // Electron relecture.test.ts:117
   it("relu drops resolved comments and keeps the others", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(15));
@@ -131,7 +126,6 @@ describe("review service", () => {
     expect(after.commentaires.map((c) => [c.texte, c.fichier])).toEqual([["deux", "a.txt"]]);
   });
 
-  // Electron relecture.test.ts:133
   it("envoyer makes a relecture lot with file, lines and marks; a second send takes the unresolved ones", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(15));
@@ -159,7 +153,6 @@ describe("review service", () => {
     expect(all.find((l) => l.id !== lots[0]!.id)!.elements.map((e) => e.texte)).toEqual(["et ici"]);
   });
 
-  // Electron relecture.test.ts:164
   it("simultaneous comment operations lose nothing", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(15));
@@ -186,7 +179,6 @@ describe("review service", () => {
     expect(await s.service.ouvrir("ext-ffffffffffffffff")).toMatchObject({ etat: "indisponible", raison: "projet inconnu" });
   });
 
-  // Electron relecture.test.ts:256
   it("a site folder that is a symlink gives null and creates no repository", async () => {
     for (const to of ["dehors", "dedans"] as const) {
       const s = prepare();
@@ -203,7 +195,6 @@ describe("review service", () => {
     }
   });
 
-  // Electron relecture.test.ts:272
   it("a real site folder gives its name; an absent site gives null", async () => {
     const s = prepare();
     expect(await s.service.projet("site-tuning")).toEqual({ nom: "Tuning", dossier: join(s.sites, "tuning") });
@@ -212,7 +203,6 @@ describe("review service", () => {
     expect(await s.service.projet("site-autre")).toEqual({ nom: "autre", dossier: join(s.sites, "autre") });
   });
 
-  // Electron relecture.test.ts:281
   it("priseEnChargeSites snapshots valid sites only; assurer a second time does not move the reference", async () => {
     const s = prepare();
     await s.service.priseEnChargeSites(["tuning", "../x"]);
@@ -229,7 +219,6 @@ describe("review service", () => {
     expect(v).toMatchObject({ nom: "Tuning", destination: "l'agent", sansDestination: null });
   });
 
-  // Electron relecture.test.ts:300
   it("assurer of a site takes its snapshot; of an app id or an unknown site it does nothing", async () => {
     const s = prepare();
     await s.service.assurer("app-essai");
@@ -239,7 +228,6 @@ describe("review service", () => {
     expect(existsSync(join(s.relecture, "site-tuning.git", "refs", "webaios", "relu"))).toBe(true);
   });
 
-  // Electron relecture.test.ts:309
   it("envoyer of a site follows projetPourSite", async () => {
     const s = prepare();
     const css = join(s.sites, "tuning", "retouches", "tuning.css");
@@ -252,7 +240,6 @@ describe("review service", () => {
     expect(s.sent[0]!.projet).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });
   });
 
-  // Electron relecture.test.ts:321
   it("effacer removes the repository and the comments file, and forgets the comparisons", async () => {
     const s = prepare();
     await s.service.priseEnChargeSites(["tuning"]);
@@ -269,7 +256,6 @@ describe("review service", () => {
     expect(await s.service.ouvrir("site-tuning")).toMatchObject({ etat: "ok", comparaison: { fichiers: [] } });
   });
 
-  // Electron relecture.test.ts:340
   it("a snapshot taken between effacer and the trash is erased by the second effacer, also after the trash", async () => {
     const s = prepare();
     await s.service.priseEnChargeSites(["tuning"]);

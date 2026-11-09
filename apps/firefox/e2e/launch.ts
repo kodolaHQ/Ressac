@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Marionette } from "./marionette";
 
-// Fake docker (a wrapper of Electron's, which knows the Firefox container name): no test ever touches a real container.
+// Fake docker (a wrapper of faux-docker.cjs that knows the Firefox container name): no test ever touches a real container.
 export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../test/outils");
 const DIST = path.resolve(import.meta.dirname, "../engine/obj-aarch64-apple-darwin/dist");
 // The product's starter widgets, the ones the space setup copies into a new space.
@@ -83,7 +83,7 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         WEBAIOS_DATA_DIR: dataDir,
         // The fake agent writes its traces there.
         WEBAIOS_RACINE: path.join(dataDir, "espace"),
-        // A free port, as Electron's e2e (externes.spec.ts:11): never the real 5279.
+        // A free port: never the real 5279.
         WEBAIOS_PORT_MCP_EXTERNE: "0",
         // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),

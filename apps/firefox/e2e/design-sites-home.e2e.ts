@@ -29,7 +29,7 @@ import type { Marionette } from "./marionette";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 
 // Plan 36 Task 3: the design mode on a site app's home (spike S6), done by the chrome on the home's frame
-// (chrome/store/design-home.ts). Apps avec-accueil (Electron's design-sites.spec.ts) and sonde (spike S6's home, for the
+// (chrome/store/design-home.ts). Apps avec-accueil and sonde (spike S6's home, for the
 // measures), tuning for the view at density 2. Block 15355-15359: sites on 15355.
 
 const PORT = 15355;

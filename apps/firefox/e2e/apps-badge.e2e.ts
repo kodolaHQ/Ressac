@@ -12,8 +12,8 @@ import { callTool } from "./mcp";
 import { LINES, reviewedRef, writeAppJs } from "./review";
 import { inUi, waitUi } from "./ui";
 
-// Plan 35a Task 5: the app window's badge (Electron's pastille, PastilleApp.svelte in sidebar.html?pastille=) and the
-// agent apps' review. Ports of Electron's design.spec.ts:426-450 and relecture.spec.ts:52 and :168, plus the security
+// Plan 35a Task 5: the app window's badge (PastilleApp.svelte in sidebar.html?pastille=) and the
+// agent apps' review, plus the security
 // checks of spike S8 on the real code.
 
 const BLOCK: [number, number] = [15295, 15299];
@@ -36,7 +36,7 @@ const clickBadge = (m: Marionette, dossier: string, selector: string, text?: str
   expect
     .poll(() => inBadge(m, dossier, "const el = [...doc.querySelectorAll(arguments[0])].find((e) => !arguments[1] || e.textContent.includes(arguments[1])); if (!el) return false; el.click(); return true;", [selector, text ?? null]), { timeout: 10_000 })
     .toBe(true);
-/** The agent's access to app `dossier`, cut from its badge (Electron's design.spec.ts:446-447). */
+/** The agent's access to app `dossier`, cut from its badge. */
 async function cutAccess(m: Marionette, dossier: string): Promise<void> {
   await clickBadge(m, dossier, '[data-testid="pastille-acces"]');
   await clickBadge(m, dossier, '[data-testid="bulle-acces"] button.couper');

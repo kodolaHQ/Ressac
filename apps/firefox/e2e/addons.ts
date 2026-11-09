@@ -104,7 +104,7 @@ note("started");`,
 }
 
 /**
- * Electron's sonde, the part that opens tabs: on a page whose URL has `ouvrir-onglet`, its background calls tabs.create with
+ * The probe add-on, the part that opens tabs: on a page whose URL has `ouvrir-onglet`, its background calls tabs.create with
  * that URL, `ouverte-par-sonde` in place; on `ouvrir-actif`, tabs.create({ active: true }) with `ouverte-active`; on
  * `ouvrir-page`, tabs.create({ url: "page.html" }) (its own page « Page de la sonde », by a relative URL).
  */

@@ -10,7 +10,7 @@ import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { inUi, keyDown, keyUp, missingApi, pressKeys, waitUi } from "./ui";
 
-// Plan 31 Task 3: the site app window and its bar, ports of Electron's e2e/sites.spec.ts (1, 2, 9, 10, 13, 14).
+// Plan 31 Task 3: the site app window and its bar.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
@@ -225,7 +225,7 @@ describe("site app window", () => {
         [container],
       );
     await expect.poll(() => cookies("userContextIdInternal.webaios-site-vidola")).toContain("essai=vidola-a.localhost");
-    // A login profile's container (Electron's persist:app-x stand-in) and the default one.
+    // A login profile's container and the default one.
     await inStore(`store.containerFor("profil-essai");`);
     for (const c of [null, "userContextIdInternal.webaios-site-autre", "userContextIdInternal.webaios-profil-essai"]) expect(await cookies(c), String(c)).toEqual([]);
     await sleep(2000);

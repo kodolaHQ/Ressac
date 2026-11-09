@@ -5,7 +5,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Real runs of an action from its page (Electron's actions.spec.ts:453-640, ported): the fake docker (the engine runs
+// Real runs of an action from its page: the fake docker (the engine runs
 // on the Mac), a slow local site and a fake Ollama (Gemma) noting each prompt. Reopening a page launches nothing.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";

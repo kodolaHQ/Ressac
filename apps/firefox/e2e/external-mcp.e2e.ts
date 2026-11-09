@@ -15,7 +15,7 @@ import type { Marionette } from "./marionette";
 import { connectClient, declareProject, mcpClient, modified, openApplications, projectDir, rawStatus, readNotifications, textOf, writeAppJs } from "./review";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// Plan 34 Task 3: the Applications page's « Projets externes » section (ports of Electron's e2e/externes.spec.ts) and
+// Plan 34 Task 3: the Applications page's « Projets externes » section and
 // one test per guarantee of the external MCP server (spec §5.2, §7).
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";

@@ -152,7 +152,6 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(await s.design.handlers["externes.nom"]!({ id: "0123456789abcdef" })).toBeNull();
   });
 
-  // Electron envoi.test.ts:34
   it("a batch reaches the window fenetreAgent gives, without \\r, then donnerAgent; an external project asks nothing of the chrome", async () => {
     const s = prepare({ sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
@@ -179,7 +178,6 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(s.calls).toHaveLength(2);
   });
 
-  // Electron envoi.test.ts:51
   it("fenetreAgent gives null: AUCUNE_FENETRE, and the batch stays written", async () => {
     const s = prepare({ fenetre: null, sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
@@ -188,7 +186,6 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(readdirSync(join(s.chemins.interne, "remarques", "site-tuning")).filter((n) => existsSync(join(s.chemins.interne, "remarques", "site-tuning", n, "lot.json")))).toHaveLength(1);
   });
 
-  // Electron envoi.test.ts:66
   it("a site: the app, its folder and the batch path, without \\r or \\n", async () => {
     const s = prepare({ sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
@@ -201,7 +198,6 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(s.chrome.donnerAgent).toHaveBeenCalledWith("f7");
   });
 
-  // Electron externes.test.ts:29
   it("a start that fails otherwise than a held port (bad port): off, with the reason", async () => {
     const s = prepare({ port: externalMcpPort("abc") });
     const e = await ready(s.design);
@@ -210,7 +206,6 @@ describe("design host", { timeout: 20_000 }, () => {
     await expect(s.design.handlers["externes.brancher"]!({ nom: "x" })).rejects.toThrow(/n'a pas pu démarrer/);
   });
 
-  // Electron externes.test.ts:37
   it("forgetting during the first snapshot: the private review repository does not come back", async () => {
     const s = prepare();
     await ready(s.design);
@@ -274,7 +269,7 @@ describe("design host", { timeout: 20_000 }, () => {
     await until(() => [join(relecture, "site-tuning.git"), join(relecture, "site-tuning.commentaires.json"), lots].some(existsSync), (v) => !v);
   });
 
-  it("bad inputs are refused with Electron's messages before the service", async () => {
+  it("bad inputs are refused with their messages before the service", async () => {
     const s = prepare();
     const spy = vi.spyOn(ReviewService.prototype, "fichier");
     const h = s.design.handlers;
@@ -335,7 +330,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
   it("design.suivi of app-essai, site-x, demo-15283, an unknown ext- id", async () => {
     const { h } = await withProjects();
     expect(await suivi(h, { projet: "app-essai" })).toMatchObject({ projet: { type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" }, nom: "Essai" });
-    // Not running: Electron's applis() lists the running ones, the name falls back to the folder.
+    // Not running: only running apps are listed, so the name falls back to the folder.
     expect(await suivi(h, { projet: "app-dort" })).toMatchObject({ nom: "dort" });
     expect(await suivi(h, { projet: "site-x" })).toMatchObject({ projet: { type: "site", projet: "site-x", id: "x", nom: "Site X" }, destination: "l'agent" });
     expect(await suivi(h, { projet: "site-y" })).toBeNull();

@@ -9,7 +9,7 @@ import { dispatch, state } from "./firefox";
 import type { Marionette } from "./marionette";
 import { click, waitUi } from "./ui";
 
-// Helpers of the external MCP and Review e2e, ported from Electron's externes.spec.ts:16-47 and relecture.spec.ts:17-50.
+// Helpers of the external MCP and Review e2e.
 
 /** A temporary project folder named `nom` (the project's name), outside any data folder, its real path. */
 export function projectDir(nom: string): string {
@@ -31,7 +31,7 @@ export async function openApplications(m: Marionette): Promise<void> {
 
 const COMMAND = /http:\/\/127\.0\.0\.1:(\d+)\/mcp-externe --header "Authorization: Bearer ([0-9a-f]{64})"/;
 
-/** « Brancher un Claude Code » (named `nom` if given), then the command shown, read with Electron's regex. */
+/** « Brancher un Claude Code » (named `nom` if given), then the command shown, read with a regex. */
 export async function connectClient(m: Marionette, nom?: string): Promise<{ commande: string; port: number; jeton: string }> {
   await waitUi(m, "return doc.querySelector('[data-testid=\"brancher-externe\"]')?.disabled === false", [], 15_000);
   await click(m, '[data-testid="brancher-externe"]');

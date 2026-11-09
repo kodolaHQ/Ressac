@@ -9,8 +9,8 @@ import type { Marionette } from "./marionette";
 import { inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi, pressKeys } from "./ui";
 
-// Plan 31 Task 4: navigation kept on the app's domains, the sign-in window, permissions and « Ouvrir dans un onglet »;
-// ports of Electron's e2e/sites.spec.ts (3 to 8, 15 to 20), plus the plan's Review Focus 4.
+// Plan 31 Task 4: navigation kept on the app's domains, the sign-in window, permissions and « Ouvrir dans un onglet »,
+// plus the plan's Review Focus 4.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
@@ -32,7 +32,7 @@ const pub = (p: string) => server.url("pub.localhost", p);
 const connexion = () => server.url("compte.localhost", "/connexion");
 const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")`;
 const vidola = () => ({ nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] });
-/** Electron's rienVersPub: what reached pub.localhost during this test, the home page's ad frame aside. */
+/** What reached pub.localhost during this test, the home page's ad frame aside. */
 const nothingToPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => r.chemin);
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -141,7 +141,7 @@ afterEach(async () => {
   }
 });
 
-/** A short silent WAV (Electron's silenceWav). */
+/** A short silent WAV. */
 function silenceWav(): Buffer {
   const rate = 8000;
   const samples = rate;
@@ -254,7 +254,7 @@ describe("site app navigation", () => {
     expect([policy, muted]).toEqual(["allowed", false]);
     expect(["played", "pending"]).toContain(played);
     // Refused without a question: Firefox's cancelled request, not remembered, answers "default" (as an invisible read's,
-    // permissions.e2e.ts), where Electron's answers "denied".
+    // permissions.e2e.ts).
     expect(await inSiteView(m, "vidola", "return Notification.requestPermission();", { gesture: true })).toBe("default");
     expect(await inSiteView(m, "vidola", "return Notification.permission;")).toBe("default");
     await sleep(500);

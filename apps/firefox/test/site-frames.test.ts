@@ -7,7 +7,7 @@ import type { SiteChrome } from "../noyau/sites";
 
 const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
 
-// Electron's sender rules (test/sites/injection.test.ts, IPC part) on Firefox's WindowGlobalParent: what a frame gets
+// The sender rules on Firefox's WindowGlobalParent: what a frame gets
 // is decided from its browsing context and the view's <browser>, never from what it says.
 
 const declaration = DeclarationSite.parse({
@@ -147,7 +147,7 @@ describe("the retouches' console", () => {
   });
 });
 
-// Electron's pageReprise rules (test/sites/injection.test.ts: position and reprise refusals), on WindowGlobalParents.
+// The resume rules (position and reprise refusals), on WindowGlobalParents.
 describe("framePosition and frameResume", () => {
   /** A frame with the ids the step key is made of. */
   const withIds = <F extends { browsingContext: object }>(f: F, id: number, inner: number) => {

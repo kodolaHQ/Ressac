@@ -7,11 +7,10 @@ import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { ELECTRON_HOME, grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, grantSite, inSiteBar, inSiteView, resolveLocalHosts, siteWindowCount, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 4: the address follow, ports of Electron's e2e/sites.spec.ts 58 (:1357), 59 (:1384), 60 (:1420), 61 (:1432),
-// 62 (:1444), 63 (:1457), 64 (:1470, without the no-drag part), 65 (:1485), 66 (:1509) and 67 (:1521).
+// Plan 32 Task 4: the address follow.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "adresses.localhost", "compte.localhost", "vidola.adresses.localhost"];
@@ -167,7 +166,7 @@ describe("site app address follow", () => {
 
   it("a /serie/* retouche applies on vidola-b; the memory kept on vidola-a reopens from the home on vidola-b (sites.spec.ts:1384)", async () => {
     const decl = declaration(a("/serie/the-bear"), { retouches: [{ correspond: ["/serie/*"], css: ["cacher.css"] }] });
-    await setup("t59", decl, { "accueil/index.html": ELECTRON_HOME, "retouches/cacher.css": ".shorts { display: none; }" }, { grant: true });
+    await setup("t59", decl, { "accueil/index.html": SITE_HOME, "retouches/cacher.css": ".shorts { display: none; }" }, { grant: true });
     mkdirSync(path.join(dataDir, "sites", "t59"), { recursive: true });
     writeFileSync(
       path.join(dataDir, "sites", "t59", "memoire.json"),

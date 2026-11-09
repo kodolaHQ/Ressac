@@ -47,7 +47,6 @@ async function executer(dossierActions: string, id: string, resultats: unknown, 
   return ex;
 }
 
-// Ported from apps/navigateur/test/agent/actions.test.ts.
 describe("input schemas", () => {
   it("accept and refuse these ids, inputs and accords", () => {
     const accord = { id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] };

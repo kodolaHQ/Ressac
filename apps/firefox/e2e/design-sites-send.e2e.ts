@@ -15,7 +15,7 @@ import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, 
 import { click, inUi, waitUi } from "./ui";
 
 // Plan 36 Task 4: a site app's design mode down the whole path: the send to the agent, the retouche's reload, the
-// review from the chevron, the deletion, and the host stopped (spec §5.10). App tuning (Electron's design-sites.spec.ts),
+// review from the chevron, the deletion, and the host stopped (spec §5.10). App tuning,
 // one launch, the tests in order. Block 15360-15364: sites on 15360.
 
 const PORT = 15360;
@@ -101,7 +101,7 @@ async function aim(sel: string, label: string, text: string) {
   await expect.poll(() => inCalque("return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
   await inCalque(`const t = doc.querySelector("textarea"); t.value = arguments[0]; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`, [text]);
 }
-/** Electron's remarquerDansSite: a remark on `sel` by ⌘Enter, the counter shows `count`, the viewfinder armed again. */
+/** A remark on `sel` by ⌘Enter, the counter shows `count`, the viewfinder armed again. */
 async function remark(sel: string, label: string, text: string, count: string) {
   await aim(sel, label, text);
   await siteKey(m, ID, "Enter", ["Meta"]);

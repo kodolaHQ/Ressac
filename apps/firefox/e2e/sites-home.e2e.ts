@@ -7,11 +7,11 @@ import { testActor } from "./agent-extensions";
 import { waitReady, windowHandles } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
-import { ELECTRON_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
+import { SITE_HOME, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 31 Task 5: the site app's home screen and its messages, ports of Electron's e2e/sites.spec.ts 12 (:284) and 21
-// (:528) to 29 (:702). The home is Electron's test home (ELECTRON_HOME) as is, plus a probe script the test drives by
+// Plan 31 Task 5: the site app's home screen and its messages. The home is the test
+// home (SITE_HOME) as is, plus a probe script the test drives by
 // posting it commands from the chrome: what it then does is the home's own page code (fetch, image, navigation…).
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -59,7 +59,7 @@ const PROBE = `<script>
     }
   });
 </script>`;
-const HOME = ELECTRON_HOME + PROBE;
+const HOME = SITE_HOME + PROBE;
 const AUTO = HOME.replace('parent.postMessage({ type: "pret" }, "*");', 'parent.postMessage({ type: "pret" }, "*"); parent.postMessage({ type: "ouvrir", adresse: "/serie/the-bear?e=9" }, "*");');
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
@@ -73,7 +73,7 @@ const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
 
-/** Electron's etatVueSite: the view's address ("" before any load) and whether it shows (not under the home screen). */
+/** The view's address ("" before any load) and whether it shows (not under the home screen). */
 const viewState = (id: string) =>
   m.execute<{ url: string; visible: boolean } | null>(
     `const win = ${siteWindowExpr(id)}; if (!win?.gBrowser) return null;
@@ -104,7 +104,7 @@ async function homeReady(id: string): Promise<void> {
   await expect.poll(async () => ((await received(id).catch(() => null)) ?? []).length, { timeout: 15_000 }).toBeGreaterThan(0);
 }
 
-/** Electron's cliquerOuvrir: sets the home's `adresse`, then a real WebDriver click on « Reprendre » in the home. */
+/** Sets the home's `adresse`, then a real WebDriver click on « Reprendre » in the home. */
 async function clickOpen(id: string, adresse: string): Promise<void> {
   await inHome(id, "fw.adresse = arguments[0]; return true;", [adresse]);
   await realClick(id, "#ouvrir");

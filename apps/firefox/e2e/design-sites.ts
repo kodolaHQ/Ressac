@@ -5,7 +5,7 @@ import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, siteWindowExpr } from "./sites";
 
 // The design mode in site apps' windows (plan 36): e2e helpers and pages, from the spikes S5-S7
-// (e2e/spikes/design-sites.e2e.ts, copied, the spike file left as is) and Electron's design-sites.spec.ts. Chrome context.
+// (e2e/spikes/design-sites.e2e.ts, copied, the spike file left as is). Chrome context.
 
 export const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];
@@ -14,7 +14,7 @@ const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "aux
 export const siteExpr = (id: string) => siteWindowExpr(id);
 export const viewExpr = (id: string) => `${siteWindowExpr(id)}.gBrowser.selectedBrowser`;
 
-// Electron's design-sites.spec.ts pages and apps.
+// The test pages and apps.
 export const TUNING_PAGE = `<title>Tuning</title><div id="banniere" class="cookies">Cookies ?</div><a id="lien" href="/autre">autre</a><ul id="films"><li class="affiche">Film 1</li><li class="affiche">Film 2</li></ul><script>window.reactions = []; document.addEventListener("click", () => reactions.push("clic"), true);</script>`;
 export const AUTRE_PAGE = "<title>Autre</title>";
 export const CONNEXION_PAGE = "<title>Connexion</title>";

@@ -9,7 +9,7 @@ import type { LaunchedWebAiOs } from "./launch";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
 
-// Ported from Electron's extensions-agent.spec.ts: grants are written to the registry before the launch, and the effects
+// Agent extensions: grants are written to the registry before the launch, and the effects
 // checked after a restart (the agent's tools and their card: agent-extensions-cards.e2e.ts).
 const HOTE = "http://127.0.0.1/*";
 const manifeste = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });

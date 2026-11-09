@@ -10,8 +10,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// The workflow builder opened on an action (webaios://workflow/action/<id>), Electron's constructeur.spec.ts:1514-1677
-// ported: the Action panel, ▶ Lancer with the input, a replay whose page shows in the preview without becoming the last
+// The workflow builder opened on an action (webaios://workflow/action/<id>): the Action panel, ▶ Lancer with the input, a replay whose page shows in the preview without becoming the last
 // result. Gemma absent: the fallback layout.
 
 const CONSIGNE_GITLAB = "Un tableau des tickets, les plus urgents d'abord";
@@ -65,7 +64,7 @@ async function setPrivate(prive: boolean): Promise<void> {
   if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
 }
 
-/** Opens the action's builder from its page (« Voir le workflow »), once the noyau serves the actions (Electron's ouvrirConstructeurAction). */
+/** Opens the action's builder from its page (« Voir le workflow »), once the noyau serves the actions. */
 async function openActionBuilder(id: string): Promise<void> {
   await openAction(m, id, NOM);
   await click(m, tid("voir-workflow"));
@@ -206,7 +205,7 @@ describe("the builder of an action", () => {
     try {
       await q.waitText(tid("action-espace-prive"), "Les actions ne sont pas disponibles dans un espace privé");
       expect(await q.count(tid("constructeur"))).toBe(0);
-      // The API refuses too, with Electron's shapes, and writes nothing.
+      // The API refuses too, with the same shapes, and writes nothing.
       const before = snapshot(actionDir("gitlab-d"));
       const cible = { type: "action", id: "gitlab-d" };
       expect(

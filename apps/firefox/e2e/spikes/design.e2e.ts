@@ -10,7 +10,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
 import type { Marionette } from "../marionette";
 import { pressKeys } from "../ui";
 
-// Plan 35's spikes S1–S4 (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md): Electron's viewfinder in an
+// Plan 35's spikes S1–S4 (docs/superpowers/notes/2026-11-06-mode-design-firefox-spikes.md): the viewfinder in an
 // Xray sandbox of a runtime-registered actor, drawSnapshot, a chrome overlay frame, the source read. No build:ui: the
 // actor and the overlay page are served from resource://webaios-spike-design/ (this folder). Security lines are
 // asserted; the rest is printed as `[spike] <what>: <JSON>`. Rerun with WEBAIOS_SPIKE=1 after a Firefox version change.
@@ -56,8 +56,8 @@ const OVERLAY = '<head><style>html, body { margin: 0; background: transparent; }
 /** design.html with a same-origin frame holding a button (S1 fix, (b)). */
 const FRAMED = DESIGN.replace("</body>", '<iframe id="cadre" style="width:300px;height:100px" srcdoc="<button id=dans>dans</button><script>window.vu = []; for (const t of [\'mousedown\', \'click\']) addEventListener(t, (e) => vu.push(t + \':\' + e.isTrusted), true)</script>"></iframe></body>');
 /**
- * Electron's scriptViseur with the S1 fix: no click listener of its own; the actor's guard hands it the clicked element
- * (`__viseurChoisir`). Everything else (hover, Escape, swallowing, stop) is Electron's code, unchanged.
+ * The viewfinder script with the S1 fix: no click listener of its own; the actor's guard hands it the clicked element
+ * (`__viseurChoisir`). Everything else (hover, Escape, swallowing, stop) is unchanged.
  */
 function guardedScript(): string {
   let s = scriptViseur();
@@ -312,7 +312,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(seen.hooked).toEqual([]);
     expect(seen.fakeStop).toBe(0);
     expect(seen.reactions).toEqual([]);
-    // The hole of Electron's script as is: a page listener on window (capture) registered before the viewfinder's sees
+    // The hole of the script as is: a page listener on window (capture) registered before the viewfinder's sees
     // the person's click. Asserted as measured, so a change shows; the "S1 fix" probes below close it.
     note("S1 early window-capture listener saw", seen.early);
     expect(seen.early).toEqual(["pointerdown:true", "click:true"]);
@@ -429,7 +429,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const r = await resultIn(3000);
     const keys = { r, page: await inPage("window.keysEarly.slice()"), hosts: await ask("hosts") };
     note("S1 fix keyboard", keys);
-    // Electron's surTouche only takes a trusted Escape; other keys go to the page.
+    // surTouche only takes a trusted Escape; other keys go to the page.
     expect(keys.page).toEqual(["Escape:false", "a:true"]);
     expect(r).toEqual({ r: null });
     expect(keys.hosts).toBe(0);
@@ -579,7 +579,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
       await mouse("#cible");
       const c = (await result()).r;
       expect(c?.selecteur).toBe("#cible");
-      // Electron's rectCapture works in view pixels (× zoom); drawSnapshot takes page CSS pixels: back to CSS, the
+      // rectCapture works in view pixels (× zoom); drawSnapshot takes page CSS pixels: back to CSS, the
       // scale gives the device pixels (zoom × dpr), as capturePage does.
       const dip = rectCapture(c.rect, c.vue, zoom);
       const css = { x: dip.x / zoom, y: dip.y / zoom, width: dip.width / zoom, height: dip.height / zoom };
@@ -632,7 +632,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
 
   it("S3: a chrome frame over the remote browser: paint, mouse and wheel outside it, keyboard in and back, the cart column", async () => {
     await open(`${base}/grille`);
-    // Electron's message rect: 360 × 56, 12 px from the top and right of the page's view.
+    // The message rect: 360 × 56, 12 px from the top and right of the page's view.
     const placed = await chrome(
       m,
       `const b = gBrowser.selectedBrowser, br = b.getBoundingClientRect();
@@ -731,7 +731,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
 
   // --- S4, the source -------------------------------------------------------------------------------------------
 
-  /** Electron's lireSource expression (viseur.ts), as is. */
+  /** The lireSource expression, as is. */
   const SOURCE_CODE = (selecteur: string) => `(() => {
     try {
       const el = document.querySelector(${JSON.stringify(selecteur)});
@@ -753,7 +753,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
       return null;
     } catch { return null; }
   })()`;
-  // Electron's sourceSaine (viseur.ts, not exported): what the parent keeps.
+  // sourceSaine: what the parent keeps.
   const sourceSaine = (r: any) => {
     const ok = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n > 0;
     if (!r || typeof r !== "object" || typeof r.fichier !== "string" || r.fichier.length > 1024 || r.fichier === "") return null;
@@ -773,7 +773,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const bad1 = await source("#nue");
     await inPage(`document.querySelector("#nue").__svelte_meta = { loc: { file: "a.svelte", line: -3, column: 1.5 } }`);
     const bad2 = await source("#nue");
-    // A page getter runs (as in Electron's main world), and a throwing one gives null.
+    // A page getter runs (as in the page's main world), and a throwing one gives null.
     await inPage(`window.getterRuns = 0; Object.defineProperty(document.querySelector("#nue"), "__svelte_meta", { get() { getterRuns++; throw new Error("x"); } })`);
     const throwing = await source("#nue");
     note("S4 data-source", { ds, none, bad1, bad2, throwing, getterRuns: await inPage("window.getterRuns") });

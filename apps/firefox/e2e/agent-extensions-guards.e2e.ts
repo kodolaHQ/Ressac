@@ -14,8 +14,7 @@ import type { LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
-// Ported from Electron's extensions-agent.spec.ts (the network guard, :477 to :726). Electron maps the test domains
-// with --host-resolver-rules; here Firefox sends every https request to a recording proxy, which answers CONNECT and
+// The agent extensions' network guard. Firefox sends every https request to a recording proxy, which answers CONNECT and
 // serves the tunnel with a self-signed certificate (Firefox's certificate checks turned off for the run). « Nothing
 // leaves » is checked by `hits`: what the proxy saw, by host and path (a bare tunnel is « (connexion) »).
 const ID = "reseau@agent.webaios";
@@ -35,7 +34,7 @@ beforeAll(async () => {
     note(req.headers.host, req.url);
     req.resume();
     const chemin = (req.url ?? "").split("?")[0];
-    // The read's image delays its load end (as Electron's /lent.png).
+    // The read's image delays its load end.
     if (chemin === "/lent.png") return void setTimeout(() => res.writeHead(200, { "Content-Type": "image/png" }).end(), 4000);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" });
     res.end(chemin === "/formulaire" ? PAGE_FORMULAIRE : chemin === "/lecture" ? PAGE_LECTURE : `<title>${req.url}</title>ok`);
@@ -86,7 +85,7 @@ async function until(ok: () => boolean, ms = 15_000): Promise<void> {
 }
 
 /**
- * Electron's EXTENSION_RESEAU (extensions-agent.spec.ts), the files these tests use: `reseau` accorde.test, hosts
+ * The network extension, the files these tests use: `reseau` accorde.test, hosts
  * https://hote.test/*. Its background sends to accorde.test and autre.test (fetch, WebSocket), then tries the guarded
  * APIs and keeps what it got in `storage.local` (`resultats`). Firefox: `clients-type` answers typeof clients (absent
  * from a background page, spike S2); `resultats.html` shows the results in its title.
@@ -384,18 +383,18 @@ const ACCORD_RESEAU = {
 };
 
 
-/** Electron's PAGE_FORMULAIRE: a form the page fills itself (as a password manager would). */
+/** A form the page fills itself (as a password manager would). */
 const PAGE_FORMULAIRE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
 <form id="f" action="/envoi"><input type="text" id="texte" name="texte"><input type="password" id="mdp" name="mdp"></form>
 <script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";
 // Comme React : la valeur recopiée dans l'attribut \`value\`.
 document.getElementById("texte").setAttribute("value", "visible"); document.getElementById("mdp").setAttribute("value", "secret");</script>
 </body></html>`;
-/** Electron's PAGE_LECTURE: its image delays the load end, so the invisible read stays open a few seconds. */
+/** A page whose image delays the load end, so the invisible read stays open a few seconds. */
 const PAGE_LECTURE = `<!doctype html><html><head><meta charset="utf-8"><title>lecture</title></head><body><p>Texte lu</p><img src="/lent.png"></body></html>`;
 
 /**
- * Electron's EXTENSION_GARDE (extensions-agent.spec.ts), unchanged: a content script in two files on hote.test (one
+ * The guard extension: a content script in two files on hote.test (one
  * scope), which reads the fields, listens to the keyboard, sends to hote.test, accorde.test (`reseau`) and autre.test,
  * then marks `<html data-agent-vu>` and appends « AGENT-VU » to the text; what it saw is in `data-agent` (JSON). Its
  * background runs the orders of `ordre.html?<order>` (executeScript).
@@ -560,7 +559,7 @@ async function launchAgent(nom: string, fichiers: Record<string, string | object
   };
   const w = await launchWithAmo({ ...f, prefs });
   opened.push(w);
-  // The proxy's self-signed certificate: accepted for this run (as Electron's --ignore-certificate-errors).
+  // The proxy's self-signed certificate: accepted for this run.
   await w.marionette.execute(
     'Cc["@mozilla.org/security/certoverride;1"].getService(Ci.nsICertOverrideService).setDisableAllSecurityChecksAndLetAttackersInterceptMyData(true);',
   );
@@ -596,7 +595,7 @@ async function extensionPage(m: Marionette, url: string, ms = 1500): Promise<{ t
   return r;
 }
 
-/** Electron :613's expectations on cadre.js's report; a frame out of the page's reach (cross-origin) passes. */
+/** The expectations on cadre.js's report; a frame out of the page's reach (cross-origin) passes. */
 function checkFrames(titre: string): void {
   const vu = JSON.parse(titre) as Record<string, any>;
   for (const cadre of ["blank", "index", "ombre", "srcdocTot", "petit", "srcdoc", "masque", "declare"]) {
@@ -658,13 +657,13 @@ describe("agent extensions: network guard", () => {
       dnrRegles: { ok: ["block"] },
       rtc: { ok: "undefined" },
     });
-    // Electron answers false; Firefox refuses a permission not in optional_permissions (which the copy refuses anyway).
+    // Firefox refuses a permission not in optional_permissions (which the copy refuses anyway).
     expect(r.permissionsDownloads).not.toEqual({ ok: true });
     await until(() => hitsTo("hote.test", "/onglet-permis").length > 0);
     expect(hitsTo("autre.test")).toEqual([]);
   });
 
-  // Electron's Store extension: here an AMO-style add-on installed temporarily, blocking by a static DNR ruleset and
+  // Another add-on: an AMO-style one installed temporarily, blocking by a static DNR ruleset and
   // fetching where it likes.
   it("with an agent extension running, another add-on still blocks (DNR) and sends where it likes; pages load", async () => {
     const w = await launchReseau();
@@ -707,7 +706,7 @@ describe("agent extensions: network guard", () => {
     // An active tab in the window: the popup has somewhere to anchor.
     await openTab(m, "https://hote.test/ancre");
     await until(() => hitsTo("hote.test", "/ancre").length > 0);
-    // Firefox refuses an absolute popup address itself; Electron answered « fait ».
+    // Firefox may refuse an absolute popup address itself.
     expect(await order(w, "popup-fuite")).toMatch(/^(fait|Access denied for URL https:\/\/autre\.test\/popup-fuite)$/);
     await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(ID)})?.enabled`, (v) => v === true);
     await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [ID]);
@@ -715,7 +714,7 @@ describe("agent extensions: network guard", () => {
     expect(hitsTo("autre.test")).toEqual([]);
   });
 
-  // Measured: Electron reads a hole of the list through Array.prototype (Store extension, no guard); an agent
+  // An agent
   // extension's holey list is refused without the prototype's getter being read. The agent half only.
   it("updateDynamicRules with a holey list: the agent's guard refuses it", async () => {
     const w = await launchReseau();
@@ -732,7 +731,7 @@ describe("agent extensions: network guard", () => {
     expect(proxy.hits.filter((c) => c.hote.endsWith("autre.test"))).toEqual([]);
   });
 
-  // Electron's clients.openWindow half: a Firefox background page has no `clients` (spike S2).
+  // No clients.openWindow half: a Firefox background page has no `clients` (spike S2).
   it("runtime.setUninstallURL to a domain not granted opens nothing, uninstall included; no clients in the background", async () => {
     const w = await launchReseau();
     const m = w.marionette;
@@ -744,7 +743,7 @@ describe("agent extensions: network guard", () => {
     expect(hitsTo("autre.test")).toEqual([]);
   });
 
-  it("document.open with an address, a window with features, <a target=_blank>: an agent page opens nothing (as Electron)", async () => {
+  it("document.open with an address, a window with features, <a target=_blank>: an agent page opens nothing", async () => {
     const w = await launchReseau();
     const m = w.marionette;
     await backgroundResults(w);
@@ -758,7 +757,7 @@ describe("agent extensions: network guard", () => {
     for (const chemin of ["/doc-open", "/fenetre-options", "/lien-blank"]) expect(hitsTo("hote.test", chemin)).toEqual([]);
   });
 
-  // Firefox has rights Electron never had to guard (review probe): refused at the copy, before any card or signature.
+  // Firefox has rights the guard must refuse too (review probe): refused at the copy, before any card or signature.
   it("an agent extension asking identity, notifications, dns or find is refused at the copy: nothing signed, nothing installed", async () => {
     const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
     dirs.push(f.dataDir, f.profile);
@@ -773,7 +772,7 @@ describe("agent extensions: network guard", () => {
     expect(proxy.hits.filter((h) => h.hote.endsWith("autre.test"))).toEqual([]);
   });
 
-  // Electron's :613, in a tab of the extension (its popup: the next test). Firefox: a srcdoc frame is cross-origin to the
+  // In a tab of the extension (its popup: the next test). Firefox: a srcdoc frame is cross-origin to the
   // page (out of its reach); the about:blank ones are reached by the extension actor, which takes the extension API
   // and WebRTC out of them.
   it("in its page, an about:blank, srcdoc, nested or shadow-root frame has neither RTCPeerConnection nor a way to set a DNR redirect", async () => {
@@ -785,7 +784,7 @@ describe("agent extensions: network guard", () => {
   });
 
   // Firefox grants activeTab to an MV3 extension on a click of its button, of its menu item or on its command, even
-  // without the right; Electron has no captureVisibleTab, captureTab nor detectLanguage: refused for every agent page.
+  // without the right; captureVisibleTab, captureTab and detectLanguage are refused for every agent page.
   it("after a click on its button, the popup cannot capture nor read the language of a tab outside its hosts", async () => {
     const w = await launchReseau();
     const m = w.marionette;
@@ -851,7 +850,7 @@ describe("agent extensions: network guard", () => {
   });
 });
 
-// Ported from Electron's extensions-agent.spec.ts :918 to :1022 and :1521: the agent's content scripts.
+// The agent's content scripts.
 describe("agent extensions: content scripts", () => {
   const launchGarde = () => launchAgent("garde", EXTENSION_GARDE, ACCORD_GARDE);
   /** What the agent's content script noted in WebAiOs tab `tab` (null: nothing). */
@@ -904,7 +903,7 @@ describe("agent extensions: content scripts", () => {
     expect(lu.texte[8]).toBe("visible");
   });
 
-  // Electron keeps an agent page open in a hidden window; here in a tab outside the store.
+  // An agent page kept open in a tab outside the store.
   it("with a page of the agent open, its content script runs only once in a tab", async () => {
     const w = await launchGarde();
     const m = w.marionette;
@@ -948,8 +947,8 @@ describe("agent extensions: content scripts", () => {
     });
   });
 
-  // Electron's widget read with an account is the store's readPage in the profile here (spike S4: no content script
-  // runs in an invisible read, so it has no tab id). The Store extension half is left out.
+  // A widget read with an account is the store's readPage in the profile (spike S4: no content script
+  // runs in an invisible read, so it has no tab id).
   it("in an invisible read of the same profile, data-agent-vu is absent and executeScript to it is refused; in a tab of that profile it is present", async () => {
     const w = await launchGarde();
     const m = w.marionette;
@@ -981,8 +980,8 @@ describe("agent extensions: content scripts", () => {
     // Witness: in a tab of the same profile, the agent's script runs, its sheet is set, the escape file still does not run.
     const tab = await openTab(m, "https://hote.test/lecture?onglet");
     expect(await poll(() => inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-agent-vu')"), (v) => v === "1")).toBe("1");
-    // Its sheet is set; Firefox loads its image with the extension's principal, so the network guard cancels it
-    // (Electron loads it): stricter, and no read of the sheet's request.
+    // Its sheet is set; Firefox loads its image with the extension's principal, so the network guard cancels it:
+    // stricter, and no read of the sheet's request.
     const sheet = () => inPage<string>(m, tab, "return getComputedStyle(document.documentElement).backgroundImage");
     expect(await poll(sheet, (v) => v.includes("cs-css"))).toContain("https://autre.test/cs-css");
     expect(await inPage(m, tab, "return document.documentElement.getAttribute('data-evade')")).toBeNull();
@@ -1069,7 +1068,7 @@ noter();`,
     });
   });
 
-  // Electron reads the shared world in the extension's console (task 9 here): read from the page instead.
+  // The shared world is read from the page.
   it("I2 all the files of its content scripts share one world: a var of one entry is read in another, a redeclared const throws", async () => {
     const w = await launchAgent(
       "monde",
@@ -1114,7 +1113,7 @@ noter();`,
 
 describe("agent extensions: tabs without the tabs right or a host", () => {
   /**
-   * Electron's fondEspion (extensions-agent.spec.ts :1366): what the background sees of the tabs by tabs.query, tabs.get,
+   * The spy background: what the background sees of the tabs by tabs.query, tabs.get,
    * windows.getAll({ populate: true }) and the onUpdated/onCreated events; `ordre.html?snap` returns it.
    */
   const spy = (manifest: object) => ({
@@ -1155,7 +1154,6 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
     await sleep(1000);
   }
 
-  // Electron :1382.
   it("without tabs nor a host: no address nor title in tabs.query, tabs.get, onUpdated, onCreated, windows populate", async () => {
     const w = await launchAgent("espion", spy({}), grantOf([], []));
     await openBoth(w);
@@ -1168,7 +1166,6 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
     expect(seen.events.length).toBeGreaterThan(0);
   });
 
-  // Electron :1406.
   it("with a host: the address and title of that site's tabs only", async () => {
     const w = await launchAgent("espion", spy({ host_permissions: ["https://hote.test/*"] }), grantOf([], ["https://hote.test/*"]));
     await openBoth(w);
@@ -1181,7 +1178,7 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
     expect(seen.query.find((t) => t.url === "https://hote.test/a")?.title).toBe("/a");
   });
 
-  // Electron's voitOnglet: « tabs » shows every address. The parking tab and the invisible reads are no tab of Electron's.
+  // « tabs » shows every address. The parking tab and the invisible reads are no tab.
   it("the parking tab and reading browsers are never listed", async () => {
     const w = await launchAgent("espion", spy({ permissions: ["tabs"] }), grantOf(["tabs"], []));
     await openTab(w.marionette, "https://hote.test/a");

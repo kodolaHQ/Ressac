@@ -10,15 +10,15 @@ import type { Marionette } from "./marionette";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 1: the agent's retouches in each frame of a site app's view (Xray sandbox per document), ports of
-// Electron's e2e/sites.spec.ts 30 (:809) to 42 (:944), plus the sign-in window and two apps side by side.
+// Plan 32 Task 1: the agent's retouches in each frame of a site app's view (Xray sandbox per document), plus the
+// sign-in window and two apps side by side.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "lecteur.localhost", "compte.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Electron's RETOUCHE_SERIE (sites.spec.ts:729), its world probe with Firefox's chrome globals added (spec §1): it hides
+ * A series retouche with a world probe, with Firefox's chrome globals added (spec §1): it hides
  * `.shorts` (CSS), remembers the episode, notes what it sees of its world in the DOM, and answers the test's commands.
  */
 const RETOUCHE_SERIE = `
@@ -67,7 +67,7 @@ const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
-/** Electron's vueSite: an expression in app `id`'s view (its `frame`-th frame), null while it cannot run. */
+/** An expression in app `id`'s view (its `frame`-th frame), null while it cannot run. */
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
 /** `typeof name` in the page's own world (a <script> of the page; the test's script has Xrays, like a retouche). */
 const pageTypeof = (name: string) =>
@@ -89,7 +89,7 @@ const go = async (chemin: string) => {
   await expect.poll(() => viewUrl("vidola"), { timeout: 10_000 }).toBe(url(chemin));
 };
 
-/** Electron's commande: the test's command to the retouche, then its answer. */
+/** The test's command to the retouche, then its answer. */
 async function command(c: string): Promise<string | null> {
   await view(`(document.documentElement.dataset.resultat = "", document.documentElement.dataset.commande = ${JSON.stringify(c)}, document.dispatchEvent(new Event("essai")), 1)`);
   await expect.poll(() => view("document.documentElement.dataset.resultat")).not.toBe("");

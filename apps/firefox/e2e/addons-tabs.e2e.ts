@@ -7,7 +7,7 @@ import type { Marionette } from "./marionette";
 import { startServer } from "./server";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-// Tabs opened by add-ons, and about:addons, as WebAiOs tabs (Electron's extensions.spec.ts and extensions-interface.spec.ts).
+// Tabs opened by add-ons, and about:addons, as WebAiOs tabs.
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -43,7 +43,7 @@ const onPage = (id: string, expr: string) =>
   `const win = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === ${JSON.stringify(id)})?.linkedBrowser.contentWindow; return ${expr};`;
 const VIEW = "win?.gViewController?.currentViewId ?? null";
 
-/** Electron's three actions: the trigger page opens in space A, then the window goes to space B at once. */
+/** Three steps: the trigger page opens in space A, then the window goes to space B at once. */
 async function triggerFromA(query: string, profil: string): Promise<{ a: string; b: string }> {
   const fenetreId = (await win()).id;
   const a = (await win()).espaceActif;

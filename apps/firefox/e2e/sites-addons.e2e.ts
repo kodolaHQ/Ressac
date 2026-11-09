@@ -15,8 +15,8 @@ import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, serveWa
 import { inUi, missingApi, waitUi } from "./ui";
 
 // Plan 32 Task 6: Firefox add-ons in a site app's window. Their buttons in the app's bar (the « site » view only), their
-// popups in the app's window, and the app view protected from them. Ports of Electron's e2e/extensions-sites.spec.ts
-// where they still apply: add-ons run everywhere in Firefox, there is no per-app activation (spec §4.9).
+// popups in the app's window, and the app view protected from them. Add-ons
+// run everywhere in Firefox, there is no per-app activation (spec §4.9).
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "compte.localhost", "lecteur.localhost"];
@@ -80,9 +80,9 @@ let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = (extra: object = {}) => ({ nom: "Vidola", adresse: url("/pubs"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], ...extra });
-/** Electron's avecAccueil: an app with a home screen (the « accueil » view on opening). */
+/** An app with a home screen (the « accueil » view on opening). */
 const withHome = (): SiteTest => ({ declaration: { ...vidola(), nom: "Tube" }, fichiers: { "accueil/index.html": "<p>accueil</p>" } });
-/** Electron's avecCarte: retouches without an accord, so the accord card shows on opening. */
+/** Retouches without an accord, so the accord card shows on opening. */
 const withCard = (): SiteTest => ({
   declaration: { ...vidola({ retouches: [{ correspond: ["/pubs"], js: ["a.js"] }] }), nom: "Carte" },
   fichiers: { "retouches/a.js": 'document.body.dataset.retouche = "oui";' },
@@ -112,7 +112,7 @@ async function start(o: { sites?: Record<string, SiteTest>; granted?: string[] }
   await resolveLocalHosts(m, HOSTS);
 }
 
-/** Electron's ouvrirEtAttendre: the app opened, its view on `chemin` and loaded. */
+/** The app opened, its view on `chemin` and loaded. */
 async function openAndWait(id = "vidola", chemin = "/pubs") {
   await openSite(id);
   await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(chemin));
@@ -239,7 +239,7 @@ describe("add-ons in a site app window", () => {
     expect((await siteState("tube")).vue).toBe("accueil");
   });
 
-  it("on the home screen, tabs.reload and tabs.goBack of the view send no request; the view stays where it is (Electron's M1, fenetres.ts:415)", async () => {
+  it("on the home screen, tabs.reload and tabs.goBack of the view send no request; the view stays where it is", async () => {
     await start({ sites: { tube: withHome() } });
     await installAddon(m, probe());
     await openSite("tube");

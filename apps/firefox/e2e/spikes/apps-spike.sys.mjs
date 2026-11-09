@@ -189,7 +189,7 @@ export async function stop(dossier) {
   }
 }
 
-/** The badge: a chrome frame at the top right of the app window's #browser, Electron's sizes. */
+/** The badge: a chrome frame at the top right of the app window's #browser. */
 export async function badge(dossier, w = 48, h = 28) {
   const win = apps.get(dossier).window;
   const doc = win.document;

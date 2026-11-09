@@ -10,7 +10,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
-// The « Actions » page of the sidebar (Electron's actions.spec.ts:995-1150, ported): lists, launches, opens the
+// The « Actions » page of the sidebar: lists, launches, opens the
 // builder, deletes, removes the accord. The actions are written before the launch, on one data folder for the file.
 
 const TICKETS_NOM = "Mes tickets GitLab à traiter";
@@ -32,7 +32,7 @@ async function setPrivate(prive: boolean): Promise<void> {
   const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
   if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
 }
-/** Electron's ouvrirPageActions. */
+/** Opens the « Actions » page of the sidebar. */
 async function openActionsPage(): Promise<void> {
   await click(m, tid("bouton-actions"));
   await visible(tid("page-actions"));
@@ -42,7 +42,7 @@ async function fresh(): Promise<void> {
   await setPrivate(false);
   for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as Action);
 }
-/** Electron's ecrireDeuxActions: « Tickets » (keywords, last result) and « Leboncoin » (input, never launched). */
+/** « Tickets » (keywords, last result) and « Leboncoin » (input, never launched). */
 async function writeTwoActions(d: string): Promise<void> {
   await writeRunnableAction(d, "tickets", { nom: TICKETS_NOM, motsCles: ["gitlab", "tickets"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
   await writeResult(d, "tickets", EXECUTION, HIER, "Ticket 1");

@@ -14,9 +14,8 @@ import { declareProject, openApplications } from "./review";
 import { inBrowser, resolveLocalHosts } from "./sites";
 import { click, inUi, pressKeys, typeText } from "./ui";
 
-// Plan 35b Task 4: the ✎ button, ⇧⌘D and the chevron's menu (Panier, Relire ce projet), ports of Electron's
-// design.spec.ts:291,311, relecture.spec.ts:168,200 and externes.spec.ts:209,230 without Electron's native menu, and
-// Review Focus 1. The demo is 127.0.0.1:15313, in this file's block 15310-15314.
+// Plan 35b Task 4: the ✎ button, ⇧⌘D and the chevron's menu (Panier, Relire ce projet), without a
+// native menu, and Review Focus 1. The demo is 127.0.0.1:15313, in this file's block 15310-15314.
 
 const PORT = 15313;
 const BLOCK = "15310-15314";
@@ -172,7 +171,7 @@ describe("outside the followed projects", () => {
     await expect.poll(message, { timeout: 10_000 }).toBeNull();
     expect(Date.now() - t).toBeLessThan(3000);
 
-    // The next key in the window's UI (Electron: the page or the window's interface).
+    // The next key in the window's UI.
     await pressKeys(m, "Meta+Shift+d");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
     await m.execute(`document.getElementById("webaios-sidebar").focus();`);

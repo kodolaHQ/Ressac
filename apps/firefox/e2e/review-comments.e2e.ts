@@ -13,7 +13,7 @@ import { writeSite } from "./sites";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // Plan 34 Task 5: review comments, sent to Claude Code (the external MCP's queue) or to the agent (pre-filled, never
-// sent). Ports of Electron's e2e/relecture.spec.ts and externes.spec.ts, and Review Focus 5.
+// sent), and Review Focus 5.
 
 const dirs: string[] = [];
 let w: LaunchedWebAiOs | undefined;
@@ -67,7 +67,7 @@ async function shiftPlus(n: number): Promise<void> {
   await inUi(m, `doc.querySelector(arguments[0]).dispatchEvent(new ui.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, shiftKey: true }))`, [plus(n)]);
 }
 
-/** Electron's commenter: the open form gets `texte`, then « Commenter »; the form closes. */
+/** The open form gets `texte`, then « Commenter »; the form closes. */
 async function comment(texte: string): Promise<void> {
   await waitUi(
     m,

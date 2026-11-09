@@ -145,7 +145,7 @@ it("lire_onglet on a crashed tab answers an error within 15 s", async () => {
   expect(Date.now() - start).toBeLessThan(15_000);
   expect(lu).toEqual({ texte: "Erreur : La page a planté : rechargez-la.", erreur: true });
   expect(await call("capture_ecran", { id })).toEqual({ texte: "Erreur : La page a planté : rechargez-la.", erreur: true });
-  // naviguer revives it, as Electron's loadURL does a crashed page.
+  // naviguer revives a crashed page.
   expect((await call("naviguer", { id, url: `${server.url}/texte.html` })).erreur).toBe(false);
   await loaded("/texte.html");
   // The agent's loads never use the system principal (step 3), revived tab included.

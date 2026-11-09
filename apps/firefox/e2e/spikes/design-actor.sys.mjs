@@ -3,7 +3,7 @@
 
 import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 
-// Electron's ARRET (apps/navigateur/src/main/design/viseur.ts), not exported there.
+// Stops the viewfinder and its swallowing, if armed.
 const ARRET = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
 
 const clone = (v) => {
@@ -32,7 +32,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
     return this.sb;
   }
 
-  /** The page's own world, Xrays waived: what lireSource reads in Electron's main world. Never kept. */
+  /** The page's own world, Xrays waived: what lireSource reads. Never kept. */
   pageWorld() {
     const win = this.contentWindow;
     return Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: false, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · source (spike)" });
@@ -42,7 +42,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
    * Capture listeners on this tab's chrome event handler: the first target of every event of the tab's documents, so
    * no page listener (window or document, capture or not) runs before them. A trusted event is stopped there; a trusted
    * primary click hands its target to the viewfinder (`__viseurChoisir`), a trusted Escape stops it. Untrusted events
-   * (made by the page) pass untouched, as in Electron. Other keys reach the page, as in Electron.
+   * (made by the page) pass untouched. Other keys reach the page.
    */
   async armGuarded(code) {
     this.unguard?.();
@@ -83,7 +83,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
     try {
       r = await Cu.evalInSandbox(code, sb, "latest", "webaios-viseur.js", 1);
     } finally {
-      // After a capture, the rest of a double click is swallowed for 500 ms (Electron's __viseurAvaler); else at once.
+      // After a capture, the rest of a double click is swallowed for 500 ms; else at once.
       if (r) timer = setTimeout(unguard, 500);
       else unguard();
     }
@@ -100,7 +100,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
     switch (msg.name) {
       case "info":
         return { remoteType: Services.appinfo.remoteType, processType: Services.appinfo.processType, top: this.browsingContext.top === this.browsingContext, uri: this.document.documentURI };
-      // Electron's scriptViseur(), as is; the promise's value is the query's answer (never a spontaneous message).
+      // The viewfinder script, as is; the promise's value is the query's answer (never a spontaneous message).
       case "arm":
         return clone(await Cu.evalInSandbox(d.code, this.viewfinder(), "latest", "webaios-viseur.js", 1));
       case "stop":
@@ -113,7 +113,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
         } catch (e) {
           return { error: String(e) };
         }
-      // Electron's lireSource expression, in the page's world, Xrays waived. The parent checks the shape (sourceSaine).
+      // The lireSource expression, in the page's world, Xrays waived. The parent checks the shape (sourceSaine).
       case "source":
         try {
           return clone(Cu.evalInSandbox(d.code, this.pageWorld(), "latest", "webaios-source.js", 1));
@@ -150,7 +150,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
         return { cadre: s(cadre), etiquette: { ...s(etiquette), text: etiquette.textContent } };
       }
       // Test only: a capture-phase listener on the chrome event handler (in front of every page listener), counting
-      // what it sees: an alternative the parent may weigh, not what Electron does.
+      // what it sees: an alternative the parent may weigh.
       case "front":
         if (!this.front) {
           this.front = [];

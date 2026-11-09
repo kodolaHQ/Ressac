@@ -35,8 +35,8 @@ import { startServer } from "./server";
 import { grantSite, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 
 // Plan 36 Task 1: the design service's `site` target in a site app's view (spike S5), driven through store.design with
-// the real overlays. Apps: tuning (Electron's design-sites.spec.ts), vidola (spike S5's hostile page and retouche),
-// avec-accueil (Electron's, a home). Block 15345-15349: sites on 15345, a frame of another origin on 127.0.0.1:15346.
+// the real overlays. Apps: tuning, vidola (spike S5's hostile page and retouche),
+// avec-accueil (a home). Block 15345-15349: sites on 15345, a frame of another origin on 127.0.0.1:15346.
 
 const PORT = 15345;
 const FRAME_PORT = 15346;

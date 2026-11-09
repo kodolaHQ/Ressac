@@ -11,7 +11,7 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
-// An action's page and its built-in components (Electron's actions.spec.ts:102-187, ported): served from a result the
+// An action's page and its built-in components: served from a result the
 // test writes, with no container and no Gemma. Reopening a page launches nothing. Result images go through the test hook
 // (WEBAIOS_TEST_ACTION_IMAGES): `https://<host><path>` is asked from the local image server, which notes each request.
 
@@ -223,7 +223,7 @@ describe("action page rendering", () => {
     expect(servers.images.seen.every((s) => s.cookie === null && s.referer === null)).toBe(true);
   });
 
-  // Electron's loading="lazy": an image far below the view is asked only once scrolled near.
+  // loading="lazy": an image far below the view is asked only once scrolled near.
   it("an offscreen result image is not requested until it is scrolled near", async () => {
     servers.reset();
     await openActionPage(m, "lazy", "Lazy");

@@ -11,11 +11,10 @@ import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, serveWav, silenceW
 import { missingApi } from "./ui";
 
 // Plan 32 Task 7: the success scenario, end to end, with the examples of AGENTS.md written as they are (only the
-// domains become `*.localhost`). Ports of Electron's e2e/sites.spec.ts 79 (:2006), 80 (:2041), 81 (:2080, a local fake
-// YouTube) and 82 (:2128).
+// domains become `*.localhost`), a local fake YouTube included.
 // Adapted: the headless test Firefox decodes no media (see sites-resume.e2e.ts), so « watch until 1:10 » sets the
 // player's time then plays and pauses (trusted events), and a resumed player is checked on its time, not on playing.
-// Electron's « no window ever shown » probes have no headless counterpart: the window and tab counts stay.
+// « No window ever shown » has no headless probe: the window and tab counts stand in for it.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const CIS = "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs";
@@ -81,16 +80,16 @@ const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
 const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 const view = <T = unknown>(code: string, id = "vidola", frame?: number) => inSiteView<T>(m, id, `return ${code};`, { frame }).catch(() => null);
-/** Electron's attendreUrl; a page with a video stays « interactive » headless (its media never loads). */
+/** Waits for the view's address; a page with a video stays « interactive » headless (its media never loads). */
 async function waitUrl(u: string, id = "vidola") {
   await expect.poll(() => viewUrl(id), { timeout: 20_000 }).toBe(u);
   await expect.poll(() => view("document.readyState", id), { timeout: 15_000 }).not.toBe("loading");
 }
-/** Electron's lecteur: `code` in the player's frame (the episode's first frame), `v` the video. */
+/** `code` in the player's frame (the episode's first frame), `v` the video. */
 const player = (code: string) => view(`(() => { const v = document.getElementById("v"); return ${code}; })()`, "vidola", 0);
-/** Electron's attendreLecture, headless: the player knows its 90 s (the event that settles its resume). */
+/** Waits for the playback, headless: the player knows its 90 s (the event that settles its resume). */
 const waitPlayer = () => expect.poll(() => player("v ? v.duration : 0"), { timeout: 15_000 }).toBe(90);
-/** Electron's allerPuisPause: the player at `t`, then a trusted play and pause there. */
+/** The player at `t`, then a trusted play and pause there. */
 const seekThenPause = (t: number) => player(`(v.currentTime = ${t}, v.play().catch(() => {}), v.pause(), v.currentTime)`);
 const memory = (): { valeurs: Record<string, { valeur: Record<string, unknown>; adresse: string }>; positions: Record<string, { t: number }> } | null => {
   const f = path.join(dataDir, "sites", "vidola", "memoire.json");
@@ -158,7 +157,7 @@ const cookies = (id: string) =>
      return i ? Services.cookies.cookies.filter((c) => c.originAttributes.userContextId === i.userContextId).map((c) => c.name + "=" + c.value) : [];`,
     [id],
   );
-/** Electron's cookiesHorsSite: every cookie outside the site apps' containers. */
+/** Every cookie outside the site apps' containers. */
 const cookiesOutsideSites = () =>
   m.execute<string[]>(
     `const { ContextualIdentityService } = ChromeUtils.importESModule("${CIS}");
@@ -167,7 +166,7 @@ const cookiesOutsideSites = () =>
   );
 const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
 const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
-/** Electron's fermerFenetresSite. */
+/** Closes the app's windows. */
 async function closeSiteWindow(id = "vidola") {
   await inStore(`await store.sites.close(arguments[0]);`, [id]);
   await expect.poll(() => siteWindowCount(m, id), { timeout: 10_000 }).toBe(0);
@@ -182,7 +181,7 @@ async function launch() {
   await waitReady(m);
   await resolveLocalHosts(m, HOSTS);
 }
-/** Electron's demarrerVidola. */
+/** Launches WebAiOs with the Vidola app written, `accord` given or not. */
 async function startVidola(accord: boolean) {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
@@ -192,7 +191,7 @@ async function startVidola(accord: boolean) {
   await launch();
 }
 
-/** Electron's regarder: opened Vidola (accord given), enter the site, sign in, watch the episode until 1:10 then pause. */
+/** Opened Vidola (accord given), enter the site, sign in, watch the episode until 1:10 then pause. */
 async function watch(host = "vidola-a.localhost") {
   await barClick("vidola", "site-entrer");
   await waitUrl(url(host, "/"));

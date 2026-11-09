@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// The UI's network net (chrome/store/ui-network.ts) on fake objects; Electron's reseau-interface.test.ts where it has a
-// meaning (no proxy, no webaios-icone: here).
+// The UI's network net (chrome/store/ui-network.ts) on fake objects (no proxy, no
+// webaios-icone here).
 
 const ACCEPT = 1;
 const REJECT = -1;

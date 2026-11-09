@@ -51,7 +51,7 @@ describe("node:url shim", () => {
   });
 });
 
-describe("@webaios/noyau shim: what Electron's viseur.ts imports", () => {
+describe("@webaios/noyau shim: what viseur.ts imports", () => {
   it("drift: HTML_MAX, MARGE_CAPTURE, MONDE_VISEUR, STYLES_UTILES, TRONQUE and tronquerHtml match design/remarques.ts", async () => {
     const shim = await import("../chrome/shims/noyau");
     const real = await import("../../../packages/noyau/src/design/remarques");
