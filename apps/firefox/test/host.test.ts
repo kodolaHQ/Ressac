@@ -1064,11 +1064,11 @@ createServer((req, res) => {
     const { h, chrome } = startApps();
     await launched(h, chrome);
     const avant = arrets(h);
-    h.rpc.notify("applications.fenetreFermee", { dossier: "essai", parUtilisateur: false });
+    h.rpc.notify("applications.fenetreFermee", { dossier: "essai", byUser: false });
     await new Promise((r) => setTimeout(r, 500));
     expect(arrets(h).slice(avant.length)).not.toContain("WEBAIOS_APP=essai");
     expect((await essai(h))?.etat).toBe("en-marche");
-    h.rpc.notify("applications.fenetreFermee", { dossier: "essai", parUtilisateur: true });
+    h.rpc.notify("applications.fenetreFermee", { dossier: "essai", byUser: true });
     await until(() => arrets(h).slice(avant.length).includes("WEBAIOS_APP=essai"));
     expect((await essai(h))?.etat).toBe("arretee");
   });

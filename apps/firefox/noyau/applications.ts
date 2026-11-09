@@ -192,7 +192,7 @@ export function createApplicationsHost(o: {
       if (!dossier) return;
       fenetres.delete(dossier);
       o.politique()?.ongletFerme("app:" + dossier);
-      if (p?.parUtilisateur === true) void gestionnaire.arreter(dossier).catch(signaler(dossier, "arrêtée"));
+      if (p?.byUser === true) void gestionnaire.arreter(dossier).catch(signaler(dossier, "arrêtée"));
     },
     // An app window always shows what the agent built: « construite » again on its new origin.
     "applications.navigation": (p) => {

@@ -103,7 +103,7 @@ function closeStray(browser: any): void {
 function closed(a: OpenApp): void {
   if (open.get(a.dossier) === a) {
     open.delete(a.dossier);
-    host?.notify("applications.fenetreFermee", { dossier: a.dossier, parUtilisateur: !a.wanted && !quitting });
+    host?.notify("applications.fenetreFermee", { dossier: a.dossier, byUser: !a.wanted && !quitting });
   }
   told();
 }
