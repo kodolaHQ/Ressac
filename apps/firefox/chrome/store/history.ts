@@ -1,5 +1,5 @@
-import { contexteHistorique, type IdOnglet, type Visite } from "../../../navigateur/src/commun/modele";
-import { espacesDevenusPrives } from "../../../navigateur/src/main/agent/pont";
+import { contexteHistorique, type IdOnglet, type Visite } from "../../shared/modele";
+import { espacesDevenusPrives } from "../../core/agent/pont";
 import type { AgentHost } from "../agent/host";
 import type { Store } from "./store";
 

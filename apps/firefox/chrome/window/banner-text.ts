@@ -1,4 +1,4 @@
-import { siteDe } from "../../../navigateur/src/commun/modele";
+import { siteDe } from "../../shared/modele";
 import type { SitePermission } from "../store/site-permissions";
 
 /** Electron's NOMS (DemandePermission.svelte), plus the three kinds of WebAiOs-Firefox. */

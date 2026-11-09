@@ -13,7 +13,7 @@ import {
   type PageLue,
   type PontNavigateur,
 } from "../../../packages/noyau/src/index.ts";
-import type { Historique } from "../../navigateur/src/main/historique.ts";
+import type { Historique } from "../core/historique.ts";
 import type { Rpc } from "../shared/rpc.ts";
 
 /** The noyau's browser bridge, answered by Firefox over JSON-RPC. Only the private-tab mirror lives here. */

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { WidgetAffiche } from "../../navigateur/src/commun/api";
+  import type { WidgetAffiche } from "../shared/api";
   import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas";
   import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme";
-  import { api } from "../../navigateur/src/renderer/etat.svelte";
+  import { api } from "../ui/etat.svelte";
   import CarteAccordCompte from "./CarteAccordCompte.svelte";
   import WidgetAccueil from "./WidgetAccueil.svelte";
   import { deplacerLibre, guidesLibres, LARGEUR_LIBRE, redimensionnerLibre, taillesLibres } from "./grille-libre";

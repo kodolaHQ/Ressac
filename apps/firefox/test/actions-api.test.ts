@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
-import type { Action } from "../../navigateur/src/commun/api";
-import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
-import { appliquer } from "../../navigateur/src/main/etat/actions";
-import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
+import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
+import type { Action } from "../shared/api";
+import type { EtatNavigateur } from "../shared/modele";
+import { appliquer } from "../core/etat/actions";
+import { etatInitial } from "../core/etat/etat-initial";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import { createActionsApi, espaceActifPrive } from "../ui/actions-api";
 

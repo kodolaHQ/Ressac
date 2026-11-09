@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";

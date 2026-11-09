@@ -1,4 +1,4 @@
-import type { ApiSite } from "../../navigateur/src/commun/api";
+import type { ApiSite } from "../shared/api";
 import type { SiteWindowController } from "../chrome/store/sites";
 import { local } from "./design-api";
 

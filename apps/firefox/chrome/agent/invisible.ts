@@ -1,5 +1,5 @@
-import type { IdProfil } from "../../../navigateur/src/commun/modele";
-import { cumulerParties, HTML_MAX, profilsLisibles, urlPermise } from "../../../navigateur/src/main/agent/lecture-invisible";
+import type { IdProfil } from "../../shared/modele";
+import { cumulerParties, HTML_MAX, profilsLisibles, urlPermise } from "../../core/agent/lecture-invisible";
 import { ProfilRefuse, type OptionsLecturePage, type PageLue } from "../shims/noyau";
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";

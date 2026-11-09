@@ -21,8 +21,8 @@ import {
   type ResultatEnregistrement,
   type WorkflowOuvert,
 } from "../../../packages/noyau/src/index.ts";
-import { cibleDeUrlWorkflow } from "../../navigateur/src/commun/modele.ts";
-import type { EditionWorkflow, SelectionConstructeur } from "../../navigateur/src/commun/api.ts";
+import { cibleDeUrlWorkflow } from "../shared/modele.ts";
+import type { EditionWorkflow, SelectionConstructeur } from "../shared/api.ts";
 
 // The widget and action parts of Electron's main/agent/constructeur.ts, copied: it imports ./accueil, which imports electron, so the
 // Node host cannot import it. Same rules, same noyau calls.

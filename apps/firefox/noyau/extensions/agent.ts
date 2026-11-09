@@ -28,11 +28,11 @@ import {
   type ResultatConsoleExtension,
   type ResultatDemandeExtension,
 } from "../../../../packages/noyau/src/index.ts";
-import type { CarteExtension, LigneExtension, LigneExtensionEspace, ReponseAccord } from "../../../navigateur/src/commun/extensions.ts";
-import type { ResultatExtension } from "../../../navigateur/src/commun/api.ts";
-import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, LONGUEUR_RAISON_DEBLOCAGE } from "../../../navigateur/src/commun/extensions-messages.ts";
-import type { Espace, Issue } from "../../../navigateur/src/commun/modele.ts";
-import { ConsolesExtensions, type FiltreAgent } from "../../../navigateur/src/main/extensions/consoles.ts";
+import type { CarteExtension, LigneExtension, LigneExtensionEspace, ReponseAccord } from "../../shared/extensions.ts";
+import type { ResultatExtension } from "../../shared/api.ts";
+import { DESACTIVEE_PLANTAGES, DESACTIVEE_PORTEE, LONGUEUR_RAISON_DEBLOCAGE } from "../../shared/extensions-messages.ts";
+import type { Espace, Issue } from "../../shared/modele.ts";
+import { ConsolesExtensions, type FiltreAgent } from "../../core/extensions/consoles.ts";
 import type { Rpc } from "../../shared/rpc.ts";
 import { AMO_URL, CLES_ABSENTES, ErreurSignature, lireCleAmo, signatureImpossible, signer } from "./amo.ts";
 import { carteDe, nonPrisEnCharge } from "./carte.ts";

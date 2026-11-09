@@ -1,5 +1,5 @@
 import { createApi, type ApiFirefox } from "./api";
-import type { ApiCalque } from "../../navigateur/src/commun/api";
+import type { ApiCalque } from "../shared/api";
 import { createBadgeApi } from "./badge-api";
 import { wrapOverlayApi } from "./overlay-api";
 import { createSiteApi, inertWebaios } from "./site-api";

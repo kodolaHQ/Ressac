@@ -1,10 +1,10 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { WidgetAffiche } from "../../navigateur/src/commun/api";
-  import { api } from "../../navigateur/src/renderer/etat.svelte";
-  import { ECART_PX, RANGEE_PX } from "../../navigateur/src/renderer/grille";
-  import { donneesApercu } from "../../navigateur/src/renderer/constructeur/apercu";
-  import type { Executions } from "../../navigateur/src/renderer/constructeur/executions.svelte";
+  import type { WidgetAffiche } from "../shared/api";
+  import { api } from "../ui/etat.svelte";
+  import { ECART_PX, RANGEE_PX } from "../ui/grille";
+  import { donneesApercu } from "../ui/constructeur/apercu";
+  import type { Executions } from "../ui/constructeur/executions.svelte";
   import CadreWidget from "./CadreWidget.svelte";
   import { unitesLibres } from "./grille-libre";
 

@@ -5,10 +5,10 @@ import fs from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { z } from "zod";
 import { dossierValide, ecrireType, GestionnaireApplications, prefixeApplication, type Application, type Atelier, type CheminsEspace, type OngletInfo } from "../../../packages/noyau/src/index.ts";
-import { SondeDocker } from "../../navigateur/src/main/applications/sonde.ts";
-import { TAILLE_FAVICON } from "../../navigateur/src/main/applications/favicon.ts";
-import type { ListeApplications } from "../../navigateur/src/commun/api.ts";
-import type { Cadre, IdFenetre } from "../../navigateur/src/commun/modele.ts";
+import { SondeDocker } from "../core/applications/sonde.ts";
+import { TAILLE_FAVICON } from "../core/applications/favicon.ts";
+import type { ListeApplications } from "../shared/api.ts";
+import type { Cadre, IdFenetre } from "../shared/modele.ts";
 import { SiteSouvenirs } from "./sites.ts";
 
 // Copies: service.ts imports electron, and commun/api.ts and main/agent/pont.ts do not load under tsx.

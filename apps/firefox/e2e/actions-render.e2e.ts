@@ -3,7 +3,7 @@ import { utimes } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BARRES, EXECUTION, openActionPage, probe, startActionServers, tid, uiQueries, writeActionWithResult, writeComponent, type Block } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";

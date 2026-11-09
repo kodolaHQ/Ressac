@@ -1,6 +1,6 @@
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
-import type { ApiCalque, ContexteCalque } from "../../navigateur/src/commun/api";
+import type { ApiCalque, ContexteCalque } from "../shared/api";
 import { overlayApi, type DesignService } from "../chrome/store/design";
 import { INVALID_REQUEST, REMARK_TEXT_MAX } from "../shared/design-guards";
 import { wrapOverlayApi } from "../ui/overlay-api";

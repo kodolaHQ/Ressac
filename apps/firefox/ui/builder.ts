@@ -1,4 +1,4 @@
-import type { ApiWebaios } from "../../navigateur/src/commun/api";
+import type { ApiWebaios } from "../shared/api";
 import type { ApiFirefox } from "./api";
 
 /** Electron's `api.accueil` as the builder reads it (suivreDisparitions): the Firefox read also carries the theme. */

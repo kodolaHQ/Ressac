@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { cleanupXpis, installAddon, marker, uninstallAddon, watcher } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";

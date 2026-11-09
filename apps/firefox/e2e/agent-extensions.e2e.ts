@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "nod
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { ecrireExtensionAgent } from "./extensions/fixtures";
 import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";

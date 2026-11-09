@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { Espace, EtatFenetre, EtatNavigateur, IdEspace, IdProfil } from "../../navigateur/src/commun/modele";
+import type { Espace, EtatFenetre, EtatNavigateur, IdEspace, IdProfil } from "../shared/modele";
 import { profilsPourAccord, urlOuvrable } from "../ui/accueil-profils";
 
 const espace = (id: string, nom: string, profil: IdProfil, prive = false): Espace => ({

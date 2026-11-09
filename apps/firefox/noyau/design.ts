@@ -8,9 +8,9 @@ import {
   destinationDe, etatLot, PORT_MCP_EXTERNE, plagesConteneur, projetDemo, projetPourAdresse, projetPourFenetreApp, projetPourSite, RegistreExternes, Remarques,
   REMARQUE_VIDE, SANS_CLIENT, type Application, type CheminsEspace, type ContexteDesign, type Element, type IdProjet, type Lot, type ProjetSuivi,
 } from "../../../packages/noyau/src/index.ts";
-import { demarrerExternes, raisonEchec, type ServiceExternes } from "../../navigateur/src/main/design/externes.ts";
-import { creerEnvoi } from "../../navigateur/src/main/design/envoi.ts";
-import type { ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../../navigateur/src/commun/api.ts";
+import { demarrerExternes, raisonEchec, type ServiceExternes } from "../core/design/externes.ts";
+import { creerEnvoi } from "../core/design/envoi.ts";
+import type { ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../shared/api.ts";
 import { ReviewService } from "./review.ts";
 import {
   checkCapture, checkClientName, checkComment, checkDesignContext, checkLines, checkPath, checkProject, checkResolved, checkText, checkToken, CLIENT_ID,

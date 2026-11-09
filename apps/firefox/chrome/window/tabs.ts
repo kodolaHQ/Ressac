@@ -1,6 +1,6 @@
-import type { Action } from "../../../navigateur/src/commun/api";
-import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../../navigateur/src/commun/modele";
-import { aUneVue, profilDOnglet } from "../../../navigateur/src/commun/modele";
+import type { Action } from "../../shared/api";
+import type { EtatNavigateur, IdFenetre, IdOnglet, Onglet } from "../../shared/modele";
+import { aUneVue, profilDOnglet } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 
 export const TAB_ID = "webaios-tab-id";

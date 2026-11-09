@@ -1,9 +1,9 @@
-import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../../navigateur/src/commun/api";
-import { cibleDeUrlWorkflow, contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, LARGEUR_BARRE, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../../navigateur/src/commun/modele";
-import { versUrl } from "../../../navigateur/src/main/adresse";
-import { ParcoursOnglets } from "../../../navigateur/src/main/parcours-onglets";
-import { versNieme } from "../../../navigateur/src/main/raccourcis";
-import { zoneGauche, zoneSortie, type ZoneGauche } from "../../../navigateur/src/commun/revelation";
+import type { MessageParcours, Panneau, PanneauOnglets, Raccourci } from "../../shared/api";
+import { cibleDeUrlWorkflow, contexteHistorique, LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN, LARGEUR_BARRE, type Cadre, type EtatNavigateur, type IdFenetre, type IdOnglet } from "../../shared/modele";
+import { versUrl } from "../../core/adresse";
+import { ParcoursOnglets } from "../../core/parcours-onglets";
+import { versNieme } from "../../core/raccourcis";
+import { zoneGauche, zoneSortie, type ZoneGauche } from "../../shared/revelation";
 import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";

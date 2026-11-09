@@ -1,6 +1,6 @@
 // An agent app's window: browser.xhtml opened by store/apps.ts without a toolbar, marked from its creation, never a
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
-import { memeOrigine, TAILLE_FAVICON } from "../../../navigateur/src/main/applications/favicon";
+import { memeOrigine, TAILLE_FAVICON } from "../../core/applications/favicon";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
 import { protectView } from "./site-window";

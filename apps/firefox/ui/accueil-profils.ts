@@ -1,5 +1,5 @@
-import type { ProfilPourAccord } from "../../navigateur/src/commun/api";
-import type { EtatNavigateur, IdFenetre } from "../../navigateur/src/commun/modele";
+import type { ProfilPourAccord } from "../shared/api";
+import type { EtatNavigateur, IdFenetre } from "../shared/modele";
 
 // Pure copies of Electron's rules (main/agent/lecture-invisible.ts and accueil.ts): the sidebar bundle cannot import the
 // main-process files (electron) nor node:net.

@@ -1,5 +1,5 @@
 import type { MemoireSite } from "../../../packages/noyau/src/index.ts";
-import type { ReponseMemoire } from "../../navigateur/src/main/sites/injection.ts";
+import type { ReponseMemoire } from "../core/sites/injection.ts";
 
 // The host's side of Electron's brancherInjection channels (main/sites/injection.ts): the chrome checks the sender
 // (the app view's main document), the accord and the relative address, the host does the memory work.

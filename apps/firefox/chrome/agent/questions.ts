@@ -1,8 +1,8 @@
 import type { DroitDev, OngletInfo } from "../shims/noyau";
-import type { CarteExtension, ReponseAccord } from "../../../navigateur/src/commun/extensions";
-import type { Decision, DemandeEnAttente, IdFenetre, IdOnglet, Issue, Permission } from "../../../navigateur/src/commun/modele";
-import { SCHEMA_SITE } from "../../../navigateur/src/commun/sites";
-import { attendreDroits, attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque, questionSiteCaduque } from "../../../navigateur/src/main/agent/pont";
+import type { CarteExtension, ReponseAccord } from "../../shared/extensions";
+import type { Decision, DemandeEnAttente, IdFenetre, IdOnglet, Issue, Permission } from "../../shared/modele";
+import { SCHEMA_SITE } from "../../shared/sites";
+import { attendreDroits, attendreIssue, attendreReponse, DELAI_QUESTION_MS, decisionPermise, ongletActifDe, origineDe, questionCaduque, questionSiteCaduque } from "../../core/agent/pont";
 import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 

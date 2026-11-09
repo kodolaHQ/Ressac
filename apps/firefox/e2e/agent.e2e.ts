@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

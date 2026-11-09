@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ProfilPourAccord } from "../../navigateur/src/commun/api";
+  import type { ProfilPourAccord } from "../shared/api";
 
   let {
     sujet,

@@ -1,6 +1,6 @@
-import type { Decision, EtatAcces, IdFenetre, IdProfil } from "../../../navigateur/src/commun/modele";
-import { ongletPrive, profilDOnglet, profilsEnUsage } from "../../../navigateur/src/commun/modele";
-import { chargerSession, EnregistreurSession } from "../../../navigateur/src/main/etat/persistance";
+import type { Decision, EtatAcces, IdFenetre, IdProfil } from "../../shared/modele";
+import { ongletPrive, profilDOnglet, profilsEnUsage } from "../../shared/modele";
+import { chargerSession, EnregistreurSession } from "../../core/etat/persistance";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";

@@ -1,4 +1,4 @@
-import type { Cadre } from "../../../navigateur/src/commun/modele";
+import type { Cadre } from "../../shared/modele";
 
 /** Electron's cadreVisible: the recorded frame, rounded, if it still overlaps a screen (else the window would open out of sight). */
 export function visibleFrame(c: Cadre | null, screens: { x: number; y: number; width: number; height: number }[]): Cadre | undefined {

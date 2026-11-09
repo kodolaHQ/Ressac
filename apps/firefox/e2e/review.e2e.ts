@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { urlRelecture } from "../../navigateur/src/commun/modele";
+import { urlRelecture } from "../shared/modele";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

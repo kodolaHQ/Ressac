@@ -1,6 +1,6 @@
-import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
-import type { Action, ApiWebaios } from "../../navigateur/src/commun/api";
-import type { EtatNavigateur, IdFenetre } from "../../navigateur/src/commun/modele";
+import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
+import type { Action, ApiWebaios } from "../shared/api";
+import type { EtatNavigateur, IdFenetre } from "../shared/modele";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WebAiOsStore } from "../chrome/store";
 import { profilsLisibles, profilsPourAccord } from "./accueil-profils";

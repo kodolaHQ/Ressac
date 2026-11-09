@@ -1,5 +1,5 @@
-import type { Decision, IdFenetre, IdOnglet, IdProfil, Issue, Permission } from "../../../navigateur/src/commun/modele";
-import { PROFIL_DEFAUT } from "../../../navigateur/src/commun/modele";
+import type { Decision, IdFenetre, IdOnglet, IdProfil, Issue, Permission } from "../../shared/modele";
+import { PROFIL_DEFAUT } from "../../shared/modele";
 
 export type SitePermission = Permission | "partage-ecran" | "drm" | "midi";
 

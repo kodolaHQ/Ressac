@@ -1,6 +1,6 @@
 import { accordRenforce, empreintePortee, libellesPortee, type AnalyseManifeste } from "../../../../packages/noyau/src/index.ts";
-import type { CarteExtension } from "../../../navigateur/src/commun/extensions.ts";
-import type { Espace } from "../../../navigateur/src/commun/modele.ts";
+import type { CarteExtension } from "../../shared/extensions.ts";
+import type { Espace } from "../../shared/modele.ts";
 
 // Keep in sync with apps/navigateur/src/commun/extensions.ts carteDe (that module does not load in the noyau host).
 /** The grant card of an agent extension, to activate it in `espace` (pure). */

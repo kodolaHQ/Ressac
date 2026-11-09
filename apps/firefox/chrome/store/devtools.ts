@@ -1,8 +1,8 @@
-import { origineDe, PREFIXE_SITE } from "../../../navigateur/src/main/agent/pont";
+import { origineDe, PREFIXE_SITE } from "../../core/agent/pont";
 
 /** Electron's PREFIXE_APP (main/agent/pont.ts, not exported). */
 const PREFIXE_APP = "app:";
-import { TamponOnglet, textePile } from "../../../navigateur/src/main/outils-dev/tampon";
+import { TamponOnglet, textePile } from "../../core/outils-dev/tampon";
 import type { InstantaneFirefox, ProfilCpu } from "../../../../packages/noyau/src/outils-dev/resumes";
 import { OngletIntrouvable, OngletPrive, type OutilsDevNavigateur, type RequeteReseau, type ResultatJs } from "../shims/noyau";
 import type { Store } from "./store";

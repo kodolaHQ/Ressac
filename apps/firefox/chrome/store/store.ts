@@ -1,6 +1,6 @@
-import type { Action } from "../../../navigateur/src/commun/api";
-import type { EtatNavigateur } from "../../../navigateur/src/commun/modele";
-import { appliquer } from "../../../navigateur/src/main/etat/actions";
+import type { Action } from "../../shared/api";
+import type { EtatNavigateur } from "../../shared/modele";
+import { appliquer } from "../../core/etat/actions";
 
 export type Listener = (state: EtatNavigateur, previous: EtatNavigateur) => void;
 

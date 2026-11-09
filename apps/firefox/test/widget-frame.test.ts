@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { WidgetAffiche } from "../../navigateur/src/commun/api";
+import type { WidgetAffiche } from "../shared/api";
 import { AFFICHAGE_REFUSE, CSP_WIDGET, affichageServi, cheminCopie, oublierWidget, preparerWidget, urlAffichage } from "../chrome/window/widget-frame";
 import { MOTIF_INDICES_RESEAU } from "../shared/indices-reseau";
 import { servirAffichages } from "../ui/api";

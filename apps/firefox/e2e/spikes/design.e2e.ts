@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { rectCapture, scriptViseur } from "../../../navigateur/src/main/design/viseur";
+import { rectCapture, scriptViseur } from "../../core/design/viseur";
 import { dispatch, state, waitFor, waitReady } from "../firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
 import type { Marionette } from "../marionette";
@@ -19,7 +19,7 @@ const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const chrome = <T = any>(m: Marionette, body: string, args: unknown[] = []) => m.execute<T>(`return (async () => { ${body} })();`, args);
 
-const DESIGN = readFileSync(path.resolve(import.meta.dirname, "../../../navigateur/e2e/pages/design.html"), "utf8");
+const DESIGN = readFileSync(path.resolve(import.meta.dirname, "../pages/design.html"), "utf8");
 const html = (body: string, head = "") => `<!doctype html><html><head><meta charset="utf-8">${head}</head><body>${body}</body></html>`;
 
 /** design.html, with a page that listens first (window, capture), hooks the prototypes and fakes the viewfinder's stop. */

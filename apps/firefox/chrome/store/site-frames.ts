@@ -4,8 +4,8 @@
 import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { adresseRelative } from "../../../../packages/noyau/src/sites/adresses";
 import GARDE from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
-import { sourceRetouche, type InjectionCadre } from "../../../navigateur/src/commun/sites";
-import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type ErreurRetouche, type ReponseMemoire } from "../../../navigateur/src/main/sites/injection";
+import { sourceRetouche, type InjectionCadre } from "../../shared/sites";
+import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type ErreurRetouche, type ReponseMemoire } from "../../core/sites/injection";
 import { REFUS_MEMOIRE } from "../../noyau/site-memory";
 import type { SiteChrome } from "../../noyau/sites";
 

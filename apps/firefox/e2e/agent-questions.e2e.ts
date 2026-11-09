@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { dispatch, inWindow, newWindow, pressClosing, state, waitFor, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

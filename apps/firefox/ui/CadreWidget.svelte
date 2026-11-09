@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { api } from "../../navigateur/src/renderer/etat.svelte";
+  import { api } from "../ui/etat.svelte";
 
   /**
    * L'affichage d'un widget dans son cadre isolé : sans allow-same-origin, le code écrit par l'agent tourne dans une

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { actionsDataDir, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writeAction, writeRunnableAction } from "./actions";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";

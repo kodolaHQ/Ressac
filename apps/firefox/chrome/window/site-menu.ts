@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { IdFenetre } from "../../../navigateur/src/commun/modele";
-import { profilDOnglet } from "../../../navigateur/src/commun/modele";
+import type { IdFenetre } from "../../shared/modele";
+import { profilDOnglet } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 
 /**

@@ -1,5 +1,5 @@
-import type { IdProfil } from "../../../navigateur/src/commun/modele";
-import { PROFIL_DEFAUT } from "../../../navigateur/src/commun/modele";
+import type { IdProfil } from "../../shared/modele";
+import { PROFIL_DEFAUT } from "../../shared/modele";
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 

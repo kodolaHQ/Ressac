@@ -1,10 +1,10 @@
 <script lang="ts">
   // The agent panel of the window (Electron's App.svelte, its right column): Electron's PanneauAgent, in its own iframe.
   import { untrack } from "svelte";
-  import PanneauAgent from "../../navigateur/src/renderer/composants/PanneauAgent.svelte";
-  import { focusAgent } from "../../navigateur/src/renderer/composants/agent.svelte";
-  import { api, etat, fenetreCourante } from "../../navigateur/src/renderer/etat.svelte";
-  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../../navigateur/src/commun/modele";
+  import PanneauAgent from "../ui/composants/PanneauAgent.svelte";
+  import { focusAgent } from "../ui/composants/agent.svelte";
+  import { api, etat, fenetreCourante } from "../ui/etat.svelte";
+  import { LARGEUR_AGENT_MAX, LARGEUR_AGENT_MIN } from "../shared/modele";
 
   const win = window.parent.webaiosWindow!;
   const fenetre = $derived(fenetreCourante());

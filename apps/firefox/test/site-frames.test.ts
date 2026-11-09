@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeclarationSite, type RetouchesLues } from "../../../packages/noyau/src/index";
-import { CONSOLE_RETOUCHES_TOTAL, ERREURS_RETOUCHES_MAX, type InjectionCadre } from "../../navigateur/src/commun/sites";
-import type { ErreurRetouche } from "../../navigateur/src/main/sites/injection";
+import { CONSOLE_RETOUCHES_TOTAL, ERREURS_RETOUCHES_MAX, type InjectionCadre } from "../shared/sites";
+import type { ErreurRetouche } from "../core/sites/injection";
 import { REFUS_MEMOIRE } from "../noyau/site-memory";
 import type { SiteChrome } from "../noyau/sites";
 

@@ -5,9 +5,9 @@
 // nor the chrome.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
 import type { WebAiOsStore } from "../store";
-import type { InjectionCadre } from "../../../navigateur/src/commun/sites";
-import type { ReponseMemoire } from "../../../navigateur/src/main/sites/injection";
-import { EVENEMENTS_VIDEO, SuiviReprise } from "../../../navigateur/src/preload/reprise";
+import type { InjectionCadre } from "../../shared/sites";
+import type { ReponseMemoire } from "../../core/sites/injection";
+import { EVENEMENTS_VIDEO, SuiviReprise } from "../../core/reprise";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/sites.ts SITE_FRAMES.

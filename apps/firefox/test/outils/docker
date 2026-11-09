@@ -26,4 +26,4 @@ for a; do
   [ "$a" = webaios-atelier-firefox ] && a=webaios-atelier
   set -- "$@" "$a"
 done
-exec "$(dirname "$0")/../../../navigateur/e2e/outils/docker" "$@"
+exec "$(dirname "$0")/faux-docker.cjs" "$@"

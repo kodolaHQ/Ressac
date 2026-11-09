@@ -1,5 +1,5 @@
-import type { Action, ApiDesign, ApiWebaios, ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../../navigateur/src/commun/api";
-import type { IdFenetre } from "../../navigateur/src/commun/modele";
+import type { Action, ApiDesign, ApiWebaios, ElementAffiche, EtatExternes, LotAffiche, ResultatExtension } from "../shared/api";
+import type { IdFenetre } from "../shared/modele";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 import {

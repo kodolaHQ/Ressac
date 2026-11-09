@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { EtatNavigateur, Onglet } from "../../navigateur/src/commun/modele";
+import type { EtatNavigateur, Onglet } from "../shared/modele";
 import { button, cleanupXpis, installAddon, options, probe, uninstallAddon } from "./addons";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";

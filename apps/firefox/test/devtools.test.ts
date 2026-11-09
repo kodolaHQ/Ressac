@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
+import { etatInitial } from "../core/etat/etat-initial";
 import { createDevTools, geckoToCpuProfile, TEXTE_REVOQUE } from "../chrome/store/devtools";
 import { createStore } from "../chrome/store/store";
 import type { WindowRegistry } from "../chrome/store/windows";

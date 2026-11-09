@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { lireAccueil } from "../../../packages/noyau/src/accueil/lire";
 import { cheminsEspace } from "../../../packages/noyau/src/chemins";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { FAKE_TOOLS, launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

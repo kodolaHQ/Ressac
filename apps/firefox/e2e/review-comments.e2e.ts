@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { SANS_CLIENT } from "../../../packages/noyau/src/design/projets";
-import { LIGNE_CHANGEE_PAGE as LIGNE_CHANGEE, PLAGE_HORS_BLOC, urlRelecture } from "../../navigateur/src/commun/modele";
+import { LIGNE_CHANGEE_PAGE as LIGNE_CHANGEE, PLAGE_HORS_BLOC, urlRelecture } from "../shared/modele";
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

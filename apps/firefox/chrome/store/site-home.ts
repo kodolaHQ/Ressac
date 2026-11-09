@@ -1,7 +1,7 @@
 // A site app's home screen, written by the agent in `<dataDir>/espace/sites/<id>/accueil/`: the served copy (Electron's
 // webaios-site: scheme, main/sites/accueil.ts, cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
-import { IMAGE_SITE_MAX } from "../../../navigateur/src/commun/sites";
+import { IMAGE_SITE_MAX } from "../../shared/sites";
 import { adresseLocale } from "../../../../packages/noyau/src/workflows/acces";
 import { hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";

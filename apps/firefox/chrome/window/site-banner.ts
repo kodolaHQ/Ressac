@@ -1,4 +1,4 @@
-import type { DemandeEnAttente, IdFenetre } from "../../../navigateur/src/commun/modele";
+import type { DemandeEnAttente, IdFenetre } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 import type { SitePermission } from "../store/site-permissions";
 import { bannerText } from "./banner-text";

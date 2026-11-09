@@ -2,9 +2,9 @@
 import "./install-api";
 import { mount } from "svelte";
 // Theme tokens shared with the Electron app (frozen: imported, never modified).
-import "../../navigateur/src/renderer/theme.css";
-import DesignApp from "../../navigateur/src/renderer/DesignApp.svelte";
-import PastilleApp from "../../navigateur/src/renderer/PastilleApp.svelte";
+import "../ui/theme.css";
+import DesignApp from "../ui/DesignApp.svelte";
+import PastilleApp from "../ui/PastilleApp.svelte";
 import App from "./App.svelte";
 import SiteWindow from "./SiteWindow.svelte";
 

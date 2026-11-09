@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { WidgetAffiche } from "../../navigateur/src/commun/api";
+import type { WidgetAffiche } from "../shared/api";
 import { homeListForBuilder } from "../ui/builder";
 
 it("homeListForBuilder reads the widgets without the theme", async () => {

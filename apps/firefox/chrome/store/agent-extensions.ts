@@ -1,13 +1,13 @@
 import type { Portee } from "../../../../packages/noyau/src/index.ts";
-import type { CarteExtension } from "../../../navigateur/src/commun/extensions";
-import { hotePermisAgent, urlPermiseAgent } from "../../../navigateur/src/main/extensions/reseau";
-import type { EtatAcces, IdFenetre, IdProfil } from "../../../navigateur/src/commun/modele";
+import type { CarteExtension } from "../../shared/extensions";
+import { hotePermisAgent, urlPermiseAgent } from "../../core/extensions/reseau";
+import type { EtatAcces, IdFenetre, IdProfil } from "../../shared/modele";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
 import { existingContainer } from "./containers";
 import { createWatchdog } from "./crash-watchdog";
-import { niveauConsole, PLANTAGES_MAX } from "../../../navigateur/src/main/extensions/consoles";
+import { niveauConsole, PLANTAGES_MAX } from "../../core/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 

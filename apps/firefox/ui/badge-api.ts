@@ -1,4 +1,4 @@
-import type { ApiPastille } from "../../navigateur/src/commun/api";
+import type { ApiPastille } from "../shared/api";
 import type { BadgeChrome } from "../chrome/store/apps";
 import { local } from "./design-api";
 

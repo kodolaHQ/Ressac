@@ -1,6 +1,6 @@
-import type { SiteAffiche } from "../../navigateur/src/commun/sites";
-import type { ApiWebaios, EtatPanneauAgent, ListeApplications, ResultatExtension, WidgetAffiche } from "../../navigateur/src/commun/api";
-import type { LigneExtension, LigneExtensionEspace } from "../../navigateur/src/commun/extensions";
+import type { SiteAffiche } from "../shared/sites";
+import type { ApiWebaios, EtatPanneauAgent, ListeApplications, ResultatExtension, WidgetAffiche } from "../shared/api";
+import type { LigneExtension, LigneExtensionEspace } from "../shared/extensions";
 import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts";
 import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
@@ -9,7 +9,7 @@ import { dossierValide } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
 import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
-import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
+import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
 import { createDesignApi, createExternesApi, createRelectureApi } from "./design-api";
 

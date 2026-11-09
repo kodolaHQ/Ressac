@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ApiSite } from "../../navigateur/src/commun/api";
+  import type { ApiSite } from "../shared/api";
   import type { AddonButton } from "../chrome/window/addons";
 
   // Electron's BoutonsExtensionsSite: the add-on buttons of the app's window (chrome/window/addons.ts createSiteAddons),

@@ -1,3 +1,8 @@
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({ test: { include: ["test/**/*.test.ts"] } });
+// The Svelte plugin compiles the runes of the `.svelte.ts` modules (builder state) for the tests.
+export default defineConfig({
+  plugins: [svelte()],
+  test: { include: ["test/**/*.test.ts"] },
+});

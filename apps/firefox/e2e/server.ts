@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 
-const PAGES = path.resolve(import.meta.dirname, "../../navigateur/e2e/pages");
+const PAGES = path.resolve(import.meta.dirname, "pages");
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".txt": "text/plain" };
 
 /** A 1×1 red PNG. */

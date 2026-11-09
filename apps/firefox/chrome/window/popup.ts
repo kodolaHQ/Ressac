@@ -1,4 +1,4 @@
-import type { IdOnglet } from "../../../navigateur/src/commun/modele";
+import type { IdOnglet } from "../../shared/modele";
 
 /**
  * The WebAiOs tab behind a popup: its opener's tab, or, for a popup opened by a popup (the steps of a sign-in),

@@ -229,7 +229,7 @@ beforeAll(async () => {
 <script>let refus = 0; for (let i = 0; i < 3; i++) if (!window.open(${JSON.stringify(url("pub.localhost", "/popup"))})) refus++; fetch("/balise-page?ouvertures=3&refus=" + refus);</script>`,
     );
   }
-  server.definir("lecteur.localhost", LECTEUR, readFileSync(path.join(__dirname, "..", "..", "navigateur", "e2e", "pages", "lecteur.html"), "utf8"));
+  server.definir("lecteur.localhost", LECTEUR, readFileSync(path.join(__dirname, "pages", "lecteur.html"), "utf8"));
   server.definir("lecteur.localhost", "/silence-90.wav", serveWav(wav));
   server.definir("images.localhost", "/affiches/the-bear.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
   server.definir(

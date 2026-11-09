@@ -7,12 +7,12 @@ import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUCUN_WORKFLOW_OUVERT, CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets, navigationHorsSite } from "../../../packages/noyau/src/index";
 import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
-import { DESACTIVEE_PLANTAGES } from "../../navigateur/src/commun/extensions-messages";
+import { DESACTIVEE_PLANTAGES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
 import { installationImpossible, RIEN_A_REVOIR } from "../noyau/extensions/agent";
 import { CLES_ABSENTES, signatureRefusee } from "../noyau/extensions/amo";
-import type { CarteExtension, ReponseAccord } from "../../navigateur/src/commun/extensions";
+import type { CarteExtension, ReponseAccord } from "../shared/extensions";
 import { startFakeAmo } from "./fake-amo";
 import { appelerOutil } from "./mcp";
 

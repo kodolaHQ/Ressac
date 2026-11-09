@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { ecrireExtensionAgent } from "./extensions/fixtures";
 import { cleanupXpis, installAddon, marker, type Fixture } from "./addons";
 import { grant, launchWithAmo, testActor } from "./agent-extensions";
 import { state, waitFor, waitReady } from "./firefox";

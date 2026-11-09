@@ -1,11 +1,11 @@
 // Site app windows: the registry of open app windows, their containers, their bar's controller, and the guard that
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows (Electron's main/sites/fenetres.ts).
-import type { EtatDesign } from "../../../navigateur/src/commun/api";
-import type { Cadre } from "../../../navigateur/src/commun/modele";
-import { DUREE_AVIS_INFO_MS, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
-import type { ErreurRetouche } from "../../../navigateur/src/main/sites/injection";
-import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
+import type { EtatDesign } from "../../shared/api";
+import type { Cadre } from "../../shared/modele";
+import { DUREE_AVIS_INFO_MS, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../shared/sites";
+import type { ErreurRetouche } from "../../core/sites/injection";
+import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../core/sites/navigation";
 import { adresseRelative, adresseSurDomaine, hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
 import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { EtatFenetre } from "../../navigateur/src/commun/modele";
-  import { api } from "../../navigateur/src/renderer/etat.svelte";
+  import type { EtatFenetre } from "../shared/modele";
+  import { api } from "../ui/etat.svelte";
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.

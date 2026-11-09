@@ -1,4 +1,4 @@
-import type { EtatNavigateur, IdFenetre } from "../../../navigateur/src/commun/modele";
+import type { EtatNavigateur, IdFenetre } from "../../shared/modele";
 import type { WindowController } from "../window/controller";
 import type { Store } from "./store";
 

@@ -113,7 +113,7 @@ describe("fenetres.actives mirror", () => {
   it("sends only workflow URLs, on start and on each active-tab change", async () => {
     // bridge.ts loads invisible.ts, which asks ChromeUtils for a Firefox module at load time.
     (globalThis as { ChromeUtils?: unknown }).ChromeUtils ??= { importESModule: () => ({}) };
-    const { etatInitial } = await import("../../navigateur/src/main/etat/etat-initial");
+    const { etatInitial } = await import("../core/etat/etat-initial");
     const { createStore } = await import("../chrome/store/store");
     const { sendMirror, trackState } = await import("../chrome/agent/bridge");
     const store = createStore(etatInitial());

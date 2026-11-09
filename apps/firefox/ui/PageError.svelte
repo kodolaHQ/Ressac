@@ -1,7 +1,7 @@
 <script lang="ts">
   // Electron's ZoneContenu.svelte, its error and crash messages.
-  import type { Onglet } from "../../navigateur/src/commun/modele";
-  import { api } from "../../navigateur/src/renderer/etat.svelte";
+  import type { Onglet } from "../shared/modele";
+  import { api } from "../ui/etat.svelte";
 
   let { onglet }: { onglet: Onglet } = $props();
 </script>

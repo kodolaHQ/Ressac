@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
-import type { Espace } from "../../navigateur/src/commun/modele";
+import type { Action } from "../shared/api";
+import type { Espace } from "../shared/modele";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

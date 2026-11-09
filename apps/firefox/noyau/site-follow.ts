@@ -1,7 +1,7 @@
 // Copy of Electron's main/sites/suivi.ts, body unchanged (test/sites-host.test.ts compares them): Node cannot load that
 // file under tsx (a CommonJS package whose "../../commun/sites" import does not resolve), so the host imports this one.
 import { changerAdresse, lireEtatAdresse, trouverAdresse, type DeclarationSite, type EtatAdresse } from "../../../packages/noyau/src/index.ts";
-import { INTERVALLE_SUIVI_MS } from "../../navigateur/src/commun/sites.ts";
+import { INTERVALLE_SUIVI_MS } from "../shared/sites.ts";
 
 export type ResultatSuivi = { t: "change"; domaine: string; etat: EtatAdresse } | { t: "introuvable" } | { t: "inchangee" } | { t: "trop-tot" };
 

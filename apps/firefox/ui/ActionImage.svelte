@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ContextePage, ImagePage } from "../../navigateur/src/renderer/action/types";
+  import type { ContextePage, ImagePage } from "../ui/action/types";
 
   /**
    * Electron's ImagePage for Firefox: a result image, checked by the host then loaded by the chrome without cookies or

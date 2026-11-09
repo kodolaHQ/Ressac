@@ -2,13 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import type { BenchFile } from "../scripts/bench-stats";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import { callTool } from "./mcp";
 import { startServer } from "./server";
-import { Historique } from "../../navigateur/src/main/historique";
+import { Historique } from "../core/historique";
 import { inUi, waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";

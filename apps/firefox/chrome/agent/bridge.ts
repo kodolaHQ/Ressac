@@ -1,7 +1,7 @@
 import { navigationHorsSite, OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
-import type { EtatNavigateur, IdFenetre, Onglet } from "../../../navigateur/src/commun/modele";
-import { ongletPrive, PREFIXE_WORKFLOW } from "../../../navigateur/src/commun/modele";
-import { changementsPolitique, infosOnglets, ongletActifDe, ongletApplication, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../../navigateur/src/main/agent/pont";
+import type { EtatNavigateur, IdFenetre, Onglet } from "../../shared/modele";
+import { ongletPrive, PREFIXE_WORKFLOW } from "../../shared/modele";
+import { changementsPolitique, infosOnglets, ongletActifDe, ongletApplication, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../core/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";

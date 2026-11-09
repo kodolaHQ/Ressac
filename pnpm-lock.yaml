@@ -170,6 +170,10 @@ importers:
   .: {}
 
   apps/firefox:
+    dependencies:
+      '@webaios/noyau':
+        specifier: workspace:*
+        version: link:../../packages/noyau
     devDependencies:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
@@ -180,6 +184,12 @@ importers:
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      '@xterm/addon-fit':
+        specifier: ^0.11.0
+        version: 0.11.0
+      '@xterm/xterm':
+        specifier: ^6.0.0
+        version: 6.0.0
       '@xyflow/svelte':
         specifier: 1.7.0
         version: 1.7.0(svelte@5.57.2)
@@ -201,43 +211,6 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
-
-  apps/navigateur:
-    dependencies:
-      '@webaios/noyau':
-        specifier: workspace:*
-        version: link:../../packages/noyau
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-    devDependencies:
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^7.3.1
-        version: 7.3.1(svelte@5.57.2)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15))
-      '@types/node':
-        specifier: ^26.6.5
-        version: 26.6.5
-      '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
-      '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
-      '@xyflow/svelte':
-        specifier: 1.7.0
-        version: 1.7.0(svelte@5.57.2)
-      svelte:
-        specifier: ^5.57.2
-        version: 5.57.2
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vite:
-        specifier: ^8.3.5
-        version: 8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)
-      vitest:
-        specifier: ^5.0.5
-        version: 5.0.5(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15))
 
   packages/noyau:
     dependencies:

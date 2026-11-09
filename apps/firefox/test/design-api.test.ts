@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host";
 import { raisonEchec } from "../shared/design-guards";
 import { createExternesApi, createRelectureApi } from "../ui/design-api";

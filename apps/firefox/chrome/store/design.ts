@@ -3,11 +3,11 @@
 // The actor's limits are handled here: a frame's guard has no timeout (every frame guarded is unguarded on every exit),
 // a second arm may leave the first pending (never armed twice, stale answers dropped by generation), and its stop may
 // throw or hang (timed out, then the top window is unguarded).
-import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../../navigateur/src/commun/api";
-import type { IdFenetre } from "../../../navigateur/src/commun/modele";
-import { HAUTEUR_BARRE_SITE } from "../../../navigateur/src/commun/sites";
+import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../shared/api";
+import type { IdFenetre } from "../../shared/modele";
+import { HAUTEUR_BARRE_SITE } from "../../shared/sites";
 import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
-import { choisirCibleDesign } from "../../../navigateur/src/main/design/premier-plan";
+import { choisirCibleDesign } from "../../core/design/premier-plan";
 import type { SuiviDesign } from "../../noyau/design";
 import { CAPTURE_WARNING_SITE, DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN, UNAVAILABLE_DESIGN_SITE } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";

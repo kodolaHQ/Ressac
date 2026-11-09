@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { appliquer } from "../../navigateur/src/main/etat/actions";
-import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
+import { appliquer } from "../core/etat/actions";
+import { etatInitial } from "../core/etat/etat-initial";
 import { createStore } from "../chrome/store/store";
 import { createWindowRegistry, pickWindow } from "../chrome/store/windows";
 

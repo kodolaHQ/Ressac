@@ -1,6 +1,6 @@
 import type { Noyau, OngletInfo } from "../../../packages/noyau/src/index.ts";
-import type { Cadre } from "../../navigateur/src/commun/modele.ts";
-import type { SelectionConstructeur, TailleTerminal } from "../../navigateur/src/commun/api.ts";
+import type { Cadre } from "../shared/modele.ts";
+import type { SelectionConstructeur, TailleTerminal } from "../shared/api.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
 // stdout carries only the RPC: anything else written there would corrupt it, so it goes to stderr.
@@ -21,8 +21,8 @@ const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
 const { ACTION_INCONNUE, Atelier, catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees, surveillerActions } = await import("../../../packages/noyau/src/index.ts");
-const { SessionsAgent } = await import("../../navigateur/src/main/agent/sessions.ts");
-const { Historique } = await import("../../navigateur/src/main/historique.ts");
+const { SessionsAgent } = await import("../core/agent/sessions.ts");
+const { Historique } = await import("../core/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
 const { createSites, SchemaActionSite } = await import("./sites.ts");
@@ -32,7 +32,7 @@ const { createActionsHost, SchemaAccord, SchemaIdAction, SchemaSaisieAction } = 
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
-const { ACTION_TOURNE_DEJA } = await import("../../navigateur/src/commun/actions.ts");
+const { ACTION_TOURNE_DEJA } = await import("../shared/actions.ts");
 const {
   readActionCode,
   readActionEdition,

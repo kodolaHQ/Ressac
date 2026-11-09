@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { appelerOutil } from "../test/mcp";
 import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitNoyau, writeAction, type TestServer } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";

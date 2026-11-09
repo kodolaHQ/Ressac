@@ -1,4 +1,4 @@
-import type { ContexteCalque } from "../../../navigateur/src/commun/api";
+import type { ContexteCalque } from "../../shared/api";
 import type { AgentHost } from "../agent/host";
 import { overlayApi, type DesignOverlays, type DesignService, type DesignTarget } from "../store/design";
 import { cleCible, DUREE_MESSAGE_MS } from "../store/design-copies";

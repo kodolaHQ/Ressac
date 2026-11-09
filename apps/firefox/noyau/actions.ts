@@ -23,7 +23,7 @@ import {
   type ResultatLancement,
   type ResumeExecution,
 } from "../../../packages/noyau/src/index.ts";
-import type { ActionAffichee } from "../../navigateur/src/commun/actions.ts";
+import type { ActionAffichee } from "../shared/actions.ts";
 import { urlOuvrable } from "../ui/accueil-profils.ts";
 
 // Copies of Electron's schemas (commun/api.ts, which cannot load in the host): drift test in test/actions-host.test.ts.

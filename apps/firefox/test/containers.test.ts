@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROFIL_DEFAUT } from "../../navigateur/src/commun/modele";
-import { appliquer } from "../../navigateur/src/main/etat/actions";
-import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
+import { PROFIL_DEFAUT } from "../shared/modele";
+import { appliquer } from "../core/etat/actions";
+import { etatInitial } from "../core/etat/etat-initial";
 import { dossierValide as noyau } from "../../../packages/noyau/src/applications/manifeste";
 import { dossierValide } from "../chrome/store/app-folder";
 

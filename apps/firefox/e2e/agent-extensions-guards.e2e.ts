@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ecrireExtensionAgent } from "../../navigateur/e2e/extensions/fixtures";
+import { ecrireExtensionAgent } from "./extensions/fixtures";
 import { installAddon } from "./addons";
 import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";

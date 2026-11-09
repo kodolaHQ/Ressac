@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { WidgetAffiche } from "../../navigateur/src/commun/api";
+  import type { WidgetAffiche } from "../shared/api";
   import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas";
   import CadreWidget from "./CadreWidget.svelte";
-  import Icone from "../../navigateur/src/renderer/composants/Icone.svelte";
-  import { prochaineExecution } from "../../navigateur/src/renderer/composants/prochaine";
+  import Icone from "../ui/composants/Icone.svelte";
+  import { prochaineExecution } from "../ui/composants/prochaine";
   import { unitesLibres } from "./grille-libre";
 
   let {

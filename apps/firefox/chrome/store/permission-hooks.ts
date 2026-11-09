@@ -1,4 +1,4 @@
-import type { IdFenetre, IdOnglet, IdProfil } from "../../../navigateur/src/commun/modele";
+import type { IdFenetre, IdOnglet, IdProfil } from "../../shared/modele";
 import type { SitePermissions, SiteRequest } from "./site-permissions";
 
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");

@@ -15,7 +15,7 @@ import {
   type ResumeExecution,
   type ThemeAccueil,
 } from "../../../packages/noyau/src/index.ts";
-import type { WidgetAffiche } from "../../navigateur/src/commun/api.ts";
+import type { WidgetAffiche } from "../shared/api.ts";
 
 // Copied from Electron's main/agent/accueil.ts (which imports electron, so the Node host cannot import it): same rules,
 // free placement (version 3) and the theme added.

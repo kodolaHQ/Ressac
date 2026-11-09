@@ -1,4 +1,4 @@
-import type { ApiCalque } from "../../navigateur/src/commun/api";
+import type { ApiCalque } from "../shared/api";
 import { local } from "./design-api";
 
 // The chrome outlives this document: a listener into a dead document would throw on every call.

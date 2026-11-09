@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ENTRER_DANS_LE_SITE, MessageDeLAccueil, type MessageVersLAccueil } from "../../navigateur/src/commun/sites";
-  import type { ApiSite } from "../../navigateur/src/commun/api";
+  import { ENTRER_DANS_LE_SITE, MessageDeLAccueil, type MessageVersLAccueil } from "../shared/sites";
+  import type { ApiSite } from "../shared/api";
 
   /**
    * Electron's CadreAccueil for Firefox: the app's home screen, written by the agent, in a sandboxed opaque frame

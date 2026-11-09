@@ -1,8 +1,8 @@
 // Agent app windows (Electron's main/applications/fenetres.ts): one window per running app, the app's page alone, in
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
-import type { EtatDesign } from "../../../navigateur/src/commun/api";
-import type { Cadre, EtatAcces } from "../../../navigateur/src/commun/modele";
+import type { EtatDesign } from "../../shared/api";
+import type { Cadre, EtatAcces } from "../../shared/modele";
 import { dossierValide } from "./app-folder";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AVERTISSEMENT_CAPTURE_SITE, HTML_MAX, ID_PROJET, INDISPONIBLE_DESIGN, INDISPONIBLE_DESIGN_SITE, Remarques, TRONQUE, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
-import { PLAGE_HORS_BLOC } from "../../navigateur/src/commun/modele";
+import { PLAGE_HORS_BLOC } from "../shared/modele";
 import { COMPARAISON_INCONNUE, ReviewService } from "../noyau/review";
 import * as g from "../shared/design-guards";
 

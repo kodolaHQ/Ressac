@@ -27,8 +27,8 @@ import {
   type RegistreExternes,
   type Remarques,
 } from "../../../packages/noyau/src/index.ts";
-import type { ResultatExtension, VueRelecture } from "../../navigateur/src/commun/api.ts";
-import { PLAGE_HORS_BLOC } from "../../navigateur/src/commun/modele.ts";
+import type { ResultatExtension, VueRelecture } from "../shared/api.ts";
+import { PLAGE_HORS_BLOC } from "../shared/modele.ts";
 
 /** Reason shown for a project the review does not know (demo, forgotten external project, vanished folder). */
 export const PROJET_INCONNU = "projet inconnu";

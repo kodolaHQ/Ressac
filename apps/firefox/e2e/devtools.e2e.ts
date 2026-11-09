@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import type { Action } from "../../navigateur/src/commun/api";
+import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

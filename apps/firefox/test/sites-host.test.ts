@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accorderSite, cheminsEspace, DeclarationSite, lireAccordsSites, MemoireSite } from "../../../packages/noyau/src/index";
-import { modifierAvecAgent } from "../../navigateur/src/commun/sites";
+import { modifierAvecAgent } from "../shared/sites";
 import { createSites, demandeAccord, empreinteDroits, SchemaActionSite, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
 
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).

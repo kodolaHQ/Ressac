@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { urlRelecture } from "../../navigateur/src/commun/modele";
+import { urlRelecture } from "../shared/modele";
 import { AVERTISSEMENT_SITE_TIERS } from "../../../packages/noyau/src/design/remarques";
 import { testActor } from "./agent-extensions";
 import { calqueOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, AUTRE_PAGE, CONNEXION_PAGE } from "./design-sites";

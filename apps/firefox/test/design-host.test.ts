@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cheminsEspace, DepotRelecture, depotRelecture, DOSSIER_ESPACE, PORT_MCP_EXTERNE, projetExterne, REMARQUE_VIDE, SANS_CLIENT } from "../../../packages/noyau/src/index";
-import { AUCUNE_FENETRE } from "../../navigateur/src/main/design/envoi";
+import { AUCUNE_FENETRE } from "../core/design/envoi";
 import { createDesignHost, DESIGN_METHODS, externalMcpPort, sourceTexte, type DesignHost, type SuiviDesign } from "../noyau/design";
 import { INVALID_REQUEST } from "../shared/design-guards";
 import { ReviewService } from "../noyau/review";

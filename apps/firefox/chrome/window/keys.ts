@@ -1,4 +1,4 @@
-import type { Panneau, Raccourci } from "../../../navigateur/src/commun/api";
+import type { Panneau, Raccourci } from "../../shared/api";
 
 export type Shortcut =
   | { type: "raccourci"; r: Extract<Raccourci, "commande" | "adresse" | "fermerOnglet"> }

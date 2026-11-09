@@ -1,5 +1,5 @@
-import type { Action } from "../../navigateur/src/commun/api";
-import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
+import type { Action } from "../shared/api";
+import type { EtatNavigateur } from "../shared/modele";
 import type { Marionette } from "./marionette";
 import { pressKeys, waitUi } from "./ui";
 

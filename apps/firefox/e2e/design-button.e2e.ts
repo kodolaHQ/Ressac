@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SANS_CLIENT } from "../../../packages/noyau/src/design/projets";
-import { urlRelecture } from "../../navigateur/src/commun/modele";
+import { urlRelecture } from "../shared/modele";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
