@@ -392,9 +392,9 @@ test("a new space gets the workflows", async () => {
 
 const DISPLAYS = join(import.meta.dirname, "shipped-displays");
 
-test("the 9 shipped versions of affichage.html have the known hashes", async () => {
+test("the 12 shipped versions of affichage.html have the known hashes", async () => {
   const files = (await readdir(DISPLAYS)).sort();
-  expect(files).toHaveLength(9);
+  expect(files).toHaveLength(12);
   const hashes: Record<string, string[]> = {};
   for (const f of files) {
     const id = f.replace(/-[0-9a-f]{7}\.html$/, "");
@@ -417,7 +417,8 @@ for (const file of readdirSync(DISPLAYS).sort()) {
     expect(await readFile(join(c.widgets, id, "affichage.html"), "utf8")).toBe(
       await readFile(join(DEFAULT_MODELS, "widgets", id, "affichage.html"), "utf8"),
     );
-    expect(crees).toContain(join(c.widgets, id, "affichage.html"));
+    // The copy of the current template is already up to date: nothing to replace.
+    if (old !== (await readFile(join(DEFAULT_MODELS, "widgets", id, "affichage.html"), "utf8"))) expect(crees).toContain(join(c.widgets, id, "affichage.html"));
     // A second launch does nothing anymore.
     expect((await initSpace(c)).crees).toEqual([]);
   });

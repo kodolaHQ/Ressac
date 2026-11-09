@@ -50,13 +50,15 @@ export const OLD_AGENTS = new Set([
   "977bba92e8209de62e939b1235bdbcd3b368e2f222865205ba927c3ad8592f5b",
   "f38be067fe3d2554a6cbac4478ce6273fb67dbee0cbce8816afd744b41a1f823",
   "eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96",
+  "1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36",
 ]);
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 
-async function agentsRestForOld(path: string): Promise<boolean> {
+async function agentsRestForOld(path: string, template: string): Promise<boolean> {
   try {
-    return OLD_AGENTS.has(hash(await readFile(path)));
+    const h = hash(await readFile(path));
+    return OLD_AGENTS.has(h) && h !== hash(await readFile(template));
   } catch {
     return false;
   }
@@ -160,16 +162,19 @@ export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", Read
     "437c53d9ec9db7261bf1b90258ebfc4a2febed3b0c44fc49e5a79e68a022f449",
     "41b7f74fbbd384ab88ba8e31a57d0c2b7ee4df1f6081a588f23c888fa3721257",
     "a7e25ca8a7b10d0f48812bef3130fc16a2d6a05799d56a512171a7861e594c56",
+    "19a96d4ff1e7fe19e115d61b15d86cf37ef69832d1ec922ca1576876a79dce00",
   ]),
   "actus-tech": new Set([
     "da8afce4e0676662aa65787df9c913f684f5f6b1c2bf2bf8961a69fa531ba209",
     "0f8306d6c64698eb1a5252075fb273e99fca1811748943e6986591caf18dd081",
     "9057aa911e1fcfe0641d2943fa867ecba587b2e6f04974b17512fe57c552574e",
+    "45f707b6454cea62bb36f181d70bc18f6dd2ba034ec0e84561897a3806b8f6bc",
   ]),
   "daily-dev": new Set([
     "9bc668a4f1515d8f66b9a040a828099432f659ba976263af43aea2696b3a9e99",
     "12184cdd667940b894a9c86e980eb5cfb0da60acc20591665b726124c9a741b1",
     "c5e7c446b7df1754c52e88857daf71f286419d2585d9903ebbb25a650d857ebe",
+    "714e787e5ca2dd69a1ac34a7b0f5b599d1aa3ebde11cde57d7ba3500272dcb23",
   ]),
 };
 
@@ -259,6 +264,7 @@ async function migrateStartDisplay(c: SpacePaths, models: string, id: keyof type
   if (!content || !DISPLAYS_SHIPPED[id].has(hash(content))) return false;
   const model = join(models, "widgets", id, "affichage.html");
   if (!existsSync(model)) return false;
+  if (content.equals(await readFile(model))) return false;
   await copyFile(model, file);
   return true;
 }
@@ -268,7 +274,7 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
   const crees: string[] = [];
   await setAsideBlocks(c);
   for (const [model, destination] of await matches(c, models)) {
-    const update = model === "AGENTS.md" && (await agentsRestForOld(destination));
+    const update = model === "AGENTS.md" && (await agentsRestForOld(destination, join(models, model)));
     if (existsSync(destination) && !update) continue;
     await mkdir(dirname(destination), { recursive: true });
     try {
@@ -302,3 +308,29 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
   await mkdir(c.sites, { recursive: true });
   return { crees };
 }
+
+/** sha256 of the shipped `CLAUDE.md` and agent profile templates before the English formats: a copy left as shipped is replaced. */
+export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set(["11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b"]);
+export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set(["2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085"]);
+
+/**
+ * sha256 of the other starter files as shipped before the English formats, by template path (French names): a copy
+ * left as shipped is replaced by the current template after migration; an edited one is left and reported.
+ */
+export const STARTER_SHIPPED: Readonly<Record<string, ReadonlySet<string>>> = {
+  "widgets/actus-tech/articles.mjs": new Set(["909e072df550b4035a91ce5608fb15a3db3463b4107d92ec09bc7e26a2a93726"]),
+  "widgets/daily-dev/articles.mjs": new Set(["909e072df550b4035a91ce5608fb15a3db3463b4107d92ec09bc7e26a2a93726"]),
+  "widgets/daily-dev/liens.mjs": new Set(["bc5184d4d2868c77a75b7e4f1f297103809c69c021ecfa2053b85d094f8d3969"]),
+  "widgets/meteo/prevision.mjs": new Set(["80564a35b7e5f10c049a8321ce563138f35389be74434a389a8167ef2237be9a"]),
+  "widgets/meteo/ville.mjs": new Set(["cbf5b44d8bc82294f3e779b27f25446191b59255b1c6be6eecfedd5013454406"]),
+  "widgets/actus-tech/workflow.json": new Set(["e00db78311ad8049d7efef94abbdf1f480c13fd572159012050aa7553f13876c"]),
+  "widgets/daily-dev/workflow.json": new Set(["3c40d7953cde9013479add861afa3f3516be5e98599c90cf9545ac5fe4845806"]),
+  "widgets/meteo/workflow.json": new Set(["6c0ef1f115ef23bbc4cd5c6c5ea19127d281888ea835c2dbe453e77e8884883b"]),
+  "widgets/actus-tech/widget.json": new Set(["dd48e150e0d7d9b58684bb5a7b6b508b246b4c2d4ab03c3956543523fb0b3e6c"]),
+  "widgets/daily-dev/widget.json": new Set(["f50504ab18507b9c34653f7b37c74d7bee1a7baa66b7fd58d1dd8d098c283afa"]),
+  "widgets/meteo/widget.json": new Set(["e5c6d5e17249a5183c3fd8efcb289335a723c5233c03d9ed5555699fea0a20d8"]),
+  "widgets/actus-tech/exemple.json": new Set(["42d0fb1b8bd8058874ec5e013cbce8f8c947f5cf291658c06dea41b4145b7374"]),
+  "widgets/daily-dev/exemple.json": new Set(["2ffbfc83f5a42f86cd28e0923bf8be3436dac6ca9978fe9a427fde13fd57024d"]),
+  "widgets/meteo/exemple.json": new Set(["8ed39a293d42d0b94a18857b255a0b31f183b506f9a1c83b527d4333db175a3c"]),
+  "disposition.json": new Set(["d93b209599be900cb2670d010d3bf8fb713752aa87cf2359d88db4aa8ce95797"]),
+};
