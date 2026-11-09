@@ -31,7 +31,7 @@ import type { CheminsEspace } from "../../src/chemins.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-/** Lectures de l'accueil en cours : un test attend qu'il n'y en ait plus pour savoir ce qu'une demande a déjà lu. */
+/** Home reads in progress: a test waits until there are none left to know what a request has already read. */
 const lectures = vi.hoisted(() => ({ enVol: 0 }));
 vi.mock("../../src/accueil/lire.js", async (original) => {
   const m = await original<typeof import("../../src/accueil/lire.js")>();
@@ -57,13 +57,13 @@ afterEach(async () => {
   p = undefined;
 });
 
-/** Un widget « actus » qui récolte toutes les 60 min ; la récolte factice réussit (ou rend `statut`). */
+/** A widget « actus » that harvests every 60 min; the fake harvest succeeds (or returns `statut`). */
 async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"]; options?: Partial<OptionsPlanificateur> } = {}) {
   const racine = await dossierTemporaire();
   const c = cheminsEspace(racine);
   const dossierWidgets = join(await dossierTemporaire(), "widgets");
   await ecrireWidget(c, "actus", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
-  // Un widget sans récolte n'est jamais lancé.
+  // A widget without a harvest is never launched.
   await ecrireWidget(c, "fixe", declarationWidget(), {});
   let maintenant = DEBUT;
   const horloge = () => maintenant;
@@ -99,7 +99,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
     horloge,
-    intervalleMs: 60 * MIN, // la minuterie ne gêne pas : les tests appellent verifier eux-mêmes
+    intervalleMs: 60 * MIN, // the timer does not interfere: the tests call verifier themselves
     recolter,
     recolterEssai,
     surChange: changements,
@@ -122,16 +122,16 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     fixerAtelier: (e: EtatAtelier) => (etatAtelier = e),
     fixer: (d: Date) => (maintenant = d),
     horloge,
-    /** Un nouveau planificateur sur les mêmes dossiers (WebAiOs relancé) ; l'appelant a arrêté le précédent. */
+    /** A new scheduler on the same folders (WebAiOs relaunched); the caller stopped the previous one. */
     relancer: () => (p = new PlanificateurWidgets(options())),
   };
 }
 
-test("un widget dû est récolté au démarrage puis selon sa fréquence (horloge factice)", async () => {
+test("a due widget is harvested at startup then according to its frequency (fake clock)", async () => {
   const { p, recoltes, recolter, avancer } = await preparer();
   await p.demarrer();
   await vi.waitFor(() => expect(recoltes).toEqual(["actus"]));
-  // La vérification de lancement se termine (sinon la suivante serait ignorée sans rien vérifier).
+  // The launch check finishes (otherwise the next one would be skipped without checking anything).
   await vi.waitFor(() => expect(recolter.mock.settledResults).toHaveLength(1));
   await new Promise((r) => setTimeout(r, 20));
   avancer(59 * MIN);
@@ -141,17 +141,17 @@ test("un widget dû est récolté au démarrage puis selon sa fréquence (horlog
   expect(recoltes).toEqual(["actus", "actus"]);
 });
 
-test("la récolte reçoit le widget, le dossier des données, le moteur et l'IA", async () => {
+test("the harvest receives the widget, the data folder, the engine and the AI", async () => {
   const { p, recolter, dossierWidgets, c } = await preparer();
   await p.verifier({ auLancement: true });
   const o = recolter.mock.calls[0]![0];
   expect(o).toMatchObject({ id: "actus", dossierWidgets, moteur: "/moteur", ia: null });
   expect(o.widget).toMatchObject({ id: "actus", dossier: join(c.widgets, "actus") });
-  // surChange suit chaque écriture faite par la récolte.
+  // surChange follows every write made by the harvest.
   expect(o.surChange).toBeTypeOf("function");
 });
 
-test("avec un répartiteur donné, les récoltes l'utilisent", async () => {
+test("with a given dispatcher, the harvests use it", async () => {
   const cles: string[] = [];
   const acces = { kev: vi.fn(), gemma: vi.fn(), oublier: vi.fn() };
   const repartiteur = { pour: (cle: string) => (cles.push(cle), acces) };
@@ -162,7 +162,7 @@ test("avec un répartiteur donné, les récoltes l'utilisent", async () => {
   expect(acces.oublier).toHaveBeenCalledTimes(1);
 });
 
-test("le ménagement et la base des recherches sont transmis à chaque récolte et à chaque essai ; absents, rien n'est transmis", async () => {
+test("the throttle and the search base are passed to each harvest and each trial; absent, nothing is passed", async () => {
   const menagement = new Menagement();
   const { p, recolter, recolterEssai } = await preparer({ options: { menagement, urlRecherche: "http://127.0.0.1:9/html/" } });
   await p.verifier({ auLancement: true });
@@ -179,19 +179,19 @@ test("le ménagement et la base des recherches sont transmis à chaque récolte 
   expect(sans.recolter.mock.calls[0]![0]).not.toHaveProperty("urlRecherche");
 });
 
-test("accord-requis n'est jamais relancé tout seul", async () => {
+test("accord-requis is never retried on its own", async () => {
   const { p, recoltes, dossierWidgets, avancer } = await preparer();
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "accord-requis", derniereMaj: null, derniereTentative: null, erreur: "Accord requis" });
   expect(await p.verifier({ auLancement: true })).toEqual([]);
   avancer(24 * 60 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual([]);
   expect(recoltes).toEqual([]);
-  // Une demande explicite, elle, passe (la récolte vérifie l'accord elle-même).
+  // An explicit request, however, goes through (the harvest checks the grant itself).
   await p.recolterMaintenant("actus");
   expect(recoltes).toEqual(["actus"]);
 });
 
-test("atelier arrêté : statut atelier-arrete, données gardées", async () => {
+test("workshop stopped: status atelier-arrete, data kept", async () => {
   const { p, recoltes, dossierWidgets, changements, fixerAtelier } = await preparer({ atelier: "arrete" });
   await ecrireDonnees(dossierWidgets, "actus", { vieux: true });
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
@@ -204,18 +204,18 @@ test("atelier arrêté : statut atelier-arrete, données gardées", async () => 
   });
   expect(await lireDonnees(dossierWidgets, "actus")).toEqual({ vieux: true });
   expect(changements).toHaveBeenCalledTimes(1);
-  // Pas réécrit à chaque minute.
+  // Not rewritten every minute.
   await p.verifier({ auLancement: false });
   expect(changements).toHaveBeenCalledTimes(1);
-  // recolterMaintenant ne lance rien non plus.
+  // recolterMaintenant launches nothing either.
   expect((await p.recolterMaintenant("actus")).statut).toBe("atelier-arrete");
   expect(recoltes).toEqual([]);
-  // L'atelier revient : la récolte reprend à la vérification suivante.
+  // The workshop comes back: the harvest resumes at the next check.
   fixerAtelier("demarre");
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
 });
 
-test("une erreur est retentée après 15 min, pas avant", async () => {
+test("an error is retried after 15 min, not before", async () => {
   const { p, recoltes, avancer } = await preparer({ statut: "erreur" });
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
   avancer(14 * MIN);
@@ -225,7 +225,7 @@ test("une erreur est retentée après 15 min, pas avant", async () => {
   expect(recoltes).toEqual(["actus", "actus"]);
 });
 
-test("en-cours est relancé au lancement seulement", () => {
+test("in-progress is relaunched at launch only", () => {
   const w = {
     id: "a",
     dossier: "/a",
@@ -242,7 +242,7 @@ test("en-cours est relancé au lancement seulement", () => {
   expect(widgetDu({ ...w, aRecolte: false, etat: { ...w.etat, statut: "ok" } }, DEBUT, { auLancement: true })).toBe(false);
 });
 
-test("recolterMaintenant attend la récolte en cours : une seule à la fois", async () => {
+test("recolterMaintenant waits for the harvest in progress: only one at a time", async () => {
   const { p, recolter } = await preparer();
   let enVol = 0;
   let max = 0;
@@ -265,12 +265,12 @@ test("recolterMaintenant attend la récolte en cours : une seule à la fois", as
   expect(recolter).toHaveBeenCalledTimes(2);
 });
 
-test("recolterMaintenant sur un widget inconnu lève une erreur", async () => {
+test("recolterMaintenant on an unknown widget throws an error", async () => {
   const { p } = await preparer();
   await expect(p.recolterMaintenant("absent")).rejects.toThrow(/inconnu/);
 });
 
-test("arreter : la récolte en cours est supprimée et son état précédent remis", async () => {
+test("arreter: the harvest in progress is removed and its previous state restored", async () => {
   const { p, recolter, dossierWidgets, atelier } = await preparer();
   const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
   await ecrireEtatWidget(dossierWidgets, "actus", avant);
@@ -295,7 +295,7 @@ test("arreter : la récolte en cours est supprimée et son état précédent rem
   expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
 });
 
-test("arreter pendant que la récolte vérifie l'atelier : elle ne démarre pas", async () => {
+test("arreter while the harvest checks the workshop: it does not start", async () => {
   const { p, recolter, atelier } = await preparer();
   let liberer!: () => void;
   const verifie = vi.fn();
@@ -313,7 +313,7 @@ test("arreter pendant que la récolte vérifie l'atelier : elle ne démarre pas"
   expect(recolter).not.toHaveBeenCalled();
 });
 
-test("arreter : une récolte qui dépasse l'attente voit son conteneur supprimé encore une fois", async () => {
+test("arreter: a harvest that exceeds the wait sees its container removed once more", async () => {
   const { dossierWidgets, recolter, atelier, c } = await preparer();
   await p!.arreter();
   let lancee = false;
@@ -321,7 +321,7 @@ test("arreter : une récolte qui dépasse l'attente voit son conteneur supprimé
   const premiereSuppression = new Promise<void>((r) => (demarrer = r));
   recolter.mockImplementation(async (o) => {
     await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: null });
-    // Le conteneur démarre après la première suppression, et la récolte ne finit pas.
+    // The container starts after the first removal, and the harvest does not finish.
     await premiereSuppression;
     lancee = true;
     await new Promise(() => {});
@@ -352,7 +352,7 @@ test("arreter : une récolte qui dépasse l'attente voit son conteneur supprimé
   ]);
 });
 
-test("la première vérification attend que l'atelier soit prêt : pas d'« atelier arrêté » au lancement", async () => {
+test("the first check waits for the workshop to be ready: no « atelier arrêté » at launch", async () => {
   const { dossierWidgets, recolter, atelier, c, recoltes } = await preparer();
   await p!.arreter();
   let etat: EtatAtelier = "arrete";
@@ -380,7 +380,7 @@ test("la première vérification attend que l'atelier soit prêt : pas d'« atel
   await vi.waitFor(() => expect(recoltes).toEqual(["actus"]));
 });
 
-test("une récolte qui lève une erreur après avoir écrit en-cours laisse un état erreur du noyau", async () => {
+test("a harvest that throws an error after writing in-progress leaves a core error state", async () => {
   const { p, recolter, dossierWidgets, changements } = await preparer();
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
   recolter.mockImplementation(async (o) => {
@@ -398,19 +398,19 @@ test("une récolte qui lève une erreur après avoir écrit en-cours laisse un �
   });
   expect(erreurDuNoyau(ERREUR_RECOLTE_INTERNE)).toBe(true);
   expect(changements).toHaveBeenCalled();
-  // Pareil par la vérification de fond.
+  // Same through the background check.
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
   expect((await lireEtatWidget(dossierWidgets, "actus")).statut).toBe("erreur");
 });
 
-test("à chaque vérification, accords et données d'un widget dont le dossier a disparu sont effacés", async () => {
+test("at each check, grants and data of a widget whose folder disappeared are erased", async () => {
   const { p, dossierWidgets, c } = await preparer();
   for (const id of ["actus", "parti"]) {
     await ecrireDonnees(dossierWidgets, id, { secret: id });
     await accorder(dossierWidgets, id, { domaines: ["x.fr"], publiques: [], profil: "defaut" });
   }
-  // Un widget illisible garde ses données : son dossier existe.
+  // An unreadable widget keeps its data: its folder exists.
   await ecrireWidget(c, "casse", "{", {});
   await ecrireDonnees(dossierWidgets, "casse", { secret: "casse" });
   await p.verifier({ auLancement: false });
@@ -418,13 +418,13 @@ test("à chaque vérification, accords et données d'un widget dont le dossier a
   expect(existsSync(join(dossierWidgets, "parti"))).toBe(false);
   expect(await lireDonnees(dossierWidgets, "casse")).toEqual({ secret: "casse" });
   expect(existsSync(join(dossierWidgets, "actus"))).toBe(true);
-  // Sans dossier des widgets du tout (espace illisible), rien n'est effacé.
+  // Without a widgets folder at all (unreadable space), nothing is erased.
   await rm(c.widgets, { recursive: true, force: true });
   await p.verifier({ auLancement: false });
   expect(Object.keys(await lireAccords(dossierWidgets))).toEqual(["actus"]);
 });
 
-test("un widget avec workflow.json sans recolte.mjs est récolté quand il est dû", async () => {
+test("a widget with workflow.json without recolte.mjs is harvested when it is due", async () => {
   const { p, c, recoltes } = await preparer();
   await ecrireWidget(c, "flux", declarationWidget(undefined, { recolte: { minutes: 60 } }), {
     "workflow.json": JSON.stringify({ version: 1, blocs: [{ id: "sortie", type: "sortie", parametres: { vers: "widget" } }] }),
@@ -433,7 +433,7 @@ test("un widget avec workflow.json sans recolte.mjs est récolté quand il est d
   expect(recoltes.sort()).toEqual(["actus", "flux"]);
 });
 
-test("déclencheur : planifiee pour la vérification, manuelle par défaut pour recolterMaintenant, sinon celui demandé", async () => {
+test("trigger: planifiee for the check, manuelle by default for recolterMaintenant, otherwise the requested one", async () => {
   const { p, recolter } = await preparer();
   await p.verifier({ auLancement: true });
   await p.recolterMaintenant("actus");
@@ -442,13 +442,13 @@ test("déclencheur : planifiee pour la vérification, manuelle par défaut pour 
   expect(recolter.mock.calls[0]![0].interrompue).toBeTypeOf("function");
 });
 
-test("arrêt pendant l'exécution : exécution interrompue, état précédent restauré", async () => {
+test("stop during the run: run interrupted, previous state restored", async () => {
   const { p, recolter, dossierWidgets, atelier } = await preparer();
   const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
   await ecrireEtatWidget(dossierWidgets, "actus", avant);
   let tuer!: () => void;
   const lance = vi.fn();
-  // Un conteneur qui ne répond jamais : seul l'arrêt le termine.
+  // A container that never answers: only the stop ends it.
   const lancer: LanceurProcessus = () => {
     lance();
     const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
@@ -464,7 +464,7 @@ test("arrêt pendant l'exécution : exécution interrompue, état précédent re
   expect((await listerExecutions(join(dossierWidgets, "actus"))).map((e) => e.statut)).toEqual(["interrompue"]);
 });
 
-test("le dossier disparu efface aussi exécutions et mémoire", async () => {
+test("the vanished folder also erases runs and memory", async () => {
   const { p, dossierWidgets } = await preparer();
   const dossier = join(dossierWidgets, "parti");
   await ecrireDonnees(dossierWidgets, "parti", { secret: 1 });
@@ -477,14 +477,14 @@ test("le dossier disparu efface aussi exécutions et mémoire", async () => {
   expect(existsSync(dossier)).toBe(false);
 });
 
-/** Une promesse à résoudre de l'extérieur. */
+/** A promise to resolve from the outside. */
 function differe<T>() {
   let resoudre!: (v: T) => void;
   const promesse = new Promise<T>((ok) => (resoudre = ok));
   return { promesse, resoudre };
 }
 
-test("une exécution planifiée due pendant un essai attend sa fin", async () => {
+test("a scheduled run due during a trial waits for its end", async () => {
   const { p, recolter, recolterEssai } = await preparer();
   const journal: string[] = [];
   const fin = differe<ResultatEssai>();
@@ -509,7 +509,7 @@ test("une exécution planifiée due pendant un essai attend sa fin", async () =>
   expect(journal).toEqual(["essai actus 2026-10-28T09-00-00-000Z liste", "fin de l'essai", "récolte actus planifiee"]);
 });
 
-test("deux rejouer demandés coup sur coup s'exécutent l'un après l'autre", async () => {
+test("two rejouer requested back to back run one after the other", async () => {
   const { p, recolterEssai } = await preparer();
   const journal: string[] = [];
   const fins = [differe<void>(), differe<void>()];
@@ -533,7 +533,7 @@ test("deux rejouer demandés coup sur coup s'exécutent l'un après l'autre", as
   expect(await b).toMatchObject({ execution: "e1-essai" });
 });
 
-test("une trace avancement ou lecture ne change pas le suivi en direct d'un widget", async () => {
+test("an avancement or lecture trace does not change a widget's live tracking", async () => {
   const { p, recolterEssai, directs } = await preparer();
   const vus: { avant: EtatDirect; apres: EtatDirect; signales: number }[] = [];
   recolterEssai.mockImplementation(async (o) => {
@@ -552,7 +552,7 @@ test("une trace avancement ou lecture ne change pas le suivi en direct d'un widg
   expect(vus[0]!.signales).toBe(0);
 });
 
-test("direct() montre le widget en cours, son genre et ses blocs au fil des traces, puis plus rien", async () => {
+test("direct() shows the running widget, its kind and its blocks as traces come, then nothing", async () => {
   const { p, recolterEssai, directs, dossierWidgets } = await preparer();
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });
   const vus: EtatDirect[] = [];
@@ -560,7 +560,7 @@ test("direct() montre le widget en cours, son genre et ses blocs au fil des trac
     o.surTrace!({ bloc: "liste", etape: "debut" });
     vus.push(structuredClone(p.direct()));
     o.surTrace!({ bloc: "liste", etape: "fin", statut: "reussi", elements: 3 });
-    // Commencé, sans fin : seule l'exécution finale dit qu'il a échoué.
+    // Started, without an end: only the final run says it failed.
     o.surTrace!({ bloc: "sortie", etape: "debut" });
     vus.push(structuredClone(p.direct()));
     const e: Execution = {
@@ -581,17 +581,17 @@ test("direct() montre le widget en cours, son genre et ses blocs au fil des trac
     enAttente: [],
   });
   expect(vus[1]!.courants[0]!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "en-cours", elements: null } });
-  // Fin : resynchronisé sur l'exécution écrite, puis plus rien en cours.
+  // End: resynchronized on the written run, then nothing in progress.
   expect(directs.at(-2)!.courants[0]!.blocs).toEqual({ liste: { statut: "reussi", elements: 3 }, sortie: { statut: "echoue", elements: null } });
   expect(directs.at(-1)).toEqual({ courants: [], enAttente: [] });
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });
-  // Une vraie exécution se suit de la même façon, genre « execution ».
+  // A real run is tracked the same way, kind « execution ».
   await p.recolterMaintenant("actus");
   expect(directs.some((d) => d.courants.some((x) => x.genre === "execution" && x.widget === "actus"))).toBe(true);
   expect(p.direct().courants).toEqual([]);
 });
 
-test("enAttente liste un widget demandé pendant qu'un autre tourne", async () => {
+test("enAttente lists a widget requested while another runs", async () => {
   const { p, recolterEssai, recoltes } = await preparer();
   const fin = differe<void>();
   recolterEssai.mockImplementation(async () => {
@@ -610,7 +610,7 @@ test("enAttente liste un widget demandé pendant qu'un autre tourne", async () =
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });
 });
 
-test("atelier arrêté : rejouer refuse sans changer l'état", async () => {
+test("workshop stopped: rejouer refuses without changing the state", async () => {
   const { p, recolterEssai, dossierWidgets, changements } = await preparer({ atelier: "arrete" });
   const etat: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
   await ecrireEtatWidget(dossierWidgets, "actus", etat);
@@ -620,12 +620,12 @@ test("atelier arrêté : rejouer refuse sans changer l'état", async () => {
   expect(changements).not.toHaveBeenCalled();
 });
 
-test("widgetDu : un widget à heures sans minutes n'est jamais dû par la fréquence", () => {
+test("widgetDu: a widget with hours without minutes is never due by frequency", () => {
   const w = {
     id: "a",
     dossier: "/a",
     declaration: { ...declarationWidget(), description: "", sources: { compte: [], publiques: [], web: false }, recolte: { heures: ["07:00"] } },
-    // L'heure du jour est déjà faite : seule la fréquence pourrait le rendre dû.
+    // The time of day is already done: only the frequency could make it due.
     etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null, heures: { faite: creneauCourant(["07:00"], DEBUT), echecs: null } },
     donnees: null,
     exemple: null,
@@ -637,14 +637,14 @@ test("widgetDu : un widget à heures sans minutes n'est jamais dû par la fréqu
   expect(widgetDu({ ...w, etat: { ...w.etat, statut: "erreur" as const } }, DEBUT, { auLancement: false })).toBe(false);
 });
 
-// --- Deux voies : les veilles (dureeMaxMinutes > 3) tournent à part ---
+// --- Two lanes: watches (dureeMaxMinutes > 3) run apart ---
 
-/** Un widget qui récolte toutes les 60 min, avec la durée maximale donnée. */
+/** A widget that harvests every 60 min, with the given maximum duration. */
 async function ecrireVeille(c: CheminsEspace, id: string, dureeMaxMinutes: number) {
   await ecrireWidget(c, id, declarationWidget(undefined, { recolte: { minutes: 60, dureeMaxMinutes } }), { "recolte.mjs": "export default () => 1" });
 }
 
-/** Les récoltes des widgets `retenus` attendent `liberer(id)` ; toutes passent ensuite par la récolte factice de base. */
+/** The harvests of the `retenus` widgets wait for `liberer(id)`; all then go through the base fake harvest. */
 function retenir(recolter: Awaited<ReturnType<typeof preparer>>["recolter"], retenus: string[]) {
   const base = recolter.getMockImplementation()!;
   const journal: string[] = [];
@@ -672,7 +672,7 @@ function retenir(recolter: Awaited<ReturnType<typeof preparer>>["recolter"], ret
   };
 }
 
-test("voieDe : longue au-delà de VOIE_LONGUE_MINUTES (3), courte sinon", async () => {
+test("voieDe: long beyond VOIE_LONGUE_MINUTES (3), short otherwise", async () => {
   expect(VOIE_LONGUE_MINUTES).toBe(3);
   const { c, dossierWidgets } = await preparer();
   await ecrireVeille(c, "trois", 3);
@@ -682,22 +682,22 @@ test("voieDe : longue au-delà de VOIE_LONGUE_MINUTES (3), courte sinon", async 
   expect([voie("actus"), voie("trois"), voie("quatre"), voie("fixe")]).toEqual(["courte", "courte", "longue", "courte"]);
 });
 
-test("une exécution longue (dureeMaxMinutes 30) n'empêche pas un widget court de tourner", async () => {
+test("a long run (dureeMaxMinutes 30) does not prevent a short widget from running", async () => {
   const { p, c, recolter } = await preparer();
   await ecrireVeille(c, "veille", 30);
   const r = retenir(recolter, ["veille"]);
-  // La vérification lance la veille sans l'attendre, et récolte « actus » pendant qu'elle tourne.
+  // The check launches the watch without waiting for it, and harvests « actus » while it runs.
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
   expect(r.journal).toContain("fin actus");
   await vi.waitFor(() => expect(r.journal).toContain("début veille"));
   expect(r.journal).not.toContain("fin veille");
-  // Une demande manuelle d'un widget court passe aussi.
+  // A manual request for a short widget goes through too.
   expect((await p.recolterMaintenant("actus")).statut).toBe("ok");
   r.liberer("veille");
   await vi.waitFor(() => expect(r.journal).toContain("fin veille"));
 });
 
-test("deux widgets longs : l'un après l'autre", async () => {
+test("two long widgets: one after the other", async () => {
   const { p, c, recolter } = await preparer();
   await ecrireVeille(c, "veille-a", 30);
   await ecrireVeille(c, "veille-b", 20);
@@ -715,7 +715,7 @@ test("deux widgets longs : l'un après l'autre", async () => {
   await vi.waitFor(() => expect(r.journal).toContain(`fin ${seconde}`));
 });
 
-test("un widget long et son essai : jamais en même temps", async () => {
+test("a long widget and its trial: never at the same time", async () => {
   const { p, c, recolter, recolterEssai } = await preparer();
   await ecrireVeille(c, "veille", 30);
   const r = retenir(recolter, ["veille"]);
@@ -727,7 +727,7 @@ test("un widget long et son essai : jamais en même temps", async () => {
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
   const essai = p.rejouer("veille", "o", "liste");
   await vi.waitFor(() => expect(p.direct().enAttente).toEqual(["veille"]));
-  // Un widget court tourne pendant ce temps : l'essai qui attend ne bloque pas sa voie.
+  // A short widget runs in the meantime: the waiting trial does not block its lane.
   await p.recolterMaintenant("actus");
   expect(r.journal).not.toContain("essai veille");
   r.liberer("veille");
@@ -736,7 +736,7 @@ test("un widget long et son essai : jamais en même temps", async () => {
   expect(r.journal.indexOf("fin veille")).toBeLessThan(r.journal.indexOf("essai veille"));
 });
 
-test("dureeMaxMinutes passé de 30 à 2 pendant l'exécution : la nouvelle demande attend la fin de la première", async () => {
+test("dureeMaxMinutes changed from 30 to 2 during the run: the new request waits for the first to end", async () => {
   const { p, c, recolter, recoltes } = await preparer();
   await ecrireVeille(c, "veille", 30);
   const r = retenir(recolter, ["veille"]);
@@ -744,7 +744,7 @@ test("dureeMaxMinutes passé de 30 à 2 pendant l'exécution : la nouvelle deman
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
   await ecrireVeille(c, "veille", 2);
   const seconde = p.recolterMaintenant("veille");
-  // La voie courte reste libre pour les autres widgets, et une vérification n'attend pas ce widget occupé.
+  // The short lane stays free for the other widgets, and a check does not wait for this busy widget.
   await p.recolterMaintenant("actus");
   expect(await p.verifier({ auLancement: false })).toEqual([]);
   expect(r.journal.filter((l) => l === "début veille")).toHaveLength(1);
@@ -757,13 +757,13 @@ test("dureeMaxMinutes passé de 30 à 2 pendant l'exécution : la nouvelle deman
   expect((await seconde).statut).toBe("ok");
 });
 
-test("une vérification ne reste pas bloquée par une exécution longue : un widget court dû plus tard est récolté", async () => {
+test("a check is not stuck by a long run: a short widget due later is harvested", async () => {
   const { p, c, recolter, avancer } = await preparer();
   await ecrireVeille(c, "veille", 30);
   const r = retenir(recolter, ["veille"]);
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
   avancer(61 * MIN);
-  // « actus » est de nouveau dû ; la veille aussi d'après ses données, mais elle tourne encore : pas relancée.
+  // « actus » is due again; the watch too according to its data, but it is still running: not relaunched.
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
   avancer(61 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
@@ -772,7 +772,7 @@ test("une vérification ne reste pas bloquée par une exécution longue : un wid
   await vi.waitFor(() => expect(r.journal).toContain("fin veille"));
 });
 
-test("direct().courants liste les deux exécutions", async () => {
+test("direct().courants lists both runs", async () => {
   const { p, c, recolter } = await preparer();
   await ecrireVeille(c, "veille", 30);
   const r = retenir(recolter, ["veille", "actus"]);
@@ -793,7 +793,7 @@ test("direct().courants liste les deux exécutions", async () => {
   await vi.waitFor(() => expect(p.direct()).toEqual({ courants: [], enAttente: [] }));
 });
 
-test("arreter supprime les deux conteneurs et attend les deux voies", async () => {
+test("arreter removes both containers and waits for both lanes", async () => {
   const { p, c, recolter, atelier } = await preparer();
   await ecrireVeille(c, "veille", 30);
   const r = retenir(recolter, ["veille", "actus"]);
@@ -802,7 +802,7 @@ test("arreter supprime les deux conteneurs et attend les deux voies", async () =
   atelier.supprimerRecolte = async (id) => {
     supprimees.push(id);
     if (id === "actus") return void setImmediate(() => r.liberer(id));
-    // La veille tuée finit bien après la courte (elle écrit encore sa mémoire et son exécution « interrompue »).
+    // The killed watch ends well after the short one (it still writes its memory and its « interrompue » run).
     void (async () => {
       while (!r.journal.includes("fin actus")) await tour();
       for (let i = 0; i < 5; i++) await tour();
@@ -816,7 +816,7 @@ test("arreter supprime les deux conteneurs et attend les deux voies", async () =
   expect(r.journal).toEqual(expect.arrayContaining(["fin actus", "fin veille"]));
 });
 
-test("arreter : une exécution longue qui ne finit pas est attendue de façon bornée, son conteneur supprimé deux fois", async () => {
+test("arreter: a long run that does not finish is awaited in a bounded way, its container removed twice", async () => {
   const { p, c, recolter, atelier } = await preparer({
     options: { attenteArretMs: 1 },
   });
@@ -831,7 +831,7 @@ test("arreter : une exécution longue qui ne finit pas est attendue de façon bo
   r.liberer("veille");
 });
 
-test("l'IA passe par le répartiteur : chaque exécution a sa vue, les appels arrivent à l'IA donnée, refusés après sa fin", async () => {
+test("the AI goes through the dispatcher: each run has its view, calls reach the given AI, refused after its end", async () => {
   const appels: string[] = [];
   const ia = { kev: async () => "k", gemma: async (o: { prompt: string }) => (appels.push(o.prompt), "g") };
   const { p, c, recolter, recolterEssai } = await preparer({ options: { ia } });
@@ -854,38 +854,38 @@ test("l'IA passe par le répartiteur : chaque exécution a sa vue, les appels ar
   for (const v of vues) expect(v).not.toBe(ia);
   expect(reponses).toEqual(["g", "g", "g"]);
   expect(appels).toEqual(["actus", "veille", "essai actus"]);
-  // L'exécution finie, sa vue refuse : un appel tardif ne part plus vers l'IA.
+  // The run finished, its view refuses: a late call no longer goes to the AI.
   await expect(vues[0]!.gemma({ prompt: "tard" })).rejects.toThrow(IA_ABANDONNEE);
   expect(appels).toHaveLength(3);
 });
 
-test("dureeMaxMinutes passé de 2 à 30 pendant qu'une demande attend : elle part dans la voie longue", async () => {
+test("dureeMaxMinutes changed from 2 to 30 while a request waits: it goes into the long lane", async () => {
   const { p, c, recolter } = await preparer();
   await ecrireVeille(c, "veille", 2);
   const r = retenir(recolter, ["veille"]);
   const premiere = p.recolterMaintenant("veille");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
   const seconde = p.recolterMaintenant("veille");
-  // Toute lecture que la demande ferait tout de suite (choix de la voie à la demande) est finie avant le changement.
+  // Every read the request would do right away (lane choice on request) is finished before the change.
   await new Promise((ok) => setImmediate(ok));
   await vi.waitFor(() => expect(lectures.enVol).toBe(0));
   await ecrireVeille(c, "veille", 30);
   r.liberer("veille");
   await premiere;
   await vi.waitFor(() => expect(r.journal.filter((l) => l === "début veille")).toHaveLength(2));
-  // La seconde tourne dans la voie longue : la voie courte et la vérification restent libres.
+  // The second runs in the long lane: the short lane and the check stay free.
   expect((await p.recolterMaintenant("actus")).statut).toBe("ok");
   expect(await p.verifier({ auLancement: false })).toEqual([]);
   r.liberer("veille");
   expect((await seconde).statut).toBe("ok");
 });
 
-test("widget passé de 30 à 2 juste avant un essai : l'essai passe pendant la veille d'un autre widget", async () => {
+test("widget changed from 30 to 2 just before a trial: the trial goes through during another widget's watch", async () => {
   const { p, c, recolter, recolterEssai } = await preparer();
   await ecrireVeille(c, "veille-a", 30);
   await ecrireVeille(c, "veille-b", 30);
   const r = retenir(recolter, ["veille-a"]);
-  // La veille A tourne dans la voie longue ; le planificateur a lu B à 30 pendant ce temps.
+  // Watch A runs in the long lane; the scheduler read B at 30 in the meantime.
   const a = p.recolterMaintenant("veille-a");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille-a"]));
   await ecrireVeille(c, "veille-b", 2);
@@ -898,30 +898,30 @@ test("widget passé de 30 à 2 juste avant un essai : l'essai passe pendant la v
 
 // --- Heures fixes ---
 
-/** Heure locale du 29 octobre 2026 (ou du jour donné). */
+/** Local time of October 29, 2026 (or of the given day). */
 const le = (h: number, m: number, jour = 29) => new Date(2026, 9, jour, h, m);
 
-/** Un widget « matin » à heures fixes (et à fréquence si `minutes`). */
+/** A widget « matin » at fixed hours (and at a frequency if `minutes`). */
 async function ecrireMatin(c: CheminsEspace, recolte: { heures: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
   await ecrireWidget(c, "matin", declarationWidget(undefined, { recolte, ...extra }), { "recolte.mjs": "export default () => 1" });
 }
 
 const duMatin = (recoltes: string[]) => recoltes.filter((x) => x === "matin").length;
 
-test("heures et minutes : les deux s'appliquent", async () => {
+test("hours and minutes: both apply", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { minutes: 120, heures: ["07:00"] });
   fixer(le(6, 0));
   await p.verifier({ auLancement: true });
-  expect(duMatin(recoltes)).toBe(1); // par la fréquence (jamais récolté)
-  // Avant la première heure du jour : sans effet sur le suivi.
+  expect(duMatin(recoltes)).toBe(1); // by frequency (never harvested)
+  // Before the first hour of the day: no effect on the tracking.
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toBeUndefined();
   fixer(le(6, 30));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
   fixer(le(7, 0));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(2); // par l'heure, les données n'ont qu'une heure
+  expect(duMatin(recoltes)).toBe(2); // by the hour, the data is only an hour old
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
   for (const [h, m] of [[7, 1], [8, 59]] as const) {
     fixer(le(h, m));
@@ -930,10 +930,10 @@ test("heures et minutes : les deux s'appliquent", async () => {
   expect(duMatin(recoltes)).toBe(2);
   fixer(le(9, 0));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(3); // par la fréquence, 2 h après 07:00
+  expect(duMatin(recoltes)).toBe(3); // by frequency, 2 h after 07:00
 });
 
-test("interrompue : rattrapée au lancement suivant le même jour", async () => {
+test("interrupted: caught up at the next launch the same day", async () => {
   const { p, c, recoltes, recolter, fixer, dossierWidgets, atelier, relancer } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const base = recolter.getMockImplementation()!;
@@ -949,11 +949,11 @@ test("interrompue : rattrapée au lancement suivant le même jour", async () => 
   fixer(le(7, 0));
   const verif = p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(duMatin(recoltes)).toBe(1));
-  // `tuer` n'est posé qu'après l'écriture de l'état en-cours : sans lui, arreter() attendrait 15 s (F5).
+  // `tuer` is only set after the in-progress state is written: without it, arreter() would wait 15 s (F5).
   await vi.waitFor(() => expect(tuer).toBeDefined());
   await p.arreter();
   await verif;
-  // Interrompue : sans effet sur le suivi, l'état d'avant est remis.
+  // Interrupted: no effect on the tracking, the earlier state is restored.
   expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null });
   recolter.mockImplementation(base);
   fixer(le(7, 30));
@@ -966,7 +966,7 @@ test("interrompue : rattrapée au lancement suivant le même jour", async () => 
   expect(duMatin(recoltes)).toBe(2);
 });
 
-test("arrêt brutal (en-cours au lancement) : l'heure manquée est rattrapée une fois", async () => {
+test("abrupt stop (in-progress at launch): the missed hour is caught up once", async () => {
   const { p, c, recoltes, recolter, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00", "12:00"] });
   await ecrireEtatWidget(dossierWidgets, "matin", {
@@ -983,7 +983,7 @@ test("arrêt brutal (en-cours au lancement) : l'heure manquée est rattrapée un
   expect(duMatin(recoltes)).toBe(1);
 });
 
-test("en-cours au lancement d'un widget à heures déjà fait aujourd'hui : pas relancé, son état remis", async () => {
+test("in-progress at launch of an hours widget already done today: not relaunched, its state restored", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const heures = { faite: "2026-10-29T07:00", echecs: null };
@@ -993,13 +993,13 @@ test("en-cours au lancement d'un widget à heures déjà fait aujourd'hui : pas 
   fixer(le(9, 0));
   await p.verifier({ auLancement: true });
   expect(duMatin(recoltes)).toBe(0);
-  // Pas de « 7 / 12 » figé.
+  // No frozen « 7 / 12 ».
   expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), heures });
 });
 
-test("en-cours au lancement pendant qu'un essai attend : l'état est remis avant toute exécution, le widget relancé ensuite", async () => {
+test("in-progress at launch while a trial waits: the state is restored before any run, the widget relaunched afterwards", async () => {
   const { p, recoltes, recolterEssai, dossierWidgets } = await preparer();
-  // Données fraîches : seul l'arrêt brutal le rend dû au lancement.
+  // Fresh data: only the abrupt stop makes it due at launch.
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), progression: { faits: 7, total: 12 } });
   const fin = differe<ResultatEssai>();
   const commence = differe<void>();
@@ -1017,7 +1017,7 @@ test("en-cours au lancement pendant qu'un essai attend : l'état est remis avant
   expect(recoltes).toEqual(["actus"]);
 });
 
-test("un essai ne compte pas pour l'heure", async () => {
+test("a trial does not count for the hour", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   fixer(le(7, 0));
@@ -1028,13 +1028,13 @@ test("un essai ne compte pas pour l'heure", async () => {
   expect(duMatin(recoltes)).toBe(1);
 });
 
-test("Mac en veille par-dessus plusieurs heures : un seul rattrapage au réveil", async () => {
+test("Mac asleep over several hours: a single catch-up on wake", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00", "09:00", "12:00"] });
   fixer(le(6, 0));
   await p.verifier({ auLancement: true });
   expect(duMatin(recoltes)).toBe(0);
-  // Réveil à 15 h : 07:00, 09:00 et 12:00 manquées, une seule exécution.
+  // Wake at 3 pm: 07:00, 09:00 and 12:00 missed, a single run.
   for (let t = le(15, 0).getTime(); t <= le(23, 59).getTime(); t += 30 * MIN) {
     fixer(new Date(t));
     await p.verifier({ auLancement: false });
@@ -1043,10 +1043,10 @@ test("Mac en veille par-dessus plusieurs heures : un seul rattrapage au réveil"
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
 });
 
-test("minuit : l'heure manquée la veille n'est pas rattrapée, celle du lendemain l'est", async () => {
+test("midnight: the hour missed the day before is not caught up, the next day's is", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00", "22:00"] });
-  // 22:00 manquée le 29 (WebAiOs fermé) ; rouvert après minuit.
+  // 22:00 missed on the 29th (WebAiOs closed); reopened after midnight.
   await ecrireEtatWidget(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: { faite: "2026-10-29T07:00", echecs: null } });
   for (const [h, m] of [[0, 0], [0, 1], [3, 0], [6, 59]] as const) {
     fixer(le(h, m, 30));
@@ -1059,7 +1059,7 @@ test("minuit : l'heure manquée la veille n'est pas rattrapée, celle du lendema
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-30T07:00", echecs: null });
 });
 
-test("échecs : réessayé 15 min après, 3 fois au plus, puis rien jusqu'à l'heure suivante", async () => {
+test("failures: retried 15 min later, 3 times at most, then nothing until the next hour", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer({ statut: "erreur" });
   await ecrireMatin(c, { heures: ["07:00", "12:00"] });
   const tentatives: string[] = [];
@@ -1073,7 +1073,7 @@ test("échecs : réessayé 15 min après, 3 fois au plus, puis rien jusqu'à l'h
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1, fin: le(12, 0).toISOString() } });
 });
 
-test("une exécution manuelle avant la première heure n'efface pas le suivi de la veille ; une à 07:10 compte pour 07:00", async () => {
+test("a manual run before the first hour does not erase the previous day's tracking; one at 07:10 counts for 07:00", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const veille = { faite: "2026-10-28T07:00", echecs: null };
@@ -1088,7 +1088,7 @@ test("une exécution manuelle avant la première heure n'efface pas le suivi de 
   expect(duMatin(recoltes)).toBe(2);
 });
 
-test("le suivi des heures survit à un accord retiré puis redonné", async () => {
+test("the hours tracking survives a grant removed then granted again", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   const sources = { compte: ["mail.example.com"], publiques: [] };
   await ecrireMatin(c, { heures: ["07:00"] }, { sources });
@@ -1098,7 +1098,7 @@ test("le suivi des heures survit à un accord retiré puis redonné", async () =
   expect(duMatin(recoltes)).toBe(1);
   const faite = { faite: "2026-10-29T07:00", echecs: null };
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
-  // Comme refuserAccord : données effacées, état en attente d'accord.
+  // Like refuserAccord: data erased, state waiting for a grant.
   await supprimerDonnees(dossierWidgets, "matin");
   const avant = await lireEtatWidget(dossierWidgets, "matin");
   await ecrireEtatWidget(dossierWidgets, "matin", { statut: "accord-requis", derniereMaj: avant.derniereMaj, derniereTentative: avant.derniereTentative, erreur: "accord", erreurNoyau: true });
@@ -1106,7 +1106,7 @@ test("le suivi des heures survit à un accord retiré puis redonné", async () =
   fixer(le(7, 5));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
-  // Redonné : la récolte qui suit l'accord compte, et l'heure n'est pas refaite.
+  // Granted again: the harvest that follows the grant counts, and the hour is not redone.
   await accorder(dossierWidgets, "matin", { domaines: ["mail.example.com"], publiques: [], profil: "defaut" });
   await p.recolterMaintenant("matin");
   expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
@@ -1115,7 +1115,7 @@ test("le suivi des heures survit à un accord retiré puis redonné", async () =
   expect(duMatin(recoltes)).toBe(2);
 });
 
-test("veille en échec après 30 min : le réessai part au plus tôt 15 min après la fin de l'échec", async () => {
+test("watch failing after 30 min: the retry starts at the earliest 15 min after the failure ends", async () => {
   const { p, c, recolter, fixer, horloge, avancer, dossierWidgets } = await preparer({ statut: "erreur" });
   await ecrireMatin(c, { heures: ["07:00", "12:00"] });
   const base = recolter.getMockImplementation()!;
@@ -1124,7 +1124,7 @@ test("veille en échec après 30 min : le réessai part au plus tôt 15 min apr�
     if (o.id !== "matin") return base(o);
     const debut = horloge();
     departs.push(`${debut.getHours()}:${String(debut.getMinutes()).padStart(2, "0")}`);
-    // derniereTentative = le début, comme la vraie récolte ; l'échec arrive 30 min plus tard.
+    // derniereTentative = the start, like the real harvest; the failure comes 30 min later.
     await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: debut.toISOString() });
     avancer(30 * MIN);
     await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" });
@@ -1140,7 +1140,7 @@ test("veille en échec après 30 min : le réessai part au plus tôt 15 min apr�
   expect(heures?.echecs).toMatchObject({ heure: "2026-10-29T07:00", nombre: 4 });
 });
 
-test("arrêt brutal : l'état d'avant l'exécution (erreur) est remis ; arrêt propre : rien de l'exécution ne reste", async () => {
+test("abrupt stop: the state from before the run (error) is restored; clean stop: nothing of the run remains", async () => {
   const { p, c, recolter, fixer, dossierWidgets, atelier, recoltes } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const heures = { faite: "2026-10-29T07:00", echecs: null };
@@ -1154,7 +1154,7 @@ test("arrêt brutal : l'état d'avant l'exécution (erreur) est remis ; arrêt p
   expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({
     statut: "erreur", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), erreur: "Sélecteur introuvable", erreurNoyau: true, heures,
   });
-  // Arrêt propre pendant une vraie récolte : l'état d'avant revient sans le champ avant.
+  // Clean stop during a real harvest: the earlier state comes back without the avant field.
   const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
   await ecrireEtatWidget(dossierWidgets, "actus", avant);
   let tuer!: () => void;
@@ -1174,7 +1174,7 @@ test("arrêt brutal : l'état d'avant l'exécution (erreur) est remis ; arrêt p
   expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
 });
 
-test("un rappel surChange qui lève pendant la remise au démarrage ne bloque pas les exécutions", async () => {
+test("a surChange callback that throws during the startup restore does not block the runs", async () => {
   const { dossierWidgets, recoltes, relancer, p: premier } = await preparer({ options: { surChange: () => { throw new Error("rappel"); } } });
   await premier.arreter();
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
@@ -1190,7 +1190,7 @@ test("un rappel surChange qui lève pendant la remise au démarrage ne bloque pa
 });
 
 describe("notification de fin de veille", () => {
-  /** Un widget « veille » qui notifie, et un notifier espion ; la récolte factice rend `nouveaux` (et `statut`). */
+  /** A « veille » widget that notifies, and a spy notifier; the fake harvest returns `nouveaux` (and `statut`). */
   async function preparerVeille(o: { notifier?: boolean; nouveaux?: number; statut?: EtatWidget["statut"]; sansRappel?: boolean } = {}) {
     const notifications: NotificationWidget[] = [];
     const notifier = vi.fn((n: NotificationWidget) => void notifications.push(n));
@@ -1211,19 +1211,19 @@ describe("notification de fin de veille", () => {
     return { ...t, notifier, notifications };
   }
 
-  test("3 nouveaux éléments : une notification, titre = nom du widget, texte « 3 nouveaux éléments »", async () => {
+  test("3 new items: one notification, title = widget name, text « 3 nouveaux éléments »", async () => {
     const { p, notifications } = await preparerVeille({ nouveaux: 3 });
     await p.recolterMaintenant("veille");
     expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "3 nouveaux éléments" }]);
   });
 
-  test("1 nouvel élément : texte au singulier", async () => {
+  test("1 new item: singular text", async () => {
     const { p, notifications } = await preparerVeille({ nouveaux: 1 });
     await p.recolterMaintenant("veille");
     expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "1 nouvel élément" }]);
   });
 
-  test("zéro nouveau, échec, essai, widget sans notifier : aucune", async () => {
+  test("zero new, failure, trial, widget without notifier: none", async () => {
     const zero = await preparerVeille({ nouveaux: 0 });
     await zero.p.recolterMaintenant("veille");
     await zero.p.recolterMaintenant("veille", "planifiee");
@@ -1241,18 +1241,18 @@ describe("notification de fin de veille", () => {
     expect(essai.notifier).not.toHaveBeenCalled();
     await essai.p.arreter();
 
-    // Le widget ne déclare pas `notifier` : même si la récolte rendait un compte, rien.
+    // The widget does not declare `notifier`: even if the harvest returned a count, nothing.
     const sans = await preparerVeille({ nouveaux: 2, notifier: false });
     await sans.p.recolterMaintenant("veille");
     expect(sans.notifier).not.toHaveBeenCalled();
     await sans.p.arreter();
 
-    // Aucun rappel donné au planificateur : la récolte finit comme avant.
+    // No callback given to the scheduler: the harvest ends as before.
     const sansRappel = await preparerVeille({ nouveaux: 2, sansRappel: true });
     expect((await sansRappel.p.recolterMaintenant("veille")).statut).toBe("ok");
   });
 
-  test("le texte ne contient rien des données (titre d'annonce piégé)", async () => {
+  test("the text contains nothing from the data (trapped listing title)", async () => {
     const { p, notifications, dossierWidgets } = await preparerVeille({ nouveaux: 1 });
     await p.recolterMaintenant("veille");
     expect(await lireDonnees(dossierWidgets, "veille")).toEqual([{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
@@ -1261,7 +1261,7 @@ describe("notification de fin de veille", () => {
     expect(notifications[0]!.texte).toBe("1 nouvel élément");
   });
 
-  test("un notifier qui lève n'empêche pas l'exécution de finir", async () => {
+  test("a notifier that throws does not prevent the run from finishing", async () => {
     const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const { p, notifier, dossierWidgets } = await preparerVeille({ nouveaux: 3 });
@@ -1279,7 +1279,7 @@ describe("notification de fin de veille", () => {
   });
 });
 
-test("notification : le nom du widget est nettoyé (contrôles et caractères invisibles remplacés, sur une ligne)", async () => {
+test("notification: the widget name is cleaned (controls and invisible characters replaced, on one line)", async () => {
   const notifications: NotificationWidget[] = [];
   const { p, c, recolter } = await preparer({ options: { notifier: (n) => void notifications.push(n) } });
   await ecrireWidget(c, "veille", declarationWidget(undefined, { nom: "‮Vélos\n\nd'occasion​\t ", recolte: { minutes: 60, notifier: true } }), {

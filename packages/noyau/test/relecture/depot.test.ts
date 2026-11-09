@@ -26,12 +26,12 @@ afterEach(async () => {
 const ecrire = (nom: string, contenu: string | Buffer) => writeFile(join(dossier, nom), contenu);
 const numerotees = (n: number, f = (i: number) => `ligne ${i}`) => Array.from({ length: n }, (_, i) => f(i + 1)).join("\n") + "\n";
 
-describe("référence", () => {
+describe("reference", () => {
   test("gitDisponible", async () => {
     expect(await gitDisponible()).toBe(true);
     expect(await gitDisponible("/chemin/absent")).toBe(false);
   });
-  test("assurerReference crée refs/webaios/relu dans le dépôt privé ; un second appel rend faux ; aucun .git dans le dossier", async () => {
+  test("assurerReference creates refs/webaios/relu in the private repo; a second call returns false; no .git in the folder", async () => {
     await ecrire("a.txt", "a\n");
     expect(await r.assurerReference()).toBe(true);
     expect(await r.assurerReference()).toBe(false);
@@ -39,7 +39,7 @@ describe("référence", () => {
     expect(ref).toMatch(/^[0-9a-f]{40,64}$/);
     expect(await readdir(dossier)).toEqual(["a.txt"]);
   });
-  test("retenir() puis comparer() : aucune différence", async () => {
+  test("retenir() then comparer(): no difference", async () => {
     await ecrire("a.txt", "a\n");
     await r.assurerReference();
     await ecrire("a.txt", "b\n");
@@ -51,8 +51,8 @@ describe("référence", () => {
   });
 });
 
-describe("comparer et fichier", () => {
-  test("modification, ajout et suppression ; blocs à 3 lignes de contexte", async () => {
+describe("comparer and file", () => {
+  test("modification, addition and deletion; blocks with 3 lines of context", async () => {
     await ecrire("m.txt", numerotees(20));
     await ecrire("s.txt", "x\ny\n");
     await r.assurerReference();
@@ -73,7 +73,7 @@ describe("comparer et fichier", () => {
     expect(b.lignes.filter((l) => l.marque === " ")).toHaveLength(6);
     expect(b.lignes.find((l) => l.marque === "+")).toMatchObject({ texte: "changée", nouveau: 10 });
   });
-  test("exclusions et .gitignore du dossier", async () => {
+  test("exclusions and the folder's .gitignore", async () => {
     await r.assurerReference();
     for (const d of ["node_modules", "dist", "build", ".next"]) {
       await mkdir(join(dossier, d), { recursive: true });
@@ -86,7 +86,7 @@ describe("comparer et fichier", () => {
     const c = await r.comparer();
     expect(c.fichiers.map((f) => f.chemin)).toEqual([".gitignore", "visible.txt"]);
   });
-  test("nom « mon fichier é \"x\".txt » : listé et diffé", async () => {
+  test("name « mon fichier é \"x\".txt »: listed and diffed", async () => {
     await r.assurerReference();
     const nom = 'mon fichier é "x".txt';
     await ecrire(nom, "salut\n");
@@ -106,7 +106,7 @@ describe("comparer et fichier", () => {
     expect(par).toEqual({ "bin.dat": "binaire", "gros.txt": "trop-gros", "long.txt": "trop-gros", "limite.txt": true });
     for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.fichier(c, n)).blocs).toEqual([]);
   });
-  test("un nom qui commence par « : » ou contient « * » passe aussi le contrôle de taille", async () => {
+  test("a name that starts with « : » or contains « * » also passes the size check", async () => {
     await r.assurerReference();
     await ecrire(":gros.txt", Buffer.alloc(1048577, 97));
     await ecrire("gr*s.txt", Buffer.alloc(1048577, 98));
@@ -120,7 +120,7 @@ describe("comparer et fichier", () => {
     const c = await r.comparer();
     expect(await r.lignes(c.arbreCourant, "t.txt", 10, 12)).toEqual(["ligne 10", "ligne 11", "ligne 12"]);
   });
-  test("supprimer retire le dépôt privé", async () => {
+  test("supprimer removes the private repo", async () => {
     await r.assurerReference();
     await r.supprimer();
     await expect(stat(depot)).rejects.toThrow();
@@ -142,8 +142,8 @@ async function empreinte(base: string): Promise<string[]> {
   return sortie;
 }
 
-describe("le dépôt du projet n'est jamais touché", () => {
-  test("dossier avec git, indexé non commité et non suivi : empreinte de .git et status identiques", async () => {
+describe("the project's repo is never touched", () => {
+  test("folder with git, staged uncommitted and untracked: .git hash and status identical", async () => {
     const g = (...a: string[]) => execFileSync(GIT, ["-C", dossier, ...a], { env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } }).toString();
     g("init", "-q");
     await ecrire("c.txt", "c\n");
@@ -163,7 +163,7 @@ describe("le dépôt du projet n'est jamais touché", () => {
     expect(await empreinte(join(dossier, ".git"))).toEqual(avant);
     expect(g("status", "--porcelain")).toBe(statusAvant);
   });
-  test("sous-dossier qui est un dépôt : rien de son .git lu comme fichier, rien écrit dedans", async () => {
+  test("subfolder that is a repo: nothing of its .git read as a file, nothing written inside", async () => {
     const sous = join(dossier, "sous");
     await mkdir(sous);
     execFileSync(GIT, ["-C", sous, "init", "-q"], { env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } });
@@ -191,7 +191,7 @@ describe("erreurs", () => {
     await expect(sans.assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
     await expect(sans.assurerReference()).rejects.toBeInstanceOf(ErreurRelecture);
   });
-  test("git dont --version échoue : GIT_NECESSAIRE", async () => {
+  test("git whose --version fails: GIT_NECESSAIRE", async () => {
     const faux = join(racine, "faux-git");
     await writeFile(faux, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
     await expect(new DepotRelecture({ depot, dossier, git: faux }).assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });

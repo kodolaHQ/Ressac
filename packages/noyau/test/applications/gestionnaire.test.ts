@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const g of gestionnaires.splice(0)) await g.arreterSurveillance();
 });
 
-/** Lanceur factice : garde les argv, et chaque processus se termine quand le test appelle `finir`. */
+/** Fake launcher: keeps the argv, and each process ends when the test calls `finir`. */
 function lanceurFactice() {
   const processus: { argv: string[]; tue: boolean; finir: (code: number | null) => void }[] = [];
   const lanceur: Lanceur = (argv) => {
@@ -32,7 +32,7 @@ function lanceurFactice() {
   return { lanceur, processus };
 }
 
-/** Sonde scriptée : chaque port rend ses réponses dans l'ordre, puis répète la dernière (par défaut « libre »). */
+/** Scripted probe: each port returns its answers in order, then repeats the last one (default « libre »). */
 function sondeScriptee(script: Record<number, ("http" | "occupe" | "libre")[]>) {
   return async (port: number) => {
     const r = script[port] ?? ["libre"];
@@ -83,7 +83,7 @@ async function jusqua(condition: () => boolean) {
   expect(condition()).toBe(true);
 }
 
-test("lancer : port libre, en-marche quand le port répond", async () => {
+test("lancer: free port, en-marche when the port answers", async () => {
   const c = await espace();
   const { g, processus, etats } = preparer({ chemins: c });
   expect(await g.lancer("todo")).toMatchObject({ dossier: "todo", nom: "Todo", type: "application", etat: "en-marche", port: 5280 });
@@ -95,19 +95,19 @@ test("lancer : port libre, en-marche quand le port répond", async () => {
   expect(await g.liste()).toMatchObject([{ dossier: "todo", etat: "en-marche", port: 5280 }]);
 });
 
-test("un port occupé est sauté", async () => {
+test("an occupied port is skipped", async () => {
   const c = await espace();
   const { g } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["occupe"], 5281: ["libre", "http"] }) });
   expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche", port: 5281 });
 });
 
-test("un port qui répond en HTTP (serveur lancé à la main par l'agent) est sauté", async () => {
+test("a port that answers in HTTP (server launched by hand by the agent) is skipped", async () => {
   const c = await espace();
   const { g } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["http"], 5281: ["libre", "http"] }) });
   expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche", port: 5281 });
 });
 
-test("plus de port libre", async () => {
+test("no more free ports", async () => {
   const c = await espace({
     todo: '{"type":"application","lancement":"x"}',
     autre: '{"type":"application","lancement":"y"}',
@@ -117,7 +117,7 @@ test("plus de port libre", async () => {
   expect(await g.lancer("todo")).toMatchObject({ etat: "erreur", erreur: "Plus de port libre : arrête une application." });
 });
 
-test("le processus sort tout de suite : erreur sans attendre le délai", async () => {
+test("the process exits right away: error without waiting for the delay", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });
   const resultat = g.lancer("todo");
@@ -133,7 +133,7 @@ test("le processus sort tout de suite : erreur sans attendre le délai", async (
   expect(app.erreur).toContain("boum");
 });
 
-test("le port ne répond jamais : erreur après delaiPretMs, processus arrêté", async () => {
+test("the port never answers: error after delaiPretMs, process stopped", async () => {
   const c = await espace();
   const { g, processus, arrets } = preparer({ chemins: c, sonder: sondeScriptee({}) });
   const debut = Date.now();
@@ -144,12 +144,12 @@ test("le port ne répond jamais : erreur après delaiPretMs, processus arrêté"
   expect(processus[0]!.tue).toBe(true);
   expect(arrets()).toHaveLength(1);
   expect(arrets()[0]).toContain("WEBAIOS_APP=todo");
-  // La fin du processus tué ne remplace pas l'erreur.
+  // The killed process's end does not replace the error.
   processus[0]!.finir(null);
   expect((await g.liste())[0]).toMatchObject({ etat: "erreur", erreur: app.erreur });
 });
 
-test("arreter pendant le lancement : arretee, pas erreur", async () => {
+test("arreter during the launch: arretee, not an error", async () => {
   const c = await espace();
   const { g, processus, arrets } = preparer({ chemins: c, sonder: sondeScriptee({}) });
   const resultat = g.lancer("todo");
@@ -163,7 +163,7 @@ test("arreter pendant le lancement : arretee, pas erreur", async () => {
   expect((await g.liste())[0]!.erreur).toBeUndefined();
 });
 
-test("arreter pendant qu'un second lancement attend dans la file : il est annulé aussi", async () => {
+test("arreter while a second launch waits in the queue: it is cancelled too", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });
   const premier = g.lancer("todo");
@@ -176,7 +176,7 @@ test("arreter pendant qu'un second lancement attend dans la file : il est annul�
   expect(g.etatDe("todo")).toBe("arretee");
 });
 
-test("arreter avant que le lancement ait commencé (lecture des projets) : arretee, rien de lancé", async () => {
+test("arreter before the launch has started (project read): arretee, nothing launched", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c });
   const resultat = g.lancer("todo");
@@ -185,21 +185,21 @@ test("arreter avant que le lancement ait commencé (lecture des projets) : arret
   expect(processus).toHaveLength(0);
 });
 
-test("un lancement demandé après un arrêt n'est pas annulé par lui", async () => {
+test("a launch requested after a stop is not cancelled by it", async () => {
   const c = await espace();
   const { g } = preparer({ chemins: c });
   await g.arreter("todo");
   expect(await g.lancer("todo")).toMatchObject({ etat: "en-marche" });
 });
 
-/** Promesse résolue par le test. */
+/** Promise resolved by the test. */
 function differe() {
   let resoudre!: () => void;
   const promesse = new Promise<void>((r) => (resoudre = r));
   return { promesse, resoudre };
 }
 
-test("un lancement juste après un arrêt attend la fin du script d'arrêt (qui le tuerait)", async () => {
+test("a launch right after a stop waits for the stop script to end (which would kill it)", async () => {
   const c = await espace();
   const { g, atelier, processus } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["libre", "http", "libre", "http"] }) });
   await g.lancer("todo");
@@ -215,7 +215,7 @@ test("un lancement juste après un arrêt attend la fin du script d'arrêt (qui 
   expect(processus).toHaveLength(2);
 });
 
-test("un lancement pendant le ménage des orphelins attend sa fin", async () => {
+test("a launch during the orphan cleanup waits for its end", async () => {
   const c = await espace();
   const { g, atelier, processus } = preparer({ chemins: c });
   const menage = differe();
@@ -230,7 +230,7 @@ test("un lancement pendant le ménage des orphelins attend sa fin", async () => 
   expect(processus).toHaveLength(1);
 });
 
-test("la surveillance des projets n'attend pas le ménage des orphelins (Docker qui démarre)", async () => {
+test("the project watching does not wait for the orphan cleanup (Docker starting up)", async () => {
   const c = await espace();
   const { g, atelier, etats } = preparer({ chemins: c });
   const menage = differe();
@@ -244,7 +244,7 @@ test("la surveillance des projets n'attend pas le ménage des orphelins (Docker 
   await demarrage;
 });
 
-test("toutArreter annule aussi un lancement en file : rien n'est lancé après", async () => {
+test("toutArreter also cancels a queued launch: nothing is launched after", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, sonder: sondeScriptee({}) });
   const premier = g.lancer("todo");
@@ -258,7 +258,7 @@ test("toutArreter annule aussi un lancement en file : rien n'est lancé après",
   expect(processus[0]!.tue).toBe(true);
 });
 
-test("arrêt de l'appli en marche par sa fin de processus : erreur", async () => {
+test("stop of the running app by its process ending: error", async () => {
   const c = await espace();
   const { g, processus, etats } = preparer({ chemins: c });
   await g.lancer("todo");
@@ -270,7 +270,7 @@ test("arrêt de l'appli en marche par sa fin de processus : erreur", async () =>
   expect(app.port).toBeUndefined();
 });
 
-test("relancer une appli en marche l'arrête d'abord", async () => {
+test("relaunching a running app stops it first", async () => {
   const c = await espace();
   const { g, processus, arrets } = preparer({ chemins: c, sonder: sondeScriptee({ 5280: ["libre", "http", "libre", "http"] }) });
   await g.lancer("todo");
@@ -280,7 +280,7 @@ test("relancer une appli en marche l'arrête d'abord", async () => {
   expect(processus).toHaveLength(2);
 });
 
-test("sans fiche ou dossier inconnu : lancer refuse", async () => {
+test("without a fiche or unknown folder: lancer refuses", async () => {
   const c = await espace({ brut: null });
   const { g, processus } = preparer({ chemins: c });
   await expect(g.lancer("brut")).rejects.toThrow(/sans fiche/);
@@ -289,7 +289,7 @@ test("sans fiche ou dossier inconnu : lancer refuse", async () => {
   expect(await g.liste()).toMatchObject([{ dossier: "brut", type: "sans-fiche", sansFiche: "pas de webaios.json", etat: "arretee" }]);
 });
 
-test("oublier : un projet recréé sous le même nom ne montre plus l'ancienne erreur", async () => {
+test("oublier: a project recreated under the same name no longer shows the old error", async () => {
   const c = await espace();
   const { g } = preparer({ chemins: c, info: { code: 1 } });
   expect(await g.lancer("todo")).toMatchObject({ etat: "erreur" });
@@ -300,14 +300,14 @@ test("oublier : un projet recréé sous le même nom ne montre plus l'ancienne e
   expect(todo!.erreur).toBeUndefined();
 });
 
-test("docker absent : erreur Docker n'est pas lancé", async () => {
+test("docker absent: error Docker n'est pas lancé", async () => {
   const c = await espace();
   const { g, processus } = preparer({ chemins: c, info: { code: 1 } });
   expect(await g.lancer("todo")).toMatchObject({ etat: "erreur", erreur: "Docker n'est pas lancé." });
   expect(processus).toHaveLength(0);
 });
 
-test("conteneur arrêté : preparation puis lancement", async () => {
+test("container stopped: preparation then launch", async () => {
   const c = await espace();
   const { g, atelier, etats } = preparer({ chemins: c, inspect: { code: 0, stdout: "false\n" } });
   const assurer = vi.spyOn(atelier, "assurerDemarre").mockResolvedValue("demarre");
@@ -316,7 +316,7 @@ test("conteneur arrêté : preparation puis lancement", async () => {
   expect(etats).toEqual(["preparation", "lancement", "en-marche"]);
 });
 
-test("demarrer arrête les orphelins WEBAIOS_APP", async () => {
+test("demarrer stops the WEBAIOS_APP orphans", async () => {
   const c = await espace();
   const { g, arrets } = preparer({ chemins: c });
   await g.demarrer();
@@ -324,14 +324,14 @@ test("demarrer arrête les orphelins WEBAIOS_APP", async () => {
   expect(arrets()[0]).toContain("WEBAIOS_APP=.*");
 });
 
-test("demarrer sur un conteneur arrêté : rien à arrêter", async () => {
+test("demarrer on a stopped container: nothing to stop", async () => {
   const c = await espace();
   const { g, arrets } = preparer({ chemins: c, inspect: { code: 0, stdout: "false\n" } });
   await g.demarrer();
   expect(arrets()).toHaveLength(0);
 });
 
-test("toutArreter arrête chaque appli en marche", async () => {
+test("toutArreter stops each running app", async () => {
   const c = await espace({
     todo: '{"type":"application","lancement":"x"}',
     autre: '{"type":"poc","lancement":"y"}',
@@ -345,7 +345,7 @@ test("toutArreter arrête chaque appli en marche", async () => {
   expect((await g.liste()).map((a) => a.etat)).toEqual(["arretee", "arretee"]);
 });
 
-test("journal : les dernières lignes, vide si absent", async () => {
+test("log: the last lines, empty if absent", async () => {
   const c = await espace();
   const { g } = preparer({ chemins: c });
   expect(await g.journal("todo")).toBe("");
@@ -360,14 +360,14 @@ async function ecouter(serveur: Server): Promise<number> {
   return (serveur.address() as AddressInfo).port;
 }
 
-test("sonde par défaut : port fermé → libre", async () => {
+test("default probe: closed port → libre", async () => {
   const serveur = serveurTcp();
   const port = await ecouter(serveur);
   await new Promise((r) => serveur.close(r));
   expect(await sonderParDefaut(port)).toBe("libre");
 });
 
-test("sonde par défaut : connexion acceptée puis coupée (proxy Docker sans serveur) → libre", async () => {
+test("default probe: connection accepted then cut (Docker proxy without a server) → libre", async () => {
   const serveur = serveurTcp((s) => s.resetAndDestroy());
   try {
     expect(await sonderParDefaut(await ecouter(serveur))).toBe("libre");
@@ -376,7 +376,7 @@ test("sonde par défaut : connexion acceptée puis coupée (proxy Docker sans se
   }
 });
 
-test("sonde par défaut : serveur HTTP → http", async () => {
+test("default probe: HTTP server → http", async () => {
   const serveur = serveurHttp((_, res) => res.writeHead(404).end());
   try {
     expect(await sonderParDefaut(await ecouter(serveur))).toBe("http");
@@ -386,7 +386,7 @@ test("sonde par défaut : serveur HTTP → http", async () => {
   }
 });
 
-test("sonde par défaut : connexion acceptée sans réponse en 1 s → occupe", async () => {
+test("default probe: connection accepted without an answer in 1 s → occupe", async () => {
   const sockets: import("node:net").Socket[] = [];
   const serveur = serveurTcp((s) => sockets.push(s));
   try {

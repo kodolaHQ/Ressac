@@ -19,7 +19,7 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
 const SCRIPT = join(MOTEUR, "recolteur.mjs");
 let instant = Date.parse("2026-10-31T10:00:00.000Z");
-// Chaque appel avance d'une seconde : deux exécutions de suite n'ont pas le même id.
+// Each call advances by a second: two runs in a row do not have the same id.
 const horloge = () => new Date((instant += 1000));
 
 const PLAN = {
@@ -29,7 +29,7 @@ const PLAN = {
   ],
 };
 
-/** Un faux Gemma (accès d'une exécution) : `reponse` rend le plan ; ses appels sont comptés. */
+/** A fake Gemma (a run's access): `reponse` returns the plan; its calls are counted. */
 function fauxGemma(reponse: (o?: { signal?: AbortSignal; auDemarrage?: () => void }) => Promise<unknown> = async () => PLAN) {
   const appels: string[] = [];
   const ia: AccesIaExecution & { appels: string[] } = {
@@ -126,7 +126,7 @@ const CODE_GITLAB = `export default async (e, w) => { const p = await w.lirePage
 const accordGitlab = (b: Banc) => accorder(b.dossierActions, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
 
 describe("executerAction", () => {
-  it("action GitLab avec accord : exécution reussie, résultat et plan écrits, statut reussie", async () => {
+  it("GitLab action with a grant: run reussie, result and plan written, status reussie", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB);
     await accordGitlab(b);
     const ia = fauxGemma();
@@ -147,12 +147,12 @@ describe("executerAction", () => {
       vide: false,
     });
     expect(ia.appels).toHaveLength(1);
-    // La consigne de l'action est donnée à Gemma.
+    // The action's instruction is given to Gemma.
     expect(ia.appels[0]).toContain("Les tickets en liste");
     expect(etapes).toEqual(["mise-en-page"]);
   });
 
-  it("sans accord : accord-requis, aucun conteneur lancé, rien écrit", async () => {
+  it("without a grant: accord-requis, no container launched, nothing written", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB);
     const r = await executerAction(options(b, "gitlab"));
     expect(r).toEqual({ statut: "accord-requis", erreur: accordRequisAction(DeclarationAction.parse(GITLAB)), erreurNoyau: true });
@@ -161,7 +161,7 @@ describe("executerAction", () => {
     expect(existsSync(join(b.dossierActions, "gitlab"))).toBe(false);
   });
 
-  it("un accord périmé (domaines changés) est retiré, les données effacées", async () => {
+  it("a stale grant (domains changed) is removed, the data erased", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB);
     await accordGitlab(b);
     const premiere = await executerAction(options(b, "gitlab"));
@@ -172,14 +172,14 @@ describe("executerAction", () => {
     expect(await listerExecutions(join(b.dossierActions, "gitlab"))).toEqual([]);
   });
 
-  it("action inconnue : ACTION_INCONNUE, rien écrit", async () => {
+  it("unknown action: ACTION_INCONNUE, nothing written", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB);
     const r = await executerAction(options(b, "absente"));
     expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_INCONNUE });
     expect(existsSync(join(b.dossierActions, "absente"))).toBe(false);
   });
 
-  it("workflow invalide : statut invalide, rien écrit, aucun conteneur", async () => {
+  it("invalid workflow: invalide status, nothing written, no container", async () => {
     const b = await preparer("cassee", { nom: "C", sources: {} }, `export default async () => 1;`);
     await writeFile(join(b.dossier, "workflow.json"), "{pas du json");
     const r = await executerAction(options(b, "cassee"));
@@ -199,28 +199,28 @@ describe("executerAction", () => {
     expect(b.commandes).toEqual([]);
   });
 
-  it("« clio lyon » arrive dans debut.saisie et dans Execution.saisie", async () => {
+  it("« clio lyon » arrives in debut.saisie and in Execution.saisie", async () => {
     const b = await preparer("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ annonces: [{ titre: w.saisie }] });`);
     const r = await executerAction(options(b, "leboncoin", { saisie: "  clio lyon  " }));
     expect(r.statut).toBe("reussie");
     const e = await lireExecution(join(b.dossierActions, "leboncoin"), r.execution!);
     expect(e?.saisie).toBe("clio lyon");
     const res = await lireResultat(b.dossierActions, "leboncoin", r.execution!);
-    // Le code de l'agent a reçu la saisie (envoyée dans debut).
+    // The agent's code received the input (sent in debut).
     expect(res?.resultats).toEqual({ annonces: [{ titre: "clio lyon" }] });
     expect(res?.saisie).toBe("clio lyon");
-    // Le résumé aussi la porte (menu des résultats précédents de la page de l'action).
+    // The summary carries it too (menu of the previous results on the action's page).
     expect((await listerExecutions(join(b.dossierActions, "leboncoin")))[0]?.saisie).toBe("clio lyon");
   });
 
-  it("une saisie trop longue est coupée à 200 caractères", async () => {
+  it("an input that is too long is cut to 200 characters", async () => {
     const b = await preparer("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ annonces: [{ titre: w.saisie }] });`);
     const r = await executerAction(options(b, "leboncoin", { saisie: "x".repeat(500) }));
     expect(r.statut).toBe("reussie");
     expect((await lireExecution(join(b.dossierActions, "leboncoin"), r.execution!))?.saisie).toBe("x".repeat(200));
   });
 
-  it("résultats vides : résultat vide, Gemma jamais appelée", async () => {
+  it("empty results: empty result, Gemma never called", async () => {
     const b = await preparer("vide", { nom: "V", sources: {} }, `export default async () => ({ tickets: [] });`);
     const ia = fauxGemma();
     const r = await executerAction(options(b, "vide", { ia }));
@@ -239,7 +239,7 @@ describe("executerAction", () => {
     expect(res?.plan?.blocs.length).toBeGreaterThan(0);
   });
 
-  it("la mémoire des blocs est écrite après le résultat ; un échec ne la touche pas", async () => {
+  it("the blocks' memory is written after the result; a failure does not touch it", async () => {
     const b = await preparer("memo", { nom: "M", sources: {} }, `export default async () => 1;`);
     const lignes = (fin: unknown) => [
       { t: "bloc", id: "lire", etape: "debut" },
@@ -257,7 +257,7 @@ describe("executerAction", () => {
     expect((await lireMemoire(join(b.dossierActions, "memo"))).lire).toMatchObject({ valeur: { vu: 1 } });
   });
 
-  it("action supprimée juste avant l'écriture de la mémoire : la mémoire n'est pas écrite", async () => {
+  it("action deleted just before the memory write: the memory is not written", async () => {
     const b = await preparer("memo", { nom: "M", sources: {} }, `export default async () => 1;`);
     const lignes = [
       { t: "bloc", id: "lire", etape: "debut" },
@@ -268,12 +268,12 @@ describe("executerAction", () => {
       { t: "fin", donnees: { tickets: [{ titre: "a" }] } },
     ];
     const dossierDonnees = join(b.dossierActions, "memo");
-    // La mémoire est tenue (comme pendant l'effacement de ses données) : l'exécution attend son tour pour l'écrire.
+    // The memory is held (as during the erasing of its data): the run waits its turn to write it.
     let relacher!: () => void;
     const tenue = avecMemoire(dossierDonnees, () => new Promise<void>((ok) => (relacher = ok)));
     const fin = executerAction(options(b, "memo", { lancer: lanceurLignes(lignes) }));
     await attendreQue(() => existsSync(join(dossierDonnees, "resultats")));
-    // Le temps que la relecture qui suit le résultat passe : l'action est encore là.
+    // The time the re-read that follows the result takes: the action is still there.
     await new Promise((ok) => setTimeout(ok, 200));
     await rm(b.dossier, { recursive: true, force: true });
     relacher();
@@ -284,7 +284,7 @@ describe("executerAction", () => {
     expect(await listerExecutions(dossierDonnees)).toEqual([]);
   });
 
-  it("accord retiré pendant l'exécution : rien ne reste", async () => {
+  it("grant removed during the run: nothing remains", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB, { suspendues: ["https://gitlab.com/tickets"] });
     await accordGitlab(b);
     const fin = executerAction(options(b, "gitlab"));
@@ -298,7 +298,7 @@ describe("executerAction", () => {
     expect(await dernierResultat(b.dossierActions, "gitlab")).toBeNull();
   });
 
-  it("dossier supprimé pendant : rien n'est écrit", async () => {
+  it("folder deleted during: nothing is written", async () => {
     const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
       suspendues: ["https://gitlab.com/tickets"],
     });
@@ -313,12 +313,12 @@ describe("executerAction", () => {
     expect(await listerExecutions(join(b.dossierActions, "public"))).toEqual([]);
   });
 
-  it("dossier des actions introuvable un moment pendant l'exécution : rien n'est écrit, l'historique reste", async () => {
+  it("actions folder missing for a moment during the run: nothing is written, the history stays", async () => {
     const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`);
     const premiere = await executerAction(options(b, "public"));
     expect(premiere.statut).toBe("reussie");
     const avantMemoire = await lireMemoire(join(b.dossierActions, "public"));
-    // Pendant la mise en page de la seconde, le dossier des actions disparaît (volume démonté, renommé…).
+    // During the second one's layout, the actions folder disappears (volume unmounted, renamed…).
     const ailleurs = `${b.c.actions}-ailleurs`;
     const ia = fauxGemma(async () => {
       await rename(b.c.actions, ailleurs);
@@ -332,7 +332,7 @@ describe("executerAction", () => {
     expect(await lireMemoire(join(b.dossierActions, "public"))).toEqual(avantMemoire);
   });
 
-  it("arrêt du noyau pendant la mise en page : exécution interrompue, sans résultat", async () => {
+  it("core stop during the layout: run interrupted, without a result", async () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const arret = new AbortController();
     let quitte = false;
@@ -352,7 +352,7 @@ describe("executerAction", () => {
     expect(await lireResultat(b.dossierActions, "simple", r.execution!)).toBeNull();
   });
 
-  it("signal levé pendant le workflow : interrompue, ACTION_ARRETEE ; pendant la mise en page : reussie avec plan de secours", async () => {
+  it("signal raised during the workflow: interrompue, ACTION_ARRETEE; during the layout: reussie with fallback plan", async () => {
     const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
       suspendues: ["https://gitlab.com/tickets"],
     });
@@ -366,7 +366,7 @@ describe("executerAction", () => {
     expect(e).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE });
     expect(await lireResultat(b.dossierActions, "public", r.execution!)).toBeNull();
 
-    // Pendant la mise en page : Gemma attend, l'arrêt donne la mise en page de secours.
+    // During the layout: Gemma waits, the stop gives the fallback layout.
     const b2 = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const arret2 = new AbortController();
     const ia = fauxGemma(
@@ -381,7 +381,7 @@ describe("executerAction", () => {
     expect((await lireResultat(b2.dossierActions, "simple", r2.execution!))?.secours).toBe(true);
   });
 
-  it("arrêt du noyau (interrompue) : exécution écrite interrompue", async () => {
+  it("core stop (interrompue): written run interrupted", async () => {
     const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
       suspendues: ["https://gitlab.com/tickets"],
     });
@@ -395,16 +395,16 @@ describe("executerAction", () => {
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
   });
 
-  it("les traces du workflow sont relayées", async () => {
+  it("the workflow's traces are relayed", async () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const traces: TraceAction[] = [];
     await executerAction(options(b, "simple", { surTrace: (t) => traces.push(t) }));
     expect(traces).toContainEqual({ bloc: "lire", etape: "debut", type: "code" });
-    // Chaque trace porte le type du bloc : la page de l'action montre son libellé du catalogue.
+    // Each trace carries the block's type: the action's page shows its catalog label.
     expect(traces.every((t) => t.type === (t.bloc === "lire" ? "code" : "sortie"))).toBe(true);
   });
 
-  it("essai : exécution -essai, résultat écrit, ni mémoire ni dernier résultat changés", async () => {
+  it("trial: -essai run, result written, neither memory nor last result changed", async () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const vraie = await executerAction(options(b, "simple"));
     expect(vraie.statut).toBe("reussie");
@@ -420,7 +420,7 @@ describe("executerAction", () => {
     expect(await lireMemoire(join(b.dossierActions, "simple"))).toEqual(memoireAvant);
   });
 
-  it("essai depuis une exécution introuvable : refusé, rien écrit", async () => {
+  it("trial from a missing run: refused, nothing written", async () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const r = await executerAction(options(b, "simple", { declencheur: "rejeu", essai: { origine: "2020-01-01T00-00-00-000Z", depart: "lire" } }));
     expect(r.statut).toBe("invalide");
@@ -428,7 +428,7 @@ describe("executerAction", () => {
   });
 });
 
-/** Un faux conteneur qui écrit ces lignes puis sort avec 0. */
+/** A fake container that writes these lines then exits with 0. */
 function lanceurLignes(lignes: unknown[]): LanceurProcessus {
   return () => {
     const stdout = new PassThrough();

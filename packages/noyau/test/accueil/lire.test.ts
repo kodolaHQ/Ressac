@@ -13,7 +13,7 @@ async function espace() {
   return { c, dossierWidgets };
 }
 
-test("lit les widgets et leur placement depuis disposition.json", async () => {
+test("reads the widgets and their placement from disposition.json", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "a");
   await ecrireWidget(c, "b");
@@ -27,7 +27,7 @@ test("lit les widgets et leur placement depuis disposition.json", async () => {
   ]);
 });
 
-test("un widget sans placement est posé à la première place libre, à sa taille par défaut", async () => {
+test("a widget without a placement is put at the first free spot, at its default size", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "a", declarationWidget({ l: 4, h: 2 }));
   await ecrireWidget(c, "b", declarationWidget({ l: 6, h: 3 }));
@@ -36,10 +36,10 @@ test("un widget sans placement est posé à la première place libre, à sa tail
   const { disposition } = await lireAccueil(c, dossierWidgets);
   expect(disposition).toContainEqual({ id: "a", x: 0, y: 0, l: 4, h: 2 });
   expect(disposition).toContainEqual({ id: "b", x: 4, y: 0, l: 6, h: 3 });
-  expect(disposition).toContainEqual({ id: "c", x: 0, y: 2, l: 3, h: 1 }); // 10 + 3 déborderait : rangée suivante
+  expect(disposition).toContainEqual({ id: "c", x: 0, y: 2, l: 3, h: 1 }); // 10 + 3 would overflow: next row
 });
 
-test("un placement qui chevauche ou déborde est déplacé", async () => {
+test("a placement that overlaps or overflows is moved", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "a");
   await ecrireWidget(c, "b");
@@ -56,7 +56,7 @@ test("un placement qui chevauche ou déborde est déplacé", async () => {
   ]);
 });
 
-test("un widget.json invalide donne un WidgetLu en erreur sans empêcher les autres", async () => {
+test("an invalid widget.json gives a WidgetLu in error without preventing the others", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "casse", "{ pas du json");
   await ecrireWidget(c, "faux", { nom: "", tailles: {} });
@@ -72,7 +72,7 @@ test("un widget.json invalide donne un WidgetLu en erreur sans empêcher les aut
   expect(disposition.map((p) => p.id).sort()).toEqual(["compte-sans-publiques", "ok"]);
 });
 
-test("une disposition de l'ancien format ({ ordre }) est ignorée : tout est replacé", async () => {
+test("a layout in the old format ({ ordre }) is ignored: everything is placed again", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "b", declarationWidget({ l: 6, h: 2 }));
   await ecrireWidget(c, "a", declarationWidget({ l: 6, h: 2 }));
@@ -85,7 +85,7 @@ test("une disposition de l'ancien format ({ ordre }) est ignorée : tout est rep
   expect((await lireAccueil(c, dossierWidgets)).disposition).toHaveLength(2);
 });
 
-test("les données et l'état viennent de dossierWidgets, jamais de l'espace", async () => {
+test("the data and the state come from dossierWidgets, never from the space", async () => {
   const { c, dossierWidgets } = await espace();
   const etat = { statut: "erreur", derniereMaj: null, derniereTentative: "2026-10-28T07:00:00.000Z", erreur: "boum" };
   await ecrireWidget(c, "w", declarationWidget(), { "donnees.json": '{"piege":true}', "etat.json": JSON.stringify({ ...etat, erreur: "piège" }) });
@@ -100,7 +100,7 @@ test("les données et l'état viennent de dossierWidgets, jamais de l'espace", a
   expect("etat" in w1 && w1.etat).toEqual(etat);
 });
 
-test("exemple.json est lu ; aRecolte et aAffichage reflètent les fichiers présents", async () => {
+test("exemple.json is read; aRecolte and aAffichage reflect the files present", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "nu");
   await ecrireWidget(c, "complet", declarationWidget(), { "exemple.json": '{"x":1}', "recolte.mjs": "export default async () => 1", "affichage.html": "<p>a</p>" });
@@ -111,7 +111,7 @@ test("exemple.json est lu ; aRecolte et aAffichage reflètent les fichiers prés
   expect("declaration" in complet && [complet.exemple, complet.aRecolte, complet.aAffichage]).toEqual([{ x: 1 }, true, true]);
 });
 
-test("aRecolte vrai avec workflow.json seul ; aWorkflow le dit", async () => {
+test("aRecolte true with workflow.json alone; aWorkflow says so", async () => {
   const { c, dossierWidgets } = await espace();
   await ecrireWidget(c, "flux", declarationWidget(), { "workflow.json": '{"version":1,"blocs":[]}' });
   await ecrireWidget(c, "ancien", declarationWidget(), { "recolte.mjs": "export default async () => 1" });
@@ -122,7 +122,7 @@ test("aRecolte vrai avec workflow.json seul ; aWorkflow le dit", async () => {
   expect("declaration" in ancien && [ancien.aRecolte, ancien.aWorkflow]).toEqual([true, false]);
 });
 
-test("un widget.json qui est un lien symbolique hors du dossier est refusé", async () => {
+test("a widget.json that is a symbolic link outside the folder is refused", async () => {
   const { c, dossierWidgets } = await espace();
   const dehors = await dossierTemporaire();
   await writeFile(join(dehors, "autre.json"), JSON.stringify(declarationWidget()));

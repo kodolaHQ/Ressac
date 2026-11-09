@@ -20,12 +20,12 @@ const val = (texte: string, r: unknown = racine) => {
   return evaluer(ref, r);
 };
 
-test("compter sur 7 tickets", () => expect(val("compter(tickets)")).toEqual({ valeur: 7 }));
+test("compter on 7 tickets", () => expect(val("compter(tickets)")).toEqual({ valeur: 7 }));
 test("trier desc", () => {
   const r = val('trier(tickets, priorite, "desc")') as { valeur: typeof tickets };
   expect(r.valeur.map((t) => t.priorite)).toEqual(["moyenne", "haute", "haute", "haute", "haute", "haute", "basse"]);
 });
-test("trier est stable et met les absents à la fin", () => {
+test("trier is stable and puts the missing ones at the end", () => {
   const r = val("trier(l, k)", { l: [{ i: 1 }, { i: 2, k: 1 }, { i: 3, k: 1 }, { i: 4, k: 0 }] }) as { valeur: { i: number }[] };
   expect(r.valeur.map((e) => e.i)).toEqual([4, 2, 3, 1]);
   const d = val('trier(l, k, "desc")', { l: [{ i: 1 }, { i: 2, k: 1 }, { i: 3, k: 1 }, { i: 4, k: 0 }] }) as { valeur: { i: number }[] };
@@ -35,16 +35,16 @@ test("garder(filtrer(...), 3)", () => {
   const r = val('garder(filtrer(tickets, priorite = "haute"), 3)') as { valeur: typeof tickets };
   expect(r.valeur.map((t) => t.id)).toEqual([1, 3, 5]);
 });
-test("filtrer < et >", () => {
+test("filtrer < and >", () => {
   expect((val("filtrer(annonces, prix < 8000)") as { valeur: unknown[] }).valeur).toHaveLength(2);
   expect((val("filtrer(annonces, prix > 8000)") as { valeur: unknown[] }).valeur).toHaveLength(2);
 });
-test("filtrer ~ sans accents ni casse", () => {
+test("filtrer ~ ignores accents and case", () => {
   const r = val('filtrer(annonces, titre ~ "clio")') as { valeur: { titre: string }[] };
   expect(r.valeur.map((a) => a.titre)).toEqual(["Renault CLIO", "Clio"]);
   expect((val('filtrer(annonces, titre ~ "megane")') as { valeur: unknown[] }).valeur).toHaveLength(1);
 });
-test("filtrer = mot nu et nombre", () => {
+test("filtrer = bare word and number", () => {
   expect((val("filtrer(tickets, priorite = basse)") as { valeur: unknown[] }).valeur).toHaveLength(1);
   expect((val("filtrer(tickets, id = 4)") as { valeur: unknown[] }).valeur).toHaveLength(1);
 });
@@ -54,23 +54,23 @@ test("regrouper : ordre d'apparition", () => {
   const s = val("regrouper(l, k)", { l: [{ k: 1 }, {}] }) as { valeur: { valeur: string }[] };
   expect(s.valeur.map((g) => g.valeur)).toEqual(["1", "(sans valeur)"]);
 });
-test("$ désigne toute la valeur", () => {
+test("$ designates the whole value", () => {
   expect(val("$", [1, 2])).toEqual({ valeur: [1, 2] });
   expect(val("compter($)", [1, 2])).toEqual({ valeur: 2 });
 });
 test("espaces permis", () => {
   expect(val('  garder ( trier ( tickets , id , "desc" ) , 2 ) ')).toHaveProperty("valeur");
 });
-test("chemin absent : erreur ; chemin imbriqué", () => {
+test("missing path: error; nested path", () => {
   expect(val("nulle.part")).toHaveProperty("erreur");
   expect(val("sans.x")).toEqual({ valeur: 1 });
   expect(val("tickets.0.id")).toEqual({ valeur: 1 });
 });
-test("opérations sur un non-liste : erreur « liste attendue »", () => {
+test("operations on a non-list: error « liste attendue »", () => {
   expect(val("trier(sans, x)")).toEqual({ erreur: expect.stringContaining("liste attendue") });
   expect(val("compter(sans)")).toHaveProperty("erreur");
 });
-test("__proto__ et constructor ne sont jamais lus", () => {
+test("__proto__ and constructor are never read", () => {
   expect(lireChemin({}, "__proto__")).toBeUndefined();
   expect(lireChemin({}, "constructor")).toBeUndefined();
   expect(lireChemin({ a: {} }, "a.constructor.name")).toBeUndefined();
@@ -80,23 +80,23 @@ test("__proto__ et constructor ne sont jamais lus", () => {
   expect(val("filtrer(tickets, __proto__ = x)")).toEqual({ valeur: [] });
   expect(lireChemin(JSON.parse('{"__proto__":{"a":1}}'), "__proto__.a")).toBe(1);
 });
-test("lireChemin : $ est la racine", () => {
+test("lireChemin: $ is the root", () => {
   expect(lireChemin(5, "$")).toBe(5);
 });
-test("clé accentuée lue", () => expect(val("priorité")).toEqual({ valeur: "ok" }));
+test("accented key read", () => expect(val("priorité")).toEqual({ valeur: "ok" }));
 test("MAX_OPERATIONS", () => {
   expect(MAX_OPERATIONS).toBe(4);
   expect(lireReference("garder(garder(garder(garder(t, 5), 5), 5), 5)")).toHaveProperty("ops");
   expect(lireReference("garder(garder(garder(garder(garder(t, 5), 5), 5), 5), 5)")).toHaveProperty("erreur");
 });
-test("garder 0 et 201 refusés, 1 et 200 permis", () => {
+test("garder 0 and 201 refused, 1 and 200 allowed", () => {
   expect(lireReference("garder(t, 0)")).toHaveProperty("erreur");
   expect(lireReference("garder(t, 201)")).toHaveProperty("erreur");
   expect(lireReference("garder(t, 1)")).toHaveProperty("ops");
   expect(lireReference("garder(t, 200)")).toHaveProperty("ops");
   expect(lireReference("garder(t, 1.5)")).toHaveProperty("erreur");
 });
-test("texte de 10 000 caractères refusé", () => {
+test("10,000-character text refused", () => {
   expect(lireReference("a".repeat(10_000))).toHaveProperty("erreur");
   expect(lireReference("a".repeat(300))).toHaveProperty("chemin");
   expect(lireReference("a".repeat(301))).toHaveProperty("erreur");
@@ -107,19 +107,19 @@ test("syntaxe invalide", () => {
     expect(lireReference(t), t).toHaveProperty("erreur");
   }
 });
-test("la ref lue : ops de l'intérieur vers l'extérieur", () => {
+test("the read ref: ops from the inside out", () => {
   expect(lireReference('garder(trier(a.b, k, "desc"), 3)')).toEqual({
     chemin: "a.b", ops: [{ op: "trier", champ: "k", desc: true }, { op: "garder", n: 3 }],
   });
   expect(lireReference("filtrer(t, a.b ~ clio)")).toEqual({ chemin: "t", ops: [{ op: "filtrer", champ: "a.b", comparaison: "~", valeur: "clio" }] });
 });
-test("evaluer ne modifie pas les résultats", () => {
+test("evaluer does not modify the results", () => {
   const copie = structuredClone(racine);
   val('trier(tickets, priorite, "desc")');
   val("regrouper(tickets, projet)");
   expect(racine).toEqual(copie);
 });
-test("10 000 éléments en moins de 50 ms", () => {
+test("10,000 elements in under 50 ms", () => {
   const gros = { l: Array.from({ length: 10_000 }, (_, i) => ({ k: (i * 7919) % 10_000, g: i % 50 })) };
   const ref = lireReference("garder(trier(l, k), 200)");
   if ("erreur" in ref) throw new Error(ref.erreur);
@@ -132,11 +132,11 @@ test("10 000 éléments en moins de 50 ms", () => {
 });
 
 const bloc = (composant = "titre", extra: object = {}) => ({ composant, props: {}, ...extra });
-test("PlanPage : clé inconnue retirée", () => {
+test("PlanPage: unknown key removed", () => {
   const p = PlanPage.parse({ blocs: [{ composant: "titre", props: { texte: "x" }, truc: 1 }], autre: 2 });
   expect(p).toEqual({ blocs: [{ composant: "titre", props: { texte: "x" } }] });
 });
-test("PlanPage : 40 blocs permis, 41 refusés, comptés avec les enfants", () => {
+test("PlanPage: 40 blocks allowed, 41 refused, counted with the children", () => {
   expect(PlanPage.safeParse({ blocs: Array.from({ length: MAX_BLOCS_PAGE }, () => bloc()) }).success).toBe(true);
   expect(PlanPage.safeParse({ blocs: Array.from({ length: 41 }, () => bloc()) }).success).toBe(false);
   expect(PlanPage.safeParse({ blocs: [bloc("groupe", { blocs: Array.from({ length: 40 }, () => bloc()) })] }).success).toBe(false);
@@ -146,7 +146,7 @@ test("PlanPage : profondeur", () => {
   expect(PlanPage.safeParse({ blocs: [bloc("groupe", { blocs: [bloc("colonnes", { gauche: [bloc()], droite: [bloc()] })] })] }).success).toBe(true);
   expect(PlanPage.safeParse({ blocs: [bloc("groupe", { blocs: [bloc("colonnes", { gauche: [bloc("groupe", { blocs: [bloc()] })] })] })] }).success).toBe(false);
 });
-test("PlanPage : composant et props", () => {
+test("PlanPage: component and props", () => {
   expect(PlanPage.safeParse({ blocs: [bloc("Titre")] }).success).toBe(false);
   expect(PlanPage.safeParse({ blocs: [bloc("a".repeat(41))] }).success).toBe(false);
   expect(PlanPage.safeParse({ blocs: [{ composant: "t", props: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, 1])) }] }).success).toBe(false);

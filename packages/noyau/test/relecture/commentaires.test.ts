@@ -15,37 +15,37 @@ function com(debut: number, lignes: Commentaire["lignes"]): Commentaire {
 const L = (marque: " " | "+" | "-", texte: string) => ({ marque, texte });
 
 describe("recoller", () => {
-  test("même contenu, décalé de 5 lignes par un ajout au-dessus : recollé 5 lignes plus bas, ligneChangee faux", () => {
+  test("same content, shifted 5 lines by an addition above: re-attached 5 lines lower, ligneChangee false", () => {
     const blocs = parserDiff(patch(15, ctx(["a", "b", "c"])));
     const r = recoller(com(10, [L(" ", "b"), L(" ", "c")]), blocs);
     expect([r.debut, r.fin, r.ligneChangee]).toEqual([16, 17, false]);
   });
-  test("deux fenêtres identiques : la plus proche de l'ancien début gagne", () => {
+  test("two identical windows: the one closest to the old start wins", () => {
     const blocs = parserDiff(patch(1, ctx(["x", "y", "z", "x", "y"])));
     expect(recoller(com(5, [L(" ", "x"), L(" ", "y")]), blocs).debut).toBe(4);
     expect(recoller(com(1, [L(" ", "x"), L(" ", "y")]), blocs).debut).toBe(1);
   });
-  test("contenu modifié : rattaché à la ligne la plus proche, ligneChangee vrai", () => {
+  test("modified content: attached to the closest line, ligneChangee true", () => {
     const blocs = parserDiff(patch(1, ctx(["a", "b", "c", "d"])));
     const r = recoller(com(3, [L(" ", "autre")]), blocs);
     expect([r.debut, r.fin, r.ligneChangee]).toEqual([3, 3, true]);
   });
-  test("plage de 3 lignes dont une a changé : ramenée à une ligne, ligneChangee vrai", () => {
+  test("3-line range with one changed: brought back to one line, ligneChangee true", () => {
     const blocs = parserDiff(patch(1, ctx(["a", "b", "CHANGE", "d"])));
     const r = recoller(com(1, [L(" ", "a"), L(" ", "b"), L(" ", "c")]), blocs);
     expect([r.debut, r.fin, r.ligneChangee]).toEqual([1, 1, true]);
   });
-  test("commentaire sur une ligne « - » : retrouvé tant que la suppression est affichée", () => {
+  test("comment on a « - » line: found again as long as the deletion is displayed", () => {
     const blocs = parserDiff("@@ -1,3 +1,2 @@\n a\n-b\n c\n");
     const r = recoller(com(2, [L("-", "b")]), blocs);
     expect([r.debut, r.ligneChangee]).toEqual([2, false]);
   });
-  test("fenêtre comparée sur le texte seul : une ligne « + » devenue contexte après relecture est retrouvée, ligneChangee faux", () => {
+  test("window compared on the text alone: a « + » line that became context after a review is found again, ligneChangee false", () => {
     const blocs = parserDiff(patch(20, ctx(["x", "nouveau", "y"])));
     const r = recoller({ ...com(15, [L("+", "nouveau"), L(" ", "y")]), ligneChangee: true }, blocs);
     expect([r.debut, r.fin, r.ligneChangee]).toEqual([21, 22, false]);
   });
-  test("sans aucun bloc : inchangé, ligneChangee vrai", () => {
+  test("without any block: unchanged, ligneChangee true", () => {
     const r = recoller(com(7, [L(" ", "a")]), []);
     expect([r.debut, r.fin, r.ligneChangee]).toEqual([7, 7, true]);
   });
@@ -58,7 +58,7 @@ describe("CommentairesRelecture", () => {
     return { fichier: join(dossier, "p", "x.commentaires.json") };
   }
 
-  test("fichier sans diff (diff null) : le commentaire reste, rattaché au fichier, ligneChangee vrai", async () => {
+  test("file without a diff (diff null): the comment stays, attached to the file, ligneChangee true", async () => {
     const { fichier } = await depot();
     const r = new CommentairesRelecture(fichier);
     await r.ajouter(brut);
@@ -70,13 +70,13 @@ describe("CommentairesRelecture", () => {
     expect(tous).toHaveLength(2);
     expect(tous.find((c) => c.fichier === "autre.txt")!.ligneChangee).toBe(false);
   });
-  test("ajouter refuse un texte vide ou d'espaces avec REMARQUE_VIDE", async () => {
+  test("ajouter refuses an empty or whitespace text with REMARQUE_VIDE", async () => {
     const r = new CommentairesRelecture((await depot()).fichier);
     await expect(r.ajouter({ ...brut, texte: "" })).rejects.toThrow(REMARQUE_VIDE);
     await expect(r.ajouter({ ...brut, texte: "  \n " })).rejects.toThrow(REMARQUE_VIDE);
     expect(await r.liste()).toEqual([]);
   });
-  test("aEnvoyer rend les non résolus, envoyés compris ; après marquerEnvoyes, envoye vrai ; un résolu n'est jamais rendu", async () => {
+  test("aEnvoyer returns the unresolved ones, sent included; after marquerEnvoyes, envoye true; a resolved one is never returned", async () => {
     const r = new CommentairesRelecture((await depot()).fichier);
     const a = await r.ajouter(brut);
     const b = await r.ajouter(brut);
@@ -87,7 +87,7 @@ describe("CommentairesRelecture", () => {
     await r.resoudre(a.id, true);
     expect((await r.aEnvoyer()).map((c) => c.id)).toEqual([b.id]);
   });
-  test("apresRelu supprime les résolus et garde les non résolus", async () => {
+  test("apresRelu deletes the resolved ones and keeps the unresolved ones", async () => {
     const r = new CommentairesRelecture((await depot()).fichier);
     const a = await r.ajouter(brut);
     const b = await r.ajouter(brut);
@@ -95,7 +95,7 @@ describe("CommentairesRelecture", () => {
     await r.apresRelu();
     expect((await r.liste()).map((c) => c.id)).toEqual([b.id]);
   });
-  test("marquerEnvoyesSiInchanges : un commentaire modifié depuis la lecture n'est pas marqué envoyé", async () => {
+  test("marquerEnvoyesSiInchanges: a comment modified since the read is not marked sent", async () => {
     const r = new CommentairesRelecture((await depot()).fichier);
     const a = await r.ajouter(brut);
     const b = await r.ajouter(brut);
@@ -106,7 +106,7 @@ describe("CommentairesRelecture", () => {
     expect(l.find((c) => c.id === a.id)!.envoye).toBe(true);
     expect(l.find((c) => c.id === b.id)).toMatchObject({ envoye: false, texte: "texte changé" });
   });
-  test("modifier et supprimer", async () => {
+  test("modify and delete", async () => {
     const r = new CommentairesRelecture((await depot()).fichier);
     const a = await r.ajouter(brut);
     await r.modifier(a.id, "autre");
@@ -115,7 +115,7 @@ describe("CommentairesRelecture", () => {
     await r.supprimer(a.id);
     expect(await r.liste()).toEqual([]);
   });
-  test("le fichier a le mode 0600 et survit à une relecture du disque", async () => {
+  test("the file has mode 0600 and survives a re-read from disk", async () => {
     const { fichier } = await depot();
     await new CommentairesRelecture(fichier).ajouter(brut);
     expect((await stat(fichier)).mode & 0o777).toBe(0o600);

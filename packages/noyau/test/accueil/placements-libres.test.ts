@@ -11,11 +11,11 @@ async function espace() {
   return c;
 }
 
-test("taillesLibres convertit 3 × 2 unités en 250 ‰ × 180 px", () => {
+test("taillesLibres converts 3 × 2 units to 250 ‰ × 180 px", () => {
   expect(taillesLibres({ l: 3, h: 2 })).toEqual({ l: 250, h: 180 });
 });
 
-test("lireDispositionLibre lit la version 3 et rend [] pour la version 2, un fichier abîmé ou un chevauchement", async () => {
+test("lireDispositionLibre reads version 3 and returns [] for version 2, a damaged file or an overlap", async () => {
   const c = await espace();
   const widgets = [
     { id: "a", x: 0, y: 0, l: 500, h: 90 },
@@ -37,7 +37,7 @@ test("lireDispositionLibre lit la version 3 et rend [] pour la version 2, un fic
   expect(await lireDispositionLibre(c)).toEqual([]);
 });
 
-test("placerManquantsLibre garde un placement voulu valide et ignore un id inconnu ou un doublon", () => {
+test("placerManquantsLibre keeps a valid wanted placement and ignores an unknown id or a duplicate", () => {
   const defauts = new Map([["a", { l: 500, h: 90 }]]);
   const voulus: PlacementLibre[] = [
     { id: "a", x: 500, y: 0, l: 500, h: 90 },
@@ -47,7 +47,7 @@ test("placerManquantsLibre garde un placement voulu valide et ignore un id incon
   expect(placerManquantsLibre(["a"], voulus, defauts)).toEqual([{ id: "a", x: 500, y: 0, l: 500, h: 90 }]);
 });
 
-test("placerManquantsLibre pose les widgets sans position au premier trou, sans chevauchement", () => {
+test("placerManquantsLibre puts widgets without a position at the first gap, without overlap", () => {
   const defauts = new Map([
     ["a", { l: 500, h: 90 }],
     ["b", { l: 500, h: 90 }],
@@ -58,7 +58,7 @@ test("placerManquantsLibre pose les widgets sans position au premier trou, sans 
   ]);
 });
 
-test("placerManquantsLibre place en dessous quand la rangée est pleine", () => {
+test("placerManquantsLibre places below when the row is full", () => {
   const defauts = new Map([
     ["a", { l: 500, h: 90 }],
     ["b", { l: 500, h: 90 }],
@@ -71,8 +71,8 @@ test("placerManquantsLibre place en dessous quand la rangée est pleine", () => 
   ]);
 });
 
-test("placerManquantsLibre pose un widget dans le trou au bord droit d'un voisin", () => {
-  // a = 0…250, b = 500…750 : le trou commence exactement à 250, hors des pas de 8 ‰.
+test("placerManquantsLibre puts a widget in the gap at a neighbor's right edge", () => {
+  // a = 0…250, b = 500…750: the gap starts exactly at 250, off the 8 ‰ steps.
   const defauts = new Map([
     ["a", { l: 250, h: 180 }],
     ["b", { l: 250, h: 180 }],

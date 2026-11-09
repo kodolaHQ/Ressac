@@ -22,7 +22,7 @@ const workflow = (vers: string) => JSON.stringify({
     liens: [{ de: "lire", vers: "sortie" }],
   });
 
-test("deux actions lues, triées ; un action.json abîmé donne une ActionLue en erreur sans gêner l'autre", async () => {
+test("two actions read, sorted; a damaged action.json gives an ActionLue in error without bothering the other", async () => {
   const c = await espace();
   await poser(c, "zebre", { nom: "Z", sources: {} });
   await poser(c, "alpha", "{pas du json");
@@ -40,7 +40,7 @@ test("deux actions lues, triées ; un action.json abîmé donne une ActionLue en
   expect(await lireAction(c, "../x")).toBeNull();
 });
 
-test("un dossier lien symbolique, caché ou au nom invalide est ignoré", async () => {
+test("a symbolic-link, hidden or invalidly named folder is ignored", async () => {
   const c = await espace();
   await poser(c, "bonne", { nom: "B", sources: {} });
   await poser(c, ".cachee", { nom: "C", sources: {} });
@@ -53,7 +53,7 @@ test("un dossier lien symbolique, caché ou au nom invalide est ignoré", async 
   expect(await lireAction(c, "lien")).toBeNull();
 });
 
-test("action.json de plus de 64 Ko ou lien symbolique : erreur", async () => {
+test("action.json over 64 KB or symbolic link: error", async () => {
   const c = await espace();
   await poser(c, "grosse", JSON.stringify({ nom: "G", sources: {}, description: "x".repeat(70 * 1024) }));
   const [a] = await lireActions(c);

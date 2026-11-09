@@ -5,19 +5,19 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { lireTheme } from "../../src/accueil/theme.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-test("lireTheme rend theme null sans fichier", async () => {
+test("lireTheme returns theme null without a file", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   expect(await lireTheme(c)).toEqual({ theme: null });
 });
 
-test("un thème valide est rendu tel quel", async () => {
+test("a valid theme is returned as is", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });
   await writeFile(join(c.accueil, "theme.json"), '{"version":1,"fond":"#101014","rayon":6,"police":"serif"}');
   expect(await lireTheme(c)).toEqual({ theme: { version: 1, fond: "#101014", rayon: 6, police: "serif" } });
 });
 
-test("une couleur non hexadécimale, un rayon de 25 ou une police inconnue : thème null et l'erreur", async () => {
+test("a non-hexadecimal color, a radius of 25 or an unknown font: theme null and the error", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });
   for (const invalide of ['{"version":1,"fond":"rouge"}', '{"version":1,"rayon":25}', '{"version":1,"police":"comic"}']) {
@@ -28,7 +28,7 @@ test("une couleur non hexadécimale, un rayon de 25 ou une police inconnue : th�
   }
 });
 
-test("une clé inconnue : thème null et l'erreur", async () => {
+test("an unknown key: theme null and the error", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });
   await writeFile(join(c.accueil, "theme.json"), '{"version":1,"inconnu":1}');
@@ -37,7 +37,7 @@ test("une clé inconnue : thème null et l'erreur", async () => {
   expect(erreur).toContain("theme.json invalide :");
 });
 
-test("un fichier illisible laisse le fichier intact", async () => {
+test("an unreadable file leaves the file intact", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });
   const contenu = '{"version":1,"fond":';

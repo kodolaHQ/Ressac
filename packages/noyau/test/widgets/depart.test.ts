@@ -15,8 +15,8 @@ type Appel = { t: "appel"; n: number; f: string; a: any };
 type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /**
- * Lance un modèle comme le noyau : workflow.json lu et validé par lireWorkflow, config de widget.json dans `debut`,
- * puis la mémoire. `modifier` change la copie du workflow.json avant la lecture.
+ * Launches a template like the core: workflow.json read and validated by lireWorkflow, widget.json config in `debut`,
+ * then the memory. `modifier` changes the workflow.json copy before the read.
  */
 async function lancer(
   id: string,
@@ -70,15 +70,15 @@ async function lancer(
 const rss = (items: { titre: string; url: string }[]) =>
   `<?xml version="1.0"?><rss><channel>${items.map((i) => `<item><title>${i.titre}</title><link>${i.url}</link></item>`).join("")}</channel></rss>`;
 
-describe("widgets de départ", () => {
-  it("les modèles sont des workflows, sans recolte.mjs", () => {
+describe("starter widgets", () => {
+  it("the templates are workflows, without recolte.mjs", () => {
     for (const id of ["meteo", "actus-tech", "daily-dev"]) {
       expect(existsSync(join(MODELES, id, "workflow.json")), id).toBe(true);
       expect(existsSync(join(MODELES, id, "recolte.mjs")), id).toBe(false);
     }
   });
 
-  it("meteo sans ville rend { ville: null } sans appel ; avec Bordeaux rend actuel, 12 heures et 5 jours", async () => {
+  it("meteo without a city returns { ville: null } without a call; with Bordeaux returns actuel, 12 hours and 5 days", async () => {
     const sans = await lancer("meteo", () => ({ erreur: "ne devrait rien appeler" }));
     expect(sans.terminal).toEqual({ t: "fin", donnees: { ville: null } });
     expect(sans.appels).toHaveLength(0);
@@ -117,7 +117,7 @@ describe("widgets de départ", () => {
     expect(d.jours).toHaveLength(5);
     expect(d.jours[1]).toEqual({ date: "2026-10-29", min: 10, max: 16, code: 61, libelle: "Pluie faible" });
 
-    // Une ville en espaces seulement : comme sans ville, aucun appel. Une ville entourée d'espaces est rognée.
+    // A city of spaces only: like without a city, no call. A city surrounded by spaces is trimmed.
     const blanche = await lancer("meteo", () => ({ erreur: "ne devrait rien appeler" }), { config: { ville: "  " } });
     expect(blanche.terminal).toEqual({ t: "fin", donnees: { ville: null } });
     expect(blanche.appels).toHaveLength(0);
@@ -136,7 +136,7 @@ describe("widgets de départ", () => {
     "https://next.ink/feed/": rss([]),
   };
 
-  it("actus-tech dédoublonne, trie par Kev, garde 15 articles, résume les 8 premiers et réutilise les résumés de la mémoire", async () => {
+  it("actus-tech dedupes, sorts by Kev, keeps 15 articles, summarizes the first 8 and reuses the summaries from memory", async () => {
     const repondre: Repondeur = (a) => {
       if (a.f === "recuperer") return flux[a.a.url] !== undefined ? { ok: flux[a.a.url] } : { erreur: "inconnu" };
       if (a.f === "kev") {
@@ -156,7 +156,7 @@ describe("widgets de départ", () => {
     expect(Object.keys(arts[0])).toEqual(["titre", "url", "source", "p", "resume"]);
     expect(Object.keys(arts[8])).toEqual(["titre", "url", "source", "p"]);
     expect(arts[1]).toMatchObject({ titre: "Lobsters 1", p: 0.89 });
-    // doublons : un seul « doublon » et « HN 3 » une fois
+    // duplicates: a single « doublon » and « HN 3 » once
     expect(arts.filter((x: any) => x.titre === "HN 3")).toHaveLength(1);
     const kevs = r.appels.filter((a) => a.f === "kev");
     expect(kevs[0]!.a.questions.q.instructions).toBe(
@@ -171,19 +171,19 @@ describe("widgets de départ", () => {
     const g = gemmas.find((a) => a.a.prompt.includes("Titre : Lobsters 0"))!;
     expect(g.a.prompt.length).toBeLessThan(13000);
     expect(g.a.prompt.startsWith("Résume en français, en 2 phrases au plus, le contenu de la page ci-dessous. Réponds uniquement par le résumé.\n\nTitre : Lobsters 0\n\n--- DÉBUT DU CONTENU ---\ncontenu ")).toBe(true);
-    expect(g.a.prompt.split(CADRE)).toHaveLength(2); // la phrase de cadre une seule fois
+    expect(g.a.prompt.split(CADRE)).toHaveLength(2); // the framing sentence only once
     const lp = r.appels.filter((a) => a.f === "lirePage");
     expect(lp).toHaveLength(8);
     expect(lp.every((a) => a.a.compte === undefined || a.a.compte === false)).toBe(true);
 
-    // Deuxième récolte avec la mémoire de la première : les résumés sont repris par URL, sans Gemma.
+    // Second harvest with the first one's memory: the summaries are reused by URL, without Gemma.
     const deux = await lancer("actus-tech", repondre, { memoire: r.memoire });
     expect(deux.terminal.t).toBe("fin");
     expect(deux.appels.filter((a) => a.f === "gemma")).toHaveLength(0);
     expect(deux.terminal.donnees).toEqual(r.terminal.donnees);
   });
 
-  it("actus-tech résume deux articles à la fois et s'arrête quand le temps des résumés est écoulé", async () => {
+  it("actus-tech summarizes two articles at a time and stops when the summary time is up", async () => {
     let enVol = 0;
     let max = 0;
     const r = await lancer(
@@ -204,21 +204,21 @@ describe("widgets de départ", () => {
     );
     expect(r.terminal.t).toBe("fin");
     expect(max).toBe(2);
-    // La première paire finit après le budget : aucune autre n'est commencée.
+    // The first pair ends after the budget: no other is started.
     expect(r.appels.filter((a) => a.f === "gemma")).toHaveLength(2);
     expect(r.terminal.donnees.articles).toHaveLength(15);
     expect(r.terminal.donnees.articles.filter((x: any) => x.resume)).toHaveLength(2);
     expect(r.finBloc("resumes").statut).toBe("partiel");
   });
 
-  it("actus-tech : une source en échec n'empêche pas les autres", async () => {
+  it("actus-tech: a failing source does not prevent the others", async () => {
     const r = await lancer("actus-tech", (a) => {
       if (a.f === "recuperer") {
         if (a.a.url.includes("lobste.rs")) return { erreur: "hors ligne" };
         return { ok: flux[a.a.url]! };
       }
       if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
-      return { erreur: "pas de page" }; // les résumés échouent : sautés
+      return { erreur: "pas de page" }; // the summaries fail: skipped
     });
     expect(r.terminal.t).toBe("fin");
     const arts = r.terminal.donnees.articles;
@@ -228,13 +228,13 @@ describe("widgets de départ", () => {
     expect(r.finBloc("flux").statut).toBe("partiel");
   });
 
-  it("actus-tech : des flux lus mais sans aucun article, échec « Aucun article récupéré »", async () => {
+  it("actus-tech: feeds read but without any article, failure « Aucun article récupéré »", async () => {
     const r = await lancer("actus-tech", (a) => (a.f === "recuperer" ? { ok: rss([]) } : { erreur: "?" }));
     expect(r.terminal).toEqual({ t: "echec", erreur: "Aucun article récupéré" });
     expect(r.appels.every((a) => a.f === "recuperer")).toBe(true);
   });
 
-  it("actus-tech : Gemma en panne, les articles restent, sans résumé", async () => {
+  it("actus-tech: Gemma down, the articles stay, without a summary", async () => {
     const r = await lancer("actus-tech", (a) => {
       if (a.f === "recuperer") return { ok: flux[a.a.url]! };
       if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
@@ -246,7 +246,7 @@ describe("widgets de départ", () => {
     expect(r.terminal.donnees.articles.every((x: any) => x.resume === undefined)).toBe(true);
   });
 
-  it("actus-tech : une note de Kev manquante saute l'article, pas le widget", async () => {
+  it("actus-tech: a missing note from Kev skips the article, not the widget", async () => {
     const r = await lancer("actus-tech", (a) => {
       if (a.f === "recuperer") return { ok: flux[a.a.url]! };
       if (a.f === "kev") return a.a.state.includes("HN 2") ? { ok: {} } : { ok: { q: { type: "noul", noul: 0.9 } } };
@@ -259,7 +259,7 @@ describe("widgets de départ", () => {
     expect(r.terminal.donnees.articles.some((x: any) => x.titre === "HN 2")).toBe(false);
   });
 
-  it("actus-tech échoue clairement quand Kev ne note rien", async () => {
+  it("actus-tech fails clearly when Kev scores nothing", async () => {
     const r = await lancer("actus-tech", (a) => {
       if (a.f === "recuperer") return { ok: flux[a.a.url]! };
       if (a.f === "kev") return { ok: {} };
@@ -269,7 +269,7 @@ describe("widgets de départ", () => {
     expect(r.appels.some((a) => a.f === "lirePage" || a.f === "gemma")).toBe(false);
   });
 
-  it("daily-dev lit avec le compte, ne garde que les /posts/, et échoue avec le message de connexion si aucun post", async () => {
+  it("daily-dev reads with the account, keeps only the /posts/, and fails with the login message if no post", async () => {
     const liens = [
       { texte: "Un article suffisamment long sur Svelte", url: "https://app.daily.dev/posts/abc" },
       { texte: "Court", url: "https://app.daily.dev/posts/court" },
@@ -280,7 +280,7 @@ describe("widgets de départ", () => {
     ];
     const r = await lancer("daily-dev", (a) => {
       if (a.f === "lirePage" && a.a.compte) return { ok: { url: "https://app.daily.dev/", titre: "d", texte: "", liens } };
-      // Redirigée hors app.daily.dev : le noyau refuse la page (règle des domaines), comme verifierPage.
+      // Redirected outside app.daily.dev: the core refuses the page (domain rule), like verifierPage.
       if (a.f === "lirePage" && a.a.url.endsWith("/abc")) return { erreur: "Page refusée : elle a mené hors des domaines permis (evil.example)" };
       if (a.f === "lirePage") return { ok: { url: a.a.url, titre: "x", texte: "contenu", liens: [] } };
       if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };
@@ -288,7 +288,7 @@ describe("widgets de départ", () => {
       return { erreur: "?" };
     });
     expect(r.appels[0]).toMatchObject({ f: "lirePage", a: { url: "https://app.daily.dev/", compte: true } });
-    // Les posts sont lus sans le compte, comme aujourd'hui.
+    // The posts are read without the account, as today.
     expect(r.appels.filter((a) => a.f === "lirePage").slice(1).every((a) => a.a.compte === undefined || a.a.compte === false)).toBe(true);
     expect(r.terminal.t).toBe("fin");
     const arts = r.terminal.donnees.articles;
@@ -302,7 +302,7 @@ describe("widgets de départ", () => {
     expect(vide.terminal).toEqual({ t: "echec", erreur: "Aucun article trouvé : es-tu connecté à daily.dev dans ce profil ?" });
   });
 
-  it("daily-dev garde 12 articles et résume les 6 premiers", async () => {
+  it("daily-dev keeps 12 articles and summarizes the first 6", async () => {
     const liens = Array.from({ length: 20 }, (_, i) => ({ texte: `Article numéro ${String(i).padStart(2, "0")} assez long`, url: `https://app.daily.dev/posts/p${i}` }));
     const repondre: Repondeur = (a) => {
       if (a.f === "lirePage" && a.a.compte) return { ok: { url: "https://app.daily.dev/", titre: "d", texte: "", liens } };

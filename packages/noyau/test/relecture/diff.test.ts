@@ -20,7 +20,7 @@ const patch = [
 ].join("\n");
 
 describe("parserDiff", () => {
-  test("patch à deux blocs : débuts, nombres, marques et numéros ancien/nouveau de chaque ligne", () => {
+  test("two-block patch: starts, counts, marks and old/new numbers of each line", () => {
     const blocs = parserDiff(patch);
     expect(blocs).toHaveLength(2);
     expect(blocs[0]).toMatchObject({ ancienDebut: 1, ancienNombre: 3, nouveauDebut: 1, nouveauNombre: 3 });
@@ -33,14 +33,14 @@ describe("parserDiff", () => {
     expect(blocs[1]).toMatchObject({ ancienDebut: 10, ancienNombre: 2, nouveauDebut: 10, nouveauNombre: 3 });
     expect(blocs[1]!.lignes.map((l) => [l.marque, l.ancien, l.nouveau])).toEqual([[" ", 10, 10], ["+", null, 11], [" ", 11, 12]]);
   });
-  test("une ligne « \\ No newline at end of file » n'est pas une ligne", () => {
+  test("a « \\ No newline at end of file » line is not a line", () => {
     expect(parserDiff(patch)[1]!.lignes).toHaveLength(3);
   });
-  test("en-tête sans nombre : « @@ -5 +5,0 @@ »", () => {
+  test("header without a count: « @@ -5 +5,0 @@ »", () => {
     const b = parserDiff("@@ -5 +4,0 @@\n-x\n")[0]!;
     expect(b).toMatchObject({ ancienDebut: 5, ancienNombre: 1, nouveauDebut: 4, nouveauNombre: 0 });
   });
-  test("positionNouvelle d'une ligne supprimée = numéro de la ligne nouvelle qui suit", () => {
+  test("positionNouvelle of a deleted line = number of the new line that follows", () => {
     const b = parserDiff(patch)[0]!;
     expect(positionNouvelle(b, 1)).toBe(2);
     expect(positionNouvelle(b, 2)).toBe(2);

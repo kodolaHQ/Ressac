@@ -9,7 +9,7 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 const base = declarationWidget();
 const avecRecolte = (recolte: unknown) => DeclarationWidget.safeParse({ ...base, recolte });
 
-test("web avec un compte est refusé avec WEB_AVEC_COMPTE ; lireAccueil montre le widget en erreur avec ce texte", async () => {
+test("web with an account is refused with WEB_AVEC_COMPTE; lireAccueil shows the widget in error with that text", async () => {
   const r = DeclarationWidget.safeParse({ ...base, sources: { compte: ["mail.test"], publiques: [], web: true } });
   expect(r.success).toBe(false);
   if (!r.success) {
@@ -24,14 +24,14 @@ test("web avec un compte est refusé avec WEB_AVEC_COMPTE ; lireAccueil montre l
   expect("erreur" in w && w.erreur).toContain(WEB_AVEC_COMPTE);
 });
 
-test("web sans compte est accepté ; sans web, sources.web vaut false", () => {
+test("web without an account is accepted; without web, sources.web is false", () => {
   const avec = DeclarationWidget.parse({ ...base, sources: { web: true } });
   expect(avec.sources).toEqual({ compte: [], publiques: [], web: true });
   expect(DeclarationWidget.parse(base).sources.web).toBe(false);
   expect(DeclarationWidget.parse({ ...base, sources: { publiques: ["a.test"] } }).sources).toEqual({ compte: [], publiques: ["a.test"], web: false });
 });
 
-test("recolte accepte heures seules, minutes seules, les deux ; refuse ni l'un ni l'autre, formats et bornes invalides", () => {
+test("recolte accepts hours alone, minutes alone, both; refuses neither, invalid formats and bounds", () => {
   expect(avecRecolte({ heures: ["07:00", "18:30"] }).success).toBe(true);
   expect(avecRecolte({ minutes: 60 }).success).toBe(true);
   expect(avecRecolte({ minutes: 60, heures: ["07:00"], dureeMaxMinutes: 30, notifier: true }).success).toBe(true);
@@ -50,7 +50,7 @@ test("recolte accepte heures seules, minutes seules, les deux ; refuse ni l'un n
   expect(avecRecolte({ minutes: 60, dureeMaxMinutes: 60 }).success).toBe(true);
 });
 
-test("le widget.json du Gmail (compte, publiques, recolte.minutes, sans web) se lit exactement comme avant", () => {
+test("the Gmail widget.json (account, public ones, recolte.minutes, without web) reads exactly as before", () => {
   const gmail = { ...base, sources: { compte: ["mail.google.com"], publiques: ["fonts.gstatic.com"] }, recolte: { minutes: 30 } };
   expect(DeclarationWidget.parse(gmail)).toEqual({
     nom: base.nom,

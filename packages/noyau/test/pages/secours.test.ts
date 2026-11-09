@@ -16,13 +16,13 @@ const valide = (r: unknown) => validerPlan(miseEnPageSecours(r), { catalogue: CO
 const composants = (r: unknown) => miseEnPageSecours(r).blocs.map((b) => b.composant);
 
 describe("miseEnPageSecours", () => {
-  it("liste d'annonces avec photo https…jpg : cartes", () => {
+  it("list of listings with https…jpg photo: cards", () => {
     const plan = miseEnPageSecours(annonces);
     expect(plan.blocs).toHaveLength(1);
     expect(plan.blocs[0]).toMatchObject({ composant: "cartes", props: { elements: "$", titre: "titre", image: "photo", lien: "lien" } });
   });
 
-  it("une image reconnue à son adresse, sans champ nommé image", () => {
+  it("an image recognized by its address, without a field named image", () => {
     const r = [{ nom: "A", visuel: "https://x.fr/a.png", a: 1 }];
     expect(miseEnPageSecours(r).blocs[0]).toMatchObject({ composant: "cartes", props: { image: "visuel" } });
   });
@@ -33,12 +33,12 @@ describe("miseEnPageSecours", () => {
     expect((plan.blocs[0]!.props.colonnes as unknown[]).length).toBe(3);
   });
 
-  it("le tableau garde les 6 premiers champs simples", () => {
+  it("the table keeps the first 6 simple fields", () => {
     const r = [{ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: { x: 1 } }];
     expect((miseEnPageSecours(r).blocs[0]!.props.colonnes as unknown[]).length).toBe(6);
   });
 
-  it("liste de textes : étiquettes", () => {
+  it("list of texts: labels", () => {
     expect(composants(["a", "b"])).toEqual(["etiquettes"]);
   });
 
@@ -59,7 +59,7 @@ describe("miseEnPageSecours", () => {
     expect(miseEnPageSecours(42).blocs[0]).toMatchObject({ composant: "chiffre", props: { valeur: "$" } });
   });
 
-  it("chaque secours passe validerPlan", () => {
+  it("each fallback passes validerPlan", () => {
     const cas: unknown[] = [
       annonces, tickets, ["a", "b"], "texte", 7, { total: 3, tickets }, { projet: { nom: "W" }, annonces, tags: ["x"], texte: "t", n: 0, ok: true },
       { "clé-bizarre": 1, tickets }, [1, 2, 3], JSON.parse('{"__proto__": {"a": 1}, "n": 2}'),
@@ -72,7 +72,7 @@ describe("miseEnPageSecours", () => {
   });
 });
 
-describe("secours : jamais de page vide quand il y a des résultats", () => {
+describe("fallback: never an empty page when there are results", () => {
   const cas: [string, unknown][] = [
     ["clé non écrivable", { "clé-x": 1 }],
     ["liste sous une clé non écrivable", { "a-b": [{ "x-y": 1 }] }],
@@ -81,7 +81,7 @@ describe("secours : jamais de page vide quand il y a des résultats", () => {
     ["liste de listes", [[1, 2], [3]]],
   ];
   for (const [nom, r] of cas) {
-    it(`${nom} : valide et visible`, () => {
+    it(`${nom}: valid and visible`, () => {
       const plan = miseEnPageSecours(r);
       expect(plan.blocs.some((b) => b.composant !== "titre")).toBe(true);
       expect(validerPlan(plan, { catalogue: COMPOSANTS_INTEGRES, resultats: r }).ok).toBe(true);
@@ -96,7 +96,7 @@ describe("secours : jamais de page vide quand il y a des résultats", () => {
     });
   }
 
-  it("un paragraphe de dernier recours borne le texte", () => {
+  it("a last-resort paragraph bounds the text", () => {
     const r = { a: { b: "x".repeat(10_000) } };
     const page = resoudrePage(miseEnPageSecours(r), r, { compte: false, catalogue: COMPOSANTS_INTEGRES, secours: true });
     const t = (page.blocs[0] as unknown as { props: { texte: string } }).props.texte;

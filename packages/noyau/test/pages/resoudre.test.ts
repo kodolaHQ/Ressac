@@ -34,14 +34,14 @@ const rendre = (blocs: BlocPlan[], o: { compte?: boolean; secours?: boolean; r?:
 const un = (bloc: BlocPlan, o?: Parameters<typeof rendre>[1]) => rendre([bloc], o).blocs[0] as BlocRendu & { props: Record<string, any> };
 
 describe("resoudrePage", () => {
-  it("lien dont l'url est dans les résultats : url gardée", () => {
+  it("link whose url is in the results: url kept", () => {
     const b = un({ composant: "lien", props: { objet: "projet", url: "url", champTexte: "nom" } });
     expect(b).toEqual({ composant: "lien", props: { lien: { texte: "WebAiOs", url: "https://gitlab.com/p" } } });
     const t = un({ composant: "lien", props: { objet: "projet", url: "url", texte: "Le projet" } });
     expect(t.props.lien).toEqual({ texte: "Le projet", url: "https://gitlab.com/p" });
   });
 
-  it("lien littéral écrit par Gemma : propriété refusée à la validation", () => {
+  it("literal link written by Gemma: property refused at validation", () => {
     for (const url of ["https://tiers.example/?d=x", '"https://tiers.example/?d=" + nom', "javascript:alert(1)"]) {
       const r = validerPlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue, resultats });
       expect(r.ok).toBe(true);
@@ -59,15 +59,15 @@ describe("resoudrePage", () => {
     expect(b.props.elements.map((l: any) => l.lien.texte)).toEqual(resultats.projet.pieges);
   });
 
-  it("une url absente des résultats (lue ailleurs) : url null", () => {
+  it("a url absent from the results (read elsewhere): url null", () => {
     const valeurs = { o: { u: "https://tiers.example/" } };
-    // La même chaîne n'est « présente » que si elle figure parmi les chaînes des résultats passés : ici oui.
+    // The same string is only « present » if it is among the strings of the results passed: here yes.
     expect(un({ composant: "lien", props: { objet: "o", url: "u" } }, { r: valeurs }).props.lien.url).toBe("https://tiers.example/");
-    // Un nombre ou un objet n'est pas une adresse.
+    // A number or an object is not an address.
     expect(un({ composant: "lien", props: { objet: "o", url: "u" } }, { r: { o: { u: 3 } } }).props.lien.url).toBeNull();
   });
 
-  it("image https d'une action sans compte : { url } ; avec compte : neutre ; en http : null", () => {
+  it("https image of an action without an account: { url }; with an account: neutral; over http: null", () => {
     const carte = { composant: "cartes", props: { elements: "annonces", titre: "titre", image: "photo" } };
     const sans = un(carte).props.elements.map((c: any) => c.image);
     expect(sans).toEqual([{ url: "https://img.example/clio.jpg" }, null, null]);
@@ -84,7 +84,7 @@ describe("resoudrePage", () => {
     expect(l.props.elements[0].titre).toBe(html);
   });
 
-  it("10 000 tickets dans un tableau : 200 lignes, coupes 9800", () => {
+  it("10,000 tickets in a table: 200 rows, cuts 9800", () => {
     const tickets = Array.from({ length: 10_000 }, (_, i) => ({ id: i, titre: `t${i}`, url: `https://gitlab.com/t/${i}` }));
     const page = rendre([{ composant: "tableau", props: { elements: "tickets", colonnes: [{ champ: "id", libelle: "N°" }, { champ: "titre", libelle: "Titre" }], lien: "url" } }], { r: { tickets } });
     const b = page.blocs[0] as BlocRendu & { props: Record<string, any> };
@@ -96,7 +96,7 @@ describe("resoudrePage", () => {
     expect(b.props.elements[199].valeurs.id).toBe(fr.format(199));
   });
 
-  it("regrouper donné à cartes : une section par valeur", () => {
+  it("regrouper given to cards: one section per value", () => {
     const b = un({ composant: "cartes", props: { elements: "regrouper(annonces, marque)", titre: "titre", valeur: "prix", etiquettes: "tags" } });
     expect(b.props.elements).toBeUndefined();
     expect(b.props.groupes.map((g: any) => [g.valeur, g.elements.map((c: any) => c.titre)])).toEqual([["Renault", ["Clio", "Mégane"]], ["Peugeot", ["208"]]]);
@@ -105,21 +105,21 @@ describe("resoudrePage", () => {
     expect(b.props.autres).toBe(0);
   });
 
-  it("regrouper coupé : 200 éléments au total, le reste compté", () => {
+  it("regrouper cut: 200 elements in total, the rest counted", () => {
     const l = Array.from({ length: 300 }, (_, i) => ({ t: `e${i}`, k: i % 2 ? "a" : "b" }));
     const b = un({ composant: "liste", props: { elements: "regrouper(l, k)", titre: "t" } }, { r: { l } });
     expect(b.props.groupes.reduce((n: number, g: any) => n + g.elements.length, 0)).toBe(ELEMENTS_MAX);
     expect(b.props.autres).toBe(100);
   });
 
-  it("composant de l'agent : reference évaluée, champ transmis par son nom", () => {
+  it("agent component: reference evaluated, field passed by its name", () => {
     const b = un({ composant: "graphique-barres", props: { donnees: 'filtrer(annonces, marque = "Renault")', etiquette: "titre", titre: "Prix", max: 20000, empile: true } });
     expect(b.composant).toBe("graphique-barres");
     expect(b.props.donnees.map((a: any) => a.titre)).toEqual(["Clio", "Mégane"]);
     expect(b.props).toMatchObject({ etiquette: "titre", titre: "Prix", max: 20000, empile: true });
   });
 
-  it("composant de l'agent : valeur bornée (listes à 200, textes coupés)", () => {
+  it("agent component: bounded value (lists to 200, texts cut)", () => {
     const l = Array.from({ length: 250 }, () => "x".repeat(TEXTE_MAX + 50));
     const page = rendre([{ composant: "graphique-barres", props: { donnees: "l" } }], { r: { l } });
     const b = page.blocs[0] as BlocRendu & { props: Record<string, any> };
@@ -128,13 +128,13 @@ describe("resoudrePage", () => {
     expect(page.coupes).toBe(50);
   });
 
-  it("composant absent du catalogue : encadré d'erreur, le reste s'affiche", () => {
+  it("component missing from the catalog: error callout, the rest displays", () => {
     const page = rendre([{ composant: "camembert", props: { donnees: "annonces" } }, { composant: "titre", props: { texte: "Après" } }]);
     expect(page.blocs).toEqual([{ composant: "erreur", message: COMPOSANT_INDISPONIBLE("camembert") }, { composant: "titre", props: { texte: "Après" } }]);
     expect(COMPOSANT_INDISPONIBLE("camembert")).toBe("Composant indisponible : camembert");
   });
 
-  it("textes : nombres en fr-FR, longs coupés à TEXTE_MAX, valeurs simples", () => {
+  it("texts: numbers in fr-FR, long ones cut to TEXTE_MAX, simple values", () => {
     expect(un({ composant: "chiffre", props: { valeur: "projet.total", libelle: "Total" } }).props).toEqual({ valeur: fr.format(1234.5), libelle: "Total" });
     expect(un({ composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }).props.valeur).toBe("3");
     const long = un({ composant: "paragraphe", props: { valeur: "t" } }, { r: { t: "a".repeat(100_000) } });
@@ -142,7 +142,7 @@ describe("resoudrePage", () => {
     expect(long.props.texte.endsWith("…")).toBe(true);
   });
 
-  it("chaque composant intégré se résout", () => {
+  it("each built-in component resolves", () => {
     const page = rendre([
       { composant: "titre", props: { texte: "T" } },
       { composant: "paragraphe", props: { texte: "P" } },
@@ -167,21 +167,21 @@ describe("resoudrePage", () => {
     expect(page).toMatchObject({ secours: false, vide: false, coupes: 0 });
   });
 
-  it("une référence qui ne s'évalue plus (plan enregistré, résultats autres) : encadré d'erreur, pas d'exception", () => {
+  it("a reference that no longer evaluates (saved plan, other results): error callout, no exception", () => {
     const page = rendre([{ composant: "liste", props: { elements: "disparu", titre: "t" } }, { composant: "titre", props: { texte: "ok" } }]);
     expect(page.blocs[0]).toMatchObject({ composant: "erreur" });
     expect((page.blocs[0] as { message: string }).message).not.toContain("disparu");
     expect(page.blocs[1]).toEqual({ composant: "titre", props: { texte: "ok" } });
   });
 
-  it("secours et vide", () => {
+  it("fallback and empty", () => {
     expect(rendre([{ composant: "titre", props: { texte: "x" } }], { secours: true }).secours).toBe(true);
     expect(rendre([{ composant: "titre", props: { texte: "x" } }], { r: [] }).vide).toBe(true);
     expect(rendre([{ composant: "titre", props: { texte: "x" } }], { r: { tickets: [] } }).vide).toBe(true);
     expect(rendre([{ composant: "titre", props: { texte: "x" } }], { r: { total: 0 } }).vide).toBe(false);
   });
 
-  it("plan abîmé (pas de liste de blocs, imbrication trop profonde) : pas d'exception", () => {
+  it("damaged plan (no block list, nesting too deep): no exception", () => {
     expect(resoudrePage({} as PlanPage, resultats, { compte: false, catalogue, secours: false }).blocs).toEqual([]);
     let b: BlocPlan = { composant: "titre", props: { texte: "fond" } };
     for (let i = 0; i < 20_000; i++) b = { composant: "groupe", props: { titre: "g" }, blocs: [b] };
@@ -190,11 +190,11 @@ describe("resoudrePage", () => {
 });
 
 describe("chainesDe", () => {
-  it("toutes les chaînes des résultats, à toute profondeur, pas les clés", () => {
+  it("all the strings of the results, at any depth, not the keys", () => {
     const s = chainesDe({ a: "x", b: [1, "y", { c: "z", "clé-seule": 2 }], d: null });
     expect([...s].sort()).toEqual(["x", "y", "z"]);
   });
-  it("résultats imbriqués sur 20 000 niveaux : pas d'exception", () => {
+  it("results nested 20,000 levels deep: no exception", () => {
     let r: unknown = "fond";
     for (let i = 0; i < 20_000; i++) r = [r];
     expect(chainesDe(r).has("fond")).toBe(true);

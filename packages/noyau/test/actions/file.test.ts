@@ -51,7 +51,7 @@ async function preparer(o: Partial<OptionsFileActions> = {}) {
   return { f, c, dossierActions, directs, supprimes };
 }
 
-/** Une exécution factice par action, qui attend `liberer(id)`. */
+/** A fake run per action, which waits for `liberer(id)`. */
 function retenues() {
   const fins = new Map<string, (r: ResultatLancement) => void>();
   const lancees: OptionsAction[] = [];
@@ -74,7 +74,7 @@ const attendreQue = async (f: () => boolean, ms = 5000) => {
 };
 
 describe("FileActions", () => {
-  it("trois actions : deux tournent, la troisième attend et apparaît dans enAttente", async () => {
+  it("three actions: two run, the third waits and appears in enAttente", async () => {
     expect(ACTIONS_SIMULTANEES).toBe(2);
     const r = retenues();
     const { f } = await preparer({ executer: r.executer });
@@ -98,7 +98,7 @@ describe("FileActions", () => {
     expect(f.direct()).toEqual({ courantes: [], enAttente: [] });
   });
 
-  it("relancer une action en cours rend deja: true et la même fin", async () => {
+  it("relaunching a running action returns deja: true and the same end", async () => {
     const r = retenues();
     const { f } = await preparer({ executer: r.executer });
     const premier = f.lancer("a", { saisie: null, declencheur: "manuelle" });
@@ -109,7 +109,7 @@ describe("FileActions", () => {
     await attendreQue(() => r.lancees.length === 1);
     r.liberer("a");
     await premier.fin;
-    // Finie : une nouvelle demande part.
+    // Finished: a new request goes through.
     const troisieme = f.lancer("a", { saisie: null, declencheur: "manuelle" });
     expect(troisieme.deja).toBe(false);
     await attendreQue(() => r.lancees.length === 2);
@@ -117,7 +117,7 @@ describe("FileActions", () => {
     await troisieme.fin;
   });
 
-  it("une action en attente arrêtée sort de la file sans tourner", async () => {
+  it("a waiting action that is stopped leaves the queue without running", async () => {
     const r = retenues();
     const { f } = await preparer({ executer: r.executer });
     f.lancer("a", { saisie: null, declencheur: "manuelle" });
@@ -128,7 +128,7 @@ describe("FileActions", () => {
     expect((await c.fin).statut).toBe("interrompue");
     expect(f.direct().enAttente).toEqual([]);
     expect(f.arreter("inconnue")).toBe(false);
-    // Une action qui tourne reçoit le signal.
+    // A running action receives the signal.
     expect(f.arreter("a")).toBe(true);
     expect(r.lancees[0]!.signal.aborted).toBe(true);
     r.liberer("a");
@@ -147,7 +147,7 @@ describe("FileActions", () => {
     r.liberer("a");
   });
 
-  it("chaque action a son accès prioritaire à l'IA, oublié à la fin", async () => {
+  it("each action has its priority AI access, forgotten at the end", async () => {
     const r = retenues();
     const repartiteur = creerRepartiteurIa({ kev: async () => ({}), gemma: async () => "ok" } as never);
     const cles: { cle: string; prioritaire?: boolean }[] = [];
@@ -171,7 +171,7 @@ describe("FileActions", () => {
     expect(oublies).toBe(1);
   });
 
-  it("une action part pendant qu'une récolte de widget tourne", async () => {
+  it("an action starts while a widget harvest is running", async () => {
     const r = retenues();
     const { f, c } = await preparer({ executer: r.executer });
     await ecrireWidget(c, "lent", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
@@ -201,7 +201,7 @@ describe("FileActions", () => {
     await p.arreter();
   });
 
-  it("les traces lecture et avancement remplissent direct()", async () => {
+  it("lecture and avancement traces fill direct()", async () => {
     const r = retenues();
     const { f, directs } = await preparer({ executer: r.executer });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
@@ -215,10 +215,10 @@ describe("FileActions", () => {
     expect(f.direct().courantes[0]!.blocs.lire).toMatchObject({ statut: "reussi", elements: 12 });
     o.surEtape("mise-en-page");
     expect(f.direct().courantes[0]!.etape).toBe("mise-en-page");
-    // surDirect est appelé à chaque changement.
+    // surDirect is called on each change.
     expect(directs.some((d) => d.courantes[0]?.blocs.lire?.hote === "gitlab.com")).toBe(true);
     expect(directs.at(-1)!.courantes[0]!.etape).toBe("mise-en-page");
-    // direct() est une copie.
+    // direct() is a copy.
     f.direct().courantes[0]!.blocs.lire!.statut = "echoue";
     expect(f.direct().courantes[0]!.blocs.lire!.statut).toBe("reussi");
     r.liberer("a");
@@ -226,7 +226,7 @@ describe("FileActions", () => {
     expect(directs.at(-1)).toEqual({ courantes: [], enAttente: [] });
   });
 
-  it("le type du bloc relayé par la trace passe dans direct()", async () => {
+  it("the block type relayed by the trace goes into direct()", async () => {
     const r = retenues();
     const { f } = await preparer({ executer: r.executer });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
@@ -240,7 +240,7 @@ describe("FileActions", () => {
     await a.fin;
   });
 
-  it("arreterTout : exécution écrite interrompue", async () => {
+  it("arreterTout: written run interrupted", async () => {
     const c0 = cheminsEspace(await dossierTemporaire());
     const dossier = join(c0.actions, "public");
     await mkdir(dossier, { recursive: true });
@@ -272,7 +272,7 @@ describe("FileActions", () => {
     const e = await lireExecution(join(dossierActions, "public"), r.execution!);
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(supprimes).toContainEqual({ type: "action", id: "public" });
-    // Après l'arrêt, plus rien ne part.
+    // After the stop, nothing leaves anymore.
     expect((await f.lancer("public", { saisie: null, declencheur: "manuelle" }).fin).statut).toBe("interrompue");
   });
 });

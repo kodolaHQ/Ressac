@@ -14,7 +14,7 @@ const declaration = (compte: string[], publiques: string[]) =>
   });
 
 describe("accords", () => {
-  it("accorder puis lireAccords, retirerAccord", async () => {
+  it("accorder then lireAccords, retirerAccord", async () => {
     const d = await dossierTemporaire();
     expect(await lireAccords(d)).toEqual({});
     await accorder(d, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "p1" });
@@ -28,7 +28,7 @@ describe("accords", () => {
     expect(Object.keys(await lireAccords(d))).toEqual(["autre"]);
   });
 
-  it("des écritures simultanées ne se perdent pas", async () => {
+  it("simultaneous writes are not lost", async () => {
     const d = await dossierTemporaire();
     await Promise.all(
       Array.from({ length: 10 }, (_, i) => accorder(d, `w${i}`, { domaines: ["a.fr"], publiques: [], profil: "p" })),
@@ -36,7 +36,7 @@ describe("accords", () => {
     expect(Object.keys(await lireAccords(d)).sort()).toHaveLength(10);
   });
 
-  it("un fichier abîmé ou des entrées invalides sont ignorés", async () => {
+  it("a damaged file or invalid entries are ignored", async () => {
     const d = await dossierTemporaire();
     await writeFile(join(d, "accords.json"), "{pas du json");
     expect(await lireAccords(d)).toEqual({});
@@ -44,13 +44,13 @@ describe("accords", () => {
     expect(Object.keys(await lireAccords(d))).toEqual(["ok"]);
   });
 
-  it("un id invalide est refusé", async () => {
+  it("an invalid id is refused", async () => {
     const d = await dossierTemporaire();
     await expect(accorder(d, "../x", { domaines: [], publiques: [], profil: "p" })).rejects.toThrow();
     await expect(retirerAccord(d, "../x")).rejects.toThrow();
   });
 
-  it("un accord dont les domaines ne correspondent plus à la déclaration n'est plus valide", () => {
+  it("a grant whose domains no longer match the declaration is no longer valid", () => {
     const accord = { domaines: ["app.daily.dev", "b.fr"], publiques: ["x.fr"], profil: "p" };
     expect(accordValide(declaration(["b.fr", "app.daily.dev"], ["x.fr"]), accord)).toBe(true);
     expect(accordValide(declaration(["app.daily.dev"], ["x.fr"]), accord)).toBe(false);
@@ -60,7 +60,7 @@ describe("accords", () => {
     expect(accordValide(declaration(["app.daily.dev", "b.fr"], ["x.fr"]), undefined)).toBe(false);
   });
 
-  it("accordValide accepte toute déclaration qui a des sources (widget ou action)", () => {
+  it("accordValide accepts any declaration that has sources (widget or action)", () => {
     const action = DeclarationAction.parse({ nom: "A", sources: { compte: ["gitlab.com"], publiques: ["x.fr"] } });
     const accord = { domaines: ["gitlab.com"], publiques: ["x.fr"], profil: "p" };
     expect(accordValide(action, accord)).toBe(true);

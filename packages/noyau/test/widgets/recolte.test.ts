@@ -36,7 +36,7 @@ afterEach(async () => {
   await Promise.all(iaAArreter.splice(0).map((i) => i.arreter()));
 });
 
-/** Petit serveur HTTP : `routes[chemin]` répond. */
+/** Small HTTP server: `routes[chemin]` answers. */
 async function serveurWeb(routes: Record<string, (res: import("node:http").ServerResponse) => void>) {
   const requetes: { url: string; enTetes: Record<string, unknown> }[] = [];
   const s: Server = createServer((req, res) => {
@@ -71,7 +71,7 @@ interface Contexte {
   lancer: LanceurProcessus;
 }
 
-/** Crée un widget `id` (widget.json + recolte.mjs) et un lanceur qui exécute le récolteur en local, sans docker. */
+/** Creates a widget `id` (widget.json + recolte.mjs) and a launcher that runs the harvester locally, without docker. */
 async function preparer(id: string, code: string, sources = { compte: [] as string[], publiques: [] as string[] }, config: unknown = { a: 1 }): Promise<Contexte> {
   const espace = await dossierTemporaire();
   const dossier = join(espace, "accueil", "widgets", id);
@@ -174,7 +174,7 @@ const optionsDe = (ctx: Contexte) => ({
 const lireJson = async (chemin: string) => JSON.parse(await readFile(chemin, "utf8"));
 
 describe("executerRecolte", () => {
-  it("une récolte réussie écrit donnees.json et l'état ok dans dossierWidgets", async () => {
+  it("a successful harvest writes donnees.json and the ok state in dossierWidgets", async () => {
     const web = await serveurWeb({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
     const kev = await fauxKev({ q: { type: "noul", noul: 0.8 } });
     const ollama = await fauxOllama("bonjour");
@@ -210,17 +210,17 @@ describe("executerRecolte", () => {
     expect(etat).toMatchObject({ statut: "ok", derniereMaj: MAINTENANT.toISOString(), derniereTentative: MAINTENANT.toISOString() });
     expect(etat.journal).toContain("trace du widget");
     expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null, adressesLocales: true }]);
-    // Aucun cookie ni identifiant envoyé.
+    // No cookie or identifier sent.
     expect(web.requetes[0]!.enTetes.cookie).toBeUndefined();
     expect(web.requetes[0]!.enTetes.authorization).toBeUndefined();
-    // Rien n'est écrit dans l'espace.
+    // Nothing is written in the space.
     expect(existsSync(join(ctx.widget.dossier, "donnees.json"))).toBe(false);
     expect(existsSync(join(ctx.widget.dossier, "etat.json"))).toBe(false);
-    // Le lanceur reçoit la commande docker de l'atelier.
+    // The launcher receives the workshop's docker command.
     expect(ctx.commandes[0]).toEqual(ctx.atelier.commandeRecolte("meteo", ctx.widget.dossier, MOTEUR));
   });
 
-  it("commandeRecolte monte le widget en :ro, coupe le réseau (--network none) et ne monte rien d'autre de l'espace", async () => {
+  it("commandeRecolte mounts the widget as :ro, cuts the network (--network none) and mounts nothing else from the space", async () => {
     const atelier = new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
     const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur");
     expect(c).toEqual([
@@ -245,13 +245,13 @@ describe("executerRecolte", () => {
     expect(() => new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: null }).commandeRecolte("meteo", "/d", "/r")).toThrow();
   });
 
-  it("supprimerRecolte force la suppression du conteneur", async () => {
+  it("supprimerRecolte forces the container's removal", async () => {
     const ctx = await preparer("meteo", "export default async () => 1;");
     await ctx.atelier.supprimerRecolte("meteo");
     expect(ctx.executer.appels.map((a) => [a.commande, ...a.args])).toEqual([["docker", "rm", "-f", "webaios-recolte-meteo"]]);
   });
 
-  it("une récolte qui échoue garde les données précédentes et note l'erreur et le journal", async () => {
+  it("a harvest that fails keeps the previous data and records the error and the log", async () => {
     const ctx = await preparer("meteo", `export default async (w) => { console.log("avant l'erreur"); throw new Error("boum ${"x".repeat(900)}"); };`);
     await ecrireDonnees(ctx.dossierWidgets, "meteo", { ancien: true });
     const r = await recolter(ctx);
@@ -265,7 +265,7 @@ describe("executerRecolte", () => {
     expect(await lireEtatWidget(ctx.dossierWidgets, "meteo")).toEqual(r.etat);
   });
 
-  it("le journal garde les 2 000 derniers caractères de la sortie d'erreur", async () => {
+  it("the log keeps the last 2,000 characters of the error output", async () => {
     const ctx = await preparer("meteo", `export default async (w) => { for (let i = 0; i < 500; i++) w.journal("ligne " + i); return 1; };`);
     const r = await recolter(ctx);
     expect(r.etat.statut).toBe("ok");
@@ -274,14 +274,14 @@ describe("executerRecolte", () => {
     expect(r.etat.journal).not.toContain("ligne 1\n");
   });
 
-  it("une sortie non nulle sans fin est une erreur", async () => {
+  it("a non-zero output without an end is an error", async () => {
     const ctx = await preparer("meteo", `export default async () => { process.exit(3); };`);
     const r = await recolter(ctx);
     expect(r.etat.statut).toBe("erreur");
     expect(r.etat.erreur).toContain("3");
   });
 
-  it("délai dépassé : processus tué, état erreur « Délai dépassé »", async () => {
+  it("timeout exceeded: process killed, error state « Délai dépassé »", async () => {
     const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
     await ecrireDonnees(ctx.dossierWidgets, "lent", { ancien: true });
     const debut = Date.now();
@@ -293,14 +293,14 @@ describe("executerRecolte", () => {
     expect(await lireJson(join(ctx.dossierWidgets, "lent", "donnees.json"))).toEqual({ ancien: true });
   });
 
-  it("une ligne de plus de 4 Mo tue la récolte : « Réponse trop grande »", async () => {
+  it("a line over 4 MB kills the harvest: « Réponse trop grande »", async () => {
     const ctx = await preparer("gros", `export default async () => { process.stdout.write("x".repeat(5 * 1024 * 1024)); await new Promise(() => {}); };`);
     const r = await recolter(ctx);
     expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Réponse trop grande" });
     expect(ctx.tues).toBeGreaterThan(0);
   });
 
-  it("plusieurs appels en vol reçoivent chacun leur réponse", async () => {
+  it("several in-flight calls each receive their own response", async () => {
     const web = await serveurWeb({
       "/lent": (res) => setTimeout(() => res.end("lent"), 300),
       "/vite": (res) => res.end("vite"),
@@ -313,7 +313,7 @@ describe("executerRecolte", () => {
     expect(r.donnees).toEqual(["lent", "vite", "vite"]);
   });
 
-  it("recuperer : http(s) seulement, sans identifiants dans l'URL", async () => {
+  it("recuperer: http(s) only, without credentials in the URL", async () => {
     const ctx = await preparer(
       "public",
       `const essai = (p) => p.then(() => "ok", (e) => e.message);
@@ -331,7 +331,7 @@ describe("executerRecolte", () => {
     expect(invalide).toMatch(/invalide/i);
   });
 
-  it("recuperer : une adresse locale est refusée par défaut", async () => {
+  it("recuperer: a local address is refused by default", async () => {
     const web = await serveurWeb({ "/": (res) => res.end("secret local") });
     const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/").catch((e) => e.message);`);
     const r = await executerRecolte({
@@ -342,7 +342,7 @@ describe("executerRecolte", () => {
     expect(web.requetes).toHaveLength(0);
   });
 
-  it("recuperer : « localhost. » (point final) est une adresse locale, refusée", async () => {
+  it("recuperer: « localhost. » (trailing dot) is a local address, refused", async () => {
     const web = await serveurWeb({ "/": (res) => res.end("secret local") });
     const ctx = await preparer(
       "public",
@@ -361,20 +361,20 @@ describe("executerRecolte", () => {
     expect(appelsLecture(pont)).toHaveLength(0);
   });
 
-  it("recuperer : réponse de plus de 5 Mo refusée", async () => {
+  it("recuperer: response over 5 MB refused", async () => {
     const web = await serveurWeb({ "/gros": (res) => res.end("x".repeat(5 * 1024 * 1024 + 10)) });
     const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/gros").then((t) => t.length, (e) => e.message);`);
     const r = await recolter(ctx);
     expect(r.donnees).toMatch(/5 Mo/);
   });
 
-  it("sans lirePageInvisible, lirePage répond « Lecture de pages indisponible »", async () => {
+  it("without lirePageInvisible, lirePage answers « Lecture de pages indisponible »", async () => {
     const ctx = await preparer("public", `export default async (w) => w.lirePage("https://a.fr/").catch((e) => e.message);`);
     const r = await recolter(ctx, { pont: new PontFactice([], { actif: null, autoriser: false }) });
     expect(r.donnees).toBe("Lecture de pages indisponible");
   });
 
-  it("widget sans compte : lirePage avec compte est refusé", async () => {
+  it("widget without an account: lirePage with an account is refused", async () => {
     const ctx = await preparer("public", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).catch((e) => e.message);`);
     const pont = pontLecture();
     const r = await recolter(ctx, { pont });
@@ -383,10 +383,10 @@ describe("executerRecolte", () => {
   });
 });
 
-describe("executerRecolte, widget avec compte", () => {
+describe("executerRecolte, widget with an account", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
 
-  it("widget avec compte : lirePage compte sans accord → accord-requis, aucune lecture", async () => {
+  it("widget with an account: lirePage compte without a grant → accord-requis, no read", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { ancien: true });
     const pont = pontLecture();
@@ -397,7 +397,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
   });
 
-  it("accord retiré pendant la récolte : la lecture avec compte n'a pas lieu, accord-requis", async () => {
+  it("grant removed during the harvest: the read with an account does not happen, accord-requis", async () => {
     const ctx = await preparer(
       "daily",
       `export default async (w) => { await w.kev("x", {}); return w.lirePage("https://app.daily.dev/", { compte: true }); };`,
@@ -414,7 +414,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)).toHaveLength(0);
   });
 
-  it("avec un accord valide, lirePage compte lit dans le profil de l'accord", async () => {
+  it("with a valid grant, lirePage compte reads in the grant's profile", async () => {
     const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const pont = pontLecture();
@@ -424,7 +424,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
   });
 
-  it("lirePage compte vers un domaine non déclaré en compte est refusé", async () => {
+  it("lirePage compte to a domain not declared as account is refused", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://evil.fr/", { compte: true }).catch((e) => e.message);`, sources);
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const pont = pontLecture();
@@ -433,7 +433,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)).toHaveLength(0);
   });
 
-  it("widget avec compte : recuperer vers un domaine non déclaré est refusé", async () => {
+  it("widget with an account: recuperer to an undeclared domain is refused", async () => {
     const web = await serveurWeb({ "/": (res) => res.end("ok") });
     const ctx = await preparer(
       "daily",
@@ -458,7 +458,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)).toHaveLength(0);
   });
 
-  it("widget avec compte : une redirection vers un domaine non déclaré est refusée", async () => {
+  it("widget with an account: a redirect to an undeclared domain is refused", async () => {
     const cible = await serveurWeb({ "/fuite": (res) => res.end("fuite") });
     const web = await serveurWeb({
       "/redir": (res) => { res.writeHead(302, { location: `http://localhost:${cible.port}/fuite` }); res.end(); },
@@ -479,7 +479,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(cible.requetes).toHaveLength(0);
   });
 
-  it("widget avec compte et sans publiques : aucune récupération publique", async () => {
+  it("widget with an account and without public ones: no public fetch", async () => {
     const web = await serveurWeb({ "/": (res) => res.end("ok") });
     const ctx = await preparer("daily", `export default async (w) => w.recuperer("${web.url}/").catch((e) => "refus: " + e.message);`, { compte: ["app.daily.dev"], publiques: [] });
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
@@ -488,7 +488,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(web.requetes).toHaveLength(0);
   });
 
-  it("un domaine déclaré écrit avec un point final est le même domaine", async () => {
+  it("a declared domain written with a trailing dot is the same domain", async () => {
     const ctx = await preparer(
       "daily",
       `const essai = (p) => p.then((x) => x.titre ?? x, (e) => "refus: " + e.message);
@@ -507,7 +507,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont).map((a) => a.args[0])).toEqual(["https://app.daily.dev./"]);
   });
 
-  it("lirePage compte redirigée hors des domaines compte : refusée, le texte ne sort pas", async () => {
+  it("lirePage compte redirected outside the account domains: refused, the text does not leave", async () => {
     const ctx = await preparer(
       "daily",
       `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).then((p) => p.texte, (e) => "refus: " + e.message);`,
@@ -528,7 +528,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)[0]!.args[1]).toEqual({ profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true });
   });
 
-  it("lirePage publique d'un widget avec compte : domaines publics passés au pont, redirection hors liste refusée", async () => {
+  it("public lirePage of a widget with an account: public domains passed to the bridge, redirect outside the list refused", async () => {
     const ctx = await preparer(
       "daily",
       `export default async (w) => w.lirePage("http://127.0.0.1/?d=secret").then((p) => p.texte, (e) => "refus: " + e.message);`,
@@ -548,7 +548,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)[0]!.args[1]).toEqual({ profil: null, domaines: ["127.0.0.1"], adressesLocales: true });
   });
 
-  it("sans l'option adressesLocales, le pont ne reçoit pas adressesLocales (il refuse alors les adresses locales)", async () => {
+  it("without the adressesLocales option, the bridge does not receive adressesLocales (it then refuses local addresses)", async () => {
     const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/")).titre;`);
     const pont = pontLecture();
     const r = await executerRecolte({ ...optionsDe(ctx), pont, adressesLocales: false });
@@ -556,7 +556,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null }]);
   });
 
-  it("ProfilRefuse du pont : accord retiré, état accord-requis", async () => {
+  it("ProfilRefuse from the bridge: grant removed, state accord-requis", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { ancien: true });
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
@@ -565,27 +565,27 @@ describe("executerRecolte, widget avec compte", () => {
     expect(r.etat.statut).toBe("accord-requis");
     expect(r.etat.erreur).toBeTruthy();
     expect(await lireAccords(ctx.dossierWidgets)).toEqual({ autre: { domaines: ["a.fr"], publiques: [], profil: "perso" } });
-    // Les données lues avec ce compte partent avec l'accord.
+    // The data read with this account leaves with the grant.
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
   });
 
-  it("ProfilRefuse puis compte retiré : la récolte publique ne reçoit rien du compte, l'accueil non plus", async () => {
+  it("ProfilRefuse then account removed: the public harvest receives nothing of the account, nor does the home", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
     expect((await recolter(ctx, { pont: pontLecture(["prive"]) })).etat.statut).toBe("accord-requis");
-    // L'agent retire compte : le widget redevient public (ni compte ni accord).
+    // The agent removes the account: the widget becomes public again (neither account nor grant).
     const brut = { nom: "Test", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, recolte: { minutes: 60 }, sources: { compte: [], publiques: [] } };
     await writeFile(join(ctx.widget.dossier, "widget.json"), JSON.stringify(brut));
     await writeFile(join(ctx.widget.dossier, "recolte.mjs"), "export default async (w) => ({ prec: w.precedent });");
     const accueil = await lireAccueil(cheminsEspace(ctx.espace), ctx.dossierWidgets);
     const lu = accueil.widgets.find((w) => w.id === "daily")!;
-    expect("donnees" in lu && lu.donnees).toBeNull(); // ce que donnees_widget rendrait
+    expect("donnees" in lu && lu.donnees).toBeNull(); // what donnees_widget would return
     const r = await executerRecolte({ ...optionsDe(ctx), widget: lu });
     expect(r.donnees).toEqual({ prec: null });
   });
 
-  it("déclaration modifiée (domaines changés) : l'accord est retiré et les données précédentes effacées", async () => {
+  it("declaration modified (domains changed): the grant is removed and the previous data erased", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
@@ -595,7 +595,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
   });
 
-  it("compte retiré de la déclaration avec un accord enregistré : accord retiré, données effacées, precedent null", async () => {
+  it("account removed from the declaration with a recorded grant: grant removed, data erased, precedent null", async () => {
     const ctx = await preparer("daily", `export default async (w) => ({ prec: w.precedent });`, { compte: [], publiques: [] });
     await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
@@ -606,11 +606,11 @@ describe("executerRecolte, widget avec compte", () => {
     expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ prec: null });
   });
 
-  it("erreurDuNoyau : messages fixes du noyau reconnus, texte du widget non", () => {
+  it("erreurDuNoyau: fixed core messages recognized, widget text not", () => {
     expect(erreurDuNoyau("Délai dépassé")).toBe(true);
     expect(erreurDuNoyau("Réponse trop grande")).toBe(true);
     expect(erreurDuNoyau("Accord requis pour lire avec ton compte : app.daily.dev")).toBe(true);
-    // Écrit avec le code de sortie du widget : compte comme texte du widget.
+    // Written with the widget's exit code: counts as widget text.
     expect(erreurDuNoyau("La récolte s'est arrêtée sans résultat (code 1)")).toBe(false);
     expect(erreurDuNoyau("Mise à jour impossible : atelier arrêté")).toBe(true);
     expect(erreurDuNoyau("SECRET")).toBe(false);
@@ -618,7 +618,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(erreurDuNoyau("La récolte s'est arrêtée sans résultat (code 1) SECRET")).toBe(false);
   });
 
-  it("un accord dont les domaines ne correspondent plus à la déclaration n'est plus valide", async () => {
+  it("a grant whose domains no longer match the declaration is no longer valid", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
     const pont = pontLecture();
@@ -627,7 +627,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect(appelsLecture(pont)).toHaveLength(0);
   });
 
-  it("erreur levée par le widget : jamais marquée du noyau, même quand elle imite un message du noyau", async () => {
+  it("error thrown by the widget: never marked as the core's, even when it imitates a core message", async () => {
     for (const imitation of [
       "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
       "La récolte s'est arrêtée sans résultat (code 123456789)",
@@ -645,7 +645,7 @@ describe("executerRecolte, widget avec compte", () => {
     }
   });
 
-  it("erreurs écrites par le noyau : marquées comme telles (accord requis, délai dépassé)", async () => {
+  it("errors written by the core: marked as such (grant required, timeout exceeded)", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await recolter(ctx);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
@@ -654,7 +654,7 @@ describe("executerRecolte, widget avec compte", () => {
     expect((await recolter(lent, { delaiMs: 300 })).etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé", erreurNoyau: true });
   });
 
-  it("accord refusé pendant la récolte, après la lecture avec compte : rien n'est écrit, accord-requis", async () => {
+  it("grant refused during the harvest, after the read with an account: nothing is written, accord-requis", async () => {
     const ctx = await preparer(
       "daily",
       `export default async (w) => { const p = await w.lirePage("https://app.daily.dev/", { compte: true }); await w.kev("x", {}); return p.texte; };`,
@@ -663,7 +663,7 @@ describe("executerRecolte, widget avec compte", () => {
     await ecrireDonnees(ctx.dossierWidgets, "daily", { ancien: true });
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const pont = pontLecture();
-    // Ce que fait refuserAccord : accord retiré, données effacées.
+    // What refuserAccord does: grant removed, data erased.
     const faux = {
       kev: async () => {
         await retirerAccord(ctx.dossierWidgets, "daily");
@@ -680,18 +680,18 @@ describe("executerRecolte, widget avec compte", () => {
     expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
     const accueil = await lireAccueil(cheminsEspace(ctx.espace), ctx.dossierWidgets);
     const lu = accueil.widgets.find((w) => w.id === "daily")!;
-    expect("donnees" in lu && lu.donnees).toBeNull(); // ce que donnees_widget rendrait
+    expect("donnees" in lu && lu.donnees).toBeNull(); // what donnees_widget would return
   });
 });
 
-describe("executerRecolte, par le workflow du widget", () => {
+describe("executerRecolte, through the widget's workflow", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
   const donneesDe = (ctx: Contexte) => join(ctx.dossierWidgets, ctx.widget.id);
   const executionDe = async (ctx: Contexte, id: string | undefined) => {
     expect(id).toBeTruthy();
     return (await lireExecution(donneesDe(ctx), id!))!;
   };
-  /** Remplace recolte.mjs par un workflow.json (et ses fichiers). */
+  /** Replaces recolte.mjs with a workflow.json (and its files). */
   async function enWorkflow(ctx: Contexte, workflow: unknown, fichiers: Record<string, string> = {}) {
     await rm(join(ctx.widget.dossier, "recolte.mjs"), { force: true });
     await writeFile(join(ctx.widget.dossier, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));
@@ -706,7 +706,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     ],
     liens: [{ de: "liste", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }],
   };
-  /** Une exécution ancienne et une mémoire, pour vérifier qu'elles partent avec les données. */
+  /** An old run and a memory, to check that they leave with the data. */
   async function traces(ctx: Contexte) {
     const ancienne: Execution = {
       version: 1, id: "2026-10-27T08-00-00-000Z", proprietaire: { type: "widget", id: ctx.widget.id }, declencheur: "planifiee",
@@ -716,7 +716,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     await ecrireMemoire(donneesDe(ctx), { nouveaux: { type: "liste.nouveaux", valeur: ["secret"] } });
   }
 
-  it("un widget avec seulement recolte.mjs et un compte tourne comme avant : mêmes données, même journal, exécution implicite recolte → sortie", async () => {
+  it("a widget with only recolte.mjs and an account runs as before: same data, same log, implicit run recolte → output", async () => {
     const ctx = await preparer(
       "gmail",
       `export default async (w) => {
@@ -742,7 +742,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(e).toMatchObject({ statut: "reussie", declencheur: "planifiee", proprietaire: { type: "widget", id: "gmail" }, debut: MAINTENANT.toISOString() });
     expect(e.blocs.map((b) => [b.id, b.type, b.statut])).toEqual([["recolte", "code", "reussi"], ["sortie", "sortie", "reussi"]]);
     expect(e.blocs[0]!.journal).toContain("courriels lus");
-    // Une erreur levée par ce widget reste la sienne : jamais marquée du noyau.
+    // An error thrown by this widget stays its own: never marked as the core's.
     await writeFile(join(ctx.widget.dossier, "recolte.mjs"), `export default async () => { throw new Error("Délai dépassé"); };`);
     const echec = await recolter(ctx);
     expect(echec.etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé" });
@@ -751,7 +751,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect((await executionDe(ctx, echec.execution)).statut).toBe("echouee");
   });
 
-  it("un widget en workflow écrit données, exécution et mémoire ; la récolte suivante reçoit la mémoire", async () => {
+  it("a workflow widget writes data, run and memory; the next harvest receives the memory", async () => {
     const ctx = await preparer("flux", "");
     await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
     const r1 = await recolter(ctx);
@@ -766,7 +766,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(r2.donnees).toEqual([{ id: 3 }]);
   });
 
-  it("la mémoire d'une exécution s'écrit sous le verrou de la mémoire du widget (celui de l'effacement du constructeur)", async () => {
+  it("a run's memory is written under the widget's memory lock (the builder's erase lock)", async () => {
     const ctx = await preparer("flux", "");
     await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }];` });
     let liberer!: () => void;
@@ -785,7 +785,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect((await lireMemoire(donneesDe(ctx))).nouveaux?.type).toBe("liste.nouveaux");
   });
 
-  it("un workflow.json invalide : état erreur « Workflow invalide : … » marqué erreurNoyau, données gardées, aucun conteneur lancé, exécution échouée écrite", async () => {
+  it("an invalid workflow.json: error state « Workflow invalide : … » marked erreurNoyau, data kept, no container launched, failed run written", async () => {
     for (const workflow of ['{"version":1,"blocs":[', { version: 1, blocs: [{ id: "x", type: "inconnu" }] }]) {
       const ctx = await preparer("casse", "");
       await enWorkflow(ctx, workflow);
@@ -803,7 +803,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     }
   });
 
-  it("le workflow est validé selon le widget : budgetSecondes 600 refusé sans durée maximale, accepté avec dureeMaxMinutes 30", async () => {
+  it("the workflow is validated according to the widget: budgetSecondes 600 refused without a maximum duration, accepted with dureeMaxMinutes 30", async () => {
     const LONG = {
       version: 1,
       blocs: [
@@ -828,7 +828,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(r.etat.statut).toBe("ok");
   });
 
-  it("accord retiré pendant l'exécution : ni données, ni exécution, ni mémoire sur le disque à la fin", async () => {
+  it("grant removed during the run: no data, no run, no memory on disk at the end", async () => {
     const ctx = await preparer("daily", "", sources);
     await enWorkflow(ctx, NOUVEAUX, {
       "liste.mjs": `export default async (e, w) => [{ id: (await w.lirePage("https://app.daily.dev/", { compte: true })).texte }];`,
@@ -837,7 +837,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const pont = pontLecture();
     const lire = pont.lirePageInvisible!.bind(pont);
-    // Ce que fait refuserAccord, pendant la lecture : la page lue arrive quand même au widget.
+    // What refuserAccord does, during the read: the page read still reaches the widget.
     pont.lirePageInvisible = async (...a: Parameters<typeof lire>) => {
       await retirerAccord(ctx.dossierWidgets, "daily");
       await supprimerDonnees(ctx.dossierWidgets, "daily");
@@ -854,7 +854,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect((await lireEtatWidget(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
   });
 
-  it("profil refusé : données, exécutions et mémoire effacées", async () => {
+  it("profile refused: data, runs and memory erased", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await traces(ctx);
@@ -867,7 +867,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(await listerExecutions(donneesDe(ctx))).toEqual([]);
   });
 
-  it("accord périmé (déclaration changée) : exécutions et mémoire effacées avec les données", async () => {
+  it("stale grant (declaration changed): runs and memory erased along with the data", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await traces(ctx);
@@ -876,11 +876,11 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(r.etat.statut).toBe("accord-requis");
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
     expect(existsSync(join(ctx.dossierWidgets, "daily", "memoire.json"))).toBe(false);
-    // Seule reste l'exécution « accord requis » de cette fois.
+    // Only the « accord requis » run of this time remains.
     expect((await listerExecutions(donneesDe(ctx))).map((e) => [e.id, e.statut])).toEqual([[r.execution, "accord-requis"]]);
   });
 
-  it("sans accord : exécution accord-requis, sans bloc lancé", async () => {
+  it("without a grant: accord-requis run, no block launched", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await recolter(ctx);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
@@ -890,10 +890,10 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "pas-lance"], ["sortie", "pas-lance"]]);
   });
 
-  it("sans accord, encore : pas de nouvelle exécution accord-requis, la dernière tient lieu", async () => {
+  it("without a grant, again: no new accord-requis run, the last one stands in", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const premiere = await recolter(ctx);
-    // Une heure plus tard : sans la règle, une seconde exécution (autre id) serait écrite.
+    // An hour later: without the rule, a second run (other id) would be written.
     const plusTard = () => new Date(MAINTENANT.getTime() + 3_600_000);
     const seconde = await executerRecolte({ ...optionsDe(ctx), horloge: plusTard });
     expect(seconde.etat.statut).toBe("accord-requis");
@@ -901,7 +901,7 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect((await listerExecutions(donneesDe(ctx))).map((e) => e.statut)).toEqual(["accord-requis"]);
   });
 
-  it("l'exécution porte le déclencheur demandé", async () => {
+  it("the run carries the requested trigger", async () => {
     const ctx = await preparer("meteo", `export default async () => 1;`);
     const r = await executerRecolte({ ...optionsDe(ctx), declencheur: "agent" });
     expect((await executionDe(ctx, r.execution)).declencheur).toBe("agent");
@@ -909,11 +909,11 @@ describe("executerRecolte, par le workflow du widget", () => {
     expect((await executionDe(ctx, m.execution)).declencheur).toBe("manuelle");
   });
 
-  it("interrompue à la fin : exécution interrompue", async () => {
+  it("interrupted at the end: interrupted run", async () => {
     const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
     const r = await executerRecolte({ ...optionsDe(ctx), delaiMs: 300, interrompue: () => true });
     const e = await executionDe(ctx, r.execution);
-    // Le message est celui du noyau (pas « Délai dépassé ») ; le bloc commencé est interrompu, la sortie jamais lancée.
+    // The message is the core's (not « Délai dépassé »); the started block is interrupted, the output never launched.
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
     expect(erreurDuNoyau(e.erreur!)).toBe(true);
@@ -937,7 +937,7 @@ describe("executerEssai", () => {
     ],
     liens: [{ de: "liste", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }],
   };
-  /** Contenu et date de modification des fichiers gardés hors de l'espace (absent : null). */
+  /** Content and modification date of the files kept outside the space (absent: null). */
   const instantane = async (ctx: Contexte) => {
     const r: Record<string, { texte: string; mtime: number } | null> = {};
     for (const nom of ["donnees.json", "memoire.json", "etat.json"]) {
@@ -949,7 +949,7 @@ describe("executerEssai", () => {
   const essai = (ctx: Contexte, origine: string, depart: string, o: Partial<Parameters<typeof executerEssai>[0]> = {}) =>
     executerEssai({ ...optionsDe(ctx), origine, depart, ...o });
 
-  it("un essai écrit une exécution -essai avec depart et origine, et ne touche ni données, ni mémoire, ni état", async () => {
+  it("a trial writes a -essai run with depart and origine, and touches neither data, memory nor state", async () => {
     const ctx = await preparer("flux", "");
     await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
     const reel = await executerRecolte(optionsDe(ctx));
@@ -957,7 +957,7 @@ describe("executerEssai", () => {
     expect((await lireMemoire(donneesDe(ctx))).nouveaux).toBeDefined();
     const avant = await instantane(ctx);
     expect(Object.values(avant).every((f) => f !== null)).toBe(true);
-    // La liste n'est pas relancée : sa sortie est reprise de l'exécution d'origine.
+    // The list is not rerun: its output is taken from the original run.
     await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("relancée"); };`);
     const traces: unknown[] = [];
     const r = await essai(ctx, reel.execution!, "nouveaux", { surTrace: (t) => traces.push(t) });
@@ -972,11 +972,11 @@ describe("executerEssai", () => {
       { bloc: "sortie", etape: "fin", statut: "reussi", elements: 2 },
     ]);
     expect(await instantane(ctx)).toEqual(avant);
-    // La vraie exécution est toujours là, à côté de l'essai.
+    // The real run is still there, next to the trial.
     expect((await listerExecutions(donneesDe(ctx))).map((x) => x.id).sort()).toEqual([reel.execution, e.id].sort());
   });
 
-  it("rejouer deux fois depuis le même bloc : le second essai part du premier et reprend les sorties de la vraie exécution", async () => {
+  it("rejouer twice from the same block: the second trial starts from the first and takes the outputs of the real run", async () => {
     const ctx = await preparer("flux", "");
     await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
     const reel = await executerRecolte(optionsDe(ctx));
@@ -987,17 +987,17 @@ describe("executerEssai", () => {
     const second = await essai(ctx, premier.execution, "nouveaux", { horloge: () => plusTard });
     expect(second).toEqual({ ok: true, execution: idEssai(plusTard.toISOString()), statut: "reussie" });
     const e = (await lireExecution(donneesDe(ctx), idEssai(plusTard.toISOString())))!;
-    // L'origine nommée est celle d'où vient la sortie reprise : la vraie exécution.
+    // The named origin is the one the reused output comes from: the real run.
     expect(e.essai).toEqual({ depart: "nouveaux", origine: reel.execution });
     expect(e.blocs.map((b) => [b.id, b.statut, b.elements])).toEqual([["liste", "repris", 2], ["nouveaux", "reussi", 2], ["sortie", "reussi", 2]]);
-    // Vraie exécution élaguée : le refus reste celui d'une sortie manquante.
+    // Real run pruned: the refusal stays that of a missing output.
     await rm(join(donneesDe(ctx), "executions", `${reel.execution}.json`));
     expect(await essai(ctx, premier.execution, "nouveaux", { horloge: () => new Date(plusTard.getTime() + 60_000) })).toEqual({
       ok: false, erreur: "Rejeu impossible : la sortie de « liste » manque dans cette exécution",
     });
   });
 
-  it("un essai en échec n'écrit aucune erreur dans l'état du widget", async () => {
+  it("a failing trial writes no error in the widget's state", async () => {
     const ctx = await preparer("flux", "");
     await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }];` });
     const reel = await executerRecolte(optionsDe(ctx));
@@ -1011,7 +1011,7 @@ describe("executerEssai", () => {
     expect(etat.erreur).toBeUndefined();
   });
 
-  it("essai d'un widget avec compte sans accord : refusé avec le message d'accord, aucun conteneur, rien d'écrit", async () => {
+  it("trial of a widget with an account without a grant: refused with the grant message, no container, nothing written", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await essai(ctx, "2026-10-27T08-00-00-000Z", "recolte");
     expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
@@ -1019,7 +1019,7 @@ describe("executerEssai", () => {
     expect(existsSync(donneesDe(ctx))).toBe(false);
   });
 
-  it("accord retiré pendant l'essai : aucune exécution sur le disque", async () => {
+  it("grant removed during the trial: no run on disk", async () => {
     const ctx = await preparer(
       "daily",
       `export default async (w) => { const p = await w.lirePage("https://app.daily.dev/", { compte: true }); await w.kev("x", {}); return p.texte; };`,
@@ -1029,7 +1029,7 @@ describe("executerEssai", () => {
     const faux = { kev: async () => ({}), gemma: async () => "" };
     const reel = await executerRecolte({ ...optionsDe(ctx), ia: faux });
     expect(reel.etat.statut).toBe("ok");
-    // Ce que fait refuserAccord, pendant l'essai.
+    // What refuserAccord does, during the trial.
     const retirer = {
       kev: async () => {
         await retirerAccord(ctx.dossierWidgets, "daily");
@@ -1044,7 +1044,7 @@ describe("executerEssai", () => {
     expect(existsSync(join(donneesDe(ctx), "donnees.json"))).toBe(false);
   });
 
-  it("essai refusé par le plan de rejeu : message exact, aucun conteneur lancé", async () => {
+  it("trial refused by the replay plan: exact message, no container launched", async () => {
     const ctx = await preparer("flux", "");
     await enWorkflow(ctx, NOUVEAUX, { "liste.mjs": `export default async () => [{ id: 1 }];` });
     const reel = await executerRecolte(optionsDe(ctx));
@@ -1057,7 +1057,7 @@ describe("executerEssai", () => {
     expect(await listerExecutions(donneesDe(ctx))).toHaveLength(1);
   });
 
-  it("essai dont les sorties reprises et le précédent dépassent 4 Mo : refusé, aucun conteneur, rien d'écrit", async () => {
+  it("trial whose reused outputs and previous one exceed 4 MB: refused, no container, nothing written", async () => {
     const ctx = await preparer("gros", "");
     const amont = Array.from({ length: 10 }, (_, i) => `a${i}`);
     await enWorkflow(ctx, {
@@ -1082,7 +1082,7 @@ describe("executerEssai", () => {
     expect((await listerExecutions(donneesDe(ctx))).map((e) => e.id)).toEqual([origine.id]);
   });
 
-  it("un widget sans workflow.json (recolte.mjs seul) : rejouer depuis sortie reprend la sortie de recolte", async () => {
+  it("a widget without workflow.json (recolte.mjs alone): rejouer from the output takes the recolte output", async () => {
     const ctx = await preparer("gmail", `export default async (w) => ({ texte: (await w.lirePage("https://app.daily.dev/", { compte: true })).texte });`, sources);
     await accorder(ctx.dossierWidgets, "gmail", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const pont = pontLecture();
@@ -1099,7 +1099,7 @@ describe("executerEssai", () => {
     expect(existsSync(join(ctx.widget.dossier, "workflow.json"))).toBe(false);
   });
 
-  it("accord périmé au départ d'un essai : accord retiré, données effacées, état accord-requis signalé, aucun conteneur", async () => {
+  it("stale grant at the start of a trial: grant removed, data erased, state accord-requis reported, no container", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await ecrireDonnees(ctx.dossierWidgets, "daily", { secret: "du compte" });
     const etat = { statut: "ok" as const, derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
@@ -1120,7 +1120,7 @@ describe("executerEssai", () => {
     expect(surChange).toHaveBeenCalled();
   });
 
-  it("profil refusé pendant l'essai : aucune exécution, accord retiré, état accord-requis", async () => {
+  it("profile refused during the trial: no run, grant removed, state accord-requis", async () => {
     const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
     await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const reel = await executerRecolte(optionsDe(ctx));
@@ -1142,7 +1142,7 @@ describe("executerEssai", () => {
     expect(surChange).toHaveBeenCalled();
   });
 
-  it("interrompu pendant l'essai : exécution -essai interrompue, ni données, ni mémoire, ni état touchés", async () => {
+  it("interrupted during the trial: -essai run interrupted, neither data, memory nor state touched", async () => {
     const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
     await ecrireDonnees(ctx.dossierWidgets, "lent", { ancien: true });
     await ecrireEtatWidget(ctx.dossierWidgets, "lent", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
@@ -1160,7 +1160,7 @@ describe("executerEssai", () => {
     expect(await instantane(ctx)).toEqual(avant);
   });
 
-  it("sans accord : un essai plus récent n'empêche pas la dernière exécution accord-requis de tenir lieu", async () => {
+  it("without a grant: a more recent trial does not prevent the last accord-requis run from standing in", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const premiere = await executerRecolte(optionsDe(ctx));
     expect(premiere.etat.statut).toBe("accord-requis");
@@ -1177,11 +1177,11 @@ describe("executerEssai", () => {
   });
 });
 
-describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardée, nouveautés)", () => {
+describe("executerRecolte, watch (publications as it goes, memory kept, novelties)", () => {
   const donneesDe = (ctx: Contexte) => join(ctx.dossierWidgets, ctx.widget.id);
   const fichierDonnees = (ctx: Contexte) => join(donneesDe(ctx), "donnees.json");
   const fichierMemoire = (ctx: Contexte) => join(donneesDe(ctx), "memoire.json");
-  /** liste (code) → fiche (source.recuperer par élément) → sortie. */
+  /** list (code) → record (source.recuperer per element) → output. */
   const veille = (o: { auFilDeLEau?: boolean } = {}) => ({
     version: 1,
     blocs: [
@@ -1199,8 +1199,8 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
   }
 
   /**
-   * Un faux conteneur qui écrit ses lignes une à une ; une fonction (éventuellement asynchrone) est appelée à la place
-   * d'une ligne. `recu` : ce que le noyau lui écrit ; `bloque` : il ne sort jamais de lui-même (seulement tué).
+   * A fake container that writes its lines one by one; a function (possibly async) is called instead
+   * of a line. `recu`: what the core writes to it; `bloque`: it never exits on its own (only killed).
    */
   const lanceurPas = (ctx: Contexte, pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => (cmd, args) => {
     ctx.commandes.push([cmd, ...args]);
@@ -1223,7 +1223,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
         stderr.end();
         setImmediate(() => ok(0));
       })().catch(() => {
-        // Une sonde a échoué : le conteneur s'arrête tout de suite (le test échoue sur ce que la sonde n'a pas vu).
+        // A probe failed: the container stops right away (the test fails on what the probe did not see).
         stdout.end();
         stderr.end();
         ok(1);
@@ -1232,7 +1232,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     return { stdin, stdout, stderr, tuer: () => tuer(), fin };
   };
 
-  /** Une horloge que les pas font avancer. */
+  /** A clock that the steps make advance. */
   const horlogeMobile = () => {
     let t = MAINTENANT.getTime();
     return { horloge: () => new Date(t), avancer: (ms: number) => () => void (t += ms) };
@@ -1244,9 +1244,9 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
   const A1 = { url: "https://a.example/1" };
   const A2 = { url: "https://a.example/2" };
   const A3 = { url: "https://a.example/3" };
-  /** Le début d'une exécution de veille() jusqu'à l'ouverture de la chaîne (fiche). */
+  /** The start of a watch() run up to the opening of the chain (record). */
   const avantChaine = (liste: unknown[]) => [debutBloc("liste"), finBloc("liste", liste), debutBloc("fiche")];
-  /** Attend que `f` soit vrai (les relais s'écrivent en tâche de fond). */
+  /** Waits until `f` is true (relays are written in the background). */
   async function attendre(f: () => Promise<boolean>): Promise<void> {
     for (let i = 0; i < 200; i++) {
       if (await f()) return;
@@ -1261,7 +1261,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     await ecrireEtatWidget(ctx.dossierWidgets, ctx.widget.id, { statut: "ok", derniereMaj: DERNIERE_MAJ, derniereTentative: DERNIERE_MAJ });
   }
 
-  it("deux publications écrivent données et état en-cours avec progression ; la fin écrit le résultat final et retire la progression", async () => {
+  it("two publications write data and in-progress state with progress; the end writes the final result and removes the progress", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true });
     await etatAvant(ctx);
@@ -1301,7 +1301,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
         donnees: [A1, A2],
       },
     ]);
-    // Début, deux publications, fin.
+    // Start, two publications, end.
     expect(changes).toBe(4);
     expect(r.etat.statut).toBe("ok");
     expect(r.donnees).toEqual({ final: [A1, A2] });
@@ -1309,12 +1309,12 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     const etat = await lireEtatWidget(ctx.dossierWidgets, "veille");
     expect(etat.statut).toBe("ok");
     expect(etat.progression).toBeUndefined();
-    // L'état d'avant, gardé pendant l'exécution, ne survit pas à sa fin.
+    // The earlier state, kept during the run, does not survive its end.
     expect("avant" in etat).toBe(false);
     expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1", "2"]);
   });
 
-  it("échec après deux publications : la dernière reste, état erreur, mémoire de l'exécution gardée", async () => {
+  it("failure after two publications: the last one stays, error state, the run's memory kept", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
     await etatAvant(ctx);
@@ -1331,7 +1331,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
         { recu },
       ),
     });
-    // La durée maximale est passée : limite envoyée, exécution progressive, conteneur arrêté à 30 min + 30 s.
+    // The maximum duration is passed: limit sent, progressive run, container stopped at 30 min + 30 s.
     expect(JSON.parse(recu.join("").split("\n")[0]!)).toMatchObject({ limiteMs: 1_800_000, progressif: true });
     expect(ctx.commandes[0]!.slice(ctx.commandes[0]!.indexOf("timeout"), ctx.commandes[0]!.indexOf("timeout") + 4)).toEqual(["timeout", "-k", "5", "1830"]);
     expect(r.etat).toMatchObject({ statut: "erreur", erreur: "cassé", derniereMaj: DERNIERE_MAJ });
@@ -1340,12 +1340,12 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     const etat = await lireEtatWidget(ctx.dossierWidgets, "veille");
     expect(etat).toMatchObject({ statut: "erreur", derniereMaj: DERNIERE_MAJ });
     expect(etat.progression).toBeUndefined();
-    // La dernière mémoire sûre (pas seulement celle relayée en cours de route, la première).
+    // The last safe memory (not only the one relayed along the way, the first).
     expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1", "2"]);
     expect((await lireExecution(donneesDe(ctx), r.execution!))?.statut).toBe("echouee");
   });
 
-  it("F3 : une publication ne recouvre jamais un état qui n'est plus en-cours (accord-requis écrit entre-temps)", async () => {
+  it("F3: a publication never overwrites a state that is no longer in-progress (accord-requis written in the meantime)", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true });
     await etatAvant(ctx);
@@ -1356,7 +1356,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
       horloge: h,
       lancer: lanceurPas(ctx, [
         ...avantChaine([A1, A2]),
-        // Ce qu'écrit refuserAccord pendant l'exécution.
+        // What refuserAccord writes during the run.
         () => ecrireEtatWidget(ctx.dossierWidgets, "veille", { statut: "accord-requis", derniereMaj: DERNIERE_MAJ, derniereTentative: DERNIERE_MAJ }),
         mem(["1"]),
         pub([A1], 1, 2),
@@ -1371,7 +1371,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect(vu).toBe("accord-requis");
   });
 
-  it("données finales de plus de 2 Mo : memoire.json reste la dernière mémoire relayée avant la sortie", async () => {
+  it("final data over 2 MB: memoire.json stays the last memory relayed before the exit", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
     await etatAvant(ctx);
@@ -1387,7 +1387,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
         finBloc("fiche", [A1, A2, A3]),
         debutBloc("sortie"),
         finBloc("sortie", [A1, A2, A3]),
-        // Retient les clés de 2 et 3, que seule la sortie finale montre : elle est refusée.
+        // Retains the keys of 2 and 3, which only the final output shows: it is refused.
         mem(["1", "2", "3"]),
         { t: "fin", donnees: "x".repeat(2 * 1024 * 1024 + 10) },
       ]),
@@ -1397,7 +1397,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect((await lireMemoire(donneesDe(ctx))).liste?.valeur).toEqual(["1"]);
   });
 
-  it("interrompue après une publication : données publiées et mémoire gardées, exécution interrompue", async () => {
+  it("interrupted after a publication: published data and memory kept, run interrupted", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true });
     const { horloge: h, avancer } = horlogeMobile();
@@ -1414,7 +1414,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect((await lireExecution(donneesDe(ctx), r.execution!))?.statut).toBe("interrompue");
   });
 
-  it("widget sans les nouveaux champs en échec : mémoire non écrite (comme avant)", async () => {
+  it("widget without the new fields failing: memory not written (as before)", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx);
     await ecrireMemoire(donneesDe(ctx), { liste: { type: "code", valeur: ["ancienne"] } });
@@ -1427,7 +1427,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect(await readFile(fichierMemoire(ctx), "utf8")).toBe(avant);
   });
 
-  it("widget avec compte et auFilDeLEau : accord retiré entre deux publications → données effacées, accord-requis, plus rien d'écrit", async () => {
+  it("widget with an account and auFilDeLEau: grant removed between two publications → data erased, accord-requis, nothing written anymore", async () => {
     const ctx = await preparer("veille", "", { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] });
     await enVeille(ctx, { auFilDeLEau: true });
     await accorder(ctx.dossierWidgets, "veille", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
@@ -1442,7 +1442,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
         pub([A1], 1, 3),
         async () => {
           await attendre(progressionVaut(ctx, 1));
-          // Ce que fait refuserAccord, sans l'effacement : seul le retrait est vu par l'exécution.
+          // What refuserAccord does, without the erasing: only the removal is seen by the run.
           await retirerAccord(ctx.dossierWidgets, "veille");
         },
         avancer(5000),
@@ -1465,7 +1465,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
         { t: "fin", donnees: [A1, A2, A3] },
       ]),
     });
-    // Après le retrait, ni données ni mémoire, et l'état ne montre plus aucune publication.
+    // After the removal, neither data nor memory, and the state no longer shows any publication.
     expect(vus).toEqual([{ donnees: false, memoire: false, progression: { faits: 1, total: 3 } }]);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
     expect(r.donnees).toBeUndefined();
@@ -1475,7 +1475,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect((await lireEtatWidget(ctx.dossierWidgets, "veille")).statut).toBe("accord-requis");
   });
 
-  it("un essai d'un widget auFilDeLEau n'écrit ni données ni état (ni mémoire), même avec dureeMaxMinutes ; limiteMs envoyé, jamais progressif", async () => {
+  it("a trial of an auFilDeLEau widget writes neither data nor state (nor memory), even with dureeMaxMinutes; limiteMs sent, never progressive", async () => {
     const ctx = await preparer("veille", "");
     await enVeille(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
     const { horloge: h, avancer } = horlogeMobile();
@@ -1515,7 +1515,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect(await instantane()).toEqual(avant);
   });
 
-  it("web : la recherche part de urlRecherche, par le ménagement donné", async () => {
+  it("web: the search starts from urlRecherche, through the given throttle", async () => {
     const BASE = "https://ddg.test/html/";
     const html = `<div class="result"><a class="result__a" href="https://a.example/1">Titre</a><a class="result__snippet">Extrait</a></div>`;
     const ctx = await preparer("veille", `export default async (w) => w.chercherWeb("clio", { nombre: 1 });`);
@@ -1528,7 +1528,7 @@ describe("executerRecolte, veille (publications au fil de l'eau, mémoire gardé
     expect(rechercher).toHaveBeenCalledTimes(1);
   });
 
-  it("nouveaux : 3 annonces dont 1 déjà dans les données précédentes → 2 ; widget sans notifier → absent", async () => {
+  it("new ones: 3 listings of which 1 already in the previous data → 2; widget without notifier → absent", async () => {
     const code = `export default async () => [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }];`;
     const ctx = await preparer("annonces", code);
     ctx.widget.declaration.recolte = { minutes: 60, notifier: true };

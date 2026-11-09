@@ -6,7 +6,7 @@ import { cheminsEspace } from "../../src/chemins.js";
 import { surveillerAccueil, surveillerActions } from "../../src/accueil/surveiller.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-test("surveillerAccueil appelle le rappel une seule fois pour une rafale d'écritures", async () => {
+test("surveillerAccueil calls the callback only once for a burst of writes", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(join(c.widgets, "x"), { recursive: true });
   let appels = 0;
@@ -21,7 +21,7 @@ test("surveillerAccueil appelle le rappel une seule fois pour une rafale d'écri
   expect(appels).toBe(1);
 });
 
-test("surveillerActions suit ~/WebAiOs/actions et composants, une fois par rafale", async () => {
+test("surveillerActions follows ~/WebAiOs/actions and components, once per burst", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   let appels = 0;
   const arreter = surveillerActions(c, () => appels++);

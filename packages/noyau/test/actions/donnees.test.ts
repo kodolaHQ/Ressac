@@ -23,7 +23,7 @@ const ajouter = async (d: string, debut: string, essai = false, resultats?: unkn
   return e.id;
 };
 
-test("résultat écrit puis relu ; dernierResultat ignore les essais", async () => {
+test("result written then re-read; dernierResultat ignores trials", async () => {
   const d = await dossierTemporaire();
   const vrai = await ajouter(d, horodatage(0), false, { v: "vrai" });
   const essai = await ajouter(d, horodatage(5), true, { v: "essai" });
@@ -34,18 +34,18 @@ test("résultat écrit puis relu ; dernierResultat ignore les essais", async () 
   expect(await lireResultat(d, "a", "../../x")).toBeNull();
 });
 
-test("dernierResultat : la plus récente vraie exécution qui a un résultat", async () => {
+test("dernierResultat: the most recent real run that has a result", async () => {
   const d = await dossierTemporaire();
   const a = await ajouter(d, horodatage(0));
   const b = await ajouter(d, horodatage(2), false, { v: "recent" });
   expect((await dernierResultat(d, "a"))?.execution).toBe(b);
-  await ecrireExecution(join(d, "a"), execution(horodatage(1))); // exécution sans résultat (échec)
+  await ecrireExecution(join(d, "a"), execution(horodatage(1))); // run without a result (failure)
   expect((await dernierResultat(d, "a"))?.execution).toBe(b);
   expect(a).not.toBe(b);
   expect(await dernierResultat(await dossierTemporaire(), "a")).toBeNull();
 });
 
-test("21 exécutions : le résultat de la plus ancienne part avec elle", async () => {
+test("21 runs: the oldest's result goes with it", async () => {
   const d = await dossierTemporaire();
   const ids: string[] = [];
   for (let i = 0; i < 21; i++) ids.push(await ajouter(d, horodatage(i)));
@@ -55,7 +55,7 @@ test("21 exécutions : le résultat de la plus ancienne part avec elle", async (
   expect(await lireResultat(d, "a", ids[20]!)).not.toBeNull();
 });
 
-test("11 essais : le résultat du plus ancien part avec lui", async () => {
+test("11 trials: the oldest's result goes with it", async () => {
   const d = await dossierTemporaire();
   const ids: string[] = [];
   for (let i = 0; i < 11; i++) ids.push(await ajouter(d, horodatage(i), true));
@@ -63,7 +63,7 @@ test("11 essais : le résultat du plus ancien part avec lui", async () => {
   expect(await lireResultat(d, "a", ids[10]!)).not.toBeNull();
 });
 
-test("un résultat énorme est refusé, un fichier abîmé est ignoré", async () => {
+test("a huge result is refused, a damaged file is ignored", async () => {
   const d = await dossierTemporaire();
   const e = execution(horodatage(0));
   await ecrireExecution(join(d, "a"), e);
@@ -74,7 +74,7 @@ test("un résultat énorme est refusé, un fichier abîmé est ignoré", async (
   expect(await lireResultat(d, "a", e.id)).toBeNull();
 });
 
-test("supprimerDonneesAction efface exécutions, résultats et mémoire", async () => {
+test("supprimerDonneesAction erases runs, results and memory", async () => {
   const d = await dossierTemporaire();
   const id = await ajouter(d, horodatage(0));
   await ecrireMemoire(join(d, "a"), { b: { type: "t", valeur: 1 } });
@@ -84,7 +84,7 @@ test("supprimerDonneesAction efface exécutions, résultats et mémoire", async 
   expect(await lireResultat(d, "a", id)).toBeNull();
 });
 
-test("oublierActionsDisparues efface les données et l'accord d'une action dont le dossier a disparu, pas les autres", async () => {
+test("oublierActionsDisparues erases the data and grant of an action whose folder disappeared, not the others", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   const dossierActions = await dossierTemporaire();
   await mkdir(join(c.actions, "vivante"), { recursive: true });
@@ -101,8 +101,8 @@ test("oublierActionsDisparues efface les données et l'accord d'une action dont 
   expect(Object.keys(await lireAccords(dossierActions))).toEqual(["vivante"]);
 });
 
-test("oublierActionsDisparues : sans dossier d'actions (espace déplacé), données et accords restent", async () => {
-  const c = cheminsEspace(await dossierTemporaire()); // c.actions n'existe pas
+test("oublierActionsDisparues: without an actions folder (space moved), data and grants stay", async () => {
+  const c = cheminsEspace(await dossierTemporaire()); // c.actions does not exist
   const dossierActions = await dossierTemporaire();
   const e = execution(horodatage(0));
   await ecrireExecution(join(dossierActions, "x"), e);
@@ -113,7 +113,7 @@ test("oublierActionsDisparues : sans dossier d'actions (espace déplacé), donn�
   expect(Object.keys(await lireAccords(dossierActions))).toEqual(["x"]);
 });
 
-test("oublierActionsDisparues : un lien symbolique nommé comme l'action n'est pas l'action", async () => {
+test("oublierActionsDisparues: a symbolic link named like the action is not the action", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   const dossierActions = await dossierTemporaire();
   await mkdir(c.actions, { recursive: true });
@@ -123,7 +123,7 @@ test("oublierActionsDisparues : un lien symbolique nommé comme l'action n'est p
   expect(existsSync(join(dossierActions, "x"))).toBe(false);
 });
 
-test("un plan bien formé est relu ; un plan mal formé fait rejeter le résultat", async () => {
+test("a well-formed plan is re-read; a malformed plan makes the result be rejected", async () => {
   const d = await dossierTemporaire();
   const id = idExecution(horodatage(0));
   const plan = { blocs: [{ composant: "titre", props: { texte: "x" } }] };

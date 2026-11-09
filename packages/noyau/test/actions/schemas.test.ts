@@ -6,7 +6,7 @@ const message = (brut: unknown) => {
   return r.success ? null : r.error.issues.map((i) => i.message).join(" | ");
 };
 
-test("l'exemple GitLab (compte gitlab.com, motsCles, miseEnPage) est accepté", () => {
+test("the GitLab example (gitlab.com account, motsCles, miseEnPage) is accepted", () => {
   const d = DeclarationAction.parse({
     nom: "Mes merge requests",
     description: "Les merge requests qui m'attendent",
@@ -18,24 +18,24 @@ test("l'exemple GitLab (compte gitlab.com, motsCles, miseEnPage) est accepté", 
   expect(d.saisie).toBeUndefined();
 });
 
-test("l'exemple Leboncoin (web, saisie « Recherche ») est accepté", () => {
+test("the Leboncoin example (web, input « Recherche ») is accepted", () => {
   const d = DeclarationAction.parse({ nom: "Leboncoin", sources: { web: true }, saisie: { libelle: "Recherche" }, dureeMaxMinutes: 10 });
   expect(d.saisie).toEqual({ libelle: "Recherche" });
   expect(d.description).toBe("");
   expect(d.motsCles).toEqual([]);
 });
 
-test("web avec compte : WEB_AVEC_COMPTE", () => {
+test("web with an account: WEB_AVEC_COMPTE", () => {
   expect(message({ nom: "X", sources: { web: true, compte: ["gitlab.com"] } })).toBe(WEB_AVEC_COMPTE);
 });
 
-test("clé inconnue (recolte, tailles) refusée", () => {
+test("unknown key (recolte, tailles) refused", () => {
   expect(message({ nom: "X", sources: {}, recolte: { minutes: 30 } })).not.toBeNull();
   expect(message({ nom: "X", sources: {}, tailles: {} })).not.toBeNull();
   expect(message({ nom: "X", sources: {}, saisie: { libelle: "R", defaut: "x" } })).not.toBeNull();
 });
 
-test("11 mots-clés, libellé de 41 caractères, dureeMaxMinutes 61 refusés", () => {
+test("11 keywords, 41-character label, dureeMaxMinutes 61 refused", () => {
   const base = { nom: "X", sources: {} };
   expect(DeclarationAction.safeParse({ ...base, motsCles: Array.from({ length: 10 }, (_, i) => `m${i}`) }).success).toBe(true);
   expect(DeclarationAction.safeParse({ ...base, motsCles: Array.from({ length: 11 }, (_, i) => `m${i}`) }).success).toBe(false);

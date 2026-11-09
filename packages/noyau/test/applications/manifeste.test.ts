@@ -17,7 +17,7 @@ async function ecrire(c: ReturnType<typeof cheminsEspace>, dossier: string, cont
   await writeFile(join(c.projets, dossier, "webaios.json"), contenu);
 }
 
-test("un projet avec manifeste valide", async () => {
+test("a project with a valid manifest", async () => {
   const c = await espace();
   await ecrire(c, "todo", '{"nom":"Todo","type":"application","lancement":"npx vite --port {port}"}');
   const projets = await lireProjets(c);
@@ -31,14 +31,14 @@ test("un projet avec manifeste valide", async () => {
   expect(Number.isNaN(Date.parse(projets[0]!.creeLe))).toBe(false);
 });
 
-test("sans manifeste : sans fiche", async () => {
+test("without a manifest: sans fiche", async () => {
   const c = await espace();
   await mkdir(join(c.projets, "demo-vite"));
   await mkdir(join(c.projets, ".cache"));
   expect(await lireProjets(c)).toMatchObject([{ dossier: "demo-vite", nom: "demo-vite", sansFiche: "pas de webaios.json" }]);
 });
 
-test("manifeste coupé : sans fiche avec la raison, puis normal", async () => {
+test("cut manifest: sans fiche with the reason, then normal", async () => {
   const c = await espace();
   await ecrire(c, "a", '{"type":"app');
   const [coupe] = await lireProjets(c);
@@ -49,7 +49,7 @@ test("manifeste coupé : sans fiche avec la raison, puis normal", async () => {
   expect(bon).toMatchObject({ nom: "a", manifeste: { type: "poc" } });
 });
 
-test("type inconnu ou lancement vide : sans fiche", async () => {
+test("unknown type or empty launch: sans fiche", async () => {
   const c = await espace();
   await ecrire(c, "a", '{"type":"jeu","lancement":"x"}');
   await ecrire(c, "b", '{"type":"poc","lancement":""}');
@@ -58,7 +58,7 @@ test("type inconnu ou lancement vide : sans fiche", async () => {
   for (const p of projets) expect((p as { sansFiche: string }).sansFiche).toMatch(/^webaios\.json invalide/);
 });
 
-test("dossier au nom non pris en charge : sans fiche", async () => {
+test("folder with an unsupported name: sans fiche", async () => {
   const c = await espace();
   await ecrire(c, "mon projet", '{"type":"poc","lancement":"x"}');
   expect(await lireProjets(c)).toMatchObject([{ dossier: "mon projet", sansFiche: "nom de dossier non pris en charge" }]);
@@ -67,7 +67,7 @@ test("dossier au nom non pris en charge : sans fiche", async () => {
   expect(dossierValide("a.b_c-1")).toBe(true);
 });
 
-test("ecrireType garde les autres champs", async () => {
+test("ecrireType keeps the other fields", async () => {
   const c = await espace();
   await ecrire(c, "a", '{"type":"poc","lancement":"x","origine":"https://exemple.fr/","x":{"y":1}}');
   await ecrireType(c, "a", "application");
@@ -75,7 +75,7 @@ test("ecrireType garde les autres champs", async () => {
   expect(ecrit).toEqual({ type: "application", lancement: "x", origine: "https://exemple.fr/", x: { y: 1 } });
 });
 
-test("surveillerProjets signale un nouveau manifeste et ignore node_modules", async () => {
+test("surveillerProjets signals a new manifest and ignores node_modules", async () => {
   const c = await espace();
   await mkdir(join(c.projets, "a", "node_modules", "p"), { recursive: true });
   let appels = 0;

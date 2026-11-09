@@ -17,7 +17,7 @@ async function ecrire(nom: string, json: string | null, html: string | null) {
 }
 
 describe("lireComposantsAgent", () => {
-  it("graphique-barres (composant.json + composant.html) est valide", async () => {
+  it("graphique-barres (composant.json + composant.html) is valid", async () => {
     await ecrire("graphique-barres", decl("graphique-barres"), "<svg></svg>");
     const r = await lireComposantsAgent(dossier);
     expect(r.invalides).toEqual([]);
@@ -33,7 +33,7 @@ describe("lireComposantsAgent", () => {
     expect(r.invalides).toEqual([{ nom: "sans-html", erreur: "composant.html absent" }]);
   });
 
-  it("nom différent du dossier, nom « tableau », genre « fonction », html de 300 Ko, lien symbolique : invalides avec une erreur lisible", async () => {
+  it("name different from the folder, name « tableau », kind « fonction », 300 KB html, symbolic link: invalid with a readable error", async () => {
     await ecrire("autre", decl("pas-autre"), "<p></p>");
     await ecrire("tableau", decl("tableau"), "<p></p>");
     await ecrire("fonc", decl("fonc", { proprietes: { f: { genre: "fonction", description: "x" } } }), "<p></p>");
@@ -55,7 +55,7 @@ describe("lireComposantsAgent", () => {
     for (const e of Object.values(erreurs)) expect(e).not.toContain(dossier);
   });
 
-  it("un invalide n'empêche pas les autres d'être lus", async () => {
+  it("an invalid one does not prevent the others from being read", async () => {
     await ecrire("a-casse", "{pas du json", "<p></p>");
     await ecrire("b-bon", decl("b-bon"), "<p></p>");
     const r = await lireComposantsAgent(dossier);
@@ -63,7 +63,7 @@ describe("lireComposantsAgent", () => {
     expect(r.invalides).toEqual([{ nom: "a-casse", erreur: "composant.json illisible (pas du JSON valide)" }]);
   });
 
-  it("noms de propriété __proto__, avec saut de ligne, 13 propriétés, composant.json lien symbolique : invalides", async () => {
+  it("property names __proto__, with a line break, 13 properties, composant.json symbolic link: invalid", async () => {
     const prop = { genre: "texte", description: "x" };
     await ecrire("proto", '{"nom":"proto","description":"d","proprietes":{"__proto__":{"genre":"texte","description":"x"}}}', "<p></p>");
     await ecrire("saut", decl("saut", { proprietes: { "a\nb": prop } }), "<p></p>");

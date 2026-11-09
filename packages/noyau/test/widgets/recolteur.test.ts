@@ -14,7 +14,7 @@ const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolt
 type Appel = { t: "appel"; n: number; f: string; a: any };
 type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
-/** Un widget qui n'a que `recolte.mjs` (comme le Gmail de l'utilisateur), lancé comme le noyau le fait. */
+/** A widget that has only `recolte.mjs` (like the user's Gmail), launched the way the core does it. */
 async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), config: unknown = {}) {
   const dossier = await dossierTemporaire();
   await writeFile(join(dossier, "recolte.mjs"), code);
@@ -47,8 +47,8 @@ async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), 
   return { lignes, appels, stderr, terminal: lignes.find((l) => l.t === "fin" || l.t === "echec") };
 }
 
-describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
-  it("un recolte.mjs qui rend des données produit { t: fin }", async () => {
+describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
+  it("a recolte.mjs that returns data produces { t: fin }", async () => {
     const r = await lancer(
       `export default async (w) => ({ cfg: w.config, prec: w.precedent, quand: w.maintenant });`,
       undefined,
@@ -60,7 +60,7 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     });
   });
 
-  it("lirePage et kev passent par des appels numérotés et reçoivent la réponse", async () => {
+  it("lirePage and kev go through numbered calls and receive the response", async () => {
     const r = await lancer(
       `export default async (w) => {
         const p = await w.lirePage("https://a.fr/", { compte: true });
@@ -79,17 +79,17 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     expect(r.terminal.donnees.p.titre).toBe("T");
   });
 
-  it("une exception du widget donne { t: echec } avec le message", async () => {
+  it("a widget exception gives { t: echec } with the message", async () => {
     const r = await lancer(`export default async () => { throw new Error("boum"); };`);
     expect(r.terminal).toEqual({ t: "echec", erreur: expect.stringContaining("boum") });
   });
 
-  it("un résultat qui n'est pas du JSON donne echec", async () => {
+  it("a result that is not JSON gives echec", async () => {
     const r = await lancer(`export default async () => () => 1;`);
     expect(r.terminal.t).toBe("echec");
   });
 
-  it("une réponse { erreur } du noyau devient une exception dans le widget", async () => {
+  it("a core { erreur } response becomes an exception in the widget", async () => {
     const r = await lancer(
       `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
       () => ({ erreur: "domaine refusé" }),
@@ -97,7 +97,7 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: { attrape: "domaine refusé" } });
   });
 
-  it("lireFlux lit un RSS 2.0 et un Atom (CDATA, entités)", async () => {
+  it("lireFlux reads an RSS 2.0 and an Atom (CDATA, entities)", async () => {
     const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Mon &amp; flux</title>
       <item><title><![CDATA[Salut <b>toi</b>]]></title><link>https://a.fr/1</link><pubDate>Mon, 26 Oct 2026 10:00:00 GMT</pubDate><description>R&eacute;sum&#233; &lt;ok&gt; &quot;q&quot; it&apos;s</description></item>
       <item><title>Deux</title><link>https://a.fr/2</link></item></channel></rss>`;
@@ -121,7 +121,7 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     ]);
   });
 
-  it("trier pose une question noul par élément avec l'élément dans state, au plus 8 à la fois, et filtre par seuil", async () => {
+  it("trier asks one noul question per element with the element in state, 8 at a time at most, and filters by threshold", async () => {
     let enCours = 0;
     let max = 0;
     const r = await lancer(
@@ -149,7 +149,7 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     expect(res[0]!.p).toBeCloseTo(0.95);
   });
 
-  it("une réponse de plus de 4 Mo rejette l'appel concerné avec une erreur claire", async () => {
+  it("a response over 4 MB rejects the call concerned with a clear error", async () => {
     const r = await lancer(
       `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
       () => ({ ok: "x".repeat(4 * 1024 * 1024 + 10) }),
@@ -157,20 +157,20 @@ describe("recolteur (workflow implicite d'un recolte.mjs seul)", () => {
     expect(r.terminal.donnees.attrape).toContain("Réponse trop grande");
   });
 
-  it("journal écrit sur stderr, jamais sur stdout", async () => {
+  it("log written on stderr, never on stdout", async () => {
     const r = await lancer(`export default async (w) => { w.journal("bonjour", { a: 1 }); console.log("direct"); return 1; };`);
     expect(r.stderr).toContain("bonjour");
     expect(r.stderr).toContain("direct");
-    // stdout ne porte que le protocole : les traces du bloc implicite, la mémoire, la fin.
+    // stdout carries only the protocol: the implicit block's traces, the memory, the end.
     expect(r.lignes.map((l) => l.t)).toEqual(["bloc", "journal", "bloc", "bloc", "bloc", "memoire", "fin"]);
     expect(r.lignes.find((l) => l.t === "journal")).toEqual({ t: "journal", bloc: "recolte", texte: expect.stringContaining("bonjour") });
     expect(r.terminal).toEqual({ t: "fin", donnees: 1 });
   });
 });
 
-describe("recolteur : limite de durée (limiteMs)", () => {
-  it("limiteMs 1000 : plus aucun élément lancé après 1 s", async () => {
-    // Horloge factice : l'échéance de la ligne debut reçue à 0, chaque élément dure 300 ms, deux à la fois.
+describe("recolteur: duration limit (limiteMs)", () => {
+  it("limiteMs 1000: no more element launched after 1 s", async () => {
+    // Fake clock: the deadline of the debut line received at 0, each element lasts 300 ms, two at a time.
     let maintenant = 0;
     const lances: number[] = [];
     const traces: any[] = [];
@@ -197,13 +197,13 @@ describe("recolteur : limite de durée (limiteMs)", () => {
       },
       blocs: { ...BLOCS_LIVRES, code: { parElement: "non", executer: async () => ({ sortie: Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` })) }) } },
     });
-    // Paires lancées à 0, 600 ; à 1200, plus rien.
+    // Pairs launched at 0, 600; at 1200, nothing more.
     expect(lances).toEqual([0, 0, 600, 600]);
     expect(traces.find((l) => l.t === "bloc" && l.id === "cherche" && l.etape === "fin")).toMatchObject({ statut: "partiel" });
     expect(traces).toContainEqual({ t: "journal", bloc: "cherche", texte: "temps écoulé : 16 élément(s) non lancé(s)" });
   });
 
-  it("dans le conteneur, limiteMs de la ligne debut est l'échéance : 20 ms, passés pendant la liste, aucun élément lancé", async () => {
+  it("in the container, limiteMs of the debut line is the deadline: 20 ms, elapsed during the list, no element launched", async () => {
     const r = await lancerWorkflow({
       workflow: {
         version: 1,
@@ -219,7 +219,7 @@ describe("recolteur : limite de durée (limiteMs)", () => {
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
   });
 
-  it("sans limiteMs : 150 s comme avant", () => {
+  it("without limiteMs: 150 s as before", () => {
     expect(LIMITE_GLOBALE_MS).toBe(150_000);
     expect(echeanceDe({ t: "debut" }, 1_000)).toBe(151_000);
     expect(echeanceDe({ t: "debut", limiteMs: 1_000 }, 1_000)).toBe(2_000);

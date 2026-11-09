@@ -21,7 +21,7 @@ const valider = (brut: unknown, r: unknown = resultats) => validerPlan(brut, { c
 const chiffre = { composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } };
 
 describe("validerPlan", () => {
-  it("le plan GitLab (chiffre compter(tickets), tableau trier(tickets, priorite), encadre garder(filtrer(…), 3)) est valide", () => {
+  it("the GitLab plan (figure compter(tickets), table trier(tickets, priorite), callout garder(filtrer(…), 3)) is valid", () => {
     const plan = {
       blocs: [
         { composant: "titre", props: { texte: "Mes tickets" } },
@@ -37,7 +37,7 @@ describe("validerPlan", () => {
     expect(r).toEqual({ ok: true, plan, ecartes: [] });
   });
 
-  it("tableau avec une colonne « inexistant » : écarté avec sa raison", () => {
+  it("table with a « inexistant » column: dropped with its reason", () => {
     const r = valider({
       blocs: [chiffre, { composant: "tableau", props: { elements: "tickets", colonnes: [{ champ: "titre", libelle: "Titre" }, { champ: "inexistant", libelle: "?" }] } }],
     });
@@ -47,14 +47,14 @@ describe("validerPlan", () => {
     expect(r.ecartes).toEqual(["2. tableau : colonnes : champ « inexistant » absent de tous les éléments"]);
   });
 
-  it("plan de titres seuls : ok false « le plan ne référence rien »", () => {
+  it("plan of titles only: ok false « le plan ne référence rien »", () => {
     const r = valider({ blocs: [{ composant: "titre", props: { texte: "A" } }, { composant: "paragraphe", props: { texte: "B" } }] });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.erreurs).toContain("le plan ne référence rien");
   });
 
-  it("JSON qui n'est pas un objet : ok false", () => {
+  it("JSON that is not an object: ok false", () => {
     for (const brut of [null, 3, "plan", [], { blocs: "x" }, { blocs: [] }, undefined]) {
       const r = valider(brut);
       expect(r.ok).toBe(false);
@@ -62,20 +62,20 @@ describe("validerPlan", () => {
     }
   });
 
-  it("composant « graphique-barres » inconnu : gardé", () => {
+  it("unknown component « graphique-barres »: kept", () => {
     const inconnu = { composant: "graphique-barres", props: { donnees: "tickets" } };
     const r = validerPlan({ blocs: [chiffre, inconnu] }, { catalogue: COMPOSANTS_INTEGRES, resultats });
     expect(r).toEqual({ ok: true, plan: { blocs: [chiffre, inconnu] }, ecartes: [] });
   });
 
-  it("composant de l'agent : reference, champ et texte validés", () => {
+  it("agent component: reference, field and text validated", () => {
     const bloc = { composant: "graphique-barres", props: { donnees: "tickets", etiquette: "titre", titre: "Par ticket" } };
     expect(valider({ blocs: [bloc] })).toEqual({ ok: true, plan: { blocs: [bloc] }, ecartes: [] });
     const r = valider({ blocs: [chiffre, { composant: "graphique-barres", props: { donnees: "absents" } }] });
     expect(r.ok && r.ecartes).toEqual(["2. graphique-barres : donnees : chemin absent : absents"]);
   });
 
-  it("une raison n'écrit jamais une valeur des résultats (valeur piégée « SECRET-123 » absente des erreurs)", () => {
+  it("a reason never writes a value from the results (trapped value « SECRET-123 » absent from the errors)", () => {
     const piege = { tickets: [{ titre: "SECRET-123", n: "SECRET-123" }], code: "SECRET-123", objet: { a: "SECRET-123" } };
     const plans = [
       { blocs: [{ composant: "chiffre", props: { valeur: "compter(code)", libelle: "x" } }] },
@@ -96,7 +96,7 @@ describe("validerPlan", () => {
     }
   });
 
-  it("propriété inconnue retirée, propriété requise absente : écarté", () => {
+  it("unknown property removed, required property missing: dropped", () => {
     const r = valider({
       blocs: [
         { composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "T", couleur: "rouge", onclick: "x" } },
@@ -106,7 +106,7 @@ describe("validerPlan", () => {
     expect(r).toEqual({ ok: true, plan: { blocs: [{ composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "T" } }] }, ecartes: ["2. chiffre : libelle : requise"] });
   });
 
-  it("texte trop long, choix inconnu, mauvais genre : écarté", () => {
+  it("text too long, unknown choice, wrong kind: dropped", () => {
     const r = valider({
       blocs: [
         chiffre,
@@ -124,7 +124,7 @@ describe("validerPlan", () => {
     ]);
   });
 
-  it("l'un ou l'autre : paragraphe texte OU valeur, etiquettes valeurs OU elements + champ, champTexte l'emporte", () => {
+  it("one or the other: paragraph text OR value, labels values OR elements + field, champTexte wins", () => {
     const r = valider({
       blocs: [
         { composant: "paragraphe", props: {} },
@@ -142,7 +142,7 @@ describe("validerPlan", () => {
     ]);
   });
 
-  it("chiffres : liste de { valeur, libelle }, 6 au plus", () => {
+  it("figures: list of { valeur, libelle }, 6 at most", () => {
     const un = { valeur: "compter(tickets)", libelle: "Tous" };
     const ok = valider({ blocs: [{ composant: "chiffres", props: { chiffres: [un, { valeur: 'compter(filtrer(tickets, priorite = "haute"))', libelle: "Hautes" }] } }] });
     expect(ok.ok).toBe(true);
@@ -150,7 +150,7 @@ describe("validerPlan", () => {
     expect(r.ok && r.ecartes).toEqual(["2. chiffres : chiffres : 6 au plus", "3. chiffres : chiffres : chemin absent : absent"]);
   });
 
-  it("enfants : groupe garde ses blocs, colonnes gauche et droite, les blocs sont numérotés dans l'ordre", () => {
+  it("children: group keeps its blocks, left and right columns, blocks are numbered in order", () => {
     const plan = {
       blocs: [
         { composant: "groupe", props: { titre: "G" }, blocs: [chiffre, { composant: "titre", props: {} }] },
@@ -170,7 +170,7 @@ describe("validerPlan", () => {
   });
 
   describe("plan hostile", () => {
-    it("lien composé ou adresse littérale au lieu d'un champ : écarté", () => {
+    it("composed link or literal address instead of a field: dropped", () => {
       const r = valider({
         blocs: [
           chiffre,
@@ -188,18 +188,18 @@ describe("validerPlan", () => {
       expect(r.ecartes[3]).toMatch(/^5\. cartes : image : /);
     });
 
-    it("champ qui est une référence (une opération) : écarté", () => {
+    it("field that is a reference (an operation): dropped", () => {
       const r = valider({ blocs: [chiffre, { composant: "liste", props: { elements: "tickets", titre: "compter(tickets)" } }] });
       expect(r.ok && r.ecartes).toEqual(["2. liste : titre : un nom de champ est attendu, pas une référence"]);
     });
 
-    it("500 blocs, ou imbriqués trop profond : ok false", () => {
+    it("500 blocks, or nested too deep: ok false", () => {
       expect(valider({ blocs: Array(500).fill(chiffre) }).ok).toBe(false);
       const g = (b: unknown) => ({ composant: "groupe", props: { titre: "g" }, blocs: [b] });
       expect(valider({ blocs: [g(g(g(chiffre)))] }).ok).toBe(false);
     });
 
-    it("référence de 50 opérations : écarté", () => {
+    it("reference of 50 operations: dropped", () => {
       let ref = "tickets";
       for (let i = 0; i < 50; i++) ref = `garder(${ref}, 3)`;
       const r = valider({ blocs: [chiffre, { composant: "liste", props: { elements: ref, titre: "titre" } }] });
@@ -210,7 +210,7 @@ describe("validerPlan", () => {
       expect(r2.ok && r2.ecartes).toEqual(["2. liste : elements : plus de 4 opérations imbriquées"]);
     });
 
-    it("JSON imbriqué sur 20 000 niveaux ou énorme : ok false sans exception", () => {
+    it("JSON nested 20,000 levels deep or huge: ok false without exception", () => {
       let profond: unknown = {};
       for (let i = 0; i < 20_000; i++) profond = { blocs: [{ composant: "groupe", props: {}, blocs: [profond] }] };
       expect(valider(profond).ok).toBe(false);
@@ -220,12 +220,12 @@ describe("validerPlan", () => {
       expect(valider({ blocs: [chiffre], bruit: Array.from({ length: 200_000 }, (_, i) => i) }).ok).toBe(false);
     });
 
-    it("une valeur qui lève à la lecture : ok false sans exception", () => {
+    it("a value that throws on read: ok false without exception", () => {
       const piege = { get blocs() { throw new Error("boum"); } };
       expect(valider(piege).ok).toBe(false);
     });
 
-    it("__proto__ dans les props : ne prête aucune propriété", () => {
+    it("__proto__ in the props: lends no property", () => {
       const brut = JSON.parse('{"blocs":[{"composant":"chiffre","props":{"__proto__":{"libelle":"volé"},"valeur":"compter(tickets)"}}]}');
       const r = valider(brut);
       expect(r.ok).toBe(false);
