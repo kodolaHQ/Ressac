@@ -315,6 +315,29 @@ describe("migrateKernel refuses", () => {
     expect(docker.calls).toEqual([]);
   });
 
+  it("an old root next to its new name (a launch on mid-branch code): stopped before any write, both paths named", async () => {
+    for (const [old, fresh] of [
+      ["espace", "workspace"],
+      ["historique.sqlite", "history.sqlite"],
+      ["profilage", "profiling"],
+      ["ia-locale", "local-ai"],
+      ["design/remarques", "design/remarks"],
+      ["design/relecture", "design/review"],
+      ["extensions/signes", "extensions/signed"],
+    ]) {
+      const { dataDir } = await oldDataDir();
+      if (fresh.endsWith(".sqlite")) writeFileSync(join(dataDir, fresh), "");
+      else mkdirSync(join(dataDir, fresh), { recursive: true });
+      const before = snapshot(dataDir);
+      const docker = fakeDocker();
+      const e = await migrateKernel({ dataDir, docker, now }).then(() => null, (e: Error) => e);
+      expect(e?.message, old).toContain(join(dataDir, old!));
+      expect(e?.message, old).toContain(join(dataDir, fresh!));
+      expect(snapshot(dataDir), old).toEqual(before);
+      expect(docker.calls).toEqual([]);
+    }
+  });
+
   it("a folder linked out of the data folder: never read nor written through", async () => {
     const { root, dataDir } = await oldDataDir();
     mkdirSync(join(root, "elsewhere"));

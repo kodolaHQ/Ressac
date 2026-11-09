@@ -11,7 +11,7 @@ import { FutureFormatError, KNOWN_FORMAT, readMarker, writeMarkerHalf } from "./
 import { migrateProfiles } from "./profiles.js";
 import { REPORT_FILE, writeReport } from "./report.js";
 import { migrateSites } from "./sites.js";
-import { migrateTree } from "./tree.js";
+import { migrateTree, ROOT_MOVES } from "./tree.js";
 import { verify } from "./verify.js";
 import { migrateWidgets } from "./widgets.js";
 
@@ -62,6 +62,14 @@ export async function migrateKernel(o: {
   for (const name of ["espace", "workspace"]) {
     // A linked workspace would make every step write outside the data folder.
     if ((await kind(join(o.dataDir, name))) === "other") throw new Error(`${join(o.dataDir, name)} n'est pas un dossier (lien ?) : rien n'est migré.`);
+  }
+  // Both names: the new one was most likely made by a launch of an in-between version; migrating would leave the
+  // real data under the old name, never read again.
+  for (const [from, to] of [...ROOT_MOVES, ["historique.sqlite", "history.sqlite"]]) {
+    const [a, b] = [join(o.dataDir, from), join(o.dataDir, to)];
+    if ((await kind(a)) !== null && (await kind(b)) !== null) {
+      throw new Error(`${a} et ${b} existent tous les deux : rien n'est migré. Garde celui qui contient tes données (en général l'ancien, ${from}), mets l'autre de côté, puis relance WebAiOs.`);
+    }
   }
   const ctx: Ctx = {
     dataDir: o.dataDir,

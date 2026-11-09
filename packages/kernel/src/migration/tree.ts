@@ -6,20 +6,21 @@ import { folders, move, type Ctx } from "./json.js";
  * Folder renames of the data tree (FOLDERS), outermost first. The JSON files inside are renamed by their own step,
  * which also rewrites them; code files only change name.
  */
+/** Renamed under the data folder itself, outermost first. Both names there: the migration stops (index.ts). */
+export const ROOT_MOVES = [
+  ["espace", "workspace"],
+  ["profilage", "profiling"],
+  ["ia-locale", "local-ai"],
+  ["local-ai/kev.clone-en-cours", "local-ai/kev.clone-in-progress"],
+  ["design/remarques", "design/remarks"],
+  ["design/relecture", "design/review"],
+  ["extensions/signes", "extensions/signed"],
+] as const;
+
 export async function migrateTree(ctx: Ctx): Promise<void> {
   const d = ctx.dataDir;
   const w = ctx.workspace;
-  await move(ctx, join(d, "espace"), w);
-  for (const [from, to] of [
-    ["profilage", "profiling"],
-    ["ia-locale", "local-ai"],
-    ["local-ai/kev.clone-en-cours", "local-ai/kev.clone-in-progress"],
-    ["design/remarques", "design/remarks"],
-    ["design/relecture", "design/review"],
-    ["extensions/signes", "extensions/signed"],
-  ]) {
-    await move(ctx, join(d, from!), join(d, to!));
-  }
+  for (const [from, to] of ROOT_MOVES) await move(ctx, join(d, from), join(d, to));
   // Disposable copies (rebuilt from the workspace at each start): the old cache name would stay orphaned.
   await rm(join(d, "webaios-composants"), { recursive: true, force: true });
 
