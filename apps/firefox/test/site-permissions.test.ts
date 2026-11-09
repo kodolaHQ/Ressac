@@ -37,7 +37,7 @@ beforeEach(() => {
   profiles = ["defaut"];
 });
 
-test("première demande → on demande ; la décision est mémorisée et la seconde passe sans demande", async () => {
+test("first request → we ask; the decision is remembered and the second goes through without asking", async () => {
   const p = make();
   expect(await p.handle(req("notifications"))).toBe(true);
   expect(questions).toEqual([{ ongletId: "o1", fenetreId: "f1", origine: meet, permissions: ["notifications"] }]);
@@ -47,7 +47,7 @@ test("première demande → on demande ; la décision est mémorisée et la seco
   expect(saved()).toEqual({ [`${meet} notifications`]: "autoriser" });
 });
 
-test("caméra + micro : il faut les deux autorisations", async () => {
+test("camera + microphone: both permissions are needed", async () => {
   const p = make();
   expect(await p.handle(req("media", { mediaTypes: ["video", "audio"] }))).toBe(true);
   expect(questions.at(-1)?.permissions).toEqual(["media-camera", "media-micro"]);
@@ -59,7 +59,7 @@ test("caméra + micro : il faut les deux autorisations", async () => {
   expect(questions.at(-1)?.permissions).toEqual(["media-camera"]);
 });
 
-test("fullscreen accordé sans demande ; permission inconnue refusée sans demande", async () => {
+test("fullscreen granted without asking; unknown permission denied without asking", async () => {
   const p = make();
   expect(await p.handle(req("fullscreen"))).toBe(true);
   expect(await p.handle(req("clipboard-sanitized-write"))).toBe(true);
@@ -67,7 +67,7 @@ test("fullscreen accordé sans demande ; permission inconnue refusée sans deman
   expect(questions).toEqual([]);
 });
 
-test("verifier répond d'après les décisions mémorisées, sans jamais demander", async () => {
+test("verifier answers from the remembered decisions, never asking", async () => {
   const p = make();
   await p.ready;
   expect(p.check("defaut", meet, "notifications")).toBe(false);
@@ -78,14 +78,14 @@ test("verifier répond d'après les décisions mémorisées, sans jamais demande
   expect(questions).toHaveLength(1);
 });
 
-test("deux demandes simultanées pour la même permission ne posent qu'une question", async () => {
+test("two simultaneous requests for the same permission ask only one question", async () => {
   const p = make();
   const r = await Promise.all([p.handle(req("geolocation")), p.handle(req("geolocation", { ongletId: "o2" }))]);
   expect(r).toEqual([true, true]);
   expect(questions).toHaveLength(1);
 });
 
-test("question retirée sans réponse (onglet fermé) : refusée cette fois, rien de mémorisé, redemandée ensuite", async () => {
+test("question withdrawn without an answer (tab closed): denied this time, nothing remembered, asked again afterwards", async () => {
   const p = make();
   answer = "retiree";
   expect(await p.handle(req("media", { mediaTypes: ["video"] }))).toBe(false);
@@ -96,7 +96,7 @@ test("question retirée sans réponse (onglet fermé) : refusée cette fois, rie
   expect(questions).toHaveLength(2);
 });
 
-test("caméra puis caméra + micro avant toute réponse : la caméra n'est demandée qu'une fois", async () => {
+test("camera then camera + microphone before any answer: the camera is only asked once", async () => {
   const replies: ((d: Issue) => void)[] = [];
   const p = make({ ask: (d) => (questions.push(d), new Promise((ok) => replies.push(ok))) });
   const video = p.handle(req("media", { mediaTypes: ["video"] }));
@@ -109,7 +109,7 @@ test("caméra puis caméra + micro avant toute réponse : la caméra n'est deman
   await vi.waitFor(() => expect(saved()).toEqual({ [`${meet} media-camera`]: "autoriser", [`${meet} media-micro`]: "refuser" }));
 });
 
-test("decisions survivent à un rechargement du fichier", async () => {
+test("decisions survive a file reload", async () => {
   await make().handle(req("geolocation"));
   const p = make();
   await p.ready;
@@ -120,7 +120,7 @@ test("decisions survivent à un rechargement du fichier", async () => {
   expect(q.check("defaut", meet, "geolocation")).toBe(false);
 });
 
-test("permissions.json corrompu → aucune décision, pas de plantage", async () => {
+test("corrupted permissions.json → no decision, no crash", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   disk.set(FILE, "{pas du json");
   let p = make();
@@ -133,7 +133,7 @@ test("permissions.json corrompu → aucune décision, pas de plantage", async ()
   warn.mockRestore();
 });
 
-test("ouvrir une application externe (mailto:…) : demandé à chaque fois avec le lien, jamais mémorisé", async () => {
+test("opening an external application (mailto:…): asked every time with the link, never remembered", async () => {
   const p = make();
   expect(await p.handle(req("openExternal", { lien: "mailto:a@b.fr" }))).toBe(true);
   expect(questions.at(-1)).toEqual({ ongletId: "o1", fenetreId: "f1", origine: meet, permissions: ["ouvrir-application"], lien: "mailto:a@b.fr" });
@@ -145,7 +145,7 @@ test("ouvrir une application externe (mailto:…) : demandé à chaque fois avec
   expect(await p.handle(req("openExternal"))).toBe(false);
 });
 
-test("drm et midi sont retenus par (origine, profil) ; partage-ecran est redemandé à chaque fois", async () => {
+test("drm and midi are kept per (origin, profile); partage-ecran is asked again every time", async () => {
   const p = make();
   expect(await p.handle(req("drm"))).toBe(true);
   expect(await p.handle(req("drm"))).toBe(true);
@@ -161,7 +161,7 @@ test("drm et midi sont retenus par (origine, profil) ; partage-ecran est redeman
   expect(saved()).toEqual({ [`${meet} drm`]: "autoriser", [`${meet} midi`]: "autoriser" });
 });
 
-test("une même origine dans un autre profil est redemandée", async () => {
+test("the same origin in another profile is asked again", async () => {
   const p = make();
   await p.handle(req("notifications"));
   await p.handle(req("notifications", { profil: "pro" }));
@@ -170,7 +170,7 @@ test("une même origine dans un autre profil est redemandée", async () => {
   expect(saved(`${DIR}/permissions-pro.json`)).toEqual({ [`${meet} notifications`]: "autoriser" });
 });
 
-test("chaque décision est recopiée dans Firefox ; forget et removeProfile la retirent", async () => {
+test("each decision is copied into Firefox; forget and removeProfile remove it", async () => {
   const p = make();
   await p.handle(req("media", { mediaTypes: ["video", "audio"] }));
   await p.handle(req("notifications", { profil: "pro" }));
@@ -188,7 +188,7 @@ test("chaque décision est recopiée dans Firefox ; forget et removeProfile la r
   expect(p.check("pro", meet, "notifications")).toBe(false);
 });
 
-test("au démarrage, Firefox est vidé puis reconstruit depuis les fichiers des profils", async () => {
+test("at startup, Firefox is emptied then rebuilt from the profiles' files", async () => {
   disk.set(FILE, JSON.stringify({ [`${meet} geolocation`]: "autoriser" }));
   disk.set(`${DIR}/permissions-pro.json`, JSON.stringify({ "https://a.fr drm": "refuser" }));
   profiles = ["defaut", "pro"];
@@ -200,7 +200,7 @@ test("au démarrage, Firefox est vidé puis reconstruit depuis les fichiers des 
   ]);
 });
 
-test("un fichier illisible : aucune décision, rien n'est réécrit avant une nouvelle décision", async () => {
+test("an unreadable file: no decision, nothing is rewritten before a new decision", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   disk.set(FILE, "{pas du json");
   const write = vi.fn(files.write);
@@ -213,7 +213,7 @@ test("un fichier illisible : aucune décision, rien n'est réécrit avant une no
   warn.mockRestore();
 });
 
-test("une demande arrivée avant la fin du chargement attend ready", async () => {
+test("a request arriving before loading ends waits for ready", async () => {
   disk.set(FILE, JSON.stringify({ [`${meet} notifications`]: "autoriser" }));
   let release!: () => void;
   const gate = new Promise<void>((ok) => (release = ok));
@@ -225,12 +225,12 @@ test("une demande arrivée avant la fin du chargement attend ready", async () =>
   expect(questions).toEqual([]);
 });
 
-test("le fichier écrit a le format attendu", async () => {
+test("the written file has the expected format", async () => {
   await make().handle(req("geolocation", { origine: "https://a.test" }));
   expect(JSON.parse(disk.get(FILE)!)).toEqual({ "https://a.test geolocation": "autoriser" });
 });
 
-test("une origine illisible dans le fichier n'empêche pas le démarrage ni les autres décisions", async () => {
+test("an unreadable origin in the file stops neither the startup nor the other decisions", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   disk.set(FILE, JSON.stringify({ "pas une origine notifications": "autoriser", [`${meet} geolocation`]: "autoriser" }));
   const p = make({
@@ -243,14 +243,14 @@ test("une origine illisible dans le fichier n'empêche pas le démarrage ni les 
   warn.mockRestore();
 });
 
-test("removeProfile retire Firefox tout de suite, avant que l'appelant ne retire le conteneur", async () => {
+test("removeProfile removes from Firefox right away, before the caller removes the container", async () => {
   const p = make();
   const done = p.removeProfile("pro");
   expect(calls.at(-1)).toEqual(["remove", "pro", null]);
   await done;
 });
 
-test("profil retiré pendant une question : la réponse tardive vaut pour la demande, sans écriture ni recopie", async () => {
+test("profile removed during a question: the late answer counts for the request, without a write or a copy", async () => {
   const replies: ((d: Issue) => void)[] = [];
   const p = make({ ask: (d) => (questions.push(d), new Promise((ok) => replies.push(ok))) });
   await p.ready;

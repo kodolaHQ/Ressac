@@ -23,7 +23,7 @@ beforeEach(() => {
   F = e.fenetres[0]!.id;
 });
 
-test("ongletsParcourables : ordre de la barre, épinglé fermé absent, essentiel en tête, autre espace absent", () => {
+test("ongletsParcourables: bar order, closed pinned absent, essential first, other space absent", () => {
   const a = ouvrir("https://a.fr");
   const b = ouvrir("https://b.fr");
   const c = ouvrir("https://c.fr");

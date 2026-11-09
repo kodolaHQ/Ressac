@@ -9,16 +9,16 @@ import { servirAffichages } from "../ui/api";
 
 let racine: string;
 let widgets: string;
-/** Ce que la substitution resource:// a reçu : nom → dossier (null : retirée). */
+/** What the resource:// substitution received: name → folder (null: removed). */
 const substitutions = new Map<string, string | null>();
 
-// Le module tourne en chrome dans Firefox (globaux IOUtils/PathUtils/Services/Cc/Ci) : ici, les mêmes, sur node:fs.
+// The module runs in chrome in Firefox (IOUtils/PathUtils/Services/Cc/Ci globals): here, the same ones, on node:fs.
 beforeAll(() => {
   racine = mkdtempSync(join(tmpdir(), "webaios-widget-frame-"));
   widgets = join(racine, "espace", "accueil", "widgets");
   mkdirSync(join(widgets, "demo"), { recursive: true });
   writeFileSync(join(widgets, "demo", "affichage.html"), "<!doctype html><title>démo</title>");
-  // Un fichier du Mac, hors du dossier des widgets.
+  // A Mac file, outside the widgets folder.
   writeFileSync(join(racine, "secret.html"), "<title>secret</title>");
   Object.assign(globalThis as any, {
     PathUtils: { join: (...parts: string[]) => join(...parts) },
@@ -63,15 +63,15 @@ beforeAll(() => {
 
 afterAll(() => rmSync(racine, { recursive: true, force: true }));
 
-describe("les chemins servis", () => {
-  it("nomme la copie et son URL resource:// par le mtime de la source", () => {
+describe("served paths", () => {
+  it("names the copy and its resource:// URL by the source's mtime", () => {
     expect(urlAffichage("demo", 1730000000123)).toBe("resource://webaios-widget-demo/affichage-1730000000123.html");
     expect(cheminCopie("/data", "demo", 42)).toBe("/data/webaios-widgets/demo/affichage-42.html");
   });
 });
 
 describe("preparerWidget", () => {
-  it("écrit la copie assainie, pose la substitution et rend l'URL du cadre", async () => {
+  it("writes the sanitized copy, sets the substitution and returns the frame's URL", async () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
     const url = await preparerWidget(racine, "demo");
@@ -82,7 +82,7 @@ describe("preparerWidget", () => {
     expect(substitutions.get("webaios-widget-demo")).toBe(`file://${join(racine, "webaios-widgets", "demo")}`);
   });
 
-  it("injecte AFFICHAGE_REFUSE dans la copie d'un affichage avec un indice réseau", async () => {
+  it("injects AFFICHAGE_REFUSE into the copy of a display with a network hint", async () => {
     mkdirSync(join(widgets, "refus"), { recursive: true });
     const source = join(widgets, "refus", "affichage.html");
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
@@ -91,7 +91,7 @@ describe("preparerWidget", () => {
     expect(readFileSync(cheminCopie(racine, "refus", mtime), "utf8")).toBe(AFFICHAGE_REFUSE);
   });
 
-  it("ne réécrit pas la copie quand le mtime de la source ne change pas", async () => {
+  it("does not rewrite the copy when the source's mtime does not change", async () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
     const copie = cheminCopie(racine, "demo", mtime);
@@ -102,7 +102,7 @@ describe("preparerWidget", () => {
     expect(readFileSync(copie, "utf8")).toBe(premier);
   });
 
-  it("retire l'ancienne copie quand la source change", async () => {
+  it("removes the old copy when the source changes", async () => {
     const source = join(widgets, "demo", "affichage.html");
     const ancien = Math.round(statSync(source).mtimeMs);
     const nouveau = ancien + 5000;
@@ -111,11 +111,11 @@ describe("preparerWidget", () => {
     expect(await preparerWidget(racine, "demo")).toBe(urlAffichage("demo", nouveau));
     expect(existsSync(cheminCopie(racine, "demo", ancien))).toBe(false);
     expect(readFileSync(cheminCopie(racine, "demo", nouveau), "utf8")).toContain("<title>nouveau</title>");
-    // L'écriture est atomique : aucun temporaire ne reste.
+    // The write is atomic: no temporary file remains.
     expect(readdirSync(join(racine, "webaios-widgets", "demo")).some((n) => n.endsWith(".tmp"))).toBe(false);
   });
 
-  it("refuse un dossier de copies qui est un lien sortant", async () => {
+  it("refuses a copies folder that is an outgoing link", async () => {
     const dehors = join(racine, "copies-dehors");
     mkdirSync(dehors);
     mkdirSync(join(widgets, "copie-lien"), { recursive: true });
@@ -125,14 +125,14 @@ describe("preparerWidget", () => {
     expect(readdirSync(dehors)).toEqual([]);
   });
 
-  it("refuse un affichage.html qui est un lien sortant du dossier du widget", async () => {
+  it("refuses an affichage.html that is an outgoing link from the widget's folder", async () => {
     mkdirSync(join(widgets, "fuite"), { recursive: true });
     writeFileSync(join(widgets, "fuite", "widget.json"), "{}");
     symlinkSync(join(racine, "secret.html"), join(widgets, "fuite", "affichage.html"));
     expect(await preparerWidget(racine, "fuite")).toBeNull();
   });
 
-  it("refuse un dossier de widget qui est un lien sortant", async () => {
+  it("refuses a widget folder that is an outgoing link", async () => {
     const dehors = join(racine, "dehors");
     mkdirSync(dehors);
     writeFileSync(join(dehors, "affichage.html"), "<title>dehors</title>");
@@ -142,7 +142,7 @@ describe("preparerWidget", () => {
 });
 
 describe("oublierWidget", () => {
-  it("retire la substitution et le dossier de copies", async () => {
+  it("removes the substitution and the copies folder", async () => {
     mkdirSync(join(widgets, "oublie"), { recursive: true });
     writeFileSync(join(widgets, "oublie", "affichage.html"), "<title>oublie</title>");
     await preparerWidget(racine, "oublie");
@@ -154,7 +154,7 @@ describe("oublierWidget", () => {
 });
 
 describe("servirAffichages", () => {
-  it("prépare les copies, et n'oublie que les widgets qui ne sont plus affichés", async () => {
+  it("prepares the copies, and only forgets the widgets that are no longer displayed", async () => {
     const prepares = new Set<string>();
     const oublies: string[] = [];
     const outil = {
@@ -166,7 +166,7 @@ describe("servirAffichages", () => {
     expect(prepares).toEqual(new Set(["a", "b"]));
     expect(oublies).toEqual([]);
     await servirAffichages([w("a")], "/data", prepares, outil);
-    // « a » est toujours affiché : sa substitution reste.
+    // « a » is still displayed: its substitution stays.
     expect(prepares).toEqual(new Set(["a"]));
     expect(oublies).toEqual(["b"]);
   });
@@ -175,30 +175,30 @@ describe("servirAffichages", () => {
 describe("affichageServi", () => {
   const html = (corps: string) => `<!doctype html><html><head><title>démo</title></head><body>${corps}</body></html>`;
 
-  it("injecte la meta CSP puis la garde après le doctype, avant tout élément du widget", () => {
+  it("injects the CSP meta then the guard after the doctype, before any widget element", () => {
     const source = html("<script>document.title = 'ok'</script>");
     const servi = affichageServi(source);
     const prefixe = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><script>`;
     expect(servi.startsWith(prefixe)).toBe(true);
     expect(servi).toContain("<script>document.title = 'ok'</script>");
-    // Le parseur exécute la garde avant les scripts du widget ; le doctype reste le premier jeton.
+    // The parser runs the guard before the widget's scripts; the doctype stays the first token.
     const finGarde = servi.indexOf("</script>");
     expect(servi.indexOf("<title>")).toBeGreaterThan(finGarde);
     expect(servi.indexOf("<script>document.title")).toBeGreaterThan(finGarde);
-    // La règle des indices réseau est passée à la garde.
+    // The network-hint rule is passed to the guard.
     expect(servi).toContain(JSON.stringify(MOTIF_INDICES_RESEAU));
-    // Le script sérialisé est du JavaScript valide (compilé, pas exécuté).
+    // The serialized script is valid JavaScript (compiled, not run).
     const debut = servi.indexOf("<script>") + "<script>".length;
     expect(() => new Function(servi.slice(debut, finGarde))).not.toThrow();
   });
 
-  it("injecte le même préfixe dans un HTML sans doctype", () => {
+  it("injects the same prefix into an HTML without a doctype", () => {
     const servi = affichageServi("<p>nu</p>");
     expect(servi.startsWith(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><script>`)).toBe(true);
     expect(servi.endsWith("</script><p>nu</p>")).toBe(true);
   });
 
-  it("garde les commentaires de tête et le doctype avant la meta et la garde", () => {
+  it("keeps the head comments and the doctype before the meta and the guard", () => {
     const servi = affichageServi("<!-- x -->\n<!doctype html><p>nu</p>");
     expect(servi.startsWith(`<!-- x -->\n<!doctype html><meta http-equiv="Content-Security-Policy"`)).toBe(true);
     expect(servi.endsWith("</script><p>nu</p>")).toBe(true);
@@ -208,15 +208,15 @@ describe("affichageServi", () => {
     expect(affichageServi(html('<link rel="preload" href="https://exemple.test/x">'))).toBe(AFFICHAGE_REFUSE);
   });
 
-  it("remplace par AFFICHAGE_REFUSE une autre meta http-equiv", () => {
+  it("replaces another http-equiv meta with AFFICHAGE_REFUSE", () => {
     expect(affichageServi(html('<meta http-equiv="x-dns-prefetch-control" content="on">'))).toBe(AFFICHAGE_REFUSE);
   });
 
-  it("remplace par AFFICHAGE_REFUSE des règles de spéculation", () => {
+  it("replaces speculation rules with AFFICHAGE_REFUSE", () => {
     expect(affichageServi(html('<script type="speculationrules">{"prefetch":[]}</script>'))).toBe(AFFICHAGE_REFUSE);
   });
 
-  it("garde intact un HTML qui ne fait que parler de liens et de préchargement", () => {
+  it("keeps intact an HTML that only talks about links and preloading", () => {
     const source = html("<p>A link can preload; speculation rules are a thing.</p>");
     expect(affichageServi(source)).toContain("<p>A link can preload; speculation rules are a thing.</p>");
     expect(affichageServi(source)).not.toBe(AFFICHAGE_REFUSE);

@@ -3,7 +3,7 @@ import { SchemaActionApplication } from "../../shared/api";
 
 const valide = (dossier: string, action: string) => SchemaActionApplication.safeParse({ dossier, action }).success;
 
-test("Supprimer, Déboguer, Afficher le dossier : tout nom de dossier d'un seul segment", () => {
+test("Supprimer, Déboguer, Afficher le dossier: any single-segment folder name", () => {
   for (const action of ["supprimer", "deboguer", "dossier"]) {
     expect(valide("Mon Projet", action)).toBe(true);
     expect(valide("_tmp", action)).toBe(true);
@@ -11,7 +11,7 @@ test("Supprimer, Déboguer, Afficher le dossier : tout nom de dossier d'un seul 
   }
 });
 
-test("lancer et les autres actions gardent le nom de dossier lançable", () => {
+test("lancer and the other actions keep the launchable folder name", () => {
   for (const action of ["lancer", "relancer", "arreter", "ouvrir", "promouvoir"]) {
     expect(valide("essai", action)).toBe(true);
     expect(valide("Mon Projet", action)).toBe(false);

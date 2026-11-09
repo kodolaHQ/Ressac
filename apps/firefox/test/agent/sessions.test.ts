@@ -52,7 +52,7 @@ function preparer(ouvrir?: () => Promise<SessionLike>) {
 }
 const taille = { cols: 80, rows: 24 };
 
-test("demarrer deux fois n'ouvre qu'une session ; le second appel renvoie le tampon", async () => {
+test("starting twice opens only one session; the second call returns the buffer", async () => {
   const { gestion, sessions, envois, etats } = preparer();
   await gestion.demarrer("F", taille);
   sessions[0]!.emettre("bonjour");
@@ -61,12 +61,12 @@ test("demarrer deux fois n'ouvre qu'une session ; le second appel renvoie le tam
   expect(sessions).toHaveLength(1);
   expect(etats()).toEqual([{ etat: "actif" }]);
   expect(envois.filter((e) => e.canal === "donnees").map((e) => e.v)).toEqual(["bonjour"]);
-  // La sortie en attente d'envoi est déjà dans le tampon renvoyé : pas de doublon ensuite.
+  // Output waiting to be sent is already in the returned buffer: no duplicate afterwards.
   await new Promise((r) => setTimeout(r, REGROUPEMENT_MS * 3));
   expect(envois.filter((e) => e.canal === "donnees")).toHaveLength(1);
 });
 
-test("la sortie de l'agent part par paquets : plusieurs morceaux rapprochés, un seul envoi", async () => {
+test("the agent's output goes out in batches: several close chunks, a single send", async () => {
   vi.useFakeTimers();
   try {
     const { gestion, sessions, envois } = preparer();
@@ -80,7 +80,7 @@ test("la sortie de l'agent part par paquets : plusieurs morceaux rapprochés, un
   }
 });
 
-test("le tampon garde la fin d'une sortie énorme, à partir d'un début de ligne", () => {
+test("the buffer keeps the end of a huge output, starting at the beginning of a line", () => {
   const t = new Tampon(1000);
   for (let i = 0; i < 100; i++) t.ajouter(`${String(i).padStart(3, "0")}\x1b[31mrouge\x1b[0m\r\n`);
   const s = t.texte();
@@ -90,14 +90,14 @@ test("le tampon garde la fin d'une sortie énorme, à partir d'un début de lign
   expect(s).toMatch(/^\d{3}\x1b\[31m/);
 });
 
-test("le tampon coupe au caractère près une sortie sans retour à la ligne", () => {
+test("the buffer cuts a newline-free output exactly at the character", () => {
   const t = new Tampon(TAMPON_MAX);
   for (let i = 0; i < 1000; i++) t.ajouter(`${String(i).padStart(4, "0")}${"x".repeat(996)}`);
   expect(t.texte().length).toBe(TAMPON_MAX);
   expect(t.texte().endsWith(`0999${"x".repeat(996)}`)).toBe(true);
 });
 
-test("Docker absent → docker-absent ; autre erreur → erreur avec message", async () => {
+test("Docker absent → docker-absent; other error → error with message", async () => {
   const absent = preparer(() => Promise.reject(new ErreurAtelier("docker-absent")));
   await absent.gestion.demarrer("F", taille);
   expect(absent.etats()).toEqual([{ etat: "preparation" }, { etat: "docker-absent" }]);
@@ -106,7 +106,7 @@ test("Docker absent → docker-absent ; autre erreur → erreur avec message", a
   expect(casse.etats().at(-1)).toEqual({ etat: "erreur", message: "x" });
 });
 
-test("fin de l'agent → termine ; demarrer relance une nouvelle session", async () => {
+test("agent end → termine; demarrer starts a new session", async () => {
   const { gestion, sessions, etats } = preparer();
   await gestion.demarrer("F", taille);
   sessions[0]!.finir(3);
@@ -117,7 +117,7 @@ test("fin de l'agent → termine ; demarrer relance une nouvelle session", async
   expect(gestion.active("F")).toBe(true);
 });
 
-test("fermerFenetre arrête la session ; une session qui finit de s'ouvrir après la fermeture est arrêtée", async () => {
+test("fermerFenetre stops the session; a session that finishes opening after the close is stopped", async () => {
   const { gestion, sessions } = preparer();
   await gestion.demarrer("F", taille);
   gestion.fermerFenetre("F");
@@ -132,7 +132,7 @@ test("fermerFenetre arrête la session ; une session qui finit de s'ouvrir aprè
   expect(tardive.arretee).toBe(true);
 });
 
-test("ecrire va à la session de la fenêtre", async () => {
+test("ecrire goes to the window's session", async () => {
   const { gestion, sessions } = preparer();
   await gestion.demarrer("F", taille);
   gestion.ecrire("F", "ls\r");
@@ -140,7 +140,7 @@ test("ecrire va à la session de la fenêtre", async () => {
   expect(sessions[0]!.ecrit).toEqual(["ls\r"]);
 });
 
-test("Entrée dans le terminal = l'utilisateur envoie un message (surEnvoi) ; une frappe ordinaire, non", async () => {
+test("Enter in the terminal = the user sends a message (surEnvoi); an ordinary keystroke does not", async () => {
   const { gestion, messages } = preparer();
   await gestion.demarrer("F", taille);
   gestion.ecrire("F", "abc");
@@ -149,7 +149,7 @@ test("Entrée dans le terminal = l'utilisateur envoie un message (surEnvoi) ; un
   expect(messages).toEqual(["F"]);
 });
 
-test("relancerTout arrête chaque session et en rouvre une à la même taille, sans annoncer « terminé »", async () => {
+test("relancerTout stops every session and reopens one at the same size, without announcing « terminé »", async () => {
   const tailles: { cols: number; rows: number }[] = [];
   const sessions: FausseSession[] = [];
   const envois: { f: string; canal: string; v: unknown }[] = [];
@@ -165,7 +165,7 @@ test("relancerTout arrête chaque session et en rouvre une à la même taille, s
   await gestion.demarrer("F", taille);
   gestion.redimensionner("F", { cols: 100, rows: 30 });
   const ancienne = sessions[0]!;
-  ancienne.arreter = () => ancienne.finir(143); // un vrai pty annonce sa fin quand on l'arrête
+  ancienne.arreter = () => ancienne.finir(143); // a real pty announces its end when stopped
   envois.length = 0;
   await gestion.relancerTout();
   expect(ancienne.active).toBe(false);
@@ -175,7 +175,7 @@ test("relancerTout arrête chaque session et en rouvre une à la même taille, s
   expect(gestion.active("F")).toBe(true);
 });
 
-test("relancerTout pendant un démarrage : l'échec de l'ancien démarrage n'écrase pas la nouvelle session", async () => {
+test("relancerTout during a start: the failure of the old start does not overwrite the new session", async () => {
   const sessions: FausseSession[] = [];
   const envois: { f: string; canal: string; v: unknown }[] = [];
   let echouer!: (e: Error) => void;
@@ -197,7 +197,7 @@ test("relancerTout pendant un démarrage : l'échec de l'ancien démarrage n'éc
   expect(gestion.active("F")).toBe(true);
 });
 
-test("toutArreter attend l'arrêt de chaque session", async () => {
+test("toutArreter waits for each session to stop", async () => {
   let finir!: () => void;
   const s = new FausseSession();
   s.arreter = () => new Promise<void>((ok) => (finir = ok));
@@ -211,7 +211,7 @@ test("toutArreter attend l'arrêt de chaque session", async () => {
   await arret;
 });
 
-test("preRemplir avant le démarrage écrit dès que la session est active", async () => {
+test("preRemplir before the start writes as soon as the session is active", async () => {
   let ouvrir!: (s: SessionLike) => void;
   const session = new FausseSession();
   const { gestion, messages } = preparer(() => new Promise((r) => (ouvrir = r)));
@@ -222,13 +222,13 @@ test("preRemplir avant le démarrage écrit dès que la session est active", asy
   expect(session.ecrit).toEqual([]);
   ouvrir(session);
   await demarrage;
-  // Le dernier texte gagne ; l'accès est donné au moment de l'écriture, session ouverte ; rien n'est envoyé.
+  // The last text wins; access is given at write time, session open; nothing is sent.
   expect(session.ecrit).toEqual(["[contexte] "]);
   expect(ecrits).toEqual(["accès avant : 0"]);
   expect(messages).toEqual([]);
 });
 
-test("preRemplir sur une session active écrit tout de suite", async () => {
+test("preRemplir on an active session writes right away", async () => {
   const { gestion, sessions, messages } = preparer();
   await gestion.demarrer("F", taille);
   let appele = 0;
@@ -238,7 +238,7 @@ test("preRemplir sur une session active écrit tout de suite", async () => {
   expect(messages).toEqual([]);
 });
 
-test("ouvrir reçoit la fenêtre de la session", async () => {
+test("ouvrir receives the session's window", async () => {
   const recues: { f: string; t: { cols: number; rows: number } }[] = [];
   const gestion = new SessionsAgent({
     ouvrir: async (f, t) => {

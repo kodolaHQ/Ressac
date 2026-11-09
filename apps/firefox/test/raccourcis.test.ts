@@ -27,11 +27,11 @@ beforeEach(() => {
   F = e.fenetres[0]!.id;
 });
 
-test("⌘1…⌘9 : les épinglés de l'espace passent avant les onglets, ouverts ou non", () => {
+test("⌘1…⌘9: the space's pinned come before the tabs, open or not", () => {
   const p = ouvrir("https://epingle.fr");
   ag({ type: "epinglerOnglet", id: p });
   const favori = e.espaces[0]!.epingles[0]!.id;
-  ag({ type: "fermerOnglet", id: p }); // le favori reste, sans onglet
+  ag({ type: "fermerOnglet", id: p }); // the favorite stays, without a tab
   const a = ouvrir("https://a.fr");
   expect(versNieme(e, F, 1)).toEqual({ type: "ouvrirFavori", fenetreId: F, genre: "epingle", id: favori });
   ag(versNieme(e, F, 1));
@@ -40,7 +40,7 @@ test("⌘1…⌘9 : les épinglés de l'espace passent avant les onglets, ouvert
   expect(actif()).toBe(a);
 });
 
-test("⌘2 active le deuxième ; ⌘9 le dernier ; au-delà de la liste, rien", () => {
+test("⌘2 activates the second; ⌘9 the last; beyond the list, nothing", () => {
   const a = ouvrir("https://a.fr");
   const b = ouvrir("https://b.fr");
   const c = ouvrir("https://c.fr");

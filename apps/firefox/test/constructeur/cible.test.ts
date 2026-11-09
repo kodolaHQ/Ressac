@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { cibleDeCle, cleCible, directDesActions, estCleAction } from "../../ui/constructeur/cible";
 
-test("cleCible : l'id d'un widget tel quel, action:<id> pour une action, et retour", () => {
+test("cleCible: a widget's id as is, action:<id> for an action, and back", () => {
   expect(cleCible({ type: "widget", id: "gitlab" })).toBe("gitlab");
   expect(cleCible({ type: "action", id: "gitlab" })).toBe("action:gitlab");
   expect(cibleDeCle("gitlab")).toEqual({ type: "widget", id: "gitlab" });
@@ -10,7 +10,7 @@ test("cleCible : l'id d'un widget tel quel, action:<id> pour une action, et reto
   expect(estCleAction("gitlab")).toBe(false);
 });
 
-test("directDesActions : une action courante devient une exécution (ou un essai) de sa clé, sans ses traces d'avancement", () => {
+test("directDesActions: a current action becomes a run (or a trial) of its key, without its progress traces", () => {
   const d = directDesActions({
     courantes: [
       {

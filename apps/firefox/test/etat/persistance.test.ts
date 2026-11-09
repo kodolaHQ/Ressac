@@ -26,7 +26,7 @@ function etatRiche(): EtatNavigateur {
   return e;
 }
 
-test("aller-retour : identique, hors champs volatils remis par défaut", async () => {
+test("round trip: identical, apart from volatile fields reset to defaults", async () => {
   const d = dossier();
   const etat = etatRiche();
   const enr = new EnregistreurSession(d);
@@ -40,13 +40,13 @@ test("aller-retour : identique, hors champs volatils remis par défaut", async (
   expect(relu).toEqual(attendu);
 });
 
-/** Le même état tel qu'un navigateur d'avant les espaces configurables l'enregistrait (version 1). */
+/** The same state as a browser from before configurable spaces saved it (version 1). */
 function enV1(etat: EtatNavigateur): unknown {
   const { profils: _profils, ...reste } = structuredClone(etat);
   return { ...reste, version: 1, espaces: reste.espaces.map(({ prive: _prive, profil: _profil, ...e }) => e) };
 }
 
-test("session v1 → v2 : espaces non privés sur le profil de connexion par défaut, onglets intacts", async () => {
+test("session v1 → v2: non-private spaces on the default sign-in profile, tabs intact", async () => {
   const d = dossier();
   const etat = etatRiche();
   writeFileSync(join(d, "session.json"), JSON.stringify(enV1(etat)));
@@ -60,7 +60,7 @@ test("session v1 → v2 : espaces non privés sur le profil de connexion par dé
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
 
-test("session v2 avec un espace privé et un second profil de connexion : aller-retour identique", async () => {
+test("session v2 with a private space and a second sign-in profile: identical round trip", async () => {
   const d = dossier();
   let n = 100;
   const g = () => `h${++n}`;
@@ -75,7 +75,7 @@ test("session v2 avec un espace privé et un second profil de connexion : aller-
   expect(relu.espaces).toEqual(etat.espaces);
 });
 
-test("une session enregistrée avant le cadre des fenêtres se charge (cadre = null)", async () => {
+test("a session saved before the windows' frame loads (frame = null)", async () => {
   const d = dossier();
   const ancienne = structuredClone(etatInitial()) as unknown as { fenetres: Record<string, unknown>[] };
   for (const f of ancienne.fenetres) delete f.cadre;
@@ -85,13 +85,13 @@ test("une session enregistrée avant le cadre des fenêtres se charge (cadre = n
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
 
-test("fichier absent → état initial", async () => {
+test("missing file → initial state", async () => {
   const e = await chargerSession(dossier());
   expect(e.espaces).toHaveLength(1);
   expect(e.fenetres).toHaveLength(1);
 });
 
-test("JSON invalide → état initial et ancien fichier gardé de côté (….corrompu)", async () => {
+test("invalid JSON → initial state and old file set aside (….corrompu)", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), "{ pas du json");
   const e = await chargerSession(d);
@@ -100,7 +100,7 @@ test("JSON invalide → état initial et ancien fichier gardé de côté (….co
   expect(readFileSync(join(d, garde!), "utf8")).toBe("{ pas du json");
 });
 
-test("session corrompue : le nom du fichier gardé de côté est rendu pour prévenir l'utilisateur, rien sans fichier", async () => {
+test("corrupted session: the name of the file set aside is returned to warn the user, nothing without a file", async () => {
   const d = dossier();
   const garde = vi.fn();
   await chargerSession(d, garde);
@@ -110,7 +110,7 @@ test("session corrompue : le nom du fichier gardé de côté est rendu pour pré
   expect(garde).toHaveBeenCalledWith(join(d, mis_de_cote(d, ".corrompu")[0]!));
 });
 
-test("version inconnue → état initial et fichier gardé de côté", async () => {
+test("unknown version → initial state and file set aside", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 3 }));
   const e = await chargerSession(d);
@@ -118,7 +118,7 @@ test("version inconnue → état initial et fichier gardé de côté", async () 
   expect(mis_de_cote(d, ".corrompu")).toHaveLength(1);
 });
 
-test("deux sessions corrompues de suite : la seconde n'écrase pas la première", async () => {
+test("two corrupted sessions in a row: the second does not overwrite the first", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), "premier");
   await chargerSession(d);
@@ -128,7 +128,7 @@ test("deux sessions corrompues de suite : la seconde n'écrase pas la première"
   expect(gardes.sort()).toEqual(["premier", "second"]);
 });
 
-test("session illisible (droits) → état initial, et le prochain enregistrement ne l'écrase pas", async () => {
+test("unreadable session (permissions) → initial state, and the next save does not overwrite it", async () => {
   const d = dossier();
   const chemin = join(d, "session.json");
   writeFileSync(chemin, JSON.stringify(etatRiche()));
@@ -143,13 +143,13 @@ test("session illisible (droits) → état initial, et le prochain enregistremen
   expect(Object.keys(JSON.parse(readFileSync(join(d, garde!), "utf8")).onglets)).toHaveLength(2);
 });
 
-test("état incohérent (aucun espace) → état initial", async () => {
+test("inconsistent state (no space) → initial state", async () => {
   const d = dossier();
   writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), espaces: [] }));
   expect((await chargerSession(d)).espaces).toHaveLength(1);
 });
 
-test("planifier regroupe les écritures (3 appels rapprochés → 1 écriture)", async () => {
+test("planifier batches writes (3 close calls → 1 write)", async () => {
   const d = dossier();
   const espion = vi.spyOn(fsp, "rename");
   const enr = new EnregistreurSession(d, 50);
@@ -162,7 +162,7 @@ test("planifier regroupe les écritures (3 appels rapprochés → 1 écriture)",
   espion.mockRestore();
 });
 
-test("écriture atomique : passe par un fichier temporaire puis rename", async () => {
+test("atomic write: goes through a temporary file then rename", async () => {
   const d = dossier();
   const espion = vi.spyOn(fsp, "rename");
   const enr = new EnregistreurSession(d);
@@ -173,7 +173,7 @@ test("écriture atomique : passe par un fichier temporaire puis rename", async (
   espion.mockRestore();
 });
 
-test("vider() écrit immédiatement l'état en attente ; sans attente, ne fait rien", async () => {
+test("vider() writes the pending state immediately; with nothing pending, does nothing", async () => {
   const d = dossier();
   const enr = new EnregistreurSession(d, 10_000);
   await enr.vider();
@@ -183,14 +183,14 @@ test("vider() écrit immédiatement l'état en attente ; sans attente, ne fait r
   expect(existsSync(join(d, "session.json"))).toBe(true);
 });
 
-test("vider() attend l'écriture en cours : rien n'est perdu à la sortie, aucun fichier temporaire ne reste", async () => {
+test("vider() waits for the write in progress: nothing is lost on exit, no temporary file remains", async () => {
   const d = dossier();
   const enr = new EnregistreurSession(d, 10_000);
   const a = etatRiche();
   const b = appliquer(a, { type: "choisirMoteur", moteur: "qwant" });
   enr.planifier(a);
-  const premiere = enr.vider(); // écriture en cours…
-  const sortie = enr.vider(); // …la sortie n'a plus rien en attente, mais doit attendre
+  const premiere = enr.vider(); // write in progress…
+  const sortie = enr.vider(); // …the exit has nothing pending any more, but must wait
   await sortie;
   expect(existsSync(join(d, "session.json"))).toBe(true);
   enr.planifier(b);
@@ -200,7 +200,7 @@ test("vider() attend l'écriture en cours : rien n'est perdu à la sortie, aucun
   expect(readdirSync(d).filter((f) => f.endsWith(".tmp"))).toEqual([]);
 });
 
-test("une écriture ratée ne laisse pas de fichier temporaire et l'état est réécrit au vider() suivant", async () => {
+test("a failed write leaves no temporary file and the state is rewritten on the next vider()", async () => {
   const d = dossier();
   const espion = vi.spyOn(fsp, "rename").mockRejectedValueOnce(new Error("disque plein"));
   const enr = new EnregistreurSession(d, 10_000);
@@ -212,7 +212,7 @@ test("une écriture ratée ne laisse pas de fichier temporaire et l'état est r�
   espion.mockRestore();
 });
 
-test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {
+test("a tab's load error is not saved", async () => {
   const d = dossier();
   let e = etatRiche();
   const id = Object.keys(e.onglets)[0]!;
@@ -223,7 +223,7 @@ test("l'erreur de chargement d'un onglet n'est pas enregistrée", async () => {
   expect((await chargerSession(d)).onglets[id]?.erreur).toBeNull();
 });
 
-test("une session enregistrée sans profilAgent se charge avec claude", async () => {
+test("a session saved without profilAgent loads with claude", async () => {
   const d = dossier();
   const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
   delete ancienne.reglages.profilAgent;
@@ -233,7 +233,7 @@ test("une session enregistrée sans profilAgent se charge avec claude", async ()
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
 
-test("une session enregistrée sans largeur de panneau agent se charge avec 420", async () => {
+test("a session saved without agent panel width loads with 420", async () => {
   const d = dossier();
   const ancienne = structuredClone(etatInitial()) as unknown as { reglages: Record<string, unknown> };
   delete ancienne.reglages.largeurPanneauAgent;
@@ -243,7 +243,7 @@ test("une session enregistrée sans largeur de panneau agent se charge avec 420"
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
 
-test("session v2 dont un espace utilise un profil de connexion non listé : le profil est ajouté à la liste", async () => {
+test("session v2 where a space uses an unlisted sign-in profile: the profile is added to the list", async () => {
   const d = dossier();
   const etat = etatRiche();
   etat.espaces[1]!.profil = "orphelin";

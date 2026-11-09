@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { nonPrisEnCharge } from "../../noyau/extensions/carte.ts";
 
-test("nonPrisEnCharge liste activeTab, nativeMessaging, userScripts, sidePanel présents dans le manifeste", () => {
+test("nonPrisEnCharge lists activeTab, nativeMessaging, userScripts, sidePanel present in the manifest", () => {
   expect(nonPrisEnCharge({ permissions: ["storage", "activeTab", "userScripts"], optional_permissions: ["nativeMessaging"], side_panel: { default_path: "p.html" } })).toEqual([
     "activeTab",
     "nativeMessaging",

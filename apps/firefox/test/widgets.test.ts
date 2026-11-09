@@ -26,7 +26,7 @@ const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>
 const etat = (widgets: WidgetLu[]): EtatAccueil => ({ disposition: [], widgets });
 
 describe("versWidgetsAffiches", () => {
-  it("rend les données, l'exemple, l'état et l'affichage versionné par la date", () => {
+  it("returns the data, the example, the state and the display versioned by date", () => {
     const theme = { version: 1 as const, fond: "#101014" };
     const lu = versWidgetsAffiches({
       etat: etat([widget({ donnees: { n: 1 }, exemple: { n: 0 }, etat: { ...ETAT_WIDGET_PAR_DEFAUT, statut: "en-cours" } })]),
@@ -39,7 +39,7 @@ describe("versWidgetsAffiches", () => {
       {
         id: "demo",
         nom: "Démo",
-        // 4 unités de large sur 12 → 333 ‰ ; 2 rangées de 90 px.
+        // 4 units wide out of 12 → 333 ‰; 2 rows of 90 px.
         placement: { id: "demo", x: 0, y: 0, l: 333, h: 180 },
         tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 4, h: 2 } },
         src: "resource://webaios-widget-demo/affichage-1730000000123.html",
@@ -55,18 +55,18 @@ describe("versWidgetsAffiches", () => {
     ]);
   });
 
-  it("sans affichage, src est null et la date n'est pas lue", () => {
+  it("without a display, src is null and the date is not read", () => {
     const lu = versWidgetsAffiches({ etat: etat([widget({ aAffichage: false })]), placements: [], theme: null, mtimes: {} });
     expect(lu.theme).toBeNull();
     expect(lu.widgets[0]).toMatchObject({ src: null });
   });
 
-  it("garde la place voulue quand elle vient de disposition.json", () => {
+  it("keeps the wanted place when it comes from disposition.json", () => {
     const lu = versWidgetsAffiches({ etat: etat([widget()]), placements: [{ id: "demo", x: 250, y: 360, l: 100, h: 90 }], theme: null, mtimes: {} });
     expect(lu.widgets[0]?.placement).toEqual({ id: "demo", x: 250, y: 360, l: 100, h: 90 });
   });
 
-  it("place un widget illisible à sa taille par défaut (4 × 2)", () => {
+  it("places an unreadable widget at its default size (4 × 2)", () => {
     const lu = versWidgetsAffiches({
       etat: etat([{ id: "casse", dossier: "/espace/accueil/widgets/casse", erreur: "widget.json invalide" }]),
       placements: [],
@@ -83,7 +83,7 @@ describe("validerPlacements", () => {
   const ids = ["demo", "meteo"];
   const p = (o: Record<string, unknown> = {}) => ({ id: "demo", x: 0, y: 0, l: 500, h: 90, ...o });
 
-  it("garde les placements entiers, dans la grille", () => {
+  it("keeps whole placements, within the grid", () => {
     expect(validerPlacements([p(), p({ id: "meteo", x: 500 })], ids)).toEqual([p(), p({ id: "meteo", x: 500 })]);
   });
 
@@ -91,7 +91,7 @@ describe("validerPlacements", () => {
     expect(() => validerPlacements([p({ x: 1.5 })], ids)).toThrow();
   });
 
-  it("refuse une position ou une taille hors bornes, et un débordement à droite", () => {
+  it("refuses a position or size out of bounds, and an overflow on the right", () => {
     expect(() => validerPlacements([p({ x: -1 })], ids)).toThrow();
     expect(() => validerPlacements([p({ y: -1 })], ids)).toThrow();
     expect(() => validerPlacements([p({ l: 0 })], ids)).toThrow();
@@ -103,17 +103,17 @@ describe("validerPlacements", () => {
     expect(() => validerPlacements([p({ id: "inconnu" })], ids)).toThrow(/inconnu/);
   });
 
-  it("refuse un widget placé deux fois", () => {
+  it("refuses a widget placed twice", () => {
     expect(() => validerPlacements([p(), p({ x: 500 })], ids)).toThrow(/deux fois/);
   });
 
-  it("refuse des widgets qui se chevauchent (une liste chevauchante effacerait la disposition au prochain lecture)", () => {
+  it("refuses widgets that overlap (an overlapping list would erase the layout on the next read)", () => {
     expect(() => validerPlacements([p(), p({ id: "meteo", x: 100 })], ids)).toThrow(/chevauchent/);
-    // Des bords qui se touchent ne se chevauchent pas.
+    // Edges that touch do not overlap.
     expect(validerPlacements([p(), p({ id: "meteo", x: 500 })], ids)).toHaveLength(2);
   });
 
-  it("refuse autre chose qu'une liste", () => {
+  it("refuses anything other than a list", () => {
     expect(() => validerPlacements("nope", ids)).toThrow();
   });
 });

@@ -26,7 +26,7 @@ async function preparer(port: number) {
   return { racine, dossiersDesign, service };
 }
 
-test("un démarrage qui échoue autrement que par un port pris (port invalide) : éteint, avec la raison", async () => {
+test("a start that fails other than by a taken port (invalid port): off, with the reason", async () => {
   const { service } = await preparer(Number("abc"));
   const etat = service.etat().serveur;
   expect(etat.etat).toBe("eteint");
@@ -34,7 +34,7 @@ test("un démarrage qui échoue autrement que par un port pris (port invalide) :
   await expect(service.brancher("x")).rejects.toThrow(/n'a pas pu démarrer/);
 });
 
-test("oublier pendant la première photo : le dépôt de relecture privé ne revient pas", async () => {
+test("forgetting during the first photo: the private review repository does not come back", async () => {
   const { racine, dossiersDesign, service } = await preparer(0);
   const projet = join(racine, "site");
   mkdirSync(projet);

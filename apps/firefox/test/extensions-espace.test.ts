@@ -7,23 +7,23 @@ const espaces = [espace("e1", "Perso", "defaut"), espace("e2", "Lecture", "defau
 const agent = { cle: "agent:cacheur", nom: "Cacheur", source: "agent" as const, profils: ["defaut"] };
 const store = { cle: `store:${"a".repeat(32)}`, nom: "Bloqueur", source: "store" as const, profils: ["defaut"] };
 
-test("brouillon privé sur un profil où une extension tourne dans un autre espace : privePartage", () => {
+test("private draft on a profile where an extension runs in another space: privePartage", () => {
   const a = avertissements({ id: "e1", prive: true, profil: "defaut" }, espaces, [store]);
   expect(a.privePartage).toEqual(["Lecture"]);
-  // Un nouvel espace privé (id null) sur un profil partagé : tous les espaces du profil.
+  // A new private space (id null) on a shared profile: all the profile's spaces.
   expect(avertissements({ id: null, prive: true, profil: "defaut" }, espaces, [store]).privePartage).toEqual(["Perso", "Lecture"]);
-  // Aucune extension dans ce profil, ou profil propre : rien.
+  // No extension in this profile, or own profile: nothing.
   expect(avertissements({ id: "e1", prive: true, profil: "defaut" }, espaces, [{ ...store, profils: ["banque"] }]).privePartage).toEqual([]);
   expect(avertissements({ id: "e3", prive: true, profil: "banque" }, espaces, [store]).privePartage).toEqual([]);
 });
 
-test("brouillon devenu privé avec une extension de l'agent active : agentDesactivees", () => {
+test("draft turned private with an active agent extension: agentDesactivees", () => {
   const a = avertissements({ id: "e1", prive: true, profil: "defaut" }, espaces, [agent, store]);
   expect(a.agentDesactivees).toEqual(["Cacheur"]);
-  // Une extension de l'agent active dans un autre profil n'est pas concernée.
+  // An agent extension active in another profile is not concerned.
   expect(avertissements({ id: "e1", prive: true, profil: "defaut" }, espaces, [{ ...agent, profils: ["banque"] }]).agentDesactivees).toEqual([]);
 });
 
-test("espace non privé : rien", () => {
+test("non-private space: nothing", () => {
   expect(avertissements({ id: "e1", prive: false, profil: "defaut" }, espaces, [agent, store])).toEqual({ privePartage: [], agentDesactivees: [] });
 });

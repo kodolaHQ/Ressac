@@ -5,7 +5,7 @@ describe("regroupeur", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("regroupe deux planifications rapprochées en un seul appel", () => {
+  it("groups two close schedulings into a single call", () => {
     const faire = vi.fn();
     const r = creerRegroupeur(1000, faire);
     r.planifier("a");
@@ -18,7 +18,7 @@ describe("regroupeur", () => {
     expect(faire).toHaveBeenCalledWith("a");
   });
 
-  it("oublier avant l'échéance annule l'appel", () => {
+  it("forgetting before the deadline cancels the call", () => {
     const faire = vi.fn();
     const r = creerRegroupeur(1000, faire);
     r.planifier("a");

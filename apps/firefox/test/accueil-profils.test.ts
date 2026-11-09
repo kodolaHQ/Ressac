@@ -25,7 +25,7 @@ const fenetre = (id: string, espaceActif: IdEspace): EtatFenetre => ({
 const etat = (espaces: Espace[], profils: IdProfil[], fenetres: EtatFenetre[]) =>
   ({ espaces, profils: profils.map((id) => ({ id })), fenetres }) as Pick<EtatNavigateur, "profils" | "espaces" | "fenetres">;
 
-test("un profil utilisé par un espace privé est exclu, même partagé avec un espace non privé", () => {
+test("a profile used by a private space is excluded, even shared with a non-private space", () => {
   const s = etat(
     [espace("e1", "Perso", "perso"), espace("e2", "Privé", "prive", true), espace("e3", "Boulot", "perso", true)],
     ["defaut", "perso", "prive"],
@@ -34,7 +34,7 @@ test("un profil utilisé par un espace privé est exclu, même partagé avec un 
   expect(profilsPourAccord(s, "f1").map((p) => p.id)).toEqual(["defaut"]);
 });
 
-test("le profil de l'espace actif de la fenêtre est coché par défaut, s'il est lisible", () => {
+test("the window's active space's profile is ticked by default, if it is readable", () => {
   const s = etat(
     [espace("e1", "Perso", "perso"), espace("e2", "Boulot", "defaut"), espace("e3", "Privé", "prive", true)],
     ["defaut", "perso", "prive"],
@@ -44,16 +44,16 @@ test("le profil de l'espace actif de la fenêtre est coché par défaut, s'il es
     { id: "defaut", libelle: "Profil de « Boulot »", parDefaut: false },
     { id: "perso", libelle: "Profil de « Perso »", parDefaut: true },
   ]);
-  // L'espace actif est privé : son profil est exclu, donc rien n'est coché.
+  // The active space is private: its profile is excluded, so nothing is ticked.
   expect(profilsPourAccord(s, "f2").every((p) => !p.parDefaut)).toBe(true);
 });
 
-test("un profil sans espace garde un libellé neutre", () => {
+test("a profile without a space keeps a neutral label", () => {
   const s = etat([espace("e1", "Perso", "perso")], ["perso", "autre"], [fenetre("f1", "e1")]);
   expect(profilsPourAccord(s, "f1")).toContainEqual({ id: "autre", libelle: "Profil « autre »", parDefaut: false });
 });
 
-test("un lien de widget : http(s) seulement, jamais la machine ni le réseau local", () => {
+test("a widget link: http(s) only, never the machine nor the local network", () => {
   expect(urlOuvrable("https://exemple.test/article")).toBe(true);
   expect(urlOuvrable("http://exemple.test/")).toBe(true);
   expect(urlOuvrable("javascript:alert(1)")).toBe(false);

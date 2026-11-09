@@ -13,7 +13,7 @@ let p: ParcoursOnglets;
 let envoyer: ReturnType<typeof vi.fn<(f: string, panneau: PanneauOnglets | null) => void>>;
 let capturer: ReturnType<typeof vi.fn<(f: string) => Promise<void>>>;
 let rendreFocus: ReturnType<typeof vi.fn<(f: string) => void>>;
-/** Onglet actif au moment où le focus est rendu (il doit l'être après le changement d'onglet). */
+/** Active tab at the moment focus is returned (it must be after the tab change). */
 let actifAuFocus: (string | null | undefined)[];
 let focalisee: boolean;
 
@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-/** a, b, c ouverts puis activés dans cet ordre : c actif, puis b, puis a dans l'historique. */
+/** a, b, c opened then activated in that order: c active, then b, then a in the history. */
 const troisOnglets = () => {
   const a = ouvrir("https://a.fr");
   const b = ouvrir("https://b.fr");
@@ -59,7 +59,7 @@ const troisOnglets = () => {
   return { a, b, c };
 };
 
-test("appui bref : retour à l'onglet d'avant, aucun panneau", () => {
+test("short press: back to the previous tab, no panel", () => {
   const { b } = troisOnglets();
   p.parcourir(F, 1);
   expect(capturer).toHaveBeenCalledWith(F);
@@ -70,7 +70,7 @@ test("appui bref : retour à l'onglet d'avant, aucun panneau", () => {
   expect(envoyer).not.toHaveBeenCalled();
 });
 
-test("parcours long : panneau après 200 ms, avance, relâchement active la sélection et ferme", () => {
+test("long walk: panel after 200 ms, advance, release activates the selection and closes", () => {
   const { a, b, c } = troisOnglets();
   p.parcourir(F, 1);
   vi.advanceTimersByTime(199);
@@ -84,13 +84,13 @@ test("parcours long : panneau après 200 ms, avance, relâchement active la sél
   expect(envoyer.mock.calls[0]![0]).toBe(F);
   p.parcourir(F, 1);
   expect(dernierEnvoi()!.selection).toBe(2);
-  expect(actif()).toBe(c); // rien ne change pendant le parcours
+  expect(actif()).toBe(c); // nothing changes during the walk
   p.toucheRelachee(F);
   expect(actif()).toBe(a);
   expect(dernierEnvoi()).toBeNull();
 });
 
-test("⌃⇧Tab d'abord : sélection sur le plus ancien", () => {
+test("⌃⇧Tab first: selection on the oldest", () => {
   const { a } = troisOnglets();
   p.parcourir(F, -1);
   vi.advanceTimersByTime(250);
@@ -99,7 +99,7 @@ test("⌃⇧Tab d'abord : sélection sur le plus ancien", () => {
   expect(actif()).toBe(a);
 });
 
-test("annuler : panneau fermé, onglet actif inchangé", () => {
+test("cancel: panel closed, active tab unchanged", () => {
   const { c } = troisOnglets();
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
@@ -110,7 +110,7 @@ test("annuler : panneau fermé, onglet actif inchangé", () => {
   expect(actif()).toBe(c);
 });
 
-test("annuler avant 200 ms : rien n'est envoyé, le minuteur est coupé", () => {
+test("cancel before 200 ms: nothing is sent, the timer is cleared", () => {
   troisOnglets();
   p.parcourir(F, 1);
   p.annuler(F);
@@ -118,9 +118,9 @@ test("annuler avant 200 ms : rien n'est envoyé, le minuteur est coupé", () => 
   expect(envoyer).not.toHaveBeenCalled();
 });
 
-test("onglet fermé pendant le parcours : sélection dans les bornes, puis fin quand il en reste un", () => {
+test("tab closed during the walk: selection within bounds, then end when one is left", () => {
   const { a, b, c } = troisOnglets();
-  p.parcourir(F, -1); // sélection sur a, la dernière
+  p.parcourir(F, -1); // selection on a, the last one
   vi.advanceTimersByTime(250);
   agir({ type: "fermerOnglet", id: a });
   const panneau = dernierEnvoi()!;
@@ -147,7 +147,7 @@ test("0 ou 1 onglet : parcourir ne fait rien", () => {
   expect(envoyer).not.toHaveBeenCalled();
 });
 
-test("relâchement hors parcours : rien", () => {
+test("release outside a walk: nothing", () => {
   const { c } = troisOnglets();
   p.toucheRelachee(F);
   expect(actif()).toBe(c);
@@ -172,14 +172,14 @@ test("messages de l'interface : survoler, choisir, avancer, valider", () => {
   expect(actif()).toBe(b);
   expect(dernierEnvoi()).toBeNull();
 
-  // Un id hors de la liste est ignoré.
+  // An id outside the list is ignored.
   p.parcourir(F, 1);
   p.message(F, { type: "choisir", id: "inconnu" });
   expect(actif()).toBe(b);
   p.message(F, { type: "annuler" });
 });
 
-test("changement d'onglet actif : capture planifiée 1 s après, sans attendre", () => {
+test("active tab change: capture scheduled 1 s later, without waiting", () => {
   const a = ouvrir("https://a.fr");
   ouvrir("https://b.fr");
   vi.runAllTimers();
@@ -190,17 +190,17 @@ test("changement d'onglet actif : capture planifiée 1 s après, sans attendre",
   expect(capturer).toHaveBeenCalledWith(F);
 });
 
-test("panneau glissant : 7 cartes au plus, sélection relative", () => {
+test("sliding panel: 7 cards at most, relative selection", () => {
   const ids = Array.from({ length: 9 }, (_, i) => ouvrir(`https://${i}.fr`));
   for (const id of ids) agir({ type: "activerOnglet", id });
-  p.parcourir(F, -1); // le plus ancien, indice 8
+  p.parcourir(F, -1); // the oldest, index 8
   vi.advanceTimersByTime(250);
   const panneau = dernierEnvoi()!;
   expect(panneau.cartes).toHaveLength(7);
   expect(panneau.cartes[panneau.selection]!.id).toBe(ids[0]);
 });
 
-test("essentiel d'un espace frère (même clé) : validé sans changer d'espace", () => {
+test("essential of a sibling space (same key): confirmed without changing space", () => {
   const ess = ouvrir("https://ess.fr");
   agir({ type: "ajouterEssentiel", id: ess });
   const espaceA = e.fenetres[0]!.espaceActif;
@@ -216,7 +216,7 @@ test("essentiel d'un espace frère (même clé) : validé sans changer d'espace"
   expect(e.fenetres[0]!.actif[espaceB]).toBe(ess);
 });
 
-test("carte sans aperçu : apercu null", () => {
+test("card without a preview: apercu null", () => {
   const a = ouvrir("https://a.fr");
   ouvrir("https://b.fr");
   p = new ParcoursOnglets({ etat: () => e, agir, envoyer, apercu: (id) => (id === a ? null : `apercu-${id}`), capturer, rendreFocus, estFocalisee: () => true });
@@ -228,27 +228,27 @@ test("carte sans aperçu : apercu null", () => {
   expect(carte.favicon).toBe(e.onglets[a]!.favicon);
 });
 
-test("focus rendu à la page affichée après un parcours avec panneau (validé ou annulé), jamais sans panneau", () => {
+test("focus returned to the displayed page after a walk with a panel (confirmed or cancelled), never without a panel", () => {
   const { a, b, c } = troisOnglets();
-  // Appui bref : pas de panneau, l'interface n'a jamais pris le focus.
+  // Short press: no panel, the interface never took focus.
   p.parcourir(F, 1);
   p.toucheRelachee(F);
   expect(actif()).toBe(b);
   expect(rendreFocus).not.toHaveBeenCalled();
-  // Annulé avant le panneau : rien non plus.
+  // Cancelled before the panel: nothing either.
   p.parcourir(F, 1);
   p.annuler(F);
   expect(rendreFocus).not.toHaveBeenCalled();
 
-  // Validé avec panneau : focus rendu après l'activation de la sélection.
-  p.parcourir(F, 1); // ordre b, c, a : sélection sur c
+  // Confirmed with a panel: focus returned after the selection is activated.
+  p.parcourir(F, 1); // order b, c, a: selection on c
   vi.advanceTimersByTime(250);
   p.toucheRelachee(F);
   expect(rendreFocus).toHaveBeenCalledTimes(1);
   expect(rendreFocus).toHaveBeenLastCalledWith(F);
   expect(actifAuFocus).toEqual([c]);
 
-  // Annulé (Échap) avec panneau : focus rendu à l'onglet resté affiché.
+  // Cancelled (Esc) with a panel: focus returned to the tab that stayed displayed.
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
   p.message(F, { type: "annuler" });
@@ -262,7 +262,7 @@ test("focus rendu à la page affichée après un parcours avec panneau (validé 
   expect(actifAuFocus).toEqual([c, c, a]);
 });
 
-test("fenêtre quittée pendant le parcours : panneau fermé, focus pas repris", () => {
+test("window left during the walk: panel closed, focus not taken back", () => {
   const { c } = troisOnglets();
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
@@ -272,25 +272,25 @@ test("fenêtre quittée pendant le parcours : panneau fermé, focus pas repris",
   expect(rendreFocus).not.toHaveBeenCalled();
 });
 
-test("fenêtre sans le focus (outils de développement…) : bascule immédiate, sans parcours ni minuteur", () => {
+test("window without focus (devtools…): immediate switch, no walk nor timer", () => {
   const { a, b } = troisOnglets();
   focalisee = false;
   p.parcourir(F, 1);
   expect(actif()).toBe(b);
-  // Seule la capture du nouvel onglet affiché est planifiée (surEtat), pas de minuteur de panneau.
+  // Only the capture of the newly displayed tab is scheduled (surEtat), no panel timer.
   expect(vi.getTimerCount()).toBe(1);
   vi.advanceTimersByTime(1000);
   expect(envoyer).not.toHaveBeenCalled();
-  // Aucun parcours en cours : le relâchement ne fait rien de plus.
+  // No walk in progress: the release does nothing more.
   p.toucheRelachee(F);
   expect(actif()).toBe(b);
-  // ⌃⇧Tab : le plus ancien, comme un appui bref.
+  // ⌃⇧Tab: the oldest, like a short press.
   p.parcourir(F, -1);
   expect(actif()).toBe(a);
   expect(rendreFocus).not.toHaveBeenCalled();
 });
 
-test("fenêtre sans le focus : un essentiel d'un espace frère s'ouvre par son favori", () => {
+test("window without focus: an essential of a sibling space opens through its favorite", () => {
   const ess = ouvrir("https://ess.fr");
   agir({ type: "ajouterEssentiel", id: ess });
   const espaceA = e.fenetres[0]!.espaceActif;

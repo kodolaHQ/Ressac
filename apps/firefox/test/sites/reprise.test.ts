@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { DUREE_MIN_REPRISE_S, ECART_POSITION_MS, RECUL_REPRISE_S, SuiviReprise } from "../../core/reprise";
 
-/** Un suivi avec une horloge du test et la position que rend le process principal. */
+/** A tracker with a test clock and the position the main process returns. */
 function suivi(connue: number | null = null) {
   const notes: [number, number][] = [];
   const fins: boolean[] = [];
@@ -34,11 +34,11 @@ function suivi(connue: number | null = null) {
   };
 }
 
-test("les valeurs du plan", () => {
+test("the plan's values", () => {
   expect([DUREE_MIN_REPRISE_S, ECART_POSITION_MS, RECUL_REPRISE_S]).toEqual([60, 10_000, 5]);
 });
 
-test("timeupdate toutes les secondes pendant 35 s : 4 noter (0, 10, 20, 30 s)", async () => {
+test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => {
   const { s, notes, horloge } = suivi();
   const cle = {};
   expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle })).toBeNull();
@@ -54,7 +54,7 @@ test("timeupdate toutes les secondes pendant 35 s : 4 noter (0, 10, 20, 30 s)", 
   ]);
 });
 
-test("pause : noter tout de suite ; ended aussi, marqué comme la fin", async () => {
+test("pause: noter right away; ended too, marked as the end", async () => {
   const { s, notes, fins, horloge } = suivi();
   const cle = {};
   await s.surEvenement("play", { currentTime: 0, duration: 1500, cle });
@@ -71,7 +71,7 @@ test("pause : noter tout de suite ; ended aussi, marqué comme la fin", async ()
   expect(fins).toEqual([false, false, true]);
 });
 
-test("vidéo de 30 s : rien noté, rien repris", async () => {
+test("30 s video: nothing noted, nothing resumed", async () => {
   const { s, notes, demandes } = suivi(20);
   const cle = {};
   for (const type of ["loadedmetadata", "play", "timeupdate", "pause", "ended"] as const) {
@@ -81,7 +81,7 @@ test("vidéo de 30 s : rien noté, rien repris", async () => {
   expect(demandes()).toBe(0);
 });
 
-test("durée non finie (direct) ou absente : ignorée", async () => {
+test("non-finite (live) or missing duration: ignored", async () => {
   const { s, notes, demandes } = suivi(100);
   const cle = {};
   for (const duration of [Infinity, NaN]) {
@@ -92,7 +92,7 @@ test("durée non finie (direct) ou absente : ignorée", async () => {
   expect(demandes()).toBe(0);
 });
 
-test("play avec position 1390 connue : rend 1385, une seule fois", async () => {
+test("play with known position 1390: returns 1385, only once", async () => {
   const { s, demandes, durees } = suivi(1390);
   const cle = {};
   expect(await s.surEvenement("loadedmetadata", { currentTime: 0, duration: 1500, cle })).toBe(1385);
@@ -100,7 +100,7 @@ test("play avec position 1390 connue : rend 1385, une seule fois", async () => {
   expect(await s.surEvenement("play", { currentTime: 1385, duration: 1500, cle })).toBeNull();
   expect(await s.surEvenement("loadedmetadata", { currentTime: 1385, duration: 1500, cle })).toBeNull();
   expect(demandes()).toBe(1);
-  // Un autre élément de la page (lecteur recréé) demande pour lui-même, avec sa durée ; le main décide s'il la sert.
+  // Another element of the page (recreated player) asks for itself, with its duration; the main decides whether to serve it.
   expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBe(1385);
   expect(demandes()).toBe(2);
 });
@@ -110,12 +110,12 @@ test("position 3 : rend 0", async () => {
   expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBe(0);
 });
 
-test("une position au-delà de la durée de cette vidéo, ou qui n'est pas un nombre : rien repris", async () => {
+test("a position beyond this video's duration, or that is not a number: nothing resumed", async () => {
   expect(await suivi(2000).s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBeNull();
   expect(await suivi(Number.NaN).s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBeNull();
 });
 
-test("rien n'est noté avant que la reprise soit réglée : un timeupdate à 0 s n'écrase pas la position", async () => {
+test("nothing is noted before the resume is settled: a timeupdate at 0 s does not overwrite the position", async () => {
   const { s, notes, differer, repondre, horloge } = suivi();
   differer();
   const cle = {};
@@ -130,7 +130,7 @@ test("rien n'est noté avant que la reprise soit réglée : un timeupdate à 0 s
   expect(notes).toEqual([[1385, 1500]]);
 });
 
-test("une demande qui échoue : rien repris, le suivi continue", async () => {
+test("a request that fails: nothing resumed, the tracking continues", async () => {
   const notes: number[] = [];
   const s = new SuiviReprise({ noter: (t) => void notes.push(t), demander: () => Promise.reject(new Error("x")), maintenant: () => 0 });
   const cle = {};
@@ -139,7 +139,7 @@ test("une demande qui échoue : rien repris, le suivi continue", async () => {
   expect(notes).toEqual([4]);
 });
 
-test("la durée connue plus tard (flux) : la reprise est demandée au premier événement où elle est finie", async () => {
+test("duration known later (stream): the resume is requested at the first event where it is finite", async () => {
   const { s, demandes } = suivi(500);
   const cle = {};
   expect(await s.surEvenement("loadedmetadata", { currentTime: 0, duration: Infinity, cle })).toBeNull();

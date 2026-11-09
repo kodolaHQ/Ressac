@@ -1,4 +1,4 @@
-// Faux agent interactif lancé par le faux docker : note ce qu'il reçoit dans WEBAIOS_RACINE.
+// Fake interactive agent launched by the fake docker: notes what it receives in WEBAIOS_RACINE.
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 

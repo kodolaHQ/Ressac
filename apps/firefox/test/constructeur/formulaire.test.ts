@@ -6,38 +6,38 @@ const catalogue = (type: string) => catalogueBlocs().find((c) => c.type === type
 const champ = (type: string, nom: string) => catalogue(type).champs.find((c) => c.nom === nom)!;
 const noms = (type: string, parametres: Record<string, unknown>) => champsAffiches(catalogue(type), parametres).map((c) => c.nom);
 
-test("les champs « seulement par élément » n'apparaissent que si parElement est coché", () => {
+test("the « only per item » fields only appear if parElement is ticked", () => {
   expect(noms("ia.rediger", {})).not.toContain("siErreur");
   expect(noms("ia.rediger", { parElement: false })).not.toContain("reutiliser");
   expect(noms("ia.rediger", { parElement: true })).toEqual(expect.arrayContaining(["siErreur", "budgetSecondes", "reutiliser"]));
   expect(noms("ia.rediger", {})).toContain("parElement");
 });
 
-test("ia.trier (toujours élément par élément) montre siErreur, budget, reutiliser et champ sans case parElement", () => {
+test("ia.trier (always item by item) shows siErreur, budget, reutiliser and a field without the parElement box", () => {
   expect(noms("ia.trier", {})).toEqual(expect.arrayContaining(["seuil", "champ", "siErreur", "budgetSecondes", "reutiliser"]));
   expect(noms("ia.trier", {})).not.toContain("parElement");
 });
 
-test("un champ texte vidé et non requis retire sa clé ; requis, il reste vide", () => {
+test("a cleared non-required text field removes its key; required, it stays empty", () => {
   expect(parametresAvec({ champ: "p", seuil: 0.5 }, champ("ia.trier", "champ"), "")).toEqual({ seuil: 0.5 });
   expect(parametresAvec({ question: "q" }, champ("ia.trier", "question"), "")).toEqual({ question: "" });
   expect(parametresAvec({}, champ("ia.trier", "question"), "{config.x} ?")).toEqual({ question: "{config.x} ?" });
 });
 
-test("nombre : converti, vidé retire la clé, illisible ne change rien", () => {
+test("number: converted, cleared removes the key, unreadable changes nothing", () => {
   expect(parametresAvec({ seuil: 0.5 }, champ("ia.trier", "seuil"), "0.7")).toEqual({ seuil: 0.7 });
   expect(parametresAvec({ seuil: 0.5 }, champ("ia.trier", "seuil"), " ")).toEqual({});
   expect(parametresAvec({ seuil: 0.5 }, champ("ia.trier", "seuil"), "abc")).toBeNull();
 });
 
-test("textes : une ligne par valeur, lignes vides ignorées", () => {
+test("texts: one line per value, empty lines ignored", () => {
   const cles = champ("liste.dedoublonner", "cles");
   expect(parametresAvec({}, cles, "url\n\n titre \n")).toEqual({ cles: ["url", "titre"] });
   expect(texteDe(cles, ["url", "titre"])).toBe("url\ntitre");
   expect(parametresAvec({ cles: ["url"] }, cles, "")).toEqual({ cles: [] });
 });
 
-test("case et choix : valeurs telles quelles ; valeur affichée par défaut celle du catalogue", () => {
+test("checkbox and choice: values as is; displayed value by default the catalog's", () => {
   expect(parametresAvec({}, champ("ia.rediger", "parElement"), true)).toEqual({ parElement: true });
   expect(parametresAvec({ appel: "entree" }, champ("code", "appel"), "recolte")).toEqual({ appel: "recolte" });
   expect(entreeDe(champ("ia.trier", "seuil"), {})).toBe(0.5);
@@ -46,15 +46,15 @@ test("case et choix : valeurs telles quelles ; valeur affichée par défaut cell
   expect(texteDe(champ("ia.trier", "question"), undefined)).toBe("");
 });
 
-test("un nombre requis vidé ne change rien", () => {
+test("a cleared required number changes nothing", () => {
   expect(parametresAvec({ nombre: 10 }, champ("liste.garder", "nombre"), "")).toBeNull();
 });
 
-test("case sans valeur par défaut (auFilDeLEau) : décochée, la clé part ; cochée, true", () => {
+test("checkbox without a default value (auFilDeLEau): unticked, the key goes; ticked, true", () => {
   const f = champ("sortie", "auFilDeLEau");
   expect(parametresAvec({ vers: "widget" }, f, true)).toEqual({ vers: "widget", auFilDeLEau: true });
   expect(parametresAvec({ vers: "widget", auFilDeLEau: true }, f, false)).toEqual({ vers: "widget" });
   expect(entreeDe(f, {})).toBeUndefined();
-  // Une case avec valeur par défaut garde la valeur décochée telle quelle.
+  // A checkbox with a default value keeps the unticked value as is.
   expect(parametresAvec({ parElement: true }, champ("ia.rediger", "parElement"), false)).toEqual({ parElement: false });
 });

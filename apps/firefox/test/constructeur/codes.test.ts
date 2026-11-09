@@ -19,7 +19,7 @@ function faux(fichiers: Record<string, string> = {}) {
 
 afterEach(() => oublierCodes());
 
-test("une frappe crée un brouillon non enregistré, rien n'est écrit ; Enregistrer l'écrit et l'efface", async () => {
+test("a keystroke creates an unsaved draft, nothing is written; Enregistrer writes it and clears it", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -36,7 +36,7 @@ test("une frappe crée un brouillon non enregistré, rien n'est écrit ; Enregis
   expect(codesNonEnregistres("w")).toEqual([]);
 });
 
-test("revenir au texte du disque efface le brouillon ; Enregistrer sans brouillon n'écrit rien", async () => {
+test("going back to the disk's text clears the draft; Enregistrer without a draft writes nothing", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -47,7 +47,7 @@ test("revenir au texte du disque efface le brouillon ; Enregistrer sans brouillo
   expect(f.ecritures).toEqual([]);
 });
 
-test("le brouillon survit à l'éditeur (changement de bloc ou d'onglet) : un nouvel éditeur le reprend", async () => {
+test("the draft outlives the editor (block or tab change): a new editor picks it up", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -59,7 +59,7 @@ test("le brouillon survit à l'éditeur (changement de bloc ou d'onglet) : un no
   expect(codesNonEnregistres("autre")).toEqual([]);
 });
 
-test("fichier absent : le modèle s'affiche, non enregistré, sans brouillon tant qu'on ne tape rien", async () => {
+test("missing file: the template is shown, unsaved, without a draft until something is typed", async () => {
   const f = faux();
   const c = new FichierCode("w", "neuf.mjs", f.depot);
   await c.lire();
@@ -71,7 +71,7 @@ test("fichier absent : le modèle s'affiche, non enregistré, sans brouillon tan
   expect(c.nonEnregistre).toBe(false);
 });
 
-test("le fichier change sur le disque pendant un brouillon : bandeau ; Recharger prend le disque", async () => {
+test("the file changes on disk during a draft: banner; Recharger takes the disk", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -88,7 +88,7 @@ test("le fichier change sur le disque pendant un brouillon : bandeau ; Recharger
   expect(c.nonEnregistre).toBe(false);
 });
 
-test("Garder le mien : le bandeau part, le brouillon reste et s'enregistre par-dessus", async () => {
+test("Garder le mien: the banner goes, the draft stays and is saved over it", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -104,7 +104,7 @@ test("Garder le mien : le bandeau part, le brouillon reste et s'enregistre par-d
   expect(f.etat.fichiers["a.mjs"]).toBe("mien");
 });
 
-test("sans brouillon, un changement sur le disque s'affiche tel quel ; le disque égal au brouillon l'efface", async () => {
+test("without a draft, a change on disk is shown as is; a disk equal to the draft clears it", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -118,7 +118,7 @@ test("sans brouillon, un changement sur le disque s'affiche tel quel ; le disque
   expect(c.changeSurDisque).toBe(false);
 });
 
-test("écriture refusée : le brouillon reste avec l'erreur", async () => {
+test("write refused: the draft stays with the error", async () => {
   const f = faux({ "a.mjs": "v1" });
   f.etat.refus = true;
   const c = new FichierCode("w", "a.mjs", f.depot);
@@ -129,7 +129,7 @@ test("écriture refusée : le brouillon reste avec l'erreur", async () => {
   expect(c.nonEnregistre).toBe(true);
 });
 
-test("une frappe pendant l'enregistrement reste un brouillon", async () => {
+test("a keystroke during the save stays a draft", async () => {
   const f = faux({ "a.mjs": "v1" });
   const c = new FichierCode("w", "a.mjs", f.depot);
   await c.lire();
@@ -142,7 +142,7 @@ test("une frappe pendant l'enregistrement reste un brouillon", async () => {
   expect(c.nonEnregistre).toBe(true);
 });
 
-test("oublierCodes(widget) n'efface que les brouillons de ce widget", async () => {
+test("oublierCodes(widget) only clears that widget's drafts", async () => {
   const f = faux({ "a.mjs": "v1" });
   const a = new FichierCode("w", "a.mjs", f.depot);
   const b = new FichierCode("x", "a.mjs", f.depot);
@@ -156,7 +156,7 @@ test("oublierCodes(widget) n'efface que les brouillons de ce widget", async () =
   expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
 });
 
-test("garderCodesDe abandonne les brouillons des widgets dont le constructeur n'est plus ouvert", async () => {
+test("garderCodesDe drops the drafts of widgets whose builder is no longer open", async () => {
   const f = faux({ "a.mjs": "v1" });
   const a = new FichierCode("w", "a.mjs", f.depot);
   const b = new FichierCode("x", "a.mjs", f.depot);
@@ -168,7 +168,7 @@ test("garderCodesDe abandonne les brouillons des widgets dont le constructeur n'
   expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
 });
 
-test("un code enregistré le signale (le workflow bloqué sur ce fichier repart) ; un refus ne signale rien", async () => {
+test("a saved code signals it (the workflow blocked on that file restarts); a refusal signals nothing", async () => {
   const f = faux();
   const signales: string[] = [];
   const c = new FichierCode("w", "b.mjs", f.depot, (nom) => signales.push(nom));

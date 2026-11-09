@@ -6,7 +6,7 @@ import { regler, relier } from "../../ui/constructeur/brouillon";
 import { creerEdition, Edition, EN_ATTENTE_DU_CHOIX, oublierEditions, type Depot } from "../../ui/constructeur/edition.svelte";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres });
-/** Workflow livré sans positions. */
+/** Workflow shipped without positions. */
 const livre = (): Brouillon => ({
   version: 1,
   blocs: [bloc("garder", "code", { source: "a.mjs" }), bloc("tri", "ia.trier", { question: "?", texte: "{t}" }), bloc("sortie", "sortie", { vers: "widget" })],
@@ -18,14 +18,14 @@ const livre = (): Brouillon => ({
 const catalogue = (type: string) => catalogueBlocs().find((c) => c.type === type)!;
 const attendre = () => new Promise((r) => setTimeout(r, 0));
 
-/** Faux dépôt : un `workflow.json` en mémoire, validé par le vrai validateur ; garde la trace des écritures. */
+/** Fake repository: an in-memory `workflow.json`, checked by the real validator; keeps a trace of the writes. */
 function faux(initial: unknown, fichiers: Record<string, string> = {}) {
   const etat = {
     disque: structuredClone(initial) as unknown,
     lisible: true,
     introuvable: false,
     fichiers: { ...fichiers },
-    /** Erreur de lecture du code ; refus d'écrire le code ; enregistrements suspendus jusqu'à `liberer()`. */
+    /** Code read error; refusal to write the code; saves suspended until `liberer()`. */
     erreurCode: false as boolean | string[],
     refusCode: false,
     suspendu: false,
@@ -74,7 +74,7 @@ async function ouverte(f: ReturnType<typeof faux>): Promise<Edition> {
   return e;
 }
 
-test("ouvrir un workflow livré sans positions le dispose en colonnes et n'écrit rien", async () => {
+test("opening a workflow shipped without positions lays it out in columns and writes nothing", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   expect(e.chargement).toBe("pret");
@@ -86,7 +86,7 @@ test("ouvrir un workflow livré sans positions le dispose en colonnes et n'écri
   expect(f.ecritures).toEqual([]);
 });
 
-test("le premier déplacement enregistre la position affichée de tous les blocs ; un déplacement nul n'écrit rien", async () => {
+test("the first move saves the displayed position of all blocks; a zero move writes nothing", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   e.deplacer({ ...e.positions });
@@ -103,7 +103,7 @@ test("le premier déplacement enregistre la position affichée de tous les blocs
   expect(e.positions.sortie).toEqual({ x: 520, y: 0 });
 });
 
-test("un bloc neuf non relié est « non enregistré : entrée manquante » ; relié, il s'enregistre ; ⌘Z revient et réenregistre", async () => {
+test("a new unlinked block is « non enregistré : entrée manquante »; linked, it saves; ⌘Z goes back and saves again", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   const id = await e.ajouter(catalogue("liste.dedoublonner"), { x: 0, y: 300 });
@@ -124,13 +124,13 @@ test("un bloc neuf non relié est « non enregistré : entrée manquante » ; re
   await attendre();
   expect(e.etatEnregistrement).toBe("enregistre");
   expect(f.ecritures.at(-1)!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
-  // Les positions affichées ne sautent pas en revenant au workflow sans disposition.
+  // Displayed positions do not jump when going back to the workflow without layout.
   expect(e.positions.tri).toEqual({ x: 260, y: 0 });
   e.retablir();
   expect(e.brouillon!.blocs.map((b) => b.id)).toContain(id);
 });
 
-test("un bloc code neuf reçoit son fichier modèle (jamais un fichier existant) avant d'être enregistré", async () => {
+test("a new code block gets its template file (never an existing file) before being saved", async () => {
   const f = faux(livre(), { "code.mjs": "// de l'agent" });
   const e = await ouverte(f);
   const id = await e.ajouter(catalogue("code"), { x: 0, y: 300 });
@@ -142,7 +142,7 @@ test("un bloc code neuf reçoit son fichier modèle (jamais un fichier existant)
   expect(e.etatEnregistrement).toBe("enregistre");
 });
 
-test("relire : l'écho d'un enregistrement est ignoré ; une version de l'agent est adoptée sans rien écrire", async () => {
+test("relire: the echo of a save is ignored; an agent version is adopted without writing anything", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
@@ -158,7 +158,7 @@ test("relire : l'écho d'un enregistrement est ignoré ; une version de l'agent 
   expect(f.ecritures).toHaveLength(1);
 });
 
-test("relire avec un brouillon invalide propose la version de l'agent ; prendre ou garder", async () => {
+test("relire with an invalid draft offers the agent's version; take or keep", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   await e.ajouter(catalogue("liste.garder"), { x: 0, y: 300 });
@@ -185,7 +185,7 @@ test("relire avec un brouillon invalide propose la version de l'agent ; prendre 
   expect(f.ecritures).toEqual([]);
 });
 
-test("relire : JSON coupé → bandeau « illisible » sans toucher au canevas ; widget introuvable un instant → canevas gardé", async () => {
+test("relire: cut-off JSON → « illisible » banner without touching the canvas; widget not found for a moment → canvas kept", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   const avant = e.brouillon;
@@ -203,7 +203,7 @@ test("relire : JSON coupé → bandeau « illisible » sans toucher au canevas ;
   expect(e.bandeau).toBeNull();
 });
 
-test("à la première ouverture : introuvable, ou illisible avec l'erreur", async () => {
+test("on first open: not found, or unreadable with the error", async () => {
   const absent = faux(livre());
   absent.etat.introuvable = true;
   expect((await ouverte(absent)).chargement).toBe("introuvable");
@@ -212,7 +212,7 @@ test("à la première ouverture : introuvable, ou illisible avec l'erreur", asyn
   expect((await ouverte(coupe)).chargement).toEqual({ illisible: "Workflow invalide : JSON coupé" });
 });
 
-test("le workflow implicite (Gmail) s'ouvre disposé, sans écriture", async () => {
+test("the implicit workflow (Gmail) opens laid out, without a write", async () => {
   const f = faux(workflowImplicite());
   const e = await ouverte(f);
   expect(e.positions).toEqual({ recolte: { x: 0, y: 0 }, sortie: { x: 260, y: 0 } });
@@ -222,27 +222,27 @@ test("le workflow implicite (Gmail) s'ouvre disposé, sans écriture", async () 
   expect(f.ecritures).toEqual([]);
 });
 
-test("une édition par widget dans la fenêtre", () => {
+test("one edition per widget in the window", () => {
   const { depot } = faux(livre());
   expect(creerEdition("w1", depot)).toBe(creerEdition("w1", depot));
   expect(creerEdition("w1", depot)).not.toBe(creerEdition("w2", depot));
 });
 
-test("paramètres neufs : valeurs neutres des champs requis, pas d'adresse inventée", () => {
+test("new parameters: neutral values for required fields, no invented address", () => {
   expect(parametresNeufs(catalogue("liste.garder"))).toEqual({ nombre: 10 });
   expect(parametresNeufs(catalogue("liste.nouveaux"))).toEqual({ cle: "url" });
   expect(parametresNeufs(catalogue("ia.trier"))).toEqual({ question: "Est-ce intéressant ?", texte: "{titre}" });
   expect(parametresNeufs(catalogue("source.page"))).toEqual({});
 });
 
-test("placeLibre décale sous les blocs affichés", () => {
+test("placeLibre shifts below the displayed blocks", () => {
   expect(placeLibre({ x: 10, y: 0 }, [])).toEqual({ x: 10, y: 0 });
   expect(placeLibre({ x: 10, y: 0 }, [{ x: 0, y: 0 }, { x: 0, y: 110 }])).toEqual({ x: 10, y: 220 });
 });
 
-// Fix round 1 (revue de la tâche 9)
+// Fix round 1 (review of task 9)
 
-/** Brouillon invalide (bloc non relié), puis l'agent change `garder` sur le disque : le bandeau propose sa version. */
+/** Invalid draft (unlinked block), then the agent changes `garder` on disk: the banner offers its version. */
 async function avecBandeau() {
   const f = faux(livre());
   const e = await ouverte(f);
@@ -256,7 +256,7 @@ async function avecBandeau() {
   return { f, e, id };
 }
 
-test("I1 : un geste pendant le bandeau n'écrit rien et le bandeau reste ; « Garder la mienne » envoie le brouillon", async () => {
+test("I1: a gesture during the banner writes nothing and the banner stays; « Garder la mienne » sends the draft", async () => {
   const { f, e, id } = await avecBandeau();
   e.modifier((b) => relier(b, "garder", id));
   await attendre();
@@ -273,7 +273,7 @@ test("I1 : un geste pendant le bandeau n'écrit rien et le bandeau reste ; « Ga
   expect(e.etatEnregistrement).toBe("enregistre");
 });
 
-test("I1 : un geste pendant le bandeau, puis « Prendre sa version » : le brouillon retenu est abandonné", async () => {
+test("I1: a gesture during the banner, then « Prendre sa version »: the kept draft is dropped", async () => {
   const { f, e, id } = await avecBandeau();
   e.modifier((b) => relier(b, "garder", id));
   e.prendreVersionDisque();
@@ -285,7 +285,7 @@ test("I1 : un geste pendant le bandeau, puis « Prendre sa version » : le broui
   expect(e.etatEnregistrement).toBe("enregistre");
 });
 
-test("I2 : ⌘Z après le premier déplacement d'un workflow sans disposition remet le bloc à sa place", async () => {
+test("I2: ⌘Z after the first move of a workflow without layout puts the block back", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
@@ -298,15 +298,15 @@ test("I2 : ⌘Z après le premier déplacement d'un workflow sans disposition re
   expect(e.positions.tri).toEqual({ x: 300, y: 40 });
 });
 
-test("M2 : relire pendant un enregistrement en vol ignore l'écho du brouillon envoyé", async () => {
+test("M2: relire during an in-flight save ignores the echo of the draft sent", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   f.etat.suspendu = true;
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
   await attendre();
-  // Un second geste attend son tour pendant que le premier est en vol.
+  // A second gesture waits its turn while the first is in flight.
   e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
-  // Le disque porte déjà le premier brouillon (écrit, réponse pas encore reçue).
+  // The disk already holds the first draft (written, response not yet received).
   const enVol = structuredClone(e.brouillon!);
   enVol.blocs.find((b) => b.id === "tri")!.position = { x: 300, y: 40 };
   f.etat.disque = enVol;
@@ -319,7 +319,7 @@ test("M2 : relire pendant un enregistrement en vol ignore l'écho du brouillon e
   expect(e.etatEnregistrement).toBe("enregistre");
 });
 
-test("M3 : l'édition d'un widget parti de l'accueil est oubliée ; un id réutilisé repart de zéro", () => {
+test("M3: the edition of a widget that left the home is forgotten; a reused id starts from scratch", () => {
   const { depot } = faux(livre());
   const a = creerEdition("parti", depot);
   const b = creerEdition("reste", depot);
@@ -328,7 +328,7 @@ test("M3 : l'édition d'un widget parti de l'accueil est oubliée ; un id réuti
   expect(creerEdition("reste", depot)).toBe(b);
 });
 
-test("M4 : sans nom de fichier libre (lecture en erreur) ou sans écriture du modèle, le bloc Code n'est pas ajouté", async () => {
+test("M4: with no free file name (read error) or no template write, the Code block is not added", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   f.etat.erreurCode = true;
@@ -347,7 +347,7 @@ test("M4 : sans nom de fichier libre (lecture en erreur) ou sans écriture du mo
 
 // Fix round 2
 
-test("N1 : un brouillon en file derrière un enregistrement en vol est retenu si le bandeau apparaît entre-temps", async () => {
+test("N1: a draft queued behind an in-flight save is kept if the banner appears in the meantime", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   f.etat.suspendu = true;
@@ -362,19 +362,19 @@ test("N1 : un brouillon en file derrière un enregistrement en vol est retenu si
   f.liberer();
   await attendre();
   await attendre();
-  // Seul le brouillon déjà en vol est parti ; celui en file attend le choix.
+  // Only the draft already in flight left; the queued one waits for the choice.
   expect(f.ecritures).toHaveLength(1);
   expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
   expect(e.bandeau).toBe("proposer");
   expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
-  // Prendre sa version abandonne aussi le brouillon en file.
+  // Taking its version also drops the queued draft.
   e.prendreVersionDisque();
   await attendre();
   expect(f.ecritures).toHaveLength(1);
   expect(e.brouillon!.blocs[0]!.parametres).toEqual({ source: "b.mjs" });
 });
 
-test("N2 : un enregistrement qui aboutit pendant le bandeau laisse l'en-tête sur l'attente du choix", async () => {
+test("N2: a save that succeeds during the banner leaves the header waiting for the choice", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   f.etat.suspendu = true;
@@ -392,7 +392,7 @@ test("N2 : un enregistrement qui aboutit pendant le bandeau laisse l'en-tête su
   expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
 });
 
-test("N1 : une erreur de lecture sur le premier nom arrête la recherche (jamais un nom suivant au hasard)", async () => {
+test("N1: a read error on the first name stops the search (never a random next name)", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   f.etat.erreurCode = ["code.mjs"];
@@ -401,7 +401,7 @@ test("N1 : une erreur de lecture sur le premier nom arrête la recherche (jamais
   expect(Object.keys(f.etat.fichiers)).toEqual([]);
 });
 
-test("N2 : « Prendre sa version » avant la fin d'un enregistrement en vol abandonne aussi le brouillon en file", async () => {
+test("N2: « Prendre sa version » before the end of an in-flight save also drops the queued draft", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   f.etat.suspendu = true;
@@ -420,7 +420,7 @@ test("N2 : « Prendre sa version » avant la fin d'un enregistrement en vol aban
   expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
 });
 
-test("T10 : les frappes d'un même champ (même clé de fusion) font une seule entrée d'historique", async () => {
+test("T10: keystrokes in the same field (same merge key) make a single history entry", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
   const seuil = (s: number) => (b: Brouillon) => regler(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
@@ -429,23 +429,23 @@ test("T10 : les frappes d'un même champ (même clé de fusion) font une seule e
   e.modifier(seuil(0.7), "tri/seuil/1");
   await attendre();
   expect(f.ecritures.at(-1)!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBe(0.7);
-  // Une autre séance du même champ est une autre entrée.
+  // Another session on the same field is another entry.
   e.modifier(seuil(0.8), "tri/seuil/2");
   await attendre();
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBe(0.7);
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
-  // Après un annuler, la même clé ne fusionne plus avec l'état d'avant.
+  // After an undo, the same key no longer merges with the previous state.
   e.modifier(seuil(0.9), "tri/seuil/2");
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
 });
 
-test("source d'un bloc code vers un fichier absent : refusé ; une fois le code enregistré, le brouillon repart", async () => {
+test("source of a code block to a missing file: refused; once the code is saved, the draft restarts", async () => {
   const f = faux(livre(), { "a.mjs": "x" });
   const enregistrer = f.depot.enregistrer;
-  // Comme le noyau : un bloc code dont le fichier manque est refusé, bloc nommé.
+  // Like the kernel: a code block whose file is missing is refused, block named.
   f.depot.enregistrer = async (id, b) => {
     const manque = b.blocs.find((x) => x.type === "code" && !(String(x.parametres.source) in f.etat.fichiers));
     if (manque) return { ok: false, erreur: `Non enregistré : fichier ${String(manque.parametres.source)} absent`, bloc: manque.id, avertissements: [] };
@@ -457,7 +457,7 @@ test("source d'un bloc code vers un fichier absent : refusé ; une fois le code 
   expect(e.etatEnregistrement).toEqual({ invalide: "fichier b.mjs absent", bloc: "garder" });
   expect(f.ecritures).toEqual([]);
 
-  // Un autre fichier enregistré ne relance rien.
+  // Another saved file triggers nothing.
   f.etat.fichiers["c.mjs"] = "y";
   e.codeEnregistre("c.mjs");
   await attendre();
@@ -470,7 +470,7 @@ test("source d'un bloc code vers un fichier absent : refusé ; une fois le code 
   expect(e.etatEnregistrement).toBe("enregistre");
   expect(f.ecritures.map((b) => b.blocs[0]!.parametres.source)).toEqual(["b.mjs"]);
 
-  // Déjà enregistré : un nouvel enregistrement du code n'envoie rien.
+  // Already saved: a new save of the code sends nothing.
   e.codeEnregistre("b.mjs");
   await attendre();
   expect(f.ecritures).toHaveLength(1);

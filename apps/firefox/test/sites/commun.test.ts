@@ -11,7 +11,7 @@ import {
   titreAccordRetouches,
 } from "../../shared/sites";
 
-test("messages de la fenêtre d'une appli de site", () => {
+test("messages of a site app's window", () => {
   expect(lienBloque("pub.localhost")).toBe("Lien vers pub.localhost bloqué");
   expect(adresseIntrouvable("adresses.localhost")).toBe("Adresse introuvable sur adresses.localhost");
   expect(adresseChangee("Vidola", "vidola-b.localhost")).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
@@ -22,13 +22,13 @@ test("messages de la fenêtre d'une appli de site", () => {
   expect(modifierAvecAgent("vidola")).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
 });
 
-test("MessageDeLAccueil : les trois messages permis", () => {
+test("MessageDeLAccueil: the three allowed messages", () => {
   expect(MessageDeLAccueil.parse({ type: "pret" })).toEqual({ type: "pret" });
   expect(MessageDeLAccueil.parse({ type: "ouvrir", adresse: "/series/the-bear" })).toEqual({ type: "ouvrir", adresse: "/series/the-bear" });
   expect(MessageDeLAccueil.parse({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" })).toEqual({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" });
 });
 
-test("MessageDeLAccueil : le reste est refusé", () => {
+test("MessageDeLAccueil: the rest is refused", () => {
   for (const m of [
     null,
     "pret",

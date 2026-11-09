@@ -31,7 +31,7 @@ function monter() {
   return { o, envoyer: creerEnvoi(o) };
 }
 
-test("app : preRemplir reçoit la fenêtre de l'agent et le texte, jamais de \r ; externe : preRemplir n'est pas appelé", async () => {
+test("app: preRemplir receives the agent's window and the text, never a \r; external: preRemplir is not called", async () => {
   const { o, envoyer } = monter();
   await envoyer({ type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" }, lot);
   expect(o.preRemplir).toHaveBeenCalledTimes(1);
@@ -48,7 +48,7 @@ test("app : preRemplir reçoit la fenêtre de l'agent et le texte, jamais de \r 
   expect(o.preRemplir).toHaveBeenCalledTimes(1);
 });
 
-test("sans fenêtre principale : une fenêtre est rouverte et reçoit le texte ; si aucune ne s'ouvre, l'envoi échoue (jamais « ok » sans rien)", async () => {
+test("without a main window: a window is reopened and receives the text; if none opens, the send fails (never « ok » with nothing)", async () => {
   const { o, envoyer } = monter();
   o.fenetreAgent.mockReturnValueOnce(undefined as never);
   const rouvrir = vi.fn();
@@ -63,7 +63,7 @@ test("sans fenêtre principale : une fenêtre est rouverte et reçoit le texte ;
   expect(o.preRemplir).not.toHaveBeenCalled();
 });
 
-test("site : preRemplir reçoit l'appli de site, son dossier et le chemin du lot, sans \\r ni \\n", async () => {
+test("site: preRemplir receives the site app, its folder and the batch path, without \\r or \\n", async () => {
   const { o, envoyer } = monter();
   await envoyer({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" }, { ...lot, projet: "site-tuning" });
   expect(o.preRemplir).toHaveBeenCalledTimes(1);

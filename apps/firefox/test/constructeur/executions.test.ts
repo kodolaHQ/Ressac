@@ -28,7 +28,7 @@ function faux(liste: ResumeExecution[]) {
   return { source, etat, demandes };
 }
 
-test("par défaut, la dernière vraie exécution (pas un essai) et son détail", async () => {
+test("by default, the last real run (not a trial) and its detail", async () => {
   const f = faux([resume("c-essai", true), resume("b"), resume("a")]);
   const x = new Executions("w", f.source);
   await x.charger();
@@ -36,7 +36,7 @@ test("par défaut, la dernière vraie exécution (pas un essai) et son détail",
   expect(x.detail?.id).toBe("b");
 });
 
-test("aucune vraie exécution : rien de choisi", async () => {
+test("no real run: nothing chosen", async () => {
   const f = faux([resume("c-essai", true)]);
   const x = new Executions("w", f.source);
   await x.charger();
@@ -44,7 +44,7 @@ test("aucune vraie exécution : rien de choisi", async () => {
   expect(x.detail).toBeNull();
 });
 
-test("choisir une exécution charge son détail ; disparue, on revient à la dernière vraie", async () => {
+test("choosing a run loads its detail; vanished, we go back to the last real one", async () => {
   const f = faux([resume("c"), resume("b"), resume("a")]);
   const x = new Executions("w", f.source);
   await x.charger();
@@ -57,7 +57,7 @@ test("choisir une exécution charge son détail ; disparue, on revient à la der
   expect(x.detail?.id).toBe("d");
 });
 
-test("une nouvelle vraie exécution devient le choix par défaut ; un choix explicite reste", async () => {
+test("a new real run becomes the default choice; an explicit choice stays", async () => {
   const f = faux([resume("b"), resume("a")]);
   const x = new Executions("w", f.source);
   await x.charger();
@@ -70,7 +70,7 @@ test("une nouvelle vraie exécution devient le choix par défaut ; un choix expl
   expect(x.choisie?.id).toBe("b");
 });
 
-test("relire sans changement ne redemande pas le détail", async () => {
+test("relire without a change does not ask for the detail again", async () => {
   const f = faux([resume("b")]);
   const x = new Executions("w", f.source);
   await x.charger();
@@ -78,7 +78,7 @@ test("relire sans changement ne redemande pas le détail", async () => {
   expect(f.demandes).toEqual(["b"]);
 });
 
-test("détail introuvable (chassé entre la liste et le détail) : signalé, la liste est relue une fois", async () => {
+test("detail not found (evicted between the list and the detail): reported, the list is reread once", async () => {
   const f = faux([resume("b"), resume("a")]);
   let listes = 0;
   const source: SourceExecutions = {
@@ -98,7 +98,7 @@ test("détail introuvable (chassé entre la liste et le détail) : signalé, la 
   expect(x.detail?.id).toBe("a");
 });
 
-test("détail en erreur : introuvable, pas d'attente sans fin", async () => {
+test("detail in error: not found, no endless wait", async () => {
   const f = faux([resume("b")]);
   const x = new Executions("w", { ...f.source, execution: async () => Promise.reject(new Error("canal")) });
   await x.charger();
@@ -106,7 +106,7 @@ test("détail en erreur : introuvable, pas d'attente sans fin", async () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Direct, « Lancer » et « Rejouer » (tâche 11).
+// Live, « Lancer » and « Rejouer » (task 11).
 
 type Rappel = (e: EtatDirect) => void;
 function lanceurFaux(f: ReturnType<typeof faux>) {
@@ -144,7 +144,7 @@ const attendreQue = async (cond: () => boolean) => {
 
 beforeEach(() => oublierChoixExecutions([]));
 
-test("occupé quand une exécution de ce widget tourne ou attend ; pas pour un autre widget", async () => {
+test("busy when a run of this widget is running or waiting; not for another widget", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
@@ -163,7 +163,7 @@ test("occupé quand une exécution de ce widget tourne ou attend ; pas pour un a
   expect(l.rappels).toHaveLength(0);
 });
 
-test("occupe quand le widget est parmi les courants ou en attente", async () => {
+test("occupe when the widget is among the current or waiting ones", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
@@ -173,7 +173,7 @@ test("occupe quand le widget est parmi les courants ou en attente", async () => 
   l.emettre({ courants: [veille], enAttente: [] });
   expect(x.occupe).toBe(false);
   expect(x.enDirect).toBeNull();
-  // Deux exécutions en même temps (voie courte et voie longue) : ce widget est le second.
+  // Two runs at the same time (short lane and long lane): this widget is the second.
   l.emettre({ courants: [veille, { widget: "w", genre: "essai", debut: "d1", blocs: { tri: { statut: "reussi", elements: 2 } } }], enAttente: [] });
   expect(x.occupe).toBe(true);
   expect(x.enDirect).toMatchObject({ widget: "w", genre: "essai", debut: "d1" });
@@ -185,14 +185,14 @@ test("occupe quand le widget est parmi les courants ou en attente", async () => 
   fin();
 });
 
-test("fin de l'exécution suivie en direct : liste et détail relus, plus de direct périmé", async () => {
+test("end of the run followed live: list and detail reread, no more stale live", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
   x.suivre();
   await x.charger();
   l.emettre(directDe("w", { tri: { statut: "en-cours", elements: null } }));
-  // L'exécution planifiée s'écrit, le direct s'arrête (les blocs non finis ne sont pas relayés à la fin).
+  // The scheduled run is written, the live one stops (unfinished blocks are not relayed at the end).
   f.etat.liste = [resume("c"), resume("b")];
   l.emettre({ courants: [], enAttente: [] });
   expect(x.enDirect).toBeNull();
@@ -201,7 +201,7 @@ test("fin de l'exécution suivie en direct : liste et détail relus, plus de dir
   expect(x.detail?.id).toBe("c");
 });
 
-test("deux exécutions de suite sans pause dans le direct : relu aussi", async () => {
+test("two runs in a row without a pause in the live: reread too", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
@@ -214,7 +214,7 @@ test("deux exécutions de suite sans pause dans le direct : relu aussi", async (
   expect(x.detail?.id).toBe("c");
 });
 
-test("▶ Lancer : occupé pendant la demande (un double clic ne relance pas), puis la nouvelle exécution est choisie", async () => {
+test("▶ Lancer: busy during the request (a double click does not relaunch), then the new run is chosen", async () => {
   const f = faux([resume("b"), resume("a")]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
@@ -232,7 +232,7 @@ test("▶ Lancer : occupé pendant la demande (un double clic ne relance pas), p
   expect(x.detail?.id).toBe("nouvelle");
 });
 
-test("▶ Lancer sans exécution rendue ({}) : le choix reste", async () => {
+test("▶ Lancer without a returned run ({}): the choice stays", async () => {
   const f = faux([resume("b"), resume("a")]);
   const l = lanceurFaux(f);
   l.lanceur.lancer = async () => ({});
@@ -243,7 +243,7 @@ test("▶ Lancer sans exécution rendue ({}) : le choix reste", async () => {
   expect(x.choisie?.id).toBe("a");
 });
 
-test("Rejouer depuis un bloc : l'essai rendu est choisi ; refusé, le message reste et rien ne change", async () => {
+test("Rejouer from a block: the returned trial is chosen; refused, the message stays and nothing changes", async () => {
   const f = faux([resume("b"), resume("a")]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
@@ -260,7 +260,7 @@ test("Rejouer depuis un bloc : l'essai rendu est choisi ; refusé, le message re
   expect(x.detail?.id).toBe("e-essai");
 });
 
-test("Rejouer sans exécution choisie ou pendant une exécution : aucune demande", async () => {
+test("Rejouer without a chosen run or during a run: no request", async () => {
   const f = faux([]);
   const l = lanceurFaux(f);
   const x = new Executions("w", f.source, l.lanceur);
@@ -274,7 +274,7 @@ test("Rejouer sans exécution choisie ou pendant une exécution : aucune demande
   expect(l.appels).toEqual([]);
 });
 
-test("le choix d'une exécution est gardé par widget dans la fenêtre (changer d'onglet ne le perd pas)", async () => {
+test("the choice of a run is kept per widget in the window (switching tabs does not lose it)", async () => {
   const f = faux([resume("b"), resume("a")]);
   const x = new Executions("w", f.source);
   await x.charger();
@@ -287,9 +287,9 @@ test("le choix d'une exécution est gardé par widget dans la fenêtre (changer 
   expect(new Executions("w", f.source).voulue).toBeNull();
 });
 
-// Revue tâche 11.
+// Review of task 11.
 
-test("la lecture initiale du direct n'écrase pas un événement poussé plus récent", async () => {
+test("the initial read of the live does not overwrite a more recent pushed event", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   let rendre: (e: EtatDirect) => void = () => {};
@@ -303,7 +303,7 @@ test("la lecture initiale du direct n'écrase pas un événement poussé plus r�
   expect(x.enDirect).toBeNull();
 });
 
-test("Rejouer qui échoue en route (canal) : le refus le dit", async () => {
+test("Rejouer that fails on the way (channel): the denial says so", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   l.lanceur.rejouer = () => Promise.reject(new Error("canal fermé"));
@@ -314,7 +314,7 @@ test("Rejouer qui échoue en route (canal) : le refus le dit", async () => {
   expect(x.occupe).toBe(false);
 });
 
-test("▶ Lancer qui échoue en route : rien de choisi de travers, plus occupé", async () => {
+test("▶ Lancer that fails on the way: nothing wrongly chosen, no longer busy", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   l.lanceur.lancer = () => Promise.reject(new Error("canal fermé"));
@@ -331,7 +331,7 @@ test("▶ Lancer qui échoue en route : rien de choisi de travers, plus occupé"
   }
 });
 
-test("▶ Lancer qui rend la dernière vraie exécution : le choix par défaut reprend, les suivantes le suivent", async () => {
+test("▶ Lancer that returns the last real run: the default choice resumes, the following ones follow it", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
   l.lanceur.lancer = async () => {
@@ -348,7 +348,7 @@ test("▶ Lancer qui rend la dernière vraie exécution : le choix par défaut r
   expect(x.choisie?.id).toBe("planifiee");
 });
 
-test("un choix fait par un autre constructeur du widget (onglet quitté pendant Lancer) est repris au rechargement", async () => {
+test("a choice made by another builder of the widget (tab left during Lancer) is picked up again on reload", async () => {
   const f = faux([resume("b"), resume("a")]);
   const y = new Executions("w", f.source);
   await y.charger();

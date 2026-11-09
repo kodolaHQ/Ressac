@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { SondeDocker } from "../../core/applications/sonde";
 
-/** Une sonde que le test termine à la main. */
+/** A probe that the test finishes by hand. */
 function sondeManuelle() {
   const fins: ((e: string) => void)[] = [];
   const sonder = vi.fn(() => new Promise<string>((r) => fins.push(r)));
@@ -9,7 +9,7 @@ function sondeManuelle() {
 }
 const attendre = () => new Promise((r) => setTimeout(r, 0));
 
-test("valeur() n'attend jamais la sonde, et n'en lance qu'une à la fois", async () => {
+test("valeur() never waits for the probe, and only starts one at a time", async () => {
   const { sonder, finir } = sondeManuelle();
   const surChange = vi.fn();
   let t = 0;
@@ -21,7 +21,7 @@ test("valeur() n'attend jamais la sonde, et n'en lance qu'une à la fois", async
   await attendre();
   expect(surChange).toHaveBeenCalledTimes(1);
   expect(s.valeur()).toBe("docker-absent");
-  // Résultat resservi tant qu'il est frais.
+  // Result served again while it is fresh.
   t = 4999;
   s.valeur();
   expect(sonder).toHaveBeenCalledTimes(1);
@@ -30,11 +30,11 @@ test("valeur() n'attend jamais la sonde, et n'en lance qu'une à la fois", async
   expect(sonder).toHaveBeenCalledTimes(2);
   finir("docker-absent");
   await attendre();
-  // Même état : pas de rediffusion.
+  // Same state: no rebroadcast.
   expect(surChange).toHaveBeenCalledTimes(1);
 });
 
-test("une sonde qui échoue vaut docker-absent", async () => {
+test("a probe that fails counts as docker-absent", async () => {
   const surChange = vi.fn();
   const s = new SondeDocker({ sonder: () => Promise.reject(new Error("x")), surChange });
   s.valeur();

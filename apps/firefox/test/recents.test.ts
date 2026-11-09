@@ -23,7 +23,7 @@ beforeEach(() => {
   F = e.fenetres[0]!.id;
 });
 
-test("ordreRecent : actif en tête, historique, puis le reste ; fermés ignorés", () => {
+test("ordreRecent: active first, history, then the rest; closed ignored", () => {
   const a = ouvrir("https://a.fr");
   const b = ouvrir("https://b.fr");
   const c = ouvrir("https://c.fr");

@@ -15,38 +15,38 @@ beforeEach(() => {
 });
 afterEach(() => h.fermer());
 
-test("noter deux fois la même URL → une ligne, visites = 2, titre mis à jour", () => {
+test("noting the same URL twice → one row, visites = 2, title updated", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "Ancien", date: date("2026-10-01T10:00:00Z") });
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "Nouveau", date: date("2026-10-02T10:00:00Z") });
   expect(h.recents()).toEqual([{ url: "https://a.fr/", titre: "Nouveau", derniereVisite: "2026-10-02T10:00:00.000Z", visites: 2, espaceId: "", prive: false, retenu: false }]);
 });
 
-test("rechercher trouve par titre et par URL, sans tenir compte de la casse", () => {
+test("rechercher finds by title and by URL, case-insensitively", () => {
   h.noter({ espaceId: "", prive: false, url: "https://www.youtube.com/watch?v=1", titre: "Conférence Rust" });
   h.noter({ espaceId: "", prive: false, url: "https://github.com/sveltejs/svelte", titre: "Svelte" });
   expect(h.rechercher("RUST").map((v) => v.url)).toEqual(["https://www.youtube.com/watch?v=1"]);
   expect(h.rechercher("GitHub").map((v) => v.titre)).toEqual(["Svelte"]);
 });
 
-test("rechercher ignore la casse et les accents hors ASCII (É, é, e)", () => {
+test("rechercher ignores case and non-ASCII accents (É, é, e)", () => {
   h.noter({ espaceId: "", prive: false, url: "https://meteo.fr/", titre: "Été à Paris" });
   expect(h.rechercher("été").map((v) => v.url)).toEqual(["https://meteo.fr/"]);
   expect(h.rechercher("ETE").map((v) => v.url)).toEqual(["https://meteo.fr/"]);
 });
 
-test("tri : les plus visitées d'abord", () => {
+test("sorting: most visited first", () => {
   h.noter({ espaceId: "", prive: false, url: "https://rare.fr/", titre: "page rare", date: date("2026-10-03T00:00:00Z") });
   for (let i = 0; i < 3; i++) h.noter({ espaceId: "", prive: false, url: "https://souvent.fr/", titre: "page souvent", date: date("2026-10-01T00:00:00Z") });
   expect(h.rechercher("page").map((v) => v.url)).toEqual(["https://souvent.fr/", "https://rare.fr/"]);
 });
 
-test("recents : la plus récente d'abord", () => {
+test("recents: most recent first", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "A", date: date("2026-10-01T00:00:00Z") });
   h.noter({ espaceId: "", prive: false, url: "https://b.fr/", titre: "B", date: date("2026-10-02T00:00:00Z") });
   expect(h.recents().map((v) => v.titre)).toEqual(["B", "A"]);
 });
 
-test("effacer(depuis) ne retire que les visites récentes", () => {
+test("effacer(depuis) only removes recent visits", () => {
   h.noter({ espaceId: "", prive: false, url: "https://vieux.fr/", titre: "V", date: date("2026-10-01T00:00:00Z") });
   h.noter({ espaceId: "", prive: false, url: "https://recent.fr/", titre: "R", date: date("2026-10-05T00:00:00Z") });
   h.effacer(date("2026-10-04T00:00:00Z"));
@@ -55,7 +55,7 @@ test("effacer(depuis) ne retire que les visites récentes", () => {
   expect(h.recents()).toEqual([]);
 });
 
-test("les caractères spéciaux (% _ ') dans la recherche sont traités littéralement", () => {
+test("special characters (% _ ') in the search are treated literally", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/100%", titre: "cent pour cent" });
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/x_y", titre: "l'apostrophe" });
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/autre", titre: "rien" });
@@ -65,28 +65,28 @@ test("les caractères spéciaux (% _ ') dans la recherche sont traités littéra
   expect(h.rechercher("\\")).toEqual([]);
 });
 
-test("l'historique survit à la réouverture du fichier", () => {
+test("history survives reopening the file", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "A" });
   h.fermer();
   h = new Historique(chemin);
   expect(h.recents().map((v) => v.url)).toEqual(["https://a.fr/"]);
 });
 
-test("majTitre change le titre d'une URL déjà notée, sans compter de visite", () => {
+test("majTitre changes the title of an already noted URL, without counting a visit", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "https://a.fr/" });
   h.majTitre("https://a.fr/", "", "Le vrai titre");
   h.majTitre("https://inconnu.fr/", "", "ignoré");
   expect(h.recents()).toMatchObject([{ url: "https://a.fr/", titre: "Le vrai titre", visites: 1 }]);
 });
 
-test("après fermer, noter et majTitre sont ignorés sans lever d'erreur (événements tardifs à la sortie)", () => {
+test("after fermer, noter and majTitre are ignored without throwing (late events at exit)", () => {
   h.fermer();
   expect(() => h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "A" })).not.toThrow();
   expect(() => h.majTitre("https://a.fr/", "", "A")).not.toThrow();
   expect(h.recents()).toEqual([]);
 });
 
-test("même URL dans deux espaces : deux lignes ; une nouvelle visite dans A ne compte que pour A", () => {
+test("same URL in two spaces: two rows; a new visit in A only counts for A", () => {
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "A", prive: false });
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "A", prive: false });
@@ -95,19 +95,19 @@ test("même URL dans deux espaces : deux lignes ; une nouvelle visite dans A ne 
   expect(Object.fromEntries(lignes.map((v) => [v.espaceId, v.visites]))).toEqual({ A: 2, B: 1 });
 });
 
-test("majTitre ne touche que l'espace visé", () => {
+test("majTitre only touches the targeted space", () => {
   h.noter({ url: "https://a.fr/", titre: "t", espaceId: "A", prive: false });
   h.noter({ url: "https://a.fr/", titre: "t", espaceId: "B", prive: false });
   h.majTitre("https://a.fr/", "A", "nouveau");
   expect(Object.fromEntries(h.recents().map((v) => [v.espaceId, v.titre]))).toEqual({ A: "nouveau", B: "t" });
 });
 
-test("une visite dans un espace privé est notée privée", () => {
+test("a visit in a private space is noted as private", () => {
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "P", prive: true });
   expect(h.recents()).toMatchObject([{ espaceId: "P", prive: true }]);
 });
 
-test("rendrePrive marque les lignes de cet espace seulement", () => {
+test("rendrePrive marks only this space's rows", () => {
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "A", prive: false });
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
   h.noter({ url: "https://b.fr/", titre: "B", espaceId: "", prive: false });
@@ -119,7 +119,7 @@ test("rendrePrive marque les lignes de cet espace seulement", () => {
   });
 });
 
-test("ancien schéma (clé url seule) : lignes gardées, espace vide, non privées", () => {
+test("old schema (url key alone): rows kept, empty space, non-private", () => {
   h.fermer();
   const vieux = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
   const db = new DatabaseSync(vieux);
@@ -131,11 +131,11 @@ test("ancien schéma (clé url seule) : lignes gardées, espace vide, non privé
   h.noter({ url: "https://vieux.fr/", titre: "Vieux", espaceId: "A", prive: false });
   expect(h.recents()).toHaveLength(2);
   h.fermer();
-  h = new Historique(vieux); // déjà migrée : rouvrir ne change rien
+  h = new Historique(vieux); // already migrated: reopening changes nothing
   expect(h.recents()).toHaveLength(2);
 });
 
-test("rechercher en mode distinct : une URL vue dans deux espaces sort une fois, et la limite compte des URL", () => {
+test("rechercher in distinct mode: a URL seen in two spaces comes out once, and the limit counts URLs", () => {
   h.noter({ url: "https://a.fr/", titre: "page", espaceId: "A", prive: false });
   h.noter({ url: "https://a.fr/", titre: "page", espaceId: "B", prive: false });
   h.noter({ url: "https://b.fr/", titre: "page", espaceId: "A", prive: false });
@@ -143,20 +143,20 @@ test("rechercher en mode distinct : une URL vue dans deux espaces sort une fois,
   expect(h.rechercher("page", 2, true).map((v) => v.url).sort()).toEqual(["https://a.fr/", "https://b.fr/"]);
 });
 
-test("rechercher en mode distinct garde par URL la ligne la plus visitée, puis la plus récente, dans l'ordre et la limite", () => {
+test("rechercher in distinct mode keeps per URL the most visited row, then the most recent, in order and within the limit", () => {
   const noter = (url: string, espaceId: string, fois: number, iso: string) => {
     for (let i = 0; i < fois; i++) h.noter({ url, titre: "page", espaceId, prive: false, date: date(iso) });
   };
   noter("https://a.fr/", "A", 1, "2026-10-05T00:00:00Z");
-  noter("https://a.fr/", "B", 3, "2026-10-01T00:00:00Z"); // plus visitée : gagne malgré la date
+  noter("https://a.fr/", "B", 3, "2026-10-01T00:00:00Z"); // most visited: wins despite the date
   noter("https://b.fr/", "A", 2, "2026-10-01T00:00:00Z");
-  noter("https://b.fr/", "B", 2, "2026-10-03T00:00:00Z"); // égalité de visites : la plus récente gagne
+  noter("https://b.fr/", "B", 2, "2026-10-03T00:00:00Z"); // tie on visits: the most recent wins
   noter("https://c.fr/", "A", 1, "2026-10-09T00:00:00Z");
   expect(h.rechercher("page", 2, true).map((v) => [v.url, v.espaceId])).toEqual([["https://a.fr/", "B"], ["https://b.fr/", "B"]]);
   expect(h.rechercher("page", 50, true).map((v) => v.url)).toEqual(["https://a.fr/", "https://b.fr/", "https://c.fr/"]);
 });
 
-test("une ligne privée qui redevient non privée repart à une visite, avec titre et date neufs", () => {
+test("a private row that becomes non-private restarts at one visit, with a fresh title and date", () => {
   h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "A", prive: true, date: date("2026-10-01T00:00:00Z") });
   h.noter({ url: "https://a.fr/", titre: "Secret", espaceId: "A", prive: true, date: date("2026-10-02T00:00:00Z") });
   h.noter({ url: "https://a.fr/", titre: "Public", espaceId: "A", prive: false, date: date("2026-10-03T00:00:00Z") });
@@ -165,29 +165,29 @@ test("une ligne privée qui redevient non privée repart à une visite, avec tit
   expect(h.recents()[0]!.visites).toBe(2);
 });
 
-// --- Texte retenu des pages (mémoire de navigation) ---
+// --- Retained page text (browsing memory) ---
 
 const JOUR = 86_400_000;
-/** Une visite non privée et son texte retenu, à la même date. */
+/** A non-private visit and its retained text, at the same date. */
 function visiter(url: string, titre: string, texte: string, o: { espaceId?: string; date?: string } = {}) {
   const d = date(o.date ?? "2026-10-01T00:00:00Z");
   h.noter({ url, titre, espaceId: o.espaceId ?? "A", prive: false, date: d });
   h.retenir({ url, titre, espaceId: o.espaceId ?? "A", texte, date: d });
 }
 
-test("retenir tronque le texte à 20 000 caractères", () => {
+test("retenir truncates the text to 20,000 characters", () => {
   visiter("https://a.fr/", "A", "x".repeat(25_000));
   expect(h.texteRetenu("https://a.fr/")!.texte).toHaveLength(20_000);
 });
 
-test("retenir une seconde fois la même page dans le même espace remplace le texte", () => {
+test("retenir a second time for the same page in the same space replaces the text", () => {
   visiter("https://a.fr/", "A", "premier texte");
   visiter("https://a.fr/", "A", "second texte", { date: "2026-10-02T00:00:00Z" });
   expect(h.texteRetenu("https://a.fr/")).toEqual({ url: "https://a.fr/", titre: "A", date: "2026-10-02T00:00:00.000Z", texte: "second texte" });
   expect(h.rechercherPourAgent({ requete: "premier" })).toEqual([]);
 });
 
-test("Visite.retenu dit si le texte de cette visite (URL et espace) est retenu ; oublierTexte l'oublie seul", () => {
+test("Visite.retenu tells whether this visit's text (URL and space) is retained; oublierTexte forgets it alone", () => {
   visiter("https://a.fr/", "A", "texte", { espaceId: "A" });
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
   expect(Object.fromEntries(h.recents().map((v) => [v.espaceId, v.retenu]))).toEqual({ A: true, B: false });
@@ -196,27 +196,27 @@ test("Visite.retenu dit si le texte de cette visite (URL et espace) est retenu ;
   expect(h.recents()).toHaveLength(2);
 });
 
-test("purger efface le texte de plus de 183 jours et garde celui de 182", () => {
+test("purger erases text older than 183 days and keeps the 182-day-old one", () => {
   const maintenant = date("2026-10-28T12:00:00Z");
   visiter("https://vieux.fr/", "V", "vieux", { date: new Date(maintenant.getTime() - 184 * JOUR).toISOString() });
   visiter("https://jeune.fr/", "J", "jeune", { date: new Date(maintenant.getTime() - 182 * JOUR).toISOString() });
   h.purger(maintenant);
   expect(h.texteRetenu("https://vieux.fr/")).toBeNull();
   expect(h.texteRetenu("https://jeune.fr/")).not.toBeNull();
-  expect(h.recents()).toHaveLength(2); // les visites restent
+  expect(h.recents()).toHaveLength(2); // the visits remain
 });
 
-test("au-delà du plafond, purger efface le texte le plus ancien d'abord", () => {
+test("beyond the cap, purger erases the oldest text first", () => {
   h.fermer();
   h = new Historique(chemin, { plafondOctets: 25 });
   visiter("https://1.fr/", "1", "a".repeat(10), { date: "2026-10-01T00:00:00Z" });
-  visiter("https://2.fr/", "2", "é".repeat(5), { date: "2026-10-02T00:00:00Z" }); // 10 octets en UTF-8
+  visiter("https://2.fr/", "2", "é".repeat(5), { date: "2026-10-02T00:00:00Z" }); // 10 bytes in UTF-8
   visiter("https://3.fr/", "3", "c".repeat(10), { date: "2026-10-03T00:00:00Z" });
   h.purger(date("2026-10-04T00:00:00Z"));
   expect(["https://1.fr/", "https://2.fr/", "https://3.fr/"].map((u) => h.texteRetenu(u) !== null)).toEqual([false, true, true]);
 });
 
-test("effacer(depuis) efface aussi le texte retenu depuis cette date ; effacer() efface tout", () => {
+test("effacer(depuis) also erases the retained text since that date; effacer() erases everything", () => {
   visiter("https://vieux.fr/", "V", "vieux", { date: "2026-10-01T00:00:00Z" });
   visiter("https://recent.fr/", "R", "recent", { date: "2026-10-05T00:00:00Z" });
   h.effacer(date("2026-10-04T00:00:00Z"));
@@ -228,7 +228,7 @@ test("effacer(depuis) efface aussi le texte retenu depuis cette date ; effacer()
   expect(h.rechercherPourAgent({ requete: "vieux" })).toEqual([]);
 });
 
-test("rendrePrive oublie le texte de cet espace et garde celui de la même URL dans un autre espace", () => {
+test("rendrePrive forgets this space's text and keeps the same URL's text in another space", () => {
   visiter("https://a.fr/", "A", "texte vu dans A", { espaceId: "A", date: "2026-10-02T00:00:00Z" });
   visiter("https://a.fr/", "A", "texte vu dans B", { espaceId: "B", date: "2026-10-01T00:00:00Z" });
   h.rendrePrive("A");
@@ -236,14 +236,14 @@ test("rendrePrive oublie le texte de cet espace et garde celui de la même URL d
   expect(h.recents().find((v) => v.espaceId === "A")!.retenu).toBe(false);
 });
 
-test("rechercherPourAgent trouve « eclair » dans le texte, le titre et l'URL, sans casse ni accents", () => {
+test("rechercherPourAgent finds « eclair » in the text, the title and the URL, ignoring case and accents", () => {
   visiter("https://patisserie.fr/1", "Recettes", "Un Éclair au café");
   visiter("https://patisserie.fr/2", "L'ÉCLAIR parfait", "chocolat");
   visiter("https://eclair.fr/", "Accueil", "rien");
   expect(h.rechercherPourAgent({ requete: "eclair" }).map((r) => r.url).sort()).toEqual(["https://eclair.fr/", "https://patisserie.fr/1", "https://patisserie.fr/2"]);
 });
 
-test("rechercherPourAgent : une URL par résultat, faite des seules visites non privées", () => {
+test("rechercherPourAgent: one URL per result, made of non-private visits only", () => {
   visiter("https://a.fr/", "Titre A", "un texte sur les éclairs", { espaceId: "A", date: "2026-10-01T00:00:00Z" });
   h.noter({ url: "https://a.fr/", titre: "Titre A", espaceId: "A", prive: false, date: date("2026-10-03T00:00:00Z") });
   h.noter({ url: "https://a.fr/", titre: "Titre B", espaceId: "B", prive: false, date: date("2026-10-02T00:00:00Z") });
@@ -254,28 +254,28 @@ test("rechercherPourAgent : une URL par résultat, faite des seules visites non 
   ]);
 });
 
-test("rechercherPourAgent ne rend jamais le texte d'une ligne privée", () => {
+test("rechercherPourAgent never returns a private row's text", () => {
   visiter("https://a.fr/", "A", "mot de passe xyzzy", { espaceId: "P" });
-  h.noter({ url: "https://a.fr/", titre: "A", espaceId: "P", prive: true }); // l'espace est devenu privé sans rendrePrive
+  h.noter({ url: "https://a.fr/", titre: "A", espaceId: "P", prive: true }); // the space became private without rendrePrive
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
   expect(h.rechercherPourAgent({ requete: "xyzzy" })).toEqual([]);
   expect(h.rechercherPourAgent({ requete: "a.fr" })).toMatchObject([{ url: "https://a.fr/", extrait: "", visites: 1 }]);
   expect(h.texteRetenu("https://a.fr/")).toBeNull();
 });
 
-test("rechercherPourAgent respecte depuis et jusqua", () => {
+test("rechercherPourAgent honours depuis and jusqua", () => {
   for (const j of ["01", "05", "09"]) visiter(`https://${j}.fr/`, `page ${j}`, "commun", { date: `2026-10-${j}T00:00:00Z` });
   const r = h.rechercherPourAgent({ requete: "commun", depuis: date("2026-10-02T00:00:00Z"), jusqua: date("2026-10-06T00:00:00Z") });
   expect(r.map((x) => x.url)).toEqual(["https://05.fr/"]);
 });
 
-test("rechercherPourAgent rend 20 résultats par défaut et jamais plus de 50", () => {
+test("rechercherPourAgent returns 20 results by default and never more than 50", () => {
   for (let i = 0; i < 60; i++) h.noter({ url: `https://a.fr/${i}`, titre: "page", espaceId: "A", prive: false });
   expect(h.rechercherPourAgent({ requete: "page" })).toHaveLength(20);
   expect(h.rechercherPourAgent({ requete: "page", limite: 500 })).toHaveLength(50);
 });
 
-test("rechercherPourAgent rend un extrait d'environ 300 caractères autour du mot trouvé", () => {
+test("rechercherPourAgent returns an excerpt of about 300 characters around the found word", () => {
   const avant = "Lorem ipsum dolor sit amet. ".repeat(100);
   visiter("https://a.fr/", "A", `${avant} le mot introuvable est ici. ${avant}`);
   const [r] = h.rechercherPourAgent({ requete: "introuvable" });
@@ -284,13 +284,13 @@ test("rechercherPourAgent rend un extrait d'environ 300 caractères autour du mo
   expect(r!.extrait.length).toBeLessThan(400);
 });
 
-test("une visite sans texte se trouve par titre ou URL, avec un extrait vide", () => {
+test("a visit without text is found by title or URL, with an empty excerpt", () => {
   h.noter({ url: "https://github.com/sveltejs/svelte", titre: "Svelte • Cybernétique", espaceId: "A", prive: false });
   expect(h.rechercherPourAgent({ requete: "CYBERNETIQUE" })).toMatchObject([{ url: "https://github.com/sveltejs/svelte", extrait: "" }]);
   expect(h.rechercherPourAgent({ requete: "LTEJS/SV" })).toMatchObject([{ titre: "Svelte • Cybernétique", extrait: "" }]);
 });
 
-test("classement : les textes trouvés par bm25 d'abord, puis les titres et URL seuls, du plus récent au plus ancien", () => {
+test("ranking: texts found by bm25 first, then titles and URLs alone, from most to least recent", () => {
   h.noter({ url: "https://titre-ancien.fr/", titre: "rust", espaceId: "A", prive: false, date: date("2026-10-01T00:00:00Z") });
   h.noter({ url: "https://titre-recent.fr/", titre: "rust", espaceId: "A", prive: false, date: date("2026-10-08T00:00:00Z") });
   visiter("https://peu.fr/", "Peu", `rust ${"autre chose ".repeat(200)}`, { date: "2026-10-09T00:00:00Z" });
@@ -298,27 +298,27 @@ test("classement : les textes trouvés par bm25 d'abord, puis les titres et URL 
   expect(h.rechercherPourAgent({ requete: "rust" }).map((r) => r.url)).toEqual(["https://beaucoup.fr/", "https://peu.fr/", "https://titre-recent.fr/", "https://titre-ancien.fr/"]);
 });
 
-test("une requête avec de la syntaxe FTS (guillemets, opérateurs) est cherchée telle quelle, sans erreur", () => {
+test("a query with FTS syntax (quotes, operators) is searched as is, without error", () => {
   visiter("https://a.fr/", "A", "le NEAR de la tour");
   for (const q of ['"', "NEAR(", "a* OR", "titre:x", "-", "(((", 'é"é']) expect(() => h.rechercherPourAgent({ requete: q })).not.toThrow();
   expect(h.rechercherPourAgent({ requete: "NEAR" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
 });
 
-test("une requête vide rend les visites non privées les plus récentes", () => {
+test("an empty query returns the most recent non-private visits", () => {
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "A", prive: false, date: date("2026-10-01T00:00:00Z") });
   h.noter({ url: "https://b.fr/", titre: "B", espaceId: "A", prive: false, date: date("2026-10-02T00:00:00Z") });
   h.noter({ url: "https://p.fr/", titre: "P", espaceId: "P", prive: true, date: date("2026-10-03T00:00:00Z") });
   expect(h.rechercherPourAgent({ requete: "  " }).map((r) => r.url)).toEqual(["https://b.fr/", "https://a.fr/"]);
 });
 
-test("le texte retenu survit à la réouverture du fichier", () => {
+test("retained text survives reopening the file", () => {
   visiter("https://a.fr/", "A", "persistant");
   h.fermer();
   h = new Historique(chemin);
   expect(h.rechercherPourAgent({ requete: "persistant" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
 });
 
-test("après fermer, les méthodes du texte retenu ne lèvent pas d'erreur", () => {
+test("after fermer, the retained-text methods do not throw", () => {
   h.fermer();
   expect(() => h.retenir({ url: "https://a.fr/", titre: "A", espaceId: "A", texte: "t" })).not.toThrow();
   expect(() => h.purger()).not.toThrow();

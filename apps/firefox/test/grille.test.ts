@@ -8,23 +8,23 @@ function sansChevauchement(ps: Placement[]) {
   for (const a of ps) for (const b of ps) if (a !== b) expect(chevauchent(a, b), `${a.id} / ${b.id}`).toBe(false);
 }
 
-test("constantes de la grille", () => {
+test("grid constants", () => {
   expect([COLONNES, RANGEE_PX, ECART_PX]).toEqual([12, 90, 12]);
 });
 
-test("deplacer pousse vers le bas les widgets chevauchés, en cascade", () => {
+test("deplacer pushes overlapped widgets down, in a cascade", () => {
   const avant = [p("a", 0, 0, 4, 2), p("b", 4, 0, 4, 2), p("c", 4, 2, 4, 3), p("d", 0, 6, 2, 1)];
   const apres = deplacer(avant, "a", 4, 0);
   const par = Object.fromEntries(apres.map((q) => [q.id, q]));
   expect(par.a).toEqual(p("a", 4, 0, 4, 2));
   expect(par.b).toEqual(p("b", 4, 2, 4, 2)); // juste sous a
   expect(par.c).toEqual(p("c", 4, 4, 4, 3)); // juste sous b, en cascade
-  expect(par.d).toEqual(p("d", 0, 6, 2, 1)); // pas touché
+  expect(par.d).toEqual(p("d", 0, 6, 2, 1)); // not touched
   sansChevauchement(apres);
-  expect(avant[0]).toEqual(p("a", 0, 0, 4, 2)); // l'entrée n'est pas modifiée
+  expect(avant[0]).toEqual(p("a", 0, 0, 4, 2)); // the input is not modified
 });
 
-test("deplacer garde le widget dans les 12 colonnes et au-dessus de 0", () => {
+test("deplacer keeps the widget within the 12 columns and above 0", () => {
   const apres = deplacer([p("a", 0, 0, 4, 2)], "a", 10, -3);
   expect(apres[0]).toEqual(p("a", 8, 0, 4, 2));
 });
@@ -34,26 +34,26 @@ test("deplacer : un id inconnu ne change rien", () => {
   expect(deplacer(avant, "x", 3, 3)).toEqual(avant);
 });
 
-test("redimensionner borne par min et max et ne déborde pas des 12 colonnes", () => {
+test("redimensionner clamps by min and max and does not overflow the 12 columns", () => {
   expect(redimensionner([p("a", 0, 0, 4, 2)], "a", 1, 1, tailles)[0]).toEqual(p("a", 0, 0, 2, 2));
   expect(redimensionner([p("a", 0, 0, 4, 2)], "a", 20, 20, tailles)[0]).toEqual(p("a", 0, 0, 6, 4));
-  // Contre le bord droit : la largeur s'arrête à la dernière colonne.
+  // Against the right edge: the width stops at the last column.
   expect(redimensionner([p("a", 8, 0, 4, 2)], "a", 6, 2, tailles)[0]).toEqual(p("a", 8, 0, 4, 2));
-  // Le minimum ne tient pas avant le bord : le widget recule.
+  // The minimum does not fit before the edge: the widget steps back.
   expect(redimensionner([p("a", 11, 0, 1, 2)], "a", 1, 2, tailles)[0]).toEqual(p("a", 10, 0, 2, 2));
 });
 
-test("redimensionner pousse les widgets chevauchés", () => {
+test("redimensionner pushes overlapped widgets", () => {
   const apres = redimensionner([p("a", 0, 0, 4, 2), p("b", 0, 2, 4, 2)], "a", 4, 4, tailles);
   expect(apres.find((q) => q.id === "b")).toEqual(p("b", 0, 4, 4, 2));
   sansChevauchement(apres);
 });
 
-test("un widget plus large que la grille reste dans les 12 colonnes", () => {
+test("a widget wider than the grid stays within the 12 columns", () => {
   expect(deplacer([p("a", 0, 0, 14, 2)], "a", 3, 0)[0]).toMatchObject({ x: 0 });
   const large = { min: { l: 14, h: 2 }, max: { l: 14, h: 2 } };
   expect(redimensionner([p("a", 5, 0, 4, 2)], "a", 4, 2, large)[0]).toEqual(p("a", 0, 0, 12, 2));
-  // Bornes incohérentes (min > max) : le minimum l'emporte.
+  // Inconsistent bounds (min > max): the minimum wins.
   const incoherent = { min: { l: 2, h: 5 }, max: { l: 6, h: 3 } };
   expect(redimensionner([p("a", 0, 0, 4, 2)], "a", 4, 2, incoherent)[0]).toEqual(p("a", 0, 0, 4, 5));
 });

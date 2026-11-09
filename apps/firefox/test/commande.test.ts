@@ -11,7 +11,7 @@ const visite = (url: string, titre = url): Visite => ({ url, titre, derniereVisi
 const appli = (id: string, nom: string): AppliSource => ({ genre: "site", id, nom, action: "ouvrir", favicon: null });
 const VIDE: SourcesCommande = { actions: [], onglets: [], applis: [], historique: [] };
 
-test("texte vide sans sources : une seule ligne défaut « Page d'accueil »", () => {
+test("empty text without sources: a single default line « Page d'accueil »", () => {
   expect(lignesCommande("", VIDE, null)).toEqual([{ type: "defaut", texte: "", libelle: "Page d'accueil" }]);
 });
 
@@ -20,7 +20,7 @@ test("adresse : « Ouvrir exemple.fr » en premier ; mots : « Rechercher »", (
   expect(lignesCommande("chat noir", VIDE, null)[0]).toEqual({ type: "defaut", texte: "chat noir", libelle: "Rechercher « chat noir »" });
 });
 
-test("ordre des groupes : défaut, actions, onglets, applis, historique", () => {
+test("group order: default, actions, tabs, apps, history", () => {
   const S: SourcesCommande = { actions: [action("a", "Chat action")], onglets: [onglet("o", "chat")], applis: [appli("p", "Chat appli")], historique: [visite("https://h.fr/", "chat h")] };
   expect(lignesCommande("chat", S, null).map((l) => l.type)).toEqual(["defaut", "action", "onglet", "appli", "historique"]);
 });
@@ -32,24 +32,24 @@ test("limites : 3 onglets, 5 visites", () => {
   expect(l.filter((x) => x.type === "historique")).toHaveLength(5);
 });
 
-test("onglet trouvé par titre ou URL, sans accents ni casse", () => {
+test("tab found by title or URL, ignoring accents and case", () => {
   const S: SourcesCommande = { ...VIDE, onglets: [onglet("a", "été 2026", "https://x.fr/"), onglet("b", "autre", "https://zeta.fr/")] };
   expect(lignesCommande("ÉTÉ", S, null).filter((x) => x.type === "onglet")).toHaveLength(1);
   expect(lignesCommande("ZETA", S, null).filter((x) => x.type === "onglet")).toHaveLength(1);
 });
 
-test("historique sans doublon avec un onglet listé", () => {
+test("history without a duplicate with a listed tab", () => {
   const S: SourcesCommande = { ...VIDE, onglets: [onglet("a", "chat", "https://c.fr/")], historique: [visite("https://c.fr/", "chat"), visite("https://d.fr/", "chat d")] };
   const h = lignesCommande("chat", S, null).filter((x) => x.type === "historique");
   expect(h).toEqual([{ type: "historique", url: "https://d.fr/", titre: "chat d" }]);
 });
 
-test("⌘L : texte === urlActive → seule la ligne défaut", () => {
+test("⌘L: text === urlActive → only the default line", () => {
   const S: SourcesCommande = { ...VIDE, onglets: [onglet("a", "x", "https://c.fr/")], historique: [visite("https://c.fr/")] };
   expect(lignesCommande("https://c.fr/", S, "https://c.fr/")).toEqual([{ type: "defaut", texte: "https://c.fr/", libelle: "Ouvrir https://c.fr/" }]);
 });
 
-test("historique sans l'URL active", () => {
+test("history without the active URL", () => {
   const S: SourcesCommande = { ...VIDE, historique: [visite("https://c.fr/", "chat"), visite("https://d.fr/", "chat d")] };
   const h = lignesCommande("chat", S, "https://c.fr/").filter((x) => x.type === "historique");
   expect(h.map((x) => (x as { url: string }).url)).toEqual(["https://d.fr/"]);
@@ -70,7 +70,7 @@ test("appliSourceDeSite", () => {
 
 const avecSaisie = (id: string, nom: string, libelle: string): ActionAffichee => ({ ...action(id, nom), saisie: { libelle } });
 
-test("une action qui attend une saisie porte son libellé ; tapée avec sa saisie, elle n'en demande plus", () => {
+test("an action that expects an entry carries its label; typed with its entry, it no longer asks for one", () => {
   const S: SourcesCommande = { ...VIDE, actions: [avecSaisie("r", "Résumé YouTube", "Vidéo"), action("t", "Résumé tickets")] };
   const l = lignesCommande("résumé", S, null).filter((x) => x.type === "action");
   expect(l).toEqual([
@@ -83,13 +83,13 @@ test("une action qui attend une saisie porte son libellé ; tapée avec sa saisi
   expect(demandeParametre(tapee)).toBe(false);
 });
 
-test("titres : un par section, à sa première ligne ; aucun pour la ligne par défaut", () => {
+test("titles: one per section, on its first line; none for the default line", () => {
   const S: SourcesCommande = { actions: [action("a", "Chat action")], onglets: [onglet("o", "chat"), onglet("p", "chat 2")], applis: [], historique: [visite("https://h.fr/", "chat h")] };
   const l = lignesCommande("chat", S, null);
   expect(l.map((_, i) => titreAvant(l, i))).toEqual([null, "Actions", "Onglets ouverts", null, "Historique"]);
 });
 
-test("paramètre par défaut : l'adresse web affichée sans ancre, rien pour une page interne ou trop longue", () => {
+test("default parameter: the web address displayed without an anchor, nothing for an internal or too long page", () => {
   expect(parametreParDefaut("https://www.youtube.com/watch?v=abc#t=3")).toBe("https://www.youtube.com/watch?v=abc");
   expect(parametreParDefaut("http://exemple.fr/")).toBe("http://exemple.fr/");
   expect(parametreParDefaut("https://moi:secret@exemple.fr/p")).toBe("https://exemple.fr/p");
@@ -99,7 +99,7 @@ test("paramètre par défaut : l'adresse web affichée sans ancre, rien pour une
   expect(parametreParDefaut(`https://x.fr/?q=${"a".repeat(2000)}`)).toBe("");
 });
 
-test("champ vide : l'accueil en tête, puis les actions (dernières lancées d'abord) et les onglets ouverts sans l'onglet affiché", () => {
+test("empty field: the home first, then the actions (last launched first) and the open tabs without the displayed tab", () => {
   const lancee = (id: string, nom: string, debut: string): ActionAffichee => ({ ...action(id, nom), dernier: { execution: debut, debut, statut: "reussie" } as ActionAffichee["dernier"] });
   const S: SourcesCommande = {
     actions: [action("b", "Bravo"), lancee("z", "Zulu", "2026-11-02T10:00:00Z"), action("a", "Alpha"), { ...action("x", "Cassée"), erreur: "invalide" }, avecSaisie("r", "Résumé", "Vidéo"), action("c", "Charlie")],

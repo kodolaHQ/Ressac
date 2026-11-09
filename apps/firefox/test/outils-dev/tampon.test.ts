@@ -7,7 +7,7 @@ const log = (t: TamponOnglet, type: string, texte: string, timestamp = 1000) =>
   t.evenement("Runtime.consoleAPICalled", { type, args: [chaine(texte)], timestamp });
 
 describe("console", () => {
-  test("garde l'ordre et les niveaux des messages", () => {
+  test("keeps the order and levels of messages", () => {
     const t = new TamponOnglet();
     log(t, "log", "un", 1);
     log(t, "warning", "deux", 2);
@@ -27,7 +27,7 @@ describe("console", () => {
     ]);
   });
 
-  test("un objet est montré par sa description, un objet sérialisé en JSON", () => {
+  test("an object is shown by its description, a serialized object as JSON", () => {
     const t = new TamponOnglet();
     t.evenement("Runtime.consoleAPICalled", {
       type: "log",
@@ -37,7 +37,7 @@ describe("console", () => {
     expect(t.console()[0]!.texte).toBe('body {"a":1} undefined');
   });
 
-  test("une exception porte sa pile", () => {
+  test("an exception carries its stack", () => {
     const t = new TamponOnglet();
     t.evenement("Runtime.exceptionThrown", {
       timestamp: 10,
@@ -52,7 +52,7 @@ describe("console", () => {
     expect(m!.pile).toContain("at clic (http://localhost:15280/:3:9)");
   });
 
-  test("au-delà de 1000 messages, les plus récents restent", () => {
+  test("beyond 1000 messages, the most recent stay", () => {
     const t = new TamponOnglet();
     for (let i = 0; i < 1005; i++) log(t, "log", `m${i}`, i);
     const c = t.console();
@@ -61,13 +61,13 @@ describe("console", () => {
     expect(c.at(-1)!.texte).toBe("m1004");
   });
 
-  test("un texte de plus de 2000 caractères est tronqué", () => {
+  test("a text over 2000 characters is truncated", () => {
     const t = new TamponOnglet();
     log(t, "log", "x".repeat(3000));
     expect(t.console()[0]!.texte).toBe(`${"x".repeat(2000)}… [tronqué]`);
   });
 
-  test("les messages antérieurs à l'attachement, rejoués par le protocole, sont écartés", () => {
+  test("messages from before the attachment, replayed by the protocol, are dropped", () => {
     const t = new TamponOnglet({ depuis: 1000 });
     log(t, "log", "rejoué", 999);
     t.evenement("Runtime.exceptionThrown", { timestamp: 500, exceptionDetails: { text: "Uncaught", exception: { description: "Error: vieille" } } });
@@ -77,7 +77,7 @@ describe("console", () => {
     expect(t.console().map((m) => m.texte)).toEqual(["nouveau", "récent"]);
   });
 
-  test("rechargement() insère « — page rechargée — »", () => {
+  test("rechargement() inserts « — page rechargée — »", () => {
     const t = new TamponOnglet();
     log(t, "log", "avant");
     t.rechargement();
@@ -86,7 +86,7 @@ describe("console", () => {
   });
 });
 
-describe("réseau", () => {
+describe("network", () => {
   const envoi = (t: TamponOnglet, requestId: string, url: string, timestamp = 100) =>
     t.evenement("Network.requestWillBeSent", {
       requestId,
@@ -96,7 +96,7 @@ describe("réseau", () => {
       type: "Fetch",
     });
 
-  test("une requête réunit sa réponse, son statut, sa durée et sa taille", () => {
+  test("a request gathers its response, status, duration and size", () => {
     const t = new TamponOnglet();
     envoi(t, "r1", "http://localhost:15280/texte.html");
     t.evenement("Network.responseReceived", {
@@ -129,7 +129,7 @@ describe("réseau", () => {
     expect(t.reseau()[0]).toMatchObject({ id: "r2", erreur: "net::ERR_CONNECTION_REFUSED", dureeMs: 500 });
   });
 
-  test("au-delà de 500 requêtes, les plus récentes restent", () => {
+  test("beyond 500 requests, the most recent stay", () => {
     const t = new TamponOnglet();
     for (let i = 0; i < 503; i++) envoi(t, `r${i}`, `http://localhost:15280/${i}`);
     const r = t.reseau();
@@ -137,7 +137,7 @@ describe("réseau", () => {
     expect(r[0]!.id).toBe("r3");
   });
 
-  test("les événements d'une requête inconnue sont ignorés", () => {
+  test("events of an unknown request are ignored", () => {
     const t = new TamponOnglet();
     t.evenement("Network.loadingFinished", { requestId: "inconnue", timestamp: 1, encodedDataLength: 1 });
     t.evenement("Page.loadEventFired", { timestamp: 1 });
@@ -146,7 +146,7 @@ describe("réseau", () => {
   });
 });
 
-test("vider() vide la console et le réseau", () => {
+test("vider() clears the console and the network", () => {
   const t = new TamponOnglet();
   log(t, "log", "un");
   t.evenement("Network.requestWillBeSent", { requestId: "r", request: { url: "http://x/", method: "GET", headers: {} }, timestamp: 1 });
@@ -155,7 +155,7 @@ test("vider() vide la console et le réseau", () => {
   expect(t.reseau()).toEqual([]);
 });
 
-test("les plafonds se règlent", () => {
+test("the caps are adjustable", () => {
   const t = new TamponOnglet({ maxConsole: 2, maxReseau: 1 });
   for (let i = 0; i < 3; i++) log(t, "log", `m${i}`);
   expect(t.console().map((m) => m.texte)).toEqual(["m1", "m2"]);
@@ -167,7 +167,7 @@ describe("contextes d'extension", () => {
   const logDans = (t: TamponOnglet, id: number, texte: string) =>
     t.evenement("Runtime.consoleAPICalled", { type: "log", args: [chaine(texte)], timestamp: 1000, executionContextId: id });
 
-  test("un console.log d'un contexte chrome-extension:// n'apparaît pas ; celui de la page oui", () => {
+  test("a console.log from a chrome-extension:// context does not appear; the page's does", () => {
     const t = new TamponOnglet();
     contexte(t, 1, "http://localhost:3000");
     contexte(t, 2, "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
@@ -176,7 +176,7 @@ describe("contextes d'extension", () => {
     expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
   });
 
-  test("une exception d'un script d'extension n'apparaît pas", () => {
+  test("an exception from an extension script does not appear", () => {
     const t = new TamponOnglet();
     contexte(t, 2, "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
     t.evenement("Runtime.exceptionThrown", { timestamp: 1, exceptionDetails: { text: "Uncaught", executionContextId: 2, exception: { type: "object", description: "Error: ext" } } });
@@ -185,7 +185,7 @@ describe("contextes d'extension", () => {
     expect(t.console().map((m) => m.texte)).toEqual(["Uncaught Error: page"]);
   });
 
-  test("un contexte détruit est oublié", () => {
+  test("a destroyed context is forgotten", () => {
     const t = new TamponOnglet();
     contexte(t, 2, "chrome-extension://abc");
     t.evenement("Runtime.executionContextDestroyed", { executionContextId: 2 });
@@ -196,7 +196,7 @@ describe("contextes d'extension", () => {
   const requete = (t: TamponOnglet, requestId: string, extra: Record<string, unknown> = {}, url = "http://localhost:3000/api") =>
     t.evenement("Network.requestWillBeSent", { requestId, timestamp: 1, wallTime: 1, request: { url, method: "GET", headers: {} }, ...extra });
 
-  test("une requête dont la pile d'initiateur vient d'une extension n'apparaît pas, ni sa réponse", () => {
+  test("a request whose initiator stack comes from an extension does not appear, nor its response", () => {
     const t = new TamponOnglet();
     requete(t, "a", {
       initiator: { type: "script", stack: { callFrames: [{ url: "http://localhost:3000/" }], parent: { callFrames: [{ url: "chrome-extension://abc/contenu.js" }] } } },
@@ -210,7 +210,7 @@ describe("contextes d'extension", () => {
     expect(t.reseau().map((r) => r.id)).toEqual(["page"]);
   });
 
-  test("après executionContextsCleared, un nouveau contexte de même id venu de la page est retenu", () => {
+  test("after executionContextsCleared, a new context with the same id coming from the page is kept", () => {
     const t = new TamponOnglet();
     contexte(t, 2, "chrome-extension://abc");
     t.evenement("Runtime.executionContextsCleared", {});
@@ -219,7 +219,7 @@ describe("contextes d'extension", () => {
     expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
   });
 
-  test("l'entrée de journal d'une requête d'extension en échec n'apparaît pas ; celle d'une requête de page oui", () => {
+  test("the log entry of a failed extension request does not appear; a page request's does", () => {
     const t = new TamponOnglet();
     requete(t, "ext", { initiator: { type: "script", stack: { callFrames: [{ url: "chrome-extension://abc/c.js" }] } } }, "http://localhost:3000/absent");
     requete(t, "pg", { initiator: { type: "script", stack: { callFrames: [{ url: "http://localhost:3000/" }] } } }, "http://localhost:3000/absent2");
@@ -228,7 +228,7 @@ describe("contextes d'extension", () => {
     expect(t.console().map((m) => m.texte)).toEqual(["Failed to load resource: 404 page"]);
   });
 
-  test("le message CORS d'une requête d'extension (sans id ni pile) n'apparaît pas ; celui d'une requête de page oui", () => {
+  test("the CORS message of an extension request (without id or stack) does not appear; a page request's does", () => {
     const t = new TamponOnglet();
     requete(t, "ext", { initiator: { type: "script", url: "chrome-extension://abc/c.js" } }, "http://localhost:3000/x");
     const cors = (u: string) => `Access to fetch at '${u}' from origin 'http://127.0.0.1:1' has been blocked by CORS policy`;
@@ -237,7 +237,7 @@ describe("contextes d'extension", () => {
     expect(t.console().map((m) => m.texte)).toEqual([cors("http://localhost:3000/y")]);
   });
 
-  test("les ids de requêtes d'extension retenus sont bornés : le plus ancien est oublié", () => {
+  test("retained extension request ids are bounded: the oldest is forgotten", () => {
     const t = new TamponOnglet();
     const ext = { initiator: { type: "script", url: "chrome-extension://abc/c.js" } };
     for (let i = 0; i < 1001; i++) requete(t, `e${i}`, ext);
@@ -246,7 +246,7 @@ describe("contextes d'extension", () => {
     expect(t.console().map((m) => m.texte)).toEqual(["vieille"]);
   });
 
-  test("console et exception sont filtrées par la pile seule, ou par l'url seule", () => {
+  test("console and exception are filtered by the stack alone, or by the url alone", () => {
     const t = new TamponOnglet();
     t.evenement("Runtime.consoleAPICalled", { type: "error", args: [chaine("pile-ext")], timestamp: 1, stackTrace: { callFrames: [{ url: "chrome-extension://abc/c.js" }] } });
     t.evenement("Runtime.exceptionThrown", { timestamp: 2, exceptionDetails: { text: "Uncaught", exception: { type: "object", description: "Error: pile-ext" }, stackTrace: { callFrames: [{ url: "chrome-extension://abc/c.js" }] } } });

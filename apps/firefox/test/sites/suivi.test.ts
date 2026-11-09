@@ -36,11 +36,11 @@ function suivi(liens: string[] | Error) {
   return { s, signaux, dossierSites, lectures: () => lectures, avancer: (ms: number) => void (maintenant += ms) };
 }
 
-test("l'intervalle du plan est d'une minute", () => {
+test("the plan's interval is one minute", () => {
   expect(INTERVALLE_SUIVI_MS).toBe(60_000);
 });
 
-test("liens avec vidola-b : change, etat.actuel vidola-b", async () => {
+test("links with vidola-b: change, etat.actuel vidola-b", async () => {
   const t = suivi(["https://adresses.example/autre", "https://vidola-b.example/"]);
   const r = await t.s.chercher("vidola", declaration);
   expect(r.t).toBe("change");
@@ -51,7 +51,7 @@ test("liens avec vidola-b : change, etat.actuel vidola-b", async () => {
   expect((await lireEtatAdresse(t.dossierSites, "vidola"))?.actuel).toBe("vidola-b.example");
 });
 
-test("deux chercher en 30 s : le second « trop-tot », une seule lecture", async () => {
+test("two chercher in 30 s: the second « trop-tot », a single read", async () => {
   const t = suivi(["https://vidola-b.example/"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("change");
   t.avancer(30_000);
@@ -62,37 +62,37 @@ test("deux chercher en 30 s : le second « trop-tot », une seule lecture", asyn
   expect(t.lectures()).toBe(2);
 });
 
-test("deux chercher en même temps : une seule lecture", async () => {
+test("two chercher at the same time: a single read", async () => {
   const t = suivi(["https://vidola-b.example/"]);
   const [a, b] = await Promise.all([t.s.chercher("vidola", declaration), t.s.chercher("vidola", declaration)]);
   expect([a.t, b.t].sort()).toEqual(["change", "trop-tot"]);
   expect(t.lectures()).toBe(1);
 });
 
-test("aucun lien valable (http, local, domaine de la page) : introuvable, état inchangé", async () => {
+test("no valid link (http, local, page domain): introuvable, state unchanged", async () => {
   const t = suivi(["http://vidola-b.example/", "https://127.0.0.1/vidola", "https://vidola.adresses.example/", "https://tiers.example/vidola", "javascript:alert(1)"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
   expect(await lireEtatAdresse(t.dossierSites, "vidola")).toBeNull();
 });
 
-test("le lien trouvé est le domaine actuel : inchangee", async () => {
+test("the found link is the current domain: inchangee", async () => {
   const t = suivi(["https://vidola-a.example/"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("inchangee");
   expect(await lireEtatAdresse(t.dossierSites, "vidola")).toBeNull();
 });
 
-test("lecture qui lève : introuvable", async () => {
+test("read that throws: introuvable", async () => {
   const t = suivi(new Error("page de référence muette"));
   expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
 });
 
-test("deux applis ne se limitent pas l'une l'autre", async () => {
+test("two apps do not limit each other", async () => {
   const t = suivi(["https://vidola-b.example/"]);
   await t.s.chercher("un", declaration);
   expect((await t.s.chercher("deux", declaration)).t).not.toBe("trop-tot");
 });
 
-test("après un premier changement, un lien vers l'adresse actuelle est inchangee (comparé à actuel, pas à l'adresse déclarée)", async () => {
+test("after a first change, a link to the current address is inchangee (compared to actuel, not to the declared address)", async () => {
   const t = suivi(["https://vidola-b.example/"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("change");
   t.avancer(61_000);
@@ -100,7 +100,7 @@ test("après un premier changement, un lien vers l'adresse actuelle est inchange
   expect((await lireEtatAdresse(t.dossierSites, "vidola"))?.actuel).toBe("vidola-b.example");
 });
 
-test("une lecture qui a échoué compte dans l'intervalle : 30 s plus tard, trop-tot", async () => {
+test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
   const t = suivi(new Error("muette"));
   expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
   t.avancer(30_000);
@@ -108,7 +108,7 @@ test("une lecture qui a échoué compte dans l'intervalle : 30 s plus tard, trop
   expect(t.lectures()).toBe(1);
 });
 
-test("le signal d'annulation est transmis à la lecture ; une lecture annulée donne introuvable et ne change rien", async () => {
+test("the cancellation signal is passed to the read; a cancelled read gives introuvable and changes nothing", async () => {
   const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   const controle = new AbortController();
   const s = new SuiviAdresse({

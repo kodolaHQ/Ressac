@@ -13,20 +13,20 @@ test.each([
   ["fr.wikipedia.org/wiki/Arc", "https://fr.wikipedia.org/wiki/Arc"],
 ])("%s → %s", (saisie, attendu) => expect(versUrl(saisie, "google")).toBe(attendu));
 
-test("texte libre → recherche avec le moteur choisi", () => {
+test("free text → search with the chosen engine", () => {
   expect(versUrl("svelte 5 runes", "google")).toBe("https://www.google.com/search?q=svelte%205%20runes");
   expect(versUrl("svelte", "duckduckgo")).toBe("https://duckduckgo.com/?q=svelte");
   expect(versUrl("c'est quoi ?", "qwant")).toBe(`https://www.qwant.com/?q=${encodeURIComponent("c'est quoi ?")}`);
 });
 
-test("javascript: refusé, quelle que soit la casse", () => {
+test("javascript: refused, whatever the case", () => {
   expect(versUrl("javascript:alert(1)", "google")).toBeNull();
   expect(versUrl("  JavaScript:alert(1)", "google")).toBeNull();
 });
 
 test("saisie vide → null", () => expect(versUrl("   ", "google")).toBeNull());
 
-test("une URL invalide (« http:// » seul) → recherche au lieu d'une exception", () => {
+test("an invalid URL (« http:// » alone) → search instead of an exception", () => {
   expect(versUrl("http://", "google")).toBe("https://www.google.com/search?q=http%3A%2F%2F");
   expect(versUrl("https://exa mple.com", "google")).toBe("https://www.google.com/search?q=https%3A%2F%2Fexa%20mple.com");
 });

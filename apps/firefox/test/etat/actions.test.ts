@@ -7,7 +7,7 @@ import { cleEspace, contexteHistorique, ongletPrive, profilsEnUsage, profilDOngl
 let n = 0;
 const genId = () => `g${++n}`;
 let e: EtatNavigateur;
-let F: string; // fenêtre
+let F: string; // window
 let P: string; // espace « Perso »
 const ag = (a: Action) => (e = appliquer(e, a, genId));
 const fen = () => e.fenetres.find((f) => f.id === F)!;
@@ -33,7 +33,7 @@ beforeEach(() => {
   P = e.espaces[0]!.id;
 });
 
-test("état initial : un espace Perso, une fenêtre, aucun onglet, Google", () => {
+test("initial state: one Perso space, one window, no tab, Google", () => {
   expect(e.version).toBe(2);
   expect(e.espaces).toEqual([{ id: P, nom: "Perso", icone: "🏠", epingles: [], prive: false, profil: "defaut" }]);
   expect(e.profils).toEqual([{ id: "defaut" }]);
@@ -43,7 +43,7 @@ test("état initial : un espace Perso, une fenêtre, aucun onglet, Google", () =
   expect(fen()).toMatchObject({ espaceActif: P, compact: false, panneauAgentOuvert: false, fermesRecemment: [] });
 });
 
-test("ouvrir trois onglets puis fermer l'actif du milieu → le suivant devient actif", () => {
+test("open three tabs then close the active middle one → the next becomes active", () => {
   const a = ouvrir("https://a.test/");
   const b = ouvrir("https://b.test/");
   const c = ouvrir("https://c.test/", { activer: false });
@@ -55,28 +55,28 @@ test("ouvrir trois onglets puis fermer l'actif du milieu → le suivant devient 
   expect(e.onglets[b]).toBeUndefined();
 });
 
-test("fermer l'onglet actif en fin de liste → le précédent devient actif", () => {
+test("closing the active tab at the end of the list → the previous becomes active", () => {
   const a = ouvrir("https://a.test/");
   const b = ouvrir("https://b.test/");
   ag({ type: "fermerOnglet", id: b });
   expect(actif()).toBe(a);
 });
 
-test("fermer le dernier onglet de l'espace → actif null", () => {
+test("closing the last tab of the space → active null", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "fermerOnglet", id: a });
   expect(actif()).toBeNull();
   expect(ordre()).toEqual([]);
 });
 
-test("fermer un onglet inactif ne change pas l'actif", () => {
+test("closing an inactive tab does not change the active one", () => {
   const a = ouvrir("https://a.test/");
   const b = ouvrir("https://b.test/");
   ag({ type: "fermerOnglet", id: a });
   expect(actif()).toBe(b);
 });
 
-test("ouvrirOnglet avec apres insère juste après ; un nouvel onglet a des valeurs par défaut", () => {
+test("ouvrirOnglet with apres inserts right after; a new tab has default values", () => {
   const a = ouvrir("https://a.test/");
   const b = ouvrir("https://b.test/");
   const c = ouvrir("https://c.test/", { apres: a });
@@ -87,7 +87,7 @@ test("ouvrirOnglet avec apres insère juste après ; un nouvel onglet a des vale
   });
 });
 
-test("lien ouvert depuis un onglet d'un espace en arrière-plan : il reste dans cet espace ; depuis un essentiel affiché, dans l'espace affiché", () => {
+test("link opened from a tab of a background space: it stays in that space; from a displayed essential, in the displayed space", () => {
   const a = ouvrir("https://a.test/");
   const g = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: g });
@@ -110,7 +110,7 @@ test("onglet ouvert par l'agent : ouvertParAgent vrai", () => {
   expect(e.onglets[a]!.ouvertParAgent).toBe(true);
 });
 
-test("deplacerOnglet réordonne (index borné)", () => {
+test("deplacerOnglet reorders (clamped index)", () => {
   const a = ouvrir("https://a.test/");
   const b = ouvrir("https://b.test/");
   const c = ouvrir("https://c.test/");
@@ -120,7 +120,7 @@ test("deplacerOnglet réordonne (index borné)", () => {
   expect(ordre()).toEqual([a, b, c]);
 });
 
-test("rouvrirOngletFerme rouvre le plus récent et le retire de la pile ; pile limitée à 20", () => {
+test("rouvrirOngletFerme reopens the most recent one and removes it from the stack; stack limited to 20", () => {
   for (let i = 0; i < 25; i++) ag({ type: "fermerOnglet", id: ouvrir(`https://${i}.test/`) });
   expect(fen().fermesRecemment).toHaveLength(20);
   expect(fen().fermesRecemment[0]).toEqual({ url: "https://24.test/", espaceId: P });
@@ -129,13 +129,13 @@ test("rouvrirOngletFerme rouvre le plus récent et le retire de la pile ; pile l
   expect(fen().fermesRecemment[0]!.url).toBe("https://23.test/");
 });
 
-test("rouvrirOngletFerme avec une pile vide ne change rien", () => {
+test("rouvrirOngletFerme with an empty stack changes nothing", () => {
   const avant = e;
   ag({ type: "rouvrirOngletFerme", fenetreId: F });
   expect(e).toBe(avant);
 });
 
-test("épingler un onglet crée un favori dans l'espace et l'onglet sort de ordre", () => {
+test("pinning a tab creates a favorite in the space and the tab leaves ordre", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "majOnglet", id: a, champs: { titre: "A", favicon: "https://a.test/f.ico" } });
   ag({ type: "epinglerOnglet", id: a });
@@ -146,7 +146,7 @@ test("épingler un onglet crée un favori dans l'espace et l'onglet sort de ordr
   expect(actif()).toBe(a);
 });
 
-test("fermer un onglet épinglé : le favori reste, rien n'entre dans fermesRecemment", () => {
+test("closing a pinned tab: the favorite stays, nothing enters fermesRecemment", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "epinglerOnglet", id: a });
   ag({ type: "fermerOnglet", id: a });
@@ -155,7 +155,7 @@ test("fermer un onglet épinglé : le favori reste, rien n'entre dans fermesRece
   expect(actif()).toBeNull();
 });
 
-test("ouvrirFavori crée l'onglet lié puis le réutilise", () => {
+test("ouvrirFavori creates the linked tab then reuses it", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "epinglerOnglet", id: a });
   const favId = e.espaces[0]!.epingles[0]!.id;
@@ -169,7 +169,7 @@ test("ouvrirFavori crée l'onglet lié puis le réutilise", () => {
   expect(Object.keys(e.onglets)).toHaveLength(2);
 });
 
-test("désépingler : le favori disparaît, l'onglet lié redevient normal", () => {
+test("unpinning: the favorite disappears, the linked tab becomes normal again", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "epinglerOnglet", id: a });
   ag({ type: "desepingler", espaceId: P, favoriId: e.espaces[0]!.epingles[0]!.id });
@@ -178,7 +178,7 @@ test("désépingler : le favori disparaît, l'onglet lié redevient normal", () 
   expect(ordre()).toEqual([a]);
 });
 
-test("essentiels communs à tous les espaces ; retirer un essentiel", () => {
+test("essentials shared by all spaces; removing an essential", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   expect(e.essentiels).toHaveLength(1);
@@ -186,17 +186,17 @@ test("essentiels communs à tous les espaces ; retirer un essentiel", () => {
   const B = e.espaces[1]!.id;
   expect(fen().espaceActif).toBe(B);
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
-  // Un seul onglet par fenêtre pour un essentiel : le même Gmail, sans rechargement, dans chaque espace.
+  // One tab per window for an essential: the same Gmail, without reloading, in every space.
   expect(actif(B)).toBe(a);
   expect(Object.keys(e.onglets)).toEqual([a]);
   ag({ type: "retirerEssentiel", favoriId: e.essentiels[0]!.id });
   expect(e.essentiels).toEqual([]);
-  // Redevenu un onglet normal de « Perso », il n'est plus affiché dans « Boulot ».
+  // Back to a normal tab of « Perso », it is no longer displayed in « Boulot ».
   expect(ordre(P)).toEqual([a]);
   expect(actif(B)).toBeNull();
 });
 
-test("fermer un essentiel affiché dans deux espaces : aucun espace ne garde un onglet actif disparu", () => {
+test("closing an essential displayed in two spaces: no space keeps a vanished active tab", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -207,7 +207,7 @@ test("fermer un essentiel affiché dans deux espaces : aucun espace ne garde un 
   expect(actif(B)).toBeNull();
 });
 
-test("supprimer l'espace d'origine d'un essentiel ouvert ailleurs : l'autre espace ne pointe plus vers lui", () => {
+test("deleting the origin space of an essential open elsewhere: the other space no longer points to it", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -218,7 +218,7 @@ test("supprimer l'espace d'origine d'un essentiel ouvert ailleurs : l'autre espa
   expect(restant === null || !!e.onglets[restant]).toBe(true);
 });
 
-test("activerEspace garde l'onglet actif propre à chaque espace", () => {
+test("activerEspace keeps each space's own active tab", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const B = e.espaces[1]!.id;
@@ -240,7 +240,7 @@ test("activerOnglet d'un autre espace bascule l'espace actif", () => {
   expect(fen().espaceActif).toBe(B);
 });
 
-test("activerOnglet garderEspace : l'onglet devient celui de son espace, la fenêtre reste sur le sien", () => {
+test("activerOnglet garderEspace: the tab becomes its space's, the window stays on its own", () => {
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   const b1 = ouvrir("https://b1.test/");
@@ -251,18 +251,18 @@ test("activerOnglet garderEspace : l'onglet devient celui de son espace, la fen�
   expect(actif(B)).toBe(b1);
 });
 
-test("reglerEspace change le nom et l'icône", () => {
+test("reglerEspace changes the name and the icon", () => {
   ag({ type: "reglerEspace", id: P, nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
   expect(e.espaces[0]).toMatchObject({ nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
 });
 
-test("reglerEspace sans aucun changement laisse l'état inchangé", () => {
+test("reglerEspace with no change leaves the state unchanged", () => {
   const avant = e;
   ag({ type: "reglerEspace", id: P, nom: "Perso", icone: "🏠", prive: false, profil: "defaut" });
   expect(e).toBe(avant);
 });
 
-test("creerEspace avec un nouveau profil de connexion : un profil neuf ; avec un profil existant : il est repris", () => {
+test("creerEspace with a new sign-in profile: a fresh profile; with an existing profile: it is reused", () => {
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" });
   const banque = e.espaces[1]!;
   expect(banque).toMatchObject({ nom: "Banque", prive: true });
@@ -274,13 +274,13 @@ test("creerEspace avec un nouveau profil de connexion : un profil neuf ; avec un
   expect(e.profils).toHaveLength(2);
 });
 
-test("creerEspace sur un profil de connexion inconnu est refusé", () => {
+test("creerEspace on an unknown sign-in profile is refused", () => {
   const avant = e;
   ag({ type: "creerEspace", nom: "X", icone: "❓", prive: false, profil: "inconnu" });
   expect(e).toBe(avant);
 });
 
-test("reglerEspace qui laisse un profil de connexion inutilisé le retire, y compris le profil par défaut", () => {
+test("reglerEspace that leaves a sign-in profile unused removes it, including the default profile", () => {
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: false, profil: "nouveau" });
   const banque = e.espaces[1]!;
   ag({ type: "reglerEspace", id: banque.id, nom: "Banque", icone: "🏦", prive: false, profil: "defaut" });
@@ -292,14 +292,14 @@ test("reglerEspace qui laisse un profil de connexion inutilisé le retire, y com
   expect(e.espaces.every((x) => x.profil === neuf)).toBe(true);
 });
 
-test("supprimerEspace retire le profil de connexion qu'il était seul à utiliser", () => {
+test("supprimerEspace removes the sign-in profile it was the only one using", () => {
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: false, profil: "nouveau" });
   const banque = e.espaces[1]!;
   ag({ type: "supprimerEspace", id: banque.id });
   expect(e.profils).toEqual([{ id: "defaut" }]);
 });
 
-test("essentiel ouvert dans un espace d'une autre clé (privé ou autre profil) : un second onglet, jamais le même", () => {
+test("essential opened in a space with another key (private or other profile): a second tab, never the same", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   const essentiel = e.essentiels[0]!.id;
@@ -310,12 +310,12 @@ test("essentiel ouvert dans un espace d'une autre clé (privé ou autre profil) 
   expect(b).not.toBe(a);
   expect(e.onglets[b]).toMatchObject({ espaceId: B, lien: { type: "essentiel", id: essentiel } });
   expect(actif(P)).toBe(a);
-  // Même clé (non privé, profil par défaut) : l'onglet de Perso est repris.
+  // Same key (not private, default profile): Perso's tab is reused.
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const C = e.espaces[2]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essentiel });
   expect(actif(C)).toBe(a);
-  // Même clé que l'espace privé : son onglet est repris.
+  // Same key as the private space: its tab is reused.
   ag({ type: "creerEspace", nom: "Privé 2", icone: "🔐", prive: true, profil: "defaut", fenetreId: F });
   const D = e.espaces[3]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essentiel });
@@ -323,7 +323,7 @@ test("essentiel ouvert dans un espace d'une autre clé (privé ou autre profil) 
   expect(Object.keys(e.onglets)).toHaveLength(2);
 });
 
-test("reglerEspace qui change la clé d'un espace : l'onglet qu'un espace de l'ancienne clé affiche lui revient", () => {
+test("reglerEspace that changes a space's key: the tab that a space of the old key displays comes back to it", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -336,14 +336,14 @@ test("reglerEspace qui change la clé d'un espace : l'onglet qu'un espace de l'a
   expect(actif(P)).toBeNull();
 });
 
-test("reglerEspace qui change la clé d'un espace : un onglet qu'aucun autre espace n'affiche lui reste, les autres le lâchent", () => {
+test("reglerEspace that changes a space's key: a tab that no other space displays stays with it, the others let go of it", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   ag({ type: "creerEspace", nom: "Coffre", icone: "🔒", prive: true, profil: "defaut", fenetreId: F });
   const C = e.espaces[2]!.id;
-  // C (autre clé) ne peut pas l'afficher ; B, de même clé que P, ne l'affiche pas.
+  // C (other key) cannot display it; B, with the same key as P, does not display it.
   ag({ type: "reglerEspace", id: P, nom: "Perso", icone: "🏠", prive: true, profil: "defaut" });
   expect(e.onglets[a]!.espaceId).toBe(P);
   expect(actif(P)).toBe(a);
@@ -351,7 +351,7 @@ test("reglerEspace qui change la clé d'un espace : un onglet qu'aucun autre esp
   expect(actif(C)).toBeNull();
 });
 
-test("reglerEspace : les pointeurs d'autres espaces restés compatibles sont gardés", () => {
+test("reglerEspace: pointers of other spaces that stayed compatible are kept", () => {
   const a = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: a });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -361,8 +361,8 @@ test("reglerEspace : les pointeurs d'autres espaces restés compatibles sont gar
   expect(actif(B)).toBe(a);
 });
 
-test("reglerEspace : un essentiel partagé par deux espaces privés reste privé quand son propriétaire ne l'est plus", () => {
-  // « Banque » et « Banque pro », privés sur le même profil ; l'onglet Gmail appartient à Banque, affiché aussi dans Banque pro.
+test("reglerEspace: an essential shared by two private spaces stays private when its owner no longer is", () => {
+  // « Banque » and « Banque pro », private on the same profile; the Gmail tab belongs to Banque, also displayed in Banque pro.
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
   const banque = e.espaces[1]!;
   const g = ouvrir("https://mail.google.com/");
@@ -373,17 +373,17 @@ test("reglerEspace : un essentiel partagé par deux espaces privés reste privé
   expect(actif(pro)).toBe(g);
   expect(e.onglets[g]!.espaceId).toBe(banque.id);
   ag({ type: "reglerEspace", id: banque.id, nom: "Banque", icone: "🏦", prive: false, profil: banque.profil });
-  // L'onglet passe à Banque pro (toujours privé) ; Banque, devenu non privé, le lâche.
+  // The tab goes to Banque pro (still private); Banque, now non-private, lets go of it.
   expect(e.onglets[g]!.espaceId).toBe(pro);
   expect(actif(pro)).toBe(g);
   expect(actif(banque.id)).toBeNull();
   expect(ongletPrive(e, e.onglets[g]!)).toBe(true);
-  // Aucun onglet n'est affiché sous une clé différente de celle de son propriétaire.
+  // No tab is displayed under a key different from its owner's.
   for (const [esp, id] of Object.entries(fen().actif))
     if (id) expect(cleEspace(e, esp)).toBe(cleEspace(e, e.onglets[id]!.espaceId));
 });
 
-test("reglerEspace : plusieurs espaces affichent l'onglet sous l'ancienne clé, le premier dans l'ordre des espaces le reprend", () => {
+test("reglerEspace: several spaces display the tab under the old key, the first in space order takes it back", () => {
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
   const banque = e.espaces[1]!;
   const g = ouvrir("https://mail.google.com/");
@@ -402,7 +402,7 @@ test("reglerEspace : plusieurs espaces affichent l'onglet sous l'ancienne clé, 
   expect(actif(banque.id)).toBeNull();
 });
 
-test("contexteHistorique : un essentiel partagé compte dans l'espace qui l'affiche, sinon dans le sien ; inconnu : privé", () => {
+test("contexteHistorique: a shared essential counts in the space that displays it, otherwise in its own; unknown: private", () => {
   const g = ouvrir("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: g });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -411,10 +411,10 @@ test("contexteHistorique : un essentiel partagé compte dans l'espace qui l'affi
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
   expect(e.onglets[g]!.espaceId).toBe(P);
   expect(contexteHistorique(e, g)).toEqual({ espaceId: B, prive: false });
-  // Retour dans Perso, qui l'affiche aussi : la visite y revient.
+  // Back in Perso, which also displays it: the visit returns there.
   ag({ type: "activerEspace", fenetreId: F, id: P });
   expect(contexteHistorique(e, g)).toEqual({ espaceId: P, prive: false });
-  // Affiché dans un espace inconnu : privé, par prudence.
+  // Displayed in an unknown space: private, to be safe.
   const bizarre = structuredClone(e);
   const f = bizarre.fenetres[0]!;
   f.espaceActif = "disparu";
@@ -443,7 +443,7 @@ test("cleEspace, ongletPrive, profilDOnglet", () => {
   expect(ongletPrive(e, orphelin)).toBe(true);
 });
 
-test("supprimerEspace ferme ses onglets et bascule les fenêtres", () => {
+test("supprimerEspace closes its tabs and switches the windows", () => {
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   const b = ouvrir("https://b.test/");
@@ -454,13 +454,13 @@ test("supprimerEspace ferme ses onglets et bascule les fenêtres", () => {
   expect(fen().ordre[B]).toBeUndefined();
 });
 
-test("supprimer le dernier espace est refusé", () => {
+test("deleting the last space is refused", () => {
   const avant = e;
   ag({ type: "supprimerEspace", id: P });
   expect(e).toBe(avant);
 });
 
-test("ouvrirFenetre sur un espace donné ; fermerFenetre supprime ses onglets", () => {
+test("ouvrirFenetre on a given space; fermerFenetre deletes its tabs", () => {
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const B = e.espaces[1]!.id;
   ag({ type: "ouvrirFenetre", id: "f2", espaceId: B });
@@ -473,7 +473,7 @@ test("ouvrirFenetre sur un espace donné ; fermerFenetre supprime ses onglets", 
   expect(e.onglets[x]).toBeUndefined();
 });
 
-test("fermer la dernière fenêtre ne change pas l'état", () => {
+test("closing the last window does not change the state", () => {
   const avant = e;
   ag({ type: "fermerFenetre", id: F });
   expect(e).toBe(avant);
@@ -487,7 +487,7 @@ test("basculerCompact, basculerPanneauAgent, choisirMoteur", () => {
   expect(e.reglages.moteur).toBe("qwant");
 });
 
-test("cadrerFenetre retient la taille et la position ; fenêtre inconnue → même référence", () => {
+test("cadrerFenetre keeps the size and position; unknown window → same reference", () => {
   expect(fen().cadre).toBeNull();
   ag({ type: "cadrerFenetre", id: F, cadre: { x: 10, y: 20, largeur: 800, hauteur: 600 } });
   expect(fen().cadre).toEqual({ x: 10, y: 20, largeur: 800, hauteur: 600 });
@@ -495,14 +495,14 @@ test("cadrerFenetre retient la taille et la position ; fenêtre inconnue → mê
   expect(appliquer(e, { type: "cadrerFenetre", id: "inconnue", cadre: { x: 0, y: 0, largeur: 1, hauteur: 1 } }, genId)).toBe(avant);
 });
 
-test("majOnglet sans aucun changement → même référence (rien à rediffuser)", () => {
+test("majOnglet with no change → same reference (nothing to rebroadcast)", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "majOnglet", id: a, champs: { titre: "A", chargement: true } });
   const avant = e;
   expect(appliquer(e, { type: "majOnglet", id: a, champs: { titre: "A", chargement: true } }, genId)).toBe(avant);
 });
 
-test("majOnglet ne touche que les champs donnés ; id inconnu → même référence", () => {
+test("majOnglet only touches the given fields; unknown id → same reference", () => {
   const a = ouvrir("https://a.test/");
   ag({ type: "majOnglet", id: a, champs: { titre: "A", chargement: true } });
   expect(e.onglets[a]).toMatchObject({ titre: "A", chargement: true, url: "https://a.test/" });
@@ -520,7 +520,7 @@ test("majOnglet ne touche que les champs donnés ; id inconnu → même référe
   }
 });
 
-test("appliquer ne mute jamais l'état d'entrée", () => {
+test("appliquer never mutates the input state", () => {
   const a = ouvrir("https://a.test/");
   gelerProfond(e);
   expect(() => {
@@ -531,14 +531,14 @@ test("appliquer ne mute jamais l'état d'entrée", () => {
   }).not.toThrow();
 });
 
-test("afficherPageVide : l'espace n'a plus d'onglet actif, ses onglets restent", () => {
+test("afficherPageVide: the space no longer has an active tab, its tabs remain", () => {
   const a = ouvrir("https://a.fr");
   ag({ type: "afficherPageVide", fenetreId: F });
   expect(actif()).toBeNull();
   expect(ordre()).toEqual([a]);
 });
 
-test("fermerFenetre : ses onglets (tous espaces) vont dans les fermés récemment de la fenêtre restante, ⇧⌘T les rouvre", () => {
+test("fermerFenetre: its tabs (all spaces) go into the remaining window's recently closed, ⇧⌘T reopens them", () => {
   ag({ type: "ouvrirFenetre", id: "F2" });
   ag({ type: "ouvrirOnglet", fenetreId: "F2", url: "https://x.fr" });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: "F2" });
@@ -549,13 +549,13 @@ test("fermerFenetre : ses onglets (tous espaces) vont dans les fermés récemmen
   expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["https://y.fr"]);
 });
 
-test("choisirProfilAgent change le réglage (claude par défaut)", () => {
+test("choisirProfilAgent changes the setting (claude by default)", () => {
   expect(e.reglages.profilAgent).toBe("claude");
   ag({ type: "choisirProfilAgent", profil: "autre" });
   expect(e.reglages.profilAgent).toBe("autre");
 });
 
-test("panneauAgentAccueil : ouvre seulement sur la page d'accueil (sinon l'onglet serait donné à l'agent) ; ferme toujours", () => {
+test("panneauAgentAccueil: opens only on the home page (otherwise the tab would be given to the agent); always closes", () => {
   ouvrir("https://a.test/");
   const avant = e;
   ag({ type: "panneauAgentAccueil", fenetreId: F, ouvert: true });
@@ -570,7 +570,7 @@ test("panneauAgentAccueil : ouvre seulement sur la page d'accueil (sinon l'ongle
   expect(fen().panneauAgentOuvert).toBe(false);
 });
 
-test("largeurPanneauAgent : 420 par défaut, retenue, bornée entre 280 et 1000", () => {
+test("largeurPanneauAgent: 420 by default, kept, clamped between 280 and 1000", () => {
   expect(e.reglages.largeurPanneauAgent).toBe(420);
   ag({ type: "largeurPanneauAgent", largeur: 612.4 });
   expect(e.reglages.largeurPanneauAgent).toBe(612);
@@ -580,7 +580,7 @@ test("largeurPanneauAgent : 420 par défaut, retenue, bornée entre 280 et 1000"
   expect(e.reglages.largeurPanneauAgent).toBe(1000);
 });
 
-test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
+test("ouvrirApplications reuses the window's existing tab", () => {
   ouvrir("https://a.test/");
   ag({ type: "ouvrirApplications", fenetreId: F });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_APPLICATIONS);
@@ -588,16 +588,16 @@ test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
   const page = pages()[0]!;
   expect(page).toMatchObject({ titre: "Applications", espaceId: P });
   expect(actif()).toBe(page.id);
-  // Déjà affichée : rien ne change.
+  // Already displayed: nothing changes.
   const avant = e;
   ag({ type: "ouvrirApplications", fenetreId: F });
   expect(e).toBe(avant);
-  // Un autre onglet devant : on revient à la page au lieu d'en ouvrir une deuxième.
+  // Another tab in front: go back to the page instead of opening a second one.
   ouvrir("https://b.test/");
   ag({ type: "ouvrirApplications", fenetreId: F });
   expect(pages()).toHaveLength(1);
   expect(actif()).toBe(page.id);
-  // Depuis un autre espace : on revient à la page de la fenêtre, dans son espace.
+  // From another space: go back to the window's page, in its space.
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   expect(fen().espaceActif).not.toBe(P);
   ag({ type: "ouvrirApplications", fenetreId: F });
@@ -606,7 +606,7 @@ test("ouvrirApplications réutilise l'onglet existant de la fenêtre", () => {
   expect(actif()).toBe(page.id);
 });
 
-test("ouvrirExtensions ouvre ou active la page, comme ouvrirApplications", () => {
+test("ouvrirExtensions opens or activates the page, like ouvrirApplications", () => {
   expect(URL_EXTENSIONS).toBe("webaios://extensions");
   expect(aUneVue(URL_EXTENSIONS)).toBe(false);
   ouvrir("https://a.test/");
@@ -629,7 +629,7 @@ test("ouvrirExtensions ouvre ou active la page, comme ouvrirApplications", () =>
   expect(fen().espaceActif).toBe(P);
 });
 
-test("ouvrirWorkflow ouvre un onglet webaios://workflow/<id> titré, puis y revient au lieu d'en ouvrir un second", () => {
+test("ouvrirWorkflow opens a titled webaios://workflow/<id> tab, then returns to it instead of opening a second one", () => {
   ouvrir("https://a.test/");
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
   const pages = (id = "meteo") => Object.values(e.onglets).filter((o) => o.url === urlWorkflow(id));
@@ -644,23 +644,23 @@ test("ouvrirWorkflow ouvre un onglet webaios://workflow/<id> titré, puis y revi
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
   expect(pages()).toHaveLength(1);
   expect(actif()).toBe(page.id);
-  // Depuis un autre espace : on revient à la page de la fenêtre, dans son espace.
+  // From another space: go back to the window's page, in its space.
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo" });
   expect(pages()).toHaveLength(1);
   expect(fen().espaceActif).toBe(P);
   expect(actif()).toBe(page.id);
-  // Un autre widget : sa propre page.
+  // Another widget: its own page.
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "actus", nom: "Actus" });
   expect(pages("actus")).toHaveLength(1);
   expect(pages()).toHaveLength(1);
-  // Le widget renommé : on revient à la même page, et son titre suit.
+  // The widget renamed: back to the same page, and its title follows.
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "meteo", nom: "Météo de Lyon" });
   expect(pages()).toHaveLength(1);
   expect(pages()[0]).toMatchObject({ id: page.id, titre: "Workflow — Météo de Lyon" });
 });
 
-test("ouvrirAction ouvre un onglet webaios://action/<id> titré du nom, puis y revient au lieu d'en ouvrir un second", () => {
+test("ouvrirAction opens a webaios://action/<id> tab titled with the name, then returns to it instead of opening a second one", () => {
   ouvrir("https://a.test/");
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   const pages = () => Object.values(e.onglets).filter((o) => o.url.startsWith("webaios://action/gitlab"));
@@ -675,12 +675,12 @@ test("ouvrirAction ouvre un onglet webaios://action/<id> titré du nom, puis y r
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   expect(pages()).toHaveLength(1);
   expect(actif()).toBe(page.id);
-  // Une autre action : sa propre page.
+  // Another action: its own page.
   ag({ type: "ouvrirAction", fenetreId: F, id: "meteo", nom: "Météo" });
   expect(Object.values(e.onglets).filter((o) => o.url === urlAction("meteo"))).toHaveLength(1);
 });
 
-test("ouvrirAction retrouve l'onglet de l'action dans un autre espace de la fenêtre ; avec execution, change son URL", () => {
+test("ouvrirAction finds the action's tab in another space of the window; with execution, changes its URL", () => {
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   const page = Object.keys(e.onglets).at(-1)!;
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -691,32 +691,32 @@ test("ouvrirAction retrouve l'onglet de l'action dans un autre espace de la fen�
   expect(fen().espaceActif).toBe(P);
   expect(actif()).toBe(page);
   expect(e.onglets[page]).toMatchObject({ url: urlAction("gitlab", ex), titre: "GitLab" });
-  // L'onglet montre une exécution précise : il reste celui de l'action (même id), le nom suit.
+  // The tab shows a specific run: it stays the action's tab (same id), the name follows.
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "Mes tickets" });
   expect(Object.keys(e.onglets)).toHaveLength(1);
   expect(e.onglets[page]).toMatchObject({ url: urlAction("gitlab", ex), titre: "Mes tickets" });
-  // Exécution invalide : refusée par le schéma, jamais une URL.
+  // Invalid run: refused by the schema, never a URL.
   expect(SchemaAction.safeParse({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab", execution: "../etat" }).success).toBe(false);
   expect(SchemaAction.safeParse({ type: "ouvrirAction", fenetreId: F, id: "../x", nom: "GitLab" }).success).toBe(false);
 });
 
-test("ouvrirAction n'ouvre ni ne retrouve rien dans un espace privé", () => {
+test("ouvrirAction neither opens nor finds anything in a private space", () => {
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   const page = Object.keys(e.onglets).at(-1)!;
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
   const banque = fen().espaceActif;
-  // L'onglet de l'espace non privé est retrouvé ; la fenêtre y retourne.
+  // The non-private space's tab is found; the window goes back there.
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   expect(fen().espaceActif).toBe(P);
   expect(actif()).toBe(page);
-  // Aucun onglet ailleurs : rien n'est ouvert dans l'espace privé.
+  // No tab elsewhere: nothing is opened in the private space.
   ag({ type: "activerEspace", fenetreId: F, id: banque });
   const avant = e;
   ag({ type: "ouvrirAction", fenetreId: F, id: "meteo", nom: "Météo" });
   expect(e).toBe(avant);
 });
 
-test("ouvrirActions ouvre la page unique « Actions », puis y revient", () => {
+test("ouvrirActions opens the single « Actions » page, then returns to it", () => {
   ag({ type: "ouvrirActions", fenetreId: F });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === URL_ACTIONS);
   expect(pages()).toHaveLength(1);
@@ -727,7 +727,7 @@ test("ouvrirActions ouvre la page unique « Actions », puis y revient", () => {
   expect(actif()).toBe(pages()[0]!.id);
 });
 
-test("ouvrirWorkflow d'une action ouvre webaios://workflow/action/<id>", () => {
+test("ouvrirWorkflow of an action opens webaios://workflow/action/<id>", () => {
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "gitlab", nom: "GitLab", proprietaire: "action" });
   expect(Object.values(e.onglets)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", titre: "Workflow — GitLab" });
   ag({ type: "ouvrirWorkflow", fenetreId: F, id: "gitlab", nom: "GitLab" });
@@ -740,8 +740,8 @@ test("profilsEnUsage : par identifiant, espaces compris", () => {
   expect(profilsEnUsage(copie)).toEqual(new Set(["defaut", "autre"]));
 });
 
-// Plan 17, tâche 11 : la page Relecture d'un projet.
-test("ouvrirRelecture ouvre webaios://relecture/app-essai titré « Relecture — Essai » ; un second appel revient au même onglet", async () => {
+// Plan 17, task 11: a project's review page.
+test("ouvrirRelecture opens webaios://relecture/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
   const { urlRelecture } = await import("../../shared/modele");
   ag({ type: "ouvrirRelecture", fenetreId: F, projet: "app-essai", nom: "Essai" });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === "webaios://relecture/app-essai");
@@ -755,7 +755,7 @@ test("ouvrirRelecture ouvre webaios://relecture/app-essai titré « Relecture �
   expect(SchemaAction.safeParse({ type: "ouvrirRelecture", fenetreId: F, projet: "../x", nom: "x" }).success).toBe(false);
 });
 
-test("projetDeUrlRelecture refuse webaios://relecture/../x et webaios://relecture/app-", async () => {
+test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relecture/app-", async () => {
   const { projetDeUrlRelecture } = await import("../../shared/modele");
   const { ID_PROJET } = await import("@webaios/noyau");
   expect(projetDeUrlRelecture("webaios://relecture/../x")).toBeNull();
@@ -764,7 +764,7 @@ test("projetDeUrlRelecture refuse webaios://relecture/../x et webaios://relectur
   expect(projetDeUrlRelecture("webaios://applications")).toBeNull();
   expect(projetDeUrlRelecture("webaios://relecture/app-essai")).toBe("app-essai");
   expect(projetDeUrlRelecture("webaios://relecture/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
-  // Les copies de l'interface suivent le noyau.
+  // The UI copies follow the kernel.
   const { NON_AFFICHABLE } = await import("../../shared/modele");
   const { FICHIER_BINAIRE, FICHIER_TROP_GROS } = await import("@webaios/noyau");
   expect(NON_AFFICHABLE).toEqual({ binaire: FICHIER_BINAIRE, "trop-gros": FICHIER_TROP_GROS });

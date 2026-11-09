@@ -5,7 +5,7 @@ import { choixPerdConnexions, optionsProfil, perdConnexions, PROFIL_A_CHOISIR } 
 const espace = (id: string, nom: string, profil: string): Espace => ({ id, nom, icone: "📁", epingles: [], prive: false, profil });
 const profils = [{ id: "defaut" }, { id: "p1" }, { id: "p2" }];
 
-test("nouvel espace : « Nouveau profil » en crée un, puis chaque profil utilisé avec tous ses espaces", () => {
+test("new space: « Nouveau profil » creates one, then each used profile with all its spaces", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "p1"), espace("c", "Clients", "p1")];
   expect(optionsProfil(espaces, profils.slice(0, 2), null)).toEqual([
     { valeur: "nouveau", libelle: "Nouveau profil" },
@@ -14,7 +14,7 @@ test("nouvel espace : « Nouveau profil » en crée un, puis chaque profil utili
   ]);
 });
 
-test("réglages : l'espace réglé n'est pas nommé, et un profil dont il est seul ne se partage pas", () => {
+test("settings: the space being set is not named, and a profile it alone has is not shared", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "p1"), espace("c", "Banque", "p2")];
   expect(optionsProfil(espaces, profils, "c")).toEqual([
     { valeur: "p2", libelle: "Son propre profil" },
@@ -23,7 +23,7 @@ test("réglages : l'espace réglé n'est pas nommé, et un profil dont il est se
   ]);
 });
 
-test("réglages d'un espace qui partage son profil : son propre profil en crée un nouveau", () => {
+test("settings of a space that shares its profile: its own profile creates a new one", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "defaut")];
   expect(optionsProfil(espaces, [{ id: "defaut" }], "b")).toEqual([
     { valeur: "nouveau", libelle: "Son propre profil" },
@@ -31,7 +31,7 @@ test("réglages d'un espace qui partage son profil : son propre profil en crée 
   ]);
 });
 
-test("un profil qu'aucun espace n'utilise n'est pas proposé", () => {
+test("a profile that no space uses is not offered", () => {
   const espaces = [espace("a", "Perso", "p1")];
   expect(optionsProfil(espaces, [{ id: "defaut" }, { id: "p1" }], null)).toEqual([
     { valeur: "nouveau", libelle: "Nouveau profil" },
@@ -39,7 +39,7 @@ test("un profil qu'aucun espace n'utilise n'est pas proposé", () => {
   ]);
 });
 
-test("les connexions se perdent avec le dernier espace d'un profil autre que celui par défaut", () => {
+test("sign-ins are lost with the last space of a non-default profile", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "p1"), espace("c", "Clients", "p1"), espace("d", "Banque", "p2")];
   expect(perdConnexions(espaces, espaces[0]!)).toBe(false);
   expect(perdConnexions(espaces, espaces[1]!)).toBe(false);
@@ -47,19 +47,19 @@ test("les connexions se perdent avec le dernier espace d'un profil autre que cel
   expect(perdConnexions([espace("a", "Perso", "defaut")], espace("a", "Perso", "defaut"))).toBe(false);
 });
 
-test("réglages : quitter le dernier usage d'un profil autre que celui par défaut perd les connexions, le garder non", () => {
+test("settings: leaving the last use of a non-default profile loses the sign-ins, keeping it does not", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("b", "Travail", "p1"), espace("c", "Clients", "p1"), espace("d", "Banque", "p2")];
   expect(choixPerdConnexions(espaces, "d", "p2")).toBe(false);
   expect(choixPerdConnexions(espaces, "d", "defaut")).toBe(true);
   expect(choixPerdConnexions(espaces, "d", "nouveau")).toBe(true);
-  // Profil partagé : les autres espaces le gardent.
+  // Shared profile: the other spaces keep it.
   expect(choixPerdConnexions(espaces, "b", "defaut")).toBe(false);
-  // Le profil par défaut n'est jamais effacé ; un nouvel espace n'a rien à perdre.
+  // The default profile is never erased; a new space has nothing to lose.
   expect(choixPerdConnexions(espaces, "a", "p1")).toBe(false);
   expect(choixPerdConnexions(espaces, null, "defaut")).toBe(false);
 });
 
-test("nouvel espace : aucun profil présélectionné, et « à choisir » n'est jamais une option ni une perte", () => {
+test("new space: no preselected profile, and « à choisir » is never an option nor a loss", () => {
   const espaces = [espace("a", "Perso", "defaut"), espace("d", "Banque", "p2")];
   expect(PROFIL_A_CHOISIR).toBe("");
   expect(optionsProfil(espaces, profils, null).map((o) => o.valeur)).not.toContain(PROFIL_A_CHOISIR);

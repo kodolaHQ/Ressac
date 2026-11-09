@@ -5,7 +5,7 @@ import { cumulerParties, profilsLisibles, urlPermise } from "../core/agent/lectu
 const etat = (profils: string[], espaces: { profil: string; prive: boolean }[]) =>
   ({ profils: profils.map((id) => ({ id })), espaces: espaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as EtatNavigateur;
 
-test("profilsLisibles exclut les profils d'un espace privé, même partagés avec un espace non privé", () => {
+test("profilsLisibles excludes a private space's profiles, even shared with a non-private space", () => {
   const e = etat(
     ["defaut", "travail", "secret", "libre"],
     [
@@ -18,7 +18,7 @@ test("profilsLisibles exclut les profils d'un espace privé, même partagés ave
   expect(profilsLisibles(e)).toEqual(["defaut", "libre"]);
 });
 
-test("urlPermise : http(s) seulement ; avec domaines, l'hôte exact (point final ignoré), comme le noyau", () => {
+test("urlPermise: http(s) only; with domains, the exact host (trailing dot ignored), like the kernel", () => {
   expect(urlPermise("https://exemple.test/a", undefined)).toBe(true);
   expect(urlPermise("javascript:alert(1)", undefined)).toBe(false);
   expect(urlPermise("pas une url", undefined)).toBe(false);
@@ -30,7 +30,7 @@ test("urlPermise : http(s) seulement ; avec domaines, l'hôte exact (point final
   expect(urlPermise("data:text/html,x", ["exemple.test"])).toBe(false);
 });
 
-test("urlPermise refuse les adresses locales, sauf option des tests", () => {
+test("urlPermise refuses local addresses, except for the tests option", () => {
   for (const u of ["http://localhost./", "http://localhost:11434/api", "http://127.0.0.1:11434/", "http://192.168.1.1/", "http://[::1]/", "http://10.0.0.2/", "http://box.local/"]) {
     expect(urlPermise(u, undefined), u).toBe(false);
     expect(urlPermise(u, undefined, true), u).toBe(true);
@@ -40,7 +40,7 @@ test("urlPermise refuse les adresses locales, sauf option des tests", () => {
   expect(urlPermise("https://exemple.test/", undefined, false)).toBe(true);
 });
 
-test("cumulerParties : lignes gardées une fois dans l'ordre d'apparition, liens par adresse avec le plus long texte", () => {
+test("cumulerParties: lines kept once in order of appearance, links by address with the longest text", () => {
   const r = cumulerParties([
     { titre: "A", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "court" }] },
     { titre: "B", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "plus long" }] },
@@ -54,12 +54,12 @@ test("cumulerParties : lignes gardées une fois dans l'ordre d'apparition, liens
   ]);
 });
 
-test("cumulerParties : une liste qui avance (virtualisée) est recalée sur ce qu'elle partage avec le relevé d'avant, prix identiques gardés", () => {
+test("cumulerParties: a list that advances (virtualized) is realigned on what it shares with the previous snapshot, identical prices kept", () => {
   const r = cumulerParties([
     { titre: "T", texte: "En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…", liens: [] },
-    // A1 est sorti de la page ; A2 est encore là ; A3 et A4 arrivent, au même prix.
+    // A1 left the page; A2 is still there; A3 and A4 arrive, at the same price.
     { titre: "T", texte: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", liens: [] },
-    // Rien de nouveau : la page n'a plus bougé.
+    // Nothing new: the page no longer moved.
     { titre: "T", texte: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", liens: [] },
   ]);
   expect(r.texte).toBe("En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…\nA3\n4 500 €\nA4\n4 500 €");

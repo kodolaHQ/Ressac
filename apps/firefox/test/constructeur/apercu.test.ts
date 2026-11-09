@@ -27,12 +27,12 @@ const detail = (id: string, sortie: { sortie?: unknown; sortieTronquee?: true } 
   }) as Execution;
 const widget = { donnees: { vraies: 1 }, exemple: { exemple: 1 } };
 
-test("la sortie du bloc sortie de l'exécution choisie (un essai compris)", () => {
+test("the output of the chosen run's output block (a trial included)", () => {
   const r = donneesApercu({ choisie: resume("e-essai", true), detail: detail("e-essai", { sortie: { essai: 1 } }), liste: [resume("e-essai", true), resume("a")], widget });
   expect(r).toEqual({ donnees: { essai: 1 }, mention: false });
 });
 
-test("sortie tronquée ou absente, dernière vraie exécution : les données du widget", () => {
+test("truncated or missing output, last real run: the widget's data", () => {
   const liste = [resume("e-essai", true), resume("b"), resume("a")];
   expect(donneesApercu({ choisie: resume("b"), detail: detail("b", { sortie: '{"coupé', sortieTronquee: true }), liste, widget })).toEqual({
     donnees: { vraies: 1 },
@@ -41,21 +41,21 @@ test("sortie tronquée ou absente, dernière vraie exécution : les données du 
   expect(donneesApercu({ choisie: resume("b"), detail: detail("b", null), liste, widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
 });
 
-test("sinon l'exemple, avec la mention", () => {
+test("otherwise the example, with the mention", () => {
   const liste = [resume("b"), resume("a")];
   expect(donneesApercu({ choisie: resume("a"), detail: detail("a", null), liste, widget })).toEqual({ donnees: { exemple: 1 }, mention: true });
-  // Détail pas encore lu (ou d'une autre exécution) : pas la sortie d'une autre.
+  // Detail not read yet (or from another run): not another run's output.
   expect(donneesApercu({ choisie: resume("a"), detail: detail("b", { sortie: { b: 1 } }), liste, widget })).toEqual({ donnees: { exemple: 1 }, mention: true });
-  // Dernière vraie exécution sans données du widget : l'exemple aussi.
+  // Last real run without widget data: the example too.
   expect(donneesApercu({ choisie: resume("b"), detail: null, liste, widget: { donnees: null, exemple: { exemple: 1 } } })).toEqual({ donnees: { exemple: 1 }, mention: true });
 });
 
-test("aucune exécution : les données du widget comme sur l'accueil, sans mention", () => {
+test("no run: the widget's data as on the home, without a mention", () => {
   expect(donneesApercu({ choisie: null, detail: null, liste: [], widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
   expect(donneesApercu({ choisie: null, detail: null, liste: [], widget: { donnees: null, exemple: { exemple: 1 } } })).toEqual({ donnees: { exemple: 1 }, mention: false });
 });
 
-test("dernière vraie exécution qui n'a pas abouti : les données du widget, avec la mention", () => {
+test("last real run that did not succeed: the widget's data, with the mention", () => {
   const echouee = { ...resume("b"), statut: "echouee" as const };
   expect(donneesApercu({ choisie: echouee, detail: detail("b", null), liste: [echouee, resume("a")], widget })).toEqual({ donnees: { vraies: 1 }, mention: true });
   const partielle = { ...resume("b"), statut: "partielle" as const };

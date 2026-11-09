@@ -15,7 +15,7 @@ const accord: Portee = {
   scriptsTousLesSites: false,
 };
 
-test("hôte de reseau permis ; hôte de hotes permis ; autre hôte, data:, javascript:, file: refusés ; chrome-extension:// d'une autre extension refusé", () => {
+test("reseau host allowed; hotes host allowed; other host, data:, javascript:, file: refused; chrome-extension:// of another extension refused", () => {
   expect(urlPermiseAgent("https://api.accorde.test/x?y=1", accord, ID)).toBe(true);
   expect(urlPermiseAgent("http://api.accorde.test/", accord, ID)).toBe(true);
   expect(urlPermiseAgent("https://www.hote.test/page", accord, ID)).toBe(true);
@@ -37,7 +37,7 @@ test("hôte de reseau permis ; hôte de hotes permis ; autre hôte, data:, javas
   expect(urlPermiseAgent("pas une adresse", accord, ID)).toBe(false);
 });
 
-test("motifs de Chrome : schéma, joker de sous-domaine, port, chemin", () => {
+test("Chrome patterns: scheme, subdomain wildcard, port, path", () => {
   const u = (x: string) => new URL(x);
   expect(motifCouvre("<all_urls>", u("https://x.test/"))).toBe(true);
   expect(motifCouvre("*://x.test/*", u("http://x.test/a"))).toBe(true);
@@ -50,17 +50,17 @@ test("motifs de Chrome : schéma, joker de sous-domaine, port, chemin", () => {
   expect(motifCouvre("<all_urls>", u("file:///x"))).toBe(false);
 });
 
-test("hotePermisAgent : seulement les hôtes accordés (pas reseau)", () => {
+test("hotePermisAgent: only the granted hosts (not reseau)", () => {
   expect(hotePermisAgent("https://www.hote.test/", accord)).toBe(true);
   expect(hotePermisAgent("https://api.accorde.test/", accord)).toBe(false);
   expect(hotePermisAgent("about:blank", accord)).toBe(false);
 });
 
-// --- Le garde (packages/noyau/extensions/webaios-garde-fond.js), exécuté dans un contexte à part.
+// --- The guard (packages/noyau/extensions/webaios-garde-fond.js), run in a separate context.
 
 const cheminGarde = join(import.meta.dirname, "..", "..", "..", "..", "packages", "noyau", "extensions", "webaios-garde-fond.js");
 
-/** La table que la copie met en tête du garde de fond : les fichiers .js et .css de l'agent (l'indice est le repère). */
+/** The table the copy puts at the head of the background guard: the agent's .js and .css files (the index is the marker). */
 const TABLE = `const __webaiosFichiers = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
 
 function contexteGarde(
@@ -74,10 +74,10 @@ function contexteGarde(
       appels.push([nom, a]);
       return Promise.resolve(`ok:${nom}`);
     });
-  /** Ce que Chromium garde de registerContentScripts (lu par getRegisteredContentScripts). */
+  /** What Chromium keeps from registerContentScripts (read by getRegisteredContentScripts). */
   const enregistres: { id: string; [k: string]: unknown }[] = [];
   const ecouteurs: ((m: unknown, e: unknown, r: (x: unknown) => void) => unknown)[] = [];
-  // Comme les événements de Chromium : les méthodes sont sur le prototype.
+  // Like Chromium's events: the methods are on the prototype.
   const onMessage = Object.create({
     addListener: (f: (typeof ecouteurs)[number]) => void ecouteurs.push(f),
     removeListener: (f: (typeof ecouteurs)[number]) => {
@@ -87,7 +87,7 @@ function contexteGarde(
     hasListener: (f: (typeof ecouteurs)[number]) => ecouteurs.includes(f),
     hasListeners: () => ecouteurs.length > 0,
   }) as Record<string, (f?: unknown) => unknown>;
-  /** Un message comme Chromium le remet : chaque écouteur, la première réponse gagne ; rend cette réponse. */
+  /** A message as Chromium delivers it: each listener, the first answer wins; returns that answer. */
   const emettre = (m: unknown, expediteur: unknown) =>
     new Promise((ok) => {
       let attendre = false;
@@ -130,14 +130,14 @@ function contexteGarde(
     Array,
     String,
   };
-  // Une page de l'extension (popup, options) a un document ; le service worker, non.
+  // An extension page (popup, options) has a document; the service worker does not.
   if (o.page) ctx.document = {};
   ctx.globalThis = ctx;
   runInNewContext(TABLE + readFileSync(cheminGarde, "utf8"), ctx);
   return { ctx, chrome, appels, ecouteurs, emettre, enregistres };
 }
 
-test("garde : updateDynamicRules / updateSessionRules refusent redirect, modifyHeaders, regexSubstitution, transform ; block accepté", async () => {
+test("guard: updateDynamicRules / updateSessionRules refuse redirect, modifyHeaders, regexSubstitution, transform; block accepted", async () => {
   const { chrome, appels } = contexteGarde();
   const dnr = chrome.declarativeNetRequest;
   const regle = (action: unknown) => ({ addRules: [{ id: 1, priority: 1, action, condition: { urlFilter: "x" } }] });
@@ -156,7 +156,7 @@ test("garde : updateDynamicRules / updateSessionRules refusent redirect, modifyH
   expect(appels).toEqual([]);
   await expect(dnr.updateDynamicRules(regle({ type: "block" }))).resolves.toBe("ok:updateDynamicRules");
   await expect(dnr.updateDynamicRules({ removeRuleIds: [1] })).resolves.toBe("ok:updateDynamicRules");
-  // Remplacé pour de bon : ni réécrit, ni supprimé.
+  // Truly replaced: neither rewritten nor removed.
   const garde = dnr.updateDynamicRules;
   expect(() => {
     "use strict";
@@ -165,7 +165,7 @@ test("garde : updateDynamicRules / updateSessionRules refusent redirect, modifyH
   expect(dnr.updateDynamicRules).toBe(garde);
 });
 
-test("garde : un rappel reçoit chrome.runtime.lastError pendant l'appel, puis il est effacé", async () => {
+test("guard: a callback receives chrome.runtime.lastError during the call, then it is cleared", async () => {
   const { chrome } = contexteGarde();
   const vu = await new Promise((ok) =>
     chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 1, action: { type: "redirect" } }] }, () =>
@@ -176,7 +176,7 @@ test("garde : un rappel reçoit chrome.runtime.lastError pendant l'appel, puis i
   expect(chrome.runtime.lastError).toBeUndefined();
 });
 
-test("garde : tabs.create, tabs.update, windows.create demandent l'adresse au processus principal ; refus « URL refusée par WebAiOs »", async () => {
+test("guard: tabs.create, tabs.update, windows.create ask the main process for the address; refusal « URL refusée par WebAiOs »", async () => {
   const { chrome, appels } = contexteGarde({ urls: ["https://www.hote.test/"] });
   await expect(chrome.tabs.create({ url: "https://autre.test/" })).rejects.toThrow("URL refusée par WebAiOs");
   await expect(chrome.tabs.update(3, { url: "data:text/html,x" })).rejects.toThrow("URL refusée par WebAiOs");
@@ -188,11 +188,11 @@ test("garde : tabs.create, tabs.update, windows.create demandent l'adresse au pr
   expect(appels.map(([n]) => n)).toEqual(["tabs.create", "tabs.update", "tabs.update"]);
 });
 
-test("garde : scripting.executeScript / insertCSS et tabs.insertCSS seulement dans un onglet d'un site accordé ; WebRTC retiré", async () => {
+test("guard: scripting.executeScript / insertCSS and tabs.insertCSS only in a tab of a granted site; WebRTC removed", async () => {
   const { ctx, chrome, appels } = contexteGarde({ onglets: [4] });
   await expect(chrome.scripting.executeScript({ target: { tabId: 5 }, func: () => 1 })).rejects.toThrow("Site refusé par WebAiOs");
   await expect(chrome.scripting.insertCSS({ target: { tabId: 5 }, css: "p{}" })).rejects.toThrow("Site refusé par WebAiOs");
-  // Sans onglet : l'onglet actif (ici 9, non accordé).
+  // Without a tab: the active tab (here 9, not granted).
   await expect(chrome.tabs.insertCSS({ code: "p{}" })).rejects.toThrow("Site refusé par WebAiOs");
   expect(appels).toEqual([]);
   await chrome.scripting.executeScript({ target: { tabId: 4 }, files: ["x.js"] });
@@ -202,7 +202,7 @@ test("garde : scripting.executeScript / insertCSS et tabs.insertCSS seulement da
   expect(ctx.RTCDataChannel).toBeUndefined();
 });
 
-test("garde : sans __webaios (preload absent), toute adresse et tout onglet sont refusés", async () => {
+test("guard: without __webaios (preload missing), every address and every tab are refused", async () => {
   const { ctx, chrome } = contexteGarde();
   delete ctx.__webaios;
   const garde = readFileSync(cheminGarde, "utf8");
@@ -211,11 +211,11 @@ test("garde : sans __webaios (preload absent), toute adresse et tout onglet sont
   runInNewContext(TABLE + garde, sans);
   const c = sans.chrome as { tabs: { create(d: unknown): Promise<unknown> }; scripting: { executeScript(d: unknown): Promise<unknown> } };
   await expect(c.tabs.create({ url: "https://www.hote.test/" })).rejects.toThrow("URL refusée par WebAiOs");
-  // Sans preload, aucun onglet n'est reconnu comme tel.
+  // Without preload, no tab is recognized as one.
   await expect(c.scripting.executeScript({ target: { tabId: 4 } })).rejects.toThrow("Onglet refusé par WebAiOs");
 });
 
-test("garde : les arguments sont figés une fois (copie), vérifiés et passés tels quels : un accesseur qui change d'avis ne fait pas passer une redirection", async () => {
+test("guard: arguments are frozen once (copy), checked and passed as is: an accessor that changes its mind does not let a redirect through", async () => {
   const { chrome, appels } = contexteGarde({ onglets: [4] });
   let lectures = 0;
   const options = {
@@ -224,7 +224,7 @@ test("garde : les arguments sont figés une fois (copie), vérifiés et passés 
     },
   };
   await chrome.declarativeNetRequest.updateDynamicRules(options).catch(() => {});
-  // Ce qu'a reçu l'API native : la copie vérifiée (sans redirection), jamais l'objet d'origine.
+  // What the native API received: the checked copy (without redirect), never the original object.
   for (const [, [recu]] of appels) {
     expect(recu).not.toBe(options);
     expect(JSON.stringify(recu)).not.toContain("redirect");
@@ -239,7 +239,7 @@ test("garde : les arguments sont figés une fois (copie), vérifiés et passés 
   expect((appels.at(-1)![1][0] as { target: { tabId: number } }).target.tabId).toBe(4);
 });
 
-test("garde : Object.prototype.get ou .value ajoutés après son chargement ne cassent ni la copie, ni le refus avec lastError", async () => {
+test("guard: Object.prototype.get or .value added after its load break neither the copy nor the refusal with lastError", async () => {
   const recus: unknown[] = [];
   const ctx = createContext({});
   runInContext(
@@ -266,7 +266,7 @@ test("garde : Object.prototype.get ou .value ajoutés après son chargement ne c
   expect(recus).toEqual([{ addRules: [{ id: 2, action: { type: "block" } }] }]);
 });
 
-test("garde : une liste à trous est refusée (un accesseur sur Array.prototype[0] n'est jamais lu) ; une liste dense est recopiée sans trou", async () => {
+test("guard: a sparse list is refused (an accessor on Array.prototype[0] is never read); a dense list is copied without holes", async () => {
   const recus: unknown[] = [];
   const ctx = createContext({});
   runInContext(
@@ -307,8 +307,8 @@ test("garde : une liste à trous est refusée (un accesseur sur Array.prototype[
   expect(recus).toEqual([{ addRules: [{ id: 2, priority: 1, action: { type: "block" }, condition: {} }, { id: 2, priority: 1, action: { type: "block" }, condition: {} }] }]);
 });
 
-test("garde : remplacer Promise.prototype.then, Function.prototype.apply, Array.isArray et l'itérateur des listes après son chargement ne fait passer aucune redirection", async () => {
-  // Un contexte à part, avec ses propres objets de base : l'extension peut les modifier sans toucher ceux du test.
+test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.isArray and the list iterator after its load lets no redirect through", async () => {
+  // A separate context, with its own base objects: the extension can modify them without touching the test's.
   const recus: unknown[] = [];
   const ctx = createContext({});
   runInContext(
@@ -322,13 +322,13 @@ test("garde : remplacer Promise.prototype.then, Function.prototype.apply, Array.
     `(async () => {
       const redirection = { addRules: [{ id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} }] };
       const vrai = Promise.prototype.then;
-      // (a) then : toute suite reçoit true.
+      // (a) then: every continuation receives true.
       Promise.prototype.then = function (ok, ko) { return vrai.call(this, ok && ((v) => ok(v === false || typeof v === "string" ? true : v)), ko); };
-      // (b) apply : l'original de l'API est volé et rappelé.
+      // (b) apply: the API's original is stolen and called back.
       const vole = [];
       const appliquer = Function.prototype.apply;
       Function.prototype.apply = function (t, a) { vole.push(this); return appliquer.call(this, t, a); };
-      // (c) Array.isArray qui change d'avis, itérateur de liste vide.
+      // (c) Array.isArray that changes its mind, empty list iterator.
       let n = 0;
       Array.isArray = () => n++ % 2 === 0;
       Array.prototype[Symbol.iterator] = function* () {};
@@ -349,12 +349,12 @@ test("garde : remplacer Promise.prototype.then, Function.prototype.apply, Array.
   expect(resultat).toEqual({ refus: "Règle DNR refusée par WebAiOs (redirect)", voles: 0 });
 });
 
-// --- Tâche 13 : scripts posés par le fond, contexte des scripts de contenu.
+// --- Task 13: scripts placed by the background, content scripts' context.
 
 const GARDES_PAGE = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
 const repere = (n: number) => `webaios-fichiers/${n}.js`;
 
-test("garde : executeScript / insertCSS vers une vue qui n'est pas un onglet (lecture invisible) : « Onglet refusé par WebAiOs » ; documentIds, world MAIN, sans tabId : refusés", async () => {
+test("guard: executeScript / insertCSS to a view that is not a tab (invisible read): « Onglet refusé par WebAiOs »; documentIds, world MAIN, without tabId: refused", async () => {
   const { chrome, appels } = contexteGarde({ onglets: [4, 6], nonOnglets: [6] });
   await expect(chrome.scripting.executeScript({ target: { tabId: 6 }, files: ["x.js"] })).rejects.toThrow("Onglet refusé par WebAiOs");
   await expect(chrome.scripting.insertCSS({ target: { tabId: 6 }, css: "p{}" })).rejects.toThrow("Onglet refusé par WebAiOs");
@@ -374,7 +374,7 @@ test("garde : executeScript / insertCSS vers une vue qui n'est pas un onglet (le
   expect(vu).toBe("Onglet refusé par WebAiOs");
 });
 
-test("garde : executeScript({ files }) : seulement des fichiers de la table, gardes d'abord ; ({ func }) : gardes, puis la fonction dans les mêmes documents ; sans documentId rendu, refusé", async () => {
+test("guard: executeScript({ files }): only files from the table, guards first; ({ func }): guards, then the function in the same documents; without a returned documentId, refused", async () => {
   let sansDocument = false;
   const natif = vi.fn(async (d: { files?: string[]; func?: unknown }) =>
     d.files ? [{ frameId: 0, ...(sansDocument ? {} : { documentId: "D0" }) }, { frameId: 3, documentId: "D3" }] : [{ frameId: 0, result: 2 }],
@@ -391,14 +391,14 @@ test("garde : executeScript({ files }) : seulement des fichiers de la table, gar
   expect(natif.mock.calls[1]![0]).toEqual({ target: { tabId: 4, allFrames: true }, files: GARDES_PAGE });
   expect(natif.mock.calls[2]![0]).toEqual({ target: { tabId: 4, documentIds: ["D0", "D3"] }, func: f, args: [1] });
   expect(await new Promise((ok) => g.chrome.scripting.executeScript({ target: { tabId: 4 }, func: f }, ok))).toEqual([{ frameId: 0, result: 2 }]);
-  // Un document sans id : la fonction ne part pas (elle pourrait tourner dans un document neuf, sans garde).
+  // A document without an id: the function does not go (it could run in a fresh document, without a guard).
   sansDocument = true;
   const avant = natif.mock.calls.length;
   await expect(g.chrome.scripting.executeScript({ target: { tabId: 4, allFrames: true }, func: f })).rejects.toThrow("Arguments refusés par WebAiOs (documentId absent)");
   expect(natif.mock.calls.length).toBe(avant + 1);
 });
 
-test("garde : registerContentScripts / updateContentScripts n'enregistrent que les gardes et les repères (CSS d'abord) ; chemins hors de la table refusés, même avec split empoisonné", async () => {
+test("guard: registerContentScripts / updateContentScripts only register the guards and the markers (CSS first); paths outside the table refused, even with a poisoned split", async () => {
   const { ctx, chrome, appels } = contexteGarde();
   await chrome.scripting.registerContentScripts([
     { id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"], allFrames: true },
@@ -415,8 +415,8 @@ test("garde : registerContentScripts / updateContentScripts n'enregistrent que l
       ],
     ],
   ]);
-  // L'extension empoisonne ce qu'un découpage consulterait, puis tente de faire enregistrer un fichier hors table.
-  // Le prototype des chaînes du monde de la garde (le `String` du contexte est celui de vitest : on n'y touche pas).
+  // The extension poisons what a split would consult, then tries to get a file outside the table registered.
+  // The prototype of the guard world's strings (the context's `String` is vitest's: not touched).
   runInContext('const S = "".__proto__; S[Symbol.split] = () => ["a.js"]; S.split = () => ["a.js"]; S.indexOf = () => -1; S.slice = () => "a.js";', ctx as object);
   for (const js of ["../a.js", "x/../../a.js", "/a.js", "./a.js", "a\\b.js", "", "webaios-garde-page.js", "inconnu.js", "s.css"]) {
     await expect(chrome.scripting.registerContentScripts([{ id: "x", matches: ["https://hote.test/*"], js: [js] }]), js).rejects.toThrow(
@@ -432,7 +432,7 @@ test("garde : registerContentScripts / updateContentScripts n'enregistrent que l
   expect(appels).toHaveLength(1);
 });
 
-test("garde : getRegisteredContentScripts rend les fichiers de l'agent ; l'aller-retour vers updateContentScripts passe ; une mise à jour du seul CSS garde le JS enregistré", async () => {
+test("guard: getRegisteredContentScripts returns the agent's files; the round trip to updateContentScripts passes; a CSS-only update keeps the registered JS", async () => {
   const { chrome, appels, enregistres } = contexteGarde();
   await chrome.scripting.registerContentScripts([{ id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"] }]);
   enregistres.push(...(appels[0]![1][0] as { id: string }[]));
@@ -447,7 +447,7 @@ test("garde : getRegisteredContentScripts rend les fichiers de l'agent ; l'aller
   expect(appels[3]).toEqual(["scripting.updateContentScripts", [[{ id: "a", js: [...GARDES_PAGE, repere(3), repere(1)] }]]]);
 });
 
-test("garde : tabs.executeScript (MV2) passe d'abord les gardes de page dans les mêmes cadres ; un fichier hors de la table est refusé", async () => {
+test("guard: tabs.executeScript (MV2) first passes the page guards in the same frames; a file outside the table is refused", async () => {
   const { chrome, appels } = contexteGarde({ onglets: [4] });
   await chrome.tabs.executeScript(4, { file: "a.js", allFrames: true, runAt: "document_idle" });
   expect(appels).toEqual([
@@ -458,7 +458,7 @@ test("garde : tabs.executeScript (MV2) passe d'abord les gardes de page dans les
   expect(appels).toHaveLength(4);
 });
 
-test("garde : à la demande du contexte, le fond injecte les fichiers des repères (CSS puis JS, gardes en tête) dans le document exact de l'expéditeur, seulement si c'est un onglet", async () => {
+test("guard: on the context's request, the background injects the markers' files (CSS then JS, guards first) in the sender's exact document, only if it is a tab", async () => {
   const { chrome, appels, emettre } = contexteGarde({ nonOnglets: [6] });
   expect(await emettre({ webaios: "contexte", fichiers: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ onglet: true });
   const cible = { tabId: 4, documentIds: ["D"] };
@@ -466,11 +466,11 @@ test("garde : à la demande du contexte, le fond injecte les fichiers des repèr
     ["scripting.insertCSS", [{ target: cible, files: ["s.css"] }]],
     ["scripting.executeScript", [{ target: cible, files: [...GARDES_PAGE, "a.js", "c/d.js"], injectImmediately: true }]],
   ]);
-  // Sans documentId : le cadre de l'expéditeur.
+  // Without documentId: the sender's frame.
   appels.length = 0;
   expect(await emettre({ webaios: "contexte", fichiers: [0] }, { tab: { id: 4 }, frameId: 2 })).toEqual({ onglet: true });
   expect(appels).toEqual([["scripting.executeScript", [{ target: { tabId: 4, frameIds: [2] }, files: [...GARDES_PAGE, "a.js"], injectImmediately: true }]]]);
-  // Une lecture invisible, un repère inconnu, un indice qui n'est pas un nombre : rien n'est injecté.
+  // An invisible read, an unknown marker, an index that is not a number: nothing is injected.
   appels.length = 0;
   expect(await emettre({ webaios: "contexte", fichiers: [0, 3] }, { tab: { id: 6 }, frameId: 0, documentId: "I" })).toEqual({ onglet: false });
   expect(await emettre({ webaios: "contexte", fichiers: [99] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ onglet: false });
@@ -479,7 +479,7 @@ test("garde : à la demande du contexte, le fond injecte les fichiers des repèr
   expect(appels).toEqual([]);
 });
 
-test("garde : dans une page de l'agent (popup, options), le contexte n'est ni répondu ni injecté : seul le service worker le fait ; les écouteurs de l'agent ne le voient pas non plus", async () => {
+test("guard: in an agent page (popup, options), the context is neither answered nor injected: only the service worker does it; the agent's listeners do not see it either", async () => {
   const { chrome, appels, emettre } = contexteGarde({}, {}, { page: true });
   const vus: unknown[] = [];
   (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void vus.push(m));
@@ -489,9 +489,9 @@ test("garde : dans une page de l'agent (popup, options), le contexte n'est ni r�
   expect(vus).toEqual([]);
 });
 
-test("garde : un indice hors de la table (prototypes empoisonnés, négatif, fractionnaire) n'injecte jamais rien", async () => {
+test("guard: an index outside the table (poisoned prototypes, negative, fractional) never injects anything", async () => {
   const { ctx, appels, emettre } = contexteGarde();
-  // Dans le monde du garde : ce que `table[n]` lirait par la chaîne de prototypes pour un n hors de la table.
+  // In the guard's world: what `table[n]` would read through the prototype chain for an n outside the table.
   runInContext('const faux = { genre: "js", chemin: "hors-liste.js" }; ({}).__proto__[999] = faux; [].__proto__[5] = faux; ({}).__proto__["-1"] = faux; ({}).__proto__["1.5"] = faux;', ctx as object);
   for (const n of [999, 5, -1, 1.5]) {
     expect(await emettre({ webaios: "contexte", fichiers: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ onglet: false });
@@ -499,10 +499,10 @@ test("garde : un indice hors de la table (prototypes empoisonnés, négatif, fra
   expect(appels).toEqual([]);
 });
 
-test("garde : onMessage répond à { webaios: \"contexte\" } par estOnglet(sender.tab.id) ; les écouteurs de l'agent ne voient jamais ce message", async () => {
+test("guard: onMessage answers { webaios: \"contexte\" } with estOnglet(sender.tab.id); the agent's listeners never see that message", async () => {
   const { chrome, emettre } = contexteGarde({ nonOnglets: [6] });
   const vus: unknown[] = [];
-  // L'agent tente de répondre lui-même « onglet » à la place du garde.
+  // The agent tries to answer « onglet » itself in the guard's place.
   const agent = (m: unknown, _e: unknown, repondre: (x: unknown) => void) => {
     vus.push(m);
     repondre({ onglet: true });
@@ -513,7 +513,7 @@ test("garde : onMessage répond à { webaios: \"contexte\" } par estOnglet(sende
   expect(await emettre({ webaios: "contexte" }, { tab: { id: 6 } })).toEqual({ onglet: false });
   expect(await emettre({ webaios: "contexte" }, { tab: { id: 4 } })).toEqual({ onglet: true });
   expect(await emettre({ webaios: "contexte" }, {})).toEqual({ onglet: false });
-  // Par la méthode du prototype, prise à part : toujours enveloppé.
+  // Through the prototype's method, taken apart: always wrapped.
   const parProto = (m: unknown, _e: unknown, repondre: (x: unknown) => void) => {
     vus.push(m);
     repondre({ onglet: true });
@@ -527,6 +527,6 @@ test("garde : onMessage répond à { webaios: \"contexte\" } par estOnglet(sende
   expect(vus).toEqual([{ autre: 1 }]);
   onMessage.removeListener(agent);
   expect(onMessage.hasListener(agent)).toBe(false);
-  // Remplacé pour de bon.
+  // Truly replaced.
   expect(Object.getOwnPropertyDescriptor(chrome.runtime, "onMessage")?.writable).toBe(false);
 });
