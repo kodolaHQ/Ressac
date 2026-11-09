@@ -90,7 +90,7 @@ export async function move(ctx: Ctx, from: string, to: string): Promise<void> {
 
 /**
  * Rewrites `from` into `to` (same path or a new name) with `f`, atomically, then removes `from`. Absent: nothing
- * (done already). A link, an unreadable or unparsable file: left and listed.
+ * (done already). A link, an unreadable or unparsable file, or one `f` fails on: left and listed.
  */
 export async function rewrite(ctx: Ctx, from: string, to: string, f: (text: Buffer) => Buffer | string | Promise<Buffer | string>): Promise<boolean> {
   const k = await kind(from);
@@ -103,9 +103,9 @@ export async function rewrite(ctx: Ctx, from: string, to: string, f: (text: Buff
     mode = (await lstat(from)).mode & 0o777;
     text = await readNoFollow(from);
     out = await f(text);
-  } catch (e) {
-    if (e instanceof Unreadable || (e as NodeJS.ErrnoException).code !== undefined) return void ctx.unreadable.push(rel(ctx, from)), false;
-    throw e;
+  } catch {
+    // Unreadable, not JSON, or JSON of a shape no step expects (null, a string…): never overwritten.
+    return void ctx.unreadable.push(rel(ctx, from)), false;
   }
   if (from !== to || !text.equals(Buffer.from(out))) {
     await writeAtomic(to, out, mode);

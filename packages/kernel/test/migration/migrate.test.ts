@@ -338,6 +338,21 @@ describe("migrateKernel refuses", () => {
     }
   });
 
+  it("JSON files of an unexpected shape (null): listed and left, the rest migrated", async () => {
+    const { dataDir } = await oldDataDir();
+    writeFileSync(join(dataDir, "widgets/simple/memoire.json"), "null");
+    writeFileSync(join(dataDir, "extensions/etat.json"), "null");
+    writeFileSync(join(dataDir, "actions/resume/resultats/2026-11-02T10-00-00-000Z-essai.json"), "null");
+    expect((await migrateKernel({ dataDir, docker: fakeDocker(), now })).status).toBe("done");
+    expect(readFileSync(join(dataDir, "widgets/simple/memoire.json"), "utf8")).toBe("null");
+    expect(readFileSync(join(dataDir, "extensions/etat.json"), "utf8")).toBe("null");
+    expect(readFileSync(join(dataDir, "actions/resume/results/2026-11-02T10-00-00-000Z-essai.json"), "utf8")).toBe("null");
+    const report = readFileSync(join(dataDir, "migration-anglais.md"), "utf8");
+    for (const f of ["widgets/simple/memoire.json", "extensions/etat.json", "actions/resume/results/2026-11-02T10-00-00-000Z-essai.json"]) expect(report).toContain(`\`${f}\``);
+    expect(existsSync(join(dataDir, "workspace/home/widgets/veille/widget.json"))).toBe(true);
+    expect((await readMarker(dataDir)).kernel).toBe(2);
+  });
+
   it("a folder linked out of the data folder: never read nor written through", async () => {
     const { root, dataDir } = await oldDataDir();
     mkdirSync(join(root, "elsewhere"));
