@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type CatalogueBloc, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DroitDev, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/noyau";
-import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/noyau";
-import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/noyau";
+import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type CatalogueBloc, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DroitDev, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
+import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
+import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, LigneExtension, SpaceExtensionLine, LigneExtensionSite } from "./extensions";
 import type { ZoneGauche } from "./revelation";
-import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visite } from "./modele";
+import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visite } from "./model";
 
 const id = z.string().min(1);
 const engine = z.enum(["google", "duckduckgo", "qwant"]);

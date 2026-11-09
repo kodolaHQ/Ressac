@@ -2,9 +2,9 @@ import { originOf, SITE_PREFIX } from "../../core/agent/pont";
 
 /** An agent app window seen as a tab: `app:<dossier>`. */
 const APP_PREFIX = "app:";
-import { TabBuffer, stackText } from "../../core/outils-dev/tampon";
-import type { FirefoxSnapshot, CpuProfile } from "../../../../packages/noyau/src/outils-dev/resumes";
-import { TabNotFound, PrivateTab, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/noyau";
+import { TabBuffer, stackText } from "../../core/devtools/buffer";
+import type { FirefoxSnapshot, CpuProfile } from "../../../../packages/kernel/src/devtools/summaries";
+import { TabNotFound, PrivateTab, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/kernel";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 

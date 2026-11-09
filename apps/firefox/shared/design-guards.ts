@@ -1,6 +1,6 @@
 // The design guards, loadable under tsx and in the sidebar bundle (no value import): ID_PROJET lives in a kernel file
 // that needs node:crypto, raisonEchec in core/design/externes.ts needs node:fs. test/review-host.test.ts checks them.
-import type { DesignContext } from "../../../packages/noyau/src/design/remarques";
+import type { DesignContext } from "../../../packages/kernel/src/design/remarques";
 
 /** Copy of kernel's ID_PROJET. */
 export const ID_PROJECT = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;

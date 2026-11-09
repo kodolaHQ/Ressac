@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
+import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
 import { variablesTheme } from "../ui/theme";
 
 describe("variablesTheme", () => {

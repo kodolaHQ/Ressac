@@ -1,7 +1,7 @@
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
-import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type Cadre, type BrowserState, type WindowId, type TabId } from "../../shared/modele";
-import { toUrl } from "../../core/adresse";
-import { TabCycle } from "../../core/parcours-onglets";
+import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type Cadre, type BrowserState, type WindowId, type TabId } from "../../shared/model";
+import { toUrl } from "../../core/url";
+import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/raccourcis";
 import { zoneGauche, zoneSortie, type ZoneGauche } from "../../shared/revelation";
 import type { WebAiOsStore } from "../store";

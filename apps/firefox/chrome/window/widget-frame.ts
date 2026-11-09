@@ -1,4 +1,4 @@
-import { NETWORK_HINTS_PATTERN, containsNetworkHint } from "../../shared/indices-reseau";
+import { NETWORK_HINTS_PATTERN, containsNetworkHint } from "../../shared/network-hints";
 
 /**
  * The widgets' CSP: a resource:// file cannot carry a response header, so the CSP is

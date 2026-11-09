@@ -171,9 +171,9 @@ importers:
 
   apps/firefox:
     dependencies:
-      '@webaios/noyau':
+      '@webaios/kernel':
         specifier: workspace:*
-        version: link:../../packages/noyau
+        version: link:../../packages/kernel
     devDependencies:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
@@ -212,7 +212,7 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
-  packages/noyau:
+  packages/kernel:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2

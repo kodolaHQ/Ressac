@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DeclarationSite, type TweaksRead } from "../../../packages/noyau/src/index";
+import { DeclarationSite, type TweaksRead } from "../../../packages/kernel/src/index";
 import { HOME_BRIDGE } from "../chrome/store/site-home";
 import { displayServed } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";

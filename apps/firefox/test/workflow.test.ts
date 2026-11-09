@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { hasView, urlWorkflow, URL_APPLICATIONS, widgetDeUrlWorkflow } from "../shared/modele";
+import { hasView, urlWorkflow, URL_APPLICATIONS, widgetDeUrlWorkflow } from "../shared/model";
 
 test("urlWorkflow and widgetDeUrlWorkflow: round trip, nothing else", () => {
   expect(urlWorkflow("meteo")).toBe("webaios://workflow/meteo");

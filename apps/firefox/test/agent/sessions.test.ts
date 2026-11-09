@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { WorkshopError } from "@webaios/noyau";
+import { WorkshopError } from "@webaios/kernel";
 import { GROUPING_MS, SessionsAgent, TAMPON_MAX, Tampon, type SessionLike } from "../../core/agent/sessions";
 
 class FakeSession implements SessionLike {

@@ -3,7 +3,7 @@ import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { NO_WORKFLOW_OPEN } from "../../../packages/noyau/src/index";
+import { NO_WORKFLOW_OPEN } from "../../../packages/kernel/src/index";
 import { inWindow, newWindow, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";

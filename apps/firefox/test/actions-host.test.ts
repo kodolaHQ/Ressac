@@ -16,8 +16,8 @@ import {
   type ActionLaunch,
   type Noyau,
   type LaunchResult,
-} from "../../../packages/noyau/src/index";
-import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, trashAction } from "../noyau/actions";
+} from "../../../packages/kernel/src/index";
+import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, trashAction } from "../host/actions";
 import { SchemaAccord, SchemaIdAction, ActionInputSchema } from "../shared/api";
 
 const DEBUT = "2026-10-31T10:00:00.000Z";

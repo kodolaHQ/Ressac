@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { ActionShown } from "../shared/actions";
-import { normalize, suggestionsActions, SUGGESTIONS_MAX } from "../ui/composants/suggestions";
+import { normalize, suggestionsActions, SUGGESTIONS_MAX } from "../ui/components/suggestions";
 
 const action = (id: string, name: string, o: Partial<ActionShown> = {}): ActionShown => ({
   id,

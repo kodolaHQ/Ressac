@@ -6,7 +6,7 @@ import { connect, createServer as tcpServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { SPACE_FOLDER } from "../../../packages/noyau/src/design/externes";
+import { SPACE_FOLDER } from "../../../packages/kernel/src/design/externes";
 import { HOST_STOPPED } from "../chrome/agent/host";
 import { failureReason } from "../shared/design-guards";
 import { waitFor } from "./firefox";

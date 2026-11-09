@@ -1,6 +1,6 @@
-import { navigationOutsideSite, TabNotFound, PrivateTab, type DroitDev, type TabInfo, type OptionsLecturePage } from "../shims/noyau";
-import type { BrowserState, WindowId, Tab } from "../../shared/modele";
-import { privateTab, WORKFLOW_PREFIX } from "../../shared/modele";
+import { navigationOutsideSite, TabNotFound, PrivateTab, type DroitDev, type TabInfo, type OptionsLecturePage } from "../shims/kernel";
+import type { BrowserState, WindowId, Tab } from "../../shared/model";
+import { privateTab, WORKFLOW_PREFIX } from "../../shared/model";
 import { changementsPolitique, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";

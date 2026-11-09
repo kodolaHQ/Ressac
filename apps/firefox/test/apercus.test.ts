@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createGrouper } from "../core/onglets/regroupeur";
+import { createGrouper } from "../core/tabs/grouper";
 
 describe("regroupeur", () => {
   beforeEach(() => vi.useFakeTimers());

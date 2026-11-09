@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { rectCapture, viewfinderScript } from "../../core/design/viseur";
+import { rectCapture, viewfinderScript } from "../../core/design/viewfinder";
 import { dispatch, state, waitFor, waitReady } from "../firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "../launch";
 import type { Marionette } from "../marionette";

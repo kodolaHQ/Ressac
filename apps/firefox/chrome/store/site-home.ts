@@ -2,9 +2,9 @@
 // webaios-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
 import { IMAGE_SITE_MAX } from "../../shared/sites";
-import { localUrl } from "../../../../packages/noyau/src/workflows/acces";
-import { hostInSite } from "../../../../packages/noyau/src/sites/adresses";
-import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
+import { localUrl } from "../../../../packages/kernel/src/workflows/access";
+import { hostInSite } from "../../../../packages/kernel/src/sites/urls";
+import { ID_SITE } from "../../../../packages/kernel/src/sites/schemas";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 
 /** The largest file of a home screen. */

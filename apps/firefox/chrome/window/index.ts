@@ -28,7 +28,7 @@ declare global {
     readonly windowRoot: EventTarget;
     readonly mozInnerScreenX: number;
     /** In a popup: the WebAiOs tab it was opened from (setupPopup). */
-    webaiosPopupSource?: import("../../shared/modele").TabId;
+    webaiosPopupSource?: import("../../shared/model").TabId;
     webaiosWindow?: import("./controller").WindowController;
   }
 }

@@ -1,4 +1,4 @@
-import { historyContext, type TabId, type Visite } from "../../shared/modele";
+import { historyContext, type TabId, type Visite } from "../../shared/model";
 import { spacesBecamePrivate } from "../../core/agent/pont";
 import type { AgentHost } from "../agent/host";
 import type { Store } from "./store";

@@ -8,5 +8,5 @@
     "types": ["node"],
     "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
-  "include": ["test", "e2e", "ui", "chrome", "core", "shared", "noyau", "scripts", "*.ts"]
+  "include": ["test", "e2e", "ui", "chrome", "core", "shared", "host", "scripts", "*.ts"]
 }

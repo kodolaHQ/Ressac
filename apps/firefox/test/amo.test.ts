@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AMO_URL, SignatureError, SLOW_SIGNATURE, readAmoKey, signatureImpossible, deniedSignature, signer } from "../noyau/extensions/amo";
-import { addonIdDe, firefoxManifest, firefoxDenial, zipper } from "../noyau/extensions/copie-firefox";
-import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/noyau/src/index.ts";
+import { AMO_URL, SignatureError, SLOW_SIGNATURE, readAmoKey, signatureImpossible, deniedSignature, signer } from "../host/extensions/amo";
+import { addonIdDe, firefoxManifest, firefoxDenial, zipper } from "../host/extensions/firefox-copy";
+import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/kernel/src/index.ts";
 import { startFakeAmo } from "./fake-amo";
 
 const key = { emetteur: "user:1:abc", secret: "s3cr3t-do-not-leak" };

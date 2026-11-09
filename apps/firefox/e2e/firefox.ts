@@ -1,5 +1,5 @@
 import type { Action } from "../shared/api";
-import type { BrowserState } from "../shared/modele";
+import type { BrowserState } from "../shared/model";
 import type { Marionette } from "./marionette";
 import { pressKeys, waitUi } from "./ui";
 

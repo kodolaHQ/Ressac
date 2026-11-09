@@ -1,9 +1,9 @@
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import type { Action, ApiWebaios } from "../shared/api";
-import type { BrowserState, WindowId } from "../shared/modele";
+import type { BrowserState, WindowId } from "../shared/model";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WebAiOsStore } from "../chrome/store";
-import { readableProfiles, profilesForGrant } from "./accueil-profils";
+import { readableProfiles, profilesForGrant } from "./home-profiles";
 
 // The window half of the actions service: private spaces, dispatches, the pace of
 // links, the direct feed's filter and the grant profiles. The disk and kernel half is the host's (noyau/actions.ts).

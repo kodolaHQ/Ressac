@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { spacePaths } from "../../../packages/noyau/src/index";
-import * as copy from "../noyau/workflow";
+import { spacePaths } from "../../../packages/kernel/src/index";
+import * as copy from "../host/workflow";
 import { SchemaCodeWorkflow } from "../shared/api";
-import { readCode, readEdition, saveCode, saveEdition, workflowOpen, WriteQueue } from "../noyau/workflow";
+import { readCode, readEdition, saveCode, saveEdition, workflowOpen, WriteQueue } from "../host/workflow";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -114,7 +114,7 @@ describe("fenetres.actives mirror", () => {
   it("sends only workflow URLs, on start and on each active-tab change", async () => {
     // bridge.ts loads invisible.ts, which asks ChromeUtils for a Firefox module at load time.
     (globalThis as { ChromeUtils?: unknown }).ChromeUtils ??= { importESModule: () => ({}) };
-    const { initialState: initialState } = await import("../core/etat/etat-initial");
+    const { initialState: initialState } = await import("../core/state/initial-state");
     const { createStore } = await import("../chrome/store/store");
     const { sendMirror, trackState } = await import("../chrome/agent/bridge");
     const store = createStore(initialState());

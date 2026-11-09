@@ -1,12 +1,12 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { ActionsState, PageAction, ResumeExecution } from "@webaios/noyau";
+  import type { ActionsState, PageAction, ResumeExecution } from "@webaios/kernel";
   import { ACTION_UNKNOWN, NO_RESULT, RESULT_GONE, type ActionShown } from "../../shared/actions";
-  import AccountGrantCard from "../composants/CarteAccordCompte.svelte";
-  import { api } from "../etat.svelte";
-  import ActionProgress from "./AvancementAction.svelte";
+  import AccountGrantCard from "../components/AccountGrantCard.svelte";
+  import { api } from "../state.svelte";
+  import ActionProgress from "./ActionProgress.svelte";
   import EnTeteAction from "./EnTeteAction.svelte";
-  import PageRender from "./RenduPage.svelte";
+  import PageRender from "./PageRender.svelte";
 
   /**
    * The page `webaios://action/<id>[/<run>]`: the requested result (the latest without `execution`), the progress of a

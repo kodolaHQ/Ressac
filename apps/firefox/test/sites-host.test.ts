@@ -2,15 +2,15 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { accorderSite, spacePaths, DeclarationSite, lireAccordsSites, SiteMemory } from "../../../packages/noyau/src/index";
+import { accorderSite, spacePaths, DeclarationSite, lireAccordsSites, SiteMemory } from "../../../packages/kernel/src/index";
 import { editWithAgent } from "../shared/sites";
-import { createSites, grantRequest, rightsHash, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
+import { createSites, grantRequest, rightsHash, SiteSouvenirs, type SitesChrome } from "../host/sites";
 import { SchemaActionSite } from "../shared/api";
 
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).
 const gate: { armed: boolean; reached: (() => void) | null; open: (() => void) | null } = { armed: false, reached: null, open: null };
-vi.mock("../../../packages/noyau/src/index", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../../../packages/noyau/src/index")>();
+vi.mock("../../../packages/kernel/src/index", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../packages/kernel/src/index")>();
   return {
     ...real,
     lireSite: async (...a: Parameters<typeof real.lireSite>) => {

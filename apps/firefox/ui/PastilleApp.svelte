@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { DesignState } from "../shared/api";
-  import { access, accessOf } from "./acces.svelte";
-  import AccessBadge from "./composants/PastilleAcces.svelte";
+  import { access, accessOf } from "./access.svelte";
+  import AccessBadge from "./components/AccessBadge.svelte";
 
   /** `app:<folder>`: the only id whose access this view shows. */
   let { id }: { id: string } = $props();

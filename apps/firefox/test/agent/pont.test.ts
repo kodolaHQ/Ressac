@@ -1,8 +1,8 @@
 import { expect, test, vi } from "vitest";
-import { apply } from "../../core/etat/actions";
-import { initialState } from "../../core/etat/etat-initial";
+import { apply } from "../../core/state/actions";
+import { initialState } from "../../core/state/initial-state";
 import type { Action } from "../../shared/api";
-import { siteDe, type BrowserState } from "../../shared/modele";
+import { siteDe, type BrowserState } from "../../shared/model";
 import { waitForRights, waitForResponse, changementsPolitique, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace } from "../../core/agent/pont";
 
 /** Sets a space's private flag, leaving the rest untouched. */

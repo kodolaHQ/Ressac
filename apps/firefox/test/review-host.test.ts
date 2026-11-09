@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SITE_CAPTURE_WARNING, HTML_MAX, PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, Remarques, TRUNCATED, type SpacePaths, type Lot, type TrackedProject } from "../../../packages/noyau/src/index";
-import { RANGE_OUTSIDE_BLOCK } from "../shared/modele";
-import { UNKNOWN_COMPARISON, ReviewService } from "../noyau/review";
+import { SITE_CAPTURE_WARNING, HTML_MAX, PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, Remarques, TRUNCATED, type SpacePaths, type Lot, type TrackedProject } from "../../../packages/kernel/src/index";
+import { RANGE_OUTSIDE_BLOCK } from "../shared/model";
+import { UNKNOWN_COMPARISON, ReviewService } from "../host/review";
 import * as g from "../shared/design-guards";
 
 const dirs: string[] = [];

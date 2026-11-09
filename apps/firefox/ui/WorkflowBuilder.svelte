@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { Owner } from "../../../packages/noyau/src/index";
-  import Builder from "../ui/constructeur/Constructeur.svelte";
-  import { followDisappearances } from "../ui/constructeur/edition.svelte";
-  import { api } from "../ui/etat.svelte";
+  import type { Owner } from "../../../packages/kernel/src/index";
+  import Builder from "./builder/Builder.svelte";
+  import { followDisappearances } from "./builder/edition.svelte";
+  import { api } from "./state.svelte";
   import { homeListForBuilder } from "./builder";
 
   // The builder page. Its own suivreDisparitions(api.accueil) comes second and is ignored (first call wins): the

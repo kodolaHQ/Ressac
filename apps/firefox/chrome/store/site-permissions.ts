@@ -1,5 +1,5 @@
-import type { Decision, WindowId, TabId, ProfileId, Issue, Permission } from "../../shared/modele";
-import { DEFAULT_PROFILE } from "../../shared/modele";
+import type { Decision, WindowId, TabId, ProfileId, Issue, Permission } from "../../shared/model";
+import { DEFAULT_PROFILE } from "../../shared/model";
 
 export type SitePermission = Permission | "partage-ecran" | "drm" | "midi";
 

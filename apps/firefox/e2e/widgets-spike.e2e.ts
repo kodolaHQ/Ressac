@@ -5,8 +5,8 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } f
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { readHome } from "../../../packages/noyau/src/accueil/lire";
-import { spacePaths } from "../../../packages/noyau/src/chemins";
+import { readHome } from "../../../packages/kernel/src/home/lire";
+import { spacePaths } from "../../../packages/kernel/src/paths";
 import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { FAKE_TOOLS, launchWebAiOs, type LaunchedWebAiOs } from "./launch";

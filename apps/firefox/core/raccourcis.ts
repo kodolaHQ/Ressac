@@ -1,5 +1,5 @@
 import type { Action } from "../shared/api";
-import type { BrowserState, WindowId } from "../shared/modele";
+import type { BrowserState, WindowId } from "../shared/model";
 
 type Element = { favori: string } | { onglet: string };
 

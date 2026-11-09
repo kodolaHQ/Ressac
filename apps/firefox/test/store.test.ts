@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { initialState } from "../core/etat/etat-initial";
+import { initialState } from "../core/state/initial-state";
 import { createStore } from "../chrome/store/store";
 
 describe("createStore", () => {

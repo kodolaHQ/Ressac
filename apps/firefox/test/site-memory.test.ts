@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
-import { KEY_INVALID, SiteMemory, VALEUR_NON_JSON } from "../../../packages/noyau/src/index";
-import { createPositions, memoryOp, MEMORY_DENIAL } from "../noyau/site-memory";
+import { KEY_INVALID, SiteMemory, VALEUR_NON_JSON } from "../../../packages/kernel/src/index";
+import { createPositions, memoryOp, MEMORY_DENIAL } from "../host/site-memory";
 
 // The site memory, on the host's memoireOp: the sender checks
 // (sub-frame, sign-in window, page off the site, no grant) are the chrome's, in site-frames.test.ts.

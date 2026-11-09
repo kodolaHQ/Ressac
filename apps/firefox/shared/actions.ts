@@ -1,4 +1,4 @@
-import type { Execution } from "@webaios/noyau";
+import type { Execution } from "@webaios/kernel";
 
 /** The actions: UI messages, addresses of the images and components (also read by the UI). */
 export const ACTIONS_IN_PRIVATE_SPACE = "Les actions ne sont pas disponibles dans un espace privé";

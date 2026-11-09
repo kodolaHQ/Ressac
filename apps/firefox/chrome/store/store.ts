@@ -1,6 +1,6 @@
 import type { Action } from "../../shared/api";
-import type { BrowserState } from "../../shared/modele";
-import { apply } from "../../core/etat/actions";
+import type { BrowserState } from "../../shared/model";
+import { apply } from "../../core/state/actions";
 
 export type Listener = (state: BrowserState, previous: BrowserState) => void;
 

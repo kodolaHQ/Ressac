@@ -1,5 +1,5 @@
-import type { DroitDev, TabInfo } from "@webaios/noyau";
-import { privateTab, type Decision, type PendingRequest, type Issue, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/modele";
+import type { DroitDev, TabInfo } from "@webaios/kernel";
+import { privateTab, type Decision, type PendingRequest, type Issue, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
   id: o.id,

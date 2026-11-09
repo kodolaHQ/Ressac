@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { accorderSite, DeclarationSite } from "../../../packages/noyau/src/index";
+import { accorderSite, DeclarationSite } from "../../../packages/kernel/src/index";
 import type { Marionette } from "./marionette";
 
 // Site app helpers.

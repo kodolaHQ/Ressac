@@ -1,6 +1,6 @@
-import type { DroitDev, TabInfo } from "../shims/noyau";
+import type { DroitDev, TabInfo } from "../shims/kernel";
 import type { CarteExtension, GrantResponse } from "../../shared/extensions";
-import type { Decision, PendingRequest, WindowId, TabId, Issue, Permission } from "../../shared/modele";
+import type { Decision, PendingRequest, WindowId, TabId, Issue, Permission } from "../../shared/model";
 import { SCHEMA_SITE } from "../../shared/sites";
 import { waitForRights, waitForOutcome, waitForResponse, QUESTION_DELAY_MS, allowedDecision, activeTabOf, originOf, staleQuestion, staleSiteQuestion } from "../../core/agent/pont";
 import type { SitePermission } from "../store/site-permissions";

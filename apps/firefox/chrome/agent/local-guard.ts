@@ -1,5 +1,5 @@
 import { isIP } from "../shims/net";
-import { localUrl } from "../shims/noyau";
+import { localUrl } from "../shims/kernel";
 
 const TEST_PUBLIC = "WEBAIOS_TEST_ADRESSES_PUBLIQUES";
 

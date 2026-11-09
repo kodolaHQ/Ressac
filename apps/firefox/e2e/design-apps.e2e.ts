@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { reviewUrl } from "../shared/modele";
+import { reviewUrl } from "../shared/model";
 import { testActor } from "./agent-extensions";
 import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, rowMenu, rowState, writeProject } from "./apps";
 import { startDesignServers, trustedMouse } from "./design";

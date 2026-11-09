@@ -1,6 +1,6 @@
 import type { Action } from "../../shared/api";
-import type { BrowserState, WindowId, TabId, Tab } from "../../shared/modele";
-import { hasView, tabProfile } from "../../shared/modele";
+import type { BrowserState, WindowId, TabId, Tab } from "../../shared/model";
+import { hasView, tabProfile } from "../../shared/model";
 import type { WebAiOsStore } from "../store";
 
 export const TAB_ID = "webaios-tab-id";

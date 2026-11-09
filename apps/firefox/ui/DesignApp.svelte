@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { OverlayApi, OverlayContext } from "../shared/api";
-  import DesignBasket from "./composants/PanierDesign.svelte";
+  import DesignBasket from "./components/DesignBasket.svelte";
 
   const api = window.webaios as unknown as OverlayApi;
   let context = $state<OverlayContext | null>(null);

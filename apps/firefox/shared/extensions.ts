@@ -1,4 +1,4 @@
-import type { SourceExtension } from "@webaios/noyau";
+import type { SourceExtension } from "@webaios/kernel";
 
 // In a module with no dependency on the kernel: the UI imports them (the kernel does not enter its bundle).
 export {

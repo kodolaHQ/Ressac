@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Execution, ResumeExecution } from "@webaios/noyau";
+  import type { Execution, ResumeExecution } from "@webaios/kernel";
 
   /**
    * An action page's header: its name, its input, « Relancer » (« Lancer » when there is no result yet), « Voir le

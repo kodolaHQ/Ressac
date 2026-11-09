@@ -1,5 +1,5 @@
-import type { BrowserState, WindowId, TabId } from "../shared/modele";
-import { walkableTabs } from "../shared/onglets-parcourables";
+import type { BrowserState, WindowId, TabId } from "../shared/model";
+import { walkableTabs } from "../shared/walkable-tabs";
 
 /** The active tab first, then the history (most recent first) restricted to the cycle-able tabs, then the rest. */
 export function recentOrder(state: BrowserState, windowId: WindowId, hist: readonly TabId[]): TabId[] {

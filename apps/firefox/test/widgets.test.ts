@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_WIDGET_STATE, type DeclarationWidget, type HomeState, type WidgetLu } from "../../../packages/noyau/src/index";
-import { validatePlacements, toShownWidgets } from "../noyau/widgets";
+import { DEFAULT_WIDGET_STATE, type DeclarationWidget, type HomeState, type WidgetLu } from "../../../packages/kernel/src/index";
+import { validatePlacements, toShownWidgets } from "../host/widgets";
 
 const declaration = (o: Partial<DeclarationWidget> = {}): DeclarationWidget => ({
   nom: "Démo",

@@ -1,13 +1,13 @@
 // What goes into each frame of a site app's view (core/sites/injection.ts): decided from
 // the frame's WindowGlobalParent (its document's address, whether it is the view's main frame, the view's page), never
 // from what the frame says. Also the tweaks' console and the memory relay to the host.
-import type { TweaksRead } from "../../../../packages/noyau/src/sites/lire";
-import { relativeUrl } from "../../../../packages/noyau/src/sites/adresses";
-import GUARD from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
+import type { TweaksRead } from "../../../../packages/kernel/src/sites/lire";
+import { relativeUrl } from "../../../../packages/kernel/src/sites/urls";
+import GUARD from "../../../../packages/kernel/extensions/webaios-garde-page.js?raw";
 import { tweakSource, type InjectionCadre } from "../../shared/sites";
 import { addTweakConsole, injectionPour, repriseDansCadre, type TweakError, type MemoryResponse } from "../../core/sites/injection";
-import { MEMORY_DENIAL } from "../../noyau/site-memory";
-import type { SiteChrome } from "../../noyau/sites";
+import { MEMORY_DENIAL } from "../../host/site-memory";
+import type { SiteChrome } from "../../host/sites";
 
 /** What these decisions need of an open app (store/sites.ts OpenSite). */
 export interface FrameSite {

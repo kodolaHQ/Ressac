@@ -1,14 +1,14 @@
 import type { ShownSite } from "../shared/sites";
 import type { ApiWebaios, AgentPanelState, ApplicationList, ExtensionResult, ShownWidget } from "../shared/api";
 import type { LigneExtension, SpaceExtensionLine } from "../shared/extensions";
-import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme.ts";
-import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas.ts";
-import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
+import type { HomeTheme } from "../../../packages/kernel/src/home/theme.ts";
+import type { FreePlacement } from "../../../packages/kernel/src/home/schemas.ts";
+import type { Execution, ResumeExecution } from "../../../packages/kernel/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
 import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
 import { forgetWidget, preparerWidget } from "../chrome/window/widget-frame";
-import { readableProfiles, profilesForGrant, openableUrl } from "./accueil-profils";
+import { readableProfiles, profilesForGrant, openableUrl } from "./home-profiles";
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import { createActionsApi, activeSpacePrivate, type ActionsFirefox } from "./actions-api";
 import { createDesignApi, createExternesApi, createReviewApi } from "./design-api";

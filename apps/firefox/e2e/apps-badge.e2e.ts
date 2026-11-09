@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { reviewUrl } from "../shared/modele";
+import { reviewUrl } from "../shared/model";
 import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchAttempt, rowButton, rowMenuItems, writeProject, type AppsPage } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs } from "./launch";

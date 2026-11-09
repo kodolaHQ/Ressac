@@ -1,5 +1,5 @@
 import type { Action, ApiDesign, ApiWebaios, ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api";
-import type { WindowId } from "../shared/modele";
+import type { WindowId } from "../shared/model";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WindowController } from "../chrome/window/controller";
 import {

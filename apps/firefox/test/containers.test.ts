@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROFILE } from "../shared/modele";
-import { apply } from "../core/etat/actions";
-import { initialState } from "../core/etat/etat-initial";
-import { validFolder as noyau } from "../../../packages/noyau/src/applications/manifeste";
+import { DEFAULT_PROFILE } from "../shared/model";
+import { apply } from "../core/state/actions";
+import { initialState } from "../core/state/initial-state";
+import { validFolder as noyau } from "../../../packages/kernel/src/applications/manifest";
 import { validFolder } from "../chrome/store/app-folder";
 
 // A login profile's container is `webaios-<id>`, a site app's `webaios-site-<id>`, an agent app's `webaios-app-<dossier>`:
@@ -20,6 +20,6 @@ describe("container names", () => {
 
 it("the chrome's dossierValide is the kernel's", () => {
   for (const d of ["essai", "My-app_2.0", "a", "", ".", "..", ".cache", "-x", "a b", "a/b", "a\\b", "é", "a;b", "a$(x)", "__proto__"]) expect(validFolder(d), d).toBe(noyau(d));
-  const source = readFileSync(new URL("../../../packages/noyau/src/applications/manifeste.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../../packages/kernel/src/applications/manifest.ts", import.meta.url), "utf8");
   expect(source).toContain("const FOLDER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;");
 });

@@ -15,7 +15,7 @@ import { writeWidget } from "./workflows";
 // saved pages), a fake Kev and a fake Ollama. No real notification: test mode writes them to a file in the data folder.
 // Plus the click on a notification.
 
-const FIXTURES_DDG = path.resolve(import.meta.dirname, "../../../packages/noyau/test/workflows/fixtures/duckduckgo");
+const FIXTURES_DDG = path.resolve(import.meta.dirname, "../../../packages/kernel/test/workflows/fixtures/duckduckgo");
 /** The kernel's exact message (accueil/schemas.ts, WEB_AVEC_COMPTE). */
 const WEB_WITH_ACCOUNT = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 

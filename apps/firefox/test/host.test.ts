@@ -5,18 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/noyau/src/index";
-import { PRIVATE_TEXT } from "../../../packages/noyau/src/mcp/pont";
+import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/kernel/src/index";
+import { PRIVATE_TEXT } from "../../../packages/kernel/src/mcp/pont";
 import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
-import { installationImpossible, NOTHING_TO_REVIEW } from "../noyau/extensions/agent";
-import { KEYS_ABSENT, deniedSignature } from "../noyau/extensions/amo";
+import { installationImpossible, NOTHING_TO_REVIEW } from "../host/extensions/agent";
+import { KEYS_ABSENT, deniedSignature } from "../host/extensions/amo";
 import type { CarteExtension, GrantResponse } from "../shared/extensions";
 import { startFakeAmo } from "./fake-amo";
 import { callMcpTool } from "./mcp";
 
-const tools = join(import.meta.dirname, "outils");
+const tools = join(import.meta.dirname, "tools");
 const tabs = [
   { id: "t1", titre: "Un", url: "https://un.test/", espace: "Perso" },
   { id: "t2", titre: "Deux", url: "https://deux.test/", espace: "Perso" },
@@ -1166,7 +1166,7 @@ createServer((req, res) => {
   });
 
   it("plageDePorts, the app tab and SchemaActionApplication", async () => {
-    const { plageDePorts, appTab } = await import("../noyau/applications");
+    const { plageDePorts, appTab } = await import("../host/applications");
     const { SchemaActionApplication } = await import("../shared/api");
     expect(plageDePorts("15280-15284")).toEqual([15280, 15284]);
     expect(appTab({ dossier: "essai", titre: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", titre: "T", url: "http://localhost:15280/", espace: "", application: "essai" });

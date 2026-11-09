@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { BrowserState, Tab } from "../shared/modele";
+import type { BrowserState, Tab } from "../shared/model";
 import { button, cleanupXpis, installAddon, options, probe, uninstallAddon } from "./addons";
 import { dispatch, inWindow, newWindow, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";

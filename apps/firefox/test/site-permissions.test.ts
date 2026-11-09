@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import type { Issue } from "../shared/modele";
+import type { Issue } from "../shared/model";
 import { createSitePermissions, type SitePermission } from "../chrome/store/site-permissions";
 
 const DIR = "/data";

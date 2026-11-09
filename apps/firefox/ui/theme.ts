@@ -1,4 +1,4 @@
-import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
+import type { HomeTheme } from "../../../packages/kernel/src/home/theme";
 
 // The theme validated by the kernel becomes CSS variables on the home root; when absent, home keeps the
 // application's variables (and follows light/dark mode). A color is re-checked here: nothing but a

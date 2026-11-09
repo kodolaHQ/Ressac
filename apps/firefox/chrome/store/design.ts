@@ -4,11 +4,11 @@
 // a second arm may leave the first pending (never armed twice, stale answers dropped by generation), and its stop may
 // throw or hang (timed out, then the top window is unguarded).
 import type { OverlayApi, OverlayContext, ShownElement, DesignState, BatchShown, ExtensionResult } from "../../shared/api";
-import type { WindowId } from "../../shared/modele";
+import type { WindowId } from "../../shared/model";
 import { SITE_BAR_HEIGHT } from "../../shared/sites";
-import type { DesignContext } from "../../../../packages/noyau/src/design/remarques";
-import { chooseDesignTarget } from "../../core/design/premier-plan";
-import type { DesignTracking } from "../../noyau/design";
+import type { DesignContext } from "../../../../packages/kernel/src/design/remarques";
+import { chooseDesignTarget } from "../../core/design/foreground";
+import type { DesignTracking } from "../../host/design";
 import { CAPTURE_WARNING_SITE, DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN, UNAVAILABLE_DESIGN_SITE } from "../../shared/design-guards";
 import type { AgentHost } from "../agent/host";
 import type { apps as Apps } from "./apps";

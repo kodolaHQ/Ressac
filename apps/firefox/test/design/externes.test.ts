@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarques } from "@webaios/noyau";
+import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarques } from "@webaios/kernel";
 import { startExternals } from "../../core/design/externes";
 
 const dossiers: string[] = [];

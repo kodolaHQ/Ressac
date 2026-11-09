@@ -13,7 +13,7 @@ import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { click, inUi, pressKeys, waitUi } from "./ui";
-import { TEXT_CUT, SITE_CHANGED_TEXT } from "../../../packages/noyau/src/mcp/outils-dev";
+import { TEXT_CUT, SITE_CHANGED_TEXT } from "../../../packages/kernel/src/mcp/devtools";
 
 // Which one the kernel answers depends on whether the new page committed before it read the tab list.
 const CUT_BY_OWN_NAVIGATION = [TEXT_CUT, SITE_CHANGED_TEXT];

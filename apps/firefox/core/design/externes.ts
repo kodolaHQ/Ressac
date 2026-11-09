@@ -12,7 +12,7 @@ import {
   type ExternalRegistry,
   type Remarques,
   type DeclarationResult,
-} from "@webaios/noyau";
+} from "@webaios/kernel";
 import type { ExternalsState } from "../../shared/api";
 
 const DEFAULT_NAME = "Claude Code";

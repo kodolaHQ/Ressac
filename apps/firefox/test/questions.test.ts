@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { initialState } from "../core/etat/etat-initial";
+import { initialState } from "../core/state/initial-state";
 import { Questions } from "../chrome/agent/questions";
 import { createStore } from "../chrome/store/store";
 

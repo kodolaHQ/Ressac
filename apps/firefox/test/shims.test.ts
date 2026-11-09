@@ -51,10 +51,10 @@ describe("node:url shim", () => {
   });
 });
 
-describe("@webaios/noyau shim: what viseur.ts imports", () => {
+describe("@webaios/kernel shim: what viseur.ts imports", () => {
   it("drift: HTML_MAX, MARGE_CAPTURE, VIEWFINDER_WORLD, STYLES_UTILES, TRUNCATED and truncateHtml match design/remarques.ts", async () => {
-    const shim = await import("../chrome/shims/noyau");
-    const real = await import("../../../packages/noyau/src/design/remarques");
+    const shim = await import("../chrome/shims/kernel");
+    const real = await import("../../../packages/kernel/src/design/remarques");
     for (const k of ["HTML_MAX", "MARGE_CAPTURE", "VIEWFINDER_WORLD", "STYLES_UTILES", "TRUNCATED"] as const) expect(shim[k], k).toEqual(real[k]);
     for (const h of ["", "a".repeat(4096), "b".repeat(4097)]) expect(shim.truncateHtml(h)).toBe(real.truncateHtml(h));
   });

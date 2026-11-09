@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { WindowState } from "../shared/modele";
-  import { api } from "../ui/etat.svelte";
+  import type { WindowState } from "../shared/model";
+  import { api } from "./state.svelte";
   import type { AddonButton, PendingUpdate } from "../chrome/window/addons";
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.

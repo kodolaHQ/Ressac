@@ -1,4 +1,4 @@
-import { BORD_REVELATION, BAR_WIDTH, BAR_MARGIN, SORTIE_GAUCHE } from "./modele";
+import { BORD_REVELATION, BAR_WIDTH, BAR_MARGIN, SORTIE_GAUCHE } from "./model";
 
 /**
  * Compact mode: where the mouse is relative to the window's left edge. « bord » reveals the bar, « barre »

@@ -1,6 +1,6 @@
-import type { ProfileId } from "../../shared/modele";
-import { accumulateParts, HTML_MAX, readableProfiles, allowedUrl } from "../../core/agent/lecture-invisible";
-import { ProfileDenied, type OptionsLecturePage, type PageLue } from "../shims/noyau";
+import type { ProfileId } from "../../shared/model";
+import { accumulateParts, HTML_MAX, readableProfiles, allowedUrl } from "../../core/agent/invisible-read";
+import { ProfileDenied, type OptionsLecturePage, type PageLue } from "../shims/kernel";
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";
 import { guardContainer, localLiteral, watchReading } from "./local-guard";

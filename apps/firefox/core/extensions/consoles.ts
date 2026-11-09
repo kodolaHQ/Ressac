@@ -1,4 +1,4 @@
-import type { ConsolePourAgent, MessageConsole } from "@webaios/noyau";
+import type { ConsolePourAgent, MessageConsole } from "@webaios/kernel";
 
 /** Messages kept per extension: the oldest drop. */
 export const CONSOLE_MAX = 500;

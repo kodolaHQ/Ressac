@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { grantCovers, grantNeeded, DeclarationSite, type TweaksRead } from "@webaios/noyau";
+import { grantCovers, grantNeeded, DeclarationSite, type TweaksRead } from "@webaios/kernel";
 import { CONSOLE_TWEAKS_TOTAL, type InjectionCadre } from "../../shared/sites";
 import { addTweakConsole, injectionPour, repriseDansCadre, type OpenableSite } from "../../core/sites/injection";
 

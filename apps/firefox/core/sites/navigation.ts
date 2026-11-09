@@ -1,4 +1,4 @@
-import { localUrl, hostInSite } from "@webaios/noyau";
+import { localUrl, hostInSite } from "@webaios/kernel";
 
 /**
  * Effective domains of the app, and those of its login (OAuth…). `adressesLocales` (tests only,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TabNotFound } from "../../../packages/noyau/src/mcp/pont";
+import { TabNotFound } from "../../../packages/kernel/src/mcp/pont";
 import { createRpc, type Handler } from "../shared/rpc";
 
 /** Two RPC ends wired in memory; messages are delivered on a later microtask, like a pipe. */

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { MemoryEntry, PositionVideo } from "@webaios/noyau";
+import type { MemoryEntry, PositionVideo } from "@webaios/kernel";
 
 /** Messages and types of a site app's window, also read by the UI (`site.html`, Applications page). */
 

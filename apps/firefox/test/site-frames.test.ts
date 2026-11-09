@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { DeclarationSite, type TweaksRead } from "../../../packages/noyau/src/index";
+import { DeclarationSite, type TweaksRead } from "../../../packages/kernel/src/index";
 import { CONSOLE_TWEAKS_TOTAL, MAX_TWEAK_ERRORS, type InjectionCadre } from "../shared/sites";
 import type { TweakError } from "../core/sites/injection";
-import { MEMORY_DENIAL } from "../noyau/site-memory";
-import type { SiteChrome } from "../noyau/sites";
+import { MEMORY_DENIAL } from "../host/site-memory";
+import type { SiteChrome } from "../host/sites";
 
 const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
 

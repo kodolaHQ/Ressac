@@ -2,7 +2,7 @@
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
 import type { DesignState } from "../../shared/api";
-import type { Cadre, AccessState } from "../../shared/modele";
+import type { Cadre, AccessState } from "../../shared/model";
 import { validFolder } from "./app-folder";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";

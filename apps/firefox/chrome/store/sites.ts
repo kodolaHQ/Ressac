@@ -2,15 +2,15 @@
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows.
 import type { DesignState } from "../../shared/api";
-import type { Cadre } from "../../shared/modele";
+import type { Cadre } from "../../shared/model";
 import { INFO_NOTICE_DURATION_MS, HOME_OPEN_GAP_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
 import type { TweakError } from "../../core/sites/injection";
 import { decisionNavigation, openDecision, type NavigationContext } from "../../core/sites/navigation";
-import { relativeUrl, urlOnDomain, hostInSite } from "../../../../packages/noyau/src/sites/adresses";
-import type { TweaksRead } from "../../../../packages/noyau/src/sites/lire";
-import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
-import type { SiteChrome } from "../../noyau/sites";
-import { gestureGuard } from "../../shared/geste-widget";
+import { relativeUrl, urlOnDomain, hostInSite } from "../../../../packages/kernel/src/sites/urls";
+import type { TweaksRead } from "../../../../packages/kernel/src/sites/lire";
+import { ID_SITE } from "../../../../packages/kernel/src/sites/schemas";
+import type { SiteChrome } from "../../host/sites";
+import { gestureGuard } from "../../shared/widget-gesture";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";
 import { apps } from "./apps";

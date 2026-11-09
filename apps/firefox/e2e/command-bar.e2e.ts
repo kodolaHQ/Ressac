@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { BrowserState } from "../shared/modele";
+import type { BrowserState } from "../shared/model";
 import { dispatch, state, waitFor } from "./firefox";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";

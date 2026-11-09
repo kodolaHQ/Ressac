@@ -15,7 +15,7 @@
     "ui": "zsh scripts/ui.sh"
   },
   "dependencies": {
-    "@webaios/noyau": "workspace:*"
+    "@webaios/kernel": "workspace:*"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

@@ -1,10 +1,10 @@
 <script lang="ts">
   // The agent panel of the window, in its own iframe.
   import { untrack } from "svelte";
-  import AgentPanel from "../ui/composants/PanneauAgent.svelte";
-  import { focusAgent } from "../ui/composants/agent.svelte";
-  import { api, appState, currentWindow } from "../ui/etat.svelte";
-  import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN } from "../shared/modele";
+  import AgentPanel from "./components/AgentPanel.svelte";
+  import { focusAgent } from "./components/agent.svelte";
+  import { api, appState, currentWindow } from "./state.svelte";
+  import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN } from "../shared/model";
 
   const win = window.parent.webaiosWindow!;
   const winState = $derived(currentWindow());

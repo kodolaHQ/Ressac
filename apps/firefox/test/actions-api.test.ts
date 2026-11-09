@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import type { Action } from "../shared/api";
-import type { BrowserState } from "../shared/modele";
-import { apply } from "../core/etat/actions";
-import { initialState } from "../core/etat/etat-initial";
+import type { BrowserState } from "../shared/model";
+import { apply } from "../core/state/actions";
+import { initialState } from "../core/state/initial-state";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import { createActionsApi, activeSpacePrivate } from "../ui/actions-api";
 

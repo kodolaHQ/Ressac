@@ -1,4 +1,4 @@
-import type { WindowId, TabId, ProfileId } from "../../shared/modele";
+import type { WindowId, TabId, ProfileId } from "../../shared/model";
 import type { SitePermissions, SiteRequest } from "./site-permissions";
 
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");

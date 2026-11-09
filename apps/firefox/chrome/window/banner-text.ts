@@ -1,4 +1,4 @@
-import { siteDe } from "../../shared/modele";
+import { siteDe } from "../../shared/model";
 import type { SitePermission } from "../store/site-permissions";
 
 /** The permission names the banner shows, plus the three kinds of WebAiOs-Firefox. */

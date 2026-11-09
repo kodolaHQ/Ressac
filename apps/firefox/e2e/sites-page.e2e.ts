@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { SITE_INCONNU, SITE_REFUSE } from "../../../packages/noyau/src/mcp/serveur";
+import { SITE_INCONNU, SITE_REFUSE } from "../../../packages/kernel/src/mcp/server";
 import { testActor } from "./agent-extensions";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";

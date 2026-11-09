@@ -1,4 +1,4 @@
-import type { PendingRequest, WindowId } from "../../shared/modele";
+import type { PendingRequest, WindowId } from "../../shared/model";
 import type { WebAiOsStore } from "../store";
 import type { SitePermission } from "../store/site-permissions";
 import { bannerText } from "./banner-text";

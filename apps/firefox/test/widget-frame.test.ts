@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ShownWidget } from "../shared/api";
 import { DISPLAY_DENIED, CSP_WIDGET, displayServed, copyPath, forgetWidget, preparerWidget, displayUrl } from "../chrome/window/widget-frame";
-import { NETWORK_HINTS_PATTERN } from "../shared/indices-reseau";
+import { NETWORK_HINTS_PATTERN } from "../shared/network-hints";
 import { serveDisplays } from "../ui/api";
 
 let root: string;

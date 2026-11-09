@@ -2,11 +2,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spacePaths, ReviewStore, reviewStore, SPACE_FOLDER, PORT_MCP_EXTERNE, externalProject, EMPTY_REMARK, SANS_CLIENT } from "../../../packages/noyau/src/index";
-import { NO_WINDOW } from "../core/design/envoi";
-import { createDesignHost, DESIGN_METHODS, externalMcpPort, textSource, type DesignHost, type DesignTracking } from "../noyau/design";
+import { spacePaths, ReviewStore, reviewStore, SPACE_FOLDER, PORT_MCP_EXTERNE, externalProject, EMPTY_REMARK, SANS_CLIENT } from "../../../packages/kernel/src/index";
+import { NO_WINDOW } from "../core/design/send";
+import { createDesignHost, DESIGN_METHODS, externalMcpPort, textSource, type DesignHost, type DesignTracking } from "../host/design";
 import { INVALID_REQUEST } from "../shared/design-guards";
-import { ReviewService } from "../noyau/review";
+import { ReviewService } from "../host/review";
 
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => {

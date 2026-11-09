@@ -1,4 +1,4 @@
-import type { ImagePage, LienPage } from "@webaios/noyau";
+import type { ImagePage, LienPage } from "@webaios/kernel";
 
 /** The action and run whose page is drawn: links and images need them. */
 export type PageContext = { action: string; execution: string };

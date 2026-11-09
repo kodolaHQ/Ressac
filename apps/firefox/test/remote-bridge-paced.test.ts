@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Rpc } from "../shared/rpc";
-import { RemoteBridge } from "../noyau/remote-bridge";
+import { RemoteBridge } from "../host/remote-bridge";
 
 const page = { url: "http://a.test/", titre: "", texte: "", liens: [] };
 function setup(answer: () => Promise<unknown>) {

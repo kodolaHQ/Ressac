@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { COMPONENT_HTML_MAX as NOYAU_COMPOSANT_HTML_MAX } from "../../../packages/noyau/src/pages/composants-agent";
+import { COMPONENT_HTML_MAX as NOYAU_COMPOSANT_HTML_MAX } from "../../../packages/kernel/src/pages/agent-components";
 import { COMPONENT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
 
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));

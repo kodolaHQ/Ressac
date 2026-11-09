@@ -5,11 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { Marionette } from "./marionette";
 
-// Fake docker (a wrapper of faux-docker.cjs that knows the Firefox container name): no test ever touches a real container.
-export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../test/outils");
+// Fake docker (a wrapper of fake-docker.cjs that knows the Firefox container name): no test ever touches a real container.
+export const FAKE_TOOLS = path.resolve(import.meta.dirname, "../test/tools");
 const DIST = path.resolve(import.meta.dirname, "../engine/obj-aarch64-apple-darwin/dist");
 // The product's starter widgets, the ones the space setup copies into a new space.
-const STARTER_WIDGETS = path.resolve(import.meta.dirname, "../../../packages/noyau/modeles/widgets");
+const STARTER_WIDGETS = path.resolve(import.meta.dirname, "../../../packages/kernel/modeles/widgets");
 
 /**
  * A new space gets the starter widgets, harvested at launch on the real web (the fake docker runs harvests on the Mac).

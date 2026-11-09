@@ -1,6 +1,6 @@
-import { WorkshopError } from "@webaios/noyau";
+import { WorkshopError } from "@webaios/kernel";
 import type { AgentPanelState, TailleTerminal } from "../../shared/api";
-import type { WindowId } from "../../shared/modele";
+import type { WindowId } from "../../shared/model";
 
 /** Output kept per window, returned when the UI reloads: enough to find the conversation again. */
 export const TAMPON_MAX = 200_000;

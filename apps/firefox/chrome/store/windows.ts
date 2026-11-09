@@ -1,4 +1,4 @@
-import type { BrowserState, WindowId } from "../../shared/modele";
+import type { BrowserState, WindowId } from "../../shared/model";
 import type { WindowController } from "../window/controller";
 import type { Store } from "./store";
 

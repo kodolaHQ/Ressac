@@ -1,8 +1,8 @@
 import { beforeEach, expect, test } from "vitest";
 import type { Action } from "../shared/api";
-import type { BrowserState } from "../shared/modele";
-import { apply } from "../core/etat/actions";
-import { initialState } from "../core/etat/etat-initial";
+import type { BrowserState } from "../shared/model";
+import { apply } from "../core/state/actions";
+import { initialState } from "../core/state/initial-state";
 import { advance, start, visibleWindow, noteUsage, recentOrder, retirer } from "../core/recents";
 
 let n = 0;

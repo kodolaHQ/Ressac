@@ -1,11 +1,11 @@
 // The design mode's pure pieces: core/design/viseur.ts's scriptViseur, adapted for the actor's guard, and the checks
 // on what comes back from the page.
-import type { DesignContext } from "../../../../packages/noyau/src/design/remarques";
-import type { DesignTarget } from "../../core/design/premier-plan";
-import { viewfinderScript, type ViewfinderCapture } from "../../core/design/viseur";
-import { truncateHtml } from "../shims/noyau";
+import type { DesignContext } from "../../../../packages/kernel/src/design/remarques";
+import type { DesignTarget } from "../../core/design/foreground";
+import { viewfinderScript, type ViewfinderCapture } from "../../core/design/viewfinder";
+import { truncateHtml } from "../shims/kernel";
 
-export { rectCapture } from "../../core/design/viseur";
+export { rectCapture } from "../../core/design/viewfinder";
 export type { ViewfinderCapture as CaptureViseur };
 
 export const SOURCE_TIMEOUT_MS = 1500;

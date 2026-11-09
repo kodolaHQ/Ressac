@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { summarizeProfile } from "../../../packages/noyau/src/outils-dev/resumes";
+import { summarizeProfile } from "../../../packages/kernel/src/devtools/summaries";
 import { geckoToCpuProfile } from "../chrome/store/devtools";
 import { cleanupXpis, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";

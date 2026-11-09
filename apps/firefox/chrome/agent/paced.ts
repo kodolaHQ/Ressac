@@ -1,4 +1,4 @@
-import { siteMenage } from "../shims/noyau";
+import { siteMenage } from "../shims/kernel";
 
 /** The host of `target` when its paced site differs from `current`'s, else null (same site, or an unreadable address). */
 export function pacedTarget(current: string, target: string): string | null {

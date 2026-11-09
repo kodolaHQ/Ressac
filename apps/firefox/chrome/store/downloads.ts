@@ -1,4 +1,4 @@
-import type { Download } from "../../shared/modele";
+import type { Download } from "../../shared/model";
 
 /** The fields of Firefox's Download that the list reads (pure: no Firefox global). */
 export interface DownloadLike {

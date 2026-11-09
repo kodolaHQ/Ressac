@@ -1,7 +1,7 @@
-import type { Scope } from "../../../../packages/noyau/src/index.ts";
+import type { Scope } from "../../../../packages/kernel/src/index.ts";
 import type { CarteExtension } from "../../shared/extensions";
-import { agentAllowedHost, agentAllowedUrl } from "../../core/extensions/reseau";
-import type { AccessState, WindowId, ProfileId } from "../../shared/modele";
+import { agentAllowedHost, agentAllowedUrl } from "../../core/extensions/network";
+import type { AccessState, WindowId, ProfileId } from "../../shared/model";
 import type { Handler } from "../../shared/rpc";
 import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
@@ -21,7 +21,7 @@ const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tab
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
-// Keep in sync with LONGUEUR_CONSOLE_MAX (packages/noyau/src/mcp/extensions.ts): a message is never longer than an answer.
+// Keep in sync with LONGUEUR_CONSOLE_MAX (packages/kernel/src/mcp/extensions.ts): a message is never longer than an answer.
 const CONSOLE_TEXT_MAX = 100_000;
 
 /** An uncaught error of its background window this close to its start is a failed load (spike S7). */

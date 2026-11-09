@@ -1,11 +1,11 @@
-import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/modele";
-import { privateTab, tabProfile, profilesInUse } from "../../shared/modele";
-import { chargerSession, SessionRecorder } from "../../core/etat/persistance";
+import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/model";
+import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
+import { chargerSession, SessionRecorder } from "../../core/state/persistence";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
-import type { OptionsLecturePage, PageLue } from "../shims/noyau";
+import type { OptionsLecturePage, PageLue } from "../shims/kernel";
 import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
@@ -22,7 +22,7 @@ import { bindSites, sites, type SiteApps } from "./sites";
 import { createStore, type Store } from "./store";
 import { createWindowRegistry, type WindowRegistry } from "./windows";
 import { installUiNetwork, isUiDocument, type UiNetworkState } from "./ui-network";
-import { gestureGuard } from "../../shared/geste-widget";
+import { gestureGuard } from "../../shared/widget-gesture";
 
 const { AsyncShutdown } = ChromeUtils.importESModule("resource://gre/modules/AsyncShutdown.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");

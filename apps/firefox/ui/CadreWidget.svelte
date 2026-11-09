@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { api } from "../ui/etat.svelte";
+  import { api } from "./state.svelte";
 
   /**
    * A widget shown in its isolated frame: without allow-same-origin, the code written by the agent runs in an opaque

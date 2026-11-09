@@ -1,4 +1,4 @@
-import { localUrl, relativeUrl, correspondMotif, tweaksFor, type DeclarationSite, type TweaksRead } from "@webaios/noyau";
+import { localUrl, relativeUrl, correspondMotif, tweaksFor, type DeclarationSite, type TweaksRead } from "@webaios/kernel";
 import {
   CONSOLE_TWEAK_SOURCE_MAX,
   CONSOLE_TWEAK_TEXT_MAX,

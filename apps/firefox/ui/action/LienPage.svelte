@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from "../etat.svelte";
+  import { api } from "../state.svelte";
   import type { PageContext, LienPage } from "./types";
 
   /**

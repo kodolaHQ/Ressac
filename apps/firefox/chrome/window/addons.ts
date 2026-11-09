@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { WindowId } from "../../shared/modele";
+import type { WindowId } from "../../shared/model";
 import type { WebAiOsStore } from "../store";
 import type { SiteWindowController } from "../store/sites";
 import { setupAnchors, type Anchors, type Rect } from "./anchor";
